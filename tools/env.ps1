@@ -1,5 +1,5 @@
 ﻿# Prépare l'environnement de compilation pour la session PowerShell courante
-# (à charger avec « . $PSScriptRoot\env.ps1 ») : outils MSVC/Windows SDK + LLVM récent.
+# (à charger avec « . $PSScriptRoot\tools\env.ps1 ») : outils MSVC/Windows SDK + LLVM récent.
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (-not $env:VSINSTALLDIR -and (Test-Path $vswhere)) {
     $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath

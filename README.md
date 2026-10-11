@@ -73,6 +73,7 @@ port/                  the ReXGlue project
   dist/                readmes and notices shipped with releases
   patches/             changes to the SDK and XenosRecomp
 tools/                 analysis scripts (function finder, shader tools, packaging)
+  dev/                 test launchers (diagnostic log, texture dumps, 720p, iGPU)
 ```
 
 ### Finding missing functions

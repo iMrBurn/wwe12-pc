@@ -90,11 +90,12 @@ $licenseFiles = [ordered]@{
 foreach ($name in $licenseFiles.Keys) {
     Copy-Item $licenseFiles[$name] (Join-Path $Lic $name)
 }
-# Adresse du code source (GPL) : à renseigner dans le fichier SOURCE_URL à la racine.
-$SourceUrlFile = Join-Path $Root "SOURCE_URL"
-$SourceUrl = if (Test-Path $SourceUrlFile) { (Get-Content $SourceUrlFile -TotalCount 1).Trim() } else { "" }
-if (-not $SourceUrl) {
-    Write-Warning "Fichier SOURCE_URL absent : l'adresse du code source manque dans THIRD_PARTY_NOTICES.txt."
+# Adresse du code source (GPL) : celle du dépôt GitHub (remote « origin »), sans le « .git ».
+$SourceUrl = (git -C $Root remote get-url origin 2>$null)
+if ($SourceUrl) {
+    $SourceUrl = $SourceUrl.Trim() -replace '\.git$', ''
+} else {
+    Write-Warning "Pas de dépôt git « origin » : l'adresse du code source manque dans THIRD_PARTY_NOTICES.txt."
     $SourceUrl = "(address to be added)"
 }
 (Get-Content (Join-Path $Root "port\dist\THIRD_PARTY_NOTICES.txt") -Encoding UTF8) -replace '\{SOURCE_URL\}', $SourceUrl |

@@ -9,7 +9,7 @@ $Sdk  = Join-Path $Root "recomp\rexglue-sdk"
 foreach ($tool in "git", "cmake", "ninja") {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool introuvable dans le PATH" }
 }
-. (Join-Path $Root "env.ps1")
+. (Join-Path $Root "tools\env.ps1")
 
 # Sans le mode développeur de Windows, git écrit les liens symboliques comme de petits
 # fichiers texte contenant le chemin cible : on les remplace par une copie de la cible.

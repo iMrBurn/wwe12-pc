@@ -11,7 +11,7 @@ $Rexglue = Join-Path $PSScriptRoot "recomp\rexglue-sdk\out\install\win-amd64\bin
 if (-not (Test-Path (Join-Path $Port "assets\default.xex"))) {
     throw "port\assets\default.xex manquant (à extraire de ta copie Xbox 360 du jeu)"
 }
-. (Join-Path $PSScriptRoot "env.ps1")
+. (Join-Path $PSScriptRoot "tools\env.ps1")
 
 Push-Location $Port
 try {
