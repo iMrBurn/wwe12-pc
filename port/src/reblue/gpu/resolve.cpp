@@ -481,6 +481,48 @@ bool Video::ResolveRegion(u32 flags, GuestTexture *dst, u32 level, u32 face, i32
   return true;
 }
 
+bool Video::ReadbackTextureLevel(GuestTexture *src, u32 level, u32 face,
+                                 std::vector<u8> &out, u32 &row_pitch) {
+  if (!src || !src->texture || level >= src->mipLevels ||
+      src->sampleCount != plume::RenderSampleCount::COUNT_1)
+    return false;
+  const u32 w = std::max(1u, src->width >> level);
+  const u32 h = std::max(1u, src->height >> level);
+  row_pitch = rex::align(w * 4u, 256u);
+  auto &s = state();
+  std::lock_guard lock(s.mutex);
+  if (!s.ready)
+    return false;
+  auto buffer = CreateHostBuffer(s.device.get(),
+                                 plume::RenderBufferDesc::ReadbackBuffer(u64(row_pitch) * h),
+                                 "resolve-readback");
+  if (!buffer)
+    return false;
+  BeginCommandList(s);
+  if (!s.command_list_open)
+    return false;
+  s.draw_framebuffer_bound = false;
+  plume::RenderTextureBarrier pre(src->texture, plume::RenderTextureLayout::COPY_SOURCE);
+  s.command_list->barriers(plume::RenderBarrierStage::COPY, &pre, 1);
+  src->layout = plume::RenderTextureLayout::COPY_SOURCE;
+  s.command_list->copyTextureRegion(
+      plume::RenderTextureCopyLocation::PlacedFootprint(buffer.get(), src->format, w, h, 1,
+                                                        row_pitch / 4u),
+      plume::RenderTextureCopyLocation::Subresource(src->texture, level, face));
+  // The game reads the resolved memory right away (it waits for the GPU first): finish this
+  // frame's work so far, then reopen the same list for the rest of the frame.
+  const u32 cur = s.frame.load(std::memory_order_relaxed);
+  SubmitOpenListLocked(s);
+  s.queue->waitForCommandFence(s.fences[cur].get());
+  s.command_list_submitted[cur] = false;
+  const void *mapped = buffer->map();
+  if (!mapped)
+    return false;
+  out.assign(static_cast<const u8 *>(mapped), static_cast<const u8 *>(mapped) + size_t(row_pitch) * h);
+  buffer->unmap();
+  return true;
+}
+
 bool Video::SeedTextureBaseLevel(GuestTexture *dst, GuestTexture *src) {
   if (!dst || !src || !dst->texture || !src->texture || dst == src ||
       dst->width != src->width || dst->height != src->height || dst->format != src->format)

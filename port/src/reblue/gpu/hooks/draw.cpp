@@ -731,8 +731,10 @@ u32 D3DDevice_Resolve_hook(u32 device_guest, u32 Flags, u32 pSourceRect,
       dy = i32(p[1]) * scale;
     }
     if (bd::gpu::Video::ResolveRegion(Flags, dst, DestLevel, DestSliceOrFace, left, top, right,
-                                      bottom, dx, dy))
+                                      bottom, dx, dy)) {
+      bd::gpu::SvrAfterResolve(pDestTexture, dst, DestLevel, DestSliceOrFace);
       return 0;
+    }
   }
 #endif
   bd::gpu::Video::TrackResolveSource(Flags, dst, DestLevel, DestSliceOrFace);

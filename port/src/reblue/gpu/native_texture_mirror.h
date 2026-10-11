@@ -29,6 +29,13 @@ namespace bd::gpu {
 // is treated as stale (prior occupant freed via an unhooked path) and rebuilt.
 GuestTexture *GetOrCreateNativeMirror(u32 guest_va, u32 name_va = 0);
 
+#if defined(SVR_NATIVE_RENDERER)
+// Writes RGBA8 texels (host order, row_pitch bytes per row) into the guest memory of the base
+// level of the texture whose header is at guest_va, in its Xbox layout (tiling, endian):
+// what an Xbox resolve leaves in memory. k_8_8_8_8 and k_4_4_4_4 only.
+bool WriteGuestTextureBase(u32 guest_va, const u8 *rgba, u32 row_pitch, u32 width, u32 height);
+#endif
+
 // Resolves a guest VA to its host GuestTexture (HostResourceHeap object or
 // native mirror), or nullptr if neither.
 GuestTexture *ResolveGuestTexture(u32 guest_va);

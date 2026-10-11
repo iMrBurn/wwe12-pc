@@ -968,6 +968,52 @@ void DrainEvictedNativeTextures(u32 slot) {
   }
 }
 
+#if defined(SVR_NATIVE_RENDERER)
+bool WriteGuestTextureBase(u32 guest_va, const u8 *rgba, u32 row_pitch, u32 width, u32 height) {
+  xe::xe_gpu_texture_fetch_t fetch{};
+  if (!rgba || !ReadFetch(guest_va, fetch) ||
+      fetch.dimension != xe::DataDimension::k2DOrStacked || fetch.packed_mips)
+    return false;
+  if (fetch.format != xe::TextureFormat::k_8_8_8_8 &&
+      fetch.format != xe::TextureFormat::k_4_4_4_4)
+    return false;
+  const MirrorLayout L = MakeLayout(fetch);
+  if (L.width != width || L.height != height)
+    return false;
+  // Writable view of the same memory the mirror reads.
+  auto *dst = const_cast<u8 *>(FetchMemory<u8>(fetch.base_address << 12));
+  if (!dst)
+    return false;
+  const bool packed16 = fetch.format == xe::TextureFormat::k_4_4_4_4;
+  for (u32 y = 0; y < height; ++y) {
+    const u8 *row = rgba + size_t(y) * row_pitch;
+    for (u32 x = 0; x < width; ++x) {
+      const u8 *t = row + size_t(x) * 4u;
+      // GPU (little-endian) texel, then the fetch's endian swap. What the CPU reads is a
+      // D3DFMT_A8R8G8B8 / A4R4G4B4 render target resolve: blue in the low bits (written red
+      // first, custom attires came out with blue skin).
+      u8 texel[4];
+      if (packed16) {
+        const u32 v = u32(t[2] >> 4) | (u32(t[1] >> 4) << 4) | (u32(t[0] >> 4) << 8) |
+                      (u32(t[3] >> 4) << 12);
+        texel[0] = u8(v);
+        texel[1] = u8(v >> 8);
+      } else {
+        texel[0] = t[2];
+        texel[1] = t[1];
+        texel[2] = t[0];
+        texel[3] = t[3];
+      }
+      const i32 offset = BaseBlockOffset(L, i32(x), i32(y));
+      if (offset < 0 || u32(offset) + L.bytes_per_block > L.source_bytes)
+        continue;
+      tc::CopySwapBlock(L.endian, dst + offset, texel, L.bytes_per_block);
+    }
+  }
+  return true;
+}
+#endif
+
 } // namespace bd::gpu
 
 // Midasm hook at global scope, externed by the generated recompiler dispatch,

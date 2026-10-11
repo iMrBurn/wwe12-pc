@@ -25,6 +25,10 @@ u32 SvrSurfaceScale(u32 surface_va);
 // scale: host pixels per guest pixel for a target made now (0 = the render scale). A resolve
 // passes its source surface's, so copies stay 1:1.
 GuestTexture *SvrResolveTarget(u32 texture_va, u32 scale = 0);
+// After a resolve into texture_va: also write the result into the texture's guest memory, as the
+// Xbox resolve does, for the first resolves of a 1x target (the game reads custom attire
+// composites back with the CPU to compress them). Per-frame targets stop after a few.
+void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face);
 // Guest texture bound for sampling -> host texture (a resolve target, else a mirror).
 GuestTexture *SvrResolveTexture(u32 texture_va);
 // Called once per presented frame (mirror checks are per frame).

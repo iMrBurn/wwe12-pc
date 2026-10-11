@@ -190,6 +190,10 @@ public:
   // Copies src's base level into dst's (same size and format): seeds a GPU-written texture with
   // the content the CPU put in its memory first. false if they differ.
   static bool SeedTextureBaseLevel(GuestTexture *dst, GuestTexture *src);
+  // Reads one level/face of a 4-byte-per-texel texture back to the CPU (row_pitch bytes per
+  // row), waiting for the GPU. For resolves whose memory the game reads with the CPU.
+  static bool ReadbackTextureLevel(GuestTexture *src, u32 level, u32 face, std::vector<u8> &out,
+                                   u32 &row_pitch);
   // Resolve of a sub-rectangle (host pixels) of the current source to a point of dst's level/face,
   // as the Xbox does it. false when it cannot be a plain copy (format, MSAA, exponent bias): the
   // caller falls back to the whole-surface resolve.

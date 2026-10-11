@@ -38,6 +38,9 @@ bool SvrOnSteamDeck();
 REXCVAR_DEFINE_BOOL(svr_seed_gpu_textures, true, "SvR",
                     "Start GPU-written textures from what the CPU put in their memory (wrestler "
                     "skin composites: eyes and teeth).");
+REXCVAR_DEFINE_BOOL(svr_resolve_readback, true, "SvR",
+                    "Copy the first resolves of each work texture back to the game's memory, as "
+                    "the Xbox does (custom attires are built from it).");
 REXCVAR_DEFINE_BOOL(svr_match_guest_mips, true, "SvR",
                     "Sample the texture mip levels the game uses at 720p when rendering above it "
                     "(its eye/teeth textures break at the base level).");
@@ -334,6 +337,31 @@ GuestTexture *SvrResolveTarget(u32 texture_va, u32 scale) {
   }
   g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, scale});
   return host;
+}
+
+void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
+  if (!dst || level != 0 || face != 0 || !REXCVAR_GET(svr_resolve_readback))
+    return;
+  // Per-frame targets (shadows, lighting, the scene) are resolved again and again; the composites
+  // the CPU reads are resolved a handful of times at load. Only those are worth the GPU wait.
+  constexpr u32 kMaxReadbacks = 6;
+  {
+    std::lock_guard lock(g_mutex);
+    const auto it = g_targets.find(texture_va);
+    if (it == g_targets.end() || it->second.host != dst || it->second.extent > 1)
+      return;
+    static std::unordered_map<u32, u32> s_resolves;
+    if (++s_resolves[texture_va] > kMaxReadbacks)
+      return;
+  }
+  std::vector<u8> pixels;
+  u32 row_pitch = 0;
+  if (!Video::ReadbackTextureLevel(dst, 0, 0, pixels, row_pitch))
+    return;
+  const bool written = WriteGuestTextureBase(texture_va, pixels.data(), row_pitch, dst->width,
+                                             dst->height);
+  BD_DEBUG("SvR target 0x{:08X}: {}x{} resolve written back to memory: {}", texture_va,
+           dst->width, dst->height, written);
 }
 
 namespace {
