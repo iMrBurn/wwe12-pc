@@ -325,16 +325,22 @@ GuestTexture *SvrResolveTarget(u32 texture_va, u32 scale) {
   // land: WWE '12 fills its wrestler skin composites (k_4_4_4_4) with the base skin, eyes and
   // teeth included, and resolves only patches into the base level. Start the host texture from
   // that memory, else the unpatched parts of its base level stay black.
+  bool seeded = false;
   if (host && !cube && scale == 1 && levels > 1 && REXCVAR_GET(svr_seed_gpu_textures)) {
     const auto *mem = bd::mem::try_at<const u8>(fetch.base_address << 12);
     size_t nonzero = 0;
     for (u32 i = 0; mem && i < 65536; i += 64)
       nonzero += mem[i] != 0;
     GuestTexture *seed = nonzero ? GetOrCreateNativeMirror(texture_va, 0) : nullptr;
-    const bool seeded = seed && Video::SeedTextureBaseLevel(host, seed);
+    seeded = seed && Video::SeedTextureBaseLevel(host, seed);
     BD_INFO("SvR target 0x{:08X}: memory {} non-zero sample(s) of 1024, seeded {}", texture_va,
             nonzero, seeded);
   }
+  // Host targets live in recycled (placed) GPU memory: whatever the resolves never cover would
+  // show what was there before. Black on NVIDIA by luck, coloured noise on the Steam Deck (AMD)
+  // in the crowd during entrances. Start them transparent black.
+  if (host && !cube && !seeded)
+    Video::ClearTexture(host, 0);
   g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, scale});
   return host;
 }
