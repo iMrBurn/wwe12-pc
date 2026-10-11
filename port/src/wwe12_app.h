@@ -23,6 +23,14 @@
 #include "gpu/imgui_overlay_drawer.h"
 #endif
 
+#if defined(SVR_NATIVE_RENDERER)
+void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem* fs, const std::string& game_device,
+                         const std::filesystem::path& user_root);
+#else
+inline void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem*, const std::string&,
+                                const std::filesystem::path&) {}
+#endif
+
 // Défini dans main.cpp. ReXApp charge toujours le plugin GPU avec le backend « any »
 // (D3D12 en priorité sous Windows) : ce réglage permet de forcer Vulkan.
 REXCVAR_DECLARE(std::string, gpu_backend);
@@ -141,6 +149,9 @@ class Wwe12App : public rex::ReXApp {
       return;
     }
     REXLOG_INFO("Mods : les fichiers de {} remplacent ceux du jeu", mods.string());
+    // Le menu principal gagne une 8e entrée QUITTER (wwe12_menu_patch.cpp), servie après les
+    // mods : un menu.pac posé dans mods\ garde la priorité.
+    Wwe12MountMenuPatch(fs, game_device, user_data_root_);
   }
 
 #if defined(SVR_NATIVE_RENDERER)

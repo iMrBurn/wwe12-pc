@@ -23,7 +23,7 @@ Requirements: Windows 10/11 64-bit, a Vulkan 1.2 graphics card, an Xbox or PlayS
 (DualShock 4, DualSense) or the keyboard (ZQSD/WASD, layout in `README.txt`).
 Settings (language, internal resolution…) are in `wwe12.toml`, explained in `README.txt`.
 
-## Status (v0.2.0-beta)
+## Status (v0.3.0-beta)
 
 - Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps (entrances run at
   30 fps, like on Xbox 360).
@@ -31,9 +31,12 @@ Settings (language, internal resolution…) are in `wwe12.toml`, explained in `R
   720p on Steam Deck and integrated GPUs (an Intel iGPU holds 60 fps there).
 - All five languages of the European release (English, French, German, Spanish, Italian). The
   game's "Xbox 360 console" texts say "PC".
-- A "QUIT" entry in the main menu (temporarily in place of Xbox LIVE).
+- An "EXIT" entry in the main menu (in place of SHOP, the dead Xbox LIVE store); Xbox LIVE is
+  labelled "Online".
 - Compiled pipelines are kept in `Documents\wwe12\cache` to avoid stutter on later runs.
-- Custom attires (Superstar Threads) and wrestlers' eyes and teeth render correctly.
+- Custom attires (Superstar Threads), wrestlers' eyes and teeth, and blood render correctly.
+- Sharp textures at an angle (16x anisotropic filtering).
+- A `mods` folder: files in it replace the game's own (HD titantron videos, textures...).
 - Xbox and PlayStation controllers, and the keyboard (together with a controller).
 
 Known issues: the titantron video is low-resolution; long loading screens; on-screen button

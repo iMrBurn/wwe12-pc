@@ -34,6 +34,18 @@ endif()
 if(WWE12_D3D_CENSUS)
     list(APPEND WWE12_SOURCES src/d3d_census.cpp)
 endif()
+# Icône et informations de fichier de l'exe (Propriétés > Détails), numéro tiré de VERSION.
+if(WIN32)
+    string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" _ver "${WWE12_VERSION}")
+    set(WWE12_VERSION_MAJOR ${CMAKE_MATCH_1})
+    set(WWE12_VERSION_MINOR ${CMAKE_MATCH_2})
+    set(WWE12_VERSION_PATCH ${CMAKE_MATCH_3})
+    set(WWE12_RES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/res")
+    configure_file(res/wwe12.rc.in "${CMAKE_CURRENT_BINARY_DIR}/wwe12.rc" @ONLY)
+    list(APPEND WWE12_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/wwe12.rc")
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/wwe12.rc" PROPERTIES
+        OBJECT_DEPENDS "${WWE12_RES_DIR}/wwe12.ico")
+endif()
 
 if(WIN32)
     add_executable(wwe12 WIN32 ${WWE12_SOURCES})

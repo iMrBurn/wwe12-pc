@@ -1,16 +1,14 @@
-// WWE '12 PC: a "quit the game" entry in the main menu, in place of the unused "Xbox LIVE" one.
+// WWE '12 PC: the main menu's "quit the game" entry, and "Xbox LIVE" renamed "Online".
 //
-// Step 1 (this file): the label. The game's strings are tables (string.pac, one per language)
-// loaded into guest memory as-is: a u32 0, a u32 entry count, then 16-byte little-endian entries
-// {text offset from the table start, length, string id, 0} and the NUL-terminated UTF-8 texts.
-// The main menu's "Xbox LIVE" is string id 41006. Once the table is loaded, its text is
-// rewritten in place (shorter, so it fits) with the chosen language's "quit".
+// The entry is SHOP's, relabelled "EXIT" (string 45061, translated by the game) by
+// wwe12_menu_patch.cpp. Choosing it closes the game, the way the window's close button does it
+// (the decide hook below).
 //
-// Step 2: the action. The main menu's "decide" handler, sub_82422BD8 (a virtual method; this =
-// r3 - 28), switches on the state at this+56: 1-3 open sub-menus, 0 and 4 start modes, and 5 or
-// more take the Xbox LIVE path (sign-in check, then message 50373 "you must be signed in to an
-// Xbox LIVE profile"). On that path the game is closed instead, the way the window's close
-// button does it.
+// The label: the game's strings are tables (string.pac, one per language) loaded into guest
+// memory as-is: a u32 0, a u32 entry count, then 16-byte little-endian entries {text offset from
+// the table start, length, string id, 0} and the NUL-terminated UTF-8 texts. The main menu's
+// "Xbox LIVE" is string id 41006; once the table is loaded, its text is rewritten in place
+// (shorter, so it fits) as the chosen language's "online".
 //
 // Disabled with wwe12_quit_entry = false in wwe12.toml.
 
@@ -37,7 +35,7 @@
 #include "svr_hook.h"
 
 REXCVAR_DEFINE_BOOL(wwe12_quit_entry, true, "WWE12",
-                    "Main menu: the unused \"Xbox LIVE\" entry becomes \"quit the game\".");
+                    "Main menu: SHOP becomes EXIT (quits the game); \"Xbox LIVE\" is labelled Online.");
 REXCVAR_DEFINE_BOOL(wwe12_pc_texts, true, "WWE12",
                     "Texts that mention the Xbox 360 console (\"do not turn off\") say PC.");
 REXCVAR_DECLARE(uint32_t, user_language);
@@ -46,14 +44,14 @@ namespace bd::gpu {
 namespace {
 
 constexpr u32 kXboxLiveStringId = 41006;
+constexpr u32 kExitStringId = 45061;  // SHOP's label once relabelled (wwe12_menu_patch.cpp)
 
-const char *QuitLabel() {
+// At most 9 bytes of UTF-8: the "Xbox LIVE" text it replaces.
+const char *OnlineLabel() {
   switch (REXCVAR_GET(user_language)) {
-  case 3: return "BEENDEN";   // German
-  case 4: return "QUITTER";   // French
-  case 5: return "SALIR";     // Spanish
-  case 6: return "ESCI";      // Italian
-  default: return "QUIT";     // English
+  case 4: return "EN LIGNE";            // French
+  case 5: return "EN L\xC3\x8D" "NEA";  // Spanish (EN LÍNEA)
+  default: return "ONLINE";             // English, German, Italian
   }
 }
 
@@ -103,7 +101,7 @@ u32 RewriteConsolePhrase(u8 *hit, u8 *region_start, u8 *region_end) {
 // rewrites them. Returns the number of texts patched; `candidates` counts the raw text hits.
 u32 PatchLoadedTables(u32 &candidates, u32 &pc_texts) {
   u8 *const base = bd::mem::at<u8>(0x40000000) - 0x40000000;
-  const char *label = QuitLabel();
+  const char *label = OnlineLabel();
   const size_t label_len = std::strlen(label);
   static const char kText[] = "Xbox LIVE";  // 9 chars + NUL = the entry length, 10
   u32 patched = 0;
@@ -229,7 +227,7 @@ void Wwe12QuitEntryTick(u64 frame) {
     static std::atomic<u32> s_reports{0};
     if (n || s_reports.fetch_add(1) < 6)
       BD_INFO("WWE12 menu: \"Xbox LIVE\" texts found {}, rewritten as \"{}\": {}", candidates,
-              QuitLabel(), n);
+              OnlineLabel(), n);
     g_total_patched += n;
     g_scanning = false;
   }).detach();
@@ -253,9 +251,9 @@ BOOL CALLBACK CloseOwnWindow(HWND hwnd, LPARAM) {
 
 REX_EXTERN(__imp__sub_8253C3F0);
 REX_EXTERN(__imp__sub_8253A028);
-// The menus' "decide" handler: it asks sub_8253A028(this) for the selected entry's record, and
-// an entry flagged 0x100 at +40 needs Xbox LIVE (sign-in check, then message 50373). The main
-// menu's "Xbox LIVE" entry is the one whose record holds its label id, 41006: that one quits.
+// The menus' "decide" handler: it asks sub_8253A028(this) for the selected entry's record
+// (0x4C bytes: +0 id, +4 parent, +8 page, +24 label). The main menu's (page 1) record labelled
+// 45061, SHOP relabelled EXIT by wwe12_menu_patch.cpp, closes the game.
 extern "C" REX_FUNC(sub_8253C3F0) {
   if (REXCVAR_GET(wwe12_quit_entry)) {
     PPCContext probe = ctx;
@@ -267,7 +265,7 @@ extern "C" REX_FUNC(sub_8253C3F0) {
       for (u32 i = 0; i < 16; ++i) {
         const u32 w = bd::mem::load<u32>(entry + i * 4);
         words += fmt::format(" {:08X}", w);
-        is_quit |= (w == bd::gpu::kXboxLiveStringId);
+        is_quit |= (i == 6 && w == bd::gpu::kExitStringId);
       }
       static std::atomic<u32> s_logged{0};
       if (s_logged.fetch_add(1) < 64)
@@ -288,8 +286,8 @@ extern "C" REX_FUNC(sub_8253C3F0) {
                   entry - 0x1000u);
         }
       }
-      const u32 flags = bd::mem::load<u32>(entry + 40);
-      if (is_quit && (flags & 0x100u)) {
+      const u32 page = bd::mem::load<u32>(entry + 8);
+      if (is_quit && page == 1) {
         BD_INFO("WWE12 menu: \"quit\" chosen, closing the game");
         EnumWindows(CloseOwnWindow, 0);
         return;

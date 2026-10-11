@@ -29,3 +29,5 @@ Projets dont ce portage s'inspire :
 
 La liste complète des bibliothèques incluses dans l'exe et les DLL, avec leurs licences, est
 dans `port/dist/THIRD_PARTY_NOTICES.txt` (livré avec chaque version, textes dans `licenses/`).
+
+- Icône de `wwe12.exe` (`port/res/wwe12.ico`) : composée à partir du logo de WWE '12, marque de WWE/THQ, utilisée par ce projet de fans sans affiliation.
