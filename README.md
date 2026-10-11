@@ -19,10 +19,11 @@ français dans `LISEZMOI.txt`.*
    folder (or the disc contents: `default.xex`, `pac\`, `movies\`…).
 3. Run `wwe12.exe`.
 
-Requirements: Windows 10/11 64-bit, a Vulkan 1.2 graphics card, an Xbox (XInput) controller.
+Requirements: Windows 10/11 64-bit, a Vulkan 1.2 graphics card, an Xbox or PlayStation controller
+(DualShock 4, DualSense) or the keyboard (ZQSD/WASD, layout in `README.txt`).
 Settings (language, internal resolution…) are in `wwe12.toml`, explained in `README.txt`.
 
-## Status (v0.1.0-beta)
+## Status (v0.2.0-beta)
 
 - Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps (entrances run at
   30 fps, like on Xbox 360).
@@ -32,9 +33,11 @@ Settings (language, internal resolution…) are in `wwe12.toml`, explained in `R
   game's "Xbox 360 console" texts say "PC".
 - A "QUIT" entry in the main menu (temporarily in place of Xbox LIVE).
 - Compiled pipelines are kept in `Documents\wwe12\cache` to avoid stutter on later runs.
+- Custom attires (Superstar Threads) and wrestlers' eyes and teeth render correctly.
+- Xbox and PlayStation controllers, and the keyboard (together with a controller).
 
-Known issues: wrestlers' eyes and teeth can turn black on some GPUs; the titantron video is
-low-resolution; long loading screens.
+Known issues: the titantron video is low-resolution; long loading screens; on-screen button
+prompts stay Xbox ones with a PlayStation controller.
 
 Planned: an in-game graphics options page and a real 8th "QUIT" entry, 60 fps entrances and
 cutscenes, a launcher, HD textures and videos, online play.

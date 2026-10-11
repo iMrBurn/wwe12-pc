@@ -35,3 +35,32 @@ user_language = 1
 # 0 pour l'instant : à 16, la carte graphique prend des versions plus détaillées des textures
 # vues en biais, et la texture des yeux et des dents des catcheurs redevient noire.
 bd_anisotropy = 0
+
+# Clavier (joueur 1, en plus de la manette : les deux marchent en même temps). Les manettes Xbox
+# et PlayStation (DualShock 4, DualSense) sont reconnues d'office. Chaque touche peut avoir
+# plusieurs choix séparés par des virgules ; ZQSD et WASD marchent tous les deux (AZERTY/QWERTY).
+mnk_mode = true
+keybind_lstick_up = "Z,W"
+keybind_lstick_left = "Q,A"
+keybind_lstick_down = "S"
+keybind_lstick_right = "D"
+keybind_rstick_up = "Up"
+keybind_rstick_down = "Down"
+keybind_rstick_left = "Left"
+keybind_rstick_right = "Right"
+keybind_x = "J"
+keybind_a = "K"
+keybind_b = "L"
+keybind_y = "I"
+keybind_left_shoulder = "U"
+keybind_right_shoulder = "O"
+keybind_left_trigger = "R"
+keybind_right_trigger = "Space"
+keybind_lstick_press = "C"
+keybind_rstick_press = "N"
+keybind_dpad_up = "T"
+keybind_dpad_down = "G"
+keybind_dpad_left = "F"
+keybind_dpad_right = "H"
+keybind_start = "Return,Escape"
+keybind_back = "Tab,Backspace"
