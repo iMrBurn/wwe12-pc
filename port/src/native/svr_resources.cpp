@@ -41,6 +41,9 @@ REXCVAR_DEFINE_BOOL(svr_seed_gpu_textures, true, "SvR",
 REXCVAR_DEFINE_BOOL(svr_resolve_readback, true, "SvR",
                     "Copy the first resolves of each work texture back to the game's memory, as "
                     "the Xbox does (custom attires are built from it).");
+REXCVAR_DEFINE_BOOL(svr_rebuild_target_mips, true, "SvR",
+                    "Rebuild the smaller mip levels of GPU-painted textures (wrestler skins: eyes, "
+                    "teeth, blood) from their first level after each update.");
 REXCVAR_DEFINE_BOOL(svr_match_guest_mips, true, "SvR",
                     "Sample the texture mip levels the game uses at 720p when rendering above it "
                     "(its eye/teeth textures break at the base level).");
@@ -345,19 +348,34 @@ GuestTexture *SvrResolveTarget(u32 texture_va, u32 scale) {
   return host;
 }
 
+// Presented frames, for SvrAfterResolve's per-frame target detection.
+static std::atomic<u64> g_frame_index{0};
+
 void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
   if (!dst || level != 0 || face != 0 || !REXCVAR_GET(svr_resolve_readback))
     return;
-  // Per-frame targets (shadows, lighting, the scene) are resolved again and again; the composites
-  // the CPU reads are resolved a handful of times at load. Only those are worth the GPU wait.
-  constexpr u32 kMaxReadbacks = 6;
+  // Per-frame targets (shadows, lighting, the scene) are resolved on every frame; the composites
+  // the CPU reads are built at load, or now and then in a match. Only those are worth the GPU
+  // wait: a target resolved on more than kMaxStreak frames in a row is skipped until it rests.
+  constexpr u64 kMaxStreak = 6;
+  constexpr u64 kRestFrames = 30;
   {
     std::lock_guard lock(g_mutex);
     const auto it = g_targets.find(texture_va);
     if (it == g_targets.end() || it->second.host != dst || it->second.extent > 1)
       return;
-    static std::unordered_map<u32, u32> s_resolves;
-    if (++s_resolves[texture_va] > kMaxReadbacks)
+    struct Streak {
+      u64 last_frame = 0, frames = 0;
+    };
+    static std::unordered_map<u32, Streak> s_streaks;
+    Streak &st = s_streaks[texture_va];
+    const u64 frame = g_frame_index.load(std::memory_order_relaxed);
+    if (st.frames == 0 || frame > st.last_frame + kRestFrames)
+      st.frames = 1;
+    else if (frame != st.last_frame)
+      ++st.frames;
+    st.last_frame = frame;
+    if (st.frames > kMaxStreak)
       return;
   }
   std::vector<u8> pixels;
@@ -366,8 +384,44 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
     return;
   const bool written = WriteGuestTextureBase(texture_va, pixels.data(), row_pitch, dst->width,
                                              dst->height);
-  BD_DEBUG("SvR target 0x{:08X}: {}x{} resolve written back to memory: {}", texture_va,
-           dst->width, dst->height, written);
+  // The game paints its skin composites (base skin, eyes, teeth, then blood mid-match) into
+  // level 0 only; the smaller levels seen from afar were never filled on the host. Build them
+  // from level 0 with a 2x2 box filter, as the console's CPU does.
+  if (dst->mipLevels > 1 && REXCVAR_GET(svr_rebuild_target_mips)) {
+    std::vector<u8> prev = std::move(pixels);
+    u32 prev_pitch = row_pitch, pw = dst->width, ph = dst->height;
+    for (u32 level = 1; level < dst->mipLevels; ++level) {
+      const u32 w = std::max(1u, pw / 2), h = std::max(1u, ph / 2);
+      const u32 pitch = (w * 4u + 255u) & ~255u;
+      std::vector<u8> next(size_t(pitch) * h);
+      for (u32 y = 0; y < h; ++y) {
+        const u32 y0 = std::min(y * 2, ph - 1), y1 = std::min(y * 2 + 1, ph - 1);
+        for (u32 x = 0; x < w; ++x) {
+          const u32 x0 = std::min(x * 2, pw - 1), x1 = std::min(x * 2 + 1, pw - 1);
+          const u8 *a = &prev[size_t(y0) * prev_pitch + x0 * 4u];
+          const u8 *b = &prev[size_t(y0) * prev_pitch + x1 * 4u];
+          const u8 *c = &prev[size_t(y1) * prev_pitch + x0 * 4u];
+          const u8 *d = &prev[size_t(y1) * prev_pitch + x1 * 4u];
+          u8 *o = &next[size_t(y) * pitch + x * 4u];
+          for (int k = 0; k < 4; ++k)
+            o[k] = u8((u32(a[k]) + b[k] + c[k] + d[k] + 2u) / 4u);
+        }
+      }
+      if (!Video::UploadTextureLevel(dst, level, next.data(), pitch))
+        break;
+      prev = std::move(next);
+      prev_pitch = pitch;
+      pw = w;
+      ph = h;
+    }
+  }
+  // Large ones (wrestler composites) at info: shows when the game rebuilds them mid-match.
+  if (dst->width >= 512)
+    BD_INFO("SvR target 0x{:08X}: {}x{} resolve written back to memory: {}", texture_va,
+            dst->width, dst->height, written);
+  else
+    BD_DEBUG("SvR target 0x{:08X}: {}x{} resolve written back to memory: {}", texture_va,
+             dst->width, dst->height, written);
 }
 
 namespace {
@@ -714,6 +768,7 @@ static void LoadStatsTick() {
 void SvrOnFrame() {
   SvrWatchdogHeartbeat();
   const u64 frame = g_frame.fetch_add(1, std::memory_order_relaxed);
+  g_frame_index.store(frame, std::memory_order_relaxed);
   LoadStatsTick();
   Wwe12QuitEntryTick(frame);
   // Present rate in the log every 600 frames (pacing check).

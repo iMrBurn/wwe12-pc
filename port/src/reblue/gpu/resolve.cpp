@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -520,6 +521,44 @@ bool Video::ReadbackTextureLevel(GuestTexture *src, u32 level, u32 face,
     return false;
   out.assign(static_cast<const u8 *>(mapped), static_cast<const u8 *>(mapped) + size_t(row_pitch) * h);
   buffer->unmap();
+  return true;
+}
+
+bool Video::UploadTextureLevel(GuestTexture *dst, u32 level, const u8 *rgba, u32 row_pitch) {
+  if (!dst || !dst->texture || !rgba || level >= dst->mipLevels || (row_pitch & 255u))
+    return false;
+  const u32 w = std::max(1u, dst->width >> level);
+  const u32 h = std::max(1u, dst->height >> level);
+  auto &s = state();
+  std::lock_guard lock(s.mutex);
+  if (!s.ready)
+    return false;
+  auto buffer = CreateHostBuffer(s.device.get(),
+                                 plume::RenderBufferDesc::UploadBuffer(u64(row_pitch) * h),
+                                 "level-upload");
+  if (!buffer)
+    return false;
+  void *mapped = buffer->map();
+  if (!mapped)
+    return false;
+  std::memcpy(mapped, rgba, size_t(row_pitch) * h);
+  buffer->unmap();
+  BeginCommandList(s);
+  if (!s.command_list_open)
+    return false;
+  s.draw_framebuffer_bound = false;
+  plume::RenderTextureBarrier pre(dst->texture, plume::RenderTextureLayout::COPY_DEST);
+  s.command_list->barriers(plume::RenderBarrierStage::COPY, &pre, 1);
+  dst->layout = plume::RenderTextureLayout::COPY_DEST;
+  s.command_list->copyTextureRegion(
+      plume::RenderTextureCopyLocation::Subresource(dst->texture, level, 0),
+      plume::RenderTextureCopyLocation::PlacedFootprint(buffer.get(), dst->format, w, h, 1,
+                                                        row_pitch / 4u));
+  // The staging buffer dies with this call: let the copy finish first.
+  const u32 cur = s.frame.load(std::memory_order_relaxed);
+  SubmitOpenListLocked(s);
+  s.queue->waitForCommandFence(s.fences[cur].get());
+  s.command_list_submitted[cur] = false;
   return true;
 }
 

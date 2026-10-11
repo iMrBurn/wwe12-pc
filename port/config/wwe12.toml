@@ -32,9 +32,7 @@ user_language = 1
 
 # Filtrage anisotrope (0 = désactivé, 2/4/8/16) : garde nettes les textures vues en biais
 # (sol, rampe, tapis du ring, public). Coût quasi nul sur une carte graphique récente.
-# 0 pour l'instant : à 16, la carte graphique prend des versions plus détaillées des textures
-# vues en biais, et la texture des yeux et des dents des catcheurs redevient noire.
-bd_anisotropy = 0
+bd_anisotropy = 16
 
 # Clavier (joueur 1, en plus de la manette : les deux marchent en même temps). Les manettes Xbox
 # et PlayStation (DualShock 4, DualSense) sont reconnues d'office. Chaque touche peut avoir
