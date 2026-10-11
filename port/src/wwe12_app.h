@@ -122,6 +122,25 @@ class Wwe12App : public rex::ReXApp {
     fs->RegisterSymbolicLink("cache0:", "\\CACHE");
     fs->RegisterSymbolicLink("cache1:", "\\CACHE");
     REXLOG_INFO("Cache Xbox monté sur {}", dir.string());
+    MountModsOverlay(fs);
+  }
+
+  // Dossier « mods » à côté de l'exe : un fichier posé là au même chemin que sur le disque le
+  // remplace (game:\movies\titantron\100.bik -> mods\movies\titantron\100.bik), pour des
+  // vidéos HD, des textures, plus tard les fichiers de la mise à jour du jeu.
+  void MountModsOverlay(rex::filesystem::VirtualFileSystem* fs) {
+    std::string game_device;
+    if (!fs->FindSymbolicLink("game:", game_device))
+      return;
+    const std::filesystem::path mods = rex::filesystem::GetExecutableFolder() / "mods";
+    std::error_code ec;
+    std::filesystem::create_directories(mods, ec);
+    auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, mods, true);
+    if (!overlay->Initialize() || !fs->RegisterOverlay(game_device, std::move(overlay))) {
+      REXLOG_WARN("Mods : impossible d'utiliser {}", mods.string());
+      return;
+    }
+    REXLOG_INFO("Mods : les fichiers de {} remplacent ceux du jeu", mods.string());
   }
 
 #if defined(SVR_NATIVE_RENDERER)

@@ -101,6 +101,19 @@ if ($SourceUrl) {
 (Get-Content (Join-Path $Root "port\dist\THIRD_PARTY_NOTICES.txt") -Encoding UTF8) -replace '\{SOURCE_URL\}', $SourceUrl |
     Set-Content -Path (Join-Path $Dist "THIRD_PARTY_NOTICES.txt") -Encoding UTF8
 
+# Dossier mods (vide) : ses fichiers remplacent ceux du jeu au même chemin.
+New-Item -ItemType Directory -Force -Path (Join-Path $Dist "mods") | Out-Null
+Set-Content -Path (Join-Path $Dist "mods\HOW_TO_USE_MODS.txt") -Encoding UTF8 -Value @(
+    "Files put here replace the game's own, at the same path as on the disc.",
+    "Example: mods\movies\titantron\100.bik replaces the disc's movies\titantron\100.bik",
+    "(HD titantron videos, textures...). Remove the file to get the original back.",
+    "",
+    "FR : les fichiers posés ici remplacent ceux du jeu, au même chemin que sur le disque.",
+    "DE : Dateien hier ersetzen die des Spiels, unter demselben Pfad wie auf der Disc.",
+    "ES : los archivos puestos aquí sustituyen a los del juego, con la misma ruta que en el disco.",
+    "IT : i file messi qui sostituiscono quelli del gioco, con lo stesso percorso del disco."
+)
+
 # Garde-fou : aucune donnée du jeu ne doit partir avec le portage (hors game\, laissé au joueur).
 $forbidden = Get-ChildItem $Dist -Recurse -File |
     Where-Object { $_.FullName -notlike "$Dist\game\*" -and
