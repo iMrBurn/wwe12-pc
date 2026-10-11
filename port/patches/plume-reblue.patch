@@ -1,0 +1,31 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1cbc506..1721b5c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -21,6 +21,8 @@ cmake_dependent_option(PLUME_SDL_VULKAN_ENABLED "Enable SDL Vulkan integration"
+ cmake_dependent_option(PLUME_D3D12_AGILITY_SDK_ENABLED "Enable D3D12 Agility SDK" OFF WIN32 OFF)
+ cmake_dependent_option(PLUME_APPLE_RETINA_ENABLED "Enable Apple Retina display support" ON APPLE ON)
+ option(PLUME_BUILD_EXAMPLES "Build example applications" OFF)
++# SvR 2008: lets a Vulkan-only Windows build skip D3D12 (its backend needs Windows SDK 10.0.26100+ headers).
++cmake_dependent_option(PLUME_D3D12_ENABLED "Build the D3D12 backend" ON WIN32 OFF)
+ 
+ # Windows-specific definitions
+ if(WIN32)
+@@ -67,7 +69,7 @@ if(APPLE)
+         plume_apple.mm
+         plume_apple.h
+     )
+-elseif(WIN32)
++elseif(PLUME_D3D12_ENABLED)
+     list(APPEND PLUME_SOURCES
+         plume_d3d12.cpp
+         plume_d3d12.h
+@@ -86,7 +88,7 @@ target_include_directories(plume PUBLIC
+     ${CMAKE_CURRENT_SOURCE_DIR}/contrib/VulkanMemoryAllocator/include
+ )
+ 
+-if(WIN32)
++if(PLUME_D3D12_ENABLED)
+     target_include_directories(plume PUBLIC
+         ${CMAKE_CURRENT_SOURCE_DIR}/contrib/D3D12MemoryAllocator/include
+     )

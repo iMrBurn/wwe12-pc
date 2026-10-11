@@ -1,0 +1,67 @@
+diff --git a/XenosRecomp/shader_common.h b/XenosRecomp/shader_common.h
+index 1c74034..b859c0f 100644
+--- a/XenosRecomp/shader_common.h
++++ b/XenosRecomp/shader_common.h
+@@ -43,7 +43,12 @@ struct PushConstants
+     float2 g_HalfPixelOffset : packoffset(c16.z); \
+     float g_AlphaThreshold : packoffset(c17.x);
+ 
+-uint g_SpecConstants();
++// WWE '12 : pas d'assemblage DXIL à l'exécution, les constantes de spécialisation sont
++// fixées à la compilation (une variante par masque : dxc -DSPEC_CONSTANTS=...).
++#ifndef SPEC_CONSTANTS
++#define SPEC_CONSTANTS 0
++#endif
++#define g_SpecConstants() (SPEC_CONSTANTS)
+ 
+ #endif
+ 
+@@ -148,15 +153,18 @@ float4 tfetch3D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float
+     return g_Texture3DDescriptorHeap[resourceDescriptorIndex].Sample(g_SamplerDescriptorHeap[samplerDescriptorIndex], texCoord);
+ }
+ 
++// WWE '12 : cube() peut être appelé plus de 2 fois (branches, boucles).
++#define CUBE_MAP_DIRECTIONS 8
++
+ struct CubeMapData
+ {
+-    float3 cubeMapDirections[2];
++    float3 cubeMapDirections[CUBE_MAP_DIRECTIONS];
+     uint cubeMapIndex;
+ };
+ 
+ float4 tfetchCube(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float3 texCoord, inout CubeMapData cubeMapData)
+ {
+-    return g_TextureCubeDescriptorHeap[resourceDescriptorIndex].Sample(g_SamplerDescriptorHeap[samplerDescriptorIndex], cubeMapData.cubeMapDirections[texCoord.z]);
++    return g_TextureCubeDescriptorHeap[resourceDescriptorIndex].Sample(g_SamplerDescriptorHeap[samplerDescriptorIndex], cubeMapData.cubeMapDirections[min(uint(texCoord.z), CUBE_MAP_DIRECTIONS - 1)]);
+ }
+ 
+ float4 tfetchR11G11B10(uint4 value)
+@@ -182,7 +190,7 @@ float4 tfetchTexcoord(uint swappedTexcoords, float4 value, uint semanticIndex)
+ 
+ float4 cube(float4 value, inout CubeMapData cubeMapData)
+ {
+-    uint index = cubeMapData.cubeMapIndex;
++    uint index = min(cubeMapData.cubeMapIndex, CUBE_MAP_DIRECTIONS - 1);
+     cubeMapData.cubeMapDirections[index] = value.xyz;
+     ++cubeMapData.cubeMapIndex;
+     
+diff --git a/XenosRecomp/shader_recompiler.cpp b/XenosRecomp/shader_recompiler.cpp
+index 698a418..ba0cca3 100644
+--- a/XenosRecomp/shader_recompiler.cpp
++++ b/XenosRecomp/shader_recompiler.cpp
+@@ -115,7 +115,13 @@ static constexpr std::pair<DeclUsage, size_t> INTERPOLATORS[] =
+     { DeclUsage::TexCoord, 14 },
+     { DeclUsage::TexCoord, 15 },
+     { DeclUsage::Color, 0 },
+-    { DeclUsage::Color, 1 }
++    { DeclUsage::Color, 1 },
++    // WWE '12 : interpolateurs absents de Sonic Unleashed.
++    { DeclUsage::Color, 2 },
++    { DeclUsage::Color, 3 },
++    { DeclUsage::Normal, 0 },
++    { DeclUsage::Tangent, 0 },
++    { DeclUsage::Binormal, 0 }
+ };
+ 
+ static constexpr std::string_view TEXTURE_DIMENSIONS[] = 

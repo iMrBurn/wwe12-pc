@@ -1,0 +1,37 @@
+# Réglages d'exécution par défaut de WWE '12, copiés à côté de wwe12.exe à chaque compilation.
+# (Les réglages de codegen sont ailleurs : port/wwe12_config.toml.)
+# Les options de la ligne de commande (--nom=valeur) restent prioritaires.
+
+# Le jeu envoie des milliers de descripteurs de texture que l'émulation Xenos juge
+# invalides (plusieurs centaines d'avertissements par seconde). Comme pour d'autres
+# jeux WWE de cette génération sous Xenia, on les accepte.
+gpu_allow_invalid_fetch_constants = true
+
+# Rendu : Vulkan par défaut, car c'est le seul stable (aucun plantage). Direct3D 12 a des
+# entrées parfaites mais bloque encore le GPU (DEVICE_HUNG) en match : en cours de correction,
+# à tester avec --gpu_backend=d3d12. Sur un PC portable à deux GPU, régler wwe12.exe sur
+# « Hautes performances » dans Paramètres > Écran > Graphiques, sinon Vulkan ne voit que
+# le GPU intégré (et brancher le chargeur : la RTX est coupée sur batterie).
+gpu_backend = "vulkan"
+
+# Les catcheurs des entrées sont animés par des shaders « memexport » (écriture directe en
+# mémoire GPU) : il faut relire ces données côté CPU. Sans ça, Vulkan les rend invisibles
+# (seule leur ombre s'affiche) ; on l'active aussi pour D3D12.
+d3d12_readback_memexport = true
+vulkan_readback_memexport = true
+
+# Shaders « comme un jeu PC » : au démarrage, tout le cache (Documents\wwe12\cache) est
+# compilé avant que le jeu commence. Un effet encore jamais vu est compilé sur le moment,
+# en attendant qu'il soit prêt (courte pause) au lieu de sauter son draw (écran noir de
+# 1 à 5 s), puis ajouté au cache : ces pauses disparaissent au fil des parties.
+async_shader_compilation = false
+
+# Langue du jeu (comme le réglage de la console) : 1 anglais, 3 allemand, 4 français,
+# 5 espagnol, 6 italien. La version européenne du jeu contient ces cinq langues.
+user_language = 1
+
+# Filtrage anisotrope (0 = désactivé, 2/4/8/16) : garde nettes les textures vues en biais
+# (sol, rampe, tapis du ring, public). Coût quasi nul sur une carte graphique récente.
+# 0 pour l'instant : à 16, la carte graphique prend des versions plus détaillées des textures
+# vues en biais, et la texture des yeux et des dents des catcheurs redevient noire.
+bd_anisotropy = 0

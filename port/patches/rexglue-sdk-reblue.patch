@@ -1,0 +1,1087 @@
+diff --git a/include/rex/audio/xma/context.h b/include/rex/audio/xma/context.h
+index 8426798..93397ed 100644
+--- a/include/rex/audio/xma/context.h
++++ b/include/rex/audio/xma/context.h
+@@ -247,7 +247,9 @@ class XmaContext {
+   const uint8_t* GetNextPacket(XMA_CONTEXT_DATA* data, uint32_t next_packet_index,
+                                uint32_t current_input_packet_count);
+   uint32_t GetNextPacketReadOffset(uint8_t* buffer, uint32_t next_packet_index,
+-                                   uint32_t current_input_packet_count);
++                                   uint32_t current_input_packet_count,
++                                   uint32_t* packets_past_end = nullptr);
++  void EnterInputBuffer(XMA_CONTEXT_DATA* data, uint32_t packets_to_skip);
+   uint8_t* GetCurrentInputBuffer(XMA_CONTEXT_DATA* data);
+ 
+   void Decode(XMA_CONTEXT_DATA* data);
+@@ -306,6 +308,11 @@ class XmaContext {
+   bool carry_valid_ = false;
+   uint8_t pending_output_limit_ = 0;
+   uint8_t pending_start_skip_ = 0;
++
++  // Multi-stream XMA (5.1 as three interleaved stereo streams): packets of this
++  // stream that a skip count carried past the end of the last input buffer, to
++  // skip at the start of the next one.
++  uint32_t pending_packet_skip_ = 0;
+ };
+ 
+ }  // namespace rex::audio
+diff --git a/include/rex/graphics/d3d12/command_processor.h b/include/rex/graphics/d3d12/command_processor.h
+index 96d362b..26f735b 100644
+--- a/include/rex/graphics/d3d12/command_processor.h
++++ b/include/rex/graphics/d3d12/command_processor.h
+@@ -53,6 +53,10 @@ class D3D12CommandProcessor : public CommandProcessor {
+   void ClearCaches() override;
+   void InvalidateGpuMemory() override;
+ 
++  // Logs the removal reason and DRED breadcrumbs / page fault (public so the
++  // graphics system can report a loss first noticed by the presenter).
++  void LogDeviceRemovalDiagnostics(ID3D12Device* device, HRESULT reason);
++
+   void InitializeShaderStorage(const std::filesystem::path& cache_root, uint32_t title_id,
+                                bool blocking) override;
+ 
+@@ -329,7 +333,6 @@ class D3D12CommandProcessor : public CommandProcessor {
+     CheckSubmissionFence(submission_current_);
+     return submission_completed_ + 1 >= submission_current_;
+   }
+-  void LogDeviceRemovalDiagnostics(ID3D12Device* device, HRESULT reason);
+ 
+   void UpdateDebugMarkersEnabled();
+   void PushDebugMarker(const char* format, ...);
+diff --git a/include/rex/graphics/d3d12/graphics_system.h b/include/rex/graphics/d3d12/graphics_system.h
+index 3efe580..69634b4 100644
+--- a/include/rex/graphics/d3d12/graphics_system.h
++++ b/include/rex/graphics/d3d12/graphics_system.h
+@@ -31,6 +31,7 @@ class D3D12GraphicsSystem : public GraphicsSystem {
+  protected:
+   void CreateProvider(bool with_presentation) override;
+   std::unique_ptr<CommandProcessor> CreateCommandProcessor() override;
++  void LogHostGpuLossDiagnostics() override;
+ };
+ 
+ }  // namespace rex::graphics::d3d12
+diff --git a/include/rex/graphics/d3d12/pipeline_cache.h b/include/rex/graphics/d3d12/pipeline_cache.h
+index 7a9d6a2..9ef9fd4 100644
+--- a/include/rex/graphics/d3d12/pipeline_cache.h
++++ b/include/rex/graphics/d3d12/pipeline_cache.h
+@@ -96,6 +96,11 @@ class PipelineCache {
+   ID3D12PipelineState* GetD3D12PipelineByHandle(void* handle) const {
+     return reinterpret_cast<const Pipeline*>(handle)->state.load(std::memory_order_acquire);
+   }
++  // Async creation publishes the final root signature before the state, so after seeing a
++  // non-null state this returns the root signature the pipeline was created with.
++  ID3D12RootSignature* GetRootSignatureByHandle(void* handle) const {
++    return reinterpret_cast<const Pipeline*>(handle)->root_signature.load(std::memory_order_acquire);
++  }
+ 
+  private:
+   REXPACKEDSTRUCT(ShaderStoredHeader, {
+diff --git a/include/rex/graphics/graphics_system.h b/include/rex/graphics/graphics_system.h
+index ac6b056..308410f 100644
+--- a/include/rex/graphics/graphics_system.h
++++ b/include/rex/graphics/graphics_system.h
+@@ -99,6 +99,9 @@ class GraphicsSystem : public system::IGraphicsSystem {
+ 
+   virtual std::unique_ptr<CommandProcessor> CreateCommandProcessor() = 0;
+ 
++  // Backend-specific details of a host GPU loss, logged before the fatal error.
++  virtual void LogHostGpuLossDiagnostics() {}
++
+   static uint32_t ReadRegisterThunk(void* ppc_context, GraphicsSystem* gs, uint32_t addr);
+   static void WriteRegisterThunk(void* ppc_context, GraphicsSystem* gs, uint32_t addr,
+                                  uint32_t value);
+diff --git a/include/rex/graphics/null/graphics_system.h b/include/rex/graphics/null/graphics_system.h
+new file mode 100644
+index 0000000..21f3cf8
+--- /dev/null
++++ b/include/rex/graphics/null/graphics_system.h
+@@ -0,0 +1,37 @@
++/**
++ * @file        graphics/null/graphics_system.h
++ * @brief       Guest GPU that keeps the command stream moving but draws nothing.
++ *
++ * Added for the WWE SmackDown vs. Raw 2008 native renderer. The game's own D3D library keeps
++ * running unmodified (device creation, ring buffer, fences, interrupts, vblank pacing); this
++ * backend consumes what it writes through the shared CommandProcessor (MMIO, fences, events,
++ * interrupts, waits) and skips every draw, resolve and swap. The app renders natively by hooking
++ * the game's D3D draw calls, and owns the window: there is no provider or presenter here, so
++ * ReXApp runs in its detached mode (OnCreateImmediateDrawer).
++ */
++
++#pragma once
++
++#include <memory>
++#include <string>
++
++#include <rex/graphics/command_processor.h>
++#include <rex/graphics/graphics_system.h>
++
++namespace rex::graphics::null_gpu {
++
++class NullGraphicsSystem : public GraphicsSystem {
++ public:
++  std::string name() const override { return "Null"; }
++
++  // No host GPU and no presenter: the app brings its own renderer.
++  X_STATUS SetupPresentation(::rex::ui::WindowedAppContext* app_context) override;
++
++ protected:
++  void CreateProvider(bool with_presentation) override;
++
++ private:
++  std::unique_ptr<CommandProcessor> CreateCommandProcessor() override;
++};
++
++}  // namespace rex::graphics::null_gpu
+diff --git a/include/rex/graphics/shared_memory.h b/include/rex/graphics/shared_memory.h
+index 4d85a2b..9f5fc17 100644
+--- a/include/rex/graphics/shared_memory.h
++++ b/include/rex/graphics/shared_memory.h
+@@ -160,6 +160,8 @@ class SharedMemory {
+   // Ranges that need to be uploaded, generated by GetRangesToUpload (a
+   // persistently allocated vector).
+   std::vector<std::pair<uint32_t, uint32_t>> upload_ranges_;
++  // Sorted and merged requested ranges in RequestRanges (a persistently allocated vector).
++  std::vector<std::pair<uint32_t, uint32_t>> request_ranges_merged_;
+ 
+   // Mutex between the guest memory subsystem and the command processor, to be
+   // locked when checking or updating validity of pages/ranges and when firing
+diff --git a/include/rex/graphics/vulkan/command_processor.h b/include/rex/graphics/vulkan/command_processor.h
+index 696ff48..17412e9 100644
+--- a/include/rex/graphics/vulkan/command_processor.h
++++ b/include/rex/graphics/vulkan/command_processor.h
+@@ -566,6 +566,13 @@ class VulkanCommandProcessor : public CommandProcessor {
+   // Temporary storage with reusable memory for writing image and sampler
+   // descriptors.
+   std::vector<VkDescriptorImageInfo> descriptor_write_image_info_;
++  // Image and sampler descriptors (textures, then samplers) last written to the vertex [0] and
++  // pixel [1] texture descriptor sets, so that a draw with the same bindings keeps the current
++  // set instead of allocating and writing a new one. Only meaningful while the set's bit in
++  // current_graphics_descriptor_set_values_up_to_date_ is set, which is cleared for the texture
++  // sets on every new submission.
++  std::vector<VkDescriptorImageInfo> texture_bindings_written_[2];
++  uint32_t texture_bindings_written_texture_count_[2] = {};
+ 
+   std::unique_ptr<ui::vulkan::VulkanUploadBufferPool> uniform_buffer_pool_;
+ 
+diff --git a/include/rex/ui/d3d12/d3d12_util.h b/include/rex/ui/d3d12/d3d12_util.h
+index 364690d..0b88d80 100644
+--- a/include/rex/ui/d3d12/d3d12_util.h
++++ b/include/rex/ui/d3d12/d3d12_util.h
+@@ -84,5 +84,10 @@ void CreateBufferTypedUAV(ID3D12Device* device, D3D12_CPU_DESCRIPTOR_HANDLE hand
+                           ID3D12Resource* buffer, DXGI_FORMAT format, uint32_t num_elements,
+                           uint64_t first_element = 0);
+ 
++// Logs a shader-visible descriptor heap's GPU handle range. DRED does not track descriptor heaps,
++// so this is how a page-fault VA just past a heap's end can be recognized.
++void LogShaderVisibleDescriptorHeap(ID3D12Device* device, ID3D12DescriptorHeap* heap,
++                                    const char* name);
++
+ }  // namespace util
+ }  // namespace rex::ui::d3d12
+diff --git a/src/audio/xma_context.cpp b/src/audio/xma_context.cpp
+index 11b83be..ae4b635 100644
+--- a/src/audio/xma_context.cpp
++++ b/src/audio/xma_context.cpp
+@@ -206,6 +206,7 @@ void XmaContext::ResetDecoderState() {
+   carry_valid_ = false;
+   pending_output_limit_ = 0;
+   pending_start_skip_ = 0;
++  pending_packet_skip_ = 0;
+   current_frame_remaining_subframes_ = 0;
+   loop_frame_output_limit_ = 0;
+   loop_start_skip_pending_ = false;
+@@ -304,11 +305,18 @@ const uint8_t* XmaContext::GetNextPacket(XMA_CONTEXT_DATA* data, uint32_t next_p
+     return nullptr;
+   }
+ 
+-  return memory()->TranslatePhysical(next_buffer_address);
++  // A skip count that runs past this buffer lands that many packets into the
++  // next one (multi-stream files interleave the other streams' packets).
++  const uint32_t index_in_next = next_packet_index - current_input_packet_count;
++  if (index_in_next >= data->GetInputBufferPacketCount(next_buffer_index)) {
++    return nullptr;
++  }
++  return memory()->TranslatePhysical(next_buffer_address) + index_in_next * kBytesPerPacket;
+ }
+ 
+ uint32_t XmaContext::GetNextPacketReadOffset(uint8_t* buffer, uint32_t next_packet_index,
+-                                             uint32_t current_input_packet_count) {
++                                             uint32_t current_input_packet_count,
++                                             uint32_t* packets_past_end) {
+   while (next_packet_index < current_input_packet_count) {
+     uint8_t* next_packet = buffer + (next_packet_index * kBytesPerPacket);
+     const uint32_t packet_frame_offset = xma::GetPacketFrameOffset(next_packet);
+@@ -316,12 +324,52 @@ uint32_t XmaContext::GetNextPacketReadOffset(uint8_t* buffer, uint32_t next_pack
+     if (packet_frame_offset <= kMaxFrameSizeinBits) {
+       return (next_packet_index * kBitsPerPacket) + packet_frame_offset;
+     }
+-    next_packet_index++;
++    // No frame starts in this packet: go on to this stream's next packet. In a
++    // multi-stream file the skip count steps over the other streams' packets;
++    // a single stream has a skip of 0, the very next packet.
++    const uint8_t skip = xma::GetPacketSkipCount(next_packet);
++    next_packet_index += (skip == 0xFF ? 0u : skip) + 1;
+   }
+ 
++  if (packets_past_end) {
++    *packets_past_end = next_packet_index - current_input_packet_count;
++  }
+   return kBitsPerPacketHeader;
+ }
+ 
++// Positions the read offset in the current input buffer (just swapped in) on
++// this stream's first frame, `packets_to_skip` packets in. Without the skip, a
++// multi-stream context restarts every buffer at packet 0, the first stream's,
++// and all of a 5.1 file's contexts end up decoding that one stream.
++void XmaContext::EnterInputBuffer(XMA_CONTEXT_DATA* data, uint32_t packets_to_skip) {
++  pending_packet_skip_ = packets_to_skip;
++  data->input_buffer_read_offset = kBitsPerPacketHeader;
++  if (!data->IsCurrentInputBufferValid()) {
++    return;  // Applied when the game hands over the next buffer.
++  }
++  uint8_t* buffer = memory()->TranslatePhysical(data->GetCurrentInputBufferAddress());
++  const uint32_t packet_count = data->GetCurrentInputBufferPacketCount();
++  uint32_t past_end = 0;
++  const uint32_t offset =
++      GetNextPacketReadOffset(buffer, packets_to_skip, packet_count, &past_end);
++  if (offset == kBitsPerPacketHeader && packets_to_skip < packet_count &&
++      xma::GetPacketFrameOffset(buffer + packets_to_skip * kBytesPerPacket) ==
++          kBitsPerPacketHeader) {
++    // A frame right after the header of the target packet (offset 32 there too).
++    pending_packet_skip_ = 0;
++    data->input_buffer_read_offset = packets_to_skip * kBitsPerPacket + kBitsPerPacketHeader;
++    return;
++  }
++  if (offset == kBitsPerPacketHeader) {
++    // No frame of this stream begins in this buffer either: on to the next one.
++    SwapInputBuffer(data);
++    pending_packet_skip_ = past_end;
++    return;
++  }
++  pending_packet_skip_ = 0;
++  data->input_buffer_read_offset = offset;
++}
++
+ memory::RingBuffer XmaContext::PrepareOutputRingBuffer(XMA_CONTEXT_DATA* data) {
+   const uint32_t output_capacity = data->output_buffer_block_count * kOutputBytesPerBlock;
+   const uint32_t output_read_offset = data->output_buffer_read_offset * kOutputBytesPerBlock;
+@@ -545,6 +593,16 @@ void XmaContext::Decode(XMA_CONTEXT_DATA* data) {
+ 
+   uint8_t* current_input_buffer = GetCurrentInputBuffer(data);
+ 
++  // A skip carried over from the previous buffer: this stream's next packet is
++  // further into the buffer that just became current.
++  if (pending_packet_skip_ && data->input_buffer_read_offset == kBitsPerPacketHeader) {
++    EnterInputBuffer(data, pending_packet_skip_);
++    if (data->input_buffer_read_offset == kBitsPerPacketHeader) {
++      return;
++    }
++    current_input_buffer = GetCurrentInputBuffer(data);
++  }
++
+   input_buffer_.fill(0);
+ 
+   // Loop-end frame: decode it here (output limited to loop_subframe_end),
+@@ -588,10 +646,13 @@ void XmaContext::Decode(XMA_CONTEXT_DATA* data) {
+ 
+   // Full packet skip (0xFF) -- no new frames begin in this packet.
+   if (skip_count == 0xFF) {
+-    uint32_t next_input_offset =
+-        GetNextPacketReadOffset(current_input_buffer, packet_index + 1, current_input_packet_count);
++    uint32_t past_end = 0;
++    uint32_t next_input_offset = GetNextPacketReadOffset(
++        current_input_buffer, packet_index + 1, current_input_packet_count, &past_end);
+     if (next_input_offset == kBitsPerPacketHeader) {
+       SwapInputBuffer(data);
++      EnterInputBuffer(data, past_end);
++      return;
+     }
+     data->input_buffer_read_offset = next_input_offset;
+     return;
+@@ -722,20 +783,16 @@ void XmaContext::Decode(XMA_CONTEXT_DATA* data) {
+     return;
+   }
+ 
+-  uint32_t next_input_offset =
+-      GetNextPacketReadOffset(current_input_buffer, next_packet_index, current_input_packet_count);
++  uint32_t past_end = 0;
++  const uint32_t next_input_offset = GetNextPacketReadOffset(
++      current_input_buffer, next_packet_index, current_input_packet_count, &past_end);
+ 
+   if (next_input_offset == kBitsPerPacketHeader) {
++    // This stream's next packet is in the next buffer, `past_end` packets in
++    // (0 for a single stream; the interleaved streams' packets otherwise).
+     SwapInputBuffer(data);
+-    if (data->IsAnyInputBufferValid()) {
+-      next_input_offset = xma::GetPacketFrameOffset(
+-          memory()->TranslatePhysical(data->GetCurrentInputBufferAddress()));
+-
+-      if (next_input_offset > kMaxFrameSizeinBits) {
+-        SwapInputBuffer(data);
+-        return;
+-      }
+-    }
++    EnterInputBuffer(data, past_end);
++    return;
+   }
+   data->input_buffer_read_offset = next_input_offset;
+ }
+diff --git a/src/graphics/CMakeLists.txt b/src/graphics/CMakeLists.txt
+index 0d8f8af..54d5f30 100644
+--- a/src/graphics/CMakeLists.txt
++++ b/src/graphics/CMakeLists.txt
+@@ -17,6 +17,7 @@ set(REXGPU_XENOS_SOURCES
+ 
+     # GPU system
+     graphics_system.cpp
++    null/graphics_system.cpp
+     command_processor.cpp
+     util/draw_extent_estimator.cpp
+     util/draw.cpp
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+index a744375..a19755c 100644
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -37,6 +37,10 @@
+ 
+ REXCVAR_DEFINE_BOOL(vsync, true, "GPU", "Enable vertical sync");
+ 
++REXCVAR_DEFINE_BOOL(gpu_thread_above_normal_priority, true, "GPU",
++                    "Run the GPU command thread above normal priority, so other busy programs "
++                    "(a recorder encoding on the CPU, a browser) don't slow down rendering");
++
+ REXCVAR_DEFINE_BOOL(clear_memory_page_state, true, "GPU",
+                     "Refresh page-valid state from GPU-written memory at frame end. "
+                     "Disable for minor CPU overhead reduction, but may break memory coherency.")
+@@ -143,6 +147,11 @@ bool CommandProcessor::Initialize() {
+       }));
+   worker_thread_->set_name("GPU Commands");
+   worker_thread_->Create();
++  // Every draw is translated on this thread; when it loses its core to another program the
++  // game drops frames, so let the OS prefer it over normal-priority work.
++  if (REXCVAR_GET(gpu_thread_above_normal_priority) && worker_thread_->thread()) {
++    worker_thread_->thread()->set_priority(rex::thread::ThreadPriority::kAboveNormal);
++  }
+ 
+   return true;
+ }
+diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
+index 19874a5..0ddc147 100644
+--- a/src/graphics/d3d12/command_processor.cpp
++++ b/src/graphics/d3d12/command_processor.cpp
+@@ -959,6 +959,8 @@ bool D3D12CommandProcessor::SetupContext() {
+     view_bindless_heap_cpu_start_ = view_bindless_heap_->GetCPUDescriptorHandleForHeapStart();
+     view_bindless_heap_gpu_start_ = view_bindless_heap_->GetGPUDescriptorHandleForHeapStart();
+     view_bindless_heap_allocated_ = uint32_t(SystemBindlessView::kCount);
++    ui::d3d12::util::LogShaderVisibleDescriptorHeap(device, view_bindless_heap_,
++                                                    "bindless view");
+ 
+     D3D12_DESCRIPTOR_HEAP_DESC sampler_bindless_heap_desc;
+     sampler_bindless_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+@@ -975,6 +977,8 @@ bool D3D12CommandProcessor::SetupContext() {
+     sampler_bindless_heap_gpu_start_ =
+         sampler_bindless_heap_current_->GetGPUDescriptorHandleForHeapStart();
+     sampler_bindless_heap_allocated_ = 0;
++    ui::d3d12::util::LogShaderVisibleDescriptorHeap(device, sampler_bindless_heap_current_,
++                                                    "bindless sampler");
+   } else {
+     view_bindful_heap_pool_ = std::make_unique<ui::d3d12::D3D12DescriptorHeapPool>(
+         device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kViewBindfulHeapSize);
+@@ -2398,9 +2402,13 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
+           bound_depth_and_color_render_target_formats, &pipeline_handle, &root_signature)) {
+     return false;
+   }
+-  if (REXCVAR_GET(async_shader_compilation) &&
+-      pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
+-    return true;
++  if (REXCVAR_GET(async_shader_compilation)) {
++    if (pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
++      return true;
++    }
++    // The pipeline may have finished compiling after ConfigurePipeline read its placeholder
++    // (vertex-shader-only) root signature; binding that with the final pipeline is undefined.
++    root_signature = pipeline_cache_->GetRootSignatureByHandle(pipeline_handle);
+   }
+ 
+   // Update the textures - this may bind pipelines.
+@@ -3244,6 +3252,22 @@ void D3D12CommandProcessor::LogDeviceRemovalDiagnostics(ID3D12Device* device, HR
+   D3D12_DRED_PAGE_FAULT_OUTPUT page_fault = {};
+   if (SUCCEEDED(dred->GetPageFaultAllocationOutput(&page_fault)) && page_fault.PageFaultVA != 0) {
+     REXGPU_ERROR("DRED page fault at VA 0x{:016X}", page_fault.PageFaultVA);
++    // Allocations D3D12 matched to the faulting VA: live ones point at an out-of-bounds access,
++    // recently freed ones at a use-after-free.
++    auto log_allocations = [](const char* what, const D3D12_DRED_ALLOCATION_NODE* node) {
++      for (int i = 0; node && i < 16; node = node->pNext, ++i) {
++        std::string name = node->ObjectNameA ? node->ObjectNameA : "";
++        if (name.empty() && node->ObjectNameW) {
++          for (const wchar_t* c = node->ObjectNameW; *c; ++c) {
++            name.push_back(char(*c < 0x80 ? *c : '?'));
++          }
++        }
++        REXGPU_ERROR("  {} allocation: type {} '{}'", what, static_cast<int>(node->AllocationType),
++                     name);
++      }
++    };
++    log_allocations("existing", page_fault.pHeadExistingAllocationNode);
++    log_allocations("recently freed", page_fault.pHeadRecentFreedAllocationNode);
+   }
+ }
+ 
+@@ -4326,6 +4350,8 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
+           sampler_bindless_heap_gpu_start_ =
+               sampler_bindless_heap_current_->GetGPUDescriptorHandleForHeapStart();
+           sampler_bindless_heap_allocated_ = 0;
++          ui::d3d12::util::LogShaderVisibleDescriptorHeap(
++              device, sampler_bindless_heap_current_, "bindless sampler (after overflow)");
+           // The only thing the heap is used for now is texture cache samplers -
+           // invalidate all of them.
+           texture_cache_bindless_sampler_map_.clear();
+diff --git a/src/graphics/d3d12/graphics_system.cpp b/src/graphics/d3d12/graphics_system.cpp
+index caa77cf..cad984b 100644
+--- a/src/graphics/d3d12/graphics_system.cpp
++++ b/src/graphics/d3d12/graphics_system.cpp
+@@ -47,4 +47,14 @@ std::unique_ptr<CommandProcessor> D3D12GraphicsSystem::CreateCommandProcessor()
+   return std::unique_ptr<CommandProcessor>(new D3D12CommandProcessor(this, kernel_state_));
+ }
+ 
++void D3D12GraphicsSystem::LogHostGpuLossDiagnostics() {
++  auto* command_processor = static_cast<D3D12CommandProcessor*>(this->command_processor());
++  auto* provider = static_cast<rex::ui::d3d12::D3D12Provider*>(provider_.get());
++  if (!command_processor || !provider || !provider->GetDevice()) {
++    return;
++  }
++  ID3D12Device* device = provider->GetDevice();
++  command_processor->LogDeviceRemovalDiagnostics(device, device->GetDeviceRemovedReason());
++}
++
+ }  // namespace rex::graphics::d3d12
+diff --git a/src/graphics/d3d12/shared_memory.cpp b/src/graphics/d3d12/shared_memory.cpp
+index a5c97a0..9da2787 100644
+--- a/src/graphics/d3d12/shared_memory.cpp
++++ b/src/graphics/d3d12/shared_memory.cpp
+@@ -79,6 +79,9 @@ bool D3D12SharedMemory::Initialize() {
+     }
+   }
+   buffer_gpu_address_ = buffer_->GetGPUVirtualAddress();
++  // For matching DRED page-fault VAs against the shared memory buffer.
++  REXGPU_INFO("Shared memory: buffer at GPU VA 0x{:016X}-0x{:016X}", buffer_gpu_address_,
++              buffer_gpu_address_ + kBufferSize);
+   buffer_uav_writes_commit_needed_ = false;
+ 
+   D3D12_DESCRIPTOR_HEAP_DESC buffer_descriptor_heap_desc;
+diff --git a/src/graphics/graphics_system.cpp b/src/graphics/graphics_system.cpp
+index 8f2fcb0..df6f299 100644
+--- a/src/graphics/graphics_system.cpp
++++ b/src/graphics/graphics_system.cpp
+@@ -217,6 +217,9 @@ void GraphicsSystem::OnHostGpuLossFromAnyThread([[maybe_unused]] bool is_respons
+   if (host_gpu_loss_reported_.test_and_set(std::memory_order_relaxed)) {
+     return;
+   }
++  REXGPU_ERROR("Host GPU lost (is_responsible={})", is_responsible);
++  LogHostGpuLossDiagnostics();
++  rex::FlushLogging();  // FatalError aborts without flushing the log file.
+   rex::FatalError("Graphics device lost (probably due to an internal error)");
+ }
+ 
+diff --git a/src/graphics/null/graphics_system.cpp b/src/graphics/null/graphics_system.cpp
+new file mode 100644
+index 0000000..6e535f7
+--- /dev/null
++++ b/src/graphics/null/graphics_system.cpp
+@@ -0,0 +1,49 @@
++/**
++ * @file        graphics/null/graphics_system.cpp
++ * @brief       Null guest GPU: synchronization only, no rendering (see the header).
++ */
++
++#include <rex/graphics/null/graphics_system.h>
++
++#include <rex/logging.h>
++#include <rex/system/kernel_state.h>
++
++namespace rex::graphics::null_gpu {
++
++namespace {
++
++// Runs the shared packet processing (register writes, fences, events, interrupts, waits); every
++// operation that would need a host GPU is accepted and dropped.
++class NullCommandProcessor final : public CommandProcessor {
++ public:
++  using CommandProcessor::CommandProcessor;
++
++  void IssueSwap(uint32_t, uint32_t, uint32_t) override {}
++
++ protected:
++  bool SetupContext() override { return true; }
++  void ShutdownContext() override {}
++  Shader* LoadShader(xenos::ShaderType, uint32_t, const uint32_t*, uint32_t) override {
++    return nullptr;
++  }
++  bool IssueDraw(xenos::PrimitiveType, uint32_t, IndexBufferInfo*, bool) override { return true; }
++  bool IssueCopy() override { return true; }
++};
++
++}  // namespace
++
++X_STATUS NullGraphicsSystem::SetupPresentation(::rex::ui::WindowedAppContext* app_context) {
++  app_context_ = app_context;
++  REXGPU_INFO("Null GPU: guest command stream for synchronization only; the app renders");
++  return X_STATUS_SUCCESS;
++}
++
++void NullGraphicsSystem::CreateProvider(bool) {
++  // No host graphics provider.
++}
++
++std::unique_ptr<CommandProcessor> NullGraphicsSystem::CreateCommandProcessor() {
++  return std::make_unique<NullCommandProcessor>(this, kernel_state_);
++}
++
++}  // namespace rex::graphics::null_gpu
+diff --git a/src/graphics/pipeline/texture/cache.cpp b/src/graphics/pipeline/texture/cache.cpp
+index 76f5600..c6fd03f 100644
+--- a/src/graphics/pipeline/texture/cache.cpp
++++ b/src/graphics/pipeline/texture/cache.cpp
+@@ -302,6 +302,9 @@ void TextureCache::CompletedSubmissionUpdated(uint64_t completed_submission_inde
+   }
+   if (destroyed_any) {
+     COUNT_profile_set("gpu/texture_cache/textures", textures_.size());
++    REXGPU_INFO("Texture cache: evicted down to {} MB, {} textures (limits {}/{} MB)",
++                (textures_total_host_memory_usage_ + ((UINT32_C(1) << 20) - 1)) >> 20,
++                textures_.size(), limit_soft_mb, limit_hard_mb);
+   }
+ }
+ 
+diff --git a/src/graphics/plugin_main.cpp b/src/graphics/plugin_main.cpp
+index ec756d3..86ce585 100644
+--- a/src/graphics/plugin_main.cpp
++++ b/src/graphics/plugin_main.cpp
+@@ -14,6 +14,7 @@
+ #include <rex/logging.h>
+ #include <rex/system/gpu_plugin.h>
+ 
++#include <rex/graphics/null/graphics_system.h>
+ #if REX_HAS_D3D12
+ #include <rex/graphics/d3d12/graphics_system.h>
+ #endif
+@@ -38,6 +39,10 @@ extern "C" REX_GPU_PLUGIN_EXPORT rex::system::IGraphicsSystem* rex_gpu_create(
+   }
+ 
+   std::string_view backend = info->backend ? info->backend : "any";
++  // Synchronization-only guest GPU for apps with their own renderer (never picked by "any").
++  if (backend == "null") {
++    return new rex::graphics::null_gpu::NullGraphicsSystem();
++  }
+ #if REX_HAS_D3D12
+   if (backend == "any" || backend == "d3d12") {
+     return new rex::graphics::d3d12::D3D12GraphicsSystem();
+diff --git a/src/graphics/shared_memory.cpp b/src/graphics/shared_memory.cpp
+index ec0df7c..c544aa3 100644
+--- a/src/graphics/shared_memory.cpp
++++ b/src/graphics/shared_memory.cpp
+@@ -343,8 +343,10 @@ bool SharedMemory::RequestRanges(const std::pair<uint32_t, uint32_t>* ranges, si
+   }
+ 
+   // Some texture or buffer is empty, for example - safe to draw in this case.
+-  std::vector<std::pair<uint32_t, uint32_t>> merged_ranges;
+-  merged_ranges.reserve(count);
++  // A persistent vector: this is called for every vertex buffer and texture a draw requests, and
++  // a heap allocation per call added up in scenes with thousands of draws.
++  std::vector<std::pair<uint32_t, uint32_t>>& merged_ranges = request_ranges_merged_;
++  merged_ranges.clear();
+   for (size_t i = 0; i < count; ++i) {
+     uint32_t start = ranges[i].first;
+     uint32_t length = ranges[i].second;
+diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
+index 001f36b..3170efa 100644
+--- a/src/graphics/vulkan/command_processor.cpp
++++ b/src/graphics/vulkan/command_processor.cpp
+@@ -3894,6 +3894,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+         descriptor_sets_kept = std::min(
+             descriptor_sets_kept, uint32_t(SpirvShaderTranslator::kDescriptorSetTexturesPixel));
+       }
++      // Texture sets with unchanged bindings stay valid across draws (UpdateBindings), but sets
++      // from an incompatible layout onwards are disturbed by the new layout and need rebinding.
++      current_graphics_descriptor_sets_bound_up_to_date_ &=
++          (UINT32_C(1) << descriptor_sets_kept) - 1;
+     } else {
+       // No or unknown pipeline layout previously bound - all bindings are in an
+       // indeterminate state.
+@@ -5156,6 +5160,11 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
+     current_external_compute_pipeline_ = VK_NULL_HANDLE;
+     current_guest_graphics_pipeline_layout_ = nullptr;
+     current_graphics_descriptor_sets_bound_up_to_date_ = 0;
++    // Texture descriptor sets reference image views and samplers that may be destroyed once
++    // earlier submissions complete, so they're only reused within one submission.
++    current_graphics_descriptor_set_values_up_to_date_ &=
++        ~((UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesVertex) |
++          (UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesPixel));
+ 
+     primitive_processor_->BeginSubmission();
+ 
+@@ -6559,44 +6568,22 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
+     sampler_count_pixel = 0;
+     texture_count_pixel = 0;
+   }
+-  // TODO(Triang3l): Reuse texture and sampler bindings if not changed.
+-  current_graphics_descriptor_set_values_up_to_date_ &=
+-      ~((UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesVertex) |
+-        (UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesPixel));
+-
+-  // Make sure new descriptor sets are bound to the command buffer.
+-
+-  current_graphics_descriptor_sets_bound_up_to_date_ &=
+-      current_graphics_descriptor_set_values_up_to_date_;
++  // Fill the texture and sampler image infos for both stages.
+ 
+-  // Fill the texture and sampler write image infos.
+-
+-  bool write_vertex_textures =
+-      (texture_count_vertex || sampler_count_vertex) &&
+-      !(current_graphics_descriptor_set_values_up_to_date_ &
+-        (UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesVertex));
+-  bool write_pixel_textures =
+-      (texture_count_pixel || sampler_count_pixel) &&
+-      !(current_graphics_descriptor_set_values_up_to_date_ &
+-        (UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesPixel));
+   descriptor_write_image_info_.clear();
+-  descriptor_write_image_info_.reserve(
+-      (write_vertex_textures ? texture_count_vertex + sampler_count_vertex : 0) +
+-      (write_pixel_textures ? texture_count_pixel + sampler_count_pixel : 0));
++  descriptor_write_image_info_.reserve(texture_count_vertex + sampler_count_vertex +
++                                       texture_count_pixel + sampler_count_pixel);
+   size_t vertex_texture_image_info_offset = descriptor_write_image_info_.size();
+-  if (write_vertex_textures && texture_count_vertex) {
+-    for (const VulkanShader::TextureBinding& texture_binding : textures_vertex) {
+-      VkDescriptorImageInfo& descriptor_image_info = descriptor_write_image_info_.emplace_back();
+-      descriptor_image_info.imageView = texture_cache_->GetActiveBindingOrNullImageView(
+-          texture_binding.fetch_constant, texture_binding.dimension,
+-          bool(texture_binding.is_signed));
+-      descriptor_image_info.imageLayout = descriptor_image_info.imageView != VK_NULL_HANDLE
+-                                              ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+-                                              : VK_IMAGE_LAYOUT_UNDEFINED;
+-    }
++  for (const VulkanShader::TextureBinding& texture_binding : textures_vertex) {
++    VkDescriptorImageInfo& descriptor_image_info = descriptor_write_image_info_.emplace_back();
++    descriptor_image_info.imageView = texture_cache_->GetActiveBindingOrNullImageView(
++        texture_binding.fetch_constant, texture_binding.dimension, bool(texture_binding.is_signed));
++    descriptor_image_info.imageLayout = descriptor_image_info.imageView != VK_NULL_HANDLE
++                                            ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
++                                            : VK_IMAGE_LAYOUT_UNDEFINED;
+   }
+   size_t vertex_sampler_image_info_offset = descriptor_write_image_info_.size();
+-  if (write_vertex_textures && sampler_count_vertex) {
++  if (sampler_count_vertex) {
+     for (const std::pair<VulkanTextureCache::SamplerParameters, VkSampler>& sampler_pair :
+          current_samplers_vertex_) {
+       VkDescriptorImageInfo& descriptor_image_info = descriptor_write_image_info_.emplace_back();
+@@ -6604,7 +6591,7 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
+     }
+   }
+   size_t pixel_texture_image_info_offset = descriptor_write_image_info_.size();
+-  if (write_pixel_textures && texture_count_pixel) {
++  if (texture_count_pixel) {
+     for (const VulkanShader::TextureBinding& texture_binding : *textures_pixel) {
+       VkDescriptorImageInfo& descriptor_image_info = descriptor_write_image_info_.emplace_back();
+       descriptor_image_info.imageView = texture_cache_->GetActiveBindingOrNullImageView(
+@@ -6616,7 +6603,7 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
+     }
+   }
+   size_t pixel_sampler_image_info_offset = descriptor_write_image_info_.size();
+-  if (write_pixel_textures && sampler_count_pixel) {
++  if (sampler_count_pixel) {
+     for (const std::pair<VulkanTextureCache::SamplerParameters, VkSampler>& sampler_pair :
+          current_samplers_pixel_) {
+       VkDescriptorImageInfo& descriptor_image_info = descriptor_write_image_info_.emplace_back();
+@@ -6624,6 +6611,53 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
+     }
+   }
+ 
++  // Keep a stage's texture descriptor set if the draw binds the same image views and samplers
++  // as the set already holds (written earlier in this submission), instead of allocating and
++  // writing a new set for every draw - scenes like crowd shots issue thousands of draws a frame.
++  auto texture_bindings_unchanged = [this](uint32_t stage, size_t image_info_offset,
++                                           uint32_t texture_count, uint32_t sampler_count) {
++    const std::vector<VkDescriptorImageInfo>& written = texture_bindings_written_[stage];
++    if (texture_bindings_written_texture_count_[stage] != texture_count ||
++        written.size() != size_t(texture_count) + sampler_count) {
++      return false;
++    }
++    const VkDescriptorImageInfo* current = descriptor_write_image_info_.data() + image_info_offset;
++    for (size_t i = 0; i < written.size(); ++i) {
++      if (written[i].sampler != current[i].sampler ||
++          written[i].imageView != current[i].imageView ||
++          written[i].imageLayout != current[i].imageLayout) {
++        return false;
++      }
++    }
++    return true;
++  };
++  if (!(texture_count_vertex || sampler_count_vertex) ||
++      !texture_bindings_unchanged(0, vertex_texture_image_info_offset, texture_count_vertex,
++                                  sampler_count_vertex)) {
++    current_graphics_descriptor_set_values_up_to_date_ &=
++        ~(UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesVertex);
++  }
++  if (!(texture_count_pixel || sampler_count_pixel) ||
++      !texture_bindings_unchanged(1, pixel_texture_image_info_offset, texture_count_pixel,
++                                  sampler_count_pixel)) {
++    current_graphics_descriptor_set_values_up_to_date_ &=
++        ~(UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesPixel);
++  }
++
++  // Make sure new descriptor sets are bound to the command buffer.
++
++  current_graphics_descriptor_sets_bound_up_to_date_ &=
++      current_graphics_descriptor_set_values_up_to_date_;
++
++  bool write_vertex_textures =
++      (texture_count_vertex || sampler_count_vertex) &&
++      !(current_graphics_descriptor_set_values_up_to_date_ &
++        (UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesVertex));
++  bool write_pixel_textures =
++      (texture_count_pixel || sampler_count_pixel) &&
++      !(current_graphics_descriptor_set_values_up_to_date_ &
++        (UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesPixel));
++
+   // Write the new descriptor sets.
+ 
+   // Consecutive bindings updated via a single VkWriteDescriptorSet must have
+@@ -6688,6 +6722,10 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
+     write_descriptor_set_bits |= UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesVertex;
+     current_graphics_descriptor_sets_[SpirvShaderTranslator::kDescriptorSetTexturesVertex] =
+         write_textures[0].dstSet;
++    texture_bindings_written_[0].assign(
++        descriptor_write_image_info_.begin() + vertex_texture_image_info_offset,
++        descriptor_write_image_info_.begin() + pixel_texture_image_info_offset);
++    texture_bindings_written_texture_count_[0] = texture_count_vertex;
+   }
+   // Pixel shader textures and samplers.
+   if (write_pixel_textures) {
+@@ -6705,6 +6743,10 @@ bool VulkanCommandProcessor::UpdateBindings(const VulkanShader* vertex_shader,
+     write_descriptor_set_bits |= UINT32_C(1) << SpirvShaderTranslator::kDescriptorSetTexturesPixel;
+     current_graphics_descriptor_sets_[SpirvShaderTranslator::kDescriptorSetTexturesPixel] =
+         write_textures[0].dstSet;
++    texture_bindings_written_[1].assign(
++        descriptor_write_image_info_.begin() + pixel_texture_image_info_offset,
++        descriptor_write_image_info_.end());
++    texture_bindings_written_texture_count_[1] = texture_count_pixel;
+   }
+   // Write.
+   if (write_descriptor_set_count) {
+diff --git a/src/kernel/xam/apps/xmp_app.cpp b/src/kernel/xam/apps/xmp_app.cpp
+index a5e9088..27a023d 100644
+--- a/src/kernel/xam/apps/xmp_app.cpp
++++ b/src/kernel/xam/apps/xmp_app.cpp
+@@ -9,6 +9,9 @@
+  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
+  */
+ 
++#include <chrono>
++#include <cstdint>
++
+ #include <rex/kernel/xam/apps/xmp_app.h>
+ #include <rex/logging.h>
+ #include <rex/system/xthread.h>
+@@ -35,8 +38,27 @@ XmpApp::XmpApp(KernelState* kernel_state)
+       next_playlist_handle_(1),
+       next_song_handle_(1) {}
+ 
++namespace {
++
++// The status/controller queries below sleep on non-main threads, for games that poll them in a
++// tight loop. Games that poll a few times per frame (WWE SmackDown vs. Raw 2008 does, from its frame
++// thread) would then lose 1-10 ms every frame, so only throttle a thread that really hammers: more
++// than ~1000 calls per second.
++bool IsHammeringXmp() {
++  thread_local auto window_start = std::chrono::steady_clock::now();
++  thread_local uint32_t calls = 0;
++  auto now = std::chrono::steady_clock::now();
++  if (now - window_start > std::chrono::milliseconds(100)) {
++    window_start = now;
++    calls = 0;
++  }
++  return ++calls > 100;
++}
++
++}  // namespace
++
+ X_HRESULT XmpApp::XMPGetStatus(uint32_t state_ptr) {
+-  if (!XThread::GetCurrentThread()->main_thread()) {
++  if (!XThread::GetCurrentThread()->main_thread() && IsHammeringXmp()) {
+     // Some stupid games will hammer this on a thread - induce a delay
+     // here to keep from starving real threads.
+     rex::thread::Sleep(std::chrono::milliseconds(1));
+@@ -408,7 +430,7 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+       memory::store_and_swap<uint32_t>(memory_->TranslateVirtual(args->controller_ptr), 0);
+       memory::store_and_swap<uint32_t>(memory_->TranslateVirtual(args->locked_ptr), 0);
+ 
+-      if (!XThread::GetCurrentThread()->main_thread()) {
++      if (!XThread::GetCurrentThread()->main_thread() && IsHammeringXmp()) {
+         // Atrain spawns a thread 82437FD0 to call this in a tight loop forever.
+         rex::thread::Sleep(std::chrono::milliseconds(10));
+       }
+diff --git a/src/kernel/xam/xam_content.cpp b/src/kernel/xam/xam_content.cpp
+index 1fb1e16..645c04a 100644
+--- a/src/kernel/xam/xam_content.cpp
++++ b/src/kernel/xam/xam_content.cpp
+@@ -141,7 +141,9 @@ u32 xeXamContentCreate(u32 user_index, mapped_string root_name, mapped_void cont
+     *disposition_ptr = 0;
+   }
+ 
+-  auto run = [content_manager, xuid, root_name = root_name.value(), flags, content_data,
++  // Copy the root name: with an overlapped call this runs later on another thread, after the
++  // game may have reused the buffer the name was in (SvR 2009 opens its DLC as "dlc0" this way).
++  auto run = [content_manager, xuid, root_name = std::string(root_name.value()), flags, content_data,
+               disposition_ptr,
+               license_mask_ptr](uint32_t& extended_error, uint32_t& length) -> X_RESULT {
+     X_RESULT result = X_ERROR_INVALID_PARAMETER;
+diff --git a/src/system/runtime.cpp b/src/system/runtime.cpp
+index c10694c..ffdaddc 100644
+--- a/src/system/runtime.cpp
++++ b/src/system/runtime.cpp
+@@ -11,6 +11,7 @@
+ 
+ #include <rex/chrono/clock.h>
+ #include <rex/cvar.h>
++#include <rex/filesystem/devices/disc_image_device.h>
+ #include <rex/filesystem/devices/host_path_device.h>
+ #include <rex/filesystem/devices/null_device.h>
+ #include <rex/filesystem/vfs.h>
+@@ -303,12 +304,19 @@ bool Runtime::SetupVfs() {
+     return false;
+   }
+ 
+-  // Mount game_data_root as \Device\Harddisk0\Partition1
++  // Mount game_data_root as \Device\Harddisk0\Partition1: a folder holding the game's files, or
++  // an Xbox 360 disc image (.iso) read in place.
+   auto mount_path = "\\Device\\Harddisk0\\Partition1";
+-  auto device = std::make_unique<rex::filesystem::HostPathDevice>(
+-      mount_path, abs_game_root, !REXCVAR_GET(allow_game_relative_writes));
++  std::unique_ptr<rex::filesystem::Device> device;
++  if (std::filesystem::is_regular_file(abs_game_root)) {
++    device = std::make_unique<rex::filesystem::DiscImageDevice>(mount_path, abs_game_root);
++  } else {
++    device = std::make_unique<rex::filesystem::HostPathDevice>(
++        mount_path, abs_game_root, !REXCVAR_GET(allow_game_relative_writes));
++  }
+   if (!device->Initialize()) {
+-    REXSYS_ERROR("Runtime::SetupVfs: Failed to initialize host path device");
++    REXSYS_ERROR("Runtime::SetupVfs: Failed to initialize the game data device for {}",
++                 abs_game_root.string());
+     return false;
+   }
+   if (!file_system_->RegisterDevice(std::move(device))) {
+diff --git a/src/system/xam/content_manager.cpp b/src/system/xam/content_manager.cpp
+index bd6c797..0177f01 100644
+--- a/src/system/xam/content_manager.cpp
++++ b/src/system/xam/content_manager.cpp
+@@ -631,11 +631,14 @@ X_RESULT ContentManager::InstallContent(const std::filesystem::path& package_pat
+     }
+   }
+ 
+-  // Compute license mask from STFS header licenses
++  // Compute license mask from STFS header licenses. A licensee of all ones is the "any console,
++  // any profile" license of free content (SvR 2010's Roster Update 1: bits 1, flags 0); it grants
++  // its bits whatever the flags.
+   uint32_t license_mask = 0;
+   for (size_t i = 0; i < 0x10; i++) {
+-    if (device->header().header.licenses[i].license_flags) {
+-      license_mask |= device->header().header.licenses[i].license_bits;
++    const auto& license = device->header().header.licenses[i];
++    if (license.license_flags || uint64_t(license.licensee_id) == ~uint64_t(0)) {
++      license_mask |= license.license_bits;
+     }
+   }
+ 
+diff --git a/src/ui/d3d12/d3d12_descriptor_heap_pool.cpp b/src/ui/d3d12/d3d12_descriptor_heap_pool.cpp
+index 650f1d1..18b6479 100644
+--- a/src/ui/d3d12/d3d12_descriptor_heap_pool.cpp
++++ b/src/ui/d3d12/d3d12_descriptor_heap_pool.cpp
+@@ -12,6 +12,7 @@
+ #include <rex/assert.h>
+ #include <rex/logging.h>
+ #include <rex/ui/d3d12/d3d12_descriptor_heap_pool.h>
++#include <rex/ui/d3d12/d3d12_util.h>
+ 
+ namespace rex::ui::d3d12 {
+ 
+@@ -128,6 +129,9 @@ uint64_t D3D12DescriptorHeapPool::Request(uint64_t submission_index, uint64_t pr
+       REXLOG_ERROR("Failed to create a heap for {} shader-visible descriptors", page_size_);
+       return kHeapIndexInvalid;
+     }
++    util::LogShaderVisibleDescriptorHeap(
++        device_, new_heap.Get(),
++        type_ == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER ? "pool sampler page" : "pool view page");
+     writable_first_ = new Page;
+     writable_first_->heap = new_heap;
+     writable_first_->cpu_start = new_heap->GetCPUDescriptorHandleForHeapStart();
+diff --git a/src/ui/d3d12/d3d12_provider.cpp b/src/ui/d3d12/d3d12_provider.cpp
+index bf8252b..8e61780 100644
+--- a/src/ui/d3d12/d3d12_provider.cpp
++++ b/src/ui/d3d12/d3d12_provider.cpp
+@@ -9,6 +9,7 @@
+  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
+  */
+ 
++#include <atomic>
+ #include <cstdlib>
+ 
+ #include <rex/cvar.h>
+@@ -23,6 +24,10 @@
+ REXCVAR_DEFINE_BOOL(d3d12_debug, false, "UI/D3D12", "Enable Direct3D 12 and DXGI debug layer")
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+ 
++REXCVAR_DEFINE_BOOL(d3d12_gpu_validation, false, "UI/D3D12",
++                    "Enable D3D12 GPU-based validation (requires d3d12_debug; very slow)")
++    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
++
+ REXCVAR_DEFINE_BOOL(d3d12_break_on_error, false, "UI/D3D12",
+                     "Break on Direct3D 12 validation errors");
+ 
+@@ -222,24 +227,34 @@ bool D3D12Provider::Initialize() {
+     ID3D12Debug* debug_interface;
+     if (SUCCEEDED(pfn_d3d12_get_debug_interface_(IID_PPV_ARGS(&debug_interface)))) {
+       debug_interface->EnableDebugLayer();
++      if (REXCVAR_GET(d3d12_gpu_validation)) {
++        ID3D12Debug1* debug_interface_1;
++        if (SUCCEEDED(debug_interface->QueryInterface(IID_PPV_ARGS(&debug_interface_1)))) {
++          debug_interface_1->SetEnableGPUBasedValidation(TRUE);
++          debug_interface_1->Release();
++          REXLOG_INFO("Direct3D 12 GPU-based validation enabled");
++        } else {
++          REXLOG_WARN("Failed to enable Direct3D 12 GPU-based validation");
++        }
++      }
+       debug_interface->Release();
+     } else {
+       REXLOG_WARN("Failed to enable the Direct3D 12 debug layer");
+       debug = false;
+     }
+-
+-    // Enable DRED (Device Removed Extended Data) for diagnosing GPU crashes.
+-    {
+-      Microsoft::WRL::ComPtr<ID3D12DeviceRemovedExtendedDataSettings> dred_settings;
+-      if (SUCCEEDED(pfn_d3d12_get_debug_interface_(IID_PPV_ARGS(&dred_settings)))) {
+-        dred_settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+-        dred_settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+-        REXLOG_INFO("DRED (Device Removed Extended Data) enabled");
+-      } else {
+-        REXLOG_WARN(
+-            "Failed to enable DRED - device removal diagnostics will be "
+-            "limited");
+-      }
++  }
++  // Enable DRED (Device Removed Extended Data) for diagnosing GPU crashes. Always on, not only
++  // with the debug layer: a device loss in normal play is otherwise undiagnosable (WWE 2008 port).
++  {
++    Microsoft::WRL::ComPtr<ID3D12DeviceRemovedExtendedDataSettings> dred_settings;
++    if (SUCCEEDED(pfn_d3d12_get_debug_interface_(IID_PPV_ARGS(&dred_settings)))) {
++      dred_settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
++      dred_settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
++      REXLOG_INFO("DRED (Device Removed Extended Data) enabled");
++    } else {
++      REXLOG_WARN(
++          "Failed to enable DRED - device removal diagnostics will be "
++          "limited");
+     }
+   }
+   // Create the DXGI factory.
+@@ -351,6 +366,34 @@ bool D3D12Provider::Initialize() {
+     if (REXCVAR_GET(d3d12_break_on_warning)) {
+       d3d12_info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, TRUE);
+     }
++    // Forward debug layer messages to the log (otherwise they only reach an attached debugger).
++    ID3D12InfoQueue1* d3d12_info_queue_1;
++    if (SUCCEEDED(d3d12_info_queue->QueryInterface(IID_PPV_ARGS(&d3d12_info_queue_1)))) {
++      DWORD callback_cookie = 0;
++      auto callback = [](D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVERITY severity,
++                         D3D12_MESSAGE_ID id, LPCSTR description, void*) {
++        static std::atomic<uint32_t> logged_count{0};
++        constexpr uint32_t kMaxLogged = 1000;
++        uint32_t index = logged_count.fetch_add(1, std::memory_order_relaxed);
++        if (index > kMaxLogged) {
++          return;
++        }
++        if (index == kMaxLogged) {
++          REXLOG_WARN("D3D12 debug: message limit reached, further messages are not logged");
++          return;
++        }
++        if (severity <= D3D12_MESSAGE_SEVERITY_ERROR) {
++          REXLOG_ERROR("D3D12 debug [cat {} id {}]: {}", int(category), int(id), description);
++        } else {
++          REXLOG_WARN("D3D12 debug [cat {} id {}]: {}", int(category), int(id), description);
++        }
++      };
++      if (SUCCEEDED(d3d12_info_queue_1->RegisterMessageCallback(
++              callback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, &callback_cookie))) {
++        REXLOG_INFO("D3D12 debug layer messages are forwarded to the log");
++      }
++      d3d12_info_queue_1->Release();
++    }
+     d3d12_info_queue->Release();
+   }
+ 
+diff --git a/src/ui/d3d12/d3d12_util.cpp b/src/ui/d3d12/d3d12_util.cpp
+index 28b44a4..2d4430e 100644
+--- a/src/ui/d3d12/d3d12_util.cpp
++++ b/src/ui/d3d12/d3d12_util.cpp
+@@ -113,5 +113,18 @@ void CreateBufferTypedUAV(ID3D12Device* device, D3D12_CPU_DESCRIPTOR_HANDLE hand
+   device->CreateUnorderedAccessView(buffer, nullptr, &desc, handle);
+ }
+ 
++void LogShaderVisibleDescriptorHeap(ID3D12Device* device, ID3D12DescriptorHeap* heap,
++                                    const char* name) {
++  if (!device || !heap) {
++    return;
++  }
++  D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
++  uint64_t start = heap->GetGPUDescriptorHandleForHeapStart().ptr;
++  uint64_t end = start + uint64_t(desc.NumDescriptors) *
++                             device->GetDescriptorHandleIncrementSize(desc.Type);
++  REXLOG_INFO("Descriptor heap '{}': GPU 0x{:016X}-0x{:016X} ({} descriptors)", name, start, end,
++              desc.NumDescriptors);
++}
++
+ }  // namespace util
+ }  // namespace rex::ui::d3d12
+diff --git a/src/ui/rex_app.cpp b/src/ui/rex_app.cpp
+index b94fe9e..7199826 100644
+--- a/src/ui/rex_app.cpp
++++ b/src/ui/rex_app.cpp
+@@ -207,7 +207,9 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
+     rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
+     return false;
+   }
+-  if (!std::filesystem::is_directory(paths.game_data_root)) {
++  // A folder of game files, or an Xbox 360 disc image file.
++  if (!std::filesystem::is_directory(paths.game_data_root) &&
++      !std::filesystem::is_regular_file(paths.game_data_root)) {
+     auto msg = fmt::format("--game_data_root does not exist: {}", paths.game_data_root.string());
+     REXLOG_ERROR("{}", msg);
+     rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
+@@ -262,8 +264,9 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
+   std::string xex_image = "game:\\default.xex";
+   OnLoadXexImage(xex_image);
+ 
+-  // Mirrors the game:\ / d:\ -> game_data_root mapping in Runtime::SetupVfs.
+-  {
++  // Mirrors the game:\ / d:\ -> game_data_root mapping in Runtime::SetupVfs. A disc image is
++  // checked by LoadXexImage itself (the file is inside the image, not on the host).
++  if (std::filesystem::is_directory(paths.game_data_root)) {
+     constexpr std::string_view kGameDevice = "game:\\";
+     constexpr std::string_view kDDevice = "d:\\";
+     std::string_view tail = xex_image;
+@@ -370,9 +373,9 @@ bool ReXApp::SetupPresentation() {
+       }
+     }
+     window_->SetPresenter(presenter);
+-  } else if (!graphics_system) {
++  } else {
+     // Detached mode: the app brings its own renderer and drives its own paint
+-    // loop. ReXApp owns the returned drawer via immediate_drawer_.
++    // loop (no graphics system, or a presenter-less one such as the null GPU). ReXApp owns the returned drawer via immediate_drawer_.
+     immediate_drawer_ = OnCreateImmediateDrawer();
+     if (immediate_drawer_) {
+       SetupOverlays(/*presenter=*/nullptr, immediate_drawer_.get());

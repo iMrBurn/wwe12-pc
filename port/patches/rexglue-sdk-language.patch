@@ -1,0 +1,33 @@
+diff --git a/src/kernel/xam/xam_info.cpp b/src/kernel/xam/xam_info.cpp
+index 1fda053..9028ab5 100644
+--- a/src/kernel/xam/xam_info.cpp
++++ b/src/kernel/xam/xam_info.cpp
+@@ -14,6 +14,7 @@
+ #include <rex/logging.h>
+ #include <rex/hook.h>
+ #include <rex/types.h>
++#include <rex/cvar.h>
+ #include <rex/string.h>
+ #include <rex/system/kernel_state.h>
+ #include <rex/system/user_module.h>
+@@ -28,6 +29,8 @@
+ #include <fmt/format.h>
+ #include <fmt/xchar.h>
+ 
++REXCVAR_DECLARE(uint32_t, user_language);
++
+ namespace rex {
+ namespace kernel {
+ namespace xam {
+@@ -195,6 +198,11 @@ u32 XGetLanguage_entry() {
+   }
+   // Add more overrides?
+ 
++  // WWE '12 port: the user_language cvar (XLanguage: 1 English, 3 German, 4 French, 5 Spanish,
++  // 6 Italian...) picks the game's language, as the console setting does.
++  if (const uint32_t user_language = REXCVAR_GET(user_language); user_language != 0)
++    return user_language;
++
+   return uint32_t(desired_language);
+ }
+ 

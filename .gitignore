@@ -1,0 +1,31 @@
+# Données du jeu : ne jamais les versionner
+*.xex
+*.xexp
+*.iso
+port/assets/*
+!port/assets/.gitkeep
+# Image PE déchiffrée du jeu (find_fptrs.py --dump-image)
+*.bin
+
+# Données extraites du jeu (shaders, fichiers décompressés…) : jamais publiées
+work/
+
+# Code généré : traduction directe du code du jeu, à ne pas publier
+port/generated/
+port/src/d3d_census.cpp
+d3d_census.csv
+
+# SDK et sorties de compilation
+recomp/
+port/out/
+out/
+dist/
+
+# Journaux et fichiers de travail locaux
+__pycache__/
+*.log
+candidats*.toml
+manquantes*.toml
+capture_*.png
+# Listes d'adresses de travail
+apres_terminateur*.txt

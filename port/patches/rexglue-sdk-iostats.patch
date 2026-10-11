@@ -1,0 +1,47 @@
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_io.cpp b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+index 3f1a852..27d11f3 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_io.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+@@ -12,6 +12,8 @@
+ // Disable warnings about unused parameters for kernel functions
+ #pragma GCC diagnostic ignored "-Wunused-parameter"
+ 
++#include <atomic>
++#include <chrono>
+ #include <rex/filesystem/device.h>
+ #include <rex/kernel/xboxkrnl/private.h>
+ #include <rex/logging.h>
+@@ -184,6 +186,16 @@ u32 NtOpenFile_entry(mapped_u32 handle_out, u32 desired_access,
+                             open_options);
+ }
+ 
++// WWE '12 port: file read totals (bytes, calls, time spent), polled by the game's loading
++// statistics to tell disk-bound loads from the rest.
++static std::atomic<uint64_t> g_io_bytes{0}, g_io_calls{0}, g_io_ns{0};
++
++void GetFileIoStats(uint64_t* bytes, uint64_t* calls, uint64_t* nanoseconds) {
++  *bytes = g_io_bytes.load(std::memory_order_relaxed);
++  *calls = g_io_calls.load(std::memory_order_relaxed);
++  *nanoseconds = g_io_ns.load(std::memory_order_relaxed);
++}
++
+ u32 NtReadFile_entry(u32 file_handle, u32 event_handle, mapped_void apc_routine_ptr,
+                      mapped_void apc_context, ppc_ptr_t<X_IO_STATUS_BLOCK> io_status_block,
+                      mapped_void buffer, u32 buffer_length, mapped_u64 byte_offset_ptr) {
+@@ -213,9 +225,16 @@ u32 NtReadFile_entry(u32 file_handle, u32 event_handle, mapped_void apc_routine_
+     if (true || file->is_synchronous()) {
+       // Synchronous.
+       uint32_t bytes_read = 0;
++      const auto io_start = std::chrono::steady_clock::now();
+       result = file->Read(buffer.guest_address(), buffer_length,
+                           byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : -1,
+                           &bytes_read, apc_context.guest_address());
++      g_io_ns.fetch_add(std::chrono::duration_cast<std::chrono::nanoseconds>(
++                            std::chrono::steady_clock::now() - io_start)
++                            .count(),
++                        std::memory_order_relaxed);
++      g_io_bytes.fetch_add(bytes_read, std::memory_order_relaxed);
++      g_io_calls.fetch_add(1, std::memory_order_relaxed);
+       if (io_status_block) {
+         io_status_block->status = result;
+         io_status_block->information = bytes_read;
