@@ -65,7 +65,9 @@ Write-Host "== Conversion des shaders avec XenosRecomp"
 Invoke-Checked $XrExe $Xsc (Join-Path $Gen "shader_cache.cpp") (Join-Path $Xr "XenosRecomp\shader_common.h")
 
 # 4. Clés secondaires -> shader_keys.cpp (module Python xxhash)
-& $python.Source -c "import xxhash" 2>$null
+# Test par cmd : sous Windows PowerShell 5.1 avec ErrorActionPreference=Stop, la moindre sortie
+# d'erreur d'un programme (ici la trace Python « No module named xxhash ») arrête le script.
+cmd /c "`"$($python.Source)`" -c `"import xxhash`" >nul 2>nul"
 if ($LASTEXITCODE -ne 0) { Invoke-Checked $python.Source -m pip install --user xxhash }
 Invoke-Checked $python.Source (Join-Path $PSScriptRoot "gen_shader_keys.py") $Xsc (Join-Path $Gen "shader_keys.cpp")
 
