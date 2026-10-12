@@ -34,6 +34,14 @@
 #include <smolv.h>
 #endif
 
+#include <atomic>
+#include <cstring>
+#include <rex/cvar.h>
+
+REXCVAR_DEFINE_BOOL(svr_preserve_inf_nan, true, "SvR",
+                    "Ask the GPU driver to keep infinities and NaN exact in game shaders (Intel "
+                    "otherwise drops the Xbox-style clamps: black eyes and teeth).");
+
 namespace bd::gpu {
 
 namespace {
@@ -110,6 +118,60 @@ const LinkedShaderCacheEntry *FindLinkedShaderCacheEntry(u64 hash, u32 masked) {
              : nullptr;
 }
 #else
+// XenosRecomp clamps rcp/rsq/log results to +-FLT_MAX, as the Xbox does, so that 1/0 never
+// reaches a multiply as an infinity. Vulkan lets a driver assume no Inf/NaN unless the module asks
+// otherwise: Intel's compiler then drops those clamps, the infinity survives and Inf * 0 gives NaN.
+// WWE '12's face layers hit that over the eye sockets and blend NaN, black eyes and teeth (and the
+// referee's hair) on Intel GPUs. Declares SignedZeroInfNanPreserve for 32-bit floats (capability,
+// SPV_KHR_float_controls, execution mode on the entry point) in a decoded module.
+void PreserveInfNan(std::vector<u8> &bytes) {
+  constexpr u32 kOpExtension = 10, kOpEntryPoint = 15, kOpExecutionMode = 16, kOpCapability = 17;
+  constexpr u32 kCapSignedZeroInfNanPreserve = 4466, kModeSignedZeroInfNanPreserve = 4461;
+  if (bytes.size() < 20 || bytes.size() % 4)
+    return;
+  std::vector<u32> w(bytes.size() / 4);
+  std::memcpy(w.data(), bytes.data(), bytes.size());
+  if (w[0] != 0x07230203u)
+    return;
+  size_t after_caps = 0, after_modes = 0;
+  u32 entry = 0;
+  bool has_cap = false;
+  for (size_t i = 5; i < w.size();) {
+    const u32 op = w[i] & 0xFFFFu, count = w[i] >> 16;
+    if (count == 0 || i + count > w.size())
+      return;
+    if (op == kOpCapability) {
+      has_cap |= w[i + 1] == kCapSignedZeroInfNanPreserve;
+      after_caps = i + count;
+    } else if (op == kOpEntryPoint && !entry) {
+      entry = w[i + 2];
+      after_modes = i + count;
+    } else if (op == kOpExecutionMode || (op == kOpEntryPoint && entry)) {
+      after_modes = i + count;
+    } else if (entry && after_modes) {
+      break;  // past the entry points and execution modes
+    }
+    i += count;
+  }
+  if (has_cap || !after_caps || !entry || !after_modes)
+    return;
+  // Inserted from the back so the earlier position stays valid.
+  const u32 mode[] = {(4u << 16) | kOpExecutionMode, entry, kModeSignedZeroInfNanPreserve, 32};
+  w.insert(w.begin() + std::ptrdiff_t(after_modes), std::begin(mode), std::end(mode));
+  static const char kExt[] = "SPV_KHR_float_controls";  // 22 chars + NUL, padded to 6 words
+  u32 ext[7] = {(7u << 16) | kOpExtension};
+  std::memcpy(&ext[1], kExt, sizeof(kExt));
+  const u32 cap[] = {(2u << 16) | kOpCapability, kCapSignedZeroInfNanPreserve};
+  w.insert(w.begin() + std::ptrdiff_t(after_caps), std::begin(ext), std::end(ext));
+  w.insert(w.begin() + std::ptrdiff_t(after_caps), std::begin(cap), std::end(cap));
+  bytes.resize(w.size() * 4);
+  std::memcpy(bytes.data(), w.data(), bytes.size());
+  static std::atomic<u32> s_done{0};
+  const u32 n = s_done.fetch_add(1) + 1;
+  if (n == 1 || n % 200 == 0)
+    BD_INFO("[shaders] Inf/NaN preserved in {} module(s)", n);
+}
+
 // The SPIR-V half of the same generated cache: ZSTD-compressed, per-entry
 // modules smol-v encoded. Decompressed once on first shader resolve.
 std::once_flag g_spirv_cache_once;
@@ -228,6 +290,8 @@ plume::RenderShader *GetOrLinkShader(GuestShader *gs, u32 specConstants) {
              entry->hash);
     return nullptr;
   }
+  if (REXCVAR_GET(svr_preserve_inf_nan))
+    PreserveInfNan(spirv);
   return PublishShader(gs,
                        device->createShader(spirv.data(), spirv.size(), "main",
                                             plume::RenderShaderFormat::SPIRV));
