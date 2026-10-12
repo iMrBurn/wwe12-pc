@@ -82,7 +82,12 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
 - VFS overlay (patch SDK) : fichiers seulement, ouvertures en lecture ; dossier `mods` à côté de l'exe.
 - Title Update (pour la 1.1) : le codegen ne lit pas les xexp ; il faudra produire un xex patché hors
   ligne, refaire le codegen et retrouver toutes les adresses codées en dur.
-- Bugs ouverts : ceinture sur l'épaule à 60 fps (pistes : animation d'objet à 30 Hz, ou VBlank
-  simulé par un minuteur 1 ms non synchronisé, `recomp/rexglue-sdk/src/graphics/graphics_system.cpp`) ;
+- Bugs ouverts : ceinture sur l'épaule à 60 fps (piste VBlank testée le 2026-10-12 et écartée : le
+  minuteur est déjà régulier à 60 Hz ; reste l'animation d'objet à 30 Hz, la ceinture de Cena décroche
+  de la main quand il court) ;
   AMD/Steam Deck (#4 gel en entrée sur RX 560, #7 bloc en haut à droite) en attente de retours 0.5.0 ;
   titantrons basse résolution (vidéos Bink 320x320 sur le disque).
+- Voitures des entrées (Del Rio, Eddie Guerrero) : le jeu dessine la carrosserie en mélange alpha avec
+  l'alpha d'une texture BC3 (~0,63), donc translucide ; la Xbox l'affiche opaque (cause réelle inconnue).
+  Contournement : cvar `wwe12_car_opaque` (défaut true, `pipeline_cache.cpp`) coupe le mélange pour le
+  pixel shader 7EE1904EE7E52F05 (vitres opaques aussi ; ce shader sert peut-être aux ceintures).

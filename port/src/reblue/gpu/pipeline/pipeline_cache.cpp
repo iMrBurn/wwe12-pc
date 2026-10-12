@@ -18,11 +18,16 @@
 
 #include <xxhash.h>
 
+#include <rex/cvar.h>
+
 #include "core/logging.h"
 #include "core/profiling.h"
 #include "gpu/device.h"
 #include "gpu/occlusion.h"
 #include "gpu/shaders/shader_cache.h"
+
+REXCVAR_DEFINE_BOOL(wwe12_car_opaque, true, "WWE12",
+                    "Draw the pixel shader of Alberto Del Rio's limousine (7EE1904EE7E52F05) without alpha blending: its body texture alpha is ~0.63, which made the car see-through");
 
 namespace bd::gpu {
 
@@ -209,6 +214,9 @@ std::unique_ptr<plume::RenderPipeline> Build(const PipelineState &state) {
   desc.renderTargetCount =
       state.renderTargetFormat != plume::RenderFormat::UNKNOWN ? 1u : 0u;
   desc.renderTargetBlend[0].blendEnabled = state.alphaBlendEnable;
+  if (REXCVAR_GET(wwe12_car_opaque) && state.pixelShader && state.pixelShader->shaderCacheEntry &&
+      state.pixelShader->shaderCacheEntry->hash == 0x7EE1904EE7E52F05ull)
+    desc.renderTargetBlend[0].blendEnabled = false;
   desc.renderTargetBlend[0].srcBlend = state.srcBlend;
   desc.renderTargetBlend[0].dstBlend = state.destBlend;
   desc.renderTargetBlend[0].blendOp = state.blendOp;
