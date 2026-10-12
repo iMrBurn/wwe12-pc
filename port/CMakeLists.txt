@@ -53,6 +53,28 @@ else()
     add_executable(wwe12 ${WWE12_SOURCES})
 endif()
 
+# Launcher (« WWE12 Launcher.exe ») : réglages, sauvegardes, mods, mises à jour, bouton Jouer.
+# Win32 + Direct3D 11 + Dear ImGui (les sources d'ImGui du SDK).
+if(WIN32)
+    set(WWE12_IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/imgui")
+    configure_file(res/launcher.rc.in "${CMAKE_CURRENT_BINARY_DIR}/launcher.rc" @ONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/launcher.rc" PROPERTIES
+        OBJECT_DEPENDS "${WWE12_RES_DIR}/wwe12.ico;${WWE12_RES_DIR}/wwe12.png")
+    add_executable(wwe12_launcher WIN32
+        src/launcher/launcher.cpp
+        "${CMAKE_CURRENT_BINARY_DIR}/launcher.rc"
+        "${WWE12_IMGUI_DIR}/imgui.cpp"
+        "${WWE12_IMGUI_DIR}/imgui_draw.cpp"
+        "${WWE12_IMGUI_DIR}/imgui_tables.cpp"
+        "${WWE12_IMGUI_DIR}/imgui_widgets.cpp"
+        "${WWE12_IMGUI_DIR}/backends/imgui_impl_win32.cpp"
+        "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp")
+    target_include_directories(wwe12_launcher PRIVATE "${WWE12_IMGUI_DIR}" "${WWE12_IMGUI_DIR}/backends")
+    target_link_libraries(wwe12_launcher PRIVATE d3d11 dxgi d3dcompiler winhttp windowscodecs ole32 shell32)
+    set_target_properties(wwe12_launcher PROPERTIES OUTPUT_NAME "WWE12 Launcher")
+    add_dependencies(wwe12 wwe12_launcher)
+endif()
+
 # GPU Xenos émulé (plugin chargé à l'exécution, copié à côté de l'exe). Sans lui, le runtime
 # démarre « without graphics system » et rien ne s'affiche tant qu'il n'y a pas de rendu natif.
 # Rendu natif ajouté AVANT le SDK : plume embarque sa propre copie de VMA (Vulkan Memory

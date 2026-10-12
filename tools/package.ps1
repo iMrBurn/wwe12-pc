@@ -30,6 +30,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Dist "game") | Out-Null
 
 # Exécutable et bibliothèques. Le client du profileur (Tracy) ne sert qu'au développement.
 Copy-Item (Join-Path $Build "wwe12.exe") $Dist
+Copy-Item (Join-Path $Build "WWE12 Launcher.exe") $Dist
 Get-ChildItem $Build -Filter *.dll | Where-Object { $_.Name -notlike "Tracy*" } |
     ForEach-Object { Copy-Item $_.FullName $Dist }
 
