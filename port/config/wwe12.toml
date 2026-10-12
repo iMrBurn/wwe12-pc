@@ -14,6 +14,9 @@ wwe12_quit_entry = true
 # OPTIONS menu: "IN-GAME MANUAL" becomes GRAPHICS, a screen to change the settings below in game.
 wwe12_graphics_menu = true
 
+# Skip the start-up videos (logos and opening) to reach the title screen faster.
+wwe12_skip_intros = true
+
 # ---------------------------------------------------------------------------------------------
 # Graphics
 # ---------------------------------------------------------------------------------------------
