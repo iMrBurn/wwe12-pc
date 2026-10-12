@@ -65,6 +65,23 @@ def iter_files(paths):
             yield p
 
 
+def scan_file(path: Path, bpe: bool):
+    """Conteneurs d'un fichier : (chemin, total, [(sha1, vs, octets)]) ; dédupliqués par fichier."""
+    try:
+        data = path.read_bytes()
+    except OSError as e:
+        return path, -1, str(e)
+    payloads = iter_payloads(data) if bpe else [data]
+    total = 0
+    found: dict[str, tuple[bool, bytes]] = {}
+    for payload in payloads:
+        for off, size, is_vs in scan(payload):
+            total += 1
+            blob = payload[off: off + size]
+            found.setdefault(hashlib.sha1(blob).hexdigest()[:16], (is_vs, blob))
+    return path, total, [(d, vs, b) for d, (vs, b) in found.items()]
+
+
 def main() -> None:
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
@@ -74,6 +91,8 @@ def main() -> None:
     ap.add_argument("--extract", type=Path, help="dossier où écrire les conteneurs uniques")
     ap.add_argument("--bpe", action="store_true",
                     help="décompresser aussi les blocs « BPE » des archives de Yuke's")
+    ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 1,
+                    help="fichiers traités en parallèle (défaut : nombre de cœurs)")
     args = ap.parse_args()
     sys.path.insert(0, str(Path(__file__).parent))
 
@@ -82,30 +101,38 @@ def main() -> None:
     seen: set[str] = set()
     kinds: Counter = Counter()
     total = 0
-    for path in iter_files(args.paths):
-        try:
-            data = path.read_bytes()
-        except OSError as e:
-            print(f"illisible : {path} ({e})", file=sys.stderr)
-            continue
-        payloads = iter_payloads(data) if args.bpe else [data]
-        hits = [(payload, off, size, is_vs) for payload in payloads
-                for off, size, is_vs in scan(payload)]
-        if not hits:
-            continue
-        total += len(hits)
-        new = 0
-        for payload, off, size, is_vs in hits:
-            blob = payload[off: off + size]
-            digest = hashlib.sha1(blob).hexdigest()[:16]
-            if digest in seen:
-                continue
-            seen.add(digest)
-            new += 1
-            kinds["vs" if is_vs else "ps"] += 1
-            if args.extract:
-                (args.extract / f"{digest}.{'vs' if is_vs else 'ps'}.xsc").write_bytes(blob)
-        print(f"{len(hits):6} conteneurs ({new} nouveaux)  {path}", flush=True)
+    files = list(iter_files(args.paths))
+    print(f"{len(files)} fichiers à parcourir, {args.jobs} en parallèle", flush=True)
+
+    def collect(path, hits, blobs, done):
+        nonlocal total
+        if hits < 0:
+            print(f"illisible : {path} ({blobs})", file=sys.stderr)
+            return
+        if hits:
+            total += hits
+            new = 0
+            for digest, is_vs, blob in blobs:
+                if digest in seen:
+                    continue
+                seen.add(digest)
+                new += 1
+                kinds["vs" if is_vs else "ps"] += 1
+                if args.extract:
+                    (args.extract / f"{digest}.{'vs' if is_vs else 'ps'}.xsc").write_bytes(blob)
+            print(f"{hits:6} conteneurs ({new} nouveaux)  {path}", flush=True)
+        if done % 50 == 0 or done == len(files):
+            print(f"  [{done}/{len(files)} fichiers]", flush=True)
+
+    if args.jobs <= 1:
+        for n, path in enumerate(files, 1):
+            collect(*scan_file(path, args.bpe), n)
+    else:
+        import concurrent.futures as cf
+        with cf.ProcessPoolExecutor(max_workers=args.jobs) as pool:
+            futures = [pool.submit(scan_file, path, args.bpe) for path in files]
+            for n, fut in enumerate(cf.as_completed(futures), 1):
+                collect(*fut.result(), n)
     print(f"total : {total} conteneurs, {len(seen)} uniques "
           f"({kinds['vs']} vertex, {kinds['ps']} pixel)")
 

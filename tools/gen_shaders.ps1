@@ -46,7 +46,13 @@ $Xsc = Join-Path $Root "work\shaders\xsc"
 if ($Force -or -not (Test-Path $Xsc) -or -not (Get-ChildItem $Xsc -Filter *.xsc -ErrorAction SilentlyContinue)) {
     Write-Host "== Extraction des shaders de $GameDir (quelques minutes)"
     New-Item -ItemType Directory -Force $Xsc | Out-Null
-    Invoke-Checked $python.Source (Join-Path $PSScriptRoot "find_shaders.py") $GameDir --bpe --extract $Xsc
+    # Vidéos, sons et mise à jour système de la console ne contiennent pas de shaders : les
+    # parcourir (plusieurs Go, décompression BPE en Python) prendrait des heures pour rien.
+    $skip = "movies", "sound", '$SystemUpdate'
+    $inputs = @(Get-ChildItem -LiteralPath $GameDir | Where-Object { $skip -notcontains $_.Name } |
+        ForEach-Object { $_.FullName })
+    # Un fichier par cœur en parallèle (find_shaders.py -j, par défaut le nombre de cœurs).
+    Invoke-Checked $python.Source (Join-Path $PSScriptRoot "find_shaders.py") @inputs --bpe --extract $Xsc
 }
 $count = (Get-ChildItem $Xsc -Filter *.xsc).Count
 if ($count -eq 0) { throw "aucun shader trouvé dans $GameDir" }
