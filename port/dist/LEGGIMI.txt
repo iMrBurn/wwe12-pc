@@ -1,0 +1,73 @@
+﻿WWE '12 PC - port nativo non ufficiale
+======================================
+
+Questo port fa girare WWE '12 (Xbox 360) in modo nativo su PC. NON contiene alcun dato del gioco:
+serve la tua copia del gioco per Xbox 360.
+
+
+Installazione
+-------------
+
+1. Metti l'immagine disco (.iso) del TUO gioco WWE '12 (versione Xbox 360) nella cartella "game",
+   per esempio game\WWE12.iso. Viene letta direttamente, senza estrarla.
+   (In alternativa puoi copiarci il contenuto del disco: game\default.xex, game\pac\..., ecc.)
+
+2. Avvia wwe12.exe.
+
+
+Requisiti
+---------
+
+- Windows 10 o 11, 64 bit.
+- Una scheda video compatibile con Vulkan 1.2 (driver aggiornati).
+- Un controller Xbox o PlayStation (DualShock 4, DualSense), oppure la tastiera.
+
+Portatile con due schede video: in Impostazioni > Sistema > Schermo > Grafica, imposta
+wwe12.exe su "Prestazioni elevate" e collega il caricabatterie (alcuni portatili spengono la
+scheda video dedicata a batteria).
+
+
+Impostazioni (file wwe12.toml)
+------------------------------
+
+- user_language: lingua del gioco (1 inglese, 3 tedesco, 4 francese, 5 spagnolo, 6 italiano).
+- svr_render_scale: risoluzione interna (0 = automatica, 1 = 720p, 2 = 1440p, 3 = 4K).
+  In modalità automatica il gioco resta a 720p su Steam Deck e con la grafica integrata nel
+  processore (Intel, AMD). Se il gioco è lento sul tuo PC, metti 1.
+- bd_anisotropy: nitidezza delle texture viste di sbieco (0, 2, 4, 8 o 16).
+- wwe12_quit_entry: la voce "ESCI" del menu principale, al posto di SHOP (Xbox LIVE
+  diventa "ONLINE").
+
+Tastiera (giocatore 1, insieme al controller; tasti modificabili in wwe12.toml):
+  Z Q S D / W A S D                         stick sinistro (movimento)
+  Frecce                                    stick destro
+  J / K / L / I                             X / A / B / Y
+  U / O                                     LB / RB
+  R / Spazio                                LT / RT
+  T / F / G / H                             croce direzionale
+  Invio o Esc / Tab o Backspace             Start / Back
+  C / N                                     L3 / R3
+
+
+Mod
+---
+
+I file messi nella cartella "mods" sostituiscono quelli del gioco, con lo stesso percorso
+del disco (esempio: mods\movies\titantron\100.bik). Vedi mods\HOW_TO_USE_MODS.txt.
+
+
+DLC
+---
+
+Mettete i pacchetti DLC del VOSTRO gioco (Xbox 360) nella cartella "dlc": i file con lunghi
+nomi esadecimali di Content\0000000000000000\54510890\00000002\ della console.
+Vengono installati al prossimo avvio di wwe12.exe (righe "DLC" in logs\).
+
+
+Dove sono i miei dati?
+----------------------
+
+Salvataggi, cache degli shader e cache del gioco: Documenti\wwe12
+
+
+Questo è un progetto di fan, senza legami con WWE, THQ o Yuke's.
