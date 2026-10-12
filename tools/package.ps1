@@ -34,6 +34,18 @@ Copy-Item (Join-Path $Build "WWE12 Launcher.exe") $Dist
 Get-ChildItem $Build -Filter *.dll | Where-Object { $_.Name -notlike "Tracy*" } |
     ForEach-Object { Copy-Item $_.FullName $Dist }
 
+# Pipelines déjà rencontrées sur la machine du développeur (Documents\wwe12\cache\pipelines.bin,
+# format W12P de pso_recorder.cpp : empreintes de shaders et états de rendu, aucune donnée du jeu).
+# Livrées sous le nom pipelines_seed.w12p, le jeu les prépare dès le premier lancement.
+$Seed = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "wwe12\cache\pipelines.bin"
+if (Test-Path $Seed) {
+    $magic = [BitConverter]::ToUInt32([IO.File]::ReadAllBytes($Seed), 0)
+    if ($magic -ne 0x50323157) { throw "$Seed n'est pas un cache de pipelines W12P" }
+    Copy-Item $Seed (Join-Path $Dist "pipelines_seed.w12p")
+} else {
+    Write-Warning "Pas de cache de pipelines ($Seed) : le zip partira sans pipelines_seed.w12p."
+}
+
 # Réglages par défaut et mode d'emploi.
 Copy-Item (Join-Path $Root "port\config\wwe12.toml") (Join-Path $Dist "wwe12.toml")
 # Modes d'emploi (un par langue du jeu), numéro de version ajouté à leur titre.

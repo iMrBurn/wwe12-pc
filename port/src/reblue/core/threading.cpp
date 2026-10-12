@@ -13,6 +13,7 @@
 
 #include "core/logging.h"
 
+#include <rex/cvar.h>
 #include <rex/ppc.h>
 #include <rex/system/xthread.h>
 #include <rex/types.h>
@@ -27,6 +28,15 @@
 #if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
 #endif
+
+// WWE '12: the game's threads wait in short guest sleeps (KeDelayExecutionThread), most of all
+// while loading. Without a 1 ms timer period Windows rounds every one of them up to its 15.6 ms
+// tick. Blue Dragon raised the period from its Sleep hook; nothing in WWE '12 reaches that hook, so
+// the app can raise it at startup (Wwe12App::OnPreSetup). Off by default: measured on 2026-10-12,
+// match loading took the same ~12 s with and without it (the game's loading waits are by design).
+REXCVAR_DEFINE_BOOL(wwe12_precise_timer, false, "WWE12",
+                    "Ask Windows for 1 ms timer precision, so the game's short waits (loading) "
+                    "aren't stretched to 15.6 ms.");
 
 namespace {
 std::once_flag g_timer_init;

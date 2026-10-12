@@ -19,6 +19,7 @@
 #include <rex/system/kernel_state.h>
 
 #if defined(SVR_NATIVE_RENDERER)
+#include "core/threading.h"
 #include "gpu/device.h"
 #include "gpu/imgui_overlay_drawer.h"
 #include "native/wwe12_graphics_menu.h"
@@ -36,6 +37,7 @@ inline void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem*, const std::
 // Défini dans main.cpp. ReXApp charge toujours le plugin GPU avec le backend « any »
 // (D3D12 en priorité sous Windows) : ce réglage permet de forcer Vulkan.
 REXCVAR_DECLARE(std::string, gpu_backend);
+REXCVAR_DECLARE(bool, wwe12_precise_timer);
 
 // Installe les DLC posés dans le dossier « dlc » à côté de l'exe (wwe12_dlc.cpp).
 void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
@@ -53,6 +55,10 @@ class Wwe12App : public rex::ReXApp {
   // GPU Xenos émulé par défaut ; --gpu_plugin=<nom> permet d'en choisir un autre,
   // et --gpu_backend=d3d12|vulkan le backend de rendu.
   void OnPreSetup(rex::RuntimeConfig& config) override {
+    if (REXCVAR_GET(wwe12_precise_timer)) {
+      bd::EnableHighResTimer();
+      REXLOG_INFO("Horloge Windows : précision 1 ms");
+    }
     if (config.gpu_plugin.empty()) {
       config.gpu_plugin = "xenos";
     }

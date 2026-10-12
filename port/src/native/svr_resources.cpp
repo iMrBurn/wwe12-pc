@@ -52,7 +52,7 @@ REXCVAR_DEFINE_BOOL(svr_scale_square_surfaces, false, "SvR",
                     "resolution too; off keeps them at the Xbox size, as the 16:9 screen ones are "
                     "the only ones that need it.");
 REXCVAR_DEFINE_INT32(svr_render_scale, 0, "SvR",
-                     "Internal resolution: 720, 1080, 1440, 2160 (4K) or 2880 (also 1 = 720p, "
+                     "Internal resolution: 540 (below the Xbox, for weak GPUs), 720, 1080, 1440, 2160 (4K) or 2880 (also 1 = 720p, "
                      "2 = 1440p, 3 = 4K, 4 = 2880p). 0 = auto: from the display (1440p on "
                      "1080p/1440p screens, 4K on 4K screens), 720p on Steam Deck and on "
                      "integrated GPUs");
@@ -153,7 +153,9 @@ float SvrRenderScale() {
       device && device->getDescription().type == plume::RenderDeviceType::INTEGRATED;
   if (const int configured = REXCVAR_GET(svr_render_scale); configured > 0) {
     // A multiple (1-4) or a height: 720, 1080 (1.5x), 1440, 2160, 2880.
+    // 540 (0.75x) draws below the Xbox's own 720p, for the weakest integrated GPUs.
     scale = configured <= 4 ? float(configured)
+            : configured == 540  ? 0.75f
             : configured == 1080 ? 1.5f
                                  : float(std::clamp((configured + 360) / 720, 1, 4));
   } else if (integrated) {

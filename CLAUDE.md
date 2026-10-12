@@ -108,3 +108,17 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   Unlockables » ne débloque que les persos des DLC, pas le reste. Piste : cvar `wwe12_unlock_all`
   (case dans le launcher) qui force les drapeaux de déblocage, sans toucher aux sauvegardes du joueur.
   Il faut d'abord trouver dans le code où le jeu teste si un élément est débloqué.
+- **Yeux/dents noirs ET cheveux de l'arbitre abîmés sur Intel iGPU** (RaptorLake, 720p et 540p,
+  2026-10-12), alors que c'est bon sur NVIDIA : même famille de dessins (couches semi-transparentes
+  par-dessus la peau). Touche sûrement les joueurs Intel UHD (issue #7). Pour la conversation Rendu.
+
+## Optimisation (2026-10-12)
+
+- Chargements : l'horloge Windows 1 ms (`wwe12_precise_timer`) ne change rien (~12 s de chargement
+  de match avant/après) ; le jeu attend volontairement. Laissée désactivée.
+- Saccades 1er lancement : `pipelines_seed.w12p` livré à côté de l'exe (copie de
+  `Documents\wwe12\cache\pipelines.bin` par `tools/package.ps1`), préparé en arrière-plan au démarrage.
+- Petits PC : `svr_render_scale = 540` (0,75x) existe, image correcte ; **voile blanc sur le bas de
+  l'image pendant les entrées, seulement en 540p** (pas en 720p) : à corriger (conversation Rendu)
+  avant de proposer 540p dans le launcher et OPTIONS > GRAPHICS. Puce Intel RaptorLake à 720p :
+  ~6 ms de travail par image en match, 12 ms dans les menus.

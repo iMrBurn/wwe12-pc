@@ -25,6 +25,7 @@
 #include <system_error>
 #include <thread>
 
+#include <rex/filesystem.h>
 #include <rex/runtime.h>
 
 #ifdef REBLUE_PSO_CAP
@@ -420,8 +421,13 @@ PipelineState DiskEntry(const PipelineState &state, u64 vsHash, u64 psHash,
   return s;
 }
 
-std::vector<PipelineState> LoadDiskCache() {
-  const auto path = DiskCachePath();
+// Pipelines recorded by the developers, shipped next to wwe12.exe, so a first session already
+// prepares them in the background instead of stuttering on each new one.
+std::filesystem::path SeedCachePath() {
+  return rex::filesystem::GetExecutableFolder() / "pipelines_seed.w12p";
+}
+
+std::vector<PipelineState> LoadDiskCache(const std::filesystem::path &path) {
   std::vector<PipelineState> out;
   if (path.empty())
     return out;
@@ -626,21 +632,29 @@ void ReplayBootCache() {
   }
   // Pipelines recorded by earlier sessions: compiled in the background as soon as their
   // shaders and vertex declaration exist, before the first draw needs them.
-  std::vector<PipelineState> disk = LoadDiskCache();
+  std::vector<PipelineState> disk = LoadDiskCache(DiskCachePath());
+  const size_t own = disk.size();
+  {
+    std::vector<PipelineState> seed = LoadDiskCache(SeedCachePath());
+    disk.insert(disk.end(), seed.begin(), seed.end());
+  }
   {
     std::lock_guard<std::mutex> diskLock(g_diskMutex);
     for (const auto &e : disk)
       if (g_diskKeys.insert(HashPipelineState(e)).second)
         g_diskEntries.push_back(e);
   }
+  std::unordered_set<u64> seen;
   for (const auto &entry : disk) {
+    if (!seen.insert(HashPipelineState(entry)).second)
+      continue;
     if (TryResolveAndEnqueueLocked(entry))
       ++immediate;
     else
       g_replayPending.push_back(entry);
   }
-  BD_INFO("pso_recorder: {} pipeline(s) loaded from {}", disk.size(),
-          DiskCachePath().string());
+  BD_INFO("pso_recorder: {} pipeline(s) loaded from {}, {} from the shipped seed, {} distinct",
+          own, DiskCachePath().string(), disk.size() - own, seen.size());
 }
 
 void FlushPSOCapture() {
