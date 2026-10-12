@@ -124,7 +124,6 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   entrée → match (~5 s) ne bouge pas : autre attente, à étudier.
 - Saccades 1er lancement : `pipelines_seed.w12p` livré à côté de l'exe (copie de
   `Documents\wwe12\cache\pipelines.bin` par `tools/package.ps1`), préparé en arrière-plan au démarrage.
-- Petits PC : `svr_render_scale = 540` (0,75x) existe, image correcte ; **voile blanc sur le bas de
-  l'image pendant les entrées, seulement en 540p** (pas en 720p) : à corriger (conversation Rendu)
-  avant de proposer 540p dans le launcher et OPTIONS > GRAPHICS. Puce Intel RaptorLake à 720p :
+- Petits PC : `svr_render_scale = 540` (0,75x) existe, image correcte ; le voile blanc des entrées en 540p a disparu avec la correction Inf/NaN (vérifié sur l'iGPU Intel) :
+  540p est proposé dans le launcher et OPTIONS > GRAPHICS. Puce Intel RaptorLake à 720p :
   ~6 ms de travail par image en match, 12 ms dans les menus.
