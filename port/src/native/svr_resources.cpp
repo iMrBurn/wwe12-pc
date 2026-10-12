@@ -366,6 +366,11 @@ void ReadBackTarget(u32 texture_va, GuestTexture *dst);
 void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
   if (!dst || level != 0 || face != 0 || !REXCVAR_GET(svr_resolve_readback))
     return;
+  // Screen images (the scene, its bloom and depth-of-field chain: 16:9) are never read by the
+  // CPU. At 1x (Steam Deck, 720p) they used to qualify, and reading them back in the middle of a
+  // frame broke the rest of it (a black or noisy block in entrances and cutscenes).
+  if (u64(dst->width) * 9 == u64(dst->height) * 16)
+    return;
   // Per-frame targets (shadows, lighting, the scene) are resolved on every frame; the composites
   // the CPU reads are built at load, or now and then in a match. Only those are worth the GPU
   // wait: a target resolved on more than kMaxStreak frames in a row is skipped until it rests.
