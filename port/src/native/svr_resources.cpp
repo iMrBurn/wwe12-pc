@@ -351,6 +351,18 @@ GuestTexture *SvrResolveTarget(u32 texture_va, u32 scale) {
 // Presented frames, for SvrAfterResolve's per-frame target detection.
 static std::atomic<u64> g_frame_index{0};
 
+// Multi-level targets (wrestler skin composites) waiting for their read-back: the game paints
+// them in bursts of patch resolves (skin at load, blood mid-match), each GPU wait a stutter, so one
+// read-back per burst, a couple of frames after its last resolve (SvrProcessDeferredReadbacks).
+namespace {
+struct DeferredReadback {
+  GuestTexture *dst = nullptr;
+  u64 last_frame = 0;
+};
+std::unordered_map<u32, DeferredReadback> g_deferred_readbacks;
+void ReadBackTarget(u32 texture_va, GuestTexture *dst);
+}  // namespace
+
 void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
   if (!dst || level != 0 || face != 0 || !REXCVAR_GET(svr_resolve_readback))
     return;
@@ -364,12 +376,16 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
     const auto it = g_targets.find(texture_va);
     if (it == g_targets.end() || it->second.host != dst || it->second.extent > 1)
       return;
+    const u64 frame = g_frame_index.load(std::memory_order_relaxed);
+    if (dst->mipLevels > 1) {
+      g_deferred_readbacks[texture_va] = DeferredReadback{dst, frame};
+      return;
+    }
     struct Streak {
       u64 last_frame = 0, frames = 0;
     };
     static std::unordered_map<u32, Streak> s_streaks;
     Streak &st = s_streaks[texture_va];
-    const u64 frame = g_frame_index.load(std::memory_order_relaxed);
     if (st.frames == 0 || frame > st.last_frame + kRestFrames)
       st.frames = 1;
     else if (frame != st.last_frame)
@@ -378,6 +394,31 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
     if (st.frames > kMaxStreak)
       return;
   }
+  ReadBackTarget(texture_va, dst);
+}
+
+// Called once per frame (game thread, no lock held): read back the bursts that have settled.
+static void SvrProcessDeferredReadbacks(u64 frame) {
+  std::vector<std::pair<u32, GuestTexture *>> ready;
+  {
+    std::lock_guard lock(g_mutex);
+    for (auto it = g_deferred_readbacks.begin(); it != g_deferred_readbacks.end();) {
+      if (frame < it->second.last_frame + 2) {
+        ++it;
+        continue;
+      }
+      const auto t = g_targets.find(it->first);
+      if (t != g_targets.end() && t->second.host == it->second.dst)
+        ready.emplace_back(it->first, it->second.dst);
+      it = g_deferred_readbacks.erase(it);
+    }
+  }
+  for (const auto &[texture_va, dst] : ready)
+    ReadBackTarget(texture_va, dst);
+}
+
+namespace {
+void ReadBackTarget(u32 texture_va, GuestTexture *dst) {
   std::vector<u8> pixels;
   u32 row_pitch = 0;
   if (!Video::ReadbackTextureLevel(dst, 0, 0, pixels, row_pitch))
@@ -416,13 +457,14 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
     }
   }
   // Large ones (wrestler composites) at info: shows when the game rebuilds them mid-match.
-  if (dst->width >= 512)
+  if (dst->width >= 512 && dst->mipLevels == 1)
     BD_INFO("SvR target 0x{:08X}: {}x{} resolve written back to memory: {}", texture_va,
             dst->width, dst->height, written);
   else
     BD_DEBUG("SvR target 0x{:08X}: {}x{} resolve written back to memory: {}", texture_va,
              dst->width, dst->height, written);
 }
+}  // namespace
 
 namespace {
 
@@ -769,6 +811,7 @@ void SvrOnFrame() {
   SvrWatchdogHeartbeat();
   const u64 frame = g_frame.fetch_add(1, std::memory_order_relaxed);
   g_frame_index.store(frame, std::memory_order_relaxed);
+  SvrProcessDeferredReadbacks(frame);
   LoadStatsTick();
   Wwe12QuitEntryTick(frame);
   // Present rate in the log every 600 frames (pacing check).

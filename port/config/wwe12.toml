@@ -1,42 +1,42 @@
-# Réglages d'exécution par défaut de WWE '12, copiés à côté de wwe12.exe à chaque compilation.
-# (Les réglages de codegen sont ailleurs : port/wwe12_config.toml.)
-# Les options de la ligne de commande (--nom=valeur) restent prioritaires.
+# WWE '12 PC settings. Edit with any text editor (Notepad works), then restart the game.
+# Command line options (--name=value) take priority over this file.
 
-# Le jeu envoie des milliers de descripteurs de texture que l'émulation Xenos juge
-# invalides (plusieurs centaines d'avertissements par seconde). Comme pour d'autres
-# jeux WWE de cette génération sous Xenia, on les accepte.
-gpu_allow_invalid_fetch_constants = true
+# ---------------------------------------------------------------------------------------------
+# Game
+# ---------------------------------------------------------------------------------------------
 
-# Rendu : Vulkan par défaut, car c'est le seul stable (aucun plantage). Direct3D 12 a des
-# entrées parfaites mais bloque encore le GPU (DEVICE_HUNG) en match : en cours de correction,
-# à tester avec --gpu_backend=d3d12. Sur un PC portable à deux GPU, régler wwe12.exe sur
-# « Hautes performances » dans Paramètres > Écran > Graphiques, sinon Vulkan ne voit que
-# le GPU intégré (et brancher le chargeur : la RTX est coupée sur batterie).
-gpu_backend = "vulkan"
-
-# Les catcheurs des entrées sont animés par des shaders « memexport » (écriture directe en
-# mémoire GPU) : il faut relire ces données côté CPU. Sans ça, Vulkan les rend invisibles
-# (seule leur ombre s'affiche) ; on l'active aussi pour D3D12.
-d3d12_readback_memexport = true
-vulkan_readback_memexport = true
-
-# Shaders « comme un jeu PC » : au démarrage, tout le cache (Documents\wwe12\cache) est
-# compilé avant que le jeu commence. Un effet encore jamais vu est compilé sur le moment,
-# en attendant qu'il soit prêt (courte pause) au lieu de sauter son draw (écran noir de
-# 1 à 5 s), puis ajouté au cache : ces pauses disparaissent au fil des parties.
-async_shader_compilation = false
-
-# Langue du jeu (comme le réglage de la console) : 1 anglais, 3 allemand, 4 français,
-# 5 espagnol, 6 italien. La version européenne du jeu contient ces cinq langues.
+# Game language: 1 English, 3 German, 4 French, 5 Spanish, 6 Italian.
 user_language = 1
 
-# Filtrage anisotrope (0 = désactivé, 2/4/8/16) : garde nettes les textures vues en biais
-# (sol, rampe, tapis du ring, public). Coût quasi nul sur une carte graphique récente.
+# Main menu: SHOP becomes EXIT (quits the game) and Xbox LIVE is labelled Online.
+wwe12_quit_entry = true
+
+# ---------------------------------------------------------------------------------------------
+# Graphics
+# ---------------------------------------------------------------------------------------------
+
+# Internal resolution: 0 = automatic (from your screen; 720p on Steam Deck and on graphics built
+# into the processor), 1 = 720p, 2 = 1440p, 3 = 4K. If the game runs slowly, set 1.
+svr_render_scale = 0
+
+# 60 fps in entrances and cutscenes (the original game drops to 30 there). false = original 30.
+wwe12_60fps = true
+
+# Sharpness of textures seen at an angle (ring, ramp, crowd): 0 (off), 2, 4, 8 or 16.
 bd_anisotropy = 16
 
-# Clavier (joueur 1, en plus de la manette : les deux marchent en même temps). Les manettes Xbox
-# et PlayStation (DualShock 4, DualSense) sont reconnues d'office. Chaque touche peut avoir
-# plusieurs choix séparés par des virgules ; ZQSD et WASD marchent tous les deux (AZERTY/QWERTY).
+# Graphics card to use, by name (empty = automatic). Laptop with two graphics cards: rather set
+# wwe12.exe to "High performance" in Windows Settings > System > Display > Graphics, and plug in
+# the charger (some laptops turn the dedicated card off on battery).
+svr_gpu_device = ""
+
+# ---------------------------------------------------------------------------------------------
+# Controls
+# ---------------------------------------------------------------------------------------------
+
+# Xbox and PlayStation controllers (DualShock 4, DualSense) work out of the box.
+# Keyboard for player 1, usable together with a controller. Each binding can list several keys
+# separated by commas; ZQSD and WASD both work (AZERTY and QWERTY keyboards).
 mnk_mode = true
 keybind_lstick_up = "Z,W"
 keybind_lstick_left = "Q,A"
@@ -62,3 +62,15 @@ keybind_dpad_left = "F"
 keybind_dpad_right = "H"
 keybind_start = "Return,Escape"
 keybind_back = "Tab,Backspace"
+
+# ---------------------------------------------------------------------------------------------
+# Advanced (leave as is)
+# ---------------------------------------------------------------------------------------------
+
+# Settings of the emulated Xbox 360 GPU, kept for its fallback mode (the port normally draws
+# with its own native Vulkan renderer).
+gpu_allow_invalid_fetch_constants = true
+gpu_backend = "vulkan"
+d3d12_readback_memexport = true
+vulkan_readback_memexport = true
+async_shader_compilation = false
