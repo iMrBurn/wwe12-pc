@@ -223,13 +223,14 @@ std::vector<Setting> BuildSettings() {
     Setting r;
     r.label = &Texts::resolution;
     // svr_render_scale holds a height (720, 1080, 1440, 2160) or, from older files, a multiple.
-    static constexpr int kHeights[] = {0, 720, 1080, 1440, 2160};
-    r.values = {t.automatic, "720P", "1080P", "1440P", "4K"};
+    static constexpr int kHeights[] = {0, 540, 720, 1080, 1440, 2160};
+    r.values = {t.automatic, "540P", "720P", "1080P", "1440P", "4K"};
     switch (REXCVAR_GET(svr_render_scale)) {
-    case 1: case 720: r.index = 1; break;
-    case 1080: r.index = 2; break;
-    case 2: case 1440: r.index = 3; break;
-    case 3: case 4: case 2160: case 2880: r.index = 4; break;
+    case 540: r.index = 1; break;
+    case 1: case 720: r.index = 2; break;
+    case 1080: r.index = 3; break;
+    case 2: case 1440: r.index = 4; break;
+    case 3: case 4: case 2160: case 2880: r.index = 5; break;
     default: r.index = 0; break;
     }
     r.next_start = true;

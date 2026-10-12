@@ -482,17 +482,18 @@ void PageSettings() {
   }
 
   // svr_render_scale holds a height (720, 1080, 1440, 2160) or, from older files, a multiple.
-  static const int kResHeights[] = {0, 720, 1080, 1440, 2160};
+  static const int kResHeights[] = {0, 540, 720, 1080, 1440, 2160};
   int ri = 0;
   switch (g_s.scale) {
-  case 1: case 720: ri = 1; break;
-  case 1080: ri = 2; break;
-  case 2: case 1440: ri = 3; break;
-  case 3: case 4: case 2160: case 2880: ri = 4; break;
+  case 540: ri = 1; break;
+  case 1: case 720: ri = 2; break;
+  case 1080: ri = 3; break;
+  case 2: case 1440: ri = 4; break;
+  case 3: case 4: case 2160: case 2880: ri = 5; break;
   default: ri = 0; break;
   }
-  const char *res_names[] = {t.res_auto, "720p", "1080p", "1440p", "4K (2160p)"};
-  if (ImGui::Combo(t.resolution, &ri, res_names, 5)) {
+  const char *res_names[] = {t.res_auto, "540p", "720p", "1080p", "1440p", "4K (2160p)"};
+  if (ImGui::Combo(t.resolution, &ri, res_names, 6)) {
     g_s.scale = kResHeights[ri];
     changed = true;
   }

@@ -19,7 +19,8 @@ wwe12_graphics_menu = true
 # ---------------------------------------------------------------------------------------------
 
 # Internal resolution: 0 = automatic (from your screen; 720p on Steam Deck and on graphics built
-# into the processor), 720, 1080, 1440 or 2160 (4K). If the game runs slowly, set 720 or 1080.
+# into the processor), 540, 720, 1080, 1440 or 2160 (4K). If the game runs slowly, set 720, or 540
+# on the weakest graphics built into the processor.
 svr_render_scale = 0
 
 # 60 fps in entrances and cutscenes (experimental; the original game drops to 30 there).
