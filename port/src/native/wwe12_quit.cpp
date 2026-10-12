@@ -33,12 +33,15 @@
 #include "core/logging.h"
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
+#include "wwe12_graphics_menu.h"
 
 REXCVAR_DEFINE_BOOL(wwe12_quit_entry, true, "WWE12",
                     "Main menu: SHOP becomes EXIT (quits the game); \"Xbox LIVE\" is labelled Online.");
 REXCVAR_DEFINE_BOOL(wwe12_pc_texts, true, "WWE12",
                     "Texts that mention the Xbox 360 console (\"do not turn off\") say PC.");
 REXCVAR_DECLARE(uint32_t, user_language);
+REXCVAR_DECLARE(bool, wwe12_graphics_menu);
+REXCVAR_DECLARE(int32_t, wwe12_graphics_link_test);
 
 namespace bd::gpu {
 namespace {
@@ -99,7 +102,7 @@ u32 RewriteConsolePhrase(u8 *hit, u8 *region_start, u8 *region_end) {
 // Scans committed guest memory for "Xbox LIVE\0" texts that a string table entry of id 41006
 // points at (entry stored little- or big-endian: the file's layout, or byte-swapped at load), and
 // rewrites them. Returns the number of texts patched; `candidates` counts the raw text hits.
-u32 PatchLoadedTables(u32 &candidates, u32 &pc_texts) {
+u32 PatchLoadedTables(u32 &candidates, u32 &pc_texts, u32 &graphics_texts) {
   u8 *const base = bd::mem::at<u8>(0x40000000) - 0x40000000;
   const char *label = OnlineLabel();
   const size_t label_len = std::strlen(label);
@@ -107,6 +110,7 @@ u32 PatchLoadedTables(u32 &candidates, u32 &pc_texts) {
   u32 patched = 0;
   candidates = 0;
   pc_texts = 0;
+  graphics_texts = 0;
   for (const auto [lo, hi] : {std::pair<u32, u32>{0x00010000u, 0x9FFF0000u},
                               std::pair<u32, u32>{0xA0000000u, 0xC0000000u}}) {
     u8 *p = base + lo;
@@ -123,6 +127,7 @@ u32 PatchLoadedTables(u32 &candidates, u32 &pc_texts) {
                             !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) &&
                             (mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE));
       if (writable) {
+        graphics_texts += Wwe12RelabelGraphicsEntry(p, region_end);
         for (u8 *t = p; t + sizeof(kText) <= region_end;) {
           t = static_cast<u8 *>(std::memchr(t, 'X', size_t(region_end - t)));
           if (!t || t + sizeof(kText) > region_end)
@@ -214,14 +219,16 @@ void Wwe12QuitEntryTick(u64 frame) {
       g_scanning.exchange(true))
     return;
   std::thread([] {
-    u32 candidates = 0, pc_texts = 0;
+    u32 candidates = 0, pc_texts = 0, graphics_texts = 0;
     const auto t0 = std::chrono::steady_clock::now();
-    const u32 n = PatchLoadedTables(candidates, pc_texts);
+    const u32 n = PatchLoadedTables(candidates, pc_texts, graphics_texts);
     static std::atomic<u32> s_timed{0};
     if (s_timed.fetch_add(1) < 3)
       BD_INFO("WWE12 texts: scan took {} ms",
               std::chrono::duration_cast<std::chrono::milliseconds>(
                   std::chrono::steady_clock::now() - t0).count());
+    if (graphics_texts)
+      BD_INFO("WWE12 texts: {} OPTIONS manual entr(y/ies) now say GRAPHICS", graphics_texts);
     if (pc_texts)
       BD_INFO("WWE12 texts: {} \"Xbox 360 console\" message(s) now say PC", pc_texts);
     static std::atomic<u32> s_reports{0};
@@ -255,6 +262,18 @@ REX_EXTERN(__imp__sub_8253A028);
 // (0x4C bytes: +0 id, +4 parent, +8 page, +24 label). The main menu's (page 1) record labelled
 // 45061, SHOP relabelled EXIT by wwe12_menu_patch.cpp, closes the game.
 extern "C" REX_FUNC(sub_8253C3F0) {
+  // The OPTIONS entry relabelled GRAPHICS (wwe12_graphics_menu.cpp) opens the settings screen
+  // instead of the in-game manual.
+  if (REXCVAR_GET(wwe12_graphics_menu) && !REXCVAR_GET(wwe12_graphics_link_test)) {
+    PPCContext probe = ctx;
+    __imp__sub_8253A028(probe, base);
+    const u32 entry = probe.r3.u32;
+    if (entry && entry != 0xFFFFFFFFu &&
+        bd::mem::load<u32>(entry + 24) == kWwe12GraphicsStringId) {
+      Wwe12GraphicsMenuRequest();
+      return;
+    }
+  }
   if (REXCVAR_GET(wwe12_quit_entry)) {
     PPCContext probe = ctx;
     __imp__sub_8253A028(probe, base);

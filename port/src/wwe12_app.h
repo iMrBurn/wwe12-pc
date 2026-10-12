@@ -21,6 +21,8 @@
 #if defined(SVR_NATIVE_RENDERER)
 #include "gpu/device.h"
 #include "gpu/imgui_overlay_drawer.h"
+#include "native/wwe12_graphics_menu.h"
+#include <rex/input/input_system.h>
 #endif
 
 #if defined(SVR_NATIVE_RENDERER)
@@ -184,7 +186,17 @@ class Wwe12App : public rex::ReXApp {
         imgui_drawer()->Draw(ctx);
       });
     });
+    // OPTIONS > GRAPHICS (wwe12_graphics_menu.cpp): drawn by the overlay hook above; the game
+    // gets no input while it is open.
+    Wwe12GraphicsMenuInit(
+        imgui_drawer(),
+        [this](std::function<void()> fn) { app_context().CallInUIThread(std::move(fn)); },
+        rex::filesystem::GetExecutableFolder() / "wwe12.toml");
+    if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system()))
+      input->SetActiveCallback([] { return !Wwe12GraphicsMenuIsOpen(); });
   }
+
+  void OnConfigureFonts(ImFontAtlas* atlas) override { Wwe12GraphicsMenuConfigureFonts(atlas); }
 
   void OnWindowPixelSizeChanged(uint32_t, uint32_t) override { bd::gpu::Video::RequestResize(); }
 #endif

@@ -11,6 +11,9 @@ user_language = 1
 # Main menu: SHOP becomes EXIT (quits the game) and Xbox LIVE is labelled Online.
 wwe12_quit_entry = true
 
+# OPTIONS menu: "IN-GAME MANUAL" becomes GRAPHICS, a screen to change the settings below in game.
+wwe12_graphics_menu = true
+
 # ---------------------------------------------------------------------------------------------
 # Graphics
 # ---------------------------------------------------------------------------------------------
@@ -25,6 +28,9 @@ wwe12_60fps = false
 
 # Sharpness of textures seen at an angle (ring, ramp, crowd): 0 (off), 2, 4, 8 or 16.
 bd_anisotropy = 16
+
+# Vertical sync: true avoids tearing (horizontal cuts in the picture).
+bd_vsync = true
 
 # Graphics card to use, by name (empty = automatic). Laptop with two graphics cards: rather set
 # wwe12.exe to "High performance" in Windows Settings > System > Display > Graphics, and plug in

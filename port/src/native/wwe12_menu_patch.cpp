@@ -32,6 +32,9 @@
 #include <rex/logging/macros.h>
 
 REXCVAR_DECLARE(bool, wwe12_quit_entry);
+REXCVAR_DEFINE_INT32(wwe12_graphics_link_test, 0, "WWE12",
+                     "Test: link of the OPTIONS > GRAPHICS record (0 = the overlay screen; 0x518 opens the "
+                     "game's IN-GAME OPTIONS page).");
 
 namespace {
 
@@ -69,16 +72,25 @@ bool ReadGameFile(rex::filesystem::VirtualFileSystem *fs, const char *path,
 bool RelabelShop(std::vector<uint8_t> &d, size_t base) {
   const uint32_t count = Be32(&d[base + 4]);
   const size_t first = base + 0x10;
+  bool found = false;
   if (first + size_t(count) * kRecordSize > d.size())
     return false;
   for (uint32_t k = 0; k < count; ++k) {
     uint8_t *r = &d[first + size_t(k) * kRecordSize];
+    // Test: OPTIONS > GRAPHICS (the manual's record, label 41184) opens a native screen.
+    if (const int link = REXCVAR_GET(wwe12_graphics_link_test);
+        link && Be32(r + 0x18) == 41184) {
+      SetBe32(r + 0x54, 5);  // a screen, not the manual's sub-menu (kind 1)
+      SetBe32(r + 0x58, 0);
+      SetBe32(r + 0x6C, uint32_t(link));
+      SetBe32(r + 0x70, 2);
+    }
     if (Be32(r + 0x30) == 1 && Be32(r + 0x18) == kShopStringId) {
       SetBe32(r + 0x18, kExitStringId);
-      return true;
+      found = true;
     }
   }
-  return false;
+  return found;
 }
 
 }  // namespace

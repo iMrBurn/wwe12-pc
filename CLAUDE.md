@@ -92,6 +92,11 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   qu'AMD ; son journal est dans `work/issue7/wwe12_014.log` (rien d'anormal visible : 60 fps, cible
   carrée 1120x1120 fmt 36 non relue, composite peau 1024x512 fmt 15 vidée) ;
   titantrons basse résolution (vidéos Bink 320x320 sur le disque).
+- Menu OPTIONS > GRAPHICS (`wwe12_graphics_menu.cpp`) : l'entrée du manuel (texte 41184) renommée
+  en mémoire ; écran ImGui au style des pages d'options (police Impact penchée), entrées du jeu
+  bloquées pendant qu'il est ouvert. Page 100 % native = projet à part : les pages d'options sont
+  des listes de numéros de textes en mémoire, et `wwe12_graphics_link_test=1304` ouvre déjà la vraie
+  page IN-GAME OPTIONS depuis GRAPHICS (enregistrement menu.pac : +0x54 type 5, +0x6C lien).
 - Voitures des entrées (Del Rio, Eddie Guerrero) : le jeu dessine la carrosserie en mélange alpha avec
   l'alpha d'une texture BC3 (~0,63), donc translucide ; la Xbox l'affiche opaque (cause réelle inconnue).
   Contournement : cvar `wwe12_car_opaque` (défaut true, `pipeline_cache.cpp`) coupe le mélange pour le

@@ -1,0 +1,502 @@
+// WWE '12 PC: a GRAPHICS screen in the game's OPTIONS menu.
+//
+// The OPTIONS menu's "IN-GAME MANUAL" entry (string 41184; "COMMENT JOUER" in French) has no use
+// on PC: its text is rewritten in memory as the language's "GRAPHICS" (the way wwe12_quit.cpp
+// renames Xbox LIVE), and choosing it opens this screen instead of the manual (decide hook in
+// wwe12_quit.cpp). Building a real page of the game's menus was not possible (adding a main menu
+// entry already broke the menus' navigation), so the screen is drawn over the game with ImGui,
+// in the menus' colours, and the game gets no input while it is open.
+//
+// Controls: up/down to pick a setting, left/right or A/Enter to change it, B/Escape to go back.
+// Changes apply at once (the internal resolution at the next start) and are saved to wwe12.toml.
+//
+// Disabled with wwe12_graphics_menu = false in wwe12.toml (the manual comes back).
+
+#include "wwe12_graphics_menu.h"
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cfloat>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <vector>
+
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
+#include <imgui.h>
+
+#include <rex/cvar.h>
+#include <rex/ui/imgui_dialog.h>
+#include <rex/ui/imgui_drawer.h>
+
+#include "../launcher/toml_file.h"
+#include "core/logging.h"
+
+REXCVAR_DEFINE_BOOL(wwe12_graphics_menu, true, "WWE12",
+                    "OPTIONS menu: \"IN-GAME MANUAL\" becomes GRAPHICS, a settings screen.");
+REXCVAR_DECLARE(uint32_t, user_language);
+REXCVAR_DECLARE(int32_t, svr_render_scale);
+REXCVAR_DECLARE(int32_t, bd_anisotropy);
+REXCVAR_DECLARE(bool, bd_vsync);
+REXCVAR_DECLARE(bool, wwe12_60fps);
+
+namespace {
+
+// ---- texts ----------------------------------------------------------------------------------
+
+enum Lang { kEn, kFr, kDe, kEs, kIt };
+
+Lang CurrentLang() {
+  switch (REXCVAR_GET(user_language)) {
+  case 3: return kDe;
+  case 4: return kFr;
+  case 5: return kEs;
+  case 6: return kIt;
+  default: return kEn;
+  }
+}
+
+// The manual entry's text in each language (string.pac), and what it becomes. The new text is
+// shorter, so it is written in place.
+struct EntryText {
+  const char *manual;
+  const char *graphics;
+};
+constexpr EntryText kEntryTexts[] = {
+    {"IN-GAME MANUAL", "GRAPHICS"},
+    {"COMMENT JOUER", "GRAPHISMES"},
+    {"SPIELANLEITUNG", "GRAFIK"},
+    {"MANUAL DEL JUEGO", "GR\xC3\x81" "FICOS"},
+    {"INFORMAZIONI", "GRAFICA"},
+};
+
+// Upper case like the game's menus; header = the page band (the menu we come from), title = the
+// centred subtitle.
+struct Texts {
+  const char *title, *resolution, *aniso, *vsync, *fps60;
+  const char *off, *on, *yes, *no, *automatic;
+  const char *next_start, *header, *change, *back, *fps60_note;
+};
+constexpr Texts kTexts[] = {
+    {"GRAPHICS", "INTERNAL RESOLUTION", "TEXTURE FILTERING", "VERTICAL SYNC",
+     "60 FPS ENTRANCES", "OFF", "ON", "YES", "NO", "AUTO",
+     "APPLIED THE NEXT TIME THE GAME STARTS", "OPTIONS", "CHANGE", "BACK",
+     "EXPERIMENTAL: TITLE BELTS CAN MOVE ODDLY"},
+    {"GRAPHISMES", "R\xC3\x89SOLUTION INTERNE", "FILTRAGE DES TEXTURES", "SYNCHRO VERTICALE",
+     "ENTR\xC3\x89" "ES \xC3\x80 60 FPS", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "OUI", "NON",
+     "AUTO", "APPLIQU\xC3\x89 AU PROCHAIN LANCEMENT DU JEU", "OPTIONS", "CHANGER", "RETOUR",
+     "EXP\xC3\x89RIMENTAL : LES CEINTURES PEUVENT BOUGER BIZARREMENT"},
+    {"GRAFIK", "INTERNE AUFL\xC3\x96SUNG", "TEXTURFILTERUNG", "VERTIKALE SYNC.",
+     "EINZ\xC3\x9CGE MIT 60 FPS", "AUS", "AN", "JA", "NEIN", "AUTO",
+     "WIRD BEIM N\xC3\x84" "CHSTEN SPIELSTART \xC3\x9C" "BERNOMMEN", "OPTIONEN",
+     "\xC3\x84NDERN", "ZUR\xC3\x9C" "CK",
+     "EXPERIMENTELL: TITELG\xC3\x9CRTEL K\xC3\x96NNEN SICH SELTSAM BEWEGEN"},
+    {"GR\xC3\x81" "FICOS", "RESOLUCI\xC3\x93N INTERNA", "FILTRADO DE TEXTURAS",
+     "SINCRONIZACI\xC3\x93N VERTICAL", "ENTRADAS A 60 FPS", "NO", "S\xC3\x8D", "S\xC3\x8D", "NO",
+     "AUTO", "SE APLICA LA PR\xC3\x93XIMA VEZ QUE SE INICIE EL JUEGO", "OPCIONES", "CAMBIAR",
+     "VOLVER", "EXPERIMENTAL: LOS CINTURONES PUEDEN MOVERSE DE FORMA EXTRA\xC3\x91" "A"},
+    {"GRAFICA", "RISOLUZIONE INTERNA", "FILTRO TEXTURE", "SINCRONIA VERTICALE",
+     "INGRESSI A 60 FPS", "NO", "S\xC3\x8C", "S\xC3\x8C", "NO", "AUTO",
+     "APPLICATO AL PROSSIMO AVVIO DEL GIOCO", "OPZIONI", "CAMBIA", "INDIETRO",
+     "SPERIMENTALE: LE CINTURE POSSONO MUOVERSI IN MODO STRANO"},
+};
+
+const Texts &T() { return kTexts[CurrentLang()]; }
+
+// ---- state shared with the app --------------------------------------------------------------
+
+rex::ui::ImGuiDrawer *g_drawer = nullptr;
+std::function<void(std::function<void()>)> g_run_in_ui;
+std::filesystem::path g_toml_path;
+std::atomic<bool> g_open{false};
+ImFont *g_menu_font = nullptr;  // Impact, close to the menus' font (null: ImGui's default)
+
+// ---- controller ----------------------------------------------------------------------------
+
+// XInput read directly: the game's input is switched off while the screen is open.
+struct XPad {
+  WORD buttons = 0;
+  SHORT ly = 0, lx = 0;
+};
+using XInputGetStateFn = DWORD(WINAPI *)(DWORD, void *);
+
+XPad ReadPads() {
+  static XInputGetStateFn get = [] {
+    for (const char *dll : {"xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"})
+      if (HMODULE m = LoadLibraryA(dll))
+        if (auto f = reinterpret_cast<XInputGetStateFn>(GetProcAddress(m, "XInputGetState")))
+          return f;
+    return XInputGetStateFn(nullptr);
+  }();
+  XPad all;
+  if (!get)
+    return all;
+  struct {
+    DWORD packet;
+    WORD buttons;
+    BYTE lt, rt;
+    SHORT lx, ly, rx, ry;
+  } st;
+  for (DWORD i = 0; i < 4; ++i) {
+    if (get(i, &st) != ERROR_SUCCESS)
+      continue;
+    all.buttons |= st.buttons;
+    if (std::abs(st.ly) > std::abs(all.ly))
+      all.ly = st.ly;
+    if (std::abs(st.lx) > std::abs(all.lx))
+      all.lx = st.lx;
+  }
+  return all;
+}
+
+enum Action { kNone, kUp, kDown, kLeft, kRight, kAccept, kBack };
+
+// Edge-triggered actions from keyboard and pads, with auto-repeat on held directions.
+class InputReader {
+ public:
+  Action Poll() {
+    const XPad p = ReadPads();
+    constexpr SHORT kDead = 16000;
+    bool held[7] = {};
+    held[kUp] = (p.buttons & 0x0001) || p.ly > kDead || ImGui::IsKeyDown(ImGuiKey_UpArrow) ||
+                ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_Z);
+    held[kDown] = (p.buttons & 0x0002) || p.ly < -kDead ||
+                  ImGui::IsKeyDown(ImGuiKey_DownArrow) || ImGui::IsKeyDown(ImGuiKey_S);
+    held[kLeft] = (p.buttons & 0x0004) || p.lx < -kDead ||
+                  ImGui::IsKeyDown(ImGuiKey_LeftArrow) || ImGui::IsKeyDown(ImGuiKey_A) ||
+                  ImGui::IsKeyDown(ImGuiKey_Q);
+    held[kRight] = (p.buttons & 0x0008) || p.lx > kDead ||
+                   ImGui::IsKeyDown(ImGuiKey_RightArrow) || ImGui::IsKeyDown(ImGuiKey_D);
+    held[kAccept] = (p.buttons & 0x1000) || ImGui::IsKeyDown(ImGuiKey_Enter) ||
+                    ImGui::IsKeyDown(ImGuiKey_KeypadEnter) || ImGui::IsKeyDown(ImGuiKey_Space) ||
+                    ImGui::IsKeyDown(ImGuiKey_K);
+    held[kBack] = (p.buttons & 0x2000) || (p.buttons & 0x0010) ||
+                  ImGui::IsKeyDown(ImGuiKey_Escape) || ImGui::IsKeyDown(ImGuiKey_Backspace) ||
+                  ImGui::IsKeyDown(ImGuiKey_L);
+    const double now = ImGui::GetTime();
+    Action result = kNone;
+    for (int a = kUp; a <= kBack; ++a) {
+      if (held[a] && !was_[a]) {
+        if (armed_[a])
+          result = Action(a);
+        next_repeat_[a] = now + 0.40;
+      } else if (held[a] && a <= kRight && armed_[a] && now >= next_repeat_[a]) {
+        result = Action(a);
+        next_repeat_[a] = now + 0.12;
+      }
+      // A button already down when the screen opens (the A that chose the entry) is ignored
+      // until it is released.
+      if (!held[a])
+        armed_[a] = true;
+      was_[a] = held[a];
+    }
+    return result;
+  }
+
+ private:
+  bool was_[7] = {};
+  bool armed_[7] = {};
+  double next_repeat_[7] = {};
+};
+
+// ---- settings -------------------------------------------------------------------------------
+
+struct Setting {
+  const char *Texts::*label;
+  std::vector<std::string> values;
+  int index = 0;
+  bool next_start = false;
+  const char *Texts::*note = nullptr;
+  std::function<void(int)> apply;  // sets the cvar
+  std::function<void(TomlFile &, int)> save;
+};
+
+std::vector<Setting> BuildSettings() {
+  const Texts &t = T();
+  std::vector<Setting> s;
+  {
+    Setting r;
+    r.label = &Texts::resolution;
+    r.values = {t.automatic, "720p", "1440p", "4K"};
+    r.index = std::clamp(REXCVAR_GET(svr_render_scale), 0, 3);
+    r.next_start = true;
+    r.apply = [](int i) { rex::cvar::SetFlagByName("svr_render_scale", std::to_string(i)); };
+    r.save = [](TomlFile &f, int i) { f.SetInt("svr_render_scale", i); };
+    s.push_back(std::move(r));
+  }
+  {
+    static constexpr int kAniso[] = {0, 2, 4, 8, 16};
+    Setting a;
+    a.label = &Texts::aniso;
+    a.values = {t.off, "2X", "4X", "8X", "16X"};
+    const int cur = REXCVAR_GET(bd_anisotropy);
+    a.index = 0;
+    for (int i = 0; i < 5; ++i)
+      if (kAniso[i] <= cur)
+        a.index = i;
+    a.apply = [](int i) { rex::cvar::SetFlagByName("bd_anisotropy", std::to_string(kAniso[i])); };
+    a.save = [](TomlFile &f, int i) { f.SetInt("bd_anisotropy", kAniso[i]); };
+    s.push_back(std::move(a));
+  }
+  {
+    Setting v;
+    v.label = &Texts::vsync;
+    v.values = {t.no, t.yes};
+    v.index = REXCVAR_GET(bd_vsync) ? 1 : 0;
+    v.apply = [](int i) { rex::cvar::SetFlagByName("bd_vsync", i ? "true" : "false"); };
+    v.save = [](TomlFile &f, int i) { f.SetBool("bd_vsync", i != 0); };
+    s.push_back(std::move(v));
+  }
+  {
+    Setting f60;
+    f60.label = &Texts::fps60;
+    f60.values = {t.no, t.yes};
+    f60.index = REXCVAR_GET(wwe12_60fps) ? 1 : 0;
+    f60.note = &Texts::fps60_note;
+    f60.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_60fps", i ? "true" : "false"); };
+    f60.save = [](TomlFile &f, int i) { f.SetBool("wwe12_60fps", i != 0); };
+    s.push_back(std::move(f60));
+  }
+  return s;
+}
+
+// ---- the screen -----------------------------------------------------------------------------
+
+class GraphicsMenu final : public rex::ui::ImGuiDialog {
+ public:
+  explicit GraphicsMenu(rex::ui::ImGuiDrawer *drawer)
+      : ImGuiDialog(drawer), settings_(BuildSettings()) {}
+
+ protected:
+  void OnClose() override {
+    Save();
+    g_open = false;
+    BD_INFO("[graphics] screen closed");
+  }
+
+  void OnDraw(ImGuiIO &io) override {
+    switch (input_.Poll()) {
+    case kUp: selected_ = (selected_ + int(settings_.size()) - 1) % int(settings_.size()); break;
+    case kDown: selected_ = (selected_ + 1) % int(settings_.size()); break;
+    case kLeft: Change(-1); break;
+    case kRight:
+    case kAccept: Change(+1); break;
+    case kBack: Close(); return;
+    default: break;
+    }
+
+    // Laid out like the game's option pages (GAMEPLAY > IN-GAME OPTIONS), in 1080p coordinates
+    // scaled to the window: orange page band, white rule, centred title, rows of large italic
+    // capitals with the chosen one red and underlined, red arrows around its value, and the
+    // A/B prompts at the bottom.
+    const Texts &t = T();
+    const ImVec2 screen = io.DisplaySize;
+    const float k = screen.y / 1080.0f;
+    const float ox = (screen.x - 1920.0f * k) * 0.5f;  // centred 16:9 area on wider windows
+    const auto P = [&](float x, float y) { return ImVec2(ox + x * k, y * k); };
+    ImFont *font = g_menu_font ? g_menu_font : ImGui::GetFont();
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+
+    // The menu underneath disappears behind a dark lower half; the artwork above stays.
+    // Opaque, so nothing of the menu (its "MAIN MENU" label, list and prompts) shows through.
+    dl->AddRectFilledMultiColor(ImVec2(0, 470 * k), ImVec2(screen.x, 530 * k),
+                                IM_COL32(6, 6, 6, 0), IM_COL32(6, 6, 6, 0),
+                                IM_COL32(6, 6, 6, 255), IM_COL32(6, 6, 6, 255));
+    dl->AddRectFilled(ImVec2(0, 530 * k), screen, IM_COL32(6, 6, 6, 255));
+
+    // Page band (orange, fading out on the right) with the parent menu's name in black.
+    const ImU32 orange = IM_COL32(240, 172, 48, 255);
+    const ImU32 clear_orange = IM_COL32(240, 172, 48, 0);
+    dl->AddRectFilled(P(205, 580), P(880, 624), orange);
+    dl->AddRectFilledMultiColor(P(880, 580), P(1010, 624), orange, clear_orange, clear_orange,
+                                orange);
+    Text(dl, font, 32 * k, P(228, 584), IM_COL32(20, 14, 6, 255), t.header);
+    // White rule under the band, fading at both ends.
+    const ImU32 white = IM_COL32(255, 255, 255, 255);
+    const ImU32 clear_white = IM_COL32(255, 255, 255, 0);
+    dl->AddRectFilledMultiColor(P(190, 624), P(400, 628), clear_white, white, white, clear_white);
+    dl->AddRectFilled(P(400, 624), P(1520, 628), white);
+    dl->AddRectFilledMultiColor(P(1520, 624), P(1730, 628), white, clear_white, clear_white,
+                                white);
+
+    // Centred title.
+    TextCentered(dl, font, 32 * k, P(960, 642), white, t.title);
+
+    // Rows.
+    const ImU32 red = IM_COL32(214, 22, 32, 255);
+    float y = 690;
+    for (int i = 0; i < int(settings_.size()); ++i) {
+      const Setting &s = settings_[i];
+      const bool sel = i == selected_;
+      const ImU32 col = sel ? red : white;
+      Text(dl, font, 40 * k, P(295, y), col, t.*s.label);
+      std::string value = s.values[s.index];
+      if (s.next_start)
+        value += " *";
+      TextCentered(dl, font, 40 * k, P(1380, y), col, value.c_str());
+      if (sel) {
+        // Red arrows either side of the value.
+        const float cy = (y + 24) * k;
+        dl->AddTriangleFilled(ImVec2(ox + 1184 * k, cy), ImVec2(ox + 1204 * k, cy - 11 * k),
+                              ImVec2(ox + 1204 * k, cy + 11 * k), red);
+        dl->AddTriangleFilled(ImVec2(ox + 1576 * k, cy), ImVec2(ox + 1556 * k, cy - 11 * k),
+                              ImVec2(ox + 1556 * k, cy + 11 * k), red);
+      }
+      // Separator; the chosen row's is red.
+      dl->AddRectFilled(P(240, y + 46), P(1665, y + 48), sel ? red : IM_COL32(70, 70, 74, 255));
+      y += 48;
+    }
+
+    // Note for the chosen row (next-start setting, experimental option).
+    const Setting &cur = settings_[selected_];
+    const char *note = cur.note ? t.*cur.note : (cur.next_start ? t.next_start : nullptr);
+    if (note)
+      Text(dl, font, 26 * k, P(295, y + 16), IM_COL32(240, 196, 64, 255),
+           (std::string(cur.next_start ? "* " : "") + note).c_str());
+
+    // Button prompts, like the game's: coloured round buttons and yellow words.
+    const ImU32 yellow = IM_COL32(242, 200, 72, 255);
+    Button(dl, font, k, P(228, 978), IM_COL32(60, 170, 50, 255), "A");
+    Text(dl, font, 30 * k, P(252, 960), yellow, t.change);
+    Button(dl, font, k, P(482, 978), IM_COL32(210, 30, 40, 255), "B");
+    Text(dl, font, 30 * k, P(506, 960), yellow, t.back);
+  }
+
+  // Italic text: the glyphs' vertices are sheared, as the menus' font slants.
+  static void Text(ImDrawList *dl, ImFont *font, float size, ImVec2 pos, ImU32 col,
+                   const char *text) {
+    const int first = dl->VtxBuffer.Size;
+    dl->AddText(font, size, pos, col, text);
+    const float base = pos.y + size;
+    for (int v = first; v < dl->VtxBuffer.Size; ++v)
+      dl->VtxBuffer[v].pos.x += (base - dl->VtxBuffer[v].pos.y) * 0.16f;
+  }
+  static void TextCentered(ImDrawList *dl, ImFont *font, float size, ImVec2 center_top,
+                           ImU32 col, const char *text) {
+    const ImVec2 sz = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
+    Text(dl, font, size, ImVec2(center_top.x - sz.x * 0.5f, center_top.y), col, text);
+  }
+  static void Button(ImDrawList *dl, ImFont *font, float k, ImVec2 center, ImU32 col,
+                     const char *letter) {
+    dl->AddCircleFilled(center, 15 * k, IM_COL32(255, 255, 255, 255));
+    dl->AddCircleFilled(center, 12.5f * k, col);
+    const ImVec2 sz = font->CalcTextSizeA(20 * k, FLT_MAX, 0.0f, letter);
+    dl->AddText(font, 20 * k, ImVec2(center.x - sz.x * 0.5f, center.y - sz.y * 0.5f),
+                IM_COL32(255, 255, 255, 255), letter);
+  }
+
+ private:
+  void Change(int delta) {
+    Setting &s = settings_[selected_];
+    const int n = int(s.values.size());
+    s.index = (s.index + delta + n) % n;
+    s.apply(s.index);
+    dirty_ = true;
+  }
+
+  void Save() {
+    if (!dirty_ || g_toml_path.empty())
+      return;
+    TomlFile f;
+    if (!f.Load(g_toml_path)) {
+      BD_WARN("[graphics] cannot read {}", g_toml_path.string());
+      return;
+    }
+    for (const Setting &s : settings_)
+      s.save(f, s.index);
+    if (f.Save())
+      BD_INFO("[graphics] settings saved to {}", g_toml_path.string());
+    else
+      BD_WARN("[graphics] cannot write {}", g_toml_path.string());
+  }
+
+  std::vector<Setting> settings_;
+  int selected_ = 0;
+  bool dirty_ = false;
+  InputReader input_;
+};
+
+}  // namespace
+
+void Wwe12GraphicsMenuInit(rex::ui::ImGuiDrawer *drawer,
+                           std::function<void(std::function<void()>)> run_in_ui_thread,
+                           std::filesystem::path toml_path) {
+  g_drawer = drawer;
+  g_run_in_ui = std::move(run_in_ui_thread);
+  g_toml_path = std::move(toml_path);
+}
+
+void Wwe12GraphicsMenuConfigureFonts(ImFontAtlas *atlas) {
+  // Impact ships with Windows; elsewhere (Steam Deck) ImGui's default font is used.
+  char windir[MAX_PATH] = {};
+  if (!GetWindowsDirectoryA(windir, MAX_PATH))
+    return;
+  const std::filesystem::path path = std::filesystem::path(windir) / "Fonts" / "impact.ttf";
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec))
+    return;
+  ImFontConfig cfg;
+  cfg.OversampleH = cfg.OversampleV = 2;
+  static const ImWchar kRanges[] = {0x0020, 0x00FF, 0};  // Latin-1: the accented capitals
+  g_menu_font = atlas->AddFontFromFileTTF(path.string().c_str(), 64.0f, &cfg, kRanges);
+}
+
+bool Wwe12GraphicsMenuIsOpen() { return g_open.load(std::memory_order_relaxed); }
+
+void Wwe12GraphicsMenuRequest() {
+  if (!g_drawer || !g_run_in_ui || g_open.exchange(true))
+    return;
+  BD_INFO("[graphics] screen opened");
+  g_run_in_ui([] { new GraphicsMenu(g_drawer); });  // deletes itself when closed
+}
+
+uint32_t Wwe12RelabelGraphicsEntry(uint8_t *region_start, uint8_t *region_end) {
+  if (!REXCVAR_GET(wwe12_graphics_menu))
+    return 0;
+  // Only the loaded language's text: the tables in memory are the player's language (plus
+  // English, which some screens keep).
+  const EntryText &lang = kEntryTexts[CurrentLang()];
+  uint32_t patched = 0;
+  for (const EntryText *e : {&lang, &kEntryTexts[kEn]}) {
+    const size_t len = std::strlen(e->manual);
+    for (uint8_t *t = region_start; t + len + 1 <= region_end;) {
+      t = std::search(t, region_end - len, reinterpret_cast<const uint8_t *>(e->manual),
+                      reinterpret_cast<const uint8_t *>(e->manual) + len);
+      if (t >= region_end - len)
+        break;
+      if (t[len] != 0 || (t > region_start && t[-1] != 0)) {
+        ++t;
+        continue;
+      }
+      // The table entry {text offset, length with NUL, 41184, 0}, little- or big-endian, before
+      // the text; the table itself starts with a u32 0.
+      bool hit = false;
+      uint8_t *const first = reinterpret_cast<uint8_t *>((uintptr_t(t) - 16) & ~uintptr_t(3));
+      for (uint8_t *p = first; p >= region_start && p > t - 0x40000 && !hit; p -= 4) {
+        const uint32_t *w = reinterpret_cast<const uint32_t *>(p);
+        for (int big = 0; big < 2 && !hit; ++big) {
+          const auto rd = [&](int i) { return big ? _byteswap_ulong(w[i]) : w[i]; };
+          if (rd(2) != kWwe12GraphicsStringId || rd(1) != len + 1 || rd(3) != 0)
+            continue;
+          uint8_t *table = t - rd(0);
+          hit = table >= region_start && table <= p &&
+                *reinterpret_cast<const uint32_t *>(table) == 0;
+        }
+      }
+      if (hit) {
+        std::memset(t, 0, len);
+        std::memcpy(t, e->graphics, std::min(std::strlen(e->graphics), len));
+        ++patched;
+      }
+      t += len;
+    }
+    if (&lang == &kEntryTexts[kEn])
+      break;
+  }
+  return patched;
+}
