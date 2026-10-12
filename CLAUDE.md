@@ -84,10 +84,22 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   ligne, refaire le codegen et retrouver toutes les adresses codées en dur.
 - Bugs ouverts : ceinture sur l'épaule à 60 fps (piste VBlank testée le 2026-10-12 et écartée : le
   minuteur est déjà régulier à 60 Hz ; reste l'animation d'objet à 30 Hz, la ceinture de Cena décroche
-  de la main quand il court) ;
+  de la main quand il court ; mise de côté le 2026-10-12 : ni le VBlank, ni le pas de la physique, ni la
+  struct 0x8324CE28 seule n'expliquent le défaut ; piste restante : minuteurs 8246A020/824999F8 + une
+  horloge à pas fixe non trouvée ; outils de test dans `#if WWE12_DEV_PROBES`, voir la mémoire) ;
   AMD/Steam Deck (#4 gel en entrée sur RX 560, #7 bloc en haut à droite) en attente de retours 0.5.0 ;
+  #7 persiste en 0.5.0 chez DRAVEN0612 sur **Intel UHD 620** (pilote Vulkan 1.3.215, vieux), donc pas
+  qu'AMD ; son journal est dans `work/issue7/wwe12_014.log` (rien d'anormal visible : 60 fps, cible
+  carrée 1120x1120 fmt 36 non relue, composite peau 1024x512 fmt 15 vidée) ;
   titantrons basse résolution (vidéos Bink 320x320 sur le disque).
 - Voitures des entrées (Del Rio, Eddie Guerrero) : le jeu dessine la carrosserie en mélange alpha avec
   l'alpha d'une texture BC3 (~0,63), donc translucide ; la Xbox l'affiche opaque (cause réelle inconnue).
   Contournement : cvar `wwe12_car_opaque` (défaut true, `pipeline_cache.cpp`) coupe le mélange pour le
   pixel shader 7EE1904EE7E52F05 (vitres opaques aussi ; ce shader sert peut-être aux ceintures).
+
+## Idées et demandes des joueurs (à faire)
+
+- **Option « tout débloquer »** (comme le portage SvR 2011) : un joueur signale que le DLC « All
+  Unlockables » ne débloque que les persos des DLC, pas le reste. Piste : cvar `wwe12_unlock_all`
+  (case dans le launcher) qui force les drapeaux de déblocage, sans toucher aux sauvegardes du joueur.
+  Il faut d'abord trouver dans le code où le jeu teste si un élément est débloqué.
