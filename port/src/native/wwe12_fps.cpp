@@ -20,6 +20,10 @@ REXCVAR_DEFINE_BOOL(wwe12_60fps, false, "WWE12",
                     "Keep the game's 60 fps mode (50 PAL) in entrances and cutscenes instead of "
                     "dropping to 30 (25); game timing follows the mode.");
 
+#if defined(WWE12_DEV_PROBES)
+void wwe12_dev_entrance_started();  // wwe12_autocap.cpp
+#endif
+
 REX_EXTERN(__imp__sub_82827918);
 REX_EXTERN(__imp__sub_82827AB8);
 
@@ -38,6 +42,9 @@ extern "C" REX_FUNC(sub_82827918) {
 // "Drop to 30 (25) fps": skipped while the 60 fps mode is kept.
 extern "C" REX_FUNC(sub_82827AB8) {
   if (REXCVAR_GET(wwe12_60fps)) {
+#if defined(WWE12_DEV_PROBES)
+    wwe12_dev_entrance_started();
+#endif
     static std::atomic<u32> s_calls{0};
     const u32 n = s_calls.fetch_add(1, std::memory_order_relaxed);
     if (n < 10 || n % 100 == 0)

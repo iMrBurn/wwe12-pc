@@ -88,6 +88,12 @@ if(WWE12_NATIVE_RENDERER)
     wwe12_add_native_renderer(wwe12)
 endif()
 
+# Outils de test (sondes, captures automatiques) : compilés seulement si la variable
+# d'environnement WWE12_DEV_PROBES est définie au moment de la configuration (build.ps1).
+if(DEFINED ENV{WWE12_DEV_PROBES})
+    target_compile_definitions(wwe12 PRIVATE WWE12_DEV_PROBES)
+endif()
+
 rexglue_setup_target(wwe12 GPU_PLUGINS xenos)
 
 # Réglages d'exécution par défaut, lus au démarrage depuis le dossier de l'exe.
