@@ -19,8 +19,9 @@ wwe12_quit_entry = true
 # into the processor), 1 = 720p, 2 = 1440p, 3 = 4K. If the game runs slowly, set 1.
 svr_render_scale = 0
 
-# 60 fps in entrances and cutscenes (the original game drops to 30 there). false = original 30.
-wwe12_60fps = true
+# 60 fps in entrances and cutscenes (experimental; the original game drops to 30 there).
+# Known issue: title belts carried on a shoulder can move oddly at 60 fps.
+wwe12_60fps = false
 
 # Sharpness of textures seen at an angle (ring, ramp, crowd): 0 (off), 2, 4, 8 or 16.
 bd_anisotropy = 16

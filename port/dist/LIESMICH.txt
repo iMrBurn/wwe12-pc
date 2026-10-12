@@ -37,6 +37,8 @@ Einstellungen (Datei wwe12.toml)
 - svr_render_scale: interne Auflösung (0 = automatisch, 1 = 720p, 2 = 1440p, 3 = 4K).
   Im automatischen Modus bleibt das Spiel auf dem Steam Deck und mit im Prozessor integrierter
   Grafik (Intel, AMD) bei 720p. Wenn das Spiel auf Ihrem PC ruckelt, stellen Sie 1 ein.
+- wwe12_60fps: Einzüge und Zwischensequenzen mit 60 fps (experimentell, standardmäßig aus:
+  auf der Schulter getragene Titelgürtel können sich seltsam bewegen).
 - bd_anisotropy: Schärfe schräg gesehener Texturen (0, 2, 4, 8 oder 16).
 - wwe12_quit_entry: der Eintrag "VERLASSEN" im Hauptmenü, anstelle von SHOP (Xbox LIVE
   heißt "ONLINE").

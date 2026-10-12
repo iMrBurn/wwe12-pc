@@ -35,6 +35,8 @@ Ajustes (archivo wwe12.toml)
 - svr_render_scale: resolución interna (0 = automática, 1 = 720p, 2 = 1440p, 3 = 4K).
   En modo automático, el juego se queda en 720p en Steam Deck y con gráficos integrados en el
   procesador (Intel, AMD). Si el juego va lento en tu PC, pon 1.
+- wwe12_60fps: entradas y cinemáticas a 60 fps (experimental, desactivado por defecto: los
+  cinturones llevados al hombro pueden moverse de forma rara).
 - bd_anisotropy: nitidez de las texturas vistas en ángulo (0, 2, 4, 8 o 16).
 - wwe12_quit_entry: la opción "SALIR" del menú principal, en lugar de SHOP (Xbox LIVE
   pasa a llamarse "EN LÍNEA").

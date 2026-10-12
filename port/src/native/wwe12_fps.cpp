@@ -16,7 +16,7 @@
 #include "core/logging.h"
 #include "svr_hook.h"
 
-REXCVAR_DEFINE_BOOL(wwe12_60fps, true, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_60fps, false, "WWE12",
                     "Keep the game's 60 fps mode (50 PAL) in entrances and cutscenes instead of "
                     "dropping to 30 (25); game timing follows the mode.");
 

@@ -212,7 +212,8 @@ const Texts kEnglish = {
     "PLAY", "Version", "Game files found.",
     "Game files missing: put your WWE '12 (Xbox 360) .iso in the \"game\" folder.",
     "Language", "Resolution", "Automatic", "Display", "Full screen", "Window", "V-Sync",
-    "60 fps entrances and cutscenes", "The original game drops to 30 fps there.",
+    "60 fps entrances and cutscenes (experimental)",
+    "Title belts on a shoulder can move oddly at 60 fps.",
     "Texture sharpness", "Off", "Graphics card", "Automatic", "EXIT entry in the main menu",
     "Replaces SHOP (the closed Xbox LIVE store).", "Changes are saved right away.",
     "Keyboard (player 1)",
@@ -238,7 +239,8 @@ const Texts kFrench = {
     "Fichiers du jeu manquants : mettez l'image .iso de votre WWE '12 (Xbox 360) dans le "
     "dossier \"game\".",
     "Langue", "Résolution", "Automatique", "Affichage", "Plein écran", "Fenêtre", "V-Sync",
-    "Entrées et cinématiques à 60 fps", "Le jeu d'origine y passe à 30 fps.",
+    "Entrées et cinématiques à 60 fps (expérimental)",
+    "Les ceintures portées à l'épaule peuvent bouger bizarrement à 60 fps.",
     "Netteté des textures", "Désactivée", "Carte graphique", "Automatique",
     "Entrée QUITTER dans le menu principal", "Remplace SHOP (la boutique Xbox LIVE, fermée).",
     "Les changements sont enregistrés tout de suite.",
@@ -299,7 +301,7 @@ struct Settings {
   int scale = 0;
   bool fullscreen = true;
   bool vsync = true;
-  bool fps60 = true;
+  bool fps60 = false;
   int aniso = 16;
   std::string gpu;
   bool exit_entry = true;
@@ -316,7 +318,7 @@ void LoadSettings() {
   g_s.scale = g_toml.GetInt("svr_render_scale", 0);
   g_s.fullscreen = g_toml.GetBool("fullscreen", true);
   g_s.vsync = g_toml.GetBool("bd_vsync", true);
-  g_s.fps60 = g_toml.GetBool("wwe12_60fps", true);
+  g_s.fps60 = g_toml.GetBool("wwe12_60fps", false);
   g_s.aniso = g_toml.GetInt("bd_anisotropy", 16);
   g_s.gpu = g_toml.GetString("svr_gpu_device", "");
   g_s.exit_entry = g_toml.GetBool("wwe12_quit_entry", true);

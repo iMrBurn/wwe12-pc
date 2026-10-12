@@ -17,16 +17,19 @@ français dans `LISEZMOI.txt`.*
 1. Download the latest zip from [Releases](https://github.com/iMrBurn/wwe12-pc/releases).
 2. Unzip it, then put the disc image (`.iso`) of **your** WWE '12 (Xbox 360) in the `game`
    folder (or the disc contents: `default.xex`, `pac\`, `movies\`…).
-3. Run `wwe12.exe`.
+3. Run `WWE12 Launcher.exe` (or `wwe12.exe` to start the game directly).
 
 Requirements: Windows 10/11 64-bit, a Vulkan 1.2 graphics card, an Xbox or PlayStation controller
 (DualShock 4, DualSense) or the keyboard (ZQSD/WASD, layout in `README.txt`).
 Settings (language, internal resolution…) are in `wwe12.toml`, explained in `README.txt`.
 
-## Status (v0.3.0-beta)
+## Status (v0.5.0-beta, last beta before 1.0)
 
-- Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps (entrances run at
-  30 fps, like on Xbox 360).
+- Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps. Entrances and
+  cutscenes run at 30 fps like on Xbox 360, or at 60 fps with an experimental option.
+- A launcher (`WWE12 Launcher.exe`): settings, controls, saves backup, mods, and automatic
+  updates from this page's releases.
+- DLC support (see below).
 - Internal resolution from 720p to 4K. Automatic mode picks it from the screen, and stays at
   720p on Steam Deck and integrated GPUs (an Intel iGPU holds 60 fps there).
 - All five languages of the European release (English, French, German, Spanish, Italian). The
@@ -39,11 +42,13 @@ Settings (language, internal resolution…) are in `wwe12.toml`, explained in `R
 - A `mods` folder: files in it replace the game's own (HD titantron videos, textures...).
 - Xbox and PlayStation controllers, and the keyboard (together with a controller).
 
-Known issues: the titantron video is low-resolution; long loading screens; on-screen button
-prompts stay Xbox ones with a PlayStation controller.
+Known issues: title belts on a shoulder can move oddly with 60 fps entrances; the titantron video
+is low-resolution; long loading screens; on-screen button prompts stay Xbox ones with a
+PlayStation controller. Graphics glitches and freezes in entrances were reported on AMD
+graphics cards; fixes are in 0.5.0, please report if they remain.
 
-Planned: an in-game graphics options page and a real 8th "QUIT" entry, 60 fps entrances and
-cutscenes, a launcher, HD textures and videos, online play.
+Planned: the title update (1.1), HD textures and videos, a real 8th main menu entry, shorter
+loading, online play.
 
 ## DLC
 
