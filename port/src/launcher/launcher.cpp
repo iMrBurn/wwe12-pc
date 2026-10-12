@@ -16,6 +16,8 @@
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -23,6 +25,7 @@
 #include "imgui_impl_dx11.h"
 #include "imgui_impl_win32.h"
 
+#include "changelog.h"
 #include "toml_file.h"
 #include "updater.h"
 
@@ -205,6 +208,7 @@ struct Texts {
   const char *about_text, *github;
   const char *updates, *checking, *up_to_date, *update_available, *install_update, *check_failed,
       *check_now, *check_at_start, *downloading, *update_failed;
+  const char *whats_new;
 };
 
 const Texts kEnglish = {
@@ -231,7 +235,8 @@ const Texts kEnglish = {
     "Project page on GitHub",
     "Updates", "Checking for updates...", "Up to date.", "New version available:",
     "Download and install", "Could not check for updates.", "Check now", "Check at startup",
-    "Downloading...", "Update failed:"};
+    "Downloading...", "Update failed:",
+    "What's new in this version"};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -260,7 +265,8 @@ const Texts kFrench = {
     "Page du projet sur GitHub",
     "Mises à jour", "Recherche de mises à jour...", "À jour.", "Nouvelle version disponible :",
     "Télécharger et installer", "Impossible de vérifier les mises à jour.", "Vérifier",
-    "Vérifier au démarrage", "Téléchargement...", "Échec de la mise à jour :"};
+    "Vérifier au démarrage", "Téléchargement...", "Échec de la mise à jour :",
+    "Nouveautés de cette version"};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -433,6 +439,7 @@ int g_logo_w = 0, g_logo_h = 0;
 std::string g_backup_msg;
 bool g_launch = false;
 Updater g_updater;
+std::string g_changelog;  // CHANGELOG.md next to the exe (the notes of this version), prepared
 
 void Title(const char *text) {
   ImGui::PushFont(g_font_title, 44.0f);
@@ -462,6 +469,15 @@ void PagePlay() {
   ImGui::Text("%s", t.updates);
   g_updater.Draw(t.checking, t.up_to_date, t.update_available, t.install_update, t.check_failed,
                  t.check_now, t.check_at_start, t.downloading, t.update_failed);
+  if (!g_changelog.empty()) {
+    ImGui::Dummy(ImVec2(0, 10));
+    if (ImGui::CollapsingHeader(t.whats_new, ImGuiTreeNodeFlags_DefaultOpen)) {
+      ImGui::BeginChild("##changelog", ImVec2(0, std::max(ImGui::GetTextLineHeight() * 9, ImGui::GetContentRegionAvail().y)),
+                        ImGuiChildFlags_Borders);
+      changelog::Draw(g_changelog);
+      ImGui::EndChild();
+    }
+  }
 }
 
 void PageSettings() {
@@ -755,6 +771,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   ImGui_ImplWin32_EnableDpiAwareness();
   LoadSettings();
   g_updater.Start(ExeDir());
+  {
+    std::ifstream f(ExeDir() / "CHANGELOG.md", std::ios::binary);
+    g_changelog = changelog::Prepare(std::string(std::istreambuf_iterator<char>(f), {}));
+  }
 
   WNDCLASSEXW wc{sizeof(wc)};
   wc.style = CS_CLASSDC;

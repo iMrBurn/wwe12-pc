@@ -46,6 +46,14 @@ if (Test-Path $Seed) {
     Write-Warning "Pas de cache de pipelines ($Seed) : le zip partira sans pipelines_seed.w12p."
 }
 
+# Notes de la version (dist\RELEASE_NOTES_v<ver>.md) : le launcher les affiche dans « What's new ».
+$Notes = Join-Path $Root "dist\RELEASE_NOTES_v$Version.md"
+if (Test-Path $Notes) {
+    Copy-Item $Notes (Join-Path $Dist "CHANGELOG.md")
+} else {
+    Write-Warning "Pas de $Notes : le zip partira sans CHANGELOG.md (rien à afficher dans le launcher)."
+}
+
 # Réglages par défaut et mode d'emploi.
 Copy-Item (Join-Path $Root "port\config\wwe12.toml") (Join-Path $Dist "wwe12.toml")
 # Modes d'emploi (un par langue du jeu), numéro de version ajouté à leur titre.

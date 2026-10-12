@@ -20,6 +20,7 @@
 #include <thread>
 #include <vector>
 
+#include "changelog.h"
 #include "imgui.h"
 #include "inflate.h"
 
@@ -42,11 +43,12 @@ class Updater {
             const char *check_at_start, const char *downloading, const char *update_failed) {
     if (auto_install_.exchange(false))
       Install();
-    std::string latest, error;
+    std::string latest, error, notes;
     {
       std::lock_guard lock(mutex_);
       latest = latest_;
       error = error_;
+      notes = notes_;
     }
     switch (state_.load()) {
     case State::Idle:
@@ -59,6 +61,12 @@ class Updater {
       break;
     case State::Available:
       ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), "%s %s", available, latest.c_str());
+      if (!notes.empty()) {
+        ImGui::BeginChild("##release_notes", ImVec2(0, ImGui::GetTextLineHeight() * 11),
+                          ImGuiChildFlags_Borders);
+        changelog::Draw(notes);
+        ImGui::EndChild();
+      }
       if (ImGui::Button(install))
         Install();
       break;
@@ -99,13 +107,17 @@ class Updater {
         return;
       }
       const std::string json(body.begin(), body.end());
-      // The first release listed is the newest; its tag and its .zip asset.
-      const std::string tag = JsonString(json, "\"tag_name\"", 0);
-      // Its first downloadable .zip (the release's own zip, listed before older releases').
+      // The first release listed is the newest: only its own part of the reply is read (tag,
+      // .zip asset and notes), so a release still without zip never installs an older one.
+      const size_t first = json.find("\"tag_name\"");
+      const size_t next = first == std::string::npos ? first : json.find("\"tag_name\"", first + 1);
+      const std::string newest =
+          first == std::string::npos ? std::string() : json.substr(first, next - first);
+      const std::string tag = JsonString(newest, "\"tag_name\"", 0);
       std::string url;
-      for (size_t key = json.find("\"browser_download_url\""); key != std::string::npos;
-           key = json.find("\"browser_download_url\"", key + 1)) {
-        const std::string u = JsonString(json, "\"browser_download_url\"", key);
+      for (size_t key = newest.find("\"browser_download_url\""); key != std::string::npos;
+           key = newest.find("\"browser_download_url\"", key + 1)) {
+        const std::string u = JsonString(newest, "\"browser_download_url\"", key);
         if (u.size() > 4 && u.compare(u.size() - 4, 4, ".zip") == 0) {
           url = u;
           break;
@@ -121,6 +133,7 @@ class Updater {
       std::lock_guard lock(mutex_);
       latest_ = tag;
       url_ = url;
+      notes_ = changelog::Prepare(changelog::JsonStringValue(newest, "\"body\""));
       // Dev aids: WWE12_LAUNCHER_FAKE_VERSION pretends to be another version,
       // WWE12_LAUNCHER_AUTO_INSTALL installs an update without the click.
       const char *fake = std::getenv("WWE12_LAUNCHER_FAKE_VERSION");
@@ -400,7 +413,7 @@ class Updater {
   std::atomic<State> state_{State::Idle};
   std::atomic<float> progress_{0};
   std::mutex mutex_;
-  std::string latest_, url_, error_;
+  std::string latest_, url_, error_, notes_;
   bool check_at_start_ = true;
   std::atomic<bool> restart_{false};
   std::atomic<bool> auto_install_{false};
