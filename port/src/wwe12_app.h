@@ -36,7 +36,7 @@ inline void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem*, const std::
 REXCVAR_DECLARE(std::string, gpu_backend);
 
 // Installe les DLC posés dans le dossier « dlc » à côté de l'exe (wwe12_dlc.cpp).
-void Wwe12InstallDlc();
+void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
 
 class Wwe12App : public rex::ReXApp {
  public:
@@ -136,7 +136,7 @@ class Wwe12App : public rex::ReXApp {
     MountModsOverlay(fs);
     // DLC : extraits une fois pour toutes dans Documents\wwe12\0000000000000000\, où le jeu
     // les trouve comme sur le disque dur de la console.
-    Wwe12InstallDlc();
+    Wwe12InstallDlc(user_data_root_);
   }
 
   // Dossier « mods » à côté de l'exe : un fichier posé là au même chemin que sur le disque le

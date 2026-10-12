@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <string>
 
+#include <fmt/format.h>
 #include <rex/filesystem.h>
 #include <rex/filesystem/devices/stfs_container_device.h>
 #include <rex/logging/macros.h>
@@ -26,6 +27,9 @@ namespace {
 
 using rex::system::XContentType;
 using rex::system::xam::XCONTENT_AGGREGATE_DATA;
+}  // namespace
+using rex::X_RESULT;  // les macros X_ERROR_* s'écrivent (X_RESULT)(n)
+namespace {
 
 // Lecture rapide des 4 premiers octets : évite d'analyser les .txt, images, etc.
 bool HasStfsMagic(const std::filesystem::path& path) {
@@ -48,7 +52,7 @@ std::string ContentFileName(const std::filesystem::path& path) {
 
 }  // namespace
 
-void Wwe12InstallDlc() {
+void Wwe12InstallDlc(const std::filesystem::path& user_data_root) {
   auto* kernel = REX_KERNEL_STATE();
   auto* content = kernel ? kernel->content_manager() : nullptr;
   if (!content)
@@ -90,11 +94,25 @@ void Wwe12InstallDlc() {
     }
 
     // Déjà installé : le fichier .header n'est écrit qu'à la fin d'une installation réussie.
+    // Comparer à X_ERROR_SUCCESS, pas XSUCCEEDED : les X_ERROR_* sont des codes Win32 (2 pour
+    // FILE_NOT_FOUND) que XSUCCEEDED, fait pour les NTSTATUS, prend pour des réussites.
     const std::string name = ContentFileName(path);
     XCONTENT_AGGREGATE_DATA existing;
-    if (XSUCCEEDED(content->ReadContentHeaderFile(name, 0, title_id,
-                                                   XContentType::kMarketplaceContent, existing))) {
+    if (content->ReadContentHeaderFile(name, 0, title_id, XContentType::kMarketplaceContent,
+                                       existing) == X_ERROR_SUCCESS) {
       ++present;
+      continue;
+    }
+
+    // Paquet copié à la main là où le runtime veut créer son dossier (comme sur la console) :
+    // le jeu n'y voit rien (il n'énumère que des dossiers) et l'installation échouerait.
+    const auto install_dir = user_data_root / "0000000000000000" / fmt::format("{:08X}", title_id) /
+                             "00000002" / name;
+    if (std::filesystem::is_regular_file(install_dir, fec)) {
+      REXLOG_WARN("DLC : {} est un fichier, pas un dossier installé : supprimez-le (le paquet "
+                  "se met dans dlc\\, il est installé au lancement suivant)",
+                  rex::path_to_utf8(install_dir));
+      ++failed;
       continue;
     }
 
@@ -102,8 +120,8 @@ void Wwe12InstallDlc() {
         header->metadata.display_name(rex::system::XLanguage::kEnglish);
     REXLOG_INFO("DLC : installation de {} ({})...", rex::path_to_utf8(path.filename()),
                 rex::path_to_utf8(std::filesystem::path(display)));
-    const rex::X_RESULT result = content->InstallContent(path);
-    if (XSUCCEEDED(result)) {
+    const X_RESULT result = content->InstallContent(path);
+    if (result == X_ERROR_SUCCESS) {
       ++installed;
       continue;
     }
