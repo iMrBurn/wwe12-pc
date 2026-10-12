@@ -1,0 +1,68 @@
+WWE '12 PC - inoffizielle native Portierung
+==========================================
+
+Diese Portierung lässt WWE '12 (Xbox 360) nativ auf dem PC laufen. Sie enthält KEINE Spieldaten:
+Sie benötigen Ihre eigene Kopie des Xbox-360-Spiels.
+
+
+Installation
+------------
+
+1. Legen Sie das Disc-Image (.iso) IHRES Spiels WWE '12 (Xbox-360-Version) in den Ordner "game",
+   zum Beispiel game\WWE12.iso. Es wird direkt gelesen, ohne Entpacken.
+   (Sie können stattdessen auch den Inhalt der Disc dorthin kopieren: game\default.xex,
+   game\pac\... usw.)
+
+2. Starten Sie "WWE12 Launcher.exe": Einstellungen, Steuerung, Spielstände, Mods und
+   Updates, dann PLAY. (wwe12.exe startet das Spiel direkt mit den aktuellen Einstellungen.)
+
+
+Systemanforderungen
+-------------------
+
+- Windows 10 oder 11, 64 Bit.
+- Eine Grafikkarte mit Vulkan-1.2-Unterstützung (aktuelle Treiber).
+- Ein Xbox- oder PlayStation-Controller (DualShock 4, DualSense) oder die Tastatur.
+
+Laptop mit zwei Grafikkarten: Stellen Sie unter Einstellungen > System > Bildschirm > Grafik
+wwe12.exe auf "Hohe Leistung" und schließen Sie das Ladegerät an (manche Laptops schalten die
+dedizierte Grafikkarte im Akkubetrieb ab).
+
+
+Einstellungen (Datei wwe12.toml)
+--------------------------------
+
+- user_language: Sprache des Spiels (1 Englisch, 3 Deutsch, 4 Französisch, 5 Spanisch,
+  6 Italienisch).
+- svr_render_scale: interne Auflösung (0 = automatisch, 1 = 720p, 2 = 1440p, 3 = 4K).
+  Im automatischen Modus bleibt das Spiel auf dem Steam Deck und mit im Prozessor integrierter
+  Grafik (Intel, AMD) bei 720p. Wenn das Spiel auf Ihrem PC ruckelt, stellen Sie 1 ein.
+- bd_anisotropy: Schärfe schräg gesehener Texturen (0, 2, 4, 8 oder 16).
+- wwe12_quit_entry: der Eintrag "VERLASSEN" im Hauptmenü, anstelle von SHOP (Xbox LIVE
+  heißt "ONLINE").
+
+Tastatur (Spieler 1, zusammen mit einem Controller; Tasten in wwe12.toml änderbar):
+  Z Q S D / W A S D                         linker Stick (Bewegung)
+  Pfeiltasten                               rechter Stick
+  J / K / L / I                             X / A / B / Y
+  U / O                                     LB / RB
+  R / Leertaste                             LT / RT
+  T / F / G / H                             Steuerkreuz
+  Enter oder Esc / Tab oder Rücktaste       Start / Back
+  C / N                                     L3 / R3
+
+
+Mods
+----
+
+Dateien im Ordner "mods" ersetzen die des Spiels, unter demselben Pfad wie auf der Disc
+(Beispiel: mods\movies\titantron\100.bik). Siehe mods\HOW_TO_USE_MODS.txt.
+
+
+Wo sind meine Daten?
+--------------------
+
+Spielstände, Shader-Cache und Spiel-Cache: Dokumente\wwe12
+
+
+Dies ist ein Fanprojekt ohne Verbindung zu WWE, THQ oder Yuke's.

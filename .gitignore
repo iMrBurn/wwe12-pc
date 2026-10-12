@@ -19,7 +19,7 @@ d3d_census.csv
 recomp/
 port/out/
 out/
-dist/
+/dist/
 
 # Journaux et fichiers de travail locaux
 __pycache__/

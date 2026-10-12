@@ -1,0 +1,66 @@
+WWE '12 PC - port nativo no oficial
+==================================
+
+Este port ejecuta WWE '12 (Xbox 360) de forma nativa en PC. NO contiene ningún dato del juego:
+necesitas tu propia copia del juego de Xbox 360.
+
+
+Instalación
+-----------
+
+1. Coloca la imagen de disco (.iso) de TU juego WWE '12 (versión Xbox 360) en la carpeta "game",
+   por ejemplo game\WWE12.iso. Se lee directamente, sin extraerla.
+   (También puedes copiar ahí el contenido del disco: game\default.xex, game\pac\..., etc.)
+
+2. Ejecuta "WWE12 Launcher.exe": ajustes, controles, partidas, mods y actualizaciones,
+   luego PLAY. (wwe12.exe inicia el juego directamente con los ajustes actuales.)
+
+
+Requisitos
+----------
+
+- Windows 10 u 11, 64 bits.
+- Una tarjeta gráfica compatible con Vulkan 1.2 (controladores actualizados).
+- Un mando de Xbox o PlayStation (DualShock 4, DualSense), o el teclado.
+
+Portátil con dos tarjetas gráficas: en Configuración > Sistema > Pantalla > Gráficos, pon
+wwe12.exe en "Alto rendimiento" y conecta el cargador (algunos portátiles apagan la tarjeta
+gráfica dedicada con batería).
+
+
+Ajustes (archivo wwe12.toml)
+----------------------------
+
+- user_language: idioma del juego (1 inglés, 3 alemán, 4 francés, 5 español, 6 italiano).
+- svr_render_scale: resolución interna (0 = automática, 1 = 720p, 2 = 1440p, 3 = 4K).
+  En modo automático, el juego se queda en 720p en Steam Deck y con gráficos integrados en el
+  procesador (Intel, AMD). Si el juego va lento en tu PC, pon 1.
+- bd_anisotropy: nitidez de las texturas vistas en ángulo (0, 2, 4, 8 o 16).
+- wwe12_quit_entry: la opción "SALIR" del menú principal, en lugar de SHOP (Xbox LIVE
+  pasa a llamarse "EN LÍNEA").
+
+Teclado (jugador 1, a la vez que el mando; teclas modificables en wwe12.toml):
+  Z Q S D / W A S D                         stick izquierdo (moverse)
+  Flechas                                   stick derecho
+  J / K / L / I                             X / A / B / Y
+  U / O                                     LB / RB
+  R / Espacio                               LT / RT
+  T / F / G / H                             cruceta
+  Intro o Esc / Tab o Retroceso             Start / Back
+  C / N                                     L3 / R3
+
+
+Mods
+----
+
+Los archivos puestos en la carpeta "mods" sustituyen a los del juego, con la misma ruta
+que en el disco (ejemplo: mods\movies\titantron\100.bik). Ver mods\HOW_TO_USE_MODS.txt.
+
+
+¿Dónde están mis datos?
+-----------------------
+
+Partidas guardadas, caché de shaders y caché del juego: Documentos\wwe12
+
+
+Este es un proyecto de fans, sin relación con WWE, THQ ni Yuke's.

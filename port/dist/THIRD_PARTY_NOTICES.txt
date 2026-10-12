@@ -1,0 +1,50 @@
+WWE '12 PC - licences
+=====================
+
+This port is free software under the GNU General Public License v3.0 (licenses\GPL-3.0.txt).
+Its source code: {SOURCE_URL}
+
+It includes the native renderer of nefariousjosiah's SmackDown vs. Raw ports (GPL-3.0), and
+builds on the components below, which keep their own licences. Their licence texts are in the
+"licenses" folder.
+
+It contains NO game data. WWE '12 is (c) WWE, THQ and Yuke's; this fan project is not affiliated
+with them.
+
+
+In wwe12.exe
+------------
+
+- re:Blue renderer core (zolaware/reblue): BSD 3-Clause - licenses\reblue.txt
+- plume (zolaware/plume): MIT - licenses\plume.txt
+- zstd (decoder): BSD - licenses\zstd.txt
+- disruptorplus: MIT - licenses\disruptorplus.txt
+- RenderDoc API header: MIT - licenses\renderdoc_app.txt
+- Shaders converted with XenosRecomp (zolaware/reblue-XenosRecomp): MIT - licenses\XenosRecomp.txt
+
+
+In rexruntime.dll and rexgpu-xenos.dll (ReXGlue SDK)
+----------------------------------------------------
+
+- ReXGlue SDK (portions from Xenia): BSD 3-Clause - licenses\rexglue-sdk.txt
+- FFmpeg (libavcodec, libavutil; game audio): LGPL 2.1 or later - licenses\FFmpeg-LGPL-2.1.txt
+- libmspack (LZX decoder): LGPL 2.1 - licenses\libmspack-LGPL-2.1.txt
+- SDL 3: zlib - licenses\SDL3.txt
+- Dear ImGui: MIT - licenses\imgui.txt
+- fmt: MIT - licenses\fmt.txt
+- spdlog: MIT - licenses\spdlog.txt
+- toml++: MIT - licenses\tomlplusplus.txt
+- xxHash: BSD 2-Clause - licenses\xxHash.txt
+- utf8-cpp: Boost Software License 1.0 - licenses\utfcpp.txt
+- o1heap: MIT - licenses\o1heap.txt
+- aes_128: MIT - licenses\aes_128.txt
+- SIMDe: MIT - licenses\simde.txt
+- glslang: BSD 3-Clause and others - licenses\glslang.txt
+- Vulkan Memory Allocator: MIT - licenses\VulkanMemoryAllocator.txt
+- Vulkan headers and loader, SPIR-V headers and tools (Khronos): Apache 2.0 / MIT -
+  licenses\vulkan-headers.txt, licenses\vulkan-loader.txt, licenses\spirv-headers.txt,
+  licenses\spirv-tools.txt
+
+The LGPL libraries (FFmpeg, libmspack) are linked unmodified into rexruntime.dll. You may
+replace them with your own versions: rebuild rexruntime.dll from the ReXGlue SDK source (see the
+source code link above) and put it next to wwe12.exe.
