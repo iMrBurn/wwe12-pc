@@ -37,6 +37,8 @@ Settings (language, internal resolution…) are in `wwe12.toml`, explained in `R
 - Custom attires (Superstar Threads), wrestlers' eyes and teeth, and blood render correctly.
 - Sharp textures at an angle (16x anisotropic filtering).
 - A `mods` folder: files in it replace the game's own (HD titantron videos, textures...).
+- A `dlc` folder: Xbox 360 DLC packages of your own copy put there are installed on startup
+  (into `Documents\wwe12\0000000000000000\54510890\00000002`) and seen by the game.
 - Xbox and PlayStation controllers, and the keyboard (together with a controller).
 
 Known issues: the titantron video is low-resolution; long loading screens; on-screen button
