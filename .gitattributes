@@ -1,0 +1,4 @@
+# Les patches s'appliquent sur des sources en fins de ligne LF (le SDK impose eol=lf) :
+# sans cette règle, Git pour Windows (core.autocrlf) les convertit en CRLF et git apply échoue.
+*.patch text eol=lf
+*.patch.disabled text eol=lf

@@ -225,7 +225,7 @@ const Texts kEnglish = {
     "Open the saves folder", "Back up saves now", "Backup done:", "Backups",
     "WWE '12 PC is an unofficial native port of WWE '12 (Xbox 360), made by fans.\n"
     "Native renderer adapted from nefariousjosiah's SmackDown vs. Raw ports, on the ReXGlue SDK\n"
-    "and re:Blue. Free software under the GPL-3.0 licence. No game data is included.\n\n"
+    "and re:Blue. DLC support by Banshee. Free software under the GPL-3.0 licence. No game data is included.\n\n"
     "Not affiliated with WWE, THQ or Yuke's.",
     "Project page on GitHub",
     "Updates", "Checking for updates...", "Up to date.", "New version available:",
@@ -253,7 +253,7 @@ const Texts kFrench = {
     "Copies de sauvegarde",
     "WWE '12 PC est un portage natif non officiel de WWE '12 (Xbox 360), fait par des fans.\n"
     "Rendu natif adapté des portages SmackDown vs. Raw de nefariousjosiah, sur le SDK ReXGlue\n"
-    "et re:Blue. Logiciel libre sous licence GPL-3.0. Aucune donnée du jeu n'est fournie.\n\n"
+    "et re:Blue. Support des DLC par Banshee. Logiciel libre sous licence GPL-3.0. Aucune donnée du jeu n'est fournie.\n\n"
     "Sans lien avec WWE, THQ ou Yuke's.",
     "Page du projet sur GitHub",
     "Mises à jour", "Recherche de mises à jour...", "À jour.", "Nouvelle version disponible :",

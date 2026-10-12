@@ -53,6 +53,15 @@ Keyboard (player 1, works together with a controller; change keys in wwe12.toml)
   C / N                                     L3 / R3
 
 
+DLC
+---
+
+Put the DLC packages of YOUR game (Xbox 360) in the "dlc" folder: the files with long
+hexadecimal names from the console's Content\0000000000000000\54510890\00000002\ folder.
+They are installed the next time you start wwe12.exe (lines starting with "DLC" in logs\).
+See dlc\HOW_TO_INSTALL_DLC.txt.
+
+
 Mods
 ----
 

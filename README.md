@@ -45,6 +45,25 @@ prompts stay Xbox ones with a PlayStation controller.
 Planned: an in-game graphics options page and a real 8th "QUIT" entry, 60 fps entrances and
 cutscenes, a launcher, HD textures and videos, online play.
 
+## DLC
+
+Put the DLC packages of **your** WWE '12 (Xbox 360) in the `dlc` folder: the files with long
+hexadecimal names from the console's `Content\0000000000000000\54510890\00000002\` folder
+(copied to a USB stick from the console's storage settings, then read on the PC with a tool such
+as Horizon, Party Buffalo or Velocity). They are installed on the next start; lines starting with
+`DLC` in the log say what was installed or skipped. DLC support by
+[Banshee](https://github.com/itsbybanshee), who tested every pack:
+
+| DLC | Contents |
+|---|---|
+| Extra DLC (free) | Kane (masked) alternate attire |
+| The Rock Pre-Order Pack | The Rock |
+| WrestleMania Pack | Christian and Edge (classic), Shawn Michaels, Jerry Lawler, Jim Ross, Michael Cole, Animal & Hawk, alternate attires |
+| Divas Pack | Trish Stratus, Kharma, Brie Bella, Nikki Bella, Vickie Guerrero, Alicia Fox |
+| Legends Pack | Batista, Mick Foley, Macho Man Randy Savage, Brodus Clay |
+| All Unlockables | Superstars, Legends, Divas, attires, arenas and titles |
+| Superstar Attribute Customizer | Edit ratings and attributes |
+
 ## Building
 
 ```powershell
@@ -102,8 +121,9 @@ The project's code is under the **GNU GPL v3.0** ([LICENSE](LICENSE)). Third-par
 keep their own licences: see [THIRD_PARTY.md](THIRD_PARTY.md); releases carry every licence
 text in their `licenses` folder.
 
-Thanks to nefariousjosiah (native renderer of the SmackDown vs. Raw ports), the ReXGlue and re:Blue
-authors, and [wwe-svr2011-pc](https://github.com/KaikoClanworth1/wwe-svr2011-pc) for showing the
+Thanks to nefariousjosiah (native renderer of the SmackDown vs. Raw ports), Banshee
+([@itsbybanshee](https://github.com/itsbybanshee): DLC support and build fixes), the ReXGlue and
+re:Blue authors, and [wwe-svr2011-pc](https://github.com/KaikoClanworth1/wwe-svr2011-pc) for showing the
 way (no code taken from it).
 
 This is a fan project, not affiliated with WWE, THQ or Yuke's.

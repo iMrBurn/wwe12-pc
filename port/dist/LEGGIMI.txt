@@ -50,6 +50,14 @@ Tastiera (giocatore 1, insieme al controller; tasti modificabili in wwe12.toml):
   C / N                                     L3 / R3
 
 
+DLC
+---
+
+Mettete i pacchetti DLC del VOSTRO gioco (Xbox 360) nella cartella "dlc": i file con lunghi
+nomi esadecimali di Content\0000000000000000\54510890\00000002\ della console.
+Vengono installati al prossimo avvio di wwe12.exe (righe "DLC" in logs\).
+
+
 Mod
 ---
 

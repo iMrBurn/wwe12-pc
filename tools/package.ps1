@@ -115,10 +115,29 @@ Set-Content -Path (Join-Path $Dist "mods\HOW_TO_USE_MODS.txt") -Encoding UTF8 -V
     "IT : i file messi qui sostituiscono quelli del gioco, con lo stesso percorso del disco."
 )
 
+# Dossier dlc (vide) : les paquets Xbox 360 posés ici sont installés au démarrage.
+New-Item -ItemType Directory -Force -Path (Join-Path $Dist "dlc") | Out-Null
+Set-Content -Path (Join-Path $Dist "dlc\HOW_TO_INSTALL_DLC.txt") -Encoding UTF8 -Value @(
+    "Put the DLC packages of YOUR WWE '12 (Xbox 360) here, as copied from the console: the files",
+    "with long hexadecimal names from Content\0000000000000000\54510890\00000002\ (sub-folders",
+    "are fine, you can copy the whole Content folder). They are installed the next time you start",
+    "wwe12.exe, into Documents\wwe12\0000000000000000\54510890\00000002\. The log",
+    "(logs\wwe12_*.log, lines starting with 'DLC') says what was installed or skipped.",
+    "To reinstall a DLC, delete its folder in Documents\wwe12\0000000000000000\54510890\00000002\.",
+    "",
+    "FR : mettez ici les paquets DLC de VOTRE jeu (Xbox 360) ; ils sont installés au prochain lancement.",
+    "DE : Legen Sie hier die DLC-Pakete IHRES Spiels (Xbox 360) ab; sie werden beim nächsten Start installiert.",
+    "ES : ponga aquí los paquetes DLC de SU juego (Xbox 360); se instalan en el próximo inicio.",
+    "IT : mettete qui i pacchetti DLC del VOSTRO gioco (Xbox 360); vengono installati al prossimo avvio."
+)
+
 # Garde-fou : aucune donnée du jeu ne doit partir avec le portage (hors game\, laissé au joueur).
 $forbidden = Get-ChildItem $Dist -Recurse -File |
     Where-Object { $_.FullName -notlike "$Dist\game\*" -and
                    $_.Extension -in ".xex", ".pac", ".arc", ".bik", ".xma", ".iso", ".xsc", ".bin" }
+# Les paquets DLC n'ont pas d'extension : rien d'autre que la note dans dlc\.
+$forbidden = @($forbidden) + @(Get-ChildItem (Join-Path $Dist "dlc") -Recurse -File |
+    Where-Object { $_.Name -ne "HOW_TO_INSTALL_DLC.txt" }) | Where-Object { $_ }
 if ($forbidden) {
     throw "Données du jeu trouvées dans la distribution : $($forbidden.FullName -join ', ')"
 }

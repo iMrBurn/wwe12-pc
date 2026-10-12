@@ -53,6 +53,14 @@ Clavier (joueur 1, en même temps que la manette ; touches modifiables dans wwe1
   C / N                                     L3 / R3
 
 
+DLC
+---
+
+Mettez les paquets DLC de VOTRE jeu (Xbox 360) dans le dossier "dlc" : les fichiers aux
+longs noms hexadécimaux du dossier Content\0000000000000000\54510890\00000002\ de la console.
+Ils sont installés au prochain lancement de wwe12.exe (lignes « DLC » dans logs\).
+
+
 Mods
 ----
 
