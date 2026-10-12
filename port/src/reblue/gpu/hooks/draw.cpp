@@ -199,7 +199,7 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
   if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest)) {
     const auto &vp = dev->viewport;
     // The bound host target is this many times the guest's size.
-    const float k = float(bd::gpu::SvrSurfaceScale(u32(dev->renderTargetShadow[0])));
+    const float k = bd::gpu::SvrSurfaceScale(u32(dev->renderTargetShadow[0]));
     bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.x, float(vp.X) * k);
     bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.y, float(vp.Y) * k);
     bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.width,
@@ -657,7 +657,7 @@ u32 D3DDevice_Resolve_hook(u32 device_guest, u32 Flags, u32 pSourceRect,
                            u32 /*ClearStencil*/, u32 /*pParameters*/) {
 #if defined(SVR_NATIVE_RENDERER)
   bd::gpu::SvrDrawLogResolve(device_guest, Flags, pSourceRect, pDestTexture, pDestPoint);
-  u32 source_scale = 0;
+  float source_scale = 0.0f;
   if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest))
     source_scale = bd::gpu::SvrSurfaceScale(u32(dev->renderTargetShadow[0]));
   if (Flags & 0x300u) {
@@ -714,21 +714,22 @@ u32 D3DDevice_Resolve_hook(u32 device_guest, u32 Flags, u32 pSourceRect,
   // destination when there is none) to the dest point, unscaled, as the Xbox resolve does. A
   // padded source (the 1280x736 scene surface into a 1280x720 texture) must not be squeezed.
   {
-    const i32 scale = i32(source_scale ? source_scale : bd::gpu::SvrRenderScale());
+    const float scale = source_scale > 0.0f ? source_scale : bd::gpu::SvrRenderScale();
+    const auto sc = [scale](i32 v) { return i32(float(v) * scale + 0.5f); };
     i32 left = 0, top = 0, right = 0, bottom = 0;
     if (const auto *r = bd::mem::try_at<const bd::gpu::D3DRect>(pSourceRect)) {
-      left = i32(r->left) * scale;
-      top = i32(r->top) * scale;
-      right = i32(r->right) * scale;
-      bottom = i32(r->bottom) * scale;
+      left = sc(i32(r->left));
+      top = sc(i32(r->top));
+      right = sc(i32(r->right));
+      bottom = sc(i32(r->bottom));
     } else {
       right = i32(std::max(1u, dst->width >> DestLevel));
       bottom = i32(std::max(1u, dst->height >> DestLevel));
     }
     i32 dx = 0, dy = 0;
     if (const auto *p = bd::mem::try_at<const be_i32>(pDestPoint)) {
-      dx = i32(p[0]) * scale;
-      dy = i32(p[1]) * scale;
+      dx = sc(i32(p[0]));
+      dy = sc(i32(p[1]));
     }
     if (bd::gpu::Video::ResolveRegion(Flags, dst, DestLevel, DestSliceOrFace, left, top, right,
                                       bottom, dx, dy)) {

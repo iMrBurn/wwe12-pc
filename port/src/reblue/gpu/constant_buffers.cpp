@@ -351,9 +351,9 @@ ConstantAllocation UploadSharedConstants(u32 device_guest) {
   float lod_bias = 0.0f;
 #if defined(SVR_NATIVE_RENDERER)
   if (device_p && REXCVAR_GET(svr_match_guest_mips)) {
-    const u32 k = SvrSurfaceScale(u32(device_p->renderTargetShadow[0]));
-    if (k > 1)
-      lod_bias = std::log2(float(k));
+    const float k = SvrSurfaceScale(u32(device_p->renderTargetShadow[0]));
+    if (k > 1.0f)
+      lod_bias = std::log2(k);
   }
 #endif
   for (u32 i = 0; i < bd::gpu::kTextureSlots; ++i) {
@@ -454,7 +454,7 @@ ConstantAllocation UploadSharedConstants(u32 device_guest) {
 #if defined(SVR_NATIVE_RENDERER)
   if (device_p)
     s.shared.invRenderScale =
-        1.0f / float(std::max(1u, SvrSurfaceScale(u32(device_p->renderTargetShadow[0]))));
+        1.0f / std::max(1.0f, SvrSurfaceScale(u32(device_p->renderTargetShadow[0])));
 #endif
   s.shared.halfPixelOffsetX = 0.0f;
   s.shared.halfPixelOffsetY = 0.0f;
