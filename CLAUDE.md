@@ -108,9 +108,11 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   Unlockables » ne débloque que les persos des DLC, pas le reste. Piste : cvar `wwe12_unlock_all`
   (case dans le launcher) qui force les drapeaux de déblocage, sans toucher aux sauvegardes du joueur.
   Il faut d'abord trouver dans le code où le jeu teste si un élément est débloqué.
-- **Yeux/dents noirs ET cheveux de l'arbitre abîmés sur Intel iGPU** (RaptorLake, 720p et 540p,
-  2026-10-12), alors que c'est bon sur NVIDIA : même famille de dessins (couches semi-transparentes
-  par-dessus la peau). Touche sûrement les joueurs Intel UHD (issue #7). Pour la conversation Rendu.
+- ~~Yeux/dents noirs et cheveux de l'arbitre sur Intel iGPU~~ : **corrigé** (2026-10-12). Le pilote
+  Intel supprimait les bornes ±FLT_MAX des shaders (Vulkan l'autorise si le module ne demande pas de
+  garder Inf/NaN), d'où Inf × 0 = NaN dans la couche du visage. `guest_shaders.cpp` ajoute
+  `SignedZeroInfNanPreserve` à chaque shader (cvar `svr_preserve_inf_nan`). À vérifier : l'issue #7 et le
+  voile blanc en 540p pourraient avoir la même cause.
 
 ## Optimisation (2026-10-12)
 
