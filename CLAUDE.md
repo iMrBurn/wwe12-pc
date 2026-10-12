@@ -54,7 +54,8 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   ENABLE_VULKAN_RENDERDOC_CAPTURE=1), captures dans `work/rdc`, scripts via `qrenderdoc.exe --python`.
 - Release : changer `VERSION`, compiler en release, `tools/package.ps1` → `dist/WWE12-PC-v<ver>.zip`,
   écrire `dist/RELEASE_NOTES_v<ver>.md`. Le tag GitHub doit être `v<VERSION>` : le launcher s'en sert
-  pour les mises à jour automatiques.
+  pour les mises à jour automatiques. Mise à jour automatique vérifiée en vrai par l'utilisateur (0.5.0 → 0.5.1,
+  2026-10-12) : elle garde `wwe12.toml`, `game/` et `mods/`.
 
 ## Où est quoi
 
