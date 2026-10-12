@@ -57,11 +57,17 @@ cutscenes, a launcher, HD textures and videos, online play.
 Copy-Item <path>\default.xex port\assets\
 ./setup.ps1
 
-# 3. Translate the game code, then build (debug, relwithdebinfo or release)
+# 3. Translate the game code
 ./build.ps1 -Codegen
+
+# 4. Extract and convert the game's shaders for the native renderer (needs the extracted disc
+#    contents, not the .iso): builds reblue-XenosRecomp, writes port/generated/native/
+./tools/gen_shaders.ps1 -GameDir <path to the extracted disc>
+
+# 5. Build (debug, relwithdebinfo or release)
 ./build.ps1 -Config release
 
-# 4. Assemble dist\WWE12-PC and its zip (refuses to include any game data)
+# 6. Assemble dist\WWE12-PC and its zip (refuses to include any game data)
 powershell -ExecutionPolicy Bypass -File tools\package.ps1
 ```
 
