@@ -74,6 +74,10 @@ keybind_back = "Tab,Backspace"
 # Advanced (leave as is)
 # ---------------------------------------------------------------------------------------------
 
+# Milliseconds of loading per loading-screen frame (the original game: 0 to 1, paced for the DVD
+# drive). 12 loads matches about twice as fast; 0 keeps the original pace.
+wwe12_load_slice_ms = 12
+
 # Settings of the emulated Xbox 360 GPU, kept for its fallback mode (the port normally draws
 # with its own native Vulkan renderer).
 gpu_allow_invalid_fetch_constants = true

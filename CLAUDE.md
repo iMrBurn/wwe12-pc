@@ -116,6 +116,10 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
 
 - Chargements : l'horloge Windows 1 ms (`wwe12_precise_timer`) ne change rien (~12 s de chargement
   de match avant/après) ; le jeu attend volontairement. Laissée désactivée.
+- **Chargements x2** : `src/native/wwe12_loading.cpp` relève le budget du chargeur (sub_82819258,
+  float à this+196 comparé au temps depuis la dernière image, même design que SvR 2009/2010 de
+  nefarious) à `wwe12_load_slice_ms` = 12 ms. Match : ~6 s au lieu de ~12 s avant l'entrée. Le passage
+  entrée → match (~5 s) ne bouge pas : autre attente, à étudier.
 - Saccades 1er lancement : `pipelines_seed.w12p` livré à côté de l'exe (copie de
   `Documents\wwe12\cache\pipelines.bin` par `tools/package.ps1`), préparé en arrière-plan au démarrage.
 - Petits PC : `svr_render_scale = 540` (0,75x) existe, image correcte ; **voile blanc sur le bas de
