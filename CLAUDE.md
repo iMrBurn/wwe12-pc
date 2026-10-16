@@ -184,6 +184,13 @@ de la division Legends, affichés « ??? » avec le portrait vide dans la liste)
 de débogage du jeu (`wwe12_game_log`, 826D4228 = mode Univers : cartes, classements, Draft). Commencer
 par cartographier comment le jeu génère les cartes d'émission et les actualités. Demander à DarkMatches
 comment il s'y prend (et sa licence avant de reprendre du code).
+L'utilisateur veut aller plus loin : refonte du mode Univers (booking, rivalités/scénarios,
+cinématiques, actualités), dans une conversation dédiée « Univers ». Plan : 0) cartographie sans rien
+modifier → `docs/univers.md` (stockage des émissions/roster/titres/rivalités, fonctions de génération
+des cartes, choix des cinématiques, écriture des NEWS ; ce qui est en données .pac vs dans le code) ;
+1) booking (titres, PPV, qualifications, Rumble surprises) ; 2) rivalités ; 3) cinématiques ;
+4) actualités. Idée : à terme, des règles de booking dans un fichier réglable par les joueurs.
+La 1.0 (stabilité) passe avant ; la cartographie peut se faire en parallèle.
 
 **1.1** : Title Update (dernière mise à jour du jeu).
 **Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
