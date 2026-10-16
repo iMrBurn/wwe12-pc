@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <mutex>
 #include <string>
 
@@ -177,4 +178,48 @@ extern "C" REX_FUNC(sub_82959CC0) {
     }
   }
   __imp__sub_82959CC0(ctx, base);
+}
+
+// Controller vibration probe (no rumble in WWE Universe matches, already so on the Xbox 360).
+// sub_824723D0(?, wrestler, kind) rumbles the pad of the wrestler at +1760 (-1 = none; +8 when
+// the wrestler's vtable slot 23 says so, which sub_827ED270 then refuses). sub_827ED270(pad,
+// pattern) starts a rumble pattern if *0x83248BF8 != 0 and pad < 8 is enabled (0x83248BD8[pad]);
+// sub_827ED158 plays it each frame through XInputSetState (sub_82A8C080).
+namespace {
+std::atomic<u32> g_rumble_logged{0};
+bool RumbleLogOk() {
+  return REXCVAR_GET(wwe12_game_log) &&
+         g_rumble_logged.fetch_add(1, std::memory_order_relaxed) < 4000;
+}
+}  // namespace
+
+REX_EXTERN(__imp__sub_824723D0);
+extern "C" REX_FUNC(sub_824723D0) {
+  const u32 wrestler = ctx.r4.u32, kind = ctx.r5.u32, lr = u32(ctx.lr);
+  const u32 pad = bd::mem::load<u32>(wrestler + 1760);
+  if (RumbleLogOk())
+    BD_INFO("[rumble] wrestler 0x{:08X} (pad +1760 = {}) asks kind {} (from 0x{:08X})", wrestler,
+            int(pad), kind, lr);
+  __imp__sub_824723D0(ctx, base);
+}
+
+REX_EXTERN(__imp__sub_827ED270);
+extern "C" REX_FUNC(sub_827ED270) {
+  const u32 pad = ctx.r3.u32, pattern = ctx.r4.u32, lr = u32(ctx.lr);
+  const u32 loaded = bd::mem::load<u32>(0x83248BF8);
+  const u32 enabled = pad < 8 ? bd::mem::load<u32>(0x83248BD8 + pad * 4) : 0;
+  __imp__sub_827ED270(ctx, base);
+  if (RumbleLogOk())
+    BD_INFO("[rumble] start pad {} pattern {} | data loaded {} pad enabled {} (from 0x{:08X})",
+            int(pad), pattern, loaded, enabled, lr);
+}
+
+REX_EXTERN(__imp__sub_82A8C080);
+extern "C" REX_FUNC(sub_82A8C080) {
+  const u32 pad = ctx.r3.u32, motors = bd::mem::load<u32>(ctx.r4.u32);
+  __imp__sub_82A8C080(ctx, base);
+  static std::atomic<u64> s_last{~0ull};
+  const u64 key = (u64(pad) << 32) | motors;
+  if (motors && s_last.exchange(key) != key && RumbleLogOk())
+    BD_INFO("[rumble] XInputSetState pad {} motors 0x{:08X} -> {}", pad, motors, ctx.r3.u32);
 }

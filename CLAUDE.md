@@ -158,8 +158,11 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
 5. Autres retours Discord (2026-10-16) : écran noir sur Intel HD 5500 (**message clair ajouté** 2026-10-16, `native/wwe12_vulkan_error.cpp` ; `work/discord/bug02.log` :
    « Plume CreateVulkanInterface failed », ce GPU Broadwell n'a pas de pilote Vulkan sous Windows ;
    au minimum un message clair au lieu d'un écran noir figé, idéalement le rendu D3D12) ; tenue
-   Superstar Threads avec des zones blanches (Daniel Bryan) ; vibrations de manette absentes en mode
-   Univers (déjà le cas sur Xbox 360, bonus).
+   Superstar Threads avec des zones blanches (Daniel Bryan). ~~Vibrations de manette absentes en mode
+   Univers~~ (déjà le cas sur Xbox 360) : **corrigé** (2026-10-16, vérifié en jeu, pas encore publié) :
+   `native/wwe12_rumble.cpp`, cvar `wwe12_universe_rumble` (défaut true, à ajouter aux readmes).
+   Le catcheur du joueur a son indicateur « vibration » (catcheur+3452) à 0 en Univers
+   (sub_82761630), à 1 en exhibition ; le crochet de sub_824729A8 le prête à 1 le temps de l'appel.
 6. Option « tout débloquer ». ~~Gestion des sauvegardes~~ : **faite** (page SAUVEGARDES du launcher ;
    import Xbox 360 testé en jeu par l'utilisateur avec ses propres sauvegardes le 2026-10-16 : OK).
 
