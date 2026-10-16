@@ -154,6 +154,20 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
 6. Option « tout débloquer ». ~~Gestion des sauvegardes~~ : **faite** (page SAUVEGARDES du launcher ;
    import Xbox 360 testé en jeu par l'utilisateur avec ses propres sauvegardes le 2026-10-16 : OK).
 
+**Chargements, suite (après la 0.7.0)** : recette de l'auteur du recomp de WWE 2K14 (même famille Yuke's,
+résumé du 2026-10-16). Son chargement d'avant-entrée : 5,5 s → 0,9 s. Dans l'ordre de ses gains :
+(1) le chargeur fait une étape puis attend la prochaine image (chaque fichier = 4 images) : enchaîner
+les étapes dans la même image (chez nous : `wwe12_loading.cpp`, déjà x2) ; (2) **« turbo » pendant les
+écrans de chargement seulement** : faire tourner l'horloge vblank du jeu très vite (vsync coupée,
+~400 images/s) car le jeu fait ~70 images de préparation cadencées par l'image ; le plus dur = début
+et fin exacts de la fenêtre (sinon spinner trop rapide, début de match accéléré) : brider les
+animations 2D à 1/60 s réel, finir au premier vrai mouvement des catcheurs ; (3) profiler nos propres
+crochets (chez lui 8 VirtualQuery par image = 1,4 ms) ; (4) vblank sur minuteur précis ; (5) zlib natif
+à la place du zlib 1.2.3 traduit du jeu, seulement quand l'en-tête est standard (231 → 72 ms), idem
+BPE de Yuke's (`tools/yukes_bpe.py`) et LZX. Sans effet chez lui : sauter le dessin (perd un rendu
+unique par chargement), vblank plus rapide avec vsync active. Attention : le turbo change la
+synchronisation image/temps (replays, #9) : à couper là où c'est comparé. Mesurer avant chaque étape.
+
 **1.1** : Title Update (dernière mise à jour du jeu).
 **Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
 perso, textures HD (remplacement de textures par le dossier mods), minitrons ajoutés (contenu de mods),
