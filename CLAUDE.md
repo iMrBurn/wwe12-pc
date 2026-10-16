@@ -143,8 +143,9 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
 4. Jeu : #9 (replay d'après-match), portes transparentes en backstage. ~~Matchs WWE Draft du mode
    Univers~~ : **ça marche** (vérifié le 2026-10-16) : il faut choisir « DRAFT EVENT » à la fin du
    match, puis le tirage au sort et l'entrée de la superstar draftée se jouent (Kane → RAW).
-   Journal caché du mode Univers : `tools/dev/lancer_univers.bat` (cvar `wwe12_universe_log`,
-   `native/wwe12_universe_log.cpp`, lignes « [uni] » : cartes des émissions, classements, Draft).
+   Messages de débogage cachés du jeu : `tools/dev/lancer_journal.bat` (cvar `wwe12_game_log`,
+   `native/wwe12_game_log.cpp`, lignes « [game XXXXXXXX] » dans `journal_jeu.log` ; 826D4228 = mode
+   Univers : cartes des émissions, classements, Draft).
 5. Autres retours Discord (2026-10-16) : écran noir sur Intel HD 5500 (**message clair ajouté** 2026-10-16, `native/wwe12_vulkan_error.cpp` ; `work/discord/bug02.log` :
    « Plume CreateVulkanInterface failed », ce GPU Broadwell n'a pas de pilote Vulkan sous Windows ;
    au minimum un message clair au lieu d'un écran noir figé, idéalement le rendu D3D12) ; tenue
