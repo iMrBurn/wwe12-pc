@@ -61,6 +61,11 @@ extern std::unique_ptr<RenderInterface> CreateVulkanInterface();
 REXCVAR_DEFINE_STRING(svr_gpu_device, "", "SvR",
                       "Vulkan name of the GPU to render with (empty = the most capable)");
 
+REXCVAR_DEFINE_BOOL(svr_rt_no_compression, false, "SvR",
+                    "Test for the coloured blocks on the right of the picture on Intel HD/UHD "
+                    "Graphics and the Steam Deck: create render targets as storage images, so the "
+                    "driver doesn't compress them.");
+
 namespace bd::gpu {
 
 namespace {
@@ -337,6 +342,20 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
     if (!s.device) {
       BD_ERROR("Plume RenderInterface::createDevice failed");
       return false;
+    }
+    // plume treats these as optional, the recompiled shaders don't: without them every draw
+    // reads nothing and the game runs behind a black screen (old drivers, e.g. issue #14 on a
+    // Radeon HD 8790M). Fail here so the player gets the "Vulkan too old" message instead.
+    {
+      const auto &caps = s.device->getCapabilities();
+      if (!caps.bufferDeviceAddress || !caps.descriptorIndexing) {
+        BD_ERROR("GPU '{}' lacks Vulkan features the game needs (bufferDeviceAddress {}, "
+                 "descriptorIndexing {}): driver too old or GPU too old",
+                 s.device->getDescription().name, caps.bufferDeviceAddress,
+                 caps.descriptorIndexing);
+        s.device.reset();
+        return false;
+      }
     }
     s.backend_info = DescribeBackend(s.device.get());
     // bd_msaa is clamped to the color/depth intersection. Everything
@@ -866,6 +885,29 @@ plume::RenderFormat Video::DepthStencilFormat() {
 
 plume::RenderFormat Video::SceneColorFormat() {
   return state().scene_color_format;
+}
+
+#if !defined(REBLUE_D3D12)
+} // namespace bd::gpu
+namespace plume {
+VkFormat toVk(RenderFormat format); // plume_vulkan.cpp
+}
+namespace bd::gpu {
+#endif
+
+bool Video::UncompressedTarget(plume::RenderFormat format) {
+  if (!REXCVAR_GET(svr_rt_no_compression))
+    return false;
+#if defined(REBLUE_D3D12)
+  return false;
+#else
+  auto *dev = static_cast<plume::VulkanDevice *>(state().device.get());
+  if (!dev || dev->physicalDevice == VK_NULL_HANDLE)
+    return false;
+  VkFormatProperties props{};
+  vkGetPhysicalDeviceFormatProperties(dev->physicalDevice, plume::toVk(format), &props);
+  return (props.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0;
+#endif
 }
 
 Video::VideoMemory Video::MemoryUsage() {

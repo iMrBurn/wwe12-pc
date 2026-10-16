@@ -38,6 +38,10 @@ bool SvrOnSteamDeck();
 REXCVAR_DEFINE_BOOL(svr_release_stale_targets, true, "SvR",
                     "Free host render targets the game no longer uses (false: keep them, the "
                     "0.6.0 behaviour, which leaks video memory).");
+REXCVAR_DEFINE_BOOL(svr_clear_new_surfaces, true, "SvR",
+                    "Clear every new host render surface to transparent black. Host surfaces live in "
+                    "recycled GPU memory: NVIDIA happens to hand them out black, older Intel/AMD "
+                    "drivers with leftovers (suspected cause of the right-strip blocks, #7/#11/#13).");
 REXCVAR_DEFINE_BOOL(svr_debug_magenta, false, "SvR",
                     "Dev: fill every new host render target with magenta, so whatever the game reads "
                     "before drawing it shows up (NVIDIA starts them black, older Intel/AMD with "
@@ -258,6 +262,8 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   GuestTexture *host = SvrCreateHostSurface(Scaled(width, scale), Scaled(height, scale), format);
   if (host && REXCVAR_GET(svr_debug_magenta))
     Video::ClearTexture(host, 0xFFFF00FFu);
+  else if (host && REXCVAR_GET(svr_clear_new_surfaces))
+    Video::ClearTexture(host, 0u);
   BD_INFO("SvR surface 0x{:08X}: {}x{} format 0x{:08X} -> host {}", surface_va, width, height,
           format, host ? "ok" : "FAILED");
   g_surfaces.emplace(surface_va, HostTarget{host, {bits, format}, extent,

@@ -78,6 +78,8 @@ GuestTexture *CreateSurface(u32 width, u32 height, u32 guest_format,
   desc.format = plume_format;
   desc.flags = is_depth ? plume::RenderTextureFlag::DEPTH_TARGET
                         : plume::RenderTextureFlag::RENDER_TARGET;
+  if (!is_depth && Video::UncompressedTarget(plume_format))
+    desc.flags |= plume::RenderTextureFlag::STORAGE;
   desc.multisampling.sampleCount =
       static_cast<plume::RenderSampleCounts>(sample_count);
   desc.committed = false;

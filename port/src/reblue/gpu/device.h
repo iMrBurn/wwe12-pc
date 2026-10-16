@@ -155,6 +155,10 @@ public:
     u64 budget = 0;
   };
   static VideoMemory MemoryUsage();
+  // svr_rt_no_compression: render targets get the storage usage, which keeps drivers from
+  // compressing them (test for the right-strip blocks on Intel Gen9 / Steam Deck, #7/#11/#13).
+  // False when the cvar is off or the format can't be a storage image.
+  static bool UncompressedTarget(plume::RenderFormat format);
 
   // Live swapchain dimensions, or 0 if no swapchain yet.
   static u32 OutputWidth();

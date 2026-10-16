@@ -126,6 +126,8 @@ bd::gpu::GuestTexture *D3DDevice_CreateTexture_hook(u32 width, u32 height,
     desc.flags = plume::RenderTextureFlag::DEPTH_TARGET;
   } else if (bd::gpu::IsRenderTargetCapable(plume_format)) {
     desc.flags = plume::RenderTextureFlag::RENDER_TARGET;
+    if (bd::gpu::Video::UncompressedTarget(plume_format))
+      desc.flags |= plume::RenderTextureFlag::STORAGE;
   } else {
     desc.flags = plume::RenderTextureFlag::NONE;
   }
