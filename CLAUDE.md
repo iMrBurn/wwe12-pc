@@ -144,7 +144,9 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
    Remarqué (pas gênant) : micro-écran noir < 0,1 s sur la moitié droite juste avant la cloche.
 1. Plantages / gels : #4 (gel en entrée, RX 560, journaux 0.6.0 joints), #8 (gel).
 2. Graphismes AMD/Intel/Steam Deck : #7 et #11 (pavés pendant les entrées, toujours là en 0.6.0),
-   #12 (yeux blancs sur AMD).
+   #12 (yeux blancs sur AMD ; pas corrigé en 0.7.0 ; test demandé au joueur le 2026-10-16 :
+   `svr_preserve_inf_nan = false`, même famille Inf/NaN que les yeux noirs Intel ?), #13 (pavés à droite
+   en entrée + gel en match, Intel 6e gén. HD 520, pilote 30.0.101.3111 : même bug que #7/#11).
 3. Performances : #10 (chutes de fps en milieu et fin de match).
 4. Jeu : portes transparentes en backstage. ~~#9 (replay d'après-match)~~ : **corrigé** (2026-10-16,
    vérifié en jeu, pas encore publié ; il faut un SDK recompilé avec `rexglue-sdk-freespace.patch`).
