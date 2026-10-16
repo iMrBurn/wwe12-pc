@@ -234,16 +234,20 @@ des cartes, choix des cinématiques, écriture des NEWS ; ce qui est en données
 4) actualités. Idée : à terme, des règles de booking dans un fichier réglable par les joueurs.
 La 1.0 (stabilité) passe avant ; la cartographie peut se faire en parallèle.
 
-**Suggestions Discord (2026-10-16), retenues pour la 0.8** :
-- Préréglage « Original (Xbox 360) » dans le launcher (Quantum : jouer au plus proche de l'original) :
-  720p, entrées 30 fps, filtrage d'origine (bd_anisotropy 0), vidéos de démarrage, chargement d'origine
-  (wwe12_load_slice_ms 0). Conversation Launcher.
-- Plus de réglages graphiques « comme SvR 2011 » (Nothing) : vérifier lesquels des réglages re:Blue
-  marchent sur le chemin WWE '12 (bd_shadow_dimension/distance, bd_dof_strength, bd_fov_offset,
-  bd_aspect_ratio, bd_post_quality… ; MSAA n'y est pas utilisé), puis les proposer dans le launcher et
-  OPTIONS > GRAPHICS. Rendu + Launcher.
-Plus tard : statistiques du mode Univers comme WWE '13 (conversation Univers, étape 4) ; musiques
-perso ; éclairage façon SvR 2011 (goût, peut-être via mods) ; 5 contre 5 (= plus de 6 catcheurs).
+**Suggestions Discord (2026-10-16)**, décisions de l'utilisateur :
+- PAS de préréglage « Original (Xbox 360) » (refusé).
+- **Musiques perso : importantes à implémenter** (catcheurs créés ; à planifier tôt après la stabilité).
+- **Options graphiques/launcher inspirées du SvR 2011 de Kaiko** (captures du 2026-10-16), pages
+  DISPLAY / GRAPHICS / ADV. GRAPHICS dans le jeu + launcher. Déjà chez nous : résolution interne,
+  vsync, 60 fps entrées, filtrage, carte graphique, saut des vidéos, préparation des pipelines
+  (bd_pso_precache). Faciles : compteur FPS (F2), fenêtré / plein écran / sans bordure, priorité CPU,
+  limite d'images. Moyennes (Rendu) : foule ON/OFF (sièges vides, gros gain sur petits PC), ombres,
+  détail des effets, profondeur de champ, flou de mouvement, « soft filter », anti-aliasing (FXAA/SMAA
+  en post-traitement), qualité des textures, écrans larges (titantron pleine largeur). Plus tard :
+  choix de l'API (D3D12/Vulkan), replays ON/OFF.
+- À voir : physique des tables/échelles, éclairage façon SvR 2011.
+Plus tard : statistiques du mode Univers comme WWE '13 (conversation Univers, étape 4) ; 5 contre 5
+(= plus de 6 catcheurs).
 
 **1.1** : Title Update (dernière mise à jour du jeu).
 **Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
