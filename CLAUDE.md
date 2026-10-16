@@ -168,7 +168,7 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
 6. Option « tout débloquer ». ~~Gestion des sauvegardes~~ : **faite** (page SAUVEGARDES du launcher ;
    import Xbox 360 testé en jeu par l'utilisateur avec ses propres sauvegardes le 2026-10-16 : OK).
 
-**Chargements, suite (après la 0.7.0)** : recette de l'auteur du recomp de WWE 2K14 (même famille Yuke's,
+**Chargements, suite (prévu pour la 0.8, avec la ceinture à 60 fps)** : recette de l'auteur du recomp de WWE 2K14 (même famille Yuke's,
 résumé du 2026-10-16). Son chargement d'avant-entrée : 5,5 s → 0,9 s. Dans l'ordre de ses gains :
 (1) le chargeur fait une étape puis attend la prochaine image (chaque fichier = 4 images) : enchaîner
 les étapes dans la même image (chez nous : `wwe12_loading.cpp`, déjà x2) ; (2) **« turbo » pendant les
