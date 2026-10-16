@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cctype>
+#include <cstdlib>
 #include <string>
 #include <filesystem>
 
@@ -38,6 +39,9 @@ inline void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem*, const std::
 // (D3D12 en priorité sous Windows) : ce réglage permet de forcer Vulkan.
 REXCVAR_DECLARE(std::string, gpu_backend);
 REXCVAR_DECLARE(bool, wwe12_precise_timer);
+
+// Fenêtre d'erreur quand Vulkan ne démarre pas (native/wwe12_vulkan_error.cpp).
+void Wwe12ShowVulkanError();
 
 // Installe les DLC posés dans le dossier « dlc » à côté de l'exe (wwe12_dlc.cpp).
 void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
@@ -180,8 +184,11 @@ class Wwe12App : public rex::ReXApp {
   void OnPreLaunchModule() override {
     if (!bd::gpu::Video::CreateHostDevice(window())) {
       REXLOG_ERROR("Rendu natif : échec de création du device hôte");
-      app_context().QuitFromUIThread();
-      return;
+      // Sans device le jeu tournait quand même, fenêtre noire et sans explication (Intel HD 5500 :
+      // pas de Vulkan sous Windows). On le dit au joueur, puis on quitte.
+      Wwe12ShowVulkanError();
+      REXLOG_ERROR("Rendu natif : Vulkan indisponible, arrêt");
+      std::_Exit(1);
     }
     // Present tourne sur le fil du jeu et ImGui sur le fil de l'interface : l'overlay est
     // dessiné de façon synchrone sur le fil de l'interface dans l'image présentée.

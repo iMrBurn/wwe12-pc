@@ -35,6 +35,9 @@ void SvrWatchdogHeartbeat();
 bool SvrDisplaySize(uint32_t &w, uint32_t &h);
 bool SvrOnSteamDeck();
 
+REXCVAR_DEFINE_BOOL(svr_release_stale_targets, true, "SvR",
+                    "Free host render targets the game no longer uses (false: keep them, the "
+                    "0.6.0 behaviour, which leaks video memory).");
 REXCVAR_DEFINE_BOOL(svr_seed_gpu_textures, true, "SvR",
                     "Start GPU-written textures from what the CPU put in their memory (wrestler "
                     "skin composites: eyes and teeth).");
@@ -86,6 +89,7 @@ struct HostTarget {
   GuestTexture *host = nullptr;
   u32 desc[2] = {};  // surface: size bits, format; texture: fetch dwords 1 (format, base), 2 (size)
   u32 extent = 0;    // surface: the tiled-rendering extent it was sized to (see below), w << 16 | h
+  u64 last_used = 0; // frame it was last drawn to, resolved into or sampled
 };
 std::unordered_map<u32, HostTarget> g_surfaces;  // D3DSurface VA -> host render target
 std::unordered_map<u32, HostTarget> g_targets;   // texture VA -> GPU-written host texture
@@ -97,6 +101,7 @@ std::unordered_map<u32, HostTarget> g_targets;   // texture VA -> GPU-written ho
 // resolves reach, the scene is drawn once at full size, and every tile resolve copies it whole.
 std::unordered_map<u32, u32> g_tiled_extent;  // D3DSurface VA -> w << 16 | h (guest pixels)
 std::unordered_map<u32, float> g_surface_scale;  // D3DSurface VA -> host pixels per guest pixel
+std::atomic<u64> g_surface_frame{0};  // presented frames, for HostTarget::last_used
 
 // The texture's GPUTEXTURE_FETCH_CONSTANT (D3DTexture+0x1C), as host-order dwords.
 bool ReadFetch(u32 texture_va, rex::graphics::xenos::xe_gpu_texture_fetch_t &fetch) {
@@ -108,17 +113,31 @@ bool ReadFetch(u32 texture_va, rex::graphics::xenos::xe_gpu_texture_fetch_t &fet
   return fetch.type == rex::graphics::xenos::FetchConstantType::kTexture;
 }
 
-// Sets aside a host resource whose guest object now describes something else. It is not destroyed:
-// these host-made targets are linked into the renderer's resolve bookkeeping, which the
-// D3DResource_Destroy path doesn't expect for them (freeing one crashed in
-// DrainResolveLinksLocked). Rare in practice (a guest object changing size or format), so the
-// memory is simply kept.
+// Lets go of a host resource whose guest object now describes something else, as the game's own
+// D3DResource_Release does at the last reference. A surface goes back to the surface registry,
+// which hands it to the next surface of the same size and format and frees it after 900 idle
+// frames; a texture is destroyed once the GPU is done with the frame that last used it
+// (QueueResourceDestroy, then DestroyResourceNow unlinks it from the resolve bookkeeping). They
+// used to be kept forever: every new scene's tiled surfaces regrow (320, 640, 960, 1280 wide) and
+// render targets change shape, so a long session piled up gigabytes of video memory.
 std::vector<GuestTexture *> g_retired;
+u64 g_released = 0;
 void RetireHost(GuestTexture *host) {
   if (!host)
     return;
-  g_retired.push_back(host);
-  BD_INFO("SvR: {} stale host target(s) set aside", g_retired.size());
+  if (!REXCVAR_GET(svr_release_stale_targets)) {
+    g_retired.push_back(host);
+    BD_INFO("SvR: {} stale host target(s) set aside", g_retired.size());
+    return;
+  }
+  const u32 va = HostResourceHeap::ToGuest(host);
+  ResourceType type;
+  if (!va || !HostResourceHeap::GetType(va, &type))
+    return;
+  host->x360.as_surface.resource.ReferenceCount = 0u;
+  Video::QueueResourceDestroy(va, type);
+  if ((++g_released & 63) == 1)
+    BD_INFO("SvR: {} stale host target(s) released", g_released);
 }
 
 // Whether g_targets' entry for texture_va still matches the texture there; a stale one is retired
@@ -196,8 +215,10 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   const u32 format = surface->Format;
   if (auto it = g_surfaces.find(surface_va); it != g_surfaces.end()) {
     if (it->second.desc[0] == bits && it->second.desc[1] == format &&
-        it->second.extent == (g_tiled_extent.count(surface_va) ? g_tiled_extent[surface_va] : 0u))
+        it->second.extent == (g_tiled_extent.count(surface_va) ? g_tiled_extent[surface_va] : 0u)) {
+      it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
       return it->second.host;
+    }
     RetireHost(it->second.host);
     g_surfaces.erase(it);
   }
@@ -217,8 +238,45 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   GuestTexture *host = SvrCreateHostSurface(Scaled(width, scale), Scaled(height, scale), format);
   BD_INFO("SvR surface 0x{:08X}: {}x{} format 0x{:08X} -> host {}", surface_va, width, height,
           format, host ? "ok" : "FAILED");
-  g_surfaces.emplace(surface_va, HostTarget{host, {bits, format}, extent});
+  g_surfaces.emplace(surface_va, HostTarget{host, {bits, format}, extent,
+                                            g_surface_frame.load(std::memory_order_relaxed)});
   return host;
+}
+
+// WWE '12 allocates new D3DSurface objects for each scene (match, entrance, menu) and frees the
+// old ones itself, with no D3D call the renderer sees: their host targets stayed in g_surfaces
+// forever, two per scene at the full tiled size (about 50 MB at 1440p). A surface the game hasn't
+// asked for in 30 s is let go; its content doesn't need to survive (on the Xbox, EDRAM is
+// overwritten by the next surface anyway), and a surface used again later is simply recreated.
+//
+// GPU-written textures (g_targets) pile up the same way, one set per match. They are kept longer
+// (2 min without being resolved into or sampled): the ones whose content lasts (wrestler skin
+// composites) were read back into the game's memory (SvrAfterResolve), so a texture used again
+// after that is mirrored from there; the others are redrawn every frame they are used.
+static void ReleaseIdleSurfaces(u64 frame) {
+  constexpr u64 kIdleFrames = 1800;
+  constexpr u64 kTargetIdleFrames = 7200;
+  if (frame % 60 != 0 || frame < kIdleFrames || !REXCVAR_GET(svr_release_stale_targets))
+    return;
+  std::lock_guard lock(g_mutex);
+  for (auto it = g_surfaces.begin(); it != g_surfaces.end();) {
+    if (it->second.host && frame - it->second.last_used > kIdleFrames) {
+      RetireHost(it->second.host);
+      it = g_surfaces.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (frame < kTargetIdleFrames)
+    return;
+  for (auto it = g_targets.begin(); it != g_targets.end();) {
+    if (frame - it->second.last_used > kTargetIdleFrames) {
+      RetireHost(it->second.host);
+      it = g_targets.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 namespace {
@@ -306,8 +364,10 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale) {
   const u32 quarters = u32(scale * 4.0f + 0.5f);
   std::lock_guard lock(g_mutex);
   if (auto it = g_targets.find(texture_va); it != g_targets.end() && TargetCurrent(texture_va, it)) {
-    if (it->second.extent == 0 || it->second.extent == quarters)
+    if (it->second.extent == 0 || it->second.extent == quarters) {
+      it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
       return it->second.host;
+    }
     RetireHost(it->second.host);  // resolved from a surface of another scale now
     g_targets.erase(it);
   }
@@ -358,7 +418,8 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale) {
   // in the crowd during entrances. Start them transparent black.
   if (host && !cube && !seeded)
     Video::ClearTexture(host, 0);
-  g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, quarters});
+  g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, quarters,
+                                           g_surface_frame.load(std::memory_order_relaxed)});
   return host;
 }
 
@@ -786,6 +847,25 @@ u64 HashSource(const NativeMirrorSource &src) {
   return hash;
 }
 
+// Texture mirrors are keyed by the game's D3DTexture address, and each match loads its wrestlers,
+// arena and crowd at new addresses: the mirrors of the previous matches stayed in video memory
+// for the whole session. A texture not drawn with for 60 s is let go (its mirror is rebuilt from
+// the game's memory if it is ever used again). Caller holds g_mutex.
+void ReleaseIdleMirrors(u64 frame) {
+  constexpr u64 kIdleFrames = 3600;
+  if (frame % 60 != 30 || frame < kIdleFrames || !REXCVAR_GET(svr_release_stale_targets))
+    return;
+  for (auto it = g_mirror_checks.begin(); it != g_mirror_checks.end();) {
+    if (frame - it->second.frame > kIdleFrames) {
+      if (it->second.host)
+        EvictNativeTexture(it->first);
+      it = g_mirror_checks.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 }  // namespace
 
 void Wwe12QuitEntryTick(u64 frame);
@@ -831,6 +911,12 @@ void SvrOnFrame() {
   const u64 frame = g_frame.fetch_add(1, std::memory_order_relaxed);
   g_frame_index.store(frame, std::memory_order_relaxed);
   SvrProcessDeferredReadbacks(frame);
+  g_surface_frame.store(frame, std::memory_order_relaxed);
+  ReleaseIdleSurfaces(frame);
+  {
+    std::lock_guard lock(g_mutex);
+    ReleaseIdleMirrors(frame);
+  }
   LoadStatsTick();
   Wwe12QuitEntryTick(frame);
   // Present rate in the log every 600 frames (pacing check).
@@ -839,7 +925,13 @@ void SvrOnFrame() {
     const auto now = std::chrono::steady_clock::now();
     const double seconds = std::chrono::duration<double>(now - last).count();
     last = now;
-    BD_INFO("SvR native: {:.1f} presents/s", 600.0 / seconds);
+    size_t surfaces, targets, mirrors;
+    {
+      std::lock_guard lock(g_mutex);
+      surfaces = g_surfaces.size(), targets = g_targets.size(), mirrors = g_mirror_checks.size();
+    }
+    BD_INFO("SvR native: {:.1f} presents/s | live surfaces {}, targets {}, textures {}",
+            600.0 / seconds, surfaces, targets, mirrors);
   }
 }
 
@@ -855,8 +947,10 @@ GuestTexture *SvrResolveTexture(u32 texture_va) {
   const u64 frame = g_frame.load(std::memory_order_relaxed);
   std::lock_guard lock(g_mutex);
   if (auto it = g_targets.find(texture_va);
-      it != g_targets.end() && it->second.host && TargetCurrent(texture_va, it))
+      it != g_targets.end() && it->second.host && TargetCurrent(texture_va, it)) {
+    it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
     return it->second.host;
+  }
   MirrorCheck &check = g_mirror_checks[texture_va];
   if (check.frame == frame)
     return check.host;

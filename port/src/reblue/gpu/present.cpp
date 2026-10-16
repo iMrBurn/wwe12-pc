@@ -267,10 +267,14 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
   fs.wait_ms = 0;
   if (std::chrono::duration<double>(now - fs.window_start).count() >= 10.0 && fs.frames) {
     const double n = fs.frames;
+    // Video memory in use / what the driver allows us, to spot a leak in players' logs.
+    const Video::VideoMemory vram = Video::MemoryUsage();
     BD_INFO("[perf] {} frames: interval {:.1f} ms (max {:.1f}) | work {:.1f} ms (max {:.1f}) | "
-            "gpu wait {:.1f} ms (max {:.1f}) | swap/vsync {:.1f} ms | hitches >25ms {}",
+            "gpu wait {:.1f} ms (max {:.1f}) | swap/vsync {:.1f} ms | hitches >25ms {} | "
+            "vram {} / {} MB",
             fs.frames, fs.sum_interval / n, fs.max_interval, fs.sum_work / n, fs.max_work,
-            fs.sum_gpu / n, fs.max_gpu, fs.sum_swap / n, fs.hitches);
+            fs.sum_gpu / n, fs.max_gpu, fs.sum_swap / n, fs.hitches, vram.used >> 20,
+            vram.budget >> 20);
     fs = FrameStats{};
     fs.window_start = now;
     fs.last_present = now;

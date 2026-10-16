@@ -94,7 +94,12 @@ void ParkTextureGPUObjects(GuestTexture *tex) {
 
 void DestroyResourceNow(u32 guest_va, ResourceType type) {
   auto *memory = REX_KERNEL_MEMORY();
-  void *host = memory->TranslateVirtual<void *>(guest_va);
+  // FromGuest, not TranslateVirtual: in the SvR native build guest_va is a HostResourceHeap
+  // handle, not an address (translating it read zeroed guest memory and crashed in
+  // DrainResolveLinksLocked). Every type below is a GuestResource, so the lookup type is moot.
+  void *host = HostResourceHeap::FromGuest<GuestTexture>(guest_va);
+  if (!host)
+    return;
   switch (type) {
   case ResourceType::Texture:
   case ResourceType::VolumeTexture:
