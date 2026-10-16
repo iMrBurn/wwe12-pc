@@ -249,6 +249,11 @@ La 1.0 (stabilité) passe avant ; la cartographie peut se faire en parallèle.
   détail des effets, profondeur de champ, flou de mouvement, « soft filter », anti-aliasing (FXAA/SMAA
   en post-traitement), qualité des textures, écrans larges (titantron pleine largeur). Plus tard :
   choix de l'API (D3D12/Vulkan), replays ON/OFF.
+- **Icônes de boutons selon la manette** (voulu par l'utilisateur, 2026-10-16) : ✕○□△ avec une manette
+  PlayStation, A/B/X/Y avec une Xbox. 1) type de manette via SDL (SDL_GetGamepadType) ; 2) trouver où
+  le jeu range ses icônes (planche de texture dans un .pac, ou glyphes de la police) ; 3) remplacer la
+  planche au vol (miroir de texture) selon la manette branchée, même en cours de partie. Icônes PS à
+  dessiner nous-mêmes (pas celles de Sony). Conversation Gameplay, après les chargements ; 0.8.
 - À voir : physique des tables/échelles, éclairage façon SvR 2011.
 Plus tard : statistiques du mode Univers comme WWE '13 (conversation Univers, étape 4) ; 5 contre 5
 (= plus de 6 catcheurs).
