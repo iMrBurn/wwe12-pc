@@ -103,6 +103,27 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   Contournement : cvar `wwe12_car_opaque` (défaut true, `pipeline_cache.cpp`) coupe le mélange pour le
   pixel shader 7EE1904EE7E52F05 (vitres opaques aussi ; ce shader sert peut-être aux ceintures).
 
+## Feuille de route (décidée avec l'utilisateur le 2026-10-16)
+
+Retours : issues GitHub + salon « bugs » du Discord de Kaiko (l'utilisateur y a sa catégorie).
+Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui de la cible : normal.
+
+**1.0 = stabilité, tous les bugs connus** (dans cet ordre) :
+1. Plantages / gels : #4 (gel en entrée, RX 560, journaux 0.6.0 joints), #8 (gel).
+2. Graphismes AMD/Intel/Steam Deck : #7 et #11 (pavés pendant les entrées, toujours là en 0.6.0),
+   #12 (yeux blancs sur AMD).
+3. Performances : #10 (chutes de fps en milieu et fin de match).
+4. Jeu : #9 (replay d'après-match), matchs WWE Draft du mode Univers après WrestleMania (la
+   cinématique où une superstar tirée au hasard change de roster ne se fait pas), portes
+   transparentes en backstage.
+5. Option « tout débloquer » ; gestion des sauvegardes (créer/supprimer, importer ses propres
+   sauvegardes Xbox : demandé par des joueurs, important).
+
+**1.1** : Title Update (dernière mise à jour du jeu).
+**Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
+perso, textures HD (remplacement de textures par le dossier mods), minitrons ajoutés (contenu de mods),
+vidéos HD, nouvelles stipulations et mode Univers enrichi (très difficile : logique du jeu), online.
+
 ## Idées et demandes des joueurs (à faire)
 
 - **Option « tout débloquer »** (comme le portage SvR 2011) : un joueur signale que le DLC « All
