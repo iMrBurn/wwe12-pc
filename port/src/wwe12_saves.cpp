@@ -113,11 +113,11 @@ bool InstallSave(rex::system::KernelState* kernel, rex::system::xam::ContentMana
 
   const fs::path install_dir = user_data_root / fmt::format("{:016X}", xuid) /
                                fmt::format("{:08X}", title_id) / "00000001" / data.file_name();
-  content->DeleteContent(xuid, data);  // ancien paquet du même nom (dossier + .header), s'il existe
-
+  // Le nouveau paquet doit s'ouvrir avant de supprimer l'ancien du même nom.
   auto device = std::make_unique<rex::filesystem::StfsContainerDevice>("", package);
   if (!device->Initialize())
     return false;
+  content->DeleteContent(xuid, data);  // ancien paquet du même nom (dossier + .header), s'il existe
   std::error_code ec;
   fs::create_directories(install_dir, ec);
   auto* root = device->ResolvePath("");

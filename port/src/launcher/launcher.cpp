@@ -27,6 +27,7 @@
 
 #include "changelog.h"
 #include "diagnostics.h"
+#include "game_process.h"
 #include "saves.h"
 #include "toml_file.h"
 #include "updater.h"
@@ -213,7 +214,7 @@ struct Texts {
   const char *whats_new;
   const char *vulkan_ok, *vulkan_missing;
   const char *support, *support_hint, *diag_copy, *diag_copied, *diag_failed, *open_logs;
-  const char *include_beta, *update_game_running, *save_failed;
+  const char *include_beta, *update_game_running, *save_failed, *already_running, *wait_busy;
 };
 
 const Texts kEnglish = {
@@ -251,7 +252,9 @@ const Texts kEnglish = {
     "Open the logs folder",
     "Include beta versions", "The game is running: close it, then check again.",
     "Could not save your settings. Is the game folder read-only (for example inside Program Files)? "
-    "Move the game folder to your Documents or Desktop."};
+    "Move the game folder to your Documents or Desktop.",
+    "The game is already running.",
+    "Please wait: a backup, an import or an update is in progress."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -291,7 +294,9 @@ const Texts kFrench = {
     "Copie impossible.", "Ouvrir le dossier des journaux",
     "Inclure les versions bêta", "Le jeu est lancé : fermez-le, puis vérifiez à nouveau.",
     "Impossible d'enregistrer vos réglages. Le dossier du jeu est-il en lecture seule (par exemple "
-    "dans Program Files) ? Déplacez le dossier du jeu dans Documents ou sur le Bureau."};
+    "dans Program Files) ? Déplacez le dossier du jeu dans Documents ou sur le Bureau.",
+    "Le jeu est déjà lancé.",
+    "Patientez : une copie, un import ou une mise à jour est en cours."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -464,6 +469,7 @@ ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 saves::Manager g_saves;
 bool g_launch = false;
+int g_play_note = 0;  // 1 game already running, 2 something is busy
 Updater g_updater;
 VulkanCheck g_vulkan;
 std::string g_changelog;  // CHANGELOG.md next to the exe (the notes of this version), prepared
@@ -503,6 +509,8 @@ void PagePlay() {
   ImGui::Dummy(ImVec2(0, 20));
   if (BigButton(t.play_button, ImVec2(340, 90), kGold, IM_COL32(20, 20, 20, 255)))
     g_launch = true;
+  if (g_play_note)
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", g_play_note == 1 ? t.already_running : t.wait_busy);
   ImGui::Dummy(ImVec2(0, 30));
   ImGui::Separator();
   ImGui::Text("%s", t.updates);
@@ -897,7 +905,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
 
     if (g_launch) {
       g_launch = false;
-      if (LaunchGame())
+      g_play_note = 0;
+      if (game::IsRunning())
+        g_play_note = 1;  // one game at a time
+      else if (g_saves.Busy() || g_updater.Busy())
+        g_play_note = 2;  // closing now would cut it short
+      else if (LaunchGame())
         done = true;
       else
         MessageBoxW(hwnd, L"wwe12.exe could not be started.", L"WWE '12 PC", MB_ICONERROR);
@@ -907,6 +920,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   }
 
   g_saves.Wait();
+  g_updater.Shutdown();
   ImGui_ImplDX11_Shutdown();
   ImGui_ImplWin32_Shutdown();
   ImGui::DestroyContext();

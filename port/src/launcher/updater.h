@@ -48,6 +48,14 @@ class Updater {
   }
 
   bool RestartRequested() const { return restart_; }
+  // A download is running: starting the game now would end the launcher (and the update).
+  bool Busy() const { return state_ == State::Downloading; }
+  // Called when the launcher closes: lets an install that is swapping files finish, so closing
+  // the window can never leave a half-updated install.
+  void Shutdown() {
+    if (applying_ && worker_.joinable())
+      worker_.join();
+  }
 
   void Draw(const UpdaterTexts &t) {
     if (auto_install_.exchange(false))
@@ -200,6 +208,9 @@ class Updater {
             break;
           }
         }
+        // Only files of this project's own releases are ever downloaded.
+        if (url.rfind("https://github.com/iMrBurn/wwe12-pc/releases/download/", 0) != 0)
+          url.clear();
         if (url.empty() || (!best_tag.empty() && !Newer(tag, best_tag)))
           continue;
         best_tag = tag;
@@ -248,7 +259,10 @@ class Updater {
         return;
       }
       std::string err;
-      if (!Apply(zip, err)) {
+      applying_ = true;
+      const bool applied = Apply(zip, err);
+      applying_ = false;
+      if (!applied) {
         SetFailed(err + " (nothing was changed)");
         return;
       }
@@ -624,6 +638,7 @@ class Updater {
   bool include_beta_ = true;
   std::atomic<bool> game_running_fail_{false};
   std::atomic<bool> restart_{false};
+  std::atomic<bool> applying_{false};  // files are being swapped: do not kill the process
   std::atomic<bool> auto_install_{false};
   std::thread worker_;
 

@@ -23,6 +23,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -122,6 +123,8 @@ class Manager {
     if (worker_.joinable())
       worker_.join();
   }
+  // A backup, restore, delete or import is running: the game must not start now.
+  bool Busy() const { return busy_.load(); }
 
   void Draw(bool french) {
     const Texts &t = french ? kFrench : kEnglish;
@@ -360,16 +363,20 @@ class Manager {
     import_count_ = 0;
     import_size_ = 0;
     std::error_code ec;
+    size_t looked_at = 0;
     auto consider = [&](const fs::path &f) {
+      const uintmax_t size = fs::file_size(f, ec);
+      if (ec || size < 0x364)  // too small to be a package: no need to open it
+        return;
       if (IsWweSavePackage(f)) {
         ++import_count_;
-        import_size_ += fs::file_size(f, ec);
+        import_size_ += size;
       }
     };
     if (fs::is_directory(picked, ec)) {
       for (auto it = fs::recursive_directory_iterator(picked, ec);
            it != fs::recursive_directory_iterator(); it.increment(ec)) {
-        if (ec)
+        if (ec || ++looked_at > 20000)  // a whole disk picked by mistake: stop looking
           break;
         if (it->is_regular_file(ec))
           consider(it->path());
@@ -447,7 +454,8 @@ class Manager {
         b.automatic = kind == "auto";
         std::getline(info, b.label);
       }
-      b.size = DirSize(e.path());
+      auto cached = size_cache_.find(b.name);  // a finished backup never changes
+      b.size = cached != size_cache_.end() ? cached->second : (size_cache_[b.name] = DirSize(e.path()));
       out.push_back(std::move(b));
     }
     std::sort(out.begin(), out.end(), [](const Backup &a, const Backup &b) { return a.name > b.name; });
@@ -516,6 +524,8 @@ class Manager {
     std::string label = label_;
     if (op == Op::Create)
       label_[0] = '\0';
+    if (op == Op::Import)
+      import_result_.clear();  // here, not in the worker: the UI thread reads it
     worker_ = std::thread([this, t, op, name, label] {
       Run(*t, op, name, label);
       dirty_ = true;
@@ -557,7 +567,6 @@ class Manager {
       }
       std::error_code rec;
       fs::remove(exe_dir_ / "saves_import_result.txt", rec);
-      import_result_.clear();
       SetMessage(true, t.import_ready);
       break;
     }
@@ -565,6 +574,7 @@ class Manager {
       if (!ValidName(name))
         return;
       fs::remove_all(BackupsDir() / name, ec);
+      size_cache_.erase(name);
       SetMessage(!ec, ec ? std::string(t.failed) + " " + ec.message() : std::string(t.done_deleted));
       break;
     }
@@ -643,6 +653,7 @@ class Manager {
   uintmax_t active_size_ = 0;
   std::string active_when_;
   std::vector<Backup> backups_;
+  mutable std::map<std::string, uintmax_t> size_cache_;  // backup name -> size
 
   bool import_pending_ = false;  // saves_import.txt waits for the next game start
   std::string import_result_;    // non-empty once the game has written its summary
