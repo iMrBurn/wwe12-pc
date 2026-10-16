@@ -151,8 +151,8 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
    au minimum un message clair au lieu d'un écran noir figé, idéalement le rendu D3D12) ; tenue
    Superstar Threads avec des zones blanches (Daniel Bryan) ; vibrations de manette absentes en mode
    Univers (déjà le cas sur Xbox 360, bonus).
-6. Option « tout débloquer » ; gestion des sauvegardes (créer/supprimer, importer ses propres
-   sauvegardes Xbox : demandé par des joueurs, important).
+6. Option « tout débloquer ». ~~Gestion des sauvegardes~~ : **faite** (page SAUVEGARDES du launcher ;
+   import Xbox 360 testé en jeu par l'utilisateur avec ses propres sauvegardes le 2026-10-16 : OK).
 
 **1.1** : Title Update (dernière mise à jour du jeu).
 **Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
