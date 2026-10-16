@@ -116,7 +116,8 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
    RGBA16F) : plusieurs Go perdus. Explique probablement : image figée après quelques matchs (bug 1),
    ralenti « slow motion » après quelques matchs en Univers surtout en 4K (bug 4), jeu à 0,25x sur
    RTX 2050 4 Go (bug 6), Univers qui fige après ~20 matchs (bug 7), #10 (chutes de fps en fin de
-   match), peut-être #4 et #8. À corriger : libérer après que le GPU a fini (fin d'image + quelques
+   match), peut-être #4 et #8, et l'effet « cel-shading » (catcheurs à l'éclairage plat, couleurs en
+   aplats) apparu en cours de session en RTWM sur Steam Deck en 1080p, absent au match précédent. À corriger : libérer après que le GPU a fini (fin d'image + quelques
    images) en les retirant proprement des liens de resolve, ou les réutiliser par taille/format.
 1. Plantages / gels : #4 (gel en entrée, RX 560, journaux 0.6.0 joints), #8 (gel).
 2. Graphismes AMD/Intel/Steam Deck : #7 et #11 (pavés pendant les entrées, toujours là en 0.6.0),
