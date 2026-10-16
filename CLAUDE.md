@@ -228,7 +228,9 @@ La 1.0 (stabilité) passe avant ; la cartographie peut se faire en parallèle.
 **1.1** : Title Update (dernière mise à jour du jeu).
 **Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
 perso, textures HD (remplacement de textures par le dossier mods), minitrons ajoutés (contenu de mods),
-vidéos HD, nouvelles stipulations et mode Univers enrichi (très difficile : logique du jeu), online.
+vidéos HD, plus de 6 catcheurs sur le ring (8-10, suggéré par des joueurs ; limite gravée dans le
+code : tableaux à 6 cases, budget mémoire Xbox, animations ; très long ; demander à Kaiko si son
+« Limit Breaking » de SvR 2011 y est arrivé), nouvelles stipulations et mode Univers enrichi (très difficile : logique du jeu), online.
 
 ## Idées et demandes des joueurs (à faire)
 
