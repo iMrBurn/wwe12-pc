@@ -101,6 +101,11 @@ std::unordered_map<u32, HostTarget> g_targets;   // texture VA -> GPU-written ho
 // resolves reach, the scene is drawn once at full size, and every tile resolve copies it whole.
 std::unordered_map<u32, u32> g_tiled_extent;  // D3DSurface VA -> w << 16 | h (guest pixels)
 std::unordered_map<u32, float> g_surface_scale;  // D3DSurface VA -> host pixels per guest pixel
+// Full extent the tiled surfaces of a given description grew to, keyed by size bits << 32 | format.
+// Each scene allocates new surface objects; without this they started one tile wide and grew during
+// their first frame, whose tile resolves past the first tile copied an empty target: a flash of black
+// over the right of the picture before the bell (NVIDIA), leftover garbage on other GPUs.
+std::unordered_map<u64, u32> g_learned_extent;
 std::atomic<u64> g_surface_frame{0};  // presented frames, for HostTarget::last_used
 
 // The texture's GPUTEXTURE_FETCH_CONSTANT (D3DTexture+0x1C), as host-order dwords.
@@ -225,6 +230,15 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   u32 width = (bits >> 18) + 1;
   u32 height = ((bits >> 3) & 0x7FFF) + 1;
   u32 extent = 0;
+  if (!g_tiled_extent.count(surface_va)) {
+    // A new surface object shaped like a known tiled one starts at the extent that one reached;
+    // 320x736 is the one-tile EDRAM surface of the 1280x720 scene, 4 tiles wide.
+    const auto learned = g_learned_extent.find(u64(bits) << 32 | format);
+    if (learned != g_learned_extent.end())
+      g_tiled_extent[surface_va] = learned->second;
+    else if (width == 320 && height == 736)
+      g_tiled_extent[surface_va] = (1280u << 16) | 736u;
+  }
   if (auto it = g_tiled_extent.find(surface_va); it != g_tiled_extent.end()) {
     extent = it->second;
     width = std::max(width, extent >> 16);
@@ -340,6 +354,7 @@ void SvrNoteTiledResolve(u32 color_va, u32 depth_va, u32 right, u32 bottom) {
       BD_INFO("SvR tiled surface 0x{:08X}: {}x{} -> drawn at {}x{}", va, width, height,
               std::max(width, grown >> 16), std::max(height, grown & 0xFFFFu));
       extent = grown;
+      g_learned_extent[u64(bits) << 32 | surface->Format] = grown;
     }
   }
 }
