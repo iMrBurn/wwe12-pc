@@ -192,6 +192,23 @@ crochets (chez lui 8 VirtualQuery par image = 1,4 ms) ; (4) vblank sur minuteur 
 BPE de Yuke's (`tools/yukes_bpe.py`) et LZX. Sans effet chez lui : sauter le dessin (perd un rendu
 unique par chargement), vblank plus rapide avec vsync active. Attention : le turbo change la
 synchronisation image/temps (replays, #9) : à couper là où c'est comparé. Mesurer avant chaque étape.
+**Fait (2026-10-16, étapes 0 et 1, vérifié en jeu, cvar `wwe12_load_turbo` encore à false par
+défaut)** : `native/wwe12_load_turbo.cpp`. Mesure : les threads du jeu avancent au rythme des images
+(barrière sub_827DEA20 : prêt → attend le feu vert), 60 images de jeu par image affichée ; sur ~4 s
+d'écran de chargement, le chargeur ne travaille que ~1 s. Écrans de chargement = 14 classes
+(`/LOAD/IG%02d`, GN, CV…, vtable slot 13) ; méthodes communes **pas appelées à chaque image** :
+slot 14 sub_826AF0F0 à l'ouverture (~10 images), slots 16/22/23 (sub_826A83B0, sub_826A6B90,
+sub_826B3060) à la fermeture, quand l'entrée démarre. Turbo de l'ouverture à la fermeture (20 s max) :
+cvar SDK `vsync` coupé par son nom (`rex::cvar::SetFlagByName`, vblank invité à 1 kHz) + une image sur
+`wwe12_load_turbo_frames` (6) affichée (`present.cpp` demande `Wwe12LoadTurboSkipPresent`) ; ≈ 340
+images de jeu/s. Résultat : chargement de match ≈ 4,0 → 2,8 s, fin des entrées → cloche ≈ 5,9 → 5,0 s
+(un écran du même type s'ouvre aussi en fin d'entrées, avant `WWE12_Transition` : turbo 1,9 s, rien de
+visible) ; replay et MATCH HIGHLIGHTS OK. L'interrupteur 0x8317B7BC vaut 1 en menus/chargement/match,
+5 en entrées : inutilisable comme « match en cours ». Sonde : `wwe12_load_probe` (lignes `[loadprobe]`),
+lanceurs `tools/dev/lancer_mesure_chargement.bat` / `lancer_test_turbo.bat`. Un plantage (corruption
+du tas, 0xc0000374) au 1er essai ne s'est pas reproduit en 5 lancements : deux jeux tournaient en même
+temps. Reste : étape 2 (fin des entrées → cloche : transition ~2 s puis marche des catcheurs ~2,5 s,
+vrai jeu) et le gros chargement CPU (~1 s, 7 000 appels du chargeur).
 
 **Mode Univers enrichi (voulu par l'utilisateur, 2026-10-16)**, sur le modèle de « DarkMatches » (Discord,
 recomp de WWE '13, même mode Univers) : matchs de qualification (Money in the Bank, Elimination Chamber)

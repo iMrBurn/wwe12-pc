@@ -26,7 +26,10 @@ REXCVAR_DEFINE_INT32(wwe12_load_slice_ms, 12, "WWE12",
 
 REX_EXTERN(__imp__sub_82819258);
 
+void Wwe12LoaderTick();  // wwe12_load_turbo.cpp
+
 extern "C" REX_FUNC(sub_82819258) {
+  Wwe12LoaderTick();
   const int slice = REXCVAR_GET(wwe12_load_slice_ms);
   const u32 budget_va = ctx.r3.u32 + 196;
   const float budget = bd::mem::load<float>(budget_va);

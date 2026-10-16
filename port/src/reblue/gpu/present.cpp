@@ -27,6 +27,8 @@
 #include "gpu/output.h"
 #include "gpu/settings.h"
 
+bool Wwe12LoadTurboSkipPresent();  // native/wwe12_load_turbo.cpp
+
 namespace bd::gpu {
 
 namespace {
@@ -290,6 +292,11 @@ void Video::Present(GuestTexture *frontBuffer) {
     return;
   }
   if (s.frame_present_committed) {
+    return;
+  }
+  // WWE '12 turbo loading screens (native/wwe12_load_turbo.cpp): most frames are not shown.
+  if (Wwe12LoadTurboSkipPresent()) {
+    AbandonFrame(s, lock);
     return;
   }
 
