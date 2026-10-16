@@ -209,6 +209,15 @@ lanceurs `tools/dev/lancer_mesure_chargement.bat` / `lancer_test_turbo.bat`. Un 
 du tas, 0xc0000374) au 1er essai ne s'est pas reproduit en 5 lancements : deux jeux tournaient en même
 temps. Reste : étape 2 (fin des entrées → cloche : transition ~2 s puis marche des catcheurs ~2,5 s,
 vrai jeu) et le gros chargement CPU (~1 s, 7 000 appels du chargeur).
+**Arrêté là (décision de l'utilisateur, 2026-10-16).** Étape 2 écartée : fin des entrées → cloche =
+transition `WWE12_Transition` ~2 s (animation visible, l'enregistreur du replay tourne déjà) + marche
+des catcheurs ~2,5 s (vrai jeu) ; l'écran de fin d'entrées est déjà en turbo (~4,5 → 2 s). Lectures et
+zlib mesurées (sonde `wwe12_load_probe` : sub_827EA330 = boucle de lecture par blocs de 256 Ko,
+sub_827F57A8 = inflate de zlib) : 32 Mo lus en 12 ms, inflate ~25 ms par match, BPE invisible dans
+les piles → zlib/BPE natifs inutiles. Chargement de match avec turbo ≈ 2,7 s : ~1 s de vrai travail du
+chargeur, puis **une lecture d'1 s pour 750 Ko** juste après les voix du speaker
+(`Ring_Announcer_JR_DLC_03/04`), puis le script d'entrée (`/GMEV`, `/GMST`) et l'entrée. Piste non
+suivie : trouver ce fichier (son lu en flux ? attente du SDK ?) ; gain possible ~1 s (→ ~1,7 s).
 
 **Mode Univers enrichi (voulu par l'utilisateur, 2026-10-16)**, sur le modèle de « DarkMatches » (Discord,
 recomp de WWE '13, même mode Univers) : matchs de qualification (Money in the Bank, Elimination Chamber)

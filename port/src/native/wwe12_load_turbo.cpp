@@ -66,6 +66,16 @@ std::atomic<int64_t> g_screen_since_ms{0};
 std::atomic<u32> g_loader_calls{0}, g_presents{0}, g_skips{0};
 std::atomic<u32> g_screen_calls[4];  // the four loading-screen base methods
 
+// Probe timings (microseconds) of the game's file reads and zlib.
+std::atomic<u64> g_read_us{0}, g_read_wait_us{0}, g_inflate_us{0}, g_read_bytes{0};
+std::atomic<u32> g_reads{0}, g_inflates{0};
+thread_local bool t_in_read = false;
+
+u64 NowUs() {
+  return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now().time_since_epoch())
+      .count();
+}
+
 std::mutex g_barrier_mu;
 std::unordered_map<u32, u32> g_barrier_calls;  // guest thread (r13) -> barrier calls
 
@@ -95,9 +105,13 @@ void ProbeLine(const char *why, int64_t now) {
   for (u32 i = 0; i < 4; ++i)
     screen[i] = g_screen_calls[i].exchange(0);
   BD_INFO("[loadprobe] {}: loader {} | game frames {} | presented {} skipped {} | phase {} | "
-          "load screen {}/{}/{}/{} | turbo {}",
+          "load screen {}/{}/{}/{} | turbo {} | reads {} ({} KB) {} ms, waiting {} ms | "
+          "inflate {} calls {} ms",
           why, loader, frames, presents, skips, bd::mem::load<u32>(kReplayPhaseVa), screen[0],
-          screen[1], screen[2], screen[3], g_turbo.active ? "on" : "off");
+          screen[1], screen[2], screen[3], g_turbo.active ? "on" : "off", g_reads.exchange(0),
+          g_read_bytes.exchange(0) >> 10, g_read_us.exchange(0) / 1000,
+          g_read_wait_us.exchange(0) / 1000, g_inflates.exchange(0),
+          g_inflate_us.exchange(0) / 1000);
   g_turbo.probe_ms = now;
 }
 
@@ -157,3 +171,45 @@ WWE12_LOAD_SCREEN_HOOK(sub_826AF0F0, 0, true)
 WWE12_LOAD_SCREEN_HOOK(sub_826A83B0, 1, false)
 WWE12_LOAD_SCREEN_HOOK(sub_826A6B90, 2, false)
 WWE12_LOAD_SCREEN_HOOK(sub_826B3060, 3, false)
+
+// Probe: the game's file read loop (sub_827EA330: reads 256 KB chunks asynchronously, then waits
+// in an alertable sleep, sub_821AEAE0(-1, 1), for each completion), and zlib's inflate
+// (sub_827F57A8, the function with zlib's error texts).
+REX_EXTERN(__imp__sub_827EA330);
+extern "C" REX_FUNC(sub_827EA330) {
+  if (!REXCVAR_GET(wwe12_load_probe) || !ctx.r3.u32) {
+    __imp__sub_827EA330(ctx, base);
+    return;
+  }
+  const u32 bytes = bd::mem::load<u32>(ctx.r3.u32 + 332);
+  const u64 start = NowUs();
+  t_in_read = true;
+  __imp__sub_827EA330(ctx, base);
+  t_in_read = false;
+  g_read_us.fetch_add(NowUs() - start, std::memory_order_relaxed);
+  g_read_bytes.fetch_add(bytes, std::memory_order_relaxed);
+  g_reads.fetch_add(1, std::memory_order_relaxed);
+}
+
+REX_EXTERN(__imp__sub_821AEAE0);
+extern "C" REX_FUNC(sub_821AEAE0) {
+  if (!t_in_read) {
+    __imp__sub_821AEAE0(ctx, base);
+    return;
+  }
+  const u64 start = NowUs();
+  __imp__sub_821AEAE0(ctx, base);
+  g_read_wait_us.fetch_add(NowUs() - start, std::memory_order_relaxed);
+}
+
+REX_EXTERN(__imp__sub_827F57A8);
+extern "C" REX_FUNC(sub_827F57A8) {
+  if (!REXCVAR_GET(wwe12_load_probe)) {
+    __imp__sub_827F57A8(ctx, base);
+    return;
+  }
+  const u64 start = NowUs();
+  __imp__sub_827F57A8(ctx, base);
+  g_inflate_us.fetch_add(NowUs() - start, std::memory_order_relaxed);
+  g_inflates.fetch_add(1, std::memory_order_relaxed);
+}
