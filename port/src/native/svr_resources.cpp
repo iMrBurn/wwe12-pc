@@ -90,6 +90,7 @@ struct HostTarget {
   u32 desc[2] = {};  // surface: size bits, format; texture: fetch dwords 1 (format, base), 2 (size)
   u32 extent = 0;    // surface: the tiled-rendering extent it was sized to (see below), w << 16 | h
   u64 last_used = 0; // frame it was last drawn to, resolved into or sampled
+  bool in_memory = false;  // texture: its last resolve was read back into the game's memory
 };
 std::unordered_map<u32, HostTarget> g_surfaces;  // D3DSurface VA -> host render target
 std::unordered_map<u32, HostTarget> g_targets;   // texture VA -> GPU-written host texture
@@ -263,10 +264,12 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
 // asked for in 30 s is let go; its content doesn't need to survive (on the Xbox, EDRAM is
 // overwritten by the next surface anyway), and a surface used again later is simply recreated.
 //
-// GPU-written textures (g_targets) pile up the same way, one set per match. They are kept longer
-// (2 min without being resolved into or sampled): the ones whose content lasts (wrestler skin
-// composites) were read back into the game's memory (SvrAfterResolve), so a texture used again
-// after that is mirrored from there; the others are redrawn every frame they are used.
+// GPU-written textures (g_targets) pile up the same way, one set per match. Only those that can
+// be rebuilt are let go, after 2 min without being resolved into or sampled: screen images (16:9,
+// or resolved from a scaled surface), redrawn on every frame they are used, and textures whose
+// last resolve was read back into the game's memory (wrestler skin composites), mirrored from
+// there if used again. Anything else may hold content drawn once (0.7.0 test: the reversal
+// button prompt disappeared when every idle texture was let go), so it stays.
 static void ReleaseIdleSurfaces(u64 frame) {
   constexpr u64 kIdleFrames = 1800;
   constexpr u64 kTargetIdleFrames = 7200;
@@ -284,7 +287,10 @@ static void ReleaseIdleSurfaces(u64 frame) {
   if (frame < kTargetIdleFrames)
     return;
   for (auto it = g_targets.begin(); it != g_targets.end();) {
-    if (frame - it->second.last_used > kTargetIdleFrames) {
+    const GuestTexture *host = it->second.host;
+    const bool rebuildable = !host || it->second.in_memory || it->second.extent > 4 ||
+                             u64(host->width) * 9 == u64(host->height) * 16;
+    if (rebuildable && frame - it->second.last_used > kTargetIdleFrames) {
       RetireHost(it->second.host);
       it = g_targets.erase(it);
     } else {
@@ -454,7 +460,15 @@ void ReadBackTarget(u32 texture_va, GuestTexture *dst);
 }  // namespace
 
 void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
-  if (!dst || level != 0 || face != 0 || !REXCVAR_GET(svr_resolve_readback))
+  if (!dst)
+    return;
+  {
+    // New content on the GPU only, until a read back below copies it to the game's memory.
+    std::lock_guard lock(g_mutex);
+    if (const auto it = g_targets.find(texture_va); it != g_targets.end() && it->second.host == dst)
+      it->second.in_memory = false;
+  }
+  if (level != 0 || face != 0 || !REXCVAR_GET(svr_resolve_readback))
     return;
   // Screen images (the scene, its bloom and depth-of-field chain: 16:9) are never read by the
   // CPU. At 1x (Steam Deck, 720p) they used to qualify, and reading them back in the middle of a
@@ -520,6 +534,11 @@ void ReadBackTarget(u32 texture_va, GuestTexture *dst) {
     return;
   const bool written = WriteGuestTextureBase(texture_va, pixels.data(), row_pitch, dst->width,
                                              dst->height);
+  if (written) {
+    std::lock_guard lock(g_mutex);
+    if (const auto it = g_targets.find(texture_va); it != g_targets.end() && it->second.host == dst)
+      it->second.in_memory = true;
+  }
   // The game paints its skin composites (base skin, eyes, teeth, then blood mid-match) into
   // level 0 only; the smaller levels seen from afar were never filled on the host. Build them
   // from level 0 with a 2x2 box filter, as the console's CPU does.
