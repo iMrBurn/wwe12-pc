@@ -177,6 +177,14 @@ BPE de Yuke's (`tools/yukes_bpe.py`) et LZX. Sans effet chez lui : sauter le des
 unique par chargement), vblank plus rapide avec vsync active. Attention : le turbo change la
 synchronisation image/temps (replays, #9) : à couper là où c'est comparé. Mesurer avant chaque étape.
 
+**Mode Univers enrichi (voulu par l'utilisateur, 2026-10-16)**, sur le modèle de « DarkMatches » (Discord,
+recomp de WWE '13, même mode Univers) : matchs de qualification (Money in the Bank, Elimination Chamber)
+avec leurs actualités (NEWS) et la place gagnée ; participants surprise au Royal Rumble (0 à 3 légendes
+de la division Legends, affichés « ??? » avec le portrait vide dans la liste). Base de travail : journal
+de débogage du jeu (`wwe12_game_log`, 826D4228 = mode Univers : cartes, classements, Draft). Commencer
+par cartographier comment le jeu génère les cartes d'émission et les actualités. Demander à DarkMatches
+comment il s'y prend (et sa licence avant de reprendre du code).
+
 **1.1** : Title Update (dernière mise à jour du jeu).
 **Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
 perso, textures HD (remplacement de textures par le dossier mods), minitrons ajoutés (contenu de mods),
