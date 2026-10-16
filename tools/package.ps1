@@ -194,3 +194,13 @@ $Sums = Join-Path $Root "dist\SHA256-v$Version.txt"
     "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), (Split-Path $_ -Leaf)
 } | Set-Content -Path $Sums -Encoding ascii
 "Empreintes : $Sums"
+
+# Carte des symboles de cet exe (jamais publiée) : sans elle, les adresses d'un hang_trace.txt ou
+# crash_trace.txt envoyé par un joueur ne se traduisent plus en fonctions dès la compilation suivante.
+$Symbols = Join-Path $Root "dist\symbols-v$Version"
+New-Item -ItemType Directory -Force -Path $Symbols | Out-Null
+foreach ($f in "wwe12.map", "wwe12.exe") {
+    $src = Join-Path $Build $f
+    if (Test-Path $src) { Copy-Item $src $Symbols -Force }
+}
+"Symboles : $Symbols"
