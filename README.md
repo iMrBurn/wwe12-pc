@@ -9,8 +9,9 @@ SmackDown vs. Raw ports (itself built on [re:Blue](https://github.com/zolaware/r
 
 *Français : portage PC natif de WWE '12 (version Xbox 360). Aucune donnée du jeu n'est fournie :
 il faut votre propre copie. Téléchargez la dernière version dans « Releases », mettez l'image
-.iso de votre jeu dans le dossier `game`, puis lancez `wwe12.exe`. Mode d'emploi complet en
-français dans `LISEZMOI.txt`.*
+.iso de votre jeu dans le dossier `game`, puis lancez `WWE12 Launcher.exe` (les mises à jour
+suivantes se font en un clic depuis le launcher). Mode d'emploi complet en français dans
+`LISEZMOI.txt`.*
 
 ## Playing
 
@@ -19,36 +20,51 @@ français dans `LISEZMOI.txt`.*
    folder (or the disc contents: `default.xex`, `pac\`, `movies\`…).
 3. Run `WWE12 Launcher.exe` (or `wwe12.exe` to start the game directly).
 
-Requirements: Windows 10/11 64-bit, a Vulkan 1.2 graphics card, an Xbox or PlayStation controller
+Requirements: Windows 10/11 64-bit, a graphics card with a Vulkan 1.2 driver (most cards since
+2016; not Intel HD 4000/5000/6000 series, which have no Vulkan driver on Windows), an Xbox or PlayStation controller
 (DualShock 4, DualSense) or the keyboard (ZQSD/WASD, layout in `README.txt`).
 Settings (language, internal resolution…) are in `wwe12.toml`, explained in `README.txt`.
 
-## Status (v0.5.0-beta, last beta before 1.0)
+## Status (v0.7.0-beta)
 
 - Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps. Entrances and
   cutscenes run at 30 fps like on Xbox 360, or at 60 fps with an experimental option.
-- A launcher (`WWE12 Launcher.exe`): settings, controls, saves backup, mods, and automatic
-  updates from this page's releases.
+- **Launcher** (`WWE12 Launcher.exe`): settings, keyboard controls, mods, **saves** (backups,
+  restore, **import of your Xbox 360 saves**), diagnostic info for bug reports, and **one-click
+  updates** from this page's releases.
+- **In-game graphics settings** (OPTIONS > GRAPHICS): internal resolution from 540p to 4K
+  (automatic by default: 720p on Steam Deck and integrated GPUs), texture filtering, vertical
+  sync, 60 fps entrances.
+- **Match loading about twice as fast** as on the console, start-up videos skipped.
 - DLC support (see below).
-- Internal resolution from 720p to 4K. Automatic mode picks it from the screen, and stays at
-  720p on Steam Deck and integrated GPUs (an Intel iGPU holds 60 fps there).
-- All five languages of the European release (English, French, German, Spanish, Italian). The
-  game's "Xbox 360 console" texts say "PC".
+- All five languages of the European release (English, French, German, Spanish, Italian).
 - An "EXIT" entry in the main menu (in place of SHOP, the dead Xbox LIVE store); Xbox LIVE is
   labelled "Online".
-- Compiled pipelines are kept in `Documents\wwe12\cache` to avoid stutter on later runs.
-- Custom attires (Superstar Threads), wrestlers' eyes and teeth, and blood render correctly.
-- Sharp textures at an angle (16x anisotropic filtering).
+- Custom attires (Superstar Threads), eyes and teeth (NVIDIA and Intel), blood, post-match
+  replays and MATCH HIGHLIGHTS, controller vibration (Universe mode included).
+- Video memory stays stable over long sessions (no more slowdowns after a few matches).
 - A `mods` folder: files in it replace the game's own (HD titantron videos, textures...).
 - Xbox and PlayStation controllers, and the keyboard (together with a controller).
 
-Known issues: title belts on a shoulder can move oddly with 60 fps entrances; the titantron video
-is low-resolution; long loading screens; on-screen button prompts stay Xbox ones with a
-PlayStation controller. Graphics glitches and freezes in entrances were reported on AMD
-graphics cards; fixes are in 0.5.0, please report if they remain.
+Known issues: garbage blocks on the right of the screen during entrances on some Intel and AMD
+graphics, Steam Deck included (#7, #11, #13); white eyes on some AMD cards (#12); a freeze in
+entrances on a few PCs (#4); title belts on a shoulder can move oddly with 60 fps entrances;
+on-screen button prompts stay Xbox ones with a PlayStation controller.
 
-Planned: the title update (1.1), HD textures and videos, a real 8th main menu entry, shorter
-loading, online play.
+Planned for 1.0: every known bug fixed. Then: the title update (1.1), even shorter loading, a
+richer Universe mode (qualifying matches, Royal Rumble surprise entrants, booking), a mod tool,
+HD textures and videos, online play.
+
+## Reporting a bug
+
+Open an [issue](https://github.com/iMrBurn/wwe12-pc/issues) with: the version, what you were doing
+(mode, wrestlers), a screenshot, and the text from the launcher's **ABOUT > Copy diagnostic info**
+button (graphics card, driver, settings; no personal data). Logs are in `Documents\wwe12\logs`
+(**ABOUT > Open the logs folder**). If the game freezes, wait 15 seconds, close it and attach
+`hang_trace.txt` from that folder.
+
+Antivirus warnings: the exes are not digitally signed, so Windows Defender may flag them by mistake.
+Each release lists the SHA-256 of its files, so you can check yours against it.
 
 ## DLC
 
