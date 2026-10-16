@@ -26,6 +26,7 @@
 #include "imgui_impl_win32.h"
 
 #include "changelog.h"
+#include "saves.h"
 #include "toml_file.h"
 #include "updater.h"
 
@@ -204,7 +205,6 @@ struct Texts {
       *fps60_hint, *sharpness, *off, *gpu, *gpu_auto, *exit_entry, *exit_hint, *saved_note;
   const char *keyboard, *keyboard_hint, *reset_keys, *pad_note;
   const char *mods_text, *open_mods, *mods_count;
-  const char *saves_text, *open_saves, *backup, *backup_done, *backups;
   const char *about_text, *github;
   const char *updates, *checking, *up_to_date, *update_available, *install_update, *check_failed,
       *check_now, *check_at_start, *downloading, *update_failed;
@@ -226,8 +226,6 @@ const Texts kEnglish = {
     "Files put in the mods folder replace the game's own, at the same path as on the disc.\n"
     "Example: mods\\movies\\titantron\\100.bik replaces that titantron video.",
     "Open the mods folder", "file(s) in the mods folder",
-    "Your saves and settings of the game live in Documents\\wwe12.",
-    "Open the saves folder", "Back up saves now", "Backup done:", "Backups",
     "WWE '12 PC is an unofficial native port of WWE '12 (Xbox 360), made by fans.\n"
     "Native renderer adapted from nefariousjosiah's SmackDown vs. Raw ports, on the ReXGlue SDK\n"
     "and re:Blue. DLC support by Banshee. Free software under the GPL-3.0 licence. No game data is included.\n\n"
@@ -255,9 +253,6 @@ const Texts kFrench = {
     "Les fichiers posés dans le dossier mods remplacent ceux du jeu, au même chemin que sur le "
     "disque.\nExemple : mods\\movies\\titantron\\100.bik remplace cette vidéo de titantron.",
     "Ouvrir le dossier mods", "fichier(s) dans le dossier mods",
-    "Vos sauvegardes et réglages du jeu sont dans Documents\\wwe12.",
-    "Ouvrir le dossier des sauvegardes", "Sauvegarder maintenant", "Copie faite :",
-    "Copies de sauvegarde",
     "WWE '12 PC est un portage natif non officiel de WWE '12 (Xbox 360), fait par des fans.\n"
     "Rendu natif adapté des portages SmackDown vs. Raw de nefariousjosiah, sur le SDK ReXGlue\n"
     "et re:Blue. Support des DLC par Banshee. Logiciel libre sous licence GPL-3.0. Aucune donnée du jeu n'est fournie.\n\n"
@@ -436,7 +431,7 @@ enum Page { kPlay, kSettings, kControls, kMods, kSaves, kAbout };
 Page g_page = kPlay;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
-std::string g_backup_msg;
+saves::Manager g_saves;
 bool g_launch = false;
 Updater g_updater;
 std::string g_changelog;  // CHANGELOG.md next to the exe (the notes of this version), prepared
@@ -618,52 +613,9 @@ void PageMods() {
   ImGui::EndChild();
 }
 
-// Profiles and saved data, everything in Documents\wwe12 but the port's own folders.
-void BackupSaves() {
-  const fs::path root = DocumentsDir() / "wwe12";
-  const std::time_t now = std::time(nullptr);
-  std::tm tm{};
-  localtime_s(&tm, &now);
-  char stamp[32];
-  std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", &tm);
-  const fs::path dest = root / "SaveBackups" / stamp;
-  std::error_code ec;
-  fs::create_directories(dest, ec);
-  for (const auto &e : fs::directory_iterator(root, ec)) {
-    const auto name = e.path().filename().wstring();
-    if (name == L"cache" || name == L"logs" || name == L"xbox_cache" || name == L"patched" ||
-        name == L"SaveBackups")
-      continue;
-    fs::copy(e.path(), dest / e.path().filename(),
-             fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
-  }
-  g_backup_msg = dest.string();
-}
-
 void PageSaves() {
-  const Texts &t = T();
-  Title(t.saves);
-  ImGui::TextWrapped("%s", t.saves_text);
-  ImGui::Dummy(ImVec2(0, 8));
-  if (ImGui::Button(t.open_saves))
-    OpenFolder(DocumentsDir() / "wwe12");
-  ImGui::SameLine();
-  if (ImGui::Button(t.backup))
-    BackupSaves();
-  if (!g_backup_msg.empty())
-    ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s %s", t.backup_done,
-                       g_backup_msg.c_str());
-  ImGui::Dummy(ImVec2(0, 8));
-  ImGui::Text("%s", t.backups);
-  ImGui::BeginChild("backups", ImVec2(0, 0), ImGuiChildFlags_Borders);
-  std::error_code ec;
-  std::vector<std::string> names;
-  for (const auto &e : fs::directory_iterator(DocumentsDir() / "wwe12" / "SaveBackups", ec))
-    names.push_back(e.path().filename().string());
-  std::sort(names.rbegin(), names.rend());
-  for (const auto &n : names)
-    ImGui::TextUnformatted(n.c_str());
-  ImGui::EndChild();
+  Title(T().saves);
+  g_saves.Draw(g_s.language == 4);
 }
 
 void PageAbout() {
@@ -770,6 +722,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
   ImGui_ImplWin32_EnableDpiAwareness();
   LoadSettings();
+  g_saves.Init(DocumentsDir() / "wwe12");
   g_updater.Start(ExeDir());
   {
     std::ifstream f(ExeDir() / "CHANGELOG.md", std::ios::binary);
@@ -849,6 +802,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
       done = true;
   }
 
+  g_saves.Wait();
   ImGui_ImplDX11_Shutdown();
   ImGui_ImplWin32_Shutdown();
   ImGui::DestroyContext();
