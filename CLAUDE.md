@@ -140,9 +140,11 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
 2. Graphismes AMD/Intel/Steam Deck : #7 et #11 (pavés pendant les entrées, toujours là en 0.6.0),
    #12 (yeux blancs sur AMD).
 3. Performances : #10 (chutes de fps en milieu et fin de match).
-4. Jeu : #9 (replay d'après-match), matchs WWE Draft du mode Univers après WrestleMania (la
-   cinématique où une superstar tirée au hasard change de roster ne se fait pas), portes
-   transparentes en backstage.
+4. Jeu : #9 (replay d'après-match), portes transparentes en backstage. ~~Matchs WWE Draft du mode
+   Univers~~ : **ça marche** (vérifié le 2026-10-16) : il faut choisir « DRAFT EVENT » à la fin du
+   match, puis le tirage au sort et l'entrée de la superstar draftée se jouent (Kane → RAW).
+   Journal caché du mode Univers : `tools/dev/lancer_univers.bat` (cvar `wwe12_universe_log`,
+   `native/wwe12_universe_log.cpp`, lignes « [uni] » : cartes des émissions, classements, Draft).
 5. Autres retours Discord (2026-10-16) : écran noir sur Intel HD 5500 (**message clair ajouté** 2026-10-16, `native/wwe12_vulkan_error.cpp` ; `work/discord/bug02.log` :
    « Plume CreateVulkanInterface failed », ce GPU Broadwell n'a pas de pilote Vulkan sous Windows ;
    au minimum un message clair au lieu d'un écran noir figé, idéalement le rendu D3D12) ; tenue
