@@ -124,6 +124,12 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
 - Choix du rendu : impossible aujourd'hui. Le rendu natif est compilé Vulkan seul (plume D3D12 coupé dans
   `native_renderer.cmake`, `REBLUE_D3D12` = build D3D12 seul) et le cvar `gpu_backend` de `wwe12.toml`
   est ignoré (`wwe12_app.h` quitte avant de le lire avec `SVR_NATIVE_RENDERER`).
+- Clavier (2026-10-16) : le jeu n'accepte que des noms de touches exacts et sensibles à la casse (table de
+  `rexglue-sdk/src/ui/keybinds.cpp`, recopiée dans `launcher/keybinds.h`) ; un nom inconnu ou un modificateur
+  seul (`Shift`) est ignoré sans message. Le launcher corrige/valide les noms et propose « Définir ».
+  **Clavier = joueur 2** : cvar `mnk_player` (1 = partage le joueur 1 avec la manette 1, défaut ; 2-4 = manette
+  séparée), patch SDK `port/patches/rexglue-sdk-keyboard-player.patch` (`DeviceInfo::slot`, `SlotAssignment`,
+  `MnkInputDriver`). Testé en vrai : Xbox One S = joueur 1, clavier = joueur 2.
 
 ## Feuille de route (décidée avec l'utilisateur le 2026-10-16)
 
