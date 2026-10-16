@@ -53,7 +53,9 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   d'environnement (VK_ADD_LAYER_PATH, VK_INSTANCE_LAYERS=VK_LAYER_RENDERDOC_Capture,
   ENABLE_VULKAN_RENDERDOC_CAPTURE=1), captures dans `work/rdc`, scripts via `qrenderdoc.exe --python`.
 - Release : changer `VERSION`, compiler en release, `tools/package.ps1` → `dist/WWE12-PC-v<ver>.zip`,
-  écrire `dist/RELEASE_NOTES_v<ver>.md`. Le tag GitHub doit être `v<VERSION>` : le launcher s'en sert
+  écrire `dist/RELEASE_NOTES_v<ver>.md`. Coller à la fin des notes le contenu de `dist/SHA256-v<ver>.txt` (empreintes du zip
+  et des deux exe, non signés : Windows Defender les a déjà signalés à tort en 0.6.0 ; faux positif à
+  soumettre à Microsoft par l'utilisateur ; signature de code à envisager pour la 1.0). Le tag GitHub doit être `v<VERSION>` : le launcher s'en sert
   pour les mises à jour automatiques. Mise à jour automatique vérifiée en vrai par l'utilisateur (0.5.0 → 0.5.1,
   2026-10-12) : elle garde `wwe12.toml`, `game/` et `mods/`.
 
