@@ -218,6 +218,7 @@ struct Texts {
   const char *support, *support_hint, *diag_copy, *diag_copied, *diag_failed, *open_logs;
   const char *include_beta, *update_game_running, *save_failed, *already_running, *wait_busy;
   const char *keys_howto, *keys_set, *keys_add, *keys_press, *keys_bad, *keys_dup, *keys_restart;
+  const char *kb_player, *kb_player_hint, *kb_p1, *kb_p2, *kb_p3, *kb_p4;
 };
 
 const Texts kEnglish = {
@@ -263,7 +264,11 @@ const Texts kEnglish = {
     "Set", "+", "Press a key...",
     "Key names the game does not know (they would do nothing): %s. Use Set and press the key instead.",
     "The same key is used for several actions: %s",
-    "Changes apply the next time you start the game."};
+    "Changes apply the next time you start the game.",
+    "Keyboard plays as",
+    "To play with a friend: keep your controller as player 1 and set the keyboard to player 2, so they "
+    "are two separate controllers. With player 2 and no controller plugged in, nobody is player 1.",
+    "Player 1 (shares player 1 with controller 1)", "Player 2 (separate controller)", "Player 3", "Player 4"};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -311,7 +316,11 @@ const Texts kFrench = {
     "Définir", "+", "Appuyez sur une touche...",
     "Noms de touches inconnus du jeu (ils ne feraient rien) : %s. Utilisez Définir puis appuyez sur la touche.",
     "La même touche sert à plusieurs actions : %s",
-    "Les changements s'appliquent au prochain lancement du jeu."};
+    "Les changements s'appliquent au prochain lancement du jeu.",
+    "Le clavier joue comme",
+    "Pour jouer avec un ami : gardez votre manette comme joueur 1 et mettez le clavier en joueur 2 : ce "
+    "sont alors deux manettes séparées. Avec le joueur 2 et sans manette branchée, personne n'est joueur 1.",
+    "Joueur 1 (partage le joueur 1 avec la manette 1)", "Joueur 2 (manette séparée)", "Joueur 3", "Joueur 4"};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -357,6 +366,7 @@ struct Settings {
   std::string gpu;
   bool exit_entry = true;
   bool keyboard = true;
+  int keyboard_player = 1;  // 1..4: the player the keyboard plays as (2 = separate from pad 1)
   char binds[std::size(kBinds)][64] = {};
 };
 
@@ -375,6 +385,7 @@ void LoadSettings() {
   g_s.gpu = g_toml.GetString("svr_gpu_device", "");
   g_s.exit_entry = g_toml.GetBool("wwe12_quit_entry", true);
   g_s.keyboard = g_toml.GetBool("mnk_mode", true);
+  g_s.keyboard_player = std::clamp(g_toml.GetInt("mnk_player", 1), 1, 4);
   for (size_t i = 0; i < std::size(kBinds); ++i)
     snprintf(g_s.binds[i], sizeof(g_s.binds[i]), "%s",
              g_toml.GetString(kBinds[i].key, kBinds[i].def).c_str());
@@ -390,6 +401,7 @@ void SaveSettings() {
   g_toml.SetString("svr_gpu_device", g_s.gpu);
   g_toml.SetBool("wwe12_quit_entry", g_s.exit_entry);
   g_toml.SetBool("mnk_mode", g_s.keyboard);
+  g_toml.SetInt("mnk_player", g_s.keyboard_player);
   for (size_t i = 0; i < std::size(kBinds); ++i)
     g_toml.SetString(kBinds[i].key, g_s.binds[i]);
   g_settings_ok = g_toml.Save();
@@ -638,6 +650,16 @@ void PageControls() {
   ImGui::TextDisabled("%s", t.pad_note);
   changed |= ImGui::Checkbox(t.keyboard, &g_s.keyboard);
   ImGui::TextDisabled("%s", t.keyboard_hint);
+  {
+    const char *players[] = {t.kb_p1, t.kb_p2, t.kb_p3, t.kb_p4};
+    int pi = g_s.keyboard_player - 1;
+    ImGui::SetNextItemWidth(380);
+    if (ImGui::Combo(t.kb_player, &pi, players, 4)) {
+      g_s.keyboard_player = pi + 1;
+      changed = true;
+    }
+    ImGui::TextDisabled("%s", t.kb_player_hint);
+  }
   ImGui::TextWrapped("%s", t.keys_howto);
 
   // The key the player pressed after "Set" / "+": written with the game's exact name.

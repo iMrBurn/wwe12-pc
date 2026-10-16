@@ -49,6 +49,11 @@ svr_gpu_device = ""
 # Keyboard for player 1, usable together with a controller. Each binding can list several keys
 # separated by commas; ZQSD and WASD both work (AZERTY and QWERTY keyboards).
 mnk_mode = true
+
+# Which player the keyboard is: 1 shares player 1 with controller 1; 2 makes the keyboard a separate
+# controller (player 2) next to a controller that stays player 1, to play with a friend; 3 or 4 also work.
+mnk_player = 1
+
 keybind_lstick_up = "Z,W"
 keybind_lstick_left = "Q,A"
 keybind_lstick_down = "S"

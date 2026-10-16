@@ -1,0 +1,48 @@
+diff --git a/include/rex/input/device.h b/include/rex/input/device.h
+index 7b67ceb..c7e99c4 100644
+--- a/include/rex/input/device.h
++++ b/include/rex/input/device.h
+@@ -28,6 +28,7 @@ struct DeviceInfo {
+   std::string name;
+   std::string guid;
+   bool synthetic = false;  // keyboard/mouse emulation or the NOP stand-in
++  uint32_t slot = 0;       // guest user a synthetic device plays as (0 = player 1)
+ };
+ 
+ }  // namespace rex::input
+diff --git a/src/input/device_assignment.cpp b/src/input/device_assignment.cpp
+index 52e0073..06c35b0 100644
+--- a/src/input/device_assignment.cpp
++++ b/src/input/device_assignment.cpp
+@@ -22,7 +22,7 @@ void SlotAssignment::OnDevicesChanged(const std::vector<DeviceInfo>& devices) {
+   // not promote pad two to player one.
+   for (const auto& device : devices) {
+     if (device.synthetic) {
+-      users_[0].push_back(device.id);
++      users_[device.slot < kMaxGuestUsers ? device.slot : 0].push_back(device.id);
+     } else if (device.ordinal < kMaxGuestUsers) {
+       users_[device.ordinal].push_back(device.id);
+     }
+diff --git a/src/input/mnk/mnk_input_driver.cpp b/src/input/mnk/mnk_input_driver.cpp
+index 3f9422d..b1ff540 100644
+--- a/src/input/mnk/mnk_input_driver.cpp
++++ b/src/input/mnk/mnk_input_driver.cpp
+@@ -24,6 +24,10 @@
+ #include <string_view>
+ 
+ REXCVAR_DEFINE_BOOL(mnk_mode, false, "Input", "Enable keyboard/mouse controller emulation");
++REXCVAR_DEFINE_UINT32(mnk_player, 1, "Input",
++                      "Player (1-4) the keyboard/mouse plays as. 1 shares player 1 with pad 1; 2 makes "
++                      "the keyboard a separate controller, player 2, next to a pad that stays player 1")
++    .range(1, 4);
+ REXCVAR_DEFINE_BOOL(mnk_mouse, false, "Input",
+                     "Use the mouse for the right stick. Off means the right stick comes "
+                     "from the keybind_rstick_* keys only");
+@@ -228,6 +232,7 @@ void MnkInputDriver::EnumerateDevices(std::vector<DeviceInfo>& out) {
+   info.id = kMnkDevice;
+   info.name = "Keyboard and Mouse";
+   info.synthetic = true;
++  info.slot = std::clamp<uint32_t>(REXCVAR_GET(mnk_player), 1, rex::input::kMaxGuestUsers) - 1;
+   out.push_back(info);
+ }
+ 
