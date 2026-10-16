@@ -192,8 +192,8 @@ crochets (chez lui 8 VirtualQuery par image = 1,4 ms) ; (4) vblank sur minuteur 
 BPE de Yuke's (`tools/yukes_bpe.py`) et LZX. Sans effet chez lui : sauter le dessin (perd un rendu
 unique par chargement), vblank plus rapide avec vsync active. Attention : le turbo change la
 synchronisation image/temps (replays, #9) : à couper là où c'est comparé. Mesurer avant chaque étape.
-**Fait (2026-10-16, étapes 0 et 1, vérifié en jeu, cvar `wwe12_load_turbo` encore à false par
-défaut)** : `native/wwe12_load_turbo.cpp`. Mesure : les threads du jeu avancent au rythme des images
+**Fait (2026-10-16, étapes 0 et 1, vérifié en jeu, cvar `wwe12_load_turbo` à true par
+défaut depuis la 0.8, à ajouter aux readmes)** : `native/wwe12_load_turbo.cpp`. Mesure : les threads du jeu avancent au rythme des images
 (barrière sub_827DEA20 : prêt → attend le feu vert), 60 images de jeu par image affichée ; sur ~4 s
 d'écran de chargement, le chargeur ne travaille que ~1 s. Écrans de chargement = 14 classes
 (`/LOAD/IG%02d`, GN, CV…, vtable slot 13) ; méthodes communes **pas appelées à chaque image** :

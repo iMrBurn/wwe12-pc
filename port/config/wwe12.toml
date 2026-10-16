@@ -82,6 +82,10 @@ keybind_back = "Tab,Backspace"
 # drive). 12 loads matches about twice as fast; 0 keeps the original pace.
 wwe12_load_slice_ms = 12
 
+# Loading screens run the game as fast as possible until the entrance starts (shorter match loads;
+# the loading animation spins faster). false keeps the original pace.
+wwe12_load_turbo = true
+
 # Settings of the emulated Xbox 360 GPU, kept for its fallback mode (the port normally draws
 # with its own native Vulkan renderer).
 gpu_allow_invalid_fetch_constants = true
