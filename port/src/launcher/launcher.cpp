@@ -29,6 +29,7 @@
 #include "saves.h"
 #include "toml_file.h"
 #include "updater.h"
+#include "vulkan_check.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -209,6 +210,7 @@ struct Texts {
   const char *updates, *checking, *up_to_date, *update_available, *install_update, *check_failed,
       *check_now, *check_at_start, *downloading, *update_failed;
   const char *whats_new;
+  const char *vulkan_ok, *vulkan_missing;
 };
 
 const Texts kEnglish = {
@@ -234,7 +236,11 @@ const Texts kEnglish = {
     "Updates", "Checking for updates...", "Up to date.", "New version available:",
     "Download and install", "Could not check for updates.", "Check now", "Check at startup",
     "Downloading...", "Update failed:",
-    "What's new in this version"};
+    "What's new in this version",
+    "Graphics card: %s",
+    "No Vulkan graphics driver found: the game cannot draw its picture (black window). "
+    "Update your graphics drivers. Very old graphics chips (such as the Intel HD 5000 series) "
+    "have no Vulkan driver and cannot run the game yet."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -261,7 +267,11 @@ const Texts kFrench = {
     "Mises à jour", "Recherche de mises à jour...", "À jour.", "Nouvelle version disponible :",
     "Télécharger et installer", "Impossible de vérifier les mises à jour.", "Vérifier",
     "Vérifier au démarrage", "Téléchargement...", "Échec de la mise à jour :",
-    "Nouveautés de cette version"};
+    "Nouveautés de cette version",
+    "Carte graphique : %s",
+    "Aucun pilote graphique Vulkan trouvé : le jeu ne peut pas afficher d'image (fenêtre noire). "
+    "Mettez à jour les pilotes de votre carte graphique. Les très vieilles puces (comme la série "
+    "Intel HD 5000) n'ont pas de pilote Vulkan et ne peuvent pas encore faire tourner le jeu."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -434,6 +444,7 @@ int g_logo_w = 0, g_logo_h = 0;
 saves::Manager g_saves;
 bool g_launch = false;
 Updater g_updater;
+VulkanCheck g_vulkan;
 std::string g_changelog;  // CHANGELOG.md next to the exe (the notes of this version), prepared
 
 void Title(const char *text) {
@@ -456,6 +467,18 @@ void PagePlay() {
     ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", t.game_found);
   else
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.game_missing);
+  switch (g_vulkan.GetState()) {
+  case VulkanCheck::State::Ok:
+    ImGui::TextDisabled(t.vulkan_ok, g_vulkan.Detail().c_str());
+    break;
+  case VulkanCheck::State::Missing:
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 560.0f * ImGui::GetStyle().FontScaleDpi);
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.vulkan_missing);
+    ImGui::PopTextWrapPos();
+    break;
+  default:
+    break;
+  }
   ImGui::Dummy(ImVec2(0, 20));
   if (BigButton(t.play_button, ImVec2(340, 90), kGold, IM_COL32(20, 20, 20, 255)))
     g_launch = true;
@@ -723,6 +746,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   ImGui_ImplWin32_EnableDpiAwareness();
   LoadSettings();
   g_saves.Init(DocumentsDir() / "wwe12", ExeDir());
+  g_vulkan.Start();
   g_updater.Start(ExeDir());
   {
     std::ifstream f(ExeDir() / "CHANGELOG.md", std::ios::binary);

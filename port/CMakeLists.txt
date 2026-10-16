@@ -71,7 +71,8 @@ if(WIN32)
         "${WWE12_IMGUI_DIR}/imgui_widgets.cpp"
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_win32.cpp"
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp")
-    target_include_directories(wwe12_launcher PRIVATE "${WWE12_IMGUI_DIR}" "${WWE12_IMGUI_DIR}/backends")
+    target_include_directories(wwe12_launcher PRIVATE "${WWE12_IMGUI_DIR}" "${WWE12_IMGUI_DIR}/backends"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/vulkan-headers/include")
     target_link_libraries(wwe12_launcher PRIVATE d3d11 dxgi d3dcompiler winhttp windowscodecs ole32 shell32)
     set_target_properties(wwe12_launcher PROPERTIES OUTPUT_NAME "WWE12 Launcher")
     add_dependencies(wwe12 wwe12_launcher)

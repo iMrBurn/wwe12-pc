@@ -102,6 +102,21 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   l'alpha d'une texture BC3 (~0,63), donc translucide ; la Xbox l'affiche opaque (cause réelle inconnue).
   Contournement : cvar `wwe12_car_opaque` (défaut true, `pipeline_cache.cpp`) coupe le mélange pour le
   pixel shader 7EE1904EE7E52F05 (vitres opaques aussi ; ce shader sert peut-être aux ceintures).
+- Sauvegardes (2026-10-16) : le profil local est fixe (`B13EBABEBABEBABE`, user_profile.cpp). Une
+  « sauvegarde » = un dossier de paquets STFS de type 1 (jeu 54510890) sous
+  `Documents\wwe12\B13EBABEBABEBABE\54510890\00000001\<nom du paquet>\` + `Headers\00000001\<nom>.header` :
+  `SaveData.dat` (partie principale) et, sur la Xbox, `NNEncodeDat.enc` (entrées, titantrons...) et
+  `NNCreateSuperStar.cas` (catcheurs créés), jusqu'à ~95 paquets. Succès : `achievements\54510890.toml`.
+  Les DLC sont à part (`0000000000000000\54510890\00000002`). Page SAUVEGARDES du launcher (`saves.h`) :
+  copies (sauvegarde + succès seulement), restaurer/supprimer, repartir de zéro, copie automatique avant
+  tout changement (10 gardées). **Import Xbox 360** : le launcher vérifie les paquets (type à 0x344, jeu à
+  0x360, en gros-boutiste) puis écrit `saves_import.txt` à côté de l'exe ; au démarrage
+  `wwe12_saves.cpp` (appelé après les DLC dans `wwe12_app.h`) extrait chaque paquet (même nom = remplacé),
+  supprime la liste et écrit `saves_import_result.txt`. Signatures non vérifiées (pas de re-signature).
+  Testé en vrai avec « A Promoter's Dream » de Petchy (95 paquets, CAW visibles dans le jeu).
+- Choix du rendu : impossible aujourd'hui. Le rendu natif est compilé Vulkan seul (plume D3D12 coupé dans
+  `native_renderer.cmake`, `REBLUE_D3D12` = build D3D12 seul) et le cvar `gpu_backend` de `wwe12.toml`
+  est ignoré (`wwe12_app.h` quitte avant de le lire avec `SVR_NATIVE_RENDERER`).
 
 ## Feuille de route (décidée avec l'utilisateur le 2026-10-16)
 
