@@ -81,6 +81,10 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   (`Documents\wwe12\patched`) ; hook « decide » sub_8253C3F0. La vraie 8e entrée a échoué (une
   insertion casse la navigation B).
 - VFS overlay (patch SDK) : fichiers seulement, ouvertures en lecture ; dossier `mods` à côté de l'exe.
+- Highlights / replay d'après-match : moments ajoutés par sub_821EE520 dans 20 cases de 20 octets
+  à (*0x8317C84C)+128+6200 ; sub_821EDEE0 = « au moins un moment » (sinon MATCH HIGHLIGHTS grisé).
+  Interrupteur 0x83174250, mis par sub_822B6D30 (place libre sur `cache:` + `Spectacular.rps`).
+  Sonde dans `wwe12_game_log.cpp` (lignes « [replay] »).
 - Title Update (pour la 1.1) : le codegen ne lit pas les xexp ; il faudra produire un xex patché hors
   ligne, refaire le codegen et retrouver toutes les adresses codées en dur.
 - Bugs ouverts : ceinture sur l'épaule à 60 fps (piste VBlank testée le 2026-10-12 et écartée : le
@@ -140,7 +144,12 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
 2. Graphismes AMD/Intel/Steam Deck : #7 et #11 (pavés pendant les entrées, toujours là en 0.6.0),
    #12 (yeux blancs sur AMD).
 3. Performances : #10 (chutes de fps en milieu et fin de match).
-4. Jeu : #9 (replay d'après-match), portes transparentes en backstage. ~~Matchs WWE Draft du mode
+4. Jeu : portes transparentes en backstage. ~~#9 (replay d'après-match)~~ : **corrigé** (2026-10-16,
+   vérifié en jeu, pas encore publié ; il faut un SDK recompilé avec `rexglue-sdk-freespace.patch`).
+   Le jeu (sub_822B6D30) veut 150 Mo libres sur `cache:` et y crée `Spectacular.rps` (150 Mo) pour
+   les replays des moments forts, sinon il coupe tout (pas de replay, MATCH HIGHLIGHTS grisé). Le SDK
+   annonçait 64 Mo fixes pour les dossiers de l'ordinateur ; il donne maintenant la vraie place.
+   ~~Matchs WWE Draft du mode
    Univers~~ : **ça marche** (vérifié le 2026-10-16) : il faut choisir « DRAFT EVENT » à la fin du
    match, puis le tirage au sort et l'entrée de la superstar draftée se jouent (Kane → RAW).
    Messages de débogage cachés du jeu : `tools/dev/lancer_journal.bat` (cvar `wwe12_game_log`,

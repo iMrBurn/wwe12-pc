@@ -1,0 +1,42 @@
+diff --git a/include/rex/filesystem/devices/host_path_device.h b/include/rex/filesystem/devices/host_path_device.h
+index 48100be..6bbe316 100644
+--- a/include/rex/filesystem/devices/host_path_device.h
++++ b/include/rex/filesystem/devices/host_path_device.h
+@@ -11,7 +11,10 @@
+ 
+ #pragma once
+ 
++#include <cstdint>
++#include <filesystem>
+ #include <string>
++#include <system_error>
+ 
+ #include <rex/filesystem/device.h>
+ 
+@@ -41,12 +44,23 @@ class HostPathDevice : public Device {
+   uint32_t attributes() const override { return 0; }
+   uint32_t component_name_max_length() const override { return 255; }
+ 
+-  uint32_t total_allocation_units() const override { return 128 * 1024; }
+-  uint32_t available_allocation_units() const override { return 128 * 1024; }
+-  uint32_t sectors_per_allocation_unit() const override { return 1; }
++  // The host disk's real size and free space, in 16 KiB units (32 sectors, like FATX). A fixed
++  // 64 MiB made WWE '12 turn its match highlights off: it wants 150 MB free on cache: for them.
++  uint32_t total_allocation_units() const override { return SpaceUnits(false); }
++  uint32_t available_allocation_units() const override { return SpaceUnits(true); }
++  uint32_t sectors_per_allocation_unit() const override { return 32; }
+   uint32_t bytes_per_sector() const override { return 0x200; }
+ 
+  private:
++  uint32_t SpaceUnits(bool available) const {
++    std::error_code ec;
++    const std::filesystem::space_info space = std::filesystem::space(host_path_, ec);
++    if (ec)
++      return 128 * 1024;  // 2 GiB
++    const uint64_t units = (available ? space.available : space.capacity) / (32 * 0x200);
++    return units > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(units);
++  }
++
+   void PopulateEntry(HostPathEntry* parent_entry);
+ 
+   std::string name_;

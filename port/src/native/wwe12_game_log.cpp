@@ -103,3 +103,78 @@ extern "C" REX_FUNC(sub_8295A1C0) {
   }
   __imp__sub_8295A1C0(ctx, base);
 }
+
+// A moment is added by sub_821EE520(ctrl = *0x83113ED8, kind): sub_821ED988 picks a slot, then
+// the slot is filled only if *0x83174250 != 0, ctrl+88 == 1 and sub_822EAA80(ctrl+156, slot)
+// (keeps the replay of the moment) returns non-zero.
+REX_EXTERN(__imp__sub_821EE520);
+extern "C" REX_FUNC(sub_821EE520) {
+  const u32 ctrl = ctx.r3.u32, kind = ctx.r4.u32;
+  const u32 gate = bd::mem::load<u32>(0x83174250), state = bd::mem::load<u32>(ctrl + 88);
+  __imp__sub_821EE520(ctx, base);
+  if (REXCVAR_GET(wwe12_game_log))
+    BD_INFO("[replay] add moment: ctrl 0x{:08X} kind {} | *0x83174250={} ctrl+88={} -> slot {}",
+            ctrl, kind, gate, state, int(bd::mem::load<u32>(ctrl + 172)));
+}
+
+REX_EXTERN(__imp__sub_822EAA80);
+extern "C" REX_FUNC(sub_822EAA80) {
+  const u32 self = ctx.r3.u32, slot = ctx.r4.u32;
+  __imp__sub_822EAA80(ctx, base);
+  if (REXCVAR_GET(wwe12_game_log))
+    BD_INFO("[replay] keep moment replay sub_822EAA80(0x{:08X}, slot {}) = {}", self, slot,
+            ctx.r3.u32);
+}
+
+// The same thread then runs sub_82959CC0(part) for each wrestler's 'CMIF' component: it notes
+// the match's moments for the post-match replay and MATCH HIGHLIGHTS, after a row of checks.
+// The moments land in 20 slots of 20 bytes at (*0x8317C84C)+128+6200 (word 0 != 0 = used, +8 =
+// kind, see sub_821ED298; sub_821EDEE0 = "any moment?", which greys MATCH HIGHLIGHTS). Logs
+// which checks pass, per wrestler, and the slots, on each change.
+REX_EXTERN(__imp__sub_82959CC0);
+extern "C" REX_FUNC(sub_82959CC0) {
+  if (REXCVAR_GET(wwe12_game_log)) {
+    const u32 self = ctx.r3.u32;
+    const u32 actor = bd::mem::load<u32>(self + 72);
+    constexpr u32 kMatchInfo = 0x8317C850;  // sub_8267CF38
+    const u32 ctrl = bd::mem::load<u32>(0x83113ED8);
+    // Bit set = that check lets the step go on (sub_82959CC0, in order).
+    u32 pass = 0;
+    pass |= (actor && bd::mem::load<u32>(actor + 1736) != 0) << 0;
+    pass |= (bd::mem::load<u32>(self + 40) != 0) << 1;
+    pass |= (bd::mem::load<u32>(0x8317B7BC) == 1) << 2;
+    pass |= (bd::mem::load<u32>(kMatchInfo + 336) == 0) << 3;
+    pass |= (actor && bd::mem::load<u32>(actor + 1196) == 0) << 4;
+    pass |= (actor && bd::mem::load<u8>(actor + 2781) != 1) << 5;
+    pass |= (!ctrl || bd::mem::load<u32>(ctrl + 88) != 3) << 6;
+    pass |= (bd::mem::load<u8>(kMatchInfo + 6) == 0) << 7;  // else sub_82201250(actor) must be 0
+    pass |= (bd::mem::load<u8>(kMatchInfo) != 25) << 8;     // sub_82A2FC18
+    pass |= (bd::mem::load<u32>(self + 64) != 0) << 9;
+    pass |= (bd::mem::load<u32>(self + 76) != 0) << 10;
+    pass |= (bd::mem::load<u32>(self + 80) != 0) << 11;
+    std::string slots;
+    const u32 data = bd::mem::load<u32>(0x8317C84C);
+    for (u32 i = 0; data && i < 20; ++i) {
+      const u32 s = data + 128 + 6200 + i * 20;
+      if (bd::mem::load<u32>(s))
+        slots += fmt::format(" {}:kind {} t {}", i, bd::mem::load<u32>(s + 8),
+                             bd::mem::load<u32>(s + 12));
+    }
+    static std::mutex s_mu;
+    static std::string s_last[9];
+    static u32 s_self[9] = {};
+    const std::string now = fmt::format("checks 0x{:03X} (match kind {}, ctrl 0x{:08X}) moments:{}",
+                                        pass, bd::mem::load<u8>(kMatchInfo), ctrl,
+                                        slots.empty() ? " none" : slots);
+    std::lock_guard lock(s_mu);
+    u32 k = 0;
+    while (k < 9 && s_self[k] && s_self[k] != self)
+      ++k;
+    if (k < 9 && s_last[k] != now) {
+      s_self[k] = self;
+      s_last[k] = now;
+      BD_INFO("[replay] wrestler part 0x{:08X} (actor 0x{:08X}): {}", self, actor, now);
+    }
+  }
+  __imp__sub_82959CC0(ctx, base);
+}
