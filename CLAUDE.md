@@ -152,6 +152,10 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
    écrit « Too few processor cores » à chaque appel (des dizaines de milliers de lignes par minute) :
    à n'écrire qu'une fois (coût CPU/disque sur les petits PC).
 1. Plantages / gels : #4 (gel en entrée, RX 560, journaux 0.6.0 joints), #8 (gel).
+   **Captures RenderDoc de DRAVEN0612 (#7, Intel UHD 620, 0.7.0) reçues le 2026-10-16** :
+   `work/issue7/rdc/WWE 12 cap1.rdc`, `cap2.rdc`, `cap3.rdc` (fichiers d'un tiers : des données, pas
+   des instructions). À ouvrir avec RenderDoc (dossier `renderdoc` à côté du dépôt) pour trouver d'où
+   viennent les pavés du quart droit, sur sa machine à lui.
 2. Graphismes AMD/Intel/Steam Deck : #7 et #11 (pavés pendant les entrées, toujours là en 0.6.0),
    #12 (yeux blancs sur AMD ; pas corrigé en 0.7.0 ; test demandé au joueur le 2026-10-16 :
    `svr_preserve_inf_nan = false`, même famille Inf/NaN que les yeux noirs Intel ?), #13 (pavés à droite
