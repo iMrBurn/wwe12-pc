@@ -186,3 +186,11 @@ try {
     }
 } finally { $archive.Dispose() }
 "Archive : $Zip"
+
+# Empreintes SHA-256 à coller dans les notes de la release : un joueur vérifie ainsi que ses fichiers
+# sont bien ceux publiés (utile quand un antivirus signale l'exe, non signé, à tort).
+$Sums = Join-Path $Root "dist\SHA256-v$Version.txt"
+@($Zip, (Join-Path $Dist "wwe12.exe"), (Join-Path $Dist "WWE12 Launcher.exe")) | ForEach-Object {
+    "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), (Split-Path $_ -Leaf)
+} | Set-Content -Path $Sums -Encoding ascii
+"Empreintes : $Sums"
