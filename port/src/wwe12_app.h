@@ -41,6 +41,7 @@ REXCVAR_DECLARE(bool, wwe12_precise_timer);
 
 // Installe les DLC posés dans le dossier « dlc » à côté de l'exe (wwe12_dlc.cpp).
 void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
+void Wwe12ImportSaves(const std::filesystem::path& user_data_root);  // wwe12_saves.cpp
 
 class Wwe12App : public rex::ReXApp {
  public:
@@ -145,6 +146,8 @@ class Wwe12App : public rex::ReXApp {
     // DLC : extraits une fois pour toutes dans Documents\wwe12\0000000000000000\, où le jeu
     // les trouve comme sur le disque dur de la console.
     Wwe12InstallDlc(user_data_root_);
+    // Sauvegardes Xbox 360 choisies dans le launcher (saves_import.txt).
+    Wwe12ImportSaves(user_data_root_);
   }
 
   // Dossier « mods » à côté de l'exe : un fichier posé là au même chemin que sur le disque le

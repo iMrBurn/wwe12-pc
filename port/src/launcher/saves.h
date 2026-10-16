@@ -13,6 +13,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 #include <tlhelp32.h>
 
 #include <algorithm>
@@ -38,7 +39,8 @@ struct Texts {
       *backups, *no_backups, *restore, *del, *confirm_restore, *confirm_delete, *confirm_fresh,
       *yes, *cancel, *game_running, *done_created, *done_restored, *done_deleted, *done_fresh,
       *nothing, *failed, *working, *auto_label, *empty_backup, *col_date, *col_name, *col_size,
-      *restored_plain;
+      *restored_plain, *import_title, *import_intro, *import_folder, *import_file, *import_none,
+      *import_confirm, *import_ready, *import_pending, *import_cancel, *import_result;
 };
 
 const Texts kEnglish = {
@@ -55,7 +57,18 @@ const Texts kEnglish = {
     "Backup created:", "Backup restored. Your previous save was kept as", "Backup deleted.",
     "Save removed. It was kept as", "Nothing to back up yet.", "Failed:", "Working...",
     "automatic, before a change", "This backup contains no save.", "Date", "Name", "Size",
-    "Backup restored."};
+    "Backup restored.",
+    "Import an Xbox 360 save",
+    "Pick a save copied from your Xbox 360: a single file or a whole folder (for example one "
+    "made of 00EncodeDat.enc, 00CreateSuperStar.cas and SaveData.dat files). Packages with the "
+    "same name as yours are replaced, your other saves stay.",
+    "Import a folder...", "Import a file...", "No WWE '12 save found there.",
+    "Found %d save package(s), %s. They are installed the next time you start the game "
+    "(it can take a moment); packages with the same name are replaced. Your current save is "
+    "backed up first.",
+    "Ready: the save is installed the next time you start the game.",
+    "Import waiting for the next game start.", "Cancel the import",
+    "Last import: %d installed, %d failed."};
 
 const Texts kFrench = {
     "Votre progression est dans Documents\\wwe12. Une copie contient votre sauvegarde et vos "
@@ -74,7 +87,19 @@ const Texts kFrench = {
     "Copie supprimée.", "Sauvegarde supprimée. Elle est gardée sous le nom",
     "Rien à copier pour l'instant.", "Échec :", "En cours...", "automatique, avant un changement",
     "Cette copie ne contient pas de sauvegarde.", "Date", "Nom", "Taille",
-    "Copie restaurée."};
+    "Copie restaurée.",
+    "Importer une sauvegarde Xbox 360",
+    "Choisissez une sauvegarde copiée depuis votre Xbox 360 : un fichier, ou un dossier entier "
+    "(par exemple fait de fichiers 00EncodeDat.enc, 00CreateSuperStar.cas et SaveData.dat). Les "
+    "paquets du même nom que les vôtres sont remplacés, vos autres sauvegardes restent.",
+    "Importer un dossier...", "Importer un fichier...",
+    "Aucune sauvegarde de WWE '12 trouvée à cet endroit.",
+    "%d paquet(s) de sauvegarde trouvé(s), %s. Ils sont installés au prochain lancement du jeu "
+    "(ça peut prendre un moment) ; les paquets du même nom sont remplacés. Votre sauvegarde "
+    "actuelle est copiée d'abord.",
+    "Prêt : la sauvegarde sera installée au prochain lancement du jeu.",
+    "Import en attente du prochain lancement du jeu.", "Annuler l'import",
+    "Dernier import : %d installé(s), %d en échec."};
 
 struct Backup {
   std::string name;   // folder name, "YYYY-MM-DD_HH-MM-SS"
@@ -86,7 +111,10 @@ struct Backup {
 
 class Manager {
  public:
-  void Init(const fs::path &documents_wwe12) { root_ = documents_wwe12; }
+  void Init(const fs::path &documents_wwe12, const fs::path &exe_dir) {
+    root_ = documents_wwe12;
+    exe_dir_ = exe_dir;
+  }
 
   // Waits for a running operation (the launcher is closing).
   void Wait() {
@@ -140,6 +168,30 @@ class Manager {
     }
 
     ImGui::Dummy(ImVec2(0, 6));
+    ImGui::Text("%s", t.import_title);
+    ImGui::TextWrapped("%s", t.import_intro);
+    ImGui::BeginDisabled(blocked || import_pending_);
+    if (ImGui::Button(t.import_folder))
+      PickAndScan(true);
+    ImGui::SameLine();
+    if (ImGui::Button(t.import_file))
+      PickAndScan(false);
+    ImGui::EndDisabled();
+    if (import_pending_) {
+      ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), "%s", t.import_pending);
+      ImGui::SameLine();
+      if (ImGui::Button(t.import_cancel)) {
+        std::error_code ec;
+        fs::remove(exe_dir_ / "saves_import.txt", ec);
+        import_pending_ = false;
+      }
+    }
+    if (import_scan_msg_ == 1)
+      ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.import_none);
+    if (!import_result_.empty())
+      ImGui::TextDisabled(t.import_result, import_installed_, import_failed_);
+
+    ImGui::Dummy(ImVec2(0, 6));
     ImGui::Text("%s", t.backups);
     ImGui::BeginChild("backups", ImVec2(0, 0), ImGuiChildFlags_Borders);
     if (backups_.empty())
@@ -179,6 +231,25 @@ class Manager {
       ImGui::OpenPopup("##confirm");
       ask_ = false;
     }
+    if (ask_import_) {
+      ImGui::OpenPopup("##confirm_import");
+      ask_import_ = false;
+    }
+    if (ImGui::BeginPopupModal("##confirm_import", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+      ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28);
+      ImGui::TextWrapped(t.import_confirm, import_count_, FormatSize(import_size_).c_str());
+      ImGui::PopTextWrapPos();
+      ImGui::Dummy(ImVec2(0, 6));
+      if (ImGui::Button(t.yes)) {
+        const std::u8string u8 = import_path_.u8string();  // the game reads the list as UTF-8
+        Start(&t, Op::Import, std::string(u8.begin(), u8.end()));
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button(t.cancel))
+        ImGui::CloseCurrentPopup();
+      ImGui::EndPopup();
+    }
     if (ImGui::BeginPopupModal("##confirm", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
       const char *question = pending_ == Op::Restore  ? t.confirm_restore
                              : pending_ == Op::Delete ? t.confirm_delete
@@ -199,7 +270,7 @@ class Manager {
   }
 
  private:
-  enum class Op { Create, Restore, Delete, Fresh };
+  enum class Op { Create, Restore, Delete, Fresh, Import };
   static constexpr int kKeepAutomatic = 10;
   static constexpr const char *kProfile = "B13EBABEBABEBABE";
   static constexpr const char *kTitle = "54510890";
@@ -246,6 +317,74 @@ class Manager {
     return buf;
   }
 
+  static uint32_t ReadU32BE(const unsigned char *p) {
+    return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3];
+  }
+
+  // A WWE '12 save package: an STFS file ("CON ", "LIVE" or "PIRS") of content type 1 (saved
+  // game) for title 54510890 (type at 0x344, title id at 0x360, big-endian).
+  static bool IsWweSavePackage(const fs::path &file) {
+    std::ifstream f(file, std::ios::binary);
+    unsigned char h[0x364] = {};
+    if (!f.read(reinterpret_cast<char *>(h), sizeof(h)))
+      return false;
+    const bool stfs = !memcmp(h, "CON ", 4) || !memcmp(h, "LIVE", 4) || !memcmp(h, "PIRS", 4);
+    return stfs && ReadU32BE(h + 0x344) == 1 && ReadU32BE(h + 0x360) == 0x54510890;
+  }
+
+  // Asks for a folder or a file, then counts the WWE '12 save packages in it.
+  void PickAndScan(bool folder) {
+    IFileOpenDialog *dlg = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&dlg))))
+      return;
+    DWORD opts = 0;
+    dlg->GetOptions(&opts);
+    dlg->SetOptions(opts | FOS_FORCEFILESYSTEM | (folder ? FOS_PICKFOLDERS : 0));
+    fs::path picked;
+    if (SUCCEEDED(dlg->Show(GetActiveWindow()))) {
+      IShellItem *item = nullptr;
+      if (SUCCEEDED(dlg->GetResult(&item))) {
+        PWSTR p = nullptr;
+        if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &p))) {
+          picked = p;
+          CoTaskMemFree(p);
+        }
+        item->Release();
+      }
+    }
+    dlg->Release();
+    if (picked.empty())
+      return;
+    import_count_ = 0;
+    import_size_ = 0;
+    std::error_code ec;
+    auto consider = [&](const fs::path &f) {
+      if (IsWweSavePackage(f)) {
+        ++import_count_;
+        import_size_ += fs::file_size(f, ec);
+      }
+    };
+    if (fs::is_directory(picked, ec)) {
+      for (auto it = fs::recursive_directory_iterator(picked, ec);
+           it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec)
+          break;
+        if (it->is_regular_file(ec))
+          consider(it->path());
+      }
+    } else {
+      consider(picked);
+    }
+    if (import_count_ == 0) {
+      import_scan_msg_ = 1;
+      return;
+    }
+    import_scan_msg_ = 0;
+    import_path_ = picked;
+    ask_import_ = true;
+  }
+
   static bool GameRunning() {
     const HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE)
@@ -267,6 +406,19 @@ class Manager {
     dirty_ = false;
     last_refresh_ = now;
     game_running_ = GameRunning();
+    std::error_code pec;
+    import_pending_ = fs::exists(exe_dir_ / "saves_import.txt", pec);
+    if (std::ifstream res{exe_dir_ / "saves_import_result.txt"}) {  // written by the game
+      std::string line;
+      import_installed_ = import_failed_ = 0;
+      while (std::getline(res, line)) {
+        if (line.rfind("installed=", 0) == 0)
+          import_installed_ = atoi(line.c_str() + 10);
+        else if (line.rfind("failed=", 0) == 0)
+          import_failed_ = atoi(line.c_str() + 7);
+      }
+      import_result_ = "x";
+    }
 
     std::error_code ec;
     has_active_ = fs::exists(SaveDir(), ec);
@@ -399,6 +551,25 @@ class Manager {
       }
       break;
     }
+    case Op::Import: {
+      const std::string kept = MakeBackup(true, {}, err);
+      if (!err.empty()) {  // could not protect the current save: change nothing
+        SetMessage(false, std::string(t.failed) + " " + err);
+        break;
+      }
+      std::ofstream list(exe_dir_ / "saves_import.txt", std::ios::binary | std::ios::trunc);
+      list << name << "\n";
+      list.close();
+      if (!list) {
+        SetMessage(false, std::string(t.failed) + " saves_import.txt");
+        break;
+      }
+      std::error_code rec;
+      fs::remove(exe_dir_ / "saves_import_result.txt", rec);
+      import_result_.clear();
+      SetMessage(true, t.import_ready);
+      break;
+    }
     case Op::Delete: {
       if (!ValidName(name))
         return;
@@ -466,6 +637,7 @@ class Manager {
   }
 
   fs::path root_;
+  fs::path exe_dir_;
   std::thread worker_;
   std::atomic<bool> busy_{false};
   std::atomic<bool> dirty_{true};
@@ -480,6 +652,15 @@ class Manager {
   uintmax_t active_size_ = 0;
   std::string active_when_;
   std::vector<Backup> backups_;
+
+  bool import_pending_ = false;  // saves_import.txt waits for the next game start
+  std::string import_result_;    // non-empty once the game has written its summary
+  int import_installed_ = 0, import_failed_ = 0;
+  int import_scan_msg_ = 0;      // 1: nothing usable in the last pick
+  int import_count_ = 0;
+  uintmax_t import_size_ = 0;
+  fs::path import_path_;
+  bool ask_import_ = false;
 
   bool ask_ = false;
   Op pending_ = Op::Create;

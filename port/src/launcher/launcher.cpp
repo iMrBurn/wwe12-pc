@@ -722,7 +722,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
   ImGui_ImplWin32_EnableDpiAwareness();
   LoadSettings();
-  g_saves.Init(DocumentsDir() / "wwe12");
+  g_saves.Init(DocumentsDir() / "wwe12", ExeDir());
   g_updater.Start(ExeDir());
   {
     std::ifstream f(ExeDir() / "CHANGELOG.md", std::ios::binary);

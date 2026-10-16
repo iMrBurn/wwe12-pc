@@ -20,6 +20,7 @@ include(generated/rexglue.cmake)
 set(WWE12_SOURCES
     src/main.cpp
     src/wwe12_dlc.cpp
+    src/wwe12_saves.cpp
 )
 
 # Recensement des appels à la bibliothèque D3D (identification des fonctions pour le rendu
