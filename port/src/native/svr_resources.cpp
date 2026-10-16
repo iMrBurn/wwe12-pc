@@ -38,6 +38,10 @@ bool SvrOnSteamDeck();
 REXCVAR_DEFINE_BOOL(svr_release_stale_targets, true, "SvR",
                     "Free host render targets the game no longer uses (false: keep them, the "
                     "0.6.0 behaviour, which leaks video memory).");
+REXCVAR_DEFINE_BOOL(svr_debug_magenta, false, "SvR",
+                    "Dev: fill every new host render target with magenta, so whatever the game reads "
+                    "before drawing it shows up (NVIDIA starts them black, older Intel/AMD with "
+                    "leftover memory: the right-strip blocks of issues #7/#11/#13).");
 REXCVAR_DEFINE_BOOL(svr_seed_gpu_textures, true, "SvR",
                     "Start GPU-written textures from what the CPU put in their memory (wrestler "
                     "skin composites: eyes and teeth).");
@@ -252,6 +256,8 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   const float scale = screen_like ? SvrRenderScale() : 1.0f;
   g_surface_scale[surface_va] = scale;
   GuestTexture *host = SvrCreateHostSurface(Scaled(width, scale), Scaled(height, scale), format);
+  if (host && REXCVAR_GET(svr_debug_magenta))
+    Video::ClearTexture(host, 0xFFFF00FFu);
   BD_INFO("SvR surface 0x{:08X}: {}x{} format 0x{:08X} -> host {}", surface_va, width, height,
           format, host ? "ok" : "FAILED");
   g_surfaces.emplace(surface_va, HostTarget{host, {bits, format}, extent,
@@ -439,7 +445,7 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale) {
   // show what was there before. Black on NVIDIA by luck, coloured noise on the Steam Deck (AMD)
   // in the crowd during entrances. Start them transparent black.
   if (host && !cube && !seeded)
-    Video::ClearTexture(host, 0);
+    Video::ClearTexture(host, REXCVAR_GET(svr_debug_magenta) ? 0xFFFF00FFu : 0u);
   g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, quarters,
                                            g_surface_frame.load(std::memory_order_relaxed)});
   return host;
