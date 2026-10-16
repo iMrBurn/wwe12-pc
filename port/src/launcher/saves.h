@@ -28,6 +28,7 @@
 #include <thread>
 #include <vector>
 
+#include "game_process.h"
 #include "imgui.h"
 
 namespace saves {
@@ -385,17 +386,7 @@ class Manager {
     ask_import_ = true;
   }
 
-  static bool GameRunning() {
-    const HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snap == INVALID_HANDLE_VALUE)
-      return false;
-    PROCESSENTRY32W e{sizeof(e)};
-    bool found = false;
-    for (BOOL ok = Process32FirstW(snap, &e); ok && !found; ok = Process32NextW(snap, &e))
-      found = _wcsicmp(e.szExeFile, L"wwe12.exe") == 0;
-    CloseHandle(snap);
-    return found;
-  }
+  static bool GameRunning() { return game::IsRunning(); }
 
   // The list and the "current save" card, rebuilt after each operation and every few seconds.
   void Refresh() {

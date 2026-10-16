@@ -213,6 +213,7 @@ struct Texts {
   const char *whats_new;
   const char *vulkan_ok, *vulkan_missing;
   const char *support, *support_hint, *diag_copy, *diag_copied, *diag_failed, *open_logs;
+  const char *include_beta, *update_game_running;
 };
 
 const Texts kEnglish = {
@@ -247,7 +248,8 @@ const Texts kEnglish = {
     "Having a problem? Copy the diagnostic info and paste it in your bug report: it holds your "
     "graphics card, driver and settings, nothing personal. The game's logs are in the logs folder.",
     "Copy diagnostic info", "Copied. Paste it in your bug report.", "Could not copy.",
-    "Open the logs folder"};
+    "Open the logs folder",
+    "Include beta versions", "The game is running: close it, then check again."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -284,7 +286,8 @@ const Texts kFrench = {
     "contiennent votre carte graphique, son pilote et vos réglages, rien de personnel. Les journaux "
     "du jeu sont dans le dossier des journaux.",
     "Copier les infos de diagnostic", "Copié. Collez-le dans votre rapport de bug.",
-    "Copie impossible.", "Ouvrir le dossier des journaux"};
+    "Copie impossible.", "Ouvrir le dossier des journaux",
+    "Inclure les versions bêta", "Le jeu est lancé : fermez-le, puis vérifiez à nouveau."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -498,8 +501,9 @@ void PagePlay() {
   ImGui::Dummy(ImVec2(0, 30));
   ImGui::Separator();
   ImGui::Text("%s", t.updates);
-  g_updater.Draw(t.checking, t.up_to_date, t.update_available, t.install_update, t.check_failed,
-                 t.check_now, t.check_at_start, t.downloading, t.update_failed);
+  g_updater.Draw({t.checking, t.up_to_date, t.update_available, t.install_update, t.check_failed,
+                  t.check_now, t.check_at_start, t.downloading, t.update_failed, t.include_beta,
+                  t.update_game_running});
   if (!g_changelog.empty()) {
     ImGui::Dummy(ImVec2(0, 10));
     if (ImGui::CollapsingHeader(t.whats_new, ImGuiTreeNodeFlags_DefaultOpen)) {
