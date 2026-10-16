@@ -19,6 +19,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "imgui.h"
@@ -28,6 +29,7 @@
 #include "changelog.h"
 #include "diagnostics.h"
 #include "game_process.h"
+#include "keybinds.h"
 #include "saves.h"
 #include "toml_file.h"
 #include "updater.h"
@@ -215,6 +217,7 @@ struct Texts {
   const char *vulkan_ok, *vulkan_missing;
   const char *support, *support_hint, *diag_copy, *diag_copied, *diag_failed, *open_logs;
   const char *include_beta, *update_game_running, *save_failed, *already_running, *wait_busy;
+  const char *keys_howto, *keys_set, *keys_add, *keys_press, *keys_bad, *keys_dup, *keys_restart;
 };
 
 const Texts kEnglish = {
@@ -254,7 +257,13 @@ const Texts kEnglish = {
     "Could not save your settings. Is the game folder read-only (for example inside Program Files)? "
     "Move the game folder to your Documents or Desktop.",
     "The game is already running.",
-    "Please wait: a backup, an import or an update is in progress."};
+    "Please wait: a backup, an import or an update is in progress.",
+    "Click Set, then press the key to use: it replaces the current ones. + adds a second key. "
+    "You can also type key names separated by commas (for example Z,W).",
+    "Set", "+", "Press a key...",
+    "Key names the game does not know (they would do nothing): %s. Use Set and press the key instead.",
+    "The same key is used for several actions: %s",
+    "Changes apply the next time you start the game."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -296,7 +305,13 @@ const Texts kFrench = {
     "Impossible d'enregistrer vos réglages. Le dossier du jeu est-il en lecture seule (par exemple "
     "dans Program Files) ? Déplacez le dossier du jeu dans Documents ou sur le Bureau.",
     "Le jeu est déjà lancé.",
-    "Patientez : une copie, un import ou une mise à jour est en cours."};
+    "Patientez : une copie, un import ou une mise à jour est en cours.",
+    "Cliquez sur Définir, puis appuyez sur la touche à utiliser : elle remplace les actuelles. + en ajoute "
+    "une deuxième. Vous pouvez aussi taper des noms de touches séparés par des virgules (par exemple Z,W).",
+    "Définir", "+", "Appuyez sur une touche...",
+    "Noms de touches inconnus du jeu (ils ne feraient rien) : %s. Utilisez Définir puis appuyez sur la touche.",
+    "La même touche sert à plusieurs actions : %s",
+    "Les changements s'appliquent au prochain lancement du jeu."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -613,6 +628,9 @@ void PageSettings() {
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.save_failed);
 }
 
+int g_capture_idx = -1;      // binding waiting for a key press (-1: none)
+bool g_capture_add = false;  // the key is added to the current ones instead of replacing them
+
 void PageControls() {
   const Texts &t = T();
   bool changed = false;
@@ -620,29 +638,102 @@ void PageControls() {
   ImGui::TextDisabled("%s", t.pad_note);
   changed |= ImGui::Checkbox(t.keyboard, &g_s.keyboard);
   ImGui::TextDisabled("%s", t.keyboard_hint);
+  ImGui::TextWrapped("%s", t.keys_howto);
+
+  // The key the player pressed after "Set" / "+": written with the game's exact name.
+  if (g_capture_idx >= 0) {
+    std::string key;
+    if (keys::Capture(key)) {
+      char *buf = g_s.binds[g_capture_idx];
+      std::string now = key;
+      if (g_capture_add) {
+        const std::string current = keys::Normalize(buf).text;
+        if (!current.empty())
+          now = (("," + current + ",").find("," + key + ",") != std::string::npos) ? current : current + "," + key;
+      }
+      snprintf(buf, sizeof(g_s.binds[0]), "%s", now.c_str());
+      g_capture_idx = -1;
+      changed = true;
+    }
+  }
+
+  std::string bad_list, dup_list;
   if (ImGui::BeginTable("binds", 4, ImGuiTableFlags_SizingStretchSame)) {
     ImGui::TableSetupColumn("a", ImGuiTableColumnFlags_WidthFixed, 150.0f);
     ImGui::TableSetupColumn("b", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn("c", ImGuiTableColumnFlags_WidthFixed, 150.0f);
     ImGui::TableSetupColumn("d", ImGuiTableColumnFlags_WidthStretch);
+    const ImGuiStyle &st = ImGui::GetStyle();
+    const float set_w = ImGui::CalcTextSize(t.keys_set).x + st.FramePadding.x * 2;
+    const float side_w = set_w + ImGui::GetFrameHeight() + st.ItemSpacing.x * 2;
+    std::unordered_map<std::string, size_t> first_use;  // key -> first action using it
     for (size_t i = 0; i < std::size(kBinds); ++i) {
       ImGui::TableNextColumn();
       ImGui::TextUnformatted(kBinds[i].label);
       ImGui::TableNextColumn();
       ImGui::PushID(int(i));
-      ImGui::SetNextItemWidth(-1);
-      changed |= ImGui::InputText("##k", g_s.binds[i], sizeof(g_s.binds[i]));
+      const keys::Result norm = keys::Normalize(g_s.binds[i]);
+      for (const std::string &b : norm.bad)
+        bad_list += (bad_list.empty() ? "" : ", ") + b + " (" + kBinds[i].label + ")";
+      for (size_t from = 0; from < norm.text.size();) {  // same key for two actions?
+        size_t comma = norm.text.find(',', from);
+        if (comma == std::string::npos)
+          comma = norm.text.size();
+        const std::string key = norm.text.substr(from, comma - from);
+        from = comma + 1;
+        const auto it = first_use.emplace(key, i);
+        if (!it.second && it.first->second != i)
+          dup_list += (dup_list.empty() ? "" : ", ") + key + " (" + kBinds[it.first->second].label + " / " +
+                      kBinds[i].label + ")";
+      }
+      const float field_w = ImGui::GetContentRegionAvail().x - side_w;
+      if (g_capture_idx == int(i)) {  // waiting for a key: click to cancel
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.78f, 0.09f, 0.13f, 1.0f));
+        if (ImGui::Button(t.keys_press, ImVec2(field_w, 0)))
+          g_capture_idx = -1;
+        ImGui::PopStyleColor();
+      } else {
+        if (!norm.bad.empty())
+          ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.45f, 0.10f, 0.10f, 1.0f));
+        ImGui::SetNextItemWidth(field_w);
+        changed |= ImGui::InputText("##k", g_s.binds[i], sizeof(g_s.binds[i]));
+        if (ImGui::IsItemDeactivatedAfterEdit()) {  // typed: write the names the way the game wants them
+          const keys::Result fixed = keys::Normalize(g_s.binds[i]);
+          if (fixed.bad.empty()) {
+            snprintf(g_s.binds[i], sizeof(g_s.binds[i]), "%s", fixed.text.c_str());
+            changed = true;
+          }
+        }
+        if (!norm.bad.empty())
+          ImGui::PopStyleColor();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button(t.keys_set)) {
+        g_capture_idx = int(i);
+        g_capture_add = false;
+      }
+      ImGui::SameLine();
+      if (ImGui::Button(t.keys_add)) {
+        g_capture_idx = int(i);
+        g_capture_add = true;
+      }
       ImGui::PopID();
     }
     ImGui::EndTable();
   }
+  if (!bad_list.empty())
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), t.keys_bad, bad_list.c_str());
+  if (!dup_list.empty())
+    ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), t.keys_dup, dup_list.c_str());
   if (ImGui::Button(t.reset_keys)) {
     for (size_t i = 0; i < std::size(kBinds); ++i)
       snprintf(g_s.binds[i], sizeof(g_s.binds[i]), "%s", kBinds[i].def);
+    g_capture_idx = -1;
     changed = true;
   }
   if (changed)
     SaveSettings();
+  ImGui::TextDisabled("%s", t.keys_restart);
   if (!g_settings_ok)
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.save_failed);
 }
@@ -777,6 +868,8 @@ void DrawUi() {
       g_page = Page(i);
   }
 
+  if (g_page != kControls)
+    g_capture_idx = -1;  // never keep waiting for a key on another page
   ImGui::SetCursorPos(ImVec2(kSide + 40, 30));
   ImGui::BeginChild("page", ImVec2(W - kSide - 70, H - 60));
   switch (g_page) {
