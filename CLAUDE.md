@@ -109,6 +109,15 @@ Retours : issues GitHub + salon « bugs » du Discord de Kaiko (l'utilisateur y 
 Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui de la cible : normal.
 
 **1.0 = stabilité, tous les bugs connus** (dans cet ordre) :
+0. **PISTE PRIORITAIRE (Main, 2026-10-16) : fuite de mémoire vidéo.** `RetireHost` (svr_resources.cpp)
+   garde chaque cible hôte « périmée » sans jamais la libérer (libérer plantait dans
+   DrainResolveLinksLocked). Journal Discord `work/discord/bug01.log` (GTX 1650 4 Go, 1440p) : 266
+   cibles mises de côté en 25 min, régulièrement, beaucoup en 1280x720/1280x736 (x2 = ~30 Mo chacune en
+   RGBA16F) : plusieurs Go perdus. Explique probablement : image figée après quelques matchs (bug 1),
+   ralenti « slow motion » après quelques matchs en Univers surtout en 4K (bug 4), jeu à 0,25x sur
+   RTX 2050 4 Go (bug 6), Univers qui fige après ~20 matchs (bug 7), #10 (chutes de fps en fin de
+   match), peut-être #4 et #8. À corriger : libérer après que le GPU a fini (fin d'image + quelques
+   images) en les retirant proprement des liens de resolve, ou les réutiliser par taille/format.
 1. Plantages / gels : #4 (gel en entrée, RX 560, journaux 0.6.0 joints), #8 (gel).
 2. Graphismes AMD/Intel/Steam Deck : #7 et #11 (pavés pendant les entrées, toujours là en 0.6.0),
    #12 (yeux blancs sur AMD).
@@ -116,7 +125,12 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
 4. Jeu : #9 (replay d'après-match), matchs WWE Draft du mode Univers après WrestleMania (la
    cinématique où une superstar tirée au hasard change de roster ne se fait pas), portes
    transparentes en backstage.
-5. Option « tout débloquer » ; gestion des sauvegardes (créer/supprimer, importer ses propres
+5. Autres retours Discord (2026-10-16) : écran noir sur Intel HD 5500 (`work/discord/bug02.log` :
+   « Plume CreateVulkanInterface failed », ce GPU Broadwell n'a pas de pilote Vulkan sous Windows ;
+   au minimum un message clair au lieu d'un écran noir figé, idéalement le rendu D3D12) ; tenue
+   Superstar Threads avec des zones blanches (Daniel Bryan) ; vibrations de manette absentes en mode
+   Univers (déjà le cas sur Xbox 360, bonus).
+6. Option « tout débloquer » ; gestion des sauvegardes (créer/supprimer, importer ses propres
    sauvegardes Xbox : demandé par des joueurs, important).
 
 **1.1** : Title Update (dernière mise à jour du jeu).
