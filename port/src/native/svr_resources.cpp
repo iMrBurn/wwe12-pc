@@ -232,12 +232,13 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   u32 height = ((bits >> 3) & 0x7FFF) + 1;
   u32 extent = 0;
   if (!g_tiled_extent.count(surface_va)) {
-    // A new surface object shaped like a known tiled one starts at the extent that one reached;
-    // 320x736 is the one-tile EDRAM surface of the 1280x720 scene, 4 tiles wide.
+    // A new surface object shaped like a known tiled one starts at the extent that one reached.
+    // 320x736 and 640x736 are the one-tile EDRAM surfaces of the 1280x720 scene (4 or 2 tiles
+    // wide; the 2-tile one made the right half of the picture flash black before the bell).
     const auto learned = g_learned_extent.find(u64(bits) << 32 | format);
     if (learned != g_learned_extent.end())
       g_tiled_extent[surface_va] = learned->second;
-    else if (width == 320 && height == 736)
+    else if ((width == 320 || width == 640) && height == 736)
       g_tiled_extent[surface_va] = (1280u << 16) | 736u;
   }
   if (auto it = g_tiled_extent.find(surface_va); it != g_tiled_extent.end()) {
