@@ -143,6 +143,14 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
    textures en vie. Probablement liés : image figée / ralenti / 0,25x après quelques matchs (Discord
    bugs 1, 4, 6, 7), #10, #8, cel-shading Steam Deck : à confirmer par les joueurs.
    Remarqué (pas gênant) : micro-écran noir < 0,1 s sur la moitié droite juste avant la cloche.
+1. **RÉGRESSION 0.7.0 (2026-10-16)** : #11 (JimminyBuccilli, Intel HD 520, 2 cœurs) gèle maintenant en
+   entrée ET en match, ce qui n'arrivait pas en 0.6.0 (pareil dans les vieilles versions du SvR 2011
+   de Kaiko : lui demander ce que c'était). Journaux `work/issue11/` : dans wwe12_013.log, juste avant le
+   gel, « 1 stale host target(s) released » puis les surfaces 1280x736 recréées aux mêmes adresses ;
+   wwe12_008.log gèle sans libération juste avant. Test demandé au joueur : `svr_release_stale_targets
+   = false`. Autre point : sur les PC à moins de 6 threads, `XThread::SetActiveCpu` (SDK, xthread.cpp)
+   écrit « Too few processor cores » à chaque appel (des dizaines de milliers de lignes par minute) :
+   à n'écrire qu'une fois (coût CPU/disque sur les petits PC).
 1. Plantages / gels : #4 (gel en entrée, RX 560, journaux 0.6.0 joints), #8 (gel).
 2. Graphismes AMD/Intel/Steam Deck : #7 et #11 (pavés pendant les entrées, toujours là en 0.6.0),
    #12 (yeux blancs sur AMD ; pas corrigé en 0.7.0 ; test demandé au joueur le 2026-10-16 :
