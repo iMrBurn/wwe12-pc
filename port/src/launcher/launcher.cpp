@@ -26,6 +26,7 @@
 #include "imgui_impl_win32.h"
 
 #include "changelog.h"
+#include "diagnostics.h"
 #include "saves.h"
 #include "toml_file.h"
 #include "updater.h"
@@ -211,6 +212,7 @@ struct Texts {
       *check_now, *check_at_start, *downloading, *update_failed;
   const char *whats_new;
   const char *vulkan_ok, *vulkan_missing;
+  const char *support, *support_hint, *diag_copy, *diag_copied, *diag_failed, *open_logs;
 };
 
 const Texts kEnglish = {
@@ -240,7 +242,12 @@ const Texts kEnglish = {
     "Graphics card: %s",
     "No Vulkan graphics driver found: the game cannot draw its picture (black window). "
     "Update your graphics drivers. Very old graphics chips (such as the Intel HD 5000 series) "
-    "have no Vulkan driver and cannot run the game yet."};
+    "have no Vulkan driver and cannot run the game yet.",
+    "Support",
+    "Having a problem? Copy the diagnostic info and paste it in your bug report: it holds your "
+    "graphics card, driver and settings, nothing personal. The game's logs are in the logs folder.",
+    "Copy diagnostic info", "Copied. Paste it in your bug report.", "Could not copy.",
+    "Open the logs folder"};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -271,7 +278,13 @@ const Texts kFrench = {
     "Carte graphique : %s",
     "Aucun pilote graphique Vulkan trouvé : le jeu ne peut pas afficher d'image (fenêtre noire). "
     "Mettez à jour les pilotes de votre carte graphique. Les très vieilles puces (comme la série "
-    "Intel HD 5000) n'ont pas de pilote Vulkan et ne peuvent pas encore faire tourner le jeu."};
+    "Intel HD 5000) n'ont pas de pilote Vulkan et ne peuvent pas encore faire tourner le jeu.",
+    "Aide",
+    "Un problème ? Copiez les infos de diagnostic et collez-les dans votre rapport de bug : elles "
+    "contiennent votre carte graphique, son pilote et vos réglages, rien de personnel. Les journaux "
+    "du jeu sont dans le dossier des journaux.",
+    "Copier les infos de diagnostic", "Copié. Collez-le dans votre rapport de bug.",
+    "Copie impossible.", "Ouvrir le dossier des journaux"};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -641,6 +654,47 @@ void PageSaves() {
   g_saves.Draw(g_s.language == 4);
 }
 
+// Facts a tester pastes into a bug report. Nothing personal: no user name, no folder paths.
+std::string BuildDiagnostics() {
+  std::string r = "WWE '12 PC diagnostic\n";
+  r += std::string("Version: ") + WWE12_VERSION + "\n";
+  r += "Windows: " + diag::WindowsVersion() + "\n";
+  r += "CPU: " + diag::CpuName() + "\n";
+  r += "RAM: " + diag::Memory() + "\n";
+  r += "Graphics (Windows):\n" + diag::Adapters();
+  switch (g_vulkan.GetState()) {
+  case VulkanCheck::State::Ok: r += "Vulkan: OK\n"; break;
+  case VulkanCheck::State::Missing: r += "Vulkan: MISSING\n"; break;
+  default: r += "Vulkan: still checking\n"; break;
+  }
+  r += g_vulkan.Report();
+  r += "Settings:";
+  for (const char *key : {"user_language", "svr_render_scale", "fullscreen", "bd_vsync", "bd_anisotropy",
+                          "wwe12_60fps", "svr_gpu_device", "wwe12_quit_entry", "wwe12_graphics_menu",
+                          "mnk_mode"}) {
+    const auto v = g_toml.Raw(key);
+    r += std::string(" ") + key + "=" + (v ? *v : "default");
+  }
+  r += "\n";
+  std::error_code ec;
+  int mods = 0, dlc = 0;
+  for (auto it = fs::recursive_directory_iterator(ExeDir() / "mods", ec); it != fs::recursive_directory_iterator();
+       it.increment(ec)) {
+    if (ec)
+      break;
+    if (it->is_regular_file(ec) && it->path().filename() != "HOW_TO_USE_MODS.txt")
+      ++mods;
+  }
+  for (const auto &e : fs::directory_iterator(DocumentsDir() / "wwe12" / "0000000000000000" / "54510890" / "00000002", ec))
+    if (e.is_directory(ec))
+      ++dlc;
+  r += std::string("Game files: ") + (GameFilesFound(ExeDir()) ? "found" : "missing") + "\n";
+  r += "Mod files: " + std::to_string(mods) + ", DLC installed: " + std::to_string(dlc) + "\n";
+  return r;
+}
+
+int g_diag_msg = 0;  // 1 copied, 2 failed
+
 void PageAbout() {
   const Texts &t = T();
   Title(t.about);
@@ -648,6 +702,19 @@ void PageAbout() {
   ImGui::Dummy(ImVec2(0, 12));
   if (ImGui::Button(t.github))
     OpenUrl(L"https://github.com/iMrBurn/wwe12-pc");
+  ImGui::Dummy(ImVec2(0, 14));
+  ImGui::Separator();
+  ImGui::Text("%s", t.support);
+  ImGui::TextWrapped("%s", t.support_hint);
+  if (ImGui::Button(t.diag_copy))
+    g_diag_msg = diag::CopyToClipboard(BuildDiagnostics()) ? 1 : 2;
+  ImGui::SameLine();
+  if (ImGui::Button(t.open_logs))
+    OpenFolder(DocumentsDir() / "wwe12" / "logs");
+  if (g_diag_msg == 1)
+    ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", t.diag_copied);
+  else if (g_diag_msg == 2)
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.diag_failed);
   ImGui::Dummy(ImVec2(0, 8));
   ImGui::TextDisabled("%s %s", t.version, WWE12_VERSION);
 }
