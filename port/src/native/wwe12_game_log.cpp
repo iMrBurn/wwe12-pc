@@ -12,9 +12,12 @@
 // The WWE Draft (Universe, after WrestleMania) works: DRAFT EVENT at the end of the draft match
 // plays the lottery and the drafted Superstar's entrance (checked 2026-10-16).
 
+#include <algorithm>
 #include <array>
 #include <mutex>
 #include <string>
+
+#include <fmt/format.h>
 
 #include <rex/cvar.h>
 
@@ -66,4 +69,37 @@ extern "C" REX_FUNC(sub_82A79228) {
   ++s_count;
   s_recent[s_next++ % s_recent.size()] = line;
   BD_INFO("[game {:08X}] {}", HelperFor(caller), line);
+}
+
+// Post-match replay probe (issue #9). GameReplayRecordThread (entry sub_829597D8, from the
+// thread table at 0x82001900) runs sub_8295A1C0(recorder) once per frame, recorder being the
+// object at 0x8324E1B0 (made by sub_823DDE48 / sub_82959FB8). It records only while the global
+// at 0x8317B7BC is 1, through the recorder's current mode object at +20 (vtable slot 1).
+// Logged on each change.
+REX_EXTERN(__imp__sub_8295A1C0);
+extern "C" REX_FUNC(sub_8295A1C0) {
+  if (REXCVAR_GET(wwe12_game_log)) {
+    const u32 self = ctx.r3.u32;
+    const u32 flag = bd::mem::load<u32>(0x8317B7BC);
+    const u32 mode = bd::mem::load<u32>(self + 20), f24 = bd::mem::load<u32>(self + 24),
+              f32 = bd::mem::load<u32>(self + 32);
+    static u32 s_last[5] = {~0u, ~0u, ~0u, ~0u, ~0u};
+    const u32 now[5] = {self, flag, mode, f24, f32};
+    if (!std::equal(now, now + 5, s_last)) {
+      std::copy(now, now + 5, s_last);
+      // The mode (vtable 0x82065A54, slot 1 = sub_8295E600) hands each frame to up to four
+      // parts at mode+8..+20, through their vtable slot 3.
+      std::string parts;
+      for (u32 i = 0; mode && i < 4; ++i) {
+        const u32 part = bd::mem::load<u32>(mode + 8 + i * 4);
+        const u32 vt = part ? bd::mem::load<u32>(part) : 0;
+        parts += fmt::format(" [0x{:08X} vtbl 0x{:08X} rec 0x{:08X}]", part, vt,
+                             vt ? bd::mem::load<u32>(vt + 12) : 0u);
+      }
+      BD_INFO("[replay] record step: recorder 0x{:08X} flag(0x8317B7BC)={} mode=0x{:08X} "
+              "vtbl=0x{:08X} +24=0x{:08X} +32={} parts{}",
+              self, flag, mode, mode ? bd::mem::load<u32>(mode) : 0u, f24, f32, parts);
+    }
+  }
+  __imp__sub_8295A1C0(ctx, base);
 }
