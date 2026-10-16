@@ -1,6 +1,8 @@
 // Minimal line-based editor for wwe12.toml: reads "key = value" lines and changes values in place,
 // so the file's comments and layout survive the launcher's edits. Keys it does not find are
 // appended at the end. Only the flat key = value form the game's settings use is handled.
+// Saving never leaves a half-written file: the text goes to wwe12.toml.new, which then replaces
+// the file; the previous file is copied to wwe12.toml.bak once per run.
 #pragma once
 
 #include <filesystem>
@@ -21,17 +23,49 @@ class TomlFile {
     while (std::getline(f, line)) {
       if (!line.empty() && line.back() == '\r')
         line.pop_back();
+      if (lines_.empty() && line.compare(0, 3, "\xEF\xBB\xBF") == 0)
+        line.erase(0, 3);  // UTF-8 BOM some editors add: it would hide the first key
       lines_.push_back(line);
     }
     return true;
   }
 
-  bool Save() const {
-    std::ofstream f(path_, std::ios::binary | std::ios::trunc);
-    for (const auto &l : lines_)
-      f << l << "\r\n";
-    return bool(f);
+  // false when the file cannot be written (folder read-only, disk full...); the old file is then
+  // left as it was. error() says why.
+  bool Save() {
+    namespace fs = std::filesystem;
+    error_.clear();
+    std::error_code ec;
+    if (!backed_up_ && fs::exists(path_, ec)) {
+      fs::path bak = path_;
+      bak += ".bak";
+      fs::copy_file(path_, bak, fs::copy_options::overwrite_existing, ec);  // best effort
+      backed_up_ = true;
+    }
+    fs::path tmp = path_;
+    tmp += ".new";
+    {
+      std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+      for (const auto &l : lines_)
+        f << l << "\r\n";
+      f.flush();
+      if (!f) {
+        error_ = "cannot write " + tmp.filename().string();
+        f.close();
+        fs::remove(tmp, ec);
+        return false;
+      }
+    }
+    fs::rename(tmp, path_, ec);  // replaces the old file in one step
+    if (ec) {
+      error_ = ec.message();
+      std::error_code ignore;
+      fs::remove(tmp, ignore);
+      return false;
+    }
+    return true;
   }
+  const std::string &error() const { return error_; }
 
   // Raw value text (quotes kept for strings), or nothing.
   std::optional<std::string> Raw(const std::string &key) const {
@@ -127,4 +161,6 @@ class TomlFile {
 
   std::filesystem::path path_;
   std::vector<std::string> lines_;
+  std::string error_;
+  bool backed_up_ = false;
 };

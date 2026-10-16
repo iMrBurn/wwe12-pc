@@ -213,7 +213,7 @@ struct Texts {
   const char *whats_new;
   const char *vulkan_ok, *vulkan_missing;
   const char *support, *support_hint, *diag_copy, *diag_copied, *diag_failed, *open_logs;
-  const char *include_beta, *update_game_running;
+  const char *include_beta, *update_game_running, *save_failed;
 };
 
 const Texts kEnglish = {
@@ -249,7 +249,9 @@ const Texts kEnglish = {
     "graphics card, driver and settings, nothing personal. The game's logs are in the logs folder.",
     "Copy diagnostic info", "Copied. Paste it in your bug report.", "Could not copy.",
     "Open the logs folder",
-    "Include beta versions", "The game is running: close it, then check again."};
+    "Include beta versions", "The game is running: close it, then check again.",
+    "Could not save your settings. Is the game folder read-only (for example inside Program Files)? "
+    "Move the game folder to your Documents or Desktop."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -287,7 +289,9 @@ const Texts kFrench = {
     "du jeu sont dans le dossier des journaux.",
     "Copier les infos de diagnostic", "Copié. Collez-le dans votre rapport de bug.",
     "Copie impossible.", "Ouvrir le dossier des journaux",
-    "Inclure les versions bêta", "Le jeu est lancé : fermez-le, puis vérifiez à nouveau."};
+    "Inclure les versions bêta", "Le jeu est lancé : fermez-le, puis vérifiez à nouveau.",
+    "Impossible d'enregistrer vos réglages. Le dossier du jeu est-il en lecture seule (par exemple "
+    "dans Program Files) ? Déplacez le dossier du jeu dans Documents ou sur le Bureau."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -337,6 +341,7 @@ struct Settings {
 };
 
 TomlFile g_toml;
+bool g_settings_ok = true;  // false when wwe12.toml could not be written
 Settings g_s;
 
 void LoadSettings() {
@@ -367,7 +372,7 @@ void SaveSettings() {
   g_toml.SetBool("mnk_mode", g_s.keyboard);
   for (size_t i = 0; i < std::size(kBinds); ++i)
     g_toml.SetString(kBinds[i].key, g_s.binds[i]);
-  g_toml.Save();
+  g_settings_ok = g_toml.Save();
 }
 
 const Texts &T() { return g_s.language == 4 ? kFrench : kEnglish; }
@@ -596,6 +601,8 @@ void PageSettings() {
     SaveSettings();
   ImGui::Dummy(ImVec2(0, 12));
   ImGui::TextDisabled("%s", t.saved_note);
+  if (!g_settings_ok)
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.save_failed);
 }
 
 void PageControls() {
@@ -628,6 +635,8 @@ void PageControls() {
   }
   if (changed)
     SaveSettings();
+  if (!g_settings_ok)
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.save_failed);
 }
 
 void PageMods() {
