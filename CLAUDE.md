@@ -150,6 +150,21 @@ vérifier qu'aucune autre compilation ne tourne (`tasklist | findstr /i "ninja c
 | 5 | Icônes de boutons PlayStation / Xbox selon la manette (vraies icônes PS3, décision de l'utilisateur) | Gameplay | **fait** (2026-10-17, vérifié en jeu) |
 | R | Rendu : pavés du quart droit (#7, #11, #13 ; vidage des nouvelles surfaces à faire tester), yeux blancs AMD (#12) | Rendu | en cours |
 
+## Feuille de route 0.9 / 1.0 (décidée par l'utilisateur le 2026-10-18)
+
+**0.9** : DLC manquants (piste du cache `Documents\wwe12\xbox_cache` construit avant l'ajout des DLC :
+test proposé à un joueur ; puis vider le cache à l'installation d'un DLC, vérifier/réparer les DLC
+installés, lister les catcheurs DLC chargés dans le journal) ; gels (hang_trace de 0.8) ; pavés et yeux
+AMD ; turbo à 4 fils ; options graphiques restantes ; formulaire de bug GitHub + FAQ ; **musiques
+perso** (très demandées : priorité de la 0.9).
+**1.0** : plus de bug grave connu ; **Mod Maker** comme celui de Kaiko ; signature de l'exe à étudier ;
+documentation.
+**Nouvelles suggestions (2026-10-18)** :
+- Create a Story : taper le texte des cinématiques au clavier. Le SDK a déjà une boîte de saisie pour
+  XamShowKeyboardUI (xam_ui.cpp, ImGui) ; si le jeu utilise plutôt sa propre grille de lettres, il faut
+  y brancher le clavier physique. À vérifier d'abord (Gameplay).
+- Mode Univers comme WWE '13 : remise à zéro de l'Univers, et rendre une ceinture vacante (Univers).
+
 ## Après la 0.8 (2026-10-17) : priorité bugs et DLC
 
 - **DLC (Gameplay)** : Batista absent chez certains joueurs (JokerOP : mêmes 4 fichiers que l'utilisateur,
