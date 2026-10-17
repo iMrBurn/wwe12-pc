@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 #include <fmt/format.h>
@@ -143,4 +144,24 @@ void Wwe12InstallDlc(const std::filesystem::path& user_data_root) {
 
   REXLOG_INFO("DLC : {} installé(s), {} déjà présent(s), {} en échec (dossier {})", installed,
               present, failed, rex::path_to_utf8(dlc_dir));
+
+  // Le jeu garde dans sa partition cache (Documents\wwe12\xbox_cache, EditEx.cac) des données faites
+  // à partir des DLC présents à ce moment-là : construite avant l'ajout d'un DLC, elle lui cachait
+  // des catcheurs (Batista, joueurs Discord, 2026-10-18 : réglé en la supprimant). On la vide donc à
+  // chaque nouvelle installation ; le jeu la reconstruit au démarrage (un peu plus long une fois).
+  // Les joueurs qui avaient déjà leurs DLC avant ce correctif ont la leur vidée une fois (repère
+  // dlc_cache_cleared.txt).
+  const auto marker = user_data_root / "dlc_cache_cleared.txt";
+  std::error_code mec;
+  const bool first_time = present > 0 && !std::filesystem::exists(marker, mec);
+  if (installed > 0 || first_time) {
+    std::ofstream(marker) << "xbox_cache vidé après l'installation des DLC\n";
+    const auto cache_dir = user_data_root / "xbox_cache";
+    std::error_code cec;
+    uintmax_t removed = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(cache_dir, cec))
+      removed += std::filesystem::remove_all(entry.path(), cec);
+    REXLOG_INFO("DLC : nouveau DLC installé, cache du jeu vidé ({} élément(s), {})", removed,
+                rex::path_to_utf8(cache_dir));
+  }
 }
