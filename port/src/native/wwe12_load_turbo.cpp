@@ -38,7 +38,7 @@
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
 
-REXCVAR_DEFINE_BOOL(wwe12_load_turbo, true, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_load_turbo, false, "WWE12",
                     "Loading screens run the game as fast as possible (the loading animation spins "
                     "faster).");
 REXCVAR_DEFINE_INT32(wwe12_load_turbo_frames, 6, "WWE12",

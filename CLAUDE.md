@@ -209,8 +209,8 @@ crochets (chez lui 8 VirtualQuery par image = 1,4 ms) ; (4) vblank sur minuteur 
 BPE de Yuke's (`tools/yukes_bpe.py`) et LZX. Sans effet chez lui : sauter le dessin (perd un rendu
 unique par chargement), vblank plus rapide avec vsync active. Attention : le turbo change la
 synchronisation image/temps (replays, #9) : à couper là où c'est comparé. Mesurer avant chaque étape.
-**Fait (2026-10-16, étapes 0 et 1, vérifié en jeu, cvar `wwe12_load_turbo` à true par
-défaut depuis la 0.8, à ajouter aux readmes)** : `native/wwe12_load_turbo.cpp`. Mesure : les threads du jeu avancent au rythme des images
+**Fait (2026-10-16, étapes 0 et 1, vérifié en jeu ; cvar `wwe12_load_turbo` repassée à **false** par
+défaut le 2026-10-17 : chargement infini reproduit par Rendu, voir « Interblocage du turbo » ci-dessous)** : `native/wwe12_load_turbo.cpp`. Mesure : les threads du jeu avancent au rythme des images
 (barrière sub_827DEA20 : prêt → attend le feu vert), 60 images de jeu par image affichée ; sur ~4 s
 d'écran de chargement, le chargeur ne travaille que ~1 s. Écrans de chargement = 14 classes
 (`/LOAD/IG%02d`, GN, CV…, vtable slot 13) ; méthodes communes **pas appelées à chaque image** :
@@ -235,6 +235,25 @@ les piles → zlib/BPE natifs inutiles. Chargement de match avec turbo ≈ 2,7 s
 chargeur, puis **une lecture d'1 s pour 750 Ko** juste après les voix du speaker
 (`Ring_Announcer_JR_DLC_03/04`), puis le script d'entrée (`/GMEV`, `/GMST`) et l'entrée. Piste non
 suivie : trouver ce fichier (son lu en flux ? attente du SDK ?) ; gain possible ~1 s (→ ~1,7 s).
+**Interblocage du turbo (2026-10-17, reproduit par Rendu, pas encore compris)** : build actuelle,
+turbo actif, jeu limité à 4 fils (affinité 0xF) : chargement infini ; le turbo s'arrête au bout des
+20 s mais le jeu reste bloqué. Le fil principal et 3 autres attendent dans la barrière sub_827DEA20,
+personne dans sub_827DE8A0/8F8. Analyse de la barrière (Gameplay) : objet = 24 fiches de 160 octets à
+this+40 : +0 tid (8 o), +8 événement A « prêt », +12 drapeau, +16 événement B « feu vert », +20
+drapeau, +24 actif. Un fil (sub_827DEA20) : trouve sa fiche (sub_827DE820, section critique), +12=1,
+SetEvent(A), attend B sans limite, compteur +156. **Le coordinateur est le fil de rendu du jeu**
+(sub_82826A38, seul appelant) : sub_827DE8A0 attend A de chaque fiche active, sub_827DE8F8 met +20=1
+et SetEvent(B). Donc « personne dans le coordinateur » = le fil de rendu est bloqué ailleurs : **c'est
+sa pile qu'il faut**. Pendant les chargements, il était dans PaceFrame / Video::Present
+(D3DDevice_Swap_hook < sub_82AA8898 < sub_82880D68 < sub_82819828) ou dans sub_82AAAAF8 / sub_82AA7040
+(attente côté D3D invité : vblank ou fin de swap). Bissection sans recompiler, avec 4 fils :
+`--wwe12_load_turbo_vblank=false` (seulement le saut d'images) puis `--wwe12_load_turbo_frames=1`
+(seulement le vblank à 1 kHz). Suspects : (a) le vsync SDK coupé : `command_processor.cpp` (~l. 1045)
+passe de Sleep à MaybeYield (boucle active) et le fil vblank tourne à 1 kHz ; sur 4 fils, ils prennent
+des cœurs au jeu, et un signal (interruption vblank, fence du GPU nul) peut être perdu ; le blocage qui
+dure après les 20 s penche pour un signal perdu plutôt qu'une lenteur ; (b) le saut d'images :
+AbandonFrame soumet puis attend le GPU hôte (AdvanceAndWaitReused) ; (c) le crochet de sub_827DEA20
+ne fait qu'un comptage sous mutex si `wwe12_load_probe`, sinon il appelle directement l'original.
 
 **Mode Univers enrichi (voulu par l'utilisateur, 2026-10-16)**, sur le modèle de « DarkMatches » (Discord,
 recomp de WWE '13, même mode Univers) : matchs de qualification (Money in the Bank, Elimination Chamber)
