@@ -298,6 +298,12 @@ voit que Rock/Edge/Christian/commentateurs/Brodus Clay) : disques d'origine (v0)
 code v4 + données v0 chez ces joueurs. À faire : écrire au démarrage la version du disque du joueur
 (media ID, version du xex, empreinte de pac\DLC.pac) dans le journal ; pour la 1.1, plutôt appliquer la
 TU fournie par le joueur à ses données (launcher) que recompiler.
+Plan retenu (2026-10-17) : 0.7.1 = version du disque dans le journal (`src/wwe12_disc.cpp`, avertit une
+fois si différente) pour confirmer ; 0.8 = dossier `update` à côté de l'exe : le joueur y met SA Title
+Update (paquet STFS, comme les DLC), installée au démarrage : correctif `default.xexp` appliqué au xex
+chargé (le runtime a XexModule::ApplyPatch) + fichiers de données de la TU (DLC.pac, strMenu.pac,
+_startup360.pac) servis par l'overlay VFS. Jamais livrer la TU. Pas de recompilation nécessaire (notre
+code est déjà v4). Test : un joueur au disque d'origine (JokerOP).
 
 **1.1** : Title Update (dernière mise à jour du jeu).
 **Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
