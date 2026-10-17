@@ -274,7 +274,7 @@ const Texts kEnglish = {
     "Player 1 (shares player 1 with controller 1)", "Player 2 (separate controller)", "Player 3", "Player 4",
     "DISPLAY", "GRAPHICS", "ADVANCED", "Borderless window", "Window size", "Screen size", "Custom",
     "Frame limit", "No limit",
-    "The game runs at 60 frames per second by itself: 30 makes it run at half speed, and more than 60 changes nothing.",
+    "The game already runs at 60 frames per second. A 60 limit only evens out short bursts above 60.",
     "Show the FPS counter (F2 shows or hides it in the game)", "CPU priority", "Normal", "Above normal", "High",
     "A higher priority can help on a busy PC; High may slow your other programs.",
     "More graphics options (crowd, shadows, depth of field, blur, effects, anti-aliasing) are coming.",
@@ -333,7 +333,7 @@ const Texts kFrench = {
     "Joueur 1 (partage le joueur 1 avec la manette 1)", "Joueur 2 (manette séparée)", "Joueur 3", "Joueur 4",
     "AFFICHAGE", "GRAPHISMES", "AVANCÉ", "Fenêtre sans bordure", "Taille de la fenêtre", "Taille de l'écran",
     "Personnalisée", "Limite d'images", "Aucune limite",
-    "Le jeu tourne tout seul à 60 images par seconde : 30 le fait tourner à moitié vitesse, et plus de 60 ne change rien.",
+    "Le jeu tourne déjà à 60 images par seconde. Une limite à 60 sert seulement à lisser les courtes pointes au-dessus de 60.",
     "Afficher le compteur d'images par seconde (F2 l'affiche ou le cache dans le jeu)", "Priorité du processeur",
     "Normale", "Supérieure", "Haute",
     "Une priorité plus haute peut aider sur un PC chargé ; Haute peut ralentir vos autres programmes.",
@@ -683,20 +683,21 @@ void PageSettings() {
         ImGui::EndCombo();
       }
 
-      // Frame limit: none, 30 or 60 (see the hint: the game paces itself at 60).
-      static const int kLimits[] = {0, 30, 60};
+      // Frame limit: none or 60. The game paces itself at 60 (a lower limit would slow the game
+      // down, so it is not offered; wwe12.toml still accepts any value).
+      static const int kLimits[] = {0, 60};
       int fi = -1;
-      for (int i = 0; i < 3; ++i)
+      for (int i = 0; i < 2; ++i)
         if (kLimits[i] == g_s.fps_limit)
           fi = i;
       char custom_limit[48];
-      const char *limit_names[4] = {t.no_limit, "30", "60", custom_limit};
-      int limit_count = 3;
+      const char *limit_names[3] = {t.no_limit, "60", custom_limit};
+      int limit_count = 2;
       if (fi < 0) {  // another value typed by hand in wwe12.toml
         snprintf(custom_limit, sizeof(custom_limit), "%s (%d)", t.custom, g_s.fps_limit);
         fi = limit_count++;
       }
-      if (ImGui::Combo(t.fps_limit, &fi, limit_names, limit_count) && fi < 3) {
+      if (ImGui::Combo(t.fps_limit, &fi, limit_names, limit_count) && fi < 2) {
         g_s.fps_limit = kLimits[fi];
         changed = true;
       }
