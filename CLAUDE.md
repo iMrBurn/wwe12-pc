@@ -131,6 +131,22 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   séparée), patch SDK `port/patches/rexglue-sdk-keyboard-player.patch` (`DeviceInfo::slot`, `SlotAssignment`,
   `MnkInputDriver`). Testé en vrai : Xbox One S = joueur 1, clavier = joueur 2.
 
+## Version 0.8 : plan (décidé par l'utilisateur le 2026-10-17)
+
+Chaque conversation coche sa ligne ici quand c'est fait et testé, puis prévient la Main. La Main
+compile, empaquette et publie (avec le « go » de l'utilisateur). Avant de compiler ou de lancer le jeu :
+vérifier qu'aucune autre compilation ne tourne (`tasklist | findstr /i "ninja clang wwe12"`).
+
+| # | Tâche | Qui | État |
+|---|---|---|---|
+| 1 | Gels avec moins de 6 fils (#4, #11, Nothing) : reproduits avec l'affinité 0xF, à corriger | Rendu | à faire |
+| 2 | Dossier `update` : la Title Update du joueur rend un disque d'origine identique au v4 | Gameplay | à faire |
+| 3 | Turbo des chargements remis par défaut, une fois l'interblocage avec 4 fils compris | Gameplay + Rendu | à faire |
+| 4a | Options : compteur FPS, fenêtré / plein écran / sans bordure, limite d'images, priorité CPU | Launcher | à faire |
+| 4b | Options graphiques : foule ON/OFF, ombres, profondeur de champ, flou, effets, anticrénelage (réglages exposés en cvars ; Launcher les ajoute ensuite à l'écran) | Rendu | à faire |
+| 5 | Icônes de boutons PlayStation / Xbox selon la manette (icônes redessinées, rien de Sony) | Gameplay | à faire |
+| R | Rendu : pavés du quart droit (#7, #11, #13 ; vidage des nouvelles surfaces à faire tester), yeux blancs AMD (#12) | Rendu | en cours |
+
 ## Feuille de route (décidée avec l'utilisateur le 2026-10-16)
 
 Retours : issues GitHub + salon « bugs » du Discord de Kaiko (l'utilisateur y a sa catégorie).
