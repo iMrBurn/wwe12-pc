@@ -23,6 +23,7 @@
 #include "core/threading.h"
 #include "gpu/device.h"
 #include "gpu/imgui_overlay_drawer.h"
+#include "native/wwe12_display.h"
 #include "native/wwe12_graphics_menu.h"
 #include <rex/input/input_system.h>
 #endif
@@ -212,6 +213,7 @@ class Wwe12App : public rex::ReXApp {
         imgui_drawer(),
         [this](std::function<void()> fn) { app_context().CallInUIThread(std::move(fn)); },
         rex::filesystem::GetExecutableFolder() / "wwe12.toml");
+    Wwe12DisplayInit(imgui_drawer());  // FPS counter (F2), CPU priority
     if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system()))
       input->SetActiveCallback([] { return !Wwe12GraphicsMenuIsOpen(); });
   }

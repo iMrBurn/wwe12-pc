@@ -1,0 +1,27 @@
+diff --git a/src/ui/window_sdl.cpp b/src/ui/window_sdl.cpp
+index 2251429..ed285d7 100644
+--- a/src/ui/window_sdl.cpp
++++ b/src/ui/window_sdl.cpp
+@@ -40,6 +40,12 @@
+ #include <rex/ui/surface_gnulinux.h>
+ #endif
+ 
++// WWE '12 port: with fullscreen off, a window without title bar or frame ("borderless window"),
++// at the size given by window_width / window_height. Read when the window is created.
++REXCVAR_DEFINE_BOOL(borderless, false, "UI/Window",
++                    "Windowed mode without title bar or frame (used when fullscreen is off)")
++    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
++
+ namespace rex::ui {
+ 
+ namespace {
+@@ -137,6 +143,9 @@ bool WindowSDL::OpenImpl() {
+   // SDL window coordinates are physical pixels on Windows and X11. Cocoa
+   // uses logical points and applies the backing scale itself.
+   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
++  if (REXCVAR_GET(borderless) && !IsFullscreen()) {
++    flags |= SDL_WINDOW_BORDERLESS;
++  }
+ #if REX_PLATFORM_MAC
+   int initial_width = int(GetDesiredLogicalWidth());
+   int initial_height = int(GetDesiredLogicalHeight());

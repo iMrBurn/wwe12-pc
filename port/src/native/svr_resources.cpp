@@ -28,6 +28,7 @@
 #include "gpu/output.h"
 #include "gpu/resources.h"
 #include "gpu/vertex_declaration.h"
+#include "wwe12_display.h"  // FPS counter, frame limit (global function)
 
 // src/native/crash_trace.cpp: hang watchdog, fed once per presented frame.
 void SvrWatchdogHeartbeat();
@@ -966,6 +967,7 @@ void SvrOnFrame() {
   }
   LoadStatsTick();
   Wwe12QuitEntryTick(frame);
+  Wwe12DisplayOnFrame();
   // Present rate in the log every 600 frames (pacing check).
   static auto last = std::chrono::steady_clock::now();
   if (frame % 600 == 0) {

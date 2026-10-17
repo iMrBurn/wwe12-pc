@@ -219,6 +219,9 @@ struct Texts {
   const char *include_beta, *update_game_running, *save_failed, *already_running, *wait_busy;
   const char *keys_howto, *keys_set, *keys_add, *keys_press, *keys_bad, *keys_dup, *keys_restart;
   const char *kb_player, *kb_player_hint, *kb_p1, *kb_p2, *kb_p3, *kb_p4;
+  const char *tab_display, *tab_graphics, *tab_advanced, *borderless, *window_size, *screen_size, *custom,
+      *fps_limit, *no_limit, *fps_limit_hint, *show_fps, *cpu_priority, *prio_normal, *prio_above, *prio_high,
+      *prio_hint, *more_graphics, *window_note;
 };
 
 const Texts kEnglish = {
@@ -268,7 +271,14 @@ const Texts kEnglish = {
     "Keyboard plays as",
     "To play with a friend: keep your controller as player 1 and set the keyboard to player 2, so they "
     "are two separate controllers. With player 2 and no controller plugged in, nobody is player 1.",
-    "Player 1 (shares player 1 with controller 1)", "Player 2 (separate controller)", "Player 3", "Player 4"};
+    "Player 1 (shares player 1 with controller 1)", "Player 2 (separate controller)", "Player 3", "Player 4",
+    "DISPLAY", "GRAPHICS", "ADVANCED", "Borderless window", "Window size", "Screen size", "Custom",
+    "Frame limit", "No limit",
+    "The game runs at 60 frames per second by itself: 30 makes it run at half speed, and more than 60 changes nothing.",
+    "Show the FPS counter (F2 shows or hides it in the game)", "CPU priority", "Normal", "Above normal", "High",
+    "A higher priority can help on a busy PC; High may slow your other programs.",
+    "More graphics options (crowd, shadows, depth of field, blur, effects, anti-aliasing) are coming.",
+    "Window mode and size apply the next time you start the game."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -320,7 +330,15 @@ const Texts kFrench = {
     "Le clavier joue comme",
     "Pour jouer avec un ami : gardez votre manette comme joueur 1 et mettez le clavier en joueur 2 : ce "
     "sont alors deux manettes séparées. Avec le joueur 2 et sans manette branchée, personne n'est joueur 1.",
-    "Joueur 1 (partage le joueur 1 avec la manette 1)", "Joueur 2 (manette séparée)", "Joueur 3", "Joueur 4"};
+    "Joueur 1 (partage le joueur 1 avec la manette 1)", "Joueur 2 (manette séparée)", "Joueur 3", "Joueur 4",
+    "AFFICHAGE", "GRAPHISMES", "AVANCÉ", "Fenêtre sans bordure", "Taille de la fenêtre", "Taille de l'écran",
+    "Personnalisée", "Limite d'images", "Aucune limite",
+    "Le jeu tourne tout seul à 60 images par seconde : 30 le fait tourner à moitié vitesse, et plus de 60 ne change rien.",
+    "Afficher le compteur d'images par seconde (F2 l'affiche ou le cache dans le jeu)", "Priorité du processeur",
+    "Normale", "Supérieure", "Haute",
+    "Une priorité plus haute peut aider sur un PC chargé ; Haute peut ralentir vos autres programmes.",
+    "D'autres options graphiques (foule, ombres, profondeur de champ, flou, effets, anticrénelage) arrivent.",
+    "Le mode et la taille de la fenêtre s'appliquent au prochain lancement du jeu."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -360,6 +378,11 @@ struct Settings {
   int language = 1;  // 1 en, 3 de, 4 fr, 5 es, 6 it
   int scale = 0;
   bool fullscreen = true;
+  bool borderless = false;  // with fullscreen off: a window without title bar
+  int win_w = 0, win_h = 0;  // window size in pixels (0 = the game's default)
+  int fps_limit = 0;         // 0 = none
+  bool show_fps = false;
+  int cpu_priority = 0;  // 0 normal, 1 above normal, 2 high
   bool vsync = true;
   bool fps60 = false;
   int aniso = 16;
@@ -379,6 +402,12 @@ void LoadSettings() {
   g_s.language = g_toml.GetInt("user_language", 1);
   g_s.scale = g_toml.GetInt("svr_render_scale", 0);
   g_s.fullscreen = g_toml.GetBool("fullscreen", true);
+  g_s.borderless = g_toml.GetBool("borderless", false);
+  g_s.win_w = g_toml.GetInt("window_width", 0);
+  g_s.win_h = g_toml.GetInt("window_height", 0);
+  g_s.fps_limit = g_toml.GetInt("wwe12_fps_limit", 0);
+  g_s.show_fps = g_toml.GetBool("wwe12_show_fps", false);
+  g_s.cpu_priority = std::clamp(g_toml.GetInt("wwe12_cpu_priority", 0), 0, 2);
   g_s.vsync = g_toml.GetBool("bd_vsync", true);
   g_s.fps60 = g_toml.GetBool("wwe12_60fps", false);
   g_s.aniso = g_toml.GetInt("bd_anisotropy", 16);
@@ -395,6 +424,12 @@ void SaveSettings() {
   g_toml.SetInt("user_language", g_s.language);
   g_toml.SetInt("svr_render_scale", g_s.scale);
   g_toml.SetBool("fullscreen", g_s.fullscreen);
+  g_toml.SetBool("borderless", g_s.borderless);
+  g_toml.SetInt("window_width", g_s.win_w);
+  g_toml.SetInt("window_height", g_s.win_h);
+  g_toml.SetInt("wwe12_fps_limit", g_s.fps_limit);
+  g_toml.SetBool("wwe12_show_fps", g_s.show_fps);
+  g_toml.SetInt("wwe12_cpu_priority", g_s.cpu_priority);
   g_toml.SetBool("bd_vsync", g_s.vsync);
   g_toml.SetBool("wwe12_60fps", g_s.fps60);
   g_toml.SetInt("bd_anisotropy", g_s.aniso);
@@ -571,71 +606,147 @@ void PageSettings() {
     g_s.language = kLangValues[li];
     changed = true;
   }
+  ImGui::Dummy(ImVec2(0, 4));
 
-  // svr_render_scale holds a height (720, 1080, 1440, 2160) or, from older files, a multiple.
-  static const int kResHeights[] = {0, 540, 720, 1080, 1440, 2160};
-  int ri = 0;
-  switch (g_s.scale) {
-  case 540: ri = 1; break;
-  case 1: case 720: ri = 2; break;
-  case 1080: ri = 3; break;
-  case 2: case 1440: ri = 4; break;
-  case 3: case 4: case 2160: case 2880: ri = 5; break;
-  default: ri = 0; break;
-  }
-  const char *res_names[] = {t.res_auto, "540p", "720p", "1080p", "1440p", "4K (2160p)"};
-  if (ImGui::Combo(t.resolution, &ri, res_names, 6)) {
-    g_s.scale = kResHeights[ri];
-    changed = true;
-  }
-
-  int disp = g_s.fullscreen ? 0 : 1;
-  const char *disp_names[] = {t.fullscreen, t.window};
-  if (ImGui::Combo(t.display, &disp, disp_names, 2)) {
-    g_s.fullscreen = disp == 0;
-    changed = true;
-  }
-
-  static const int kAniso[] = {0, 2, 4, 8, 16};
-  int ai = 4;
-  for (int i = 0; i < 5; ++i)
-    if (kAniso[i] == g_s.aniso)
-      ai = i;
-  const char *aniso_names[] = {t.off, "2x", "4x", "8x", "16x"};
-  if (ImGui::Combo(t.sharpness, &ai, aniso_names, 5)) {
-    g_s.aniso = kAniso[ai];
-    changed = true;
-  }
-
-  static std::vector<std::string> gpus = GpuNames();
-  const char *preview = g_s.gpu.empty() ? t.gpu_auto : g_s.gpu.c_str();
-  if (ImGui::BeginCombo(t.gpu, preview)) {
-    if (ImGui::Selectable(t.gpu_auto, g_s.gpu.empty())) {
-      g_s.gpu.clear();
-      changed = true;
-    }
-    for (const auto &n : gpus)
-      if (ImGui::Selectable(n.c_str(), g_s.gpu == n)) {
-        g_s.gpu = n;
+  if (ImGui::BeginTabBar("settings_tabs")) {
+    if (ImGui::BeginTabItem(t.tab_display)) {
+      // Window mode: fullscreen, a window, or a window without title bar.
+      int mode = g_s.fullscreen ? 0 : (g_s.borderless ? 2 : 1);
+      const char *mode_names[] = {t.fullscreen, t.window, t.borderless};
+      if (ImGui::Combo(t.display, &mode, mode_names, 3)) {
+        g_s.fullscreen = mode == 0;
+        g_s.borderless = mode == 2;
         changed = true;
       }
-    ImGui::EndCombo();
+
+      // Window size (used when not fullscreen).
+      struct Size {
+        int w, h;
+      };
+      const Size sizes[] = {{0, 0},       {1280, 720},  {1600, 900}, {1920, 1080},
+                            {2560, 1440}, {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)}};
+      char names[7][48];
+      snprintf(names[0], sizeof(names[0]), "%s", t.res_auto);
+      for (int i = 1; i < 5; ++i)
+        snprintf(names[i], sizeof(names[i]), "%dx%d", sizes[i].w, sizes[i].h);
+      snprintf(names[5], sizeof(names[5]), "%s (%dx%d)", t.screen_size, sizes[5].w, sizes[5].h);
+      int count = 6, si = -1;
+      for (int i = 0; i < 6; ++i)
+        if (sizes[i].w == g_s.win_w && sizes[i].h == g_s.win_h) {
+          si = i;
+          break;
+        }
+      if (si < 0) {  // a size typed by hand in wwe12.toml: keep it, shown as custom
+        snprintf(names[6], sizeof(names[6]), "%s (%dx%d)", t.custom, g_s.win_w, g_s.win_h);
+        si = count++;
+      }
+      const char *size_names[7];
+      for (int i = 0; i < count; ++i)
+        size_names[i] = names[i];
+      ImGui::BeginDisabled(g_s.fullscreen);
+      if (ImGui::Combo(t.window_size, &si, size_names, count) && si < 6) {
+        g_s.win_w = sizes[si].w;
+        g_s.win_h = sizes[si].h;
+        changed = true;
+      }
+      ImGui::EndDisabled();
+
+      // svr_render_scale holds a height (540, 720, 1080, 1440, 2160) or, from older files, a multiple.
+      static const int kResHeights[] = {0, 540, 720, 1080, 1440, 2160};
+      int ri = 0;
+      switch (g_s.scale) {
+      case 540: ri = 1; break;
+      case 1: case 720: ri = 2; break;
+      case 1080: ri = 3; break;
+      case 2: case 1440: ri = 4; break;
+      case 3: case 4: case 2160: case 2880: ri = 5; break;
+      default: ri = 0; break;
+      }
+      const char *res_names[] = {t.res_auto, "540p", "720p", "1080p", "1440p", "4K (2160p)"};
+      if (ImGui::Combo(t.resolution, &ri, res_names, 6)) {
+        g_s.scale = kResHeights[ri];
+        changed = true;
+      }
+
+      static std::vector<std::string> gpus = GpuNames();
+      const char *preview = g_s.gpu.empty() ? t.gpu_auto : g_s.gpu.c_str();
+      if (ImGui::BeginCombo(t.gpu, preview)) {
+        if (ImGui::Selectable(t.gpu_auto, g_s.gpu.empty())) {
+          g_s.gpu.clear();
+          changed = true;
+        }
+        for (const auto &n : gpus)
+          if (ImGui::Selectable(n.c_str(), g_s.gpu == n)) {
+            g_s.gpu = n;
+            changed = true;
+          }
+        ImGui::EndCombo();
+      }
+
+      // Frame limit: none, 30 or 60 (see the hint: the game paces itself at 60).
+      static const int kLimits[] = {0, 30, 60};
+      int fi = -1;
+      for (int i = 0; i < 3; ++i)
+        if (kLimits[i] == g_s.fps_limit)
+          fi = i;
+      char custom_limit[48];
+      const char *limit_names[4] = {t.no_limit, "30", "60", custom_limit};
+      int limit_count = 3;
+      if (fi < 0) {  // another value typed by hand in wwe12.toml
+        snprintf(custom_limit, sizeof(custom_limit), "%s (%d)", t.custom, g_s.fps_limit);
+        fi = limit_count++;
+      }
+      if (ImGui::Combo(t.fps_limit, &fi, limit_names, limit_count) && fi < 3) {
+        g_s.fps_limit = kLimits[fi];
+        changed = true;
+      }
+      ImGui::PopItemWidth();
+      ImGui::TextDisabled("%s", t.fps_limit_hint);
+
+      ImGui::Dummy(ImVec2(0, 6));
+      changed |= ImGui::Checkbox(t.vsync, &g_s.vsync);
+      changed |= ImGui::Checkbox(t.show_fps, &g_s.show_fps);
+      ImGui::PushItemWidth(320);
+      ImGui::EndTabItem();
+    }
+    if (ImGui::BeginTabItem(t.tab_graphics)) {
+      static const int kAniso[] = {0, 2, 4, 8, 16};
+      int ai = 4;
+      for (int i = 0; i < 5; ++i)
+        if (kAniso[i] == g_s.aniso)
+          ai = i;
+      const char *aniso_names[] = {t.off, "2x", "4x", "8x", "16x"};
+      if (ImGui::Combo(t.sharpness, &ai, aniso_names, 5)) {
+        g_s.aniso = kAniso[ai];
+        changed = true;
+      }
+      ImGui::Dummy(ImVec2(0, 8));
+      ImGui::TextDisabled("%s", t.more_graphics);
+      ImGui::EndTabItem();
+    }
+    if (ImGui::BeginTabItem(t.tab_advanced)) {
+      const char *prio_names[] = {t.prio_normal, t.prio_above, t.prio_high};
+      if (ImGui::Combo(t.cpu_priority, &g_s.cpu_priority, prio_names, 3))
+        changed = true;
+      ImGui::TextDisabled("%s", t.prio_hint);
+      ImGui::Dummy(ImVec2(0, 6));
+      changed |= ImGui::Checkbox(t.fps60, &g_s.fps60);
+      ImGui::SameLine();
+      ImGui::TextDisabled("(%s)", t.fps60_hint);
+      changed |= ImGui::Checkbox(t.exit_entry, &g_s.exit_entry);
+      ImGui::SameLine();
+      ImGui::TextDisabled("(%s)", t.exit_hint);
+      ImGui::EndTabItem();
+    }
+    ImGui::EndTabBar();
   }
   ImGui::PopItemWidth();
-
-  ImGui::Dummy(ImVec2(0, 6));
-  changed |= ImGui::Checkbox(t.vsync, &g_s.vsync);
-  changed |= ImGui::Checkbox(t.fps60, &g_s.fps60);
-  ImGui::SameLine();
-  ImGui::TextDisabled("(%s)", t.fps60_hint);
-  changed |= ImGui::Checkbox(t.exit_entry, &g_s.exit_entry);
-  ImGui::SameLine();
-  ImGui::TextDisabled("(%s)", t.exit_hint);
 
   if (changed)
     SaveSettings();
   ImGui::Dummy(ImVec2(0, 12));
   ImGui::TextDisabled("%s", t.saved_note);
+  ImGui::TextDisabled("%s", t.window_note);
   if (!g_settings_ok)
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.save_failed);
 }

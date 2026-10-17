@@ -41,6 +41,24 @@ bd_vsync = true
 # the charger (some laptops turn the dedicated card off on battery).
 svr_gpu_device = ""
 
+# Window: fullscreen = true is full screen. With fullscreen = false the game runs in a window of
+# window_width x window_height pixels (0 = the game's default size); borderless = true removes the
+# window's title bar and frame. Applied at the next start.
+fullscreen = true
+borderless = false
+window_width = 0
+window_height = 0
+
+# FPS counter at the top left of the picture; F2 shows or hides it while playing.
+wwe12_show_fps = false
+
+# Frame limit: 0 = none. The game is paced at 60 frames per second by its own clock, so values above
+# 60 change nothing, and values below 60 slow the game down (30 = half speed).
+wwe12_fps_limit = 0
+
+# CPU priority of the game: 0 normal, 1 above normal, 2 high (may slow your other programs).
+wwe12_cpu_priority = 0
+
 # ---------------------------------------------------------------------------------------------
 # Controls
 # ---------------------------------------------------------------------------------------------
