@@ -1,10 +1,9 @@
 // Version du disque du joueur.
 //
-// Le code de wwe12.exe a été recompilé à partir d'un disque en version 4 (media ID 712076A5, une
-// réédition qui contient déjà la dernière Title Update), alors que le jeu lit les données (pac,
-// vidéos, sons) et l'image xex sur le disque du joueur. Avec une autre version, code et données ne
-// vont plus ensemble : des catcheurs DLC manquent (Batista avec le disque d'origine), d'autres bugs
-// sont possibles. Au démarrage, on écrit la version du disque dans le journal, et on prévient le
+// Le code de wwe12.exe a été recompilé à partir du disque 0.0.0.4 (media ID 712076A5, sans Title
+// Update : la TU v4 le fait passer en 0.0.2.4), alors que le jeu lit les données (pac, vidéos, sons)
+// et l'image xex sur le disque du joueur. Avec un autre disque (autre région, autre pressage), code
+// et données peuvent ne plus aller ensemble. Au démarrage, on écrit la version du disque dans le journal, et on prévient le
 // joueur une fois si elle diffère (wwe12_disc_check = false pour ne plus être prévenu).
 
 #include <filesystem>
