@@ -152,9 +152,9 @@ vérifier qu'aucune autre compilation ne tourne (`tasklist | findstr /i "ninja c
 
 ## Feuille de route 0.9 / 1.0 (décidée par l'utilisateur le 2026-10-18)
 
-**0.9** : DLC manquants (piste du cache `Documents\wwe12\xbox_cache` construit avant l'ajout des DLC :
-test proposé à un joueur ; puis vider le cache à l'installation d'un DLC, vérifier/réparer les DLC
-installés, lister les catcheurs DLC chargés dans le journal) ; gels (hang_trace de 0.8) ; pavés et yeux
+**0.9** : ~~DLC manquants~~ **réglé** (2026-10-18 : un joueur a retrouvé ses catcheurs en supprimant
+`xbox_cache` et les DLC installés ; `wwe12_dlc.cpp` vide maintenant le cache à chaque nouvelle
+installation de DLC, et une fois pour les installations existantes) ; gels (hang_trace de 0.8) ; pavés et yeux
 AMD ; turbo à 4 fils ; options graphiques restantes ; formulaire de bug GitHub + FAQ ; **musiques
 perso** (très demandées : priorité de la 0.9).
 **1.0** : plus de bug grave connu ; **Mod Maker** comme celui de Kaiko ; signature de l'exe à étudier ;
