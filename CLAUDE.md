@@ -157,6 +157,13 @@ Note : en match à plus de 2, le nom affiché au-dessus d'un catcheur est celui 
    = false`. Autre point : sur les PC à moins de 6 threads, `XThread::SetActiveCpu` (SDK, xthread.cpp)
    écrit « Too few processor cores » à chaque appel (des dizaines de milliers de lignes par minute) :
    à n'écrire qu'une fois (coût CPU/disque sur les petits PC).
+   **PISTE GELS (Main, 2026-10-17) : moins de 6 fils processeur.** Les gels « le rendu s'arrête, vblank
+   et son continuent » touchent #11 (2C/4T), le joueur Discord « Nothing » (i7-7500U 2C/4T, GeForce
+   940MX, `work/discord/nothing_019.log` + `hang_trace_940mx.txt`) et #4 (i5-6500 4C/4T) : tous < 6
+   fils, la Xbox 360 en a 6 (affinités ignorées sous 6, avertissement « Too few processor cores » =
+   46 000 lignes sur 48 000 de son journal). À reproduire chez l'utilisateur en limitant le jeu à 4
+   fils (`start /affinity F wwe12.exe`, ou 3 pour 2C/4T). Même journal : en match, `work` ~21 ms par
+   image, `gpu wait` 0, à 540p : ralentis = fil de rendu limité par le CPU (2 cœurs), pas le GPU.
 1. Plantages / gels : #4 (gel en entrée, RX 560, journaux 0.6.0 joints), #8 (gel).
    **Captures RenderDoc de DRAVEN0612 (#7, Intel UHD 620, 0.7.0) reçues le 2026-10-16** :
    `work/issue7/rdc/WWE 12 cap1.rdc`, `cap2.rdc`, `cap3.rdc` (fichiers d'un tiers : des données, pas
