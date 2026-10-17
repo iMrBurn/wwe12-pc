@@ -31,6 +31,7 @@
 #include <imgui.h>
 
 #include <rex/cvar.h>
+#include <rex/filesystem.h>
 #include <rex/ui/imgui_dialog.h>
 #include <rex/ui/imgui_drawer.h>
 
@@ -415,15 +416,15 @@ class GraphicsMenu final : public rex::ui::ImGuiDialog {
       return;
     TomlFile f;
     if (!f.Load(g_toml_path)) {
-      BD_WARN("[graphics] cannot read {}", g_toml_path.string());
+      BD_WARN("[graphics] cannot read {}", rex::path_to_utf8(g_toml_path));
       return;
     }
     for (const Setting &s : settings_)
       s.save(f, s.index);
     if (f.Save())
-      BD_INFO("[graphics] settings saved to {}", g_toml_path.string());
+      BD_INFO("[graphics] settings saved to {}", rex::path_to_utf8(g_toml_path));
     else
-      BD_WARN("[graphics] cannot write {}", g_toml_path.string());
+      BD_WARN("[graphics] cannot write {}", rex::path_to_utf8(g_toml_path));
   }
 
   std::vector<Setting> settings_;
@@ -454,7 +455,7 @@ void Wwe12GraphicsMenuConfigureFonts(ImFontAtlas *atlas) {
   ImFontConfig cfg;
   cfg.OversampleH = cfg.OversampleV = 2;
   static const ImWchar kRanges[] = {0x0020, 0x00FF, 0};  // Latin-1: the accented capitals
-  g_menu_font = atlas->AddFontFromFileTTF(path.string().c_str(), 64.0f, &cfg, kRanges);
+  g_menu_font = atlas->AddFontFromFileTTF(rex::path_to_utf8(path).c_str(), 64.0f, &cfg, kRanges);
 }
 
 bool Wwe12GraphicsMenuIsOpen() { return g_open.load(std::memory_order_relaxed); }

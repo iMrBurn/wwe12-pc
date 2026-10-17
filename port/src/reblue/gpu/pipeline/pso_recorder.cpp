@@ -326,12 +326,12 @@ void WriteCSVIfDirty() {
   {
     std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
     if (!f) {
-      BD_WARN("pso_recorder: cannot open {}", tmp.string());
+      BD_WARN("pso_recorder: cannot open {}", rex::path_to_utf8(tmp));
       return;
     }
     f.write(out.data(), static_cast<std::streamsize>(out.size()));
     if (!f) {
-      BD_WARN("pso_recorder: csv write failed: {}", tmp.string());
+      BD_WARN("pso_recorder: csv write failed: {}", rex::path_to_utf8(tmp));
       return;
     }
   }
@@ -356,7 +356,7 @@ void StartWriterThread() {
   std::call_once(g_writerOnce, [] {
     std::thread(WriterLoop).detach(); // process exit is a hard kill, never join
     BD_DEBUG("pso_recorder: capturing predictor misses to {}",
-             CsvFilePath().string());
+             rex::path_to_utf8(CsvFilePath()));
   });
 }
 
@@ -438,14 +438,14 @@ std::vector<PipelineState> LoadDiskCache(const std::filesystem::path &path) {
   f.read(reinterpret_cast<char *>(header), sizeof(header));
   if (!f || header[0] != kDiskMagic || header[1] != kDiskVersion ||
       header[2] != sizeof(PipelineState) || header[3] > kDiskMaxEntries) {
-    BD_WARN("pso_recorder: {} ignored (old or damaged format)", path.string());
+    BD_WARN("pso_recorder: {} ignored (old or damaged format)", rex::path_to_utf8(path));
     return out;
   }
   out.resize(header[3]);
   f.read(reinterpret_cast<char *>(out.data()),
          static_cast<std::streamsize>(out.size() * sizeof(PipelineState)));
   if (!f) {
-    BD_WARN("pso_recorder: {} truncated, ignored", path.string());
+    BD_WARN("pso_recorder: {} truncated, ignored", rex::path_to_utf8(path));
     out.clear();
   }
   return out;
@@ -475,7 +475,7 @@ void WriteDiskCacheIfDirty() {
     f.write(reinterpret_cast<const char *>(snapshot.data()),
             static_cast<std::streamsize>(snapshot.size() * sizeof(PipelineState)));
     if (!f) {
-      BD_WARN("pso_recorder: cannot write {}", tmp.string());
+      BD_WARN("pso_recorder: cannot write {}", rex::path_to_utf8(tmp));
       return;
     }
   }
@@ -654,7 +654,7 @@ void ReplayBootCache() {
       g_replayPending.push_back(entry);
   }
   BD_INFO("pso_recorder: {} pipeline(s) loaded from {}, {} from the shipped seed, {} distinct",
-          own, DiskCachePath().string(), disk.size() - own, seen.size());
+          own, rex::path_to_utf8(DiskCachePath()), disk.size() - own, seen.size());
 }
 
 void FlushPSOCapture() {

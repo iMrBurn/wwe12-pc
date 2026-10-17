@@ -117,7 +117,7 @@ class Wwe12App : public rex::ReXApp {
     for (const auto& dir : {exe_dir / "game", exe_dir}) {
       std::error_code ec;
       for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        std::string ext = entry.path().extension().string();
+        std::string ext = rex::path_to_utf8(entry.path().extension());
         for (auto& c : ext)
           c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         if (entry.is_regular_file(ec) && ext == ".iso") {
@@ -144,13 +144,13 @@ class Wwe12App : public rex::ReXApp {
     auto* fs = REX_KERNEL_FS();
     auto device = std::make_unique<rex::filesystem::HostPathDevice>("\\CACHE", dir, false);
     if (!fs || !device->Initialize() || !fs->RegisterDevice(std::move(device))) {
-      REXLOG_WARN("Cache Xbox : impossible de monter {}", dir.string());
+      REXLOG_WARN("Cache Xbox : impossible de monter {}", rex::path_to_utf8(dir));
       return;
     }
     fs->RegisterSymbolicLink("cache:", "\\CACHE");
     fs->RegisterSymbolicLink("cache0:", "\\CACHE");
     fs->RegisterSymbolicLink("cache1:", "\\CACHE");
-    REXLOG_INFO("Cache Xbox monté sur {}", dir.string());
+    REXLOG_INFO("Cache Xbox monté sur {}", rex::path_to_utf8(dir));
     MountModsOverlay(fs);
     // DLC : extraits une fois pour toutes dans Documents\wwe12\0000000000000000\, où le jeu
     // les trouve comme sur le disque dur de la console.
@@ -171,10 +171,10 @@ class Wwe12App : public rex::ReXApp {
     std::filesystem::create_directories(mods, ec);
     auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, mods, true);
     if (!overlay->Initialize() || !fs->RegisterOverlay(game_device, std::move(overlay))) {
-      REXLOG_WARN("Mods : impossible d'utiliser {}", mods.string());
+      REXLOG_WARN("Mods : impossible d'utiliser {}", rex::path_to_utf8(mods));
       return;
     }
-    REXLOG_INFO("Mods : les fichiers de {} remplacent ceux du jeu", mods.string());
+    REXLOG_INFO("Mods : les fichiers de {} remplacent ceux du jeu", rex::path_to_utf8(mods));
     // Le menu principal gagne une 8e entrée QUITTER (wwe12_menu_patch.cpp), servie après les
     // mods : un menu.pac posé dans mods\ garde la priorité.
     Wwe12MountMenuPatch(fs, game_device, user_data_root_);

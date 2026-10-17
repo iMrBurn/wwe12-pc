@@ -117,6 +117,7 @@ std::unordered_map<u32, float> g_surface_scale;  // D3DSurface VA -> host pixels
 // over the right of the picture before the bell (NVIDIA), leftover garbage on other GPUs.
 std::unordered_map<u64, u32> g_learned_extent;
 std::atomic<u64> g_surface_frame{0};  // presented frames, for HostTarget::last_used
+std::atomic<u32> g_surface_scale_gen{1};  // bumped on each g_surface_scale change
 
 // The texture's GPUTEXTURE_FETCH_CONSTANT (D3DTexture+0x1C), as host-order dwords.
 bool ReadFetch(u32 texture_va, rex::graphics::xenos::xe_gpu_texture_fetch_t &fetch) {
@@ -260,6 +261,7 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
                            (width == height && REXCVAR_GET(svr_scale_square_surfaces));
   const float scale = screen_like ? SvrRenderScale() : 1.0f;
   g_surface_scale[surface_va] = scale;
+  g_surface_scale_gen.fetch_add(1, std::memory_order_release);
   GuestTexture *host = SvrCreateHostSurface(Scaled(width, scale), Scaled(height, scale), format);
   if (host && REXCVAR_GET(svr_debug_magenta))
     Video::ClearTexture(host, 0xFFFF00FFu);
@@ -380,12 +382,26 @@ void SvrNoteTiledResolve(u32 color_va, u32 depth_va, u32 right, u32 bottom) {
 }
 
 float SvrSurfaceScale(u32 surface_va) {
+  // Asked several times per draw, nearly always for the bound target: the last answer is kept per
+  // thread until g_surface_scale changes (the lock alone cost ~3% of the render thread).
+  struct Last {
+    u32 va = 0, gen = 0;
+    float scale = 0.0f;
+  };
+  thread_local Last last;
+  const u32 gen = g_surface_scale_gen.load(std::memory_order_acquire);
+  if (last.gen == gen && last.va == surface_va)
+    return last.scale;
+  float scale = 0.0f;
   {
     std::lock_guard lock(g_mutex);
     if (auto it = g_surface_scale.find(surface_va); it != g_surface_scale.end())
-      return it->second;
+      scale = it->second;
   }
-  return SvrRenderScale();
+  if (scale <= 0.0f)
+    scale = SvrRenderScale();
+  last = {surface_va, gen, scale};
+  return scale;
 }
 
 GuestTexture *SvrResolveTarget(u32 texture_va, float scale) {
@@ -880,11 +896,33 @@ struct MirrorCheck {
   u32 fetch[6] = {};
   u64 hash = 0;
   u64 frame = 0;
+  u64 sample = 0;      // SampleHash of the content the full hash was taken on
+  u64 full_frame = 0;  // frame of the last full hash
   GuestTexture *host = nullptr;
 };
 std::unordered_map<u32, MirrorCheck> g_mirror_checks;  // D3D texture VA -> last check
 std::atomic<u64> g_frame{1};
 std::atomic<u64> g_mirror_builds{0}, g_mirror_build_ns{0};  // texture mirrors (re)built, CPU time
+
+// Hashing every texture's whole content on every frame it is used cost ~5% of the render thread
+// (2026-10-17 profile). Textures of 64 KB and more get a sampled hash each frame (48 slices of 64
+// bytes spread over the base level and the mips, plus the fetch constant): enough to see a Bink
+// frame or a menu reloaded into the same memory at once. Their full hash is still taken at least
+// every kFullHashFrames frames, so a change between the samples shows after a quarter second at worst.
+constexpr size_t kSampledHashMin = 64 * 1024;
+constexpr u64 kFullHashFrames = 16;
+u64 SampleHash(const NativeMirrorSource &src) {
+  u64 hash = XXH3_64bits(src.fetch, sizeof(src.fetch));
+  const auto slices = [&hash](const u8 *data, size_t size, size_t count) {
+    if (!data || size < 64)
+      return;
+    for (size_t i = 0; i < count; ++i)
+      hash = XXH3_64bits_withSeed(data + (size - 64) * i / (count - 1), 64, hash);
+  };
+  slices(src.base, src.base_size, 32);
+  slices(src.mips, src.mips_size, 16);
+  return hash;
+}
 
 u64 HashSource(const NativeMirrorSource &src) {
   u64 hash = XXH3_64bits(src.fetch, sizeof(src.fetch));
@@ -1008,9 +1046,19 @@ GuestTexture *SvrResolveTexture(u32 texture_va) {
     check.frame = frame;
     return check.host = nullptr;
   }
+  u64 sample = 0;
+  if (src.base_size + src.mips_size >= kSampledHashMin) {
+    sample = SampleHash(src);
+    if (check.frame != 0 && check.sample == sample && frame - check.full_frame < kFullHashFrames) {
+      check.frame = frame;
+      return check.host;
+    }
+  }
   const u64 hash = HashSource(src);
   if (check.frame != 0 && check.hash == hash) {
     check.frame = frame;
+    check.sample = sample;
+    check.full_frame = frame;
     return check.host;
   }
   const auto build_start = std::chrono::steady_clock::now();
@@ -1022,6 +1070,8 @@ GuestTexture *SvrResolveTexture(u32 texture_va) {
                               std::memory_order_relaxed);
   check.hash = hash;
   check.frame = frame;
+  check.sample = sample;
+  check.full_frame = frame;
   return check.host;
 }
 

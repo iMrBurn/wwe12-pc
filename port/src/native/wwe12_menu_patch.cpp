@@ -132,7 +132,7 @@ void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem *fs, const std::stri
     std::ofstream f(dir / "pac" / "menu" / "menu.pac", std::ios::binary | std::ios::trunc);
     f.write(reinterpret_cast<const char *>(d.data()), std::streamsize(d.size()));
     if (!f) {
-      REXLOG_WARN("Menu : impossible d'écrire {}", (dir / "pac" / "menu" / "menu.pac").string());
+      REXLOG_WARN("Menu : impossible d'écrire {}", rex::path_to_utf8(dir / "pac" / "menu" / "menu.pac"));
       return;
     }
   }
