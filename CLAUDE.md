@@ -140,7 +140,7 @@ vérifier qu'aucune autre compilation ne tourne (`tasklist | findstr /i "ninja c
 | # | Tâche | Qui | État |
 |---|---|---|---|
 | 1 | Gels avec moins de 6 fils (#4, #11, Nothing) : reproduits avec l'affinité 0xF, à corriger | Rendu | à faire |
-| 2 | Dossier `update` : la Title Update du joueur rend un disque d'origine identique au v4 | Gameplay | à faire |
+| 2 | ~~Dossier `update`~~ : retiré (2026-10-17) ; la TU reste la 1.1 (voir « Versions du disque ») | — | annulé |
 | 3 | Turbo des chargements remis par défaut, une fois l'interblocage avec 4 fils compris | Gameplay + Rendu | à faire |
 | 4a | Options : compteur FPS, fenêtré / plein écran / sans bordure, limite d'images, priorité CPU | Launcher | à faire |
 | 4b | Options graphiques : foule ON/OFF, ombres, profondeur de champ, flou, effets, anticrénelage (réglages exposés en cvars ; Launcher les ajoute ensuite à l'écran) | Rendu | à faire |
@@ -306,20 +306,16 @@ La 1.0 (stabilité) passe avant ; la cartographie peut se faire en parallèle.
 Plus tard : statistiques du mode Univers comme WWE '13 (conversation Univers, étape 4) ; 5 contre 5
 (= plus de 6 catcheurs).
 
-**DÉCOUVERTE (Main, 2026-10-17) : versions du disque.** Le `default.xex` de l'utilisateur (donc le code
-recompilé de notre exe) est en **version 4** (media ID 712076A5, base 0.0.0.4) : son disque est une
-réédition qui contient déjà la Title Update v4. D'où Batista (pack Legends, 5 persos ch70/72/75/76/82)
-visible chez lui « sans TU », mais absent chez des joueurs aux mêmes fichiers DLC (JokerOP ; issac ne
-voit que Rock/Edge/Christian/commentateurs/Brodus Clay) : disques d'origine (v0) probables. Risque :
-code v4 + données v0 chez ces joueurs. À faire : écrire au démarrage la version du disque du joueur
-(media ID, version du xex, empreinte de pac\DLC.pac) dans le journal ; pour la 1.1, plutôt appliquer la
-TU fournie par le joueur à ses données (launcher) que recompiler.
-Plan retenu (2026-10-17) : 0.7.1 = version du disque dans le journal (`src/wwe12_disc.cpp`, avertit une
-fois si différente) pour confirmer ; 0.8 = dossier `update` à côté de l'exe : le joueur y met SA Title
-Update (paquet STFS, comme les DLC), installée au démarrage : correctif `default.xexp` appliqué au xex
-chargé (le runtime a XexModule::ApplyPatch) + fichiers de données de la TU (DLC.pac, strMenu.pac,
-_startup360.pac) servis par l'overlay VFS. Jamais livrer la TU. Pas de recompilation nécessaire (notre
-code est déjà v4). Test : un joueur au disque d'origine (JokerOP).
+**Versions du disque (corrigé le 2026-10-17 par Gameplay).** Le `default.xex` du disque de l'utilisateur
+(donc le code de notre exe) est en 0.0.0.4, base 0.0.0.4, media ID 712076A5, **sans Title Update** : la TU v4
+(Desktop\49470807\000B0000\TU_1A5224G..., default.xexp) le fait passer de 0.0.0.4 à 0.0.2.4, et ses
+données diffèrent (DLC.pac 94208 o contre 92160 o sur le disque, plist360, strMenu.pac et
+_startup360.pac absents du disque). Une ancienne note disait à tort que le disque contenait déjà la TU.
+Appliquer default.xexp au xex chargé (le SDK le fait seul s'il trouve game:\default.xexp, user_module.cpp ;
+attention à un default.xexp posé dans mods\) mettrait une image 0.0.2.4 sous du code 0.0.0.4 :
+incohérent. Vraie TU = 1.1 (xex patché hors ligne, nouveau codegen, recalage de toutes les adresses).
+Batista absent chez JokerOP (mêmes 4 fichiers DLC, mêmes noms que l'utilisateur) : cause inconnue ;
+`src/wwe12_disc.cpp` écrit la version du disque dans le journal (0.7.1) pour comparer.
 
 **1.1** : Title Update (dernière mise à jour du jeu).
 **Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
