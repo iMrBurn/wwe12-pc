@@ -142,7 +142,7 @@ vérifier qu'aucune autre compilation ne tourne (`tasklist | findstr /i "ninja c
 | 1 | Gels avec moins de 6 fils (#4, #11, Nothing) : reproduits avec l'affinité 0xF, à corriger | Rendu | à faire |
 | 2 | ~~Dossier `update`~~ : retiré (2026-10-17) ; la TU reste la 1.1 (voir « Versions du disque ») | — | annulé |
 | 3 | Turbo des chargements remis par défaut, une fois l'interblocage avec 4 fils compris | Gameplay + Rendu | à faire |
-| 4a | Options : compteur FPS, fenêtré / plein écran / sans bordure, limite d'images, priorité CPU | Launcher | à faire |
+| 4a | Options : compteur FPS, fenêtré / plein écran / sans bordure, limite d'images, priorité CPU | Launcher | **fait et testé** (2026-10-17) : onglets AFFICHAGE / GRAPHISMES / AVANCÉ dans le launcher ; `wwe12_display.cpp` (F2, `wwe12_fps_limit`, `wwe12_cpu_priority`) ; patch SDK `rexglue-sdk-borderless.patch` (cvar `borderless`). La limite ne propose que Aucune / 60 : le jeu est cadencé à 60 par sa propre horloge (au-dessus rien ne change, en dessous il ralentit). Reste : les options de 4b dans l'onglet GRAPHISMES quand Rendu les aura exposées. |
 | 4b | Options graphiques : foule ON/OFF, ombres, profondeur de champ, flou, effets, anticrénelage (réglages exposés en cvars ; Launcher les ajoute ensuite à l'écran) | Rendu | à faire |
 | 5 | Icônes de boutons PlayStation / Xbox selon la manette (icônes redessinées, rien de Sony) | Gameplay | à faire |
 | R | Rendu : pavés du quart droit (#7, #11, #13 ; vidage des nouvelles surfaces à faire tester), yeux blancs AMD (#12) | Rendu | en cours |
