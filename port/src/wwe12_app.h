@@ -45,6 +45,7 @@ void Wwe12ShowVulkanError();
 
 // Installe les DLC posés dans le dossier « dlc » à côté de l'exe (wwe12_dlc.cpp).
 void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
+void Wwe12CheckDiscVersion(const std::filesystem::path& user_data_root);  // wwe12_disc.cpp
 void Wwe12ImportSaves(const std::filesystem::path& user_data_root);  // wwe12_saves.cpp
 
 class Wwe12App : public rex::ReXApp {
@@ -129,6 +130,9 @@ class Wwe12App : public rex::ReXApp {
   // Partition « cache » du disque dur Xbox : le jeu y recopie des données (Spectacular.rps,
   // EditEx.cac...) pour charger plus vite. Le runtime ne la monte pas (cache: sans
   // périphérique) : on la monte, comme Xenia, sur Documents/wwe12/xbox_cache.
+  // Version du disque du joueur (journal, et avertissement si elle diffère de celle du portage).
+  void OnPostLoadXexImage() override { Wwe12CheckDiscVersion(user_data_root_); }
+
   void OnPostSetup() override {
     REXLOG_INFO("WWE '12 PC version {}", WWE12_VERSION);
     if (user_data_root_.empty())
@@ -220,7 +224,6 @@ class Wwe12App : public rex::ReXApp {
   // Override virtual hooks for customization:
   // void OnPostInitLogging() override {}
   // void OnLoadXexImage(std::string& xex_image) override {}
-  // void OnPostLoadXexImage() override {}
   // void OnPostSetup() override {}
   // void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {}
   // std::unique_ptr<rex::ui::ImGuiDialog> CreateAchievementsOverlay() override;

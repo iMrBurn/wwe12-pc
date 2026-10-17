@@ -20,6 +20,7 @@ include(generated/rexglue.cmake)
 set(WWE12_SOURCES
     src/main.cpp
     src/wwe12_dlc.cpp
+    src/wwe12_disc.cpp
     src/wwe12_saves.cpp
 )
 
