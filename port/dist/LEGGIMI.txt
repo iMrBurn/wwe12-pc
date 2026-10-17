@@ -38,6 +38,11 @@ Impostazioni (file wwe12.toml)
 - wwe12_60fps: ingressi e filmati a 60 fps (sperimentale, disattivato di default: le cinture
   portate sulla spalla possono muoversi in modo strano).
 - bd_anisotropy: nitidezza delle texture viste di sbieco (0, 2, 4, 8 o 16).
+- F2 in gioco mostra i fotogrammi al secondo (wwe12_show_fps); borderless = true: finestra senza bordi.
+- wwe12_button_icons: "auto" (icone PlayStation se un controller PlayStation è collegato prima di
+  avviare il gioco), "xbox" o "playstation".
+- mnk_player: giocatore controllato dalla tastiera (1 = condivide il giocatore 1 con il primo
+  controller, 2 = controller a parte, giocatore 2, per giocare in due con un solo controller).
 - wwe12_quit_entry: la voce "ESCI" del menu principale, al posto di SHOP (Xbox LIVE
   diventa "ONLINE").
 

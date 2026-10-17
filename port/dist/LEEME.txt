@@ -38,6 +38,11 @@ Ajustes (archivo wwe12.toml)
 - wwe12_60fps: entradas y cinemáticas a 60 fps (experimental, desactivado por defecto: los
   cinturones llevados al hombro pueden moverse de forma rara).
 - bd_anisotropy: nitidez de las texturas vistas en ángulo (0, 2, 4, 8 o 16).
+- F2 en el juego muestra los fps (wwe12_show_fps); borderless = true: ventana sin bordes.
+- wwe12_button_icons: "auto" (iconos de PlayStation si hay un mando de PlayStation conectado antes
+  de iniciar el juego), "xbox" o "playstation".
+- mnk_player: jugador que controla el teclado (1 = comparte el jugador 1 con el primer mando,
+  2 = mando propio, jugador 2, para jugar dos con un solo mando).
 - wwe12_quit_entry: la opción "SALIR" del menú principal, en lugar de SHOP (Xbox LIVE
   pasa a llamarse "EN LÍNEA").
 

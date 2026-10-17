@@ -41,6 +41,11 @@ Settings (wwe12.toml file)
 - wwe12_60fps: 60 fps in entrances and cutscenes (experimental, off by default: title belts
   carried on a shoulder can move oddly).
 - bd_anisotropy: sharpness of textures seen at an angle (0, 2, 4, 8 or 16).
+- F2 in game shows the frame rate (wwe12_show_fps); borderless = true: borderless window.
+- wwe12_button_icons: "auto" (PlayStation icons when a PlayStation controller is plugged in before
+  starting the game), "xbox" or "playstation".
+- mnk_player: which player the keyboard controls (1 = shares player 1 with the first controller,
+  2 = its own controller as player 2, to play two with one controller).
 - wwe12_quit_entry: the "EXIT" entry of the main menu, in place of SHOP (Xbox LIVE is
   labelled "ONLINE").
 

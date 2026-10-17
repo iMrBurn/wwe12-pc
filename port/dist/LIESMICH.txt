@@ -40,6 +40,11 @@ Einstellungen (Datei wwe12.toml)
 - wwe12_60fps: Einzüge und Zwischensequenzen mit 60 fps (experimentell, standardmäßig aus:
   auf der Schulter getragene Titelgürtel können sich seltsam bewegen).
 - bd_anisotropy: Schärfe schräg gesehener Texturen (0, 2, 4, 8 oder 16).
+- F2 im Spiel zeigt die Bildrate (wwe12_show_fps); borderless = true: randloses Fenster.
+- wwe12_button_icons: "auto" (PlayStation-Symbole, wenn vor dem Start ein PlayStation-Controller
+  angeschlossen ist), "xbox" oder "playstation".
+- mnk_player: welcher Spieler die Tastatur ist (1 = teilt Spieler 1 mit dem ersten Controller,
+  2 = eigener Controller als Spieler 2, zu zweit mit nur einem Controller).
 - wwe12_quit_entry: der Eintrag "VERLASSEN" im Hauptmenü, anstelle von SHOP (Xbox LIVE
   heißt "ONLINE").
 

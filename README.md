@@ -25,7 +25,7 @@ Requirements: Windows 10/11 64-bit, a graphics card with a Vulkan 1.2 driver (mo
 (DualShock 4, DualSense) or the keyboard (ZQSD/WASD, layout in `README.txt`).
 Settings (language, internal resolution…) are in `wwe12.toml`, explained in `README.txt`.
 
-## Status (v0.7.0-beta)
+## Status (v0.8.0-beta)
 
 - Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps. Entrances and
   cutscenes run at 30 fps like on Xbox 360, or at 60 fps with an experimental option.
@@ -44,12 +44,14 @@ Settings (language, internal resolution…) are in `wwe12.toml`, explained in `R
   replays and MATCH HIGHLIGHTS, controller vibration (Universe mode included).
 - Video memory stays stable over long sessions (no more slowdowns after a few matches).
 - A `mods` folder: files in it replace the game's own (HD titantron videos, textures...).
-- Xbox and PlayStation controllers, and the keyboard (together with a controller).
+- Xbox and PlayStation controllers (with PlayStation button icons), and the keyboard, either
+  together with a controller or as player 2 (two players with one controller).
+- Display options: borderless window, FPS counter (F2), frame limit, CPU priority.
 
-Known issues: garbage blocks on the right of the screen during entrances on some Intel and AMD
-graphics, Steam Deck included (#7, #11, #13); white eyes on some AMD cards (#12); a freeze in
-entrances on a few PCs (#4); title belts on a shoulder can move oddly with 60 fps entrances;
-on-screen button prompts stay Xbox ones with a PlayStation controller.
+Known issues: blocks on the right of the screen during entrances on some Intel and AMD graphics
+(#7, #11, #13: a fix is in 0.8, please report); white eyes on some AMD cards (#12); freezes on a
+few PCs with 2-core processors (#4, #11); title belts on a shoulder can move oddly with 60 fps
+entrances.
 
 Planned for 1.0: every known bug fixed. Then: the title update (1.1), even shorter loading, a
 richer Universe mode (qualifying matches, Royal Rumble surprise entrants, booking), a mod tool,
