@@ -5,9 +5,11 @@
 // sub_82AA7040: 32 x db16cyc of busy spinning, then a timeout check that may kick the GPU. Our GPU
 // is the SDK's command processor thread, so the game's render thread burnt a core spinning for
 // it: ~9% of its samples on a 4-thread run, and on 2-core laptops the spinner competes with the
-// very thread it waits for. The hooks spin the first kSpinTurns turns of each wait as before (most
-// waits are that short, and a yield there made them last a whole time slice: measured), then yield
-// the CPU once per turn. The guest logic is unchanged.
+// very thread it waits for. The hooks spin the first kSpinTurns turns of each wait as before, then
+// yield the CPU once per turn. Most of these waits are the GPU waiting for the vertical blank
+// (WAIT_REG_MEM, the command processor sleeps), so yielding at once costs no frame time (measured
+// at 16.7 ms either way); with 16 spin turns the spinning was still a third of the render thread's
+// busy time. The guest logic is unchanged.
 
 #include <thread>
 
@@ -20,7 +22,7 @@ REXCVAR_DEFINE_BOOL(wwe12_gpu_wait_yield, true, "WWE12",
                     "threads instead of spinning (helps 2-4 thread processors).");
 
 namespace {
-constexpr unsigned kSpinTurns = 16;
+constexpr unsigned kSpinTurns = 2;
 thread_local unsigned t_wait_turns = 0;
 }  // namespace
 
