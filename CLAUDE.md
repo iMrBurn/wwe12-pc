@@ -13,7 +13,10 @@ releases sont en anglais (plus FR/DE/ES/IT pour les readmes de `port/dist`).
 - **Jamais de données du jeu sur GitHub ni dans un zip** : xex/xexp, iso, .pac, .bik, sons, textures,
   `port/assets/`, `port/generated/`, `image.bin`, `work/`, dumps, Title Update, DLC. Pas de lien de
   téléchargement de DLC ou du jeu non plus (risque de DMCA sur tout le dépôt). L'exe (code recompilé)
-  est accepté.
+  est accepté. **Seules exceptions, décidées et assumées par l'utilisateur** : l'icône de l'exe (logo du
+  jeu) et les icônes de boutons de la version PS3 (`port/res/ps3_buttons.bin`, dans le dépôt et dans
+  l'exe, décision du 2026-10-17 en connaissant le risque DMCA). Aucune autre donnée sans son accord
+  explicite.
 - **Rien n'est poussé sur GitHub sans le « go » explicite de l'utilisateur.** Les releases sont créées
   par l'utilisateur sur le site (`gh` n'est pas installé).
 - **Toujours prévenir avant de lancer le jeu**, et ne pas le lancer pendant que l'utilisateur regarde
@@ -334,7 +337,7 @@ Batista absent chez JokerOP (mêmes 4 fichiers DLC, mêmes noms que l'utilisateu
 perso, textures HD (remplacement de textures par le dossier mods), minitrons ajoutés (contenu de mods),
 vidéos HD, plus de 6 catcheurs sur le ring (8-10, suggéré par des joueurs ; limite gravée dans le
 code : tableaux à 6 cases, budget mémoire Xbox, animations ; très long ; demander à Kaiko si son
-« Limit Breaking » de SvR 2011 y est arrivé), nouvelles stipulations et mode Univers enrichi (très difficile : logique du jeu), online.
+« Limit Breaking » de SvR 2011 y est arrivé ; idées dans `docs/limit_breaking.md`), nouvelles stipulations et mode Univers enrichi (très difficile : logique du jeu), online.
 
 ## Idées et demandes des joueurs (à faire)
 
