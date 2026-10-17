@@ -67,13 +67,12 @@ void Wwe12CheckDiscVersion(const std::filesystem::path& user_data_root) {
       rex::SimpleMessageBoxType::Warning,
       fmt::format(
           "Your WWE '12 disc is version {} (media ID {:08X}). This port was made from version {} "
-          "(media ID {:08X}), which already includes the last Title Update.\n\n"
-          "The game will run, but some DLC wrestlers (Batista) may be missing and other bugs may "
-          "happen. Support for other disc versions is planned.\n\n"
+          "(media ID {:08X}).\n\n"
+          "The game may run, but some content may be missing and bugs may happen. Please mention "
+          "it when you report a bug.\n\n"
           "Votre disque de WWE '12 est en version {} (media ID {:08X}). Ce portage a été fait à "
-          "partir de la version {} (media ID {:08X}), qui contient déjà la dernière mise à jour. "
-          "Le jeu fonctionne, mais certains catcheurs DLC (Batista) peuvent manquer et d'autres "
-          "bugs sont possibles. La prise en charge des autres versions est prévue.",
+          "partir de la version {} (media ID {:08X}). Le jeu peut fonctionner, mais du contenu peut "
+          "manquer et des bugs sont possibles. Précisez-le si vous signalez un bug.",
           VersionText(version), media, VersionText(kBuiltVersion), kBuiltMediaId,
           VersionText(version), media, VersionText(kBuiltVersion), kBuiltMediaId));
 }
