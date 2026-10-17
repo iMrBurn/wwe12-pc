@@ -110,6 +110,12 @@ std::unordered_map<u32, HostTarget> g_targets;   // texture VA -> GPU-written ho
 // host has no EDRAM limit: the surface (and its depth buffer) grows to the full extent the
 // resolves reach, the scene is drawn once at full size, and every tile resolve copies it whole.
 std::unordered_map<u32, u32> g_tiled_extent;  // D3DSurface VA -> w << 16 | h (guest pixels)
+// The surface description (size bits << 32 | format) each g_tiled_extent entry belongs to. The game
+// reuses the memory of freed surface objects: an extent left by a scene surface was applied to a
+// 1120x1120 shadow surface at the same address in the Road to WrestleMania intro, its colour grew
+// to 1280 wide while its depth buffer did not, and the depth clear wrote past the depth image: GPU
+// lost, picture frozen while the game ran on (0.6.0 and 0.7.0, RTX 4060, 2026-10-17).
+std::unordered_map<u32, u64> g_tiled_desc;
 std::unordered_map<u32, float> g_surface_scale;  // D3DSurface VA -> host pixels per guest pixel
 // Full extent the tiled surfaces of a given description grew to, keyed by size bits << 32 | format.
 // Each scene allocates new surface objects; without this they started one tile wide and grew during
@@ -229,6 +235,11 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   // Size packing as decoded by D3DSurface_GetDesc (see gpu/d3d.h).
   const u32 bits = surface->SizeBits;
   const u32 format = surface->Format;
+  const u64 desc = u64(bits) << 32 | format;
+  if (auto t = g_tiled_desc.find(surface_va); t != g_tiled_desc.end() && t->second != desc) {
+    g_tiled_extent.erase(surface_va);  // left by another surface at this address
+    g_tiled_desc.erase(t);
+  }
   if (auto it = g_surfaces.find(surface_va); it != g_surfaces.end()) {
     if (it->second.desc[0] == bits && it->second.desc[1] == format &&
         it->second.extent == (g_tiled_extent.count(surface_va) ? g_tiled_extent[surface_va] : 0u)) {
@@ -245,11 +256,14 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
     // A new surface object shaped like a known tiled one starts at the extent that one reached.
     // 320x736 and 640x736 are the one-tile EDRAM surfaces of the 1280x720 scene (4 or 2 tiles
     // wide; the 2-tile one made the right half of the picture flash black before the bell).
-    const auto learned = g_learned_extent.find(u64(bits) << 32 | format);
-    if (learned != g_learned_extent.end())
+    const auto learned = g_learned_extent.find(desc);
+    if (learned != g_learned_extent.end()) {
       g_tiled_extent[surface_va] = learned->second;
-    else if ((width == 320 || width == 640) && height == 736)
+      g_tiled_desc[surface_va] = desc;
+    } else if ((width == 320 || width == 640) && height == 736) {
       g_tiled_extent[surface_va] = (1280u << 16) | 736u;
+      g_tiled_desc[surface_va] = desc;
+    }
   }
   if (auto it = g_tiled_extent.find(surface_va); it != g_tiled_extent.end()) {
     extent = it->second;
@@ -370,13 +384,18 @@ void SvrNoteTiledResolve(u32 color_va, u32 depth_va, u32 right, u32 bottom) {
     const u32 height = ((bits >> 3) & 0x7FFF) + 1;
     if (right <= width && bottom <= height)
       continue;  // an ordinary sub-rect resolve
+    const u64 desc = u64(bits) << 32 | surface->Format;
+    if (auto t = g_tiled_desc.find(va); t == g_tiled_desc.end() || t->second != desc) {
+      g_tiled_extent.erase(va);  // none yet, or left by another surface at this address
+      g_tiled_desc[va] = desc;
+    }
     u32 &extent = g_tiled_extent[va];
     const u32 grown = (std::max(extent >> 16, right) << 16) | std::max(extent & 0xFFFFu, bottom);
     if (grown != extent) {
       BD_INFO("SvR tiled surface 0x{:08X}: {}x{} -> drawn at {}x{}", va, width, height,
               std::max(width, grown >> 16), std::max(height, grown & 0xFFFFu));
       extent = grown;
-      g_learned_extent[u64(bits) << 32 | surface->Format] = grown;
+      g_learned_extent[desc] = grown;
     }
   }
 }

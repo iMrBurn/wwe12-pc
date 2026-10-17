@@ -31,6 +31,7 @@
 #include "gpu/shaders/shader_linker.h"
 #include <miniz.h>
 #else
+#include <cstdio>
 #include <smolv.h>
 #endif
 
@@ -41,6 +42,8 @@
 REXCVAR_DEFINE_BOOL(svr_preserve_inf_nan, true, "SvR",
                     "Ask the GPU driver to keep infinities and NaN exact in game shaders (Intel "
                     "otherwise drops the Xbox-style clamps: black eyes and teeth).");
+REXCVAR_DEFINE_BOOL(svr_name_shaders, false, "SvR",
+                    "Dev: name each game shader guest_<hash> in its SPIR-V, for RenderDoc.");
 
 namespace bd::gpu {
 
@@ -172,6 +175,49 @@ void PreserveInfNan(std::vector<u8> &bytes) {
     BD_INFO("[shaders] Inf/NaN preserved in {} module(s)", n);
 }
 
+// Dev (svr_name_shaders): names the entry point "guest_<hash>" (OpName), so RenderDoc shows which
+// guest shader a pipeline runs; used to find the draws behind a graphics option (the crowd...).
+// Debug info only: no effect on the code. Inserted after the entry points, execution modes and
+// any OpString/OpSource, where SPIR-V wants OpName.
+void NameShader(std::vector<u8> &bytes, u64 hash) {
+  constexpr u32 kOpSourceContinued = 2, kOpSource = 3, kOpSourceExtension = 4, kOpName = 5,
+                kOpString = 7, kOpEntryPoint = 15, kOpExecutionMode = 16;
+  if (bytes.size() < 20 || bytes.size() % 4)
+    return;
+  std::vector<u32> w(bytes.size() / 4);
+  std::memcpy(w.data(), bytes.data(), bytes.size());
+  if (w[0] != 0x07230203u)
+    return;
+  size_t at = 0;
+  u32 entry = 0;
+  for (size_t i = 5; i < w.size();) {
+    const u32 op = w[i] & 0xFFFFu, count = w[i] >> 16;
+    if (count == 0 || i + count > w.size())
+      return;
+    if (op == kOpEntryPoint) {
+      if (!entry)
+        entry = w[i + 2];
+      at = i + count;
+    } else if (op == kOpExecutionMode || (entry && (op == kOpString || op == kOpSource ||
+                                                    op == kOpSourceContinued ||
+                                                    op == kOpSourceExtension))) {
+      at = i + count;
+    } else if (entry) {
+      break;
+    }
+    i += count;
+  }
+  if (!entry || !at)
+    return;
+  char name[24];  // "guest_" + 16 hex + NUL = 23 chars, padded to 6 words
+  std::snprintf(name, sizeof(name), "guest_%016llX", static_cast<unsigned long long>(hash));
+  u32 op[8] = {(8u << 16) | kOpName, entry};
+  std::memcpy(&op[2], name, sizeof(name));
+  w.insert(w.begin() + std::ptrdiff_t(at), std::begin(op), std::end(op));
+  bytes.resize(w.size() * 4);
+  std::memcpy(bytes.data(), w.data(), bytes.size());
+}
+
 // The SPIR-V half of the same generated cache: ZSTD-compressed, per-entry
 // modules smol-v encoded. Decompressed once on first shader resolve.
 std::once_flag g_spirv_cache_once;
@@ -292,6 +338,8 @@ plume::RenderShader *GetOrLinkShader(GuestShader *gs, u32 specConstants) {
   }
   if (REXCVAR_GET(svr_preserve_inf_nan))
     PreserveInfNan(spirv);
+  if (REXCVAR_GET(svr_name_shaders))
+    NameShader(spirv, entry->hash);
   return PublishShader(gs,
                        device->createShader(spirv.data(), spirv.size(), "main",
                                             plume::RenderShaderFormat::SPIRV));

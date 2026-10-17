@@ -38,6 +38,15 @@
 #include "svr_geometry.h"
 
 #if defined(SVR_NATIVE_RENDERER)
+// Graphics option (0.8, like Kaiko's SvR 2011 port): the crowd off. WWE '12 draws its crowd as a few
+// hundred small textured cards per frame (vertex shaders 5B5BA6E0BD55C5A2 and 89B81CEC1095FF3B,
+// pixel shader F9438D84762BD6DF: 339 of the 669 scene draws in a match capture, 2026-10-17), from
+// people it renders into 64x64 textures at load (vertex shader F578E8C06A67CD09), and the front
+// rows as 3D people (vertex shaders B2F2C29A78FFD857 and 826B5DD16C1147DC, pixel shader
+// 4DC2A77541B851D7: 96 draws). Off skips all of them: empty stands, a lot less CPU and GPU work.
+REXCVAR_DEFINE_BOOL(wwe12_crowd, true, "WWE12",
+                    "Draw the crowd. Off = empty stands, much faster on small PCs.");
+
 REXCVAR_DEFINE_BOOL(svr_edge_blur, false, "SvR",
                     "SvR 2010's own edge-blur filter (the console's anti-aliasing): off keeps the image "
                     "sharp; the higher internal resolution already smooths edges");
@@ -173,6 +182,12 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
   // jaggies at 720p; here its 1-pixel 720p offsets are 2+ pixels at the internal resolution, so it
   // blurs hair, tattoos, ropes and the crowd while the supersampling already smooths edges. Skipping
   // the draw leaves the scene as rendered (the pass only rewrites the scene with a blurred copy).
+  if (!REXCVAR_GET(wwe12_crowd) && s.vertex_shader && s.vertex_shader->shaderCacheEntry) {
+    const u64 vs = s.vertex_shader->shaderCacheEntry->hash;
+    if (vs == 0x5B5BA6E0BD55C5A2ull || vs == 0x89B81CEC1095FF3Bull || vs == 0xF578E8C06A67CD09ull ||
+        vs == 0xB2F2C29A78FFD857ull || vs == 0x826B5DD16C1147DCull)
+      return;
+  }
   if (!REXCVAR_GET(svr_edge_blur) && s.pixel_shader && s.pixel_shader->shaderCacheEntry &&
       s.pixel_shader->shaderCacheEntry->hash == 0x73413A409D5E296Bull)
     return;
