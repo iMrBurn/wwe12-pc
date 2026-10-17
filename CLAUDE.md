@@ -290,6 +290,15 @@ La 1.0 (stabilité) passe avant ; la cartographie peut se faire en parallèle.
 Plus tard : statistiques du mode Univers comme WWE '13 (conversation Univers, étape 4) ; 5 contre 5
 (= plus de 6 catcheurs).
 
+**DÉCOUVERTE (Main, 2026-10-17) : versions du disque.** Le `default.xex` de l'utilisateur (donc le code
+recompilé de notre exe) est en **version 4** (media ID 712076A5, base 0.0.0.4) : son disque est une
+réédition qui contient déjà la Title Update v4. D'où Batista (pack Legends, 5 persos ch70/72/75/76/82)
+visible chez lui « sans TU », mais absent chez des joueurs aux mêmes fichiers DLC (JokerOP ; issac ne
+voit que Rock/Edge/Christian/commentateurs/Brodus Clay) : disques d'origine (v0) probables. Risque :
+code v4 + données v0 chez ces joueurs. À faire : écrire au démarrage la version du disque du joueur
+(media ID, version du xex, empreinte de pac\DLC.pac) dans le journal ; pour la 1.1, plutôt appliquer la
+TU fournie par le joueur à ses données (launcher) que recompiler.
+
 **1.1** : Title Update (dernière mise à jour du jeu).
 **Après** : choix du rendu (Vulkan / D3D12 ; plume gère les deux, pas D3D11), mods poussés, musiques
 perso, textures HD (remplacement de textures par le dossier mods), minitrons ajoutés (contenu de mods),
