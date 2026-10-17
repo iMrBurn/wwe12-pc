@@ -150,6 +150,23 @@ vérifier qu'aucune autre compilation ne tourne (`tasklist | findstr /i "ninja c
 | 5 | Icônes de boutons PlayStation / Xbox selon la manette (vraies icônes PS3, décision de l'utilisateur) | Gameplay | **fait** (2026-10-17, vérifié en jeu) |
 | R | Rendu : pavés du quart droit (#7, #11, #13 ; vidage des nouvelles surfaces à faire tester), yeux blancs AMD (#12) | Rendu | en cours |
 
+## Version 0.9 : plan (envoyé à toutes les conversations le 2026-10-18)
+
+Même règles que la 0.8 : chacun coche sa ligne quand c'est fait et testé, prévient la Main ; une seule
+compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de l'utilisateur.
+
+| # | Tâche | Qui | État |
+|---|---|---|---|
+| 1 | **Musiques perso** (vedette de la 0.9, très demandée) : choisir une musique (mp3/ogg/wav…) pour les catcheurs créés, entrées comprises | Gameplay (+ Launcher pour l'écran de choix) | à faire |
+| 2 | Create a Story : taper le texte des cinématiques au clavier (aussi noms de CAW, d'arènes…) | Gameplay | à faire |
+| 3 | Turbo des chargements à 4 fils (interblocage), puis activé par défaut | Gameplay + Rendu | à faire |
+| 4 | Gels : analyser les hang_trace des joueurs en 0.8 (carte `dist/symbols-v0.8.0-beta`) | Rendu | à faire |
+| 5 | Pavés Intel/AMD (#7, #11, #13) et yeux blancs AMD (#12) : suivre les retours 0.8 | Rendu | à faire |
+| 6 | Options graphiques restantes : foule (premiers rangs), ombres, profondeur de champ, anticrénelage | Rendu + Launcher | à faire |
+| 7 | Univers comme WWE '13 : remise à zéro de l'Univers, rendre une ceinture vacante | Univers | à faire |
+| 8 | Formulaire de bug GitHub + FAQ | Main | à faire |
+| — | DLC manquants (cache) | Main | **fait** (2026-10-18) |
+
 ## Feuille de route 0.9 / 1.0 (décidée par l'utilisateur le 2026-10-18)
 
 **0.9** : ~~DLC manquants~~ **réglé** (2026-10-18 : un joueur a retrouvé ses catcheurs en supprimant
