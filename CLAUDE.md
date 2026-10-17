@@ -150,6 +150,18 @@ vérifier qu'aucune autre compilation ne tourne (`tasklist | findstr /i "ninja c
 | 5 | Icônes de boutons PlayStation / Xbox selon la manette (vraies icônes PS3, décision de l'utilisateur) | Gameplay | **fait** (2026-10-17, vérifié en jeu) |
 | R | Rendu : pavés du quart droit (#7, #11, #13 ; vidage des nouvelles surfaces à faire tester), yeux blancs AMD (#12) | Rendu | en cours |
 
+## Après la 0.8 (2026-10-17) : priorité bugs et DLC
+
+- **DLC (Gameplay)** : Batista absent chez certains joueurs (JokerOP : mêmes 4 fichiers que l'utilisateur,
+  même ISO selon l'utilisateur). Réinstallation propre proposée (supprimer
+  Documents\wwe12\0000000000000000\54510890\00000002), résultat attendu. Quoi qu'il en soit : 1) au
+  démarrage, vérifier chaque DLC installé contre son paquet du dossier dlc (taille / nombre de fichiers)
+  et le réinstaller s'il est incomplet ; 2) écrire dans le journal les catcheurs DLC chargés (ch*_dlc*).
+- **Gels** : la 0.8 corrige le VK_ERROR_DEVICE_LOST (extents de surface réutilisée). Pour les autres, il faut
+  des hang_trace.txt de 0.8 sans OBS ; `dist/symbols-v0.8.0-beta/wwe12.map` permet de les lire.
+- **Formulaire de bug GitHub** (Main) : version, carte graphique, version du disque (journal), journal,
+  hang_trace.txt / stderr.txt.
+
 ## Feuille de route (décidée avec l'utilisateur le 2026-10-16)
 
 Retours : issues GitHub + salon « bugs » du Discord de Kaiko (l'utilisateur y a sa catégorie).
