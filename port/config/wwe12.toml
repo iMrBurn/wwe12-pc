@@ -72,6 +72,10 @@ mnk_mode = true
 # controller (player 2) next to a controller that stays player 1, to play with a friend; 3 or 4 also work.
 mnk_player = 1
 
+# Button icons shown by the game: "auto" (PlayStation icons when a PlayStation controller is plugged
+# in when the game starts), "xbox" or "playstation".
+wwe12_button_icons = "auto"
+
 keybind_lstick_up = "Z,W"
 keybind_lstick_left = "Q,A"
 keybind_lstick_down = "S"

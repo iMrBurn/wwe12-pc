@@ -144,7 +144,7 @@ vérifier qu'aucune autre compilation ne tourne (`tasklist | findstr /i "ninja c
 | 3 | Turbo des chargements remis par défaut, une fois l'interblocage avec 4 fils compris | Gameplay + Rendu | à faire |
 | 4a | Options : compteur FPS, fenêtré / plein écran / sans bordure, limite d'images, priorité CPU | Launcher | **fait et testé** (2026-10-17) : onglets AFFICHAGE / GRAPHISMES / AVANCÉ dans le launcher ; `wwe12_display.cpp` (F2, `wwe12_fps_limit`, `wwe12_cpu_priority`) ; patch SDK `rexglue-sdk-borderless.patch` (cvar `borderless`). La limite ne propose que Aucune / 60 : le jeu est cadencé à 60 par sa propre horloge (au-dessus rien ne change, en dessous il ralentit). Reste : les options de 4b dans l'onglet GRAPHISMES quand Rendu les aura exposées. |
 | 4b | Options graphiques : foule ON/OFF, ombres, profondeur de champ, flou, effets, anticrénelage (réglages exposés en cvars ; Launcher les ajoute ensuite à l'écran) | Rendu | à faire |
-| 5 | Icônes de boutons PlayStation / Xbox selon la manette (icônes redessinées, rien de Sony) | Gameplay | à faire |
+| 5 | Icônes de boutons PlayStation / Xbox selon la manette (vraies icônes PS3, décision de l'utilisateur) | Gameplay | **fait** (2026-10-17, vérifié en jeu) |
 | R | Rendu : pavés du quart droit (#7, #11, #13 ; vidage des nouvelles surfaces à faire tester), yeux blancs AMD (#12) | Rendu | en cours |
 
 ## Feuille de route (décidée avec l'utilisateur le 2026-10-16)
@@ -297,11 +297,23 @@ La 1.0 (stabilité) passe avant ; la cartographie peut se faire en parallèle.
   détail des effets, profondeur de champ, flou de mouvement, « soft filter », anti-aliasing (FXAA/SMAA
   en post-traitement), qualité des textures, écrans larges (titantron pleine largeur). Plus tard :
   choix de l'API (D3D12/Vulkan), replays ON/OFF.
-- **Icônes de boutons selon la manette** (voulu par l'utilisateur, 2026-10-16) : ✕○□△ avec une manette
-  PlayStation, A/B/X/Y avec une Xbox. 1) type de manette via SDL (SDL_GetGamepadType) ; 2) trouver où
-  le jeu range ses icônes (planche de texture dans un .pac, ou glyphes de la police) ; 3) remplacer la
-  planche au vol (miroir de texture) selon la manette branchée, même en cours de partie. Icônes PS à
-  dessiner nous-mêmes (pas celles de Sony). Conversation Gameplay, après les chargements ; 0.8.
+- **Icônes de boutons PlayStation** : **faites** (2026-10-17, vérifiées en jeu sur l'écran CONTROLS).
+  **Décision de l'utilisateur : on livre les vraies icônes de la version PS3** (comme Kaiko pour SvR
+  2011), pas des icônes redessinées : exception assumée à la règle « jamais de données du jeu »
+  (`port/res/ps3_buttons.bin`, forcé dans git malgré `*.bin`, intégré à l'exe). Le jeu dessine ses
+  boutons par des caractères privés (U+E000 à U+E02A) pris dans une planche par police
+  (`menuontHD.pac`/`fontSD.pac`, DDS DXT5 512x512 ou 256x512 dans des blocs BPE ; même disposition
+  sur PS3 pour les cases de boutons, THQ/F/R ailleurs) et par ~24 petites images d'invites en match
+  (`game2dHD/SD.pac`). `tools/extract_ps3_buttons.py <dossier Xbox> <USRDIR PS3>` construit le .bin
+  (cases de boutons des planches, images d'invites entières, appariées par position dans le fichier ;
+  SELECT/START/L2/R2, plus larges sur PS3, réduits à la largeur des cases Xbox). `native/wwe12_buttons.cpp`
+  : crochet du chargeur DDS sub_82AC59C8(info, dds, taille), empreinte FNV-1a du niveau 0, remplacement
+  en mémoire avant conversion ; cvar `wwe12_button_icons` = auto (manette PS3/PS4/PS5 branchée, SDL) /
+  xbox / playstation (à ajouter aux readmes). Polices chargées au démarrage, invites à chaque match :
+  brancher la manette PS avant de lancer. Les tables de caractères des polices (rectangles par code,
+  dans le bloc « métriques » après la planche : nombre, codes, puis 16 octets x/y/l/h par code) sont
+  converties par le jeu au chargement : introuvables en mémoire ; pas de crochet BPE trouvé.
+  Lanceur de test : `tools/dev/lancer_test_boutons_ps.bat`. Plus tard, si voulu : changement en direct.
 - À voir : physique des tables/échelles, éclairage façon SvR 2011.
 Plus tard : statistiques du mode Univers comme WWE '13 (conversation Univers, étape 4) ; 5 contre 5
 (= plus de 6 catcheurs).

@@ -47,7 +47,7 @@ if(WIN32)
     configure_file(res/wwe12.rc.in "${CMAKE_CURRENT_BINARY_DIR}/wwe12.rc" @ONLY)
     list(APPEND WWE12_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/wwe12.rc")
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/wwe12.rc" PROPERTIES
-        OBJECT_DEPENDS "${WWE12_RES_DIR}/wwe12.ico")
+        OBJECT_DEPENDS "${WWE12_RES_DIR}/wwe12.ico;${WWE12_RES_DIR}/ps3_buttons.bin")
 endif()
 
 if(WIN32)
