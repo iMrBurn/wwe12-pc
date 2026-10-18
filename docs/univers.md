@@ -356,3 +356,9 @@ dans WWE '13) ; chargé par la classe à vtable 0x8203E7D8 (`sub_826EC0A8` ouvre
 - **Décision de l'utilisateur (2026-10-18)** : pas d'option « ceinture vacante » (WWE '13 ne la
   propose pas dans l'Univers, et le jeu ne programme pas de match pour un titre vacant). On garde la
   remise à zéro de l'Univers et le suivi des stats.
+- **Décision révisée (2026-10-18)**, après une suggestion de joueur (dans SvR 2011 on pouvait rendre
+  vacants les titres non utilisés par l'émission) : on ajoute **VACANT seulement pour les titres
+  qu'aucune émission n'utilise** (titres des légendes, etc.). Les titres des émissions restent
+  comme avant (le jeu ne programme pas de match pour un titre vacant). WWE '12 n'a ni texte
+  « VACANT » ni bouton : à ajouter (EDIT SUPERSTAR ou notre écran). Reste à trouver où le jeu
+  range « quel titre appartient à quelle émission ».
