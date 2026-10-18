@@ -295,3 +295,47 @@ Ces points demandent de **lancer le jeu** avec des sondes de lecture (sans rien 
   = code + nouveaux ids de textes.
 - Idée des règles de booking dans un fichier réglable : réaliste **si** on remplace/complète la
   génération de carte (826E3920) par notre propre code natif qui lit un fichier.
+
+---
+
+## 7. Ce que fait WWE '13 (étudié le 2026-10-18, pour s'en inspirer)
+
+Source : la copie de l'utilisateur (recomp WWE '13 de PromethenDev, fichiers du jeu fournis par
+l'utilisateur). **Rien de WWE '13 ne doit aller dans le dépôt ni dans les zips.** On ne reprend pas son
+code (autre exe) : il sert de modèle, même moteur Yuke's.
+
+**Menus Univers de WWE '13** : mêmes numéros de textes que WWE '12 (27000…), les ajouts occupent des
+numéros **vides dans WWE '12** :
+- 27026–27030 : EDIT SUPERSTARS, EDIT ROSTERS, EDIT TEAMS, **EDIT TITLES**, **RESET UNIVERSE** (sous
+  « EDIT UNIVERSE », 27045, qui remplace EDIT SUPERSTAR) ; 27048 FEUD MANAGER ; **27049 STATISTICS**.
+- Édition des titres : 27651/27663/27665/27682/27896 **VACANT**, « No belt is assigned to this
+  category », catégories MAJOR / MINOR / TAG / DIVA (27606–27609).
+- Le nom interne de l'écran est `ResetUniverse` (0x8205FA54 dans l'exe de WWE '13) ; la remise à zéro
+  relit les **valeurs de départ** (`CWWEUniverseStationed::BatPacReaderCallBack_SaveInit`).
+
+**Statistiques de WWE '13** (textes 27824–27849 et 33200–33243) :
+- par catcheur : victoires, **WIN%**, apparitions, temps d'activité ;
+- **titres** : nombre de règnes (TIMES EARNED), **semaines de règne** (WEEKS HELD), anciens champions
+  (PAST CHAMPIONS), nouveau record ;
+- **Money in the Bank** : anciens gagnants, résultat du cash-in, % de victoires après cash-in ;
+- **Royal Rumble** : gagnants, apparitions, adversaires éliminés, temps passé dans le Rumble ;
+- **WrestleMania** : résultats, main events, % de victoires.
+
+**Valeurs de départ de l'Univers dans WWE '12** : `pac/misc.pac`, groupe **BATL/SAVE** (même nom que
+dans WWE '13) ; chargé par la classe à vtable 0x8203E7D8 (`sub_826EC0A8` ouvre « BATL/SAVE »,
+`sub_826EC008` garde les entrées 2 et 3 via `sub_826D69C8` → globales 0x832315E4 / 0x832315E8).
+- entrée 2 « LBTS » : équipes de départ (Kane & Big Show, Santino & Kozlov, Otunga & McGillicutty,
+  Demolition, Road Warriors, Divas of Doom…) ;
+- entrée 3 « HID » ;
+- entrée 4 (PACH de 6) : « WUD » (fiches de départ des catcheurs), « WDR » (relations de départ),
+  émissions (RAW, SmackDown, Superstars), calendrier des 13 PPV (Royal Rumble…), marques (RAW,
+  SmackDown, Diva, Legend, FreeAgent…). Qui lit l'entrée 4 : **pas encore trouvé**.
+
+**Conséquences pour WWE '12** :
+- Les textes des nouvelles entrées peuvent reprendre les numéros libres (27026–27049…) avec les mêmes
+  mots que WWE '13 (patch de string.pac au démarrage, comme menu.pac).
+- Le **suivi des stats** doit être écrit par nous : WWE '12 ne garde ni victoires ni historique (§3.3).
+  Idée : après chaque match Univers (`sub_826C3258`), ajouter une ligne dans un fichier à nous
+  (Documents\wwe12\universe_stats…), et un écran STATISTICS (ImGui au style du jeu, comme GRAPHISMES).
+- **Reset** : vider le bloc (`sub_826D5938`), remettre les champions Univers par défaut, puis laisser le
+  jeu recréer l'Univers à partir de BATL/SAVE (à vérifier en jeu).
