@@ -353,3 +353,6 @@ dans WWE '13) ; chargé par la classe à vtable 0x8203E7D8 (`sub_826EC0A8` ouvre
   émission ni PPV). Il faudra donc ajouter nous-mêmes le match pour le titre vacant. L'utilisateur
   signale aussi un Univers « un peu cassé à certains moments » (à préciser).
 - Confirmé : titre 1 = WWE Championship (RAW, MAJOR), 6 = United States, 12 = Divas, 13 = Unified Tag.
+- **Décision de l'utilisateur (2026-10-18)** : pas d'option « ceinture vacante » (WWE '13 ne la
+  propose pas dans l'Univers, et le jeu ne programme pas de match pour un titre vacant). On garde la
+  remise à zéro de l'Univers et le suivi des stats.
