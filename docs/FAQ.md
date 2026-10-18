@@ -54,7 +54,8 @@ overlays first: they're a known cause of freezes.
 ## Controls
 
 **Can I play with a PlayStation controller?** Yes (DualShock 4, DualSense). Plug it in **before**
-starting the game to get PlayStation button icons.
+starting the game to get PlayStation button icons. In 0.8 the automatic detection doesn't work:
+add `wwe12_button_icons = "playstation"` at the end of `wwe12.toml` (fixed in 0.9).
 
 **Two players with one controller?** Launcher → CONTROLS → "Keyboard plays as" Player 2.
 
@@ -100,7 +101,8 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
   `wwe12.toml` et dites-nous dans l'issue #7 si ça aide.
 - **Image figée, son qui continue** : attendez 15 s, fermez, et ouvrez une issue avec `hang_trace.txt`,
   `stderr.txt` et le journal de `Documents\wwe12\logs` (testez d'abord sans OBS).
-- **Manette PlayStation** : branchez-la avant de lancer le jeu pour avoir les icônes PlayStation. **Deux
+- **Manette PlayStation** : branchez-la avant de lancer le jeu pour avoir les icônes PlayStation (en 0.8 la détection automatique ne marche pas : ajoutez
+  `wwe12_button_icons = "playstation"` à la fin de `wwe12.toml`, corrigé en 0.9). **Deux
   joueurs avec une manette** : launcher → CONTRÔLES → clavier = joueur 2. **Compteur FPS** : F2.
 - **Sauvegardes Xbox 360** : launcher → SAUVEGARDES → importer. Copies de sauvegarde automatiques.
 - **« Not signed in with a gamer profile »** : corrigé en 0.9.
