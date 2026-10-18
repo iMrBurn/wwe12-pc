@@ -130,6 +130,51 @@ un pointeur vers U + 20160, puis des listes `{début, nombre, capacité = 8}` à
 984 octets par émission (123 par match). Les classements, les champions, les relations
 (rivaux/alliés), les équipes et les scénarios en cours sont aussi dans ce bloc (**offsets à trouver**).
 
+### 3.3 Champions, fiches Univers et format du fichier (2026-10-18, sûr)
+
+**Format de `SaveData.Dat`** : en-tête de 28 octets (7 u32 gros-boutistes)
+`{0x4F490, 0x5EE90, 0x38, 0x13, 9, 2, total}`, puis **trois blocs de mémoire copiés tels quels** :
+
+| Bloc | Adresse en mémoire | Taille | Position dans le fichier |
+|---|---|---|---|
+| 1 : catcheurs, **Univers**… | `0x8317FA14` (`*0x8317FA08`) | 0x4F490 | 28 |
+| 2 : réglages du jeu, **titres**… | `0x831CEEA8` (`sub_82684BE8`) | 0x5EE90 | 28 + 0x4F490 |
+| 3 | `0x8317F9D0` | 0x38 | 28 + 0x4F490 + 0x5EE90 |
+
+Le dernier mot de l'en-tête est la **somme simple des octets** des trois blocs (0xAE358 octets ;
+vérifié sur la sauvegarde de l'utilisateur). Il faut la recalculer après chaque modification. Le reste
+du fichier (au-delà de 28 + 0xAE358) n'entre pas dans cette somme.
+
+**Champions** : ils ne sont pas dans le bloc Univers. Il y a deux tables de 23 titres × 2 places
+(u16 = n° de catcheur dans le jeu ; **512 = personne, donc ceinture vacante**) :
+
+- hors Univers : bloc 2 + 0x57604 (`0x832264AC`) ;
+- **Univers** : bloc 2 + 0x57660 (`0x83226508`), utilisée quand `*0x8324E51C == 1` (drapeau « en
+  mode Univers », `sub_82A39ED8` l'écrit et `sub_82A39EE8` le lit).
+- Lire : `sub_82A39FC8(titre, place, …)`. **Écrire : `sub_82A3A060(titre, catcheur, place)`** (la
+  fonction du jeu elle-même). Remettre les champions par défaut : `sub_82A39E08(titre)` (un titre) ou
+  `sub_82A39D98` (tous), à partir d'une table de champions par défaut à `0x8324E3A8` (fiches de
+  16 octets).
+- Dans la sauvegarde de l'utilisateur, les deux tables sont presque identiques : 1 = Del Rio,
+  2 = Orton, 5 = Ezekiel Jackson, 6 = Ziggler, 8 = Layla, 12 = Kelly Kelly, 13 = Otunga & McGillicutty,
+  et aussi Hawk & Animal, Ax & Smash, Undertaker, Triple H… (titres des légendes). Le nom de chaque
+  numéro de titre reste à confirmer en jeu.
+- **Aspirants n° 1** : même format dans le bloc Univers à U + 0xC750 (`sub_826D5088`).
+- Points de classement (`sub_826CE180`) : 1000 pour le champion, 999 pour l'aspirant n° 1, sinon la
+  fiche Univers du catcheur.
+
+**Numéros de catcheurs** : le jeu utilise des numéros 0–372 (0–49 = catcheurs créés). La table
+`0x8307B5E0` (u16[373]) donne la fiche de sauvegarde (base + n × 286, nom court à +178).
+
+**Fiches Univers** : une fiche de **112 octets par catcheur** au début du bloc Univers
+(U + index × 112, index = `sub_826D3320(n°)`), environ 180 fiches jusqu'à U + 20160. Viennent ensuite
+d'autres données, puis les cartes (U + 27360…). Le bloc Univers s'arrête à la fin du bloc 1
+(U + 0x100FC).
+
+Pas encore trouvé : le code qui **crée** un Univers neuf. L'initialisation générale d'une sauvegarde
+(`sub_82699F10` → `sub_82684838`) remet tout le bloc 1 à zéro ; rien de propre à l'Univers n'est
+appelé à ce moment-là.
+
 ---
 
 ## 4. Le code : qui fait quoi
