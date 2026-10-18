@@ -133,6 +133,13 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   **Clavier = joueur 2** : cvar `mnk_player` (1 = partage le joueur 1 avec la manette 1, défaut ; 2-4 = manette
   séparée), patch SDK `port/patches/rexglue-sdk-keyboard-player.patch` (`DeviceInfo::slot`, `SlotAssignment`,
   `MnkInputDriver`). Testé en vrai : Xbox One S = joueur 1, clavier = joueur 2.
+  **Profil et joueurs (2026-10-18, issue #17)** : le runtime n'a qu'un profil (user 0, XUID fixe
+  B13EBABEBABEBABE) ; avant, START pressé depuis un autre slot (clavier en joueur 2, 2e manette, appareil
+  arrivé en slot 1) donnait « You are not currently signed in with a gamer profile… unable to save ».
+  Reproduit (manette + clavier `mnk_player=2`, Entrée à l'écran-titre) puis corrigé : patch SDK
+  `port/patches/rexglue-sdk-signin-slot.patch` (`ProfileSlot()` dans `xam_user.cpp` : un slot qui a un
+  appareil connecté est connecté avec le même profil pour les `XamUser*`). Les sauvegardes
+  (`xeXamContentCreate`) utilisaient déjà le profil unique quel que soit le slot. Prévu pour la 0.9.
 
 ## Version 0.8 : plan (décidé par l'utilisateur le 2026-10-17)
 
