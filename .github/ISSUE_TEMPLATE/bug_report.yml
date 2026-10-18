@@ -1,0 +1,67 @@
+name: Bug report
+description: Something doesn't work in the game or the launcher.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping! Please check the [FAQ](https://github.com/iMrBurn/wwe12-pc/blob/main/docs/FAQ.md) first: many common problems (missing DLC wrestlers, antivirus warnings, slow PCs, black screen) are answered there.
+        This is a free hobby project: there is no release date and no guaranteed fix, but complete reports get fixed much faster.
+  - type: input
+    id: version
+    attributes:
+      label: Game version
+      description: Shown at the top of the launcher's PLAY page (e.g. 0.8.0-beta).
+      placeholder: 0.8.0-beta
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did (mode, wrestlers, arena, menu), what you expected, and what happened instead. Screenshots are very welcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of problem
+      options:
+        - Graphics glitch
+        - Freeze (picture stops)
+        - Crash (game closes)
+        - Black screen
+        - Slow / low frame rate
+        - Saves or DLC
+        - Controls
+        - Launcher
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostic
+    attributes:
+      label: Diagnostic info
+      description: In the launcher, open ABOUT and click "Copy diagnostic info", then paste it here (graphics card, driver, settings, no personal data).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log files
+      description: |
+        Launcher → ABOUT → "Open the logs folder" (`Documents\wwe12\logs`). Drag and drop here the newest `wwe12_XXX.log` from a session where the problem happened.
+        **If the game froze**: wait 15 seconds, close it, then also attach `hang_trace.txt` and `stderr.txt` from the same folder (please close OBS and other overlays first).
+        **If it crashed**: attach `crash_trace.txt` and `stderr.txt`.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I read the FAQ.
+          required: true
+        - label: I use my own copy of WWE '12 for Xbox 360 (no game files or download links in this report).
+          required: true

@@ -59,6 +59,9 @@ HD textures and videos, online play.
 
 ## Reporting a bug
 
+Read the [FAQ](docs/FAQ.md) first: it answers the most common questions (DLC, antivirus, slow PCs,
+black screen, freezes, saves).
+
 Open an [issue](https://github.com/iMrBurn/wwe12-pc/issues) with: the version, what you were doing
 (mode, wrestlers), a screenshot, and the text from the launcher's **ABOUT > Copy diagnostic info**
 button (graphics card, driver, settings; no personal data). Logs are in `Documents\wwe12\logs`

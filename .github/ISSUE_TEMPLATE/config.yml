@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: FAQ (read me first)
+    url: https://github.com/iMrBurn/wwe12-pc/blob/main/docs/FAQ.md
+    about: Missing DLC wrestlers, antivirus warnings, slow PCs, black screen, freezes, saves…
