@@ -167,6 +167,19 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
 | 8 | Formulaire de bug GitHub + FAQ | Main | à faire |
 | — | DLC manquants (cache) | Main | **fait** (2026-10-18) |
 
+## Nouvelles pistes (2026-10-19)
+
+- **Ceinture à 60 fps** : l'auteur du recomp de WWE 2K14 l'a corrigée chez lui (entrées et scènes de
+  victoire). Son explication : les ceintures ont leur propre animation, séparée des catcheurs ; comme le
+  mouvement peut passer d'un catcheur à un autre de taille différente, le jeu estime la position, et
+  cette estimation part en vrille au-dessus de 30 fps. L'utilisateur lui demande quelle fonction / quel
+  calcul il a changé (et sa licence avant de reprendre du code). But : entrées à 60 fps par défaut.
+  Rendu.
+- **Version Android** : beaucoup de joueurs la demandent ; conversation dédiée « Android » (Opus). Étape
+  1 = état des lieux sans casser le PC (ARM64 / NDK, presets linux-arm64 du SDK, Vulkan via plume, SDL ;
+  parties propres à Windows ; accès à l'ISO ; tactile ; performances). Il faut un téléphone de test.
+  Kaiko a fait une version Android de SvR 2011 (conversation « Android (Mali) ») : lui demander.
+
 ## Feuille de route 0.9 / 1.0 (décidée par l'utilisateur le 2026-10-18)
 
 **0.9** : ~~DLC manquants~~ **réglé** (2026-10-18 : un joueur a retrouvé ses catcheurs en supprimant
