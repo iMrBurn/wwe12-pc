@@ -339,3 +339,17 @@ dans WWE '13) ; chargé par la classe à vtable 0x8203E7D8 (`sub_826EC0A8` ouvre
   (Documents\wwe12\universe_stats…), et un écran STATISTICS (ImGui au style du jeu, comme GRAPHISMES).
 - **Reset** : vider le bloc (`sub_826D5938`), remettre les champions Univers par défaut, puis laisser le
   jeu recréer l'Univers à partir de BATL/SAVE (à vérifier en jeu).
+
+## 8. Tests en jeu (2026-10-18, sauvegarde de l'utilisateur mise de côté puis remise)
+
+- **Univers vidé** (copie où le bloc U est traité comme par `sub_826D5938`) : **plantage** en entrant
+  dans l'Univers, juste après le chargement de WWEU/MTDT, STYT et BATL/SAVE. Lecture de 0x0000000C dans
+  `sub_826EF988` (méthode virtuelle des scènes/actes, vtable 0x8203E684). Le jeu n'a pas recréé
+  l'Univers : un interrupteur « l'Univers existe » est ailleurs. Prochaine étape : comparer une
+  sauvegarde neuve avant et après la première entrée dans l'Univers.
+- **Ceinture vacante** (titre 1 = **WWE Championship** mis à 512/512 dans la table Univers) : pas de
+  plantage ; l'écran RANKINGS affiche le titre **sans nom ni portrait** ; le jeu garde le titre vacant
+  et nomme quand même un aspirant n° 1 (Sheamus), mais **ne programme aucun match pour ce titre** (ni
+  émission ni PPV). Il faudra donc ajouter nous-mêmes le match pour le titre vacant. L'utilisateur
+  signale aussi un Univers « un peu cassé à certains moments » (à préciser).
+- Confirmé : titre 1 = WWE Championship (RAW, MAJOR), 6 = United States, 12 = Divas, 13 = Unified Tag.
