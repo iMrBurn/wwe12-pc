@@ -170,7 +170,7 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
 | 4 | Gels : analyser les hang_trace des joueurs en 0.8 (carte `dist/symbols-v0.8.0-beta`) | Rendu | à faire |
 | 5 | Pavés Intel/AMD (#7, #11, #13) et yeux blancs AMD (#12) : suivre les retours 0.8 | Rendu | à faire |
 | 6 | Options graphiques restantes : foule (premiers rangs), ombres, profondeur de champ, anticrénelage | Rendu + Launcher | à faire |
-| 7 | Univers comme WWE '13 : remise à zéro de l'Univers, rendre une ceinture vacante (menu dans le jeu, choix de l'utilisateur) ; ensuite « stat tracking » de WWE '13 (victoires/défaites, règnes) | Univers | en cours : champions trouvés (2 tables de 23 titres × 2 places, u16, 512 = vacant ; écrites par sub_82A3A060 ; voir docs/univers.md) ; création d'un Univers neuf pas encore trouvée |
+| 7 | Univers : **remise à zéro de l'Univers** dans un menu en jeu. (Ceinture vacante abandonnée par l'utilisateur le 2026-10-19 : un titre vacant s'affiche mais le jeu ne programme plus de match pour lui. Stat tracking façon WWE '13 : plus tard, le jeu ne garde ni victoires ni historique, il faudra les noter nous-mêmes.) | Univers | en cours : vider seulement le bloc Univers fait planter à l'entrée de l'Univers ; reste à trouver l'interrupteur « l'Univers existe » (voir docs/univers.md) |
 | 8 | Formulaire de bug GitHub + FAQ | Main | à faire |
 | — | DLC manquants (cache) | Main | **fait** (2026-10-18) |
 
