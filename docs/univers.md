@@ -171,9 +171,31 @@ du fichier (au-delà de 28 + 0xAE358) n'entre pas dans cette somme.
 d'autres données, puis les cartes (U + 27360…). Le bloc Univers s'arrête à la fin du bloc 1
 (U + 0x100FC).
 
-Pas encore trouvé : le code qui **crée** un Univers neuf. L'initialisation générale d'une sauvegarde
-(`sub_82699F10` → `sub_82684838`) remet tout le bloc 1 à zéro ; rien de propre à l'Univers n'est
-appelé à ce moment-là.
+**Qui est suivi** : catcheurs créés (n° 0–49, fiche = n°) et **80 superstars** dont la liste est à
+`0x83073BA0` (u16[80], fiche = 100 + position) ; les autres ne sont pas suivis (« This Superstar is not
+tracked in Universe Mode »).
+
+**Contenu d'une fiche de 112 octets** (lue dans la sauvegarde de l'utilisateur) :
+
+| Octets | Contenu |
+|---|---|
+| +0 à +45 | 23 × u16 : **points cette semaine** pour chaque titre (0 = pas dans ce classement) |
+| +46 à +91 | 23 × u16 : **points la semaine dernière** (écran THIS WEEK / LAST WEEK) |
+| +92, +96 | 2 × u32, à 0 partout (même pour The Miz qui a combattu) |
+| +100 | u16, 512 = personne (partenaire / allié ? à vérifier) |
+| +102 à +111 | octets : +102 variation (ex. −5), +103 = 13 par défaut, +104… |
+
+→ **Le jeu ne garde ni victoires ni défaites** : le « suivi des stats » façon WWE '13 devra être noté
+par notre propre code (après chaque match) dans un fichier à nous.
+
+**Vider l'Univers : `sub_826D5938(U)`** (sûr). C'est l'initialisation du bloc Univers, appelée au
+démarrage (`sub_82F6DC70`) et à la création de la structure de sauvegarde (`sub_8258FAF0`). Elle remet
+les 180 fiches à zéro (points 0, +100 = 512, +103 = 13), la zone U + 20160 à 512, les cartes
+(`sub_826D5228` sur U + 27360 + k × 984, 10 + 13 émissions), les aspirants et d'autres listes à
+512/0, et garde seulement les bits 0x60 de l'octet U + 0xDE07 (réglages ?), U + 0xDE08 = 50.
+**Hypothèse forte** : un Univers dans cet état est recréé par le jeu au prochain passage dans le mode
+Univers (texte « BEING CREATED... »). À confirmer en jeu. La remise à zéro = appeler cette fonction,
+remettre les champions Univers par défaut (table `0x8324E3A8`), puis laisser le jeu enregistrer.
 
 ---
 
