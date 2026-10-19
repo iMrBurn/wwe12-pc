@@ -140,6 +140,24 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   `port/patches/rexglue-sdk-signin-slot.patch` (`ProfileSlot()` dans `xam_user.cpp` : un slot qui a un
   appareil connecté est connecté avec le même profil pour les `XamUser*`). Les sauvegardes
   (`xeXamContentCreate`) utilisaient déjà le profil unique quel que soit le slot. Prévu pour la 0.9.
+- **Saisie de texte au clavier (2026-10-19, `wwe12_kbd.cpp`)** : le jeu n'utilise pas XamShowKeyboardUI
+  pour Create a Story mais **sa propre grille de lettres**. Les lignes de la grille sont des widgets
+  `_write21`, `_write22`… (nom à +0x60), dessinés chaque image par `sub_824C9228(écran r3, widget r4)`.
+  Leur texte (`[widget+200]`) n'est qu'une **copie d'affichage** : y écrire montre les lettres mais le
+  compteur LEFT ne bouge pas, et la validation reprend le vrai texte (case vide). Le vrai texte est dans
+  l'objet « éditeur » de la grille, qui est à **écran − 0x740** (vu : éditeur A3DEEE50, écran A3DEF590 ;
+  vérifs : `[éditeur+44]` ≠ 0, ligne courante `[éditeur+3676]` < 8). Fonctions de la grille :
+  `sub_828A47D0(éditeur, const char* s, 1, 0)` insère `s` (≤ 3 caractères) au curseur (les cases lettres
+  via `sub_828A7A98`, SPACE via `sub_828A62F0` avec " " ; gère la limite de 84, la ligne suivante et le
+  mode SHIFT de la grille) ; `sub_828A6158(éditeur)` = BACK. Le module rejoue les touches (OnKeyChar de la
+  fenêtre : AZERTY, Maj, répétition ; accents → lettre simple) par ces fonctions, sur le fil du jeu, dans le
+  crochet ; pendant la grille, les touches de frappe ne vont plus à `mnk_mode` (écouteur de fenêtre à z
+  1000, `set_handled`). Trouvé avec un piège PAGE_GUARD sur la page de la ligne (RIP → `llvm-symbolizer`
+  avec `wwe12.pdb`) : la ligne est refaite par memset `sub_82A76590` + memcpy `sub_82A76060` appelés depuis
+  `sub_828A47D0`. Fausses pistes : `[[écran+268]+8]` (0 ici), `sub_82BFD248` (jamais appelé), auto-pointeur
+  `[texte−0x50+0x30]` (vrai seulement sur une ligne neuve). Sonde : `wwe12_kbd_log` ; lanceur
+  `tools/dev/lancer_test_clavier.bat`. Le module de départ d'OpenCode (commits 36099f4/9c21077,
+  `wwe12_text_entry_analysis.md`) écrivait dans la copie d'affichage.
 
 ## Version 0.8 : plan (décidé par l'utilisateur le 2026-10-17)
 
@@ -165,7 +183,7 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
 | # | Tâche | Qui | État |
 |---|---|---|---|
 | 1 | **Musiques perso** (vedette de la 0.9, très demandée) : choisir une musique (mp3/ogg/wav…) pour les catcheurs créés, entrées comprises | Gameplay (+ Launcher pour l'écran de choix) | **fait** (2026-10-19 : mp3/m4a/aac/wma/wav/flac du dossier `music` à côté de l'exe, choisis dans le jeu via « créer une entrée » → lecture utilisateur ; entrée → charge de match → replay → cérémonie de victoire validés en continu ; patchs `rexglue-sdk-xmp-music.patch` et `rexglue-sdk-audio-flow.patch` ; le 2026-10-19 l'ancien `rexglue-sdk-music-perso.patch` a été remplacé : il n'avait pas `xam_enum.cpp` (la liste USER PLAYLIST, d'où « musique absente » sur un SDK refait depuis les patchs) et recopiait le morceau `xmp_app.cpp` de reblue (échec de `setup.ps1`) ; le nouveau est fait par-dessus tous les autres patchs, trié après eux, vérifié sur un SDK propre. ogg non lu pour l'instant (Media Foundation) : à revoir côté launcher) |
-| 2 | Create a Story : taper le texte des cinématiques au clavier (aussi noms de CAW, d'arènes…) | Gameplay | à faire |
+| 2 | Create a Story : taper le texte des cinématiques au clavier (aussi noms de CAW, d'arènes…) | Gameplay | **fait** (2026-10-19, vérifié en jeu au clavier seul : écrire, Retour arrière, modifier un texte existant, texte gardé après validation ; commit f7e3590 ; `wwe12_kbd.cpp`, cvar `wwe12_kbd` activé par défaut ; nom de CAW pas encore vérifié à part ; voir « Savoir acquis ») |
 | 3 | Turbo des chargements à 4 fils (interblocage), puis activé par défaut | Gameplay + Rendu | à faire |
 | 4 | Gels : analyser les hang_trace des joueurs en 0.8 (carte `dist/symbols-v0.8.0-beta`). Piste 2026-10-19 : **#11 gel isolé sur le modèle de Randy Savage** (trop de sommets ? le même modèle gelait le portage SVR 2011 de Kaiko) ; hang_trace demandé | Rendu | à faire |
 | 5 | Pavés Intel/AMD (#7, #11, #13) et yeux blancs AMD (#12) : suivre les retours 0.8. 2026-10-19 : **#16 les pavés touchent aussi une RX 7600 moderne en match** → ce n'est pas un bug de vieux GPU ; test `svr_rt_no_compression` envoyé aux joueurs ; #7 : la caméra montre la foule = rien, catcheur = pavés | Rendu | à faire |
@@ -197,9 +215,7 @@ AMD ; turbo à 4 fils ; options graphiques restantes ; formulaire de bug GitHub 
 **1.0** : plus de bug grave connu ; **Mod Maker** comme celui de Kaiko ; signature de l'exe à étudier ;
 documentation.
 **Nouvelles suggestions (2026-10-18)** :
-- Create a Story : taper le texte des cinématiques au clavier. Le SDK a déjà une boîte de saisie pour
-  XamShowKeyboardUI (xam_ui.cpp, ImGui) ; si le jeu utilise plutôt sa propre grille de lettres, il faut
-  y brancher le clavier physique. À vérifier d'abord (Gameplay).
+- ~~Create a Story : taper le texte des cinématiques au clavier~~ **fait** (2026-10-19, ligne 2 du plan 0.9).
 - Mode Univers comme WWE '13 : remise à zéro de l'Univers, et rendre une ceinture vacante (Univers).
 
 ## Après la 0.8 (2026-10-17) : priorité bugs et DLC
