@@ -26,7 +26,7 @@ wwe12_skip_intros = true
 # on the weakest graphics built into the processor.
 svr_render_scale = 0
 
-# 60 fps in entrances and cutscenes (experimental; the original game drops to 30 there).
+# 60 fps in entrances and cutscenes (the original game drops to 30 there).
 wwe12_60fps = false
 
 # Sharpness of textures seen at an angle (ring, ramp, crowd): 0 (off), 2, 4, 8 or 16.

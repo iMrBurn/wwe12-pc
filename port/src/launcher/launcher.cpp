@@ -234,7 +234,7 @@ const Texts kEnglish = {
     "PLAY", "Version", "Game files found.",
     "Game files missing: put your WWE '12 (Xbox 360) .iso in the \"game\" folder.",
     "Language", "Internal resolution", "Automatic", "Display mode", "Full screen", "Window", "V-Sync",
-    "60 fps entrances and cutscenes (experimental)",
+    "60 fps entrances and cutscenes",
     "The original game runs them at 30 fps.",
     "Texture sharpness", "Off", "Graphics card", "Automatic", "EXIT entry in the main menu",
     "Replaces SHOP (the closed Xbox LIVE store).", "Changes are saved right away.",
@@ -304,7 +304,7 @@ const Texts kFrench = {
     "Fichiers du jeu manquants : mettez l'image .iso de votre WWE '12 (Xbox 360) dans le "
     "dossier \"game\".",
     "Langue", "Résolution interne", "Automatique", "Mode d'affichage", "Plein écran", "Fenêtre", "V-Sync",
-    "Entrées et cinématiques à 60 fps (expérimental)",
+    "Entrées et cinématiques à 60 fps",
     "Le jeu d'origine les fait tourner à 30 images par seconde.",
     "Netteté des textures", "Désactivée", "Carte graphique", "Automatique",
     "Entrée QUITTER dans le menu principal", "Remplace SHOP (la boutique Xbox LIVE, fermée).",
