@@ -26,14 +26,25 @@ void wwe12_dev_entrance_started();  // wwe12_autocap.cpp
 
 REX_EXTERN(__imp__sub_82827918);
 REX_EXTERN(__imp__sub_82827AB8);
+REX_EXTERN(__imp__sub_82827B58);
+
+namespace {
+// True while the game wants 30 (an entrance or a cutscene) and runs at 60 instead.
+std::atomic<bool> g_entrance_at60{false};
+}  // namespace
+
+// wwe12_title_fix.cpp: the console only showed the even animation frames of these scenes.
+bool Wwe12EntranceAt60() { return g_entrance_at60.load(std::memory_order_relaxed); }
 
 // SetFrameRate(fps).
 extern "C" REX_FUNC(sub_82827918) {
   const u32 requested = ctx.r3.u32;
   if (REXCVAR_GET(wwe12_60fps) && (requested == 30 || requested == 25)) {
     ctx.r3.u64 = requested == 30 ? 60 : 50;
+    g_entrance_at60.store(true, std::memory_order_relaxed);
     BD_INFO("[fps] game set frame rate {}; using {}", requested, ctx.r3.u32);
   } else {
+    g_entrance_at60.store(false, std::memory_order_relaxed);
     BD_DEBUG("[fps] game set frame rate {}", requested);
   }
   __imp__sub_82827918(ctx, base);
@@ -42,6 +53,7 @@ extern "C" REX_FUNC(sub_82827918) {
 // "Drop to 30 (25) fps": skipped while the 60 fps mode is kept.
 extern "C" REX_FUNC(sub_82827AB8) {
   if (REXCVAR_GET(wwe12_60fps)) {
+    g_entrance_at60.store(true, std::memory_order_relaxed);
 #if defined(WWE12_DEV_PROBES)
     wwe12_dev_entrance_started();
 #endif
@@ -52,4 +64,10 @@ extern "C" REX_FUNC(sub_82827AB8) {
     return;
   }
   __imp__sub_82827AB8(ctx, base);
+}
+
+// "Back to 60 (50) fps": the entrance or cutscene is over.
+extern "C" REX_FUNC(sub_82827B58) {
+  g_entrance_at60.store(false, std::memory_order_relaxed);
+  __imp__sub_82827B58(ctx, base);
 }
