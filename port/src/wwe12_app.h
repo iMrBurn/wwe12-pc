@@ -45,6 +45,7 @@ REXCVAR_DECLARE(bool, wwe12_precise_timer);
 void Wwe12ShowVulkanError();
 namespace rex::input { class InputSystem; }
 void Wwe12ButtonsSetInput(rex::input::InputSystem* input);  // wwe12_buttons.cpp
+void Wwe12KbdInit(rex::ui::Window* window);  // wwe12_kbd.cpp: keyboard typing in letter grids
 
 // Installe les DLC posés dans le dossier « dlc » à côté de l'exe (wwe12_dlc.cpp).
 void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
@@ -216,6 +217,7 @@ class Wwe12App : public rex::ReXApp {
         [this](std::function<void()> fn) { app_context().CallInUIThread(std::move(fn)); },
         rex::filesystem::GetExecutableFolder() / "wwe12.toml");
     Wwe12DisplayInit(imgui_drawer());  // FPS counter (F2), CPU priority
+    Wwe12KbdInit(window());  // physical keyboard in the game's letter grids (Create a Story...)
     if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
       input->SetActiveCallback([] { return !Wwe12GraphicsMenuIsOpen(); });
       Wwe12GraphicsMenuSetInput(input);
