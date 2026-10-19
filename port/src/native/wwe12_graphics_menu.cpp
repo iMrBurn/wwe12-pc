@@ -32,6 +32,7 @@
 
 #include <imgui.h>
 
+#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gamepad.h>
 
 #include <rex/cvar.h>
@@ -164,8 +165,10 @@ XPad ReadPads() {
   }();
   XPad all;
   // PlayStation and other pads reach the game through SDL, not XInput: read the ones the input
-  // driver has opened as well (the driver pumps SDL's events).
+  // driver has opened as well. The driver only pumps SDL's events when the game polls its pads,
+  // which stops while this screen is open, so pump them here (this runs on the UI thread).
   {
+    SDL_PumpEvents();
     const auto axis = [](SDL_Gamepad *g, SDL_GamepadAxis a) {
       return SHORT(std::clamp<int>(SDL_GetGamepadAxis(g, a), -32767, 32767));
     };

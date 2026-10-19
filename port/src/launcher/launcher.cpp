@@ -226,6 +226,7 @@ struct Texts {
   const char *crowd, *crowd_hint, *msaa, *dof, *shadow_res, *shadow_dist, *edge_blur, *edge_blur_hint;
   const char *music, *music_text, *open_music, *music_count, *music_unread, *music_volume, *music_volume_hint,
       *music_empty;
+  const char *icons, *icons_auto, *icons_xbox, *icons_ps, *icons_hint;
 };
 
 const Texts kEnglish = {
@@ -291,7 +292,11 @@ const Texts kEnglish = {
     "it lets you choose the music of a created wrestler. Track names are cut to 39 characters in the game.",
     "Open the music folder", "track(s) found", "not read by the game (unsupported format):", "Volume of your tracks",
     "-20 dB matches the game's own music. Louder songs are lowered to this level. Applies the next time you start the game.",
-    "No track yet: put some files in the music folder."};
+    "No track yet: put some files in the music folder.",
+    "Button icons in the game", "Automatic", "Xbox", "PlayStation",
+    "Automatic shows PlayStation icons only if the PlayStation controller was already detected when the game "
+    "started; if you still see Xbox icons with your PlayStation controller, pick PlayStation. Applies the next "
+    "time you start the game."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -362,7 +367,11 @@ const Texts kFrench = {
     "Ouvrir le dossier musique", "morceau(x) trouvé(s)", "non lus par le jeu (format non pris en charge) :",
     "Volume de vos morceaux",
     "-20 dB correspond à la musique du jeu. Les morceaux plus forts sont baissés à ce niveau. S'applique au prochain lancement du jeu.",
-    "Aucun morceau : mettez des fichiers dans le dossier musique."};
+    "Aucun morceau : mettez des fichiers dans le dossier musique.",
+    "Icônes des boutons dans le jeu", "Automatique", "Xbox", "PlayStation",
+    "Automatique affiche les icônes PlayStation seulement si la manette PlayStation était déjà détectée au "
+    "démarrage du jeu ; si vous voyez encore les icônes Xbox avec votre manette PlayStation, choisissez "
+    "PlayStation. S'applique au prochain lancement du jeu."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -416,6 +425,7 @@ struct Settings {
   int shadow_res = 4096;      // 512..8192
   int shadow_dist = 2;        // 1..4 (times the console's distance)
   bool edge_blur = false;
+  int icons = 0;       // wwe12_button_icons: 0 auto, 1 xbox, 2 playstation
   int music_db = -20;  // xmp_music_level_db, -40..-6
   std::string gpu;
   bool exit_entry = true;
@@ -448,6 +458,10 @@ void LoadSettings() {
   g_s.shadow_res = g_toml.GetInt("bd_shadow_dimension", 4096);
   g_s.shadow_dist = std::clamp((int)std::lround(g_toml.GetDouble("bd_shadow_distance", 2.0)), 1, 4);
   g_s.edge_blur = g_toml.GetBool("svr_edge_blur", false);
+  {
+    const std::string ic = g_toml.GetString("wwe12_button_icons", "auto");
+    g_s.icons = ic == "xbox" ? 1 : ic == "playstation" ? 2 : 0;
+  }
   g_s.music_db = std::clamp(g_toml.GetInt("xmp_music_level_db", -20), -40, -6);
   g_s.gpu = g_toml.GetString("svr_gpu_device", "");
   g_s.exit_entry = g_toml.GetBool("wwe12_quit_entry", true);
@@ -477,6 +491,7 @@ void SaveSettings() {
   g_toml.SetInt("bd_shadow_dimension", g_s.shadow_res);
   g_toml.SetDouble("bd_shadow_distance", g_s.shadow_dist);
   g_toml.SetBool("svr_edge_blur", g_s.edge_blur);
+  g_toml.SetString("wwe12_button_icons", g_s.icons == 1 ? "xbox" : g_s.icons == 2 ? "playstation" : "auto");
   g_toml.SetInt("xmp_music_level_db", g_s.music_db);
   g_toml.SetString("svr_gpu_device", g_s.gpu);
   g_toml.SetBool("wwe12_quit_entry", g_s.exit_entry);
@@ -843,6 +858,15 @@ void PageControls() {
   bool changed = false;
   Title(t.controls);
   ImGui::TextDisabled("%s", t.pad_note);
+  {
+    const char *icon_names[] = {t.icons_auto, t.icons_xbox, t.icons_ps};
+    ImGui::SetNextItemWidth(380);
+    changed |= ImGui::Combo(t.icons, &g_s.icons, icon_names, 3);
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextDisabled("%s", t.icons_hint);
+    ImGui::PopTextWrapPos();
+    ImGui::Dummy(ImVec2(0, 6));
+  }
   changed |= ImGui::Checkbox(t.keyboard, &g_s.keyboard);
   ImGui::TextDisabled("%s", t.keyboard_hint);
   {
