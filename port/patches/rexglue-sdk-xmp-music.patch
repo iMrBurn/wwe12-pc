@@ -39,18 +39,10 @@ index 984b97d..de30f4f 100644
 +  target_link_libraries(rexruntime PRIVATE mfplat mfreadwrite mfuuid ole32)
 +endif()
 diff --git a/src/kernel/xam/apps/xmp_app.cpp b/src/kernel/xam/apps/xmp_app.cpp
-index a5e9088..1fc8f36 100644
+index 27a023d..1fc8f36 100644
 --- a/src/kernel/xam/apps/xmp_app.cpp
 +++ b/src/kernel/xam/apps/xmp_app.cpp
-@@ -9,11 +9,23 @@
-  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
-  */
- 
-+#include <chrono>
-+#include <cstdint>
-+
- #include <rex/kernel/xam/apps/xmp_app.h>
- #include <rex/logging.h>
+@@ -17,6 +17,15 @@
  #include <rex/system/xthread.h>
  #include <rex/thread.h>
  
@@ -66,35 +58,7 @@ index a5e9088..1fc8f36 100644
  namespace rex {
  namespace kernel {
  namespace xam {
-@@ -35,14 +47,57 @@ XmpApp::XmpApp(KernelState* kernel_state)
-       next_playlist_handle_(1),
-       next_song_handle_(1) {}
- 
-+namespace {
-+
-+// The status/controller queries below sleep on non-main threads, for games that poll them in a
-+// tight loop. Games that poll a few times per frame (WWE SmackDown vs. Raw 2008 does, from its frame
-+// thread) would then lose 1-10 ms every frame, so only throttle a thread that really hammers: more
-+// than ~1000 calls per second.
-+bool IsHammeringXmp() {
-+  thread_local auto window_start = std::chrono::steady_clock::now();
-+  thread_local uint32_t calls = 0;
-+  auto now = std::chrono::steady_clock::now();
-+  if (now - window_start > std::chrono::milliseconds(100)) {
-+    window_start = now;
-+    calls = 0;
-+  }
-+  return ++calls > 100;
-+}
-+
-+}  // namespace
-+
- X_HRESULT XmpApp::XMPGetStatus(uint32_t state_ptr) {
--  if (!XThread::GetCurrentThread()->main_thread()) {
-+  if (!XThread::GetCurrentThread()->main_thread() && IsHammeringXmp()) {
-     // Some stupid games will hammer this on a thread - induce a delay
-     // here to keep from starving real threads.
-     rex::thread::Sleep(std::chrono::milliseconds(1));
+@@ -65,6 +74,30 @@ X_HRESULT XmpApp::XMPGetStatus(uint32_t state_ptr) {
    }
  
    REXKRNL_TRACE("XMPGetStatus({:08X})", state_ptr);
@@ -125,7 +89,7 @@ index a5e9088..1fc8f36 100644
    memory::store_and_swap<uint32_t>(memory_->TranslateVirtual(state_ptr),
                                     static_cast<uint32_t>(state_));
    return X_E_SUCCESS;
-@@ -146,6 +201,8 @@ X_HRESULT XmpApp::XMPPlayTitlePlaylist(uint32_t playlist_handle, uint32_t song_h
+@@ -168,6 +201,8 @@ X_HRESULT XmpApp::XMPPlayTitlePlaylist(uint32_t playlist_handle, uint32_t song_h
  
  X_HRESULT XmpApp::XMPContinue() {
    REXKRNL_DEBUG("XMPContinue()");
@@ -134,7 +98,7 @@ index a5e9088..1fc8f36 100644
    if (state_ == State::kPaused) {
      state_ = State::kPlaying;
    }
-@@ -156,16 +213,31 @@ X_HRESULT XmpApp::XMPContinue() {
+@@ -178,16 +213,31 @@ X_HRESULT XmpApp::XMPContinue() {
  X_HRESULT XmpApp::XMPStop(uint32_t unk) {
    assert_zero(unk);
    REXKRNL_DEBUG("XMPStop({:08X})", unk);
@@ -168,7 +132,7 @@ index a5e9088..1fc8f36 100644
      state_ = State::kPaused;
    }
    OnStateChanged();
-@@ -199,6 +271,14 @@ X_HRESULT XmpApp::XMPPrevious() {
+@@ -221,6 +271,14 @@ X_HRESULT XmpApp::XMPPrevious() {
  }
  
  void XmpApp::OnStateChanged() {
@@ -183,7 +147,7 @@ index a5e9088..1fc8f36 100644
    kernel_state_->BroadcastNotification(kMsgStateChanged, static_cast<uint32_t>(state_));
  }
  
-@@ -298,6 +378,7 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+@@ -320,6 +378,7 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
        assert_true(args->xmp_client == 0x00000002);
        REXKRNL_DEBUG("XMPSetVolume({:g})", float(args->value));
        volume_ = args->value;
@@ -191,16 +155,7 @@ index a5e9088..1fc8f36 100644
        return X_E_SUCCESS;
      }
      case 0x0007000D: {
-@@ -408,7 +489,7 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
-       memory::store_and_swap<uint32_t>(memory_->TranslateVirtual(args->controller_ptr), 0);
-       memory::store_and_swap<uint32_t>(memory_->TranslateVirtual(args->locked_ptr), 0);
- 
--      if (!XThread::GetCurrentThread()->main_thread()) {
-+      if (!XThread::GetCurrentThread()->main_thread() && IsHammeringXmp()) {
-         // Atrain spawns a thread 82437FD0 to call this in a tight loop forever.
-         rex::thread::Sleep(std::chrono::milliseconds(10));
-       }
-@@ -460,6 +541,30 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+@@ -482,6 +541,30 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
                                         4 + uint32_t(args->song_count) * 128);
        return X_E_SUCCESS;
      }
@@ -683,3 +638,56 @@ index 0000000..59b6797
 +bool IsPlaying();  // false once the song has ended or was stopped
 +
 +}  // namespace rex::kernel::xam::apps::music
+diff --git a/src/kernel/xam/xam_enum.cpp b/src/kernel/xam/xam_enum.cpp
+index 9dcab94..a922f44 100644
+--- a/src/kernel/xam/xam_enum.cpp
++++ b/src/kernel/xam/xam_enum.cpp
+@@ -19,6 +19,8 @@
+ #include <rex/system/xenumerator.h>
+ #include <rex/system/xtypes.h>
+ 
++#include "apps/xmp_music.h"
++
+ #if REX_PLATFORM_WIN32
+ #include <rex/platform.h>
+ #endif
+@@ -51,6 +53,8 @@ uint32_t xeXamEnumerate(uint32_t handle, uint32_t flags, mapped_void buffer_ptr,
+     }
+     extended_error = X_HRESULT_FROM_WIN32(result);
+     length = item_count;
++    REXKRNL_DEBUG("XamEnumerate: {} item(s) of {} bytes, result {:08X}", item_count,
++                  e->item_size(), result);
+     return result;
+   };
+ 
+@@ -83,8 +87,28 @@ u32 XamEnumerate_entry(u32 handle, u32 flags, mapped_void buffer, u32 buffer_len
+   return result;
+ }
+ 
+-u32 XamCreateEnumeratorHandle_entry(u32 unk1, u32 unk2, u32 unk3, u32 unk4, u32 unk5, u32 unk6,
+-                                    u32 unk7, u32 unk8) {
++u32 XamCreateEnumeratorHandle_entry(u32 user_index, u32 app_id, u32 open_message,
++                                    u32 close_message, u32 extra_size, u32 items_per_enumerate,
++                                    u32 flags, mapped_u32 handle_out) {
++  // The user's playlists, for the Xbox music player: the files of the music folder
++  // (apps/xmp_music.h).
++  if (app_id == 0xFA && open_message == 0x00070026 && handle_out) {
++    auto e = make_object<XStaticUntypedEnumerator>(REX_KERNEL_STATE(), items_per_enumerate,
++                                                   apps::music::kItemSize);
++    void* extra = nullptr;
++    auto result =
++        e->Initialize(user_index, app_id, open_message, close_message, flags, extra_size, &extra);
++    if (XFAILED(result))
++      return result;
++    for (const auto& track : apps::music::ListTracks())
++      apps::music::WriteItem(track, e->AppendItem());
++    REXKRNL_INFO("XMP: {} user playlist(s) in {}", e->item_count(),
++                 rex::string::to_utf8(apps::music::Folder().u16string()));
++    *handle_out = e->handle();
++    return X_ERROR_SUCCESS;
++  }
++  REXKRNL_DEBUG("XamCreateEnumeratorHandle(app {:08X}, {:08X}, {:08X}): unsupported", app_id,
++                open_message, close_message);
+   return X_ERROR_INVALID_PARAMETER;
+ }
+ 
