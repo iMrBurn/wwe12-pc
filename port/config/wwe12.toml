@@ -27,7 +27,6 @@ wwe12_skip_intros = true
 svr_render_scale = 0
 
 # 60 fps in entrances and cutscenes (experimental; the original game drops to 30 there).
-# Known issue: title belts carried on a shoulder can move oddly at 60 fps.
 wwe12_60fps = false
 
 # Sharpness of textures seen at an angle (ring, ramp, crowd): 0 (off), 2, 4, 8 or 16.

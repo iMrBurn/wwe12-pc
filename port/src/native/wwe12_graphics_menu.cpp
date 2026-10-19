@@ -340,7 +340,6 @@ std::vector<Setting> BuildSettings() {
     f60.tab = 2;
     f60.values = {t.no, t.yes};
     f60.index = REXCVAR_GET(wwe12_60fps) ? 1 : 0;
-    f60.note = &Texts::fps60_note;
     f60.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_60fps", i ? "true" : "false"); };
     f60.save = [](TomlFile &f, int i) { f.SetBool("wwe12_60fps", i != 0); };
     s.push_back(std::move(f60));
