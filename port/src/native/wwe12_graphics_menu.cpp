@@ -48,6 +48,7 @@ REXCVAR_DECLARE(int32_t, svr_render_scale);
 REXCVAR_DECLARE(int32_t, bd_anisotropy);
 REXCVAR_DECLARE(bool, bd_vsync);
 REXCVAR_DECLARE(bool, wwe12_60fps);
+REXCVAR_DECLARE(std::string, wwe12_button_icons);
 REXCVAR_DECLARE(int32_t, bd_msaa);
 REXCVAR_DECLARE(int32_t, bd_shadow_dimension);
 REXCVAR_DECLARE(double, bd_shadow_distance);
@@ -396,7 +397,7 @@ std::vector<Setting> BuildSettings() {
 
     Setting c;
     c.label = &Texts::crowd;
-    c.tab = 1;
+    c.tab = 2;
     c.values = {t.no, t.yes};
     c.index = REXCVAR_GET(wwe12_crowd) ? 1 : 0;
     c.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_crowd", i ? "true" : "false"); };
@@ -469,8 +470,8 @@ class GraphicsMenu final : public rex::ui::ImGuiDialog {
     // Page band (orange, fading out on the right) with the parent menu's name in black.
     const ImU32 orange = IM_COL32(240, 172, 48, 255);
     const ImU32 clear_orange = IM_COL32(240, 172, 48, 0);
-    dl->AddRectFilled(P(205, 580), P(880, 624), orange);
-    dl->AddRectFilledMultiColor(P(880, 580), P(1010, 624), orange, clear_orange, clear_orange,
+    dl->AddRectFilled(P(205, 580), P(980, 624), orange);
+    dl->AddRectFilledMultiColor(P(980, 580), P(1120, 624), orange, clear_orange, clear_orange,
                                 orange);
     Text(dl, font, 32 * k, P(228, 584), IM_COL32(20, 14, 6, 255), t.header);
     // White rule under the band, fading at both ends.
@@ -481,57 +482,76 @@ class GraphicsMenu final : public rex::ui::ImGuiDialog {
     dl->AddRectFilledMultiColor(P(1520, 624), P(1730, 628), white, clear_white, clear_white,
                                 white);
 
-    // The three tabs (in place of the title): the open one orange and underlined.
-    const char *tab_names[] = {t.tab_display, t.tab_graphics, t.tab_advanced};
-    for (int i = 0; i < 3; ++i) {
-      const float cx = 960 + (i - 1) * 300;
-      const bool on = i == tab_;
-      const ImU32 tc = on ? orange : IM_COL32(150, 150, 154, 255);
-      TextCentered(dl, font, 32 * k, P(cx, 638), tc, tab_names[i]);
-      if (on)
-        dl->AddRectFilled(P(cx - 110, 676), P(cx + 110, 679), orange);
+    // Centred subtitle like "IN-GAME OPTIONS": the open tab's name, with red arrows either side
+    // (L1/R1 or LB/RB switch tabs) and its place among the tabs.
+    {
+      const char *tab_names[] = {t.tab_display, t.tab_graphics, t.tab_advanced};
+      const std::string title = tab_names[tab_];
+      const ImVec2 sz = font->CalcTextSizeA(34 * k, FLT_MAX, 0.0f, title.c_str());
+      const float half = sz.x * 0.5f / k;
+      TextCentered(dl, font, 34 * k, P(960, 640), white, title.c_str());
+      const float cy = 662 * k;
+      const ImU32 red_arrow = IM_COL32(214, 22, 32, 255);
+      dl->AddTriangleFilled(ImVec2(ox + (960 - half - 30) * k, cy),
+                            ImVec2(ox + (960 - half - 14) * k, cy - 9 * k),
+                            ImVec2(ox + (960 - half - 14) * k, cy + 9 * k), red_arrow);
+      dl->AddTriangleFilled(ImVec2(ox + (960 + half + 30) * k, cy),
+                            ImVec2(ox + (960 + half + 14) * k, cy - 9 * k),
+                            ImVec2(ox + (960 + half + 14) * k, cy + 9 * k), red_arrow);
+      // One dot per tab under the title.
+      for (int i = 0; i < 3; ++i)
+        dl->AddCircleFilled(ImVec2(ox + (960 + (i - 1) * 22) * k, 684 * k), 5 * k,
+                            i == tab_ ? orange : IM_COL32(90, 90, 94, 255));
     }
 
     // Rows.
     const ImU32 red = IM_COL32(214, 22, 32, 255);
-    float y = 692;
+    float y = 700;
     for (int i = 0; i < int(rows.size()); ++i) {
       const Setting &s = settings_[rows[i]];
       const bool sel = i == selected;
       const ImU32 col = sel ? red : white;
-      Text(dl, font, 38 * k, P(295, y), col, t.*s.label);
+      Text(dl, font, 42 * k, P(295, y), col, t.*s.label);
       std::string value = s.values[s.index];
       if (s.next_start)
         value += " *";
-      TextCentered(dl, font, 38 * k, P(1380, y), col, value.c_str());
+      TextCentered(dl, font, 42 * k, P(1380, y), col, value.c_str());
       if (sel) {
         // Red arrows either side of the value.
-        const float cy = (y + 22) * k;
+        const float cy = (y + 24) * k;
         dl->AddTriangleFilled(ImVec2(ox + 1184 * k, cy), ImVec2(ox + 1204 * k, cy - 11 * k),
                               ImVec2(ox + 1204 * k, cy + 11 * k), red);
         dl->AddTriangleFilled(ImVec2(ox + 1576 * k, cy), ImVec2(ox + 1556 * k, cy - 11 * k),
                               ImVec2(ox + 1556 * k, cy + 11 * k), red);
       }
       // Separator; the chosen row's is red.
-      dl->AddRectFilled(P(240, y + 42), P(1665, y + 44), sel ? red : IM_COL32(70, 70, 74, 255));
-      y += 44;
+      dl->AddRectFilled(P(240, y + 46), P(1665, y + 48), sel ? red : IM_COL32(70, 70, 74, 255));
+      y += 48;
     }
 
     // Note for the chosen row (next-start setting, experimental option).
     const Setting &cur = settings_[rows[selected]];
     const char *note = cur.note ? t.*cur.note : (cur.next_start ? t.next_start : nullptr);
     if (note)
-      Text(dl, font, 26 * k, P(295, y + 12), IM_COL32(240, 196, 64, 255),
+      Text(dl, font, 24 * k, P(295, y + 2), IM_COL32(240, 196, 64, 255),
            (std::string(cur.next_start ? "* " : "") + note).c_str());
 
-    // Button prompts, like the game's: coloured round buttons and yellow words.
+    // Button prompts, like the game's: round buttons and yellow words. The icons follow
+    // wwe12_button_icons (PlayStation icons when it is "playstation").
     const ImU32 yellow = IM_COL32(242, 200, 72, 255);
-    Button(dl, font, k, P(228, 1038), IM_COL32(60, 170, 50, 255), "A");
-    Text(dl, font, 30 * k, P(252, 1020), yellow, t.change);
-    Button(dl, font, k, P(482, 1038), IM_COL32(210, 30, 40, 255), "B");
-    Text(dl, font, 30 * k, P(506, 1020), yellow, t.back);
-    Text(dl, font, 30 * k, P(700, 1020), yellow, (std::string("LB / RB  ") + t.tabs).c_str());
+    const bool ps = REXCVAR_GET(wwe12_button_icons) == "playstation";
+    Button(dl, font, k, P(228, 984), ps ? kBtnCross : kBtnA, ps, "A");
+    Text(dl, font, 30 * k, P(252, 966), yellow, t.change);
+    Button(dl, font, k, P(482, 984), ps ? kBtnCircle : kBtnB, ps, "B");
+    Text(dl, font, 30 * k, P(506, 966), yellow, t.back);
+    Text(dl, font, 30 * k, P(700, 966), yellow,
+         (std::string(ps ? "L1 / R1  " : "LB / RB  ") + t.tabs).c_str());
   }
+
+  static constexpr ImU32 kBtnA = IM_COL32(60, 170, 50, 255);
+  static constexpr ImU32 kBtnB = IM_COL32(210, 30, 40, 255);
+  static constexpr ImU32 kBtnCross = IM_COL32(150, 160, 240, 255);
+  static constexpr ImU32 kBtnCircle = IM_COL32(225, 70, 90, 255);
 
   // Italic text: the glyphs' vertices are sheared, as the menus' font slants.
   static void Text(ImDrawList *dl, ImFont *font, float size, ImVec2 pos, ImU32 col,
@@ -547,8 +567,21 @@ class GraphicsMenu final : public rex::ui::ImGuiDialog {
     const ImVec2 sz = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
     Text(dl, font, size, ImVec2(center_top.x - sz.x * 0.5f, center_top.y), col, text);
   }
-  static void Button(ImDrawList *dl, ImFont *font, float k, ImVec2 center, ImU32 col,
+  static void Button(ImDrawList *dl, ImFont *font, float k, ImVec2 center, ImU32 col, bool ps,
                      const char *letter) {
+    if (ps) {
+      // PlayStation face button: a dark disc with a coloured cross (A) or ring (B).
+      dl->AddCircleFilled(center, 15 * k, IM_COL32(25, 25, 40, 255));
+      dl->AddCircle(center, 15 * k, IM_COL32(120, 120, 140, 255), 0, 1.5f * k);
+      if (letter[0] == 'A') {
+        const float d = 8 * k;
+        dl->AddLine(ImVec2(center.x - d, center.y - d), ImVec2(center.x + d, center.y + d), col, 3 * k);
+        dl->AddLine(ImVec2(center.x - d, center.y + d), ImVec2(center.x + d, center.y - d), col, 3 * k);
+      } else {
+        dl->AddCircle(center, 8 * k, col, 0, 3 * k);
+      }
+      return;
+    }
     dl->AddCircleFilled(center, 15 * k, IM_COL32(255, 255, 255, 255));
     dl->AddCircleFilled(center, 12.5f * k, col);
     const ImVec2 sz = font->CalcTextSizeA(20 * k, FLT_MAX, 0.0f, letter);
