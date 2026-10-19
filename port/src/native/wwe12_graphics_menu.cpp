@@ -8,6 +8,7 @@
 // in the menus' colours, and the game gets no input while it is open.
 //
 // Controls: up/down to pick a setting, left/right or A/Enter to change it, B/Escape to go back.
+// LB/RB (or PageUp/PageDown, Tab) switch between the DISPLAY, GRAPHICS and ADVANCED tabs.
 // Changes apply at once (the internal resolution at the next start) and are saved to wwe12.toml.
 //
 // Disabled with wwe12_graphics_menu = false in wwe12.toml (the manual comes back).
@@ -18,6 +19,7 @@
 #include <array>
 #include <atomic>
 #include <cfloat>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -45,6 +47,14 @@ REXCVAR_DECLARE(int32_t, svr_render_scale);
 REXCVAR_DECLARE(int32_t, bd_anisotropy);
 REXCVAR_DECLARE(bool, bd_vsync);
 REXCVAR_DECLARE(bool, wwe12_60fps);
+REXCVAR_DECLARE(int32_t, bd_msaa);
+REXCVAR_DECLARE(int32_t, bd_shadow_dimension);
+REXCVAR_DECLARE(double, bd_shadow_distance);
+REXCVAR_DECLARE(double, bd_dof_strength);
+REXCVAR_DECLARE(bool, wwe12_crowd);
+REXCVAR_DECLARE(bool, svr_edge_blur);
+REXCVAR_DECLARE(int32_t, wwe12_fps_limit);
+REXCVAR_DECLARE(bool, wwe12_show_fps);
 
 namespace {
 
@@ -82,29 +92,45 @@ struct Texts {
   const char *title, *resolution, *aniso, *vsync, *fps60;
   const char *off, *on, *yes, *no, *automatic;
   const char *next_start, *header, *change, *back, *fps60_note;
+  const char *tab_display, *tab_graphics, *tab_advanced, *msaa, *shadow_res, *shadow_dist, *dof, *crowd,
+      *edge_blur, *frame_limit, *show_fps, *none, *tabs;
 };
 constexpr Texts kTexts[] = {
     {"GRAPHICS", "INTERNAL RESOLUTION", "TEXTURE FILTERING", "VERTICAL SYNC",
      "60 FPS ENTRANCES", "OFF", "ON", "YES", "NO", "AUTO",
      "APPLIED THE NEXT TIME THE GAME STARTS", "OPTIONS", "CHANGE", "BACK",
-     "EXPERIMENTAL: TITLE BELTS CAN MOVE ODDLY"},
+     "EXPERIMENTAL: TITLE BELTS CAN MOVE ODDLY",
+     "DISPLAY", "GRAPHICS", "ADVANCED", "ANTI-ALIASING", "SHADOW QUALITY", "SHADOW DISTANCE",
+     "DEPTH OF FIELD", "CROWD", "EDGE BLUR", "FRAME LIMIT", "FPS COUNTER", "NONE", "TABS"},
     {"GRAPHISMES", "R\xC3\x89SOLUTION INTERNE", "FILTRAGE DES TEXTURES", "SYNCHRO VERTICALE",
      "ENTR\xC3\x89" "ES \xC3\x80 60 FPS", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "OUI", "NON",
      "AUTO", "APPLIQU\xC3\x89 AU PROCHAIN LANCEMENT DU JEU", "OPTIONS", "CHANGER", "RETOUR",
-     "EXP\xC3\x89RIMENTAL : LES CEINTURES PEUVENT BOUGER BIZARREMENT"},
+     "EXP\xC3\x89RIMENTAL : LES CEINTURES PEUVENT BOUGER BIZARREMENT",
+     "AFFICHAGE", "GRAPHISMES", "AVANC\xC3\x89", "ANTICR\xC3\x89" "NELAGE", "QUALIT\xC3\x89 DES OMBRES",
+     "DISTANCE DES OMBRES", "PROFONDEUR DE CHAMP", "FOULE", "FLOU DES BORDS", "LIMITE D'IMAGES",
+     "COMPTEUR FPS", "AUCUNE", "ONGLETS"},
     {"GRAFIK", "INTERNE AUFL\xC3\x96SUNG", "TEXTURFILTERUNG", "VERTIKALE SYNC.",
      "EINZ\xC3\x9CGE MIT 60 FPS", "AUS", "AN", "JA", "NEIN", "AUTO",
      "WIRD BEIM N\xC3\x84" "CHSTEN SPIELSTART \xC3\x9C" "BERNOMMEN", "OPTIONEN",
      "\xC3\x84NDERN", "ZUR\xC3\x9C" "CK",
-     "EXPERIMENTELL: TITELG\xC3\x9CRTEL K\xC3\x96NNEN SICH SELTSAM BEWEGEN"},
+     "EXPERIMENTELL: TITELG\xC3\x9CRTEL K\xC3\x96NNEN SICH SELTSAM BEWEGEN",
+     "ANZEIGE", "GRAFIK", "ERWEITERT", "KANTENGL\xC3\x84" "TTUNG", "SCHATTENQUALIT\xC3\x84" "T",
+     "SCHATTENDISTANZ", "TIEFENSCH\xC3\x84" "RFE", "PUBLIKUM", "KANTENWEICHZEICHNUNG", "BILDRATENLIMIT",
+     "FPS-ANZEIGE", "KEINE", "REITER"},
     {"GR\xC3\x81" "FICOS", "RESOLUCI\xC3\x93N INTERNA", "FILTRADO DE TEXTURAS",
      "SINCRONIZACI\xC3\x93N VERTICAL", "ENTRADAS A 60 FPS", "NO", "S\xC3\x8D", "S\xC3\x8D", "NO",
      "AUTO", "SE APLICA LA PR\xC3\x93XIMA VEZ QUE SE INICIE EL JUEGO", "OPCIONES", "CAMBIAR",
-     "VOLVER", "EXPERIMENTAL: LOS CINTURONES PUEDEN MOVERSE DE FORMA EXTRA\xC3\x91" "A"},
+     "VOLVER", "EXPERIMENTAL: LOS CINTURONES PUEDEN MOVERSE DE FORMA EXTRA\xC3\x91" "A",
+     "PANTALLA", "GR\xC3\x81" "FICOS", "AVANZADO", "ANTIALIASING", "CALIDAD DE SOMBRAS",
+     "DISTANCIA DE SOMBRAS", "PROFUNDIDAD DE CAMPO", "P\xC3\x9A" "BLICO", "DESENFOQUE DE BORDES",
+     "L\xC3\x8D" "MITE DE FPS", "CONTADOR DE FPS", "NINGUNO", "PESTA\xC3\x91" "AS"},
     {"GRAFICA", "RISOLUZIONE INTERNA", "FILTRO TEXTURE", "SINCRONIA VERTICALE",
      "INGRESSI A 60 FPS", "NO", "S\xC3\x8C", "S\xC3\x8C", "NO", "AUTO",
      "APPLICATO AL PROSSIMO AVVIO DEL GIOCO", "OPZIONI", "CAMBIA", "INDIETRO",
-     "SPERIMENTALE: LE CINTURE POSSONO MUOVERSI IN MODO STRANO"},
+     "SPERIMENTALE: LE CINTURE POSSONO MUOVERSI IN MODO STRANO",
+     "SCHERMO", "GRAFICA", "AVANZATE", "ANTIALIASING", "QUALIT\xC3\x80 OMBRE", "DISTANZA OMBRE",
+     "PROFONDIT\xC3\x80 DI CAMPO", "FOLLA", "SFOCATURA BORDI", "LIMITE FPS", "CONTATORE FPS", "NESSUNO",
+     "SCHEDE"},
 };
 
 const Texts &T() { return kTexts[CurrentLang()]; }
@@ -155,7 +181,7 @@ XPad ReadPads() {
   return all;
 }
 
-enum Action { kNone, kUp, kDown, kLeft, kRight, kAccept, kBack };
+enum Action { kNone, kUp, kDown, kLeft, kRight, kAccept, kBack, kTabPrev, kTabNext };
 
 // Edge-triggered actions from keyboard and pads, with auto-repeat on held directions.
 class InputReader {
@@ -163,7 +189,7 @@ class InputReader {
   Action Poll() {
     const XPad p = ReadPads();
     constexpr SHORT kDead = 16000;
-    bool held[7] = {};
+    bool held[9] = {};
     held[kUp] = (p.buttons & 0x0001) || p.ly > kDead || ImGui::IsKeyDown(ImGuiKey_UpArrow) ||
                 ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_Z);
     held[kDown] = (p.buttons & 0x0002) || p.ly < -kDead ||
@@ -179,9 +205,12 @@ class InputReader {
     held[kBack] = (p.buttons & 0x2000) || (p.buttons & 0x0010) ||
                   ImGui::IsKeyDown(ImGuiKey_Escape) || ImGui::IsKeyDown(ImGuiKey_Backspace) ||
                   ImGui::IsKeyDown(ImGuiKey_L);
+    held[kTabPrev] = (p.buttons & 0x0100) || ImGui::IsKeyDown(ImGuiKey_PageUp);
+    held[kTabNext] = (p.buttons & 0x0200) || ImGui::IsKeyDown(ImGuiKey_PageDown) ||
+                     ImGui::IsKeyDown(ImGuiKey_Tab);
     const double now = ImGui::GetTime();
     Action result = kNone;
-    for (int a = kUp; a <= kBack; ++a) {
+    for (int a = kUp; a <= kTabNext; ++a) {
       if (held[a] && !was_[a]) {
         if (armed_[a])
           result = Action(a);
@@ -200,9 +229,9 @@ class InputReader {
   }
 
  private:
-  bool was_[7] = {};
-  bool armed_[7] = {};
-  double next_repeat_[7] = {};
+  bool was_[9] = {};
+  bool armed_[9] = {};
+  double next_repeat_[9] = {};
 };
 
 // ---- settings -------------------------------------------------------------------------------
@@ -212,6 +241,8 @@ struct Setting {
   std::vector<std::string> values;
   int index = 0;
   bool next_start = false;
+  int tab = 0;  // 0 display, 1 graphics, 2 advanced
+  bool touched = false;
   const char *Texts::*note = nullptr;
   std::function<void(int)> apply;  // sets the cvar
   std::function<void(TomlFile &, int)> save;
@@ -235,6 +266,7 @@ std::vector<Setting> BuildSettings() {
     default: r.index = 0; break;
     }
     r.next_start = true;
+    r.tab = 0;
     r.apply = [](int i) {
       rex::cvar::SetFlagByName("svr_render_scale", std::to_string(kHeights[i]));
     };
@@ -245,6 +277,7 @@ std::vector<Setting> BuildSettings() {
     static constexpr int kAniso[] = {0, 2, 4, 8, 16};
     Setting a;
     a.label = &Texts::aniso;
+    a.tab = 1;
     a.values = {t.off, "2X", "4X", "8X", "16X"};
     const int cur = REXCVAR_GET(bd_anisotropy);
     a.index = 0;
@@ -258,6 +291,7 @@ std::vector<Setting> BuildSettings() {
   {
     Setting v;
     v.label = &Texts::vsync;
+    v.tab = 0;
     v.values = {t.no, t.yes};
     v.index = REXCVAR_GET(bd_vsync) ? 1 : 0;
     v.apply = [](int i) { rex::cvar::SetFlagByName("bd_vsync", i ? "true" : "false"); };
@@ -267,12 +301,101 @@ std::vector<Setting> BuildSettings() {
   {
     Setting f60;
     f60.label = &Texts::fps60;
+    f60.tab = 2;
     f60.values = {t.no, t.yes};
     f60.index = REXCVAR_GET(wwe12_60fps) ? 1 : 0;
     f60.note = &Texts::fps60_note;
     f60.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_60fps", i ? "true" : "false"); };
     f60.save = [](TomlFile &f, int i) { f.SetBool("wwe12_60fps", i != 0); };
     s.push_back(std::move(f60));
+  }
+  // Frame limit and FPS counter (display tab).
+  {
+    Setting fl;
+    fl.label = &Texts::frame_limit;
+    fl.tab = 0;
+    fl.values = {t.none, "60"};
+    fl.index = REXCVAR_GET(wwe12_fps_limit) == 60 ? 1 : 0;
+    fl.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_fps_limit", i ? "60" : "0"); };
+    fl.save = [](TomlFile &f, int i) { f.SetInt("wwe12_fps_limit", i ? 60 : 0); };
+    s.push_back(std::move(fl));
+    Setting sf;
+    sf.label = &Texts::show_fps;
+    sf.tab = 0;
+    sf.values = {t.no, t.yes};
+    sf.index = REXCVAR_GET(wwe12_show_fps) ? 1 : 0;
+    sf.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_show_fps", i ? "true" : "false"); };
+    sf.save = [](TomlFile &f, int i) { f.SetBool("wwe12_show_fps", i != 0); };
+    s.push_back(std::move(sf));
+  }
+  // Graphics tab.
+  {
+    static constexpr int kMsaa[] = {0, 2, 4, 8};
+    Setting m;
+    m.label = &Texts::msaa;
+    m.tab = 1;
+    m.values = {t.off, "2X", "4X", "8X"};
+    m.index = 0;
+    for (int i = 0; i < 4; ++i)
+      if (kMsaa[i] <= REXCVAR_GET(bd_msaa))
+        m.index = i;
+    m.apply = [](int i) { rex::cvar::SetFlagByName("bd_msaa", std::to_string(kMsaa[i])); };
+    m.save = [](TomlFile &f, int i) { f.SetInt("bd_msaa", kMsaa[i]); };
+    s.push_back(std::move(m));
+
+    static constexpr int kRes[] = {512, 1024, 2048, 4096, 8192};
+    Setting sr;
+    sr.label = &Texts::shadow_res;
+    sr.tab = 1;
+    sr.values = {"512", "1024", "2048", "4096", "8192"};
+    sr.index = 3;
+    for (int i = 0; i < 5; ++i)
+      if (kRes[i] == REXCVAR_GET(bd_shadow_dimension))
+        sr.index = i;
+    sr.apply = [](int i) { rex::cvar::SetFlagByName("bd_shadow_dimension", std::to_string(kRes[i])); };
+    sr.save = [](TomlFile &f, int i) { f.SetInt("bd_shadow_dimension", kRes[i]); };
+    s.push_back(std::move(sr));
+
+    Setting sd;
+    sd.label = &Texts::shadow_dist;
+    sd.tab = 1;
+    sd.values = {"1X", "2X", "3X", "4X"};
+    sd.index = std::clamp(int(std::lround(REXCVAR_GET(bd_shadow_distance))), 1, 4) - 1;
+    sd.apply = [](int i) { rex::cvar::SetFlagByName("bd_shadow_distance", std::to_string(i + 1) + ".0"); };
+    sd.save = [](TomlFile &f, int i) { f.SetDouble("bd_shadow_distance", i + 1); };
+    s.push_back(std::move(sd));
+
+    Setting d;
+    d.label = &Texts::dof;
+    d.tab = 1;
+    d.values = {"0%", "25%", "50%", "75%", "100%"};
+    d.index = std::clamp(int(std::lround(REXCVAR_GET(bd_dof_strength) * 4.0)), 0, 4);
+    d.apply = [](int i) {
+      static const char *kV[] = {"0.0", "0.25", "0.5", "0.75", "1.0"};
+      rex::cvar::SetFlagByName("bd_dof_strength", kV[i]);
+    };
+    d.save = [](TomlFile &f, int i) { f.SetDouble("bd_dof_strength", i / 4.0); };
+    s.push_back(std::move(d));
+
+    Setting c;
+    c.label = &Texts::crowd;
+    c.tab = 1;
+    c.values = {t.no, t.yes};
+    c.index = REXCVAR_GET(wwe12_crowd) ? 1 : 0;
+    c.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_crowd", i ? "true" : "false"); };
+    c.save = [](TomlFile &f, int i) { f.SetBool("wwe12_crowd", i != 0); };
+    s.push_back(std::move(c));
+  }
+  // Advanced tab.
+  {
+    Setting e;
+    e.label = &Texts::edge_blur;
+    e.tab = 2;
+    e.values = {t.no, t.yes};
+    e.index = REXCVAR_GET(svr_edge_blur) ? 1 : 0;
+    e.apply = [](int i) { rex::cvar::SetFlagByName("svr_edge_blur", i ? "true" : "false"); };
+    e.save = [](TomlFile &f, int i) { f.SetBool("svr_edge_blur", i != 0); };
+    s.push_back(std::move(e));
   }
   return s;
 }
@@ -292,9 +415,14 @@ class GraphicsMenu final : public rex::ui::ImGuiDialog {
   }
 
   void OnDraw(ImGuiIO &io) override {
+    const std::vector<int> rows = Rows();
+    int &selected = selected_[tab_];
+    selected = std::min(selected, int(rows.size()) - 1);
     switch (input_.Poll()) {
-    case kUp: selected_ = (selected_ + int(settings_.size()) - 1) % int(settings_.size()); break;
-    case kDown: selected_ = (selected_ + 1) % int(settings_.size()); break;
+    case kUp: selected = (selected + int(rows.size()) - 1) % int(rows.size()); break;
+    case kDown: selected = (selected + 1) % int(rows.size()); break;
+    case kTabPrev: tab_ = (tab_ + 2) % 3; return;
+    case kTabNext: tab_ = (tab_ + 1) % 3; return;
     case kLeft: Change(-1); break;
     case kRight:
     case kAccept: Change(+1); break;
@@ -336,47 +464,56 @@ class GraphicsMenu final : public rex::ui::ImGuiDialog {
     dl->AddRectFilledMultiColor(P(1520, 624), P(1730, 628), white, clear_white, clear_white,
                                 white);
 
-    // Centred title.
-    TextCentered(dl, font, 32 * k, P(960, 642), white, t.title);
+    // The three tabs (in place of the title): the open one orange and underlined.
+    const char *tab_names[] = {t.tab_display, t.tab_graphics, t.tab_advanced};
+    for (int i = 0; i < 3; ++i) {
+      const float cx = 960 + (i - 1) * 300;
+      const bool on = i == tab_;
+      const ImU32 tc = on ? orange : IM_COL32(150, 150, 154, 255);
+      TextCentered(dl, font, 32 * k, P(cx, 638), tc, tab_names[i]);
+      if (on)
+        dl->AddRectFilled(P(cx - 110, 676), P(cx + 110, 679), orange);
+    }
 
     // Rows.
     const ImU32 red = IM_COL32(214, 22, 32, 255);
-    float y = 690;
-    for (int i = 0; i < int(settings_.size()); ++i) {
-      const Setting &s = settings_[i];
-      const bool sel = i == selected_;
+    float y = 692;
+    for (int i = 0; i < int(rows.size()); ++i) {
+      const Setting &s = settings_[rows[i]];
+      const bool sel = i == selected;
       const ImU32 col = sel ? red : white;
-      Text(dl, font, 40 * k, P(295, y), col, t.*s.label);
+      Text(dl, font, 38 * k, P(295, y), col, t.*s.label);
       std::string value = s.values[s.index];
       if (s.next_start)
         value += " *";
-      TextCentered(dl, font, 40 * k, P(1380, y), col, value.c_str());
+      TextCentered(dl, font, 38 * k, P(1380, y), col, value.c_str());
       if (sel) {
         // Red arrows either side of the value.
-        const float cy = (y + 24) * k;
+        const float cy = (y + 22) * k;
         dl->AddTriangleFilled(ImVec2(ox + 1184 * k, cy), ImVec2(ox + 1204 * k, cy - 11 * k),
                               ImVec2(ox + 1204 * k, cy + 11 * k), red);
         dl->AddTriangleFilled(ImVec2(ox + 1576 * k, cy), ImVec2(ox + 1556 * k, cy - 11 * k),
                               ImVec2(ox + 1556 * k, cy + 11 * k), red);
       }
       // Separator; the chosen row's is red.
-      dl->AddRectFilled(P(240, y + 46), P(1665, y + 48), sel ? red : IM_COL32(70, 70, 74, 255));
-      y += 48;
+      dl->AddRectFilled(P(240, y + 42), P(1665, y + 44), sel ? red : IM_COL32(70, 70, 74, 255));
+      y += 44;
     }
 
     // Note for the chosen row (next-start setting, experimental option).
-    const Setting &cur = settings_[selected_];
+    const Setting &cur = settings_[rows[selected]];
     const char *note = cur.note ? t.*cur.note : (cur.next_start ? t.next_start : nullptr);
     if (note)
-      Text(dl, font, 26 * k, P(295, y + 16), IM_COL32(240, 196, 64, 255),
+      Text(dl, font, 26 * k, P(295, y + 12), IM_COL32(240, 196, 64, 255),
            (std::string(cur.next_start ? "* " : "") + note).c_str());
 
     // Button prompts, like the game's: coloured round buttons and yellow words.
     const ImU32 yellow = IM_COL32(242, 200, 72, 255);
-    Button(dl, font, k, P(228, 978), IM_COL32(60, 170, 50, 255), "A");
-    Text(dl, font, 30 * k, P(252, 960), yellow, t.change);
-    Button(dl, font, k, P(482, 978), IM_COL32(210, 30, 40, 255), "B");
-    Text(dl, font, 30 * k, P(506, 960), yellow, t.back);
+    Button(dl, font, k, P(228, 1038), IM_COL32(60, 170, 50, 255), "A");
+    Text(dl, font, 30 * k, P(252, 1020), yellow, t.change);
+    Button(dl, font, k, P(482, 1038), IM_COL32(210, 30, 40, 255), "B");
+    Text(dl, font, 30 * k, P(506, 1020), yellow, t.back);
+    Text(dl, font, 30 * k, P(700, 1020), yellow, (std::string("LB / RB  ") + t.tabs).c_str());
   }
 
   // Italic text: the glyphs' vertices are sheared, as the menus' font slants.
@@ -403,8 +540,18 @@ class GraphicsMenu final : public rex::ui::ImGuiDialog {
   }
 
  private:
+  std::vector<int> Rows() const {
+    std::vector<int> r;
+    for (int i = 0; i < int(settings_.size()); ++i)
+      if (settings_[i].tab == tab_)
+        r.push_back(i);
+    return r;
+  }
+
   void Change(int delta) {
-    Setting &s = settings_[selected_];
+    const std::vector<int> rows = Rows();
+    Setting &s = settings_[rows[std::min(selected_[tab_], int(rows.size()) - 1)]];
+    s.touched = true;
     const int n = int(s.values.size());
     s.index = (s.index + delta + n) % n;
     s.apply(s.index);
@@ -420,7 +567,8 @@ class GraphicsMenu final : public rex::ui::ImGuiDialog {
       return;
     }
     for (const Setting &s : settings_)
-      s.save(f, s.index);
+      if (s.touched)
+        s.save(f, s.index);
     if (f.Save())
       BD_INFO("[graphics] settings saved to {}", rex::path_to_utf8(g_toml_path));
     else
@@ -428,7 +576,8 @@ class GraphicsMenu final : public rex::ui::ImGuiDialog {
   }
 
   std::vector<Setting> settings_;
-  int selected_ = 0;
+  int selected_[3] = {};
+  int tab_ = 0;
   bool dirty_ = false;
   InputReader input_;
 };
