@@ -16,7 +16,8 @@
 // sub_82AC59C8(info, dds, size) is the game's DDS loader (it checks the "DDS " magic): the hook
 // recognises an Xbox texture of the list and copies the PS3 data over it in guest memory before the
 // game converts it. Fonts load at startup, prompts at each match: with wwe12_button_icons = auto,
-// plug the PlayStation controller in before starting the game.
+// plug the PlayStation controller in before starting the game (the pad list comes from the SDK's
+// input system, Wwe12ButtonsSetInput).
 
 #include <cstdint>
 #include <cstring>
@@ -29,7 +30,7 @@
 #define NOMINMAX
 #include <windows.h>
 
-#include <SDL3/SDL_gamepad.h>
+#include <rex/input/input_system.h>
 
 
 #include <rex/cvar.h>
@@ -97,23 +98,28 @@ const Table &PlayStationTable() {
   return table;
 }
 
+// Pads come from the SDK's input system: wwe12.exe has its own static copy of SDL, which never
+// opened the gamepad subsystem and so sees no pad (the cause of auto mode showing Xbox icons with
+// a DualSense plugged in, 0.8). A Sony pad has USB vendor 054C, which the SDL GUID string holds
+// at characters 8-11 ("4c05", little-endian); the name is checked too.
+rex::input::InputSystem *g_input = nullptr;
+
 bool PlayStationControllerPluggedIn() {
-  int count = 0;
-  SDL_JoystickID *ids = SDL_GetGamepads(&count);
-  bool found = false;
-  for (int i = 0; ids && i < count && !found; ++i) {
-    switch (SDL_GetGamepadTypeForID(ids[i])) {
-    case SDL_GAMEPAD_TYPE_PS3:
-    case SDL_GAMEPAD_TYPE_PS4:
-    case SDL_GAMEPAD_TYPE_PS5:
-      found = true;
-      break;
-    default:
-      break;
-    }
+  if (!g_input)
+    return false;
+  for (const rex::input::DeviceInfo &d : g_input->GetDevices()) {
+    if (d.synthetic)
+      continue;
+    const bool sony_vendor = d.guid.size() >= 12 && d.guid.compare(8, 4, "4c05") == 0;
+    const bool sony_name = d.name.find("DualSense") != std::string::npos ||
+                           d.name.find("DualShock") != std::string::npos ||
+                           d.name.find("PS3") != std::string::npos ||
+                           d.name.find("PS4") != std::string::npos ||
+                           d.name.find("PS5") != std::string::npos;
+    if (sony_vendor || sony_name)
+      return true;
   }
-  SDL_free(ids);
-  return found;
+  return false;
 }
 
 bool WantPlayStationIcons() {
@@ -168,6 +174,8 @@ void MaybeSwapToPlayStation(uint32_t dds, uint32_t size) {
 }
 
 }  // namespace
+
+void Wwe12ButtonsSetInput(rex::input::InputSystem *input) { g_input = input; }
 
 REX_EXTERN(__imp__sub_82AC59C8);
 extern "C" REX_FUNC(sub_82AC59C8) {

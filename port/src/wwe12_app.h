@@ -43,6 +43,8 @@ REXCVAR_DECLARE(bool, wwe12_precise_timer);
 
 // Fenêtre d'erreur quand Vulkan ne démarre pas (native/wwe12_vulkan_error.cpp).
 void Wwe12ShowVulkanError();
+namespace rex::input { class InputSystem; }
+void Wwe12ButtonsSetInput(rex::input::InputSystem* input);  // wwe12_buttons.cpp
 
 // Installe les DLC posés dans le dossier « dlc » à côté de l'exe (wwe12_dlc.cpp).
 void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
@@ -217,6 +219,7 @@ class Wwe12App : public rex::ReXApp {
     if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
       input->SetActiveCallback([] { return !Wwe12GraphicsMenuIsOpen(); });
       Wwe12GraphicsMenuSetInput(input);
+      Wwe12ButtonsSetInput(input);
     }
   }
 

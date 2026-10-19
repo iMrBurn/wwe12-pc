@@ -375,7 +375,7 @@ La 1.0 (stabilité) passe avant ; la cartographie peut se faire en parallèle.
   (cases de boutons des planches, images d'invites entières, appariées par position dans le fichier ;
   SELECT/START/L2/R2, plus larges sur PS3, réduits à la largeur des cases Xbox). `native/wwe12_buttons.cpp`
   : crochet du chargeur DDS sub_82AC59C8(info, dds, taille), empreinte FNV-1a du niveau 0, remplacement
-  en mémoire avant conversion ; cvar `wwe12_button_icons` = auto (manette PS3/PS4/PS5 branchée, SDL) /
+  en mémoire avant conversion ; cvar `wwe12_button_icons` = auto (manette Sony branchée, vue par le système d'entrée du SDK : `InputSystem::GetDevices`, patch `rexglue-sdk-pads-list.patch`, vendeur 054C dans le GUID SDL ou nom DualSense/DualShock/PS3-5 ; corrigé le 2026-10-19, vérifié avec une DualSense : l'exe a sa propre copie statique de SDL qui ne voit aucune manette) /
   xbox / playstation (à ajouter aux readmes). Polices chargées au démarrage, invites à chaque match :
   brancher la manette PS avant de lancer. Les tables de caractères des polices (rectangles par code,
   dans le bloc « métriques » après la planche : nombre, codes, puis 16 octets x/y/l/h par code) sont

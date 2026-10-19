@@ -1,0 +1,59 @@
+diff --git a/include/rex/input/input_system.h b/include/rex/input/input_system.h
+index c99f442..74739f1 100644
+--- a/include/rex/input/input_system.h
++++ b/include/rex/input/input_system.h
+@@ -11,6 +11,7 @@
+  */
+ 
+ #include <memory>
++#include <mutex>
+ #include <vector>
+ 
+ #include <rex/input/device_assignment.h>
+@@ -49,6 +50,11 @@ class InputSystem : public system::IInputSystem {
+   X_RESULT SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration);
+   X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags, X_INPUT_KEYSTROKE* out_keystroke);
+ 
++  /// The devices seen at the last refresh (made by the guest's input calls). Safe from any
++  /// thread: the host uses it to know which pads are plugged in (their name and SDL GUID, which
++  /// holds the USB vendor), e.g. to show PlayStation button icons.
++  std::vector<DeviceInfo> GetDevices() const;
++
+  private:
+   /// Re-enumerates every driver and notifies the assignment when the set
+   /// changed.
+@@ -67,6 +73,9 @@ class InputSystem : public system::IInputSystem {
+   // does not renumber pad two.
+   std::vector<DeviceInfo> devices_;
+   std::vector<InputDriver*> device_owners_;
++  // Copy of devices_ for GetDevices(), which may run on another thread.
++  mutable std::mutex devices_snapshot_mutex_;
++  std::vector<DeviceInfo> devices_snapshot_;
+ };
+ 
+ /// Create a default InputSystem with SDL + NOP drivers.
+diff --git a/src/input/input_system.cpp b/src/input/input_system.cpp
+index c71e52f..db98dbd 100644
+--- a/src/input/input_system.cpp
++++ b/src/input/input_system.cpp
+@@ -161,11 +161,20 @@ void InputSystem::RefreshDevices() {
+     device_owners_.push_back(owners[i]);
+   }
+ 
++  if (changed) {
++    std::lock_guard lock(devices_snapshot_mutex_);
++    devices_snapshot_ = devices_;
++  }
+   if (changed && assignment_) {
+     assignment_->OnDevicesChanged(devices_);
+   }
+ }
+ 
++std::vector<DeviceInfo> InputSystem::GetDevices() const {
++  std::lock_guard lock(devices_snapshot_mutex_);
++  return devices_snapshot_;
++}
++
+ InputDriver* InputSystem::DriverForDevice(DeviceId id) {
+   for (size_t i = 0; i < devices_.size(); i++) {
+     if (devices_[i].id == id) {
