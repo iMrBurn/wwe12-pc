@@ -44,8 +44,17 @@
 // people it renders into 64x64 textures at load (vertex shader F578E8C06A67CD09), and the front
 // rows as 3D people (vertex shaders B2F2C29A78FFD857 and 826B5DD16C1147DC, pixel shader
 // 4DC2A77541B851D7: 96 draws). Off skips all of them: empty stands, a lot less CPU and GPU work.
+bool Wwe12BeltProbe(u32 device_guest, u64 vs_hash, u32 count, u32 start);  // dev probe
+
 REXCVAR_DEFINE_BOOL(wwe12_crowd, true, "WWE12",
                     "Draw the crowd. Off = empty stands, much faster on small PCs.");
+
+// Graphics option (0.9): shadows off. WWE '12 renders its shadow map as an R32_FLOAT colour target
+// with a depth buffer (1120x1120 in a match: 60 draws per frame, capture 2026-10-17); no other pass
+// pairs that format with a depth buffer. Off skips those draws: the map keeps its clear (no
+// shadow) and the CPU and GPU save the pass.
+REXCVAR_DEFINE_BOOL(wwe12_shadows, true, "WWE12",
+                    "Draw the shadows. Off = no shadows, faster on small PCs.");
 
 REXCVAR_DEFINE_BOOL(svr_edge_blur, false, "SvR",
                     "SvR 2010's own edge-blur filter (the console's anti-aliasing): off keeps the image "
@@ -182,6 +191,14 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
   // jaggies at 720p; here its 1-pixel 720p offsets are 2+ pixels at the internal resolution, so it
   // blurs hair, tattoos, ropes and the crowd while the supersampling already smooths edges. Skipping
   // the draw leaves the scene as rendered (the pass only rewrites the scene with a blurred copy).
+  if (s.vertex_shader && s.vertex_shader->shaderCacheEntry &&
+      Wwe12BeltProbe(device_guest, s.vertex_shader->shaderCacheEntry->hash, args.vertexOrIndexCount,
+                     args.indexed ? args.startIndex : args.startVertex))
+    return;
+  if (!REXCVAR_GET(wwe12_shadows) &&
+      s.pipelineState.renderTargetFormat == plume::RenderFormat::R32_FLOAT &&
+      s.pipelineState.depthStencilFormat != plume::RenderFormat::UNKNOWN)
+    return;
   if (!REXCVAR_GET(wwe12_crowd) && s.vertex_shader && s.vertex_shader->shaderCacheEntry) {
     const u64 vs = s.vertex_shader->shaderCacheEntry->hash;
     if (vs == 0x5B5BA6E0BD55C5A2ull || vs == 0x89B81CEC1095FF3Bull || vs == 0xF578E8C06A67CD09ull ||

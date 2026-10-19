@@ -32,6 +32,38 @@
 #include "gpu/pipeline/pipeline_cache.h"
 #include "gpu/pipeline/pso_recorder.h"
 
+#include <rex/cvar.h>
+
+#include "gpu/resources.h"
+#include "gpu/shaders/shader_cache.h"
+
+#if defined(SVR_NATIVE_RENDERER)
+// Graphics option (0.9): depth of field off. The blur is mixed in by the final composite pixel
+// shaders (16 of them, one per scene type: also bloom, star and the fade), which lerp the sharp
+// scene towards the bokeh one by a factor built from g_f4DOFParam (c20) and g_f4DOFParam2 (c21).
+// With both zero the factor is 0 in every one of them (checked in the recompiled HLSL): the picture
+// stays sharp and everything else the shader does is kept.
+REXCVAR_DEFINE_BOOL(wwe12_dof, true, "WWE12",
+                    "Depth of field (the background blur in entrances and replays). Off = always sharp.");
+
+namespace {
+bool IsDepthOfFieldShader(const bd::gpu::GuestShader *ps) {
+  if (!ps || !ps->shaderCacheEntry)
+    return false;
+  static constexpr u64 kComposites[] = {
+      0x0FEC5CECDBA5810Dull, 0xF60E5E4F317563D5ull, 0x9EE429D2C805B600ull, 0xA2D494A6044918DCull,
+      0x200B458668E107EFull, 0x927957AA999DA68Eull, 0xA156ED8CA3079353ull, 0xA3D5790C4FA7D782ull,
+      0x1B0935BE876A3DA1ull, 0x551EAADB825246D5ull, 0x42A8F6505CC9B6D9ull, 0xF181B25EF875B4EEull,
+      0x330EFE242327CDB4ull, 0xB1FF80392ED034E5ull, 0x88BCA1C21E6C4F26ull, 0x9AB82F4C09F85285ull};
+  const u64 h = ps->shaderCacheEntry->hash;
+  for (u64 k : kComposites)
+    if (k == h)
+      return true;
+  return false;
+}
+}  // namespace
+#endif
+
 namespace bd::gpu {
 namespace {
 
@@ -459,6 +491,10 @@ bool Video::FlushRenderStateLocked(u32 device_guest) {
 
     if (s.dirtyStates.pixelShaderConstants) {
       auto ps_alloc = UploadPixelShaderConstants(device_guest);
+#if defined(SVR_NATIVE_RENDERER)
+      if (ps_alloc.size && !REXCVAR_GET(wwe12_dof) && IsDepthOfFieldShader(s.pixel_shader))
+        std::memset(ps_alloc.memory + 20 * 16, 0, 2 * 16);  // g_f4DOFParam, g_f4DOFParam2
+#endif
       if (ps_alloc.size) {
 #if defined(REBLUE_D3D12)
         s.command_list->setGraphicsRootDescriptor(ps_alloc.ref, 1);
