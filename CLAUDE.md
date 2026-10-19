@@ -167,11 +167,11 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
 | 1 | **Musiques perso** (vedette de la 0.9, très demandée) : choisir une musique (mp3/ogg/wav…) pour les catcheurs créés, entrées comprises | Gameplay (+ Launcher pour l'écran de choix) | **fait** (2026-10-19 : mp3/m4a/aac/wma/wav/flac du dossier `music` à côté de l'exe, choisis dans le jeu via « créer une entrée » → lecture utilisateur ; entrée → charge de match → replay → cérémonie de victoire validés en continu ; patchs `rexglue-sdk-music-perso.patch` et `rexglue-sdk-audio-flow.patch`. ogg non lu pour l'instant (Media Foundation) : à revoir côté launcher) |
 | 2 | Create a Story : taper le texte des cinématiques au clavier (aussi noms de CAW, d'arènes…) | Gameplay | à faire |
 | 3 | Turbo des chargements à 4 fils (interblocage), puis activé par défaut | Gameplay + Rendu | à faire |
-| 4 | Gels : analyser les hang_trace des joueurs en 0.8 (carte `dist/symbols-v0.8.0-beta`) | Rendu | à faire |
-| 5 | Pavés Intel/AMD (#7, #11, #13) et yeux blancs AMD (#12) : suivre les retours 0.8 | Rendu | à faire |
+| 4 | Gels : analyser les hang_trace des joueurs en 0.8 (carte `dist/symbols-v0.8.0-beta`). Piste 2026-10-19 : **#11 gel isolé sur le modèle de Randy Savage** (trop de sommets ? le même modèle gelait le portage SVR 2011 de Kaiko) ; hang_trace demandé | Rendu | à faire |
+| 5 | Pavés Intel/AMD (#7, #11, #13) et yeux blancs AMD (#12) : suivre les retours 0.8. 2026-10-19 : **#16 les pavés touchent aussi une RX 7600 moderne en match** → ce n'est pas un bug de vieux GPU ; test `svr_rt_no_compression` envoyé aux joueurs ; #7 : la caméra montre la foule = rien, catcheur = pavés | Rendu | à faire |
 | 6 | Options graphiques restantes : foule (premiers rangs), ombres, profondeur de champ, anticrénelage | Rendu + Launcher | à faire |
 | 7 | Univers : **remise à zéro de l'Univers** dans un menu en jeu, et **VACANT pour les titres qu'aucune émission n'utilise** (comme SvR 2011, demande d'un joueur ; un titre vacant utilisé par une émission n'aurait plus jamais de match, d'où cette limite). Stat tracking façon WWE '13 : plus tard, le jeu ne garde ni victoires ni historique, il faudra les noter nous-mêmes. | Univers | en cours : vider seulement le bloc Univers fait planter à l'entrée de l'Univers ; reste à trouver l'interrupteur « l'Univers existe » (voir docs/univers.md) |
-| 8 | Formulaire de bug GitHub + FAQ | Main | à faire |
+| 8 | Formulaire de bug GitHub + FAQ | Main | **fait** (formulaire `.github/ISSUE_TEMPLATE/bug_report.yml` + `docs/FAQ.md`) |
 | — | DLC manquants (cache) | Main | **fait** (2026-10-18) |
 
 ## Nouvelles pistes (2026-10-19)
