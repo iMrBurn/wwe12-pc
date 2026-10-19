@@ -8,7 +8,7 @@
 // in the menus' colours, and the game gets no input while it is open.
 //
 // Controls: up/down to pick a setting, left/right or A/Enter to change it, B/Escape to go back.
-// LB/RB (or PageUp/PageDown, Tab) switch between the DISPLAY, GRAPHICS and ADVANCED tabs.
+// LB/RB (or PageUp/PageDown) switch between the DISPLAY, GRAPHICS and ADVANCED tabs.
 // Changes apply at once (the internal resolution at the next start) and are saved to wwe12.toml.
 //
 // Disabled with wwe12_graphics_menu = false in wwe12.toml (the manual comes back).
@@ -31,6 +31,8 @@
 #include <windows.h>
 
 #include <imgui.h>
+
+#include <SDL3/SDL_gamepad.h>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -161,6 +163,36 @@ XPad ReadPads() {
     return XInputGetStateFn(nullptr);
   }();
   XPad all;
+  // PlayStation and other pads reach the game through SDL, not XInput: read the ones the input
+  // driver has opened as well (the driver pumps SDL's events).
+  {
+    const auto axis = [](SDL_Gamepad *g, SDL_GamepadAxis a) {
+      return SHORT(std::clamp<int>(SDL_GetGamepadAxis(g, a), -32767, 32767));
+    };
+    int count = 0;
+    SDL_JoystickID *ids = SDL_GetGamepads(&count);
+    for (int i = 0; ids && i < count; ++i) {
+      SDL_Gamepad *g = SDL_GetGamepadFromID(ids[i]);
+      if (!g)
+        continue;
+      const std::pair<SDL_GamepadButton, WORD> kMap[] = {
+          {SDL_GAMEPAD_BUTTON_DPAD_UP, 0x0001},       {SDL_GAMEPAD_BUTTON_DPAD_DOWN, 0x0002},
+          {SDL_GAMEPAD_BUTTON_DPAD_LEFT, 0x0004},     {SDL_GAMEPAD_BUTTON_DPAD_RIGHT, 0x0008},
+          {SDL_GAMEPAD_BUTTON_START, 0x0010},         {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, 0x0100},
+          {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, 0x0200}, {SDL_GAMEPAD_BUTTON_SOUTH, 0x1000},
+          {SDL_GAMEPAD_BUTTON_EAST, 0x2000}};
+      for (const auto &m : kMap)
+        if (SDL_GetGamepadButton(g, m.first))
+          all.buttons |= m.second;
+      const SHORT lx = axis(g, SDL_GAMEPAD_AXIS_LEFTX);
+      const SHORT ly = SHORT(-axis(g, SDL_GAMEPAD_AXIS_LEFTY));  // SDL: down is positive
+      if (std::abs(ly) > std::abs(all.ly))
+        all.ly = ly;
+      if (std::abs(lx) > std::abs(all.lx))
+        all.lx = lx;
+    }
+    SDL_free(ids);
+  }
   if (!get)
     return all;
   struct {
@@ -206,8 +238,7 @@ class InputReader {
                   ImGui::IsKeyDown(ImGuiKey_Escape) || ImGui::IsKeyDown(ImGuiKey_Backspace) ||
                   ImGui::IsKeyDown(ImGuiKey_L);
     held[kTabPrev] = (p.buttons & 0x0100) || ImGui::IsKeyDown(ImGuiKey_PageUp);
-    held[kTabNext] = (p.buttons & 0x0200) || ImGui::IsKeyDown(ImGuiKey_PageDown) ||
-                     ImGui::IsKeyDown(ImGuiKey_Tab);
+    held[kTabNext] = (p.buttons & 0x0200) || ImGui::IsKeyDown(ImGuiKey_PageDown);
     const double now = ImGui::GetTime();
     Action result = kNone;
     for (int a = kUp; a <= kTabNext; ++a) {
