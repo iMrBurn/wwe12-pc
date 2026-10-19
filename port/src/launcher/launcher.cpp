@@ -1212,7 +1212,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   wc.lpszClassName = L"WWE12Launcher";
   RegisterClassExW(&wc);
   const float dpi = ImGui_ImplWin32_GetDpiScaleForMonitor(MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY));
-  const int w = int(1120 * dpi), h = int(700 * dpi);
+  const int w = int(1120 * dpi), h = int(780 * dpi);
   HWND hwnd = CreateWindowW(wc.lpszClassName, L"WWE '12 PC", WS_OVERLAPPEDWINDOW,
                             (GetSystemMetrics(SM_CXSCREEN) - w) / 2,
                             (GetSystemMetrics(SM_CYSCREEN) - h) / 2, w, h, nullptr, nullptr, inst,
