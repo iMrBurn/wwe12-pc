@@ -224,6 +224,8 @@ struct Texts {
       *fps_limit, *no_limit, *fps_limit_hint, *show_fps, *cpu_priority, *prio_normal, *prio_above, *prio_high,
       *prio_hint, *more_graphics, *window_note;
   const char *crowd, *crowd_hint, *msaa, *dof, *shadow_res, *shadow_dist, *edge_blur, *edge_blur_hint;
+  const char *music, *music_text, *open_music, *music_count, *music_unread, *music_volume, *music_volume_hint,
+      *music_empty;
 };
 
 const Texts kEnglish = {
@@ -283,7 +285,13 @@ const Texts kEnglish = {
     "Window mode and size apply the next time you start the game.",
     "Draw the crowd", "Off = empty stands, much lighter on small PCs.", "Anti-aliasing (smooth edges)",
     "Depth of field (blur behind the wrestlers)", "Shadow quality", "Shadow distance",
-    "Edge blur filter", "The console's own anti-aliasing blur; off keeps the picture sharp."};
+    "Edge blur filter", "The console's own anti-aliasing blur; off keeps the picture sharp.",
+    "MUSIC",
+    "Put your own tracks (mp3, m4a, aac, wma, wav, flac) in the music folder. In the game, pick them wherever "
+    "it lets you choose the music of a created wrestler. Track names are cut to 39 characters in the game.",
+    "Open the music folder", "track(s) found", "not read by the game (unsupported format):", "Volume of your tracks",
+    "-20 dB matches the game's own music. Louder songs are lowered to this level. Applies the next time you start the game.",
+    "No track yet: put some files in the music folder."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -347,7 +355,14 @@ const Texts kFrench = {
     "Afficher la foule", "Désactivée = gradins vides, bien plus léger sur les petits PC.",
     "Anticrénelage (bords lissés)", "Profondeur de champ (flou derrière les catcheurs)", "Qualité des ombres",
     "Distance des ombres", "Filtre de flou des bords",
-    "Le flou anticrénelage de la console ; désactivé garde l'image nette."};
+    "Le flou anticrénelage de la console ; désactivé garde l'image nette.",
+    "MUSIQUE",
+    "Mettez vos propres morceaux (mp3, m4a, aac, wma, wav, flac) dans le dossier music. Dans le jeu, choisissez-les "
+    "là où il laisse choisir la musique d'un catcheur créé. Les noms sont coupés à 39 caractères dans le jeu.",
+    "Ouvrir le dossier musique", "morceau(x) trouvé(s)", "non lus par le jeu (format non pris en charge) :",
+    "Volume de vos morceaux",
+    "-20 dB correspond à la musique du jeu. Les morceaux plus forts sont baissés à ce niveau. S'applique au prochain lancement du jeu.",
+    "Aucun morceau : mettez des fichiers dans le dossier musique."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -401,6 +416,7 @@ struct Settings {
   int shadow_res = 4096;      // 512..8192
   int shadow_dist = 2;        // 1..4 (times the console's distance)
   bool edge_blur = false;
+  int music_db = -20;  // xmp_music_level_db, -40..-6
   std::string gpu;
   bool exit_entry = true;
   bool keyboard = true;
@@ -432,6 +448,7 @@ void LoadSettings() {
   g_s.shadow_res = g_toml.GetInt("bd_shadow_dimension", 4096);
   g_s.shadow_dist = std::clamp((int)std::lround(g_toml.GetDouble("bd_shadow_distance", 2.0)), 1, 4);
   g_s.edge_blur = g_toml.GetBool("svr_edge_blur", false);
+  g_s.music_db = std::clamp(g_toml.GetInt("xmp_music_level_db", -20), -40, -6);
   g_s.gpu = g_toml.GetString("svr_gpu_device", "");
   g_s.exit_entry = g_toml.GetBool("wwe12_quit_entry", true);
   g_s.keyboard = g_toml.GetBool("mnk_mode", true);
@@ -460,6 +477,7 @@ void SaveSettings() {
   g_toml.SetInt("bd_shadow_dimension", g_s.shadow_res);
   g_toml.SetDouble("bd_shadow_distance", g_s.shadow_dist);
   g_toml.SetBool("svr_edge_blur", g_s.edge_blur);
+  g_toml.SetInt("xmp_music_level_db", g_s.music_db);
   g_toml.SetString("svr_gpu_device", g_s.gpu);
   g_toml.SetBool("wwe12_quit_entry", g_s.exit_entry);
   g_toml.SetBool("mnk_mode", g_s.keyboard);
@@ -552,7 +570,7 @@ bool BigButton(const char *label, ImVec2 size, ImU32 fill, ImU32 text_col) {
 
 // ---------------------------------------------------------------------------------------------
 // Pages
-enum Page { kPlay, kSettings, kControls, kMods, kSaves, kAbout };
+enum Page { kPlay, kSettings, kControls, kMods, kSaves, kMusic, kAbout };
 Page g_page = kPlay;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
@@ -960,6 +978,56 @@ void PageMods() {
   ImGui::EndChild();
 }
 
+void PageMusic() {
+  const Texts &t = T();
+  Title(t.music);
+  ImGui::TextWrapped("%s", t.music_text);
+  ImGui::Dummy(ImVec2(0, 8));
+  // Same folder as the game: xmp_music_folder, or "music" next to the exe when empty.
+  const std::string custom = g_toml.GetString("xmp_music_folder", "");
+  const fs::path dir = custom.empty() ? ExeDir() / "music" : fs::path(custom);
+  std::vector<std::string> tracks, unread;
+  std::error_code ec;
+  for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+    if (!it->is_regular_file(ec))
+      continue;
+    std::string ext = it->path().extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    const std::string name = it->path().filename().string();
+    if (ext == ".mp3" || ext == ".m4a" || ext == ".aac" || ext == ".wma" || ext == ".wav" || ext == ".flac")
+      tracks.push_back(name);
+    else if (ext == ".ogg" || ext == ".opus" || ext == ".mid" || ext == ".midi")
+      unread.push_back(name);
+  }
+  std::sort(tracks.begin(), tracks.end());
+  if (ImGui::Button(t.open_music)) {
+    fs::create_directories(dir, ec);
+    OpenFolder(dir);
+  }
+  ImGui::SameLine();
+  ImGui::TextDisabled("%zu %s", tracks.size(), t.music_count);
+
+  ImGui::Dummy(ImVec2(0, 6));
+  ImGui::SetNextItemWidth(320);
+  if (ImGui::SliderInt(t.music_volume, &g_s.music_db, -40, -6, "%d dB")) {
+    SaveSettings();
+  }
+  ImGui::TextDisabled("%s", t.music_volume_hint);
+  ImGui::Dummy(ImVec2(0, 6));
+
+  if (!unread.empty()) {
+    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%zu %s", unread.size(), t.music_unread);
+    for (const auto &f : unread)
+      ImGui::BulletText("%s", f.c_str());
+  }
+  ImGui::BeginChild("musiclist", ImVec2(0, 0), ImGuiChildFlags_Borders);
+  if (tracks.empty())
+    ImGui::TextDisabled("%s", t.music_empty);
+  for (const auto &f : tracks)
+    ImGui::TextUnformatted(f.c_str());
+  ImGui::EndChild();
+}
+
 void PageSaves() {
   Title(T().saves);
   g_saves.Draw(g_s.language == 4);
@@ -1059,8 +1127,8 @@ void DrawUi() {
   }
   ImGui::Dummy(ImVec2(0, 14));
   const Texts &t = T();
-  const char *names[] = {t.play, t.settings, t.controls, t.mods, t.saves, t.about};
-  for (int i = 0; i < 6; ++i) {
+  const char *names[] = {t.play, t.settings, t.controls, t.mods, t.saves, t.music, t.about};
+  for (int i = 0; i < 7; ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
     if (BigButton(names[i], ImVec2(kSide - 32, 52), sel ? kGold : IM_COL32(28, 28, 32, 255),
@@ -1078,6 +1146,7 @@ void DrawUi() {
   case kControls: PageControls(); break;
   case kMods: PageMods(); break;
   case kSaves: PageSaves(); break;
+  case kMusic: PageMusic(); break;
   case kAbout: PageAbout(); break;
   }
   ImGui::EndChild();
