@@ -5,6 +5,8 @@
 // the file; the previous file is copied to wwe12.toml.bak once per run.
 #pragma once
 
+#include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -91,6 +93,17 @@ class TomlFile {
       return def;
     }
   }
+  double GetDouble(const std::string &key, double def) const {
+    auto v = Raw(key);
+    if (!v)
+      return def;
+    try {
+      double d = std::stod(*v);
+      return std::isfinite(d) ? d : def;
+    } catch (...) {
+      return def;
+    }
+  }
   std::string GetString(const std::string &key, const std::string &def) const {
     auto v = Raw(key);
     if (!v || v->size() < 2 || v->front() != '"' || v->back() != '"')
@@ -110,6 +123,11 @@ class TomlFile {
   }
   void SetBool(const std::string &key, bool v) { SetRaw(key, v ? "true" : "false"); }
   void SetInt(const std::string &key, int v) { SetRaw(key, std::to_string(v)); }
+  void SetDouble(const std::string &key, double v) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.2f", v);
+    SetRaw(key, buf);
+  }
   void SetString(const std::string &key, const std::string &v) {
     std::string e;
     for (char c : v) {

@@ -33,6 +33,23 @@ wwe12_60fps = false
 # Sharpness of textures seen at an angle (ring, ramp, crowd): 0 (off), 2, 4, 8 or 16.
 bd_anisotropy = 16
 
+# Anti-aliasing (smooth edges): 0 (off), 2, 4 or 8. Heavier on the graphics card as it grows.
+bd_msaa = 4
+
+# Depth of field (blur behind the wrestlers): 1.0 = the game's own blur, 0.0 = off.
+bd_dof_strength = 1.0
+
+# Shadows: resolution of the sun's shadow map (512, 1024, 2048, 4096 or 8192) and how far they
+# reach (1.0 = the Xbox 360's distance, up to 4.0).
+bd_shadow_dimension = 4096
+bd_shadow_distance = 2.0
+
+# Draw the crowd. false = empty stands, much lighter on small PCs.
+wwe12_crowd = true
+
+# The console's own edge-blur filter (its anti-aliasing). false keeps the picture sharp.
+svr_edge_blur = false
+
 # Vertical sync: true avoids tearing (horizontal cuts in the picture).
 bd_vsync = true
 
