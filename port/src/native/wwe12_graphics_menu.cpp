@@ -50,6 +50,8 @@ REXCVAR_DECLARE(bool, bd_vsync);
 REXCVAR_DECLARE(bool, wwe12_60fps);
 REXCVAR_DECLARE(std::string, wwe12_button_icons);
 REXCVAR_DECLARE(bool, wwe12_crowd);
+REXCVAR_DECLARE(bool, wwe12_shadows);
+REXCVAR_DECLARE(bool, wwe12_dof);
 REXCVAR_DECLARE(int32_t, wwe12_fps_limit);
 REXCVAR_DECLARE(bool, wwe12_show_fps);
 
@@ -97,13 +99,13 @@ constexpr Texts kTexts[] = {
      "60 FPS ENTRANCES", "OFF", "ON", "YES", "NO", "AUTO",
      "APPLIED THE NEXT TIME THE GAME STARTS", "OPTIONS", "CHANGE", "BACK",
      "EXPERIMENTAL: TITLE BELTS CAN MOVE ODDLY",
-     "DISPLAY", "GRAPHICS", "ADVANCED", "ANTI-ALIASING", "SHADOW QUALITY", "SHADOW DISTANCE",
+     "DISPLAY", "GRAPHICS", "ADVANCED", "ANTI-ALIASING", "SHADOWS", "SHADOW DISTANCE",
      "DEPTH OF FIELD", "CROWD", "EDGE BLUR", "FRAME LIMIT", "FPS COUNTER", "NONE", "TABS"},
     {"GRAPHISMES", "R\xC3\x89SOLUTION INTERNE", "FILTRAGE DES TEXTURES", "SYNCHRO VERTICALE",
      "ENTR\xC3\x89" "ES \xC3\x80 60 FPS", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "OUI", "NON",
      "AUTO", "APPLIQU\xC3\x89 AU PROCHAIN LANCEMENT DU JEU", "OPTIONS", "CHANGER", "RETOUR",
      "EXP\xC3\x89RIMENTAL : LES CEINTURES PEUVENT BOUGER BIZARREMENT",
-     "AFFICHAGE", "GRAPHISMES", "AVANC\xC3\x89", "ANTICR\xC3\x89" "NELAGE", "QUALIT\xC3\x89 DES OMBRES",
+     "AFFICHAGE", "GRAPHISMES", "AVANC\xC3\x89", "ANTICR\xC3\x89" "NELAGE", "OMBRES",
      "DISTANCE DES OMBRES", "PROFONDEUR DE CHAMP", "FOULE", "FLOU DES BORDS", "LIMITE D'IMAGES",
      "COMPTEUR FPS", "AUCUNE", "ONGLETS"},
     {"GRAFIK", "INTERNE AUFL\xC3\x96SUNG", "TEXTURFILTERUNG", "VERTIKALE SYNC.",
@@ -111,21 +113,21 @@ constexpr Texts kTexts[] = {
      "WIRD BEIM N\xC3\x84" "CHSTEN SPIELSTART \xC3\x9C" "BERNOMMEN", "OPTIONEN",
      "\xC3\x84NDERN", "ZUR\xC3\x9C" "CK",
      "EXPERIMENTELL: TITELG\xC3\x9CRTEL K\xC3\x96NNEN SICH SELTSAM BEWEGEN",
-     "ANZEIGE", "GRAFIK", "ERWEITERT", "KANTENGL\xC3\x84" "TTUNG", "SCHATTENQUALIT\xC3\x84" "T",
+     "ANZEIGE", "GRAFIK", "ERWEITERT", "KANTENGL\xC3\x84" "TTUNG", "SCHATTEN",
      "SCHATTENDISTANZ", "TIEFENSCH\xC3\x84" "RFE", "PUBLIKUM", "KANTENWEICHZEICHNUNG", "BILDRATENLIMIT",
      "FPS-ANZEIGE", "KEINE", "REITER"},
     {"GR\xC3\x81" "FICOS", "RESOLUCI\xC3\x93N INTERNA", "FILTRADO DE TEXTURAS",
      "SINCRONIZACI\xC3\x93N VERTICAL", "ENTRADAS A 60 FPS", "NO", "S\xC3\x8D", "S\xC3\x8D", "NO",
      "AUTO", "SE APLICA LA PR\xC3\x93XIMA VEZ QUE SE INICIE EL JUEGO", "OPCIONES", "CAMBIAR",
      "VOLVER", "EXPERIMENTAL: LOS CINTURONES PUEDEN MOVERSE DE FORMA EXTRA\xC3\x91" "A",
-     "PANTALLA", "GR\xC3\x81" "FICOS", "AVANZADO", "ANTIALIASING", "CALIDAD DE SOMBRAS",
+     "PANTALLA", "GR\xC3\x81" "FICOS", "AVANZADO", "ANTIALIASING", "SOMBRAS",
      "DISTANCIA DE SOMBRAS", "PROFUNDIDAD DE CAMPO", "P\xC3\x9A" "BLICO", "DESENFOQUE DE BORDES",
      "L\xC3\x8D" "MITE DE FPS", "CONTADOR DE FPS", "NINGUNO", "PESTA\xC3\x91" "AS"},
     {"GRAFICA", "RISOLUZIONE INTERNA", "FILTRO TEXTURE", "SINCRONIA VERTICALE",
      "INGRESSI A 60 FPS", "NO", "S\xC3\x8C", "S\xC3\x8C", "NO", "AUTO",
      "APPLICATO AL PROSSIMO AVVIO DEL GIOCO", "OPZIONI", "CAMBIA", "INDIETRO",
      "SPERIMENTALE: LE CINTURE POSSONO MUOVERSI IN MODO STRANO",
-     "SCHERMO", "GRAFICA", "AVANZATE", "ANTIALIASING", "QUALIT\xC3\x80 OMBRE", "DISTANZA OMBRE",
+     "SCHERMO", "GRAFICA", "AVANZATE", "ANTIALIASING", "OMBRE", "DISTANZA OMBRE",
      "PROFONDIT\xC3\x80 DI CAMPO", "FOLLA", "SFOCATURA BORDI", "LIMITE FPS", "CONTATORE FPS", "NESSUNO",
      "SCHEDE"},
 };
@@ -351,6 +353,24 @@ std::vector<Setting> BuildSettings() {
     c.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_crowd", i ? "true" : "false"); };
     c.save = [](TomlFile &f, int i) { f.SetBool("wwe12_crowd", i != 0); };
     s.push_back(std::move(c));
+
+    Setting sh;
+    sh.label = &Texts::shadow_res;
+    sh.tab = 1;
+    sh.values = {t.no, t.yes};
+    sh.index = REXCVAR_GET(wwe12_shadows) ? 1 : 0;
+    sh.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_shadows", i ? "true" : "false"); };
+    sh.save = [](TomlFile &f, int i) { f.SetBool("wwe12_shadows", i != 0); };
+    s.push_back(std::move(sh));
+
+    Setting d;
+    d.label = &Texts::dof;
+    d.tab = 1;
+    d.values = {t.no, t.yes};
+    d.index = REXCVAR_GET(wwe12_dof) ? 1 : 0;
+    d.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_dof", i ? "true" : "false"); };
+    d.save = [](TomlFile &f, int i) { f.SetBool("wwe12_dof", i != 0); };
+    s.push_back(std::move(d));
   }
   return s;
 }

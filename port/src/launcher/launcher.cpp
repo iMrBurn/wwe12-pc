@@ -285,7 +285,7 @@ const Texts kEnglish = {
     "Graphics options apply the next time you start the game.",
     "Window mode and size apply the next time you start the game.",
     "Draw the crowd", "Off = empty stands, much lighter on small PCs.", "Anti-aliasing (smooth edges)",
-    "Depth of field (blur behind the wrestlers)", "Shadow quality", "Shadow distance",
+    "Depth of field (blur behind the wrestlers)", "Shadows", "Shadow distance",
     "Edge blur filter", "The console's own anti-aliasing blur; off keeps the picture sharp.",
     "MUSIC",
     "Put your own tracks (mp3, m4a, aac, wma, wav, flac) in the music folder. In the game, pick them wherever "
@@ -358,7 +358,7 @@ const Texts kFrench = {
     "Les options graphiques s'appliquent au prochain lancement du jeu.",
     "Le mode et la taille de la fenêtre s'appliquent au prochain lancement du jeu.",
     "Afficher la foule", "Désactivée = gradins vides, bien plus léger sur les petits PC.",
-    "Anticrénelage (bords lissés)", "Profondeur de champ (flou derrière les catcheurs)", "Qualité des ombres",
+    "Anticrénelage (bords lissés)", "Profondeur de champ (flou derrière les catcheurs)", "Ombres",
     "Distance des ombres", "Filtre de flou des bords",
     "Le flou anticrénelage de la console ; désactivé garde l'image nette.",
     "MUSIQUE",
@@ -420,6 +420,8 @@ struct Settings {
   bool fps60 = false;
   int aniso = 16;
   bool crowd = true;
+  bool shadows = true;
+  bool dof = true;  // depth of field
   int icons = 0;       // wwe12_button_icons: 0 auto, 1 xbox, 2 playstation
   int music_db = -20;  // xmp_music_level_db, -40..-6
   std::string gpu;
@@ -448,6 +450,8 @@ void LoadSettings() {
   g_s.fps60 = g_toml.GetBool("wwe12_60fps", false);
   g_s.aniso = g_toml.GetInt("bd_anisotropy", 16);
   g_s.crowd = g_toml.GetBool("wwe12_crowd", true);
+  g_s.shadows = g_toml.GetBool("wwe12_shadows", true);
+  g_s.dof = g_toml.GetBool("wwe12_dof", true);
   {
     const std::string ic = g_toml.GetString("wwe12_button_icons", "auto");
     g_s.icons = ic == "xbox" ? 1 : ic == "playstation" ? 2 : 0;
@@ -476,6 +480,8 @@ void SaveSettings() {
   g_toml.SetBool("wwe12_60fps", g_s.fps60);
   g_toml.SetInt("bd_anisotropy", g_s.aniso);
   g_toml.SetBool("wwe12_crowd", g_s.crowd);
+  g_toml.SetBool("wwe12_shadows", g_s.shadows);
+  g_toml.SetBool("wwe12_dof", g_s.dof);
   g_toml.SetString("wwe12_button_icons", g_s.icons == 1 ? "xbox" : g_s.icons == 2 ? "playstation" : "auto");
   g_toml.SetInt("xmp_music_level_db", g_s.music_db);
   g_toml.SetString("svr_gpu_device", g_s.gpu);
@@ -769,6 +775,8 @@ void PageSettings() {
       changed |= ImGui::Checkbox(t.crowd, &g_s.crowd);
       ImGui::SameLine();
       ImGui::TextDisabled("(%s)", t.crowd_hint);
+      changed |= ImGui::Checkbox(t.shadow_res, &g_s.shadows);
+      changed |= ImGui::Checkbox(t.dof, &g_s.dof);
       ImGui::Dummy(ImVec2(0, 8));
       ImGui::TextDisabled("%s", t.more_graphics);
       ImGui::EndTabItem();
@@ -1024,7 +1032,7 @@ std::string BuildDiagnostics() {
   r += "Settings:";
   for (const char *key : {"user_language", "svr_render_scale", "fullscreen", "bd_vsync", "bd_anisotropy",
                           "wwe12_60fps", "svr_gpu_device", "wwe12_quit_entry", "wwe12_graphics_menu",
-                          "mnk_mode", "wwe12_crowd"}) {
+                          "mnk_mode", "wwe12_crowd", "wwe12_shadows", "wwe12_dof"}) {
     const auto v = g_toml.Raw(key);
     r += std::string(" ") + key + "=" + (v ? *v : "default");
   }

@@ -33,6 +33,11 @@ wwe12_60fps = false
 # Sharpness of textures seen at an angle (ring, ramp, crowd): 0 (off), 2, 4, 8 or 16.
 bd_anisotropy = 16
 
+# Shadows: false = no shadows at all. Depth of field: false = the background always stays sharp.
+# Both apply at once from OPTIONS > GRAPHICS in the game.
+wwe12_shadows = true
+wwe12_dof = true
+
 # Draw the crowd. false = empty stands, much lighter on small PCs.
 wwe12_crowd = true
 
