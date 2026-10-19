@@ -49,12 +49,7 @@ REXCVAR_DECLARE(int32_t, bd_anisotropy);
 REXCVAR_DECLARE(bool, bd_vsync);
 REXCVAR_DECLARE(bool, wwe12_60fps);
 REXCVAR_DECLARE(std::string, wwe12_button_icons);
-REXCVAR_DECLARE(int32_t, bd_msaa);
-REXCVAR_DECLARE(int32_t, bd_shadow_dimension);
-REXCVAR_DECLARE(double, bd_shadow_distance);
-REXCVAR_DECLARE(double, bd_dof_strength);
 REXCVAR_DECLARE(bool, wwe12_crowd);
-REXCVAR_DECLARE(bool, svr_edge_blur);
 REXCVAR_DECLARE(int32_t, wwe12_fps_limit);
 REXCVAR_DECLARE(bool, wwe12_show_fps);
 
@@ -348,72 +343,14 @@ std::vector<Setting> BuildSettings() {
   }
   // Graphics tab.
   {
-    static constexpr int kMsaa[] = {0, 2, 4, 8};
-    Setting m;
-    m.label = &Texts::msaa;
-    m.tab = 1;
-    m.values = {t.off, "2X", "4X", "8X"};
-    m.index = 0;
-    for (int i = 0; i < 4; ++i)
-      if (kMsaa[i] <= REXCVAR_GET(bd_msaa))
-        m.index = i;
-    m.apply = [](int i) { rex::cvar::SetFlagByName("bd_msaa", std::to_string(kMsaa[i])); };
-    m.save = [](TomlFile &f, int i) { f.SetInt("bd_msaa", kMsaa[i]); };
-    s.push_back(std::move(m));
-
-    static constexpr int kRes[] = {512, 1024, 2048, 4096, 8192};
-    Setting sr;
-    sr.label = &Texts::shadow_res;
-    sr.tab = 1;
-    sr.values = {"512", "1024", "2048", "4096", "8192"};
-    sr.index = 3;
-    for (int i = 0; i < 5; ++i)
-      if (kRes[i] == REXCVAR_GET(bd_shadow_dimension))
-        sr.index = i;
-    sr.apply = [](int i) { rex::cvar::SetFlagByName("bd_shadow_dimension", std::to_string(kRes[i])); };
-    sr.save = [](TomlFile &f, int i) { f.SetInt("bd_shadow_dimension", kRes[i]); };
-    s.push_back(std::move(sr));
-
-    Setting sd;
-    sd.label = &Texts::shadow_dist;
-    sd.tab = 1;
-    sd.values = {"1X", "2X", "3X", "4X"};
-    sd.index = std::clamp(int(std::lround(REXCVAR_GET(bd_shadow_distance))), 1, 4) - 1;
-    sd.apply = [](int i) { rex::cvar::SetFlagByName("bd_shadow_distance", std::to_string(i + 1) + ".0"); };
-    sd.save = [](TomlFile &f, int i) { f.SetDouble("bd_shadow_distance", i + 1); };
-    s.push_back(std::move(sd));
-
-    Setting d;
-    d.label = &Texts::dof;
-    d.tab = 1;
-    d.values = {"0%", "25%", "50%", "75%", "100%"};
-    d.index = std::clamp(int(std::lround(REXCVAR_GET(bd_dof_strength) * 4.0)), 0, 4);
-    d.apply = [](int i) {
-      static const char *kV[] = {"0.0", "0.25", "0.5", "0.75", "1.0"};
-      rex::cvar::SetFlagByName("bd_dof_strength", kV[i]);
-    };
-    d.save = [](TomlFile &f, int i) { f.SetDouble("bd_dof_strength", i / 4.0); };
-    s.push_back(std::move(d));
-
     Setting c;
     c.label = &Texts::crowd;
-    c.tab = 2;
+    c.tab = 1;
     c.values = {t.no, t.yes};
     c.index = REXCVAR_GET(wwe12_crowd) ? 1 : 0;
     c.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_crowd", i ? "true" : "false"); };
     c.save = [](TomlFile &f, int i) { f.SetBool("wwe12_crowd", i != 0); };
     s.push_back(std::move(c));
-  }
-  // Advanced tab.
-  {
-    Setting e;
-    e.label = &Texts::edge_blur;
-    e.tab = 2;
-    e.values = {t.no, t.yes};
-    e.index = REXCVAR_GET(svr_edge_blur) ? 1 : 0;
-    e.apply = [](int i) { rex::cvar::SetFlagByName("svr_edge_blur", i ? "true" : "false"); };
-    e.save = [](TomlFile &f, int i) { f.SetBool("svr_edge_blur", i != 0); };
-    s.push_back(std::move(e));
   }
   return s;
 }

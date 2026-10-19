@@ -420,11 +420,6 @@ struct Settings {
   bool fps60 = false;
   int aniso = 16;
   bool crowd = true;
-  int msaa = 4;               // 0 off, 2, 4, 8
-  int dof_percent = 100;      // depth of field strength, 0..100
-  int shadow_res = 4096;      // 512..8192
-  int shadow_dist = 2;        // 1..4 (times the console's distance)
-  bool edge_blur = false;
   int icons = 0;       // wwe12_button_icons: 0 auto, 1 xbox, 2 playstation
   int music_db = -20;  // xmp_music_level_db, -40..-6
   std::string gpu;
@@ -453,11 +448,6 @@ void LoadSettings() {
   g_s.fps60 = g_toml.GetBool("wwe12_60fps", false);
   g_s.aniso = g_toml.GetInt("bd_anisotropy", 16);
   g_s.crowd = g_toml.GetBool("wwe12_crowd", true);
-  g_s.msaa = g_toml.GetInt("bd_msaa", 4);
-  g_s.dof_percent = std::clamp((int)std::lround(g_toml.GetDouble("bd_dof_strength", 1.0) * 100.0), 0, 100);
-  g_s.shadow_res = g_toml.GetInt("bd_shadow_dimension", 4096);
-  g_s.shadow_dist = std::clamp((int)std::lround(g_toml.GetDouble("bd_shadow_distance", 2.0)), 1, 4);
-  g_s.edge_blur = g_toml.GetBool("svr_edge_blur", false);
   {
     const std::string ic = g_toml.GetString("wwe12_button_icons", "auto");
     g_s.icons = ic == "xbox" ? 1 : ic == "playstation" ? 2 : 0;
@@ -486,11 +476,6 @@ void SaveSettings() {
   g_toml.SetBool("wwe12_60fps", g_s.fps60);
   g_toml.SetInt("bd_anisotropy", g_s.aniso);
   g_toml.SetBool("wwe12_crowd", g_s.crowd);
-  g_toml.SetInt("bd_msaa", g_s.msaa);
-  g_toml.SetDouble("bd_dof_strength", g_s.dof_percent / 100.0);
-  g_toml.SetInt("bd_shadow_dimension", g_s.shadow_res);
-  g_toml.SetDouble("bd_shadow_distance", g_s.shadow_dist);
-  g_toml.SetBool("svr_edge_blur", g_s.edge_blur);
   g_toml.SetString("wwe12_button_icons", g_s.icons == 1 ? "xbox" : g_s.icons == 2 ? "playstation" : "auto");
   g_toml.SetInt("xmp_music_level_db", g_s.music_db);
   g_toml.SetString("svr_gpu_device", g_s.gpu);
@@ -781,44 +766,9 @@ void PageSettings() {
         g_s.aniso = kAniso[ai];
         changed = true;
       }
-      {
-        static const int kMsaa[] = {0, 2, 4, 8};
-        int mi = 2;
-        for (int i = 0; i < 4; ++i)
-          if (kMsaa[i] == g_s.msaa)
-            mi = i;
-        const char *msaa_names[] = {t.off, "2x", "4x", "8x"};
-        if (ImGui::Combo(t.msaa, &mi, msaa_names, 4)) {
-          g_s.msaa = kMsaa[mi];
-          changed = true;
-        }
-
-        static const int kRes[] = {512, 1024, 2048, 4096, 8192};
-        int ri = 3;
-        for (int i = 0; i < 5; ++i)
-          if (kRes[i] == g_s.shadow_res)
-            ri = i;
-        const char *res_names[] = {"512", "1024", "2048", "4096", "8192"};
-        if (ImGui::Combo(t.shadow_res, &ri, res_names, 5)) {
-          g_s.shadow_res = kRes[ri];
-          changed = true;
-        }
-
-        int di = g_s.shadow_dist - 1;
-        const char *dist_names[] = {"1x", "2x", "3x", "4x"};
-        if (ImGui::Combo(t.shadow_dist, &di, dist_names, 4)) {
-          g_s.shadow_dist = di + 1;
-          changed = true;
-        }
-
-        changed |= ImGui::SliderInt(t.dof, &g_s.dof_percent, 0, 100, "%d %%");
-        changed |= ImGui::Checkbox(t.crowd, &g_s.crowd);
-        ImGui::SameLine();
-        ImGui::TextDisabled("(%s)", t.crowd_hint);
-        changed |= ImGui::Checkbox(t.edge_blur, &g_s.edge_blur);
-        ImGui::SameLine();
-        ImGui::TextDisabled("(%s)", t.edge_blur_hint);
-      }
+      changed |= ImGui::Checkbox(t.crowd, &g_s.crowd);
+      ImGui::SameLine();
+      ImGui::TextDisabled("(%s)", t.crowd_hint);
       ImGui::Dummy(ImVec2(0, 8));
       ImGui::TextDisabled("%s", t.more_graphics);
       ImGui::EndTabItem();
@@ -1074,8 +1024,7 @@ std::string BuildDiagnostics() {
   r += "Settings:";
   for (const char *key : {"user_language", "svr_render_scale", "fullscreen", "bd_vsync", "bd_anisotropy",
                           "wwe12_60fps", "svr_gpu_device", "wwe12_quit_entry", "wwe12_graphics_menu",
-                          "mnk_mode", "bd_msaa", "bd_shadow_dimension", "bd_shadow_distance", "bd_dof_strength",
-                          "wwe12_crowd", "svr_edge_blur"}) {
+                          "mnk_mode", "wwe12_crowd"}) {
     const auto v = g_toml.Raw(key);
     r += std::string(" ") + key + "=" + (v ? *v : "default");
   }
