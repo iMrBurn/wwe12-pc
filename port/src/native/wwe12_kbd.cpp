@@ -46,6 +46,7 @@ REXCVAR_DEFINE_INT32(wwe12_kbd_max, 84, "WWE12",
 // Le widget actif, capturé par le hook; expire quand l'écran ferme.
 std::atomic<u32> g_widget{0};
 std::atomic<long long> g_last_seen{0};   // ms monotone
+std::atomic<size_t> g_len{0};
 std::atomic<bool> g_mnk_on_hold{false};  // mnk_mode suspendu pendant la grille
 bool g_mnk_prev = false;
 
@@ -84,46 +85,60 @@ void Diag(const std::string &what) {
 
 // -------------------- le hook sur la mise à jour du widget --------------------
 
-// Observateur appelé à chaque mise à jour du widget texte, arguments capturés
-// AVANT l'appel du jeu (ctx.r4 = widget). Toutes les lectures passent par les
-// formes try_ : le hook tourne sur le fil du jeu, pas de dip au hasard.
+// Observateur par frame (arguments capturés AVANT l'appel du jeu).
 //
-// Motif d'un widget « entrée de texte » (vérifié sur le dump guest du radar :
-// les labels, eux, portent leur texte via un pointeur externe et n'ont pas cet
-// auto-pointeur) :
-//   - [+0x30] = pointeur sur lui-même (nœud de la liste de propriétés),
-//   - [+0x50] = le texte, EN LIGNE, lisible, terminé par NUL, <= 0x300.
+// Structure vérifiée sur la mémoire réelle (dump radar) :
+//   - r4 = widget de l'écran (tableau à pas de 240 octets) ;
+//   - [r4+200] = pointeur vers le TEXTE DE TRAVAIL (p) ;
+//   - le texte vit INLINE dans l'objet « entrée » : entry = p - 0x50, avec
+//     [entry+0x4F] = 0x36 (tag propriété string) et [entry+0x30] = entry
+//     (auto-pointeur, saut de vérif sans faille) ;
+//   - les labels de menu (r4 vus en séance : A3EDF170.., texte de tables)
+//     n'ont PAS ce motif : refusés d'office.
 void ObserveTextWidget(PPCContext &args, uint8_t *base) {
   const u32 widget = args.r4.u32;
   if (!bd::mem::ready() || !widget) {
-    Diag("hook r4=" + fmt::format("{}", widget) + " (kernel pas pret)");
+    Diag("hook r4=0 (noyau pas pret)");
     return;
   }
-  const u32 selfp = bd::mem::try_field<u32>(widget, 0x30);
-  bool ok = selfp == widget;
-  if (ok) {
-    if (const auto *t = bd::mem::try_at<char>(widget + 0x50)) {
-      ok = std::strlen(t) <= 0x300;
-      if (ok) {
-        for (int i = 0; i < 16 && t[i]; ++i) {
-          const u8 c = u8(t[i]);
-          if (c < 0x20 || c >= 0x7F) {
-            ok = false;  // des octets non texte : pas une entrée de nom
-            break;
-          }
+  const u32 text_va = bd::mem::try_field<u32>(widget, 200);
+  const u32 entry = text_va - 0x50;
+  bool ok = false;
+  size_t len = 0;
+  if (const auto *t = bd::mem::try_at<char>(text_va)) {
+    len = std::strlen(t);
+    ok = len <= 0x300 && bd::mem::try_field<u32>(entry, 0x30) == entry &&
+         bd::mem::try_field<u8>(entry, 0x4F) == 0x36;
+    if (ok) {
+      for (size_t i = 0; i < len; ++i) {
+        const u8 c = u8(t[i]);
+        if (c < 0x20 || (c >= 0x7F && c < 0xA0)) {
+          ok = false;
+          break;
         }
       }
-    } else {
-      ok = false;
     }
   }
   if (ok) {
+    if (g_widget.exchange(widget) != widget) {
+      // Nouveau widget : une photo complète de ses champs pour l'analyse.
+      std::string h = "accepte " + fmt::format("{:08X} text={:08X} len={}", widget, text_va, len) +
+                      " widget[+0..0x120]:";
+      for (int off = 0; off < 0x120; off += 4) {
+        h += fmt::format(" {:08X}", bd::mem::try_field<u32>(widget, off));
+      }
+      Diag(h);
+      std::string e = "entry " + fmt::format("{:08X}", entry) + " [+0x00..0x60]:";
+      for (int off = 0; off < 0x60; off += 4) {
+        e += fmt::format(" {:08X}", bd::mem::try_field<u32>(entry, off));
+      }
+      Diag(e);
+    }
     g_widget = widget;
+    g_len = len;
     g_last_seen = NowMs();
-    Diag("hook accepte widget=" + fmt::format("{:08X}", widget) +
-         " len=" + fmt::format("{}", std::strlen(bd::mem::try_at<char>(widget + 0x50))));
   } else {
-    Diag("hook r4=" + fmt::format("{:08X}", widget) + " +30=" + fmt::format("{:08X}", selfp) +
+    Diag("hook r4=" + fmt::format("{:08X}", widget) + " text=" + fmt::format("{:08X}", text_va) +
          " refus");
   }
 }
@@ -197,29 +212,33 @@ bool InsertChar(WPARAM vk, bool shift) {
   const char ch = KeyToChar(vk, shift);
   if (!ch) return false;
   const u32 widget = g_widget.load();
-  char *work = bd::mem::try_at<char>(widget + 0x50);
+  const u32 text_va = bd::mem::try_field<u32>(widget, 200);
+  char *work = bd::mem::try_at<char>(text_va);
   if (!work) return false;
   size_t len = 0;
   const size_t pos = InsertPos(work, len);
   const int max = std::clamp(REXCVAR_GET(wwe12_kbd_max), 1, 1023);
   if (pos >= int(max) || len >= 0x300) return false;
 
-  // Décale (y compris le NUL final) puis pose la lettre. Le jeu reconstruit
-  // ce qu'il affiche depuis ce buffer à chaque frame : rien d'autre à faire.
+  // Décale (y compris le NUL final) puis pose la lettre. Le texte de travail
+  // est ce que le jeu relit chaque frame pour tout recalculer.
   std::memmove(work + pos + 1, work + pos, len - pos + 1);
   work[pos] = ch;
+  g_len = len + 1;
   BD_INFO("[kbd] '{}' insere (pos {}, widget {:08X})", std::string(1, ch), pos, widget);
   return true;
 }
 
 bool Backchar() {
   const u32 widget = g_widget.load();
-  char *work = bd::mem::try_at<char>(widget + 0x50);
+  const u32 text_va = bd::mem::try_field<u32>(widget, 200);
+  char *work = bd::mem::try_at<char>(text_va);
   if (!work) return false;
   size_t len = 0;
   const size_t pos = InsertPos(work, len);
   if (pos == 0 || len == 0) return false;
   std::memmove(work + pos - 1, work + pos, len - pos + 1);  // emporte le NUL
+  g_len = len - 1;
   return true;
 }
 
