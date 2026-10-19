@@ -50,6 +50,12 @@ REXCVAR_DECLARE(bool, bd_vsync);
 REXCVAR_DECLARE(bool, wwe12_60fps);
 REXCVAR_DECLARE(std::string, wwe12_button_icons);
 REXCVAR_DECLARE(bool, wwe12_crowd);
+REXCVAR_DECLARE(bool, fullscreen);
+REXCVAR_DECLARE(bool, borderless);
+REXCVAR_DECLARE(int32_t, window_width);
+REXCVAR_DECLARE(int32_t, window_height);
+REXCVAR_DECLARE(int32_t, wwe12_cpu_priority);
+REXCVAR_DECLARE(bool, wwe12_quit_entry);
 REXCVAR_DECLARE(bool, wwe12_shadows);
 REXCVAR_DECLARE(bool, wwe12_dof);
 REXCVAR_DECLARE(int32_t, wwe12_fps_limit);
@@ -93,43 +99,58 @@ struct Texts {
   const char *next_start, *header, *change, *back, *fps60_note;
   const char *tab_display, *tab_graphics, *tab_advanced, *msaa, *shadow_res, *shadow_dist, *dof, *crowd,
       *edge_blur, *frame_limit, *show_fps, *none, *tabs;
+  const char *mode, *mode_full, *mode_window, *mode_border, *win_size, *screen_size, *cpu, *prio_normal,
+      *prio_above, *prio_high, *exit_entry;
 };
 constexpr Texts kTexts[] = {
-    {"GRAPHICS", "INTERNAL RESOLUTION", "TEXTURE FILTERING", "VERTICAL SYNC",
+    {"GRAPHICS", "INTERNAL RESOLUTION", "TEXTURE SHARPNESS", "VERTICAL SYNC",
      "60 FPS ENTRANCES", "OFF", "ON", "YES", "NO", "AUTO",
      "APPLIED THE NEXT TIME THE GAME STARTS", "OPTIONS", "CHANGE", "BACK",
      "EXPERIMENTAL: TITLE BELTS CAN MOVE ODDLY",
      "DISPLAY", "GRAPHICS", "ADVANCED", "ANTI-ALIASING", "SHADOWS", "SHADOW DISTANCE",
-     "DEPTH OF FIELD", "CROWD", "EDGE BLUR", "FRAME LIMIT", "FPS COUNTER", "NONE", "TABS"},
-    {"GRAPHISMES", "R\xC3\x89SOLUTION INTERNE", "FILTRAGE DES TEXTURES", "SYNCHRO VERTICALE",
+     "DEPTH OF FIELD", "CROWD", "EDGE BLUR", "FRAME LIMIT", "FPS COUNTER", "NONE", "TABS",
+     "DISPLAY MODE", "FULL SCREEN", "WINDOW", "BORDERLESS WINDOW", "WINDOW SIZE", "SCREEN SIZE",
+     "CPU PRIORITY", "NORMAL", "ABOVE NORMAL", "HIGH", "EXIT ENTRY IN THE MAIN MENU"},
+    {"GRAPHISMES", "R\xC3\x89SOLUTION INTERNE", "NETTET\xC3\x89 DES TEXTURES", "SYNCHRO VERTICALE",
      "ENTR\xC3\x89" "ES \xC3\x80 60 FPS", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "OUI", "NON",
      "AUTO", "APPLIQU\xC3\x89 AU PROCHAIN LANCEMENT DU JEU", "OPTIONS", "CHANGER", "RETOUR",
      "EXP\xC3\x89RIMENTAL : LES CEINTURES PEUVENT BOUGER BIZARREMENT",
      "AFFICHAGE", "GRAPHISMES", "AVANC\xC3\x89", "ANTICR\xC3\x89" "NELAGE", "OMBRES",
      "DISTANCE DES OMBRES", "PROFONDEUR DE CHAMP", "FOULE", "FLOU DES BORDS", "LIMITE D'IMAGES",
-     "COMPTEUR FPS", "AUCUNE", "ONGLETS"},
-    {"GRAFIK", "INTERNE AUFL\xC3\x96SUNG", "TEXTURFILTERUNG", "VERTIKALE SYNC.",
+     "COMPTEUR FPS", "AUCUNE", "ONGLETS",
+     "MODE D'AFFICHAGE", "PLEIN \xC3\x89" "CRAN", "FEN\xC3\x8A" "TRE", "FEN\xC3\x8A" "TRE SANS BORDURE",
+     "TAILLE DE LA FEN\xC3\x8A" "TRE", "TAILLE DE L'\xC3\x89" "CRAN", "PRIORIT\xC3\x89 DU PROCESSEUR",
+     "NORMALE", "SUP\xC3\x89" "RIEURE", "HAUTE", "ENTR\xC3\x89" "E QUITTER DANS LE MENU PRINCIPAL"},
+    {"GRAFIK", "INTERNE AUFL\xC3\x96SUNG", "TEXTURSCH\xC3\x84RFE", "VERTIKALE SYNC.",
      "EINZ\xC3\x9CGE MIT 60 FPS", "AUS", "AN", "JA", "NEIN", "AUTO",
      "WIRD BEIM N\xC3\x84" "CHSTEN SPIELSTART \xC3\x9C" "BERNOMMEN", "OPTIONEN",
      "\xC3\x84NDERN", "ZUR\xC3\x9C" "CK",
      "EXPERIMENTELL: TITELG\xC3\x9CRTEL K\xC3\x96NNEN SICH SELTSAM BEWEGEN",
      "ANZEIGE", "GRAFIK", "ERWEITERT", "KANTENGL\xC3\x84" "TTUNG", "SCHATTEN",
      "SCHATTENDISTANZ", "TIEFENSCH\xC3\x84" "RFE", "PUBLIKUM", "KANTENWEICHZEICHNUNG", "BILDRATENLIMIT",
-     "FPS-ANZEIGE", "KEINE", "REITER"},
-    {"GR\xC3\x81" "FICOS", "RESOLUCI\xC3\x93N INTERNA", "FILTRADO DE TEXTURAS",
+     "FPS-ANZEIGE", "KEINE", "REITER",
+     "ANZEIGEMODUS", "VOLLBILD", "FENSTER", "RANDLOSES FENSTER", "FENSTERGR\xC3\x96" "SSE",
+     "BILDSCHIRMGR\xC3\x96" "SSE", "CPU-PRIORIT\xC3\x84" "T", "NORMAL", "\xC3\x9C" "BER NORMAL", "HOCH",
+     "EXIT-EINTRAG IM HAUPTMEN\xC3\x9C"},
+    {"GR\xC3\x81" "FICOS", "RESOLUCI\xC3\x93N INTERNA", "NITIDEZ DE TEXTURAS",
      "SINCRONIZACI\xC3\x93N VERTICAL", "ENTRADAS A 60 FPS", "NO", "S\xC3\x8D", "S\xC3\x8D", "NO",
      "AUTO", "SE APLICA LA PR\xC3\x93XIMA VEZ QUE SE INICIE EL JUEGO", "OPCIONES", "CAMBIAR",
      "VOLVER", "EXPERIMENTAL: LOS CINTURONES PUEDEN MOVERSE DE FORMA EXTRA\xC3\x91" "A",
      "PANTALLA", "GR\xC3\x81" "FICOS", "AVANZADO", "ANTIALIASING", "SOMBRAS",
      "DISTANCIA DE SOMBRAS", "PROFUNDIDAD DE CAMPO", "P\xC3\x9A" "BLICO", "DESENFOQUE DE BORDES",
-     "L\xC3\x8D" "MITE DE FPS", "CONTADOR DE FPS", "NINGUNO", "PESTA\xC3\x91" "AS"},
-    {"GRAFICA", "RISOLUZIONE INTERNA", "FILTRO TEXTURE", "SINCRONIA VERTICALE",
+     "L\xC3\x8D" "MITE DE FPS", "CONTADOR DE FPS", "NINGUNO", "PESTA\xC3\x91" "AS",
+     "MODO DE PANTALLA", "PANTALLA COMPLETA", "VENTANA", "VENTANA SIN BORDES", "TAMA\xC3\x91" "O DE VENTANA",
+     "TAMA\xC3\x91" "O DE PANTALLA", "PRIORIDAD DE CPU", "NORMAL", "SUPERIOR", "ALTA",
+     "ENTRADA SALIR EN EL MEN\xC3\x9A" " PRINCIPAL"},
+    {"GRAFICA", "RISOLUZIONE INTERNA", "NITIDEZZA TEXTURE", "SINCRONIA VERTICALE",
      "INGRESSI A 60 FPS", "NO", "S\xC3\x8C", "S\xC3\x8C", "NO", "AUTO",
      "APPLICATO AL PROSSIMO AVVIO DEL GIOCO", "OPZIONI", "CAMBIA", "INDIETRO",
      "SPERIMENTALE: LE CINTURE POSSONO MUOVERSI IN MODO STRANO",
      "SCHERMO", "GRAFICA", "AVANZATE", "ANTIALIASING", "OMBRE", "DISTANZA OMBRE",
      "PROFONDIT\xC3\x80 DI CAMPO", "FOLLA", "SFOCATURA BORDI", "LIMITE FPS", "CONTATORE FPS", "NESSUNO",
-     "SCHEDE"},
+     "SCHEDE",
+     "MODALIT\xC3\x80 SCHERMO", "SCHERMO INTERO", "FINESTRA", "FINESTRA SENZA BORDI", "DIMENSIONE FINESTRA",
+     "DIMENSIONE SCHERMO", "PRIORIT\xC3\x80 CPU", "NORMALE", "SUPERIORE", "ALTA", "VOCE ESCI NEL MENU PRINCIPALE"},
 };
 
 const Texts &T() { return kTexts[CurrentLang()]; }
@@ -336,7 +357,7 @@ std::vector<Setting> BuildSettings() {
     s.push_back(std::move(fl));
     Setting sf;
     sf.label = &Texts::show_fps;
-    sf.tab = 0;
+    sf.tab = 2;
     sf.values = {t.no, t.yes};
     sf.index = REXCVAR_GET(wwe12_show_fps) ? 1 : 0;
     sf.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_show_fps", i ? "true" : "false"); };
@@ -371,6 +392,82 @@ std::vector<Setting> BuildSettings() {
     d.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_dof", i ? "true" : "false"); };
     d.save = [](TomlFile &f, int i) { f.SetBool("wwe12_dof", i != 0); };
     s.push_back(std::move(d));
+  }
+  // Display mode and window size (next start), CPU priority, EXIT entry (next start).
+  {
+    Setting m;
+    m.label = &Texts::mode;
+    m.tab = 0;
+    m.next_start = true;
+    m.values = {t.mode_full, t.mode_window, t.mode_border};
+    m.index = REXCVAR_GET(fullscreen) ? 0 : (REXCVAR_GET(borderless) ? 2 : 1);
+    m.apply = [](int i) {
+      rex::cvar::SetFlagByName("fullscreen", i == 0 ? "true" : "false");
+      rex::cvar::SetFlagByName("borderless", i == 2 ? "true" : "false");
+    };
+    m.save = [](TomlFile &f, int i) {
+      f.SetBool("fullscreen", i == 0);
+      f.SetBool("borderless", i == 2);
+    };
+    s.push_back(std::move(m));
+
+    static const int kSize[6][2] = {{0, 0},       {1280, 720},  {1600, 900}, {1920, 1080},
+                                    {2560, 1440}, {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)}};
+    static const std::string kScreen = std::to_string(kSize[5][0]) + "X" + std::to_string(kSize[5][1]);
+    Setting w;
+    w.label = &Texts::win_size;
+    w.tab = 0;
+    w.next_start = true;
+    w.values = {t.automatic, "1280X720", "1600X900", "1920X1080", "2560X1440",
+                std::string(t.screen_size) + " (" + kScreen + ")"};
+    w.index = 0;
+    for (int i = 0; i < 6; ++i)
+      if (kSize[i][0] == REXCVAR_GET(window_width) && kSize[i][1] == REXCVAR_GET(window_height))
+        w.index = i;
+    w.apply = [](int i) {
+      rex::cvar::SetFlagByName("window_width", std::to_string(kSize[i][0]));
+      rex::cvar::SetFlagByName("window_height", std::to_string(kSize[i][1]));
+    };
+    w.save = [](TomlFile &f, int i) {
+      f.SetInt("window_width", kSize[i][0]);
+      f.SetInt("window_height", kSize[i][1]);
+    };
+    s.push_back(std::move(w));
+
+    Setting c;
+    c.label = &Texts::cpu;
+    c.tab = 2;
+    c.next_start = true;
+    c.values = {t.prio_normal, t.prio_above, t.prio_high};
+    c.index = std::clamp(int(REXCVAR_GET(wwe12_cpu_priority)), 0, 2);
+    c.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_cpu_priority", std::to_string(i)); };
+    c.save = [](TomlFile &f, int i) { f.SetInt("wwe12_cpu_priority", i); };
+    s.push_back(std::move(c));
+
+    Setting e;
+    e.label = &Texts::exit_entry;
+    e.tab = 2;
+    e.next_start = true;
+    e.values = {t.no, t.yes};
+    e.index = REXCVAR_GET(wwe12_quit_entry) ? 1 : 0;
+    e.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_quit_entry", i ? "true" : "false"); };
+    e.save = [](TomlFile &f, int i) { f.SetBool("wwe12_quit_entry", i != 0); };
+    s.push_back(std::move(e));
+  }
+  // Same order as the launcher's tabs.
+  {
+    const std::vector<const char *Texts::*> order = {
+        &Texts::mode,    &Texts::win_size, &Texts::resolution, &Texts::frame_limit, &Texts::vsync,
+        &Texts::aniso,   &Texts::crowd,    &Texts::shadow_res, &Texts::dof,         &Texts::cpu,
+        &Texts::fps60,   &Texts::exit_entry, &Texts::show_fps};
+    const auto rank = [&](const Setting &x) {
+      for (size_t i = 0; i < order.size(); ++i)
+        if (order[i] == x.label)
+          return int(i);
+      return 99;
+    };
+    std::stable_sort(s.begin(), s.end(),
+                     [&](const Setting &a, const Setting &b) { return rank(a) < rank(b); });
   }
   return s;
 }

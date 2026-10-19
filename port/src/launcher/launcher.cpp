@@ -233,7 +233,7 @@ const Texts kEnglish = {
     "PLAY", "SETTINGS", "CONTROLS", "MODS", "SAVES", "ABOUT",
     "PLAY", "Version", "Game files found.",
     "Game files missing: put your WWE '12 (Xbox 360) .iso in the \"game\" folder.",
-    "Language", "Resolution", "Automatic", "Display", "Full screen", "Window", "V-Sync",
+    "Language", "Internal resolution", "Automatic", "Display mode", "Full screen", "Window", "V-Sync",
     "60 fps entrances and cutscenes (experimental)",
     "Title belts on a shoulder can move oddly at 60 fps.",
     "Texture sharpness", "Off", "Graphics card", "Automatic", "EXIT entry in the main menu",
@@ -303,7 +303,7 @@ const Texts kFrench = {
     "JOUER", "Version", "Fichiers du jeu trouvés.",
     "Fichiers du jeu manquants : mettez l'image .iso de votre WWE '12 (Xbox 360) dans le "
     "dossier \"game\".",
-    "Langue", "Résolution", "Automatique", "Affichage", "Plein écran", "Fenêtre", "V-Sync",
+    "Langue", "Résolution interne", "Automatique", "Mode d'affichage", "Plein écran", "Fenêtre", "V-Sync",
     "Entrées et cinématiques à 60 fps (expérimental)",
     "Les ceintures portées à l'épaule peuvent bouger bizarrement à 60 fps.",
     "Netteté des textures", "Désactivée", "Carte graphique", "Automatique",
@@ -757,7 +757,6 @@ void PageSettings() {
 
       ImGui::Dummy(ImVec2(0, 6));
       changed |= ImGui::Checkbox(t.vsync, &g_s.vsync);
-      changed |= ImGui::Checkbox(t.show_fps, &g_s.show_fps);
       ImGui::PushItemWidth(320);
       ImGui::EndTabItem();
     }
@@ -793,6 +792,7 @@ void PageSettings() {
       changed |= ImGui::Checkbox(t.exit_entry, &g_s.exit_entry);
       ImGui::SameLine();
       ImGui::TextDisabled("(%s)", t.exit_hint);
+      changed |= ImGui::Checkbox(t.show_fps, &g_s.show_fps);
       ImGui::EndTabItem();
     }
     ImGui::EndTabBar();
