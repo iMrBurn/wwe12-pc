@@ -5,6 +5,10 @@
 #include <filesystem>
 #include <functional>
 
+namespace rex::input {
+class InputSystem;
+}
+
 struct ImFontAtlas;
 
 namespace rex::ui {
@@ -19,6 +23,9 @@ void Wwe12GraphicsMenuInit(rex::ui::ImGuiDrawer *drawer,
 
 // Adds the screen's font (Impact) to ImGui's atlas; called from the app's font setup.
 void Wwe12GraphicsMenuConfigureFonts(ImFontAtlas *atlas);
+
+// The input system the screen reads the pads from (it works even with the game's input off).
+void Wwe12GraphicsMenuSetInput(rex::input::InputSystem *input);
 
 // True while the screen is open: the game gets no controller or keyboard input meanwhile.
 bool Wwe12GraphicsMenuIsOpen();

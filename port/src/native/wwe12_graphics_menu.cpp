@@ -32,11 +32,9 @@
 
 #include <imgui.h>
 
-#include <SDL3/SDL_events.h>
-#include <SDL3/SDL_gamepad.h>
-
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
+#include <rex/input/input_system.h>
 #include <rex/ui/imgui_dialog.h>
 #include <rex/ui/imgui_drawer.h>
 
@@ -143,6 +141,7 @@ const Texts &T() { return kTexts[CurrentLang()]; }
 rex::ui::ImGuiDrawer *g_drawer = nullptr;
 std::function<void(std::function<void()>)> g_run_in_ui;
 std::filesystem::path g_toml_path;
+rex::input::InputSystem *g_input = nullptr;
 std::atomic<bool> g_open{false};
 ImFont *g_menu_font = nullptr;  // Impact, close to the menus' font (null: ImGui's default)
 
@@ -164,37 +163,21 @@ XPad ReadPads() {
     return XInputGetStateFn(nullptr);
   }();
   XPad all;
-  // PlayStation and other pads reach the game through SDL, not XInput: read the ones the input
-  // driver has opened as well. The driver only pumps SDL's events when the game polls its pads,
-  // which stops while this screen is open, so pump them here (this runs on the UI thread).
-  {
-    SDL_PumpEvents();
-    const auto axis = [](SDL_Gamepad *g, SDL_GamepadAxis a) {
-      return SHORT(std::clamp<int>(SDL_GetGamepadAxis(g, a), -32767, 32767));
-    };
-    int count = 0;
-    SDL_JoystickID *ids = SDL_GetGamepads(&count);
-    for (int i = 0; ids && i < count; ++i) {
-      SDL_Gamepad *g = SDL_GetGamepadFromID(ids[i]);
-      if (!g)
+  // Every pad the game knows (PlayStation and other pads reach it through SDL, not XInput), read
+  // through the input system, which hands out the real state even though the game's own input is
+  // switched off while this screen is open.
+  if (g_input) {
+    for (uint32_t user = 0; user < 4; ++user) {
+      rex::input::X_INPUT_STATE st = {};
+      if (g_input->GetStateIgnoringActive(user, &st) != 0)
         continue;
-      const std::pair<SDL_GamepadButton, WORD> kMap[] = {
-          {SDL_GAMEPAD_BUTTON_DPAD_UP, 0x0001},       {SDL_GAMEPAD_BUTTON_DPAD_DOWN, 0x0002},
-          {SDL_GAMEPAD_BUTTON_DPAD_LEFT, 0x0004},     {SDL_GAMEPAD_BUTTON_DPAD_RIGHT, 0x0008},
-          {SDL_GAMEPAD_BUTTON_START, 0x0010},         {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, 0x0100},
-          {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, 0x0200}, {SDL_GAMEPAD_BUTTON_SOUTH, 0x1000},
-          {SDL_GAMEPAD_BUTTON_EAST, 0x2000}};
-      for (const auto &m : kMap)
-        if (SDL_GetGamepadButton(g, m.first))
-          all.buttons |= m.second;
-      const SHORT lx = axis(g, SDL_GAMEPAD_AXIS_LEFTX);
-      const SHORT ly = SHORT(-axis(g, SDL_GAMEPAD_AXIS_LEFTY));  // SDL: down is positive
+      all.buttons |= WORD(uint16_t(st.gamepad.buttons));
+      const SHORT lx = st.gamepad.thumb_lx, ly = st.gamepad.thumb_ly;
       if (std::abs(ly) > std::abs(all.ly))
         all.ly = ly;
       if (std::abs(lx) > std::abs(all.lx))
         all.lx = lx;
     }
-    SDL_free(ids);
   }
   if (!get)
     return all;
@@ -640,6 +623,8 @@ void Wwe12GraphicsMenuConfigureFonts(ImFontAtlas *atlas) {
   static const ImWchar kRanges[] = {0x0020, 0x00FF, 0};  // Latin-1: the accented capitals
   g_menu_font = atlas->AddFontFromFileTTF(rex::path_to_utf8(path).c_str(), 64.0f, &cfg, kRanges);
 }
+
+void Wwe12GraphicsMenuSetInput(rex::input::InputSystem *input) { g_input = input; }
 
 bool Wwe12GraphicsMenuIsOpen() { return g_open.load(std::memory_order_relaxed); }
 

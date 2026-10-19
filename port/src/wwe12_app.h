@@ -214,8 +214,10 @@ class Wwe12App : public rex::ReXApp {
         [this](std::function<void()> fn) { app_context().CallInUIThread(std::move(fn)); },
         rex::filesystem::GetExecutableFolder() / "wwe12.toml");
     Wwe12DisplayInit(imgui_drawer());  // FPS counter (F2), CPU priority
-    if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system()))
+    if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
       input->SetActiveCallback([] { return !Wwe12GraphicsMenuIsOpen(); });
+      Wwe12GraphicsMenuSetInput(input);
+    }
   }
 
   void OnConfigureFonts(ImFontAtlas* atlas) override { Wwe12GraphicsMenuConfigureFonts(atlas); }
