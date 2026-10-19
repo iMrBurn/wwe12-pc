@@ -76,6 +76,16 @@ Files put in the "mods" folder replace the game's own, at the same path as on th
 (example: mods\movies\titantron\100.bik). See mods\HOW_TO_USE_MODS.txt.
 
 
+Custom music
+------------
+
+Drop your tracks in the "music" folder next to the executable (mp3, m4a, aac, wav, flac;
+not .ogg yet). Wherever the game picks music for created wrestlers, the user's playlist
+lists these tracks: pick one and it plays on the wrestler's entrance, the post-match
+replay and the victory ceremony. Track loudness is automatically brought to a common
+level (xmp_music_level_db). To use another folder: xmp_music_folder (in wwe12.toml).
+
+
 Where is my data?
 -----------------
 

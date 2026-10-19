@@ -75,6 +75,17 @@ Les fichiers posés dans le dossier "mods" remplacent ceux du jeu, au même chem
 le disque (exemple : mods\movies\titantron\100.bik). Voir mods\HOW_TO_USE_MODS.txt.
 
 
+Musiques perso
+--------------
+
+Déposez vos morceaux dans le dossier "music" (mp3, m4a, aac, wav, flac ; pas encore les
+.ogg), à côté de l'exe. Là où le jeu choisit la musique des catcheurs créés, la playlist
+utilisateur liste ces morceaux : choisissez-en un, il joue sur l'entrée du catcheur, le
+replay d'après-match et la cérémonie de victoire. Le volume des morceaux est ajusté
+automatiquement à un volume commun (xmp_music_level_db). Pour un autre dossier :
+xmp_music_folder (dans wwe12.toml).
+
+
 Où sont mes données ?
 ---------------------
 

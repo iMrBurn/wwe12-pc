@@ -1,0 +1,129 @@
+diff --git a/src/audio/audio_system.cpp b/src/audio/audio_system.cpp
+index 7a711a8..f6ea2dc 100644
+--- a/src/audio/audio_system.cpp
++++ b/src/audio/audio_system.cpp
+@@ -140,7 +140,7 @@ void AudioSystem::WorkerThreadMain() {
+       global_lock.unlock();
+ 
+       if (client_callback) {
+-        if (diag_pump_count < 10) {
++        if (diag_pump_count < 10 || (diag_pump_count % 500) == 0) {
+           REXAPU_DEBUG("AudioWorker: dispatching callback {:08X} with arg {:08X} for client {}",
+                        client_callback, client_callback_arg, index);
+         }
+diff --git a/src/audio/sdl/sdl_audio_driver.cpp b/src/audio/sdl/sdl_audio_driver.cpp
+index 20a2cd8..2b8e071 100644
+--- a/src/audio/sdl/sdl_audio_driver.cpp
++++ b/src/audio/sdl/sdl_audio_driver.cpp
+@@ -11,6 +11,9 @@
+ 
+ #include <algorithm>
+ #include <array>
++#include <atomic>
++#include <chrono>
++#include <cmath>
+ #include <cstring>
+ 
+ #include <rex/assert.h>
+@@ -28,6 +31,28 @@ REXCVAR_DEFINE_BOOL(audio_mute, false, "Audio", "Mute audio output");
+ 
+ namespace rex::audio::sdl {
+ 
++namespace {
++
++// Audio flow diagnostics. The mix (SDLCallback) samples the counters once per
++// window and logs one line: how many frames the game pushed (SubmitFrame), how
++// many were consumed from the queue, and how many empty frames were filled
++// with silence. When game sound dies, this tells whether the producer, the
++// pump (audio worker semaphore) or the mix went quiet.
++struct AudioFlow {
++  std::atomic<uint32_t> submits;   // frames pushed by the game
++  std::atomic<uint32_t> consumed;  // frames taken from the queue
++  std::atomic<uint32_t> silences;  // empty-queue frames filled with silence
++  std::atomic<float> peak;         // largest |sample| of the window's consumed frames
++  std::chrono::steady_clock::time_point window_start;  // epoch: first sample immediate
++};
++
++AudioFlow& Flow() {
++  static AudioFlow flow{};
++  return flow;
++}
++
++}  // namespace
++
+ SDLAudioDriver::SDLAudioDriver(memory::Memory* memory, rex::thread::Semaphore* semaphore)
+     : AudioDriver(memory), semaphore_(semaphore) {}
+ 
+@@ -136,6 +161,7 @@ void SDLAudioDriver::SubmitFrame(uint32_t frame_ptr) {
+     frames_queued_.push(output_frame);
+     PROFILE_BUFFER_QUEUE_DEPTH(static_cast<int64_t>(frames_queued_.size()));
+   }
++  Flow().submits.fetch_add(1, std::memory_order_relaxed);
+ }
+ 
+ void SDLAudioDriver::Shutdown() {
+@@ -178,20 +204,30 @@ void SDLAudioDriver::SDLCallback(void* userdata, SDL_AudioStream* stream, int ad
+   const StereoFold fold = GetStereoFold();
+   const SurroundMix mix = GetSurroundMix();
+   const float gain = GetOutputGain();
++  auto& flow = Flow();
+   while (additional_amount > 0) {
+     static uint32_t sdl_callback_count = 0;
+     std::unique_lock<std::mutex> guard(driver->frames_mutex_);
+     if (driver->frames_queued_.empty()) {
+-      if (sdl_callback_count < 10) {
++      if (sdl_callback_count < 10 || (sdl_callback_count % 1000) == 0) {
+         REXAPU_DEBUG("SDLCallback: no frames queued (silence)");
+         sdl_callback_count++;
++      } else {
++        sdl_callback_count++;
+       }
+       std::memset(data, 0, len);
+       if (!SDL_PutAudioStreamData(stream, data, len)) {
+         REXAPU_ERROR("SDL_PutAudioStreamData() failed while filling silence: {}", SDL_GetError());
+         break;
+       }
++      // Count the silence as a played frame: without releasing the semaphore, one empty
++      // queue stops the worker from calling the game's callback and the game never
++      // submits again (dead audio, and its audio thread then hangs the engine's frame
++      // sync, seen as an endless load screen). The next submission repairs the flow.
++      auto ret = driver->semaphore_->Release(1, nullptr);
++      assert_true(ret);
+       additional_amount -= len;
++      flow.silences.fetch_add(1, std::memory_order_relaxed);
+     } else {
+       auto buffer = driver->frames_queued_.front();
+       driver->frames_queued_.pop();
+@@ -222,9 +258,32 @@ void SDLAudioDriver::SDLCallback(void* userdata, SDL_AudioStream* stream, int ad
+       auto ret = driver->semaphore_->Release(1, nullptr);
+       assert_true(ret);
+       additional_amount -= len;
++      flow.consumed.fetch_add(1, std::memory_order_relaxed);
++      // Track the window's peak amplitude: consumed frames with a flat zero
++      // peak mean the game mixes silence itself (engine-side mute).
++      const auto samples = reinterpret_cast<const float*>(data);
++      const auto count = static_cast<size_t>(sample_count);
++      for (size_t i = 0; i < count; ++i) {
++        const float m = std::fabs(samples[i]);
++        if (m > flow.peak.load(std::memory_order_relaxed))
++          flow.peak.store(m, std::memory_order_relaxed);
++      }
+     }
+   }
+   SDL_stack_free(data);
++
++  // One flow line every ~2 s from the mix thread.
++  const auto now = std::chrono::steady_clock::now();
++  const double dt = std::chrono::duration<double>(now - flow.window_start).count();
++  if (dt >= 2.0) {
++    flow.window_start = now;
++    const auto submits = flow.submits.exchange(0, std::memory_order_relaxed);
++    const auto consumed = flow.consumed.exchange(0, std::memory_order_relaxed);
++    const auto silences = flow.silences.exchange(0, std::memory_order_relaxed);
++    const auto peak = flow.peak.exchange(0.0f, std::memory_order_relaxed);
++    REXAPU_DEBUG("APU flow: last {:.1f}s: submits={} consumed={} silence={} peak={:.4f}", dt,
++                 submits, consumed, silences, peak);
++  }
+ }
+ 
+ }  // namespace rex::audio::sdl

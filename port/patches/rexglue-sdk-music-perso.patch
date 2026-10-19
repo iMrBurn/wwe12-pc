@@ -1,0 +1,685 @@
+diff --git a/include/rex/kernel/xam/apps/xmp_app.h b/include/rex/kernel/xam/apps/xmp_app.h
+index d939d62..61f52bd 100644
+--- a/include/rex/kernel/xam/apps/xmp_app.h
++++ b/include/rex/kernel/xam/apps/xmp_app.h
+@@ -97,6 +97,7 @@ class XmpApp : public system::xam::App {
+   void OnStateChanged();
+ 
+   State state_;
++  State notified_state_ = State::kIdle;  // the value of state_ at the last change notification
+   PlaybackClient playback_client_;
+   PlaybackMode playback_mode_;
+   RepeatMode repeat_mode_;
+@@ -104,6 +105,7 @@ class XmpApp : public system::xam::App {
+   float volume_;
+   Playlist* active_playlist_;
+   int active_song_index_;
++  bool user_music_ = false;  // a song of the music folder is playing (xmp_music.cpp)
+ 
+   rex::thread::global_critical_region global_critical_region_;
+   std::unordered_map<uint32_t, Playlist*> playlists_;
+diff --git a/src/kernel/CMakeLists.txt b/src/kernel/CMakeLists.txt
+index 984b97d..de30f4f 100644
+--- a/src/kernel/CMakeLists.txt
++++ b/src/kernel/CMakeLists.txt
+@@ -27,6 +27,7 @@ set(REXKERNEL_SOURCES
+     xam/apps/xgi_app.cpp
+     xam/apps/xlivebase_app.cpp
+     xam/apps/xmp_app.cpp
++    xam/apps/xmp_music.cpp
+ 
+     # XBDM subsystem - provides __imp__Xbdm* symbols
+     xbdm/xbdm_module.cpp
+@@ -67,3 +68,7 @@ list(TRANSFORM REXKERNEL_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
+ target_sources(rexruntime PRIVATE ${REXKERNEL_SOURCES})
+ 
+ target_link_libraries(rexruntime PRIVATE o1heap rexcore rexfilesystem rexui rexaudio rexinput imgui)
++if(WIN32)
++  # User music for the Xbox music player (xam/apps/xmp_music.cpp): Media Foundation decoding.
++  target_link_libraries(rexruntime PRIVATE mfplat mfreadwrite mfuuid ole32)
++endif()
+diff --git a/src/kernel/xam/apps/xmp_app.cpp b/src/kernel/xam/apps/xmp_app.cpp
+index a5e9088..1fc8f36 100644
+--- a/src/kernel/xam/apps/xmp_app.cpp
++++ b/src/kernel/xam/apps/xmp_app.cpp
+@@ -9,11 +9,23 @@
+  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
+  */
+ 
++#include <chrono>
++#include <cstdint>
++
+ #include <rex/kernel/xam/apps/xmp_app.h>
+ #include <rex/logging.h>
+ #include <rex/system/xthread.h>
+ #include <rex/thread.h>
+ 
++#include "xmp_music.h"
++
++#include <rex/cvar.h>
++
++REXCVAR_DEFINE_BOOL(xmp_music_report_playing, false, "XMP",
++                    "Tell the game (XMP status + notifications) that the music player plays while a "
++                    "song of the music folder plays. WWE '12 drops its own mix to zero on the XMP "
++                    "stop notification, so leave this off for it.");
++
+ namespace rex {
+ namespace kernel {
+ namespace xam {
+@@ -35,14 +47,57 @@ XmpApp::XmpApp(KernelState* kernel_state)
+       next_playlist_handle_(1),
+       next_song_handle_(1) {}
+ 
++namespace {
++
++// The status/controller queries below sleep on non-main threads, for games that poll them in a
++// tight loop. Games that poll a few times per frame (WWE SmackDown vs. Raw 2008 does, from its frame
++// thread) would then lose 1-10 ms every frame, so only throttle a thread that really hammers: more
++// than ~1000 calls per second.
++bool IsHammeringXmp() {
++  thread_local auto window_start = std::chrono::steady_clock::now();
++  thread_local uint32_t calls = 0;
++  auto now = std::chrono::steady_clock::now();
++  if (now - window_start > std::chrono::milliseconds(100)) {
++    window_start = now;
++    calls = 0;
++  }
++  return ++calls > 100;
++}
++
++}  // namespace
++
+ X_HRESULT XmpApp::XMPGetStatus(uint32_t state_ptr) {
+-  if (!XThread::GetCurrentThread()->main_thread()) {
++  if (!XThread::GetCurrentThread()->main_thread() && IsHammeringXmp()) {
+     // Some stupid games will hammer this on a thread - induce a delay
+     // here to keep from starving real threads.
+     rex::thread::Sleep(std::chrono::milliseconds(1));
+   }
+ 
+   REXKRNL_TRACE("XMPGetStatus({:08X})", state_ptr);
++  // Flow diagnostic: one line per ~5 s per thread, so a run log shows what
++  // status the game was told around every event of the session.
++  {
++    static thread_local auto poll_start = std::chrono::steady_clock::now();
++    static thread_local uint32_t poll_count = 0;
++    ++poll_count;
++    const auto now = std::chrono::steady_clock::now();
++    if (now - poll_start > std::chrono::milliseconds(5000)) {
++      REXKRNL_DEBUG("XMPGetStatus: {} call(s) in the last {:.1f}s, reporting state={} "
++                    "user_music={}",
++                    poll_count,
++                    std::chrono::duration<double>(now - poll_start).count(),
++                    uint32_t(state_), user_music_ ? 1 : 0);
++      poll_start = now;
++      poll_count = 0;
++    }
++  }
++  if (user_music_ && !music::IsPlaying() &&
++      (state_ == State::kPlaying || !REXCVAR_GET(xmp_music_report_playing))) {
++    // The user's song has ended.
++    user_music_ = false;
++    state_ = State::kIdle;
++    OnStateChanged();
++  }
+   memory::store_and_swap<uint32_t>(memory_->TranslateVirtual(state_ptr),
+                                    static_cast<uint32_t>(state_));
+   return X_E_SUCCESS;
+@@ -146,6 +201,8 @@ X_HRESULT XmpApp::XMPPlayTitlePlaylist(uint32_t playlist_handle, uint32_t song_h
+ 
+ X_HRESULT XmpApp::XMPContinue() {
+   REXKRNL_DEBUG("XMPContinue()");
++  if (user_music_)
++    music::Resume();
+   if (state_ == State::kPaused) {
+     state_ = State::kPlaying;
+   }
+@@ -156,16 +213,31 @@ X_HRESULT XmpApp::XMPContinue() {
+ X_HRESULT XmpApp::XMPStop(uint32_t unk) {
+   assert_zero(unk);
+   REXKRNL_DEBUG("XMPStop({:08X})", unk);
++  const bool had_user_music = user_music_;
++  if (user_music_) {
++    music::Stop();
++    user_music_ = false;
++  }
+   active_playlist_ = nullptr;  // ?
+   active_song_index_ = 0;
+   state_ = State::kIdle;
+-  OnStateChanged();
++  // When the user's song stops without the game having been told it played
++  // (xmp_music_report_playing = false), the game learned nothing new: state_
++  // was already idle. Yet the state-change notification drops the game's own
++  // mix to zero for good (after the entrance preview and at the load after an
++  // entrance), so keep it silent in that case.
++  if (!had_user_music || REXCVAR_GET(xmp_music_report_playing)) {
++    OnStateChanged();
++  }
+   return X_E_SUCCESS;
+ }
+ 
+ X_HRESULT XmpApp::XMPPause() {
+   REXKRNL_DEBUG("XMPPause()");
+-  if (state_ == State::kPlaying) {
++  // WWE '12 requests a pause right after the victory scene starts the
++  // winner's theme, so the ceremony would go silent; user music plays on
++  // instead, until XMPStop ends it.
++  if (!user_music_ && state_ == State::kPlaying) {
+     state_ = State::kPaused;
+   }
+   OnStateChanged();
+@@ -199,6 +271,14 @@ X_HRESULT XmpApp::XMPPrevious() {
+ }
+ 
+ void XmpApp::OnStateChanged() {
++  // Notify only on real transitions. Telling the game that a state it already
++  // knows about changed - e.g. a second XMPStop in a row, or a pause that
++  // leaves the reported state untouched - makes it drop its own mix to zero
++  // for good (victory scene, post-entrance loads).
++  if (notified_state_ == state_) {
++    return;
++  }
++  notified_state_ = state_;
+   kernel_state_->BroadcastNotification(kMsgStateChanged, static_cast<uint32_t>(state_));
+ }
+ 
+@@ -298,6 +378,7 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+       assert_true(args->xmp_client == 0x00000002);
+       REXKRNL_DEBUG("XMPSetVolume({:g})", float(args->value));
+       volume_ = args->value;
++      music::SetVolume(volume_);
+       return X_E_SUCCESS;
+     }
+     case 0x0007000D: {
+@@ -408,7 +489,7 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+       memory::store_and_swap<uint32_t>(memory_->TranslateVirtual(args->controller_ptr), 0);
+       memory::store_and_swap<uint32_t>(memory_->TranslateVirtual(args->locked_ptr), 0);
+ 
+-      if (!XThread::GetCurrentThread()->main_thread()) {
++      if (!XThread::GetCurrentThread()->main_thread() && IsHammeringXmp()) {
+         // Atrain spawns a thread 82437FD0 to call this in a tight loop forever.
+         rex::thread::Sleep(std::chrono::milliseconds(10));
+       }
+@@ -460,6 +541,30 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+                                        4 + uint32_t(args->song_count) * 128);
+       return X_E_SUCCESS;
+     }
++    case 0x00070025: {
++      // Opens the user playlist enumerator made by XamCreateEnumeratorHandle (its items are filled
++      // at creation from the music folder).
++      REXKRNL_DEBUG("XMP: open user playlists");
++      return X_E_SUCCESS;
++    }
++    case 0x0007003B: {
++      // Plays a user playlist: xmp_client, then the playlist record returned by the enumerator.
++      if (buffer_length && buffer_length < 4 + music::kItemSize)
++        return X_E_INVALIDARG;
++      music::Track track;
++      if (!music::FindTrack(buffer + 4, &track)) {
++        REXKRNL_WARN("XMP: user playlist not found in the music folder");
++        return X_E_NOTFOUND;
++      }
++      music::SetVolume(volume_);
++      music::Play(track);
++      user_music_ = true;
++      if (REXCVAR_GET(xmp_music_report_playing)) {
++        state_ = State::kPlaying;
++        OnStateChanged();
++      }
++      return X_E_SUCCESS;
++    }
+     case 0x0007003D: {
+       // XMPCaptureOutput - not sure how this works :/
+       REXKRNL_DEBUG("XMPCaptureOutput(...)");
+diff --git a/src/kernel/xam/apps/xmp_music.cpp b/src/kernel/xam/apps/xmp_music.cpp
+new file mode 100644
+index 0000000..d95ea78
+--- /dev/null
++++ b/src/kernel/xam/apps/xmp_music.cpp
+@@ -0,0 +1,391 @@
++/**
++ * User music for the Xbox music player (XMP): see xmp_music.h.
++ */
++
++#include "xmp_music.h"
++
++#include <algorithm>
++#include <atomic>
++#include <cmath>
++#include <cstring>
++#include <mutex>
++#include <thread>
++
++#include <SDL3/SDL_audio.h>
++#include <SDL3/SDL_init.h>
++
++#include <rex/cvar.h>
++#include <rex/filesystem.h>
++#include <rex/logging.h>
++#include <rex/platform.h>
++#include <rex/string.h>
++#include <rex/string/utf8.h>
++
++#if REX_PLATFORM_WIN32
++#define WIN32_LEAN_AND_MEAN
++#define NOMINMAX
++#include <windows.h>
++#include <mfapi.h>
++#include <mferror.h>
++#include <mfidl.h>
++#include <mfreadwrite.h>
++#endif
++
++REXCVAR_DEFINE_STRING(xmp_music_folder, "", "XMP",
++                      "Folder of the user's music (the console's Music Library); empty = the "
++                      "\"music\" folder next to the executable.");
++REXCVAR_DEFINE_BOOL(xmp_music_normalize, true, "XMP",
++                    "Level the loudness of user music to xmp_music_level_db.");
++REXCVAR_DEFINE_INT32(xmp_music_level_db, -20, "XMP",
++                     "Target loudness of user music (RMS, dBFS); commercial songs sit near -9, game "
++                     "music near -20.")
++    .range(-40, -6);
++
++REXCVAR_DEFINE_BOOL(xmp_music_output, true, "XMP",
++                    "Dev: play user music (false = act as if it played, without sound).");
++
++namespace rex::kernel::xam::apps::music {
++
++namespace {
++
++constexpr char kTag[4] = {'W', '1', '2', 'M'};
++constexpr size_t kNameOffset = 572;  // WWE '12 reads the name there (menu and entrance code)
++constexpr size_t kNameChars = 39;     // the game copies 80 bytes of the name
++
++uint32_t Fnv1a32(const std::string& s) {
++  uint32_t h = 0x811C9DC5u;
++  for (unsigned char c : s)
++    h = (h ^ c) * 0x01000193u;
++  return h ? h : 1;
++}
++
++bool IsMusicFile(const std::filesystem::path& p) {
++  std::string ext = rex::string::to_utf8(p.extension().u16string());
++  std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
++  return ext == ".mp3" || ext == ".m4a" || ext == ".aac" || ext == ".wma" || ext == ".wav" ||
++         ext == ".flac";
++}
++
++void StoreBe32(uint8_t* p, uint32_t v) {
++  p[0] = uint8_t(v >> 24);
++  p[1] = uint8_t(v >> 16);
++  p[2] = uint8_t(v >> 8);
++  p[3] = uint8_t(v);
++}
++
++uint32_t LoadBe32(const uint8_t* p) {
++  return uint32_t(p[0]) << 24 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 8 | p[3];
++}
++
++// ---- the host player ----
++
++struct PlayerState {
++  std::mutex mutex;
++  std::thread worker;
++  std::atomic<bool> cancel{false};
++  std::atomic<bool> decoding{false};
++  std::atomic<bool> silent{false};  // xmp_music_output = false: "playing" until stopped
++  SDL_AudioStream* stream = nullptr;
++  float volume = 1.0f;
++  bool paused = false;
++  std::u16string playing_path;  // the track currently playing; re-requests of it continue it
++};
++
++PlayerState& State() {
++  static PlayerState state;
++  return state;
++}
++
++#if REX_PLATFORM_WIN32
++// Decodes `path` to interleaved float samples, handing them out in chunks of ~1 s. Returns false
++// when Media Foundation cannot open the file.
++template <typename OnFormat, typename OnChunk>
++bool Decode(const std::filesystem::path& path, const std::atomic<bool>& cancel, OnFormat on_format,
++            OnChunk on_chunk) {
++  static std::once_flag mf_once;
++  std::call_once(mf_once, [] { MFStartup(MF_VERSION, MFSTARTUP_LITE); });
++  IMFSourceReader* reader = nullptr;
++  if (FAILED(MFCreateSourceReaderFromURL(path.wstring().c_str(), nullptr, &reader)))
++    return false;
++  const DWORD stream = DWORD(MF_SOURCE_READER_FIRST_AUDIO_STREAM);
++  reader->SetStreamSelection(DWORD(MF_SOURCE_READER_ALL_STREAMS), FALSE);
++  reader->SetStreamSelection(stream, TRUE);
++  IMFMediaType* want = nullptr;
++  MFCreateMediaType(&want);
++  want->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
++  want->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float);
++  const bool ok = SUCCEEDED(reader->SetCurrentMediaType(stream, nullptr, want));
++  want->Release();
++  IMFMediaType* got = nullptr;
++  UINT32 channels = 0, rate = 0;
++  if (ok && SUCCEEDED(reader->GetCurrentMediaType(stream, &got))) {
++    got->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &channels);
++    got->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate);
++    got->Release();
++  }
++  if (!ok || !channels || !rate) {
++    reader->Release();
++    return false;
++  }
++  on_format(int(channels), int(rate));
++  std::vector<float> chunk;
++  const size_t chunk_samples = size_t(rate) * channels;
++  while (!cancel) {
++    DWORD flags = 0;
++    IMFSample* sample = nullptr;
++    if (FAILED(reader->ReadSample(stream, 0, nullptr, &flags, nullptr, &sample)))
++      break;
++    if (sample) {
++      IMFMediaBuffer* buffer = nullptr;
++      if (SUCCEEDED(sample->ConvertToContiguousBuffer(&buffer))) {
++        BYTE* data = nullptr;
++        DWORD length = 0;
++        if (SUCCEEDED(buffer->Lock(&data, nullptr, &length))) {
++          const float* f = reinterpret_cast<const float*>(data);
++          chunk.insert(chunk.end(), f, f + length / sizeof(float));
++          buffer->Unlock();
++        }
++        buffer->Release();
++      }
++      sample->Release();
++    }
++    const bool end = flags & MF_SOURCE_READERF_ENDOFSTREAM;
++    if (chunk.size() >= chunk_samples || (end && !chunk.empty())) {
++      on_chunk(chunk);
++      chunk.clear();
++    }
++    if (end)
++      break;
++  }
++  reader->Release();
++  return true;
++}
++#endif
++
++// Gain bringing the RMS of the first seconds of the song to xmp_music_level_db, and its peak
++// under full scale.
++float LevelGain(const std::vector<float>& samples) {
++  if (!REXCVAR_GET(xmp_music_normalize) || samples.empty())
++    return 1.0f;
++  double sum = 0;
++  float peak = 0;
++  for (float s : samples) {
++    sum += double(s) * s;
++    peak = std::max(peak, std::fabs(s));
++  }
++  const double rms = std::sqrt(sum / double(samples.size()));
++  if (rms < 1e-5)
++    return 1.0f;
++  const double rms_db = 20.0 * std::log10(rms);
++  double gain_db = double(REXCVAR_GET(xmp_music_level_db)) - rms_db;
++  gain_db = std::clamp(gain_db, -30.0, 6.0);
++  float gain = float(std::pow(10.0, gain_db / 20.0));
++  if (peak * gain > 0.98f)
++    gain = 0.98f / peak;
++  REXKRNL_INFO("XMP music: level {:.1f} dBFS RMS, gain {:.1f} dB", rms_db,
++               20.0 * std::log10(double(gain)));
++  return gain;
++}
++
++void Worker(Track track) {
++  PlayerState& st = State();
++  SDL_InitSubSystem(SDL_INIT_AUDIO);
++  float gain = 1.0f;
++  bool started = false;
++  std::vector<float> lead;  // the first seconds, held back to measure the level
++  int channels = 2, rate = 48000;
++  constexpr int kLeadSeconds = 15;
++  auto flush = [&](const std::vector<float>& samples) {
++    std::vector<float> scaled(samples);
++    for (float& s : scaled)
++      s = std::clamp(s * gain, -1.0f, 1.0f);
++    std::lock_guard lock(st.mutex);
++    if (st.stream)
++      SDL_PutAudioStreamData(st.stream, scaled.data(), int(scaled.size() * sizeof(float)));
++  };
++  auto start = [&] {
++    gain = LevelGain(lead);
++    SDL_AudioSpec spec{SDL_AUDIO_F32, channels, rate};
++    SDL_AudioStream* stream =
++        SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
++    if (!stream) {
++      REXKRNL_ERROR("XMP music: no audio output: {}", SDL_GetError());
++      return;
++    }
++    {
++      std::lock_guard lock(st.mutex);
++      st.stream = stream;
++      SDL_SetAudioStreamGain(stream, st.volume);
++    }
++    flush(lead);
++    lead.clear();
++    std::lock_guard lock(st.mutex);
++    if (!st.paused)
++      SDL_ResumeAudioStreamDevice(stream);
++    started = true;
++  };
++  bool decoded = false;
++#if REX_PLATFORM_WIN32
++  CoInitializeEx(nullptr, COINIT_MULTITHREADED);
++  decoded = Decode(
++      track.path, st.cancel,
++      [&](int c, int r) {
++        channels = c;
++        rate = r;
++      },
++      [&](const std::vector<float>& chunk) {
++        if (started) {
++          flush(chunk);
++          return;
++        }
++        lead.insert(lead.end(), chunk.begin(), chunk.end());
++        if (lead.size() >= size_t(kLeadSeconds) * rate * channels)
++          start();
++      });
++  CoUninitialize();
++#endif
++  if (!decoded)
++    REXKRNL_ERROR("XMP music: cannot decode {}", rex::string::to_utf8(track.path.u16string()));
++  else if (!started && !st.cancel)
++    start();  // songs shorter than the lead
++  st.decoding = false;
++}
++
++}  // namespace
++
++std::filesystem::path Folder() {
++  const std::string custom = REXCVAR_GET(xmp_music_folder);
++  if (!custom.empty())
++    return std::filesystem::path(rex::string::to_utf16(custom));
++  return rex::filesystem::GetExecutableFolder() / "music";
++}
++
++std::vector<Track> ListTracks() {
++  std::vector<Track> tracks;
++  std::error_code ec;
++  for (const auto& entry : std::filesystem::directory_iterator(Folder(), ec)) {
++    if (!entry.is_regular_file(ec) || !IsMusicFile(entry.path()))
++      continue;
++    Track t;
++    t.path = entry.path();
++    t.name = entry.path().stem().u16string().substr(0, kNameChars);
++    std::string key = rex::string::to_utf8(entry.path().filename().u16string());
++    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return std::tolower(c); });
++    t.id = Fnv1a32(key);
++    tracks.push_back(std::move(t));
++  }
++  std::sort(tracks.begin(), tracks.end(), [](const Track& a, const Track& b) { return a.name < b.name; });
++  return tracks;
++}
++
++void WriteItem(const Track& track, uint8_t* item) {
++  std::memset(item, 0, kItemSize);
++  for (size_t i = 0; i < track.name.size() && i < kNameChars; ++i) {
++    item[kNameOffset + i * 2] = uint8_t(track.name[i] >> 8);
++    item[kNameOffset + i * 2 + 1] = uint8_t(track.name[i]);
++  }
++  StoreBe32(item + kItemSize - 8, track.id);
++  std::memcpy(item + kItemSize - 4, kTag, 4);
++}
++
++bool FindTrack(const uint8_t* item, Track* out) {
++  std::vector<Track> tracks = ListTracks();
++  if (std::memcmp(item + kItemSize - 4, kTag, 4) == 0) {
++    const uint32_t id = LoadBe32(item + kItemSize - 8);
++    for (const Track& t : tracks)
++      if (t.id == id) {
++        *out = t;
++        return true;
++      }
++  }
++  // A record without our tag, or a renamed file: match by the name the game shows.
++  std::u16string name;
++  const uint8_t* n = item + kNameOffset;
++  for (size_t i = 0; i < kNameChars && (n[i * 2] || n[i * 2 + 1]); ++i)
++    name += char16_t(n[i * 2] << 8 | n[i * 2 + 1]);
++  for (const Track& t : tracks)
++    if (t.name == name) {
++      *out = t;
++      return true;
++    }
++  return false;
++}
++
++void Play(const Track& track) {
++  PlayerState& st = State();
++  const std::u16string path16 = track.path.u16string();
++  {
++    std::lock_guard lock(st.mutex);
++    const std::atomic<bool>& decoding = st.decoding;
++    const bool still_playing = decoding.load() || st.silent ||
++                               (st.stream && SDL_GetAudioStreamQueued(st.stream) > 0);
++    if (st.playing_path == path16 && still_playing) {
++      // The game re-requests the track that is already playing (the victory
++      // scene after the match replay): keep it going instead of restarting.
++      return;
++    }
++  }
++  Stop();
++  REXKRNL_INFO("XMP music: playing {}", rex::string::to_utf8(path16));
++  st.cancel = false;
++  st.paused = false;
++  {
++    std::lock_guard lock(st.mutex);
++    st.playing_path = path16;
++  }
++  if (!REXCVAR_GET(xmp_music_output)) {
++    st.silent = true;
++    return;
++  }
++  st.decoding = true;
++  st.worker = std::thread(Worker, track);
++}
++
++void Stop() {
++  PlayerState& st = State();
++  st.cancel = true;
++  st.silent = false;
++  if (st.worker.joinable())
++    st.worker.join();
++  std::lock_guard lock(st.mutex);
++  st.playing_path.clear();
++  if (st.stream) {
++    SDL_DestroyAudioStream(st.stream);
++    st.stream = nullptr;
++  }
++  st.decoding = false;
++}
++
++void Pause() {
++  PlayerState& st = State();
++  std::lock_guard lock(st.mutex);
++  st.paused = true;
++  if (st.stream)
++    SDL_PauseAudioStreamDevice(st.stream);
++}
++
++void Resume() {
++  PlayerState& st = State();
++  std::lock_guard lock(st.mutex);
++  st.paused = false;
++  if (st.stream)
++    SDL_ResumeAudioStreamDevice(st.stream);
++}
++
++void SetVolume(float volume) {
++  PlayerState& st = State();
++  std::lock_guard lock(st.mutex);
++  st.volume = std::clamp(volume, 0.0f, 1.0f);
++  if (st.stream)
++    SDL_SetAudioStreamGain(st.stream, st.volume);
++}
++
++bool IsPlaying() {
++  PlayerState& st = State();
++  if (st.decoding || st.silent)
++    return true;
++  std::lock_guard lock(st.mutex);
++  return st.stream && SDL_GetAudioStreamQueued(st.stream) > 0;
++}
++
++}  // namespace rex::kernel::xam::apps::music
+diff --git a/src/kernel/xam/apps/xmp_music.h b/src/kernel/xam/apps/xmp_music.h
+new file mode 100644
+index 0000000..59b6797
+--- /dev/null
++++ b/src/kernel/xam/apps/xmp_music.h
+@@ -0,0 +1,49 @@
++#pragma once
++/**
++ * User music for the Xbox music player (XMP): the "music" folder next to the executable stands in
++ * for the console's Music Library, and the player plays its files on the host.
++ *
++ * Games that let the player use their own music ask XMP for the user's playlists (an enumerator,
++ * XamCreateEnumeratorHandle(app 0xFA, 0x70026, 0x70027), opened by XMP message 0x70025): each file
++ * of the folder is one playlist of one song. Each playlist record is kItemSize bytes: its name
++ * (UTF-16, big-endian, NUL-terminated) at byte 572, and at the end a tag of ours (track id +
++ * "W12M"), so that when the game hands the record back to play it (XMP message 0x7003B), possibly
++ * from a save made in an earlier session, the file is found again. Seen with WWE '12 (USER
++ * PLAYLIST in Create an Entrance).
++ *
++ * Files are decoded with Media Foundation (mp3, m4a/aac, wma, wav, flac) and played through an SDL
++ * audio stream, their loudness levelled to the games' own music (xmp_music_normalize).
++ */
++
++#include <cstdint>
++#include <filesystem>
++#include <string>
++#include <vector>
++
++namespace rex::kernel::xam::apps::music {
++
++constexpr uint32_t kItemSize = 820;
++
++struct Track {
++  std::u16string name;  // shown by the game (the file name without its extension)
++  std::filesystem::path path;
++  uint32_t id = 0;  // FNV-1a of the lower-case file name, stable across sessions
++};
++
++std::filesystem::path Folder();
++std::vector<Track> ListTracks();
++
++// Writes the playlist record of `track` (kItemSize bytes, guest layout).
++void WriteItem(const Track& track, uint8_t* item);
++// The track a record written by WriteItem points to; nullptr when the file is gone.
++bool FindTrack(const uint8_t* item, Track* out);
++
++// The host player (one song at a time).
++void Play(const Track& track);
++void Stop();
++void Pause();
++void Resume();
++void SetVolume(float volume);
++bool IsPlaying();  // false once the song has ended or was stopped
++
++}  // namespace rex::kernel::xam::apps::music

@@ -164,7 +164,7 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
 
 | # | Tâche | Qui | État |
 |---|---|---|---|
-| 1 | **Musiques perso** (vedette de la 0.9, très demandée) : choisir une musique (mp3/ogg/wav…) pour les catcheurs créés, entrées comprises | Gameplay (+ Launcher pour l'écran de choix) | à faire |
+| 1 | **Musiques perso** (vedette de la 0.9, très demandée) : choisir une musique (mp3/ogg/wav…) pour les catcheurs créés, entrées comprises | Gameplay (+ Launcher pour l'écran de choix) | **fait** (2026-10-19 : mp3/m4a/aac/wma/wav/flac du dossier `music` à côté de l'exe, choisis dans le jeu via « créer une entrée » → lecture utilisateur ; entrée → charge de match → replay → cérémonie de victoire validés en continu ; patchs `rexglue-sdk-music-perso.patch` et `rexglue-sdk-audio-flow.patch`. ogg non lu pour l'instant (Media Foundation) : à revoir côté launcher) |
 | 2 | Create a Story : taper le texte des cinématiques au clavier (aussi noms de CAW, d'arènes…) | Gameplay | à faire |
 | 3 | Turbo des chargements à 4 fils (interblocage), puis activé par défaut | Gameplay + Rendu | à faire |
 | 4 | Gels : analyser les hang_trace des joueurs en 0.8 (carte `dist/symbols-v0.8.0-beta`) | Rendu | à faire |
@@ -192,8 +192,8 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
 **0.9** : ~~DLC manquants~~ **réglé** (2026-10-18 : un joueur a retrouvé ses catcheurs en supprimant
 `xbox_cache` et les DLC installés ; `wwe12_dlc.cpp` vide maintenant le cache à chaque nouvelle
 installation de DLC, et une fois pour les installations existantes) ; gels (hang_trace de 0.8) ; pavés et yeux
-AMD ; turbo à 4 fils ; options graphiques restantes ; formulaire de bug GitHub + FAQ ; **musiques
-perso** (très demandées : priorité de la 0.9).
+AMD ; turbo à 4 fils ; options graphiques restantes ; formulaire de bug GitHub + FAQ. ~~Musiques perso~~
+**fait** (2026-10-19 : dossier `music` + choix dans le jeu ; voir ligne 1 du plan 0.9).
 **1.0** : plus de bug grave connu ; **Mod Maker** comme celui de Kaiko ; signature de l'exe à étudier ;
 documentation.
 **Nouvelles suggestions (2026-10-18)** :

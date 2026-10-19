@@ -22,7 +22,8 @@ if (-not (Test-Path (Join-Path $Build "wwe12.exe"))) {
 
 # Repart d'un dossier propre, en gardant le dossier game\ s'il existe déjà (données du testeur).
 if (Test-Path $Dist) {
-    Get-ChildItem $Dist -Force | Where-Object { $_.Name -ne "game" } | Remove-Item -Recurse -Force
+    # On garde aussi music\ : l'utilisateur y met ses propres morceaux.
+    Get-ChildItem $Dist -Force | Where-Object { $_.Name -notin "game", "music" } | Remove-Item -Recurse -Force
 } else {
     New-Item -ItemType Directory -Path $Dist | Out-Null
 }
@@ -74,6 +75,23 @@ Set-Content -Path (Join-Path $Dist "game\$NoteName") -Encoding UTF8 -Value @(
     "DE : Legen Sie hier das .iso-Image IHRES Spiels ab (oder den Disc-Inhalt). Siehe LIESMICH.txt.",
     "ES : coloca aquí la imagen .iso de TU juego (o el contenido del disco). Ver LEEME.txt.",
     "IT : metti qui l'immagine .iso del TUO gioco (o il contenuto del disco). Vedi LEGGIMI.txt."
+)
+
+# Dossier des musiques perso (thèmes des catcheurs créés) : vide, avec la note par langue.
+$Music = Join-Path $Dist "music"
+New-Item -ItemType Directory -Force -Path $Music | Out-Null
+Set-Content -Path (Join-Path $Music "PUT_SONGS_HERE.txt") -Encoding UTF8 -Value @(
+    "Custom music for created wrestlers: drop your tracks here (mp3, m4a, aac, wav, flac),",
+    "then pick them where the game chooses entrance themes. See README.txt.",
+    "",
+    "FR : musiques perso des catcheurs créés : déposez ici vos morceaux (mp3, m4a, aac, wav,"
+    "     flac), puis choisissez-les lors du choix de la musique du jeu. Voir LISEZMOI.txt.",
+    "DE : Eigene Musik für erstellte Wrestler: Titel hier ablegen (mp3, m4a, aac, wav, flac),",
+    "     dann im Spiel bei der Musikauswahl wählen. Siehe LIESMICH.txt.",
+    "ES : música propia de los luchadores creados: coloca aquí tus temas (mp3, m4a, aac, wav,"
+    "     flac) y elígelos al elegir la música del juego. Ver LEEME.txt.",
+    "IT : musica personale dei lottatori creati: metti qui i brani (mp3, m4a, aac, wav, flac)",
+    "     e poi sceglierli dove il gioco sceglie la musica. Vedi LEGGIMI.txt."
 )
 
 # Licences : GPL-3.0 du portage et textes des composants tiers (obligatoires avec l'exe).

@@ -74,6 +74,17 @@ Dateien im Ordner "mods" ersetzen die des Spiels, unter demselben Pfad wie auf d
 (Beispiel: mods\movies\titantron\100.bik). Siehe mods\HOW_TO_USE_MODS.txt.
 
 
+Eigene Musik
+------------
+
+Legen Sie Ihre Titel in den Ordner "music" neben die Datei wwe12.exe (mp3, m4a, aac, wav,
+flac; .ogg noch nicht). Wo das Spiel die Musik der erstellten Wrestler wählt, listet die
+Benutzer-Playlist diese Titel: wählen Sie einen, und er läuft beim Einzug des Wrestlers,
+im Replay nach dem Match und bei der Siegerehrung. Die Lautstärke der Titel wird
+automatisch auf ein gemeinsames Niveau geregelt (xmp_music_level_db). Anderer Ordner:
+xmp_music_folder (in wwe12.toml).
+
+
 Wo sind meine Daten?
 --------------------
 

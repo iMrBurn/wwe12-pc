@@ -42,6 +42,9 @@ Settings (language, internal resolution…) are in `wwe12.toml`, explained in `R
   labelled "Online".
 - Custom attires (Superstar Threads), eyes and teeth (NVIDIA and Intel), blood, post-match
   replays and MATCH HIGHLIGHTS, controller vibration (Universe mode included).
+- **Custom theme music for created wrestlers**: drop your tracks (mp3, m4a, aac, wav, flac) in
+  the `music` folder and pick them where the game chooses entrance themes. They play on the
+  entrance, the post-match replay and the victory ceremony, with automatic loudness leveling.
 - Video memory stays stable over long sessions (no more slowdowns after a few matches).
 - A `mods` folder: files in it replace the game's own (HD titantron videos, textures...).
 - Xbox and PlayStation controllers (with PlayStation button icons), and the keyboard, either

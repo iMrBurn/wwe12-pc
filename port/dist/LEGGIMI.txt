@@ -72,6 +72,17 @@ I file messi nella cartella "mods" sostituiscono quelli del gioco, con lo stesso
 del disco (esempio: mods\movies\titantron\100.bik). Vedi mods\HOW_TO_USE_MODS.txt.
 
 
+Musica personale
+----------------
+
+Metti i tuoi brani nella cartella "music" accanto all'eseguibile (mp3, m4a, aac, wav,
+flac; .ogg per ora no). Dove il gioco sceglie la musica dei lottatori creati, la
+playlist utente elenca questi brani: scegline uno e suona con l'ingresso del lottatore,
+con il replay dopo il match e con la cerimonia della vittoria. Il volume dei brani
+viene riportato automaticamente a un volume comune (xmp_music_level_db). Per una
+cartella diversa: xmp_music_folder (in wwe12.toml).
+
+
 Dove sono i miei dati?
 ----------------------
 
