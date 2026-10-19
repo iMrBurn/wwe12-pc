@@ -198,7 +198,9 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
   validé en jeu par l'utilisateur sur l'entrée de Cena). Cause : clés d'animation impaires fausses (la console
   à 30 fps ne lit que les paires). Échantillonneurs de translation `sub_8248B898` (clés 16 bits en deltas) et
   `sub_8248B458` (8 bits) ; correction seulement quand le jeu demande 30 et tourne à 60 (`Wwe12EntranceAt60`,
-  `wwe12_fps.cpp`). Mesure : écart au trajet p90 8,2 → 0,6 cm ; ~0,3 % des positions corrigées. Ancienne note :
+  `wwe12_fps.cpp`). Mesure : écart au trajet p90 8,2 → 0,6 cm ; ~0,3 % des positions corrigées. **Décision de
+  l'utilisateur (2026-10-19) : `wwe12_60fps` reste désactivé par défaut** (réglage AVANCÉ pour ceux qui le
+  veulent) ; `wwe12_title_fix` reste à true (sans effet tant que le 60 fps est coupé). Ancienne note :
   l'auteur du recomp de WWE 2K14 l'a corrigée chez lui (entrées et scènes de
   victoire). Son explication : les ceintures ont leur propre animation, séparée des catcheurs ; comme le
   mouvement peut passer d'un catcheur à un autre de taille différente, le jeu estime la position, et
