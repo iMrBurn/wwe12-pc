@@ -437,5 +437,9 @@ automatique de la sauvegarde au format du launcher (`Documents\wwe12\SaveBackups
 zéro sera enregistrée à la prochaine sauvegarde du jeu (après la prochaine émission).
 
 À faire : déclencher la sauvegarde du jeu juste après la remise à zéro (amélioration) ; vérifier
-l'affichage DE/ES/IT (le français est vérifié à l'écran : accents, boîtes qui s'agrandissent) ; activer `wwe12_universe_edit` par défaut quand
+l'affichage DE/ES/IT (le français est vérifié à l'écran : accents, boîtes qui s'agrandissent) ;
+fait aussi (demande de l'utilisateur, pour que les joueurs trouvent l'option) : nom d'entrée plus
+clair (FR « MODIFIER L'UNIVERS », DE « WELT BEARBEITEN », ES « EDITAR UNIVERSO », IT « MODIFICA
+UNIVERSE ») et message « Nouveau » affiché une seule fois au premier passage dans le menu de
+l'Univers (texte 27029, fichier `Documents\wwe12\universe_reset_hint.txt`), vérifiés en jeu en FR ; activer `wwe12_universe_edit` par défaut quand
 l'utilisateur valide ; ensuite VACANT.

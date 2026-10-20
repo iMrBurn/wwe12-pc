@@ -26,7 +26,7 @@
 // the transition to the chosen entry's screen); the chosen entry is the screen's word +28 (0 MATCH
 // CARDS ... 4 EDIT SUPERSTAR, 5 EDIT TEAM, 6 EDIT BRAND). vtbl[1] = sub_824D3458 runs every frame
 // (all layout menus share it). Texts: the string manager's sub_821A4400(this, id) returns the text
-// of an id; 27045 is EDIT SUPERSTAR; 27026-27028 are unused in WWE '12 and carry our questions.
+// of an id; 27045 is EDIT SUPERSTAR; 27026-27029 are unused in WWE '12 and carry our messages.
 // The game's message box (object *0x8324DEF0): sub_8254E7E8(id) asks yes/no, sub_8254E680(id)
 // informs, sub_8254E8C8(&answer) returns non-zero once closed (answer 1 = yes).
 
@@ -75,7 +75,7 @@ namespace {
 constexpr u32 kUniverseMenuVtbl = 0x82021F98;
 constexpr u32 kEditSuperstarEntry = 4;
 constexpr u32 kEditSuperstarText = 27045;
-constexpr u32 kAskText = 27026, kConfirmText = 27027, kDoneText = 27028;
+constexpr u32 kAskText = 27026, kConfirmText = 27027, kDoneText = 27028, kHintText = 27029;
 
 constexpr u32 kUniverseTitles = 0x83226508;   // 23 titles x {holder, partner}, u16
 constexpr u32 kDefaultChampions = 0x8324E3A8; // 16-byte records, loaded flag at +368
@@ -97,11 +97,13 @@ Lang CurrentLang() {
   }
 }
 
-// In each language's menu style (French lists SUPERSTARS / ÉQUIPES / ÉCURIES).
+// The entry's label says what it is (the user worried players would not find the reset under a
+// bare "UNIVERS"); it fits the menu (LISTE DES MATCHS is 16 characters).
 const char *Text(u32 id) {
   static const char *const kTexts[][5] = {
       // EDIT SUPERSTAR's new label
-      {"EDIT UNIVERSE", "UNIVERS", "WELT", "UNIVERSO", "UNIVERSE"},
+      {"EDIT UNIVERSE", "MODIFIER L'UNIVERS", "WELT BEARBEITEN", "EDITAR UNIVERSO",
+       "MODIFICA UNIVERSE"},
       // the question
       {"Reset the WWE Universe?\nChoose No to edit your Superstars.",
        "Remettre l'Univers WWE \xC3\xA0 z\xC3\xA9ro ?\nChoisissez Non pour modifier les Superstars.",
@@ -141,6 +143,17 @@ const char *Text(u32 id) {
        "Il WWE Universe \xC3\xA8 stato azzerato. Prima \xC3\xA8 stata fatta una copia del tuo "
        "salvataggio.\nEsci dal WWE Universe e rientra per vederlo. L'azzeramento sar\xC3\xA0 "
        "salvato al prossimo salvataggio del gioco (dopo il tuo prossimo show)."},
+      // the one-time "new" hint (shown on the Universe menu once, see below)
+      {"New: you can now reset your WWE Universe.\nChoose EDIT UNIVERSE in this menu (a backup "
+       "of your save is made first).",
+       "Nouveau : vous pouvez remettre votre Univers WWE \xC3\xA0 z\xC3\xA9ro.\nChoisissez "
+       "MODIFIER L'UNIVERS dans ce menu (une copie de votre sauvegarde est faite avant).",
+       "Neu: Du kannst deine WWE-Welt jetzt zur\xC3\xBC" "cksetzen.\nW\xC3\xA4hle WELT BEARBEITEN "
+       "in diesem Men\xC3\xBC (vorher wird eine Kopie deines Spielstands erstellt).",
+       "Novedad: ahora puedes reiniciar tu Universo WWE.\nElige EDITAR UNIVERSO en este "
+       "men\xC3\xBA (antes se hace una copia de tu partida).",
+       "Novit\xC3\xA0: ora puoi azzerare il tuo WWE Universe.\nScegli MODIFICA UNIVERSE in questo "
+       "menu (prima viene fatta una copia del tuo salvataggio)."},
   };
   size_t row;
   switch (id) {
@@ -148,6 +161,7 @@ const char *Text(u32 id) {
   case kAskText: row = 1; break;
   case kConfirmText: row = 2; break;
   case kDoneText: row = 3; break;
+  case kHintText: row = 4; break;
   default: return nullptr;
   }
   return kTexts[row][CurrentLang()];
@@ -161,9 +175,9 @@ u32 GuestText(u32 id) {
   if (!text)
     return 0;
   static u32 s_block = 0;
-  static const char *s_for[4] = {};
+  static const char *s_for[5] = {};
   if (!s_block)
-    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(4 * kSlot, 0x20);
+    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(5 * kSlot, 0x20);
   if (!s_block)
     return 0;
   const u32 slot = id == kEditSuperstarText ? 0 : id - kAskText + 1;
@@ -334,10 +348,38 @@ bool ResetUniverse(const PPCContext &in, u8 *base) {
 
 // ---- the EDIT UNIVERSE dialogue -------------------------------------------------------------
 
-enum class Step { kIdle, kAsk, kConfirm, kDone };
+enum class Step { kIdle, kAsk, kConfirm, kDone, kHint };
 Step g_step = Step::kIdle;
 u32 g_screen = 0;  // the Universe menu screen the dialogue belongs to
 u32 g_answer = 0;  // guest word for the message box's answer
+
+// The one-time hint: the first time the Universe menu shows (2 s in, no other message box open),
+// a message says the reset exists and where. Documents\wwe12\universe_reset_hint.txt remembers
+// it was shown.
+std::filesystem::path HintFile() {
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator() || state->emulator()->user_data_root().empty())
+    return {};
+  return state->emulator()->user_data_root() / "universe_reset_hint.txt";
+}
+
+int g_hint_pending = -1;  // -1: not checked yet
+
+bool HintPending() {
+  if (g_hint_pending < 0) {
+    const std::filesystem::path file = HintFile();
+    std::error_code ec;
+    g_hint_pending = !file.empty() && !std::filesystem::exists(file, ec);
+  }
+  return g_hint_pending == 1;
+}
+
+void HintShown() {
+  g_hint_pending = 0;
+  const std::filesystem::path file = HintFile();
+  if (!file.empty())
+    std::ofstream(file) << "The RESET UNIVERSE hint was shown.\n";
+}
 
 // The message box closed? (answer: 1 = yes)
 bool BoxClosed(const PPCContext &in, u8 *base, bool &yes) {
@@ -359,7 +401,7 @@ REX_EXTERN(__imp__sub_821A4400);
 extern "C" REX_FUNC(sub_821A4400) {
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
-  if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kDoneText)))
+  if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kHintText)))
     if (const u32 text = GuestText(id))
       ctx.r3.u64 = text;
 }
@@ -391,7 +433,23 @@ extern "C" REX_FUNC(sub_825453D8) {
 // Every layout menu screen's per-frame update: drives the dialogue while it is open (the screen
 // itself keeps updating; its A button waits, see above).
 REX_EXTERN(__imp__sub_824D3458);
+REX_EXTERN(__imp__sub_8254E7D0);  // message box: idle (none open)?
 extern "C" REX_FUNC(sub_824D3458) {
+  // The one-time hint, 120 frames (2 s) after the Universe menu shows.
+  if (Enabled() && g_step == Step::kIdle && HintPending() &&
+      bd::mem::try_load<u32>(ctx.r3.u32) == kUniverseMenuVtbl) {
+    static u32 s_screen = 0, s_frames = 0;
+    if (s_screen != ctx.r3.u32) {
+      s_screen = ctx.r3.u32;
+      s_frames = 0;
+    }
+    if (++s_frames >= 120 && Call(ctx, base, __imp__sub_8254E7D0, 0)) {
+      g_screen = ctx.r3.u32;
+      g_step = Step::kHint;
+      Call(ctx, base, __imp__sub_8254E680, kHintText);
+      HintShown();
+    }
+  }
   if (g_step != Step::kIdle && ctx.r3.u32 == g_screen) {
     bool yes = false;
     if (BoxClosed(ctx, base, yes)) {
