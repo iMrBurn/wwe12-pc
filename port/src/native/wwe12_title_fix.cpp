@@ -22,6 +22,14 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <algorithm>
+#include <cstring>
+#include <map>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <fmt/format.h>
+#include <vector>
 
 #include <rex/cvar.h>
 
@@ -32,6 +40,12 @@
 REXCVAR_DEFINE_BOOL(wwe12_title_fix, true, "WWE12",
                     "60 fps entrances: keep championship titles on the path the console shows "
                     "(their odd animation keys are bad).");
+REXCVAR_DEFINE_BOOL(wwe12_title_fix_all, false, "WWE12",
+                    "Test: wwe12_title_fix puts every in-between position on the path, not only the "
+                    "ones far off it.");
+REXCVAR_DEFINE_BOOL(wwe12_title_fix_pose, false, "WWE12",
+                    "Test: 60 fps entrances blend each animated pose between the two console "
+                    "frames around it (position and rotation of every bone).");
 REXCVAR_DEFINE_BOOL(wwe12_title_fix_log, false, "WWE12",
                     "Dev: log how many positions wwe12_title_fix corrects.");
 
@@ -39,6 +53,11 @@ bool Wwe12EntranceAt60();  // wwe12_fps.cpp
 
 REX_EXTERN(__imp__sub_8248B898);
 REX_EXTERN(__imp__sub_8248B458);
+REX_EXTERN(__imp__sub_82490530);
+
+namespace bd::gpu {
+u64 SvrFrameIndex();
+}
 
 namespace {
 
@@ -118,7 +137,8 @@ void Sample(PPCContext& ctx, uint8_t* base, Sampler orig) {
   u = u < 0 ? 0 : (u > 1 ? 1 : u);
   const float dx = p.x - (a.x + sx * u), dy = p.y - (a.y + sy * u), dz = p.z - (a.z + sz * u);
   const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-  const bool fix = dist > 0.5f && dist * dist > len2 / 16.0f;
+  const bool fix =
+      REXCVAR_GET(wwe12_title_fix_all) || (dist > 0.5f && dist * dist > len2 / 16.0f);
   if (fix) {
     const float f = float(frac);
     bd::mem::store<float>(out, a.x + sx * f);
@@ -129,7 +149,135 @@ void Sample(PPCContext& ctx, uint8_t* base, Sampler orig) {
     Log(fix ? dist : 0.0f);
 }
 
+// sub_82490530(motion) evaluates every bone of a motion at its time [motion+52] (1/60 s frames):
+// sub_8248EF80 per bone i < [motion+124] writes the bone's record at [motion+92] + i * 80
+// (translation at +16, rotation quaternion at +48, flags at +64), using the key caches at
+// [motion+100] (3 per bone) and [motion+120] (16 bytes per bone). For a time between two even
+// frames, the motion is also evaluated at both even frames (state put back after each) and every
+// bone gets the blend of the two console poses.
+struct Saved {
+  u32 va;
+  std::vector<u8> bytes;
+};
+
+void Save(std::vector<Saved> &out, u32 va, u32 size) {
+  if (!va || !size)
+    return;
+  Saved s{va, std::vector<u8>(size)};
+  std::memcpy(s.bytes.data(), bd::mem::at<u8>(va), size);
+  out.push_back(std::move(s));
+}
+
+void Restore(const std::vector<Saved> &saved) {
+  for (const auto &s : saved)
+    std::memcpy(bd::mem::at<u8>(s.va), s.bytes.data(), s.bytes.size());
+}
+
+u64 SvrFrame() { return bd::gpu::SvrFrameIndex(); }
+
+// wwe12_title_fix_log: how far each motion's clock moves between two displayed frames.
+void LogClock(u32 motion, float t) {
+  struct Last {
+    u64 frame;
+    float t;
+  };
+  static std::mutex mu;
+  static std::unordered_map<u32, Last> last;
+  static std::map<int, u32> hist[2];
+  static u64 report = 0;
+  const u64 frame = SvrFrame();
+  std::lock_guard lock(mu);
+  auto &l = last[motion];
+  if (l.frame + 1 == frame) {
+    const int step = int(std::lround((t - l.t) * 100));
+    if (step > -500 && step < 500)
+      ++hist[frame & 1][step];
+  }
+  if (l.frame != frame)
+    l = {frame, t};
+  if (frame >= report + 120) {
+    report = frame;
+    for (int p = 0; p < 2; ++p) {
+      std::string line;
+      std::vector<std::pair<u32, int>> top;
+      for (auto &[k, v] : hist[p])
+        top.push_back({v, k});
+      std::sort(top.rbegin(), top.rend());
+      for (size_t i = 0; i < top.size() && i < 6; ++i)
+        line += fmt::format(" {:.2f}x{}", top[i].second / 100.0, top[i].first);
+      if (!line.empty())
+        BD_INFO("[clock] {} frames: clock steps{}", p ? "odd" : "even", line);
+      hist[p].clear();
+    }
+  }
+}
+
+void EvaluatePose(PPCContext &ctx, uint8_t *base) {
+  const u32 motion = ctx.r3.u32;
+  const float t = bd::mem::load<float>(motion + 52);
+  if (REXCVAR_GET(wwe12_title_fix_log) && Wwe12EntranceAt60())
+    LogClock(motion, t);
+  const float even = 2.0f * std::floor(t / 2.0f);
+  const float frac = (t - even) / 2.0f;
+  const u32 bones = bd::mem::load<u32>(motion + 124);
+  if (!REXCVAR_GET(wwe12_title_fix_pose) || frac < 1e-4f || t < 2.0f || bones == 0 ||
+      bones > 512 || !Wwe12EntranceAt60()) {
+    __imp__sub_82490530(ctx, base);
+    return;
+  }
+  const u32 records = bd::mem::load<u32>(motion + 92);
+  std::vector<Saved> saved;
+  Save(saved, motion, 0x120);
+  Save(saved, records, bones * 80);
+  Save(saved, bd::mem::load<u32>(motion + 100), bones * 3 * 4);
+  Save(saved, bd::mem::load<u32>(motion + 120), bones * 16);
+  std::vector<float> pose[2];
+  for (int k = 0; k < 2; ++k) {
+    PPCContext c = ctx;
+    bd::mem::store<float>(motion + 52, even + 2.0f * k);
+    __imp__sub_82490530(c, base);
+    pose[k].resize(bones * 7);
+    for (u32 i = 0; i < bones; ++i) {
+      const u32 r = records + i * 80;
+      for (int j = 0; j < 3; ++j)
+        pose[k][i * 7 + j] = bd::mem::load<float>(r + 16 + 4 * j);
+      for (int j = 0; j < 4; ++j)
+        pose[k][i * 7 + 3 + j] = bd::mem::load<float>(r + 48 + 4 * j);
+    }
+    Restore(saved);
+  }
+  __imp__sub_82490530(ctx, base);
+  for (u32 i = 0; i < bones; ++i) {
+    if (bd::mem::load<int32_t>(bd::mem::load<u32>(motion + 76) + 4 * i) == -1)
+      continue;
+    const u32 r = records + i * 80;
+    const float *a = &pose[0][i * 7], *b = &pose[1][i * 7];
+    for (int j = 0; j < 3; ++j)
+      bd::mem::store<float>(r + 16 + 4 * j, a[j] + (b[j] - a[j]) * frac);
+    float dot = 0, qa2 = 0, qb2 = 0;
+    for (int j = 0; j < 4; ++j) {
+      dot += a[3 + j] * b[3 + j];
+      qa2 += a[3 + j] * a[3 + j];
+      qb2 += b[3 + j] * b[3 + j];
+    }
+    // Only unit quaternions are blended (anything else in that slot is left as computed).
+    if (std::fabs(qa2 - 1.0f) > 0.05f || std::fabs(qb2 - 1.0f) > 0.05f)
+      continue;
+    const float sign = dot < 0 ? -1.0f : 1.0f;
+    float q[4], n = 0;
+    for (int j = 0; j < 4; ++j) {
+      q[j] = a[3 + j] + (sign * b[3 + j] - a[3 + j]) * frac;
+      n += q[j] * q[j];
+    }
+    n = 1.0f / std::sqrt(n);
+    for (int j = 0; j < 4; ++j)
+      bd::mem::store<float>(r + 48 + 4 * j, q[j] * n);
+  }
+}
+
 }  // namespace
+
+extern "C" REX_FUNC(sub_82490530) { EvaluatePose(ctx, base); }
 
 extern "C" REX_FUNC(sub_8248B898) { Sample(ctx, base, __imp__sub_8248B898); }
 
