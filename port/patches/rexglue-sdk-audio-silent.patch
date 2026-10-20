@@ -1,0 +1,125 @@
+diff --git a/include/rex/audio/sdl/sdl_audio_driver.h b/include/rex/audio/sdl/sdl_audio_driver.h
+index f8949ca..c96fa06 100644
+--- a/include/rex/audio/sdl/sdl_audio_driver.h
++++ b/include/rex/audio/sdl/sdl_audio_driver.h
+@@ -11,9 +11,11 @@
+ 
+ #pragma once
+ 
++#include <atomic>
+ #include <mutex>
+ #include <queue>
+ #include <stack>
++#include <thread>
+ 
+ #include <rex/audio/audio_driver.h>
+ #include <rex/thread.h>
+@@ -35,6 +37,17 @@ class SDLAudioDriver : public AudioDriver {
+   static void SDLCallback(void* userdata, SDL_AudioStream* stream, int additional_amount,
+                           int total_amount);
+ 
++  // One attempt at opening the default playback device; CloseDevice undoes a partial one.
++  bool OpenDevice();
++  void CloseDevice();
++  // No usable device: a host thread plays the device's part at its pace (one frame per
++  // 256 samples at 48 kHz), dropping the frames and releasing the semaphore, so the game runs
++  // on without sound. A failed registration would crash it: on the console it never fails.
++  void StartSilentClock();
++
++  std::thread silent_thread_;
++  std::atomic<bool> silent_running_ = false;
++
+   rex::thread::Semaphore* semaphore_ = nullptr;
+ 
+   SDL_AudioStream* sdl_stream_ = nullptr;
+diff --git a/src/audio/sdl/sdl_audio_driver.cpp b/src/audio/sdl/sdl_audio_driver.cpp
+index 2b8e071..2921b1b 100644
+--- a/src/audio/sdl/sdl_audio_driver.cpp
++++ b/src/audio/sdl/sdl_audio_driver.cpp
+@@ -15,6 +15,7 @@
+ #include <chrono>
+ #include <cmath>
+ #include <cstring>
++#include <thread>
+ 
+ #include <rex/assert.h>
+ #include <rex/audio/conversion.h>
+@@ -62,6 +63,59 @@ SDLAudioDriver::~SDLAudioDriver() {
+ }
+ 
+ bool SDLAudioDriver::Initialize() {
++  // The device can be briefly unavailable at start-up (Bluetooth headset waking up, exclusive
++  // mode held by another program): a player's game crashed that way (2026-10-20, "WASAPI can't
++  // initialize audio client"), and started fine when relaunched. A few tries, then no sound.
++  constexpr int kAttempts = 3;
++  for (int attempt = 1; attempt <= kAttempts; ++attempt) {
++    if (OpenDevice()) {
++      return true;
++    }
++    CloseDevice();
++    if (attempt < kAttempts) {
++      REXAPU_WARN("audio device not available (attempt {}/{}), retrying", attempt, kAttempts);
++      std::this_thread::sleep_for(std::chrono::milliseconds(200));
++    }
++  }
++  REXAPU_ERROR("no audio device could be opened: the game continues without sound");
++  StartSilentClock();
++  return true;
++}
++
++void SDLAudioDriver::CloseDevice() {
++  if (sdl_stream_) {
++    SDL_DestroyAudioStream(sdl_stream_);
++    sdl_stream_ = nullptr;
++  }
++  if (sdl_initialized_) {
++    SDL_QuitSubSystem(SDL_INIT_AUDIO);
++    sdl_initialized_ = false;
++  }
++}
++
++void SDLAudioDriver::StartSilentClock() {
++  silent_running_ = true;
++  silent_thread_ = std::thread([this] {
++    using clock = std::chrono::steady_clock;
++    const auto period = std::chrono::nanoseconds(1000000000ull * channel_samples_ / frame_frequency_);
++    auto next = clock::now();
++    while (silent_running_.load(std::memory_order_relaxed)) {
++      next += period;
++      std::this_thread::sleep_until(next);
++      {
++        std::unique_lock<std::mutex> guard(frames_mutex_);
++        if (!frames_queued_.empty()) {
++          frames_unused_.push(frames_queued_.front());
++          frames_queued_.pop();
++        }
++      }
++      // As SDLCallback does for every frame it plays, silence included.
++      semaphore_->Release(1, nullptr);
++    }
++  });
++}
++
++bool SDLAudioDriver::OpenDevice() {
+   // Set audio category for proper OS audio handling
+   SDL_SetHint(SDL_HINT_AUDIO_CATEGORY, "playback");
+ 
+@@ -165,14 +219,11 @@ void SDLAudioDriver::SubmitFrame(uint32_t frame_ptr) {
+ }
+ 
+ void SDLAudioDriver::Shutdown() {
+-  if (sdl_stream_) {
+-    SDL_DestroyAudioStream(sdl_stream_);
+-    sdl_stream_ = nullptr;
+-  }
+-  if (sdl_initialized_) {
+-    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+-    sdl_initialized_ = false;
++  silent_running_ = false;
++  if (silent_thread_.joinable()) {
++    silent_thread_.join();
+   }
++  CloseDevice();
+   std::unique_lock<std::mutex> guard(frames_mutex_);
+   while (!frames_unused_.empty()) {
+     delete[] frames_unused_.top();
