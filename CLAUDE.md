@@ -103,7 +103,7 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   qu'AMD ; son journal est dans `work/issue7/wwe12_014.log` (rien d'anormal visible : 60 fps, cible
   carrée 1120x1120 fmt 36 non relue, composite peau 1024x512 fmt 15 vidée) ;
   titantrons basse résolution (vidéos Bink 320x320 sur le disque).
-- Menu OPTIONS > GRAPHICS (`wwe12_graphics_menu.cpp`) : **vrai menu du jeu** (2026-10-21). Le sous-menu du
+- Menu OPTIONS > GRAPHICS (`wwe12_graphics_menu.cpp`) : **vrai menu du jeu** (2026-10-20). Le sous-menu du
   manuel (TUTORIAL/ABILITIES/ATTRIBUTES) devient DISPLAY/GRAPHICS/ADVANCED et ouvre de vraies pages d'options
   du jeu (scripts Lua 5.1 compilés dans MScript.pac /MENS/0014, nos 3 pages compilées à l'avance par
   `tools/graphics_pages.py` avec un luac 5.1.5 hors dépôt, intégrées à l'exe dans
