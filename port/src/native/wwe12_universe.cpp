@@ -6,6 +6,9 @@
 // to the one a new save starts with. The reset lives in memory until the game next saves (after a
 // show); the messages say so. On by default (wwe12_universe_edit = false turns it off).
 //
+// Also VACANT, as in SvR 2011: on a Superstar's page, choosing again the belt he already holds
+// offers to vacate it, for a title no weekly show uses (see the VACANT section below).
+//
 // What a new save does to the Universe, and so the reset:
 //   1. sub_826D5938(U): clears the Universe block (U = sub_82683A30()).
 //   2. sub_826BE3C0(start data, size): applies the Universe's starting data (superstars, show
@@ -45,6 +48,8 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+
+#include <fmt/format.h>
 #include <vector>
 
 #include <rex/cvar.h>
@@ -55,6 +60,10 @@
 #include "svr_hook.h"
 
 REXCVAR_DECLARE(uint32_t, user_language);
+
+REXCVAR_DEFINE_BOOL(wwe12_universe_probe, false, "WWE12",
+                    "Dev: log the screen, its vtable, action and first words on every A button of a "
+                    "layout menu, and the call chain of each Decision sound (to find a screen's code).");
 
 REXCVAR_DEFINE_BOOL(wwe12_universe_edit, true, "WWE12",
                     "Universe menu: EDIT SUPERSTAR becomes EDIT UNIVERSE, which can reset the "
@@ -76,6 +85,7 @@ constexpr u32 kUniverseMenuVtbl = 0x82021F98;
 constexpr u32 kEditSuperstarEntry = 4;
 constexpr u32 kEditSuperstarText = 27045;
 constexpr u32 kAskText = 27026, kConfirmText = 27027, kDoneText = 27028, kHintText = 27029;
+constexpr u32 kVacateAskText = 27030, kVacateDoneText = 27031;  // the last of our texts
 
 constexpr u32 kUniverseTitles = 0x83226508;   // 23 titles x {holder, partner}, u16
 constexpr u32 kDefaultChampions = 0x8324E3A8; // 16-byte records, loaded flag at +368
@@ -154,6 +164,19 @@ const char *Text(u32 id) {
        "men\xC3\xBA (antes se hace una copia de tu partida).",
        "Novit\xC3\xA0: ora puoi azzerare il tuo WWE Universe.\nScegli MODIFICA UNIVERSE in questo "
        "menu (prima viene fatta una copia del tuo salvataggio)."},
+      // VACANT: the question (a title no show uses, chosen again for its own champion)
+      {"Vacate this title?\nNo show uses it, so it stays vacant until you give it to a Superstar.",
+       "Rendre ce titre vacant ?\nAucune \xC3\xA9mission ne l'utilise : il restera vacant jusqu'\xC3\xA0 "
+       "ce que vous le donniez \xC3\xA0 un Superstar.",
+       "Diesen Titel vakant machen?\nKeine Show nutzt ihn: Er bleibt vakant, bis du ihn einem "
+       "Superstar gibst.",
+       "\xC2\xBF" "Dejar este t\xC3\xADtulo vacante?\nNing\xC3\xBAn show lo usa: quedar\xC3\xA1 vacante "
+       "hasta que se lo des a una Superstar.",
+       "Rendere vacante questo titolo?\nNessuno show lo usa: rester\xC3\xA0 vacante finch\xC3\xA9 non "
+       "lo darai a una Superstar."},
+      // VACANT: done
+      {"The title is now vacant.", "Le titre est maintenant vacant.", "Der Titel ist jetzt vakant.",
+       "El t\xC3\xADtulo ahora est\xC3\xA1 vacante.", "Il titolo ora \xC3\xA8 vacante."},
   };
   size_t row;
   switch (id) {
@@ -162,6 +185,8 @@ const char *Text(u32 id) {
   case kConfirmText: row = 2; break;
   case kDoneText: row = 3; break;
   case kHintText: row = 4; break;
+  case kVacateAskText: row = 5; break;
+  case kVacateDoneText: row = 6; break;
   default: return nullptr;
   }
   return kTexts[row][CurrentLang()];
@@ -175,9 +200,9 @@ u32 GuestText(u32 id) {
   if (!text)
     return 0;
   static u32 s_block = 0;
-  static const char *s_for[5] = {};
+  static const char *s_for[7] = {};
   if (!s_block)
-    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(5 * kSlot, 0x20);
+    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(7 * kSlot, 0x20);
   if (!s_block)
     return 0;
   const u32 slot = id == kEditSuperstarText ? 0 : id - kAskText + 1;
@@ -348,10 +373,11 @@ bool ResetUniverse(const PPCContext &in, u8 *base) {
 
 // ---- the EDIT UNIVERSE dialogue -------------------------------------------------------------
 
-enum class Step { kIdle, kAsk, kConfirm, kDone, kHint };
+enum class Step { kIdle, kAsk, kConfirm, kDone, kHint, kVacateAsk, kVacateDone };
 Step g_step = Step::kIdle;
 u32 g_screen = 0;  // the Universe menu screen the dialogue belongs to
 u32 g_answer = 0;  // guest word for the message box's answer
+u32 g_vacate_title = 0;  // the title the VACANT question is about
 
 // The one-time hint: the first time the Universe menu shows (2 s in, no other message box open),
 // a message says the reset exists and where. Documents\wwe12\universe_reset_hint.txt remembers
@@ -401,7 +427,7 @@ REX_EXTERN(__imp__sub_821A4400);
 extern "C" REX_FUNC(sub_821A4400) {
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
-  if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kHintText)))
+  if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kVacateDoneText)))
     if (const u32 text = GuestText(id))
       ctx.r3.u64 = text;
 }
@@ -429,6 +455,73 @@ extern "C" REX_FUNC(sub_825453D8) {
     return;  // a dialogue is open: no transition meanwhile
   __imp__sub_825453D8(ctx, base);
 }
+
+// ---- VACANT (a title no show uses) --------------------------------------------------------
+//
+// A Superstar's page has a grid of belts (screen vtable 0x82029BB8). Its action, sub_825B47B0
+// (grid = r3, its owner = grid - 28): the chosen cell is owner+(118 + grid[+640])*4 (cells:
+// owner+656 count), a cell = {title, place}; the edited Superstar is grid+256. It reads the
+// cell's holder (sub_82DEA428 = sub_82A39FC8(title, place, 1)); when that is already the edited
+// Superstar it does nothing, otherwise it gives the title (sub_82DEA418 = sub_82A3A060), or asks
+// for a partner first for a tag title. As in SvR 2011, choosing the belt a Superstar already holds
+// now offers to vacate it, for a title no weekly show uses (each show's record, U + 27360 +
+// show * 984, has at +904 one byte per title: 0 = unused, 1-4 = MAJOR / MINOR / TAG / DIVA, as
+// sub_826CC180 reads it). Universe only (*0x8324E51C == 1: the Universe champions table).
+namespace {
+
+constexpr u32 kBeltGridVtbl = 0x82029BB8;
+constexpr u32 kInUniverseFlag = 0x8324E51C;
+
+bool TitleUsedByAShow(const PPCContext &in, u8 *base, u32 title) {
+  const u32 universe = Call(in, base, __imp__sub_82683A30, 0);
+  if (!universe)
+    return true;  // unknown: leave it alone
+  for (u32 show = 0; show < 10; ++show)
+    if (bd::mem::load<u8>(universe + 27360 + show * 984 + 904 + title))
+      return true;
+  return false;
+}
+
+}  // namespace
+
+REX_EXTERN(__imp__sub_825B47B0);  // the belt grid's action
+REX_EXTERN(__imp__sub_82A39FC8);  // holder (title, place, universe check)
+REX_EXTERN(__imp__sub_82A3A060);  // set holder (title, holder, place)
+extern "C" REX_FUNC(sub_825B47B0) {
+  const u32 grid = ctx.r3.u32;
+  if (Enabled() && g_step == Step::kIdle && bd::mem::try_load<u32>(grid) == kBeltGridVtbl &&
+      bd::mem::load<u32>(kInUniverseFlag) == 1) {
+    const u32 owner = grid - 28;
+    const int k = int(bd::mem::load<u32>(grid + 640));
+    const int count = int(bd::mem::load<u32>(owner + 656));
+    const u32 cell = (k >= 0 && k < count) ? bd::mem::load<u32>(owner + (118 + k) * 4) : 0;
+    if (cell) {
+      const u32 title = bd::mem::load<u32>(cell), place = bd::mem::load<u32>(cell + 4);
+      const u32 edited = bd::mem::load<u32>(grid + 256);
+      if (title < kTitleCount && Call(ctx, base, __imp__sub_82A39FC8, title, place, 1) == edited &&
+          !TitleUsedByAShow(ctx, base, title)) {
+        g_screen = grid;
+        g_vacate_title = title;
+        g_step = Step::kVacateAsk;
+        Call(ctx, base, __imp__sub_8254E7E8, kVacateAskText);
+        return;
+      }
+    }
+  }
+  if (g_step != Step::kIdle && grid == g_screen)
+    return;  // our question is open
+  __imp__sub_825B47B0(ctx, base);
+}
+
+namespace {
+
+void VacateTitle(const PPCContext &in, u8 *base, u32 title) {
+  Call(in, base, __imp__sub_82A3A060, title, kNobody, 0);
+  Call(in, base, __imp__sub_82A3A060, title, kNobody, 1);
+  BD_INFO("[univers] title {} vacated (no show uses it)", title);
+}
+
+}  // namespace
 
 // Every layout menu screen's per-frame update: drives the dialogue while it is open (the screen
 // itself keeps updating; its A button waits, see above).
@@ -463,6 +556,15 @@ extern "C" REX_FUNC(sub_824D3458) {
           Call(ctx, base, __imp__sub_825453D8, g_screen);
         }
         break;
+      case Step::kVacateAsk:
+        if (yes) {
+          VacateTitle(ctx, base, g_vacate_title);
+          g_step = Step::kVacateDone;
+          Call(ctx, base, __imp__sub_8254E680, kVacateDoneText);
+        } else {
+          g_step = Step::kIdle;
+        }
+        break;
       case Step::kConfirm:
         if (yes && BackupSave() && ResetUniverse(ctx, base)) {
           g_step = Step::kDone;
@@ -478,4 +580,57 @@ extern "C" REX_FUNC(sub_824D3458) {
     }
   }
   __imp__sub_824D3458(ctx, base);
+}
+
+// ---- dev probe (wwe12_universe_probe) -------------------------------------------------------
+
+namespace {
+
+// Return addresses up the guest stack (checked reads: the walk ends at the top of the stack).
+void LogChain(const char *what, const PPCContext &ctx) {
+  u32 chain[8] = {u32(ctx.lr)};
+  u32 frame = ctx.r1.u32;
+  for (int i = 1; i < 8 && frame; ++i) {
+    const u32 back = bd::mem::try_load<u32>(frame);
+    if (!back || back <= frame || back - frame > 0x10000)
+      break;
+    chain[i] = bd::mem::try_load<u32>(back - 8);
+    if (!chain[i])
+      break;
+    frame = back;
+  }
+  BD_INFO("[univers] {} from {:08X} <- {:08X} <- {:08X} <- {:08X} <- {:08X} <- {:08X} <- {:08X} <- "
+          "{:08X}",
+          what, chain[0], chain[1], chain[2], chain[3], chain[4], chain[5], chain[6], chain[7]);
+}
+
+}  // namespace
+
+// The A button of the layout menus: the screen, its vtable, its action and first words.
+REX_EXTERN(__imp__sub_824D1FB0);
+extern "C" REX_FUNC(sub_824D1FB0) {
+  if (REXCVAR_GET(wwe12_universe_probe)) {
+    const u32 screen = ctx.r3.u32;
+    const u32 vtbl = bd::mem::try_load<u32>(screen);
+    std::string words;
+    for (u32 i = 0; i < 96; ++i)
+      words += fmt::format(" {:08X}", bd::mem::try_load<u32>(screen + i * 4));
+    BD_INFO("[univers] A: screen 0x{:08X} vtbl 0x{:08X} action 0x{:08X} | words:{}", screen, vtbl,
+            bd::mem::try_load<u32>(vtbl + 72), words);
+  }
+  __imp__sub_824D1FB0(ctx, base);
+}
+
+// A menu sound's name is printed into its object (sub_8270EEB0(object, format, ...), name at
+// object+8): "Decision_8000_0_0" when an entry is chosen.
+REX_EXTERN(__imp__sub_8270EEB0);
+extern "C" REX_FUNC(sub_8270EEB0) {
+  const u32 object = ctx.r3.u32;
+  const PPCContext in = ctx;
+  __imp__sub_8270EEB0(ctx, base);
+  if (!REXCVAR_GET(wwe12_universe_probe) || !object)
+    return;
+  const char *name = bd::mem::try_at<const char>(object + 8);
+  if (name && (std::strncmp(name, "Decision", 8) == 0 || std::strncmp(name, "Cancel", 6) == 0))
+    LogChain(name[0] == 'D' ? "cue Decision" : "cue Cancel", in);
 }

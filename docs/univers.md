@@ -447,3 +447,27 @@ l'utilisateur valide ; ensuite VACANT.
 **2026-10-20 : `wwe12_universe_edit` est activé par défaut** (validé par l'utilisateur). `false` dans
 wwe12.toml le coupe. Reste : forcer la sauvegarde du jeu juste après la remise à zéro (amélioration),
 puis VACANT pour les titres qu'aucune émission n'utilise.
+
+## 12. VACANT titre par titre, comme SvR 2011 (2026-10-20, testé en jeu en FR)
+
+Fiche d'un Superstar (MODIFIER L'UNIVERS → Non → liste → Superstar) → case du titre → grille des
+ceintures (écran vtable 0x82029BB8, action `sub_825B47B0`). En mode Univers, revalider **la
+ceinture que le Superstar détient déjà** (le jeu d'origine ne fait alors rien), pour un titre
+**qu'aucune émission n'utilise**, demande « Rendre ce titre vacant ? Aucune émission ne l'utilise :
+il restera vacant jusqu'à ce que vous le donniez à un Superstar. » ; Oui → les deux places du titre
+passent à 512 (`sub_82A3A060`) et « Le titre est maintenant vacant. ». Pas de copie de sauvegarde :
+c'est réversible (redonner la ceinture dans la même grille).
+- Grille : grid = r3, owner = grid − 28 ; case choisie = owner + (118 + grid[+640]) × 4 (nombre de
+  cases owner+656), une case = {titre, place} ; Superstar édité = grid+256 ; détenteur =
+  `sub_82A39FC8(titre, place, 1)` ; titre par équipe = `sub_82A39CE8`.
+- Titres d'une émission : fiche d'émission U + 27360 + n × 984 (n = 0–9), à +904 un octet par titre
+  (0 = pas utilisé, 1–4 = MAJOR / MINOR / TAG / DIVA), lu par `sub_826CC180`.
+- Testé : Del Rio (WWE, utilisé par RAW) → pas de question ; Big Show (Hardcore, titre 8,
+  inutilisé) → question, OUI → vacant.
+- Attention : le curseur de la grille démarre toujours sur la 1re ceinture (WWE), pas sur celle du
+  Superstar ; valider une autre ceinture la donne au Superstar (comportement du jeu d'origine).
+- Les numéros de titres lus dans `SaveData.Dat` aux §3.3 et §8 sont décalés d'un cran par rapport
+  au jeu (le jeu dit titre 8 = Hardcore de Big Show, la lecture du fichier disait 9) : se fier aux
+  adresses mémoire du code, pas à ces lectures de fichier.
+- Sonde de développement gardée (off) : cvar `wwe12_universe_probe` (écran, vtable, action et mots
+  à chaque bouton A des menus à calques + chaîne d'appels des sons Decision/Cancel).
