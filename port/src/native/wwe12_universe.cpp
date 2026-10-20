@@ -76,6 +76,7 @@
 #include "core/logging.h"
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
+#include "wwe12_graphics_menu.h"
 
 REXCVAR_DECLARE(uint32_t, user_language);
 
@@ -86,6 +87,10 @@ REXCVAR_DEFINE_BOOL(wwe12_universe_probe, false, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_universe_edit, true, "WWE12",
                     "Universe menu: EDIT SUPERSTAR becomes EDIT UNIVERSE, which can reset the "
                     "Universe (as in WWE '13).");
+
+REXCVAR_DEFINE_INT32(wwe12_universe_attire_test, -1, "WWE12",
+                     "Dev: when the Universe menu shows, set byte 4 of every Superstar's place in every "
+                     "Universe match card to this value (-1 = off), to see whether it is the attire.");
 
 REX_EXTERN(__imp__sub_827D8E30);  // pack: index of an entry id (pack, id), -1 if none
 REX_EXTERN(__imp__sub_827D9528);  // pack: new expanded copy of an entry (pack, index)
@@ -644,9 +649,12 @@ REX_EXTERN(__imp__sub_821A4400);
 extern "C" REX_FUNC(sub_821A4400) {
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
-  if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kLastText)))
+  if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kLastText))) {
     if (const u32 text = GuestText(id))
       ctx.r3.u64 = text;
+  } else if (const u32 text = Wwe12NativeGraphicsGuestText(id)) {
+    ctx.r3.u64 = text;  // OPTIONS > GRAPHICS in the game's menus (wwe12_graphics_menu.cpp)
+  }
 }
 
 // BATL/SAVE read end (this, pack): keep the Universe's start data.
@@ -760,11 +768,42 @@ extern "C" REX_FUNC(sub_82565390) {
   __imp__sub_82565390(ctx, base);
 }
 
+namespace {
+
+// Dev test (wwe12_universe_attire_test): a show's record (U + 27360 + show * 984) starts with its
+// match cards, 104 bytes each: a 16-byte header, then 6 places of 12 bytes ({u16 Superstar, 512 =
+// nobody; u8; u8 team; u8 always 0xFF in the user's save; ...}), then 16 bytes.
+void AttireTest(const PPCContext &in, u8 *base) {
+  static bool s_done = false;
+  const int value = REXCVAR_GET(wwe12_universe_attire_test);
+  if (value < 0 || s_done)
+    return;
+  const u32 universe = Call(in, base, __imp__sub_82683A30, 0);
+  if (!universe)
+    return;
+  s_done = true;
+  u32 count = 0;
+  for (u32 show = 0; show < 10; ++show)
+    for (u32 match = 0; match < 8; ++match)
+      for (u32 place = 0; place < 6; ++place) {
+        const u32 at = universe + 27360 + show * 984 + match * 104 + 16 + place * 12;
+        if (bd::mem::load<u16>(at) < 512) {
+          bd::mem::store<u8>(at + 4, u8(value));
+          ++count;
+        }
+      }
+  BD_INFO("[univers] attire test: byte 4 = {} in {} places", value, count);
+}
+
+}  // namespace
+
 // Every layout menu screen's per-frame update: drives the dialogue while it is open (the screen
 // itself keeps updating; its A button waits, see above).
 REX_EXTERN(__imp__sub_824D3458);
 REX_EXTERN(__imp__sub_8254E7D0);  // message box: idle (none open)?
 extern "C" REX_FUNC(sub_824D3458) {
+  if (bd::mem::try_load<u32>(ctx.r3.u32) == kUniverseMenuVtbl)
+    AttireTest(ctx, base);
   // The one-time hint, 120 frames (2 s) after the Universe menu shows.
   if (Enabled() && g_step == Step::kIdle && HintPending() &&
       bd::mem::try_load<u32>(ctx.r3.u32) == kUniverseMenuVtbl) {

@@ -766,3 +766,256 @@ uint32_t Wwe12RelabelGraphicsEntry(uint8_t *region_start, uint8_t *region_end) {
   }
   return patched;
 }
+
+// ==== The native GRAPHICS pages (wwe12_graphics_native) ====================================
+//
+// The same settings in the game's own menus (the user wants real game menus, not a screen drawn
+// over the game). Found on 2026-10-20:
+// - OPTIONS's IN-GAME MANUAL entry (string 41184, relabelled GRAPHICS) is a sub-menu of menu.pac
+//   (record kind 1); its first three entries become DISPLAY / GRAPHICS / ADVANCED (texts
+//   kNativeTabText + tab), each linked to 1304 (wwe12_menu_patch.cpp), the link of GAMEPLAY >
+//   IN-GAME OPTIONS: sub_825470B0(1304) makes the option page sub_8255E7C0(9), which runs the page
+//   script "/MENS/0014" of MScript.pac.
+// - Option pages are Lua 5.1 scripts, compiled (numbers as 4-byte floats). The game's Lua has a
+//   source parser too, but it crashes (tested: a guest access violation in lcode's jump lists), so
+//   our pages are compiled in advance by tools/graphics_pages.py (graphics_pages/*.lua ->
+//   wwe12_graphics_pages.inc). The page loads its script with luaL_loadbuffer
+//   (sub_827E9418(L, buffer, size, name), called by sub_824CFD08): when one of our entries was
+//   chosen (the decide hook in wwe12_quit.cpp tells us which), the script is replaced by ours,
+//   written from the original's logic (frames DrawIngameOptions: 4 rows, DrawRTWMOptions: 5 rows,
+//   of the layout "LOPN").
+// - Values: the page's script calls yOption.InitInGameOptions(n), then reads the rows with
+//   yFrame.Get32BitArray(i) (value i, enabled N+i, maximum 2N+i); on A it writes them back with
+//   Set32BitArray(i, v) and calls yOption.UpdateInGameOptions(n). The array is the current page's
+//   words 852+i (page = [0x8317C430 + 4 * [0x8306B718]]). Our script passes n = 100 + tab, which
+//   the game ignores; the hooks of those two natives (sub_82DEDD70, sub_82DEC528) fill the array
+//   from the cvars and apply the chosen values, then save wwe12.toml (changed rows only).
+// - Texts: titles, labels and values are fixed text ids from 43100 (unused in every string table;
+//   layout in tools/graphics_pages.py), served in the player's language by the string manager hook
+//   (wwe12_universe.cpp asks Wwe12NativeGraphicsGuestText).
+
+REXCVAR_DEFINE_BOOL(wwe12_graphics_native, false, "WWE12",
+                    "OPTIONS > GRAPHICS in the game's own menus (DISPLAY / GRAPHICS / ADVANCED pages "
+                    "of the game) instead of the screen drawn over the game.");
+
+#include <map>
+
+#include <rex/runtime.h>
+
+#include "core/memory_helpers.h"
+#include "svr_hook.h"
+
+REX_EXTERN(__imp__sub_827E74A8);  // lua_tointeger (L, index)
+
+namespace {
+
+constexpr u32 kNativeTabText = 43100;   // 43100-43102: the three entries (fixed: menu.pac)
+// 43110-43149: the rows' labels, 43150-43299: their values (tools/graphics_pages.py)
+constexpr u32 kNativeTextEnd = 43300;
+constexpr int kNativePage = 100;        // InitInGameOptions(100 + tab)
+constexpr u32 kIngameOptionsScriptSize = 5158;  // "/MENS/0014", the script we replace
+
+int g_pending_tab = -1;  // an entry was chosen, its page script not loaded yet
+int g_native_tab = -1;   // the page shown
+std::vector<Setting> g_native_settings;
+std::vector<int> g_native_rows;  // indices into g_native_settings, for g_native_tab
+
+#include "wwe12_graphics_pages.inc"
+
+struct NativePage {
+  const uint8_t *script;
+  size_t size;
+  const int *values;  // number of values of each row
+  int rows;
+};
+const NativePage kNativePages[] = {
+    {kGraphicsPage0, sizeof(kGraphicsPage0), kGraphicsPage0Values, int(std::size(kGraphicsPage0Values))},
+    {kGraphicsPage1, sizeof(kGraphicsPage1), kGraphicsPage1Values, int(std::size(kGraphicsPage1Values))},
+    {kGraphicsPage2, sizeof(kGraphicsPage2), kGraphicsPage2Values, int(std::size(kGraphicsPage2Values))},
+};
+
+const char *TabName(int tab) {
+  const Texts &t = T();
+  return tab == 0 ? t.tab_display : tab == 1 ? t.tab_graphics : t.tab_advanced;
+}
+
+// The settings of one tab (g_native_settings / g_native_rows), checked against the page script
+// (same rows, same number of values: tools/graphics_pages.py).
+bool LoadNativeSettings(int tab) {
+  g_native_settings = BuildSettings();
+  g_native_rows.clear();
+  for (int i = 0; i < int(g_native_settings.size()); ++i)
+    if (g_native_settings[i].tab == tab)
+      g_native_rows.push_back(i);
+  const NativePage &page = kNativePages[tab];
+  bool same = int(g_native_rows.size()) == page.rows;
+  for (int r = 0; same && r < page.rows; ++r)
+    same = int(g_native_settings[g_native_rows[r]].values.size()) == page.values[r];
+  if (!same)
+    BD_WARN("[graphics] native page {}: the settings do not match the page script "
+            "(tools/graphics_pages.py), page not replaced", tab);
+  return same;
+}
+
+// The text of one of our ids (see tools/graphics_pages.py), in the current language.
+std::string NativeText(u32 id) {
+  if (id >= kNativeTabText && id < kNativeTabText + 3)
+    return TabName(int(id - kNativeTabText));
+  const int tab = g_native_tab;
+  if (tab < 0 || g_native_rows.empty())
+    return {};
+  const Texts &t = T();
+  if (id >= 43110 && id < 43150) {
+    const int r = int(id - 43110) - tab * 10;
+    if (r < 0 || r >= int(g_native_rows.size()))
+      return {};
+    const Setting &s = g_native_settings[g_native_rows[r]];
+    return std::string(t.*s.label) + (s.next_start ? " *" : "");
+  }
+  const int k = int(id - 43150) - tab * 50;
+  const int r = k / 8, v = k % 8;
+  if (k < 0 || r >= int(g_native_rows.size()))
+    return {};
+  const Setting &s = g_native_settings[g_native_rows[r]];
+  return v < int(s.values.size()) ? s.values[v] : std::string();
+}
+
+// The current option page's 32-bit array (yFrame.Get32BitArray / Set32BitArray).
+u32 PageArray() {
+  const u32 index = bd::mem::load<u32>(0x8306B718);
+  const u32 page = bd::mem::load<u32>(0x8317C430 + index * 4);
+  return page ? page + 852 * 4 : 0;
+}
+
+void SaveNativeSettings() {
+  if (g_toml_path.empty())
+    return;
+  TomlFile f;
+  if (!f.Load(g_toml_path)) {
+    BD_WARN("[graphics] cannot read {}", rex::path_to_utf8(g_toml_path));
+    return;
+  }
+  for (const Setting &s : g_native_settings)
+    if (s.touched)
+      s.save(f, s.index);
+  if (f.Save())
+    BD_INFO("[graphics] native page: settings saved to {}", rex::path_to_utf8(g_toml_path));
+}
+
+// The page number our script passed (100 + tab), or -1. Natives get the Lua state in r3; the
+// argument is read with lua_tointeger(L, -1), as the game's own natives do.
+int NativePageArg(const PPCContext &ctx, u8 *base) {
+  if (!REXCVAR_GET(wwe12_graphics_native) || g_native_tab < 0)
+    return -1;
+  PPCContext x = ctx;
+  x.r4.u64 = ~uint64_t(0);  // index -1: the top of the Lua stack
+  __imp__sub_827E74A8(x, base);
+  const int arg = int(x.r3.u32);
+  return arg >= kNativePage && arg < kNativePage + 3 ? arg - kNativePage : -1;
+}
+
+}  // namespace
+
+void Wwe12GraphicsNativeDecide(uint32_t label) {
+  if (!REXCVAR_GET(wwe12_graphics_native))
+    return;
+  if (label >= kNativeTabText && label < kNativeTabText + 3) {
+    g_pending_tab = int(label - kNativeTabText);
+    BD_INFO("[graphics] native page {} chosen", g_pending_tab);
+  }
+}
+
+bool Wwe12GraphicsNativeEnabled() { return REXCVAR_GET(wwe12_graphics_native); }
+
+uint32_t Wwe12NativeGraphicsGuestText(uint32_t id) {
+  if (id < kNativeTabText || id >= kNativeTextEnd || !REXCVAR_GET(wwe12_graphics_native))
+    return 0;
+  const std::string text = NativeText(id);
+  if (text.empty())
+    return 0;
+  // One 128-byte guest slot per id, rewritten when its text changes (language).
+  constexpr u32 kSlot = 128;
+  static u32 s_block = 0;
+  static std::map<u32, std::string> s_written;
+  if (!s_block)
+    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc((kNativeTextEnd - kNativeTabText) * kSlot, 0x20);
+  if (!s_block)
+    return 0;
+  const u32 at = s_block + (id - kNativeTabText) * kSlot;
+  if (s_written[id] != text) {
+    std::memset(bd::mem::at<char>(at), 0, kSlot);
+    std::memcpy(bd::mem::at<char>(at), text.data(), std::min<size_t>(text.size(), kSlot - 1));
+    s_written[id] = text;
+  }
+  return at;
+}
+
+// luaL_loadbuffer (L, buffer, size, name): our page script instead of IN-GAME OPTIONS's.
+REX_EXTERN(__imp__sub_827E9418);
+extern "C" REX_FUNC(sub_827E9418) {
+  if (g_pending_tab >= 0 && REXCVAR_GET(wwe12_graphics_native) &&
+      ctx.r5.u32 == kIngameOptionsScriptSize && bd::mem::try_load<u8>(ctx.r4.u32) == 0x1B) {
+    const int tab = g_pending_tab;
+    g_pending_tab = -1;
+    if (LoadNativeSettings(tab)) {
+      const NativePage &page = kNativePages[tab];
+      static u32 s_buffers[3] = {};
+      if (!s_buffers[tab])
+        s_buffers[tab] = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(page.size), 0x20);
+      if (s_buffers[tab]) {
+        std::memcpy(bd::mem::at<u8>(s_buffers[tab]), page.script, page.size);
+        ctx.r4.u64 = s_buffers[tab];
+        ctx.r5.u64 = page.size;
+        g_native_tab = tab;
+        BD_INFO("[graphics] native page {}: script of {} bytes, {} rows", tab, page.size, page.rows);
+      }
+    }
+  }
+  __imp__sub_827E9418(ctx, base);
+}
+
+// yOption.InitInGameOptions(n): for our pages, the rows' values from the cvars.
+REX_EXTERN(__imp__sub_82DEDD70);
+extern "C" REX_FUNC(sub_82DEDD70) {
+  const int tab = NativePageArg(ctx, base);
+  if (tab < 0 || tab != g_native_tab) {
+    __imp__sub_82DEDD70(ctx, base);
+    return;
+  }
+  const u32 array = PageArray();
+  const u32 n = u32(g_native_rows.size());
+  if (array)
+    for (u32 r = 0; r < n; ++r) {
+      const Setting &s = g_native_settings[g_native_rows[r]];
+      bd::mem::store<u32>(array + r * 4, u32(s.index));
+      bd::mem::store<u32>(array + (n + r) * 4, 1);
+      bd::mem::store<u32>(array + (2 * n + r) * 4, u32(s.values.size() - 1));
+    }
+  BD_INFO("[graphics] native page {}: {} rows read from the settings", tab, n);
+  ctx.r3.u64 = 0;  // no results for Lua
+}
+
+// yOption.UpdateInGameOptions(n): for our pages, the chosen values applied and saved.
+REX_EXTERN(__imp__sub_82DEC528);
+extern "C" REX_FUNC(sub_82DEC528) {
+  const int tab = NativePageArg(ctx, base);
+  if (tab < 0 || tab != g_native_tab) {
+    __imp__sub_82DEC528(ctx, base);
+    return;
+  }
+  const u32 array = PageArray();
+  bool changed = false;
+  for (u32 r = 0; array && r < g_native_rows.size(); ++r) {
+    Setting &s = g_native_settings[g_native_rows[r]];
+    const int v = int(bd::mem::load<u32>(array + r * 4));
+    if (v >= 0 && v < int(s.values.size()) && v != s.index) {
+      s.index = v;
+      s.apply(v);
+      s.touched = changed = true;
+    }
+  }
+  if (changed)
+    SaveNativeSettings();
+  BD_INFO("[graphics] native page {}: {}", tab, changed ? "changes applied" : "no change");
+  ctx.r3.u64 = 0;
+}

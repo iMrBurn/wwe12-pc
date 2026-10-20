@@ -31,7 +31,10 @@
 #include <rex/filesystem/vfs.h>
 #include <rex/logging/macros.h>
 
+#include "wwe12_graphics_menu.h"
+
 REXCVAR_DECLARE(bool, wwe12_quit_entry);
+REXCVAR_DECLARE(bool, wwe12_graphics_native);
 REXCVAR_DEFINE_INT32(wwe12_graphics_link_test, 0, "WWE12",
                      "Test: link of the OPTIONS > GRAPHICS record (0 = the overlay screen; 0x518 opens the "
                      "game's IN-GAME OPTIONS page).");
@@ -68,6 +71,38 @@ bool ReadGameFile(rex::filesystem::VirtualFileSystem *fs, const char *path,
   return ok;
 }
 
+// OPTIONS > GRAPHICS in the game's menus (wwe12_graphics_native, wwe12_graphics_menu.cpp): the
+// IN-GAME MANUAL record (label 41184, kind 1 = a sub-menu; its entries are the records whose parent,
+// +0x50, is its id, +0x34: TUTORIAL, ABILITIES, ATTRIBUTES and a hidden fourth, kind 7) keeps its
+// sub-menu, whose three visible entries become DISPLAY / GRAPHICS / ADVANCED (labels
+// kWwe12GraphicsNativeTabText + n), each linked to 1304 (the game's IN-GAME OPTIONS page, whose
+// script is then replaced). Tested 2026-10-20: +0x30 is not the parent (it matched other records).
+bool PatchGraphicsPages(std::vector<uint8_t> &d, size_t base) {
+  const uint32_t count = Be32(&d[base + 4]);
+  const size_t first = base + 0x10;
+  if (first + size_t(count) * kRecordSize > d.size())
+    return false;
+  uint32_t manual = 0xFFFFFFFFu;
+  for (uint32_t k = 0; k < count; ++k) {
+    const uint8_t *r = &d[first + size_t(k) * kRecordSize];
+    if (Be32(r + 0x18) == 41184 && Be32(r + 0x54) == 1)
+      manual = Be32(r + 0x34);
+  }
+  if (manual == 0xFFFFFFFFu)
+    return false;
+  uint32_t n = 0;
+  for (uint32_t k = 0; k < count && n < 3; ++k) {
+    uint8_t *r = &d[first + size_t(k) * kRecordSize];
+    if (Be32(r + 0x50) != manual || Be32(r + 0x54) != 5)
+      continue;
+    SetBe32(r + 0x18, kWwe12GraphicsNativeTabText + n);
+    SetBe32(r + 0x6C, 1304);
+    SetBe32(r + 0x70, 2);
+    ++n;
+  }
+  return n == 3;
+}
+
 // Relabels the main menu's SHOP record of the table whose header is at 'base'.
 bool RelabelShop(std::vector<uint8_t> &d, size_t base) {
   const uint32_t count = Be32(&d[base + 4]);
@@ -85,7 +120,7 @@ bool RelabelShop(std::vector<uint8_t> &d, size_t base) {
       SetBe32(r + 0x6C, uint32_t(link));
       SetBe32(r + 0x70, 2);
     }
-    if (Be32(r + 0x30) == 1 && Be32(r + 0x18) == kShopStringId) {
+    if (REXCVAR_GET(wwe12_quit_entry) && Be32(r + 0x30) == 1 && Be32(r + 0x18) == kShopStringId) {
       SetBe32(r + 0x18, kExitStringId);
       found = true;
     }
@@ -98,7 +133,8 @@ bool RelabelShop(std::vector<uint8_t> &d, size_t base) {
 // Called once the game device and the mods overlay are mounted.
 void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem *fs, const std::string &game_device,
                          const std::filesystem::path &user_root) {
-  if (!REXCVAR_GET(wwe12_quit_entry) || user_root.empty())
+  const bool native_graphics = REXCVAR_GET(wwe12_graphics_native);
+  if ((!REXCVAR_GET(wwe12_quit_entry) && !native_graphics) || user_root.empty())
     return;
   std::vector<uint8_t> d;
   if (!ReadGameFile(fs, "game:\\pac\\menu\\menu.pac", d)) {
@@ -119,6 +155,10 @@ void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem *fs, const std::stri
       continue;
     if (RelabelShop(d, p))
       ++patched;
+    if (native_graphics && PatchGraphicsPages(d, p)) {
+      ++patched;
+      REXLOG_INFO("Menu : OPTIONS > GRAPHICS dans les menus du jeu (table à 0x{:X})", p);
+    }
     p += size_t(count) * kRecordSize;
   }
   if (!patched) {

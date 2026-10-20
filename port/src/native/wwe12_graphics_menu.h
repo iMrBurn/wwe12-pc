@@ -39,3 +39,16 @@ constexpr uint32_t kWwe12GraphicsStringId = 41184;
 // Rewrites the entry's text in a writable guest memory region holding a loaded string table.
 // Returns the number of texts rewritten.
 uint32_t Wwe12RelabelGraphicsEntry(uint8_t *region_start, uint8_t *region_end);
+
+// ---- The native pages (wwe12_graphics_native): GRAPHICS in the game's own menus. -------------
+
+// Text ids of the GRAPHICS sub-menu's three entries (DISPLAY / GRAPHICS / ADVANCED).
+constexpr uint32_t kWwe12GraphicsNativeTabText = 43100;
+
+bool Wwe12GraphicsNativeEnabled();
+
+// A menu entry was chosen (decide hook, game thread): one of ours opens its page next.
+void Wwe12GraphicsNativeDecide(uint32_t label);
+
+// The guest text of one of the native pages' ids, or 0 (string manager hook, game thread).
+uint32_t Wwe12NativeGraphicsGuestText(uint32_t id);

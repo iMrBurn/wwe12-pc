@@ -268,14 +268,20 @@ REX_EXTERN(__imp__sub_8253A028);
 extern "C" REX_FUNC(sub_8253C3F0) {
   // The OPTIONS entry relabelled GRAPHICS (wwe12_graphics_menu.cpp) opens the settings screen
   // instead of the in-game manual.
+  // With wwe12_graphics_native, the entry keeps its sub-menu (DISPLAY / GRAPHICS / ADVANCED,
+  // wwe12_menu_patch.cpp) and the page to open is noted here.
   if (REXCVAR_GET(wwe12_graphics_menu) && !REXCVAR_GET(wwe12_graphics_link_test)) {
     PPCContext probe = ctx;
     __imp__sub_8253A028(probe, base);
     const u32 entry = probe.r3.u32;
-    if (entry && entry != 0xFFFFFFFFu &&
-        bd::mem::load<u32>(entry + 24) == kWwe12GraphicsStringId) {
-      Wwe12GraphicsMenuRequest();
-      return;
+    if (entry && entry != 0xFFFFFFFFu) {
+      const u32 label = bd::mem::load<u32>(entry + 24);
+      if (Wwe12GraphicsNativeEnabled()) {
+        Wwe12GraphicsNativeDecide(label);
+      } else if (label == kWwe12GraphicsStringId) {
+        Wwe12GraphicsMenuRequest();
+        return;
+      }
     }
   }
   if (REXCVAR_GET(wwe12_quit_entry)) {
