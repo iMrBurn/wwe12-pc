@@ -11,7 +11,8 @@ user_language = 1
 # Main menu: SHOP becomes EXIT (quits the game) and Xbox LIVE is labelled Online.
 wwe12_quit_entry = true
 
-# OPTIONS menu: "IN-GAME MANUAL" becomes GRAPHICS, a screen to change the settings below in game.
+# OPTIONS menu: "IN-GAME MANUAL" becomes GRAPHICS, with the game's own DISPLAY / GRAPHICS / ADVANCED pages
+# to change the settings below in game. false = the original manual.
 wwe12_graphics_menu = true
 
 # Skip the start-up videos (logos and opening) to reach the title screen faster.

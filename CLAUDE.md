@@ -103,11 +103,14 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   qu'AMD ; son journal est dans `work/issue7/wwe12_014.log` (rien d'anormal visible : 60 fps, cible
   carrée 1120x1120 fmt 36 non relue, composite peau 1024x512 fmt 15 vidée) ;
   titantrons basse résolution (vidéos Bink 320x320 sur le disque).
-- Menu OPTIONS > GRAPHICS (`wwe12_graphics_menu.cpp`) : l'entrée du manuel (texte 41184) renommée
-  en mémoire ; écran ImGui au style des pages d'options (police Impact penchée), entrées du jeu
-  bloquées pendant qu'il est ouvert. Page 100 % native = projet à part : les pages d'options sont
-  des listes de numéros de textes en mémoire, et `wwe12_graphics_link_test=1304` ouvre déjà la vraie
-  page IN-GAME OPTIONS depuis GRAPHICS (enregistrement menu.pac : +0x54 type 5, +0x6C lien).
+- Menu OPTIONS > GRAPHICS (`wwe12_graphics_menu.cpp`) : **vrai menu du jeu** (2026-10-21). Le sous-menu du
+  manuel (TUTORIAL/ABILITIES/ATTRIBUTES) devient DISPLAY/GRAPHICS/ADVANCED et ouvre de vraies pages d'options
+  du jeu (scripts Lua 5.1 compilés dans MScript.pac /MENS/0014, nos 3 pages compilées à l'avance par
+  `tools/graphics_pages.py` avec un luac 5.1.5 hors dépôt, intégrées à l'exe dans
+  `wwe12_graphics_pages.inc`). 13 réglages, mêmes cvars/clés que le launcher, enregistrés dans wwe12.toml
+  à la fermeture de la page. L'ancien écran ImGui est retiré ; `wwe12_graphics_menu = false` rend le
+  manuel d'origine. Détails : `docs/menus_natifs.md`. Le patch SDK `rexglue-sdk-menu-input.patch`
+  (GetStateIgnoringActive) ne sert plus au menu ; `rexglue-sdk-pads-list.patch` sert aux icônes PS.
 - Voitures des entrées (Del Rio, Eddie Guerrero) : le jeu dessine la carrosserie en mélange alpha avec
   l'alpha d'une texture BC3 (~0,63), donc translucide ; la Xbox l'affiche opaque (cause réelle inconnue).
   Contournement : cvar `wwe12_car_opaque` (défaut true, `pipeline_cache.cpp`) coupe le mélange pour le
