@@ -407,3 +407,29 @@ cartes, champions), y compris après avoir simulé jusqu'à un PPV.
   0x824CA80C ← 0x8255ED44) ; les cartes de matchs par 0x82556A70 ← 0x8255778C.
 - Prochaine étape (2) : un vrai choix « RESET UNIVERSE » (EDIT SUPERSTAR → EDIT UNIVERSE avec un
   sous-menu, comme WWE '13), avec confirmation, à la place de F8.
+
+## 11. EDIT UNIVERSE > RESET UNIVERSE dans le jeu (2026-10-20, testé en jeu)
+
+`wwe12_universe.cpp`, cvar `wwe12_universe_edit` (off par défaut pour l'instant ;
+`tools/dev/lancer_test_univers.bat` l'allume). Dans le menu de l'Univers, EDIT SUPERSTAR s'appelle
+EDIT UNIVERSE (FR « UNIVERS », DE « WELT », ES « UNIVERSO », IT « UNIVERSE »). Le choisir ouvre la boîte
+Oui/Non du jeu « Reset the WWE Universe? Choose No to edit your Superstars. » (curseur sur NON) :
+NON → l'éditeur des Superstars, comme avant ; OUI → seconde confirmation (« All WWE Universe
+progress will be lost… ») ; OUI → remise à zéro + message « The WWE Universe has been reset. Leave
+WWE Universe and come back to see it. ». Vérifié : après être ressorti et rentré, cartes neuves.
+
+Comment le menu a été trouvé (sondes retirées depuis) :
+- le menu Univers est un écran « à calques » (vtable 0x82021F98), pas un menu de menu.pac ; tous
+  les écrans de l'Univers sont construits d'un coup à l'entrée (`sub_8255EC88`) ;
+- le son « Decision » joué à la validation a donné la chaîne : `sub_824D1FB0(écran)` = bouton A des
+  menus à calques → vtbl[18] = `sub_825453D8` (action de l'écran Univers : lance la transition,
+  +268 = 1) ; l'entrée choisie est le mot +28 (0 MATCH CARDS … 4 EDIT SUPERSTAR, 5 EDIT TEAM) ;
+  vtbl[1] = `sub_824D3458`, mise à jour de chaque image (partagée par tous les menus à calques) ;
+- boîtes du jeu (objet *0x8324DEF0) : `sub_8254E7E8(id)` question Oui/Non, `sub_8254E680(id)`
+  information, `sub_8254E8C8(&réponse)` ≠ 0 une fois fermée (réponse 1 = oui) ;
+- textes : `sub_821A4400(this, id)` ; nos questions utilisent les numéros 27026–27028, vides dans
+  WWE '12.
+
+À faire : la remise à zéro n'est écrite sur le disque qu'à la prochaine sauvegarde du jeu (si on
+quitte tout de suite, elle est perdue) → déclencher la sauvegarde du jeu après la remise à zéro ;
+activer `wwe12_universe_edit` par défaut quand l'utilisateur valide ; ensuite VACANT.
