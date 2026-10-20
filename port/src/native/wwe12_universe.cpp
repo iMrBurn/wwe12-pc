@@ -1,10 +1,26 @@
 // WWE '12: Universe mode, RESET UNIVERSE (as in WWE '13). See docs/univers.md.
 //
-// The Universe menu's EDIT SUPERSTAR entry is labelled EDIT UNIVERSE. Choosing it asks, with the
-// game's own yes/no box, whether to reset the Universe; "no" opens the Superstar editor as before,
-// "yes" asks once more, backs the save up (launcher format, SAVES page), then resets the Universe
-// to the one a new save starts with. The reset lives in memory until the game next saves (after a
-// show); the messages say so. On by default (wwe12_universe_edit = false turns it off).
+// The Universe menu's EDIT SUPERSTAR entry is labelled EDIT UNIVERSE. Choosing it opens, as in
+// WWE '13, a sub-menu in the game's own choice box: EDIT SUPERSTARS (the Superstar editor, as
+// before), EDIT TITLES (the game's own TITLE MANAGEMENT screen of OPTIONS > TITLE SETTINGS, here on
+// the Universe champions) and RESET UNIVERSE (asks once more, backs the save up in the launcher's
+// format, SAVES page, then resets the Universe to the one a new save starts with; the reset lives in
+// memory until the game next saves, after a show, and the messages say so). On by default
+// (wwe12_universe_edit = false turns it off).
+//
+// The choice box: the message box (*0x8324DEF0) has a list mode (request kind 4: text id, then at
+// +24 the number of choices and at +28 an array of string pointers), opened by sub_8260DD80(-, text
+// id, choices, count, 0, 0) as the game's own "Do Not Review / Remind Me Later" box does; once closed,
+// the answer (sub_8254E8C8) is the chosen line, from 0.
+//
+// TITLE MANAGEMENT (menu.pac record "TITLE SETTINGS", link 0x52E): the main menu's scene for it
+// (sub_825477E8) makes a 2 560-byte object (operator new sub_821A0000) with sub_82564548(object,
+// pad), which registers itself as a layout screen (updated and drawn on its own); it is finished when
+// the word at object+228+16 is 5, then destroyed with sub_82565A30(object, 1). Its rows ({holder,
+// title, place, ...}, 24 bytes from object+376) come from sub_82A39FC8(title, place, 1), which reads
+// the Universe champions table in the Universe; on leaving it asks to keep the changes, writes them
+// with sub_82A3A060 and saves the game to disk. Its X button (VACATE TITLE, vtable slot sub_82565390)
+// keeps our limit in the Universe: no VACANT for a title a weekly show uses.
 //
 // Also VACANT, as in SvR 2011: on a Superstar's page, choosing again the belt he already holds
 // offers to vacate it, for a title no weekly show uses (see the VACANT section below).
@@ -43,10 +59,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <ctime>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <string>
 
 #include <fmt/format.h>
@@ -78,6 +96,12 @@ REX_EXTERN(__imp__sub_826BE3C0);  // Universe new-save init (data, size)
 REX_EXTERN(__imp__sub_8254E7E8);  // message box: yes/no question (text id)
 REX_EXTERN(__imp__sub_8254E680);  // message box: information (text id)
 REX_EXTERN(__imp__sub_8254E8C8);  // message box: closed? (&answer)
+REX_EXTERN(__imp__sub_8260DD80);  // message box: choice list (-, text id, choices, count, 0, 0)
+REX_EXTERN(__imp__sub_8253E240);  // main menu manager: active pad
+REX_EXTERN(__imp__sub_821A0000);  // operator new (size)
+REX_EXTERN(__imp__sub_82564548);  // TITLE MANAGEMENT: constructor (object, pad)
+REX_EXTERN(__imp__sub_82565A30);  // TITLE MANAGEMENT: destructor (object, 1 = free)
+REX_EXTERN(__imp__sub_828942C0);  // button bar: prompt set (9 = A SELECT, B BACK)
 
 namespace {
 
@@ -85,7 +109,13 @@ constexpr u32 kUniverseMenuVtbl = 0x82021F98;
 constexpr u32 kEditSuperstarEntry = 4;
 constexpr u32 kEditSuperstarText = 27045;
 constexpr u32 kAskText = 27026, kConfirmText = 27027, kDoneText = 27028, kHintText = 27029;
-constexpr u32 kVacateAskText = 27030, kVacateDoneText = 27031;  // the last of our texts
+constexpr u32 kVacateAskText = 27030, kVacateDoneText = 27031;
+constexpr u32 kTitleUsedText = 27032;
+// The sub-menu's lines (EDIT SUPERSTARS, EDIT TITLES, RESET UNIVERSE), 27033-27035: the last of
+// our texts (27026-27040 are unused in WWE '12).
+constexpr u32 kChoiceText = 27033, kChoiceCount = 3;
+constexpr u32 kLastText = kChoiceText + kChoiceCount - 1;
+enum Choice : u32 { kEditSuperstars, kEditTitles, kResetUniverse };
 
 constexpr u32 kUniverseTitles = 0x83226508;   // 23 titles x {holder, partner}, u16
 constexpr u32 kDefaultChampions = 0x8324E3A8; // 16-byte records, loaded flag at +368
@@ -114,12 +144,11 @@ const char *Text(u32 id) {
       // EDIT SUPERSTAR's new label
       {"EDIT UNIVERSE", "MODIFIER L'UNIVERS", "WELT BEARBEITEN", "EDITAR UNIVERSO",
        "MODIFICA UNIVERSE"},
-      // the question
-      {"Reset the WWE Universe?\nChoose No to edit your Superstars.",
-       "Remettre l'Univers WWE \xC3\xA0 z\xC3\xA9ro ?\nChoisissez Non pour modifier les Superstars.",
-       "WWE-Welt zur\xC3\xBC" "cksetzen?\nW\xC3\xA4hle Nein, um die Superstars zu bearbeiten.",
-       "\xC2\xBFReiniciar el Universo WWE?\nElige No para editar las Superstars.",
-       "Azzerare il WWE Universe?\nScegli No per modificare le Superstar."},
+      // the sub-menu's question
+      {"EDIT UNIVERSE\nWhat do you want to edit?", "MODIFIER L'UNIVERS\nQue voulez-vous modifier ?",
+       "WELT BEARBEITEN\nWas m\xC3\xB6" "chtest du bearbeiten?",
+       "EDITAR UNIVERSO\n\xC2\xBF" "Qu\xC3\xA9 quieres editar?",
+       "MODIFICA UNIVERSE\nCosa vuoi modificare?"},
       // the confirmation
       {"All WWE Universe progress will be lost (calendar, rankings, champions, rivalries).\nA "
        "backup of your save is made first (launcher, SAVES page).\nContinue?",
@@ -177,18 +206,32 @@ const char *Text(u32 id) {
       // VACANT: done
       {"The title is now vacant.", "Le titre est maintenant vacant.", "Der Titel ist jetzt vakant.",
        "El t\xC3\xADtulo ahora est\xC3\xA1 vacante.", "Il titolo ora \xC3\xA8 vacante."},
+      // TITLE MANAGEMENT in the Universe: X on a title a show uses
+      {"A weekly show uses this title, so it cannot be vacant.\nChange the show's titles first "
+       "(SCHEDULE, X on the show).",
+       "Une \xC3\xA9mission utilise ce titre : il ne peut pas \xC3\xAAtre vacant.\nChangez d'abord "
+       "les titres de l'\xC3\xA9mission (CALENDRIER, X sur l'\xC3\xA9mission).",
+       "Eine Show nutzt diesen Titel, daher kann er nicht vakant werden.\n\xC3\x84ndere zuerst die "
+       "Titel der Show (KALENDER, X auf der Show).",
+       "Un show usa este t\xC3\xADtulo, as\xC3\xAD que no puede quedar vacante.\nCambia antes los "
+       "t\xC3\xADtulos del show (CALENDARIO, X sobre el show).",
+       "Uno show usa questo titolo, quindi non pu\xC3\xB2 restare vacante.\nCambia prima i titoli "
+       "dello show (CALENDARIO, X sullo show)."},
+      // the sub-menu's lines
+      {"EDIT SUPERSTARS", "MODIFIER LES SUPERSTARS", "SUPERSTARS BEARBEITEN", "EDITAR SUPERSTARS",
+       "MODIFICA SUPERSTAR"},
+      {"EDIT TITLES", "MODIFIER LES TITRES", "TITEL BEARBEITEN", "EDITAR T\xC3\x8DTULOS",
+       "MODIFICA TITOLI"},
+      {"RESET UNIVERSE", "R\xC3\x89INITIALISER L'UNIVERS", "WELT ZUR\xC3\x9C" "CKSETZEN",
+       "REINICIAR UNIVERSO", "AZZERA UNIVERSE"},
   };
   size_t row;
-  switch (id) {
-  case kEditSuperstarText: row = 0; break;
-  case kAskText: row = 1; break;
-  case kConfirmText: row = 2; break;
-  case kDoneText: row = 3; break;
-  case kHintText: row = 4; break;
-  case kVacateAskText: row = 5; break;
-  case kVacateDoneText: row = 6; break;
-  default: return nullptr;
-  }
+  if (id == kEditSuperstarText)
+    row = 0;
+  else if (id >= kAskText && id <= kLastText)
+    row = id - kAskText + 1;
+  else
+    return nullptr;
   return kTexts[row][CurrentLang()];
 }
 
@@ -196,13 +239,14 @@ const char *Text(u32 id) {
 // slot per text, rewritten when the language changes.
 u32 GuestText(u32 id) {
   constexpr u32 kSlot = 512;
+  constexpr u32 kSlots = 1 + kLastText - kAskText + 1;
   const char *text = Text(id);
   if (!text)
     return 0;
   static u32 s_block = 0;
-  static const char *s_for[7] = {};
+  static const char *s_for[kSlots] = {};
   if (!s_block)
-    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(7 * kSlot, 0x20);
+    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(kSlots * kSlot, 0x20);
   if (!s_block)
     return 0;
   const u32 slot = id == kEditSuperstarText ? 0 : id - kAskText + 1;
@@ -287,12 +331,17 @@ bool BackupSave() {
 u32 g_start_data = 0;
 u32 g_start_size = 0;
 
-// Calls a guest function with up to three arguments, on a copy of the hooked call's context.
-template <typename Fn> u32 Call(const PPCContext &in, u8 *base, Fn fn, u32 a, u32 b = 0, u32 c = 0) {
+// Calls a guest function with up to six arguments, on a copy of the hooked call's context.
+template <typename Fn>
+u32 Call(const PPCContext &in, u8 *base, Fn fn, u32 a, u32 b = 0, u32 c = 0, u32 d = 0, u32 e = 0,
+         u32 f = 0) {
   PPCContext x = in;
   x.r3.u64 = a;
   x.r4.u64 = b;
   x.r5.u64 = c;
+  x.r6.u64 = d;
+  x.r7.u64 = e;
+  x.r8.u64 = f;
   fn(x, base);
   return x.r3.u32;
 }
@@ -373,7 +422,7 @@ bool ResetUniverse(const PPCContext &in, u8 *base) {
 
 // ---- the EDIT UNIVERSE dialogue -------------------------------------------------------------
 
-enum class Step { kIdle, kAsk, kConfirm, kDone, kHint, kVacateAsk, kVacateDone };
+enum class Step { kIdle, kMenu, kConfirm, kDone, kHint, kVacateAsk, kVacateDone, kTitles };
 Step g_step = Step::kIdle;
 u32 g_screen = 0;  // the Universe menu screen the dialogue belongs to
 u32 g_answer = 0;  // guest word for the message box's answer
@@ -407,17 +456,185 @@ void HintShown() {
     std::ofstream(file) << "The RESET UNIVERSE hint was shown.\n";
 }
 
-// The message box closed? (answer: 1 = yes)
-bool BoxClosed(const PPCContext &in, u8 *base, bool &yes) {
+// The message box closed? (answer: 1 = yes for a question, the chosen line for a choice list)
+bool BoxClosed(const PPCContext &in, u8 *base, u32 &answer) {
   if (!g_answer)
     g_answer = REX_KERNEL_MEMORY()->SystemHeapAlloc(16, 0x10);
+  answer = 0xFFFFFFFFu;
   if (!g_answer)
     return true;
-  bd::mem::store<u32>(g_answer, 0);
+  bd::mem::store<u32>(g_answer, 0xFFFFFFFFu);
   if (!Call(in, base, __imp__sub_8254E8C8, g_answer))
     return false;
-  yes = bd::mem::load<u32>(g_answer) == 1;
+  answer = bd::mem::load<u32>(g_answer);
   return true;
+}
+
+// The sub-menu: the game's choice box with our three lines (guest array of string pointers).
+void AskMenu(const PPCContext &in, u8 *base) {
+  static u32 s_choices = 0;
+  if (!s_choices)
+    s_choices = REX_KERNEL_MEMORY()->SystemHeapAlloc(kChoiceCount * 4, 0x10);
+  if (!s_choices)
+    return;
+  for (u32 i = 0; i < kChoiceCount; ++i)
+    bd::mem::store<u32>(s_choices + i * 4, GuestText(kChoiceText + i));
+  Call(in, base, __imp__sub_8260DD80, 0, kAskText, s_choices, kChoiceCount, 0, 0);
+}
+
+// ---- EDIT TITLES: the game's TITLE MANAGEMENT screen ------------------------------------------
+
+constexpr u32 kTitleScreenSize = 2560;
+constexpr u32 kMainMenuManager = 0x8317C594;  // the main menu's manager (its active pad)
+u32 g_titles = 0;                             // the TITLE MANAGEMENT object while it is open
+u32 g_menu_frames = 0;                        // frames since the sub-menu opened
+
+bool OpenTitles(const PPCContext &in, u8 *base) {
+  const u32 manager = bd::mem::load<u32>(kMainMenuManager);
+  const u32 pad = manager ? Call(in, base, __imp__sub_8253E240, manager) : 0;
+  const u32 object = Call(in, base, __imp__sub_821A0000, kTitleScreenSize);
+  if (!object) {
+    BD_INFO("[univers] titles: no memory for TITLE MANAGEMENT");
+    return false;
+  }
+  Call(in, base, __imp__sub_82564548, object, pad);
+  g_titles = object;
+  BD_INFO("[univers] titles: TITLE MANAGEMENT opened (0x{:08X}, pad {})", object, pad);
+  return true;
+}
+
+// Done once its state (object+228+16) is 5, as the main menu's scene checks it.
+bool TitlesFinished() { return bd::mem::load<u32>(g_titles + 228 + 16) == 5; }
+
+void CloseTitles(const PPCContext &in, u8 *base) {
+  Call(in, base, __imp__sub_82565A30, g_titles, 1);
+  // The button bar keeps TITLE MANAGEMENT's prompts (X VACATE TITLE): back to the Universe
+  // menu's set, 9 (A SELECT, B BACK), as the menu itself sets it (sub_825463E8).
+  Call(in, base, __imp__sub_828942C0, 9);
+  BD_INFO("[univers] titles: TITLE MANAGEMENT closed");
+  g_titles = 0;
+}
+
+// ---- a third line in the choice box -----------------------------------------------------------
+//
+// The box's layout (layout = box+1952; elements of 240 bytes in an array at +8, count at +24, as
+// sub_824C5458 reads them) was read with wwe12_universe_probe on 2026-10-20. Element fields: +0
+// kind, +4 x, +8 y (in the parent's units), +12/+16 scale, +80 font name, +176 parent, +180
+// hidden, +184..+196 colour (RGBA floats; the cursor's line is red), +200 text.
+// - 0xD2 / 0xD3: the two choice lines (font001, y -8 / +8);
+// - 0xD6 / 0xD7: their red underlines (red_line01, y -2 / +14), shown for the cursor's line;
+// - a third choice goes to 0xD4, a smaller text of another group (font000, scale 0.7) drawn over
+//   the first line, and its "underline" is 0xD8, a textless element: nothing shows.
+// While our sub-menu is open, 0xD4 becomes a copy of 0xD3 one step lower (its text and colour
+// stay the game's), and the three lines with their underlines move up 3/4 of a step into the
+// empty line under the question, so that the third stays inside the box. The cursor code
+// (sub_8288F0A0) shows underline 0xD6 + cursor, so 0xD8 (textless) for the third line: there, the
+// second line's underline 0xD7 is moved under the third line instead (an underline of another
+// group, such as the yes/no boxes' 0xDC, stays hidden: tested). The elements are put back as they
+// were when the box closes.
+
+constexpr u32 kMessageBox = 0x8324DEF0;
+constexpr u32 kLine1 = 0xD2, kLine2 = 0xD3, kLine3 = 0xD4;
+constexpr u32 kUnder1 = 0xD6, kUnder2 = 0xD7, kUnder3State = 0xD8;
+
+u32 BoxElement(u32 id) {
+  const u32 box = bd::mem::load<u32>(kMessageBox);
+  const u32 layout = box ? bd::mem::load<u32>(box + 1952) : 0;
+  const u32 array = layout ? bd::mem::load<u32>(layout + 8) : 0;
+  if (!array || id >= bd::mem::load<u32>(layout + 24))
+    return 0;
+  return array + id * 240;
+}
+
+struct SavedElement {
+  u32 id = 0, at = 0;
+  u8 bytes[240] = {};
+};
+SavedElement g_saved[6];
+bool g_saved_ok = false;
+
+const SavedElement &Saved(u32 id) {
+  for (const SavedElement &e : g_saved)
+    if (e.id == id)
+      return e;
+  return g_saved[0];
+}
+float SavedFloat(u32 id, u32 o) {
+  u32 v;
+  std::memcpy(&v, Saved(id).bytes + o, 4);
+  v = _byteswap_ulong(v);
+  float f;
+  std::memcpy(&f, &v, 4);
+  return f;
+}
+
+// An element made a copy of a saved one, except the fields listed (kept).
+void CopyElement(u32 to, u32 from_id, std::initializer_list<u32> keep) {
+  const u8 *src = Saved(from_id).bytes;
+  for (u32 o = 0; o < 240; o += 4) {
+    if (std::find(keep.begin(), keep.end(), o) != keep.end())
+      continue;
+    std::memcpy(bd::mem::at<u8>(to + o), src + o, 4);
+  }
+}
+
+void PlaceThirdChoice() {
+  if (!g_saved_ok) {
+    // Once the box has laid its lines out (the second line has its text).
+    // 0xD8 too: it is the yes/no boxes' YES, and the cursor code leaves its transparency there.
+    const u32 ids[6] = {kLine1, kLine2, kLine3, kUnder1, kUnder2, kUnder3State};
+    const u32 line2 = BoxElement(kLine2);
+    if (!line2 || !bd::mem::load<u32>(line2 + 200))
+      return;
+    for (int i = 0; i < 6; ++i) {
+      g_saved[i].id = ids[i];
+      g_saved[i].at = BoxElement(ids[i]);
+      if (!g_saved[i].at)
+        return;
+      std::memcpy(g_saved[i].bytes, bd::mem::at<u8>(g_saved[i].at), 240);
+    }
+    g_saved_ok = true;
+  }
+  const float step = SavedFloat(kLine2, 8) - SavedFloat(kLine1, 8);
+  const float up = step * 0.75f;
+  const u32 line1 = BoxElement(kLine1), line2 = BoxElement(kLine2), line3 = BoxElement(kLine3);
+  const u32 under1 = BoxElement(kUnder1), under2 = BoxElement(kUnder2);
+  const u32 under3_state = BoxElement(kUnder3State);
+  if (!line1 || !line2 || !line3 || !under1 || !under2 || !under3_state)
+    return;
+  CopyElement(line3, kLine2, {180, 184, 188, 192, 196, 200});
+  bd::mem::store<float>(line1 + 8, SavedFloat(kLine1, 8) - up);
+  bd::mem::store<float>(line2 + 8, SavedFloat(kLine2, 8) - up);
+  bd::mem::store<float>(line3 + 8, SavedFloat(kLine2, 8) + step - up);
+  bd::mem::store<float>(under1 + 8, SavedFloat(kUnder1, 8) - up);
+  const u32 box = bd::mem::load<u32>(kMessageBox);
+  if (box && bd::mem::load<u32>(box + 56) == 2) {  // the cursor on the third line
+    bd::mem::store<u32>(under2 + 180, bd::mem::load<u32>(under3_state + 180));
+    bd::mem::store<u32>(under2 + 196, bd::mem::load<u32>(under3_state + 196));
+    bd::mem::store<float>(under2 + 8, SavedFloat(kUnder2, 8) + step - up);
+  } else {
+    bd::mem::store<float>(under2 + 8, SavedFloat(kUnder2, 8) - up);
+  }
+}
+
+void RestoreChoiceElements() {
+  if (g_saved_ok)
+    for (const SavedElement &e : g_saved)
+      std::memcpy(bd::mem::at<u8>(e.at), e.bytes, 240);
+  g_saved_ok = false;
+}
+
+// Dev (wwe12_universe_probe): the choice elements, to see what the box's layout holds.
+void DumpChoiceElements(const char *when) {
+  for (u32 id = 0xC8; id <= 0xE8; ++id) {
+    const u32 e = BoxElement(id);
+    if (!e)
+      continue;
+    std::string words;
+    for (u32 o = 0; o < 240; o += 4)
+      words += fmt::format(" {:08X}", bd::mem::load<u32>(e + o));
+    BD_INFO("[univers] box {} element 0x{:02X} @0x{:08X}:{}", when, id, e, words);
+  }
 }
 
 }  // namespace
@@ -427,7 +644,7 @@ REX_EXTERN(__imp__sub_821A4400);
 extern "C" REX_FUNC(sub_821A4400) {
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
-  if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kVacateDoneText)))
+  if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kLastText)))
     if (const u32 text = GuestText(id))
       ctx.r3.u64 = text;
 }
@@ -440,15 +657,17 @@ extern "C" REX_FUNC(sub_826EC008) {
   KeepStartData(in, base, in.r4.u32);
 }
 
-// The Universe menu's action (A on an entry): EDIT UNIVERSE asks first.
+// The Universe menu's action (A on an entry): EDIT UNIVERSE opens the sub-menu first.
 REX_EXTERN(__imp__sub_825453D8);
 extern "C" REX_FUNC(sub_825453D8) {
   const u32 screen = ctx.r3.u32;
   if (Enabled() && g_step == Step::kIdle && bd::mem::try_load<u32>(screen) == kUniverseMenuVtbl &&
       bd::mem::try_load<u32>(screen + 28) == kEditSuperstarEntry) {
     g_screen = screen;
-    g_step = Step::kAsk;
-    Call(ctx, base, __imp__sub_8254E7E8, kAskText);
+    g_step = Step::kMenu;
+    g_menu_frames = 0;
+    g_saved_ok = false;  // the box lays its lines out again: take them before moving them
+    AskMenu(ctx, base);
     return;
   }
   if (g_step != Step::kIdle)
@@ -523,6 +742,24 @@ void VacateTitle(const PPCContext &in, u8 *base, u32 title) {
 
 }  // namespace
 
+// TITLE MANAGEMENT's X button (VACATE TITLE, this = the screen object): the chosen row is
+// [+28] + [+2520] (cursor + scroll), its title at +380 + row * 24. In the Universe, a title a
+// weekly show uses stays: the game's message box says why.
+REX_EXTERN(__imp__sub_82565390);
+extern "C" REX_FUNC(sub_82565390) {
+  const u32 screen = ctx.r3.u32;
+  if (Enabled() && bd::mem::load<u32>(kInUniverseFlag) == 1) {
+    const u32 row = bd::mem::load<u32>(screen + 28) + bd::mem::load<u32>(screen + 2520);
+    const u32 title = row < 64 ? bd::mem::load<u32>(screen + 380 + row * 24) : kTitleCount;
+    if (title < kTitleCount && TitleUsedByAShow(ctx, base, title)) {
+      BD_INFO("[univers] titles: VACATE refused, a show uses title {}", title);
+      Call(ctx, base, __imp__sub_8254E680, kTitleUsedText);
+      return;
+    }
+  }
+  __imp__sub_82565390(ctx, base);
+}
+
 // Every layout menu screen's per-frame update: drives the dialogue while it is open (the screen
 // itself keeps updating; its A button waits, see above).
 REX_EXTERN(__imp__sub_824D3458);
@@ -543,17 +780,51 @@ extern "C" REX_FUNC(sub_824D3458) {
       HintShown();
     }
   }
-  if (g_step != Step::kIdle && ctx.r3.u32 == g_screen) {
-    bool yes = false;
-    if (BoxClosed(ctx, base, yes)) {
+  // TITLE MANAGEMENT open: the Universe menu takes no input meanwhile (its word +224 = 0, as
+  // the layout screens' update reads it; 1 gives it back from the next frame). The screen is
+  // closed from another screen's update, never from its own.
+  if (g_step == Step::kTitles) {
+    if (ctx.r3.u32 == g_screen)
+      bd::mem::store<u32>(g_screen + 224, 0);
+    if (g_titles && ctx.r3.u32 != g_titles && TitlesFinished()) {
+      CloseTitles(ctx, base);
+      bd::mem::store<u32>(g_screen + 224, 1);
+      g_step = Step::kIdle;
+    }
+  } else if (g_step != Step::kIdle && ctx.r3.u32 == g_screen) {
+    if (g_step == Step::kMenu) {
+      const u32 frame = g_menu_frames++;
+      if (!REXCVAR_GET(wwe12_universe_probe)) {
+        PlaceThirdChoice();
+      } else {
+        // Dev: the box as the game draws it, logged at frame 20 and at each cursor move.
+        static u32 s_cursor = 0xFFFFFFFFu;
+        const u32 box = bd::mem::load<u32>(kMessageBox);
+        const u32 cursor = box ? bd::mem::load<u32>(box + 56) : 0;
+        if (frame == 0)
+          s_cursor = 0xFFFFFFFFu;
+        if (frame == 20 || (frame > 20 && cursor != s_cursor)) {
+          s_cursor = cursor;
+          DumpChoiceElements(fmt::format("frame {} cursor {}", frame, cursor).c_str());
+        }
+      }
+    }
+    u32 answer = 0;
+    if (BoxClosed(ctx, base, answer)) {
+      const bool yes = answer == 1;
       switch (g_step) {
-      case Step::kAsk:
-        if (yes) {
+      case Step::kMenu:
+        RestoreChoiceElements();
+        BD_INFO("[univers] EDIT UNIVERSE: choice {}", answer);
+        g_step = Step::kIdle;
+        if (answer == kEditSuperstars) {
+          Call(ctx, base, __imp__sub_825453D8, g_screen);  // the Superstar editor, as before
+        } else if (answer == kEditTitles) {
+          if (OpenTitles(ctx, base))
+            g_step = Step::kTitles;
+        } else if (answer == kResetUniverse) {
           g_step = Step::kConfirm;
           Call(ctx, base, __imp__sub_8254E7E8, kConfirmText);
-        } else {
-          g_step = Step::kIdle;  // "no": the Superstar editor, as the entry always did
-          Call(ctx, base, __imp__sub_825453D8, g_screen);
         }
         break;
       case Step::kVacateAsk:
@@ -580,6 +851,16 @@ extern "C" REX_FUNC(sub_824D3458) {
     }
   }
   __imp__sub_824D3458(ctx, base);
+}
+
+// The message box's cursor update (underline 0xD6 + i shown for the cursor's line, hidden for the
+// others; text 0xD2 + i red or white). It runs after the box has hidden its unused elements for
+// the frame, so the third line's underline is placed again here, last.
+REX_EXTERN(__imp__sub_8288F0A0);
+extern "C" REX_FUNC(sub_8288F0A0) {
+  __imp__sub_8288F0A0(ctx, base);
+  if (Enabled() && g_step == Step::kMenu && !REXCVAR_GET(wwe12_universe_probe))
+    PlaceThirdChoice();
 }
 
 // ---- dev probe (wwe12_universe_probe) -------------------------------------------------------

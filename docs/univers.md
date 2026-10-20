@@ -479,3 +479,55 @@ c'est réversible (redonner la ceinture dans la même grille).
 - **SAUVEGARDER de MODIFIER LE SHOW écrit tout de suite sur le disque** (« SAUVEGARDE… ») et débloque
   le succès n° 46 (« On est à l'antenne ! »). Piste pour enregistrer la remise à zéro tout de suite :
   trouver l'appel d'enregistrement de cet écran et le refaire après le reset.
+
+## 13. MODIFIER L'UNIVERS façon WWE '13, avec les vrais menus du jeu (2026-10-20, testé en jeu)
+
+Demande de l'utilisateur : pas d'écran dessiné par-dessus (comme OPTIONS > GRAPHICS), mais les vrais
+éléments du jeu. EDIT UNIVERSE (FR « MODIFIER L'UNIVERS ») ouvre maintenant la **boîte de choix du jeu**
+« EDIT UNIVERSE / What do you want to edit? » avec trois lignes :
+
+- **EDIT SUPERSTARS** : l'éditeur des Superstars, comme avant ;
+- **EDIT TITLES** : le **vrai écran TITLE MANAGEMENT** d'OPTIONS > TITLE SETTINGS, ouvert depuis
+  l'Univers, donc sur **les champions de l'Univers** (Del Rio, pas Cena) ; X = VACATE TITLE ; en
+  sortant, « Would you like to save these settings? » (YES enregistre tout de suite sur le disque) ;
+- **RESET UNIVERSE** : la confirmation et la remise à zéro de la section 11.
+
+**Boîte de choix** : la boîte du jeu (*0x8324DEF0) a un mode liste (demande de type 4 : texte, +24 =
+nombre de choix, +28 = tableau de pointeurs de textes), ouvert par `sub_8260DD80(-, texte, choix, nombre,
+0, 0)` (le jeu s'en sert pour « Do Not Review / Remind Me Later ») ; la réponse (`sub_8254E8C8`) est la
+ligne choisie, à partir de 0. Pas de retour avec B. Le calque de la boîte n'a que **deux lignes de choix** :
+éléments de 240 octets (calque = boîte+1952, tableau à +8, nombre à +24) ; 0xD2/0xD3 = textes (police
+font001, y −8/+8), 0xD6/0xD7 = traits rouges (`red_line01`) ; un 3e choix va dans 0xD4 (police font000,
+échelle 0,7, posé sur la 1re ligne) et son « trait » est 0xD8 (= le YES des boîtes Oui/Non). Champs : +4 x,
++8 y, +12/+16 échelle, +80 police, +176 parent, +180 caché, +184..+196 couleur RGBA, +200 texte.
+Le curseur (`sub_8288F0A0`) rougit le texte 0xD2+i et montre le trait 0xD6+i. Ce que fait le module tant
+que le sous-menu est ouvert : 0xD4 devient une copie de 0xD3 un cran plus bas, les trois lignes et leurs
+traits remontent de 3/4 de cran (sinon la 3e touche le bas de la boîte), et quand le curseur est sur la
+3e ligne le trait 0xD7 descend sous elle (un trait d'un autre groupe, comme 0xDC, reste caché par le jeu) ;
+c'est refait après `sub_8288F0A0`, qui passe après le masquage des éléments inutilisés. Les éléments
+(0xD2, 0xD3, 0xD4, 0xD6, 0xD7 et 0xD8) sont remis en état à la fermeture (sinon le YES de la boîte
+suivante restait pâle). Relevé fait avec `wwe12_universe_probe` (boîte telle que le jeu la dessine,
+éléments 0xC8–0xE8 dans le journal à chaque mouvement du curseur).
+
+**TITLE MANAGEMENT depuis l'Univers** : la scène du menu principal (`sub_825477E8`) crée l'objet
+(2 560 octets, `sub_821A0000`) avec `sub_82564548(objet, manette)` ; il s'inscrit seul comme écran à
+calques (mis à jour et dessiné tout seul) ; fini quand objet+228+16 vaut 5, détruit par
+`sub_82565A30(objet, 1)`. Ses lignes (24 octets à objet+376 : détenteur, titre, place…) viennent de
+`sub_82A39FC8(titre, place, 1)`, qui lit la table de l'Univers dans l'Univers. Pendant qu'il est ouvert,
+le menu de l'Univers ne prend pas les touches (son mot +224 = 0 ; 1 les rend à l'image suivante). En
+sortant, la barre des boutons reprend le jeu 9 du menu de l'Univers (`sub_828942C0(9)`, « A SELECT,
+B BACK ») ; sinon « X VACATE TITLE » restait affiché. Le X (`sub_82565390`, case = [+28] + [+2520],
+titre à +380 + case × 24) garde notre limite dans l'Univers : un titre qu'une émission utilise est
+refusé avec un message (texte 27032). Testé : WWE (RAW) refusé, Cruiserweight libéré, NO = rien
+d'enregistré.
+
+Textes ajoutés : 27032 (refus du X) et 27033–27035 (les trois lignes), en cinq langues.
+
+## 14. Idées suivantes (suggestions de joueurs, 2026-10-20)
+
+Dans l'ordre décidé : 1) tenue de chaque catcheur dans l'Univers (une précise ou Random, comme 2K14) ;
+2) SAVE sur une carte de match modifiée avec MATCH CREATOR (WWE '13) au lieu de la lancer tout de suite ;
+3) moins de matchs par émission (8 cases par émission dans la sauvegarde, donc 8 au plus) ;
+4) catcheurs non suivis (« Vous ne pourrez pas suivre la progression de cette Superstar… », ex.
+Christian) : l'Univers n'a que 180 fiches, toutes prises (50 créés + 130) : échanger un catcheur suivi
+contre un non suivi ; 5) weekly n'importe quel jour et plusieurs PPV par mois (calendrier à cartographier).
