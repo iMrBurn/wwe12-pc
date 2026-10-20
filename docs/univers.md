@@ -362,3 +362,28 @@ dans WWE '13) ; chargé par la classe à vtable 0x8203E7D8 (`sub_826EC0A8` ouvre
   comme avant (le jeu ne programme pas de match pour un titre vacant). WWE '12 n'a ni texte
   « VACANT » ni bouton : à ajouter (EDIT SUPERSTAR ou notre écran). Reste à trouver où le jeu
   range « quel titre appartient à quelle émission ».
+
+## 9. Comment le jeu crée l'Univers (test « sauvegarde neuve », 2026-10-20)
+
+Test : sauvegarde de l'utilisateur mise de côté (puis remise, empreinte vérifiée), lancement 1 =
+sauvegarde neuve sans entrer dans l'Univers, lancement 2 = première entrée dans l'Univers.
+
+- **L'Univers est créé avec la sauvegarde**, pas à la première entrée : la sauvegarde neuve contient
+  déjà les points de départ des catcheurs, les cartes, etc. La première entrée ne change que
+  193 octets (dont 12 zones du bloc Univers et quelques octets du bloc 2 vers +0x576C4 / +0x584E3…,
+  sans doute des drapeaux « déjà vu »).
+- Création d'une sauvegarde neuve : `sub_8269E698` → `sub_82699F10` (bloc 1 remis à zéro, dont
+  `sub_826D5938` pour l'Univers), puis un chargeur lit **BATL/SAVE** (`pac/misc.pac`) et appelle pour
+  chaque entrée la fonction de la table à 0x83073240 : {2 → `sub_8269EF80` (équipes LBTS),
+  3 → `sub_82A41578` (HID), **4 → `sub_826BE3C0` (Univers)**}.
+- **`sub_826BE3C0(données, taille)`** = « SaveInit » de l'Univers (même rôle que
+  `CWWEUniverseStationed::BatPacReaderCallBack_SaveInit` de WWE '13) : elle lit les 6 morceaux de
+  l'entrée 4 (0 = WUD fiches de départ, 1 = WDR relations, 2 = émissions [cartes vidées par
+  `sub_826D5228`], 3 = PPV, 4 = 7 réglages, 5 = marques) et les écrit dans le bloc Univers. C'est
+  aussi elle qui imprime « RP Setup,Status,RosterID,No ».
+- Le test « Univers vidé » plantait parce qu'il ne faisait que la première moitié.
+
+**Recette de la remise à zéro** (à coder) : `sub_826D5938(U)` puis `sub_826BE3C0` avec l'entrée 4 de
+BATL/SAVE (lue depuis misc.pac), puis remettre les champions de la table Univers aux valeurs par
+défaut (table 0x8324E3A8, comme `sub_82A39E08` mais seulement pour la table Univers), enfin laisser le
+jeu enregistrer. À faire hors d'un match, depuis un menu.
