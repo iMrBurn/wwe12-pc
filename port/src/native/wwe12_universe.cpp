@@ -4,7 +4,7 @@
 // game's own yes/no box, whether to reset the Universe; "no" opens the Superstar editor as before,
 // "yes" asks once more, backs the save up (launcher format, SAVES page), then resets the Universe
 // to the one a new save starts with. The reset lives in memory until the game next saves (after a
-// show); the messages say so. On while wwe12_universe_edit = true.
+// show); the messages say so. On by default (wwe12_universe_edit = false turns it off).
 //
 // What a new save does to the Universe, and so the reset:
 //   1. sub_826D5938(U): clears the Universe block (U = sub_82683A30()).
@@ -56,7 +56,7 @@
 
 REXCVAR_DECLARE(uint32_t, user_language);
 
-REXCVAR_DEFINE_BOOL(wwe12_universe_edit, false, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_universe_edit, true, "WWE12",
                     "Universe menu: EDIT SUPERSTAR becomes EDIT UNIVERSE, which can reset the "
                     "Universe (as in WWE '13).");
 

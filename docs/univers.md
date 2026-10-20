@@ -443,3 +443,7 @@ clair (FR « MODIFIER L'UNIVERS », DE « WELT BEARBEITEN », ES « EDITAR UNIVE
 UNIVERSE ») et message « Nouveau » affiché une seule fois au premier passage dans le menu de
 l'Univers (texte 27029, fichier `Documents\wwe12\universe_reset_hint.txt`), vérifiés en jeu en FR ; activer `wwe12_universe_edit` par défaut quand
 l'utilisateur valide ; ensuite VACANT.
+
+**2026-10-20 : `wwe12_universe_edit` est activé par défaut** (validé par l'utilisateur). `false` dans
+wwe12.toml le coupe. Reste : forcer la sauvegarde du jeu juste après la remise à zéro (amélioration),
+puis VACANT pour les titres qu'aucune émission n'utilise.
