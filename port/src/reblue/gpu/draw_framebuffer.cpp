@@ -21,6 +21,24 @@
 
 namespace bd::gpu {
 
+// A framebuffer attachment must be a single mip level (VUID-VkFramebufferCreateInfo-pAttachments-
+// 00883). The default view of a target with mips (the 1024x512 skin composite has 3) covers them
+// all: NVIDIA draws into level 0 anyway, Intel and AMD do not (#7/#11/#13/#16 colour blocks, seen
+// only when a wrestler is on screen).
+static const plume::RenderTextureView *AttachmentView(GuestTexture *t) {
+  if (!t || t->mipLevels <= 1)
+    return nullptr;
+  if (!t->attachmentView) {
+    plume::RenderTextureViewDesc view_desc;
+    view_desc.format = t->format;
+    view_desc.dimension = plume::RenderTextureViewDimension::TEXTURE_2D;
+    view_desc.mipSlice = 0;
+    view_desc.mipLevels = 1;
+    t->attachmentView = t->texture->createTextureView(view_desc);
+  }
+  return t->attachmentView.get();
+}
+
 plume::RenderFramebuffer *GetFramebuffer(VideoState &s, GuestTexture *rt,
                                          GuestTexture *ds) {
   GuestTexture *container = ds ? ds : rt;
@@ -35,13 +53,18 @@ plume::RenderFramebuffer *GetFramebuffer(VideoState &s, GuestTexture *rt,
 
   plume::RenderFramebufferDesc desc;
   const plume::RenderTexture *color_attachments[1];
+  const plume::RenderTextureView *color_views[1];
   if (rt) {
     color_attachments[0] = rt->texture;
     desc.colorAttachments = color_attachments;
     desc.colorAttachmentsCount = 1;
+    if ((color_views[0] = AttachmentView(rt)))
+      desc.colorAttachmentViews = color_views;
   }
-  if (ds)
+  if (ds) {
     desc.depthAttachment = ds->texture;
+    desc.depthAttachmentView = AttachmentView(ds);
+  }
   auto fb = s.device->createFramebuffer(desc);
   if (!fb) {
     BD_ERROR("createFramebuffer failed for (rt={} ds={})",

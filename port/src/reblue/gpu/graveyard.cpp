@@ -86,6 +86,9 @@ void ParkTextureGPUObjects(GuestTexture *tex) {
   if (tex->textureView) {
     Video::ParkTextureUntilFence(std::move(tex->textureView));
   }
+  if (tex->attachmentView) {
+    Video::ParkTextureUntilFence(std::move(tex->attachmentView));
+  }
   if (tex->companion2D)
     ParkTextureGPUObjects(tex->companion2D.get());
   if (tex->companionCube)

@@ -53,6 +53,8 @@ struct GuestTexture {
   std::unique_ptr<plume::RenderTexture> textureHolder;
   plume::RenderTexture *texture = nullptr;
   std::unique_ptr<plume::RenderTextureView> textureView;
+  // Level 0 only, for render targets with mips: a framebuffer attachment must be a single level.
+  std::unique_ptr<plume::RenderTextureView> attachmentView;
   u32 width = 0;
   u32 height = 0;
   u32 depth = 0;
