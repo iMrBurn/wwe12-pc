@@ -159,6 +159,17 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   `tools/dev/lancer_test_clavier.bat`. Le module de départ d'OpenCode (commits 36099f4/9c21077,
   `wwe12_text_entry_analysis.md`) écrivait dans la copie d'affichage.
 
+- **Outils de test sans l'utilisateur (Rendu, 2026-10-20)** : télécommande `wwe12_remote_pad` (mots de `remote_pad.txt`
+  à côté de l'exe : A B X Y START BACK UP DOWN LEFT RIGHT LB RB, `wait<ms>`) + captures d'écran PowerShell ; parcours
+  menu → match : `START A A A A A` puis `RIGHT A A A A A A` (attentes 2-3 s). Validation Vulkan :
+  `tools/dev/lancer_validation.bat` (SDK Vulkan installé, synchro comprise). Profil CPU 4 fils :
+  `lancer_test_4fils.bat` (piles) ; cadence sans perturbation : `lancer_test_4fils_sans_mesure.bat`.
+- **Correctifs 0.9 (Rendu, 2026-10-20, non vérifiés sur Intel/AMD)** : pavés #7/#11/#13/#16 = cible peau 1024x512 à
+  3 mips attachée avec tous ses niveaux (vue niveau 0 seul, `draw_framebuffer.cpp`) ; filler BLENDINDICES en
+  R32_UINT. CPU : patch SDK `rexglue-sdk-timer-sleep.patch` (fil TimerQueue 20 % → 0 %), scan des textes moins
+  fréquent, hachage échantillonné textures/géométrie (ligne `[perf] hashed per frame`). Reste : attente active
+  du fil de rendu sur le processeur de commandes (`sub_82AA7040`, ~17 % de son temps actif).
+
 ## Version 0.8 : plan (décidé par l'utilisateur le 2026-10-17)
 
 Chaque conversation coche sa ligne ici quand c'est fait et testé, puis prévient la Main. La Main
