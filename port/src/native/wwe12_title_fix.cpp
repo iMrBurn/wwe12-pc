@@ -19,6 +19,10 @@
 // jumps (on the segment) and fast motion (long segments) are kept, and matches (60 on the console
 // too) are not touched.
 
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -48,6 +52,9 @@ REXCVAR_DEFINE_BOOL(wwe12_title_fix_pose, false, "WWE12",
                     "frames around it (position and rotation of every bone).");
 REXCVAR_DEFINE_BOOL(wwe12_title_fix_pose_hold, false, "WWE12",
                     "Dev: with wwe12_title_fix_pose, hold the even frame's pose instead of blending.");
+REXCVAR_DEFINE_BOOL(wwe12_arm_trap, false, "WWE12",
+                    "Dev: in 60 fps entrances, find the code that changes bone records after "
+                    "sub_82490530 (logs [armtrap]).");
 REXCVAR_DEFINE_BOOL(wwe12_title_fix_log, false, "WWE12",
                     "Dev: log how many positions wwe12_title_fix corrects.");
 
@@ -56,6 +63,7 @@ bool Wwe12EntranceAt60();  // wwe12_fps.cpp
 REX_EXTERN(__imp__sub_8248B898);
 REX_EXTERN(__imp__sub_8248B458);
 REX_EXTERN(__imp__sub_82490530);
+REX_EXTERN(__imp__sub_82490268);
 
 namespace bd::gpu {
 u64 SvrFrameIndex();
@@ -281,10 +289,262 @@ void EvaluatePose(PPCContext &ctx, uint8_t *base) {
   }
 }
 
+
+// wwe12_arm_trap. Each bone record written by sub_82490530 is compared, at the motion's next
+// evaluation, with what sub_82490530 left: a change means some later step (IK, attach) rewrote
+// the record. The pages of the changed records are then guarded: every write into those records
+// logs the writing instruction (host address, symbolized offline with wwe12.map).
+namespace trap {
+
+struct Range {
+  u32 lo, hi;
+};
+constexpr int kMaxRanges = 64;
+Range g_ranges[kMaxRanges];
+std::atomic<int> g_nranges{0};
+std::atomic<bool> g_armed{false};
+u8 *g_guest = nullptr;
+
+constexpr int kSlots = 512;
+struct Hit {
+  std::atomic<u64> rip{0};  // key: writing instruction ^ caller chain
+  std::atomic<u32> count{0};
+  std::atomic<u32> offmask{0};  // bit = record offset / 4
+  u64 where[5] = {};            // writing instruction, then return addresses
+};
+Hit g_hits[kSlots];
+thread_local uintptr_t t_pending = 0;
+
+bool InRange(u32 va) {
+  const int n = g_nranges.load(std::memory_order_acquire);
+  for (int i = 0; i < n; ++i)
+    if (va >= g_ranges[i].lo && va < g_ranges[i].hi)
+      return true;
+  return false;
+}
+
+u32 RangeOffset(u32 va) {
+  const int n = g_nranges.load(std::memory_order_acquire);
+  for (int i = 0; i < n; ++i)
+    if (va >= g_ranges[i].lo && va < g_ranges[i].hi)
+      return (va - g_ranges[i].lo) % 80;
+  return 0xFFFF;
+}
+
+bool OurPage(uintptr_t host) {
+  if (!g_guest || host < uintptr_t(g_guest) || host >= uintptr_t(g_guest) + 0x100000000ull)
+    return false;
+  const u32 page = u32(host - uintptr_t(g_guest)) & ~0xFFFu;
+  const int n = g_nranges.load(std::memory_order_acquire);
+  for (int i = 0; i < n; ++i)
+    if (page + 0x1000 > g_ranges[i].lo && page < g_ranges[i].hi)
+      return true;
+  return false;
+}
+
+void Guard(u32 lo, u32 hi) {
+  for (u32 p = lo & ~0xFFFu; p < hi; p += 0x1000) {
+    DWORD old;
+    VirtualProtect(g_guest + p, 0x1000, PAGE_READWRITE | PAGE_GUARD, &old);
+  }
+}
+
+LONG CALLBACK Handler(EXCEPTION_POINTERS *ep) {
+  const DWORD code = ep->ExceptionRecord->ExceptionCode;
+  if (code == 0x80000001u) {  // STATUS_GUARD_PAGE_VIOLATION
+    if (ep->ExceptionRecord->NumberParameters < 2)
+      return EXCEPTION_CONTINUE_SEARCH;
+    const uintptr_t addr = ep->ExceptionRecord->ExceptionInformation[1];
+    if (!OurPage(addr))
+      return EXCEPTION_CONTINUE_SEARCH;
+    const u32 va = u32(addr - uintptr_t(g_guest));
+    if (ep->ExceptionRecord->ExceptionInformation[0] == 1 && InRange(va)) {
+      const u64 rip = ep->ContextRecord->Rip;
+      // Callers: walk the faulting frame's stack with the unwind data.
+      u64 where[5] = {rip, 0, 0, 0, 0};
+      {
+        CONTEXT c = *ep->ContextRecord;
+        for (int d = 1; d < 5; ++d) {
+          DWORD64 image = 0;
+          PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(c.Rip, &image, nullptr);
+          if (!fn)
+            break;
+          void *handler_data;
+          DWORD64 frame;
+          RtlVirtualUnwind(UNW_FLAG_NHANDLER, image, c.Rip, fn, &c, &handler_data, &frame,
+                           nullptr);
+          if (!c.Rip)
+            break;
+          where[d] = c.Rip;
+        }
+      }
+      const u64 key = rip ^ (where[1] * 31) ^ (where[2] * 1009);
+      u32 h = u32((key >> 2) * 2654435761u) % kSlots;
+      for (int k = 0; k < kSlots; ++k, h = (h + 1) % kSlots) {
+        u64 cur = g_hits[h].rip.load();
+        if (cur == 0 && g_hits[h].rip.compare_exchange_strong(cur, key)) {
+          std::memcpy(g_hits[h].where, where, sizeof where);
+          cur = key;
+        }
+        if (cur == key) {
+          g_hits[h].count.fetch_add(1);
+          g_hits[h].offmask.fetch_or(1u << (RangeOffset(va) / 4 & 31));
+          break;
+        }
+      }
+    }
+    if (g_armed.load()) {
+      t_pending = addr & ~uintptr_t(0xFFF);
+      ep->ContextRecord->EFlags |= 0x100;  // re-guard after this instruction
+    }
+    return EXCEPTION_CONTINUE_EXECUTION;
+  }
+  if (code == 0x80000004u && t_pending) {  // STATUS_SINGLE_STEP
+    if (g_armed.load()) {
+      DWORD old;
+      VirtualProtect(reinterpret_cast<void *>(t_pending), 0x1000, PAGE_READWRITE | PAGE_GUARD,
+                     &old);
+    }
+    t_pending = 0;
+    return EXCEPTION_CONTINUE_EXECUTION;
+  }
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+
+struct Snap {
+  u32 records = 0, bones = 0;
+  u64 frame = 0;
+  std::vector<u8> data;
+};
+std::mutex g_mu;
+std::unordered_map<u32, Snap> g_snaps;
+u64 g_report = 0, g_first = 0;
+u32 g_changed_bones = 0, g_motions_changed = 0;
+
+void Before(u32 motion) {
+  if (!REXCVAR_GET(wwe12_arm_trap) || !Wwe12EntranceAt60())
+    return;
+  static bool s_init = false;
+  if (!s_init) {
+    s_init = true;
+    g_guest = bd::mem::at<u8>(0x40000000) - 0x40000000;
+    AddVectoredExceptionHandler(1, &Handler);
+  }
+  const u64 frame = SvrFrame();
+  std::lock_guard lock(g_mu);
+  if (!g_first)
+    g_first = frame;
+  auto it = g_snaps.find(motion);
+  if (it == g_snaps.end() || it->second.frame + 1 != frame)
+    return;
+  const Snap &sn = it->second;
+  const u8 *now = bd::mem::at<u8>(sn.records);
+  u32 changed = 0;
+  for (u32 i = 0; i < sn.bones; ++i)
+    if (std::memcmp(now + i * 80 + 16, sn.data.data() + i * 80 + 16, 12) != 0 ||
+        std::memcmp(now + i * 80 + 48, sn.data.data() + i * 80 + 48, 16) != 0)
+      ++changed;
+  if (!changed)
+    return;
+  g_changed_bones += changed;
+  ++g_motions_changed;
+  // Guard this motion's records (once), after the 1st second of the entrance.
+  if (frame > g_first + 60 && !InRange(sn.records)) {
+    const int n = g_nranges.load();
+    if (n < kMaxRanges) {
+      g_ranges[n] = {sn.records, sn.records + sn.bones * 80};
+      g_nranges.store(n + 1, std::memory_order_release);
+      g_armed = true;
+      Guard(sn.records, sn.records + sn.bones * 80);
+      BD_INFO("[armtrap] guarding motion {:08X} records {:08X} bones {} ({} changed)", motion,
+              sn.records, sn.bones, changed);
+    }
+  }
+}
+
+void After(u32 motion) {
+  if (!REXCVAR_GET(wwe12_arm_trap) || !Wwe12EntranceAt60())
+    return;
+  const u32 bones = bd::mem::load<u32>(motion + 124);
+  const u32 records = bd::mem::load<u32>(motion + 92);
+  if (!records || !bones || bones > 512)
+    return;
+  const u64 frame = SvrFrame();
+  std::lock_guard lock(g_mu);
+  // Our own copy must not trip the guard.
+  const bool guarded = InRange(records);
+  if (guarded) {
+    g_armed = false;
+    for (u32 p = records & ~0xFFFu; p < records + bones * 80; p += 0x1000) {
+      DWORD old;
+      VirtualProtect(g_guest + p, 0x1000, PAGE_READWRITE, &old);
+    }
+  }
+  Snap &sn = g_snaps[motion];
+  sn.records = records;
+  sn.bones = bones;
+  sn.frame = frame;
+  sn.data.assign(bd::mem::at<u8>(records), bd::mem::at<u8>(records) + bones * 80);
+  if (guarded) {
+    g_armed = true;
+    Guard(records, records + bones * 80);
+  }
+  if (frame >= g_report + 120) {
+    g_report = frame;
+    BD_INFO("[armtrap] {} motions / {} bones rewritten after sub_82490530 in 2 s",
+            g_motions_changed, g_changed_bones);
+    g_motions_changed = g_changed_bones = 0;
+    const uintptr_t exe = uintptr_t(GetModuleHandleW(nullptr));
+    for (auto &h : g_hits) {
+      const u32 c = h.count.exchange(0);
+      if (!h.rip.load() || !c)
+        continue;
+      std::string chain;
+      for (u64 w : h.where)
+        if (w)
+          chain += fmt::format(" {:X}", w >= exe && w < exe + 0x20000000 ? w - exe : w);
+      std::string offs;
+      const u32 m = h.offmask.exchange(0);
+      for (int b = 0; b < 20; ++b)
+        if (m & (1u << b))
+          offs += fmt::format(" +{}", b * 4);
+      BD_INFO("[armtrap] writes x{} offsets{} chain(exe+){}", c, offs, chain);
+    }
+  }
+}
+
+}  // namespace trap
+
 }  // namespace
 
-extern "C" REX_FUNC(sub_82490530) { EvaluatePose(ctx, base); }
+extern "C" REX_FUNC(sub_82490530) {
+  const u32 motion = ctx.r3.u32;
+  trap::Before(motion);
+  EvaluatePose(ctx, base);
+  trap::After(motion);
+}
 
 extern "C" REX_FUNC(sub_8248B898) { Sample(ctx, base, __imp__sub_8248B898); }
 
 extern "C" REX_FUNC(sub_8248B458) { Sample(ctx, base, __imp__sub_8248B458); }
+
+// wwe12_arm_trap: sub_82490268(motion r3, clip r4/r5, ..., time f1) restarts a motion at a given
+// time; log the times it is given per motion, frame after frame.
+extern "C" REX_FUNC(sub_82490268) {
+  if (REXCVAR_GET(wwe12_arm_trap) && Wwe12EntranceAt60()) {
+    static std::mutex mu;
+    static std::unordered_map<u32, std::string> lines;
+    static u64 last_report = 0;
+    const u64 frame = bd::gpu::SvrFrameIndex();
+    std::lock_guard lock(mu);
+    auto &l = lines[ctx.r3.u32];
+    l += fmt::format(" {}:{:.2f}", frame % 1000, ctx.f1.f64);
+    if (l.size() > 600) {
+      BD_INFO("[restart] motion {:08X} bones {} lr {:08X} r6 {:08X} r7 {:08X}:{}", ctx.r3.u32,
+              bd::mem::load<u32>(ctx.r3.u32 + 124), u32(ctx.lr), ctx.r6.u32, ctx.r7.u32, l);
+      l.clear();
+    }
+    (void)last_report;
+  }
+  __imp__sub_82490268(ctx, base);
+}
