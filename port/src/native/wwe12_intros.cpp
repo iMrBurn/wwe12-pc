@@ -27,6 +27,8 @@ REXCVAR_DEFINE_BOOL(wwe12_skip_intros, true, "WWE12",
 REX_EXTERN(__imp__sub_821A9AC0);
 REX_EXTERN(__imp__sub_82A8C070);
 
+u16 Wwe12RemotePadButtons();  // wwe12_remote_pad.cpp (dev)
+
 namespace {
 // Window (steady clock, ms) during which player 1's Start is held down.
 std::atomic<long long> g_press_from{0}, g_press_until{0};
@@ -63,14 +65,17 @@ extern "C" REX_FUNC(sub_82A8C070) {
   if (user != 0 || !state)
     return;
   const long long now = NowMs();
-  if (now < g_press_from.load() || now >= g_press_until.load())
-    return;
+  u16 press = Wwe12RemotePadButtons();
   constexpr u16 kStart = 0x0010;
+  if (now >= g_press_from.load() && now < g_press_until.load())
+    press |= kStart;
+  if (!press)
+    return;
   if (ctx.r3.u32 != 0) {  // no controller on player 1: report one, idle
     for (u32 i = 0; i < 16; i += 4)
       bd::mem::store<u32>(state + i, 0);
     ctx.r3.u64 = 0;
   }
   bd::mem::store<u32>(state, bd::mem::load<u32>(state) + 1);
-  bd::mem::store<u16>(state + 4, u16(bd::mem::load<u16>(state + 4) | kStart));
+  bd::mem::store<u16>(state + 4, u16(bd::mem::load<u16>(state + 4) | press));
 }
