@@ -41,7 +41,6 @@ REXCVAR_DEFINE_BOOL(wwe12_pc_texts, true, "WWE12",
                     "Texts that mention the Xbox 360 console (\"do not turn off\") say PC.");
 REXCVAR_DECLARE(uint32_t, user_language);
 REXCVAR_DECLARE(bool, wwe12_graphics_menu);
-REXCVAR_DECLARE(int32_t, wwe12_graphics_link_test);
 
 int64_t Wwe12MsSinceLoadScreen();  // wwe12_load_turbo.cpp
 
@@ -266,23 +265,14 @@ REX_EXTERN(__imp__sub_8253A028);
 // (0x4C bytes: +0 id, +4 parent, +8 page, +24 label). The main menu's (page 1) record labelled
 // 45061, SHOP relabelled EXIT by wwe12_menu_patch.cpp, closes the game.
 extern "C" REX_FUNC(sub_8253C3F0) {
-  // The OPTIONS entry relabelled GRAPHICS (wwe12_graphics_menu.cpp) opens the settings screen
-  // instead of the in-game manual.
-  // With wwe12_graphics_native, the entry keeps its sub-menu (DISPLAY / GRAPHICS / ADVANCED,
-  // wwe12_menu_patch.cpp) and the page to open is noted here.
-  if (REXCVAR_GET(wwe12_graphics_menu) && !REXCVAR_GET(wwe12_graphics_link_test)) {
+  // OPTIONS > GRAPHICS: the entry keeps its sub-menu (DISPLAY / GRAPHICS / ADVANCED,
+  // wwe12_menu_patch.cpp); the page to open is noted here (wwe12_graphics_menu.cpp).
+  if (Wwe12GraphicsNativeEnabled()) {
     PPCContext probe = ctx;
     __imp__sub_8253A028(probe, base);
     const u32 entry = probe.r3.u32;
-    if (entry && entry != 0xFFFFFFFFu) {
-      const u32 label = bd::mem::load<u32>(entry + 24);
-      if (Wwe12GraphicsNativeEnabled()) {
-        Wwe12GraphicsNativeDecide(label);
-      } else if (label == kWwe12GraphicsStringId) {
-        Wwe12GraphicsMenuRequest();
-        return;
-      }
-    }
+    if (entry && entry != 0xFFFFFFFFu)
+      Wwe12GraphicsNativeDecide(bd::mem::load<u32>(entry + 24));
   }
   if (REXCVAR_GET(wwe12_quit_entry)) {
     PPCContext probe = ctx;

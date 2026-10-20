@@ -210,22 +210,14 @@ class Wwe12App : public rex::ReXApp {
         imgui_drawer()->Draw(ctx);
       });
     });
-    // OPTIONS > GRAPHICS (wwe12_graphics_menu.cpp): drawn by the overlay hook above; the game
-    // gets no input while it is open.
-    Wwe12GraphicsMenuInit(
-        imgui_drawer(),
-        [this](std::function<void()> fn) { app_context().CallInUIThread(std::move(fn)); },
-        rex::filesystem::GetExecutableFolder() / "wwe12.toml");
+    // OPTIONS > GRAPHICS (wwe12_graphics_menu.cpp): the game's own option pages, saved here.
+    Wwe12GraphicsMenuInit(rex::filesystem::GetExecutableFolder() / "wwe12.toml");
     Wwe12DisplayInit(imgui_drawer());  // FPS counter (F2), CPU priority
     Wwe12KbdInit(window());  // physical keyboard in the game's letter grids (Create a Story...)
     if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
-      input->SetActiveCallback([] { return !Wwe12GraphicsMenuIsOpen(); });
-      Wwe12GraphicsMenuSetInput(input);
       Wwe12ButtonsSetInput(input);
     }
   }
-
-  void OnConfigureFonts(ImFontAtlas* atlas) override { Wwe12GraphicsMenuConfigureFonts(atlas); }
 
   void OnWindowPixelSizeChanged(uint32_t, uint32_t) override { bd::gpu::Video::RequestResize(); }
 #endif

@@ -1,15 +1,13 @@
-// WWE '12 PC: a GRAPHICS screen in the game's OPTIONS menu.
+// WWE '12 PC: OPTIONS > GRAPHICS, in the game's own menus.
 //
 // The OPTIONS menu's "IN-GAME MANUAL" entry (string 41184; "COMMENT JOUER" in French) has no use
 // on PC: its text is rewritten in memory as the language's "GRAPHICS" (the way wwe12_quit.cpp
-// renames Xbox LIVE), and choosing it opens this screen instead of the manual (decide hook in
-// wwe12_quit.cpp). Building a real page of the game's menus was not possible (adding a main menu
-// entry already broke the menus' navigation), so the screen is drawn over the game with ImGui,
-// in the menus' colours, and the game gets no input while it is open.
-//
-// Controls: up/down to pick a setting, left/right or A/Enter to change it, B/Escape to go back.
-// LB/RB (or PageUp/PageDown) switch between the DISPLAY, GRAPHICS and ADVANCED tabs.
-// Changes apply at once (the internal resolution at the next start) and are saved to wwe12.toml.
+// renames Xbox LIVE). Its sub-menu (TUTORIAL / ABILITIES / ATTRIBUTES) becomes DISPLAY / GRAPHICS /
+// ADVANCED (wwe12_menu_patch.cpp), and each entry opens one of the game's option pages with our
+// settings (see "The native pages" below). Changes apply at once (window and resolution at the
+// next start: rows marked " *") and are saved to wwe12.toml, the same keys as the launcher's.
+// Until 2026-10-20 the screen was drawn over the game with ImGui; the user wanted the game's real
+// menus.
 //
 // Disabled with wwe12_graphics_menu = false in wwe12.toml (the manual comes back).
 
@@ -17,12 +15,9 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
-#include <cfloat>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -30,25 +25,20 @@
 #define NOMINMAX
 #include <windows.h>
 
-#include <imgui.h>
-
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
-#include <rex/input/input_system.h>
-#include <rex/ui/imgui_dialog.h>
-#include <rex/ui/imgui_drawer.h>
 
 #include "../launcher/toml_file.h"
 #include "core/logging.h"
 
 REXCVAR_DEFINE_BOOL(wwe12_graphics_menu, true, "WWE12",
-                    "OPTIONS menu: \"IN-GAME MANUAL\" becomes GRAPHICS, a settings screen.");
+                    "OPTIONS menu: \"IN-GAME MANUAL\" becomes GRAPHICS (DISPLAY / GRAPHICS / ADVANCED "
+                    "pages in the game's menus).");
 REXCVAR_DECLARE(uint32_t, user_language);
 REXCVAR_DECLARE(int32_t, svr_render_scale);
 REXCVAR_DECLARE(int32_t, bd_anisotropy);
 REXCVAR_DECLARE(bool, bd_vsync);
 REXCVAR_DECLARE(bool, wwe12_60fps);
-REXCVAR_DECLARE(std::string, wwe12_button_icons);
 REXCVAR_DECLARE(bool, wwe12_crowd);
 REXCVAR_DECLARE(bool, fullscreen);
 REXCVAR_DECLARE(bool, borderless);
@@ -157,118 +147,7 @@ const Texts &T() { return kTexts[CurrentLang()]; }
 
 // ---- state shared with the app --------------------------------------------------------------
 
-rex::ui::ImGuiDrawer *g_drawer = nullptr;
-std::function<void(std::function<void()>)> g_run_in_ui;
 std::filesystem::path g_toml_path;
-rex::input::InputSystem *g_input = nullptr;
-std::atomic<bool> g_open{false};
-ImFont *g_menu_font = nullptr;  // Impact, close to the menus' font (null: ImGui's default)
-
-// ---- controller ----------------------------------------------------------------------------
-
-// XInput read directly: the game's input is switched off while the screen is open.
-struct XPad {
-  WORD buttons = 0;
-  SHORT ly = 0, lx = 0;
-};
-using XInputGetStateFn = DWORD(WINAPI *)(DWORD, void *);
-
-XPad ReadPads() {
-  static XInputGetStateFn get = [] {
-    for (const char *dll : {"xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"})
-      if (HMODULE m = LoadLibraryA(dll))
-        if (auto f = reinterpret_cast<XInputGetStateFn>(GetProcAddress(m, "XInputGetState")))
-          return f;
-    return XInputGetStateFn(nullptr);
-  }();
-  XPad all;
-  // Every pad the game knows (PlayStation and other pads reach it through SDL, not XInput), read
-  // through the input system, which hands out the real state even though the game's own input is
-  // switched off while this screen is open.
-  if (g_input) {
-    for (uint32_t user = 0; user < 4; ++user) {
-      rex::input::X_INPUT_STATE st = {};
-      if (g_input->GetStateIgnoringActive(user, &st) != 0)
-        continue;
-      all.buttons |= WORD(uint16_t(st.gamepad.buttons));
-      const SHORT lx = st.gamepad.thumb_lx, ly = st.gamepad.thumb_ly;
-      if (std::abs(ly) > std::abs(all.ly))
-        all.ly = ly;
-      if (std::abs(lx) > std::abs(all.lx))
-        all.lx = lx;
-    }
-  }
-  if (!get)
-    return all;
-  struct {
-    DWORD packet;
-    WORD buttons;
-    BYTE lt, rt;
-    SHORT lx, ly, rx, ry;
-  } st;
-  for (DWORD i = 0; i < 4; ++i) {
-    if (get(i, &st) != ERROR_SUCCESS)
-      continue;
-    all.buttons |= st.buttons;
-    if (std::abs(st.ly) > std::abs(all.ly))
-      all.ly = st.ly;
-    if (std::abs(st.lx) > std::abs(all.lx))
-      all.lx = st.lx;
-  }
-  return all;
-}
-
-enum Action { kNone, kUp, kDown, kLeft, kRight, kAccept, kBack, kTabPrev, kTabNext };
-
-// Edge-triggered actions from keyboard and pads, with auto-repeat on held directions.
-class InputReader {
- public:
-  Action Poll() {
-    const XPad p = ReadPads();
-    constexpr SHORT kDead = 16000;
-    bool held[9] = {};
-    held[kUp] = (p.buttons & 0x0001) || p.ly > kDead || ImGui::IsKeyDown(ImGuiKey_UpArrow) ||
-                ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_Z);
-    held[kDown] = (p.buttons & 0x0002) || p.ly < -kDead ||
-                  ImGui::IsKeyDown(ImGuiKey_DownArrow) || ImGui::IsKeyDown(ImGuiKey_S);
-    held[kLeft] = (p.buttons & 0x0004) || p.lx < -kDead ||
-                  ImGui::IsKeyDown(ImGuiKey_LeftArrow) || ImGui::IsKeyDown(ImGuiKey_A) ||
-                  ImGui::IsKeyDown(ImGuiKey_Q);
-    held[kRight] = (p.buttons & 0x0008) || p.lx > kDead ||
-                   ImGui::IsKeyDown(ImGuiKey_RightArrow) || ImGui::IsKeyDown(ImGuiKey_D);
-    held[kAccept] = (p.buttons & 0x1000) || ImGui::IsKeyDown(ImGuiKey_Enter) ||
-                    ImGui::IsKeyDown(ImGuiKey_KeypadEnter) || ImGui::IsKeyDown(ImGuiKey_Space) ||
-                    ImGui::IsKeyDown(ImGuiKey_K);
-    held[kBack] = (p.buttons & 0x2000) || (p.buttons & 0x0010) ||
-                  ImGui::IsKeyDown(ImGuiKey_Escape) || ImGui::IsKeyDown(ImGuiKey_Backspace) ||
-                  ImGui::IsKeyDown(ImGuiKey_L);
-    held[kTabPrev] = (p.buttons & 0x0100) || ImGui::IsKeyDown(ImGuiKey_PageUp);
-    held[kTabNext] = (p.buttons & 0x0200) || ImGui::IsKeyDown(ImGuiKey_PageDown);
-    const double now = ImGui::GetTime();
-    Action result = kNone;
-    for (int a = kUp; a <= kTabNext; ++a) {
-      if (held[a] && !was_[a]) {
-        if (armed_[a])
-          result = Action(a);
-        next_repeat_[a] = now + 0.40;
-      } else if (held[a] && a <= kRight && armed_[a] && now >= next_repeat_[a]) {
-        result = Action(a);
-        next_repeat_[a] = now + 0.12;
-      }
-      // A button already down when the screen opens (the A that chose the entry) is ignored
-      // until it is released.
-      if (!held[a])
-        armed_[a] = true;
-      was_[a] = held[a];
-    }
-    return result;
-  }
-
- private:
-  bool was_[9] = {};
-  bool armed_[9] = {};
-  double next_repeat_[9] = {};
-};
 
 // ---- settings -------------------------------------------------------------------------------
 
@@ -471,255 +350,9 @@ std::vector<Setting> BuildSettings() {
   return s;
 }
 
-// ---- the screen -----------------------------------------------------------------------------
-
-class GraphicsMenu final : public rex::ui::ImGuiDialog {
- public:
-  explicit GraphicsMenu(rex::ui::ImGuiDrawer *drawer)
-      : ImGuiDialog(drawer), settings_(BuildSettings()) {}
-
- protected:
-  void OnClose() override {
-    Save();
-    g_open = false;
-    BD_INFO("[graphics] screen closed");
-  }
-
-  void OnDraw(ImGuiIO &io) override {
-    const std::vector<int> rows = Rows();
-    int &selected = selected_[tab_];
-    selected = std::min(selected, int(rows.size()) - 1);
-    switch (input_.Poll()) {
-    case kUp: selected = (selected + int(rows.size()) - 1) % int(rows.size()); break;
-    case kDown: selected = (selected + 1) % int(rows.size()); break;
-    case kTabPrev: tab_ = (tab_ + 2) % 3; return;
-    case kTabNext: tab_ = (tab_ + 1) % 3; return;
-    case kLeft: Change(-1); break;
-    case kRight:
-    case kAccept: Change(+1); break;
-    case kBack: Close(); return;
-    default: break;
-    }
-
-    // Laid out like the game's option pages (GAMEPLAY > IN-GAME OPTIONS), in 1080p coordinates
-    // scaled to the window: orange page band, white rule, centred title, rows of large italic
-    // capitals with the chosen one red and underlined, red arrows around its value, and the
-    // A/B prompts at the bottom.
-    const Texts &t = T();
-    const ImVec2 screen = io.DisplaySize;
-    const float k = screen.y / 1080.0f;
-    const float ox = (screen.x - 1920.0f * k) * 0.5f;  // centred 16:9 area on wider windows
-    const auto P = [&](float x, float y) { return ImVec2(ox + x * k, y * k); };
-    ImFont *font = g_menu_font ? g_menu_font : ImGui::GetFont();
-    ImDrawList *dl = ImGui::GetForegroundDrawList();
-
-    // The menu underneath disappears behind a dark lower half; the artwork above stays.
-    // Opaque, so nothing of the menu (its "MAIN MENU" label, list and prompts) shows through.
-    dl->AddRectFilledMultiColor(ImVec2(0, 470 * k), ImVec2(screen.x, 530 * k),
-                                IM_COL32(6, 6, 6, 0), IM_COL32(6, 6, 6, 0),
-                                IM_COL32(6, 6, 6, 255), IM_COL32(6, 6, 6, 255));
-    dl->AddRectFilled(ImVec2(0, 530 * k), screen, IM_COL32(6, 6, 6, 255));
-
-    // Page band (orange, fading out on the right) with the parent menu's name in black.
-    const ImU32 orange = IM_COL32(240, 172, 48, 255);
-    const ImU32 clear_orange = IM_COL32(240, 172, 48, 0);
-    dl->AddRectFilled(P(205, 580), P(980, 624), orange);
-    dl->AddRectFilledMultiColor(P(980, 580), P(1120, 624), orange, clear_orange, clear_orange,
-                                orange);
-    Text(dl, font, 32 * k, P(228, 584), IM_COL32(20, 14, 6, 255), t.header);
-    // White rule under the band, fading at both ends.
-    const ImU32 white = IM_COL32(255, 255, 255, 255);
-    const ImU32 clear_white = IM_COL32(255, 255, 255, 0);
-    dl->AddRectFilledMultiColor(P(190, 624), P(400, 628), clear_white, white, white, clear_white);
-    dl->AddRectFilled(P(400, 624), P(1520, 628), white);
-    dl->AddRectFilledMultiColor(P(1520, 624), P(1730, 628), white, clear_white, clear_white,
-                                white);
-
-    // Centred subtitle like "IN-GAME OPTIONS": the open tab's name, with red arrows either side
-    // (L1/R1 or LB/RB switch tabs) and its place among the tabs.
-    {
-      const char *tab_names[] = {t.tab_display, t.tab_graphics, t.tab_advanced};
-      const std::string title = tab_names[tab_];
-      const ImVec2 sz = font->CalcTextSizeA(34 * k, FLT_MAX, 0.0f, title.c_str());
-      const float half = sz.x * 0.5f / k;
-      TextCentered(dl, font, 34 * k, P(960, 640), white, title.c_str());
-      const float cy = 662 * k;
-      const ImU32 red_arrow = IM_COL32(214, 22, 32, 255);
-      dl->AddTriangleFilled(ImVec2(ox + (960 - half - 30) * k, cy),
-                            ImVec2(ox + (960 - half - 14) * k, cy - 9 * k),
-                            ImVec2(ox + (960 - half - 14) * k, cy + 9 * k), red_arrow);
-      dl->AddTriangleFilled(ImVec2(ox + (960 + half + 30) * k, cy),
-                            ImVec2(ox + (960 + half + 14) * k, cy - 9 * k),
-                            ImVec2(ox + (960 + half + 14) * k, cy + 9 * k), red_arrow);
-      // One dot per tab under the title.
-      for (int i = 0; i < 3; ++i)
-        dl->AddCircleFilled(ImVec2(ox + (960 + (i - 1) * 22) * k, 684 * k), 5 * k,
-                            i == tab_ ? orange : IM_COL32(90, 90, 94, 255));
-    }
-
-    // Rows.
-    const ImU32 red = IM_COL32(214, 22, 32, 255);
-    float y = 700;
-    for (int i = 0; i < int(rows.size()); ++i) {
-      const Setting &s = settings_[rows[i]];
-      const bool sel = i == selected;
-      const ImU32 col = sel ? red : white;
-      Text(dl, font, 42 * k, P(295, y), col, t.*s.label);
-      std::string value = s.values[s.index];
-      if (s.next_start)
-        value += " *";
-      TextCentered(dl, font, 42 * k, P(1380, y), col, value.c_str());
-      if (sel) {
-        // Red arrows either side of the value.
-        const float cy = (y + 24) * k;
-        dl->AddTriangleFilled(ImVec2(ox + 1184 * k, cy), ImVec2(ox + 1204 * k, cy - 11 * k),
-                              ImVec2(ox + 1204 * k, cy + 11 * k), red);
-        dl->AddTriangleFilled(ImVec2(ox + 1576 * k, cy), ImVec2(ox + 1556 * k, cy - 11 * k),
-                              ImVec2(ox + 1556 * k, cy + 11 * k), red);
-      }
-      // Separator; the chosen row's is red.
-      dl->AddRectFilled(P(240, y + 46), P(1665, y + 48), sel ? red : IM_COL32(70, 70, 74, 255));
-      y += 48;
-    }
-
-    // Note for the chosen row (next-start setting, experimental option).
-    const Setting &cur = settings_[rows[selected]];
-    const char *note = cur.note ? t.*cur.note : (cur.next_start ? t.next_start : nullptr);
-    if (note)
-      Text(dl, font, 24 * k, P(295, y + 2), IM_COL32(240, 196, 64, 255),
-           (std::string(cur.next_start ? "* " : "") + note).c_str());
-
-    // Button prompts, like the game's: round buttons and yellow words. The icons follow
-    // wwe12_button_icons (PlayStation icons when it is "playstation").
-    const ImU32 yellow = IM_COL32(242, 200, 72, 255);
-    const bool ps = REXCVAR_GET(wwe12_button_icons) == "playstation";
-    Button(dl, font, k, P(228, 984), ps ? kBtnCross : kBtnA, ps, "A");
-    Text(dl, font, 30 * k, P(252, 966), yellow, t.change);
-    Button(dl, font, k, P(482, 984), ps ? kBtnCircle : kBtnB, ps, "B");
-    Text(dl, font, 30 * k, P(506, 966), yellow, t.back);
-    Text(dl, font, 30 * k, P(700, 966), yellow,
-         (std::string(ps ? "L1 / R1  " : "LB / RB  ") + t.tabs).c_str());
-  }
-
-  static constexpr ImU32 kBtnA = IM_COL32(60, 170, 50, 255);
-  static constexpr ImU32 kBtnB = IM_COL32(210, 30, 40, 255);
-  static constexpr ImU32 kBtnCross = IM_COL32(150, 160, 240, 255);
-  static constexpr ImU32 kBtnCircle = IM_COL32(225, 70, 90, 255);
-
-  // Italic text: the glyphs' vertices are sheared, as the menus' font slants.
-  static void Text(ImDrawList *dl, ImFont *font, float size, ImVec2 pos, ImU32 col,
-                   const char *text) {
-    const int first = dl->VtxBuffer.Size;
-    dl->AddText(font, size, pos, col, text);
-    const float base = pos.y + size;
-    for (int v = first; v < dl->VtxBuffer.Size; ++v)
-      dl->VtxBuffer[v].pos.x += (base - dl->VtxBuffer[v].pos.y) * 0.16f;
-  }
-  static void TextCentered(ImDrawList *dl, ImFont *font, float size, ImVec2 center_top,
-                           ImU32 col, const char *text) {
-    const ImVec2 sz = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
-    Text(dl, font, size, ImVec2(center_top.x - sz.x * 0.5f, center_top.y), col, text);
-  }
-  static void Button(ImDrawList *dl, ImFont *font, float k, ImVec2 center, ImU32 col, bool ps,
-                     const char *letter) {
-    if (ps) {
-      // PlayStation face button: a dark disc with a coloured cross (A) or ring (B).
-      dl->AddCircleFilled(center, 15 * k, IM_COL32(25, 25, 40, 255));
-      dl->AddCircle(center, 15 * k, IM_COL32(120, 120, 140, 255), 0, 1.5f * k);
-      if (letter[0] == 'A') {
-        const float d = 8 * k;
-        dl->AddLine(ImVec2(center.x - d, center.y - d), ImVec2(center.x + d, center.y + d), col, 3 * k);
-        dl->AddLine(ImVec2(center.x - d, center.y + d), ImVec2(center.x + d, center.y - d), col, 3 * k);
-      } else {
-        dl->AddCircle(center, 8 * k, col, 0, 3 * k);
-      }
-      return;
-    }
-    dl->AddCircleFilled(center, 15 * k, IM_COL32(255, 255, 255, 255));
-    dl->AddCircleFilled(center, 12.5f * k, col);
-    const ImVec2 sz = font->CalcTextSizeA(20 * k, FLT_MAX, 0.0f, letter);
-    dl->AddText(font, 20 * k, ImVec2(center.x - sz.x * 0.5f, center.y - sz.y * 0.5f),
-                IM_COL32(255, 255, 255, 255), letter);
-  }
-
- private:
-  std::vector<int> Rows() const {
-    std::vector<int> r;
-    for (int i = 0; i < int(settings_.size()); ++i)
-      if (settings_[i].tab == tab_)
-        r.push_back(i);
-    return r;
-  }
-
-  void Change(int delta) {
-    const std::vector<int> rows = Rows();
-    Setting &s = settings_[rows[std::min(selected_[tab_], int(rows.size()) - 1)]];
-    s.touched = true;
-    const int n = int(s.values.size());
-    s.index = (s.index + delta + n) % n;
-    s.apply(s.index);
-    dirty_ = true;
-  }
-
-  void Save() {
-    if (!dirty_ || g_toml_path.empty())
-      return;
-    TomlFile f;
-    if (!f.Load(g_toml_path)) {
-      BD_WARN("[graphics] cannot read {}", rex::path_to_utf8(g_toml_path));
-      return;
-    }
-    for (const Setting &s : settings_)
-      if (s.touched)
-        s.save(f, s.index);
-    if (f.Save())
-      BD_INFO("[graphics] settings saved to {}", rex::path_to_utf8(g_toml_path));
-    else
-      BD_WARN("[graphics] cannot write {}", rex::path_to_utf8(g_toml_path));
-  }
-
-  std::vector<Setting> settings_;
-  int selected_[3] = {};
-  int tab_ = 0;
-  bool dirty_ = false;
-  InputReader input_;
-};
-
 }  // namespace
 
-void Wwe12GraphicsMenuInit(rex::ui::ImGuiDrawer *drawer,
-                           std::function<void(std::function<void()>)> run_in_ui_thread,
-                           std::filesystem::path toml_path) {
-  g_drawer = drawer;
-  g_run_in_ui = std::move(run_in_ui_thread);
-  g_toml_path = std::move(toml_path);
-}
-
-void Wwe12GraphicsMenuConfigureFonts(ImFontAtlas *atlas) {
-  // Impact ships with Windows; elsewhere (Steam Deck) ImGui's default font is used.
-  char windir[MAX_PATH] = {};
-  if (!GetWindowsDirectoryA(windir, MAX_PATH))
-    return;
-  const std::filesystem::path path = std::filesystem::path(windir) / "Fonts" / "impact.ttf";
-  std::error_code ec;
-  if (!std::filesystem::exists(path, ec))
-    return;
-  ImFontConfig cfg;
-  cfg.OversampleH = cfg.OversampleV = 2;
-  static const ImWchar kRanges[] = {0x0020, 0x00FF, 0};  // Latin-1: the accented capitals
-  g_menu_font = atlas->AddFontFromFileTTF(rex::path_to_utf8(path).c_str(), 64.0f, &cfg, kRanges);
-}
-
-void Wwe12GraphicsMenuSetInput(rex::input::InputSystem *input) { g_input = input; }
-
-bool Wwe12GraphicsMenuIsOpen() { return g_open.load(std::memory_order_relaxed); }
-
-void Wwe12GraphicsMenuRequest() {
-  if (!g_drawer || !g_run_in_ui || g_open.exchange(true))
-    return;
-  BD_INFO("[graphics] screen opened");
-  g_run_in_ui([] { new GraphicsMenu(g_drawer); });  // deletes itself when closed
-}
+void Wwe12GraphicsMenuInit(std::filesystem::path toml_path) { g_toml_path = std::move(toml_path); }
 
 uint32_t Wwe12RelabelGraphicsEntry(uint8_t *region_start, uint8_t *region_end) {
   if (!REXCVAR_GET(wwe12_graphics_menu))
@@ -767,10 +400,9 @@ uint32_t Wwe12RelabelGraphicsEntry(uint8_t *region_start, uint8_t *region_end) {
   return patched;
 }
 
-// ==== The native GRAPHICS pages (wwe12_graphics_native) ====================================
+// ==== The native pages ===================================================================
 //
-// The same settings in the game's own menus (the user wants real game menus, not a screen drawn
-// over the game). Found on 2026-10-20:
+// Found on 2026-10-20:
 // - OPTIONS's IN-GAME MANUAL entry (string 41184, relabelled GRAPHICS) is a sub-menu of menu.pac
 //   (record kind 1); its first three entries become DISPLAY / GRAPHICS / ADVANCED (texts
 //   kNativeTabText + tab), each linked to 1304 (wwe12_menu_patch.cpp), the link of GAMEPLAY >
@@ -793,10 +425,6 @@ uint32_t Wwe12RelabelGraphicsEntry(uint8_t *region_start, uint8_t *region_end) {
 // - Texts: titles, labels and values are fixed text ids from 43100 (unused in every string table;
 //   layout in tools/graphics_pages.py), served in the player's language by the string manager hook
 //   (wwe12_universe.cpp asks Wwe12NativeGraphicsGuestText).
-
-REXCVAR_DEFINE_BOOL(wwe12_graphics_native, false, "WWE12",
-                    "OPTIONS > GRAPHICS in the game's own menus (DISPLAY / GRAPHICS / ADVANCED pages "
-                    "of the game) instead of the screen drawn over the game.");
 
 #include <map>
 
@@ -905,7 +533,7 @@ void SaveNativeSettings() {
 // The page number our script passed (100 + tab), or -1. Natives get the Lua state in r3; the
 // argument is read with lua_tointeger(L, -1), as the game's own natives do.
 int NativePageArg(const PPCContext &ctx, u8 *base) {
-  if (!REXCVAR_GET(wwe12_graphics_native) || g_native_tab < 0)
+  if (!REXCVAR_GET(wwe12_graphics_menu) || g_native_tab < 0)
     return -1;
   PPCContext x = ctx;
   x.r4.u64 = ~uint64_t(0);  // index -1: the top of the Lua stack
@@ -917,7 +545,7 @@ int NativePageArg(const PPCContext &ctx, u8 *base) {
 }  // namespace
 
 void Wwe12GraphicsNativeDecide(uint32_t label) {
-  if (!REXCVAR_GET(wwe12_graphics_native))
+  if (!REXCVAR_GET(wwe12_graphics_menu))
     return;
   if (label >= kNativeTabText && label < kNativeTabText + 3) {
     g_pending_tab = int(label - kNativeTabText);
@@ -925,10 +553,10 @@ void Wwe12GraphicsNativeDecide(uint32_t label) {
   }
 }
 
-bool Wwe12GraphicsNativeEnabled() { return REXCVAR_GET(wwe12_graphics_native); }
+bool Wwe12GraphicsNativeEnabled() { return REXCVAR_GET(wwe12_graphics_menu); }
 
 uint32_t Wwe12NativeGraphicsGuestText(uint32_t id) {
-  if (id < kNativeTabText || id >= kNativeTextEnd || !REXCVAR_GET(wwe12_graphics_native))
+  if (id < kNativeTabText || id >= kNativeTextEnd || !REXCVAR_GET(wwe12_graphics_menu))
     return 0;
   const std::string text = NativeText(id);
   if (text.empty())
@@ -953,7 +581,7 @@ uint32_t Wwe12NativeGraphicsGuestText(uint32_t id) {
 // luaL_loadbuffer (L, buffer, size, name): our page script instead of IN-GAME OPTIONS's.
 REX_EXTERN(__imp__sub_827E9418);
 extern "C" REX_FUNC(sub_827E9418) {
-  if (g_pending_tab >= 0 && REXCVAR_GET(wwe12_graphics_native) &&
+  if (g_pending_tab >= 0 && REXCVAR_GET(wwe12_graphics_menu) &&
       ctx.r5.u32 == kIngameOptionsScriptSize && bd::mem::try_load<u8>(ctx.r4.u32) == 0x1B) {
     const int tab = g_pending_tab;
     g_pending_tab = -1;

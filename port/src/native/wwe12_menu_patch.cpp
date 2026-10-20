@@ -34,10 +34,7 @@
 #include "wwe12_graphics_menu.h"
 
 REXCVAR_DECLARE(bool, wwe12_quit_entry);
-REXCVAR_DECLARE(bool, wwe12_graphics_native);
-REXCVAR_DEFINE_INT32(wwe12_graphics_link_test, 0, "WWE12",
-                     "Test: link of the OPTIONS > GRAPHICS record (0 = the overlay screen; 0x518 opens the "
-                     "game's IN-GAME OPTIONS page).");
+REXCVAR_DECLARE(bool, wwe12_graphics_menu);
 
 namespace {
 
@@ -71,7 +68,7 @@ bool ReadGameFile(rex::filesystem::VirtualFileSystem *fs, const char *path,
   return ok;
 }
 
-// OPTIONS > GRAPHICS in the game's menus (wwe12_graphics_native, wwe12_graphics_menu.cpp): the
+// OPTIONS > GRAPHICS in the game's menus (wwe12_graphics_menu, wwe12_graphics_menu.cpp): the
 // IN-GAME MANUAL record (label 41184, kind 1 = a sub-menu; its entries are the records whose parent,
 // +0x50, is its id, +0x34: TUTORIAL, ABILITIES, ATTRIBUTES and a hidden fourth, kind 7) keeps its
 // sub-menu, whose three visible entries become DISPLAY / GRAPHICS / ADVANCED (labels
@@ -112,14 +109,6 @@ bool RelabelShop(std::vector<uint8_t> &d, size_t base) {
     return false;
   for (uint32_t k = 0; k < count; ++k) {
     uint8_t *r = &d[first + size_t(k) * kRecordSize];
-    // Test: OPTIONS > GRAPHICS (the manual's record, label 41184) opens a native screen.
-    if (const int link = REXCVAR_GET(wwe12_graphics_link_test);
-        link && Be32(r + 0x18) == 41184) {
-      SetBe32(r + 0x54, 5);  // a screen, not the manual's sub-menu (kind 1)
-      SetBe32(r + 0x58, 0);
-      SetBe32(r + 0x6C, uint32_t(link));
-      SetBe32(r + 0x70, 2);
-    }
     if (REXCVAR_GET(wwe12_quit_entry) && Be32(r + 0x30) == 1 && Be32(r + 0x18) == kShopStringId) {
       SetBe32(r + 0x18, kExitStringId);
       found = true;
@@ -133,7 +122,7 @@ bool RelabelShop(std::vector<uint8_t> &d, size_t base) {
 // Called once the game device and the mods overlay are mounted.
 void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem *fs, const std::string &game_device,
                          const std::filesystem::path &user_root) {
-  const bool native_graphics = REXCVAR_GET(wwe12_graphics_native);
+  const bool native_graphics = REXCVAR_GET(wwe12_graphics_menu);
   if ((!REXCVAR_GET(wwe12_quit_entry) && !native_graphics) || user_root.empty())
     return;
   std::vector<uint8_t> d;
