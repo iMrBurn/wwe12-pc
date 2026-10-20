@@ -14,10 +14,15 @@
 #include <utility>
 
 #include <plume_render_interface.h>
+#include <rex/cvar.h>
 
 #include "gpu/gpu_profiling.h"
 
 #include "core/logging.h"
+
+REXCVAR_DEFINE_BOOL(svr_rt_level0_view, true, "SvR",
+                    "Attach only level 0 of render targets with mips (false = 0.8 behaviour, for "
+                    "tests).");
 
 namespace bd::gpu {
 
@@ -26,7 +31,7 @@ namespace bd::gpu {
 // all: NVIDIA draws into level 0 anyway, Intel and AMD do not (#7/#11/#13/#16 colour blocks, seen
 // only when a wrestler is on screen).
 static const plume::RenderTextureView *AttachmentView(GuestTexture *t) {
-  if (!t || t->mipLevels <= 1)
+  if (!t || t->mipLevels <= 1 || !REXCVAR_GET(svr_rt_level0_view))
     return nullptr;
   if (!t->attachmentView) {
     plume::RenderTextureViewDesc view_desc;
