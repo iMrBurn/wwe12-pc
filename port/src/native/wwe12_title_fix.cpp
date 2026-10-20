@@ -46,6 +46,8 @@ REXCVAR_DEFINE_BOOL(wwe12_title_fix_all, false, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_title_fix_pose, false, "WWE12",
                     "Test: 60 fps entrances blend each animated pose between the two console "
                     "frames around it (position and rotation of every bone).");
+REXCVAR_DEFINE_BOOL(wwe12_title_fix_pose_hold, false, "WWE12",
+                    "Dev: with wwe12_title_fix_pose, hold the even frame's pose instead of blending.");
 REXCVAR_DEFINE_BOOL(wwe12_title_fix_log, false, "WWE12",
                     "Dev: log how many positions wwe12_title_fix corrects.");
 
@@ -247,13 +249,17 @@ void EvaluatePose(PPCContext &ctx, uint8_t *base) {
     Restore(saved);
   }
   __imp__sub_82490530(ctx, base);
+  static std::atomic<u32> s_blends{0};
+  if (REXCVAR_GET(wwe12_title_fix_log) && (s_blends.fetch_add(1) % 2000) == 0)
+    BD_INFO("[pose] blend #{} motion {:08X} bones {} t {:.2f}", s_blends.load(), motion, bones, t);
+  const float w = REXCVAR_GET(wwe12_title_fix_pose_hold) ? 0.0f : frac;
   for (u32 i = 0; i < bones; ++i) {
     if (bd::mem::load<int32_t>(bd::mem::load<u32>(motion + 76) + 4 * i) == -1)
       continue;
     const u32 r = records + i * 80;
     const float *a = &pose[0][i * 7], *b = &pose[1][i * 7];
     for (int j = 0; j < 3; ++j)
-      bd::mem::store<float>(r + 16 + 4 * j, a[j] + (b[j] - a[j]) * frac);
+      bd::mem::store<float>(r + 16 + 4 * j, a[j] + (b[j] - a[j]) * w);
     float dot = 0, qa2 = 0, qb2 = 0;
     for (int j = 0; j < 4; ++j) {
       dot += a[3 + j] * b[3 + j];
@@ -266,7 +272,7 @@ void EvaluatePose(PPCContext &ctx, uint8_t *base) {
     const float sign = dot < 0 ? -1.0f : 1.0f;
     float q[4], n = 0;
     for (int j = 0; j < 4; ++j) {
-      q[j] = a[3 + j] + (sign * b[3 + j] - a[3 + j]) * frac;
+      q[j] = a[3 + j] + (sign * b[3 + j] - a[3 + j]) * w;
       n += q[j] * q[j];
     }
     n = 1.0f / std::sqrt(n);

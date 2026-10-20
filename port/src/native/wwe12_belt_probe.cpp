@@ -13,6 +13,8 @@
 #include <cmath>
 #include <string>
 #include <unordered_map>
+#include <vector>
+#include <cstdlib>
 
 #include <fmt/format.h>
 
@@ -28,6 +30,9 @@ REXCVAR_DEFINE_INT32(wwe12_belt_hide_idx, 0, "WWE12",
                      "Dev: skip the draws of vertex shader FC173F716C3D2065 with this index count "
                      "(to see which model it is). 0 = none.");
 
+REXCVAR_DEFINE_STRING(wwe12_belt_hide_models, "", "WWE12",
+                      "Dev: skip the draws of these wwe12_belt_scan models (hex keys, comma "
+                      "separated), to see which model a key is.");
 REXCVAR_DEFINE_BOOL(wwe12_belt_scan, false, "WWE12",
                     "Dev: find skinned models that move at 30 Hz or zigzag every other frame.");
 
@@ -40,10 +45,9 @@ namespace {
 // wwe12_belt_scan: per (vertex shader, index count), the first bones' translations each frame.
 struct ScanStat {
   u64 last_frame = 0;
-  float last[4][3] = {};
-  float prev_dev_dir[3] = {};
+  float last[4][12] = {};
   bool have_last = false, have_prev = false;
-  float prev[4][3] = {};
+  float prev[4][12] = {};
   u32 n = 0, same = 0;
   double dev[2] = {0, 0};
   u32 devn[2] = {0, 0};
@@ -60,10 +64,10 @@ void Scan(u32 device_guest, u64 vs_hash, u32 count) {
     std::memcpy(&v, &bits, 4);
     return v;
   };
-  float cur[4][3];
+  float cur[4][12];
   for (u32 b = 0; b < 4; ++b)
-    for (u32 a = 0; a < 3; ++a)
-      cur[b][a] = f(c76 + (3 * b + a) * 16 + 12);
+    for (u32 a = 0; a < 12; ++a)
+      cur[b][a] = f(c76 + (3 * b + a / 4) * 16 + (a % 4) * 4) * ((a % 4) == 3 ? 1.0f : 30.0f);
   ScanStat &st = g_scan[vs_hash ^ (u64(count) << 1)];
   if (st.last_frame == frame)
     return;  // first draw of this model in the frame only
@@ -75,7 +79,7 @@ void Scan(u32 device_guest, u64 vs_hash, u32 count) {
       // Bone 0..3: distance of last frame from the midpoint of its neighbours.
       double d = 0;
       for (u32 b = 0; b < 4; ++b)
-        for (u32 a = 0; a < 3; ++a) {
+        for (u32 a = 0; a < 12; ++a) {
           const double m = st.last[b][a] - (st.prev[b][a] + cur[b][a]) / 2;
           d += m * m;
         }
@@ -112,6 +116,27 @@ void Scan(u32 device_guest, u64 vs_hash, u32 count) {
 
 // Returns true when the draw is to be skipped (wwe12_belt_hide_idx).
 bool Wwe12BeltProbe(u32 device_guest, u64 vs_hash, u32 count, u32 start) {
+  {
+    static std::string s_text;
+    static std::vector<u64> s_keys;
+    const std::string text = REXCVAR_GET(wwe12_belt_hide_models);
+    if (text != s_text) {
+      s_text = text;
+      s_keys.clear();
+      size_t p = 0;
+      while (p < text.size()) {
+        size_t e = text.find(',', p);
+        if (e == std::string::npos)
+          e = text.size();
+        s_keys.push_back(std::strtoull(text.substr(p, e - p).c_str(), nullptr, 16));
+        p = e + 1;
+      }
+    }
+    const u64 key = vs_hash ^ (u64(count) << 1);
+    for (u64 k : s_keys)
+      if (k == key)
+        return true;
+  }
   if (vs_hash == 0xFC173F716C3D2065ull && REXCVAR_GET(wwe12_belt_hide_idx) > 0 &&
       count == u32(REXCVAR_GET(wwe12_belt_hide_idx)))
     return true;
