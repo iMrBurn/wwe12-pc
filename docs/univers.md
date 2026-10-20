@@ -387,3 +387,23 @@ sauvegarde neuve sans entrer dans l'Univers, lancement 2 = première entrée dan
 BATL/SAVE (lue depuis misc.pac), puis remettre les champions de la table Univers aux valeurs par
 défaut (table 0x8324E3A8, comme `sub_82A39E08` mais seulement pour la table Univers), enfin laisser le
 jeu enregistrer. À faire hors d'un match, depuis un menu.
+
+## 10. Remise à zéro : ça marche (2026-10-20)
+
+`port/src/native/wwe12_universe.cpp` (cvar `wwe12_universe_dev`, off par défaut ;
+`tools/dev/lancer_test_univers.bat`). Testé en jeu par l'utilisateur, sur sa sauvegarde
+(copiée avant, remise après) : F8 sur un écran Univers → retour au tout début (calendrier,
+cartes, champions), y compris après avoir simulé jusqu'à un PPV.
+
+- Le jeu lit l'Univers de départ en entrant dans l'Univers : `sub_826EC008(this, pack)` reçoit le
+  **pack BATL/SAVE ouvert** (une poignée du lecteur, sur la pile du chargeur, pas des données) ;
+  l'entrée d'id 4 est l'Univers de départ, compressé en BPE. `sub_827D8E30(pack, id)` = index,
+  `sub_827D9528(pack, index)` = copie décompressée (6 756 octets, un PACH de 6 entrées), libérée par
+  `sub_827D2EA0(copie, 0)`. On en garde une copie (mémoire de jeu à nous, SystemHeapAlloc).
+- La remise à zéro : `sub_826D5938(U)`, `sub_826BE3C0(copie, taille)`, champions Univers par défaut
+  (table 0x8324E3A8 → 0x83226508). Lancée depuis le crochet des textes (`sub_821A4400`, fil du
+  jeu) quand le texte demandé est un texte Univers (27000–27999).
+- Sonde : le menu Univers (27041–27047) est construit par `sub_8255EC88` (texte demandé via
+  0x824CA80C ← 0x8255ED44) ; les cartes de matchs par 0x82556A70 ← 0x8255778C.
+- Prochaine étape (2) : un vrai choix « RESET UNIVERSE » (EDIT SUPERSTAR → EDIT UNIVERSE avec un
+  sous-menu, comme WWE '13), avec confirmation, à la place de F8.
