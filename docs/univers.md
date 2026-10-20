@@ -471,3 +471,11 @@ c'est réversible (redonner la ceinture dans la même grille).
   adresses mémoire du code, pas à ces lectures de fichier.
 - Sonde de développement gardée (off) : cvar `wwe12_universe_probe` (écran, vtable, action et mots
   à chaque bouton A des menus à calques + chaîne d'appels des sons Decision/Cancel).
+- **Titres d'une émission modifiables en jeu** (testé le 2026-10-20) : CALENDRIER → X sur une émission
+  → MODIFIER LE SHOW → CHAMPIONSHIPS (MAJEUR / MINEUR / TAG TEAM / DIVA) → ACCEPTER → SAUVEGARDER.
+  Le VACANT suit ces choix (il relit les titres des émissions à chaque fois) : avec le Hardcore en
+  MAJEUR de RAW, la ceinture WWE de Del Rio devient « vacantable » (testé : titre 0 libéré, la
+  ceinture disparaît de sa fiche).
+- **SAUVEGARDER de MODIFIER LE SHOW écrit tout de suite sur le disque** (« SAUVEGARDE… ») et débloque
+  le succès n° 46 (« On est à l'antenne ! »). Piste pour enregistrer la remise à zéro tout de suite :
+  trouver l'appel d'enregistrement de cet écran et le refaire après le reset.
