@@ -437,5 +437,5 @@ automatique de la sauvegarde au format du launcher (`Documents\wwe12\SaveBackups
 zéro sera enregistrée à la prochaine sauvegarde du jeu (après la prochaine émission).
 
 À faire : déclencher la sauvegarde du jeu juste après la remise à zéro (amélioration) ; vérifier
-l'affichage des textes FR/DE/ES/IT (plus longs) ; activer `wwe12_universe_edit` par défaut quand
+l'affichage DE/ES/IT (le français est vérifié à l'écran : accents, boîtes qui s'agrandissent) ; activer `wwe12_universe_edit` par défaut quand
 l'utilisateur valide ; ensuite VACANT.
