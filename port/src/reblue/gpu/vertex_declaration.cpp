@@ -270,6 +270,11 @@ GuestVertexDeclaration *CreateVertexDeclaration(GuestVertexElement *elements) {
     case D3DDeclUsage::kTangent:
       format = plume::RenderFormat::R32G32B32_FLOAT;
       break;
+    case D3DDeclUsage::kBlendIndices:
+      // Bone indices are uint4 in the shaders: a float filler is a type mismatch
+      // (VUID-VkGraphicsPipelineCreateInfo-Input-08733, seen on WWE '12's second bone set).
+      format = plume::RenderFormat::R32_UINT;
+      break;
     default:
       break;
     }
