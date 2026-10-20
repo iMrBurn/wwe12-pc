@@ -430,6 +430,12 @@ Comment le menu a été trouvé (sondes retirées depuis) :
 - textes : `sub_821A4400(this, id)` ; nos questions utilisent les numéros 27026–27028, vides dans
   WWE '12.
 
-À faire : la remise à zéro n'est écrite sur le disque qu'à la prochaine sauvegarde du jeu (si on
-quitte tout de suite, elle est perdue) → déclencher la sauvegarde du jeu après la remise à zéro ;
-activer `wwe12_universe_edit` par défaut quand l'utilisateur valide ; ensuite VACANT.
+Demandes de la Main (faites et testées en jeu le 2026-10-20) : avant le OUI final, copie
+automatique de la sauvegarde au format du launcher (`Documents\wwe12\SaveBackups\<date>\`,
+`backup.txt` = « auto » / « Before RESET UNIVERSE », 10 copies automatiques gardées ; si la copie
+échoue, rien n'est remis à zéro) ; les messages disent qu'une copie est faite et que la remise à
+zéro sera enregistrée à la prochaine sauvegarde du jeu (après la prochaine émission).
+
+À faire : déclencher la sauvegarde du jeu juste après la remise à zéro (amélioration) ; vérifier
+l'affichage des textes FR/DE/ES/IT (plus longs) ; activer `wwe12_universe_edit` par défaut quand
+l'utilisateur valide ; ensuite VACANT.

@@ -2,8 +2,9 @@
 //
 // The Universe menu's EDIT SUPERSTAR entry is labelled EDIT UNIVERSE. Choosing it asks, with the
 // game's own yes/no box, whether to reset the Universe; "no" opens the Superstar editor as before,
-// "yes" asks once more, then resets the Universe to the one a new save starts with. On while
-// wwe12_universe_edit = true.
+// "yes" asks once more, backs the save up (launcher format, SAVES page), then resets the Universe
+// to the one a new save starts with. The reset lives in memory until the game next saves (after a
+// show); the messages say so. On while wwe12_universe_edit = true.
 //
 // What a new save does to the Universe, and so the reset:
 //   1. sub_826D5938(U): clears the Universe block (U = sub_82683A30()).
@@ -39,9 +40,15 @@
 
 #include <algorithm>
 #include <atomic>
+#include <ctime>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
 
 #include <rex/cvar.h>
+#include <rex/runtime.h>
 
 #include "core/logging.h"
 #include "core/memory_helpers.h"
@@ -102,23 +109,38 @@ const char *Text(u32 id) {
        "\xC2\xBFReiniciar el Universo WWE?\nElige No para editar las Superstars.",
        "Azzerare il WWE Universe?\nScegli No per modificare le Superstar."},
       // the confirmation
-      {"All WWE Universe progress will be lost (calendar, rankings, champions, rivalries).\nContinue?",
+      {"All WWE Universe progress will be lost (calendar, rankings, champions, rivalries).\nA "
+       "backup of your save is made first (launcher, SAVES page).\nContinue?",
        "Toute la progression de l'Univers WWE sera perdue (calendrier, classements, champions, "
-       "rivalit\xC3\xA9s).\nContinuer ?",
+       "rivalit\xC3\xA9s).\nUne copie de votre sauvegarde est faite avant (launcher, page "
+       "SAUVEGARDES).\nContinuer ?",
        "Der gesamte Fortschritt der WWE-Welt geht verloren (Kalender, Ranglisten, Champions, "
-       "Rivalit\xC3\xA4ten).\nFortfahren?",
+       "Rivalit\xC3\xA4ten).\nVorher wird eine Kopie deines Spielstands erstellt (Launcher, Seite "
+       "SAVES).\nFortfahren?",
        "Se perder\xC3\xA1 todo el progreso del Universo WWE (calendario, clasificaciones, campeones, "
-       "rivalidades).\n\xC2\xBF" "Continuar?",
+       "rivalidades).\nAntes se hace una copia de tu partida (launcher, p\xC3\xA1gina "
+       "SAVES).\n\xC2\xBF" "Continuar?",
        "Tutti i progressi del WWE Universe andranno persi (calendario, classifiche, campioni, "
-       "rivalit\xC3\xA0).\nContinuare?"},
+       "rivalit\xC3\xA0).\nPrima viene fatta una copia del tuo salvataggio (launcher, pagina "
+       "SAVES).\nContinuare?"},
       // done
-      {"The WWE Universe has been reset.\nLeave WWE Universe and come back to see it.",
-       "L'Univers WWE a \xC3\xA9t\xC3\xA9 remis \xC3\xA0 z\xC3\xA9ro.\nQuittez l'Univers WWE et "
-       "revenez-y pour le voir.",
-       "Die WWE-Welt wurde zur\xC3\xBC" "ckgesetzt.\nVerlasse die WWE-Welt und kehre zur\xC3\xBC" "ck, "
-       "um sie zu sehen.",
-       "El Universo WWE se ha reiniciado.\nSal del Universo WWE y vuelve a entrar para verlo.",
-       "Il WWE Universe \xC3\xA8 stato azzerato.\nEsci dal WWE Universe e rientra per vederlo."},
+      {"The WWE Universe has been reset. A backup of your save was made first.\nLeave WWE "
+       "Universe and come back to see it. The reset is saved the next time the game saves "
+       "(after your next show).",
+       "L'Univers WWE a \xC3\xA9t\xC3\xA9 remis \xC3\xA0 z\xC3\xA9ro. Une copie de votre "
+       "sauvegarde a \xC3\xA9t\xC3\xA9 faite avant.\nQuittez l'Univers WWE et revenez-y pour le "
+       "voir. La remise \xC3\xA0 z\xC3\xA9ro sera enregistr\xC3\xA9" "e \xC3\xA0 la prochaine "
+       "sauvegarde du jeu (apr\xC3\xA8s votre prochaine \xC3\xA9mission).",
+       "Die WWE-Welt wurde zur\xC3\xBC" "ckgesetzt. Vorher wurde eine Kopie deines Spielstands "
+       "erstellt.\nVerlasse die WWE-Welt und kehre zur\xC3\xBC" "ck, um sie zu sehen. Das "
+       "Zur\xC3\xBC" "cksetzen wird beim n\xC3\xA4" "chsten Speichern des Spiels gesichert (nach "
+       "deiner n\xC3\xA4" "chsten Show).",
+       "El Universo WWE se ha reiniciado. Antes se hizo una copia de tu partida.\nSal del "
+       "Universo WWE y vuelve a entrar para verlo. El reinicio se guardar\xC3\xA1 la pr\xC3\xB3xima "
+       "vez que el juego guarde (tras tu pr\xC3\xB3ximo show).",
+       "Il WWE Universe \xC3\xA8 stato azzerato. Prima \xC3\xA8 stata fatta una copia del tuo "
+       "salvataggio.\nEsci dal WWE Universe e rientra per vederlo. L'azzeramento sar\xC3\xA0 "
+       "salvato al prossimo salvataggio del gioco (dopo il tuo prossimo show)."},
   };
   size_t row;
   switch (id) {
@@ -131,26 +153,93 @@ const char *Text(u32 id) {
   return kTexts[row][CurrentLang()];
 }
 
-// Our texts as guest strings (the game draws the text the string manager returns), one 256-byte
+// Our texts as guest strings (the game draws the text the string manager returns), one 512-byte
 // slot per text, rewritten when the language changes.
 u32 GuestText(u32 id) {
+  constexpr u32 kSlot = 512;
   const char *text = Text(id);
   if (!text)
     return 0;
   static u32 s_block = 0;
   static const char *s_for[4] = {};
   if (!s_block)
-    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(4 * 256, 0x20);
+    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(4 * kSlot, 0x20);
   if (!s_block)
     return 0;
   const u32 slot = id == kEditSuperstarText ? 0 : id - kAskText + 1;
-  const u32 at = s_block + slot * 256;
+  const u32 at = s_block + slot * kSlot;
   if (s_for[slot] != text) {
-    std::memset(bd::mem::at<char>(at), 0, 256);
-    std::memcpy(bd::mem::at<char>(at), text, std::min<size_t>(std::strlen(text), 255));
+    std::memset(bd::mem::at<char>(at), 0, kSlot);
+    std::memcpy(bd::mem::at<char>(at), text, std::min<size_t>(std::strlen(text), kSlot - 1));
     s_for[slot] = text;
   }
   return at;
+}
+
+// ---- backup ---------------------------------------------------------------------------------
+
+// Before a reset, the save on disk is backed up exactly as the launcher's SAVES page does it
+// (port/src/launcher/saves.h): Documents\wwe12\SaveBackups\<date>\ mirrors the save package
+// folder (B13EBABEBABEBABE\54510890) and the achievements file, with backup.txt = "auto" then a
+// label; only the latest 10 automatic backups are kept. It appears on the SAVES page and restores
+// from there.
+bool BackupSave() {
+  namespace fs = std::filesystem;
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator())
+    return false;
+  const fs::path root = state->emulator()->user_data_root();
+  if (root.empty())
+    return false;
+  const fs::path save_dir = root / "B13EBABEBABEBABE" / "54510890";
+  const fs::path ach_file = root / "achievements" / "54510890.toml";
+  const fs::path backups = root / "SaveBackups";
+  std::error_code ec;
+  const bool has_save = fs::exists(save_dir, ec), has_ach = fs::exists(ach_file, ec);
+  if (!has_save && !has_ach)
+    return true;  // nothing on disk yet: nothing to lose
+  const std::time_t now = std::time(nullptr);
+  std::tm tm{};
+  localtime_s(&tm, &now);
+  char stamp[32];
+  std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", &tm);
+  std::string name = stamp;
+  for (int n = 2; fs::exists(backups / name, ec); ++n)
+    name = std::string(stamp) + "_" + std::to_string(n);
+  const fs::path dest = backups / name;
+  fs::create_directories(dest, ec);
+  if (!ec && has_save) {
+    fs::create_directories(dest / "B13EBABEBABEBABE", ec);
+    if (!ec)
+      fs::copy(save_dir, dest / "B13EBABEBABEBABE" / "54510890",
+               fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+  }
+  if (!ec && has_ach) {
+    fs::create_directories(dest / "achievements", ec);
+    if (!ec)
+      fs::copy_file(ach_file, dest / "achievements" / ach_file.filename(),
+                    fs::copy_options::overwrite_existing, ec);
+  }
+  if (ec) {
+    BD_INFO("[univers] backup failed: {}", ec.message());
+    std::error_code ignore;
+    fs::remove_all(dest, ignore);
+    return false;
+  }
+  std::ofstream(dest / "backup.txt") << "auto\nBefore RESET UNIVERSE\n";
+  // Keep the latest 10 automatic backups (names sort by date), as the launcher does.
+  std::vector<std::string> automatic;
+  for (const auto &e : fs::directory_iterator(backups, ec)) {
+    std::string kind;
+    std::ifstream info(e.path() / "backup.txt");
+    if (e.is_directory() && std::getline(info, kind) && kind == "auto")
+      automatic.push_back(e.path().filename().string());
+  }
+  std::sort(automatic.rbegin(), automatic.rend());
+  for (size_t i = 10; i < automatic.size(); ++i)
+    fs::remove_all(backups / automatic[i], ec);
+  BD_INFO("[univers] save backed up to {}", dest.string());
+  return true;
 }
 
 // ---- reset ----------------------------------------------------------------------------------
@@ -317,7 +406,7 @@ extern "C" REX_FUNC(sub_824D3458) {
         }
         break;
       case Step::kConfirm:
-        if (yes && ResetUniverse(ctx, base)) {
+        if (yes && BackupSave() && ResetUniverse(ctx, base)) {
           g_step = Step::kDone;
           Call(ctx, base, __imp__sub_8254E680, kDoneText);
         } else {
