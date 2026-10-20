@@ -64,6 +64,9 @@ struct Mirror {
   bool has_content = false;
   u32 changes = 0;        // consecutive checks that found new content
   u64 hash = 0;
+  u64 sample = 0;         // SampleHash of the content when `hash` was taken (large buffers)
+  u64 full_frame = 0;     // frame `hash` was last taken in
+  u64 same_since = 0;     // frame the content was last found new
   u64 checked_frame = 0;  // frame the copy was last compared in; 0 = compare at the next use
   u64 used_frame = 0;
   std::unique_ptr<plume::RenderBuffer> buffer;  // static content
@@ -143,6 +146,29 @@ std::unique_ptr<plume::RenderBuffer> CreateCopy(const u8 *src, u32 size, u32 end
   return buffer;
 }
 
+// WWE '12 has no Unlock hooks, so every buffer drawn is hashed in full once a frame: the static
+// meshes (wrestlers, arena, crowd), megabytes each frame, were ~4 % of the render thread
+// (2026-10-20 profile). A large buffer whose content has not changed for kSettledFrames gets a
+// sampled hash (32 slices of 64 bytes) each frame and its full hash every kFullHashFrames frames.
+// Dynamic buffers change every few frames and never settle; a settled buffer rewritten in place
+// shows at once if a slice changes, or within a few frames at worst.
+constexpr u32 kSampledHashMin = 32 * 1024;
+constexpr u64 kSettledFrames = 300;
+constexpr u64 kFullHashFrames = 32;
+
+}  // namespace
+// Bytes hashed in full and buffers checked by sample, for the [perf] line (present.cpp).
+std::atomic<u64> g_geometry_hashed_bytes{0}, g_geometry_sampled{0};
+namespace {
+
+u64 SampleHash(const u8 *data, u32 size) {
+  constexpr u32 kSlices = 32;
+  u64 hash = size;
+  for (u32 i = 0; i < kSlices; ++i)
+    hash = XXH3_64bits_withSeed(data + u64(size - 64) * i / (kSlices - 1), 64, hash);
+  return hash;
+}
+
 // The host copy of [address, address + size) (GPU address) as the GPU reads it.
 bool ResolveLocked(u32 address, u32 size, u32 endian, bool index, u64 frame,
                    plume::RenderBufferReference &out) {
@@ -165,9 +191,21 @@ bool ResolveLocked(u32 address, u32 size, u32 endian, bool index, u64 frame,
       return true;
     }
   }
+  const bool sampled = size >= kSampledHashMin && !CompareEveryDraw();
+  const u64 sample = sampled ? SampleHash(src, size) : 0;
+  if (sampled && same_kind && m.buffer && m.checked_frame != 0 && sample == m.sample &&
+      frame - m.same_since >= kSettledFrames && frame - m.full_frame < kFullHashFrames) {
+    m.checked_frame = frame;
+    g_geometry_sampled.fetch_add(1, std::memory_order_relaxed);
+    out = m.buffer.get();
+    return true;
+  }
+  g_geometry_hashed_bytes.fetch_add(size, std::memory_order_relaxed);
   const u64 hash = XXH3_64bits(src, size);
   if (same_kind && hash == m.hash) {
     m.checked_frame = frame;
+    m.sample = sample;
+    m.full_frame = frame;
     if (m.buffer) {
       out = m.buffer.get();
       return true;
@@ -204,6 +242,9 @@ bool ResolveLocked(u32 address, u32 size, u32 endian, bool index, u64 frame,
   m.endian = endian;
   m.index = index;
   m.hash = hash;
+  m.sample = sample;
+  m.full_frame = frame;
+  m.same_since = frame;
   m.changes = changes;
   m.checked_frame = frame;
   m.has_content = true;

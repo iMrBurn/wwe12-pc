@@ -242,6 +242,8 @@ struct FrameStats {
   u32 frames = 0, hitches = 0;
 };
 FrameStats g_frame_stats;
+extern std::atomic<u64> g_geometry_hashed_bytes, g_geometry_sampled;  // svr_geometry.cpp
+extern std::atomic<u64> g_texture_hashed_bytes, g_texture_sampled;    // svr_resources.cpp
 
 double MsSince(FrameStats::Clock::time_point t) {
   return std::chrono::duration<double, std::milli>(FrameStats::Clock::now() - t).count();
@@ -277,6 +279,12 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
             fs.frames, fs.sum_interval / n, fs.max_interval, fs.sum_work / n, fs.max_work,
             fs.sum_gpu / n, fs.max_gpu, fs.sum_swap / n, fs.hitches, vram.used >> 20,
             vram.budget >> 20);
+    // Change checks of the game's memory (geometry and texture copies): MB hashed in full per
+    // frame, and copies checked by sample instead.
+    BD_INFO("[perf] hashed per frame: geometry {:.2f} MB ({:.0f} sampled), textures {:.2f} MB "
+            "({:.0f} sampled)",
+            g_geometry_hashed_bytes.exchange(0) / n / 1048576.0, g_geometry_sampled.exchange(0) / n,
+            g_texture_hashed_bytes.exchange(0) / n / 1048576.0, g_texture_sampled.exchange(0) / n);
     fs = FrameStats{};
     fs.window_start = now;
     fs.last_present = now;

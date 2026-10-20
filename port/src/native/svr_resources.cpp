@@ -924,12 +924,12 @@ std::atomic<u64> g_frame{1};
 std::atomic<u64> g_mirror_builds{0}, g_mirror_build_ns{0};  // texture mirrors (re)built, CPU time
 
 // Hashing every texture's whole content on every frame it is used cost ~5% of the render thread
-// (2026-10-17 profile). Textures of 64 KB and more get a sampled hash each frame (48 slices of 64
+// (2026-10-17 profile). Textures of 16 KB and more get a sampled hash each frame (48 slices of 64
 // bytes spread over the base level and the mips, plus the fetch constant): enough to see a Bink
 // frame or a menu reloaded into the same memory at once. Their full hash is still taken at least
-// every kFullHashFrames frames, so a change between the samples shows after a quarter second at worst.
-constexpr size_t kSampledHashMin = 64 * 1024;
-constexpr u64 kFullHashFrames = 16;
+// every kFullHashFrames frames, so a change between the samples shows after a second at worst.
+constexpr size_t kSampledHashMin = 16 * 1024;
+constexpr u64 kFullHashFrames = 60;
 u64 SampleHash(const NativeMirrorSource &src) {
   u64 hash = XXH3_64bits(src.fetch, sizeof(src.fetch));
   const auto slices = [&hash](const u8 *data, size_t size, size_t count) {
@@ -943,7 +943,12 @@ u64 SampleHash(const NativeMirrorSource &src) {
   return hash;
 }
 
+}  // namespace
+std::atomic<u64> g_texture_hashed_bytes{0}, g_texture_sampled{0};  // for the [perf] line
+namespace {
+
 u64 HashSource(const NativeMirrorSource &src) {
+  g_texture_hashed_bytes.fetch_add(src.base_size + src.mips_size, std::memory_order_relaxed);
   u64 hash = XXH3_64bits(src.fetch, sizeof(src.fetch));
   if (src.base_size)
     hash = XXH3_64bits_withSeed(src.base, src.base_size, hash);
@@ -1069,6 +1074,7 @@ GuestTexture *SvrResolveTexture(u32 texture_va) {
   if (src.base_size + src.mips_size >= kSampledHashMin) {
     sample = SampleHash(src);
     if (check.frame != 0 && check.sample == sample && frame - check.full_frame < kFullHashFrames) {
+      g_texture_sampled.fetch_add(1, std::memory_order_relaxed);
       check.frame = frame;
       return check.host;
     }
