@@ -62,6 +62,7 @@ int64_t NowMs() {
 }
 
 std::atomic<bool> g_screen_up{false};
+std::atomic<int64_t> g_screen_event_ms{0};  // last open or close of a loading screen
 std::atomic<int64_t> g_screen_since_ms{0};
 std::atomic<u32> g_loader_calls{0}, g_presents{0}, g_skips{0};
 std::atomic<u32> g_screen_calls[4];  // the four loading-screen base methods
@@ -117,6 +118,12 @@ void ProbeLine(const char *why, int64_t now) {
 
 }  // namespace
 
+// Milliseconds since a loading screen last opened or closed (wwe12_quit.cpp scans the string
+// tables again then: the game reloads them around loading screens).
+int64_t Wwe12MsSinceLoadScreen() {
+  return NowMs() - g_screen_event_ms.load(std::memory_order_relaxed);
+}
+
 // Called by the loader hook (wwe12_loading.cpp) each time the game's loader yields.
 void Wwe12LoaderTick() {
   g_loader_calls.fetch_add(1, std::memory_order_relaxed);
@@ -166,7 +173,7 @@ extern "C" REX_FUNC(sub_827DEA20) {
 }
 
 // The loading screens' shared base methods: slot 14 opens the turbo window, the others close it.
-#define WWE12_LOAD_SCREEN_HOOK(subroutine, index, opens)                         REX_EXTERN(__imp__##subroutine);                                              extern "C" REX_FUNC(subroutine) {                                               g_screen_calls[index].fetch_add(1, std::memory_order_relaxed);                if (opens) {                                                                    if (!g_screen_up.exchange(true, std::memory_order_relaxed))                     g_screen_since_ms.store(NowMs(), std::memory_order_relaxed);              } else {                                                                        g_screen_up.store(false, std::memory_order_relaxed);                        }                                                                             __imp__##subroutine(ctx, base);                                             }
+#define WWE12_LOAD_SCREEN_HOOK(subroutine, index, opens)                         REX_EXTERN(__imp__##subroutine);                                              extern "C" REX_FUNC(subroutine) {                                               g_screen_calls[index].fetch_add(1, std::memory_order_relaxed); g_screen_event_ms.store(NowMs(), std::memory_order_relaxed);                if (opens) {                                                                    if (!g_screen_up.exchange(true, std::memory_order_relaxed))                     g_screen_since_ms.store(NowMs(), std::memory_order_relaxed);              } else {                                                                        g_screen_up.store(false, std::memory_order_relaxed);                        }                                                                             __imp__##subroutine(ctx, base);                                             }
 WWE12_LOAD_SCREEN_HOOK(sub_826AF0F0, 0, true)
 WWE12_LOAD_SCREEN_HOOK(sub_826A83B0, 1, false)
 WWE12_LOAD_SCREEN_HOOK(sub_826A6B90, 2, false)

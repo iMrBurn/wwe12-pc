@@ -43,6 +43,8 @@ REXCVAR_DECLARE(uint32_t, user_language);
 REXCVAR_DECLARE(bool, wwe12_graphics_menu);
 REXCVAR_DECLARE(int32_t, wwe12_graphics_link_test);
 
+int64_t Wwe12MsSinceLoadScreen();  // wwe12_load_turbo.cpp
+
 namespace bd::gpu {
 namespace {
 
@@ -212,9 +214,11 @@ static void DumpMenuDatabase(u64 frame) {
 
 void Wwe12QuitEntryTick(u64 frame) {
   DumpMenuDatabase(frame);
-  // Every second for the first 30 s (the save-loading message shows early), then every 2 s: the
-  // game reloads its tables (after a match) and rebuilds the main menu right away.
-  const u64 period = frame < 1800 ? 60 : 120;
+  // Every second for the first 30 s (the save-loading message shows early) and for 5 s around
+  // each loading screen (the game reloads its tables after a match and rebuilds the main menu
+  // right away), every 10 s otherwise. A scan reads all of the game's memory (100-200 ms of a fast
+  // core): every 2 s, in matches too, it cost 5-10 % of a core (profile 2026-10-20).
+  const u64 period = (frame < 1800 || Wwe12MsSinceLoadScreen() < 5000) ? 60 : 600;
   if ((!REXCVAR_GET(wwe12_quit_entry) && !REXCVAR_GET(wwe12_pc_texts)) || frame % period != 0 ||
       g_scanning.exchange(true))
     return;
