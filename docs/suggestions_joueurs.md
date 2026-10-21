@@ -1,8 +1,14 @@
 # Suggestions de joueurs : tri (2026-10-21)
 
 Longue liste reçue d'un joueur (anglais), classée par effort. Rien n'est promis ; ce document sert de réserve
-d'idées. « Univers » = la conversation Univers (docs/univers.md). Règle : jamais d'ajout de données d'un autre
-jeu (WWE '13, 2K14) dans le dépôt ni dans les versions.
+d'idées. « Univers » = la conversation Univers (docs/univers.md).
+
+Reprendre des fonctions de WWE '13 / 2K14 dans WWE '12 : **autorisé par l'utilisateur** (déjà fait plusieurs fois
+pour certaines fonctionnalités). Ce qui ne change pas : le dépôt et les versions publiées ne contiennent aucune
+donnée de jeu (modèles, animations, cinématiques, sons, textures, .pac), de WWE '12 comme des autres jeux. Une
+fonction reprise = soit réécrite par nous (logique, règles, tables), soit extraite en local depuis la copie du
+joueur (jamais distribuée). Le code d'un autre projet (ex. recompilation 2K14 de Jarrod, BSD-3) demande la
+revue de sa licence et l'accord de l'utilisateur.
 
 ## Déjà fait ou en cours (0.9)
 | Demande | État |
@@ -10,7 +16,7 @@ jeu (WWE '13, 2K14) dans le dépôt ni dans les versions.
 | Rendre un titre vacant dans l'Univers | **fait** (titres qu'aucune émission n'utilise, via TITLE MANAGEMENT) ; limite voulue : un titre d'émission resterait sans match |
 | Tenues alternatives dans l'Univers (choisir, ou RANDOM) | **fait** (Y sur la fiche du Superstar) |
 | Remise à zéro de l'Univers | **fait** (EDIT UNIVERSE, copie auto de la sauvegarde) |
-| Éditer un match de la carte et le sauvegarder sans le jouer (« Save & Return ») | en étude (Univers) : il faut réécrire le match dans la carte puis enregistrer |
+| Éditer un match de la carte et le sauvegarder sans le jouer (« Save & Return ») | **fait** (ligne SAVE dans le menu du match après EDIT ; écrit le match dans la carte puis revient à la carte ; commit 5179c17) |
 
 ## Rapide / probablement 1.0 (réglages ou tables, un crochet)
 - Saignement des catcheuses : lever la restriction de genre (à chercher : un drapeau de sang).
@@ -31,11 +37,12 @@ jeu (WWE '13, 2K14) dans le dépôt ni dans les versions.
   vainqueurs du Rumble / MITB / KOTR. Le jeu ne les garde pas : les noter dans un fichier du port (comme universe_attires.txt).
 - Capacité de CAW (50 → 100-200) et de logos (20 → 100-200) : format de sauvegarde, mémoire du jeu (voir docs/limit_breaking.md).
 
-## Lourd ou à éviter
-- Cinématiques d'Univers de WWE '13 / 2K14 : demande des données d'un autre jeu (interdit) ; à étudier seulement avec les
+## Lourd (possible, long ; rien de distribuable)
+- Cinématiques d'Univers de WWE '13 / 2K14 : il faudrait les extraire en local depuis la copie du joueur et les
+  brancher sur les déclencheurs de l'Univers ; format différent à comprendre. Piste plus simple d'abord : les
   cinématiques de Create a Story de WWE '12 comme déclencheurs.
 - Types de match de WWE '13 / 2K14 (I Quit, arbitre invité), OMG! Moments : la logique et les animations n'existent pas dans
-  WWE '12 ; très lourd, après la 1.1 (voir limit_breaking.md pour les stipulations).
+  WWE '12 ; très lourd (logique à réécrire, animations à extraire en local), après la 1.1 (voir limit_breaking.md pour les stipulations).
 - Moteur de matchs mixtes homme/femme complet : les jeux d'animations par genre ne sont pas faits pour s'échanger.
 - Match Creator sans contraintes : à regarder avec les stipulations (limit_breaking.md, idée 1).
 
