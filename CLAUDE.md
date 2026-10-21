@@ -226,6 +226,14 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
   parties propres à Windows ; accès à l'ISO ; tactile ; performances). Il faut un téléphone de test.
   Kaiko a fait une version Android de SvR 2011 (conversation « Android (Mali) ») : lui demander.
 
+- **Version vraiment native de WWE '12 (souhait de l'utilisateur, 2026-10-21, long terme, après la 1.1)** :
+  aujourd'hui le jeu est recompilé automatiquement (le C++ de `port/generated` est illisible et ne se
+  publie pas). Piste : décompilation **progressive** (comme déjà fait à la main pour les deux ouvriers de
+  jobs, `wwe12_actor_jobs.cpp`) : remplacer les fonctions du jeu par du C++ lisible, système par système
+  (jobs, chargement, entrées, menus, animation), en gardant le reste recompilé ; chaque fonction
+  réécrite se vérifie contre l'original. À discuter avec Jarrod (WWE 2K14) pour sa méthode.
+  Règle inchangée : le code dérivé du jeu et les données ne se publient pas sans décision de l'utilisateur.
+
 ## Feuille de route 0.9 / 1.0 (décidée par l'utilisateur le 2026-10-18)
 
 **0.9** : ~~DLC manquants~~ **réglé** (2026-10-18 : un joueur a retrouvé ses catcheurs en supprimant
