@@ -208,6 +208,13 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
 
 ## Nouvelles pistes (2026-10-19)
 
+- **Ceinture d'Orton à 60 fps : CORRIGÉE le 2026-10-21** (commit 0ac5ae7, validé en jeu par l'utilisateur) : la
+  ceinture se retournait d'environ 180° une image sur deux sur son épaule (captures RenderDoc consécutives,
+  `tools/dev/lancer_autocap_orton.bat`). Cause : rotation lue entre deux images paires. `sub_8248CE10` (rotation
+  d'un os → quaternion à fiche+0, avant l'adaptation à la taille du catcheur dans `sub_8248D528`) est maintenant
+  aussi lue aux deux images paires, puis mélangée par le chemin court (même cvar `wwe12_title_fix`). Fiche d'os
+  ([motion+92] + i*80) : +0 rotation, +16 translation, +32 autre rotation (`sub_82488DE0`), +48 copie de la
+  translation, +64 drapeaux.
 - **Ceinture à 60 fps : CORRIGÉE le 2026-10-19** (`wwe12_title_fix.cpp`, cvar `wwe12_title_fix` activé par défaut ;
   validé en jeu par l'utilisateur sur l'entrée de Cena). Cause : clés d'animation impaires fausses (la console
   à 30 fps ne lit que les paires). Échantillonneurs de translation `sub_8248B898` (clés 16 bits en deltas) et
