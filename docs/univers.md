@@ -531,3 +531,37 @@ Dans l'ordre décidé : 1) tenue de chaque catcheur dans l'Univers (une précise
 4) catcheurs non suivis (« Vous ne pourrez pas suivre la progression de cette Superstar… », ex.
 Christian) : l'Univers n'a que 180 fiches, toutes prises (50 créés + 130) : échanger un catcheur suivi
 contre un non suivi ; 5) weekly n'importe quel jour et plusieurs PPV par mois (calendrier à cartographier).
+
+## 15. Tenue de chaque Superstar dans l'Univers (2026-10-21, testé en jeu)
+
+Comme dans WWE 2K14, mais avec les vrais menus du jeu : sur la fiche d'un Superstar dans l'Univers,
+**Y** (triangle sur PlayStation) ouvre la boîte de choix du jeu « UNIVERSE ATTIRE / Current: … »
+avec ORIGINAL, ses tenues débloquées (noms du jeu), ses tenues **Superstar Threads** (nom donné par le
+joueur) et RANDOM ; au-delà de 3 lignes, « MORE... » mène à la page suivante. La barre du bas affiche
+« … X DEFAULT  Y ATTIRE ». Choix gardés dans `Documents\wwe12\universe_attires.txt` (« id tenue
+emplacement Threads », -1 -1 = aléatoire), pas dans la sauvegarde. Testé : Kelly Kelly en tenue Threads
+« BLANC » à l'entrée d'un match de la carte.
+
+- Un match de l'Univers repart toujours en tenue 0 : `sub_826BE900(this, M, match, 1)` remplit l'objet
+  de sélection M (*0x8324DEFC) depuis la carte, et `sub_828A9E50` remet la tenue à 0. Places : M +
+  [M+15960] × 1596 + 124 + i × 244 (+0 id, +16 tenue, +20 emplacement Threads ou -1, +44 manette). Après
+  ce chargement, le crochet applique le choix comme l'écran des participants (`sub_825AE158`) :
+  `sub_828AA050(M, place, tenue)` et `sub_828AA070(M, place, emplacement)`. Le joueur peut encore
+  changer dans MODIFIER LES PARTICIPANTS.
+- Liste des tenues comme l'écran des participants (`sub_825ADD48`) : ORIGINAL (texte 6571) ; table T =
+  *0x8324E524 ([T+3200] fiches de 40 octets {id, nombre, 4 × {nom, déblocage}} ; `sub_82A41D50` nombre,
+  `sub_82A41C70` fiche de la tenue k, `sub_82A3FE18` débloquée) ; Superstar Threads : 3 fiches de 108
+  octets à `sub_82685CD8(id)` + 744 (+0 tenue de départ ou -1, +40 nom). Catcheurs créés (id < 50) : pas
+  gérés (leurs tenues sont ailleurs).
+- L'octet +4 d'une place de la carte enregistrée (§14) est la **manette** (0xFF = CPU), pas la tenue.
+- Fiche du Superstar : écran vtable 0x82028C88 (propriétaire 0x82028D10), Superstar = `sub_82DEA3A8()`.
+  Boutons des écrans à calques : table à 0x8201ADF0 {masque, fonction} ; A = 0x10, B = 0x20, **Y = 0x40**
+  (`sub_824D1AF0` : emplacement 21 « permis ? » puis 8 « action »), **X = 0x80** (`sub_824D1B68`,
+  emplacements 22 / 9 ; X = DEFAULT sur la fiche).
+- Barre des boutons : données *0x8324DF18, fiches de 20 octets à [+48] (nombre [+52]) : trois places
+  {bouton, libellé} en u16 + l'id du jeu à +12 ; la fiche affiche le jeu 505 ({45000 SELECT}, {45001
+  BACK}, {45003 DEFAULT}), sans place libre. Le libellé DEFAULT (45087) devient le nôtre, « DEFAULT
+  [U+E007] ATTIRE » : les icônes de boutons (caractères privés U+E0xx) peuvent être dans un texte.
+- Calque des écrans de l'Univers : `sub_8254E920()` (UMSI de MnLayHD.pac, YXMLBIN) ; relevé possible
+  avec `wwe12_universe_probe` (`Documents\wwe12\logs\umsi_layout.txt`). Une vraie ligne ATTIRE comme
+  2K14 a été écartée : pas d'élément de rechange pour le fond et le cadre d'une ligne.

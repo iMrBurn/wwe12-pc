@@ -60,11 +60,14 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <ctime>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <map>
+#include <random>
 #include <string>
 
 #include <fmt/format.h>
@@ -87,10 +90,6 @@ REXCVAR_DEFINE_BOOL(wwe12_universe_probe, false, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_universe_edit, true, "WWE12",
                     "Universe menu: EDIT SUPERSTAR becomes EDIT UNIVERSE, which can reset the "
                     "Universe (as in WWE '13).");
-
-REXCVAR_DEFINE_INT32(wwe12_universe_attire_test, -1, "WWE12",
-                     "Dev: when the Universe menu shows, set byte 4 of every Superstar's place in every "
-                     "Universe match card to this value (-1 = off), to see whether it is the attire.");
 
 REX_EXTERN(__imp__sub_827D8E30);  // pack: index of an entry id (pack, id), -1 if none
 REX_EXTERN(__imp__sub_827D9528);  // pack: new expanded copy of an entry (pack, index)
@@ -119,7 +118,15 @@ constexpr u32 kTitleUsedText = 27032;
 // The sub-menu's lines (EDIT SUPERSTARS, EDIT TITLES, RESET UNIVERSE), 27033-27035: the last of
 // our texts (27026-27040 are unused in WWE '12).
 constexpr u32 kChoiceText = 27033, kChoiceCount = 3;
-constexpr u32 kLastText = kChoiceText + kChoiceCount - 1;
+// The attire box (X on a Superstar's page): its question (with the current choice), "more" for a
+// second page, and the message for a Superstar with a single attire.
+constexpr u32 kAttireText = 27036, kAttireMoreText = 27037, kAttireOnlyText = 27038;
+// The Superstar page's button bar: its "DEFAULT" (text 45087) followed by "Y ATTIRE" (U+E007 = the
+// Y button's icon, drawn by the game as Y or triangle depending on the pad, as in its own
+// "Y COPY").
+constexpr u32 kAttirePromptText = 27039;
+constexpr u32 kDefaultPromptText = 45087;
+constexpr u32 kLastText = kAttirePromptText;
 enum Choice : u32 { kEditSuperstars, kEditTitles, kResetUniverse };
 
 constexpr u32 kUniverseTitles = 0x83226508;   // 23 titles x {holder, partner}, u16
@@ -141,6 +148,11 @@ Lang CurrentLang() {
   default: return kEn;
   }
 }
+
+// The attire box's question, written when the box opens (the current choice in it).
+std::string g_attire_question;
+// The Superstar page's last button bar label ("DEFAULT   Y ATTIRE"), written when the page shows.
+std::string g_attire_prompt;
 
 // The entry's label says what it is (the user worried players would not find the reset under a
 // bare "UNIVERS"); it fits the menu (LISTE DES MATCHS is 16 characters).
@@ -229,7 +241,24 @@ const char *Text(u32 id) {
        "MODIFICA TITOLI"},
       {"RESET UNIVERSE", "R\xC3\x89INITIALISER L'UNIVERS", "WELT ZUR\xC3\x9C" "CKSETZEN",
        "REINICIAR UNIVERSO", "AZZERA UNIVERSE"},
+      // the attire box's question: "%s" = the current choice
+      {"UNIVERSE ATTIRE\nCurrent: %s", "TENUE DANS L'UNIVERS\nActuelle : %s",
+       "OUTFIT IN DER WWE-WELT\nAktuell: %s", "ATUENDO EN EL UNIVERSO\nActual: %s",
+       "COSTUME NEL WWE UNIVERSE\nAttuale: %s"},
+      // the attire box's next page
+      {"MORE...", "PLUS...", "MEHR...", "M\xC3\x81S...", "ALTRO..."},
+      // a Superstar with one attire
+      {"This Superstar has a single attire.", "Ce Superstar n'a qu'une tenue.",
+       "Dieser Superstar hat nur ein Outfit.", "Esta Superstar solo tiene un atuendo.",
+       "Questa Superstar ha un solo costume."},
+      // the Superstar page's button bar, after the game's "DEFAULT"
+      {"%s   \xEE\x80\x87 ATTIRE", "%s   \xEE\x80\x87 TENUE", "%s   \xEE\x80\x87 OUTFIT",
+       "%s   \xEE\x80\x87 ATUENDO", "%s   \xEE\x80\x87 COSTUME"},
   };
+  if (id == kAttireText && !g_attire_question.empty())
+    return g_attire_question.c_str();
+  if (id == kAttirePromptText && !g_attire_prompt.empty())
+    return g_attire_prompt.c_str();
   size_t row;
   if (id == kEditSuperstarText)
     row = 0;
@@ -256,7 +285,7 @@ u32 GuestText(u32 id) {
     return 0;
   const u32 slot = id == kEditSuperstarText ? 0 : id - kAskText + 1;
   const u32 at = s_block + slot * kSlot;
-  if (s_for[slot] != text) {
+  if (s_for[slot] != text || id == kAttireText || id == kAttirePromptText) {
     std::memset(bd::mem::at<char>(at), 0, kSlot);
     std::memcpy(bd::mem::at<char>(at), text, std::min<size_t>(std::strlen(text), kSlot - 1));
     s_for[slot] = text;
@@ -427,7 +456,7 @@ bool ResetUniverse(const PPCContext &in, u8 *base) {
 
 // ---- the EDIT UNIVERSE dialogue -------------------------------------------------------------
 
-enum class Step { kIdle, kMenu, kConfirm, kDone, kHint, kVacateAsk, kVacateDone, kTitles };
+enum class Step { kIdle, kMenu, kConfirm, kDone, kHint, kVacateAsk, kVacateDone, kTitles, kAttire };
 Step g_step = Step::kIdle;
 u32 g_screen = 0;  // the Universe menu screen the dialogue belongs to
 u32 g_answer = 0;  // guest word for the message box's answer
@@ -493,6 +522,7 @@ constexpr u32 kTitleScreenSize = 2560;
 constexpr u32 kMainMenuManager = 0x8317C594;  // the main menu's manager (its active pad)
 u32 g_titles = 0;                             // the TITLE MANAGEMENT object while it is open
 u32 g_menu_frames = 0;                        // frames since the sub-menu opened
+u32 g_box_lines = 0;    // lines of the choice box shown (3: the third line is placed by hand)
 
 bool OpenTitles(const PPCContext &in, u8 *base) {
   const u32 manager = bd::mem::load<u32>(kMainMenuManager);
@@ -673,6 +703,7 @@ extern "C" REX_FUNC(sub_825453D8) {
       bd::mem::try_load<u32>(screen + 28) == kEditSuperstarEntry) {
     g_screen = screen;
     g_step = Step::kMenu;
+    g_box_lines = kChoiceCount;
     g_menu_frames = 0;
     g_saved_ok = false;  // the box lays its lines out again: take them before moving them
     AskMenu(ctx, base);
@@ -768,42 +799,364 @@ extern "C" REX_FUNC(sub_82565390) {
   __imp__sub_82565390(ctx, base);
 }
 
+// ---- Universe attires (as in WWE 2K14) --------------------------------------------------------
+//
+// A Universe match always starts with every Superstar in attire 0: sub_826BE900(this, M, match, 1)
+// fills the match-select object M (*0x8324DEFC, shared with the character select) from the card,
+// and its setter sub_828A9E50 resets each place's attire. Places: M + [M+15960] * 1596 + 124 + i *
+// 244 (+0 id, +16 attire, +20 Superstar Threads slot or -1, +44 controller). After the card is
+// loaded, each Superstar gets the attire chosen for him here (or one of his attires at random),
+// set the way the character select does it (sub_825AE158): sub_828AA050(M, place, attire) and
+// sub_828AA070(M, place, threads slot). The player can still change it in EDIT PARTICIPANTS.
+//
+// His attires, listed as the character select lists them (sub_825ADD48):
+// - ORIGINAL (string 6571): attire 0, slot -1;
+// - the game's attires: table T = *0x8324E524, [T+3200] entries of 40 bytes {id, count, 4 x {name
+//   string id, unlock}}; sub_82A41D50(T, id, 0) = count (attire 0 included), sub_82A41C70(T, id, k)
+//   = {name, unlock} of attire k, sub_82A3FE18(id, k) = unlocked; attire k, slot -1;
+// - his Superstar Threads attires: 3 records of 108 bytes at sub_82685CD8(id) + 744 + j * 108:
+//   +0 the attire it is made from (-1 = empty slot), +40 its name (text); attire [+0], slot j.
+// Created Superstars (their attires are elsewhere) are left alone.
+//
+// The choice: Y on a Superstar's page in the Universe (screen vtable 0x82028C88; Y = button 0x40,
+// handled for every layout screen by sub_824D1AF0, empty on that page, whose X is DEFAULT; the
+// page's Superstar is sub_82DEA3A8()) opens the game's choice box with ORIGINAL, his attires and
+// RANDOM (string 278); more than three lines go on pages ("MORE..."). Kept in
+// Documents\wwe12\universe_attires.txt ("id attire slot" lines; random = "id -1 -1"), not in the
+// save.
+
+REX_EXTERN(__imp__sub_826BE900);  // Universe card -> match select (this, M, match, 1)
+REX_EXTERN(__imp__sub_828AA050);  // match select: a place's attire (M, place, attire)
+REX_EXTERN(__imp__sub_828AA070);  // match select: a place's Superstar Threads slot (M, place, slot)
+REX_EXTERN(__imp__sub_82A41D50);  // attires: count (T, id, unlocked only)
+REX_EXTERN(__imp__sub_82A41C70);  // attires: {name, unlock} of attire k (T, id, k)
+REX_EXTERN(__imp__sub_82A3FE18);  // attires: attire k unlocked? (id, k)
+REX_EXTERN(__imp__sub_82685CD8);  // a Superstar's record in save block 2 (Superstar Threads at +744)
+REX_EXTERN(__imp__sub_82DEA3A8);  // Superstar page: the Superstar shown
+REX_EXTERN(__imp__sub_824D1AF0);  // layout screens: button 0x40 (Y)
+REX_EXTERN(__imp__sub_8254E920);  // the Universe screens' shared layout
+
 namespace {
 
-// Dev test (wwe12_universe_attire_test): a show's record (U + 27360 + show * 984) starts with its
-// match cards, 104 bytes each: a 16-byte header, then 6 places of 12 bytes ({u16 Superstar, 512 =
-// nobody; u8; u8 team; u8 always 0xFF in the user's save; ...}), then 16 bytes.
-void AttireTest(const PPCContext &in, u8 *base) {
-  static bool s_done = false;
-  const int value = REXCVAR_GET(wwe12_universe_attire_test);
-  if (value < 0 || s_done)
+constexpr u32 kSuperstarPageVtbl = 0x82028C88;
+constexpr u32 kAttireTable = 0x8324E524;
+constexpr u32 kStringManager = 0x8317B86C;
+constexpr u32 kOriginalText = 6571, kRandomText = 278;
+constexpr u32 kFirstCreated = 50;  // Superstar ids 0-49 are created Superstars
+
+// One line of the attire box / one attire a match can use.
+struct Attire {
+  int attire = 0;  // -1 = random, -2 = "more..."
+  int slot = -1;   // Superstar Threads slot, or -1
+  bool operator==(const Attire &o) const { return attire == o.attire && slot == o.slot; }
+};
+const Attire kRandom{-1, -1}, kMore{-2, -1};
+
+std::map<u32, Attire> g_attires;  // Superstar id -> chosen attire
+bool g_attires_loaded = false;
+
+std::filesystem::path AttiresFile() {
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator() || state->emulator()->user_data_root().empty())
+    return {};
+  return state->emulator()->user_data_root() / "universe_attires.txt";
+}
+
+void LoadAttires() {
+  if (g_attires_loaded)
     return;
-  const u32 universe = Call(in, base, __imp__sub_82683A30, 0);
-  if (!universe)
+  g_attires_loaded = true;
+  std::ifstream f(AttiresFile());
+  std::string line;
+  while (std::getline(f, line)) {
+    u32 id;
+    int attire, slot;
+    if (std::sscanf(line.c_str(), "%u %d %d", &id, &attire, &slot) == 3)
+      g_attires[id] = {attire, slot};
+  }
+}
+
+void SaveAttires() {
+  const std::filesystem::path file = AttiresFile();
+  if (file.empty())
     return;
-  s_done = true;
-  u32 count = 0;
-  for (u32 show = 0; show < 10; ++show)
-    for (u32 match = 0; match < 8; ++match)
-      for (u32 place = 0; place < 6; ++place) {
-        const u32 at = universe + 27360 + show * 984 + match * 104 + 16 + place * 12;
-        if (bd::mem::load<u16>(at) < 512) {
-          bd::mem::store<u8>(at + 4, u8(value));
-          ++count;
-        }
-      }
-  BD_INFO("[univers] attire test: byte 4 = {} in {} places", value, count);
+  std::ofstream f(file);
+  f << "# Universe attires chosen in the game (Y on a Superstar's page): Superstar id, attire, "
+       "Superstar Threads slot (-1 = none). \"id -1 -1\" = random.\n";
+  for (const auto &[id, a] : g_attires)
+    f << id << ' ' << a.attire << ' ' << a.slot << '\n';
+}
+
+// The game's text of an id (guest address), in the player's language.
+u32 GameText(const PPCContext &in, u8 *base, u32 id) {
+  return Call(in, base, __imp__sub_821A4400, bd::mem::load<u32>(kStringManager), id);
+}
+
+// Every attire of a Superstar, as the character select lists them, with their names (guest texts).
+std::vector<std::pair<Attire, u32>> SuperstarAttires(const PPCContext &in, u8 *base, u32 id) {
+  std::vector<std::pair<Attire, u32>> out;
+  out.push_back({{0, -1}, GameText(in, base, kOriginalText)});
+  if (id < kFirstCreated)
+    return out;
+  const u32 table = bd::mem::load<u32>(kAttireTable);
+  const u32 count = table ? Call(in, base, __imp__sub_82A41D50, table, id, 0) : 0;
+  for (u32 k = 1; k < count && k < 8; ++k) {
+    if (!Call(in, base, __imp__sub_82A3FE18, id, k))
+      continue;  // locked
+    const u32 info = Call(in, base, __imp__sub_82A41C70, table, id, k);
+    const u32 name = info ? bd::mem::load<u32>(info) : 0;
+    out.push_back({{int(k), -1}, name ? GameText(in, base, name) : 0});
+  }
+  if (const u32 record = Call(in, base, __imp__sub_82685CD8, id))
+    for (int j = 0; j < 3; ++j) {
+      const u32 threads = record + 744 + u32(j) * 108;
+      const int from = int(bd::mem::load<u32>(threads));
+      if (from >= 0)
+        out.push_back({{from, j}, threads + 40});
+    }
+  return out;
+}
+
+// The attire box being shown.
+u32 g_attire_id = 0;
+std::vector<std::pair<Attire, u32>> g_attire_options;  // lines: attires then RANDOM
+std::vector<std::pair<Attire, u32>> g_attire_page;     // the lines of the page shown
+size_t g_attire_first = 0;                             // first option of the page shown
+
+void ShowAttirePage(const PPCContext &in, u8 *base, size_t first) {
+  g_attire_first = first;
+  g_attire_page.clear();
+  const size_t left = g_attire_options.size() - first;
+  if (left <= 3) {
+    g_attire_page.assign(g_attire_options.begin() + first, g_attire_options.end());
+  } else {
+    g_attire_page = {g_attire_options[first], g_attire_options[first + 1],
+                     {kMore, GuestText(kAttireMoreText)}};
+  }
+  static u32 s_choices = 0;
+  if (!s_choices)
+    s_choices = REX_KERNEL_MEMORY()->SystemHeapAlloc(4 * 4, 0x10);
+  if (!s_choices)
+    return;
+  for (size_t i = 0; i < g_attire_page.size(); ++i)
+    bd::mem::store<u32>(s_choices + u32(i) * 4, g_attire_page[i].second);
+  // The question, with the current choice.
+  LoadAttires();
+  const auto it = g_attires.find(g_attire_id);
+  const Attire current = it == g_attires.end() ? Attire{0, -1} : it->second;
+  u32 current_text = GameText(in, base, kOriginalText);
+  for (const auto &[a, text] : g_attire_options)
+    if (a == current)
+      current_text = text;
+  const char *name = current_text ? bd::mem::try_at<const char>(current_text) : nullptr;
+  g_attire_question.clear();  // Text(kAttireText) gives the language's format again
+  char buffer[480];
+  std::snprintf(buffer, sizeof(buffer), Text(kAttireText), name ? name : "");
+  g_attire_question = buffer;
+  g_box_lines = u32(g_attire_page.size());
+  g_menu_frames = 0;
+  g_saved_ok = false;
+  Call(in, base, __imp__sub_8260DD80, 0, kAttireText, s_choices, g_box_lines, 0, 0);
+}
+
+// After the box closed with an answer.
+void AttireChosen(const PPCContext &in, u8 *base, u32 answer) {
+  if (answer >= g_attire_page.size()) {
+    g_step = Step::kIdle;
+    return;
+  }
+  const Attire choice = g_attire_page[answer].first;
+  if (choice == kMore) {
+    ShowAttirePage(in, base, g_attire_first + 2);  // g_step stays kAttire
+    return;
+  }
+  LoadAttires();
+  if (choice == Attire{0, -1})
+    g_attires.erase(g_attire_id);
+  else
+    g_attires[g_attire_id] = choice;
+  SaveAttires();
+  BD_INFO("[univers] attire of Superstar {}: {} (Superstar Threads slot {})", g_attire_id,
+          choice.attire, choice.slot);
+  g_step = Step::kIdle;
+}
+
+// The attire for a Superstar in a match: his choice if he still has it, one at random, or none.
+bool MatchAttire(const PPCContext &in, u8 *base, u32 id, Attire &out) {
+  LoadAttires();
+  const auto it = g_attires.find(id);
+  if (it == g_attires.end())
+    return false;
+  const auto attires = SuperstarAttires(in, base, id);
+  if (it->second == kRandom) {
+    if (attires.size() < 2)
+      return false;
+    static std::mt19937 s_random{std::random_device{}()};
+    out = attires[std::uniform_int_distribution<size_t>(0, attires.size() - 1)(s_random)].first;
+    return true;
+  }
+  for (const auto &[a, text] : attires)
+    if (a == it->second) {
+      out = a;
+      return true;
+    }
+  return false;  // no longer his (Superstar Threads slot emptied, attire locked)
 }
 
 }  // namespace
+
+namespace {
+
+// Dev (wwe12_universe_probe): every element and group of the Universe screens' layout
+// (sub_8254E920(): groups of 144 bytes at +4, count +20, each {+76 count, +112 its elements};
+// elements of 240 bytes at +8, count +24), written once to Documents\wwe12\logs\umsi_layout.txt
+// the first time a Superstar's page shows.
+void DumpPageLayout(const PPCContext &in, u8 *base) {
+  static bool s_done = false;
+  if (s_done)
+    return;
+  s_done = true;
+  const u32 layout = Call(in, base, __imp__sub_8254E920, 0);
+  auto *state = REX_KERNEL_STATE();
+  if (!layout || !state || !state->emulator())
+    return;
+  std::ofstream f(state->emulator()->user_data_root() / "logs" / "umsi_layout.txt");
+  const auto str = [](u32 at, u32 max) {
+    std::string out;
+    for (u32 i = 0; i < max; ++i) {
+      const u8 c = bd::mem::try_load<u8>(at + i);
+      if (!c)
+        break;
+      out += (c >= 32 && c < 127) ? char(c) : '?';
+    }
+    return out;
+  };
+  const u32 groups = bd::mem::load<u32>(layout + 4), group_count = bd::mem::load<u32>(layout + 20);
+  const u32 elements = bd::mem::load<u32>(layout + 8), element_count = bd::mem::load<u32>(layout + 24);
+  f << fmt::format("layout 0x{:08X}: {} groups at 0x{:08X}, {} elements at 0x{:08X}\n", layout,
+                   group_count, groups, element_count, elements);
+  for (u32 g = 0; g < group_count && g < 4096; ++g) {
+    const u32 at = groups + g * 144;
+    std::string words;
+    for (u32 o = 0; o < 144; o += 4)
+      words += fmt::format(" {:08X}", bd::mem::load<u32>(at + o));
+    f << fmt::format("G{} @{:08X} n={} first={:08X}:{}\n", g, at, bd::mem::load<u32>(at + 76),
+                     bd::mem::load<u32>(at + 112), words);
+  }
+  for (u32 e = 0; e < element_count && e < 8192; ++e) {
+    const u32 at = elements + e * 240;
+    const u32 text = bd::mem::load<u32>(at + 200);
+    f << fmt::format("E{} @{:08X} kind={:X} x={} y={} sx={} sy={} font={} name={} parent={:08X} "
+                     "hidden={} text={}\n",
+                     e, at, bd::mem::load<u32>(at), bd::mem::load<float>(at + 4),
+                     bd::mem::load<float>(at + 8), bd::mem::load<float>(at + 12),
+                     bd::mem::load<float>(at + 16), str(at + 80, 16), str(at + 96, 16),
+                     bd::mem::load<u32>(at + 176), bd::mem::load<u32>(at + 180),
+                     text ? str(text, 40) : std::string("-"));
+  }
+  BD_INFO("[univers] probe: Universe layout dumped ({} groups, {} elements)", group_count,
+          element_count);
+}
+
+}  // namespace
+
+namespace {
+
+// The button bar's sets: help data H = *0x8324DF18, records of 20 bytes at [H+48], count [H+52]:
+// three places of two u16 text ids {button, label}, +12 u16 set id (sub_828BB8C0 looks a set up,
+// sub_828BE488 shows it; three places at most). A Superstar's page shows set 505 (its vtable slot
+// 26, sub_825AAD38, calls sub_828942C0(505)): {45000 SELECT}, {45001 BACK}, {45003 DEFAULT}, seen
+// 2026-10-21. No place is free: in the Universe, the third label becomes our text, the game's
+// DEFAULT followed by "Y ATTIRE" (button icons can sit inside a text); outside, it is put back.
+constexpr u32 kHelpData = 0x8324DF18;
+constexpr u32 kSuperstarPageHelpSet = 505;
+
+void SetAttirePrompt(const PPCContext &in, u8 *base, bool on) {
+  const u32 help = bd::mem::load<u32>(kHelpData);
+  const u32 records = help ? bd::mem::load<u32>(help + 48) : 0;
+  const u32 count = help ? bd::mem::load<u32>(help + 52) : 0;
+  for (u32 r = 0; records && r < count && r < 4096; ++r) {
+    const u32 at = records + r * 20;
+    if (bd::mem::load<u16>(at + 12) != kSuperstarPageHelpSet)
+      continue;
+    const u16 label = bd::mem::load<u16>(at + 10);
+    if (on && label == kDefaultPromptText) {
+      const u32 text = GameText(in, base, kDefaultPromptText);
+      const char *word = text ? bd::mem::try_at<const char>(text) : nullptr;
+      g_attire_prompt.clear();  // Text(kAttirePromptText) gives the language's format again
+      char buffer[256];
+      std::snprintf(buffer, sizeof(buffer), Text(kAttirePromptText), word ? word : "DEFAULT");
+      g_attire_prompt = buffer;
+      bd::mem::store<u16>(at + 10, u16(kAttirePromptText));
+    } else if (!on && label == kAttirePromptText) {
+      bd::mem::store<u16>(at + 10, u16(kDefaultPromptText));
+    }
+    return;
+  }
+}
+
+}  // namespace
+
+// A Superstar's page shows its button bar (set 505): "Y ATTIRE" in it in the Universe.
+REX_EXTERN(__imp__sub_825AAD38);
+extern "C" REX_FUNC(sub_825AAD38) {
+  SetAttirePrompt(ctx, base, Enabled() && bd::mem::load<u32>(kInUniverseFlag) == 1);
+  __imp__sub_825AAD38(ctx, base);
+}
+
+// Y on a layout screen (button 0x40; X, 0x80, is DEFAULT on a Superstar's page): on a
+// Superstar's page in the Universe, the attire box.
+extern "C" REX_FUNC(sub_824D1AF0) {
+  const u32 screen = ctx.r3.u32;
+  if (Enabled() && g_step == Step::kIdle && bd::mem::try_load<u32>(screen) == kSuperstarPageVtbl &&
+      bd::mem::load<u32>(kInUniverseFlag) == 1) {
+    const u32 id = Call(ctx, base, __imp__sub_82DEA3A8, 0);
+    g_attire_id = id;
+    g_attire_options = SuperstarAttires(ctx, base, id);
+    g_screen = screen;
+    BD_INFO("[univers] attire box: Superstar {}, {} attire(s)", id, g_attire_options.size());
+    if (g_attire_options.size() < 2) {
+      g_step = Step::kHint;  // an information box, closed by the per-frame driver
+      Call(ctx, base, __imp__sub_8254E680, kAttireOnlyText);
+      return;
+    }
+    g_attire_options.push_back({kRandom, GameText(ctx, base, kRandomText)});
+    g_step = Step::kAttire;
+    ShowAttirePage(ctx, base, 0);
+    return;
+  }
+  __imp__sub_824D1AF0(ctx, base);
+}
+
+// A Universe card loaded into the match select: the attires chosen for its Superstars.
+extern "C" REX_FUNC(sub_826BE900) {
+  const PPCContext in = ctx;
+  __imp__sub_826BE900(ctx, base);
+  if (!Enabled())
+    return;
+  const u32 m = in.r4.u32;
+  if (!m)
+    return;
+  const u32 places = m + bd::mem::load<u32>(m + 15960) * 1596 + 124;
+  for (u32 i = 0; i < 6; ++i) {
+    const u32 id = bd::mem::load<u32>(places + i * 244) & 0x7FFFFFFF;
+    Attire a;
+    if (id >= 512 || !MatchAttire(in, base, id, a))
+      continue;
+    Call(in, base, __imp__sub_828AA050, m, i, u32(a.attire));
+    Call(in, base, __imp__sub_828AA070, m, i, u32(a.slot));
+    BD_INFO("[univers] match place {}: Superstar {} in attire {} (Superstar Threads slot {})", i,
+            id, a.attire, a.slot);
+  }
+}
 
 // Every layout menu screen's per-frame update: drives the dialogue while it is open (the screen
 // itself keeps updating; its A button waits, see above).
 REX_EXTERN(__imp__sub_824D3458);
 REX_EXTERN(__imp__sub_8254E7D0);  // message box: idle (none open)?
 extern "C" REX_FUNC(sub_824D3458) {
-  if (bd::mem::try_load<u32>(ctx.r3.u32) == kUniverseMenuVtbl)
-    AttireTest(ctx, base);
+  if (REXCVAR_GET(wwe12_universe_probe) && bd::mem::try_load<u32>(ctx.r3.u32) == kSuperstarPageVtbl)
+    DumpPageLayout(ctx, base);
   // The one-time hint, 120 frames (2 s) after the Universe menu shows.
   if (Enabled() && g_step == Step::kIdle && HintPending() &&
       bd::mem::try_load<u32>(ctx.r3.u32) == kUniverseMenuVtbl) {
@@ -831,10 +1184,11 @@ extern "C" REX_FUNC(sub_824D3458) {
       g_step = Step::kIdle;
     }
   } else if (g_step != Step::kIdle && ctx.r3.u32 == g_screen) {
-    if (g_step == Step::kMenu) {
+    if (g_step == Step::kMenu || g_step == Step::kAttire) {
       const u32 frame = g_menu_frames++;
       if (!REXCVAR_GET(wwe12_universe_probe)) {
-        PlaceThirdChoice();
+        if (g_box_lines == 3)
+          PlaceThirdChoice();
       } else {
         // Dev: the box as the game draws it, logged at frame 20 and at each cursor move.
         static u32 s_cursor = 0xFFFFFFFFu;
@@ -852,6 +1206,10 @@ extern "C" REX_FUNC(sub_824D3458) {
     if (BoxClosed(ctx, base, answer)) {
       const bool yes = answer == 1;
       switch (g_step) {
+      case Step::kAttire:
+        RestoreChoiceElements();
+        AttireChosen(ctx, base, answer);
+        break;
       case Step::kMenu:
         RestoreChoiceElements();
         BD_INFO("[univers] EDIT UNIVERSE: choice {}", answer);
@@ -898,7 +1256,8 @@ extern "C" REX_FUNC(sub_824D3458) {
 REX_EXTERN(__imp__sub_8288F0A0);
 extern "C" REX_FUNC(sub_8288F0A0) {
   __imp__sub_8288F0A0(ctx, base);
-  if (Enabled() && g_step == Step::kMenu && !REXCVAR_GET(wwe12_universe_probe))
+  if (Enabled() && (g_step == Step::kMenu || g_step == Step::kAttire) && g_box_lines == 3 &&
+      !REXCVAR_GET(wwe12_universe_probe))
     PlaceThirdChoice();
 }
 
