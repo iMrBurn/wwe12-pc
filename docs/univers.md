@@ -583,3 +583,20 @@ Il affiche ses propres messages (« SAVING... ») ; quand son mot +32 devient no
 Sans profil ou sans sauvegarde : ancien message (enregistré à la prochaine sauvegarde du jeu).
 Journal : `[univers] save: started` / `save: done`. Testé : la sauvegarde sur le disque change tout
 de suite.
+
+## 17. SAVE sur un match modifié de la carte, comme WWE '13 (2026-10-21, testé en jeu)
+
+EDIT sur un match de la carte ouvre l'écran du match (2 976 octets, `sub_82575688(drapeaux, curseur)`,
+état 2 de la machine des cartes `sub_8254A778` = `sub_82548F80`). Son menu (`sub_82574BD8`) a une ligne
+par bit des drapeaux : 1 PLAY (texte 284), 2 MATCH CREATOR (286), 4 SELECT ARENA (282), 8 CHANGE
+PARTICIPANTS (514), 16 SIMULATE (487). Ligne j : écran+276+4j = son bit (le résultat, lu au curseur
+écran+72 par `sub_82571F88`), écran+296+4j = active, `[écran+2964]`+20+4j = son texte. Dans l'Univers,
+4 et 8 ne sont jamais tous les deux là : le libre devient **SAVE** (texte 238 du jeu, déjà traduit) avec
+notre résultat 32. Vu : drapeaux 0x17, SAVE en 4e ligne, avant SIMULATE.
+
+Avec SAVE : le match est écrit dans la carte comme SIMULATE le fait avant de simuler
+(`sub_826C63D8(-, match, M)` : l'objet de sélection M → la fiche du match ; n° du match = octet +32 du
+contexte `*0x83231548`, ou `sub_826BAF28` si son +20 = 1), puis le A de l'écran devient un B
+(`[écran+20]` = 0) : le jeu revient à la carte par son propre chemin, rien n'est joué. La fermeture
+fait comme SELECT ARENA (pas `sub_82893B30(0)`, réservé à PLAY). Le jeu a enregistré la sauvegarde sur
+le disque juste après (4 s) de lui-même. Journal : `[univers] match edit: SAVE, card match N written`.

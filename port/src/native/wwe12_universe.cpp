@@ -696,9 +696,20 @@ void DumpChoiceElements(const char *when) {
 
 }  // namespace
 
+namespace {
+
+// While a Universe match's edit menu is built: the label of the row that becomes SAVE (see
+// sub_82574BD8 below), given the game's "SAVE" instead.
+u32 g_save_label = 0;
+constexpr u32 kGameSaveText = 238;
+
+}  // namespace
+
 // The string manager's "text of id": EDIT SUPERSTAR's new label and our questions.
 REX_EXTERN(__imp__sub_821A4400);
 extern "C" REX_FUNC(sub_821A4400) {
+  if (g_save_label && ctx.r4.u32 == g_save_label)
+    ctx.r4.u64 = kGameSaveText;
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
   if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kLastText))) {
@@ -1170,6 +1181,97 @@ extern "C" REX_FUNC(sub_826BE900) {
     BD_INFO("[univers] match place {}: Superstar {} in attire {} (Superstar Threads slot {})", i,
             id, a.attire, a.slot);
   }
+}
+
+// ---- SAVE on an edited match of the card (as in WWE '13) ---------------------------------------
+//
+// EDIT on a card match (the card screen's state machine, sub_8254A778 state 2 = sub_82548F80)
+// opens the match's edit screen (2976 bytes, sub_82575688(flags, cursor)), whose menu is built by
+// sub_82574BD8: rows by bit of the flags, 1 PLAY (text 284), 2 MATCH CREATOR (286), 4 SELECT ARENA
+// (282), 8 CHANGE PARTICIPANTS (514), 16 SIMULATE (487); per shown row j: screen+276+4j = its bit
+// (the result, sub_82571F88 reads the cursor's, screen+72), screen+296+4j = enabled, [screen+2964]
+// + 20 + 4j = its text. The Universe never shows both 4 and 8, so a free one becomes SAVE (the
+// game's text 238) with our own result, kSaveResult.
+//
+// When the screen closes with it, the card is written as SIMULATE does before simulating
+// (sub_826C63D8(-, match, M): the match select M back into the card's match record), then the
+// screen's A becomes a B ([screen+20] = 0): the game's own way back to the card, nothing played.
+
+REX_EXTERN(__imp__sub_82574BD8);  // match edit screen: its menu (screen, flags, cursor's bit)
+REX_EXTERN(__imp__sub_82575AA8);  // match edit screen: closing
+REX_EXTERN(__imp__sub_82548F80);  // card screens: the match edit state
+REX_EXTERN(__imp__sub_826C63D8);  // card: match select -> a card match (-, match, M)
+REX_EXTERN(__imp__sub_826BAF28);  // card: the next match to play (card context)
+
+namespace {
+
+constexpr u32 kSaveResult = 32;
+constexpr u32 kSelectArena = 4, kChangeParticipants = 8;
+constexpr u32 kSelectArenaText = 282, kChangeParticipantsText = 514;
+constexpr u32 kMatchSelect = 0x8324DEFC;  // M
+constexpr u32 kCardContext = 0x83231548;  // +20 = 1: play the show in order, +32 = match loaded
+constexpr u32 kCardOwner = 0x8323154C;
+
+u32 EditResult(u32 screen) {
+  return bd::mem::load<u32>(screen + 276 + 4 * bd::mem::load<u32>(screen + 72));
+}
+
+}  // namespace
+
+extern "C" REX_FUNC(sub_82574BD8) {
+  const u32 screen = ctx.r3.u32, flags = ctx.r4.u32;
+  u32 bit = 0;
+  if (Enabled() && bd::mem::load<u32>(kInUniverseFlag) == 1)
+    bit = !(flags & kChangeParticipants) ? kChangeParticipants
+          : !(flags & kSelectArena)      ? kSelectArena
+                                         : 0;
+  if (!bit) {
+    __imp__sub_82574BD8(ctx, base);
+    return;
+  }
+  ctx.r4.u64 = flags | bit;
+  g_save_label = bit == kSelectArena ? kSelectArenaText : kChangeParticipantsText;
+  __imp__sub_82574BD8(ctx, base);
+  g_save_label = 0;
+  for (u32 j = 0; j < 5; ++j) {
+    if (bd::mem::load<u32>(screen + 276 + 4 * j) != bit)
+      continue;
+    bd::mem::store<u32>(screen + 276 + 4 * j, kSaveResult);
+    bd::mem::store<u32>(screen + 296 + 4 * j, 1);
+    BD_INFO("[univers] match edit menu: flags 0x{:X}, SAVE on row {}", flags, j);
+    break;
+  }
+}
+
+// Closing with SAVE: as SELECT ARENA closes (it skips what PLAY needs, sub_82893B30(0)).
+extern "C" REX_FUNC(sub_82575AA8) {
+  const u32 screen = ctx.r3.u32;
+  const u32 at = screen + 276 + 4 * bd::mem::load<u32>(screen + 72);
+  const bool save = bd::mem::load<u32>(at) == kSaveResult;
+  if (save)
+    bd::mem::store<u32>(at, kSelectArena);
+  __imp__sub_82575AA8(ctx, base);
+  if (save)
+    bd::mem::store<u32>(at, kSaveResult);
+}
+
+extern "C" REX_FUNC(sub_82548F80) {
+  const u32 self = ctx.r3.u32;
+  const u32 screen = bd::mem::load<u32>(self);
+  if (bd::mem::load<u32>(self + 44) == 2 && screen && bd::mem::load<u32>(screen + 16) == 5 &&
+      bd::mem::load<u32>(screen + 20) != 0 && EditResult(screen) == kSaveResult) {
+    const u32 m = bd::mem::load<u32>(kMatchSelect);
+    const u32 card = bd::mem::load<u32>(kCardContext);
+    if (m && card) {
+      const u32 match = bd::mem::load<u32>(card + 20) == 1
+                            ? Call(ctx, base, __imp__sub_826BAF28, card)
+                            : bd::mem::load<u8>(card + 32);
+      Call(ctx, base, __imp__sub_826C63D8, bd::mem::load<u32>(kCardOwner), match, m);
+      BD_INFO("[univers] match edit: SAVE, card match {} written", match);
+    }
+    bd::mem::store<u32>(screen + 20, 0);  // back to the card, as with B
+  }
+  __imp__sub_82548F80(ctx, base);
 }
 
 // ---- saving to disk at once (after a reset) ----------------------------------------------------
