@@ -1183,6 +1183,39 @@ extern "C" REX_FUNC(sub_826BE900) {
   }
 }
 
+// ---- every title's full ranking (RANKINGS) -----------------------------------------------------
+//
+// A title's ranking screen (opened by sub_82553770, the screen's base at this - 28) is set up by
+// sub_825535E0: on entry its +56 is the title's place in the show (0-3: major, minor, tag team,
+// Divas), then +56..+68 become the page state {page, pages, 0, scrolling}. The ranking itself
+// (sub_825530A0, up to 180 Superstars or teams of the show) exists for every title, and pages =
+// 2 + (count - 6) / 12 when count > 5, but the game turns scrolling off (+68 = 0, arrows 900/901
+// hidden) unless the title is the show's first. In the Universe, every title scrolls like the
+// major one: +68 = 1 and the down arrow (901) shown when there is more than one page.
+
+REX_EXTERN(__imp__sub_825535E0);  // a title's ranking screen: set up for its title
+REX_EXTERN(__imp__sub_824C5458);  // layout: element by id (layout, id)
+
+namespace {
+constexpr u32 kRankingDownArrow = 901;
+}  // namespace
+
+extern "C" REX_FUNC(sub_825535E0) {
+  const PPCContext in = ctx;
+  const u32 self = ctx.r3.u32;
+  const u32 place = bd::mem::load<u32>(self + 56);
+  __imp__sub_825535E0(ctx, base);
+  if (!Enabled() || bd::mem::load<u32>(kInUniverseFlag) != 1 || place == 0 ||
+      bd::mem::load<u32>(self + 60) < 2)
+    return;
+  bd::mem::store<u32>(self + 68, 1);
+  if (const u32 arrow = Call(in, base, __imp__sub_824C5458, bd::mem::load<u32>(self + 296),
+                             kRankingDownArrow))
+    bd::mem::store<u32>(arrow + 180, 0);
+  BD_INFO("[univers] ranking: title place {}, {} ranked, {} pages, scrolling on", place,
+          bd::mem::load<u32>(self + 8852), bd::mem::load<u32>(self + 60));
+}
+
 // ---- SAVE on an edited match of the card (as in WWE '13) ---------------------------------------
 //
 // EDIT on a card match (the card screen's state machine, sub_8254A778 state 2 = sub_82548F80)

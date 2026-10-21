@@ -532,6 +532,12 @@ Dans l'ordre décidé : 1) tenue de chaque catcheur dans l'Univers (une précise
 Christian) : l'Univers n'a que 180 fiches, toutes prises (50 créés + 130) : échanger un catcheur suivi
 contre un non suivi ; 5) weekly n'importe quel jour et plusieurs PPV par mois (calendrier à cartographier).
 
+Comme WWE '13 (captures de l'utilisateur, 2026-10-21) : CALENDRIER où l'on peut modifier ou supprimer une
+émission ou un PPV existant (X MODIFIER, Y SUPPRIMER) et ajouter une émission majeure/mineure ou un PPV
+n'importe quel jour, dimanche compris (X AJOUTER sur une case vide) ; CLASSEMENTS dont on change l'ordre
+à la main (X MODIFIER). Calendrier = booking : 1.0 sauf si l'étude montre que c'est simple (décision de
+l'utilisateur). Classements à la main : prévu pour la 0.9.
+
 ## 15. Tenue de chaque Superstar dans l'Univers (2026-10-21, testé en jeu)
 
 Comme dans WWE 2K14, mais avec les vrais menus du jeu : sur la fiche d'un Superstar dans l'Univers,
@@ -600,3 +606,15 @@ contexte `*0x83231548`, ou `sub_826BAF28` si son +20 = 1), puis le A de l'écran
 (`[écran+20]` = 0) : le jeu revient à la carte par son propre chemin, rien n'est joué. La fermeture
 fait comme SELECT ARENA (pas `sub_82893B30(0)`, réservé à PLAY). Le jeu a enregistré la sauvegarde sur
 le disque juste après (4 s) de lui-même. Journal : `[univers] match edit: SAVE, card match N written`.
+
+## 18. Classement complet pour tous les titres (2026-10-21, testé en jeu)
+
+Avant : seul le premier titre d'une émission (WWE, World) avait sa liste complète (5, 6, 7…) ; les
+titres mineurs, par équipes et Divas s'arrêtaient au champion + 4 challengers. Le jeu calcule pourtant
+le classement de chaque titre (`sub_825530A0` → `sub_826D2508`, jusqu'à 180 : `sub_826D0000` en solo,
+`sub_826D18E8` en équipes ; filtre = émissions qui portent le titre + sexe via `sub_82A39EF8`). C'est
+la mise en place de l'écran (`sub_825535E0`) qui coupe le défilement : à l'entrée, +56 = place du titre
+dans l'émission (0 majeur, 1 mineur, 2 équipes, 3 Divas), puis +56..+68 = {page, pages, 0, défilement},
+pages = 2 + (n − 6) / 12 si n > 5, et défilement = 0 avec les flèches 900/901 cachées si la place ≠ 0.
+Crochet : dans l'Univers, défilement = 1 et flèche du bas (901) montrée s'il y a plus d'une page.
+Vu : US 29 classés (3 pages), équipes 6, Divas 13. Rien n'est écrit dans la sauvegarde.
