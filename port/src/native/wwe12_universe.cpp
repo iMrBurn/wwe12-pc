@@ -10,8 +10,9 @@
 //
 // The choice box: the message box (*0x8324DEF0) has a list mode (request kind 4: text id, then at
 // +24 the number of choices and at +28 an array of string pointers), opened by sub_8260DD80(-, text
-// id, choices, count, 0, 0) as the game's own "Do Not Review / Remind Me Later" box does; once closed,
-// the answer (sub_8254E8C8) is the chosen line, from 0.
+// id, choices, count, cancel, 0) as the game's own "Do Not Review / Remind Me Later" box does (cancel
+// = request +12: 1 lets B close the box, as the game's sub_82623608 asks); once closed, the answer
+// (sub_8254E8C8) is the chosen line, from 0 (anything else: cancelled).
 //
 // TITLE MANAGEMENT (menu.pac record "TITLE SETTINGS", link 0x52E): the main menu's scene for it
 // (sub_825477E8) makes a 2 560-byte object (operator new sub_821A0000) with sub_82564548(object,
@@ -501,6 +502,11 @@ bool BoxClosed(const PPCContext &in, u8 *base, u32 &answer) {
   if (!Call(in, base, __imp__sub_8254E8C8, g_answer))
     return false;
   answer = bd::mem::load<u32>(g_answer);
+  // A choice box closed with B gives the line under the cursor too: the box's word +20 tells them
+  // apart (1 after A, sub_824D1A20; 0 after B, sub_824D1A50). B is only allowed in our choice boxes.
+  const u32 box = bd::mem::load<u32>(0x8324DEF0);
+  if (box && bd::mem::load<u32>(box + 20) == 0 && (g_step == Step::kMenu || g_step == Step::kAttire))
+    answer = 0xFFFFFFFFu;
   return true;
 }
 
@@ -513,7 +519,7 @@ void AskMenu(const PPCContext &in, u8 *base) {
     return;
   for (u32 i = 0; i < kChoiceCount; ++i)
     bd::mem::store<u32>(s_choices + i * 4, GuestText(kChoiceText + i));
-  Call(in, base, __imp__sub_8260DD80, 0, kAskText, s_choices, kChoiceCount, 0, 0);
+  Call(in, base, __imp__sub_8260DD80, 0, kAskText, s_choices, kChoiceCount, 1, 0);  // 1: B cancels
 }
 
 // ---- EDIT TITLES: the game's TITLE MANAGEMENT screen ------------------------------------------
@@ -956,7 +962,7 @@ void ShowAttirePage(const PPCContext &in, u8 *base, size_t first) {
   g_box_lines = u32(g_attire_page.size());
   g_menu_frames = 0;
   g_saved_ok = false;
-  Call(in, base, __imp__sub_8260DD80, 0, kAttireText, s_choices, g_box_lines, 0, 0);
+  Call(in, base, __imp__sub_8260DD80, 0, kAttireText, s_choices, g_box_lines, 1, 0);  // 1: B cancels
 }
 
 // After the box closed with an answer.
@@ -1208,6 +1214,7 @@ extern "C" REX_FUNC(sub_824D3458) {
       switch (g_step) {
       case Step::kAttire:
         RestoreChoiceElements();
+        BD_INFO("[univers] attire box: answer {}", answer);
         AttireChosen(ctx, base, answer);
         break;
       case Step::kMenu:

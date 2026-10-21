@@ -565,3 +565,7 @@ emplacement Threads », -1 -1 = aléatoire), pas dans la sauvegarde. Testé : Ke
 - Calque des écrans de l'Univers : `sub_8254E920()` (UMSI de MnLayHD.pac, YXMLBIN) ; relevé possible
   avec `wwe12_universe_probe` (`Documents\wwe12\logs\umsi_layout.txt`). Une vraie ligne ATTIRE comme
   2K14 a été écartée : pas d'élément de rechange pour le fond et le cadre d'une ligne.
+- B / rond ferme les deux boîtes de choix (MODIFIER L'UNIVERS et tenues) sans rien changer : demande
+  +12 = 1 (`sub_8260DD80(…, 1, 0)`), comme la boîte du jeu de `sub_82623608`. Fermée par B, la boîte
+  renvoie quand même la ligne sous le curseur : c'est son mot +20 qui les distingue (1 après A,
+  `sub_824D1A20` ; 0 après B, `sub_824D1A50`). Testé en jeu le 2026-10-21.
