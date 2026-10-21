@@ -241,6 +241,10 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
   réécrite se vérifie contre l'original. À discuter avec Jarrod (WWE 2K14) pour sa méthode.
   Règle inchangée : le code dérivé du jeu et les données ne se publient pas sans décision de l'utilisateur.
 
+- **Suggestions d'un joueur (2026-10-21)** : longue liste sur l'Univers (titres, classements, calendrier, tournois,
+  qualifs, stats, tenues, CAW 100-200, saignement des catcheuses, types de match de 2K14…). Triée par effort
+  dans `docs/suggestions_joueurs.md` ; rien promis. Déjà fait : titre vacant, tenues, reset.
+
 ## Feuille de route 0.9 / 1.0 (décidée par l'utilisateur le 2026-10-18)
 
 **0.9** : ~~DLC manquants~~ **réglé** (2026-10-18 : un joueur a retrouvé ses catcheurs en supprimant
