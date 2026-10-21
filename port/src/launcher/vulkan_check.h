@@ -36,6 +36,28 @@ class VulkanCheck {
     std::lock_guard lock(mutex_);
     return detail_;
   }
+  // The card the game will draw with, chosen like the game does (plume's VulkanDevice): the card
+  // named in svr_gpu_device if it exists, otherwise the first dedicated card, then the first
+  // integrated one. kind: 1 dedicated, 2 integrated, 0 other. Empty name: none.
+  struct Used {
+    std::string name;
+    int kind = 0;
+  };
+  Used UsedDevice(const std::string &preferred) {
+    std::lock_guard lock(mutex_);
+    Used best;
+    int best_score = 0;
+    for (const Device &d : devices_) {
+      if (!preferred.empty() && d.name == preferred)
+        return {d.name, d.kind};
+      const int score = d.kind == 1 ? 4 : d.kind == 2 ? 3 : 2;
+      if (score > best_score) {
+        best = {d.name, d.kind};
+        best_score = score;
+      }
+    }
+    return best;
+  }
   // Indented lines for a bug report: every device with its driver, or why Vulkan is missing.
   std::string Report() {
     std::lock_guard lock(mutex_);
@@ -43,13 +65,20 @@ class VulkanCheck {
   }
 
  private:
+  struct Device {
+    std::string name;
+    int kind;  // 1 dedicated, 2 integrated, 0 other
+  };
+
   void Run() {
     std::string detail, report;
-    const bool ok = Probe(detail, report);
+    std::vector<Device> devices;
+    const bool ok = Probe(detail, report, devices);
     {
       std::lock_guard lock(mutex_);
       detail_ = detail;
       report_ = report;
+      devices_ = std::move(devices);
     }
     state_ = ok ? State::Ok : State::Missing;
   }
@@ -58,7 +87,7 @@ class VulkanCheck {
     return std::to_string(VK_VERSION_MAJOR(v)) + "." + std::to_string(VK_VERSION_MINOR(v));
   }
 
-  static bool Probe(std::string &detail, std::string &report) {
+  static bool Probe(std::string &detail, std::string &report, std::vector<Device> &found_devices) {
     HMODULE lib = LoadLibraryW(L"vulkan-1.dll");  // kept loaded: unloading can upset drivers
     if (!lib) {
       report = "  vulkan-1.dll not found (no Vulkan loader: graphics driver too old or missing)\n";
@@ -105,6 +134,12 @@ class VulkanCheck {
         if (found)
           detail += ", ";
         detail += std::string(p.deviceName) + " (Vulkan " + Version(p.apiVersion) + ")";
+        Device dev;
+        dev.name = p.deviceName;
+        dev.kind = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU     ? 1
+                   : p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 2
+                                                                            : 0;
+        found_devices.push_back(dev);
         found = true;
       }
     }
@@ -120,5 +155,6 @@ class VulkanCheck {
   std::atomic<State> state_{State::Checking};
   std::mutex mutex_;
   std::string detail_, report_;
+  std::vector<Device> devices_;
   std::thread worker_;
 };

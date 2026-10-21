@@ -227,6 +227,7 @@ struct Texts {
   const char *music, *music_text, *open_music, *music_count, *music_unread, *music_volume, *music_volume_hint,
       *music_empty;
   const char *icons, *icons_auto, *icons_xbox, *icons_ps, *icons_hint;
+  const char *gpu_used, *gpu_dedicated, *gpu_integrated, *gpu_others;
 };
 
 const Texts kEnglish = {
@@ -238,7 +239,7 @@ const Texts kEnglish = {
     "The original game runs them at 30 fps.",
     "Texture sharpness", "Off", "Graphics card", "Automatic", "EXIT entry in the main menu",
     "Replaces SHOP (the closed Xbox LIVE store).", "Changes are saved right away.",
-    "Keyboard (player 1)",
+    "Keyboard",
     "Several keys per action, separated by commas. ZQSD and WASD both work.",
     "Default keys", "Xbox and PlayStation controllers work out of the box.",
     "Files put in the mods folder replace the game's own, at the same path as on the disc.\n"
@@ -296,7 +297,8 @@ const Texts kEnglish = {
     "Button icons in the game", "Automatic", "Xbox", "PlayStation",
     "Automatic shows PlayStation icons only if the PlayStation controller was already detected when the game "
     "started; if you still see Xbox icons with your PlayStation controller, pick PlayStation. Applies the next "
-    "time you start the game."};
+    "time you start the game.",
+    "Graphics card used: %s", "dedicated", "integrated", "Cards found: %s"};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -309,7 +311,7 @@ const Texts kFrench = {
     "Netteté des textures", "Désactivée", "Carte graphique", "Automatique",
     "Entrée QUITTER dans le menu principal", "Remplace SHOP (la boutique Xbox LIVE, fermée).",
     "Les changements sont enregistrés tout de suite.",
-    "Clavier (joueur 1)",
+    "Clavier",
     "Plusieurs touches par action, séparées par des virgules. ZQSD et WASD marchent tous les deux.",
     "Touches par défaut", "Les manettes Xbox et PlayStation marchent d'office.",
     "Les fichiers posés dans le dossier mods remplacent ceux du jeu, au même chemin que sur le "
@@ -371,7 +373,8 @@ const Texts kFrench = {
     "Icônes des boutons dans le jeu", "Automatique", "Xbox", "PlayStation",
     "Automatique affiche les icônes PlayStation seulement si la manette PlayStation était déjà détectée au "
     "démarrage du jeu ; si vous voyez encore les icônes Xbox avec votre manette PlayStation, choisissez "
-    "PlayStation. S'applique au prochain lancement du jeu."};
+    "PlayStation. S'applique au prochain lancement du jeu.",
+    "Carte graphique utilisée : %s", "dédiée", "intégrée", "Cartes détectées : %s"};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -609,7 +612,23 @@ void PagePlay() {
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.game_missing);
   switch (g_vulkan.GetState()) {
   case VulkanCheck::State::Ok:
-    ImGui::TextDisabled(t.vulkan_ok, g_vulkan.Detail().c_str());
+    {
+      // The card the game will use (like its own choice), then the others, if any.
+      const auto used = g_vulkan.UsedDevice(g_s.gpu);
+      if (!used.name.empty()) {
+        std::string label = used.name;
+        if (used.kind == 1)
+          label += std::string(" (") + t.gpu_dedicated + ")";
+        else if (used.kind == 2)
+          label += std::string(" (") + t.gpu_integrated + ")";
+        ImGui::TextDisabled(t.gpu_used, label.c_str());
+        const std::string all = g_vulkan.Detail();
+        if (all.find(", ") != std::string::npos)
+          ImGui::TextDisabled(t.gpu_others, all.c_str());
+      } else {
+        ImGui::TextDisabled(t.vulkan_ok, g_vulkan.Detail().c_str());
+      }
+    }
     break;
   case VulkanCheck::State::Missing:
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 560.0f * ImGui::GetStyle().FontScaleDpi);
