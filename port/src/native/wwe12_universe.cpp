@@ -66,6 +66,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <initializer_list>
 #include <map>
 #include <random>
@@ -315,7 +316,7 @@ u32 GuestText(u32 id) {
 // folder (B13EBABEBABEBABE\54510890) and the achievements file, with backup.txt = "auto" then a
 // label; only the latest 10 automatic backups are kept. It appears on the SAVES page and restores
 // from there.
-bool BackupSave() {
+bool BackupSave(const char *label = "Before RESET UNIVERSE") {
   namespace fs = std::filesystem;
   auto *state = REX_KERNEL_STATE();
   if (!state || !state->emulator())
@@ -358,7 +359,7 @@ bool BackupSave() {
     fs::remove_all(dest, ignore);
     return false;
   }
-  std::ofstream(dest / "backup.txt") << "auto\nBefore RESET UNIVERSE\n";
+  std::ofstream(dest / "backup.txt") << "auto\n" << label << "\n";
   // Keep the latest 10 automatic backups (names sort by date), as the launcher does.
   std::vector<std::string> automatic;
   for (const auto &e : fs::directory_iterator(backups, ec)) {
@@ -1215,6 +1216,267 @@ extern "C" REX_FUNC(sub_825535E0) {
   BD_INFO("[univers] ranking: title place {}, {} ranked, {} pages, scrolling on", place,
           bd::mem::load<u32>(self + 8852), bd::mem::load<u32>(self + 60));
 }
+
+// ---- a ranking's order changed by hand (as WWE '13's X EDIT) -----------------------------------
+//
+// On a title's ranking (layout screen S, vtable kRankingVtbl; the ranking object R = S - 28), X
+// starts editing: a red cursor on a Superstar of the list, moved with up/down (the pages follow);
+// A takes him (gold) and up/down then move him one place at a time; A again puts him down; B or X
+// ends. The champion stays on top.
+//
+// The list (R+2368, 32-byte entries, +0 Superstar, +24 this week's points; [R+8852] entries,
+// entry 0 = the champion, 1 = the #1 contender) is sorted by those points, high first
+// (sub_82552A00); sub_826CE180 gives 1000 to the champion and 999 to the #1 contender (Universe
+// table U+0xC750, written with sub_826D5118(table, title, Superstar, 0)), the others their Universe
+// record's points for the title (U + sub_826D3320(id) * 112 + title * 2, u16). A move rewrites the
+// #1 contender and these points, strictly decreasing in the new order (the same values, raised
+// where needed), then sub_825530A0(R) rebuilds the list and page 0. A copy of the save is made
+// before the first change. Singles titles only (tag team rankings list teams).
+//
+// Pages: page 0 = the champion and #1..#4, page p = list entries 5 + (p - 1) * 12 ... + 11 (rows
+// drawn every frame from S+28 = the page by sub_82552A78). The layout screen's pressed buttons
+// for the frame are S+64 (16 A, 32 B, 128 X; up / down by the list's direction S+20, masks at
+// 0x8201AD80), handled by sub_824D20A0: while editing, they are ours.
+
+REX_EXTERN(__imp__sub_824D20A0);  // layout screens: the frame's buttons
+REX_EXTERN(__imp__sub_823D35B8);  // layout screens: the list moved (screen, 1 up / 2 down)
+REX_EXTERN(__imp__sub_82552CE8);  // ranking screen: show the page's rows
+REX_EXTERN(__imp__sub_825530A0);  // ranking: build the list
+REX_EXTERN(__imp__sub_82A39CE8);  // title: tag team?
+REX_EXTERN(__imp__sub_826D3320);  // Superstar: Universe record index, -1 if none
+REX_EXTERN(__imp__sub_826D5118);  // #1 contenders: set (table, title, Superstar, place)
+
+namespace {
+
+constexpr u32 kRankingVtbl = 0x82023240;
+constexpr u32 kContenders = 0xC750;  // in the Universe block
+constexpr u32 kRankingHelpSet = 515;
+constexpr u32 kButtonX = 45003, kEditLabel = 45409;  // button bar: X icon, the game's "EDIT"
+constexpr u32 kUp = 1, kDown = 2, kA = 16, kB = 32, kX = 128;
+constexpr u32 kContenderName = 948, kRowName = 1020;  // layout elements
+constexpr u32 kListMasks = 0x8201AD80;  // per list direction: {previous, -, next, -}
+
+struct RankEdit {
+  u32 screen = 0;     // the layout screen being edited, 0 = not editing
+  u32 cursor = 1;     // list entry
+  bool held = false;  // the Superstar under the cursor moves with it
+  u32 lit = 0;        // the element coloured, and its colour before
+  u32 lit_rgba[4] = {};
+  bool backed_up = false;
+};
+RankEdit g_rank;
+
+u32 RankObject(u32 screen) { return screen - 28; }
+u32 RankCount(u32 r) { return std::min<u32>(bd::mem::load<u32>(r + 8852), 180); }
+u32 RankId(u32 r, u32 i) { return bd::mem::load<u32>(r + 2368 + i * 32); }
+u32 RankPage(u32 i) { return i <= 4 ? 0 : 1 + (i - 5) / 12; }
+
+void Unlight() {
+  if (g_rank.lit)
+    for (u32 k = 0; k < 4; ++k)
+      bd::mem::store<u32>(g_rank.lit + 184 + k * 4, g_rank.lit_rgba[k]);
+  g_rank.lit = 0;
+}
+
+// The cursor's name in red (gold while held).
+void Light(u32 r) {
+  // The name's element: page 0's #1..#4 are elements 948..951, a list page's rows 1020..1031
+  // (sub_82552A78; other screens of the layout show the same names, so not found by text).
+  const u32 i = g_rank.cursor;
+  const u32 id = i <= 4 ? kContenderName + i - 1 : kRowName + (i - 5) % 12;
+  const u32 layout = bd::mem::load<u32>(r + 296);
+  const u32 array = layout ? bd::mem::load<u32>(layout + 8) : 0;
+  const u32 count = layout ? bd::mem::load<u32>(layout + 24) : 0;
+  const u32 found = array && id < count ? array + id * 240 : 0;
+  const u32 text = found ? bd::mem::load<u32>(found + 200) : 0;
+  const char *want = text ? bd::mem::try_at<const char>(text) : nullptr;
+  static u32 s_logged = ~0u;
+  if (g_rank.cursor != s_logged) {
+    s_logged = g_rank.cursor;
+    BD_INFO("[univers] ranking edit: cursor {} ({}) -> element 0x{:08X}", g_rank.cursor,
+            want ? want : "?", found);
+  }
+  if (found != g_rank.lit) {
+    Unlight();
+    if (found) {
+      for (u32 k = 0; k < 4; ++k)
+        g_rank.lit_rgba[k] = bd::mem::load<u32>(found + 184 + k * 4);
+      g_rank.lit = found;
+    }
+  }
+  if (g_rank.lit) {
+    // the game's red for a menu's chosen line (0.80, 0.08, 0.08), gold while held
+    const float rgba[4] = {g_rank.held ? 1.0f : 0.8039f, g_rank.held ? 0.75f : 0.0784f,
+                           g_rank.held ? 0.1f : 0.0784f, 1.0f};
+    for (u32 k = 0; k < 4; ++k)
+      bd::mem::store<float>(g_rank.lit + 184 + k * 4, rgba[k]);
+  }
+}
+
+// Swaps list entries a and b (>= 1) in the saved ranking, then rebuilds the list.
+void RankSwap(const PPCContext &in, u8 *base, u32 r, u32 a, u32 b) {
+  const u32 n = RankCount(r), title = bd::mem::load<u32>(r + 8848);
+  const u32 u = Call(in, base, __imp__sub_82683A30, 0);
+  if (!u || a == 0 || b == 0 || a >= n || b >= n)
+    return;
+  if (!g_rank.backed_up) {
+    g_rank.backed_up = BackupSave("Before RANKINGS EDIT");
+    if (!g_rank.backed_up) {
+      BD_WARN("[univers] ranking edit: backup failed, nothing changed");
+      return;
+    }
+  }
+  std::vector<u32> order;
+  for (u32 i = 1; i < n; ++i)
+    order.push_back(RankId(r, i));
+  std::swap(order[a - 1], order[b - 1]);
+  if (order[0] != RankId(r, 1))
+    Call(in, base, __imp__sub_826D5118, u + kContenders, title, order[0], 0);
+  // The others' points: their values, high first, kept strictly decreasing from the bottom up.
+  std::vector<u32> records, points;
+  for (u32 i = 1; i < order.size(); ++i) {
+    const int32_t index = int32_t(Call(in, base, __imp__sub_826D3320, order[i]));
+    const u32 rec = index < 0 ? 0 : u + u32(index) * 112;
+    records.push_back(rec);
+    points.push_back(rec ? bd::mem::load<u16>(rec + title * 2) : 0);
+  }
+  std::sort(points.begin(), points.end(), std::greater<u32>());
+  for (size_t i = points.size(); i-- > 0;)
+    if (i + 1 < points.size() && points[i] <= points[i + 1])
+      points[i] = points[i + 1] + 1;
+  for (size_t i = 0; i < records.size(); ++i)
+    if (records[i])
+      bd::mem::store<u16>(records[i] + title * 2, u16(std::min<u32>(points[i], 998)));
+  Call(in, base, __imp__sub_825530A0, r);
+  BD_INFO("[univers] ranking edit: title {}, places {} and {} swapped", title, a, b);
+}
+
+void RankEditEnd() {
+  Unlight();
+  g_rank.screen = 0;
+  g_rank.held = false;
+}
+
+// The ranking's button bar: X EDIT in a free place (logged once).
+void RankEditPrompt() {
+  static bool s_done = false;
+  const u32 help = bd::mem::load<u32>(kHelpData);
+  const u32 records = help ? bd::mem::load<u32>(help + 48) : 0;
+  const u32 count = help ? bd::mem::load<u32>(help + 52) : 0;
+  for (u32 i = 0; records && i < count && i < 4096; ++i) {
+    const u32 at = records + i * 20;
+    if (bd::mem::load<u16>(at + 12) != kRankingHelpSet)
+      continue;
+    if (!s_done)
+      BD_INFO("[univers] ranking: button bar set {}: {:04X} {:04X} {:04X} {:04X} {:04X} {:04X}",
+              kRankingHelpSet, bd::mem::load<u16>(at), bd::mem::load<u16>(at + 2),
+              bd::mem::load<u16>(at + 4), bd::mem::load<u16>(at + 6), bd::mem::load<u16>(at + 8),
+              bd::mem::load<u16>(at + 10));
+    s_done = true;
+    for (u32 k = 0; k < 3; ++k)
+      if (bd::mem::load<u16>(at + k * 4) == kButtonX)
+        return;
+    for (u32 k = 0; k < 3; ++k) {
+      if (bd::mem::load<u16>(at + k * 4) != 0xFFFF)
+        continue;
+      bd::mem::store<u16>(at + k * 4, u16(kButtonX));
+      bd::mem::store<u16>(at + k * 4 + 2, u16(kEditLabel));
+      BD_INFO("[univers] ranking: X EDIT in the button bar (place {})", k);
+      return;
+    }
+    return;
+  }
+  if (!s_done)
+    BD_INFO("[univers] ranking: button bar set {} not found", kRankingHelpSet);
+  s_done = true;
+}
+
+// Dev: the ranking layout's shown texts, when editing starts (logs/rank_layout.txt).
+void DumpRankLayout(u32 r) {
+  auto *state = REX_KERNEL_STATE();
+  const u32 layout = bd::mem::load<u32>(r + 296);
+  if (!layout || !state || !state->emulator())
+    return;
+  std::ofstream f(state->emulator()->user_data_root() / "logs" / "rank_layout.txt");
+  const u32 array = bd::mem::load<u32>(layout + 8), count = bd::mem::load<u32>(layout + 24);
+  for (u32 e = 0; e < count && e < 8192; ++e) {
+    const u32 at = array + e * 240, text = bd::mem::load<u32>(at + 200);
+    const char *t = text ? bd::mem::try_at<const char>(text) : nullptr;
+    f << fmt::format("E{} hidden={} rgba={} {} {} {} num={} flags={:X} text={}\n", e,
+                     bd::mem::load<u32>(at + 180), bd::mem::load<float>(at + 184),
+                     bd::mem::load<float>(at + 188), bd::mem::load<float>(at + 192),
+                     bd::mem::load<float>(at + 196), bd::mem::load<u32>(at + 220),
+                     bd::mem::load<u32>(at + 228), t ? std::string(t, strnlen(t, 40)) : "-");
+  }
+}
+
+}  // namespace
+
+extern "C" REX_FUNC(sub_824D20A0) {
+  const u32 screen = ctx.r3.u32;
+  if (!Enabled() || bd::mem::try_load<u32>(screen) != kRankingVtbl ||
+      bd::mem::load<u32>(kInUniverseFlag) != 1) {
+    __imp__sub_824D20A0(ctx, base);
+    return;
+  }
+  RankEditPrompt();
+  const u32 r = RankObject(screen), pressed = bd::mem::load<u32>(screen + 64);
+  const bool detail = bd::mem::load<u32>(screen + 2332) == 1;  // a title's ranking is open
+  if (g_rank.screen != screen) {
+    if (g_rank.screen)
+      RankEditEnd();
+    if (!(pressed & kX) || !detail || RankCount(r) < 3 ||
+        Call(ctx, base, __imp__sub_82A39CE8, bd::mem::load<u32>(r + 8848)) != 0) {
+      __imp__sub_824D20A0(ctx, base);
+      return;
+    }
+    g_rank.screen = screen;
+    g_rank.held = false;
+    const u32 page = bd::mem::load<u32>(screen + 28);
+    g_rank.cursor = page == 0 ? 1 : std::min(RankCount(r) - 1, 5 + (page - 1) * 12);
+    BD_INFO("[univers] ranking edit: on (title {}, {} ranked)", bd::mem::load<u32>(r + 8848),
+            RankCount(r));
+    if (REXCVAR_GET(wwe12_universe_probe))
+      DumpRankLayout(r);
+  } else if (!detail || (pressed & (kB | kX))) {
+    BD_INFO("[univers] ranking edit: off");
+    RankEditEnd();
+  } else {
+    // up / down as the screen's list reads them: masks by its direction S+20 (sub_824D2148)
+    const u32 dir = std::min<u32>(bd::mem::load<u32>(screen + 20), 3);
+    const u32 up = bd::mem::load<u32>(kListMasks + dir * 16) | kUp;
+    const u32 down = bd::mem::load<u32>(kListMasks + dir * 16 + 8) | kDown;
+    if (pressed && REXCVAR_GET(wwe12_universe_probe))
+      BD_INFO("[univers] ranking edit: buttons 0x{:X} (list direction {})", pressed, dir);
+    const u32 n = RankCount(r);
+    u32 next = g_rank.cursor;
+    if ((pressed & up) && g_rank.cursor > 1)
+      next = g_rank.cursor - 1;
+    else if ((pressed & down) && g_rank.cursor + 1 < n)
+      next = g_rank.cursor + 1;
+    const bool swap = next != g_rank.cursor && g_rank.held;
+    if (swap)
+      RankSwap(ctx, base, r, g_rank.cursor, next);
+    g_rank.cursor = next;
+    if (pressed & kA)
+      g_rank.held = !g_rank.held;
+    const u32 page = RankPage(g_rank.cursor);
+    if (page != bd::mem::load<u32>(screen + 28)) {
+      // as the screen's own list does (sub_824D2148): the page and its "moved" (vtable slot 6);
+      // then the rows (vtable slot 20, sub_82552A78 inside)
+      const u32 down = page > bd::mem::load<u32>(screen + 28);
+      bd::mem::store<u32>(screen + 28, page);
+      Call(ctx, base, __imp__sub_823D35B8, screen, down ? 2u : 1u);
+      Call(ctx, base, __imp__sub_82552CE8, screen);  // the rows of the new page
+    } else if (swap) {
+      Call(ctx, base, __imp__sub_82552CE8, screen);  // the page's rows in their new order
+    }
+  }
+  bd::mem::store<u32>(screen + 64, 0);  // the frame's buttons were ours
+  if (g_rank.screen == screen)
+    Light(r);
+}
+
 
 // ---- SAVE on an edited match of the card (as in WWE '13) ---------------------------------------
 //

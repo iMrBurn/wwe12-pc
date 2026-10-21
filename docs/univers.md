@@ -618,3 +618,27 @@ dans l'émission (0 majeur, 1 mineur, 2 équipes, 3 Divas), puis +56..+68 = {pag
 pages = 2 + (n − 6) / 12 si n > 5, et défilement = 0 avec les flèches 900/901 cachées si la place ≠ 0.
 Crochet : dans l'Univers, défilement = 1 et flèche du bas (901) montrée s'il y a plus d'une page.
 Vu : US 29 classés (3 pages), équipes 6, Divas 13. Rien n'est écrit dans la sauvegarde.
+
+## 19. Classements changés à la main, comme WWE '13 (2026-10-21, testé en jeu)
+
+Sur un classement de titre en solo (majeur, mineur, Divas), **X EDIT** (ajouté à la barre du bas, set
+515 = {B BACK} + notre {45003 X, 45409 EDIT}) lance la modification : un curseur rouge (le rouge des
+menus du jeu, 0.80/0.08/0.08) sur un Superstar, haut/bas pour le déplacer (les pages suivent), **A** le
+prend (doré) et haut/bas le monte ou le descend d'une place, A le repose, B ou X termine. Le champion ne
+bouge pas.
+
+- Ordre affiché = points de la semaine, du plus haut au plus bas (tri `sub_82552A00` sur +24, à
+  égalité par numéro) ; `sub_826CE180` donne 1000 au champion, 999 à l'aspirant n° 1 (table U+0xC750,
+  écrite par `sub_826D5118(table, titre, Superstar, 0)`), sinon les points de la fiche Univers
+  (U + `sub_826D3320(id)` × 112 + titre × 2, u16).
+- Un déplacement réécrit l'aspirant n° 1 et ces points, strictement décroissants dans le nouvel ordre
+  (mêmes valeurs, montées au besoin, 998 au plus), puis `sub_825530A0(R)` refait la liste. Copie
+  automatique de la sauvegarde avant le premier changement (« Before RANKINGS EDIT »). Le jeu enregistre
+  ensuite à sa prochaine sauvegarde.
+- Écran : S (vtable 0x82023240), R = S − 28. Touches de l'image en S+64 (16 A, 32 B, 128 X ; haut/bas
+  selon la direction de la liste S+20 et la table 0x8201AD80 : ici 3 → 0x10000 / 0x40000), lues par
+  `sub_824D20A0` ; pendant la modification elles sont à nous. Page = S+28 ; changer de page = S+28 puis
+  `sub_823D35B8(S, 1|2)` et `sub_82552CE8(S)` (dessin des lignes, aussi après chaque échange).
+- Noms surlignés par numéro d'élément : page 0, #1..#4 = 948..951 ; pages de liste, lignes 1020..1031
+  (chercher par texte trouvait parfois le même nom sur l'écran des titres, caché).
+- Pas pour les titres par équipes (la liste classe des équipes).
