@@ -569,3 +569,17 @@ emplacement Threads », -1 -1 = aléatoire), pas dans la sauvegarde. Testé : Ke
   +12 = 1 (`sub_8260DD80(…, 1, 0)`), comme la boîte du jeu de `sub_82623608`. Fermée par B, la boîte
   renvoie quand même la ligne sous le curseur : c'est son mot +20 qui les distingue (1 après A,
   `sub_824D1A20` ; 0 après B, `sub_824D1A50`). Testé en jeu le 2026-10-21.
+
+## 16. Remise à zéro enregistrée tout de suite (2026-10-21, testé en jeu)
+
+Après le OUI final (copie automatique puis remise à zéro), on lance la sauvegarde du jeu comme le fait
+TITLE MANAGEMENT quand on le quitte avec des changements (`sub_82564DD0`) : si le profil peut
+enregistrer (`sub_82A27208(sub_8267CD10())`) et que la sauvegarde existe (`[sub_82684BE8()]` ≠ 0),
+on crée l'objet « enregistreur » du jeu (33 720 octets, `sub_828955A0`) dans le tas du jeu
+(`sub_827D1C68/1F18/28D0/2950/1F98`), on met à 1 le drapeau +0x576BC du bloc 2, puis
+`sub_825391F0(enregistreur)` (ou `sub_82539130(enregistreur, 0)` si l'octet +0x57667 du bloc 2 vaut 0).
+Il affiche ses propres messages (« SAVING... ») ; quand son mot +32 devient non nul, on le détruit
+(`sub_82895740(enregistreur, 1)`) et on montre le texte 27040 (« remise à zéro et enregistrée »).
+Sans profil ou sans sauvegarde : ancien message (enregistré à la prochaine sauvegarde du jeu).
+Journal : `[univers] save: started` / `save: done`. Testé : la sauvegarde sur le disque change tout
+de suite.

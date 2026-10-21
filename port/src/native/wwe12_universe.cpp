@@ -127,7 +127,9 @@ constexpr u32 kAttireText = 27036, kAttireMoreText = 27037, kAttireOnlyText = 27
 // "Y COPY").
 constexpr u32 kAttirePromptText = 27039;
 constexpr u32 kDefaultPromptText = 45087;
-constexpr u32 kLastText = kAttirePromptText;
+// After a reset saved to disk at once (the last of our texts: 27026-27040 are unused in WWE '12).
+constexpr u32 kResetSavedText = 27040;
+constexpr u32 kLastText = kResetSavedText;
 enum Choice : u32 { kEditSuperstars, kEditTitles, kResetUniverse };
 
 constexpr u32 kUniverseTitles = 0x83226508;   // 23 titles x {holder, partner}, u16
@@ -255,6 +257,18 @@ const char *Text(u32 id) {
       // the Superstar page's button bar, after the game's "DEFAULT"
       {"%s   \xEE\x80\x87 ATTIRE", "%s   \xEE\x80\x87 TENUE", "%s   \xEE\x80\x87 OUTFIT",
        "%s   \xEE\x80\x87 ATUENDO", "%s   \xEE\x80\x87 COSTUME"},
+      // done, and saved at once
+      {"The WWE Universe has been reset and saved. A backup of your save was made first.\nLeave WWE "
+       "Universe and come back to see it.",
+       "L'Univers WWE a \xC3\xA9t\xC3\xA9 remis \xC3\xA0 z\xC3\xA9ro et enregistr\xC3\xA9. Une copie "
+       "de votre sauvegarde a \xC3\xA9t\xC3\xA9 faite avant.\nQuittez l'Univers WWE et revenez-y pour "
+       "le voir.",
+       "Die WWE-Welt wurde zur\xC3\xBC" "ckgesetzt und gespeichert. Vorher wurde eine Kopie deines "
+       "Spielstands erstellt.\nVerlasse die WWE-Welt und kehre zur\xC3\xBC" "ck, um sie zu sehen.",
+       "El Universo WWE se ha reiniciado y guardado. Antes se hizo una copia de tu partida.\nSal del "
+       "Universo WWE y vuelve a entrar para verlo.",
+       "Il WWE Universe \xC3\xA8 stato azzerato e salvato. Prima \xC3\xA8 stata fatta una copia del tuo "
+       "salvataggio.\nEsci dal WWE Universe e rientra per vederlo."},
   };
   if (id == kAttireText && !g_attire_question.empty())
     return g_attire_question.c_str();
@@ -457,7 +471,9 @@ bool ResetUniverse(const PPCContext &in, u8 *base) {
 
 // ---- the EDIT UNIVERSE dialogue -------------------------------------------------------------
 
-enum class Step { kIdle, kMenu, kConfirm, kDone, kHint, kVacateAsk, kVacateDone, kTitles, kAttire };
+enum class Step {
+  kIdle, kMenu, kConfirm, kDone, kHint, kVacateAsk, kVacateDone, kTitles, kAttire, kSaving
+};
 Step g_step = Step::kIdle;
 u32 g_screen = 0;  // the Universe menu screen the dialogue belongs to
 u32 g_answer = 0;  // guest word for the message box's answer
@@ -1156,6 +1172,74 @@ extern "C" REX_FUNC(sub_826BE900) {
   }
 }
 
+// ---- saving to disk at once (after a reset) ----------------------------------------------------
+//
+// As TITLE MANAGEMENT does it when it leaves with changes (sub_82564DD0): if a profile can save
+// (sub_82A27208(sub_8267CD10()) != 0) and the save exists ([sub_82684BE8()] != 0), make the game's
+// saver object (33 720 bytes, sub_828955A0) in the game's heap, raise save block 2's flag +0x576BC,
+// and start it with sub_825391F0(saver), or sub_82539130(saver, 0) when block 2's byte +0x57667 is
+// 0. The saver works on its own (its own "SAVING..." messages); its word +32 becomes non-zero when
+// it is done, then it is destroyed with sub_82895740(saver, 1).
+
+REX_EXTERN(__imp__sub_8267CD10);  // the active profile
+REX_EXTERN(__imp__sub_82A27208);  // profile: can save
+REX_EXTERN(__imp__sub_82684BE8);  // save block 2
+REX_EXTERN(__imp__sub_827D1C68);  // heaps: the game's heap
+REX_EXTERN(__imp__sub_827D1F18);  // heaps: this thread's heap
+REX_EXTERN(__imp__sub_827D28D0);  // heaps: set this thread's heap
+REX_EXTERN(__imp__sub_827D2950);  // heaps: state
+REX_EXTERN(__imp__sub_827D1F98);  // heaps: set this thread's flag
+REX_EXTERN(__imp__sub_828955A0);  // saver: constructor
+REX_EXTERN(__imp__sub_825391F0);  // saver: start
+REX_EXTERN(__imp__sub_82539130);  // saver: start (first save)
+REX_EXTERN(__imp__sub_82895740);  // saver: destructor (saver, 1 = free)
+
+namespace {
+
+u32 g_saver = 0;
+
+u32 StartSave(const PPCContext &in, u8 *base) {
+  const u32 profile = Call(in, base, __imp__sub_8267CD10, 0);
+  if (!profile || !Call(in, base, __imp__sub_82A27208, profile)) {
+    BD_INFO("[univers] save: no profile that can save");
+    return 0;
+  }
+  const u32 block2 = Call(in, base, __imp__sub_82684BE8, 0);
+  if (!block2 || !bd::mem::load<u32>(block2)) {
+    BD_INFO("[univers] save: no save yet");
+    return 0;
+  }
+  const u32 heap = Call(in, base, __imp__sub_827D1C68, 0);
+  const u32 previous = Call(in, base, __imp__sub_827D1F18, 0);
+  Call(in, base, __imp__sub_827D28D0, heap);
+  const u32 flag = Call(in, base, __imp__sub_827D2950, 0) == 0 ? 1 : 0;
+  Call(in, base, __imp__sub_827D1F18, 0);
+  Call(in, base, __imp__sub_827D1F98, 1);
+  const u32 saver = Call(in, base, __imp__sub_821A0000, 33720);
+  if (saver) {
+    Call(in, base, __imp__sub_828955A0, saver);
+    bd::mem::store<u32>(block2 + 0x576BC, 1);
+    if (bd::mem::load<u8>(block2 + 0x57667))
+      Call(in, base, __imp__sub_825391F0, saver);
+    else
+      Call(in, base, __imp__sub_82539130, saver, 0);
+  }
+  Call(in, base, __imp__sub_827D1F98, flag);
+  Call(in, base, __imp__sub_827D28D0, previous);
+  BD_INFO("[univers] save: started (saver 0x{:08X})", saver);
+  return saver;
+}
+
+bool SaveFinished() { return bd::mem::load<u32>(g_saver + 32) != 0; }
+
+void EndSave(const PPCContext &in, u8 *base) {
+  Call(in, base, __imp__sub_82895740, g_saver, 1);
+  BD_INFO("[univers] save: done");
+  g_saver = 0;
+}
+
+}  // namespace
+
 // Every layout menu screen's per-frame update: drives the dialogue while it is open (the screen
 // itself keeps updating; its A button waits, see above).
 REX_EXTERN(__imp__sub_824D3458);
@@ -1181,7 +1265,15 @@ extern "C" REX_FUNC(sub_824D3458) {
   // TITLE MANAGEMENT open: the Universe menu takes no input meanwhile (its word +224 = 0, as
   // the layout screens' update reads it; 1 gives it back from the next frame). The screen is
   // closed from another screen's update, never from its own.
-  if (g_step == Step::kTitles) {
+  // Saving after a reset: the saver works on its own; the Universe menu waits, then says it is done.
+  if (g_step == Step::kSaving) {
+    if (ctx.r3.u32 == g_screen && (!g_saver || SaveFinished())) {
+      if (g_saver)
+        EndSave(ctx, base);
+      g_step = Step::kDone;
+      Call(ctx, base, __imp__sub_8254E680, kResetSavedText);
+    }
+  } else if (g_step == Step::kTitles) {
     if (ctx.r3.u32 == g_screen)
       bd::mem::store<u32>(g_screen + 224, 0);
     if (g_titles && ctx.r3.u32 != g_titles && TitlesFinished()) {
@@ -1242,8 +1334,14 @@ extern "C" REX_FUNC(sub_824D3458) {
         break;
       case Step::kConfirm:
         if (yes && BackupSave() && ResetUniverse(ctx, base)) {
-          g_step = Step::kDone;
-          Call(ctx, base, __imp__sub_8254E680, kDoneText);
+          // Saved to disk at once when the game can save; otherwise at its next save, as before.
+          g_saver = StartSave(ctx, base);
+          if (g_saver) {
+            g_step = Step::kSaving;
+          } else {
+            g_step = Step::kDone;
+            Call(ctx, base, __imp__sub_8254E680, kDoneText);
+          }
         } else {
           g_step = Step::kIdle;
         }
