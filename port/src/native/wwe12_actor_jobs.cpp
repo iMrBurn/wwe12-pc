@@ -30,15 +30,6 @@ REXCVAR_DEFINE_BOOL(wwe12_actor_jobs_fix, true, "WWE12",
                     "Fix a race in the game's per-wrestler job threads that can freeze matches "
                     "(Elimination Chamber, after loading screens).");
 
-REXCVAR_DEFINE_BOOL(wwe12_cloth_30hz, false, "WWE12",
-                    "Test: in 60 fps entrances, run the wrestlers' hair/cloth job (sub_821E0AD0) "
-                    "every other frame only, as at 30 fps.");
-
-bool Wwe12EntranceAt60();  // wwe12_fps.cpp
-namespace bd::gpu {
-u64 SvrFrameIndex();
-}
-
 REX_EXTERN(__imp__sub_824750C0);
 REX_EXTERN(__imp__sub_821E0AD0);
 REX_EXTERN(sub_827D5C28);  // component lookup: r3 = owner + 1696, r4 = type tag
@@ -116,8 +107,6 @@ extern "C" REX_FUNC(sub_821E0AD0) {
     return;
   }
   Worker(ctx, base, [&](u32 wrestler) {
-    if (REXCVAR_GET(wwe12_cloth_30hz) && Wwe12EntranceAt60() && (bd::gpu::SvrFrameIndex() & 1))
-      return;
     const u32 c = Component(ctx, base, wrestler, 0x67426148);
     if (!c)
       return;
