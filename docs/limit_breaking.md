@@ -156,6 +156,19 @@ différent) ; les 3 autres non essayées, même origine. Il faudrait les convert
   4. Les fiches de maillage de 184 octets (+156 = bandes de triangles) restent à localiser et comparer.
   Un convertisseur = parseur JBOY complet (sections, matériaux, maillages, sommets, index) + réécriture avec
   recalcul de tous les offsets. Plusieurs séances de travail.
+- **Trouvé ensuite (même jour)** : la « fiche de 184 octets » est la **fiche de maillage**, à 0x40, nombre à +0x18.
+  **SvR 2011 = 180 octets, WWE '12 = 184** : un mot inséré à **+124** (pointeur vers un bloc lightmap dans le siège,
+  0xB0020000 dans « blood »), tout le reste décalé de 4 (SvR +156 → WWE '12 +160). Les modèles finissent par une table
+  **POF0** (Pointer Offset Fixup) = liste de tous les emplacements de pointeurs (pas de 1/2/4 octets, préfixes 01/10/11,
+  en mots, comptés depuis l'octet 8) : 6 860/6 861 et 7 634/7 634 pointeurs valides ; décodage + réencodage
+  identiques sur les 349 modèles des deux jeux. 400-402 = paquets de textures DDS (même format), 20000/20010 =
+  sous-PACH avec 63 modèles chacun (la foule).
+- **`tools/dev/jboy.py`** : `svr_to_w12()` insère le mot (0) à +124 de chaque maillage, bourre après la table pour
+  garder l'alignement 16, corrige tous les pointeurs listés et réécrit POF0 et les tailles. **`tools/yukes_bpe.py`
+  `store()`** : bloc BPE non compressé (table de paires vide `FF 80 FE`, sous-blocs ≤ 2 000 octets ; le jeu en a
+  ≤ 2 028). **`arena_convert.py --models`** convertit tous les modèles (y compris imbriqués) puis ajoute les entrées.
+  Essai `work/arenes/bg15_wm26_v4.pac` : 330 modèles convertis (2 sans maillage laissés), relu sans erreur,
+  9 358/9 358 pointeurs valides. **Pas encore testé en jeu.**
   Fichiers de test rangés dans
   `Desktop\WWE '12 PC Port\arenes_svr2011_desactivees\` (mods vide).
 

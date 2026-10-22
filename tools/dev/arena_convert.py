@@ -14,9 +14,18 @@ a 0x800-byte block after the rounded PACH holding the packer's signature.
 
 --add copies entries the SvR file lacks (980 ring ropes, 30002, 800/804/809 video screens by default);
 --replace takes the donor's version of entries present in both (none by default).
+--models converts every SvR 2011 JBOY model (top-level entries and those inside sub-PACHs such as 20000/20010)
+to the WWE '12 layout (tools/dev/jboy.py) and stores the changed entries as uncompressed BPE blocks.
 """
 import argparse
+import os
 import struct
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import jboy  # noqa: E402
+import yukes_bpe  # noqa: E402
 
 PACH_AT = 0x4000
 
@@ -31,6 +40,35 @@ def read_pach(data):
         eid, off, size = struct.unpack_from("<III", data, PACH_AT + 8 + i * 12)
         entries[eid] = data[base + off:base + off + size]
     return entries
+
+
+SKIPPED = []
+
+
+def read_sub_pach(data):
+    count = struct.unpack_from("<I", data, 4)[0]
+    base = 8 + count * 12
+    return {eid: data[base + off:base + off + size]
+            for eid, off, size in (struct.unpack_from("<III", data, 8 + i * 12) for i in range(count))}
+
+
+def convert_models(data):
+    """Return (new data, models converted) for a decompressed entry, or (None, 0) when unchanged."""
+    if data[:4] == b"JBOY" and b"POF0" in data:
+        try:
+            return jboy.svr_to_w12(data), 1
+        except ValueError as err:
+            SKIPPED.append((jboy.u32(data, 0x18), jboy.u32(data, 0x1C), str(err)))
+            return None, 0
+    if data[:4] == b"PACH" and b"JBOY" in data:
+        subs = read_sub_pach(data)
+        done = 0
+        for eid, sub in subs.items():
+            new, n = convert_models(sub)
+            if new is not None:
+                subs[eid], done = new, done + n
+        return (write_pach(subs), done) if done else (None, 0)
+    return None, 0
 
 
 def write_pach(entries):
@@ -57,12 +95,25 @@ def main():
     ap.add_argument("--add", default="980,30002,800,804,809")
     ap.add_argument("--replace", default="")
     ap.add_argument("--stage", type=int, default=None, help="stage number written in the STG record")
+    ap.add_argument("--models", action="store_true", help="convert the SvR JBOY models to WWE '12")
     args = ap.parse_args()
 
     svr = open(args.svr, "rb").read()
     donor = open(args.donor, "rb").read()
     entries = read_pach(svr)
     donor_entries = read_pach(donor)
+
+    if args.models:
+        total = 0
+        for eid, packed in entries.items():
+            data = yukes_bpe.decompress_at(packed, 0) if packed[:4] == b"BPE " else packed
+            if data is None:
+                continue
+            new, n = convert_models(data)
+            if new is not None:
+                entries[eid] = yukes_bpe.store(new)
+                total += n
+        print(f"models converted: {total}, left as they are: {len(SKIPPED)} {sorted(set(SKIPPED))[:8]}")
 
     for eid in ids(args.add):
         if eid in entries:

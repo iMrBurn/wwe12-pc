@@ -104,3 +104,14 @@ def iter_blocks(data: bytes):
         if out is not None:
             yield i, out
         i = data.find(MAGIC, i + 4)
+
+
+def store(data: bytes, block: int = 2000) -> bytes:
+    """Bloc « BPE » sans compression : chaque sous-bloc a une table de paires vide (FF 80 FE : tous les
+    octets sont littéraux) suivie des octets bruts. Taille des sous-blocs gardée sous celle des fichiers
+    du jeu (2 028 au plus dans bg15), au cas où le décodeur du jeu aurait un tampon fixe."""
+    body = bytearray()
+    for i in range(0, len(data), block):
+        part = data[i:i + block]
+        body += b"\xff\x80\xfe" + struct.pack("<H", len(part)) + part
+    return MAGIC + struct.pack("<III", 0x100, len(body), len(data)) + bytes(body)
