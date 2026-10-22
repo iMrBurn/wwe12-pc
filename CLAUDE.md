@@ -109,7 +109,7 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   `tools/graphics_pages.py` avec un luac 5.1.5 hors dépôt, intégrées à l'exe dans
   `wwe12_graphics_pages.inc`). 13 réglages, mêmes cvars/clés que le launcher, enregistrés dans wwe12.toml
   à la fermeture de la page. L'ancien écran ImGui est retiré ; `wwe12_graphics_menu = false` rend le
-  manuel d'origine. Détails : `docs/menus_natifs.md`. Le patch SDK `rexglue-sdk-menu-input.patch`
+  manuel d'origine. Détails : `docs/menus_natifs.md`. Le patch SDK `rexglue-sdk-menu-input.patch` (retiré le 2026-10-22)
   (GetStateIgnoringActive) ne sert plus au menu ; `rexglue-sdk-pads-list.patch` sert aux icônes PS.
 - Voitures des entrées (Del Rio, Eddie Guerrero) : le jeu dessine la carrosserie en mélange alpha avec
   l'alpha d'une texture BC3 (~0,63), donc translucide ; la Xbox l'affiche opaque (cause réelle inconnue).
