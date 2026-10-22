@@ -91,8 +91,12 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   à (*0x8317C84C)+128+6200 ; sub_821EDEE0 = « au moins un moment » (sinon MATCH HIGHLIGHTS grisé).
   Interrupteur 0x83174250, mis par sub_822B6D30 (place libre sur `cache:` + `Spectacular.rps`).
   Sonde dans `wwe12_game_log.cpp` (lignes « [replay] »).
-- Title Update (pour la 1.1) : le codegen ne lit pas les xexp ; il faudra produire un xex patché hors
-  ligne, refaire le codegen et retrouver toutes les adresses codées en dur.
+- Title Update (étudiée le 2026-10-22, abandonnée par l'utilisateur) : le SDK applique déjà un `default.xexp` posé
+  à côté du xex (codegen compris). **Mesure** (image 0.0.2.4 vs `image.bin` 0.0.0.4, même taille 20 316 160 o) : 82 %
+  des mots du code diffèrent ; sur 47 240 fonctions, 54 seulement restent à leur adresse, 46 834 (99,1 %) sont
+  identiques mais DÉCALÉES (de ~1 à 12 Ko, décalage qui dérive), 352 (0,7 %) changées ou supprimées, +77 nouvelles.
+  Adresses utilisées : 1 sur ~990 (config + port/src livré) valide telle quelle. Le décalage est mécanique (recalage
+  par signature), mais tout reste à retester et le jeu de base sans TU ne marcherait plus.
 - Bugs ouverts : ceinture sur l'épaule à 60 fps (piste VBlank testée le 2026-10-12 et écartée : le
   minuteur est déjà régulier à 60 Hz ; reste l'animation d'objet à 30 Hz, la ceinture de Cena décroche
   de la main quand il court ; mise de côté le 2026-10-12 : ni le VBlank, ni le pas de la physique, ni la
