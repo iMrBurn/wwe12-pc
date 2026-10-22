@@ -97,20 +97,25 @@ jetable : décompresser les blocs BPE et compter les préfixes `xxx_` des noms) 
 | bg15 | wm27 | WrestleMania XXVII |
 | bg16 | er | Extreme Rules |
 | bg17 | nit | WCW Nitro |
-| bg18 | coc | sigle « coc » (Clash of Champions ?) |
+| bg18 | coc | WCW Clash of the Champions XXXV |
 | bg19 | stc | Starrcade (texte 12334) |
 | bg20 | iraq / mb | Tribute to the Troops |
-| bg21 | elc | 2e version Elimination Chamber (plus petite ; probablement celle de la structure) |
-| bg22 | rr | 2e version Royal Rumble |
-| bg23 | raw | 2e version RAW (petite) |
+| bg21 | elc | **match** Elimination Chamber (la structure) |
+| bg22 | rr | **match** Royal Rumble |
+| bg23 | raw | arène de l'éditeur de prises (Create a Moveset) |
 
 **Fichiers reçus d'un tiers** (`Desktop\WWE '12 PC Port\mods\pac\bg\`, mêmes en-têtes EPAC/STG que le jeu ; rien
 exécuté, rien copié dans le dépôt) : bg09 = Royal Rumble (sigle rr), bg10 = Elimination Chamber (ec), bg11 =
 WrestleMania 26 (`ar_fen_wm26`), bg20 = 2e Elimination Chamber (ec + `ar_dwnmt_chem`). Ils portent les numéros
 de **SvR 2011**, pas ceux de WWE '12 : dans le jeu ils remplacent **Hell in a Cell, Bragging Rights, Survivor
-Series et Tribute to the Troops**. Un match Elimination Chamber de WWE '12 utilise probablement bg14/bg21 (non
-vérifié en jeu), donc pas ces fichiers. Pour viser les bonnes arènes : bg13 (RR), bg14/bg21 (EC), bg15 (WM).
+Series et Tribute to the Troops**. Renommages conseillés : reçu bg09 (RR 2010) → bg13 (PPV) ou bg22 (match),
+bg10 (EC 2010) → bg14 (PPV), bg20 (EC version match) → bg21 (match EC), bg11 (WM26) → bg15.
 Compatibilité SvR 2011 → WWE '12 non testée.
+
+Liste confirmée par un fil de smacktalks.org (« WWE 12 Arenas ID », collée par l'utilisateur), qui ajoute :
+bg24/bg26 inutilisables, bg25 RAW avec un cadre blanc autour du ring, bg31 SmackDown éclairage Sin Cara,
+bg32 arène de test RAW, bg66 fond de Create a Superstar, bg67 restaurant, bg68 bureau du GM, bg76/77/79
+noirs, bg78 coulisses, bg200/bg201 Create an Arena. (Ceux de 24 à 32 n'existent pas sur le disque.)
 
 ### Stipulations : I Quit, Special Referee, Gauntlet (2026-10-22, lecture seule)
 
