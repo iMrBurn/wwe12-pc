@@ -174,7 +174,10 @@ différent) ; les 3 autres non essayées, même origine. Il faudrait les convert
   lr 0x827E1430, juste au-delà d'une zone fixe). Le jeu charge l'arène dans un **tampon de taille fixe** (arènes
   d'origine ≤ ~10,9 Mo, bg05). **`yukes_bpe.compress()`** : vrai BPE de Gage, sous-blocs de 4 000 octets comme le
   jeu (mesuré : 4 000 décodés, ≤ 2 028 codés, ≤ 178 paires), aller-retour exact, ~16 % plus gros que le jeu.
-  v5 = v4 recompressée : **9,7 Mo**, relue sans erreur. Pas encore testée en jeu.
+  v5 = v4 recompressée : **9,7 Mo**, relue sans erreur.
+- **v5 en jeu (2026-10-22) : ça charge et tourne à 60 fps !** Défauts (capture de l'utilisateur) : la **foule est mal
+  placée** (spectateurs dans le ring et devant la caméra) et **tout est très sombre** (lightmap absente : pointeur
+  +124 mis à 0 ; tables 995-999 peut-être). v6 = v5 + la foule de WM XXVII (`--replace 20000,20001,20002,20003,20010`).
   Fichiers de test rangés dans
   `Desktop\WWE '12 PC Port\arenes_svr2011_desactivees\` (mods vide).
 
