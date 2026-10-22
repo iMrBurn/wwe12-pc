@@ -202,6 +202,12 @@ float SvrRenderScale() {
   } else if (integrated) {
     BD_INFO("SvR native: integrated GPU ({}), automatic resolution stays at 720p",
             device->getDescription().name);
+  } else if (const u64 vram = device ? device->getDescription().dedicatedVideoMemory : 0;
+             vram > 0 && vram < 3584ull * 1024 * 1024) {
+    // Small discrete GPUs (GeForce 940MX, GT 1030, RX 560 with 2 GB): 2x on a 1080p screen is
+    // too much for them (a 940MX player had to pick 540p by hand), so automatic mode stays at 1x.
+    BD_INFO("SvR native: GPU with {} MB of video memory ({}), automatic resolution stays at 720p",
+            vram / (1024 * 1024), device->getDescription().name);
   } else if (!SvrOnSteamDeck()) {
     // The larger of the window and the display, so a window on a big screen still renders
     // sharp (downscaled at present); 720p multiples rounded to nearest: 1080/1440 -> 2, 2160 -> 3.
@@ -979,7 +985,7 @@ void ReleaseIdleMirrors(u64 frame) {
 }  // namespace
 
 void Wwe12QuitEntryTick(u64 frame);
-extern std::atomic<u64> g_render_thread_pso_compiles;
+extern std::atomic<u64> g_render_thread_pso_compiles, g_render_thread_pso_known, g_render_thread_pso_ns;
 
 }  // namespace bd::gpu
 namespace rex::kernel::xboxkrnl {
@@ -1005,13 +1011,17 @@ static void LoadStatsTick() {
   rex::kernel::xboxkrnl::GetFileIoStats(&bytes, &calls, &io_ns);
   const u64 mirrors = g_mirror_builds.load(), mirror_ns = g_mirror_build_ns.load();
   const u64 pso = g_render_thread_pso_compiles.load(), frame = g_frame.load();
+  const u64 pso_known = g_render_thread_pso_known.load(), pso_ns = g_render_thread_pso_ns.load();
+  static u64 last_pso_known = 0, last_pso_ns = 0;
   const double mb = double(bytes - last_bytes) / (1024.0 * 1024.0);
   const double fps = double(frame - last_frame) / seconds;
   if (bytes != last_bytes || mirrors != last_mirrors || pso != last_pso || fps < 55.0)
     BD_INFO("[load] {:.1f} s: read {:.1f} MB in {} calls ({} ms) | textures {} ({} ms) | "
-            "pipelines {} | {:.0f} fps",
+            "pipelines {} ({} known, {} ms) | {:.0f} fps",
             seconds, mb, calls - last_calls, (io_ns - last_io_ns) / 1000000, mirrors - last_mirrors,
-            (mirror_ns - last_mirror_ns) / 1000000, pso - last_pso, fps);
+            (mirror_ns - last_mirror_ns) / 1000000, pso - last_pso, pso_known - last_pso_known,
+            (pso_ns - last_pso_ns) / 1000000, fps);
+  last_pso_known = pso_known, last_pso_ns = pso_ns;
   last_bytes = bytes, last_calls = calls, last_io_ns = io_ns, last_mirrors = mirrors,
   last_mirror_ns = mirror_ns, last_pso = pso, last_frame = frame;
 }

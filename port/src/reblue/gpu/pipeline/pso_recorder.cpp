@@ -51,6 +51,10 @@ namespace bd::gpu {
 // Pipelines compiled on the render thread at first use (a stall each): read by the native
 // renderer's loading statistics.
 std::atomic<u64> g_render_thread_pso_compiles{0};
+// Of those, the ones pipelines.bin or the shipped seed already had (the background build was too
+// late), and the render thread's time spent building them all (draw.cpp).
+std::atomic<u64> g_render_thread_pso_known{0};
+std::atomic<u64> g_render_thread_pso_ns{0};
 
 namespace {
 
@@ -558,6 +562,7 @@ void RecordPipelineState(const PipelineState &state, u32 renderPassId,
       known = g_diskKeys.count(HashPipelineState(e)) != 0;
     }
     if (known) {
+      g_render_thread_pso_known.fetch_add(1, std::memory_order_relaxed);
       PipelineState resolved = e;
       resolved.vertexShader = FindGuestShaderByHash(vsHash);
       resolved.pixelShader = psHash ? FindGuestShaderByHash(psHash) : nullptr;

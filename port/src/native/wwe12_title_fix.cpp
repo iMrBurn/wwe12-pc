@@ -41,6 +41,7 @@ bool Wwe12EntranceAt60();  // wwe12_fps.cpp
 REX_EXTERN(__imp__sub_8248B898);
 REX_EXTERN(__imp__sub_8248B458);
 REX_EXTERN(__imp__sub_8248CE10);
+REX_EXTERN(__imp__sub_82488DE0);
 
 namespace {
 
@@ -210,4 +211,25 @@ extern "C" REX_FUNC(sub_8248CE10) {
   }
   for (int j = 0; j < 4; ++j)
     bd::mem::store<float>(out + 4 * j, r[j] * n);
+}
+
+// Crash after a First Blood match (2026-10-22, reproduced 3 times by Gameplay, Orton vs Cena once
+// Cena has bled, on the loading that follows): sub_82488DE0(motion r3, bone r4), a per-bone step
+// of the evaluation (sub_824905D0), reads its clip's track table ([motion+236] + index * 4)
+// before checking that the clip ([motion+232]) exists. That motion has no clip any more (both
+// pointers 0), so it read guest address 0: harmless on the console, an access violation here.
+// The function does nothing for a bone without a clip (it returns at once), so it returns
+// before the read.
+extern "C" REX_FUNC(sub_82488DE0) {
+  const u32 motion = ctx.r3.u32, bone = ctx.r4.u32;
+  const u32 map = bd::mem::load<u32>(motion + 76);
+  if (map && bd::mem::load<int32_t>(map + bone * 4) != -1 &&
+      (bd::mem::load<u32>(motion + 232) == 0 || bd::mem::load<u32>(motion + 236) == 0)) {
+    static std::atomic<u32> s_logged{0};
+    if (s_logged.fetch_add(1) < 20)
+      BD_WARN("[anim] motion {:08X} bone {} has no clip: skipped (would have read guest 0)",
+              motion, bone);
+    return;
+  }
+  __imp__sub_82488DE0(ctx, base);
 }

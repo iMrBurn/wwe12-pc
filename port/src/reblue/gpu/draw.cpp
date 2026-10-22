@@ -13,6 +13,7 @@
 #include "svr_resources.h"
 #endif
 
+#include <chrono>
 #include <cstddef>
 #include <algorithm>
 #include <atomic>
@@ -65,6 +66,7 @@ bool IsDepthOfFieldShader(const bd::gpu::GuestShader *ps) {
 #endif
 
 namespace bd::gpu {
+extern std::atomic<u64> g_render_thread_pso_ns;  // pso_recorder.cpp
 namespace {
 
 // BD g_renderStateCache: DWORD array indexed by D3DRS byte offset, written
@@ -439,7 +441,14 @@ bool Video::FlushRenderStateLocked(u32 device_guest) {
     PipelineState lookup = s.pipelineState;
     SanitizePipelineState(lookup);
     bool built = false;
+    const auto build_start = std::chrono::steady_clock::now();
     auto *pso = GetOrCreatePipeline(lookup, &built);
+    if (built)
+      g_render_thread_pso_ns.fetch_add(
+          u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                  std::chrono::steady_clock::now() - build_start)
+                  .count()),
+          std::memory_order_relaxed);
     if (!pso) {
       u32 n;
       if (DiagShouldLog(4, s.render_target, &n)) {
