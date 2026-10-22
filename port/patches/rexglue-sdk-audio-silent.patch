@@ -33,7 +33,7 @@ index f8949ca..c96fa06 100644
  
    SDL_AudioStream* sdl_stream_ = nullptr;
 diff --git a/src/audio/sdl/sdl_audio_driver.cpp b/src/audio/sdl/sdl_audio_driver.cpp
-index 2b8e071..2921b1b 100644
+index 2b8e071..74fa6e5 100644
 --- a/src/audio/sdl/sdl_audio_driver.cpp
 +++ b/src/audio/sdl/sdl_audio_driver.cpp
 @@ -15,6 +15,7 @@
@@ -44,7 +44,7 @@ index 2b8e071..2921b1b 100644
  
  #include <rex/assert.h>
  #include <rex/audio/conversion.h>
-@@ -62,6 +63,59 @@ SDLAudioDriver::~SDLAudioDriver() {
+@@ -62,6 +63,67 @@ SDLAudioDriver::~SDLAudioDriver() {
  }
  
  bool SDLAudioDriver::Initialize() {
@@ -60,6 +60,14 @@ index 2b8e071..2921b1b 100644
 +    if (attempt < kAttempts) {
 +      REXAPU_WARN("audio device not available (attempt {}/{}), retrying", attempt, kAttempts);
 +      std::this_thread::sleep_for(std::chrono::milliseconds(200));
++#if defined(_WIN32)
++      // Last try through DirectSound instead of WASAPI (an SDL_AUDIO_DRIVER set by the user
++      // still wins over this hint).
++      if (attempt + 1 == kAttempts) {
++        SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "directsound");
++        REXAPU_WARN("last attempt through DirectSound");
++      }
++#endif
 +    }
 +  }
 +  REXAPU_ERROR("no audio device could be opened: the game continues without sound");
@@ -104,7 +112,53 @@ index 2b8e071..2921b1b 100644
    // Set audio category for proper OS audio handling
    SDL_SetHint(SDL_HINT_AUDIO_CATEGORY, "playback");
  
-@@ -165,14 +219,11 @@ void SDLAudioDriver::SubmitFrame(uint32_t frame_ptr) {
+@@ -100,21 +162,18 @@ bool SDLAudioDriver::Initialize() {
+ 
+   // A 1-channel device gets the stereo fold too, then SDL collapses to mono.
+   // Handing it a 6ch stream instead would use SDL's own downmix.
++  // The stream already open is kept and only told it now receives stereo: closing it and
++  // reopening right away failed for good on a player's PC (2026-10-22, "WASAPI can't initialize
++  // audio client", the endpoint not yet released), which left the game without sound. If even
++  // that is refused, the 6ch stream stays and SDL downmixes.
+   if (obtained_spec.channels <= 2) {
+-    SDL_DestroyAudioStream(sdl_stream_);
+-    sdl_stream_ = nullptr;
+-    desired_spec.channels = 2;
+-    sdl_device_channels_ = 2;
+-    sdl_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_spec,
+-                                            SDLCallback, this);
+-    if (!sdl_stream_) {
+-      REXAPU_ERROR("SDL_OpenAudioDeviceStream() stereo fallback failed: {}", SDL_GetError());
+-      return false;
+-    }
+-    sdl_device = SDL_GetAudioStreamDevice(sdl_stream_);
+-    if (!sdl_device) {
+-      REXAPU_ERROR("SDL_GetAudioStreamDevice() failed after stereo fallback: {}", SDL_GetError());
+-      return false;
++    SDL_AudioSpec stereo_spec = desired_spec;
++    stereo_spec.channels = 2;
++    if (SDL_SetAudioStreamFormat(sdl_stream_, &stereo_spec, nullptr)) {
++      sdl_device_channels_ = 2;
++    } else {
++      REXAPU_WARN("stereo input refused ({}); submitting {} ch, SDL downmixes", SDL_GetError(),
++                  static_cast<int>(frame_channels_));
+     }
+   }
+ 
+@@ -122,8 +181,10 @@ bool SDLAudioDriver::Initialize() {
+   // first thing worth knowing when a report says the balance is wrong on one
+   // speaker setup and right on another.
+   const char* device_name = SDL_GetAudioDeviceName(sdl_device);
+-  REXAPU_INFO("audio endpoint '{}': {} ch, {} Hz, format 0x{:04X}; submitting {} ch",
+-              device_name ? device_name : "?", obtained_spec.channels, obtained_spec.freq,
++  const char* driver_name = SDL_GetCurrentAudioDriver();
++  REXAPU_INFO("audio endpoint '{}' ({}): {} ch, {} Hz, format 0x{:04X}; submitting {} ch",
++              device_name ? device_name : "?", driver_name ? driver_name : "?",
++              obtained_spec.channels, obtained_spec.freq,
+               static_cast<uint32_t>(obtained_spec.format), static_cast<int>(sdl_device_channels_));
+ 
+   if (!SDL_ResumeAudioDevice(sdl_device)) {
+@@ -165,14 +226,11 @@ void SDLAudioDriver::SubmitFrame(uint32_t frame_ptr) {
  }
  
  void SDLAudioDriver::Shutdown() {
