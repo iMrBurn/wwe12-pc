@@ -175,10 +175,11 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   saigner vite : Extreme Rules + MATCH CREATOR > WIN CONDITION > FIRST BLOOD = ON. **Plantage vu 3 fois (même
   sans la sonde) au chargement qui suit la fin d'un match First Blood** : lecture de guest 0 dans
   `sub_82488DE0` (lr 82488DE8), build du 2026-10-22 avec des changements de Rendu non commités ; confié à Rendu.
-- **Interrupteur « jeu d'origine » (2026-10-22)** : `wwe12_original.h` (`Wwe12OriginalGame()`) +
+- **Interrupteur « jeu d'origine » (2026-10-22, reporté à la 1.0 : PAS dans l'arbre, sauvé dans
+  `work/original-game-1.0.patch`, hors dépôt ; `git apply` pour le reprendre)** : `wwe12_original.h` (`Wwe12OriginalGame()`) +
   `wwe12_original.cpp` (cvar `wwe12_original_game`, défaut false ; le launcher n'écrira que cette clé). À true,
   il coupe les AJOUTS, jamais les correctifs. Chaque ajout le teste à côté de son cvar :
-  `if (Wwe12OriginalGame() || !REXCVAR_GET(x))`. Branchés : clavier, vibrations Univers, intros sautées
+  `if (Wwe12OriginalGame() || !REXCVAR_GET(x))`. Dans le patch : clavier, vibrations Univers, intros sautées
   (Gameplay) ; à brancher par Univers : EDIT UNIVERSE, menu GRAPHICS, QUITTER ; à décider : icônes PS, textes
   « Online », musiques perso.
 
@@ -226,7 +227,7 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
 | 8 | Formulaire de bug GitHub + FAQ | Main | **fait** (formulaire `.github/ISSUE_TEMPLATE/bug_report.yml` + `docs/FAQ.md`) |
 | — | DLC manquants (cache) | Main | **fait** (2026-10-18) |
 | 9 | Sang des catcheuses (cvar `wwe12_female_blood`) | Gameplay | **reporté à la 1.0** (décision de l'utilisateur, 2026-10-22) ; ce qu'on sait : « Savoir acquis » |
-| 10 | Interrupteur unique `wwe12_original_game` (défaut false) qui coupe les ajouts du portage | Gameplay + Univers | **écrit** (2026-10-22 : en-tête commun + clavier, vibrations Univers, intros) ; reste : compiler et tester (après Rendu), puis la part d'Univers |
+| 10 | Interrupteur unique `wwe12_original_game` (défaut false) qui coupe les ajouts du portage | Gameplay + Univers | **reporté à la 1.0** (décision de l'utilisateur, 2026-10-22 : il garde les nouveautés actives) ; écrit, non compilé, sauvé dans `work/original-game-1.0.patch` |
 
 ## Nouvelles pistes (2026-10-19)
 
