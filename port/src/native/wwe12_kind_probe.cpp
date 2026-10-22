@@ -74,6 +74,16 @@ REXCVAR_DEFINE_INT32(wwe12_ref_slot, 2, "WWE12",
                      "Test: wrestler (creation order) given wwe12_ref_role in a kind-83 match.");
 REXCVAR_DEFINE_INT32(wwe12_ref_role, 1, "WWE12",
                      "Test: role byte given to that wrestler (-1 = only log the roles).");
+// Pad assignment (sub_826E09D8, sub_826E0B18) skips actors with role 1 or 3, so a referee can't be
+// played. wwe12_ref_skip_normal: in a kind-83 match, the normal referee (a role-1 actor that is not
+// wwe12_ref_slot) is not created (the factory returns 0, as when its allocation fails), to see
+// whether the wrestler given role 1 then takes over the referee's job. Not creating it crashes
+// (sub_822D0618 writes into the new actor at once, lr 822D06D8), so the referee is created with
+// wwe12_ref_normal_role instead (4 = like the two actors outside the ring; -1 = keep role 1).
+// The referee and the role-4 actors are created at the first match and reused afterwards, so the
+// kind-83 match must be the first one after launch.
+REXCVAR_DEFINE_INT32(wwe12_ref_normal_role, 4, "WWE12",
+                     "Test: role given to the normal referee in a kind-83 match (-1 = unchanged).");
 
 void WatchActorsOnce();
 
@@ -98,6 +108,11 @@ extern "C" REX_FUNC(sub_822CDF78) {
           give ? " -> " + std::to_string(new_role) : std::string(), kind);
   if (give)
     bd::mem::store<u8>(desc + 6, u8(new_role));
+  const int normal_role = REXCVAR_GET(wwe12_ref_normal_role);
+  if (desc && type == 1 && kind == 83 && role == 1 && !give && normal_role >= 0) {
+    BD_INFO("[role] arbitre normal (n {}) -> role {}", index, normal_role);
+    bd::mem::store<u8>(desc + 6, u8(normal_role));
+  }
   __imp__sub_822CDF78(ctx, base);
   WatchActorsOnce();
 }

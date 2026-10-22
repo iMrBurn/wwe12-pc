@@ -188,6 +188,16 @@ stipulations « assemblées ».
   +3336 → +3428). Variante plus légère imaginable : arbitre spécial **contrôlé par un joueur** seulement (pas d'IA),
   l'arbitre normal retiré, et le compte des tombés déclenché par le joueur-arbitre via la logique de compte de
   WWE '12 ; à évaluer avant de s'engager.
+- **Version légère, essais du 2026-10-22 soir** :
+  - L'affectation des manettes (`sub_826E09D8`, `sub_826E0B18`) **saute les rôles 1 et 3** : un arbitre ne peut pas
+    être joué tant qu'on n'y touche pas.
+  - L'arbitre normal et les 2 rôle 4 sont **créés au premier match puis réutilisés** : le match de type 83 doit être
+    le premier après le lancement pour agir sur leur création.
+  - **Ne pas créer l'arbitre normal = plantage** (`sub_822D0618` écrit aussitôt dans l'acteur, lr 822D06D8 ; écriture
+    à 0x6E0).
+  - Test préparé, **pas encore lancé** : l'arbitre normal créé avec le **rôle 4** (cvar `wwe12_ref_normal_role`),
+    le 3e catcheur seul rôle 1. Pour le refaire : `WWE12_KIND_PROBE_LOCAL` à 1, compiler, `lancer_test_arbitre.bat`,
+    TRIPLE THREAT NORMAL en premier match.
 - Suite possible : remplacer le type plus tôt (dès l'écran de choix des catcheurs) et lire ces fonctions pour
   trouver le champ « rôle » ; sinon chercher la logique dans WWE '13/2K14 (l'utilisateur les a, en local
   seulement).
