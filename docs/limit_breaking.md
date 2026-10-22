@@ -143,7 +143,20 @@ différent) ; les 3 autres non essayées, même origine. Il faudrait les convert
 - **Bilan conversion d'arènes** : il faudrait un **convertisseur de modèles JBOY** (comparer un même modèle dans
   les deux jeux, par ex. `ar_case0`/`ji_bl` présents dans les deux, trouver les champs ajoutés/décalés des fiches
   de 184 octets et des autres structures, réécrire chaque modèle). Faisable mais long (format non documenté,
-  plusieurs centaines de modèles par arène). Fichiers de test rangés dans
+  plusieurs centaines de modèles par arène).
+- **Comparaison JBOY (2026-10-22)**, modèles présents dans les deux WM : 32000 « blood » (884 o des deux côtés), sièges
+  16-21 (WWE '12 = SvR + 120 o à chaque fois), 951-974 (poteaux, cordes, table). Données en gros-boutiste.
+  En-tête : « JBOY », taille, 0, taille, 0, 0, 1, 0x40, 1, 1, puis 3 offsets de sections (ex. 0x2D0, 0x320, 0x330).
+  Différences trouvées :
+  1. **Matériau** : après trois offsets (ex. 0x1FC, 0x270, 0x290), WWE '12 insère **un mot 0xB0020000** (drapeaux ?)
+     avant le nom de technique (« yDefault ») ; tous les offsets internes situés après sont **+4**.
+  2. **Paramètres de matériau** : liste autodécrite (nom, type 0x0D/0x0A/0x05/0x0F, taille 0x24/0x18, valeur) ;
+     WWE '12 en ajoute (ex. `sampLightMapPrm`, offsets 0x9E68…0x9EC8 dans le siège 21).
+  3. **Bloc de 8 flottants en plus** dans le siège (0x3F733333, 0x3F7E0000…, 0x3C000000 ×4) à ~0x7C14.
+  4. Les fiches de maillage de 184 octets (+156 = bandes de triangles) restent à localiser et comparer.
+  Un convertisseur = parseur JBOY complet (sections, matériaux, maillages, sommets, index) + réécriture avec
+  recalcul de tous les offsets. Plusieurs séances de travail.
+  Fichiers de test rangés dans
   `Desktop\WWE '12 PC Port\arenes_svr2011_desactivees\` (mods vide).
 
 Liste confirmée par un fil de smacktalks.org (« WWE 12 Arenas ID », collée par l'utilisateur), qui ajoute :
