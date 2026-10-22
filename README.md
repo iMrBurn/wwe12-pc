@@ -25,16 +25,16 @@ Requirements: Windows 10/11 64-bit, a graphics card with a Vulkan 1.2 driver (mo
 (DualShock 4, DualSense) or the keyboard (ZQSD/WASD, layout in `README.txt`).
 Settings (language, internal resolution…) are in `wwe12.toml`, explained in `README.txt`.
 
-## Status (v0.8.0-beta)
+## Status (v0.9.0-beta)
 
 - Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps. Entrances and
   cutscenes run at 30 fps like on Xbox 360, or at 60 fps with an experimental option.
 - **Launcher** (`WWE12 Launcher.exe`): settings, keyboard controls, mods, **saves** (backups,
   restore, **import of your Xbox 360 saves**), diagnostic info for bug reports, and **one-click
   updates** from this page's releases.
-- **In-game graphics settings** (OPTIONS > GRAPHICS): internal resolution from 540p to 4K
-  (automatic by default: 720p on Steam Deck and integrated GPUs), texture filtering, vertical
-  sync, 60 fps entrances.
+- **In-game graphics settings** (OPTIONS > GRAPHICS, built with the game's own menus):
+  internal resolution from 540p to 4K (automatic by default: 720p on Steam Deck, integrated and
+  small GPUs), texture filtering, crowd, shadows, depth of field, vertical sync, 60 fps entrances.
 - **Match loading about twice as fast** as on the console, start-up videos skipped.
 - DLC support (see below).
 - All five languages of the European release (English, French, German, Spanish, Italian).
@@ -45,16 +45,20 @@ Settings (language, internal resolution…) are in `wwe12.toml`, explained in `R
 - **Custom theme music for created wrestlers**: drop your tracks (mp3, m4a, aac, wav, flac) in
   the `music` folder and pick them where the game chooses entrance themes. They play on the
   entrance, the post-match replay and the victory ceremony, with automatic loudness leveling.
+- **Keyboard typing** in Create a Story and CAW name screens.
+- **WWE Universe**: reset your Universe (with an automatic save backup), vacate a title no show
+  uses, choose each Superstar's attire, manual rankings, full contender lists for minor, tag team
+  and Divas titles, and SAVE a match you edited on the card without playing it.
 - Video memory stays stable over long sessions (no more slowdowns after a few matches).
 - A `mods` folder: files in it replace the game's own (HD titantron videos, textures...).
 - Xbox and PlayStation controllers (with PlayStation button icons), and the keyboard, either
   together with a controller or as player 2 (two players with one controller).
 - Display options: borderless window, FPS counter (F2), frame limit, CPU priority.
 
-Known issues: blocks on the right of the screen during entrances on some Intel and AMD graphics
-(#7, #11, #13: a fix is in 0.8, please report); white eyes on some AMD cards (#12); freezes on a
-few PCs with 2-core processors (#4, #11); title belts on a shoulder can move oddly with 60 fps
-entrances.
+Known issues: coloured blocks during entrances and matches on some Intel and AMD graphics
+(#7, #11, #13, #16: a probable fix is in 0.9, please report); white eyes on some AMD cards (#12);
+white body with a custom colour for some wrestlers; a rare freeze fixed in 0.9 (#4, #8, #11:
+please report if it still happens).
 
 Planned for 1.0: every known bug fixed. Then: the title update (1.1), even shorter loading, a
 richer Universe mode (qualifying matches, Royal Rumble surprise entrants, booking), a mod tool,

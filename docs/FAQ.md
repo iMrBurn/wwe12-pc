@@ -43,8 +43,8 @@ resolution (720p or 540p); empty stands with `wwe12_crowd = false` in `wwe12.tom
 performance" mode, and make sure the launcher's PLAY page uses your dedicated graphics card. Close
 OBS, recording tools and overlays. Laptops with 2-core processors are at the limit.
 
-**Coloured blocks on the right during entrances (Intel / AMD / Steam Deck).** Version 0.8 tries a fix.
-If you still see them, add `svr_rt_no_compression = true` at the end of `wwe12.toml`, and tell us in
+**Coloured blocks during entrances or matches (Intel / AMD / Steam Deck).** Version 0.9 has a
+probable fix. If you still see them, add `svr_rt_no_compression = true` at the end of `wwe12.toml`, and tell us in
 issue #7 whether it helps.
 
 **The picture froze but the sound goes on.** Wait 15 seconds, close the game, and open an issue with
@@ -54,8 +54,8 @@ overlays first: they're a known cause of freezes.
 ## Controls
 
 **Can I play with a PlayStation controller?** Yes (DualShock 4, DualSense). Plug it in **before**
-starting the game to get PlayStation button icons. In 0.8 the automatic detection doesn't work:
-add `wwe12_button_icons = "playstation"` at the end of `wwe12.toml` (fixed in 0.9).
+starting the game to get PlayStation button icons (automatic since 0.9; in 0.8 add
+`wwe12_button_icons = "playstation"` at the end of `wwe12.toml`, or use the launcher's CONTROLS page).
 
 **Two players with one controller?** Launcher → CONTROLS → "Keyboard plays as" Player 2.
 
