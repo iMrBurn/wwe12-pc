@@ -110,7 +110,10 @@ WrestleMania 26 (`ar_fen_wm26`), bg20 = 2e Elimination Chamber (ec + `ar_dwnmt_c
 de **SvR 2011**, pas ceux de WWE '12 : dans le jeu ils remplacent **Hell in a Cell, Bragging Rights, Survivor
 Series et Tribute to the Troops**. Renommages conseillés : reçu bg09 (RR 2010) → bg13 (PPV) ou bg22 (match),
 bg10 (EC 2010) → bg14 (PPV), bg20 (EC version match) → bg21 (match EC), bg11 (WM26) → bg15.
-Compatibilité SvR 2011 → WWE '12 non testée.
+**Testé le 2026-10-22 (jeu installé 0.9, fichiers renommés en bg13/14/15/21)** : WrestleMania 26 en bg15 =
+**plantage** 0,15 s après que le VFS sert `bg15.pac` (lecture de guest 0xAF, thread de chargement). Les arènes
+de SvR 2011 ne sont donc pas lisibles telles quelles par WWE '12 (même en-tête EPAC/STG, contenu de scène
+différent) ; les 3 autres non essayées, même origine. Il faudrait les convertir (format de scène à comparer).
 
 Liste confirmée par un fil de smacktalks.org (« WWE 12 Arenas ID », collée par l'utilisateur), qui ajoute :
 bg24/bg26 inutilisables, bg25 RAW avec un cadre blanc autour du ring, bg31 SmackDown éclairage Sin Cara,
