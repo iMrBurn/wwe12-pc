@@ -26,7 +26,7 @@ Colonne « Qui » : la conversation qui s'en charge (Univers, Gameplay, Rendu…
 | Idée | Piste | Qui | Statut |
 |------|-------|-----|--------|
 | I Quit | Absent de WWE '12 (aucun texte). Base : victoire « SUBMISSION ONLY » du Match Creator + résultat « GIVEUP » qui existe déjà. Voir notes 2026-10-22 | LB | étudié : version simple **moyen**, vraie (micro, animations 2K14) **très lourd** |
-| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | testé 2026-10-22 : type 83 forcé = match jouable, sans plantage, mais encore un match normal ; il manque le rôle d'arbitre (à trouver) |
+| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | testé 2026-10-22 : type 83 + rôle 1 (arbitre) réimposé sur un catcheur = il ne se bat plus, mais le vrai arbitre arbitre toujours ; reste à désigner le catcheur comme arbitre officiel |
 | Gauntlet (SvR 2011) | **Déjà dans WWE '12** : JOUER > HANDICAP > GAUNTLET (et Match Creator). Même place dans SvR 2011 (Handicap > Gauntlet, apparu dans SvR 2009) : rien à ajouter. Seule piste : plus d'adversaires (voir « plus de catcheurs ») | LB | **existe déjà** |
 | Combinaisons (cage en tag, HIAC à plus de 2…) | Mêmes tables de types de match | LB | idée |
 | Enlever les restrictions du Match Creator | Menus grisés ; cf. `sub_825910F8` / `sub_82591750` (First Blood grisé) | LB | idée |
@@ -135,6 +135,18 @@ stipulations « assemblées ».
   3 endroits, sans doute au début du match → réécrire le rôle **après** ; le comportement « arbitre » (IA,
   compte des tombés) dépend peut-être aussi de la classe ou d'autres champs ; l'arbitre normal devrait ne pas
   être créé en type 83 (`sub_82328E28` retire l'entrée 102 de sa liste de 4 en type 83 : modèle de l'arbitre ?).
+- **4e et 5e essais** : liste des personnages du match = **0x8317B770** (9 pointeurs : 0-5 catcheurs,
+  6 = arbitre rôle 1, 7-8 rôle 4 ; tous au rôle 10 en fin de match). Le rôle 1 donné à la création est
+  **remis à 0 en moins de 0,5 s** (par une mise en place des participants, pas `sub_82386168`, qui ne le remet
+  à 0 que pour Gauntlet/Rumble/drapeau match+60). Réimposé toutes les 100 ms (`wwe12_ref_force`) : il tient
+  tout le match, l'acteur prend aussi +998 = 1 comme l'arbitre, pas de plantage. **À l'écran** (utilisateur) :
+  le catcheur ne se bat presque plus, tente parfois une prise que les autres « refusent » ; le vrai arbitre est
+  toujours là et c'est lui qui arbitre. → Rôle 1 = **non-combattant/arbitre**, mais le travail d'arbitre
+  (compte des tombés, IA) va à **un** arbitre désigné ailleurs (sans doute la case 6 ou un pointeur global).
+- Prochaines étapes : 1) trouver qui remet le rôle à 0 juste après la création (piège d'écriture sur
+  acteur+3428) pour le régler proprement ; 2) trouver le pointeur « arbitre du match » (qui compte les tombés :
+  lecteurs de la case 6 de 0x8317B770) et le faire pointer sur le catcheur ; 3) ne pas créer l'arbitre normal
+  en type 83 (liste de `sub_82328E28`, entrée 102) ; 4) donner une IA d'arbitre au catcheur s'il est à l'ordinateur.
 - Suite possible : remplacer le type plus tôt (dès l'écran de choix des catcheurs) et lire ces fonctions pour
   trouver le champ « rôle » ; sinon chercher la logique dans WWE '13/2K14 (l'utilisateur les a, en local
   seulement).

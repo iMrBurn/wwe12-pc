@@ -19,7 +19,12 @@
 
 #if defined(WWE12_DEV_PROBES) || WWE12_KIND_PROBE_LOCAL
 
+#include <chrono>
+#include <mutex>
 #include <string>
+#include <thread>
+
+#include <fmt/format.h>
 
 #include <rex/cvar.h>
 
@@ -70,6 +75,8 @@ REXCVAR_DEFINE_INT32(wwe12_ref_slot, 2, "WWE12",
 REXCVAR_DEFINE_INT32(wwe12_ref_role, 1, "WWE12",
                      "Test: role byte given to that wrestler (-1 = only log the roles).");
 
+void WatchActorsOnce();
+
 REX_EXTERN(__imp__sub_822CDF78);
 extern "C" REX_FUNC(sub_822CDF78) {
   if (REXCVAR_GET(wwe12_kind_from) < 0) {
@@ -92,6 +99,55 @@ extern "C" REX_FUNC(sub_822CDF78) {
   if (give)
     bd::mem::store<u8>(desc + 6, u8(new_role));
   __imp__sub_822CDF78(ctx, base);
+  WatchActorsOnce();
+}
+
+// The match actors are listed at 0x8317B770 (9 pointers, see sub_82386168, which places them at
+// match start). A host thread logs each actor's role (+3428) and +998 every 500 ms when they
+// change ("[acteurs]"), to see whether a role given at creation survives into the match.
+// Result 2026-10-22: the role given at creation is set back to 0 within 0.5 s (actor list:
+// 0-5 wrestlers, 6 = referee with role 1, 7-8 role 4; all go to role 10 at the match end).
+// wwe12_ref_force = actor index whose role 0 is turned back into wwe12_ref_role (every 100 ms,
+// kind-83 matches only; -1 = off), to see whether a lasting role 1 makes that wrestler referee.
+REXCVAR_DEFINE_INT32(wwe12_ref_force, 2, "WWE12",
+                     "Test: match actor (0-8) kept at wwe12_ref_role in a kind-83 match (-1 = off).");
+
+namespace {
+void WatchActors() {
+  constexpr u32 kActors = 0x8317B770;
+  std::string last;
+  for (int tick = 0;; ++tick) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    const int force = REXCVAR_GET(wwe12_ref_force);
+    const int role = REXCVAR_GET(wwe12_ref_role);
+    if (force >= 0 && force < 9 && role >= 0 && bd::mem::load<u8>(0x8317C850) == 83) {
+      const u32 actor = bd::mem::try_load<u32>(kActors + force * 4);
+      if (actor && bd::mem::try_field<u32>(actor, 3428) == 0)
+        bd::mem::store<u32>(actor + 3428, u32(role));
+    }
+    if (tick % 5)
+      continue;
+    std::string line;
+    for (u32 i = 0; i < 9; ++i) {
+      const u32 actor = bd::mem::try_load<u32>(kActors + i * 4);
+      if (!actor) {
+        line += " -";
+        continue;
+      }
+      line += fmt::format(" {}:{}/{}", i, bd::mem::try_field<u32>(actor, 3428),
+                          bd::mem::try_field<u8>(actor, 998));
+    }
+    if (line != last) {
+      BD_INFO("[acteurs] role/998 :{} (match type {})", line, bd::mem::load<u8>(0x8317C850));
+      last = line;
+    }
+  }
+}
+}  // namespace
+
+void WatchActorsOnce() {
+  static std::once_flag once;
+  std::call_once(once, [] { std::thread(WatchActors).detach(); });
 }
 
 #endif  // WWE12_DEV_PROBES
