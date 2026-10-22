@@ -26,7 +26,7 @@ Colonne « Qui » : la conversation qui s'en charge (Univers, Gameplay, Rendu…
 | Idée | Piste | Qui | Statut |
 |------|-------|-----|--------|
 | I Quit | Absent de WWE '12 (aucun texte). Base : victoire « SUBMISSION ONLY » du Match Creator + résultat « GIVEUP » qui existe déjà. Voir notes 2026-10-22 | LB | étudié : version simple **moyen**, vraie (micro, animations 2K14) **très lourd** |
-| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | testé 2026-10-22 : type 83 + rôle 1 (arbitre) réimposé sur un catcheur = il ne se bat plus, mais le vrai arbitre arbitre toujours ; reste à désigner le catcheur comme arbitre officiel |
+| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | **très lourd** : logique retirée de WWE '12 (5 traces contre 49 usages dans WWE '13, où c'est une option du match) ; essais : rôle 1 = arbitre, le catcheur ne se bat plus mais n'arbitre pas |
 | Gauntlet (SvR 2011) | **Déjà dans WWE '12** : JOUER > HANDICAP > GAUNTLET (et Match Creator). Même place dans SvR 2011 (Handicap > Gauntlet, apparu dans SvR 2009) : rien à ajouter. Seule piste : plus d'adversaires (voir « plus de catcheurs ») | LB | **existe déjà** |
 | Combinaisons (cage en tag, HIAC à plus de 2…) | Mêmes tables de types de match | LB | idée |
 | Enlever les restrictions du Match Creator | Menus grisés ; cf. `sub_825910F8` / `sub_82591750` (First Blood grisé) | LB | idée |
@@ -155,6 +155,23 @@ stipulations « assemblées ».
   `tools/env.ps1`), copier xex+xexp dans `work/wwe13/wwe13-recomp/game/`, lancer `rexglue codegen
   wwe13_config.toml`, puis chercher le Special Referee (type, rôle 1, arbitre officiel) dans le C++ généré.
   Ce code généré ne sort jamais de `work/`.
+- **Comparaison avec WWE '13 (code généré le 2026-10-22 dans `work/wwe13/wwe13-recomp/generated`, TU 2.0.1.0,
+  outil `work/wwe13/tools/rexglue/out/win-amd64/Release/rexglue.exe`)** : la famille des tests de type est à
+  `0x82285850` (76, 81, 20-23, 39/40, 67, 82 Gauntlet, 38…). À la place de notre `sub_82A2FB18` (type == 83),
+  WWE '13 a **`sub_82285A60` = octet +45 du match en cours ≠ 0** : l'arbitre spécial y est une **option** qui
+  s'ajoute à un match, plus un type. Surtout, ce test est appelé depuis **49 fonctions dans WWE '13 contre 5 dans
+  WWE '12** : la logique (compte des tombés par le catcheur, IA, etc.) a été **retirée de WWE '12**, il n'en reste
+  que des traces.
+- **Conclusion Special Referee : très lourd.** Il faudrait refaire dans WWE '12 l'équivalent d'environ 45 points de
+  logique de WWE '13 (chacun à comprendre puis réécrire pour les structures de WWE '12). Faisable morceau par morceau
+  avec WWE '13 comme modèle, mais c'est un chantier long ; à reprendre seulement si l'utilisateur le décide.
+  Liste des appelants WWE '13 de `sub_82285A60` (point de départ) : sub_8228ED68, sub_82291708/968/B68,
+  sub_82292268, sub_822D7428, sub_822E19E8/2628, sub_822F5C48, sub_8230A060, sub_8230C510, sub_824015C0,
+  sub_8243DF58, sub_82470300, sub_824979C8, sub_824A1FC8, sub_824BB318, sub_824CA710, sub_824F38C8,
+  sub_824F4C88, sub_82500CF0, sub_82514260, sub_82524B18, sub_825378C8, sub_825398B0/9970, sub_8253CD18,
+  sub_8253DDD8, sub_8254C820, sub_82564348, sub_82568370, sub_8256FAE0, sub_8257B2C0/B708, sub_825FC108,
+  sub_826948E8, sub_82699CD8, sub_82709FD8, sub_8274E1C8, sub_82904168, sub_829C6960, sub_829EA5D8,
+  sub_82A555C0, sub_82A72B98/C70/EE8, sub_831541A0.
 - Suite possible : remplacer le type plus tôt (dès l'écran de choix des catcheurs) et lire ces fonctions pour
   trouver le champ « rôle » ; sinon chercher la logique dans WWE '13/2K14 (l'utilisateur les a, en local
   seulement).
