@@ -115,6 +115,21 @@ bg10 (EC 2010) → bg14 (PPV), bg20 (EC version match) → bg21 (match EC), bg11
 de SvR 2011 ne sont donc pas lisibles telles quelles par WWE '12 (même en-tête EPAC/STG, contenu de scène
 différent) ; les 3 autres non essayées, même origine. Il faudrait les convertir (format de scène à comparer).
 
+**Comparaison WM XXVII (WWE '12 bg15) / WM 26 (SvR 2011)** : même organisation. Après l'EPAC/STG, un PACH à 0x4000
+(entrées {id, offset, taille}, 170 contre 233), chaque entrée compressée en BPE ; modèles JBOY (même en-tête),
+400-402 (gros paquets de modèles), 995-999 (tables + « HMD »), 20000-20010 (sous-PACH), 30000/31010 (YMKs),
+50001-50020 (textes de placement), 60200-60203, 61000 (DDS). Différences :
+- **Présentes seulement dans WWE '12** : **980** = les cordes du ring (JBOY `ar_rop01`, `ar_rope10_low`, os
+  `bone49`…, cordes physiques de WWE '12), **30002** = sous-PACH de 31 fiches de 784 octets, **800/804/809** =
+  écrans (`titantron_movie`, `minitron_movie`, `arena_movie`), plus des décors propres à WM XXVII.
+- **995/997** : tableaux de 20 éléments (WWE '12) contre 17 (SvR) ; **996/999 « HMD »** : en-tête 0xA4 contre 0x82.
+- Plantage (lecture à 0xAF, donc un pointeur nul + décalage) : très probablement une entrée attendue absente
+  (980 ou 30002 en tête de liste).
+- **Piste de conversion** : reconstruire le PACH du fichier SvR en y ajoutant 980, 30002 et 800/804/809 pris dans
+  l'arène WWE '12 d'origine du même numéro, et remplacer 995-999 par ceux de WWE '12 si besoin. Il faut un
+  outil qui réécrit un PACH (entrées non compressées ou recompressées en BPE : à vérifier que le chargeur accepte
+  des entrées brutes).
+
 Liste confirmée par un fil de smacktalks.org (« WWE 12 Arenas ID », collée par l'utilisateur), qui ajoute :
 bg24/bg26 inutilisables, bg25 RAW avec un cadre blanc autour du ring, bg31 SmackDown éclairage Sin Cara,
 bg32 arène de test RAW, bg66 fond de Create a Superstar, bg67 restaurant, bg68 bureau du GM, bg76/77/79
