@@ -172,6 +172,22 @@ stipulations « assemblées ».
   sub_8253DDD8, sub_8254C820, sub_82564348, sub_82568370, sub_8256FAE0, sub_8257B2C0/B708, sub_825FC108,
   sub_826948E8, sub_82699CD8, sub_82709FD8, sub_8274E1C8, sub_82904168, sub_829C6960, sub_829EA5D8,
   sub_82A555C0, sub_82A72B98/C70/EE8, sub_831541A0.
+- **Carte du Special Referee de WWE '13 (2026-10-22)** :
+  1. Option du match : octet **+45** du match en cours (`sub_82285A60`). Liste des personnages : `0x83408DC0`.
+  2. Un catcheur est l'arbitre si **son rôle (acteur+3336 dans WWE '13 = acteur+3428 dans WWE '12) vaut 1** et
+     qu'un état global ([0x8347C554]+100) vaut 2 : `sub_82537D20(acteur)`, **54 appels** (IA, prises, tombés…).
+     `sub_822D7428` = « un des 6 catcheurs est-il l'arbitre ? ».
+  3. Un **composant de comportement « SREF »** (étiquette 0x53524546) accroché à l'acteur (recherche
+     `sub_82B1ABB8(acteur+1088, 'SREF')`, objet à +24) : jauge à +116 (`sub_8256E3E8` la fait varier,
+     `sub_8256E498` = jauge pleine), **27 fonctions** l'utilisent (dont le bloc `sub_826E84E8`–`sub_826EA2A8`,
+     `sub_825D9388/9580/9780`, `sub_8256E548`, `sub_8256F358`, `sub_82550568`, `sub_824BB318`, `sub_829EA5D8`).
+  4. **WWE '12 n'a aucune trace de SREF** (étiquette absente du code) : seuls restent le type 83, le rôle 1 et
+     5 tests. Le rôle 1 est donc la seule pièce commune ; tout le comportement d'arbitre-catcheur est à refaire.
+- **Bilan honnête** : porter le Special Referee de WWE '13 = réécrire pour WWE '12 un composant entier (≈ 30 à 80
+  fonctions selon ce qu'on garde, IA comprise), en adaptant chaque structure (décalages différents, ex. rôle
+  +3336 → +3428). Variante plus légère imaginable : arbitre spécial **contrôlé par un joueur** seulement (pas d'IA),
+  l'arbitre normal retiré, et le compte des tombés déclenché par le joueur-arbitre via la logique de compte de
+  WWE '12 ; à évaluer avant de s'engager.
 - Suite possible : remplacer le type plus tôt (dès l'écran de choix des catcheurs) et lire ces fonctions pour
   trouver le champ « rôle » ; sinon chercher la logique dans WWE '13/2K14 (l'utilisateur les a, en local
   seulement).
