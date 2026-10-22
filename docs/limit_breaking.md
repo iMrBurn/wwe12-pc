@@ -26,7 +26,7 @@ Colonne « Qui » : la conversation qui s'en charge (Univers, Gameplay, Rendu…
 | Idée | Piste | Qui | Statut |
 |------|-------|-----|--------|
 | I Quit | Absent de WWE '12 (aucun texte). Base : victoire « SUBMISSION ONLY » du Match Creator + résultat « GIVEUP » qui existe déjà. Voir notes 2026-10-22 | LB | étudié : version simple **moyen**, vraie (micro, animations 2K14) **très lourd** |
-| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | étudié : **moyen** si la logique reste, **très lourd** sinon ; test en jeu nécessaire |
+| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | testé 2026-10-22 : type 83 forcé = match jouable, sans plantage, mais encore un match normal ; il manque le rôle d'arbitre (à trouver) |
 | Gauntlet (SvR 2011) | **Déjà dans WWE '12** : JOUER > HANDICAP > GAUNTLET (et Match Creator). Même place dans SvR 2011 (Handicap > Gauntlet, apparu dans SvR 2009) : rien à ajouter. Seule piste : plus d'adversaires (voir « plus de catcheurs ») | LB | **existe déjà** |
 | Combinaisons (cage en tag, HIAC à plus de 2…) | Mêmes tables de types de match | LB | idée |
 | Enlever les restrictions du Match Creator | Menus grisés ; cf. `sub_825910F8` / `sub_82591750` (First Blood grisé) | LB | idée |
@@ -111,6 +111,22 @@ stipulations « assemblées ».
   avec un texte/son à la place du micro (moyen ; il faut trouver où le type fixe ses règles). Vraie version
   avec l'arbitre qui tend le micro et les animations : très lourd (animations et logique à reprendre de
   WWE '13/2K14, extraites en local depuis la copie du joueur, jamais publiées).
+**Test en jeu Special Referee (2026-10-22, accord de l'utilisateur, 720p)** : sonde
+`port/src/native/wwe12_kind_probe.cpp` (dev, `WWE12_DEV_PROBES`), lanceur `tools/dev/lancer_test_arbitre.bat`.
+- 1er essai, crochet sur `sub_826D4888` : sans effet. Cette fonction ne sert qu'aux fiches d'Univers et des menus
+  (type 119 = vide, 40 fiches au démarrage) ; l'exhibition écrit le type ailleurs (plusieurs écrivains :
+  `sub_82449428`, `sub_826F8D08`, `sub_823E3220`).
+- 2e essai, crochet sur le lecteur `sub_8267CF38` : l'exhibition TRIPLE THREAT NORMAL = **type 13** (1 contre 1 =
+  type 0). Remplacé par 83 au lancement du match : **pas de plantage, match jouable à 60 fps, mais rien de
+  visible** : 3 catcheurs qui se battent et l'arbitre habituel (capture de l'utilisateur, ring Nitro).
+- Lecture : le type seul ne suffit pas. Le rôle « arbitre » d'un catcheur se décide sans doute à la mise en place
+  des participants (avant notre remplacement, ou dans les fiches de place à +16). Indices : `sub_8227EEC0` teste
+  la place `r27 == 3` + l'octet 33 de la fiche, `sub_82328E28`/`sub_823292C8` mettent une valeur 4 dans un tableau
+  de 4 rôles quand le type est 83, `sub_821D0530` lit l'acteur+3428.
+- Suite possible : remplacer le type plus tôt (dès l'écran de choix des catcheurs) et lire ces fonctions pour
+  trouver le champ « rôle » ; sinon chercher la logique dans WWE '13/2K14 (l'utilisateur les a, en local
+  seulement).
+
 - **Risque** : faible tant qu'on ne touche qu'aux réglages d'un match ; moyen dès qu'on force un type
   que les menus ne proposent plus (code mort possible, plantage en match) ; Univers et sauvegardes
   non concernés.
