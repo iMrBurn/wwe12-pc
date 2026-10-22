@@ -259,6 +259,15 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
   1 = état des lieux sans casser le PC (ARM64 / NDK, presets linux-arm64 du SDK, Vulkan via plume, SDL ;
   parties propres à Windows ; accès à l'ISO ; tactile ; performances). Il faut un téléphone de test.
   Kaiko a fait une version Android de SvR 2011 (conversation « Android (Mali) ») : lui demander.
+  **État (2026-10-22, conversation « WWE 12 PC (Android) »)** : outils sur `D:\Android` (SDK, NDK 30 = clang 21,
+  émulateur WHPX ; Android Studio sur C:). Pas de téléphone : testeurs + émulateur x86_64 (il utilise le GPU
+  du PC, donc textures BC OK). Fait : appli de diagnostic `android/diag` (APK sans Gradle, `build.ps1`, clé de
+  signature hors dépôt dans `D:\Android\keys`, release GitHub à part avec l'APK seul, sans .zip : le launcher
+  ne regarde que les releases avec un .zip) ; SDK compilé pour Android x86_64 + arm64
+  (`port/patches/rexglue-sdk-android.patch`, `android/build_sdk.ps1`, sorties sur D:). Le SDK PC reste
+  identique (code Android derrière `REX_PLATFORM_ANDROID` / `if(ANDROID)`). Suite : le jeu en `libmain.so`
+  (CMake `if(ANDROID)` dans `port/`), APK du jeu, ISO copiée dans le dossier `game` de l'appli, menu sur
+  l'émulateur.
 
 - **Version vraiment native de WWE '12 (souhait de l'utilisateur, 2026-10-21, long terme, après la 1.1)** :
   aujourd'hui le jeu est recompilé automatiquement (le C++ de `port/generated` est illisible et ne se
