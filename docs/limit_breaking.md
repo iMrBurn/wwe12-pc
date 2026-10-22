@@ -132,7 +132,19 @@ différent) ; les 3 autres non essayées, même origine. Il faudrait les convert
 - **Outil `tools/dev/arena_convert.py`** (2026-10-22) : réécrit le PACH d'une arène SvR en y ajoutant des entrées
   d'une arène WWE '12 (copiées compressées telles quelles), recalcule EPAC+8 et STG+0x14, recopie la signature de
   fin (« EOP5/plugin version 1.25/1.26 »). Vérifié : un aller-retour sans ajout redonne les fichiers à l'octet près.
-  Essai 1 : `work/arenes/bg15_wm26_v1.pac` = WM 26 + 980, 30002, 800, 804, 809 de WM XXVII (pas encore testé en jeu).
+  Essai 1 : `work/arenes/bg15_wm26_v1.pac` = WM 26 + 980, 30002, 800, 804, 809 de WM XXVII.
+- **Essais en jeu (2026-10-22)** : v1 (entrées ajoutées) et v3 (+ 995-999 et YMKs 30000/30001/31010 de WWE '12) :
+  **même plantage**, 0,15 s après le chargement, lecture de 0xAF, lr 0x8283725C dans `sub_82837228`. Cette
+  fonction construit les **index de triangles d'un modèle** : objet `[+204]` → `sub_8238B7A8` (= `[+12]`) → tableau
+  de fiches de maillage de **184 octets** (à +20), +4 = nombre de bandes, **+156 = table des bandes** (fiches de
+  12 octets {?, nombre, pointeur vers des index 16 bits}, 0xFFFF = coupure). Dans le fichier SvR, ce +156 vaut
+  0xAB : **la disposition des maillages JBOY a changé entre SvR 2011 et WWE '12**, même si l'en-tête JBOY est
+  identique. Ce n'est pas une entrée manquante.
+- **Bilan conversion d'arènes** : il faudrait un **convertisseur de modèles JBOY** (comparer un même modèle dans
+  les deux jeux, par ex. `ar_case0`/`ji_bl` présents dans les deux, trouver les champs ajoutés/décalés des fiches
+  de 184 octets et des autres structures, réécrire chaque modèle). Faisable mais long (format non documenté,
+  plusieurs centaines de modèles par arène). Fichiers de test rangés dans
+  `Desktop\WWE '12 PC Port\arenes_svr2011_desactivees\` (mods vide).
 
 Liste confirmée par un fil de smacktalks.org (« WWE 12 Arenas ID », collée par l'utilisateur), qui ajoute :
 bg24/bg26 inutilisables, bg25 RAW avec un cadre blanc autour du ring, bg31 SmackDown éclairage Sin Cara,
