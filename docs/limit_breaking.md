@@ -147,6 +147,14 @@ stipulations « assemblées ».
   acteur+3428) pour le régler proprement ; 2) trouver le pointeur « arbitre du match » (qui compte les tombés :
   lecteurs de la case 6 de 0x8317B770) et le faire pointer sur le catcheur ; 3) ne pas créer l'arbitre normal
   en type 83 (liste de `sub_82328E28`, entrée 102) ; 4) donner une IA d'arbitre au catcheur s'il est à l'ordinateur.
+- **Modèle WWE '13 (préparé 2026-10-22, rien compilé)** : `work/wwe13/` (hors dépôt) contient le recomp
+  PromethenDev/wwe13-recomp (BSD-3) et son SDK (`tools/rexglue` = fork rexglue-sdk-yukes @987593c + leurs 99
+  patchs, 22 sous-modules, cloné en `core.autocrlf=false` sinon les patchs échouent). Le jeu de l'utilisateur :
+  `Desktop\WWE13-Recomp-x64\WWE 13\` (default.xex + default.xexp TU 2.0.1.0, empreinte vérifiée). Prochaine
+  étape **sur secteur** : compiler seulement leur outil `rexglue` (leurs scripts visent Linux, adapter avec notre
+  `tools/env.ps1`), copier xex+xexp dans `work/wwe13/wwe13-recomp/game/`, lancer `rexglue codegen
+  wwe13_config.toml`, puis chercher le Special Referee (type, rôle 1, arbitre officiel) dans le C++ généré.
+  Ce code généré ne sort jamais de `work/`.
 - Suite possible : remplacer le type plus tôt (dès l'écran de choix des catcheurs) et lire ces fonctions pour
   trouver le champ « rôle » ; sinon chercher la logique dans WWE '13/2K14 (l'utilisateur les a, en local
   seulement).
