@@ -161,6 +161,26 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   `[texte−0x50+0x30]` (vrai seulement sur une ligne neuve). Sonde : `wwe12_kbd_log` ; lanceur
   `tools/dev/lancer_test_clavier.bat`. Le module de départ d'OpenCode (commits 36099f4/9c21077,
   `wwe12_text_entry_analysis.md`) écrivait dans la copie d'affichage.
+- **Sang des catcheuses (2026-10-21/22, reporté à la 1.0, `wwe12_blood.cpp`)** : l'option BLOOD est l'octet
+  **0x8322660D** = bloc de réglages `sub_82684BE8()` (= 0x831CEEA8) + 0x57720 + 69 (1 = activé), écrit par
+  UpdateInGameOptions (`sub_82DEC528`, ligne 3 de sa première page). Seul le MATCH CREATOR le lit
+  (`sub_825910F8`, `sub_82591750` : First Blood grisé si BLOOD = 0). `sub_82783808` (mise en place de match d'un
+  autre mode, pas l'exhibition) le recopie dans l'entrée de règles du match (52 octets, `sub_827829B0` =
+  [gest+556] + (type × 10 + sous-type) × 52) : +32 = « pas de sang », sauf si [gest+647] force le sang.
+  **Pendant un match First Blood où un catcheur a saigné, l'octet n'est jamais lu** : le match travaille sur une
+  copie, et le test homme/femme est dans le code du saignement, pas encore trouvé. Piste suivante : repérer
+  l'octet « saigne » d'un catcheur en match, puis un piège d'écriture dessus. Attention : `sub_8267CF38` renvoie
+  un objet global (0x8317C850), pas une fiche de catcheur. Sonde `wwe12_blood_trap` (piège PAGE_GUARD sur
+  l'octet, ralentit le jeu), lanceur `tools/dev/lancer_test_sang_piege.bat`. Astuce de l'utilisateur pour faire
+  saigner vite : Extreme Rules + MATCH CREATOR > WIN CONDITION > FIRST BLOOD = ON. **Plantage vu 3 fois (même
+  sans la sonde) au chargement qui suit la fin d'un match First Blood** : lecture de guest 0 dans
+  `sub_82488DE0` (lr 82488DE8), build du 2026-10-22 avec des changements de Rendu non commités ; confié à Rendu.
+- **Interrupteur « jeu d'origine » (2026-10-22)** : `wwe12_original.h` (`Wwe12OriginalGame()`) +
+  `wwe12_original.cpp` (cvar `wwe12_original_game`, défaut false ; le launcher n'écrira que cette clé). À true,
+  il coupe les AJOUTS, jamais les correctifs. Chaque ajout le teste à côté de son cvar :
+  `if (Wwe12OriginalGame() || !REXCVAR_GET(x))`. Branchés : clavier, vibrations Univers, intros sautées
+  (Gameplay) ; à brancher par Univers : EDIT UNIVERSE, menu GRAPHICS, QUITTER ; à décider : icônes PS, textes
+  « Online », musiques perso.
 
 - **Outils de test sans l'utilisateur (Rendu, 2026-10-20)** : télécommande `wwe12_remote_pad` (mots de `remote_pad.txt`
   à côté de l'exe : A B X Y START BACK UP DOWN LEFT RIGHT LB RB, `wait<ms>`) + captures d'écran PowerShell ; parcours
@@ -205,6 +225,8 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
 | 7 | Univers : **remise à zéro de l'Univers** dans un menu en jeu, et **VACANT pour les titres qu'aucune émission n'utilise** (comme SvR 2011, demande d'un joueur ; un titre vacant utilisé par une émission n'aurait plus jamais de match, d'où cette limite). Stat tracking façon WWE '13 : plus tard, le jeu ne garde ni victoires ni historique, il faudra les noter nous-mêmes. | Univers | **fait** (2026-10-20 : reset MODIFIER L'UNIVERS / EDIT UNIVERSE + VACANT titre par titre via le vrai écran TITLE MANAGEMENT, refusé pour un titre d'émission ; `wwe12_universe_edit` = true par défaut ; Non = éditeur des Superstars ; Oui puis Oui = copie auto dans SaveBackups puis reset, enregistré à la prochaine sauvegarde du jeu ; vérifié en jeu EN et FR, DE/ES/IT pas vus ; doc docs/univers.md) |
 | 8 | Formulaire de bug GitHub + FAQ | Main | **fait** (formulaire `.github/ISSUE_TEMPLATE/bug_report.yml` + `docs/FAQ.md`) |
 | — | DLC manquants (cache) | Main | **fait** (2026-10-18) |
+| 9 | Sang des catcheuses (cvar `wwe12_female_blood`) | Gameplay | **reporté à la 1.0** (décision de l'utilisateur, 2026-10-22) ; ce qu'on sait : « Savoir acquis » |
+| 10 | Interrupteur unique `wwe12_original_game` (défaut false) qui coupe les ajouts du portage | Gameplay + Univers | **écrit** (2026-10-22 : en-tête commun + clavier, vibrations Univers, intros) ; reste : compiler et tester (après Rendu), puis la part d'Univers |
 
 ## Nouvelles pistes (2026-10-19)
 
