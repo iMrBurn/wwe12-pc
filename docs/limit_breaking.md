@@ -69,6 +69,49 @@ Colonne « Qui » : la conversation qui s'en charge (Univers, Gameplay, Rendu…
 
 ## Notes de recherche
 
+### Arènes : fichiers `pac/bg/bgNN.pac` (2026-10-22, lecture seule)
+
+Un `bgNN.pac` = EPAC → section `STG ` n° `00NN` → PACH d'entrées compressées en BPE de Yuke's
+(`tools/yukes_bpe.py`). Le jeu charge par numéro de scène (`/STG/%04d`, `sub_823BEE70`, `sub_823BEED0`,
+`sub_823E1E30`) : **le numéro du fichier = le numéro de scène**. Aucune table texte « nom ↔ fichier » trouvée (le
+choix d'arène affiche des logos) ; identification par le **sigle des objets 3D** dans chaque fichier (script
+jetable : décompresser les blocs BPE et compter les préfixes `xxx_` des noms) :
+
+| Fichier | Sigle | Arène WWE '12 |
+|---|---|---|
+| bg00 | sd | SmackDown |
+| bg01 | raw | RAW |
+| bg02 | nxt | NXT |
+| bg03 | wss | Superstars |
+| bg04 | otl | Over the Limit |
+| bg05 | f4w | Fatal 4-Way |
+| bg06 | mib | Money in the Bank |
+| bg07 | ss | SummerSlam |
+| bg08 | noc | Night of Champions |
+| bg09 | hic | Hell in a Cell |
+| bg10 | br | Bragging Rights |
+| bg11 | sv | Survivor Series |
+| bg12 | tlc | TLC |
+| bg13 | rr | Royal Rumble |
+| bg14 | elc | Elimination Chamber |
+| bg15 | wm27 | WrestleMania XXVII |
+| bg16 | er | Extreme Rules |
+| bg17 | nit | WCW Nitro |
+| bg18 | coc | sigle « coc » (Clash of Champions ?) |
+| bg19 | stc | Starrcade (texte 12334) |
+| bg20 | iraq / mb | Tribute to the Troops |
+| bg21 | elc | 2e version Elimination Chamber (plus petite ; probablement celle de la structure) |
+| bg22 | rr | 2e version Royal Rumble |
+| bg23 | raw | 2e version RAW (petite) |
+
+**Fichiers reçus d'un tiers** (`Desktop\WWE '12 PC Port\mods\pac\bg\`, mêmes en-têtes EPAC/STG que le jeu ; rien
+exécuté, rien copié dans le dépôt) : bg09 = Royal Rumble (sigle rr), bg10 = Elimination Chamber (ec), bg11 =
+WrestleMania 26 (`ar_fen_wm26`), bg20 = 2e Elimination Chamber (ec + `ar_dwnmt_chem`). Ils portent les numéros
+de **SvR 2011**, pas ceux de WWE '12 : dans le jeu ils remplacent **Hell in a Cell, Bragging Rights, Survivor
+Series et Tribute to the Troops**. Un match Elimination Chamber de WWE '12 utilise probablement bg14/bg21 (non
+vérifié en jeu), donc pas ces fichiers. Pour viser les bonnes arènes : bg13 (RR), bg14/bg21 (EC), bg15 (WM).
+Compatibilité SvR 2011 → WWE '12 non testée.
+
 ### Stipulations : I Quit, Special Referee, Gauntlet (2026-10-22, lecture seule)
 
 Étude sans compiler ni lancer le jeu : textes de `string.pac`, arbre de `menu/menu.pac`, code recompilé.
