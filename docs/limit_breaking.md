@@ -182,6 +182,12 @@ différent) ; les 3 autres non essayées, même origine. Il faudrait les convert
   présentation normal. Sur un plan (Cena au sol, Orton debout), des structures métalliques passent devant la caméra
   autour du ring : caméra d'entrée/fin de match de WWE '12 qui traverse le décor SvR, ou pièces mal placées
   (placement 50001-50020 et 995-999 gardés de SvR) ; à préciser en match.
+- **v6 en match (capture)** : la salle WM 26 est **bien placée** (tribunes, scène à gauche, marches), mais le **ring est
+  cassé** : seules les cordes ajoutées (980, WWE '12) s'affichent, pas le tapis, le tablier ni les poteaux ; ambiance
+  sombre et rouge. Les pièces du ring sont des modèles **à os** (`bone401`…) ; SvR en a 4 copies pour certaines.
+  Fichiers de placement 50003 (lumières de l'entrée : 960/2950 contre 90/305) et 50001 (attributs par objet, lumières
+  101-108 dans SvR, 121-131 dans WWE '12) diffèrent ; 50005 identique.
+  v7 = v6 + **tout le ring de WM XXVII** (`--replace 951,952,953,956,960,964,973,974 --remove 957-959,961-963,965-967`).
   Fichiers de test rangés dans
   `Desktop\WWE '12 PC Port\arenes_svr2011_desactivees\` (mods vide).
 

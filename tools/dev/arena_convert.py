@@ -13,7 +13,9 @@ table, each entry 4-byte aligned (most are Yuke's BPE blocks; they are copied as
 a 0x800-byte block after the rounded PACH holding the packer's signature.
 
 --add copies entries the SvR file lacks (980 ring ropes, 30002, 800/804/809 video screens by default);
---replace takes the donor's version of entries present in both (none by default).
+--replace takes the donor's version of entries present in both (none by default); --remove drops entries.
+Ring (bg15 test): 951 posts, 952/964 turnbuckles and covers, 953 mat, 956/960 ropes, 973/974 apron, 980 WWE '12
+ropes; SvR has four copies of some (957-959, 961-963, 965-967).
 --models converts every SvR 2011 JBOY model (top-level entries and those inside sub-PACHs such as 20000/20010)
 to the WWE '12 layout (tools/dev/jboy.py) and recompresses the changed entries (yukes_bpe.compress). The game
 loads an arena into a fixed buffer: a 16.7 MB file crashed and an 11.8 MB one hung (originals are at most ~10.9 MB).
@@ -95,6 +97,7 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--add", default="980,30002,800,804,809")
     ap.add_argument("--replace", default="")
+    ap.add_argument("--remove", default="", help="entries to drop (e.g. SvR-only ring pieces 957-959,961-963,965-967)")
     ap.add_argument("--stage", type=int, default=None, help="stage number written in the STG record")
     ap.add_argument("--models", action="store_true", help="convert the SvR JBOY models to WWE '12")
     args = ap.parse_args()
@@ -124,6 +127,9 @@ def main():
             print(f"{eid}: added from the donor ({len(donor_entries[eid])} bytes)")
         else:
             print(f"{eid}: not in the donor, skipped")
+    for eid in ids(args.remove):
+        if entries.pop(eid, None) is not None:
+            print(f"{eid}: removed")
     for eid in ids(args.replace):
         if eid in donor_entries:
             entries[eid] = donor_entries[eid]
