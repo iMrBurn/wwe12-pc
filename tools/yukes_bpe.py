@@ -115,3 +115,57 @@ def store(data: bytes, block: int = 2000) -> bytes:
         part = data[i:i + block]
         body += b"\xff\x80\xfe" + struct.pack("<H", len(part)) + part
     return MAGIC + struct.pack("<III", 0x100, len(body), len(data)) + bytes(body)
+
+
+def _table(left: list[int], right: list[int]) -> bytes:
+    """Table de paires au format lu par expand() : octet > 127 = sauter (n - 127) codes littéraux puis lire
+    une entrée ; octet n <= 127 = lire n + 1 entrées (code littéral : 1 octet, paire : gauche + droite)."""
+    out = bytearray()
+    c = 0
+    while c < 256:
+        run = 0
+        while c + run < 256 and left[c + run] == c + run and run < 128:
+            run += 1
+        if run:
+            out.append(127 + run)
+            c += run
+            if c == 256:
+                break
+            out.append(left[c])
+            if left[c] != c:
+                out.append(right[c])
+            c += 1
+            continue
+        n = 0
+        while c + n < 256 and n < 128 and not (left[c + n] == c + n and c + n + 1 < 256
+                                               and left[c + n + 1] == c + n + 1):
+            n += 1
+        out.append(n - 1)
+        for k in range(c, c + n):
+            out.append(left[k])
+            if left[k] != k:
+                out.append(right[k])
+        c += n
+    return bytes(out)
+
+
+def compress(data: bytes, block: int = 4000, threshold: int = 3) -> bytes:
+    """Compression BPE de Gage, sous-blocs de 4 000 octets comme les fichiers du jeu."""
+    from collections import Counter
+    body = bytearray()
+    for i in range(0, len(data), block):
+        buf = bytes(data[i:i + block])
+        left = list(range(256))
+        right = [0] * 256
+        used = set(buf)
+        free = [c for c in range(256) if c not in used]
+        while free and len(buf) > 1:
+            pairs = Counter(zip(buf, buf[1:]))
+            (a, b), count = pairs.most_common(1)[0]
+            if count < threshold:
+                break
+            code = free.pop()
+            buf = buf.replace(bytes((a, b)), bytes((code,)))
+            left[code], right[code] = a, b
+        body += _table(left, right) + struct.pack("<H", len(buf)) + buf
+    return MAGIC + struct.pack("<III", 0x100, len(body), len(data)) + bytes(body)

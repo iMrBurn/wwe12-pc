@@ -15,7 +15,8 @@ a 0x800-byte block after the rounded PACH holding the packer's signature.
 --add copies entries the SvR file lacks (980 ring ropes, 30002, 800/804/809 video screens by default);
 --replace takes the donor's version of entries present in both (none by default).
 --models converts every SvR 2011 JBOY model (top-level entries and those inside sub-PACHs such as 20000/20010)
-to the WWE '12 layout (tools/dev/jboy.py) and stores the changed entries as uncompressed BPE blocks.
+to the WWE '12 layout (tools/dev/jboy.py) and recompresses the changed entries (yukes_bpe.compress). The game
+loads an arena into a fixed buffer: a 16.7 MB file crashed and an 11.8 MB one hung (originals are at most ~10.9 MB).
 """
 import argparse
 import os
@@ -111,7 +112,7 @@ def main():
                 continue
             new, n = convert_models(data)
             if new is not None:
-                entries[eid] = yukes_bpe.store(new)
+                entries[eid] = yukes_bpe.compress(new)
                 total += n
         print(f"models converted: {total}, left as they are: {len(SKIPPED)} {sorted(set(SKIPPED))[:8]}")
 

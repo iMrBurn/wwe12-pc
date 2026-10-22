@@ -168,7 +168,13 @@ différent) ; les 3 autres non essayées, même origine. Il faudrait les convert
   `store()`** : bloc BPE non compressé (table de paires vide `FF 80 FE`, sous-blocs ≤ 2 000 octets ; le jeu en a
   ≤ 2 028). **`arena_convert.py --models`** convertit tous les modèles (y compris imbriqués) puis ajoute les entrées.
   Essai `work/arenes/bg15_wm26_v4.pac` : 330 modèles convertis (2 sans maillage laissés), relu sans erreur,
-  9 358/9 358 pointeurs valides. **Pas encore testé en jeu.**
+  9 358/9 358 pointeurs valides.
+- **Essais en jeu v4 et contrôle** : v4 (11,8 Mo, entrées converties en BPE non compressé) = **chargement infini** ;
+  contrôle = WM XXVII d'origine réencodée en BPE non compressé (16,7 Mo) = **plantage** (écriture à 0x7099000B,
+  lr 0x827E1430, juste au-delà d'une zone fixe). Le jeu charge l'arène dans un **tampon de taille fixe** (arènes
+  d'origine ≤ ~10,9 Mo, bg05). **`yukes_bpe.compress()`** : vrai BPE de Gage, sous-blocs de 4 000 octets comme le
+  jeu (mesuré : 4 000 décodés, ≤ 2 028 codés, ≤ 178 paires), aller-retour exact, ~16 % plus gros que le jeu.
+  v5 = v4 recompressée : **9,7 Mo**, relue sans erreur. Pas encore testée en jeu.
   Fichiers de test rangés dans
   `Desktop\WWE '12 PC Port\arenes_svr2011_desactivees\` (mods vide).
 
