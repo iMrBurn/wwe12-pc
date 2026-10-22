@@ -178,6 +178,10 @@ différent) ; les 3 autres non essayées, même origine. Il faudrait les convert
 - **v5 en jeu (2026-10-22) : ça charge et tourne à 60 fps !** Défauts (capture de l'utilisateur) : la **foule est mal
   placée** (spectateurs dans le ring et devant la caméra) et **tout est très sombre** (lightmap absente : pointeur
   +124 mis à 0 ; tables 995-999 peut-être). v6 = v5 + la foule de WM XXVII (`--replace 20000,20001,20002,20003,20010`).
+- **v6 en jeu** : l'arène WM 26 s'affiche (logo, structures, éclairage bleu correct, plus sombre du tout) ; écran de
+  présentation normal. Sur un plan (Cena au sol, Orton debout), des structures métalliques passent devant la caméra
+  autour du ring : caméra d'entrée/fin de match de WWE '12 qui traverse le décor SvR, ou pièces mal placées
+  (placement 50001-50020 et 995-999 gardés de SvR) ; à préciser en match.
   Fichiers de test rangés dans
   `Desktop\WWE '12 PC Port\arenes_svr2011_desactivees\` (mods vide).
 
