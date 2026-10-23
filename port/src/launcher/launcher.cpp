@@ -31,6 +31,7 @@
 #include "diagnostics.h"
 #include "game_process.h"
 #include "keybinds.h"
+#include "media.h"
 #include "mods.h"
 #include "saves.h"
 #include "toml_file.h"
@@ -586,6 +587,7 @@ ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 saves::Manager g_saves;
 mods::Manager g_mods;
+media::EntranceVideos g_videos;
 bool g_launch = false;
 int g_play_note = 0;  // 1 game already running, 2 something is busy
 Updater g_updater;
@@ -958,15 +960,37 @@ void PageControls() {
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.save_failed);
 }
 
+void PageModsTextures(bool fr);
+void PageModsFolder(const Texts &t);
+
 void PageMods() {
   const Texts &t = T();
   Title(t.mods);
   const bool fr = g_s.language == 4;
-  g_mods.Draw(fr);
-  ImGui::Dummy(ImVec2(0, 10));
+  if (!ImGui::BeginTabBar("modtabs"))
+    return;
+  if (ImGui::BeginTabItem(fr ? "Mods installés" : "Installed mods")) {
+    ImGui::Dummy(ImVec2(0, 4));
+    g_mods.Draw(fr);
+    ImGui::Dummy(ImVec2(0, 10));
+    PageModsFolder(t);
+    ImGui::EndTabItem();
+  }
+  if (ImGui::BeginTabItem(fr ? "Vidéos d'entrée" : "Entrance videos")) {
+    ImGui::Dummy(ImVec2(0, 4));
+    g_videos.Draw(fr, g_device.Get(), ExeDir(), g_mods);
+    ImGui::EndTabItem();
+  }
+  if (ImGui::BeginTabItem("Textures")) {
+    ImGui::Dummy(ImVec2(0, 4));
+    PageModsTextures(fr);
+    ImGui::EndTabItem();
+  }
+  ImGui::EndTabBar();
+}
 
-  // Texture dumps and packs (game: src/native/wwe12_texture_packs.h).
-  ImGui::Text("Textures");
+// Texture dumps and packs (game: src/native/wwe12_texture_packs.h).
+void PageModsTextures(bool fr) {
   bool dump = g_toml.GetBool("wwe12_texture_dump", false);
   if (ImGui::Checkbox(fr ? "Dump des textures (pour faire des packs)" : "Dump textures (to make texture packs)",
                       &dump)) {
@@ -989,7 +1013,10 @@ void PageMods() {
     fs::create_directories(ExeDir() / "textures", tec);
     OpenFolder(ExeDir() / "textures");
   }
-  ImGui::Dummy(ImVec2(0, 10));
+}
+
+// The files the player put in the mods folder by hand.
+void PageModsFolder(const Texts &t) {
   ImGui::TextWrapped("%s", t.mods_text);
   ImGui::Dummy(ImVec2(0, 8));
   const fs::path mods = ExeDir() / "mods";

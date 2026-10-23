@@ -200,7 +200,24 @@ textures de re:Blue au lieu de son cache.
   zip vont dans `textures\<id>\` à côté de l'exe (`deployed.txt` : `textures:<id>/…`).
 - Pas encore : nom de la texture du jeu dans le nom du dump (Kaiko indexe les `.pac` pour ça), lecture en arrière-plan.
 
-## 6 quinquies. Étape 3 : médias et images (plan, 2026-10-23, pas commencé)
+## 6 quinquies. Étape 3 : médias et images (2026-10-23, vidéos d'entrée **testées par l'utilisateur : OK**)
+
+**Fait : vidéos d'entrée.** Page MODS du launcher en 3 onglets (Mods installés / Vidéos d'entrée / Textures).
+Onglet « Vidéos d'entrée » (`port/src/launcher/media.h`) : catcheur (liste avec recherche), vidéo ou image,
+cadrage (image entière / remplir / étirer), bandeau de rampe du jeu gardé ou non, durée max., aperçu avant/après,
+puis « Créer le mod et l'installer » → `.svrmod` (`type=media`, `id=entrance_video_<nnn>`,
+`files/movies/titantron/<nnn>.bik`, zip non compressé écrit par `mods::Manager::WriteZip`) installé aussitôt.
+- **`movies/titantron/<nnn>.bik` = numéro du catcheur** : `pac/ch/chEtc.pac`, PACH à 0x4000 = fiches CHAR/DAT de
+  290 octets (BPE), id u16 à +44, nom (Latin-1) à +46 (ex. 100 THE ROCK, 139 JOHN CENA, 161 RANDY ORTON). Les
+  vidéos 401-427, 500-520, 616-725, 900-999 n'ont pas de fiche (vidéos génériques / créer une entrée ?) : listées
+  « Video <nnn> ».
+- `port/src/launcher/game_disc.h` : lecture des fichiers du jeu par le launcher (dossier `assets`/`game`, ou
+  **l'ISO** : XDVDFS, partition à 0 / 0x2080000 / 0xFD90000 / 0x18300000), décodeur BPE en C++, noms des catcheurs.
+- `port/src/launcher/video/` : code de Kaiko (b2521fe, crédit en tête de chaque fichier) ; Media Foundation en
+  chargement différé (éditions « N » de Windows). Le projet CMake compile maintenant aussi du C.
+- Test : John Cena + un MP4 de l'utilisateur → vidéo vue en jeu pendant l'entrée.
+
+Plan d'origine :
 
 Constats :
 - **Vidéos d'entrée** : `movies\titantron\<nnn>.bik` (217 fichiers) = **même format que SvR 2011** (Bink 1 `BIKi`,

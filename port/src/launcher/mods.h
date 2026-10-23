@@ -94,6 +94,35 @@ class Manager {
   // True when the launcher put this file of the mods folder there (path relative to mods, '/').
   bool IsDeployed(const std::string &rel) const { return deployed_.count(Key(rel)) != 0; }
 
+  // Installs a .svrmod made by the launcher itself (the entrance movie maker); the result shows in the list.
+  void InstallFile(bool french, const fs::path &zip) { Install(french ? kFrench : kEnglish, zip); }
+  const std::string &Message() const { return message_; }
+
+  // Writes a zip (entries stored, not compressed: the movies are compressed already).
+  static bool WriteZip(const fs::path &file, const std::vector<std::pair<std::string, std::vector<uint8_t>>> &entries) {
+    std::vector<uint8_t> z, cd;
+    auto u16 = [](std::vector<uint8_t> &v, uint32_t x) { v.push_back(uint8_t(x)), v.push_back(uint8_t(x >> 8)); };
+    auto u32 = [&](std::vector<uint8_t> &v, uint32_t x) { u16(v, x), u16(v, x >> 16); };
+    for (const auto &[name, bytes] : entries) {
+      const uint32_t crc = Crc32(bytes.data(), bytes.size()), size = uint32_t(bytes.size()), at = uint32_t(z.size());
+      u32(z, 0x04034b50), u16(z, 10), u16(z, 0x800), u16(z, 0), u16(z, 0), u16(z, 0x21);  // UTF-8 names
+      u32(z, crc), u32(z, size), u32(z, size), u16(z, uint32_t(name.size())), u16(z, 0);
+      z.insert(z.end(), name.begin(), name.end());
+      z.insert(z.end(), bytes.begin(), bytes.end());
+      u32(cd, 0x02014b50), u16(cd, 20), u16(cd, 10), u16(cd, 0x800), u16(cd, 0), u16(cd, 0), u16(cd, 0x21);
+      u32(cd, crc), u32(cd, size), u32(cd, size), u16(cd, uint32_t(name.size())), u16(cd, 0), u16(cd, 0);
+      u16(cd, 0), u16(cd, 0), u32(cd, 0), u32(cd, at);
+      cd.insert(cd.end(), name.begin(), name.end());
+    }
+    const uint32_t cd_at = uint32_t(z.size());
+    z.insert(z.end(), cd.begin(), cd.end());
+    u32(z, 0x06054b50), u16(z, 0), u16(z, 0), u16(z, uint32_t(entries.size())), u16(z, uint32_t(entries.size()));
+    u32(z, uint32_t(cd.size())), u32(z, cd_at), u16(z, 0);
+    std::ofstream f(file, std::ios::binary | std::ios::trunc);
+    f.write(reinterpret_cast<const char *>(z.data()), std::streamsize(z.size()));
+    return bool(f);
+  }
+
   void Draw(bool french) {
     const Texts &t = french ? kFrench : kEnglish;
     const bool running = game::IsRunning();

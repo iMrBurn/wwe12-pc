@@ -3,7 +3,7 @@
 # SDK boilerplate lives in generated/rexglue.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(wwe12 LANGUAGES CXX)
+project(wwe12 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -71,10 +71,17 @@ if(WIN32)
         "${WWE12_IMGUI_DIR}/imgui_tables.cpp"
         "${WWE12_IMGUI_DIR}/imgui_widgets.cpp"
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_win32.cpp"
-        "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp")
+        "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp"
+        # Entrance movies (Bink), from Kaiko's SvR 2011 port (credit in each file).
+        src/launcher/video/bink_decode.c
+        src/launcher/video/bink_encode.c
+        src/launcher/video/movie_maker.c)
     target_include_directories(wwe12_launcher PRIVATE "${WWE12_IMGUI_DIR}" "${WWE12_IMGUI_DIR}/backends"
         "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/vulkan-headers/include")
-    target_link_libraries(wwe12_launcher PRIVATE d3d11 dxgi d3dcompiler winhttp windowscodecs ole32 shell32)
+    target_link_libraries(wwe12_launcher PRIVATE d3d11 dxgi d3dcompiler winhttp windowscodecs ole32 shell32
+        mfplat mfreadwrite mfuuid propsys delayimp)
+    # Media Foundation is missing on Windows "N" editions: loaded only when a movie is made.
+    target_link_options(wwe12_launcher PRIVATE -Wl,/DELAYLOAD:mfplat.dll -Wl,/DELAYLOAD:mfreadwrite.dll)
     set_target_properties(wwe12_launcher PROPERTIES OUTPUT_NAME "WWE12 Launcher")
     add_dependencies(wwe12 wwe12_launcher)
 endif()
