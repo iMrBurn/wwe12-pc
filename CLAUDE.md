@@ -271,9 +271,20 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
   signature hors dépôt dans `D:\Android\keys`, release GitHub à part avec l'APK seul, sans .zip : le launcher
   ne regarde que les releases avec un .zip) ; SDK compilé pour Android x86_64 + arm64
   (`port/patches/rexglue-sdk-android.patch`, `android/build_sdk.ps1`, sorties sur D:). Le SDK PC reste
-  identique (code Android derrière `REX_PLATFORM_ANDROID` / `if(ANDROID)`). Suite : le jeu en `libmain.so`
-  (CMake `if(ANDROID)` dans `port/`), APK du jeu, ISO copiée dans le dossier `game` de l'appli, menu sur
-  l'émulateur.
+  identique (code Android derrière `REX_PLATFORM_ANDROID` / `if(ANDROID)`).
+  **2026-10-23 : le jeu tourne sur l'émulateur jusqu'au MENU PRINCIPAL** (démo 3D ~40 fps, sauvegarde créée ;
+  commit 2bea735). Jeu = `libwwe12.so` (`port/cmake/android.cmake`), APK par `android/game/build.ps1` (sans
+  données du jeu). Sur le téléphone, `Android/data/io.github.imrburn.wwe12/files` joue le rôle du dossier de l'exe
+  (variables `REX_APP_DIR` / `REX_NATIVE_LIB_DIR` posées par `WWE12Activity`) : `game/` (ISO ou fichiers),
+  `wwe12.toml`, `logs/`, `mods/`, `dlc/`, `wwe12/` (sauvegardes). Les fichiers du portage qui incluent
+  `<windows.h>` reçoivent `port/src/android/compat/windows.h` (aucune modif côté PC). **Fichiers partagés
+  touchés (Rendu)** : `reblue/gpu/backend.h` (`kSwapChainFormat` : RGBA8 sur Android, BGRA8 inchangé sur PC),
+  `device.cpp`, `device_pipelines.cpp`, `imgui_overlay_drawer.cpp`, `platform/native_window.cpp` ; patch
+  `plume-android.patch` (appliqué par `setup.ps1`). Pièges : fichiers poussés par `adb` = propriétaire « shell »,
+  invisibles pour l'appli (chown en root sur l'émulateur) ; grand modèle mémoire x86_64 = 70 000 sections
+  refusées par Android. Test sans manette : `wwe12_remote_pad = true` + `remote_pad.txt` dans `files/`.
+  Reste : version arm64 pour les testeurs, commandes tactiles, choix de l'ISO dans l'appli, QUITTER, icônes PS
+  (ressource .rc absente), traces de plantage.
 
 - **Version vraiment native de WWE '12 (souhait de l'utilisateur, 2026-10-21, long terme, après la 1.1)** :
   aujourd'hui le jeu est recompilé automatiquement (le C++ de `port/generated` est illisible et ne se
