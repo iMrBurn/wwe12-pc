@@ -312,6 +312,43 @@ lus par `svrfmt/texture`, vignettes vides), yeux (20000).
 Suite possible : lire les masques 16 bits, couleurs plus justes (lightmaps), public et cordes dans la vue 3D, conversion d'arènes WWE '13 (même format que WWE '12) ou SvR 2011
 (`arena_convert.py`), sons, catcheurs et tenues.
 
+## 6 nonies. Nouveaux emplacements d'arènes (en cours ; étape 1 testée en jeu le 2026-10-23 : OK)
+
+Voulu par l'utilisateur : ajouter des arènes (portées de SvR 2011, WWE '13, 2K14, 2K16 : il a les disques) sans
+remplacer celles du jeu. Méthode de Kaiko (SvR 2011) : des **pages** en plus dans le choix d'arène ; chaque arène
+ajoutée a une **base** (une arène du jeu dont elle prend le numéro, l'éclairage, le thème VS et la mémoire) et
+c'est son fichier qui est servi à la place de celui de la base quand on la choisit.
+
+**Ce que fait le jeu** (étude en lecture seule du code recompilé ; adresses vérifiées en jeu sauf mention) :
+- **Écran de choix d'arène** (exhibition) : classe native, constructeur **`sub_825A67A0`** (12 272 octets).
+  Données à **0x82028560** (section en lecture seule de l'image : la page hôte est rendue modifiable par
+  `VirtualProtect` avant d'y écrire, sinon violation d'accès) : +0 = 22 × {numéro de scène, drapeau} (0..20 puis
+  300 = au hasard), +176 = grille 4 × 6 de cases {fiche, haut/bas/gauche/droite}, +368 = 21 × {scène, nom de la
+  bannière « arenaNN »} (`sub_825A3CD8` lie les bannières, cherchées par numéro). Arène choisie : `sub_825A56C8`
+  (case → fiche → scène), rangée par la préparation du match en u16 à matchSettings+898 (`sub_826CBFD0`).
+- **Onglets** (this+3260) : LB / RB = `sub_825A5C88(this, 0/1)` (emplacements 10 / 13 de la vtable 0x820287E0),
+  mais en exhibition un seul onglet est actif et **le jeu ne transmet même pas LB / RB** : les pages lisent la
+  manette elles-mêmes pendant le dessin de l'écran (`sub_825A6A98`, chaque image : `sub_82A8C070` =
+  XInputGetState, LB 0x0100 / RB 0x0200, clavier compris).
+- Changement de page = les numéros des 21 fiches réécrits, puis ce que fait un changement d'onglet
+  (`sub_824C3000`(+3444), `sub_825A3CD8`, `sub_825A3AB8`(0,0), widget +44 vtable+16 = `sub_828BF398`,
+  `sub_824C3220`(+3368), `sub_824D19E8`).
+- Fausse piste : une classe jumelle (`sub_826361A8`, table 0x83071ED0) n'est pas cet écran.
+- **Bannières** : `menu/MatchHD.pac`, groupe MLYE/MUPA (entrée 7001, 71 DDS) : `arena00-03` 256×128 (grandes
+  cases), `arena04-20` plus petites ; **35 `CAR_dummyNN` de 256×128 inutilisées** (place pour les bannières des
+  arènes ajoutées). Non encore vérifié en jeu.
+- **Taille d'une arène** : chaque fichier a sa taille dans **`plist360.arc`** (et `_4x3`) ; le chargement
+  (`sub_823E02E0`) lit cette taille (`sub_827D99E0`), un fichier plus gros est lu tronqué → plantage (cause des
+  plantages de WM 26). Mémoire : tas 12 (≈ 18,7 Mo, table {tas, Ko} à 0x83073260) doit avoir taille + 5 Mo libres.
+  Non encore vérifié en jeu.
+
+**Étape 1 (faite)** : `port/src/native/wwe12_arena_pages.cpp`, cvar `wwe12_arena_pages_test` (une 2e page = les
+21 arènes à l'envers), lanceur `tools/dev/lancer_test_pages_arenes.bat`. Testé : O / U (RB / LB) changent de page.
+
+**Étapes suivantes** : 2) pages faites des arènes ajoutées (mods `type=arena` avec `base=`), bannière dans un
+`CAR_dummyNN` ; 3) le fichier de l'arène servi à la place de celui de la base quand on la choisit ; 4) taille de
+`plist360.arc` ajustée ; 5) Mod Maker : « nouvelle arène » au lieu de « remplacer ».
+
 ## 7. Questions ouvertes
 
 - Pour Kaiko : ~~code C++~~ (réglé : `port/modmaker/` de son dépôt) ; ~~extension~~ (réglé : `.svrmod` +
