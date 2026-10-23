@@ -339,6 +339,10 @@ différent) ; les 3 autres non essayées, même origine. Il faudrait les convert
   spectateurs géants devant la caméra, placement inconnu), spectateurs proches sombres, éclairage général (essayer
   `--bg-shaders` sur tous les modèles, pas seulement les cônes), cube blanc près des marches. **Leçon** : un seul
   changement par essai. Utile aussi pour le Mod Maker (1.0) et les arènes de WWE '13 (même format que WWE '12).
+- **Pour la reprise : le code de Kaiko le sait déjà** (`work/kaiko-svr2011/port/modmaker/svrfmt/wwe13.h/.cpp`,
+  conversion WWE '13 → SvR 2011, le sens inverse) : collision HMD en cm, arbre de visibilité, **fichiers de places de
+  la foule dans le paquet de la foule (cm)** (sans doute la cause des spectateurs géants de la v18), banque de
+  lumières, et un plafond de géométrie (≈ 65 450 sommets) dans `arena.h`. Voir `docs/mod_maker.md`.
 - **RTX de l'utilisateur** : PC Lenovo 83JH, RTX 5070 Laptop **absente pour Windows** (mode GPU du PC = intégré) ;
   les essais tournent sur l'Intel UHD. À rallumer par l'utilisateur dans Lenovo Vantage / Legion Space.
 
