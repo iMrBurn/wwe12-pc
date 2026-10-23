@@ -217,6 +217,12 @@ puis « Créer le mod et l'installer » → `.svrmod` (`type=media`, `id=entranc
   chargement différé (éditions « N » de Windows). Le projet CMake compile maintenant aussi du C.
 - Test : John Cena + un MP4 de l'utilisateur → vidéo vue en jeu pendant l'entrée.
 
+**Fait : images (guide) et crédits** (vérifiés par l'utilisateur le 2026-10-23). Onglet Textures : guide en 5 étapes
+(dump → `texture_dumps` → copie retouchée dans `textures` en gardant `_<empreinte>` → relancer → partager) et bouton
+« Créer un mod de textures... » (`media::TextureMods` : un dossier → `.svrmod` `type=textures`, seuls les
+`.png`/`.dds` nommés `..._<16 hex>` ; les autres sont comptés et signalés). Crédits Kaiko (vidéos, packs de textures)
+et FFmpeg (lecteur Bink, LGPL 2.1+) dans la page À propos et `port/dist/THIRD_PARTY_NOTICES.txt` (+ stb_image).
+
 Plan d'origine :
 
 Constats :
