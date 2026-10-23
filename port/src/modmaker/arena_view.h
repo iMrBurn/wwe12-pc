@@ -172,7 +172,7 @@ class View {
       return nullptr;
     if (w != rt_w_ || h != rt_h_)
       CreateTargets(w, h);
-    const float clear[4] = {0.08f, 0.08f, 0.09f, 1.0f};
+    const float clear[4] = {0.015f, 0.015f, 0.02f, 1.0f};  // (an arena in the dark, as in the game)
     ctx_->ClearRenderTargetView(rtv_.Get(), clear);
     ctx_->ClearDepthStencilView(dsv_.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
     ID3D11RenderTargetView *rtvs[] = {rtv_.Get()};
@@ -405,12 +405,15 @@ VO vs(VI i) {
   return o;
 }
 float4 ps(VO i) : SV_Target {
-  float4 c = textured > 0.5 ? tex.Sample(samp, i.uv) : float4(0.6, 0.6, 0.62, 1);
-  if (additive > 0.5) return float4(c.rgb * c.a, 1);
+  // No picture: the video screens (the game draws its videos there): a dark screen.
+  float4 c = textured > 0.5 ? tex.Sample(samp, i.uv) : float4(0.05, 0.07, 0.12, 1);
+  if (additive > 0.5) return float4(c.rgb * c.a * i.col.rgb, 1);
   clip(c.a - 0.4);
-  float3 l = normalize(float3(0.3, -1.0, 0.45));  // light from above (y is down)
-  float shade = 0.55 + 0.45 * saturate(abs(dot(normalize(i.n), l)));
-  return float4(c.rgb * shade, 1);
+  // The vertex colours are the arena's baked light (dark floors and stands, white for lit props), as in the game;
+  // a little shading from above keeps shapes readable.
+  float3 l = normalize(float3(0.3, -1.0, 0.45));  // (y is down)
+  float shade = 0.8 + 0.2 * saturate(abs(dot(normalize(i.n), l)));
+  return float4(c.rgb * i.col.rgb * shade, 1);
 })";
     ComPtr<ID3DBlob> vsb, psb, err;
     if (FAILED(D3DCompile(kShader, sizeof(kShader) - 1, "arena_view", nullptr, nullptr, "vs", "vs_4_0", 0, 0, &vsb,

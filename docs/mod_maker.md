@@ -292,7 +292,7 @@ le `svrfmt/jboy` de Kaiko, **adapté aux maillages WWE '12** (0xB8 octets, champ
 reconnus par le nom du shader à +0x7C) : 143 modèles de bg15 lus sans erreur. Les modèles d'arène sont déjà en
 place (cm, y vers le bas) ; table 50001 : `r` dessiné aussi en miroir (x → -x), `a` additif, `m(n)` écarté (placé
 par animation), `e` / `g` selon la case « Objets des entrées ». Image : `sampDiffusePrm` (case de la liste de
-textures du modèle) ; ni lightmaps, ni éclairage du jeu, ni public, ni cordes (posées par le jeu). bg15 : 117
+textures du modèle). **Lumière** : la couleur de chaque sommet est la lumière précalculée de l'arène (sol et tribunes sombres, accessoires blancs) : image × couleur du sommet (+ léger ombrage), fond presque noir ; écrans vidéo (`titantron_movie`, `minitron_movie`, `arena_movie` : pas d'image dans l'arène) en noir bleuté. Ni lightmaps séparées (UV non trouvées : une seule série d'UV par sommet), ni public, ni cordes (posées par le jeu). bg15 : 117
 objets, 54 427 triangles. Vérifié d'abord hors écran (rendu dans des PNG).
 
 Suite possible : couleurs plus justes (lightmaps, couleurs des sommets), public et cordes dans la vue 3D, conversion d'arènes WWE '13 (même format que WWE '12) ou SvR 2011
