@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "arena_edit.h"
+#include "arena_view.h"
 #include "game_disc.h"
 #include "game_process.h"
 #include "imgui.h"
@@ -107,6 +108,11 @@ class Page {
     ImGui::SameLine();
     if (ImGui::RadioButton(fr ? "Autre fichier d'arène" : "Another arena file", mode_ == 1))
       mode_ = 1;
+    ImGui::SameLine();
+    if (ImGui::RadioButton(fr ? "Vue 3D" : "3D view", mode_ == 2)) {
+      mode_ = 2;
+      view_stale_ = true;
+    }
 
     // The slot (and, to retexture, the arena opened from it).
     ImGui::SetNextItemWidth(360);
@@ -117,6 +123,7 @@ class Page {
         if (ImGui::Selectable(SlotLabel(kSlots[i]).c_str(), i == slot_)) {
           slot_ = i;
           OpenSlot(fr, disc);
+          view_stale_ = true;
         }
       ImGui::EndCombo();
     }
@@ -129,6 +136,10 @@ class Page {
     if (slot_ < 0 || budget_ == 0)
       return;
 
+    if (mode_ == 2) {
+      Draw3D(fr);
+      return;
+    }
     if (mode_ == 1)
       DrawOtherFile(fr);
     else
@@ -339,6 +350,7 @@ class Page {
     arena_.Unreduce();
     arena_.Replace(t, svrfmt::DdsEncode(img, info.format, info.mips > 1));
     thumbs_[selected_] = MakeThumb(arena_.Get(t).data);
+    view_stale_ = true;
     message_.clear();
     reduced_note_.clear();
   }
@@ -351,6 +363,45 @@ class Page {
     const fs::path out = media::PickSave(fr, std::wstring(tex.name.begin(), tex.name.end()) + L".png");
     if (!out.empty() && !wic_image::SavePng(out, img))
       pick_note_ = fr ? "Export impossible." : "Export failed.";
+  }
+
+  // The arena (with the pictures replaced so far) in 3D. Left drag: turn; right drag: move; wheel: zoom.
+  void Draw3D(bool fr) {
+    if (view_stale_) {
+      view_stale_ = false;
+      view_error_.clear();
+      Bytes now = arena_.Build();
+      if (!view_.Load(device_, now, &view_error_))
+        view_error_ = (fr ? "Vue 3D impossible : " : "No 3D view: ") + view_error_;
+    }
+    if (!view_error_.empty()) {
+      ImGui::TextColored(kRed, "%s", view_error_.c_str());
+      return;
+    }
+    if (ImGui::Checkbox(fr ? "Objets des entrées (scène, rampe)" : "Entrance objects (stage, ramp)",
+                        &view_.show_entrance))
+      ;
+    ImGui::SameLine();
+    if (ImGui::Button(fr ? "Recentrer" : "Reset view"))
+      view_.ResetCamera();
+    ImGui::SameLine();
+    ImGui::TextDisabled(fr ? "%zu objets, %zu triangles  -  clic gauche : tourner, clic droit : déplacer, molette : zoom"
+                           : "%zu objects, %zu triangles  -  left drag: turn, right drag: move, wheel: zoom",
+                        view_.Models(), view_.Triangles());
+    const ImVec2 size(ImGui::GetContentRegionAvail().x, std::max(240.0f, ImGui::GetContentRegionAvail().y - 4));
+    ID3D11ShaderResourceView *pic = view_.Render(int(size.x), int(size.y));
+    if (!pic)
+      return;
+    ImGui::Image(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(pic))), size);
+    if (ImGui::IsItemHovered()) {
+      const ImGuiIO &io = ImGui::GetIO();
+      if (io.MouseWheel != 0)
+        view_.Zoom(io.MouseWheel);
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0))
+        view_.Orbit(io.MouseDelta.x, io.MouseDelta.y);
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0))
+        view_.Pan(io.MouseDelta.x, io.MouseDelta.y);
+    }
   }
 
   void DrawOtherFile(bool fr) {
@@ -437,6 +488,10 @@ class Page {
   char filter_[64] = {}, name_[64] = {}, author_[64] = {};
   std::string error_, message_, reduced_note_, pick_note_;
   bool message_ok_ = false;
+
+  arena_view::View view_;
+  bool view_stale_ = true;
+  std::string view_error_;
 
   fs::path other_path_;
   arena_edit::Arena other_;

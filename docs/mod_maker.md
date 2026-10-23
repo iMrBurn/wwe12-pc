@@ -286,7 +286,16 @@ d'entrée, guide et mods de textures) est passée dans le Mod Maker.
   match à WrestleMania XXVII, l'arène charge et le tapis montre l'image.
 - `.svrmod` `type=arena`, `id=arena_bgNN_<nom>`, `files/pac/bg/bgNN.pac`, installé aussitôt.
 
-Suite possible : aperçu 3D des modèles, conversion d'arènes WWE '13 (même format que WWE '12) ou SvR 2011
+**Vue 3D des arènes** (2026-10-23, vue par l'utilisateur : OK) : page ARÈNES, « Vue 3D » (`arena_view.h`, D3D11
+dans une image affichée par ImGui ; clic gauche tourner, clic droit déplacer, molette zoom). Modèles JBOY lus par
+le `svrfmt/jboy` de Kaiko, **adapté aux maillages WWE '12** (0xB8 octets, champs à partir de +0x74 décalés de 4 ;
+reconnus par le nom du shader à +0x7C) : 143 modèles de bg15 lus sans erreur. Les modèles d'arène sont déjà en
+place (cm, y vers le bas) ; table 50001 : `r` dessiné aussi en miroir (x → -x), `a` additif, `m(n)` écarté (placé
+par animation), `e` / `g` selon la case « Objets des entrées ». Image : `sampDiffusePrm` (case de la liste de
+textures du modèle) ; ni lightmaps, ni éclairage du jeu, ni public, ni cordes (posées par le jeu). bg15 : 117
+objets, 54 427 triangles. Vérifié d'abord hors écran (rendu dans des PNG).
+
+Suite possible : couleurs plus justes (lightmaps, couleurs des sommets), public et cordes dans la vue 3D, conversion d'arènes WWE '13 (même format que WWE '12) ou SvR 2011
 (`arena_convert.py`), sons, catcheurs et tenues.
 
 ## 7. Questions ouvertes

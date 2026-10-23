@@ -87,6 +87,7 @@ if(WIN32)
     add_executable(wwe12_modmaker WIN32
         src/modmaker/modmaker.cpp
         src/modmaker/svrfmt/archive.cpp
+        src/modmaker/svrfmt/jboy.cpp
         src/modmaker/svrfmt/pac.cpp
         src/modmaker/svrfmt/texture.cpp
         src/modmaker/video/bink_decode.c
@@ -101,7 +102,7 @@ if(WIN32)
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp")
     target_include_directories(wwe12_modmaker PRIVATE src/modmaker src/launcher "${WWE12_IMGUI_DIR}"
         "${WWE12_IMGUI_DIR}/backends")
-    target_link_libraries(wwe12_modmaker PRIVATE d3d11 dxgi windowscodecs ole32 shell32
+    target_link_libraries(wwe12_modmaker PRIVATE d3d11 dxgi d3dcompiler windowscodecs ole32 shell32
         mfplat mfreadwrite mfuuid propsys delayimp)
     # Media Foundation is missing on Windows "N" editions: loaded only when a movie is made.
     target_link_options(wwe12_modmaker PRIVATE -Wl,/DELAYLOAD:mfplat.dll -Wl,/DELAYLOAD:mfreadwrite.dll)
