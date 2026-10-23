@@ -31,10 +31,10 @@
 #include "diagnostics.h"
 #include "game_process.h"
 #include "keybinds.h"
-#include "media.h"
 #include "mods.h"
 #include "saves.h"
 #include "toml_file.h"
+#include "ui_style.h"
 #include "updater.h"
 #include "vulkan_check.h"
 
@@ -44,6 +44,8 @@ using Microsoft::WRL::ComPtr;
 namespace fs = std::filesystem;
 
 namespace {
+
+using namespace ui;  // ui_style.h: the look shared with the Mod Maker
 
 // ---------------------------------------------------------------------------------------------
 // Device
@@ -249,7 +251,7 @@ const Texts kEnglish = {
     "Open the mods folder", "file(s) in the mods folder",
     "WWE '12 PC is an unofficial native port of WWE '12 (Xbox 360), made by fans.\n"
     "Native renderer adapted from nefariousjosiah's SmackDown vs. Raw ports, on the ReXGlue SDK\n"
-    "and re:Blue. DLC support by Banshee. Entrance movie maker and texture packs from Kaiko's\n"
+    "and re:Blue. DLC support by Banshee. Mod Maker and texture packs based on Kaiko's\n"
     "SmackDown vs. Raw 2011 port (Bink reader ported from FFmpeg, LGPL). Free software under the GPL-3.0 licence.\n"
     "No game data is included.\n\n"
     "Not affiliated with WWE, THQ or Yuke's.",
@@ -323,7 +325,7 @@ const Texts kFrench = {
     "Ouvrir le dossier mods", "fichier(s) dans le dossier mods",
     "WWE '12 PC est un portage natif non officiel de WWE '12 (Xbox 360), fait par des fans.\n"
     "Rendu natif adapté des portages SmackDown vs. Raw de nefariousjosiah, sur le SDK ReXGlue\n"
-    "et re:Blue. Support des DLC par Banshee. Fabricant de vidéos d'entrée et packs de textures repris du\n"
+    "et re:Blue. Support des DLC par Banshee. Mod Maker et packs de textures basés sur le\n"
     "portage SmackDown vs. Raw 2011 de Kaiko (lecteur Bink porté de FFmpeg, LGPL). Logiciel libre sous licence GPL-3.0.\n"
     "Aucune donnée du jeu n'est fournie.\n\n"
     "Sans lien avec WWE, THQ ou Yuke's.",
@@ -505,85 +507,6 @@ void SaveSettings() {
 const Texts &T() { return g_s.language == 4 ? kFrench : kEnglish; }
 
 // ---------------------------------------------------------------------------------------------
-// Style
-constexpr ImU32 kGold = IM_COL32(240, 190, 60, 255);
-constexpr ImU32 kRed = IM_COL32(200, 24, 34, 255);
-ImFont *g_font_body = nullptr;
-ImFont *g_font_title = nullptr;
-
-void SetupStyle() {
-  ImGuiStyle &st = ImGui::GetStyle();
-  st.WindowRounding = 0;
-  st.FrameRounding = 4;
-  st.GrabRounding = 4;
-  st.FramePadding = ImVec2(10, 7);
-  st.ItemSpacing = ImVec2(10, 10);
-  st.WindowBorderSize = 0;
-  ImVec4 *c = st.Colors;
-  c[ImGuiCol_WindowBg] = ImVec4(0.055f, 0.055f, 0.063f, 1.0f);
-  c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
-  c[ImGuiCol_Text] = ImVec4(0.95f, 0.94f, 0.92f, 1.0f);
-  c[ImGuiCol_TextDisabled] = ImVec4(0.6f, 0.58f, 0.55f, 1.0f);
-  c[ImGuiCol_FrameBg] = ImVec4(0.13f, 0.13f, 0.15f, 1.0f);
-  c[ImGuiCol_FrameBgHovered] = ImVec4(0.22f, 0.18f, 0.12f, 1.0f);
-  c[ImGuiCol_FrameBgActive] = ImVec4(0.30f, 0.22f, 0.10f, 1.0f);
-  c[ImGuiCol_Button] = ImVec4(0.16f, 0.16f, 0.18f, 1.0f);
-  c[ImGuiCol_ButtonHovered] = ImVec4(0.78f, 0.09f, 0.13f, 1.0f);
-  c[ImGuiCol_ButtonActive] = ImVec4(0.94f, 0.75f, 0.24f, 1.0f);
-  c[ImGuiCol_CheckMark] = ImVec4(0.94f, 0.75f, 0.24f, 1.0f);
-  c[ImGuiCol_Header] = ImVec4(0.78f, 0.09f, 0.13f, 0.6f);
-  c[ImGuiCol_HeaderHovered] = ImVec4(0.78f, 0.09f, 0.13f, 0.8f);
-  c[ImGuiCol_HeaderActive] = ImVec4(0.94f, 0.75f, 0.24f, 0.8f);
-  c[ImGuiCol_PopupBg] = ImVec4(0.09f, 0.09f, 0.10f, 0.98f);
-  c[ImGuiCol_Separator] = ImVec4(0.94f, 0.75f, 0.24f, 0.35f);
-  c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0);
-}
-
-void LoadFonts() {
-  ImGuiIO &io = ImGui::GetIO();
-  wchar_t windir[MAX_PATH];
-  GetWindowsDirectoryW(windir, MAX_PATH);
-  const fs::path fonts = fs::path(windir) / "Fonts";
-  std::error_code ec;
-  auto try_font = [&](const char *file, float size) -> ImFont * {
-    const fs::path p = fonts / file;
-    if (!fs::exists(p, ec))
-      return nullptr;
-    return io.Fonts->AddFontFromFileTTF(p.string().c_str(), size);
-  };
-  g_font_body = try_font("segoeui.ttf", 19.0f);
-  if (!g_font_body)
-    g_font_body = io.Fonts->AddFontDefault();
-  g_font_title = try_font("impact.ttf", 40.0f);
-  if (!g_font_title)
-    g_font_title = try_font("segoeuib.ttf", 34.0f);
-  if (!g_font_title)
-    g_font_title = g_font_body;
-}
-
-// A slanted brush stroke, the game menus' look.
-void Stroke(ImDrawList *dl, ImVec2 a, float w, float h, ImU32 col, float slant = 18.0f) {
-  dl->AddQuadFilled(ImVec2(a.x + slant, a.y), ImVec2(a.x + w + slant, a.y),
-                    ImVec2(a.x + w, a.y + h), ImVec2(a.x, a.y + h), col);
-}
-
-bool BigButton(const char *label, ImVec2 size, ImU32 fill, ImU32 text_col) {
-  ImGui::PushID(label);
-  const ImVec2 p = ImGui::GetCursorScreenPos();
-  const bool clicked = ImGui::InvisibleButton("##b", size);
-  const bool hovered = ImGui::IsItemHovered();
-  ImDrawList *dl = ImGui::GetWindowDrawList();
-  Stroke(dl, p, size.x - 18, size.y, hovered ? kRed : fill);
-  ImGui::PushFont(g_font_title, size.y >= 80 ? 46.0f : 30.0f);
-  const ImVec2 ts = ImGui::CalcTextSize(label);
-  dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + (size.y - ts.y) * 0.5f),
-              hovered ? IM_COL32_WHITE : text_col, label);
-  ImGui::PopFont();
-  ImGui::PopID();
-  return clicked;
-}
-
-// ---------------------------------------------------------------------------------------------
 // Pages
 enum Page { kPlay, kSettings, kControls, kMods, kSaves, kMusic, kAbout };
 Page g_page = kPlay;
@@ -591,23 +514,11 @@ ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 saves::Manager g_saves;
 mods::Manager g_mods;
-media::EntranceVideos g_videos;
-media::TextureMods g_texture_mods;
 bool g_launch = false;
 int g_play_note = 0;  // 1 game already running, 2 something is busy
 Updater g_updater;
 VulkanCheck g_vulkan;
 std::string g_changelog;  // CHANGELOG.md next to the exe (the notes of this version), prepared
-
-void Title(const char *text) {
-  ImGui::PushFont(g_font_title, 44.0f);
-  const ImVec2 p = ImGui::GetCursorScreenPos();
-  Stroke(ImGui::GetWindowDrawList(), ImVec2(p.x - 10, p.y + ImGui::GetTextLineHeight() - 4), 300,
-         10, kRed, 6);
-  ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), "%s", text);
-  ImGui::PopFont();
-  ImGui::Dummy(ImVec2(0, 6));
-}
 
 void PagePlay() {
   const Texts &t = T();
@@ -966,12 +877,31 @@ void PageControls() {
 }
 
 void PageModsTextures(bool fr);
+std::string g_modmaker_error;
+
+void OpenModMaker(bool fr) {
+  const fs::path exe = ExeDir() / L"WWE12 Mod Maker.exe";
+  g_modmaker_error.clear();
+  if (reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", exe.wstring().c_str(), nullptr,
+                                              ExeDir().wstring().c_str(), SW_SHOWNORMAL)) <= 32)
+    g_modmaker_error = fr ? "« WWE12 Mod Maker.exe » est introuvable à côté du launcher."
+                          : "\"WWE12 Mod Maker.exe\" was not found next to the launcher.";
+}
 void PageModsFolder(const Texts &t);
 
 void PageMods() {
   const Texts &t = T();
   Title(t.mods);
   const bool fr = g_s.language == 4;
+  // Making mods is the Mod Maker's job (entrance videos, texture mods, the game's files); the launcher
+  // installs and manages them.
+  if (ImGui::Button(fr ? "Ouvrir le Mod Maker" : "Open the Mod Maker"))
+    OpenModMaker(fr);
+  ImGui::SameLine();
+  ImGui::TextDisabled("%s", fr ? "Créer des mods : vidéos d'entrée, textures..." : "Make mods: entrance videos, "
+                                                                                   "textures...");
+  if (!g_modmaker_error.empty())
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", g_modmaker_error.c_str());
   if (!ImGui::BeginTabBar("modtabs"))
     return;
   if (ImGui::BeginTabItem(fr ? "Mods installés" : "Installed mods")) {
@@ -979,11 +909,6 @@ void PageMods() {
     g_mods.Draw(fr);
     ImGui::Dummy(ImVec2(0, 10));
     PageModsFolder(t);
-    ImGui::EndTabItem();
-  }
-  if (ImGui::BeginTabItem(fr ? "Vidéos d'entrée" : "Entrance videos")) {
-    ImGui::Dummy(ImVec2(0, 4));
-    g_videos.Draw(fr, g_device.Get(), ExeDir(), g_mods);
     ImGui::EndTabItem();
   }
   if (ImGui::BeginTabItem("Textures")) {
@@ -1018,10 +943,9 @@ void PageModsTextures(bool fr) {
     fs::create_directories(ExeDir() / "textures", tec);
     OpenFolder(ExeDir() / "textures");
   }
-  ImGui::Dummy(ImVec2(0, 10));
-  ImGui::Separator();
-  ImGui::Dummy(ImVec2(0, 4));
-  g_texture_mods.Draw(fr);
+  ImGui::Dummy(ImVec2(0, 6));
+  ImGui::TextDisabled("%s", fr ? "Pour retoucher une image pas à pas et en faire un mod : le Mod Maker."
+                               : "To edit a picture step by step and make a mod of it: the Mod Maker.");
 }
 
 // The files the player put in the mods folder by hand.

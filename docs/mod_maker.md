@@ -203,7 +203,7 @@ textures de re:Blue au lieu de son cache.
 ## 6 quinquies. Étape 3 : médias et images (2026-10-23, vidéos d'entrée **testées par l'utilisateur : OK**)
 
 **Fait : vidéos d'entrée.** Page MODS du launcher en 3 onglets (Mods installés / Vidéos d'entrée / Textures).
-Onglet « Vidéos d'entrée » (`port/src/launcher/media.h`) : catcheur (liste avec recherche), vidéo ou image,
+Onglet « Vidéos d'entrée » (`port/src/modmaker/media.h` depuis l'étape 4) : catcheur (liste avec recherche), vidéo ou image,
 cadrage (image entière / remplir / étirer), bandeau de rampe du jeu gardé ou non, durée max., aperçu avant/après,
 puis « Créer le mod et l'installer » → `.svrmod` (`type=media`, `id=entrance_video_<nnn>`,
 `files/movies/titantron/<nnn>.bik`, zip non compressé écrit par `mods::Manager::WriteZip`) installé aussitôt.
@@ -213,7 +213,7 @@ puis « Créer le mod et l'installer » → `.svrmod` (`type=media`, `id=entranc
   « Video <nnn> ».
 - `port/src/launcher/game_disc.h` : lecture des fichiers du jeu par le launcher (dossier `assets`/`game`, ou
   **l'ISO** : XDVDFS, partition à 0 / 0x2080000 / 0xFD90000 / 0x18300000), décodeur BPE en C++, noms des catcheurs.
-- `port/src/launcher/video/` : code de Kaiko (b2521fe, crédit en tête de chaque fichier) ; Media Foundation en
+- `port/src/modmaker/video/` : code de Kaiko (b2521fe, crédit en tête de chaque fichier) ; Media Foundation en
   chargement différé (éditions « N » de Windows). Le projet CMake compile maintenant aussi du C.
 - Test : John Cena + un MP4 de l'utilisateur → vidéo vue en jeu pendant l'entrée.
 
@@ -245,6 +245,29 @@ Plan proposé :
 3. Page « Médias » (dans le launcher en attendant le Mod Maker.exe) : choisir un catcheur + une vidéo MP4 →
    aperçu → `.svrmod` `type=media` (`files/movies/titantron/<nnn>.bik`).
 4. Aide pour les images : un petit guide « dump → retouche → mod de textures ».
+
+## 6 sexies. Étape 4 : `WWE12 Mod Maker.exe`, première version (2026-10-23, **testée par l'utilisateur : OK**)
+
+Décision de l'utilisateur : **le Mod Maker fabrique, le launcher installe**. Le launcher garde « Mods installés »
+et le dump de textures, avec un bouton « Ouvrir le Mod Maker » en haut de la page MODS ; la fabrication (vidéos
+d'entrée, guide et mods de textures) est passée dans le Mod Maker.
+- Programme `wwe12_modmaker` → `WWE12 Mod Maker.exe` à côté du jeu (`port/src/modmaker/modmaker.cpp`, ressources
+  `port/res/modmaker.rc.in`) ; même style que le launcher (`port/src/launcher/ui_style.h`, partagé) ; langue du jeu
+  (`user_language` de `wwe12.toml`) ; installe ce qu'il fabrique par le même `mods::Manager`.
+- Pages : Accueil, Vidéos (`media::EntranceVideos`), Textures (dump + `media::TextureMods`), **Fichiers du jeu**
+  (`pac_page.h` : dossier `pac/...` du jeu ou fichier quelconque → arbre EPAC / PACH, BPE défait, aperçu des DDS et
+  des paquets de textures sur damier, textes, export ; lecture seule), À propos (crédits).
+- Lecteurs d'archives de Kaiko repris : `port/src/modmaker/svrfmt/` (`bytes.h`, `pac`, `archive`, `texture`), avec
+  deux cales : `unzip.h` (zlib par `launcher/inflate.h`) et `xcompress.h` (LZX de WWE '13+ non repris : refusé
+  avec un message). `game_disc.h` sait aussi lister les sous-dossiers (`ListDirs`).
+- `tools/package.ps1` copie `WWE12 Mod Maker.exe` dans le zip et ajoute son empreinte SHA-256.
+- Test : ouverture depuis le launcher, toutes les pages, vidéo d'entrée et mod de textures refaits, archives
+  `.pac` parcourues avec aperçu.
+- À vérifier par la Main avant la release : la mise à jour automatique du launcher doit aussi remplacer
+  `WWE12 Mod Maker.exe` ; readmes à compléter (Mod Maker, dossiers `textures` / `texture_dumps`).
+
+Suite possible (étape 5) : page Arènes (remplacer une arène, contrôle de taille, `arena_convert.py` en option),
+aperçu des modèles 3D, sons.
 
 ## 7. Questions ouvertes
 

@@ -71,19 +71,42 @@ if(WIN32)
         "${WWE12_IMGUI_DIR}/imgui_tables.cpp"
         "${WWE12_IMGUI_DIR}/imgui_widgets.cpp"
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_win32.cpp"
-        "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp"
-        # Entrance movies (Bink), from Kaiko's SvR 2011 port (credit in each file).
-        src/launcher/video/bink_decode.c
-        src/launcher/video/bink_encode.c
-        src/launcher/video/movie_maker.c)
+        "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp")
     target_include_directories(wwe12_launcher PRIVATE "${WWE12_IMGUI_DIR}" "${WWE12_IMGUI_DIR}/backends"
         "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/vulkan-headers/include")
-    target_link_libraries(wwe12_launcher PRIVATE d3d11 dxgi d3dcompiler winhttp windowscodecs ole32 shell32
-        mfplat mfreadwrite mfuuid propsys delayimp)
-    # Media Foundation is missing on Windows "N" editions: loaded only when a movie is made.
-    target_link_options(wwe12_launcher PRIVATE -Wl,/DELAYLOAD:mfplat.dll -Wl,/DELAYLOAD:mfreadwrite.dll)
+    target_link_libraries(wwe12_launcher PRIVATE d3d11 dxgi d3dcompiler winhttp windowscodecs ole32 shell32)
     set_target_properties(wwe12_launcher PROPERTIES OUTPUT_NAME "WWE12 Launcher")
     add_dependencies(wwe12 wwe12_launcher)
+
+    # Mod Maker (« WWE12 Mod Maker.exe », à côté du jeu) : fabrique les mods (.svrmod). Basé sur celui du portage
+    # SvR 2011 de Kaiko (crédit dans chaque fichier repris) ; partage le style, les mods et la lecture du jeu
+    # avec le launcher (src/launcher).
+    configure_file(res/modmaker.rc.in "${CMAKE_CURRENT_BINARY_DIR}/modmaker.rc" @ONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/modmaker.rc" PROPERTIES
+        OBJECT_DEPENDS "${WWE12_RES_DIR}/wwe12.ico;${WWE12_RES_DIR}/wwe12.png")
+    add_executable(wwe12_modmaker WIN32
+        src/modmaker/modmaker.cpp
+        src/modmaker/svrfmt/archive.cpp
+        src/modmaker/svrfmt/pac.cpp
+        src/modmaker/svrfmt/texture.cpp
+        src/modmaker/video/bink_decode.c
+        src/modmaker/video/bink_encode.c
+        src/modmaker/video/movie_maker.c
+        "${CMAKE_CURRENT_BINARY_DIR}/modmaker.rc"
+        "${WWE12_IMGUI_DIR}/imgui.cpp"
+        "${WWE12_IMGUI_DIR}/imgui_draw.cpp"
+        "${WWE12_IMGUI_DIR}/imgui_tables.cpp"
+        "${WWE12_IMGUI_DIR}/imgui_widgets.cpp"
+        "${WWE12_IMGUI_DIR}/backends/imgui_impl_win32.cpp"
+        "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp")
+    target_include_directories(wwe12_modmaker PRIVATE src/modmaker src/launcher "${WWE12_IMGUI_DIR}"
+        "${WWE12_IMGUI_DIR}/backends")
+    target_link_libraries(wwe12_modmaker PRIVATE d3d11 dxgi windowscodecs ole32 shell32
+        mfplat mfreadwrite mfuuid propsys delayimp)
+    # Media Foundation is missing on Windows "N" editions: loaded only when a movie is made.
+    target_link_options(wwe12_modmaker PRIVATE -Wl,/DELAYLOAD:mfplat.dll -Wl,/DELAYLOAD:mfreadwrite.dll)
+    set_target_properties(wwe12_modmaker PROPERTIES OUTPUT_NAME "WWE12 Mod Maker")
+    add_dependencies(wwe12 wwe12_modmaker)
 endif()
 
 # GPU Xenos émulé (plugin chargé à l'exécution, copié à côté de l'exe). Sans lui, le runtime

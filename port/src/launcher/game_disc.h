@@ -83,6 +83,25 @@ class GameDisc {
     return names;
   }
 
+  // The sub folders of a disc folder ("" = the root).
+  std::vector<std::string> ListDirs(const std::string &dir) const {
+    std::vector<std::string> names;
+    if (!folder_.empty()) {
+      std::error_code ec;
+      for (fs::directory_iterator it(folder_ / dir, ec), end; !ec && it != end; it.increment(ec))
+        if (it->is_directory(ec))
+          names.push_back(it->path().filename().string());
+      return names;
+    }
+    Item d;
+    if (iso_.empty() || !Find(dir, d) || !d.dir)
+      return names;
+    for (const auto &e : ReadDir(d))
+      if (e.dir)
+        names.push_back(e.name);
+    return names;
+  }
+
  private:
   struct Item {
     std::string name;

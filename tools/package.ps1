@@ -32,6 +32,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Dist "game") | Out-Null
 # Exécutable et bibliothèques. Le client du profileur (Tracy) ne sert qu'au développement.
 Copy-Item (Join-Path $Build "wwe12.exe") $Dist
 Copy-Item (Join-Path $Build "WWE12 Launcher.exe") $Dist
+Copy-Item (Join-Path $Build "WWE12 Mod Maker.exe") $Dist
 Get-ChildItem $Build -Filter *.dll | Where-Object { $_.Name -notlike "Tracy*" } |
     ForEach-Object { Copy-Item $_.FullName $Dist }
 
@@ -208,7 +209,8 @@ try {
 # Empreintes SHA-256 à coller dans les notes de la release : un joueur vérifie ainsi que ses fichiers
 # sont bien ceux publiés (utile quand un antivirus signale l'exe, non signé, à tort).
 $Sums = Join-Path $Root "dist\SHA256-v$Version.txt"
-@($Zip, (Join-Path $Dist "wwe12.exe"), (Join-Path $Dist "WWE12 Launcher.exe")) | ForEach-Object {
+@($Zip, (Join-Path $Dist "wwe12.exe"), (Join-Path $Dist "WWE12 Launcher.exe"),
+  (Join-Path $Dist "WWE12 Mod Maker.exe")) | ForEach-Object {
     "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), (Split-Path $_ -Leaf)
 } | Set-Content -Path $Sums -Encoding ascii
 "Empreintes : $Sums"
