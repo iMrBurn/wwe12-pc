@@ -149,8 +149,10 @@ def _table(left: list[int], right: list[int]) -> bytes:
     return bytes(out)
 
 
-def compress(data: bytes, block: int = 4000, threshold: int = 3) -> bytes:
-    """Compression BPE de Gage, sous-blocs de 4 000 octets comme les fichiers du jeu."""
+def compress(data: bytes, block: int = 1200, threshold: int = 3) -> bytes:
+    """Compression BPE de Gage. Sous-blocs de 1 200 octets : ceux de Yuke's décodent ~1 100 octets (médiane,
+    4 000 au plus) ; avec 256 codes par bloc, des blocs de 4 000 donnaient +13 % contre +0,5 % ici (foule de
+    WM 26), et une arène ne doit pas dépasser la taille de son fichier d'origine."""
     from collections import Counter
     body = bytearray()
     for i in range(0, len(data), block):
@@ -168,4 +170,60 @@ def compress(data: bytes, block: int = 4000, threshold: int = 3) -> bytes:
             buf = buf.replace(bytes((a, b)), bytes((code,)))
             left[code], right[code] = a, b
         body += _table(left, right) + struct.pack("<H", len(buf)) + buf
+    return MAGIC + struct.pack("<III", 0x100, len(body), len(data)) + bytes(body)
+
+
+def split(entry: bytes) -> list[tuple[bytes, bytes]] | None:
+    """Sous-blocs d'un bloc BPE : liste de (octets codés : table + taille + données, octets décodés).
+    Tailles des sous-blocs en little-endian (WWE '12 et SvR 2011) ; None si le bloc ne se lit pas ainsi."""
+    hdr = parse_header(entry)
+    if hdr is None:
+        return None
+    packed, unpacked = hdr
+    src = entry[HEADER_SIZE:HEADER_SIZE + packed]
+    out, pos, total = [], 0, 0
+    while pos < len(src) and total < unpacked:
+        start = pos
+        c = 0
+        while c < 256:
+            count = src[pos]; pos += 1
+            if count > 127:
+                c += count - 127
+                count = 0
+            if c == 256:
+                break
+            for _ in range(count + 1):
+                pos += 1 if src[pos] == c else 2
+                c += 1
+            if c == 256:
+                break
+        size = src[pos] | (src[pos + 1] << 8)
+        pos += 2 + size
+        try:
+            decoded = expand(src[start:pos], 1 << 20, size_big_endian=False)
+        except (IndexError, ValueError):
+            return None
+        out.append((src[start:pos], decoded))
+        total += len(decoded)
+    return out if total == unpacked else None
+
+
+def compress_like(data: bytes, old: bytes, block: int = 1200) -> bytes:
+    """compress(), mais en gardant tels quels les sous-blocs de l'ancien bloc `old` (compressés par Yuke's, ~16 %
+    plus petits que les nôtres) dont la tranche décodée est inchangée, à la même place. Les blocs de Yuke's ont
+    une taille décodée variable (≤ 4 000) : on suit leurs frontières, et la fin ajoutée est compressée par nous."""
+    body = bytearray()
+    reused = pos = 0
+    for coded, decoded in split(old) or []:
+        if pos >= len(data):
+            break
+        if data[pos:pos + len(decoded)] == decoded:
+            body += coded
+            reused += 1
+        else:
+            body += compress(data[pos:pos + len(decoded)], block)[HEADER_SIZE:]
+        pos += len(decoded)
+    if pos < len(data):
+        body += compress(data[pos:], block)[HEADER_SIZE:]
+    compress_like.reused = reused
     return MAGIC + struct.pack("<III", 0x100, len(body), len(data)) + bytes(body)

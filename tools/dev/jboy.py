@@ -120,11 +120,85 @@ def svr_to_w12(data, inserted_value=0):
         new_loc = moved(loc)
         struct.pack_into(">I", out, new_loc, moved(u32(data, loc)))
         new_locs.append(new_loc)
+    # The inserted word (record +0x74) is, in every WWE '12 model, a second pointer to the mesh's strip table
+    # (the same value as record +0x9C). The yBG_* background shaders need it; 0 only works with yDefault.
+    pointers = set(new_locs)
+    for i in range(count):
+        word, strips = MESH_TABLE + i * W12_MESH + INSERT_AT, POF_BASE + MESH_TABLE + i * W12_MESH + 0x9C
+        if strips in pointers and inserted_value == 0:
+            out[word:word + 4] = out[strips:strips + 4]
+            new_locs.append(word)
     struct.pack_into(">I", out, 4, new_size)
     struct.pack_into(">I", out, 0x0C, new_size)
     out += tail + encode_pof0(new_locs)
     end = pof_at + 8 + u32(data, pof_at + 4)
     out += data[end:]  # whatever follows POF0 (end marker, padding)
+    return bytes(out)
+
+
+BG_SHADERS = {b"yDefault": b"yBG_Default", b"yUVScroll": b"yBG_UVScroll", b"yBumpMap": b"yBG_BumpMap"}
+
+
+def bg_shaders(data):
+    """SvR 2011 arena meshes use yDefault / yUVScroll / yBumpMap; every WWE '12 arena uses the background
+    shaders yBG_* (yDefault is for props there). Shader name: 16 bytes at record +0x7C (WWE '12 layout)."""
+    out = bytearray(data)
+    for i in range(u32(data, 0x18)):
+        at = POF_BASE + MESH_TABLE + i * W12_MESH + 0x7C
+        name = bytes(out[at:at + 16]).split(b"\0")[0]
+        if name in BG_SHADERS:
+            out[at:at + 16] = BG_SHADERS[name].ljust(16, b"\0")
+    return bytes(out)
+
+
+def dim(data, factor, params=(b"g_f4MatAmbCol", b"g_f4MatDifCol")):
+    """Multiply the RGB of the given material colours. Parameters: name[16], u16 type (0x0D = float4),
+    u16 size, then the value. SvR 2011's additive beam cones (ambient 1.5-2.0, WWE '12's own: 1.0) add up
+    to a white glare over the ring during WWE '12's ring introductions."""
+    out = bytearray(data)
+    for name in params:
+        at = out.find(name + b"\0")
+        while at >= 0:
+            if struct.unpack_from(">H", out, at + 16)[0] == 0x0D:
+                for k in range(3):
+                    pos = at + 20 + 4 * k
+                    struct.pack_into(">f", out, pos, struct.unpack_from(">f", out, pos)[0] * factor)
+            at = out.find(name + b"\0", at + 1)
+    return bytes(out)
+
+
+def scale(data, factor=10.0, mesh=W12_MESH):
+    """Scale a model's geometry: SvR 2011 counts in 10 cm units, WWE '12 in cm (ring mat 12 vs 120).
+    Vertices (28 bytes: position, normal, colour) behind +0x68 -> one pointer per weight block (+0x5C),
+    node translations (+16) and bounding spheres (+64, 80-byte nodes at header +0x28), mesh spheres."""
+    out = bytearray(data)
+    f32 = lambda off: struct.unpack_from(">f", out, off)[0]  # noqa: E731
+
+    def mul(off, n):
+        for k in range(n):
+            struct.pack_into(">f", out, off + 4 * k, f32(off + 4 * k) * factor)
+
+    sphere = 0xA4 if mesh == SVR_MESH else 0xA8
+    pointers = set(read_pof0(data)[1])
+    for i in range(u32(data, 0x18)):
+        rec = POF_BASE + MESH_TABLE + i * mesh
+        count, blocks = u32(data, rec), u32(data, rec + 0x5C)
+        arrays = POF_BASE + u32(data, rec + 0x68)
+        for b in range(blocks):
+            # Skinned crowd models have 2 weight blocks but one vertex array: only words listed in POF0
+            # are addresses (the next word there is already vertex data).
+            if arrays + 4 * b not in pointers:
+                break
+            vtx = POF_BASE + u32(data, arrays + 4 * b)
+            if vtx + count * 28 > len(data):
+                raise ValueError(f"mesh {i}: vertices out of the model")
+            for v in range(count):
+                mul(vtx + v * 28, 3)
+        mul(rec + sphere, 4)
+    nodes = POF_BASE + u32(data, 0x28)
+    for j in range(u32(data, 0x20)):
+        mul(nodes + j * 80 + 16, 3)
+        mul(nodes + j * 80 + 64, 4)
     return bytes(out)
 
 
