@@ -31,6 +31,7 @@
 #include "diagnostics.h"
 #include "game_process.h"
 #include "keybinds.h"
+#include "mods.h"
 #include "saves.h"
 #include "toml_file.h"
 #include "updater.h"
@@ -584,6 +585,7 @@ Page g_page = kPlay;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 saves::Manager g_saves;
+mods::Manager g_mods;
 bool g_launch = false;
 int g_play_note = 0;  // 1 game already running, 2 something is busy
 Updater g_updater;
@@ -959,14 +961,24 @@ void PageControls() {
 void PageMods() {
   const Texts &t = T();
   Title(t.mods);
+  g_mods.Draw(g_s.language == 4);
+  ImGui::Dummy(ImVec2(0, 10));
   ImGui::TextWrapped("%s", t.mods_text);
   ImGui::Dummy(ImVec2(0, 8));
   const fs::path mods = ExeDir() / "mods";
+  // The player's own files: not the installed .svrmod mods nor the files the launcher put in for them.
   std::vector<std::string> files;
   std::error_code ec;
   for (auto it = fs::recursive_directory_iterator(mods, ec); it != fs::recursive_directory_iterator();
        it.increment(ec)) {
-    if (it->is_regular_file(ec) && it->path().filename() != "HOW_TO_USE_MODS.txt")
+    if (it->is_directory(ec) && it->path().filename() == ".svrmods") {
+      it.disable_recursion_pending();
+      continue;
+    }
+    if (!it->is_regular_file(ec) || it->path().filename() == "HOW_TO_USE_MODS.txt")
+      continue;
+    const std::u8string rel = fs::relative(it->path(), mods, ec).generic_u8string();
+    if (!g_mods.IsDeployed(std::string(rel.begin(), rel.end())))
       files.push_back(fs::relative(it->path(), mods, ec).string());
   }
   if (ImGui::Button(t.open_mods))
@@ -1196,6 +1208,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   ImGui_ImplWin32_EnableDpiAwareness();
   LoadSettings();
   g_saves.Init(DocumentsDir() / "wwe12", ExeDir());
+  g_mods.Init(ExeDir() / "mods");
   g_vulkan.Start();
   g_updater.Start(ExeDir());
   {

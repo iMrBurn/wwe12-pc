@@ -112,6 +112,66 @@ menus Lua compilés (`docs/menus_natifs.md`). Détails : `docs/limit_breaking.md
 6. **Fusion de `.pac`** (plusieurs mods sur un même fichier).
 7. **Plus tard** : catcheurs et tenues, puis mouvements (gros chantiers d'étude).
 
+## 6 bis. Revue du code de Kaiko (étape 1, 2026-10-23)
+
+Dépôt cloné en lecture seule dans `work/kaiko-svr2011` (hors dépôt, rien exécuté), commit `b2521fe`. Son Mod Maker :
+`port/modmaker/` ≈ 36 700 lignes (pages) + `svrfmt/` ≈ 8 400 (formats) ; programme `svr2011_modmaker` dans son
+`CMakeLists.txt` (l. 347-383), ImGui du SDK + D3D11, plus des fichiers de son launcher (`unzip.c`, `bink_decode.c`,
+`movie_maker.c`, `setup_tab.c`, `bg_map.h`, `caw_import.c`) et `third_party/ufbx`.
+
+**Architecture** (`app.h`) : une fenêtre, un rail de pages à gauche, chaque page = un namespace avec `Draw()`,
+`Problems()`, `Reset()` et des crochets de projet ; tout ce qui est lent passe par `RunInBackground` ; toute erreur
+possible devient un « Problem » (une erreur bloque Save/Install, avec des boutons « Fix it »).
+
+**Formats (`svrfmt/`)** : `archive.h` ouvre et réenregistre à l'identique toutes les archives Yuke's de SvR 2007 à
+2K17 (EPAC/EPK8 12/16/20 octets, PACH, BPE, ZLIB, xcompress, HSPC/SHDC) ; `pac.h` (BPE, PACH, EPAC) ; `texture.h`
+(paquets de textures, DDS DXT1/3/5 lecture et écriture) ; `jboy.h` (modèles 0xB4) ; `arena.h` (`FitBudget`/`FitFile`
+= réduire les textures pour tenir dans la taille d'origine ; plafond de géométrie ≈ 65 450 sommets / 110 522 index) ;
+**`wwe13.h` convertit déjà WWE '13 → SvR 2011** et décrit nos différences (maillages 0xB8 avec une adresse en plus à
++0x74, cm contre 10 cm, shaders `yBG_*`, collision HMD, arbre de visibilité, **fichiers de places de la foule dans le
+paquet de la foule**, banque de lumières).
+
+**Tri des fichiers** (garder / adapter / plus tard) :
+
+| Verdict | Fichiers |
+|---|---|
+| **Garder** | `session_log` (journal, « signaler un problème »), `tool_run` (Python/ffmpeg), `json.h`, `simple_steps` (assistant pas à pas), `help_page` (manuel intégré, textes à remplacer), `audio_out`, `video_mf`, `loudness`, `disc_list`, `pac_editor`, `svrmod_cli` (outil en ligne de commande, utile aux tests), tout `svrfmt/` |
+| **Adapter** | `app` (cœur : `svr2011.exe` l. 1227-1245, dossier de réglages l. 1746, roster 100-321 l. 806), `mod_check` (le « médecin » : routage `KindOfType` l. 911, clés communes l. 328), `installed_page`, `assets_page` (fiches de 184 octets), `icons_page`, `signs_page`, `backgrounds_page`, `media_page`, `attire_page`, `pac_attires`, `model_materials`/`material_panel`, **`arena_page`/`simple_arena`/`editor`** (bonne première cible ; éditeur 3D en « 1 unité = 10 cm », à passer en cm), `rig_map` (plus tard), `star_page` (plus tard, adresses `sub_8…` de SvR) |
+| **Plus tard / à refaire** | `char_preview`, `hair_sim`, `anims_page` (YMKs), `full_preview`, `threads_page`, `moves_page`, `match_page`, `caw_page`, `simple_star`, `port_page`/`simple_port`/`other_page` (conversions d'autres jeux) |
+
+**Changements transverses** : un seul assistant pour le dossier des mods (aujourd'hui 67 constructions de
+`<jeu>\Mods\<type>` ; chez nous `mods`) ; `game=wwe12` à ajouter aux clés communes (`mod_check.cpp:328`), à écrire
+dans chaque manifest et à vérifier dans `CheckModFolder` (rien ne lit `game=` aujourd'hui) ; noms du jeu, de l'exe,
+du dossier de réglages ; les numéros propres à SvR (roster, arènes, adresses).
+
+## 6 ter. Étape 2 : installation par le launcher (2026-10-23, **testée par l'utilisateur : OK**)
+
+Test du 2026-10-23 : installation du mod d'essai (rangé dans `.svrmods\Arenas\wm26_test`, `mods\pac\bg\bg15.pac`
+= lien physique identique à la v22, absent de la liste « fichiers du joueur »), WM 26 en jeu, désactivation →
+WM XXVII revient (le lien est retiré, `deployed.txt` vide), mod de Kaiko (`raw_is_war.svrmod`) refusé avec le
+message `game=wwe12`.
+
+`port/src/launcher/mods.h` (module dans le style de `saves.h`, textes EN/FR), affiché en haut de la page MODS.
+Le jeu n'est **pas** modifié : il lit toujours le dossier `mods` comme avant.
+- **Format** : `.svrmod` = zip (stored ou deflate, CRC vérifiés ; chemins `..`, `:`, absolus, zip64 et zips
+  chiffrés refusés) avec `manifest.txt` à la racine. **`game=wwe12` obligatoire** (sinon : « ce mod n'est pas pour
+  WWE '12 ») ; `type=` parmi ceux de Kaiko (dossier par type, comme son `KindOfType`) ; `id=` nettoyé
+  (`[A-Za-z0-9_.-]`). **Convention WWE '12** : les fichiers donnés au jeu sont sous `files/`, aux chemins du disque
+  (`files/pac/bg/bg15.pac`, `files/movies/titantron/100.bik`).
+- **Rangement** : `mods\.svrmods\<Type>\<id>\` (dépaqueté dans `.incoming` puis renommé ; un mod de même id est
+  remplacé, son état désactivé gardé) ; fichier `disabled` = mod désactivé.
+- **Pour le jeu** : les fichiers des mods actifs sont posés dans `mods\<chemin du disque>` en **liens physiques**
+  (copie si impossible) ; `mods\.svrmods\deployed.txt` liste ce que le launcher a posé (chemin, mod, taille). Les
+  fichiers mis à la main par le joueur ne sont **jamais** remplacés (conflit signalé) ; deux mods sur un même
+  fichier : le premier (type puis nom de dossier) gagne, conflit signalé. Resynchronisé au démarrage du launcher
+  (sauf jeu lancé), à chaque installation, activation, désactivation, suppression.
+- **Page MODS** : « Installer un mod… », tableau Actif / Nom (nombre de fichiers) / Version / Auteur / Type /
+  Supprimer (avec confirmation) ; boutons grisés tant que le jeu tourne ; la liste « fichiers du dossier mods »
+  n'affiche plus que les fichiers du joueur.
+- **Test** : launcher compilé seul (`cmake --build --preset win-amd64-release --target wwe12_launcher`), copié en
+  `WWE12 Launcher (test mods).exe` dans le jeu installé ; mod d'essai `work/mods_test/wm26_test.svrmod` (la WM 26
+  v22 en `type=arena`, `game=wwe12`) ; refus attendu pour un mod de Kaiko (`Bundled Mods\raw_is_war.svrmod`).
+
 ## 7. Questions ouvertes
 
 - Pour Kaiko : ~~code C++~~ (réglé : `port/modmaker/` de son dépôt) ; ~~extension~~ (réglé : `.svrmod` +
