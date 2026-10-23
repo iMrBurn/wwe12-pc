@@ -45,6 +45,13 @@ static_assert(g_vulkan);
 inline constexpr bool g_mvk = false;
 #endif
 
+// Swap chain (screen) format. Android surfaces offer RGBA8 only (WWE '12 Android port).
+#if defined(__ANDROID__)
+inline constexpr plume::RenderFormat kSwapChainFormat = plume::RenderFormat::R8G8B8A8_UNORM;
+#else
+inline constexpr plume::RenderFormat kSwapChainFormat = plume::RenderFormat::B8G8R8A8_UNORM;
+#endif
+
 #define REBLUE_SHADER_BLOB(name)                                               \
   REBLUE_BLOB_SYMBOL(name), sizeof(REBLUE_BLOB_SYMBOL(name))
 

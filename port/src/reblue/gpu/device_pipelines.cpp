@@ -281,7 +281,7 @@ bool BuildCopyPipeline(VideoState &s) {
   pipe_desc.primitiveTopology = plume::RenderPrimitiveTopology::TRIANGLE_LIST;
   pipe_desc.cullMode = plume::RenderCullMode::NONE;
   pipe_desc.renderTargetCount = 1;
-  pipe_desc.renderTargetFormat[0] = plume::RenderFormat::B8G8R8A8_UNORM;
+  pipe_desc.renderTargetFormat[0] = kSwapChainFormat;
   pipe_desc.renderTargetBlend[0] = plume::RenderBlendDesc::Copy();
   pipe_desc.depthTargetFormat = plume::RenderFormat::UNKNOWN;
   s.copy_color_pipeline =

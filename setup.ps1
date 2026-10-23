@@ -73,6 +73,10 @@ function Get-PinnedRepo($Url, $Dir, $Commit, $Patch) {
 }
 Get-PinnedRepo "https://github.com/zolaware/plume.git" (Join-Path $Root "recomp\plume") `
     "e0c8871" (Join-Path $Root "port\patches\plume-reblue.patch")
+# Par-dessus : fonctions de Vulkan 1.2 reconnues sans leur ancien nom d'extension (Android).
+$plumeAndroid = Join-Path $Root "port\patches\plume-android.patch"
+cmd /c "git -C `"$(Join-Path $Root 'recomp\plume')`" apply --reverse --check `"$plumeAndroid`" 2>nul"
+if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume") apply --whitespace=nowarn $plumeAndroid }
 Get-PinnedRepo "https://github.com/zolaware/reblue-XenosRecomp.git" `
     (Join-Path $Root "recomp\reblue-XenosRecomp") "339af41" `
     (Join-Path $Root "port\patches\xenosrecomp-reblue-wwe12.patch")  # patch reblue + adaptations WWE '12

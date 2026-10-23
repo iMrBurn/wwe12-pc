@@ -217,7 +217,7 @@ bool ImGuiOverlayDrawer::TryInitDeviceResources() {
   pd.primitiveTopology = plume::RenderPrimitiveTopology::TRIANGLE_LIST;
   pd.cullMode = plume::RenderCullMode::NONE;
   pd.renderTargetCount = 1;
-  pd.renderTargetFormat[0] = plume::RenderFormat::B8G8R8A8_UNORM;
+  pd.renderTargetFormat[0] = kSwapChainFormat;
   pd.renderTargetBlend[0] = plume::RenderBlendDesc::AlphaBlend();
   pd.depthTargetFormat = plume::RenderFormat::UNKNOWN;
   // Vertex input: pos.f2@0, uv.f2@8, color RGBA8@16, stride 20, one slot.

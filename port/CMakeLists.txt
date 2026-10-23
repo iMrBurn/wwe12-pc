@@ -52,6 +52,8 @@ endif()
 
 if(WIN32)
     add_executable(wwe12 WIN32 ${WWE12_SOURCES})
+elseif(ANDROID)
+    add_library(wwe12 SHARED ${WWE12_SOURCES})  # chargée par l'APK (voir cmake/android.cmake)
 else()
     add_executable(wwe12 ${WWE12_SOURCES})
 endif()
@@ -129,6 +131,9 @@ if(DEFINED ENV{WWE12_DEV_PROBES})
 endif()
 
 rexglue_setup_target(wwe12 GPU_PLUGINS xenos)
+if(ANDROID)
+    include(cmake/android.cmake)
+endif()
 
 # Réglages d'exécution par défaut, lus au démarrage depuis le dossier de l'exe.
 add_custom_command(TARGET wwe12 POST_BUILD

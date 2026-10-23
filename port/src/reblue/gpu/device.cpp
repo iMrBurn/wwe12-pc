@@ -37,6 +37,7 @@
 #include "core/memory_helpers.h"
 #include "core/settings.h"
 #include "core/shutdown.h"
+#include "gpu/backend.h"
 #include "gpu/bindless_allocator.h"
 #include "gpu/constant_buffers.h"
 #include "gpu/dred.h"
@@ -408,7 +409,7 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
     // kNumFrames + 1: a flip model swapchain needs one back buffer beyond the
     // frames in flight so acquiring N+1 never waits on scanout.
     plume::RenderSwapChainDesc desc(render_window,
-                                    plume::RenderFormat::B8G8R8A8_UNORM,
+                                    kSwapChainFormat,
                                     kNumFrames + 1, false, kNumFrames);
     s.swap_chain = s.queue->createSwapChain(desc);
 #if !defined(REBLUE_D3D12)
