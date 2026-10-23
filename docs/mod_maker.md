@@ -200,6 +200,29 @@ textures de re:Blue au lieu de son cache.
   zip vont dans `textures\<id>\` à côté de l'exe (`deployed.txt` : `textures:<id>/…`).
 - Pas encore : nom de la texture du jeu dans le nom du dump (Kaiko indexe les `.pac` pour ça), lecture en arrière-plan.
 
+## 6 quinquies. Étape 3 : médias et images (plan, 2026-10-23, pas commencé)
+
+Constats :
+- **Vidéos d'entrée** : `movies\titantron\<nnn>.bik` (217 fichiers) = **même format que SvR 2011** (Bink 1 `BIKi`,
+  320×320, 29,97 i/s, sans son ; le haut = grand écran, le bas = bandeau de la rampe). `logo.bik` et `wweopen.bik`
+  sont en 1024×512. Un mod vidéo n'a besoin d'**aucun code dans le jeu** : `files/movies/titantron/<nnn>.bik`
+  passe déjà par l'installation de l'étape 2.
+- Kaiko a un **fabricant de vidéos** (`port/launcher/movie_maker.c`, 751 lignes : MP4/image → Bink via Media
+  Foundation/WIC) avec **son propre encodeur Bink** (`bink_encode.c`, 300 lignes) et un **lecteur Bink**
+  (`bink_decode.c`, 817 lignes, porté de FFmpeg, **LGPL 2.1+**, compatible avec notre GPL-3.0). Réutilisables
+  presque tels quels (même format), avec crédit.
+- **Images de menus / renders** : déjà faisables avec les mods `type=textures` (dump → retouche → mod).
+- **Musiques d'entrée des catcheurs existants et sons du jeu** : chez Kaiko, crochets dans le moteur de son du
+  jeu (`media_mods.cpp`, évènements « Play_<nom> » remplacés). Chez nous, gros travail d'étude (sons en `.pck`) :
+  plus tard.
+
+Plan proposé :
+1. Reprendre `bink_encode` + `bink_decode` + `movie_maker` (crédit Kaiko ; LGPL notée pour le lecteur).
+2. Trouver quel numéro de `titantron\<nnn>.bik` correspond à quel catcheur (table, par l'étude du roster).
+3. Page « Médias » (dans le launcher en attendant le Mod Maker.exe) : choisir un catcheur + une vidéo MP4 →
+   aperçu → `.svrmod` `type=media` (`files/movies/titantron/<nnn>.bik`).
+4. Aide pour les images : un petit guide « dump → retouche → mod de textures ».
+
 ## 7. Questions ouvertes
 
 - Pour Kaiko : ~~code C++~~ (réglé : `port/modmaker/` de son dépôt) ; ~~extension~~ (réglé : `.svrmod` +
