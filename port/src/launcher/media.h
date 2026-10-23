@@ -35,6 +35,39 @@ namespace media {
 
 namespace fs = std::filesystem;
 
+inline std::string Utf8(const std::wstring &w) {
+  if (w.empty())
+    return {};
+  std::string s(WideCharToMultiByte(CP_UTF8, 0, w.c_str(), int(w.size()), nullptr, 0, nullptr, nullptr), 0);
+  WideCharToMultiByte(CP_UTF8, 0, w.c_str(), int(w.size()), s.data(), int(s.size()), nullptr, nullptr);
+  return s;
+}
+
+inline fs::path PickSave(bool fr, const std::wstring &name) {
+  IFileSaveDialog *dlg = nullptr;
+  if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
+    return {};
+  const COMDLG_FILTERSPEC filter[] = {{L"Mods (*.svrmod)", L"*.svrmod"}};
+  dlg->SetFileTypes(1, filter);
+  dlg->SetDefaultExtension(L"svrmod");
+  dlg->SetFileName(name.c_str());
+  dlg->SetTitle(fr ? L"Enregistrer le mod" : L"Save the mod");
+  fs::path picked;
+  if (SUCCEEDED(dlg->Show(GetActiveWindow()))) {
+    IShellItem *item = nullptr;
+    if (SUCCEEDED(dlg->GetResult(&item))) {
+      PWSTR p = nullptr;
+      if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &p))) {
+        picked = p;
+        CoTaskMemFree(p);
+      }
+      item->Release();
+    }
+  }
+  dlg->Release();
+  return picked;
+}
+
 class EntranceVideos {
  public:
   ~EntranceVideos() {
@@ -175,14 +208,6 @@ class EntranceVideos {
       std::transform(x->begin(), x->end(), x->begin(), [](unsigned char c) { return char(std::tolower(c)); });
     return a.find(b) != std::string::npos;
   }
-  static std::string Utf8(const std::wstring &w) {
-    if (w.empty())
-      return {};
-    std::string s(WideCharToMultiByte(CP_UTF8, 0, w.c_str(), int(w.size()), nullptr, 0, nullptr, nullptr), 0);
-    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), int(w.size()), s.data(), int(s.size()), nullptr, nullptr);
-    return s;
-  }
-
   // Every movie of movies/titantron: the superstars' (by name) first, then the others by number.
   void Load(const fs::path &exe_dir) {
     loaded_ = true;
@@ -304,31 +329,6 @@ class EntranceVideos {
     return picked;
   }
 
-  static fs::path PickSave(bool fr, const std::wstring &name) {
-    IFileSaveDialog *dlg = nullptr;
-    if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
-      return {};
-    const COMDLG_FILTERSPEC filter[] = {{L"Mods (*.svrmod)", L"*.svrmod"}};
-    dlg->SetFileTypes(1, filter);
-    dlg->SetDefaultExtension(L"svrmod");
-    dlg->SetFileName(name.c_str());
-    dlg->SetTitle(fr ? L"Enregistrer le mod" : L"Save the mod");
-    fs::path picked;
-    if (SUCCEEDED(dlg->Show(GetActiveWindow()))) {
-      IShellItem *item = nullptr;
-      if (SUCCEEDED(dlg->GetResult(&item))) {
-        PWSTR p = nullptr;
-        if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &p))) {
-          picked = p;
-          CoTaskMemFree(p);
-        }
-        item->Release();
-      }
-    }
-    dlg->Release();
-    return picked;
-  }
-
   // movie_make reports its progress as window messages: a message-only window gets them.
   static LRESULT CALLBACK ProgressProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_APP + 0x31) {
@@ -430,6 +430,148 @@ class EntranceVideos {
   std::thread worker_;
   std::atomic<bool> done_{false};
   std::atomic<int> progress_{0};
+  bool ok_ = false;
+};
+
+// MODS page, "Textures": the step-by-step guide (dump -> edit -> mod) and a texture mod made from a folder of
+// the player's pictures (type=textures: every .png / .dds whose name ends in _<16 hex digits>, under textures/).
+class TextureMods {
+ public:
+  void Draw(bool fr) {
+    ImGui::Text("%s", fr ? "Changer une image du jeu (menus, renders, logos...)" : "Change a picture of the game (menus, "
+                                                                                    "renders, logos...)");
+    const char *steps_en[] = {
+        "Tick \"Dump textures\" above, then play: go where the picture shows (menu, superstar select...). Every "
+        "texture shown is saved once as a PNG in texture_dumps.",
+        "Open texture_dumps and find the picture (size_format_hash.png). Untick the dump when you're done: it "
+        "slows the game down a little.",
+        "Copy it into the textures folder and edit it with any image editor (Paint.NET, GIMP, Photoshop...). Keep "
+        "the end of its name (_ and the 16 characters of the hash); it can be bigger than the original (sharper), "
+        "transparency is kept.",
+        "Start the game again: your picture replaces the game's.",
+        "To share it: put your pictures in a folder of their own, then \"Make a texture mod...\" below. The "
+        ".svrmod installs with \"Install a mod...\"."};
+    const char *steps_fr[] = {
+        "Cochez « Dump des textures » ci-dessus, puis jouez : allez là où l'image s'affiche (menu, choix du "
+        "catcheur...). Chaque texture affichée est enregistrée une fois en PNG dans texture_dumps.",
+        "Ouvrez texture_dumps et trouvez l'image (taille_format_empreinte.png). Décochez le dump quand vous avez "
+        "fini : il ralentit un peu le jeu.",
+        "Copiez-la dans le dossier textures et retouchez-la avec n'importe quel logiciel d'image (Paint.NET, GIMP, "
+        "Photoshop...). Gardez la fin de son nom (_ et les 16 caractères de l'empreinte) ; elle peut être plus "
+        "grande que l'originale (plus nette), la transparence est gardée.",
+        "Relancez le jeu : votre image remplace celle du jeu.",
+        "Pour la partager : mettez vos images dans un dossier à part, puis « Créer un mod de textures... » "
+        "ci-dessous. Le .svrmod s'installe avec « Installer un mod... »."};
+    for (int i = 0; i < 5; ++i) {
+      ImGui::Text("%d.", i + 1);
+      ImGui::SameLine();
+      ImGui::TextWrapped("%s", fr ? steps_fr[i] : steps_en[i]);
+    }
+    ImGui::Dummy(ImVec2(0, 6));
+    ImGui::SetNextItemWidth(260);
+    ImGui::InputTextWithHint("##texname", fr ? "Nom du mod" : "Mod name", name_, sizeof(name_));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(200);
+    ImGui::InputTextWithHint("##texauthor", fr ? "Auteur (facultatif)" : "Author (optional)", author_,
+                             sizeof(author_));
+    if (ImGui::Button(fr ? "Créer un mod de textures..." : "Make a texture mod..."))
+      Make(fr);
+    if (!message_.empty())
+      ImGui::TextColored(ok_ ? ImVec4(0.55f, 0.85f, 0.45f, 1.0f) : ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
+                         message_.c_str());
+  }
+
+ private:
+  // A texture pack file: name ending in _<16 hex digits>, .png or .dds (game: wwe12_texture_packs.h).
+  static bool IsPackFile(const fs::path &p) {
+    std::wstring ext = p.extension().wstring();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+    const std::wstring stem = p.stem().wstring();
+    if ((ext != L".png" && ext != L".dds") || stem.size() < 17 || stem[stem.size() - 17] != L'_')
+      return false;
+    return std::all_of(stem.end() - 16, stem.end(), [](wchar_t c) { return iswxdigit(c) != 0; });
+  }
+
+  static fs::path PickFolder(bool fr) {
+    IFileOpenDialog *dlg = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
+      return {};
+    DWORD opts = 0;
+    dlg->GetOptions(&opts);
+    dlg->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+    dlg->SetTitle(fr ? L"Dossier de vos images" : L"Folder of your pictures");
+    fs::path picked;
+    if (SUCCEEDED(dlg->Show(GetActiveWindow()))) {
+      IShellItem *item = nullptr;
+      if (SUCCEEDED(dlg->GetResult(&item))) {
+        PWSTR p = nullptr;
+        if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &p))) {
+          picked = p;
+          CoTaskMemFree(p);
+        }
+        item->Release();
+      }
+    }
+    dlg->Release();
+    return picked;
+  }
+
+  void Make(bool fr) {
+    message_.clear();
+    ok_ = false;
+    const fs::path dir = PickFolder(fr);
+    if (dir.empty())
+      return;
+    std::vector<std::pair<std::string, std::vector<uint8_t>>> entries;
+    std::error_code ec;
+    size_t skipped = 0;
+    for (fs::recursive_directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+      if (!it->is_regular_file(ec))
+        continue;
+      if (!IsPackFile(it->path())) {
+        ++skipped;
+        continue;
+      }
+      std::ifstream f(it->path(), std::ios::binary);
+      std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+      const std::u8string rel = fs::relative(it->path(), dir, ec).generic_u8string();
+      entries.push_back({"textures/" + std::string(rel.begin(), rel.end()), std::move(bytes)});
+    }
+    if (entries.empty()) {
+      message_ = fr ? "Aucune image de pack dans ce dossier (nom finissant par _<empreinte>.png ou .dds)."
+                    : "No pack picture in this folder (name ending in _<hash>.png or .dds).";
+      return;
+    }
+    const std::string name = name_[0] ? name_ : Utf8(dir.filename().wstring());
+    std::wstring file;
+    std::string id;
+    for (unsigned char c : name) {
+      const bool keep = std::isalnum(c) != 0;
+      file += keep ? wchar_t(c) : L'_';
+      id += keep ? char(c) : '_';
+    }
+    const fs::path out = PickSave(fr, file + L".svrmod");
+    if (out.empty())
+      return;
+    std::string manifest = "game=wwe12\ntype=textures\nid=textures_" + id + "\nname=" + name + "\nversion=1.0\n";
+    if (author_[0])
+      manifest += std::string("author=") + author_ + "\n";
+    manifest += "description=" + std::to_string(entries.size()) + " texture(s), made with the WWE '12 launcher.\n";
+    entries.insert(entries.begin(), {"manifest.txt", std::vector<uint8_t>(manifest.begin(), manifest.end())});
+    if (!mods::Manager::WriteZip(out, entries)) {
+      message_ = (fr ? "Impossible d'écrire " : "Could not write ") + Utf8(out.wstring());
+      return;
+    }
+    ok_ = true;
+    message_ = (fr ? "Mod créé (" : "Mod made (") + std::to_string(entries.size() - 1) +
+               (fr ? " image(s)) : " : " picture(s)): ") + Utf8(out.wstring());
+    if (skipped)
+      message_ += fr ? " ; " + std::to_string(skipped) + " fichier(s) laissé(s) de côté (nom sans empreinte)."
+                     : "; " + std::to_string(skipped) + " file(s) left out (no hash in the name).";
+  }
+
+  char name_[64] = {}, author_[64] = {};
+  std::string message_;
   bool ok_ = false;
 };
 

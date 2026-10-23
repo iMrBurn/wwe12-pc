@@ -249,7 +249,9 @@ const Texts kEnglish = {
     "Open the mods folder", "file(s) in the mods folder",
     "WWE '12 PC is an unofficial native port of WWE '12 (Xbox 360), made by fans.\n"
     "Native renderer adapted from nefariousjosiah's SmackDown vs. Raw ports, on the ReXGlue SDK\n"
-    "and re:Blue. DLC support by Banshee. Free software under the GPL-3.0 licence. No game data is included.\n\n"
+    "and re:Blue. DLC support by Banshee. Entrance movie maker and texture packs from Kaiko's\n"
+    "SmackDown vs. Raw 2011 port (Bink reader ported from FFmpeg, LGPL). Free software under the GPL-3.0 licence.\n"
+    "No game data is included.\n\n"
     "Not affiliated with WWE, THQ or Yuke's.",
     "Project page on GitHub",
     "Updates", "Checking for updates...", "Up to date.", "New version available:",
@@ -321,7 +323,9 @@ const Texts kFrench = {
     "Ouvrir le dossier mods", "fichier(s) dans le dossier mods",
     "WWE '12 PC est un portage natif non officiel de WWE '12 (Xbox 360), fait par des fans.\n"
     "Rendu natif adapté des portages SmackDown vs. Raw de nefariousjosiah, sur le SDK ReXGlue\n"
-    "et re:Blue. Support des DLC par Banshee. Logiciel libre sous licence GPL-3.0. Aucune donnée du jeu n'est fournie.\n\n"
+    "et re:Blue. Support des DLC par Banshee. Fabricant de vidéos d'entrée et packs de textures repris du\n"
+    "portage SmackDown vs. Raw 2011 de Kaiko (lecteur Bink porté de FFmpeg, LGPL). Logiciel libre sous licence GPL-3.0.\n"
+    "Aucune donnée du jeu n'est fournie.\n\n"
     "Sans lien avec WWE, THQ ou Yuke's.",
     "Page du projet sur GitHub",
     "Mises à jour", "Recherche de mises à jour...", "À jour.", "Nouvelle version disponible :",
@@ -588,6 +592,7 @@ int g_logo_w = 0, g_logo_h = 0;
 saves::Manager g_saves;
 mods::Manager g_mods;
 media::EntranceVideos g_videos;
+media::TextureMods g_texture_mods;
 bool g_launch = false;
 int g_play_note = 0;  // 1 game already running, 2 something is busy
 Updater g_updater;
@@ -1013,6 +1018,10 @@ void PageModsTextures(bool fr) {
     fs::create_directories(ExeDir() / "textures", tec);
     OpenFolder(ExeDir() / "textures");
   }
+  ImGui::Dummy(ImVec2(0, 10));
+  ImGui::Separator();
+  ImGui::Dummy(ImVec2(0, 4));
+  g_texture_mods.Draw(fr);
 }
 
 // The files the player put in the mods folder by hand.

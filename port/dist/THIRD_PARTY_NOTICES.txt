@@ -21,6 +21,20 @@ In wwe12.exe
 - disruptorplus: MIT - licenses\disruptorplus.txt
 - RenderDoc API header: MIT - licenses\renderdoc_app.txt
 - Shaders converted with XenosRecomp (zolaware/reblue-XenosRecomp): MIT - licenses\XenosRecomp.txt
+- Texture dumps and texture packs: adapted from Kaiko's WWE SmackDown vs. Raw 2011 PC port
+  (KaikoClanworth1/wwe-svr2011-pc, texture_packs.cpp), used with his permission
+- stb_image (nothings/stb): public domain or MIT, at your choice (licence at the end of stb_image.h)
+
+
+In WWE12 Launcher.exe
+---------------------
+
+- Entrance movie maker and Bink encoder: from Kaiko's WWE SmackDown vs. Raw 2011 PC port
+  (KaikoClanworth1/wwe-svr2011-pc, movie_maker.c, bink_encode.c), used with his permission
+- Bink video reader: Kaiko's port of FFmpeg's libavcodec/bink.c (Konstantin Shishkov, Peter Ross):
+  LGPL 2.1 or later - licenses\FFmpeg-LGPL-2.1.txt. Its source is in this port's source code
+  (port/src/launcher/video).
+- Dear ImGui: MIT - licenses\imgui.txt
 
 
 In rexruntime.dll and rexgpu-xenos.dll (ReXGlue SDK)
