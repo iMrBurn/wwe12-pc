@@ -266,8 +266,28 @@ d'entrée, guide et mods de textures) est passée dans le Mod Maker.
 - À vérifier par la Main avant la release : la mise à jour automatique du launcher doit aussi remplacer
   `WWE12 Mod Maker.exe` ; readmes à compléter (Mod Maker, dossiers `textures` / `texture_dumps`).
 
-Suite possible (étape 5) : page Arènes (remplacer une arène, contrôle de taille, `arena_convert.py` en option),
-aperçu des modèles 3D, sons.
+## 6 septies. Étape 5 : page Arènes (2026-10-23, **testée en jeu par l'utilisateur : OK**)
+
+`port/src/modmaker/arena_page.h` (page ARÈNES), `arena_edit.h`, `bpe_like.h`, `wic_image.h`.
+- **Retoucher une arène** : arènes bg00-bg20 par leur nom (table de `limit_breaking.md`) ; toutes les images des
+  paquets de textures de l'arène (ids 400-402, 32010... : 132 pour bg15) en vignettes avec recherche ; remplacer
+  (image mise à la taille et au format DXT/ARGB de l'originale, mips gardés), exporter en PNG (WIC), remettre
+  l'originale.
+- **Autre fichier d'arène** : un `.pac` d'arène (vérifié : EPAC + section `STG `) mis dans un emplacement ; son
+  numéro de scène (nom de l'entrée STG, `%04d`) est mis à celui de l'emplacement.
+- **Taille** : le fichier ne doit jamais dépasser le `bgNN.pac` d'origine de l'emplacement. Reconstruction par
+  l'archive de Kaiko (sans changement : fichier identique à l'octet) ; paquets modifiés recompressés en gardant les
+  blocs BPE de Yuke's, aussi quand les données ont été décalées (`bpe_like::EncodeLike` : Kaiko seul = +2,5 %, soit
+  +118 Ko sur bg15). Si ça dépasse encore : `Arena::Fit` retire le niveau le plus détaillé (mip 0) des plus grandes
+  images non remplacées, sans réencodage (jamais les écrans vidéo ni les éclairages : `titan`, `tron`, `mov`,
+  `light`, `lgt`), et dit lesquelles. Mesures sur bg15 : une petite image remplacée par un dégradé dépassait de
+  2 Ko (l'arène est pleine) ; 3 grandes images en bruit → 3 images réduites, 10 061 824 / 10 063 872 octets.
+- Test de l'utilisateur : tapis de WM XXVII (`rin_mat00`) remplacé par une image, `ar_dm` réduite pour tenir ;
+  match à WrestleMania XXVII, l'arène charge et le tapis montre l'image.
+- `.svrmod` `type=arena`, `id=arena_bgNN_<nom>`, `files/pac/bg/bgNN.pac`, installé aussitôt.
+
+Suite possible : aperçu 3D des modèles, conversion d'arènes WWE '13 (même format que WWE '12) ou SvR 2011
+(`arena_convert.py`), sons, catcheurs et tenues.
 
 ## 7. Questions ouvertes
 

@@ -20,6 +20,7 @@
 #include "imgui_impl_dx11.h"
 #include "imgui_impl_win32.h"
 
+#include "arena_page.h"
 #include "game_disc.h"
 #include "media.h"
 #include "mods.h"
@@ -129,7 +130,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kFiles, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kFiles, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -138,6 +139,7 @@ mods::Manager g_mods;
 media::EntranceVideos g_videos;
 media::TextureMods g_texture_mods;
 pac_page::Browser g_files;
+arena_page::Page g_arenas;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 
@@ -169,6 +171,8 @@ void PageHome() {
        "La vidéo de titantron d'un catcheur, à partir de n'importe quelle vidéo ou image."},
       {kTextures, "Textures", "Textures", "Change any picture of the game: menus, renders, logos, arenas...",
        "Changer n'importe quelle image du jeu : menus, renders, logos, arènes..."},
+      {kArenas, "Arenas", "Arènes", "Change an arena's pictures, or put another arena file in its place.",
+       "Changer les images d'une arène, ou mettre un autre fichier d'arène à sa place."},
       {kFiles, "Game files", "Fichiers du jeu", "Look inside the game's archives (.pac) and export what's in them.",
        "Regarder dans les archives du jeu (.pac) et exporter ce qu'elles contiennent."},
   };
@@ -179,8 +183,8 @@ void PageHome() {
     ImGui::TextDisabled("%s", g_fr ? it.what_fr : it.what_en);
   }
   ImGui::Dummy(ImVec2(0, 10));
-  ImGui::TextDisabled("%s", g_fr ? "Bientôt : arènes, catcheurs et tenues, sons." : "Coming: arenas, superstars and "
-                                                                                    "attires, sounds.");
+  ImGui::TextDisabled("%s", g_fr ? "Bientôt : catcheurs et tenues, sons, aperçu 3D." : "Coming: superstars and "
+                                                                                       "attires, sounds, 3D preview.");
   if (ImGui::Button(g_fr ? "Ouvrir le dossier mods" : "Open the mods folder"))
     OpenFolder(ExeDir() / "mods");
 }
@@ -205,6 +209,11 @@ void PageTextures() {
     OpenFolder(ExeDir() / "textures");
   ImGui::Dummy(ImVec2(0, 6));
   g_texture_mods.Draw(g_fr);
+}
+
+void PageArenas() {
+  Title(g_fr ? "ARÈNES" : "ARENAS");
+  g_arenas.Draw(g_fr, g_device.Get(), g_disc, g_mods);
 }
 
 void PageFiles() {
@@ -264,9 +273,9 @@ void DrawUi() {
   ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), "MOD MAKER");
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
-  const char *names_en[] = {"HOME", "VIDEOS", "TEXTURES", "GAME FILES", "ABOUT"};
-  const char *names_fr[] = {"ACCUEIL", "VIDÉOS", "TEXTURES", "FICHIERS", "À PROPOS"};
-  for (int i = 0; i < 5; ++i) {
+  const char *names_en[] = {"HOME", "VIDEOS", "TEXTURES", "ARENAS", "GAME FILES", "ABOUT"};
+  const char *names_fr[] = {"ACCUEIL", "VIDÉOS", "TEXTURES", "ARÈNES", "FICHIERS", "À PROPOS"};
+  for (int i = 0; i < 6; ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
     if (BigButton(g_fr ? names_fr[i] : names_en[i], ImVec2(kSide - 32, 48), sel ? kGold : IM_COL32(28, 28, 32, 255),
@@ -280,6 +289,7 @@ void DrawUi() {
   case kHome: PageHome(); break;
   case kVideos: PageVideos(); break;
   case kTextures: PageTextures(); break;
+  case kArenas: PageArenas(); break;
   case kFiles: PageFiles(); break;
   case kAbout: PageAbout(); break;
   }
