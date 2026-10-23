@@ -172,11 +172,13 @@ Le jeu n'est **pas** modifié : il lit toujours le dossier `mods` comme avant.
   `WWE12 Launcher (test mods).exe` dans le jeu installé ; mod d'essai `work/mods_test/wm26_test.svrmod` (la WM 26
   v22 en `type=arena`, `game=wwe12`) ; refus attendu pour un mod de Kaiko (`Bundled Mods\raw_is_war.svrmod`).
 
-## 6 quater. Textures : dump, packs, mods `type=textures` (2026-10-23, dump et remplacement testés en jeu)
+## 6 quater. Textures : dump, packs, mods `type=textures` (2026-10-23, **testés par l'utilisateur : OK**)
 
 Test (jeu de développement, release) : 26 PNG dumpés sur l'écran-titre en 45 s, couleurs et transparence justes ;
 le « '12 » rouge du logo (`256x128_dxt5_2aa11b16ac15a795`) recoloré en bleu et agrandi ×4 (1024×512) dans
-`textures\test\` → affiché bleu et net au lancement suivant. Reste à tester : le mod `type=textures` par le launcher.
+`textures\test\` → affiché bleu et net au lancement suivant. Mod `type=textures` par le launcher : mod d'essai
+`work/mods_test/logo_vert.svrmod` (même texture en vert, `textures/logo/titre_2aa11b16ac15a795.png` dans le zip),
+installé depuis la page MODS du launcher de développement → « '12 » vert à l'écran-titre.
 
 
 Demande de l'utilisateur. Repris des Texture Packs du portage SvR 2011 de Kaiko (`port/src/native/texture_packs.*` :
