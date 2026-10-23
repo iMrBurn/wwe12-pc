@@ -25,6 +25,7 @@
 #include "media.h"
 #include "mods.h"
 #include "pac_page.h"
+#include "superstar_page.h"
 #include "toml_file.h"
 #include "ui_style.h"
 
@@ -130,7 +131,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kArenas, kFiles, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kStars, kFiles, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -140,6 +141,7 @@ media::EntranceVideos g_videos;
 media::TextureMods g_texture_mods;
 pac_page::Browser g_files;
 arena_page::Page g_arenas;
+superstar_page::Page g_stars;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 
@@ -148,18 +150,18 @@ int g_logo_w = 0, g_logo_h = 0;
 
 void PageHome() {
   Title("MOD MAKER");
-  ImGui::TextWrapped("%s", g_fr ? "Créez vos mods pour WWE '12 PC. Chaque page fabrique un mod (.svrmod) que vous pouvez "
+  ImGui::TextWrapped("%s", g_fr ? "CrÃ©ez vos mods pour WWE '12 PC. Chaque page fabrique un mod (.svrmod) que vous pouvez "
                                   "installer tout de suite et partager. Le launcher (page MODS) les active, les "
-                                  "désactive et les supprime."
+                                  "dÃ©sactive et les supprime."
                                 : "Make your own mods for WWE '12 PC. Each page makes a mod (.svrmod) that you can "
                                   "install at once and share. The launcher (MODS page) turns them on and off and "
                                   "removes them.");
   ImGui::Dummy(ImVec2(0, 6));
   if (g_disc.Found())
-    ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", g_fr ? "Fichiers du jeu trouvés." : "Game files found.");
+    ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", g_fr ? "Fichiers du jeu trouvÃ©s." : "Game files found.");
   else
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
-                       g_fr ? "Fichiers du jeu introuvables : mettez le Mod Maker à côté de wwe12.exe."
+                       g_fr ? "Fichiers du jeu introuvables : mettez le Mod Maker Ã  cÃ´tÃ© de wwe12.exe."
                             : "Game files not found: put the Mod Maker next to wwe12.exe.");
   ImGui::Dummy(ImVec2(0, 10));
   struct Item {
@@ -167,12 +169,14 @@ void PageHome() {
     const char *en, *fr, *what_en, *what_fr;
   };
   const Item items[] = {
-      {kVideos, "Entrance videos", "Vidéos d'entrée", "A superstar's titantron video from any video or picture.",
-       "La vidéo de titantron d'un catcheur, à partir de n'importe quelle vidéo ou image."},
+      {kVideos, "Entrance videos", "VidÃ©os d'entrÃ©e", "A superstar's titantron video from any video or picture.",
+       "La vidÃ©o de titantron d'un catcheur, Ã  partir de n'importe quelle vidÃ©o ou image."},
       {kTextures, "Textures", "Textures", "Change any picture of the game: menus, renders, logos, arenas...",
-       "Changer n'importe quelle image du jeu : menus, renders, logos, arènes..."},
-      {kArenas, "Arenas", "Arènes", "Change an arena's pictures, or put another arena file in its place.",
-       "Changer les images d'une arène, ou mettre un autre fichier d'arène à sa place."},
+       "Changer n'importe quelle image du jeu : menus, renders, logos, arÃ¨nes..."},
+      {kArenas, "Arenas", "ArÃ¨nes", "Change an arena's pictures, or put another arena file in its place.",
+       "Changer les images d'une arÃ¨ne, ou mettre un autre fichier d'arÃ¨ne Ã  sa place."},
+      {kStars, "Superstars", "Catcheurs", "Change an attire's pictures and see the superstar in 3D.",
+       "Changer les images d'une tenue et voir le catcheur en 3D."},
       {kFiles, "Game files", "Fichiers du jeu", "Look inside the game's archives (.pac) and export what's in them.",
        "Regarder dans les archives du jeu (.pac) et exporter ce qu'elles contiennent."},
   };
@@ -183,14 +187,14 @@ void PageHome() {
     ImGui::TextDisabled("%s", g_fr ? it.what_fr : it.what_en);
   }
   ImGui::Dummy(ImVec2(0, 10));
-  ImGui::TextDisabled("%s", g_fr ? "Bientôt : catcheurs et tenues, sons, aperçu 3D." : "Coming: superstars and "
-                                                                                       "attires, sounds, 3D preview.");
+  ImGui::TextDisabled("%s", g_fr ? "BientÃ´t : renders du menu, sons, couleurs des tenues." : "Coming: menu "
+                                                                                          "renders, sounds, attire colours.");
   if (ImGui::Button(g_fr ? "Ouvrir le dossier mods" : "Open the mods folder"))
     OpenFolder(ExeDir() / "mods");
 }
 
 void PageVideos() {
-  Title(g_fr ? "VIDÉOS D'ENTRÉE" : "ENTRANCE VIDEOS");
+  Title(g_fr ? "VIDÃ‰OS D'ENTRÃ‰E" : "ENTRANCE VIDEOS");
   g_videos.Draw(g_fr, g_device.Get(), ExeDir(), g_mods);
 }
 
@@ -212,8 +216,13 @@ void PageTextures() {
 }
 
 void PageArenas() {
-  Title(g_fr ? "ARÈNES" : "ARENAS");
+  Title(g_fr ? "ARÃˆNES" : "ARENAS");
   g_arenas.Draw(g_fr, g_device.Get(), g_disc, g_mods);
+}
+
+void PageStars() {
+  Title(g_fr ? "CATCHEURS" : "SUPERSTARS");
+  g_stars.Draw(g_fr, g_device.Get(), g_disc, g_mods);
 }
 
 void PageFiles() {
@@ -222,12 +231,12 @@ void PageFiles() {
 }
 
 void PageAbout() {
-  Title(g_fr ? "À PROPOS" : "ABOUT");
+  Title(g_fr ? "Ã€ PROPOS" : "ABOUT");
   ImGui::TextWrapped("%s", g_fr ? "Mod Maker de WWE '12 PC, portage natif non officiel fait par des fans.\n\n"
-                                  "Basé sur le Mod Maker du portage SmackDown vs. Raw 2011 de Kaiko, avec sa permission : "
-                                  "format .svrmod, fabricant de vidéos d'entrée et encodeur Bink, lecteurs d'archives "
-                                  ".pac (svrfmt), packs de textures. Lecteur Bink porté de FFmpeg (LGPL 2.1 ou plus "
-                                  "récent). Logiciel libre sous licence GPL-3.0. Aucune donnée du jeu n'est fournie : "
+                                  "BasÃ© sur le Mod Maker du portage SmackDown vs. Raw 2011 de Kaiko, avec sa permission : "
+                                  "format .svrmod, fabricant de vidÃ©os d'entrÃ©e et encodeur Bink, lecteurs d'archives "
+                                  ".pac (svrfmt), packs de textures. Lecteur Bink portÃ© de FFmpeg (LGPL 2.1 ou plus "
+                                  "rÃ©cent). Logiciel libre sous licence GPL-3.0. Aucune donnÃ©e du jeu n'est fournie : "
                                   "le Mod Maker lit vos propres fichiers.\n\nSans lien avec WWE, THQ ou Yuke's."
                                 : "WWE '12 PC Mod Maker, for the unofficial native port made by fans.\n\n"
                                   "Based on the Mod Maker of Kaiko's SmackDown vs. Raw 2011 port, with his permission: "
@@ -273,12 +282,12 @@ void DrawUi() {
   ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), "MOD MAKER");
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
-  const char *names_en[] = {"HOME", "VIDEOS", "TEXTURES", "ARENAS", "GAME FILES", "ABOUT"};
-  const char *names_fr[] = {"ACCUEIL", "VIDÉOS", "TEXTURES", "ARÈNES", "FICHIERS", "À PROPOS"};
-  for (int i = 0; i < 6; ++i) {
+  const char *names_en[] = {"HOME", "VIDEOS", "TEXTURES", "ARENAS", "SUPERSTARS", "GAME FILES", "ABOUT"};
+  const char *names_fr[] = {"ACCUEIL", "VIDÃ‰OS", "TEXTURES", "ARÃˆNES", "CATCHEURS", "FICHIERS", "Ã€ PROPOS"};
+  for (int i = 0; i < 7; ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
-    if (BigButton(g_fr ? names_fr[i] : names_en[i], ImVec2(kSide - 32, 48), sel ? kGold : IM_COL32(28, 28, 32, 255),
+    if (BigButton(g_fr ? names_fr[i] : names_en[i], ImVec2(kSide - 32, 44), sel ? kGold : IM_COL32(28, 28, 32, 255),
                   sel ? IM_COL32(20, 20, 20, 255) : IM_COL32(235, 235, 235, 255)))
       g_page = Page(i);
   }
@@ -290,6 +299,7 @@ void DrawUi() {
   case kVideos: PageVideos(); break;
   case kTextures: PageTextures(); break;
   case kArenas: PageArenas(); break;
+  case kStars: PageStars(); break;
   case kFiles: PageFiles(); break;
   case kAbout: PageAbout(); break;
   }

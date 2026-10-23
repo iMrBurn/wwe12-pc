@@ -84,8 +84,9 @@ class View {
  public:
   bool show_entrance = false;  // entrance-only models (stage, ramp lights...) instead of match-only ones
 
-  // Reads every model of an arena file and uploads it. False (and why) if nothing could be read.
-  bool Load(ID3D11Device *dev, const Bytes &file, std::string *error) {
+  // Reads every model of an arena file (or of `section`, an entry of another pac: a superstar's attire) and
+  // uploads it. False (and why) if nothing could be read.
+  bool Load(ID3D11Device *dev, const Bytes &file, std::string *error, size_t section = 0) {
     device_ = dev;
     dev->GetImmediateContext(&ctx_);
     draws_.clear();
@@ -93,9 +94,9 @@ class View {
     if (!CreatePipeline(error))
       return false;
     svrfmt::Archive a;
-    if (!svrfmt::ArchiveOpen(file, a, error) || a.root.kids.empty())
+    if (!svrfmt::ArchiveOpen(file, a, error) || a.root.kids.size() <= section)
       return false;
-    svrfmt::ArcNode &stg = a.root.kids[0];
+    svrfmt::ArcNode &stg = a.root.kids[section];
     if (!svrfmt::ArchiveExpand(stg)) {
       if (error)
         *error = "no model list";
@@ -111,7 +112,7 @@ class View {
         std::vector<svrfmt::BundleTexture> t;
         if (svrfmt::BundleRead(svrfmt::ArchiveData(k), t))
           for (auto &x : t)
-            dds[x.name] = std::move(x.data);
+            dds[Lower(x.name)] = std::move(x.data);  // (models name them in another case: "mf01" for "MF01")
       }
     }
     lo_[0] = lo_[1] = lo_[2] = 1e30f;
@@ -139,7 +140,16 @@ class View {
   }
 
   void ResetCamera() {
-    // Looking at the ring from the hard camera's side, high up.
+    const float extent = std::max({hi_[0] - lo_[0], hi_[1] - lo_[1], hi_[2] - lo_[2]});
+    if (extent < 1000) {  // a superstar: in front of him, all of him in view
+      for (int k = 0; k < 3; ++k)
+        target_[k] = (lo_[k] + hi_[k]) * 0.5f;
+      yaw_ = 3.14159265f;
+      pitch_ = 0.1f;
+      dist_ = std::max(120.0f, extent * 2.0f);
+      return;
+    }
+    // An arena: looking at the ring from the hard camera's side, high up.
     target_[0] = 0;
     target_[1] = -100;
     target_[2] = 0;
@@ -204,6 +214,7 @@ class View {
           c.mirror = mirror ? -1.0f : 1.0f;
           c.additive = d.flags.additive ? 1.0f : 0.0f;
           c.textured = d.tex ? 1.0f : 0.0f;
+          c.baked = d.baked_light ? 1.0f : 0.0f;
           ctx_->UpdateSubresource(cb_.Get(), 0, nullptr, &c, 0, 0);
           ID3D11Buffer *cbs[] = {cb_.Get()};
           ctx_->VSSetConstantBuffers(0, 1, cbs);
@@ -258,13 +269,14 @@ class View {
  private:
   struct Constants {
     float view_proj[16];
-    float mirror, additive, textured, pad;
+    float mirror, additive, textured, baked;
   };
   struct Draw {
     ComPtr<ID3D11Buffer> vb, ib;
     UINT count = 0;
     ID3D11ShaderResourceView *tex = nullptr;  // owned by textures_
     Flags flags;
+    bool baked_light = true;
   };
 
   void ViewProj(float aspect, float out[16]) const {
@@ -290,6 +302,11 @@ class View {
         out[i * 4 + j] = s;
       }
   }
+  static std::string Lower(std::string s) {
+    for (auto &ch : s)
+      ch = char(tolower(static_cast<unsigned char>(ch)));
+    return s;
+  }
   static float Dot(const float a[3], const float b[3]) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
   static void Normalize(float a[3]) {
     const float l = std::sqrt(Dot(a, a));
@@ -303,7 +320,7 @@ class View {
       return it->second.Get();
     ComPtr<ID3D11ShaderResourceView> srv;
     svrfmt::Image img;
-    const auto d = dds.find(name);
+    const auto d = dds.find(Lower(name));
     if (d != dds.end() && svrfmt::DdsDecode(d->second, img) && img.w > 0) {
       D3D11_TEXTURE2D_DESC td{};
       td.Width = UINT(img.w);
@@ -359,13 +376,15 @@ class View {
       return;
     std::string tex;
     for (const auto &p : s.params)
-      if ((p.name == "sampDiffusePrm" || p.name == "texDiffuse") && p.value.size() >= 4) {
+      if ((p.name == "sampDiffusePrm" || p.name == "texDiffuse" || p.name == "g_mDiffusePrm") && p.value.size() >= 4) {
         const int32_t slot = int32_t(svrfmt::Be32(p.value.data()));
         if (slot >= 0 && size_t(slot) < m.textures.size())
           tex = m.textures[size_t(slot)];
       }
     Draw d;
     d.flags = f;
+    // Superstars' shaders (yCh_*) light them in the game: their vertex colours aren't baked light.
+    d.baked_light = s.shader.rfind("yCh", 0) != 0;
     d.count = UINT(idx.size());
     d.tex = tex.empty() ? nullptr : Texture(tex, dds);
     D3D11_BUFFER_DESC bd{};
@@ -391,7 +410,7 @@ class View {
     if (vs_)
       return true;
     static const char kShader[] = R"(
-cbuffer C : register(b0) { row_major float4x4 view_proj; float mirror; float additive; float textured; float pad; };
+cbuffer C : register(b0) { row_major float4x4 view_proj; float mirror; float additive; float textured; float baked; };
 Texture2D tex : register(t0);
 SamplerState samp : register(s0);
 struct VI { float3 pos : POSITION; float3 n : NORMAL; float2 uv : TEXCOORD; float4 col : COLOR; };
@@ -412,7 +431,9 @@ float4 ps(VO i) : SV_Target {
   // The vertex colours are the arena's baked light (dark floors and stands, white for lit props), as in the game;
   // a little shading from above keeps shapes readable.
   float3 l = normalize(float3(0.3, -1.0, 0.45));  // (y is down)
-  float shade = 0.8 + 0.2 * saturate(abs(dot(normalize(i.n), l)));
+  float d = abs(dot(normalize(i.n), l));
+  if (baked < 0.5) return float4(c.rgb * (0.45 + 0.65 * d), 1);  // (a superstar: a light from above)
+  float shade = 0.8 + 0.2 * saturate(d);
   return float4(c.rgb * i.col.rgb * shade, 1);
 })";
     ComPtr<ID3DBlob> vsb, psb, err;

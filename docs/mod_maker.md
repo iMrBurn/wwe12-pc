@@ -295,7 +295,21 @@ par animation), `e` / `g` selon la case « Objets des entrées ». Image : `samp
 textures du modèle). **Lumière** : la couleur de chaque sommet est la lumière précalculée de l'arène (sol et tribunes sombres, accessoires blancs) : image × couleur du sommet (+ léger ombrage), fond presque noir ; écrans vidéo (`titantron_movie`, `minitron_movie`, `arena_movie` : pas d'image dans l'arène) en noir bleuté. Ni lightmaps séparées (UV non trouvées : une seule série d'UV par sommet), ni public, ni cordes (posées par le jeu). bg15 : 117
 objets, 54 427 triangles. Vérifié d'abord hors écran (rendu dans des PNG).
 
-Suite possible : couleurs plus justes (lightmaps, couleurs des sommets), public et cordes dans la vue 3D, conversion d'arènes WWE '13 (même format que WWE '12) ou SvR 2011
+## 6 octies. Page Catcheurs (2026-10-23, **testée en jeu par l'utilisateur : OK**)
+
+`port/src/modmaker/superstar_page.h`. `pac/ch/chNNN.pac` (NNN = id du catcheur, noms de `chEtc.pac`) = EPK8, une
+entrée « EMD » par tenue (`000NNNAA`). Chaque tenue = PACH : modèle du corps (id 0, ~9 400 sommets, 107 os, pose
+de référence en T), textures 10 (`normal`, détails `MF..`, rides `WM_..`), 12 (`color` = la texture principale,
+DXT1 2048×1024), 13-15 (`Mask1-3` : masques de couleur Superstar Threads, **16 bits non compressés** : pas encore
+lus par `svrfmt/texture`, vignettes vides), yeux (20000).
+- Page : catcheur (recherche) → tenue → images (remplacer / exporter PNG / remettre) + vue 3D du catcheur
+  (`arena_view` : section = la tenue ; texture `g_mDiffusePrm` ; noms sans tenir compte des majuscules ; shaders
+  `yCh_*` éclairés d'en haut au lieu de la lumière des sommets ; caméra de face si le modèle fait < 10 m).
+- Mod `type=attire`, `files/pac/ch/chNNN.pac` ; la tenue ne dépasse jamais sa taille d'origine (`Fit` mesuré sur la
+  section, prudence : limite réelle non vérifiée).
+- Test de l'utilisateur : Alex Riley, tenue 1, `color` retouchée (short vert « RILEY ») → vu en match.
+
+Suite possible : lire les masques 16 bits, couleurs plus justes (lightmaps), public et cordes dans la vue 3D, conversion d'arènes WWE '13 (même format que WWE '12) ou SvR 2011
 (`arena_convert.py`), sons, catcheurs et tenues.
 
 ## 7. Questions ouvertes

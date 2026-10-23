@@ -89,6 +89,49 @@ inline fs::path PickOpen(bool fr, bool pac) {
   return picked;
 }
 
+struct Thumb {
+  ComPtr<ID3D11ShaderResourceView> srv;
+  int w = 0, h = 0;
+};
+
+
+// A texture (DDS) as a picture ImGui can show.
+inline Thumb MakeThumb(ID3D11Device *device_, const Bytes &dds) {
+  Thumb t;
+  svrfmt::Image img;
+  if (!device_ || !svrfmt::DdsDecode(dds, img) || img.w <= 0)
+    return t;
+  D3D11_TEXTURE2D_DESC td{};
+  td.Width = UINT(img.w);
+  td.Height = UINT(img.h);
+  td.MipLevels = 1;
+  td.ArraySize = 1;
+  td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  td.SampleDesc.Count = 1;
+  td.Usage = D3D11_USAGE_DEFAULT;
+  td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+  D3D11_SUBRESOURCE_DATA init{img.rgba.data(), UINT(img.w * 4), 0};
+  ComPtr<ID3D11Texture2D> tex;
+  if (SUCCEEDED(device_->CreateTexture2D(&td, &init, &tex)))
+    device_->CreateShaderResourceView(tex.Get(), nullptr, &t.srv);
+  t.w = img.w;
+  t.h = img.h;
+  return t;
+}
+
+// The picture fitted into a box x box square (dark behind).
+inline void DrawPicture(const Thumb &t, float box) {
+  const ImVec2 at = ImGui::GetCursorScreenPos();
+  ImDrawList *dl = ImGui::GetWindowDrawList();
+  dl->AddRectFilled(at, ImVec2(at.x + box, at.y + box), IM_COL32(40, 40, 44, 255));
+  if (t.srv && t.w > 0 && t.h > 0) {
+    const float s = std::min(box / t.w, box / t.h), w = t.w * s, h = t.h * s;
+    const ImVec2 p(at.x + (box - w) * 0.5f, at.y + (box - h) * 0.5f);
+    dl->AddImage(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(t.srv.Get()))), p, ImVec2(p.x + w, p.y + h));
+  }
+  ImGui::Dummy(ImVec2(box, box));
+}
+
 class Page {
  public:
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &disc, mods::Manager &mods) {
@@ -183,46 +226,6 @@ class Page {
     return p;
   }
 
-  struct Thumb {
-    ComPtr<ID3D11ShaderResourceView> srv;
-    int w = 0, h = 0;
-  };
-
-  Thumb MakeThumb(const Bytes &dds) {
-    Thumb t;
-    svrfmt::Image img;
-    if (!device_ || !svrfmt::DdsDecode(dds, img) || img.w <= 0)
-      return t;
-    D3D11_TEXTURE2D_DESC td{};
-    td.Width = UINT(img.w);
-    td.Height = UINT(img.h);
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_DEFAULT;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA init{img.rgba.data(), UINT(img.w * 4), 0};
-    ComPtr<ID3D11Texture2D> tex;
-    if (SUCCEEDED(device_->CreateTexture2D(&td, &init, &tex)))
-      device_->CreateShaderResourceView(tex.Get(), nullptr, &t.srv);
-    t.w = img.w;
-    t.h = img.h;
-    return t;
-  }
-
-  static void DrawPicture(const Thumb &t, float box) {
-    const ImVec2 at = ImGui::GetCursorScreenPos();
-    ImDrawList *dl = ImGui::GetWindowDrawList();
-    dl->AddRectFilled(at, ImVec2(at.x + box, at.y + box), IM_COL32(40, 40, 44, 255));
-    if (t.srv && t.w > 0 && t.h > 0) {
-      const float s = std::min(box / t.w, box / t.h), w = t.w * s, h = t.h * s;
-      const ImVec2 p(at.x + (box - w) * 0.5f, at.y + (box - h) * 0.5f);
-      dl->AddImage(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(t.srv.Get()))), p, ImVec2(p.x + w, p.y + h));
-    }
-    ImGui::Dummy(ImVec2(box, box));
-  }
-
   int Changed() {
     int n = 0;
     for (const auto &t : arena_.Textures())
@@ -249,7 +252,7 @@ class Page {
       return;
     }
     for (const auto &t : arena_.Textures())
-      thumbs_.push_back(MakeThumb(arena_.Get(t).data));
+      thumbs_.push_back(MakeThumb(device_, arena_.Get(t).data));
     if (!name_[0])
       snprintf(name_, sizeof(name_), "%s", kSlots[slot_].name);
   }
@@ -316,7 +319,7 @@ class Page {
         ImGui::SameLine();
         if (ImGui::Button(fr ? "Remettre celle du jeu" : "Back to the game's")) {
           arena_.Restore(t);
-          thumbs_[selected_] = MakeThumb(arena_.Get(t).data);
+          thumbs_[selected_] = MakeThumb(device_, arena_.Get(t).data);
         }
       }
       ImGui::TextWrapped("%s", fr ? "Votre image est mise à la taille et au format de celle du jeu (la transparence "
@@ -349,7 +352,7 @@ class Page {
       img = svrfmt::Resize(img, info.w, info.h);
     arena_.Unreduce();
     arena_.Replace(t, svrfmt::DdsEncode(img, info.format, info.mips > 1));
-    thumbs_[selected_] = MakeThumb(arena_.Get(t).data);
+    thumbs_[selected_] = MakeThumb(device_, arena_.Get(t).data);
     view_stale_ = true;
     message_.clear();
     reduced_note_.clear();

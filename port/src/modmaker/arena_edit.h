@@ -73,19 +73,22 @@ struct Package {
 
 class Arena {
  public:
-  bool Load(Bytes file, std::string *error) {
+  // An arena (its "STG " section), or with `section` >= 0 that entry of any pac whose entries are PACH lists
+  // (a superstar's chNNN.pac: one "EMD " entry per attire).
+  bool Load(Bytes file, std::string *error, int section = -1) {
     packages_.clear();
     textures_.clear();
     archive_ = svrfmt::Archive();
     if (!svrfmt::ArchiveOpen(file, archive_, error))
       return false;
-    if (archive_.root.kind != svrfmt::ArcKind::Epac || archive_.root.kids.empty() ||
-        archive_.root.kids[0].group != "STG ") {
+    section_ = section < 0 ? 0 : size_t(section);
+    if (archive_.root.kind != svrfmt::ArcKind::Epac || archive_.root.kids.size() <= section_ ||
+        (section < 0 && archive_.root.kids[0].group != "STG ")) {
       if (error)
-        *error = "not an arena (no STG section)";
+        *error = section < 0 ? "not an arena (no STG section)" : "no such entry";
       return false;
     }
-    svrfmt::ArcNode &stg = archive_.root.kids[0];
+    svrfmt::ArcNode &stg = archive_.root.kids[section_];
     if (!svrfmt::ArchiveExpand(stg) || stg.kind != svrfmt::ArcKind::Pach) {
       if (error)
         *error = "the arena's list can't be read";
@@ -107,6 +110,15 @@ class Arena {
         textures_.push_back({i, j});
     return true;
   }
+
+  // The pac's entries ("EMD /00013902"...): group, name.
+  std::vector<std::pair<std::string, std::string>> Sections() const {
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const auto &k : archive_.root.kids)
+      out.push_back({k.group, k.name});
+    return out;
+  }
+  size_t SectionSize() const { return archive_.root.kids.size() > section_ ? archive_.root.kids[section_].stored.size() : 0; }
 
   // Sets the stage number (the STG entry's name, "%04d"): an arena works only under its own slot's number.
   bool SetStage(int number) {
@@ -142,7 +154,7 @@ class Arena {
       if (!p.changed)
         continue;
       const Bytes raw = svrfmt::BundleWrite(p.textures);
-      p.node->stored = bpe_like::EncodeLike(raw, p.shipped);
+      p.node->stored = svrfmt::IsBpe(p.shipped) ? bpe_like::EncodeLike(raw, p.shipped) : raw;
       p.node->dirty = true;
     }
     return svrfmt::ArchiveSave(archive_);
@@ -150,11 +162,13 @@ class Arena {
 
   // Makes the file fit `budget` bytes: the biggest textures not replaced lose their top level, one at a time.
   // The textures reduced (names); the file built last is in `out`.
-  std::vector<std::string> Fit(size_t budget, Bytes &out) {
+  // section_budget: the budget is for the section (an attire), not the whole file.
+  std::vector<std::string> Fit(size_t budget, Bytes &out, bool section_budget = false) {
     std::vector<std::string> reduced;
     out = Build();
+    auto size = [&] { return section_budget ? archive_.root.kids[section_].stored.size() : out.size(); };
     std::set<size_t> tried;
-    while (out.size() > budget) {
+    while (size() > budget) {
       size_t best = SIZE_MAX, best_size = 0;
       for (size_t i = 0; i < textures_.size(); ++i) {
         const Texture &t = textures_[i];
@@ -203,6 +217,7 @@ class Arena {
 
  private:
   svrfmt::Archive archive_;
+  size_t section_ = 0;
   std::vector<Package> packages_;
   std::vector<Texture> textures_;
 };
