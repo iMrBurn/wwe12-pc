@@ -172,6 +172,32 @@ Le jeu n'est **pas** modifié : il lit toujours le dossier `mods` comme avant.
   `WWE12 Launcher (test mods).exe` dans le jeu installé ; mod d'essai `work/mods_test/wm26_test.svrmod` (la WM 26
   v22 en `type=arena`, `game=wwe12`) ; refus attendu pour un mod de Kaiko (`Bundled Mods\raw_is_war.svrmod`).
 
+## 6 quater. Textures : dump, packs, mods `type=textures` (2026-10-23, dump et remplacement testés en jeu)
+
+Test (jeu de développement, release) : 26 PNG dumpés sur l'écran-titre en 45 s, couleurs et transparence justes ;
+le « '12 » rouge du logo (`256x128_dxt5_2aa11b16ac15a795`) recoloré en bleu et agrandi ×4 (1024×512) dans
+`textures\test\` → affiché bleu et net au lancement suivant. Reste à tester : le mod `type=textures` par le launcher.
+
+
+Demande de l'utilisateur. Repris des Texture Packs du portage SvR 2011 de Kaiko (`port/src/native/texture_packs.*` :
+encodeur PNG, règle « nom finissant par `_<empreinte 16 hex>` », lecteurs PNG/DDS ; crédit), branché sur le miroir de
+textures de re:Blue au lieu de son cache.
+- **Jeu** : `port/src/native/wwe12_texture_packs.{h,cpp}` ; branchement dans
+  `port/src/reblue/gpu/native_texture_mirror.cpp` (`Build2DMirror`, juste après `UntileFace`) : empreinte = XXH3 des
+  blocs de l'image de base, dépliés et serrés (DXT1/3/5, 8:8:8:8, textures 2D) ; si un remplacement existe, la
+  texture est faite à partir de lui (`BuildReplacementMirror`, sa taille, ses niveaux, lignes alignées sur 256) et le
+  réarrangement de couleurs du jeu (swizzle) ne lui est pas appliqué (`t_replaced`). stb_image (PNG) pris dans
+  `recomp/rexglue-sdk/thirdparty/stb` (une ligne dans `port/cmake/native_renderer.cmake`).
+- **Dump** : cvar `wwe12_texture_dump` (false) → `texture_dumps\<l>x<h>_<dxt1|dxt3|dxt5|rgba>_<empreinte>.png` à côté
+  de l'exe, une fois par empreinte (aussi d'une partie à l'autre), sur un fil de basse priorité, swizzle appliqué.
+- **Packs** : cvar `wwe12_texture_packs` (true) ; tout `.png`/`.dds` sous `textures\` (sous-dossiers compris) dont
+  le nom finit par `_<empreinte>` remplace la texture, à n'importe quelle taille (PNG : mips refaits ; DDS : ses mips).
+  Lecture au premier affichage (synchrone pour l'instant : petite saccade possible la première fois).
+- **Launcher** : page MODS, case « Dump des textures » (`wwe12_texture_dump` dans `wwe12.toml`), boutons « Ouvrir
+  texture_dumps » / « Ouvrir textures » ; type de mod **`textures`** (le nôtre) : les images sous `textures/` dans le
+  zip vont dans `textures\<id>\` à côté de l'exe (`deployed.txt` : `textures:<id>/…`).
+- Pas encore : nom de la texture du jeu dans le nom du dump (Kaiko indexe les `.pac` pour ça), lecture en arrière-plan.
+
 ## 7. Questions ouvertes
 
 - Pour Kaiko : ~~code C++~~ (réglé : `port/modmaker/` de son dépôt) ; ~~extension~~ (réglé : `.svrmod` +

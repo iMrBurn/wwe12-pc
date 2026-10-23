@@ -961,7 +961,34 @@ void PageControls() {
 void PageMods() {
   const Texts &t = T();
   Title(t.mods);
-  g_mods.Draw(g_s.language == 4);
+  const bool fr = g_s.language == 4;
+  g_mods.Draw(fr);
+  ImGui::Dummy(ImVec2(0, 10));
+
+  // Texture dumps and packs (game: src/native/wwe12_texture_packs.h).
+  ImGui::Text("Textures");
+  bool dump = g_toml.GetBool("wwe12_texture_dump", false);
+  if (ImGui::Checkbox(fr ? "Dump des textures (pour faire des packs)" : "Dump textures (to make texture packs)",
+                      &dump)) {
+    g_toml.SetBool("wwe12_texture_dump", dump);
+    SaveSettings();
+  }
+  ImGui::TextDisabled("%s", fr ? "Chaque texture affichée en jeu est enregistrée une fois en PNG dans texture_dumps. "
+                                 "Une image du dossier textures nommée ..._<empreinte>.png (ou .dds) la remplace, à "
+                                 "n'importe quelle taille."
+                               : "Every texture shown in the game is saved once as a PNG in texture_dumps. A picture "
+                                 "in the textures folder named ..._<hash>.png (or .dds) replaces it, at any size.");
+  if (ImGui::Button(fr ? "Ouvrir texture_dumps" : "Open texture_dumps")) {
+    std::error_code tec;
+    fs::create_directories(ExeDir() / "texture_dumps", tec);
+    OpenFolder(ExeDir() / "texture_dumps");
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(fr ? "Ouvrir textures" : "Open textures")) {
+    std::error_code tec;
+    fs::create_directories(ExeDir() / "textures", tec);
+    OpenFolder(ExeDir() / "textures");
+  }
   ImGui::Dummy(ImVec2(0, 10));
   ImGui::TextWrapped("%s", t.mods_text);
   ImGui::Dummy(ImVec2(0, 8));

@@ -35,6 +35,7 @@
 #include "gpu/texture_upload.h"
 #if defined(SVR_NATIVE_RENDERER)
 #include "svr_geometry.h"
+#include "wwe12_texture_packs.h"
 #endif
 
 namespace bd::gpu {
@@ -539,6 +540,39 @@ void DumpBaseLevel(const MirrorLayout &L, const xe::xe_gpu_texture_fetch_t &fetc
 }
 #endif
 
+#if defined(SVR_NATIVE_RENDERER)
+// Set by Build2DMirror when a texture pack replaced the texture: its pixels are already as they
+// look, so GetOrCreateNativeMirror leaves the fetch swizzle out.
+thread_local bool t_replaced = false;
+
+// A texture pack's replacement (wwe12_texture_packs.h) as a mirror, at its own size, with its levels.
+GuestTexture *BuildReplacementMirror(const wwe12::texture_packs::Replacement &r) {
+  using F = wwe12::texture_packs::Format;
+  const xe::TextureFormat format = r.format == F::kBC1   ? xe::TextureFormat::k_DXT1
+                                   : r.format == F::kBC2 ? xe::TextureFormat::k_DXT2_3
+                                   : r.format == F::kBC3 ? xe::TextureFormat::k_DXT4_5
+                                                         : xe::TextureFormat::k_8_8_8_8;
+  const u32 edge = r.format == F::kRGBA8 ? 1u : 4u;
+  const u32 bpb = r.format == F::kRGBA8 ? 4u : r.format == F::kBC1 ? 8u : 16u;
+  std::vector<std::vector<u8>> rows(r.levels.size());
+  std::vector<BCMipLevel> levels;
+  for (size_t l = 0; l < r.levels.size(); ++l) {
+    const u32 lw = std::max(r.width >> l, 1u), lh = std::max(r.height >> l, 1u);
+    const u32 bw = (lw + edge - 1) / edge, bh = (lh + edge - 1) / edge;
+    const size_t tight = size_t(bw) * bpb, pitch = rex::align<size_t>(tight, 256);
+    if (r.levels[l].size() < tight * bh)
+      break;
+    rows[l].assign(pitch * bh, 0u);  // rows 256-byte aligned, as the uploader wants
+    for (u32 y = 0; y < bh; ++y)
+      std::memcpy(&rows[l][y * pitch], &r.levels[l][y * tight], tight);
+    levels.push_back({rows[l].data(), rows[l].size(), lw, lh, u32(pitch / bpb) * edge});
+  }
+  if (levels.empty())
+    return nullptr;
+  return BuildBCMirrorTexture2DMips(r.width, r.height, u32(format), levels.data(), u32(levels.size()));
+}
+#endif
+
 GuestTexture *Build2DMirror(const MirrorLayout &L, const u8 *src,
                             const xe::xe_gpu_texture_fetch_t &fetch,
                             u32 guest_va, u32 name_va, bool dxt) {
@@ -546,6 +580,24 @@ GuestTexture *Build2DMirror(const MirrorLayout &L, const u8 *src,
   UntileFace(L, src, staging.data(), L.pack_off_x, L.pack_off_y);
 #if defined(SVR_NATIVE_RENDERER)
   DumpBaseLevel(L, fetch, staging, guest_va);
+  // Texture dumps and packs (wwe12_texture_packs.h): the top level's content hash.
+  if ((dxt || L.format == xe::TextureFormat::k_8_8_8_8) && wwe12::texture_packs::Active()) {
+    using F = wwe12::texture_packs::Format;
+    const F format = L.format == xe::TextureFormat::k_DXT1     ? F::kBC1
+                     : L.format == xe::TextureFormat::k_DXT2_3 ? F::kBC2
+                     : L.format == xe::TextureFormat::k_DXT4_5 ? F::kBC3
+                                                               : F::kRGBA8;
+    const u64 hash = wwe12::texture_packs::HashBlocks(staging.data(), L.staging_row_bytes, L.block_w,
+                                                      L.block_h, L.bytes_per_block);
+    wwe12::texture_packs::Dump(hash, L.width, L.height, format, staging.data(), L.staging_row_bytes,
+                               fetch.swizzle);
+    if (const auto r = wwe12::texture_packs::Find(hash)) {
+      if (GuestTexture *tex = BuildReplacementMirror(*r)) {
+        t_replaced = true;
+        return tex;
+      }
+    }
+  }
 #endif
 #if defined(SVR_NATIVE_RENDERER)
   if (IsPacked16(L.format)) {
@@ -729,6 +781,9 @@ GuestTexture *GetOrCreateNativeMirror(u32 guest_va, u32 name_va) {
   }
 #endif
   GuestTexture *tex = nullptr;
+#if defined(SVR_NATIVE_RENDERER)
+  t_replaced = false;
+#endif
   switch (fetch.dimension) {
   case xe::DataDimension::k3D:
     tex = BuildVolumeMirror(layout, src, guest_va);
@@ -743,7 +798,8 @@ GuestTexture *GetOrCreateNativeMirror(u32 guest_va, u32 name_va) {
   if (!tex)
     return nullptr;
 #if defined(SVR_NATIVE_RENDERER)
-  ApplyFetchSwizzle(tex, fetch, guest_va);
+  if (!t_replaced)
+    ApplyFetchSwizzle(tex, fetch, guest_va);
 #endif
 
   auto stored = std::unique_ptr<GuestTexture>(tex);

@@ -13,6 +13,9 @@
 //   mods\.svrmods\deployed.txt          which of those files the launcher put there (path, mod, size)
 // Files the player put in mods by hand are never touched: a mod file that would replace one is
 // left out and reported. Of two mods giving the same file, the first one (by folder name) wins.
+// Texture packs (type=textures, ours: Kaiko keeps them out of .svrmod) give their pictures under
+// textures/ in the zip (<anything>_<hash16>.png or .dds, see port/src/native/wwe12_texture_packs.h);
+// they go to textures\<id>\ beside the exe, where the game looks for them (deployed.txt: "textures:").
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -52,7 +55,7 @@ const Texts kEnglish = {
     "The game is running: close it to install or change mods.", "Installed:", "Mod removed.",
     "This mod is not for WWE '12 (its manifest has no game=wwe12; SvR 2011 mods don't work here).",
     "Not a mod: manifest.txt is missing at the root of the zip.", "Not a mod or a damaged zip:",
-    "This version can't install mods of type", "This mod has no files for the game (no files\\ folder).",
+    "This version can't install mods of type", "This mod has no files for the game (no files\\ or textures\\ folder).",
     "Failed:", "%s: left out, a file you put in mods yourself is already there.",
     "%s: left out, the mod %s already gives it.", "file(s)",
 };
@@ -65,7 +68,7 @@ const Texts kFrench = {
     "pas ici).",
     "Ce n'est pas un mod : manifest.txt manque à la racine du zip.", "Ce n'est pas un mod, ou zip abîmé :",
     "Cette version ne sait pas installer les mods de type",
-    "Ce mod n'a pas de fichiers pour le jeu (pas de dossier files\\).", "Échec :",
+    "Ce mod n'a pas de fichiers pour le jeu (pas de dossier files\\ ni textures\\).", "Échec :",
     "%s : laissé de côté, un fichier que vous avez mis vous-même dans mods est déjà là.",
     "%s : laissé de côté, le mod %s le fournit déjà.", "fichier(s)",
 };
@@ -82,6 +85,7 @@ class Manager {
   void Init(const fs::path &mods_dir) {
     mods_ = mods_dir;
     root_ = mods_ / ".svrmods";
+    textures_ = mods_.parent_path() / "textures";
     Refresh();
     if (!game::IsRunning())
       Deploy();  // a mod folder removed or changed by hand is caught up here
@@ -226,7 +230,8 @@ class Manager {
     static const std::map<std::string, std::string> kinds = {
         {"superstar", "Superstars"}, {"attire", "Attires"},   {"arena", "Arenas"},
         {"moves", "Moves"},          {"backstage", "Backstage"}, {"signs", "Signs"},
-        {"media", "Media"},          {"background", "Backgrounds"}, {"matchtype", "MatchTypes"}};
+        {"media", "Media"},          {"background", "Backgrounds"}, {"matchtype", "MatchTypes"},
+        {"textures", "Textures"}};
     const auto it = kinds.find(Lower(type));
     return it == kinds.end() ? std::string() : it->second;
   }
@@ -405,10 +410,12 @@ class Manager {
       m.version = Value(text, "version");
       m.type = Value(text, "type");
       m.on = !fs::exists(d / "disabled", ec);
-      for (fs::recursive_directory_iterator it(d / "files", ec), end; !ec && it != end; it.increment(ec))
-        if (it->is_regular_file(ec))
-          ++m.files;
-      ec.clear();
+      for (const char *sub : {"files", "textures"}) {
+        for (fs::recursive_directory_iterator it(d / sub, ec), end; !ec && it != end; it.increment(ec))
+          if (it->is_regular_file(ec))
+            ++m.files;
+        ec.clear();
+      }
       list_.push_back(std::move(m));
     }
   }
@@ -452,20 +459,24 @@ class Manager {
     for (const auto &m : list_) {
       if (!m.on)
         continue;
-      const fs::path files = m.dir / "files";
-      for (fs::recursive_directory_iterator it(files, ec), end; !ec && it != end; it.increment(ec)) {
-        if (!it->is_regular_file(ec))
-          continue;
-        const std::string rel = ToUtf8(fs::relative(it->path(), files, ec));
-        if (rel.empty() || rel.rfind(".svrmods", 0) == 0)
-          continue;
-        const auto found = want.find(Key(rel));
-        if (found != want.end())
-          conflicts_.push_back({rel, found->second.mod});
-        else
-          want[Key(rel)] = {rel, m.id, it->path()};
+      // files\ -> mods\ (disc paths); textures\ -> textures\<id>\ (texture packs).
+      const std::pair<fs::path, std::string> sources[] = {{m.dir / "files", ""},
+                                                          {m.dir / "textures", "textures:" + m.id + "/"}};
+      for (const auto &[from, prefix] : sources) {
+        for (fs::recursive_directory_iterator it(from, ec), end; !ec && it != end; it.increment(ec)) {
+          if (!it->is_regular_file(ec))
+            continue;
+          const std::string rel = prefix + ToUtf8(fs::relative(it->path(), from, ec));
+          if (rel.size() == prefix.size() || rel.rfind(".svrmods", 0) == 0)
+            continue;
+          const auto found = want.find(Key(rel));
+          if (found != want.end())
+            conflicts_.push_back({rel, found->second.mod});
+          else
+            want[Key(rel)] = {rel, m.id, it->path()};
+        }
+        ec.clear();
       }
-      ec.clear();
     }
     // Take away what the launcher put there and is no longer wanted (only if still the same file).
     for (auto it = deployed_.begin(); it != deployed_.end();) {
@@ -474,14 +485,14 @@ class Manager {
         ++it;
         continue;
       }
-      const fs::path target = mods_ / FromUtf8(it->second.rel);
+      const fs::path target = Target(it->second.rel);
       if (fs::exists(target, ec) && fs::file_size(target, ec) == it->second.size)
         fs::remove(target, ec);
       it = deployed_.erase(it);
     }
     // Put in what is missing.
     for (const auto &[key, w] : want) {
-      const fs::path target = mods_ / FromUtf8(w.rel);
+      const fs::path target = Target(w.rel);
       const uintmax_t size = fs::file_size(w.source, ec);
       const auto d = deployed_.find(key);
       if (d != deployed_.end() && fs::exists(target, ec) && fs::file_size(target, ec) == size)
@@ -530,8 +541,10 @@ class Manager {
       message_ = std::string(t.bad_type) + " \"" + type + "\".";
       return;
     }
-    if (std::none_of(entries.begin(), entries.end(),
-                     [](const Entry &e) { return Lower(e.name).rfind("files/", 0) == 0; })) {
+    if (std::none_of(entries.begin(), entries.end(), [](const Entry &e) {
+          const std::string n = Lower(e.name);
+          return n.rfind("files/", 0) == 0 || n.rfind("textures/", 0) == 0;
+        })) {
       message_ = t.no_files;
       return;
     }
@@ -595,7 +608,15 @@ class Manager {
     message_ = ec ? std::string(t.failed) + " " + ec.message() : t.done_removed;
   }
 
-  fs::path mods_, root_, remove_, toggle_;
+  // Where a deployed file goes: "textures:<id>/<path>" under textures\, anything else under mods\.
+  fs::path Target(const std::string &rel) const {
+    static const std::string kTex = "textures:";
+    if (rel.compare(0, kTex.size(), kTex) == 0)
+      return textures_ / FromUtf8(rel.substr(kTex.size()));
+    return mods_ / FromUtf8(rel);
+  }
+
+  fs::path mods_, root_, textures_, remove_, toggle_;
   bool toggle_on_ = false;
   std::vector<Mod> list_;
   std::map<std::string, Deployed> deployed_;

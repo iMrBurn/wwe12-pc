@@ -85,7 +85,9 @@ function(wwe12_add_native_renderer target)
         "${WWE12_NATIVE_ROOT}/src/native"
         "${WWE12_NATIVE_GEN}"
         "${WWE12_PLUME_DIR}"
-        "${WWE12_XENOS_DIR}/XenosRecomp")
+        "${WWE12_XENOS_DIR}/XenosRecomp"
+        # stb_image (PNG reader) for the texture packs (src/native/wwe12_texture_packs.cpp)
+        "${WWE12_RECOMP_DIR}/rexglue-sdk/thirdparty/stb")
     target_compile_definitions(${target} PRIVATE SVR_NATIVE_RENDERER=1)
     # WWE '12's addresses for the D3D functions re:Blue's hooks name (D3DDevice_Clear -> sub_...).
     set_source_files_properties(${WWE12_NATIVE_SOURCES} PROPERTIES
