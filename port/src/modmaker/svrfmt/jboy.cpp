@@ -1,7 +1,8 @@
 // WWE12-PC: taken from Kaiko's WWE SmackDown vs. Raw 2011 PC port (with his permission, credit given),
 // https://github.com/KaikoClanworth1/wwe-svr2011-pc, port/modmaker/svrfmt/jboy.cpp at b2521fe.
-// Reading also takes WWE '12 models: their mesh records are 0xB8 bytes, a word inserted at +0x74 (a second pointer
-// to the strip table), every later field 4 bytes further (docs/limit_breaking.md, "Comparaison JBOY").
+// Reading and writing also take WWE '12 models: their mesh records are 0xB8 bytes, a word inserted at +0x74 (arenas: a
+// second pointer to the strip table; superstars: to one tangent per vertex), every later field 4 bytes further
+// (docs/limit_breaking.md, "Comparaison JBOY"); and all the model's parts (superstars have several).
 #include "jboy.h"
 
 #include <algorithm>
@@ -62,8 +63,18 @@ bool JboyRead(const Bytes& d, Model& m, std::string* error) {
   auto f = [w12](size_t off) { return w12 && off >= 0x74 ? off + 4 : off; };  // a field's place in the record
   if (!in(B + optr, 32) || !in(B + tptr, 16 * ntex) || !in(B + nptr, kNode * nnode) || !in(B + mptr, stride * nmesh))
     return fail("table out of range");
+  m.w12 = w12;
   m.name = Name16(&d[B + optr]);
   m.group.assign(d.begin() + B + optr + 16, d.begin() + B + optr + 32);
+  const uint32_t nparts = Be32(&d[0x34]);
+  for (uint32_t i = 0; i < nparts && in(B + optr + 32 * size_t(i), 32); ++i) {
+    const uint8_t* p = &d[B + optr + 32 * size_t(i)];
+    Part part;
+    part.name = Name16(p);
+    part.info.assign(p + 16, p + 32);
+    part.meshes = Be32(p + 24);
+    m.parts.push_back(std::move(part));
+  }
   for (uint32_t i = 0; i < ntex; ++i) m.textures.push_back(Name16(&d[B + tptr + 16 * i]));
   for (uint32_t i = 0; i < nnode; ++i) {
     const uint8_t* o = &d[B + nptr + kNode * i];
@@ -102,6 +113,14 @@ bool JboyRead(const Bytes& d, Model& m, std::string* error) {
       s.verts[k].color = Be32(v + 24);
       s.uvs[k] = {BeF(&d[B + uvptr + 8 * k]), BeF(&d[B + uvptr + 8 * k + 4])};
     }
+    // WWE '12: the word at +0x74 points to the strips (arenas), or to one tangent per vertex (superstars).
+    if (w12 && Be32(&d[o + 0x74]) != iptr) {
+      const uint32_t tptr2 = Be32(&d[o + 0x74]);
+      if (!in(B + tptr2, 12 * size_t(vc))) return fail("tangents out of range");
+      s.tangents.resize(vc);
+      for (uint32_t k = 0; k < vc; ++k)
+        for (int c = 0; c < 3; ++c) s.tangents[k][c] = BeF(&d[B + tptr2 + 12 * k + 4 * c]);
+    }
     for (uint32_t j = 0; j < nw; ++j) {
       std::vector<Weight> blk(vc);
       for (uint32_t k = 0; k < vc; ++k) {
@@ -139,6 +158,8 @@ bool JboyRead(const Bytes& d, Model& m, std::string* error) {
 }
 
 Bytes JboyWrite(const Model& m) {
+  const size_t rec = m.w12 ? kMesh + 4 : kMesh;
+  auto f = [&m](size_t off) { return m.w12 && off >= 0x74 ? off + 4 : off; };  // a field's place in the record
   Bytes out(0x48, 0);
   std::vector<uint32_t> ptrs;  // file offsets holding pointers
   auto put_ptr = [&](size_t at, size_t target) {
@@ -146,10 +167,10 @@ Bytes JboyWrite(const Model& m) {
     ptrs.push_back(uint32_t(at - B));
   };
   const size_t mesh_at = out.size();
-  out.resize(out.size() + kMesh * m.meshes.size(), 0);
+  out.resize(out.size() + rec * m.meshes.size(), 0);
   for (size_t i = 0; i < m.meshes.size(); ++i) {
     const Mesh& s = m.meshes[i];
-    const size_t vc = s.verts.size(), md = mesh_at + kMesh * i;
+    const size_t vc = s.verts.size(), md = mesh_at + rec * i;
     const size_t par_list = out.size();
     out.resize(out.size() + 4 * s.params.size(), 0);
     std::vector<size_t> par_at;
@@ -179,6 +200,9 @@ Bytes JboyWrite(const Model& m) {
       for (size_t k = 0; k < vc; ++k) { AppBe32(out, 0); AppBeF(out, 1.f); }
     const size_t ud = out.size();
     for (const auto& uv : s.uvs) { AppBeF(out, uv[0]); AppBeF(out, uv[1]); }
+    const size_t td = out.size();
+    for (size_t k = 0; m.w12 && !s.tangents.empty() && k < vc; ++k)
+      for (int c = 0; c < 3; ++c) AppBeF(out, k < s.tangents.size() ? s.tangents[k][c] : (c == 0 ? 1.f : 0.f));
     const size_t ih = out.size();
     out.resize(out.size() + 12 * s.strips.size(), 0);
     std::vector<size_t> id_at;
@@ -189,25 +213,26 @@ Bytes JboyWrite(const Model& m) {
     Pad(out, 4);
     // descriptor (unknown fields from the original)
     Bytes desc = s.raw;
-    desc.resize(kMesh, 0);
+    desc.resize(rec, 0);
     PutBe32(&desc[0], uint32_t(vc));
     PutBe32(&desc[4], uint32_t(s.strips.size()));
     PutBe32(&desc[8], uint32_t(s.palette.size()));
     for (int k = 0; k < 20; ++k) PutBe32(&desc[0x0C + 4 * k], k < int(s.palette.size()) ? uint32_t(s.palette[k]) : 0xFFFFFFFFu);
     PutBe32(&desc[0x5C], uint32_t(std::max<size_t>(1, s.weights.size())));
-    PutBe32(&desc[0x74], s.material);
-    std::memset(&desc[0x78], 0, 16);
-    std::memcpy(&desc[0x78], s.shader.data(), std::min<size_t>(16, s.shader.size()));
-    PutBe32(&desc[0x8C], s.vfmt);
-    PutBe32(&desc[0x90], uint32_t(s.params.size()));
-    PutBe32(&desc[0x9C], uint32_t(vc));
-    for (int k = 0; k < 4; ++k) PutBeF(&desc[0xA4 + 4 * k], s.sphere[k]);
-    std::memcpy(&out[md], desc.data(), kMesh);
+    PutBe32(&desc[f(0x74)], s.material);
+    std::memset(&desc[f(0x78)], 0, 16);
+    std::memcpy(&desc[f(0x78)], s.shader.data(), std::min<size_t>(16, s.shader.size()));
+    PutBe32(&desc[f(0x8C)], s.vfmt);
+    PutBe32(&desc[f(0x90)], uint32_t(s.params.size()));
+    PutBe32(&desc[f(0x9C)], uint32_t(vc));
+    for (int k = 0; k < 4; ++k) PutBeF(&desc[f(0xA4) + 4 * k], s.sphere[k]);
+    std::memcpy(&out[md], desc.data(), rec);
     put_ptr(md + 0x68, vh);
     put_ptr(md + 0x6C, wd);
     put_ptr(md + 0x70, ud);
-    put_ptr(md + 0x94, par_list);
-    put_ptr(md + 0x98, ih);
+    if (m.w12) put_ptr(md + 0x74, s.tangents.empty() ? ih : td);
+    put_ptr(md + f(0x94), par_list);
+    put_ptr(md + f(0x98), ih);
     put_ptr(vh, vd);
     for (size_t k = 0; k < par_at.size(); ++k) put_ptr(par_list + 4 * k, par_at[k]);
     for (size_t k = 0; k < s.strips.size(); ++k) {
@@ -231,17 +256,27 @@ Bytes JboyWrite(const Model& m) {
   const size_t tex_at = out.size();
   for (const auto& t : m.textures) AppName(out, t);
   const size_t grp_at = out.size();
-  AppName(out, m.name);
-  Bytes group = m.group;
-  group.resize(16, 0);
-  PutBe32(&group[8], uint32_t(m.meshes.size()));
-  App(out, group);
+  if (m.parts.size() > 1) {
+    for (const auto& p : m.parts) {
+      AppName(out, p.name);
+      Bytes info = p.info;
+      info.resize(16, 0);
+      PutBe32(&info[8], p.meshes);
+      App(out, info);
+    }
+  } else {
+    AppName(out, m.name);
+    Bytes group = m.group;
+    group.resize(16, 0);
+    PutBe32(&group[8], uint32_t(m.meshes.size()));
+    App(out, group);
+  }
   // header
   std::memcpy(&out[8], m.header.data(), std::min<size_t>(0x40, m.header.size()));
   const uint32_t len = uint32_t(out.size() - 8);
   std::memcpy(&out[0], "JBOY", 4);
   PutBe32(&out[4], len);
-  PutBe32(&out[8], 0);
+  if (!m.w12) PutBe32(&out[8], 0);  // (WWE '12 superstars have 0x10 there: kept)
   PutBe32(&out[0x0C], len);
   PutBe32(&out[0x18], uint32_t(m.meshes.size()));
   put_ptr(0x1C, mesh_at);
@@ -250,6 +285,7 @@ Bytes JboyWrite(const Model& m) {
   put_ptr(0x28, node_at);
   put_ptr(0x2C, tex_at);
   put_ptr(0x30, grp_at);
+  if (m.parts.size() > 1) PutBe32(&out[0x34], uint32_t(m.parts.size()));
   const Bytes pof = PofEncode(ptrs);
   App(out, reinterpret_cast<const uint8_t*>("POF0"), 4);
   AppBe32(out, uint32_t(pof.size()));

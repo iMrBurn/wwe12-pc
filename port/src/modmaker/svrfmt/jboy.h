@@ -38,7 +38,7 @@ struct Strip {
 };
 
 struct Mesh {
-  Bytes raw;  // the 0xB4-byte descriptor as read (unknown fields kept)
+  Bytes raw;  // the 0xB4-byte descriptor as read (0xB8 in WWE '12; unknown fields kept)
   std::vector<int32_t> palette;
   uint32_t material = 0;  // +0x74
   std::string shader;
@@ -49,6 +49,7 @@ struct Mesh {
   // vertex, all its influences); bones[0] is a palette slot, 255 = none
   std::vector<std::vector<Weight>> weights;
   std::vector<std::array<float, 2>> uvs;
+  std::vector<std::array<float, 3>> tangents;  // WWE '12 superstars: one per vertex (the record's word at +0x74)
   std::vector<Param> params;
   std::vector<Strip> strips;
 };
@@ -65,10 +66,20 @@ struct Node {
   float sphere[4] = {};
 };
 
-struct Model {
-  Bytes header;  // file bytes 8..0x48 (counts and pointers rewritten on write)
+// The model's parts (header +0x34 = their number), 32 bytes each: name, then {1, 0, meshes, 0}; the meshes follow the
+// parts' order (superstars: boots, teeth, wrist, body, kneepad, eyes, shorts...).
+struct Part {
   std::string name;
-  Bytes group;   // 16 bytes after the name
+  uint32_t meshes = 0;
+  Bytes info;  // the 16 bytes after the name (meshes at +8)
+};
+
+struct Model {
+  bool w12 = false;  // WWE '12 layout (0xB8-byte mesh records, tangents)
+  Bytes header;  // file bytes 8..0x48 (counts and pointers rewritten on write)
+  std::string name;  // = parts[0]
+  Bytes group;   // 16 bytes after the name (parts[0].info)
+  std::vector<Part> parts;  // all of them (written when more than one; their mesh counts must add up)
   std::vector<std::string> textures;
   std::vector<Node> nodes;
   std::vector<Mesh> meshes;
@@ -76,6 +87,7 @@ struct Model {
 
 inline bool IsJboy(const Bytes& b) { return b.size() >= 0x48 && !std::memcmp(b.data(), "JBOY", 4); }
 bool JboyRead(const Bytes& in, Model& out, std::string* error = nullptr);
+// In the model's own layout (m.w12).
 Bytes JboyWrite(const Model& m);
 
 // Triangle list from a degenerate-joined strip (winding alternates).
