@@ -5,7 +5,7 @@
 #include <cstring>
 #include <vector>
 
-#include "inflate.h"
+#include "../../launcher/inflate.h"  // (relative: the game build uses these readers too)
 
 inline int unzip_inflate(const unsigned char *in, size_t in_len, unsigned char *out, size_t out_len) {
   std::vector<uint8_t> v;

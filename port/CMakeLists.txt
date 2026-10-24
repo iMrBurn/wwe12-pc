@@ -130,6 +130,11 @@ if(DEFINED ENV{WWE12_DEV_PROBES})
     target_compile_definitions(wwe12 PRIVATE WWE12_DEV_PROBES)
 endif()
 
+# Arènes ajoutées (src/native/wwe12_arena_pages.cpp) : les lecteurs de pac du Mod Maker (de Kaiko).
+target_sources(wwe12 PRIVATE src/modmaker/svrfmt/archive.cpp src/modmaker/svrfmt/pac.cpp
+    src/modmaker/svrfmt/texture.cpp)
+target_include_directories(wwe12 PRIVATE src/modmaker)
+
 rexglue_setup_target(wwe12 GPU_PLUGINS xenos)
 if(ANDROID)
     include(cmake/android.cmake)

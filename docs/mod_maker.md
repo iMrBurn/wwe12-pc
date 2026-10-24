@@ -312,7 +312,7 @@ lus par `svrfmt/texture`, vignettes vides), yeux (20000).
 Suite possible : lire les masques 16 bits, couleurs plus justes (lightmaps), public et cordes dans la vue 3D, conversion d'arènes WWE '13 (même format que WWE '12) ou SvR 2011
 (`arena_convert.py`), sons, catcheurs et tenues.
 
-## 6 nonies. Nouveaux emplacements d'arènes (en cours ; étape 1 testée en jeu le 2026-10-23 : OK)
+## 6 nonies. Nouveaux emplacements d'arènes (en cours ; étapes 1 et 2 testées en jeu : OK)
 
 Voulu par l'utilisateur : ajouter des arènes (portées de SvR 2011, WWE '13, 2K14, 2K16 : il a les disques) sans
 remplacer celles du jeu. Méthode de Kaiko (SvR 2011) : des **pages** en plus dans le choix d'arène ; chaque arène
@@ -345,9 +345,38 @@ c'est son fichier qui est servi à la place de celui de la base quand on la choi
 **Étape 1 (faite)** : `port/src/native/wwe12_arena_pages.cpp`, cvar `wwe12_arena_pages_test` (une 2e page = les
 21 arènes à l'envers), lanceur `tools/dev/lancer_test_pages_arenes.bat`. Testé : O / U (RB / LB) changent de page.
 
-**Étapes suivantes** : 2) pages faites des arènes ajoutées (mods `type=arena` avec `base=`), bannière dans un
-`CAR_dummyNN` ; 3) le fichier de l'arène servi à la place de celui de la base quand on la choisit ; 4) taille de
-`plist360.arc` ajustée ; 5) Mod Maker : « nouvelle arène » au lieu de « remplacer ».
+**Étape 2 (faite, testée en jeu le 2026-10-24 : OK)** : arène ajoutée de test (WM XXVII au tapis en damier,
+base 15) sur sa propre page, bannière en damier, match chargé avec ce tapis ; WM XXVII d'origine intacte.
+- **Format d'une arène ajoutée** : mod installé `mods\.svrmods\Arenas\<id>\` (sans fichier `disabled`) dont le
+  `manifest.txt` dit `slot=new` et `base=NN` (l'arène du jeu dont elle prend le numéro, l'éclairage, l'écran VS et la
+  mémoire), avec `arenarena.pac` (un `bgNN.pac` complet) et `arenaanner.dds` (256×128 DXT5 sans mips, 32 896
+  octets). Jusqu'à 35 (les 35 `CAR_dummyNN` libres).
+- **Pages** : après celles du jeu, 21 cases par page ; numéros de scène fictifs (150 + n) dans les fiches, la table
+  des bannières (0x82028560+368) réécrite pour ces pages ; cases vides = 149, verrouillées (`sub_825A3318` accroché :
+  disponible pour les ajoutées, pas pour 149). `sub_825A56C8` accroché : rend le numéro de la base et retient
+  l'arène choisie.
+- **Fichiers** (au démarrage, `Wwe12MountArenaSlots`, appelé dans `wwe12_app.h` **avant** le dossier mods, donc
+  prioritaire) dans `Documents\wwe12rena_slots` :
+  - `pac\menu\MatchHD.pac` = celui du jeu (ou de mods) + le paquet MLYE/MUPA reconstruit (bannières dans les
+    `CAR_dummyNN`, recompressé en gardant les blocs de Yuke's) **ajouté à la fin** ; le répertoire répond à
+    `/MLYE/MUPA` (fichier n° 234) par ce paquet (`sub_827F29F0` accroché : +0 = début en secteurs de 2 Ko, +8 =
+    taille en 256 octets). Marche.
+  - `pacggNN.pac` de chaque base = le fichier entier de l'arène qui joue là (celle du jeu, gardée dans
+    `game\`, ou l'ajoutée), complété par des zéros jusqu'à la plus grande : **réécrit au choix de l'arène**
+    (`Serve`). Le répertoire répond à `/STG/00NN` par le début de l'arène ajoutée (son enregistrement STG à 0x810 se
+    compte **à partir de 0x4000** : + 8 secteurs) et une taille **jamais plus petite que celle du jeu** (les entrées
+    compressées sont décompressées sur place dans cette place : une taille exacte plus petite plante).
+  - Échecs notés : données de l'arène ajoutées à la fin du `bgNN.pac` de la base (plantage sur `lightmap00`, même
+    cause de taille), adresse de départ comptée depuis 0 (lu l'en-tête).
+- Les lecteurs de pac de Kaiko (`svrfmt/archive`, `pac`, `texture`) sont compilés aussi dans le jeu
+  (`port/CMakeLists.txt`) ; `svrfmt/unzip.h` inclut `launcher/inflate.h` par un chemin relatif.
+- Limites connues : l'arène choisie reste servie pour sa base jusqu'au prochain choix (un match de l'Univers dans la
+  base juste après jouerait l'ajoutée) ; `MatchSD.pac` (4:3) pas encore fait ; le launcher n'installe pas encore ces
+  mods (dossier `arena\`).
+
+**Étapes suivantes** : 3) Mod Maker : « nouvelle arène » (choisir la base, la bannière) qui fabrique ce mod, et le
+launcher qui l'installe ; 4) arènes plus grosses que leur base (taille du répertoire déjà prise en charge, mémoire du
+tas 12 à vérifier) ; 5) portages (WWE '13, SvR 2011, 2K14, 2K16).
 
 ## 7. Questions ouvertes
 

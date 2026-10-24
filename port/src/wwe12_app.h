@@ -31,9 +31,14 @@
 #if defined(SVR_NATIVE_RENDERER)
 void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem* fs, const std::string& game_device,
                          const std::filesystem::path& user_root);
+// Arènes ajoutées (native/wwe12_arena_pages.cpp) : fichiers servis avant le dossier mods.
+void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem* fs, const std::string& game_device,
+                          const std::filesystem::path& user_root, const std::filesystem::path& mods);
 #else
 inline void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem*, const std::string&,
                                 const std::filesystem::path&) {}
+inline void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem*, const std::string&,
+                                 const std::filesystem::path&, const std::filesystem::path&) {}
 #endif
 
 // Défini dans main.cpp. ReXApp charge toujours le plugin GPU avec le backend « any »
@@ -172,6 +177,8 @@ class Wwe12App : public rex::ReXApp {
     const std::filesystem::path mods = rex::filesystem::GetExecutableFolder() / "mods";
     std::error_code ec;
     std::filesystem::create_directories(mods, ec);
+    // Arènes ajoutées : leurs fichiers passent avant ceux du dossier mods (wwe12_arena_pages.cpp).
+    Wwe12MountArenaSlots(fs, game_device, user_data_root_, mods);
     auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, mods, true);
     if (!overlay->Initialize() || !fs->RegisterOverlay(game_device, std::move(overlay))) {
       REXLOG_WARN("Mods : impossible d'utiliser {}", rex::path_to_utf8(mods));
