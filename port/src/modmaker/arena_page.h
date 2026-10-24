@@ -530,6 +530,8 @@ class Page {
     std::string why;
     port13::PortInfo info;
     ramp_note_.clear();
+    card_mb_.clear();
+    card_mf_.clear();
     if (w13.empty() || !port13::Port(w13, shipped_, out, &why, &info) || !other_.Load(out, &why)) {
       port_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
       return;
@@ -564,6 +566,8 @@ class Page {
     std::ifstream m(w13_dir_ / "pac" / "menu" / "MatchHD.pac", std::ios::binary);
     const Bytes matchhd((std::istreambuf_iterator<char>(m)), std::istreambuf_iterator<char>());
     svrfmt::Image img;
+    if (!matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))
+      port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     if (!matchhd.empty() && port13::Banner(matchhd, w13_pick_, img)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
@@ -742,6 +746,10 @@ class Page {
         LoadBaseBanner();
       entries.push_back({"arena/arena.pac", std::move(out)});
       entries.push_back({"arena/banner.dds", svrfmt::DdsEncode(banner_, svrfmt::DxtFormat::kDxt5, false)});
+      if (mode_ == 3 && !card_mb_.empty()) {  // its own VS screen (MatchHD.pac MLYE/MBnn and MENU/MnnF)
+        entries.push_back({"arena/card_mb.pac", card_mb_});
+        entries.push_back({"arena/card_mf.pac", card_mf_});
+      }
     } else {
       entries.push_back({"files/" + Path(), std::move(out)});
     }
@@ -777,6 +785,7 @@ class Page {
   int w13_pick_ = -1;
   bool port_ok_ = false, view_port_ = false;
   std::string port_note_, ramp_note_;
+  Bytes card_mb_, card_mf_;  // its VS screen from WWE '13 (port13::Card)
 
   // New arena (added, not replacing) and its banner.
   bool as_new_ = true, banner_custom_ = false, banners_read_ = false;

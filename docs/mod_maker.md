@@ -431,7 +431,15 @@ Royal Rumble, ils montraient le titantron : le poteau de la base (951) cherche `
 de Vengeance (qui a `rin_pos00_slv`) ; le jeu prend alors une autre image. La recette recopie maintenant du paquet 400
 de la base les images du ring qui manquent. **Testé en jeu le 2026-10-24 (Orton / Cena) : entrées au sol, poteaux normaux.**
 
-Reste : l'écran VS (« match card ») de l'arène portée (aujourd'hui celui de la base), SvR 2011, 2K14, 2K16.
+**Écran VS (« match card », 2026-10-24)** : `menu/MatchHD.pac` a pour chaque arène `MLYE/MBnn` (mise en page YXMLBIN
+7000, images 7001, animation 7002) et `MENU/MnnF` (sa police : `font_royal` pour Royal Rumble, `font_venge` pour
+Vengeance ; la mise en page la nomme), nn = numéro de l'arène (= numéro de fichier bgNN, dans les deux jeux). Même
+format dans WWE '12 et WWE '13 (PACH non compressés ; MB70-84 identiques). Le Mod Maker copie `MB<fichier>` et
+`M<fichier>F` de WWE '13 tels quels (`port13::Card`) dans `arena/card_mb.pac` et `arena/card_mf.pac` ; le jeu les
+ajoute à la fin de son `MatchHD.pac` servi et, quand l'arène ajoutée est choisie, l'annuaire répond avec eux à
+`/MLYE/MBnn` et `/MENU/MnnF` de la base (`wwe12_arena_pages.cpp`). Pas encore testé en jeu.
+
+Reste : SvR 2011, 2K14, 2K16.
 
 ## 7. Questions ouvertes
 

@@ -32,7 +32,11 @@
 //    arenas. Choosing an arena writes the whole file of the one that plays there into it (Serve): the arena loads
 //    from a normal arena file. (Appending an added arena's data to the base's file and pointing the directory at
 //    it loaded, then crashed on the arena's textures: the game reads more of the file than the directory says.)
-//    The directory answers /STG/00NN with the added arena's own start and size.
+//    The directory answers /STG/00NN with the added arena's own start and size;
+//  - an added arena's own VS screen ("match card", ported from WWE '13 by the Mod Maker: arena\card_mb.pac and
+//    arena\card_mf.pac, MatchHD.pac's MLYE/MBnn = layout and pictures and MENU/MnnF = its font, nn = the stage, as
+//    stored) appended to that MatchHD.pac too; while it is the chosen arena, the directory answers its base's
+//    /MLYE/MBnn and /MENU/MnnF with them.
 //
 // Test: wwe12_arena_pages_test = true adds one page, the 21 arenas in reverse order, and logs the lookups.
 
@@ -92,6 +96,8 @@ struct Added {
   u32 units = 0;
   std::string banner;  // the CAR_dummyNN texture holding its banner ("" = none)
   u32 banner_name = 0;  // that name in guest memory
+  std::vector<uint8_t> card_mb, card_mf;  // its own VS screen (until appended), else empty
+  u32 mb_sector = 0, mb_units = 0, mf_sector = 0, mf_units = 0;  // ... appended to MatchHD.pac (0: the base's)
 };
 std::vector<Added> g_added;
 // A base arena's file as served (Documents\wwe12\arena_slots\pac\bg\bgNN.pac): the whole file of the arena
@@ -295,6 +301,14 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
     std::vector<uint8_t> banner;
     ReadHost(d / "arena" / "banner.dds", banner);
     banners.push_back(banner.size() == 32896 ? banner : std::vector<uint8_t>{});
+    if (ReadHost(d / "arena" / "card_mb.pac", a.card_mb) && ReadHost(d / "arena" / "card_mf.pac", a.card_mf) &&
+        (a.card_mb.size() < 8 || memcmp(a.card_mb.data(), "PACH", 4) != 0 || a.card_mf.size() < 8 ||
+         memcmp(a.card_mf.data(), "PACH", 4) != 0)) {
+      REXLOG_WARN("[arena pages] {}: its VS screen files aren't packs", a.id);
+      a.card_mb.clear();
+    }
+    if (a.card_mb.empty() || a.card_mf.empty())
+      a.card_mb.clear(), a.card_mf.clear();
     g_added.push_back(a);
     if (g_added.size() == 35)  // (the banner pack has 35 free textures)
       break;
@@ -309,8 +323,17 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       REXLOG_WARN("[arena pages] could not write {}", rex::path_to_utf8(sv.path));
   }
   std::vector<uint8_t> matchhd;
-  if (ReadForGame(vfs, mods, "pac/menu/MatchHD.pac", matchhd) && BuildBanners(matchhd, banners))
+  if (ReadForGame(vfs, mods, "pac/menu/MatchHD.pac", matchhd) && BuildBanners(matchhd, banners)) {
+    for (auto &a : g_added) {
+      if (a.card_mb.empty())
+        continue;
+      Append(matchhd, a.card_mb.data(), a.card_mb.size(), a.mb_sector, a.mb_units);
+      Append(matchhd, a.card_mf.data(), a.card_mf.size(), a.mf_sector, a.mf_units);
+      a.card_mb = {};
+      a.card_mf = {};
+    }
     WriteHost(out / "pac" / "menu" / "MatchHD.pac", matchhd);
+  }
   auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, out, true);
   if (!overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(overlay))) {
     REXLOG_WARN("[arena pages] could not serve {}", rex::path_to_utf8(out));
@@ -577,6 +600,18 @@ extern "C" REX_FUNC(sub_827F29F0) {
     bd::mem::store<u32>(out, a.sector);
     bd::mem::store<u32>(out + 8, std::max(a.units, bd::mem::load<u32>(out + 8)));
     REXLOG_INFO("[arena pages] {}: the added arena {} ({} KB)", n, a.id, a.units / 4);
+  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units && bd::mem::load<u16>(out + 12) == kMatchHdIndex) {
+    // Its own VS screen, in place of its base's.
+    const Added &a = g_added[size_t(g_chosen)];
+    char mb[16], mf[16];
+    snprintf(mb, sizeof(mb), "/MLYE/MB%02u", a.base);
+    snprintf(mf, sizeof(mf), "/MENU/M%02uF", a.base);
+    const bool is_mb = strcmp(n, mb) == 0;
+    if (is_mb || strcmp(n, mf) == 0) {
+      bd::mem::store<u32>(out, is_mb ? a.mb_sector : a.mf_sector);
+      bd::mem::store<u32>(out + 8, is_mb ? a.mb_units : a.mf_units);
+      REXLOG_INFO("[arena pages] {}: the VS screen of {}", n, a.id);
+    }
   }
   if (REXCVAR_GET(wwe12_arena_pages_test) &&
       (strncmp(n, "/STG", 4) == 0 || strcmp(n, "/MLYE/MUPA") == 0))

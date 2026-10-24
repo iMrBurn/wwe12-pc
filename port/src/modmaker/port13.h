@@ -269,4 +269,30 @@ inline bool Banner(const Bytes &matchhd13, int file, svrfmt::Image &out) {
   return false;
 }
 
+// The arena's VS screen ("match card") in WWE '13's menu/MatchHD.pac, as stored: MLYE/MBnn (its layout, YXMLBIN, and
+// pictures, as WWE '12's) and MENU/MnnF (its font, "font_venge" for Vengeance: the layout names it), nn = the arena's
+// file number. The game serves them for the added arena (wwe12_arena_pages.cpp).
+inline bool Card(const Bytes &matchhd13, int file, Bytes &mb, Bytes &mf) {
+  svrfmt::Archive a;
+  mb.clear();
+  mf.clear();
+  if (!svrfmt::ArchiveOpen(matchhd13, a, nullptr))
+    return false;
+  char nb[8], nf[8];
+  snprintf(nb, sizeof(nb), "MB%02d", file);
+  snprintf(nf, sizeof(nf), "M%02dF", file);
+  for (const auto &k : a.root.kids) {
+    if (k.group == "MLYE" && k.name == nb)
+      mb = k.stored;
+    else if (k.group == "MENU" && k.name == nf)
+      mf = k.stored;
+  }
+  if (mb.empty() || mf.empty() || memcmp(mb.data(), "PACH", 4) != 0 || memcmp(mf.data(), "PACH", 4) != 0) {
+    mb.clear();
+    mf.clear();
+    return false;
+  }
+  return true;
+}
+
 }  // namespace port13
