@@ -39,6 +39,7 @@ public class LauncherActivity extends Activity {
     Config config;
     SharedPreferences prefs;
     TextView gameStatus;
+    TextView controllerStatus;   // which controller the game will use (hides the on-screen buttons)
     Button forget;
 
     @Override
@@ -56,6 +57,16 @@ public class LauncherActivity extends Activity {
         }
         setContentView(buildUi(dir));
         refreshGame();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // A controller paired while the launcher was in the background shows up on return.
+        String pad = TouchControls.realControllerName();
+        controllerStatus.setText(pad != null
+                ? "Controller detected: " + pad + " (the on-screen buttons hide while it is connected)"
+                : "No controller detected: the on-screen buttons will show.");
     }
 
     // ---- UI ----------------------------------------------------------------------------------
@@ -124,6 +135,8 @@ public class LauncherActivity extends Activity {
         ctl.addView(prefChoice("On-screen buttons size", "touch_size",
                 new String[] {"Small (70 %)", "Medium (85 %)", "Normal (100 %)", "Large (110 %)"},
                 new int[] {70, 85, 100, 110}, 100));
+        controllerStatus = text("", 13, Color.WHITE, false);
+        ctl.addView(controllerStatus);
         ctl.addView(text("Bluetooth / USB controllers (Xbox, PlayStation...) work too: pair it in Android's settings.",
                 12, Color.GRAY, false));
 

@@ -105,14 +105,22 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     // ---- Real controllers: hide the touch pad while one is connected --------------------------
 
     boolean realControllerConnected() {
+        return realControllerName() != null;
+    }
+
+    // Name of a connected game controller, or null. The source bits alone are not enough: some
+    // phones (Poco F7...) have built-in devices that claim SOURCE_GAMEPAD / SOURCE_JOYSTICK and
+    // hid the on-screen buttons. Android gives a controller number (player slot) only to real
+    // controllers, so that is required too.
+    static String realControllerName() {
         for (int id : InputDevice.getDeviceIds()) {
             InputDevice d = InputDevice.getDevice(id);
-            if (d == null || d.isVirtual()) continue;
+            if (d == null || d.isVirtual() || d.getControllerNumber() <= 0) continue;
             int s = d.getSources();
             if ((s & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
-                    || (s & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) return true;
+                    || (s & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) return d.getName();
         }
-        return false;
+        return null;
     }
 
     void refreshControllers() {
