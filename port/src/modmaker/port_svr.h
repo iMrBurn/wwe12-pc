@@ -240,8 +240,8 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
       continue;
     }
     const auto si = pos(ws[i], 10), wi = pos(wb[size_t(target[i])], 1);
-    int far = -1;
-    double far_len = 5;  // (cm: a child at the joint gives no direction)
+    int farthest = -1;
+    double farthest_len = 5;  // (cm: a child at the joint gives no direction)
     for (size_t c = i + 1; c < svr.nodes.size(); ++c)
       if (svr.nodes[c].parent == int(i) && !MapBone(svr.nodes[c].name).empty()) {
         int tc = -1;
@@ -249,17 +249,17 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
           if (base.nodes[j].name == MapBone(svr.nodes[c].name))
             tc = int(j);
         const double l = len(sub(pos(ws[c], 10), si));
-        if (tc >= 0 && l > far_len) {
-          far = int(c);
-          far_len = l;
+        if (tc >= 0 && l > farthest_len) {
+          farthest = int(c);
+          farthest_len = l;
         }
       }
-    if (far >= 0) {
+    if (farthest >= 0) {
       int tf = -1;
       for (size_t j = 0; j < base.nodes.size(); ++j)
-        if (base.nodes[j].name == MapBone(svr.nodes[size_t(far)].name))
+        if (base.nodes[j].name == MapBone(svr.nodes[size_t(farthest)].name))
           tf = int(j);
-      rot[i] = turn(sub(pos(ws[size_t(far)], 10), si), sub(pos(wb[size_t(tf)], 1), wi));
+      rot[i] = turn(sub(pos(ws[size_t(farthest)], 10), si), sub(pos(wb[size_t(tf)], 1), wi));
     } else if (p >= 0 && size_t(p) < i) {
       rot[i] = rot[size_t(p)];
     }
@@ -423,6 +423,29 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
   return true;
 }
 
+// WWE '12 reads how much the skin shines in the normal map's alpha (Orton's chest: 16 in WWE '12, 45 in SvR 2011's:
+// the ported Orton shone too much). SvR's normal map with its alpha scaled to the base's mean, in the base's format.
+inline Bytes Shine(const Bytes &svr_normal, const Bytes &base_normal) {
+  svrfmt::Image s, b;
+  svrfmt::DdsInfo si, bi;
+  if (!svrfmt::DdsDecode(svr_normal, s) || !svrfmt::DdsDecode(base_normal, b) || !svrfmt::DdsInfoOf(svr_normal, si) ||
+      !svrfmt::DdsInfoOf(base_normal, bi) || bi.format == svrfmt::DxtFormat::kUnknown)
+    return svr_normal;
+  auto mean = [](const svrfmt::Image &im) {
+    double t = 0;
+    for (size_t q = 3; q < im.rgba.size(); q += 4)
+      t += im.rgba[q];
+    return t / std::max<size_t>(1, im.rgba.size() / 4);
+  };
+  const double ms = mean(s), mb = mean(b);
+  if (ms < 1 || std::abs(ms - mb) < 2)
+    return svr_normal;
+  const double k = mb / ms;
+  for (size_t q = 3; q < s.rgba.size(); q += 4)
+    s.rgba[q] = uint8_t(std::min(255.0, s.rgba[q] * k + 0.5));
+  return svrfmt::DdsEncode(s, bi.format, si.mips > 1);
+}
+
 // SvR's attire (its EMD PACH node) into the WWE '12 base attire's node (both expanded): the model, the colour and
 // masks, the normal map. The base's other entries stay (eyelashes, material data, physics...).
 inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep, std::string *why) {
@@ -487,7 +510,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
       for (auto &t : bt)
         for (const auto &u : st)
           if (t.name == "normal" && u.name == "normal")
-            t.data = u.data;
+            t.data = Shine(u.data, t.data);
       // The pictures of its own the model now names (the hands').
       for (const auto &name : rep->textures)
         for (const auto &u : st)

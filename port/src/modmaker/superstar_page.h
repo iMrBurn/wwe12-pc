@@ -3,12 +3,15 @@
 // map and parts, 12: "color", 13-15: the colour masks of Superstar Threads) and the eyes (20000)). Pick a superstar
 // and an attire, see its pictures and the superstar in 3D, replace or export pictures, and make a mod
 // (.svrmod, type=attire, files/pac/ch/chNNN.pac). An attire never grows past its shipped size (arena_edit.h Fit:
-// the game loads it into memory made for it).
+// the game loads it into memory made for it). An attire can also be replaced by one of SvR 2011 (the player's own
+// chNNN.pac), converted by port_svr.h over the chosen attire (best: the same superstar in WWE '12).
 #pragma once
 
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -20,6 +23,7 @@
 #include "imgui.h"
 #include "media.h"
 #include "mods.h"
+#include "port_svr.h"
 #include "wic_image.h"
 
 namespace superstar_page {
@@ -86,6 +90,7 @@ class Page {
       ImGui::TextColored(red, "%s", error_.c_str());
     if (star_ < 0 || attires_.empty() || !loaded_)
       return;
+    DrawPortSvr(fr, red, green);
 
     auto &texs = edit_.Textures();
     int changed = 0;
@@ -161,7 +166,7 @@ class Page {
     ImGui::InputTextWithHint("##star_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_,
                              sizeof(author_));
     ImGui::SameLine();
-    ImGui::BeginDisabled(changed == 0 || game::IsRunning());
+    ImGui::BeginDisabled((changed == 0 && !ported_) || game::IsRunning());
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
       Make(fr, mods);
     ImGui::EndDisabled();
@@ -222,6 +227,8 @@ class Page {
 
   void OpenAttire(bool fr) {
     loaded_ = false;
+    ported_ = false;
+    svr_note_.clear();
     thumbs_.clear();
     selected_ = -1;
     message_.clear();
@@ -237,6 +244,104 @@ class Page {
       thumbs_.push_back(arena_page::MakeThumb(device_, edit_.Get(t).data));
     loaded_ = true;
     view_stale_ = true;
+  }
+
+  // An attire of SvR 2011 in place of the chosen one: its file, one of its attires, then the port (port_svr.h).
+  void DrawPortSvr(bool fr, const ImVec4 &red, const ImVec4 &green) {
+    if (!ImGui::CollapsingHeader(fr ? "Porter une tenue de SvR 2011" : "Port an attire from SvR 2011"))
+      return;
+    ImGui::TextWrapped("%s", fr ? "La tenue choisie ci-dessus est remplacée par une tenue de SvR 2011 (le chNNN.pac de "
+                                  "votre jeu) : son modèle et ses images. Choisissez si possible le même catcheur dans "
+                                  "WWE '12 : son squelette et ses matériaux servent de base."
+                                : "The attire chosen above is replaced by an attire of SvR 2011 (your game's chNNN.pac): "
+                                  "its model and pictures. Best choose the same superstar in WWE '12: its skeleton and "
+                                  "materials are the base.");
+    if (ImGui::Button(fr ? "Fichier de SvR 2011 (chNNN.pac)..." : "SvR 2011 file (chNNN.pac)...")) {
+      const fs::path p = arena_page::PickOpen(fr, true);
+      if (!p.empty())
+        LoadSvr(fr, p);
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", svr_path_.empty() ? (fr ? "(vos fichiers de SvR 2011)" : "(your SvR 2011 files)")
+                                                : media::Utf8(svr_path_.wstring()).c_str());
+    if (!svr_attires_.empty()) {
+      char label[64];
+      snprintf(label, sizeof(label), fr ? "Tenue %d  (%s)" : "Attire %d  (%s)", svr_attire_ + 1,
+               svr_attires_[svr_attire_].c_str());
+      ImGui::SetNextItemWidth(260);
+      if (ImGui::BeginCombo(fr ? "Tenue de SvR" : "SvR attire", label)) {
+        for (int i = 0; i < int(svr_attires_.size()); ++i) {
+          snprintf(label, sizeof(label), fr ? "Tenue %d  (%s)" : "Attire %d  (%s)", i + 1, svr_attires_[i].c_str());
+          if (ImGui::Selectable(label, i == svr_attire_))
+            svr_attire_ = i;
+        }
+        ImGui::EndCombo();
+      }
+      ImGui::SameLine();
+      snprintf(label, sizeof(label), fr ? "Porter sur la tenue %d" : "Port onto attire %d", attire_ + 1);
+      ImGui::BeginDisabled(ported_);
+      if (ImGui::Button(label))
+        PortSvr(fr);
+      ImGui::EndDisabled();
+    }
+    if (!svr_note_.empty()) {
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextColored(ported_ ? green : red, "%s", svr_note_.c_str());
+      ImGui::PopTextWrapPos();
+    }
+  }
+
+  void LoadSvr(bool fr, const fs::path &p) {
+    svr_note_.clear();
+    svr_attires_.clear();
+    svr_attire_ = 0;
+    svr_path_ = p;
+    std::ifstream f(p, std::ios::binary);
+    svr_file_.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    arena_edit::Arena probe;
+    std::string why;
+    if (svr_file_.empty() || !probe.Load(svr_file_, &why, 0)) {
+      svr_note_ = (fr ? "Fichier illisible : " : "Unreadable file: ") + why;
+      return;
+    }
+    for (const auto &[group, name] : probe.Sections())
+      svr_attires_.push_back(name);
+  }
+
+  void PortSvr(bool fr) {
+    svr_note_.clear();
+    svrfmt::Archive s, w;
+    std::string why;
+    port_svr::Report rep;
+    if (!svrfmt::ArchiveOpen(svr_file_, s, &why) || !svrfmt::ArchiveOpen(file_, w, &why) ||
+        size_t(svr_attire_) >= s.root.kids.size() || size_t(attire_) >= w.root.kids.size() ||
+        !port_svr::PortAttire(s.root.kids[size_t(svr_attire_)], w.root.kids[size_t(attire_)], &rep, &why)) {
+      svr_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
+      return;
+    }
+    svrfmt::ArchiveTouch(w.root);
+    const Bytes out = svrfmt::ArchiveSave(w);
+    if (!edit_.Load(out, &why, attire_)) {  // (the budget stays the shipped attire's)
+      svr_note_ = (fr ? "Portage illisible : " : "Unreadable port: ") + why;
+      return;
+    }
+    thumbs_.clear();
+    selected_ = -1;
+    for (const auto &t : edit_.Textures())
+      thumbs_.push_back(arena_page::MakeThumb(device_, edit_.Get(t).data));
+    view_stale_ = true;
+    ported_ = true;
+    message_.clear();
+    reduced_note_.clear();
+    char b[256];
+    snprintf(b, sizeof(b),
+             fr ? "Portée : %d maillages convertis%s. Voyez-la en 3D, puis créez le mod ci-dessous."
+                : "Ported: %d meshes converted%s. See it in 3D, then make the mod below.",
+             rep.meshes,
+             rep.unmapped_bones ? (fr ? " (quelques os sans équivalent suivent leur parent)"
+                                      : " (a few bones without a counterpart follow their parent)")
+                                : "");
+    svr_note_ = b;
   }
 
   void Replace(bool fr) {
@@ -340,8 +445,9 @@ class Page {
     std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=1.0\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
-    manifest += "description=" + s.name + ", attire " + std::to_string(attire_ + 1) + " (" + attires_[attire_] +
-                "), made with the WWE '12 Mod Maker.\n";
+    manifest += "description=" + s.name + ", attire " + std::to_string(attire_ + 1) + " (" + attires_[attire_] + ")" +
+                (ported_ ? ", replaced by an attire ported from SvR 2011 (the player's own file)" : "") +
+                ", made with the WWE '12 Mod Maker.\n";
     if (!mods::Manager::WriteZip(save, {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
                                         {"files/" + s.file, std::move(out)}})) {
       message_ = (fr ? "Impossible d'écrire " : "Could not write ") + media::Utf8(save.wstring());
@@ -365,6 +471,13 @@ class Page {
   arena_view::View view_;
   bool view_stale_ = true;
   std::string error_, note_, view_error_, message_, reduced_note_;
+  // Porting from SvR 2011.
+  fs::path svr_path_;
+  Bytes svr_file_;
+  std::vector<std::string> svr_attires_;
+  int svr_attire_ = 0;
+  bool ported_ = false;
+  std::string svr_note_;
   bool message_ok_ = false;
 };
 

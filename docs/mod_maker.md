@@ -489,6 +489,13 @@ matériau WWE '12 (`g_mDiffusePrm`, `g_mNormalFxPrm`) pointe dessus (sinon griff
 au format de la base (DXT1) au lieu d'être réduite, **rendue opaque avant** (l'alpha de SvR sert à autre chose ; DXT1
 faisait de tout pixel sous la moitié un pixel transparent noir : corps entièrement noir). Reste réduite : `normal`
 (1024 → 512). Résultat (2e essai) : Orton de SvR 2011 propre en entrée et en match.
+**Brillance** (remarque de l'utilisateur : « Orton brille un peu trop par rapport à Cena ») : WWE '12 lit l'intensité des
+reflets dans l'alpha de l'image `normal` (poitrine : Orton WWE '12 16, Cena 30, Orton SvR 45). `port_svr::Shine` ramène
+l'alpha de l'image de SvR à la moyenne de celle de la base (poitrine 45 → 30), réencodée au format de la base.
+**Dans le Mod Maker** (page CATCHEURS, section repliable « Porter une tenue de SvR 2011 ») : choisir le catcheur et la
+tenue de WWE '12 à remplacer (de préférence le même catcheur), le `chNNN.pac` de SvR 2011, une de ses tenues,
+« Porter sur la tenue N » ; le résultat s'affiche (images, 3D) puis « Créer le mod » (type=attire, files/pac/ch/chNNN.pac,
+tenu dans la taille d'origine). Le fichier de test déposé à la main a été retiré.
 
 ## 7. Questions ouvertes
 
