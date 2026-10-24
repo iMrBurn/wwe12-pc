@@ -582,6 +582,11 @@ les copies les plus récentes).
   (222 chez l'utilisateur). Piège : **drapeau DLC +0x11F** à mettre à 1 (une copie d'un catcheur du disque, Orton, avait 0
   et n'apparaissait nulle part). Essai : « TEST STAR » (base Batista, sans modèle) et **« RANDY ORTON 2011 » (base Orton,
   modèle converti de SvR 2011) : nouveaux catcheurs à l'écran de choix, écran VS, entrée et match** (Batista toujours là).
+- **Page « NOUVEAU CATCHEUR » du Mod Maker** (`port/src/modmaker/new_star_page.h`, 2026-10-24) : nom, catcheur de base
+  (catcheurs du disque), apparence (celle de la base, un autre `chNNN.pac`, ou une tenue de SvR 2011 portée sur la
+  tenue 1 de la base par `port_svr.h`, mise à la taille d'une tenue), vue 3D, puis `.svrmod` `type=superstar`
+  (`superstar/ch.pac`, ou `superstar/look.txt` quand c'est l'apparence de la base). Au passage : accents de
+  `modmaker.cpp` réparés (fichier ré-encodé deux fois : « CrÃ©ez »).
 
 ## 7. Questions ouvertes
 
