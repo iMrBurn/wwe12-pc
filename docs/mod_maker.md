@@ -349,19 +349,19 @@ c'est son fichier qui est servi à la place de celui de la base quand on la choi
 base 15) sur sa propre page, bannière en damier, match chargé avec ce tapis ; WM XXVII d'origine intacte.
 - **Format d'une arène ajoutée** : mod installé `mods\.svrmods\Arenas\<id>\` (sans fichier `disabled`) dont le
   `manifest.txt` dit `slot=new` et `base=NN` (l'arène du jeu dont elle prend le numéro, l'éclairage, l'écran VS et la
-  mémoire), avec `arenarena.pac` (un `bgNN.pac` complet) et `arenaanner.dds` (256×128 DXT5 sans mips, 32 896
+  mémoire), avec `arena\arena.pac` (un `bgNN.pac` complet) et `arena\banner.dds` (256×128 DXT5 sans mips, 32 896
   octets). Jusqu'à 35 (les 35 `CAR_dummyNN` libres).
 - **Pages** : après celles du jeu, 21 cases par page ; numéros de scène fictifs (150 + n) dans les fiches, la table
   des bannières (0x82028560+368) réécrite pour ces pages ; cases vides = 149, verrouillées (`sub_825A3318` accroché :
   disponible pour les ajoutées, pas pour 149). `sub_825A56C8` accroché : rend le numéro de la base et retient
   l'arène choisie.
 - **Fichiers** (au démarrage, `Wwe12MountArenaSlots`, appelé dans `wwe12_app.h` **avant** le dossier mods, donc
-  prioritaire) dans `Documents\wwe12rena_slots` :
+  prioritaire) dans `Documents\wwe12\arena_slots` :
   - `pac\menu\MatchHD.pac` = celui du jeu (ou de mods) + le paquet MLYE/MUPA reconstruit (bannières dans les
     `CAR_dummyNN`, recompressé en gardant les blocs de Yuke's) **ajouté à la fin** ; le répertoire répond à
     `/MLYE/MUPA` (fichier n° 234) par ce paquet (`sub_827F29F0` accroché : +0 = début en secteurs de 2 Ko, +8 =
     taille en 256 octets). Marche.
-  - `pacggNN.pac` de chaque base = le fichier entier de l'arène qui joue là (celle du jeu, gardée dans
+  - `pac\bg\bgNN.pac` de chaque base = le fichier entier de l'arène qui joue là (celle du jeu, gardée dans
     `game\`, ou l'ajoutée), complété par des zéros jusqu'à la plus grande : **réécrit au choix de l'arène**
     (`Serve`). Le répertoire répond à `/STG/00NN` par le début de l'arène ajoutée (son enregistrement STG à 0x810 se
     compte **à partir de 0x4000** : + 8 secteurs) et une taille **jamais plus petite que celle du jeu** (les entrées
@@ -502,7 +502,7 @@ tenu dans la taille d'origine). Le fichier de test déposé à la main a été r
 Demande de l'utilisateur : ajouter des catcheurs au jeu (sans en remplacer), portés d'autres jeux ou faits par les
 moddeurs. Le jeu le fait déjà avec ses **DLC** : c'est la piste (un « DLC maison » par mod).
 
-Un pack DLC installé (`Documents\wwe12 0000000000000ť10890 00002\<paquet>\`, ex. pack 4) contient :
+Un pack DLC installé (`Documents\wwe12\0000000000000000\54510890\00000002\<paquet>\`, ex. pack 4) contient :
 `info/catalog.dlc`, `pac/ch/chNN_dlc04.pac` (modèle, NN = numéro du catcheur), `pac/DLC.pac`, `DLC_HD/SD_dlc04.pac`
 (portraits ?), `pac/string.pac` (textes, copie complète), `edit_dlc04.pac`, `evtmov_dlc04.pac` (entrées), `m_dlc04.pac`
 (prises ?), `gm_dlc04.pac`, `menu/sas_dlc04.pac`, `prtcls_dlc04.pac`, `sound_dlc_04.pac`, `sound/DLC_04.pck`
