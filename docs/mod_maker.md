@@ -549,6 +549,14 @@ les copies les plus récentes).
   (~220 places : 29 DLC + 164 fiches « 0 » + 29 réserves 344-372). Défauts : grand portrait absent à l'écran de choix
   pour TEST DISC (sans doute le portrait vide du disque, trouvé avant le nôtre), TEST STAR plus vu (à vérifier : case
   partagée haut / bas ? codes `WA`/`WB` de `VOL5` changés depuis l'essai 1 ?).
+- **Essai 3 (codes « lettre + U » qui se suivent, comme les packs : `WU`/`XU`, `YU`/`ZU`)** : toujours seulement TEST
+  DISC, et **Batista disparaît**. Liste de la case DLC (haut / bas, relevée par l'utilisateur) : Cole, Lawler, J.R.,
+  Shawn Michaels, Edge, Christian, TEST DISC, Brodus Clay, Savage, Foley, Kane, The Rock = **12**. Avant nos essais elle
+  avait déjà 12 catcheurs (avec Batista) : **la case DLC de l'écran de choix est limitée à 12** ; chaque ajout en chasse
+  un (les divas ont leur case). Le jeu lit `/IGST/VOL0` à `VOL9` (boucle de 10 vers 0x8257AB78, chaîne 0x8202657C) :
+  10 packs. **Suite : trouver dans le code de l'écran de choix la limite de 12 et la contourner (case agrandie ou case
+  « mods »), comme Kaiko (case EXTRA dans SvR 2011).** Portraits des catcheurs 100+ : seulement dans
+  `menu\menuHD.pac` / `menuSD.pac` (`SSFA` 0100…0343, 262 272 o), pas lus dans les DLC.
 
 ## 7. Questions ouvertes
 
