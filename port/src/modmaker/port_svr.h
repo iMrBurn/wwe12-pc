@@ -113,7 +113,13 @@ inline M4 InvRigid(const M4 &a) {
 struct Report {
   int meshes = 0, unmapped_bones = 0;
   std::vector<std::string> notes;
+  std::vector<std::string> textures;  // SvR pictures the model now names besides the base's (copied by PortAttire)
 };
+
+inline bool SameName(const std::string &a, const std::string &b) {
+  return a.size() == b.size() &&
+         std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) { return std::tolower((unsigned char)x) == std::tolower((unsigned char)y); });
+}
 
 namespace detail {
 
@@ -358,6 +364,34 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
     dst.vfmt = tm.vfmt;
     dst.material = tm.material;
     dst.params = tm.params;
+    // Pictures of its own (SvR's hands: BloodHand0_L/R and their normal maps, not the body's colour picture): the
+    // WWE '12 material is pointed at them (the game finds pictures by name, any case).
+    auto svr_tex = [&](const char *param) -> std::string {
+      for (const auto &p : src.params)
+        if (p.name == param && p.type == 15 && p.value.size() >= 4) {
+          const uint32_t v = svrfmt::Be32(p.value.data());
+          return v < svr.textures.size() ? svr.textures[v] : "";
+        }
+      return "";
+    };
+    for (const auto &[from, to] : {std::pair<const char *, const char *>{"texDiffuse", "g_mDiffusePrm"},
+                                   std::pair<const char *, const char *>{"texNormal", "g_mNormalFxPrm"}}) {
+      const std::string name = svr_tex(from);
+      if (name.empty() || SameName(name, "color") || SameName(name, "normal"))
+        continue;
+      size_t idx = out.textures.size();
+      for (size_t t = 0; t < out.textures.size(); ++t)
+        if (SameName(out.textures[t], name))
+          idx = t;
+      if (idx == out.textures.size()) {
+        out.textures.push_back(name);
+        if (rep)
+          rep->textures.push_back(name);
+      }
+      for (auto &p : dst.params)
+        if (p.name == to && p.value.size() >= 4)
+          svrfmt::PutBe32(p.value.data(), uint32_t(idx));
+    }
     if (dst.raw.size() >= 0x64)
       svrfmt::PutBe32(&dst.raw[0x60], uint32_t(part_of[mi]));  // its part
     // Bounding sphere.
@@ -392,6 +426,9 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
 // SvR's attire (its EMD PACH node) into the WWE '12 base attire's node (both expanded): the model, the colour and
 // masks, the normal map. The base's other entries stay (eyelashes, material data, physics...).
 inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep, std::string *why) {
+  Report own;
+  if (!rep)
+    rep = &own;
   auto fail = [&](const std::string &w) {
     if (why)
       *why = w;
@@ -417,12 +454,25 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
   if (!ConvertModel(ms, mb, mo, rep))
     return fail("the model can't be converted");
   svrfmt::ArchiveReplace(*bm, svrfmt::JboyWrite(mo));
-  // Colour and masks as SvR has them (same bundle format).
+  // Colour and masks as SvR has them (same bundle format). The colour in the base's DDS format (WWE '12: DXT1, half
+  // of SvR's DXT5) when it differs, so it keeps its full size in the attire's room.
   for (uint32_t id : {12u, 13u, 14u}) {
     svrfmt::ArcNode *s = child(svr, id), *b = child(base, id);
-    if (s && b) {
-      b->stored = s->stored;
-      b->dirty = true;
+    if (!s || !b)
+      continue;
+    std::vector<svrfmt::BundleTexture> st, bt;
+    const bool read = id == 12 && svrfmt::BundleRead(svrfmt::ArchiveData(*s), st) &&
+                      svrfmt::BundleRead(svrfmt::ArchiveData(*b), bt) && st.size() == 1 && !bt.empty();
+    b->stored = s->stored;
+    b->dirty = true;
+    if (!read)
+      continue;
+    svrfmt::DdsInfo si, bi;
+    svrfmt::Image img;
+    if (svrfmt::DdsInfoOf(st[0].data, si) && svrfmt::DdsInfoOf(bt[0].data, bi) && si.format != bi.format &&
+        bi.format == svrfmt::DxtFormat::kDxt1 && svrfmt::DdsDecode(st[0].data, img)) {
+      st[0].data = svrfmt::DdsEncode(img, svrfmt::DxtFormat::kDxt1, si.mips > 1);
+      svrfmt::ArchiveReplace(*b, svrfmt::BundleWrite(st));
     }
   }
   // The normal map, in the base's bundle 10.
@@ -434,6 +484,16 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
         for (const auto &u : st)
           if (t.name == "normal" && u.name == "normal")
             t.data = u.data;
+      // The pictures of its own the model now names (the hands').
+      for (const auto &name : rep->textures)
+        for (const auto &u : st)
+          if (SameName(u.name, name)) {
+            bool have = false;
+            for (const auto &t : bt)
+              have = have || SameName(t.name, name);
+            if (!have)
+              bt.push_back(u);
+          }
       svrfmt::ArchiveReplace(*b10, svrfmt::BundleWrite(bt));
     }
   }
