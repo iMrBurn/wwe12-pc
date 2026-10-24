@@ -429,7 +429,7 @@ en jeu). La recette prend donc la collision de la base, et `port13::RampHeight` 
 avertit (en jaune) et conseille Royal Rumble / Bragging Rights si elles ne concordent pas. **Poteaux** : sur la base
 Royal Rumble, ils montraient le titantron : le poteau de la base (951) cherche `rin_pos00` et `rin_hone00`, absents
 de Vengeance (qui a `rin_pos00_slv`) ; le jeu prend alors une autre image. La recette recopie maintenant du paquet 400
-de la base les images du ring qui manquent.
+de la base les images du ring qui manquent. **Testé en jeu le 2026-10-24 (Orton / Cena) : entrées au sol, poteaux normaux.**
 
 Reste : l'écran VS (« match card ») de l'arène portée (aujourd'hui celui de la base), SvR 2011, 2K14, 2K16.
 
