@@ -471,6 +471,11 @@ class Page {
     }
     if (!port_note_.empty())
       ImGui::TextColored(port_ok_ ? kGreen : kRed, "%s", port_note_.c_str());
+    if (port_ok_ && !ramp_note_.empty()) {
+      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 720);
+      ImGui::TextColored(kYellow, "%s", ramp_note_.c_str());
+      ImGui::PopTextWrapPos();
+    }
     if (port_ok_) {
       if (ImGui::Button(fr ? "Voir en 3D" : "See it in 3D")) {
         view_port_ = true;
@@ -523,7 +528,9 @@ class Page {
     const Bytes w13((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     Bytes out;
     std::string why;
-    if (w13.empty() || !port13::Port(w13, shipped_, out, &why) || !other_.Load(out, &why)) {
+    port13::PortInfo info;
+    ramp_note_.clear();
+    if (w13.empty() || !port13::Port(w13, shipped_, out, &why, &info) || !other_.Load(out, &why)) {
       port_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
       return;
     }
@@ -534,6 +541,25 @@ class Page {
     if (out.size() > budget_)
       port_note_ += fr ? " Plus grande que la place : ses plus grandes images seront réduites."
                        : " Bigger than the room: its biggest pictures will be halved.";
+    // The entrance follows the base's ramp: a WWE '13 ramp at floor level wants a base without a raised one.
+    if (!info.RampsMatch()) {
+      char b[400];
+      if (info.ramp13 < 60)
+        snprintf(b, sizeof(b),
+                 fr ? "Attention : la rampe de cette arène est au sol, celle de %s est à %.2f m : les catcheurs "
+                      "flotteront pendant les entrées. Choisissez Royal Rumble ou Bragging Rights comme arène de base."
+                    : "Warning: this arena's ramp is at floor level, %s's stands %.2f m high: the wrestlers will float "
+                      "during the entrances. Choose Royal Rumble or Bragging Rights as the base arena.",
+                 kSlots[slot_].name, info.ramp12 / 100);
+      else
+        snprintf(b, sizeof(b),
+                 fr ? "Attention : la rampe de cette arène est à %.2f m, celle de %s est au sol : les entrées ne "
+                      "suivront pas la rampe. Choisissez une arène de base avec une rampe (SmackDown, RAW...)."
+                    : "Warning: this arena's ramp stands %.2f m high, %s's is at floor level: the entrances won't "
+                      "follow the ramp. Choose a base arena with a ramp (SmackDown, RAW...).",
+                 info.ramp13 / 100, kSlots[slot_].name);
+      ramp_note_ = b;
+    }
     // Its own banner from WWE '13's menus, else the base's.
     std::ifstream m(w13_dir_ / "pac" / "menu" / "MatchHD.pac", std::ios::binary);
     const Bytes matchhd((std::istreambuf_iterator<char>(m)), std::istreambuf_iterator<char>());
@@ -750,7 +776,7 @@ class Page {
   std::vector<int> w13_list_;
   int w13_pick_ = -1;
   bool port_ok_ = false, view_port_ = false;
-  std::string port_note_;
+  std::string port_note_, ramp_note_;
 
   // New arena (added, not replacing) and its banner.
   bool as_new_ = true, banner_custom_ = false, banners_read_ = false;

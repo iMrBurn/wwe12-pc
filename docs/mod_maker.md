@@ -421,8 +421,17 @@ Royal Rumble, WrestleMania XXVIII, Over the Limit, Capitol Punishment, Money in 
 Cell, Vengeance, TLC, Elimination Chamber, Extreme Rules), **pas** celui des fichiers ; `AEM01-22` = bg28-49 dans
 l'ordre. Table `port13::kArenas13`.
 
-Reste : l'écran VS (« match card ») de l'arène portée (aujourd'hui celui de la base), quelques défauts pendant les
-entrées (à préciser), SvR 2011, 2K14, 2K16.
+**Entrées (2026-10-24)** : les catcheurs flottaient pendant les entrées de Vengeance (base SmackDown). Cause : la
+hauteur de la **rampe de la base**. Les arènes de WWE '12 ont une rampe à 1,80 m (`slo_floor` 203, y −180), sauf
+Bragging Rights (bg10) et Royal Rumble (bg13), au sol ; les arènes de WWE '13 vues (Vengeance, Capitol Punishment)
+l'ont au sol. Avec la base Royal Rumble **et la collision de la base** (995, 996, 997, 999), plus de flottement (testé
+en jeu). La recette prend donc la collision de la base, et `port13::RampHeight` mesure les deux rampes : le Mod Maker
+avertit (en jaune) et conseille Royal Rumble / Bragging Rights si elles ne concordent pas. **Poteaux** : sur la base
+Royal Rumble, ils montraient le titantron : le poteau de la base (951) cherche `rin_pos00` et `rin_hone00`, absents
+de Vengeance (qui a `rin_pos00_slv`) ; le jeu prend alors une autre image. La recette recopie maintenant du paquet 400
+de la base les images du ring qui manquent.
+
+Reste : l'écran VS (« match card ») de l'arène portée (aujourd'hui celui de la base), SvR 2011, 2K14, 2K16.
 
 ## 7. Questions ouvertes
 

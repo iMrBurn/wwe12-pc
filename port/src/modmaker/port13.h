@@ -7,6 +7,13 @@
 //    base arena's is used;
 //  - its ring (951-980) stands too high for WWE '12: the base arena's ring parts are used (they find the WWE '13
 //    apron and mat pictures by name), WWE '13's extra post and cover (981, 982) are left out;
+//  - the base's ring post (951) looks for pictures the WWE '13 arena may not have (Royal Rumble's "rin_pos00": Vengeance
+//    has "rin_pos00_slv"; the game then draws another picture, the titantron's): they are copied from the base;
+//  - the collision (995, 996, 997, 999) comes from the base: the entrance walk follows the base's stage (with WWE
+//    '13's, wrestlers floated over a Vengeance tile based on Royal Rumble);
+//  - the ramps must stand at the same height: most WWE '12 arenas have a 1.80 m ramp, Bragging Rights and Royal
+//    Rumble none, like the WWE '13 arenas seen (Vengeance, Capitol Punishment); else the wrestlers float during the
+//    entrances (RampHeight, the Mod Maker advises a base);
 //  - entry 61000 (a 256 x 128 picture every WWE '12 arena has) comes from the base;
 //  - the breakable barricade corners (390-397, ar_fence01/02_c/f/g/h: modelled at the centre, placed by WWE '13's
 //    code for its "OMG moments") are moved into the corners in the model itself.
@@ -112,8 +119,34 @@ inline void MoveModel(Bytes &d, float dx, float dz) {
   }
 }
 
+// The height of the entrance ramp in cm (0 = at floor level; WWE '12's usual ramp: 180): its models are "*slo*"
+// (200-299), y pointing down.
+inline float RampHeight(const svrfmt::ArcNode &group) {
+  float top = 0;
+  for (const auto &k : group.kids) {
+    if (k.id < 200 || k.id > 299)
+      continue;
+    svrfmt::Model m;
+    if (!svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr) || m.name.find("slo") == std::string::npos)
+      continue;
+    for (const auto &me : m.meshes)
+      for (const auto &v : me.verts)
+        top = std::max(top, -v.pos[1]);
+  }
+  return top;
+}
+
+// Arenas of WWE '12 without a raised ramp (the bases to choose for a WWE '13 arena at floor level).
+inline constexpr int kFlatBases12[] = {13, 10};  // Royal Rumble, Bragging Rights
+
+struct PortInfo {
+  float ramp13 = 0, ramp12 = 0;  // the ramps' heights (cm)
+  int pictures_added = 0;        // ring pictures copied from the base
+  bool RampsMatch() const { return (ramp13 < 60) == (ramp12 < 60); }
+};
+
 // The WWE '13 file (as on the disc) and the base arena's WWE '12 file -> the WWE '12 arena.
-inline bool Port(const Bytes &w13, const Bytes &base12, Bytes &out, std::string *why) {
+inline bool Port(const Bytes &w13, const Bytes &base12, Bytes &out, std::string *why, PortInfo *info = nullptr) {
   auto fail = [&](const std::string &w) {
     if (why)
       *why = w;
@@ -142,7 +175,12 @@ inline bool Port(const Bytes &w13, const Bytes &base12, Bytes &out, std::string 
   svrfmt::ArcNode &ga = a.root.kids[0], &gb = b.root.kids[0];
   if (!svrfmt::ArchiveExpand(ga) || !svrfmt::ArchiveExpand(gb))
     return fail("unreadable arena list");
-  const std::set<uint32_t> from_base = {50010, 61000, 951, 952, 953, 956, 960, 964, 973, 974, 980};
+  PortInfo pi;
+  pi.ramp13 = RampHeight(ga);
+  pi.ramp12 = RampHeight(gb);
+  const std::set<uint32_t> ring = {951, 952, 953, 956, 960, 964, 973, 974, 980};
+  std::set<uint32_t> from_base = {50010, 61000, 995, 996, 997, 999};
+  from_base.insert(ring.begin(), ring.end());
   const std::set<uint32_t> drop = {981, 982};
   ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(),
                                [&](const svrfmt::ArcNode &k) { return from_base.count(k.id) || drop.count(k.id); }),
@@ -150,6 +188,42 @@ inline bool Port(const Bytes &w13, const Bytes &base12, Bytes &out, std::string 
   for (const auto &k : gb.kids)
     if (from_base.count(k.id))
       ga.kids.push_back(k);
+  // The ring's pictures the arena hasn't: from the base's bundle (400).
+  auto bundle = [](svrfmt::ArcNode &g) -> svrfmt::ArcNode * {
+    for (auto &k : g.kids)
+      if (k.id == 400 && svrfmt::ArchiveKindOf(k) == "textures")
+        return &k;
+    return nullptr;
+  };
+  svrfmt::ArcNode *ta = bundle(ga), *tb = bundle(gb);
+  if (ta && tb) {
+    std::vector<svrfmt::BundleTexture> have, theirs;
+    svrfmt::BundleRead(svrfmt::ArchiveData(*ta), have);
+    svrfmt::BundleRead(svrfmt::ArchiveData(*tb), theirs);
+    std::set<std::string> names;
+    for (const auto &t : have)
+      names.insert(t.name);
+    for (const auto &k : gb.kids) {
+      svrfmt::Model m;
+      if (!ring.count(k.id) || !svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr))
+        continue;
+      for (const auto &n : m.textures) {
+        if (names.count(n))
+          continue;
+        for (const auto &t : theirs)
+          if (t.name == n) {
+            have.push_back(t);
+            names.insert(n);
+            ++pi.pictures_added;
+            break;
+          }
+      }
+    }
+    if (pi.pictures_added)
+      svrfmt::ArchiveReplace(*ta, svrfmt::BundleWrite(have));
+  }
+  if (info)
+    *info = pi;
   std::sort(ga.kids.begin(), ga.kids.end(),
             [](const svrfmt::ArcNode &x, const svrfmt::ArcNode &y) { return x.id < y.id; });
   // The barricade corners into the corners (x, z in cm; as WWE '12 places its own).
