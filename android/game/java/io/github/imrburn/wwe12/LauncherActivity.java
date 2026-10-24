@@ -72,6 +72,9 @@ public class LauncherActivity extends Activity {
         TextView title = text("WWE '12 PC", 28, YELLOW, true);
         root.addView(title);
         root.addView(text("Android " + versionName() + " - early test build", 13, Color.LTGRAY, false));
+        if (cpuTooOld())
+            root.addView(text("This phone's processor is too old for the game (it needs ARMv8.2: Snapdragon 845 / 7xx "
+                    + "from 2018 or newer). The game cannot start on it.", 14, Color.rgb(255, 110, 90), true));
 
         // Game
         LinearLayout game = panel(root, "GAME");
@@ -316,7 +319,25 @@ public class LauncherActivity extends Activity {
         }
     }
 
+    // The ARM64 game is built for ARMv8.2 (port/cmake/android.cmake): on an older core it would
+    // crash at its first atomic instruction. ARMv8.2 always has LSE atomics ("atomics" in
+    // /proc/cpuinfo). Only ARM lists "Features": an x86 device (emulator) is never refused.
+    static boolean cpuTooOld() {
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader("/proc/cpuinfo"))) {
+            for (String line; (line = r.readLine()) != null; ) {
+                if (line.startsWith("Features"))
+                    return !(" " + line.substring(line.indexOf(':') + 1) + " ").contains(" atomics ");
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
     void play() {
+        if (cpuTooOld()) {
+            Toast.makeText(this, "This processor is too old for the game (ARMv8.2 needed).", Toast.LENGTH_LONG).show();
+            return;
+        }
         Intent i = new Intent(this, WWE12Activity.class);
         String uri = prefs.getString("iso_uri", null);
         if (uri != null) {

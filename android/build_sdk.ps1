@@ -14,7 +14,10 @@ $abis = if ($Abi -eq "all") { @("x86_64", "arm64-v8a") } else { @($Abi) }
 foreach ($a in $abis) {
     $short = if ($a -eq "arm64-v8a") { "arm64" } else { $a }
     $build = "D:\Android\build\sdk-$short"
+    # ARM64 : ARMv8.2 (atomiques LSE), comme le jeu (port/cmake/android.cmake).
+    $arch = if ($a -eq "arm64-v8a") { "-march=armv8.2-a" } else { "" }
     & cmake -S $Src -B $build -G Ninja "-DCMAKE_TOOLCHAIN_FILE=$Ndk\build\cmake\android.toolchain.cmake" `
+        "-DCMAKE_C_FLAGS=$arch" "-DCMAKE_CXX_FLAGS=$arch" `
         "-DANDROID_ABI=$a" -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_shared `
         -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=D:\Android\build\sdk-install-$short" `
         -DCMAKE_CXX_STANDARD=23 -DREXGLUE_ENABLE_TRACY=OFF -Wno-dev

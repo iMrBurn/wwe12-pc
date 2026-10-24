@@ -15,6 +15,9 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
+#if defined(__ANDROID__)
+#include <time.h>
+#endif
 
 #include <plume_render_interface.h>
 
@@ -240,7 +243,24 @@ struct FrameStats {
   double sum_interval = 0, max_interval = 0, sum_work = 0, max_work = 0, sum_gpu = 0,
          max_gpu = 0, sum_swap = 0;
   u32 frames = 0, hitches = 0;
+  double window_cpu_ms = -1;  // render thread CPU time at window start (Android), -1 = unknown
+  double window_process_ms = -1;
 };
+
+// Android: the render thread's own CPU time. "work" can include time spent waiting for the
+// game's next frame; render CPU near "work" means recording frames is the limit, far below it
+// means the game's logic is.
+// The whole process's CPU time, beside it, tells how many cores the game keeps busy.
+double CpuMs(bool whole_process) {
+#if defined(__ANDROID__)
+  timespec ts{};
+  if (clock_gettime(whole_process ? CLOCK_PROCESS_CPUTIME_ID : CLOCK_THREAD_CPUTIME_ID, &ts) == 0)
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+#else
+  (void)whole_process;
+#endif
+  return -1;
+}
 FrameStats g_frame_stats;
 extern std::atomic<u64> g_geometry_hashed_bytes, g_geometry_sampled;  // svr_geometry.cpp
 extern std::atomic<u64> g_texture_hashed_bytes, g_texture_sampled;    // svr_resources.cpp
@@ -266,6 +286,8 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
     ++fs.frames;
   } else {
     fs.window_start = now;
+    fs.window_cpu_ms = CpuMs(false);
+    fs.window_process_ms = CpuMs(true);
   }
   fs.last_present = now;
   fs.wait_ms = 0;
@@ -285,9 +307,17 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
             "({:.0f} sampled)",
             g_geometry_hashed_bytes.exchange(0) / n / 1048576.0, g_geometry_sampled.exchange(0) / n,
             g_texture_hashed_bytes.exchange(0) / n / 1048576.0, g_texture_sampled.exchange(0) / n);
+    const double cpu_now = CpuMs(false), process_now = CpuMs(true);
+    if (cpu_now >= 0 && fs.window_cpu_ms >= 0)
+      BD_INFO("[perf] cpu per frame: render thread {:.1f} ms (work {:.1f} ms) | whole game "
+              "{:.1f} ms",
+              (cpu_now - fs.window_cpu_ms) / n, fs.sum_work / n,
+              (process_now - fs.window_process_ms) / n);
     fs = FrameStats{};
     fs.window_start = now;
     fs.last_present = now;
+    fs.window_cpu_ms = cpu_now;
+    fs.window_process_ms = process_now;
   }
 }
 

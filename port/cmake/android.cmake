@@ -26,5 +26,17 @@ target_include_directories(wwe12 BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android")
 
 target_link_libraries(wwe12 PRIVATE android log)
+
+# ARM64 : ARMv8.2 plutôt que l'ARMv8.0 du SDK (rexglue_helpers.cmake) : atomiques LSE en une
+# instruction (verrous, lwarx/stwcx du code recompilé) au lieu de boucles. Tous les téléphones
+# capables de faire tourner le jeu l'ont (Snapdragon 845 / 7xx 2018 et après) ; le launcher
+# prévient sur les autres (LauncherActivity.cpuTooOld). Même réglage pour le SDK (build_sdk.ps1).
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    foreach(_t wwe12 wwe12_recomp plume wwe12_native_thirdparty)
+        if(TARGET ${_t})
+            target_compile_options(${_t} PRIVATE -march=armv8.2-a)
+        endif()
+    endforeach()
+endif()
 # SDL appelle main() par son nom (SDLActivity.getMainFunction) : il doit rester visible.
 set_target_properties(wwe12 PROPERTIES OUTPUT_NAME "wwe12")
