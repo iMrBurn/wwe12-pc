@@ -51,12 +51,14 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     final Handler handler = new Handler(Looper.getMainLooper());
     final int alpha;          // 0-255, from the launcher's opacity setting
+    final float scale;        // from the launcher's size setting (1 = normal)
     boolean attached;
     boolean hidden;
 
-    public TouchControls(Context context, int opacityPercent) {
+    public TouchControls(Context context, int opacityPercent, int sizePercent) {
         super(context);
         alpha = Math.max(30, Math.min(255, opacityPercent * 255 / 100));
+        scale = Math.max(50, Math.min(150, sizePercent)) / 100f;
         int green = Color.rgb(90, 180, 70), red = Color.rgb(210, 60, 60), blue = Color.rgb(60, 110, 220),
                 yellow = Color.rgb(230, 190, 50), grey = Color.rgb(150, 150, 150);
         // Left side: stick, d-pad, LB/LT.
@@ -134,10 +136,15 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
 
     @Override
     protected void onSizeChanged(int w, int h, int ow, int oh) {
+        // The size setting scales each button and its distance to its screen corner (or to the
+        // top middle for BACK / START), so groups shrink towards the edges and stay together.
+        // Only the top row (shoulders, BACK / START) hangs from the top edge.
         for (Control c : controls) {
-            c.cx = c.fx * w;
-            c.cy = c.fy * h;
-            c.r = c.fr * h;
+            float axf = c.fx > 0.4f && c.fx < 0.6f ? 0.5f : (c.fx < 0.5f ? 0f : 1f);
+            float ayf = c.fy < 0.25f ? 0f : 1f;
+            c.cx = (axf + (c.fx - axf) * scale) * w;
+            c.cy = (ayf + (c.fy - ayf) * scale) * h;
+            c.r = c.fr * scale * h;
         }
     }
 

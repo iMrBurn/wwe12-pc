@@ -118,6 +118,9 @@ public class LauncherActivity extends Activity {
         ctl.addView(touch);
         ctl.addView(prefChoice("On-screen buttons opacity", "touch_opacity",
                 new String[] {"30 %", "50 %", "70 %", "90 %"}, new int[] {30, 50, 70, 90}, 50));
+        ctl.addView(prefChoice("On-screen buttons size", "touch_size",
+                new String[] {"Small (70 %)", "Medium (85 %)", "Normal (100 %)", "Large (110 %)"},
+                new int[] {70, 85, 100, 110}, 100));
         ctl.addView(text("Bluetooth / USB controllers (Xbox, PlayStation...) work too: pair it in Android's settings.",
                 12, Color.GRAY, false));
 

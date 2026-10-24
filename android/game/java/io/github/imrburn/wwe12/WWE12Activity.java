@@ -37,7 +37,7 @@ public class WWE12Activity extends SDLActivity {
         // On-screen controller (launcher setting, on by default), over SDL's surface.
         android.content.SharedPreferences prefs = getSharedPreferences("launcher", MODE_PRIVATE);
         if (prefs.getBoolean("touch_controls", true)) {
-            addContentView(new TouchControls(this, prefs.getInt("touch_opacity", 50)),
+            addContentView(new TouchControls(this, prefs.getInt("touch_opacity", 50), prefs.getInt("touch_size", 100)),
                     new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         }
