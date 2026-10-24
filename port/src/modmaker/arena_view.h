@@ -215,6 +215,7 @@ class View {
           c.additive = d.flags.additive ? 1.0f : 0.0f;
           c.textured = d.tex ? 1.0f : 0.0f;
           c.baked = d.baked_light ? 1.0f : 0.0f;
+          c.opaque = d.opaque ? 1.0f : 0.0f;
           ctx_->UpdateSubresource(cb_.Get(), 0, nullptr, &c, 0, 0);
           ID3D11Buffer *cbs[] = {cb_.Get()};
           ctx_->VSSetConstantBuffers(0, 1, cbs);
@@ -270,6 +271,7 @@ class View {
   struct Constants {
     float view_proj[16];
     float mirror, additive, textured, baked;
+    float opaque, pad[3];
   };
   struct Draw {
     ComPtr<ID3D11Buffer> vb, ib;
@@ -277,6 +279,7 @@ class View {
     ID3D11ShaderResourceView *tex = nullptr;  // owned by textures_
     Flags flags;
     bool baked_light = true;
+    bool opaque = false;  // no alpha test (superstars' skin and gear: their pictures' alpha is something else)
   };
 
   void ViewProj(float aspect, float out[16]) const {
@@ -385,6 +388,12 @@ class View {
     d.flags = f;
     // Superstars' shaders (yCh_*) light them in the game: their vertex colours aren't baked light.
     d.baked_light = s.shader.rfind("yCh", 0) != 0;
+    // (Only for pictures with a full alpha channel: a DXT1 colour picture's 1-bit alpha may cut real holes.)
+    if (s.shader == "yCh_skin" || s.shader == "yCh_skin_flex" || s.shader == "yCh_gear" || s.shader == "yCh_Reflect") {
+      const auto it = dds.find(Lower(tex));
+      svrfmt::DdsInfo info;
+      d.opaque = it != dds.end() && svrfmt::DdsInfoOf(it->second, info) && info.format != svrfmt::DxtFormat::kDxt1;
+    }
     d.count = UINT(idx.size());
     d.tex = tex.empty() ? nullptr : Texture(tex, dds);
     D3D11_BUFFER_DESC bd{};
@@ -410,7 +419,8 @@ class View {
     if (vs_)
       return true;
     static const char kShader[] = R"(
-cbuffer C : register(b0) { row_major float4x4 view_proj; float mirror; float additive; float textured; float baked; };
+cbuffer C : register(b0) { row_major float4x4 view_proj; float mirror; float additive; float textured; float baked;
+                           float opaque; float3 pad; };
 Texture2D tex : register(t0);
 SamplerState samp : register(s0);
 struct VI { float3 pos : POSITION; float3 n : NORMAL; float2 uv : TEXCOORD; float4 col : COLOR; };
@@ -427,7 +437,7 @@ float4 ps(VO i) : SV_Target {
   // No picture: the video screens (the game draws its videos there): a dark screen.
   float4 c = textured > 0.5 ? tex.Sample(samp, i.uv) : float4(0.05, 0.07, 0.12, 1);
   if (additive > 0.5) return float4(c.rgb * c.a * i.col.rgb, 1);
-  clip(c.a - 0.4);
+  if (opaque < 0.5) clip(c.a - 0.4);
   // The vertex colours are the arena's baked light (dark floors and stands, white for lit props), as in the game;
   // a little shading from above keeps shapes readable.
   float3 l = normalize(float3(0.3, -1.0, 0.45));  // (y is down)
