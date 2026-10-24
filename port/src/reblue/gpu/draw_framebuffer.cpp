@@ -23,6 +23,9 @@
 REXCVAR_DEFINE_BOOL(svr_rt_level0_view, true, "SvR",
                     "Attach only level 0 of render targets with mips (false = 0.8 behaviour, for "
                     "tests).");
+REXCVAR_DEFINE_BOOL(svr_sampled_barrier, true, "SvR",
+                    "Make copied textures readable before a draw samples them (false = 0.9 "
+                    "behaviour, for tests: the right-strip blocks of #7/#11/#13).");
 
 namespace bd::gpu {
 
@@ -101,11 +104,32 @@ void ResolveEffectiveTargets(VideoState &s, GuestTexture *&rt,
 
 namespace {
 
+// The textures this draw samples, made readable. A texture filled by copies (Video::ResolveRegion:
+// the four strips of a tiled scene, the depth-of-field chain's small targets) is left in the copy
+// layout, and nothing else ends that copy before the draw: NVIDIA and recent Intel read it anyway,
+// older Intel (HD 520, UHD 620) read the last strip before its copy lands, the coloured blocks over
+// the right quarter in entrances and cutscenes (#7/#11/#13, seen in DRAVEN0612's captures: no
+// barrier between the fourth strip copy and the draws sampling it).
 void TransitionResolveSources(VideoState &s, const GuestTexture *rt,
                               const GuestTexture *ds) {
-  plume::RenderTextureBarrier sampled[kTextureSlots];
+  plume::RenderTextureBarrier sampled[2 * kTextureSlots];
   u32 sampled_count = 0;
+  const auto make_readable = [&](GuestTexture *t) {
+    if (!t || !t->texture || t == rt || t == ds)
+      return;
+    if ((rt && t->texture == rt->texture) || (ds && t->texture == ds->texture))
+      return;
+    if (t->layout == plume::RenderTextureLayout::SHADER_READ ||
+        t->layout == plume::RenderTextureLayout::UNKNOWN)
+      return;
+    sampled[sampled_count++] = plume::RenderTextureBarrier(
+        t->texture, plume::RenderTextureLayout::SHADER_READ);
+    t->layout = plume::RenderTextureLayout::SHADER_READ;
+  };
+  const bool own = REXCVAR_GET(svr_sampled_barrier);
   for (GuestTexture *t : s.textures) {
+    if (own)
+      make_readable(t);
     GuestTexture *src = t ? t->sourceSurface : nullptr;
     if (!src || src == t || !src->texture)
       continue;
