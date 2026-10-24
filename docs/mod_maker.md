@@ -590,6 +590,27 @@ les copies les plus récentes).
   1 de SvR 2011 portée) créé dans la page, installé, ajouté par le jeu au n° 87 (les n° 85 et 86 gardés) : **ORTON SVR11
   à l'écran de choix (portrait d'Orton, OVERALL 94) et en entrée**.
 
+## 6 quaterdecies. Vidéo d'entrée des catcheurs ajoutés ; titantron et minitron séparés (2026-10-24)
+
+- **Minitron** = l'écran de la scène sous le grand écran ; c'est le **bas (320 × 100)** de la même vidéo
+  `movies\titantron\NNN.bik` que le titantron (le haut, 320 × 220). Un seul fichier par catcheur.
+- Le **numéro de vidéo vient du script d'entrée** (commande vidéo, `sub_828F2410` lit commande + 172, venu de
+  `sub_828D83B8` ; 999 = la vidéo propre du catcheur, pour les CAW, `sub_828C83F0`) ; `sub_82A316A0(n)` fait le chemin
+  (`%03d`, hors 0-999 : `255.bik`), les packs DLC d'abord (`GAME:\` sinon). Un catcheur ajouté reprend l'entrée de sa
+  base, donc sa vidéo.
+- **Fait et testé en jeu** : un mod de catcheur peut avoir `superstar/titantron.bik` ; le pack du jeu l'ajoute en
+  `movies\titantron\NNN.bik` (numéro libre : celui de l'emplacement s'il n'existe ni sur le disque ni dans un pack,
+  sinon 373-399, 428-499, 551-615, 726-899 ; listé dans `catalog.dlc` sans annuaire, comme les packs officiels), et le
+  crochet de `sub_82A316A0` remplace le numéro quand le catcheur qui entre (`sub_828CEF58(sub_828C21A8())` → place +16,
+  `sub_8267CD30(sub_823F8270(place))` + 16 = **numéro × 100 + tenue**, ex. 8702) est ce catcheur. Essai : ORTON SVR11
+  avec la vidéo de Cena, le vrai Orton garde la sienne.
+- **Mod Maker** (compilé, pas encore essayé par l'utilisateur) : `media::MovieEditor` (titantron : celui du jeu / le
+  vôtre ; minitron : celui du jeu / comme le titantron / le vôtre ; aperçu avant / après), utilisé par la page VIDÉOS et
+  par la section « 3. Vidéo d'entrée » de la page NOUVEAU (vidéo de la base au départ).
+- Idées notées : base facultative (une base par défaut) ; choisir les pièces une à une (prises, entrée, stats) ; deux
+  mods pour le même catcheur (l'un titantron, l'autre minitron) assemblés par le jeu ; catcheurs de WWE '13 ; page
+  « Bibliothèque » qui liste ce qu'on peut importer des jeux du joueur (jamais de données distribuées).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

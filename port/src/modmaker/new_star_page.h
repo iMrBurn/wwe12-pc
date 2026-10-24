@@ -3,6 +3,8 @@
 // and portraits it starts from) and, if it has its own look, superstar/ch.pac; the game makes a DLC pack of the
 // superstar mods at startup (src/native/wwe12_superstar_mods.cpp, modmaker/superstar_pack.h). Its look: the base's,
 // another superstar file (a chNNN.pac), or an attire of SvR 2011 ported over the base's first attire (port_svr.h).
+// Its entrance video (titantron and minitron, superstar/titantron.bik) can be its own, made from the base's: the
+// game plays it during its entrance in place of the base's.
 #pragma once
 
 #include <algorithm>
@@ -40,6 +42,8 @@ class Page {
                                 : "Add a superstar to the game, next to the others (shown in the select screen's DLC "
                                   "tile). It starts from a base superstar (moves, ratings and portraits); its look can "
                                   "be the base's, another superstar file, or an attire ported from SvR 2011.");
+    if (movie_.Finished())
+      Finished(fr, mods);
     if (!disc.Found()) {
       ImGui::TextColored(red, "%s", fr ? "Fichiers du jeu introuvables." : "Game files not found.");
       return;
@@ -135,21 +139,35 @@ class Page {
     }
 
     // 3D view of the model's first attire.
-    const float h = std::max(260.0f, ImGui::GetContentRegionAvail().y - 110);
+    const float h = std::max(220.0f, ImGui::GetContentRegionAvail().y - (own_movie_ ? 520 : 150));
     ImGui::BeginChild("ns_view", ImVec2(0, h), ImGuiChildFlags_Borders);
     Draw3D(fr);
     ImGui::EndChild();
 
-    // 3. The mod.
-    ImGui::SeparatorText(fr ? "3. Le mod" : "3. The mod");
+    // 3. Entrance video.
+    ImGui::SeparatorText(fr ? "3. Vidéo d'entrée (titantron et minitron)" : "3. Entrance video (titantron and minitron)");
+    ImGui::BeginDisabled(movie_.Busy());
+    ImGui::Checkbox(fr ? "Sa propre vidéo d'entrée (sinon celle de la base)" : "Its own entrance video (else the base's)",
+                    &own_movie_);
+    ImGui::EndDisabled();
+    if (own_movie_)
+      movie_.Draw(fr, "ns_movie");
+
+    // 4. The mod.
+    ImGui::SeparatorText(fr ? "4. Le mod" : "4. The mod");
+    ImGui::BeginDisabled(movie_.Busy());
     ImGui::SetNextItemWidth(200);
     ImGui::InputTextWithHint("##ns_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
     ImGui::SameLine();
-    const bool ready = name_[0] && !model_.empty() && (look_ == 0 || model_ != base_file_);
-    ImGui::BeginDisabled(!ready || game::IsRunning());
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    const bool ready = name_[0] && !model_.empty() && (look_ == 0 || model_ != base_file_) &&
+                       (!own_movie_ || movie_.Ready());
+    ImGui::BeginDisabled(!ready || game::IsRunning() || movie_.Busy());
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
       Make(fr, mods);
     ImGui::EndDisabled();
+    movie_.DrawProgress(fr);
     if (!name_[0]) {
       ImGui::SameLine();
       ImGui::TextDisabled("%s", fr ? "(donnez-lui un nom)" : "(give it a name)");
@@ -197,6 +215,9 @@ class Page {
       error_ = (fr ? "Lecture impossible : " : "Could not read: ") + stars_[base_].file;
       return;
     }
+    char movie[16];
+    snprintf(movie, sizeof(movie), "%03d.bik", stars_[base_].id);
+    movie_.SetGame(device_, media::CopyGameMovie(disc, movie));  // (its entrance video starts from the base's)
     if (look_ == 2 && !svr_attires_.empty())
       PortSvr(fr);  // (ported over the new base)
     SetModel(look_ == 0 ? base_file_ : look_ == 1 ? other_ : ported_);
@@ -335,17 +356,41 @@ class Page {
     }
   }
 
+  // The mod's file is chosen first; with its own video, the video is made, then the mod (Finished).
   void Make(bool fr, mods::Manager &mods) {
     message_ok_ = false;
-    std::string id = "superstar_";
+    message_.clear();
     std::wstring file;
-    for (unsigned char c : std::string(name_)) {
-      id += std::isalnum(c) ? char(std::tolower(c)) : '_';
+    for (unsigned char c : std::string(name_))
       file += std::isalnum(c) ? wchar_t(c) : L'_';
-    }
-    const fs::path save = media::PickSave(fr, (file.empty() ? L"superstar" : file) + L".svrmod");
-    if (save.empty())
+    save_ = media::PickSave(fr, (file.empty() ? L"superstar" : file) + L".svrmod");
+    if (save_.empty())
       return;
+    if (own_movie_) {
+      made_ = media::TempDir() / L"made_new_superstar.bik";
+      movie_.Start(made_);
+      return;
+    }
+    Write(fr, mods, {});
+  }
+
+  void Finished(bool fr, mods::Manager &mods) {
+    if (!movie_.Ok()) {
+      message_ok_ = false;
+      message_ = (fr ? "La vidéo n'a pas pu être faite : " : "The movie could not be made: ") + movie_.Error();
+      return;
+    }
+    const Bytes bik = ReadAll(made_);
+    std::error_code ec;
+    fs::remove(made_, ec);
+    Write(fr, mods, bik);
+  }
+
+  void Write(bool fr, mods::Manager &mods, const Bytes &movie) {
+    std::string id = "superstar_";
+    for (unsigned char c : std::string(name_))
+      id += std::isalnum(c) ? char(std::tolower(c)) : '_';
+    const fs::path &save = save_;
     const Star &b = stars_[base_];
     std::string manifest = "game=wwe12\ntype=superstar\nid=" + id + "\nname=" + std::string(name_) +
                            "\nbase=" + std::to_string(b.id) + "\nversion=1.0\n";
@@ -355,12 +400,15 @@ class Page {
                 (look_ == 2 ? ", its look ported from SvR 2011 (the player's own file)"
                  : look_ == 1 ? ", with its own look"
                               : "") +
+                (movie.empty() ? "" : ", its own entrance video (" + movie_.Parts() + ")") +
                 ", made with the WWE '12 Mod Maker.\n";
     std::vector<std::pair<std::string, Bytes>> entries = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())}};
     if (look_ != 0)
       entries.push_back({"superstar/ch.pac", model_});
     else
       entries.push_back({"superstar/look.txt", Bytes{'b', 'a', 's', 'e', '\n'}});  // (a mod needs a superstar/ file)
+    if (!movie.empty())
+      entries.push_back({"superstar/titantron.bik", movie});
     if (!mods::Manager::WriteZip(save, entries)) {
       message_ = (fr ? "Impossible d'écrire " : "Could not write ") + media::Utf8(save.wstring());
       return;
@@ -385,6 +433,9 @@ class Page {
   bool view_stale_ = true;
   std::string error_, note_, view_error_, message_, reduced_;
   bool note_ok_ = false, message_ok_ = false;
+  media::MovieEditor movie_;
+  bool own_movie_ = false;
+  fs::path save_, made_;
 };
 
 }  // namespace new_star_page

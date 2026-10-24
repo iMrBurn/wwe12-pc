@@ -1,8 +1,8 @@
-// MODS page, "Entrance videos": makes a superstar's entrance (titantron) movie from any video or picture and
-// installs it as a .svrmod (type=media, files/movies/titantron/<id>.bik; the file number is the superstar's id,
-// see game_disc.h). The movie itself is made by Kaiko's USER MOVIES maker (video/movie_maker.c, Bink 1 at
-// 320 x 320, 30 fps: the top 320 x 220 is the big screen, the bottom 320 x 100 the stage and ramp strip, kept
-// from the game's own movie by default). docs/mod_maker.md, step 3.
+// Entrance movies: the VIDEOS page (a superstar's movie from any video or picture, installed as a .svrmod: type=media,
+// files/movies/titantron/<id>.bik; the file number is the superstar's id, see game_disc.h) and the movie editor the
+// NEW SUPERSTAR page uses too. The movie itself is made by Kaiko's USER MOVIES maker (video/movie_maker.c, Bink 1 at
+// 320 x 320, 30 fps: the top 320 x 220 is the titantron, the big screen; the bottom 320 x 100 the minitron, the
+// stage screen under it, and the ramp strip), each part the game's own or the player's. docs/mod_maker.md, step 3.
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -68,84 +68,110 @@ inline fs::path PickSave(bool fr, const std::wstring &name) {
   return picked;
 }
 
-class EntranceVideos {
+// An entrance movie in the making: its top (the titantron, the big screen) and its bottom (the minitron, the screen
+// under it on the stage and the ramp strip), each the game's own movie or a video / picture of the player's (the
+// minitron can also be the titantron's), with the before / after pictures; made by movie_make on a worker thread.
+class MovieEditor {
  public:
-  ~EntranceVideos() {
-    if (worker_.joinable()) {
-      job_.cancel = 1;
-      worker_.join();
+  ~MovieEditor() { Wait(); }
+
+  // The game's movie of this superstar (a .bik on disk), "" if it has none: the "before" picture and the parts kept.
+  void SetGame(ID3D11Device *device, const fs::path &movie) {
+    device_ = device;
+    game_movie_ = movie;
+    game_tex_.Reset();
+    if (game_movie_.empty()) {
+      top_ = top_ == kGame ? kOwn : top_;
+      bottom_ = bottom_ == kGame ? kSameAsTop : bottom_;
+    } else {
+      WCHAR err[256];
+      if (BinkReader *r = bink_open(game_movie_.c_str(), err, 256)) {
+        const int w = bink_width(r), h = bink_height(r), frame = std::min(bink_frames(r) - 1, 90);
+        for (int i = 0; i <= frame; ++i)
+          bink_next(r);
+        std::vector<uint8_t> bgra(size_t(w) * h * 4);
+        bink_bgra(r, bgra.data());
+        bink_close(r);
+        game_tex_ = Texture(bgra.data(), w, h);
+      }
     }
+    MakePreview();
   }
 
-  void Draw(bool fr, ID3D11Device *device, const fs::path &exe_dir, mods::Manager &mods) {
-    device_ = device;
-    if (!loaded_)
-      Load(exe_dir);
-    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
-    ImGui::TextWrapped("%s", fr ? "Remplacez la vidéo d'entrée d'un catcheur (le grand écran du titantron) par une "
-                                  "vidéo ou une image à vous. Le launcher en fait un mod (.svrmod) et l'installe ; vous "
-                                  "pouvez aussi partager le fichier."
-                                : "Replace a superstar's entrance video (the titantron's big screen) with a video or a "
-                                  "picture of yours. The launcher makes a mod (.svrmod) of it and installs it; you can "
-                                  "share the file too.");
-    ImGui::Dummy(ImVec2(0, 6));
-    if (!disc_.Found() || stars_.empty()) {
-      ImGui::TextColored(red, "%s", fr ? "Fichiers du jeu introuvables (dossier game ou .iso à côté du launcher)."
-                                       : "Game files not found (game folder or .iso next to the launcher).");
-      return;
+  // The choices and the pictures. Returns nothing: Ready() says whether there is something to make.
+  void Draw(bool fr, const char *id) {
+    ImGui::PushID(id);
+    ImGui::BeginDisabled(Busy());
+    const bool have_game = !game_movie_.empty();
+    // Titantron.
+    ImGui::Text("%s", fr ? "Titantron (grand écran)" : "Titantron (big screen)");
+    ImGui::SameLine(190);
+    ImGui::BeginDisabled(!have_game);
+    if (ImGui::RadioButton(fr ? "Celui du jeu##t" : "The game's##t", top_ == kGame)) {
+      top_ = kGame;
+      MakePreview();
     }
-    const bool busy = worker_.joinable();
-    if (busy && done_) {
-      worker_.join();
-      Finish(fr, mods);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::RadioButton(fr ? "Le vôtre##t" : "Yours##t", top_ == kOwn)) {
+      top_ = kOwn;
+      MakePreview();
     }
-    ImGui::BeginDisabled(worker_.joinable());
-
-    // The superstar.
-    ImGui::SetNextItemWidth(360);
-    const std::string current = star_ < 0 ? (fr ? "Choisir..." : "Choose...") : Label(stars_[star_]);
-    if (ImGui::BeginCombo(fr ? "Catcheur" : "Superstar", current.c_str(), ImGuiComboFlags_HeightLarge)) {
-      ImGui::SetNextItemWidth(-1);
-      if (ImGui::IsWindowAppearing())
-        ImGui::SetKeyboardFocusHere();
-      ImGui::InputTextWithHint("##filter", fr ? "Rechercher" : "Search", filter_, sizeof(filter_));
-      for (int i = 0; i < int(stars_.size()); ++i) {
-        const std::string l = Label(stars_[i]);
-        if (filter_[0] && !Contains(l, filter_))
-          continue;
-        if (ImGui::Selectable(l.c_str(), i == star_)) {
-          star_ = i;
-          LoadGameMovie();
+    if (top_ == kOwn) {
+      ImGui::SameLine();
+      if (ImGui::Button(fr ? "Vidéo ou image...##t" : "Video or picture...##t")) {
+        const fs::path p = PickSource(fr);
+        if (!p.empty()) {
+          top_file_ = p;
           MakePreview();
         }
       }
-      ImGui::EndCombo();
-    }
-
-    // The new picture.
-    if (ImGui::Button(fr ? "Choisir une vidéo ou une image..." : "Choose a video or a picture...")) {
-      const fs::path p = PickSource(fr);
-      if (!p.empty()) {
-        source_ = p;
-        MakePreview();
-      }
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", source_.empty() ? "" : source_.filename().string().c_str());
-    const char *fits_en[] = {"Whole picture (black bars)", "Fill the screen (edges cut)", "Stretch"};
-    const char *fits_fr[] = {"Image entière (bandes noires)", "Remplir l'écran (bords coupés)", "Étirer"};
-    for (int i = 0; i < 3; ++i) {
-      if (i)
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", top_file_.empty() ? "" : Utf8(top_file_.filename().wstring()).c_str());
+      const char *fits_en[] = {"Whole picture (black bars)", "Fill the screen (edges cut)", "Stretch"};
+      const char *fits_fr[] = {"Image entière (bandes noires)", "Remplir l'écran (bords coupés)", "Étirer"};
+      ImGui::Dummy(ImVec2(182, 0));
+      for (int i = 0; i < 3; ++i) {
         ImGui::SameLine();
-      if (ImGui::RadioButton(fr ? fits_fr[i] : fits_en[i], fit_ == i)) {
-        fit_ = i;
-        MakePreview();
+        if (ImGui::RadioButton(fr ? fits_fr[i] : fits_en[i], fit_ == i)) {
+          fit_ = i;
+          MakePreview();
+        }
       }
     }
-    if (ImGui::Checkbox(fr ? "Garder le bandeau de la rampe du jeu (bas de la vidéo)"
-                           : "Keep the game's ramp strip (bottom of the movie)",
-                        &keep_strip_))
+    // Minitron.
+    ImGui::Text("%s", fr ? "Minitron (écran de la scène)" : "Minitron (stage screen)");
+    ImGui::SameLine(190);
+    ImGui::BeginDisabled(!have_game);
+    if (ImGui::RadioButton(fr ? "Celui du jeu##b" : "The game's##b", bottom_ == kGame)) {
+      bottom_ = kGame;
       MakePreview();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(top_ != kOwn);
+    if (ImGui::RadioButton(fr ? "Comme le titantron##b" : "As the titantron##b", bottom_ == kSameAsTop)) {
+      bottom_ = kSameAsTop;
+      MakePreview();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::RadioButton(fr ? "Le vôtre##b" : "Yours##b", bottom_ == kOwn)) {
+      bottom_ = kOwn;
+      MakePreview();
+    }
+    if (bottom_ == kOwn) {
+      ImGui::SameLine();
+      if (ImGui::Button(fr ? "Vidéo ou image...##b" : "Video or picture...##b")) {
+        const fs::path p = PickSource(fr);
+        if (!p.empty()) {
+          bottom_file_ = p;
+          MakePreview();
+        }
+      }
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", bottom_file_.empty() ? "" : Utf8(bottom_file_.filename().wstring()).c_str());
+    }
     ImGui::SetNextItemWidth(260);
     ImGui::SliderInt(fr ? "Durée max." : "Max. length", &max_seconds_, 0, 180,
                      max_seconds_ ? "%d s" : (fr ? "toute la vidéo" : "whole video"));
@@ -153,13 +179,10 @@ class EntranceVideos {
     ImGui::SliderFloat(fr ? "Aperçu à" : "Preview at", &preview_at_, 0.0f, 60.0f, "%.0f s");
     if (ImGui::IsItemDeactivatedAfterEdit())
       MakePreview();
-    ImGui::SetNextItemWidth(260);
-    ImGui::InputText(fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
     ImGui::EndDisabled();
 
     // Before / after.
-    ImGui::Dummy(ImVec2(0, 4));
-    const float s = 230;
+    const float s = 200;
     ImGui::BeginGroup();
     ImGui::TextDisabled("%s", fr ? "Dans le jeu" : "In the game");
     Picture(game_tex_.Get(), s);
@@ -170,104 +193,96 @@ class EntranceVideos {
     Picture(new_tex_.Get(), s);
     ImGui::EndGroup();
     if (!preview_err_.empty())
-      ImGui::TextColored(red, "%s", preview_err_.c_str());
+      ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", preview_err_.c_str());
+    ImGui::PopID();
+  }
 
-    // Make it.
-    ImGui::Dummy(ImVec2(0, 4));
-    const bool running = game::IsRunning();
-    ImGui::BeginDisabled(worker_.joinable() || running || star_ < 0 || source_.empty());
-    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
-      Start(fr);
-    ImGui::EndDisabled();
-    if (worker_.joinable()) {
-      ImGui::SameLine();
-      ImGui::ProgressBar(progress_ / 100.0f, ImVec2(220, 0));
-      ImGui::SameLine();
-      if (ImGui::Button(fr ? "Arrêter" : "Stop"))
-        job_.cancel = 1;
+  // Something of the player's, and every part has its picture.
+  bool Ready() const {
+    const bool top_ok = top_ == kGame ? !game_movie_.empty() : !top_file_.empty();
+    const bool bottom_ok = bottom_ == kGame ? !game_movie_.empty() : bottom_ == kSameAsTop ? top_ == kOwn : !bottom_file_.empty();
+    return top_ok && bottom_ok && (top_ == kOwn || bottom_ != kGame);
+  }
+  // What the movie is made of, for a mod's description.
+  std::string Parts() const {
+    return std::string(top_ == kOwn ? "own titantron" : "the game's titantron") + ", " +
+           (bottom_ == kGame ? "the game's minitron" : bottom_ == kSameAsTop ? "the same minitron" : "own minitron");
+  }
+
+  // Makes the movie into `out` on a worker thread.
+  void Start(const fs::path &out) {
+    if (!notify_) {
+      WNDCLASSW wc{};
+      wc.lpfnWndProc = ProgressProc;
+      wc.hInstance = GetModuleHandleW(nullptr);
+      wc.lpszClassName = L"WWE12MovieProgress";
+      RegisterClassW(&wc);
+      notify_ = CreateWindowExW(0, wc.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, wc.hInstance, nullptr);
+      SetWindowLongPtrW(notify_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
     }
-    if (running)
-      ImGui::TextColored(red, "%s", fr ? "Le jeu est lancé : fermez-le pour installer le mod."
-                                       : "The game is running: close it to install the mod.");
-    if (!message_.empty())
-      ImGui::TextColored(message_ok_ ? green : red, "%s", message_.c_str());
+    memset(&job_, 0, sizeof(job_));
+    wcsncpy_s(job_.video, TopSource().c_str(), _TRUNCATE);
+    wcsncpy_s(job_.bottom, BottomSource().c_str(), _TRUNCATE);
+    job_.fit = top_ == kOwn ? fit_ : MOVIE_FILL;  // (the game's titantron is already 16:9)
+    job_.max_seconds = max_seconds_;
+    wcsncpy_s(job_.out, out.c_str(), _TRUNCATE);
+    job_.notify = notify_;
+    job_.msg = WM_APP + 0x31;
+    progress_ = 0;
+    done_ = false;
+    worker_ = std::thread([this] {
+      CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+      ok_ = movie_make(&job_) != 0;
+      CoUninitialize();
+      done_ = true;
+    });
+  }
+  bool Busy() const { return worker_.joinable(); }
+  // True once when a movie started is done: Ok(), Error(), Seconds().
+  bool Finished() {
+    if (!worker_.joinable() || !done_)
+      return false;
+    worker_.join();
+    return true;
+  }
+  bool Ok() const { return ok_; }
+  std::string Error() const { return Utf8(job_.err); }
+  int Seconds() const { return job_.frames / 30; }
+  // The progress bar and its Stop button, while it runs.
+  void DrawProgress(bool fr) {
+    if (!worker_.joinable())
+      return;
+    ImGui::SameLine();
+    ImGui::ProgressBar(progress_ / 100.0f, ImVec2(220, 0));
+    ImGui::SameLine();
+    if (ImGui::Button(fr ? "Arrêter" : "Stop"))
+      job_.cancel = 1;
   }
 
  private:
-  struct Star {
-    int id = 0;
-    std::string file, name;  // file: "139.bik"
-  };
+  enum { kGame = 0, kOwn = 1, kSameAsTop = 2 };
 
-  static std::string Label(const Star &s) {
-    return s.name.empty() ? "Video " + s.file.substr(0, s.file.size() - 4) : s.name;
+  std::wstring TopSource() const { return top_ == kOwn ? top_file_.wstring() : game_movie_.wstring(); }
+  std::wstring BottomSource() const {
+    return bottom_ == kGame ? game_movie_.wstring() : bottom_ == kSameAsTop ? top_file_.wstring() : bottom_file_.wstring();
   }
-  static bool Contains(const std::string &s, const char *what) {
-    std::string a = s, b = what;
-    for (auto *x : {&a, &b})
-      std::transform(x->begin(), x->end(), x->begin(), [](unsigned char c) { return char(std::tolower(c)); });
-    return a.find(b) != std::string::npos;
-  }
-  // Every movie of movies/titantron: the superstars' (by name) first, then the others by number.
-  void Load(const fs::path &exe_dir) {
-    loaded_ = true;
-    disc_.Open(exe_dir);
-    const auto names = disc::SuperstarNames(disc_);
-    for (const auto &f : disc_.List("movies/titantron")) {
-      if (f.size() != 7 || _stricmp(f.c_str() + 3, ".bik") != 0)
-        continue;
-      Star s;
-      s.file = f;
-      s.id = atoi(f.c_str());
-      const auto it = names.find(s.id);
-      if (it != names.end())
-        s.name = it->second;
-      stars_.push_back(s);
+
+  void Wait() {
+    if (worker_.joinable()) {
+      job_.cancel = 1;
+      worker_.join();
     }
-    std::sort(stars_.begin(), stars_.end(), [](const Star &a, const Star &b) {
-      if (a.name.empty() != b.name.empty())
-        return !a.name.empty();
-      return a.name.empty() ? a.id < b.id : a.name < b.name;
-    });
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    temp_ = fs::path(tmp) / L"WWE12 Launcher";
-    std::error_code ec;
-    fs::create_directories(temp_, ec);
-  }
-
-  // The game's movie, copied out of the game files (the strip comes from it, and the "before" picture).
-  void LoadGameMovie() {
-    game_movie_.clear();
-    game_tex_.Reset();
-    std::vector<uint8_t> bytes;
-    if (star_ < 0 || !disc_.Read("movies/titantron/" + stars_[star_].file, bytes))
-      return;
-    const fs::path p = temp_ / ("game_" + stars_[star_].file);
-    std::ofstream(p, std::ios::binary).write(reinterpret_cast<const char *>(bytes.data()), std::streamsize(bytes.size()));
-    game_movie_ = p;
-    WCHAR err[256];
-    BinkReader *r = bink_open(p.c_str(), err, 256);
-    if (!r)
-      return;
-    const int w = bink_width(r), h = bink_height(r), frame = std::min(bink_frames(r) - 1, 90);
-    for (int i = 0; i <= frame; ++i)
-      bink_next(r);
-    std::vector<uint8_t> bgra(size_t(w) * h * 4);
-    bink_bgra(r, bgra.data());
-    bink_close(r);
-    game_tex_ = Texture(bgra.data(), w, h);
   }
 
   void MakePreview() {
     new_tex_.Reset();
     preview_err_.clear();
-    if (source_.empty())
+    if (!Ready())
       return;
     std::vector<uint8_t> bgra(size_t(MOVIE_W) * MOVIE_H * 4);
     WCHAR err[512] = {};
-    const std::wstring strip = keep_strip_ ? game_movie_.wstring() : std::wstring();
-    if (movie_preview(source_.c_str(), strip.c_str(), fit_, preview_at_, bgra.data(), err, 512))
+    if (movie_preview(TopSource().c_str(), BottomSource().c_str(), top_ == kOwn ? fit_ : MOVIE_FILL, preview_at_,
+                      bgra.data(), err, 512))
       new_tex_ = Texture(bgra.data(), MOVIE_W, MOVIE_H);
     else
       preview_err_ = Utf8(err);
@@ -332,12 +347,156 @@ class EntranceVideos {
   // movie_make reports its progress as window messages: a message-only window gets them.
   static LRESULT CALLBACK ProgressProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_APP + 0x31) {
-      auto *self = reinterpret_cast<EntranceVideos *>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+      auto *self = reinterpret_cast<MovieEditor *>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
       if (self)
         self->progress_ = int(wp);
       return 0;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
+  }
+
+  ID3D11Device *device_ = nullptr;
+  fs::path game_movie_, top_file_, bottom_file_;
+  int top_ = kOwn, bottom_ = kGame;
+  int fit_ = MOVIE_FILL;
+  int max_seconds_ = 60;
+  float preview_at_ = 3.0f;
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> game_tex_, new_tex_;
+  std::string preview_err_;
+
+  HWND notify_ = nullptr;
+  MovieJob job_{};
+  std::thread worker_;
+  std::atomic<bool> done_{false};
+  std::atomic<int> progress_{0};
+  bool ok_ = false;
+};
+
+// The temporary folder for movies being made and game movies copied out.
+inline fs::path TempDir() {
+  wchar_t tmp[MAX_PATH];
+  GetTempPathW(MAX_PATH, tmp);
+  const fs::path dir = fs::path(tmp) / L"WWE12 Mod Maker";
+  std::error_code ec;
+  fs::create_directories(dir, ec);
+  return dir;
+}
+
+// A game movie (movies/titantron/<file>) copied out of the game files, "" if it has none.
+inline fs::path CopyGameMovie(const disc::GameDisc &disc, const std::string &file) {
+  std::vector<uint8_t> bytes;
+  if (!disc.Read("movies/titantron/" + file, bytes))
+    return {};
+  const fs::path p = TempDir() / ("game_" + file);
+  std::ofstream(p, std::ios::binary).write(reinterpret_cast<const char *>(bytes.data()), std::streamsize(bytes.size()));
+  return p;
+}
+
+// VIDEOS page: a superstar's entrance movie (titantron and minitron) from any video or picture, installed as a
+// .svrmod (type=media, files/movies/titantron/<id>.bik; the file number is the superstar's id, see game_disc.h).
+class EntranceVideos {
+ public:
+  void Draw(bool fr, ID3D11Device *device, const fs::path &exe_dir, mods::Manager &mods) {
+    device_ = device;
+    if (!loaded_)
+      Load(exe_dir);
+    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
+    ImGui::TextWrapped("%s", fr ? "Changez la vidéo d'entrée d'un catcheur : le titantron (le grand écran) et le "
+                                  "minitron (l'écran de la scène, sous le grand écran), ensemble ou l'un sans l'autre, "
+                                  "avec une vidéo ou une image à vous. Le Mod Maker en fait un mod (.svrmod) et "
+                                  "l'installe ; vous pouvez aussi partager le fichier."
+                                : "Change a superstar's entrance video: the titantron (the big screen) and the minitron "
+                                  "(the stage screen, under the big screen), together or one without the other, with "
+                                  "a video or a picture of yours. The Mod Maker makes a mod (.svrmod) of it and "
+                                  "installs it; you can share the file too.");
+    ImGui::Dummy(ImVec2(0, 6));
+    if (!disc_.Found() || stars_.empty()) {
+      ImGui::TextColored(red, "%s", fr ? "Fichiers du jeu introuvables (dossier game ou .iso à côté du Mod Maker)."
+                                       : "Game files not found (game folder or .iso next to the Mod Maker).");
+      return;
+    }
+    if (editor_.Finished())
+      Finish(fr, mods);
+    ImGui::BeginDisabled(editor_.Busy());
+
+    // The superstar.
+    ImGui::SetNextItemWidth(360);
+    const std::string current = star_ < 0 ? (fr ? "Choisir..." : "Choose...") : Label(stars_[star_]);
+    if (ImGui::BeginCombo(fr ? "Catcheur" : "Superstar", current.c_str(), ImGuiComboFlags_HeightLarge)) {
+      ImGui::SetNextItemWidth(-1);
+      if (ImGui::IsWindowAppearing())
+        ImGui::SetKeyboardFocusHere();
+      ImGui::InputTextWithHint("##filter", fr ? "Rechercher" : "Search", filter_, sizeof(filter_));
+      for (int i = 0; i < int(stars_.size()); ++i) {
+        const std::string l = Label(stars_[i]);
+        if (filter_[0] && !Contains(l, filter_))
+          continue;
+        if (ImGui::Selectable(l.c_str(), i == star_)) {
+          star_ = i;
+          editor_.SetGame(device_, CopyGameMovie(disc_, stars_[star_].file));
+        }
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::EndDisabled();
+    if (star_ < 0)
+      return;
+    editor_.Draw(fr, "videos");
+    ImGui::BeginDisabled(editor_.Busy());
+    ImGui::SetNextItemWidth(260);
+    ImGui::InputText(fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
+    ImGui::EndDisabled();
+
+    // Make it.
+    const bool running = game::IsRunning();
+    ImGui::BeginDisabled(editor_.Busy() || running || !editor_.Ready());
+    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
+      Start(fr);
+    ImGui::EndDisabled();
+    editor_.DrawProgress(fr);
+    if (running)
+      ImGui::TextColored(red, "%s", fr ? "Le jeu est lancé : fermez-le pour installer le mod."
+                                       : "The game is running: close it to install the mod.");
+    if (!message_.empty())
+      ImGui::TextColored(message_ok_ ? green : red, "%s", message_.c_str());
+  }
+
+ private:
+  struct Star {
+    int id = 0;
+    std::string file, name;  // file: "139.bik"
+  };
+
+  static std::string Label(const Star &s) {
+    return s.name.empty() ? "Video " + s.file.substr(0, s.file.size() - 4) : s.name;
+  }
+  static bool Contains(const std::string &s, const char *what) {
+    std::string a = s, b = what;
+    for (auto *x : {&a, &b})
+      std::transform(x->begin(), x->end(), x->begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    return a.find(b) != std::string::npos;
+  }
+  // Every movie of movies/titantron: the superstars' (by name) first, then the others by number.
+  void Load(const fs::path &exe_dir) {
+    loaded_ = true;
+    disc_.Open(exe_dir);
+    const auto names = disc::SuperstarNames(disc_);
+    for (const auto &f : disc_.List("movies/titantron")) {
+      if (f.size() != 7 || _stricmp(f.c_str() + 3, ".bik") != 0)
+        continue;
+      Star s;
+      s.file = f;
+      s.id = atoi(f.c_str());
+      const auto it = names.find(s.id);
+      if (it != names.end())
+        s.name = it->second;
+      stars_.push_back(s);
+    }
+    std::sort(stars_.begin(), stars_.end(), [](const Star &a, const Star &b) {
+      if (a.name.empty() != b.name.empty())
+        return !a.name.empty();
+      return a.name.empty() ? a.id < b.id : a.name < b.name;
+    });
   }
 
   void Start(bool fr) {
@@ -348,41 +507,16 @@ class EntranceVideos {
     out_ = PickSave(fr, name + L"_entrance.svrmod");
     if (out_.empty())
       return;
-    if (!notify_) {
-      WNDCLASSW wc{};
-      wc.lpfnWndProc = ProgressProc;
-      wc.hInstance = GetModuleHandleW(nullptr);
-      wc.lpszClassName = L"WWE12MovieProgress";
-      RegisterClassW(&wc);
-      notify_ = CreateWindowExW(0, wc.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, wc.hInstance, nullptr);
-      SetWindowLongPtrW(notify_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-    }
-    memset(&job_, 0, sizeof(job_));
-    wcsncpy_s(job_.video, source_.c_str(), _TRUNCATE);
-    if (keep_strip_)
-      wcsncpy_s(job_.bottom, game_movie_.c_str(), _TRUNCATE);
-    job_.fit = fit_;
-    job_.max_seconds = max_seconds_;
-    made_ = temp_ / ("made_" + s.file);
-    wcsncpy_s(job_.out, made_.c_str(), _TRUNCATE);
-    job_.notify = notify_;
-    job_.msg = WM_APP + 0x31;
-    progress_ = 0;
-    done_ = false;
+    made_ = TempDir() / ("made_" + s.file);
     message_.clear();
-    worker_ = std::thread([this] {
-      CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-      ok_ = movie_make(&job_) != 0;
-      CoUninitialize();
-      done_ = true;
-    });
+    editor_.Start(made_);
   }
 
   // On the UI thread once the movie is made: the .svrmod, then its install.
   void Finish(bool fr, mods::Manager &mods) {
     message_ok_ = false;
-    if (!ok_) {
-      message_ = (fr ? "La vidéo n'a pas pu être faite : " : "The movie could not be made: ") + Utf8(job_.err);
+    if (!editor_.Ok()) {
+      message_ = (fr ? "La vidéo n'a pas pu être faite : " : "The movie could not be made: ") + editor_.Error();
       return;
     }
     const Star &s = stars_[star_];
@@ -396,8 +530,8 @@ class EntranceVideos {
                            (fr ? "Vidéo d'entrée : " : "Entrance video: ") + Label(s) + "\nversion=1.0\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
-    manifest += "description=" + Label(s) + "'s entrance movie (movies/titantron/" + s.file +
-                "), made with the WWE '12 launcher.\n";
+    manifest += "description=" + Label(s) + "'s entrance movie (movies/titantron/" + s.file + ": " +
+                editor_.Parts() + "), made with the WWE '12 Mod Maker.\n";
     if (!mods::Manager::WriteZip(out_, {{"manifest.txt", std::vector<uint8_t>(manifest.begin(), manifest.end())},
                                         {"files/movies/titantron/" + s.file, std::move(bik)}})) {
       message_ = (fr ? "Impossible d'écrire " : "Could not write ") + Utf8(out_.wstring());
@@ -405,7 +539,7 @@ class EntranceVideos {
     }
     mods.InstallFile(fr, out_);
     message_ok_ = true;
-    message_ = (fr ? "Mod créé et installé (" : "Mod made and installed (") + std::to_string(job_.frames / 30) +
+    message_ = (fr ? "Mod créé et installé (" : "Mod made and installed (") + std::to_string(editor_.Seconds()) +
                " s) : " + Utf8(out_.wstring());
   }
 
@@ -415,22 +549,11 @@ class EntranceVideos {
   std::vector<Star> stars_;
   int star_ = -1;
   char filter_[64] = {};
-  fs::path temp_, game_movie_, source_, out_, made_;
-  int fit_ = MOVIE_FILL;
-  bool keep_strip_ = true;
-  int max_seconds_ = 60;
-  float preview_at_ = 3.0f;
+  fs::path out_, made_;
   char author_[64] = {};
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> game_tex_, new_tex_;
-  std::string preview_err_, message_;
+  MovieEditor editor_;
+  std::string message_;
   bool message_ok_ = false;
-
-  HWND notify_ = nullptr;
-  MovieJob job_{};
-  std::thread worker_;
-  std::atomic<bool> done_{false};
-  std::atomic<int> progress_{0};
-  bool ok_ = false;
 };
 
 // MODS page, "Textures": the step-by-step guide (dump -> edit -> mod) and a texture mod made from a folder of
