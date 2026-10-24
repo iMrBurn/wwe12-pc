@@ -16,6 +16,8 @@
 // Texture packs (type=textures, ours: Kaiko keeps them out of .svrmod) give their pictures under
 // textures/ in the zip (<anything>_<hash16>.png or .dds, see port/src/native/wwe12_texture_packs.h);
 // they go to textures\<id>\ beside the exe, where the game looks for them (deployed.txt: "textures:").
+// Added arenas (type=arena with slot=new, base=NN) give arena/arena.pac and arena/banner.dds: they stay in their
+// folder, where the game reads them at startup (src/native/wwe12_arena_pages.cpp); nothing is put in mods\.
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -439,7 +441,7 @@ class Manager {
       m.version = Value(text, "version");
       m.type = Value(text, "type");
       m.on = !fs::exists(d / "disabled", ec);
-      for (const char *sub : {"files", "textures"}) {
+      for (const char *sub : {"files", "textures", "arena"}) {
         for (fs::recursive_directory_iterator it(d / sub, ec), end; !ec && it != end; it.increment(ec))
           if (it->is_regular_file(ec))
             ++m.files;
@@ -572,7 +574,7 @@ class Manager {
     }
     if (std::none_of(entries.begin(), entries.end(), [](const Entry &e) {
           const std::string n = Lower(e.name);
-          return n.rfind("files/", 0) == 0 || n.rfind("textures/", 0) == 0;
+          return n.rfind("files/", 0) == 0 || n.rfind("textures/", 0) == 0 || n.rfind("arena/", 0) == 0;
         })) {
       message_ = t.no_files;
       return;

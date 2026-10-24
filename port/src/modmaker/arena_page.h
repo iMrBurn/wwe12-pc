@@ -4,7 +4,10 @@
 //    replace any with a picture of yours (fitted to the original's size and format) or export it as PNG to edit;
 //  - Another arena file: put an arena .pac (made elsewhere, another slot's) in a slot.
 // Either way the file is checked against the slot's shipped size and made to fit (arena_edit.h), and its stage
-// number is set to the slot's.
+// number is set to the slot's. The mod either replaces the arena, or (the default) is added as a new arena: its own
+// tile on the arena select screen's next pages, playing on the chosen arena's number (manifest slot=new, base=NN;
+// arena/arena.pac and arena/banner.dds, 256 x 128 DXT5: src/native/wwe12_arena_pages.cpp). The banner is a picture
+// of the player's, or the base arena's own banner (menu/MatchHD.pac, MLYE/MUPA entry 7001, "arenaNN").
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -190,6 +193,16 @@ class Page {
 
     // The mod.
     ImGui::Separator();
+    disc_ = &disc;
+    if (ImGui::RadioButton(fr ? "Ajouter comme nouvelle arène (garde l'originale)" : "Add as a new arena (keeps the "
+                                                                                    "original)",
+                           as_new_))
+      as_new_ = true;
+    ImGui::SameLine();
+    if (ImGui::RadioButton(fr ? "Remplacer l'arène" : "Replace the arena", !as_new_))
+      as_new_ = false;
+    if (as_new_)
+      DrawBanner(fr);
     ImGui::SetNextItemWidth(260);
     ImGui::InputTextWithHint("##arena_name", fr ? "Nom du mod" : "Mod name", name_, sizeof(name_));
     ImGui::SameLine();
@@ -439,6 +452,93 @@ class Page {
                           other_.Stage(), kSlots[slot_].number);
   }
 
+  // The new arena's banner (256 x 128, the big tiles' size): a picture of the player's, else the base's own.
+  void DrawBanner(bool fr) {
+    if (banner_slot_ != slot_ && !banner_custom_) {
+      banner_slot_ = slot_;
+      LoadBaseBanner();
+    }
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddRectFilled(at, ImVec2(at.x + 256, at.y + 128), IM_COL32(40, 40, 44, 255));
+    if (banner_thumb_.srv)
+      ImGui::Image(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(banner_thumb_.srv.Get()))), ImVec2(256, 128));
+    else
+      ImGui::Dummy(ImVec2(256, 128));
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    ImGui::TextWrapped("%s", fr ? "Sa case dans le choix d'arène (pages suivantes, LB / RB). Elle joue comme l'arène "
+                                  "choisie plus haut : son numéro, son éclairage, son écran VS."
+                                : "Its tile on the arena select screen (next pages, LB / RB). It plays as the arena "
+                                  "chosen above: its number, its lights, its VS screen.");
+    if (ImGui::Button(fr ? "Choisir l'image de la bannière..." : "Choose the banner picture...")) {
+      const fs::path p = PickOpen(fr, false);
+      svrfmt::Image img;
+      if (!p.empty() && wic_image::Load(p, img)) {
+        SetBanner(Fill(img, 256, 128));
+        banner_custom_ = true;
+      }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(fr ? "Bannière de l'arène de base" : "The base arena's banner")) {
+      banner_custom_ = false;
+      LoadBaseBanner();
+    }
+    ImGui::EndGroup();
+  }
+
+  // The picture cut to w:h (its middle) and resized.
+  static svrfmt::Image Fill(const svrfmt::Image &img, int w, int h) {
+    int cw = img.w, ch = img.w * h / w;
+    if (ch > img.h) {
+      ch = img.h;
+      cw = img.h * w / h;
+    }
+    const int x0 = (img.w - cw) / 2, y0 = (img.h - ch) / 2;
+    svrfmt::Image crop;
+    crop.w = cw;
+    crop.h = ch;
+    crop.rgba.resize(size_t(cw) * ch * 4);
+    for (int y = 0; y < ch; ++y)
+      memcpy(&crop.rgba[size_t(y) * cw * 4], &img.rgba[(size_t(y0 + y) * img.w + x0) * 4], size_t(cw) * 4);
+    return svrfmt::Resize(crop, w, h);
+  }
+
+  void SetBanner(svrfmt::Image img) {
+    for (size_t i = 3; i < img.rgba.size(); i += 4)
+      img.rgba[i] = 255;  // (a tile has no transparency)
+    banner_ = std::move(img);
+    banner_thumb_ = MakeThumb(device_, svrfmt::DdsEncode(banner_, svrfmt::DxtFormat::kDxt5, false));
+  }
+
+  // The base arena's banner, from the game's menu/MatchHD.pac (read once).
+  void LoadBaseBanner() {
+    if (!banners_read_ && disc_) {
+      banners_read_ = true;
+      Bytes matchhd;
+      svrfmt::Archive a;
+      if (disc_->Read("pac/menu/MatchHD.pac", matchhd) && svrfmt::ArchiveOpen(matchhd, a, nullptr))
+        for (auto &k : a.root.kids)
+          if (k.group == "MLYE" && k.name == "MUPA" && svrfmt::ArchiveExpand(k))
+            for (auto &e : k.kids)
+              if (e.id == 7001)
+                svrfmt::BundleRead(svrfmt::ArchiveData(e), game_banners_);
+    }
+    char name[16];
+    snprintf(name, sizeof(name), "arena%02d", slot_ >= 0 ? kSlots[slot_].number : 0);
+    for (const auto &t : game_banners_) {
+      svrfmt::Image img;
+      if (t.name == name && svrfmt::DdsDecode(t.data, img)) {
+        SetBanner(Fill(img, 256, 128));
+        return;
+      }
+    }
+    svrfmt::Image grey;
+    grey.w = 256;
+    grey.h = 128;
+    grey.rgba.assign(size_t(256) * 128 * 4, 90);
+    SetBanner(grey);
+  }
+
   void Make(bool fr, mods::Manager &mods) {
     message_ok_ = false;
     reduced_note_.clear();
@@ -457,7 +557,7 @@ class Page {
         reduced_note_ += " " + n;
     }
     const std::string slot = Path().substr(7, 4);  // "bg15"
-    std::string id = "arena_" + slot + "_";
+    std::string id = (as_new_ ? "newarena_" : "arena_") + slot + "_";
     std::wstring file;
     for (unsigned char c : std::string(name_)) {
       id += std::isalnum(c) ? char(c) : '_';
@@ -469,17 +569,32 @@ class Page {
     std::string manifest = "game=wwe12\ntype=arena\nid=" + id + "\nname=" + std::string(name_) + "\nversion=1.0\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
-    manifest += "description=" + std::string(kSlots[slot_].name) + " (" + slot + ".pac)" +
-                (mode_ == 1 ? " replaced by another arena" : ", " + std::to_string(Changed()) + " picture(s) changed") +
-                ", made with the WWE '12 Mod Maker.\n";
-    if (!mods::Manager::WriteZip(save, {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
-                                        {"files/" + Path(), std::move(out)}})) {
+    if (as_new_)
+      manifest += "slot=new\nbase=" + std::to_string(kSlots[slot_].number) + "\ndescription=A new arena playing as " +
+                  kSlots[slot_].name + ", made with the WWE '12 Mod Maker.\n";
+    else
+      manifest += "description=" + std::string(kSlots[slot_].name) + " (" + slot + ".pac)" +
+                  (mode_ == 1 ? " replaced by another arena" : ", " + std::to_string(Changed()) + " picture(s) changed") +
+                  ", made with the WWE '12 Mod Maker.\n";
+    std::vector<std::pair<std::string, Bytes>> entries = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())}};
+    if (as_new_) {
+      if (banner_.rgba.empty())
+        LoadBaseBanner();
+      entries.push_back({"arena/arena.pac", std::move(out)});
+      entries.push_back({"arena/banner.dds", svrfmt::DdsEncode(banner_, svrfmt::DxtFormat::kDxt5, false)});
+    } else {
+      entries.push_back({"files/" + Path(), std::move(out)});
+    }
+    if (!mods::Manager::WriteZip(save, entries)) {
       message_ = (fr ? "Impossible d'écrire " : "Could not write ") + media::Utf8(save.wstring());
       return;
     }
     mods.InstallFile(fr, save);
     message_ok_ = true;
-    message_ = (fr ? "Mod créé et installé : " : "Mod made and installed: ") + media::Utf8(save.wstring());
+    message_ = (fr ? "Mod créé et installé : " : "Mod made and installed: ") + media::Utf8(save.wstring()) +
+               (as_new_ ? (fr ? " (au prochain lancement du jeu : choix d'arène, LB / RB)"
+                              : " (next time the game starts: arena select, LB / RB)")
+                        : "");
   }
 
   ID3D11Device *device_ = nullptr;
@@ -495,6 +610,14 @@ class Page {
   arena_view::View view_;
   bool view_stale_ = true;
   std::string view_error_;
+
+  // New arena (added, not replacing) and its banner.
+  bool as_new_ = true, banner_custom_ = false, banners_read_ = false;
+  int banner_slot_ = -2;
+  svrfmt::Image banner_;
+  Thumb banner_thumb_;
+  std::vector<svrfmt::BundleTexture> game_banners_;
+  const disc::GameDisc *disc_ = nullptr;
 
   fs::path other_path_;
   arena_edit::Arena other_;

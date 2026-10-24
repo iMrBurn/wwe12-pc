@@ -312,7 +312,7 @@ lus par `svrfmt/texture`, vignettes vides), yeux (20000).
 Suite possible : lire les masques 16 bits, couleurs plus justes (lightmaps), public et cordes dans la vue 3D, conversion d'arènes WWE '13 (même format que WWE '12) ou SvR 2011
 (`arena_convert.py`), sons, catcheurs et tenues.
 
-## 6 nonies. Nouveaux emplacements d'arènes (en cours ; étapes 1 et 2 testées en jeu : OK)
+## 6 nonies. Nouveaux emplacements d'arènes (étapes 1 à 3 testées en jeu : OK)
 
 Voulu par l'utilisateur : ajouter des arènes (portées de SvR 2011, WWE '13, 2K14, 2K16 : il a les disques) sans
 remplacer celles du jeu. Méthode de Kaiko (SvR 2011) : des **pages** en plus dans le choix d'arène ; chaque arène
@@ -374,8 +374,14 @@ base 15) sur sa propre page, bannière en damier, match chargé avec ce tapis ; 
   base juste après jouerait l'ajoutée) ; `MatchSD.pac` (4:3) pas encore fait ; le launcher n'installe pas encore ces
   mods (dossier `arena\`).
 
-**Étapes suivantes** : 3) Mod Maker : « nouvelle arène » (choisir la base, la bannière) qui fabrique ce mod, et le
-launcher qui l'installe ; 4) arènes plus grosses que leur base (taille du répertoire déjà prise en charge, mémoire du
+**Étape 3 (faite, testée en jeu par l'utilisateur le 2026-10-24 : OK)** : page ARÈNES du Mod Maker, choix
+« Ajouter comme nouvelle arène (garde l'originale) » (par défaut) ou « Remplacer l'arène » ; bannière 256×128 en
+aperçu : celle de l'arène de base (lue dans `MatchHD.pac`, `arenaNN`) ou une image du joueur (recadrée au centre en
+2:1). Le mod : `type=arena`, `id=newarena_bgNN_<nom>`, `slot=new`, `base=NN`, `arena/arena.pac`,
+`arena/banner.dds`. Le launcher (`mods.h`) l'accepte (dossier `arena/`) et le garde dans son dossier (rien dans
+`mods\`) ; le jeu le lit au démarrage.
+
+**Étapes suivantes** : 4) arènes plus grosses que leur base (taille du répertoire déjà prise en charge, mémoire du
 tas 12 à vérifier) ; 5) portages (WWE '13, SvR 2011, 2K14, 2K16).
 
 ## 7. Questions ouvertes
