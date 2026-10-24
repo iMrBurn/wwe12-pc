@@ -471,6 +471,10 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     svrfmt::Image img;
     if (svrfmt::DdsInfoOf(st[0].data, si) && svrfmt::DdsInfoOf(bt[0].data, bi) && si.format != bi.format &&
         bi.format == svrfmt::DxtFormat::kDxt1 && svrfmt::DdsDecode(st[0].data, img)) {
+      // Opaque first: SvR's alpha is something else, and DXT1 would make every pixel under half alpha a transparent
+      // (black) one (the whole body came out black).
+      for (size_t q = 3; q < img.rgba.size(); q += 4)
+        img.rgba[q] = 255;
       st[0].data = svrfmt::DdsEncode(img, svrfmt::DxtFormat::kDxt1, si.mips > 1);
       svrfmt::ArchiveReplace(*b, svrfmt::BundleWrite(st));
     }
