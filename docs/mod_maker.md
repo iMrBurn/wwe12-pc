@@ -518,6 +518,26 @@ les copies les plus récentes).
   « WWE12BATISTA1234 ») et **`RGRP/MAGG`** (0 : table « HMT » ; 10 / 11 : noms des prises ajoutées, 104 octets
   chacune : u32 id 0x80EA…, « Scissors kick »…).
 - Packs 1 et 2 installés chez l'utilisateur : seulement `catalog.dlc` (contenu absent).
+- **Fin de `catalog.dlc` = liste des fichiers du pack** (nombre en en-tête +14) : par fichier u8 taille de la ligne
+  (7 + nom), u8 0, u16 rang dans l'annuaire HD, u16 rang dans l'annuaire SD (0xFFFF : absent), u8 longueur, chemin
+  (`pac\ch\ch70_dlc04.pac`, `movies\titantron\063.bik`, `sound\DLC_04.pck`). Ligne de catcheur : +0 u16 0x40,
+  +2 rang, +4 type (1, 0x0B), +6 pack, +0x10 u32 numéro, +0x20 nom.
+- **`info/catalog_hd.arc` / `_sd.arc` = annuaire du pack**, comme `plist360.arc` : pour chaque fichier, un repère (`FF 00 00 00`
+  pour le 0, puis `FF FF` + u16 rang), puis **la table des groupes de son en-tête EPAC (0x800) recopiée en gros-boutiste**
+  (groupe : type, u16 mots << 4, u16 « noms longs » << 12, u32 0 ; entrées : nom, u32 début, u32 taille) ; fin `FF FF FF FF`.
+  Le jeu monte chaque pack sur `dlc%d:` (`dlc%d:\%s`) et lit `/IGST/VOL%d`.
+- **Les 373 fiches de catcheurs (`pac\ch\chEtc.pac`, `CHAR/DAT` 290 o, `CHAR/PRO` 1 072 o = prises, `CHAR/DSBD` 8 o)
+  existent toutes sur le disque, DLC compris** (les packs n'apportent qu'une copie mise à jour) : 0-49 catcheurs créés
+  (« Edit 01-50 »), **50-99 emplacements DLC** (libres : 56-60, 67-69, 71, 73, 76-79, **85-99**, nommés « DLC 7 »…),
+  100-372 disque (beaucoup de fiches vides « 0 », réserves 344-372). Fiche `CHAR/DAT` : u16 1, u16 0x122, 24 codes
+  (deux fois 12), 4 octets par tenue, +0x2C **numéro**, +0x2E / +0x72 / +0xB6 **nom** (3 fois), +0xEF nombre de tenues,
+  +0xF0 4 codes (= `DSBD`), +0xF8 et +0x102 **numéro**, +0x110 codes (musique, titantron ?).
+- **Kaiko (SvR 2011, `port/docs/SUPERSTAR_MODS.md` de son dépôt, `work/kaiko-svr2011`)** ajoute des catcheurs dans les
+  emplacements vides du jeu (137 numéros), fiche et profil copiés d'un catcheur de base (`base=`), modèle renommé au
+  numéro, portraits générés, `slots.txt` pour garder les numéros ; mode simple en 10 étapes dans son Mod Maker.
+- **Essai 1 (2026-10-24, à tester)** : pack maison n° 5 `WWE12PCTESTPACK05` (outil `mkdlc`, à partir du pack 4 de
+  l'utilisateur) : catcheur 85 « TEST STAR » = fiche, prises et modèle de Batista (70), portraits de Batista en 0085,
+  `IGST/VOL5` ajouté à `DLC.pac`. Cache `xbox_cache` mis de côté et sauvegardes copiées avant l'essai.
 
 ## 7. Questions ouvertes
 
