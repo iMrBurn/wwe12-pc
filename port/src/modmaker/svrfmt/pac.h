@@ -16,8 +16,13 @@ namespace svrfmt {
 bool BpeDecode(const Bytes& in, Bytes& out);
 // "Stored" blocks (identity pair table + raw data): instant, any decoder reads it.
 Bytes BpeEncodeStored(const Bytes& raw);
-// Gage byte-pair compression in 4000-byte blocks (the game's block buffer).
+// Gage byte-pair compression in 1200-byte blocks (under the game's 4000-byte block buffer; Yuke's own blocks decode
+// to ~1100 bytes: bigger ones pack worse, +13 % on an arena's crowd against +0.5 %).
 Bytes BpeEncode(const Bytes& raw);
+// raw packed like `old` (a BPE entry): `old`'s own blocks are kept wherever raw still holds the bytes they decode to
+// at the same place, the rest is packed by BpeEncode. A few changed bytes in a big entry (a texture package) then
+// keep the game's packing, smaller than ours (an arena must not outgrow its shipped file).
+Bytes BpeEncodeLike(const Bytes& raw, const Bytes& old);
 inline bool IsBpe(const Bytes& b) { return b.size() >= 16 && !std::memcmp(b.data(), "BPE ", 4); }
 // An entry as stored in a PACH, unpacked if it is BPE.
 Bytes Unpack(const Bytes& entry);

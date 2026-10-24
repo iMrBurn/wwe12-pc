@@ -29,6 +29,7 @@
 #include "arena_edit.h"
 #include "arena_view.h"
 #include "port13.h"
+#include "port_svr_arena.h"
 #include "game_disc.h"
 #include "game_process.h"
 #include "imgui.h"
@@ -160,6 +161,9 @@ class Page {
     if (ImGui::RadioButton(fr ? "Porter de WWE '13" : "Port from WWE '13", mode_ == 3))
       mode_ = 3;
     ImGui::SameLine();
+    if (ImGui::RadioButton(fr ? "Porter de SvR 2011" : "Port from SvR 2011", mode_ == 4))
+      mode_ = 4;
+    ImGui::SameLine();
     if (ImGui::RadioButton(fr ? "Vue 3D" : "3D view", mode_ == 2)) {
       mode_ = 2;
       view_port_ = false;
@@ -176,8 +180,10 @@ class Page {
           slot_ = i;
           OpenSlot(fr, disc);
           view_stale_ = true;
-          if (w13_pick_ >= 0)
+          if (mode_ == 3 && w13_pick_ >= 0)
             Port13(fr);  // (the recipe takes files from the base: done again with the new one)
+          else if (mode_ == 4 && !svr_file_.empty())
+            PortSvr(fr);
         }
       ImGui::EndCombo();
     }
@@ -198,6 +204,8 @@ class Page {
       DrawOtherFile(fr);
     else if (mode_ == 3)
       DrawPort13(fr);
+    else if (mode_ == 4)
+      DrawPortSvr(fr);
     else
       DrawRetexture(fr);
 
@@ -220,7 +228,7 @@ class Page {
     ImGui::InputTextWithHint("##arena_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_,
                              sizeof(author_));
     ImGui::SameLine();
-    const bool ready = mode_ == 1 ? other_ok_ : mode_ == 3 ? port_ok_ : Changed() > 0;
+    const bool ready = mode_ == 1 ? other_ok_ : mode_ >= 3 ? port_ok_ : Changed() > 0;
     ImGui::BeginDisabled(!ready || game::IsRunning());
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
       Make(fr, mods);
@@ -488,6 +496,88 @@ class Page {
     }
   }
 
+  // An arena of SvR 2011 (its pac/bg/bgNN.pac); it plays as the arena chosen above (its base: the recipe takes the
+  // ring, the crowd and the match lights from it).
+  void DrawPortSvr(bool fr) {
+    if (ImGui::Button(fr ? "Fichier d'arène de SvR 2011 (bgNN.pac)..." : "SvR 2011 arena file (bgNN.pac)...")) {
+      const fs::path p = PickOpen(fr, true);
+      if (!p.empty()) {
+        std::ifstream f(p, std::ios::binary);
+        svr_file_.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+        svr_path_ = p;
+        PortSvr(fr);
+      }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", svr_path_.empty() ? (fr ? "(vos fichiers de SvR 2011)" : "(your SvR 2011 files)")
+                                                : media::Utf8(svr_path_.wstring()).c_str());
+    if (!port_note_.empty()) {
+      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 720);
+      ImGui::TextColored(port_ok_ ? kGreen : kRed, "%s", port_note_.c_str());
+      ImGui::PopTextWrapPos();
+    }
+    if (port_ok_ && !ramp_note_.empty()) {
+      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 720);
+      ImGui::TextColored(kYellow, "%s", ramp_note_.c_str());
+      ImGui::PopTextWrapPos();
+    }
+    if (port_ok_) {
+      if (ImGui::Button(fr ? "Voir en 3D##svr" : "See it in 3D##svr")) {
+        view_port_ = true;
+        view_stale_ = true;
+        mode_ = 2;
+      }
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", fr ? "(revenez ensuite sur « Porter de SvR 2011 » pour créer le mod)"
+                                   : "(then come back to \"Port from SvR 2011\" to make the mod)");
+    }
+  }
+
+  // The recipe (port_svr_arena.h) on the chosen file, its base the slot chosen above.
+  void PortSvr(bool fr) {
+    port_ok_ = false;
+    ramp_note_.clear();
+    card_mb_.clear();
+    card_mf_.clear();
+    Bytes out;
+    std::string why;
+    port_svr_arena::PortInfo info;
+    if (!port_svr_arena::Port(svr_file_, shipped_, out, &why, &info) || !other_.Load(out, &why)) {
+      port_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
+      return;
+    }
+    port_ok_ = true;
+    other_size_ = out.size();
+    char b[300];
+    snprintf(b, sizeof(b),
+             fr ? "Prête : %d objets convertis, jouée comme %s (%s)."
+                : "Ready: %d objects converted, played as %s (%s).",
+             info.models, kSlots[slot_].name, Human(out.size()).c_str());
+    port_note_ = b;
+    if (info.models_left) {
+      snprintf(b, sizeof(b), fr ? " %d objet(s) laissé(s) tel(s) quel(s)." : " %d object(s) left as they are.",
+               info.models_left);
+      port_note_ += b;
+    }
+    if (out.size() > budget_)
+      port_note_ += fr ? " Plus grande que la place : ses plus grandes images seront réduites."
+                       : " Bigger than the room: its biggest pictures will be halved.";
+    if (!info.RampsMatch()) {
+      snprintf(b, sizeof(b),
+               fr ? "Attention : la rampe de cette arène et celle de %s ne sont pas à la même hauteur (%.2f m contre "
+                    "%.2f m) : les catcheurs ne suivront pas la rampe pendant les entrées."
+                  : "Warning: this arena's ramp and %s's don't stand at the same height (%.2f m against %.2f m): the "
+                    "wrestlers won't follow the ramp during the entrances.",
+               kSlots[slot_].name, info.ramp_svr / 100, info.ramp12 / 100);
+      ramp_note_ = b;
+    }
+    banner_custom_ = false;
+    LoadBaseBanner();
+    std::string stem = media::Utf8(svr_path_.stem().wstring());
+    snprintf(name_, sizeof(name_), "%s (SvR 2011)", stem.c_str());
+    as_new_ = true;
+  }
+
   static std::string Label13(int n) {
     char b[96];
     const char *name = port13::ArenaName(n);
@@ -702,7 +792,7 @@ class Page {
   void Make(bool fr, mods::Manager &mods) {
     message_ok_ = false;
     reduced_note_.clear();
-    arena_edit::Arena &a = mode_ == 1 || mode_ == 3 ? other_ : arena_;
+    arena_edit::Arena &a = mode_ == 1 || mode_ >= 3 ? other_ : arena_;
     a.SetStage(kSlots[slot_].number);
     Bytes out;
     const auto reduced = a.Fit(budget_, out);
@@ -731,12 +821,13 @@ class Page {
       manifest += std::string("author=") + author_ + "\n";
     if (as_new_)
       manifest += "slot=new\nbase=" + std::to_string(kSlots[slot_].number) + "\ndescription=" +
-                  (mode_ == 3 ? std::string(name_) + ", ported from WWE '13 (the player's own copy), playing as "
-                              : std::string("A new arena playing as ")) +
+                  (mode_ == 3   ? std::string(name_) + ", ported from WWE '13 (the player's own copy), playing as "
+                   : mode_ == 4 ? std::string(name_) + ", ported from SvR 2011 (the player's own file), playing as "
+                                : std::string("A new arena playing as ")) +
                   kSlots[slot_].name + ", made with the WWE '12 Mod Maker.\n";
     else
       manifest += "description=" + std::string(kSlots[slot_].name) + " (" + slot + ".pac)" +
-                  (mode_ == 3 ? " replaced by " + std::string(name_)
+                  (mode_ >= 3 ? " replaced by " + std::string(name_)
                    : mode_ == 1 ? " replaced by another arena"
                                 : ", " + std::to_string(Changed()) + " picture(s) changed") +
                   ", made with the WWE '12 Mod Maker.\n";
@@ -786,6 +877,8 @@ class Page {
   bool port_ok_ = false, view_port_ = false;
   std::string port_note_, ramp_note_;
   Bytes card_mb_, card_mf_;  // its VS screen from WWE '13 (port13::Card)
+  Bytes svr_file_;            // the SvR 2011 arena file (port_svr_arena.h)
+  fs::path svr_path_;
 
   // New arena (added, not replacing) and its banner.
   bool as_new_ = true, banner_custom_ = false, banners_read_ = false;
