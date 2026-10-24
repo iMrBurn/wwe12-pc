@@ -34,7 +34,12 @@ void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem* fs, const std::stri
 // Arènes ajoutées (native/wwe12_arena_pages.cpp) : fichiers servis avant le dossier mods.
 void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem* fs, const std::string& game_device,
                           const std::filesystem::path& user_root, const std::filesystem::path& mods);
+// Catcheurs ajoutés (native/wwe12_superstar_mods.cpp) : un pack DLC fait des mods au démarrage.
+void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem* fs, const std::filesystem::path& user_root,
+                             const std::filesystem::path& mods);
 #else
+inline void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem*, const std::filesystem::path&,
+                                    const std::filesystem::path&) {}
 inline void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem*, const std::string&,
                                 const std::filesystem::path&) {}
 inline void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem*, const std::string&,
@@ -163,6 +168,8 @@ class Wwe12App : public rex::ReXApp {
     // DLC : extraits une fois pour toutes dans Documents\wwe12\0000000000000000\, où le jeu
     // les trouve comme sur le disque dur de la console.
     Wwe12InstallDlc(user_data_root_);
+    // Catcheurs ajoutés : les mods de catcheurs deviennent un pack DLC de plus, avant que le jeu liste les siens.
+    Wwe12MountSuperstarMods(fs, user_data_root_, rex::filesystem::GetExecutableFolder() / "mods");
     // Sauvegardes Xbox 360 choisies dans le launcher (saves_import.txt).
     Wwe12ImportSaves(user_data_root_);
   }

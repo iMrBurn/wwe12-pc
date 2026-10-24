@@ -570,6 +570,18 @@ les copies les plus récentes).
   Recette d'un catcheur ajouté : fiche, prises (`PRO`) d'un catcheur de base, numéro (+0x2C, +0xF8, +0x102), nom
   (+0x2E, +0x72, +0xB6), **codes de l'emplacement gardés (+0xF0 = `DSBD`)**, **personne libre (+0x100)** ; ligne de
   catalogue + entrée `VOL` (codes « lettre + U » qui se suivent).
+- **Étape 2 faite (2026-10-24, testée en jeu)** : **le jeu fabrique le pack tout seul au démarrage**
+  (`port/src/native/wwe12_superstar_mods.cpp`, appelé après `Wwe12InstallDlc` dans `wwe12_app.h` ; cvar
+  `wwe12_superstar_mods`, défaut true ; recette dans `port/src/modmaker/superstar_pack.h`, partagée avec le Mod Maker).
+  Mod = `mods\.svrmods\Superstars\<id>\manifest.txt` (`type=superstar`, `name=`, `base=NNN`) + `superstar\ch.pac`
+  facultatif (sinon le modèle du catcheur de base) ; le launcher accepte `superstar/`. Pack `WWE12PCMODS` (numéro =
+  dernier pack + 1, au plus 9), fait des fichiers du joueur (chEtc / DLC.pac / portraits du dernier pack installé, sinon
+  du disque ; portraits des bases dans `DLC_HD/SD*.pac` et `menu\menuHD/SD.pac`), réécrit seulement s'il change (empreinte
+  `wwe12pc_stamp.txt`, cache du jeu vidé alors), retiré sans mod. Numéros gardés dans
+  `Documents\wwe12\superstar_slots.txt`. Emplacements : DLC 85-99, puis les autres DLC, puis les fiches vides du disque
+  (222 chez l'utilisateur). Piège : **drapeau DLC +0x11F** à mettre à 1 (une copie d'un catcheur du disque, Orton, avait 0
+  et n'apparaissait nulle part). Essai : « TEST STAR » (base Batista, sans modèle) et **« RANDY ORTON 2011 » (base Orton,
+  modèle converti de SvR 2011) : nouveaux catcheurs à l'écran de choix, écran VS, entrée et match** (Batista toujours là).
 
 ## 7. Questions ouvertes
 
