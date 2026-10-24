@@ -155,23 +155,60 @@ index 4fe1ca6..95683eb 100644
  #include <rex/thread/fiber.h>
  
 diff --git a/src/core/filesystem_posix.cpp b/src/core/filesystem_posix.cpp
-index ef5bdf4..09ba96d 100644
+index ef5bdf4..68dc8e4 100644
 --- a/src/core/filesystem_posix.cpp
 +++ b/src/core/filesystem_posix.cpp
-@@ -100,6 +100,13 @@ std::filesystem::path GetExecutablePath() {
+@@ -99,11 +99,50 @@ std::filesystem::path GetExecutablePath() {
+ #endif
  }
  
- std::filesystem::path GetExecutableFolder() {
 +#if REX_PLATFORM_ANDROID
-+  // The "executable" is the Android app_process: the app gives its own files folder instead,
-+  // where the game, config, logs and mods live like next to the PC executable.
++// The app's files folder (Android/data/<package>/files). Normally given by the app in REX_APP_DIR;
++// without it (code run through an ARM translation layer has its own copy of the environment),
++// rebuilt from the process name, "<package>" or "<package>:<process>".
++static std::filesystem::path AndroidAppFolder() {
 +  if (auto app_dir = rex::platform::env::get("REX_APP_DIR")) {
 +    return std::filesystem::path(*app_dir);
++  }
++  char name[256] = {};
++  if (FILE* f = fopen("/proc/self/cmdline", "rb")) {
++    fread(name, 1, sizeof(name) - 1, f);
++    fclose(f);
++  }
++  std::string package(name);
++  if (auto colon = package.find(':'); colon != std::string::npos) {
++    package.resize(colon);
++  }
++  if (package.empty()) {
++    return {};
++  }
++  return std::filesystem::path("/storage/emulated/0/Android/data") / package / "files";
++}
++#endif
++
+ std::filesystem::path GetExecutableFolder() {
++#if REX_PLATFORM_ANDROID
++  // The "executable" is the Android app_process: the app's files folder stands in for it,
++  // where the game, config, logs and mods live like next to the PC executable.
++  if (auto app_dir = AndroidAppFolder(); !app_dir.empty()) {
++    return app_dir;
 +  }
 +#endif
    return GetExecutablePath().parent_path();
  }
  
+ std::filesystem::path GetUserFolder() {
++#if REX_PLATFORM_ANDROID
++  // Saves next to the rest, in the app's folder (the app normally sets XDG_DATA_HOME to it).
++  if (!rex::platform::env::get("XDG_DATA_HOME")) {
++    if (auto app_dir = AndroidAppFolder(); !app_dir.empty()) {
++      return app_dir;
++    }
++  }
++#endif
+   // get preferred data home
+   if (auto xdg = rex::platform::env::get("XDG_DATA_HOME")) {
+     return std::filesystem::path(*xdg);
 diff --git a/src/core/mapped_memory_posix.cpp b/src/core/mapped_memory_posix.cpp
 index 8ee8e34..fcceeb4 100644
 --- a/src/core/mapped_memory_posix.cpp
@@ -245,18 +282,21 @@ index 9ac8d15..3766ed7 100644
      pthread_mutexattr_t attr;
      if (pthread_mutexattr_init(&attr) == 0) {
 diff --git a/src/system/gpu_plugin_loader.cpp b/src/system/gpu_plugin_loader.cpp
-index 754fa13..40d76ea 100644
+index 754fa13..6eda09f 100644
 --- a/src/system/gpu_plugin_loader.cpp
 +++ b/src/system/gpu_plugin_loader.cpp
-@@ -21,6 +21,7 @@
+@@ -21,6 +21,10 @@
  #include <rex/logging.h>
  #include <rex/platform.h>
  #include <rex/platform/dynlib.h>
 +#include <rex/platform/env.h>
++#if REX_PLATFORM_ANDROID
++#include <dlfcn.h>
++#endif
  
  namespace rex::system {
  
-@@ -56,6 +57,12 @@ std::vector<platform::DynamicLibrary>& LoadedPlugins() {
+@@ -56,6 +60,19 @@ std::vector<platform::DynamicLibrary>& LoadedPlugins() {
  
  std::unique_ptr<IGraphicsSystem> LoadGpuPlugin(std::string_view name, std::string_view backend) {
    auto path = rex::filesystem::GetExecutableFolder() / PluginFileName(name);
@@ -264,6 +304,13 @@ index 754fa13..40d76ea 100644
 +  // Plugins ship inside the APK, in the app's native library folder.
 +  if (auto lib_dir = rex::platform::env::get("REX_NATIVE_LIB_DIR")) {
 +    path = std::filesystem::path(*lib_dir) / PluginFileName(name);
++  } else {
++    // Same folder as this runtime library (the environment may not reach us, see
++    // AndroidAppFolder in filesystem_posix.cpp).
++    Dl_info info{};
++    if (dladdr(reinterpret_cast<void*>(&LoadGpuPlugin), &info) && info.dli_fname) {
++      path = std::filesystem::path(info.dli_fname).parent_path() / PluginFileName(name);
++    }
 +  }
 +#endif
    if (!std::filesystem::exists(path)) {
