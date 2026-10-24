@@ -106,6 +106,21 @@ public class LauncherActivity extends Activity {
         set.addView(toggle("Crowd", "wwe12_crowd"));
         set.addView(toggle("60 fps in entrances (heavier)", "wwe12_60fps"));
 
+        // Controls (app settings, not wwe12.toml)
+        LinearLayout ctl = panel(root, "CONTROLS");
+        final CheckBox touch = new CheckBox(this);
+        touch.setText("On-screen buttons (hidden while a controller is connected)");
+        touch.setTextColor(Color.WHITE);
+        touch.setChecked(prefs.getBoolean("touch_controls", true));
+        touch.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { prefs.edit().putBoolean("touch_controls", touch.isChecked()).apply(); }
+        });
+        ctl.addView(touch);
+        ctl.addView(prefChoice("On-screen buttons opacity", "touch_opacity",
+                new String[] {"30 %", "50 %", "70 %", "90 %"}, new int[] {30, 50, 70, 90}, 50));
+        ctl.addView(text("Bluetooth / USB controllers (Xbox, PlayStation...) work too: pair it in Android's settings.",
+                12, Color.GRAY, false));
+
         // Play
         Button play = button("PLAY", true);
         play.setOnClickListener(new View.OnClickListener() {
@@ -206,6 +221,34 @@ public class LauncherActivity extends Activity {
                     config.set(key, values[pos]);
                     config.save();
                 }
+            }
+            public void onNothingSelected(AdapterView<?> p) {}
+        });
+        row.addView(s);
+        return row;
+    }
+
+    View prefChoice(String label, final String key, String[] names, final int[] values, int def) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.addView(text(label, 13, Color.LTGRAY, false));
+        Spinner s = new Spinner(this);
+        ArrayAdapter<String> a = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, names) {
+            @Override
+            public View getView(int pos, View convert, android.view.ViewGroup parent) {
+                View v = super.getView(pos, convert, parent);
+                ((TextView) v).setTextColor(Color.WHITE);
+                return v;
+            }
+        };
+        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        s.setAdapter(a);
+        int current = prefs.getInt(key, def);
+        for (int i = 0; i < values.length; i++)
+            if (values[i] == current) s.setSelection(i);
+        s.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                prefs.edit().putInt(key, values[pos]).apply();
             }
             public void onNothingSelected(AdapterView<?> p) {}
         });

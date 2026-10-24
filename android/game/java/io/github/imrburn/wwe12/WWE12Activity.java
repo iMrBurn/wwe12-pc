@@ -34,6 +34,13 @@ public class WWE12Activity extends SDLActivity {
     protected void onCreate(Bundle savedInstanceState) {
         prepareFolder(this, getExternalFilesDir(null));
         super.onCreate(savedInstanceState);
+        // On-screen controller (launcher setting, on by default), over SDL's surface.
+        android.content.SharedPreferences prefs = getSharedPreferences("launcher", MODE_PRIVATE);
+        if (prefs.getBoolean("touch_controls", true)) {
+            addContentView(new TouchControls(this, prefs.getInt("touch_opacity", 50)),
+                    new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        }
     }
 
     // Folder layout, default settings and the variables the runtime reads
