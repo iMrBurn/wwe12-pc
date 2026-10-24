@@ -283,8 +283,13 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
   `plume-android.patch` (appliqué par `setup.ps1`). Pièges : fichiers poussés par `adb` = propriétaire « shell »,
   invisibles pour l'appli (chown en root sur l'émulateur) ; grand modèle mémoire x86_64 = 70 000 sections
   refusées par Android. Test sans manette : `wwe12_remote_pad = true` + `remote_pad.txt` dans `files/`.
-  Reste : version arm64 pour les testeurs, commandes tactiles, choix de l'ISO dans l'appli, QUITTER, icônes PS
-  (ressource .rc absente), traces de plantage.
+  **2026-10-24 : alpha publique 1 prête** (`D:\Android\release\WWE12-PC-Android-alpha1.apk`, ARM64, notes
+  `android/game/RELEASE_NOTES_alpha1.md`, tag prévu `android-alpha-1` en pre-release, APK seul). Launcher Android
+  (`LauncherActivity` : ISO par le sélecteur d'Android lue via /proc/self/fd, réglages dans wwe12.toml, partage du
+  journal), jeu dans son propre processus `:game`, boutons tactiles = manette SDL virtuelle (`TouchControls.java` +
+  `port/src/android/wwe12_touch.cpp`). **Clé de signature `D:\Android\keys\wwe12-android.jks` : à sauvegarder**
+  (sans elle, plus de mise à jour possible sans désinstaller, donc perte des sauvegardes des joueurs).
+  Reste : optimisations (mesures des testeurs), QUITTER du menu, icônes PS, boutons déplaçables, traces de plantage.
 
 - **Version vraiment native de WWE '12 (souhait de l'utilisateur, 2026-10-21, long terme, après la 1.1)** :
   aujourd'hui le jeu est recompilé automatiquement (le C++ de `port/generated` est illisible et ne se
