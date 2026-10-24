@@ -352,7 +352,19 @@ plume::RenderPipeline *GetOrCreatePipeline(const PipelineState &state,
   // A refused pipeline stays unbuilt: retrying it every draw costs a full build attempt (and its
   // log) per draw.
   if (!p) {
-    if (g_refused) {
+#if defined(__ANDROID__)
+    // Android : une pipeline que le pilote n'a pas su construire est retenue aussi, sinon chaque
+    // draw la retente et la journalise (de 60 à ~14 fps, et des dizaines de milliers de lignes).
+    static std::atomic<u32> s_failed{0};
+    const u32 n = s_failed.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (!g_refused && (n <= 5 || n % 100 == 0))
+      BD_ERROR("pipeline {:016X} could not be built by the GPU driver ({} failed so far); "
+               "it will not be retried", key, n);
+    const bool remember = true;
+#else
+    const bool remember = g_refused;
+#endif
+    if (remember) {
       std::lock_guard lock(g_mutex);
       g_pipelines.try_emplace(key, nullptr);
     }

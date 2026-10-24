@@ -27,6 +27,9 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#if defined(__ANDROID__)
+#include <SDL3/SDL_events.h>
+#endif
 
 #include <rex/cvar.h>
 
@@ -308,7 +311,14 @@ extern "C" REX_FUNC(sub_8253C3F0) {
       const u32 page = bd::mem::load<u32>(entry + 8);
       if (is_quit && page == 1) {
         BD_INFO("WWE12 menu: \"quit\" chosen, closing the game");
+#if defined(__ANDROID__)
+        // Pas de fenêtre Windows : la même demande de fermeture que le bouton Retour d'Android.
+        SDL_Event quit{};
+        quit.type = SDL_EVENT_QUIT;
+        SDL_PushEvent(&quit);
+#else
         EnumWindows(CloseOwnWindow, 0);
+#endif
         return;
       }
     }

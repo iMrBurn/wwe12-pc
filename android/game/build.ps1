@@ -48,6 +48,15 @@ if ($LASTEXITCODE -ne 0) { throw "échec de d8" }
 
 # 3. Réglages par défaut livrés (copiés au premier lancement s'il n'y en a pas).
 Copy-Item "$Root\port\config\wwe12.toml" "$Out\assets\wwe12.toml"
+# Pipelines déjà rencontrées (comme tools/package.ps1 pour le zip PC) : préparées dès le premier
+# lancement, moins de gels au premier match. Empreintes et états de rendu, aucune donnée du jeu.
+$Seed = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "wwe12\cache\pipelines.bin"
+Remove-Item "$Out\assets\pipelines_seed.w12p" -ErrorAction SilentlyContinue
+if ((Test-Path $Seed) -and [BitConverter]::ToUInt32([IO.File]::ReadAllBytes($Seed), 0) -eq 0x50323157) {
+    Copy-Item $Seed "$Out\assets\pipelines_seed.w12p"
+} else {
+    Write-Warning "Pas de cache de pipelines ($Seed) : l'APK partira sans pipelines_seed.w12p."
+}
 
 # 4. APK : manifeste + assets, puis dex et .so, alignement, signature.
 $manifest = (Get-Content "$PSScriptRoot\AndroidManifest.xml" -Raw) -replace 'android:versionName="[^"]*"', "android:versionName=`"$Version`""

@@ -49,6 +49,9 @@ public class WWE12Activity extends SDLActivity {
         if (dir == null) return;
         new File(dir, "game").mkdirs();
         copyAssetIfMissing(context, "wwe12.toml", new File(dir, "wwe12.toml"));
+        // Pipelines shipped with this version: replaced at each start, so an update brings its own.
+        new File(dir, "pipelines_seed.w12p").delete();
+        copyAssetIfMissing(context, "pipelines_seed.w12p", new File(dir, "pipelines_seed.w12p"));
         try {
             Os.setenv("REX_APP_DIR", dir.getAbsolutePath(), true);
             Os.setenv("XDG_DATA_HOME", dir.getAbsolutePath(), true);

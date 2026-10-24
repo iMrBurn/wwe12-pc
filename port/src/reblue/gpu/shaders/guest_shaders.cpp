@@ -39,7 +39,15 @@
 #include <cstring>
 #include <rex/cvar.h>
 
-REXCVAR_DEFINE_BOOL(svr_preserve_inf_nan, true, "SvR",
+// Android : désactivé par défaut. La capacité SPV_KHR_float_controls ajoutée empêche toutes les
+// pipelines du jeu de se construire sur Adreno 720 (pilote d'origine Vulkan 1.3.128) : écran noir.
+// Le bug des yeux et des dents qu'elle corrige est propre à Intel sur PC.
+#if defined(__ANDROID__)
+#define WWE12_INF_NAN_DEFAULT false
+#else
+#define WWE12_INF_NAN_DEFAULT true
+#endif
+REXCVAR_DEFINE_BOOL(svr_preserve_inf_nan, WWE12_INF_NAN_DEFAULT, "SvR",
                     "Ask the GPU driver to keep infinities and NaN exact in game shaders (Intel "
                     "otherwise drops the Xbox-style clamps: black eyes and teeth).");
 REXCVAR_DEFINE_BOOL(svr_name_shaders, false, "SvR",
