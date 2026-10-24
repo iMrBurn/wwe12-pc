@@ -74,6 +74,16 @@ Sint16 Axis(float v) {
   return static_cast<Sint16>(v * 32767.0f);
 }
 
+// Gâchettes : SDL lit l'axe virtuel sur toute sa plage (-32768 = relâchée, 32767 = enfoncée).
+// 0 voudrait dire « à moitié enfoncée » : RT (contre) et LT restaient tenues en permanence.
+Sint16 Trigger(float v) {
+  if (v > 1.0f)
+    v = 1.0f;
+  if (v < 0.0f)
+    v = 0.0f;
+  return static_cast<Sint16>(v * 65535.0f - 32768.0f);
+}
+
 }  // namespace
 
 extern "C" {
@@ -103,8 +113,8 @@ JNIEXPORT void JNICALL Java_io_github_imrburn_wwe12_TouchControls_nativeUpdate(
   SDL_SetJoystickVirtualAxis(g_joystick, SDL_GAMEPAD_AXIS_LEFTY, Axis(ly));
   SDL_SetJoystickVirtualAxis(g_joystick, SDL_GAMEPAD_AXIS_RIGHTX, Axis(rx));
   SDL_SetJoystickVirtualAxis(g_joystick, SDL_GAMEPAD_AXIS_RIGHTY, Axis(ry));
-  SDL_SetJoystickVirtualAxis(g_joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, Axis(lt));
-  SDL_SetJoystickVirtualAxis(g_joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, Axis(rt));
+  SDL_SetJoystickVirtualAxis(g_joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, Trigger(lt));
+  SDL_SetJoystickVirtualAxis(g_joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, Trigger(rt));
 }
 
 }  // extern "C"
