@@ -10,6 +10,8 @@
 //    each other) and the DLC flag (+0x11F: the select screen's DLC tile, whatever the base);
 //  - its base's moves (CHAR/PRO);
 //  - its model (a chNNN.pac, its attires "000NNNAA" renamed to the slot) and its base's portraits (SSFA/B/C);
+//  - its own entrance video if it has one (movies\titantron\NNN.bik, listed in the catalog without a directory, as
+//    the game's packs do; the game plays it in place of its base's: wwe12_superstar_mods.cpp);
 //  - a line in the pack's catalog and in its superstar list (DLC.pac IGST/VOL<pack>: codes "lettre + U" that follow
 //    the installed packs', the next serial numbers).
 // Nothing of the game's goes into a mod: the pack is made from the player's own files.
@@ -39,6 +41,8 @@ struct Star {
   int base = 0;      // the superstar it starts from (record, moves, portraits)
   int slot = 0;      // its number in the game
   Bytes model;       // a chNNN.pac (EPK8, "EMD " entries "000NNNAA"): the mod's or the base's
+  Bytes movie;       // its own entrance video (Bink 320 x 320: titantron on top, minitron below), else empty
+  int movie_number = 0;  // ... as movies\titantron\<number>.bik (a number no other video has)
 };
 
 struct Inputs {
@@ -362,7 +366,15 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     int hd, sd;
     const Bytes *data;
   };
-  std::vector<Entry> entries = {{"pac/DLC.pac", 0, 0, &dlc_out}};
+  // The videos first, as in the game's packs: listed, with no directory (no index).
+  std::vector<Entry> entries;
+  for (const auto &st : stars)
+    if (!st.movie.empty() && st.movie_number > 0 && st.movie_number < 1000) {
+      char movie[40];
+      snprintf(movie, sizeof(movie), "movies/titantron/%03d.bik", st.movie_number);
+      entries.push_back({movie, -1, -1, &st.movie});
+    }
+  entries.push_back({"pac/DLC.pac", 0, 0, &dlc_out});
   int next = 1;
   if (!portraits[1].empty())
     entries.push_back({"pac/DLC_HD_dlc" + std::string(tag) + ".pac", next, -1, &portraits[1]});

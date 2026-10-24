@@ -70,3 +70,4 @@ extern "C" REX_FUNC(sub_82567068) {
   REXLOG_INFO("[roster] id {} in DLC tile {}: roster index {} (record id {}), unlocked byte {}, DLC byte {}, owned {}",
               id, result, index, rid, b247, b279, OwnedState(id));
 }
+

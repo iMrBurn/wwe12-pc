@@ -6,6 +6,13 @@
 // to the next (Documents\wwe12\superstar_slots.txt: "<mod>=<number>"), so a save's records never move. The pack is
 // written again only when its contents change (then the game's cache, made from the packs present, is emptied as
 // for a new DLC: wwe12_dlc.cpp); without superstar mods it is removed.
+//
+// Entrance videos. An added superstar plays its base's entrance, whose script names the video to show (titantron
+// on top, minitron below): sub_828F2410 reads that number (command + 172, from sub_828D83B8; 999 = the superstar's own,
+// for created ones), and sub_82A316A0(n) opens movies/titantron/%03d.bik (the packs first).
+// A mod's superstar/titantron.bik goes into the pack under a number no other video has, and when an entrance video
+// is opened for that superstar (the one entering: sub_828CEF58(sub_828C21A8()) -> {+8 set, +16 place}, its Superstar
+// sub_8267CD30(sub_823F8270(place)) + 16 = number x 100 + attire), the path is made with that number instead.
 
 #include <algorithm>
 #include <cstdint>
@@ -23,6 +30,8 @@
 #include <rex/filesystem/vfs.h>
 
 #include "core/logging.h"
+#include "core/memory_helpers.h"
+#include "svr_hook.h"
 
 #include "../modmaker/superstar_pack.h"
 
@@ -35,6 +44,8 @@ namespace fs = std::filesystem;
 using Bytes = std::vector<uint8_t>;
 
 constexpr const char *kPackName = "WWE12PCMODS";
+
+std::map<uint32_t, uint32_t> g_movies;  // added superstar -> the number of its own entrance video
 
 std::string Value(const std::string &text, const char *key) {
   const std::string k = std::string(key) + "=";
@@ -115,7 +126,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   struct Mod {
     std::string key, name;
     int base = 0;
-    fs::path model;
+    fs::path model, movie;
   };
   std::vector<Mod> list;
   std::vector<fs::path> dirs;
@@ -133,6 +144,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     mod.name = Value(text, "name");
     mod.base = atoi(Value(text, "base").c_str());
     mod.model = d / "superstar" / "ch.pac";
+    mod.movie = d / "superstar" / "titantron.bik";
     if (mod.base < 50 || mod.base >= 373) {
       REXLOG_WARN("[superstar mods] {}: base={} is not a superstar of the game", mod.key, Value(text, "base"));
       continue;
@@ -247,8 +259,50 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     if (st.model.empty())
       REXLOG_WARN("[superstar mods] {}: no model (superstar\\ch.pac) and none for base {}", st.key, st.base);
   }
+  // Entrance videos: a number that no video of the disc or of the installed packs has (the slot's if free; the
+  // game treats 500-550 and 902-904 apart).
+  {
+    std::vector<int> used;
+    auto taken_number = [&](int n) {
+      if (std::find(used.begin(), used.end(), n) != used.end())
+        return true;
+      char rel[40];
+      snprintf(rel, sizeof(rel), "movies/titantron/%03d.bik", n);
+      std::string game = std::string("game:/") + rel;
+      std::replace(game.begin(), game.end(), '/', char(92));
+      if (vfs && vfs->ResolvePath(game))
+        return true;
+      for (const auto &[p, dir] : packs)
+        if (fs::exists(dir / fs::path(rel), ec))
+          return true;
+      return false;
+    };
+    for (size_t i = 0; i < stars.size(); ++i) {
+      auto &st = stars[i];
+      if (!st.slot || st.model.empty() || !ReadHost(list[i].movie, st.movie))
+        continue;
+      std::vector<int> candidates = {st.slot};
+      for (const auto &[from, to] : std::vector<std::pair<int, int>>{{373, 399}, {428, 499}, {551, 615}, {726, 899}})
+        for (int n = from; n <= to; ++n)
+          candidates.push_back(n);
+      for (int n : candidates)
+        if (!taken_number(n)) {
+          st.movie_number = n;
+          used.push_back(n);
+          break;
+        }
+      if (!st.movie_number) {
+        REXLOG_WARN("[superstar mods] {}: no free video number", st.key);
+        st.movie.clear();
+      }
+    }
+  }
   stars.erase(std::remove_if(stars.begin(), stars.end(), [](const auto &s) { return !s.slot || s.model.empty(); }),
               stars.end());
+  g_movies.clear();
+  for (const auto &st : stars)
+    if (st.movie_number)
+      g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
   if (stars.empty()) {
     RemovePack(content, headers);
     return;
@@ -269,7 +323,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       text += st.key + "=" + std::to_string(st.slot) + "\n";
     WriteHost(user_root / "superstar_slots.txt", Bytes(text.begin(), text.end()));
   }
-  // Written again only when it changed.
+  // Written again only when it changed (the videos too: their numbers and contents are in the files).
   uint64_t h = 0xCBF29CE484222325ull;
   for (const auto &f : files) {
     h = Fnv(Bytes(f.path.begin(), f.path.end()), h);
@@ -313,6 +367,49 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   for (fs::directory_iterator it(user_root / "xbox_cache", ec), end; !ec && it != end; it.increment(ec))
     fs::remove_all(it->path(), ec);
   for (const auto &st : stars)
-    REXLOG_INFO("[superstar mods] {} \"{}\" = superstar {} (base {})", st.key, st.name, st.slot, st.base);
+    REXLOG_INFO("[superstar mods] {} \"{}\" = superstar {} (base {}){}", st.key, st.name, st.slot, st.base,
+                st.movie_number ? ", own entrance video " + std::to_string(st.movie_number) : std::string());
   REXLOG_INFO("[superstar mods] pack {} written ({} files), game cache emptied", kPackName, files.size());
+}
+
+REX_EXTERN(__imp__sub_82A316A0);  // the entrance video's path (n): movies\titantron\%03d.bik
+REX_EXTERN(__imp__sub_828C21A8);  // entrance: the current event
+REX_EXTERN(__imp__sub_828CEF58);  // ... its entrant {+8 set, +16 place}
+REX_EXTERN(__imp__sub_823F8270);  // place -> ...
+REX_EXTERN(__imp__sub_8267CD30);  // ... -> its Superstar (+16 number x 100 + attire)
+
+namespace {
+
+// The Superstar entering now (its number), 0 if none (outside an entrance).
+uint32_t Entering(const PPCContext &ctx, uint8_t *base) {
+  auto call = [&](void (*fn)(PPCContext &, uint8_t *), uint32_t a) {
+    PPCContext x = ctx;
+    x.r3.u64 = a;
+    fn(x, base);
+    return x.r3.u32;
+  };
+  if (!bd::mem::load<uint32_t>(0x8324DF2C))  // (the entrance manager sub_828C21A8 reads)
+    return 0;
+  const uint32_t event = call(__imp__sub_828C21A8, 0);
+  if (!event)
+    return 0;
+  const uint32_t entrant = call(__imp__sub_828CEF58, event);
+  if (!entrant || !bd::mem::load<uint8_t>(entrant + 8))
+    return 0;
+  const uint32_t superstar = call(__imp__sub_8267CD30, call(__imp__sub_823F8270, bd::mem::load<uint32_t>(entrant + 16)));
+  return superstar ? bd::mem::load<uint32_t>(superstar + 16) / 100 : 0;  // (number x 100 + attire: 8702)
+}
+
+}  // namespace
+
+extern "C" REX_FUNC(sub_82A316A0) {
+  if (!g_movies.empty()) {
+    const uint32_t id = Entering(ctx, base);
+    const auto it = g_movies.find(id);
+    REXLOG_INFO("[superstar mods] entrance video {} (superstar entering: {}){}", ctx.r3.u32, id,
+                it != g_movies.end() ? " -> its own, " + std::to_string(it->second) : std::string());
+    if (it != g_movies.end())
+      ctx.r3.u64 = it->second;
+  }
+  __imp__sub_82A316A0(ctx, base);
 }
