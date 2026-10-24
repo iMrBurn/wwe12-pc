@@ -477,6 +477,13 @@ même zone), textures `color` / `normal` / `Mask1` / `Mask2` de SvR à la place 
 0xB8 ; 2) essai en jeu en remplaçant la tenue 1 de l'Orton de WWE '12 ; 3) catcheurs absents de WWE '12 (base = un
 catcheur de même gabarit).
 
+**Premier essai en jeu (2026-10-24, tenue 1, `port_svr.h`, fichier déposé à la main dans `mods\pac\ch\ch161.pac`)** :
+**ça marche** : Orton de SvR 2011 s'affiche et s'anime (écran de choix, entrée avec la ceinture, match contre Cena),
+tatouages, visage, short, genouillères, bottes corrects. Défauts vus : **doigts sombres en forme de griffes** (à
+comprendre), image de couleur réduite de moitié pour tenir dans la place (1024×512). Méthode retenue : les deux jeux
+n'orientent pas les repères des os pareil (tête et pieds de WWE '12 tournés d'un demi-tour) : chaque os est aligné
+d'après la place des articulations (os → enfant le plus loin), pas d'après les rotations.
+
 ## 7. Questions ouvertes
 
 - Pour Kaiko : ~~code C++~~ (réglé : `port/modmaker/` de son dépôt) ; ~~extension~~ (réglé : `.svrmod` +
