@@ -384,7 +384,7 @@ aperçu : celle de l'arène de base (lue dans `MatchHD.pac`, `arenaNN`) ou une i
 **Étapes suivantes** : 4) arènes plus grosses que leur base (taille du répertoire déjà prise en charge, mémoire du
 tas 12 à vérifier) ; 5) portages (WWE '13, SvR 2011, 2K14, 2K16).
 
-## 6 decies. Portage d'arènes de WWE '13 (2026-10-24, Capitol Punishment testée en jeu : OK)
+## 6 decies. Portage d'arènes de WWE '13 (2026-10-24 : Capitol Punishment et Vengeance testées en jeu : OK)
 
 Fichiers du joueur : `Desktop\WWE13-Recomp-x64\WWE 13` (lus seulement, rien copié dans le dépôt). Les `bgNN.pac` de
 WWE '13 sont presque tous XMemCompress (« 0x0FF512ED », LZX) : lecteur repris de Kaiko
@@ -411,9 +411,18 @@ paquets de textures.
   et des nœuds) : `_c` (+561, −559), `_f` (−561, −559), `_g` (+533, +560), `_h` (−533, +560) (x, z en cm) ;
 - bannière : `arena05` absente du `MatchHD.pac` de WWE '13 sous ce nom (à chercher), tuile grise pour l'instant.
 
-Outils jetables (scratchpad) : `hybrid13`, `movecorners`, `cmp13`, `names13`. **À faire** : une page « Porter une arène de
-WWE '13 » dans le Mod Maker qui applique cette recette (dossier de WWE '13, arène, base, bannière) ; vérifier la recette
-sur d'autres arènes ; SvR 2011, 2K14, 2K16 ensuite.
+**Dans le Mod Maker (fait, testé par l'utilisateur le 2026-10-24 : Vengeance OK en match)** : page ARÈNES, mode
+« Porter de WWE '13 » (`port/src/modmaker/port13.h` = la recette ; `arena_page.h`) : dossier de WWE '13, liste de ses
+arènes (17 principales + 22 de l'époque Attitude, noms d'après les sigles et les bannières ; pas les coulisses ni les
+structures), base = l'arène choisie en haut, « Voir en 3D », puis le mod (nouvelle arène par défaut). Résultat identique
+octet pour octet à la variante I testée. **Bannières de WWE '13** : `MatchHD.pac` MLYE/**MUAS** (pas MUPA), entrée 7001 ;
+`arenaNN` dans l'ordre de l'écran de choix de WWE '13 (SmackDown, RAW, NXT, Superstars, SummerSlam, Survivor Series,
+Royal Rumble, WrestleMania XXVIII, Over the Limit, Capitol Punishment, Money in the Bank, Night of Champions, Hell in a
+Cell, Vengeance, TLC, Elimination Chamber, Extreme Rules), **pas** celui des fichiers ; `AEM01-22` = bg28-49 dans
+l'ordre. Table `port13::kArenas13`.
+
+Reste : l'écran VS (« match card ») de l'arène portée (aujourd'hui celui de la base), quelques défauts pendant les
+entrées (à préciser), SvR 2011, 2K14, 2K16.
 
 ## 7. Questions ouvertes
 

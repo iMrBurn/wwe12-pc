@@ -4,7 +4,8 @@
 //    replace any with a picture of yours (fitted to the original's size and format) or export it as PNG to edit;
 //  - Another arena file: put an arena .pac (made elsewhere, another slot's) in a slot.
 // Either way the file is checked against the slot's shipped size and made to fit (arena_edit.h), and its stage
-// number is set to the slot's. The mod either replaces the arena, or (the default) is added as a new arena: its own
+// number is set to the slot's. A third way: an arena of WWE '13 (the player's own copy) ported with port13.h, the arena
+// chosen above as its base. The mod either replaces the arena, or (the default) is added as a new arena: its own
 // tile on the arena select screen's next pages, playing on the chosen arena's number (manifest slot=new, base=NN;
 // arena/arena.pac and arena/banner.dds, 256 x 128 DXT5: src/native/wwe12_arena_pages.cpp). The banner is a picture
 // of the player's, or the base arena's own banner (menu/MatchHD.pac, MLYE/MUPA entry 7001, "arenaNN").
@@ -27,6 +28,7 @@
 
 #include "arena_edit.h"
 #include "arena_view.h"
+#include "port13.h"
 #include "game_disc.h"
 #include "game_process.h"
 #include "imgui.h"
@@ -155,8 +157,12 @@ class Page {
     if (ImGui::RadioButton(fr ? "Autre fichier d'arène" : "Another arena file", mode_ == 1))
       mode_ = 1;
     ImGui::SameLine();
+    if (ImGui::RadioButton(fr ? "Porter de WWE '13" : "Port from WWE '13", mode_ == 3))
+      mode_ = 3;
+    ImGui::SameLine();
     if (ImGui::RadioButton(fr ? "Vue 3D" : "3D view", mode_ == 2)) {
       mode_ = 2;
+      view_port_ = false;
       view_stale_ = true;
     }
 
@@ -170,6 +176,8 @@ class Page {
           slot_ = i;
           OpenSlot(fr, disc);
           view_stale_ = true;
+          if (w13_pick_ >= 0)
+            Port13(fr);  // (the recipe takes files from the base: done again with the new one)
         }
       ImGui::EndCombo();
     }
@@ -188,6 +196,8 @@ class Page {
     }
     if (mode_ == 1)
       DrawOtherFile(fr);
+    else if (mode_ == 3)
+      DrawPort13(fr);
     else
       DrawRetexture(fr);
 
@@ -210,7 +220,7 @@ class Page {
     ImGui::InputTextWithHint("##arena_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_,
                              sizeof(author_));
     ImGui::SameLine();
-    const bool ready = mode_ == 1 ? other_ok_ : Changed() > 0;
+    const bool ready = mode_ == 1 ? other_ok_ : mode_ == 3 ? port_ok_ : Changed() > 0;
     ImGui::BeginDisabled(!ready || game::IsRunning());
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
       Make(fr, mods);
@@ -386,7 +396,7 @@ class Page {
     if (view_stale_) {
       view_stale_ = false;
       view_error_.clear();
-      Bytes now = arena_.Build();
+      Bytes now = view_port_ && port_ok_ ? other_.Build() : arena_.Build();
       if (!view_.Load(device_, now, &view_error_))
         view_error_ = (fr ? "Vue 3D impossible : " : "No 3D view: ") + view_error_;
     }
@@ -418,6 +428,126 @@ class Page {
       if (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0))
         view_.Pan(io.MouseDelta.x, io.MouseDelta.y);
     }
+  }
+
+  // An arena of WWE '13: its folder (the game's, with pac/bg), then one of its arenas; it plays as the arena
+  // chosen above (its base: the recipe takes a few files from it).
+  void DrawPort13(bool fr) {
+    if (ImGui::Button(fr ? "Dossier de WWE '13..." : "WWE '13 folder...")) {
+      const fs::path p = PickFolder(fr);
+      if (!p.empty()) {
+        w13_dir_ = fs::exists(p / "pac" / "bg") ? p : fs::exists(p / "bg") ? p.parent_path() : p;
+        w13_list_.clear();
+        std::error_code ec;
+        for (fs::directory_iterator it(w13_dir_ / "pac" / "bg", ec), end; !ec && it != end; it.increment(ec)) {
+          const std::string n = it->path().filename().string();
+          if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
+              port13::Find13(atoi(n.c_str() + 2)))  // (arenas only: not backstage rooms or match structures)
+            w13_list_.push_back(atoi(n.c_str() + 2));
+        }
+        std::sort(w13_list_.begin(), w13_list_.end());
+        if (w13_list_.empty())
+          port_note_ = fr ? "Pas d'arènes ici (dossier pac\\bg de WWE '13 attendu)." : "No arenas here (WWE '13's "
+                                                                                        "pac\\bg folder expected).";
+        else
+          port_note_.clear();
+      }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", w13_dir_.empty() ? (fr ? "(vos fichiers de WWE '13)" : "(your WWE '13 files)")
+                                               : media::Utf8(w13_dir_.wstring()).c_str());
+    if (!w13_list_.empty()) {
+      ImGui::SetNextItemWidth(360);
+      if (ImGui::BeginCombo(fr ? "Arène de WWE '13" : "WWE '13 arena", w13_pick_ < 0 ? (fr ? "Choisir..." : "Choose...")
+                                                                                     : Label13(w13_pick_).c_str(),
+                            ImGuiComboFlags_HeightLarge)) {
+        for (int n : w13_list_)
+          if (ImGui::Selectable(Label13(n).c_str(), n == w13_pick_)) {
+            w13_pick_ = n;
+            Port13(fr);
+          }
+        ImGui::EndCombo();
+      }
+    }
+    if (!port_note_.empty())
+      ImGui::TextColored(port_ok_ ? kGreen : kRed, "%s", port_note_.c_str());
+    if (port_ok_) {
+      if (ImGui::Button(fr ? "Voir en 3D" : "See it in 3D")) {
+        view_port_ = true;
+        view_stale_ = true;
+        mode_ = 2;
+      }
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", fr ? "(revenez ensuite sur « Porter de WWE '13 » pour créer le mod)"
+                                   : "(then come back to \"Port from WWE '13\" to make the mod)");
+    }
+  }
+
+  static std::string Label13(int n) {
+    char b[96];
+    const char *name = port13::ArenaName(n);
+    snprintf(b, sizeof(b), "%s  (bg%02d)", *name ? name : "WWE '13 arena", n);
+    return b;
+  }
+
+  static fs::path PickFolder(bool fr) {
+    IFileOpenDialog *dlg = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
+      return {};
+    DWORD opts = 0;
+    dlg->GetOptions(&opts);
+    dlg->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+    dlg->SetTitle(fr ? L"Dossier du jeu WWE '13" : L"The WWE '13 game folder");
+    fs::path picked;
+    if (SUCCEEDED(dlg->Show(GetActiveWindow()))) {
+      IShellItem *item = nullptr;
+      if (SUCCEEDED(dlg->GetResult(&item))) {
+        PWSTR p = nullptr;
+        if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &p))) {
+          picked = p;
+          CoTaskMemFree(p);
+        }
+        item->Release();
+      }
+    }
+    dlg->Release();
+    return picked;
+  }
+
+  // The recipe (port13.h) on the chosen arena, its base the slot chosen above.
+  void Port13(bool fr) {
+    port_ok_ = false;
+    char rel[32];
+    snprintf(rel, sizeof(rel), "bg%02d.pac", w13_pick_);
+    std::ifstream f(w13_dir_ / "pac" / "bg" / rel, std::ios::binary);
+    const Bytes w13((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    Bytes out;
+    std::string why;
+    if (w13.empty() || !port13::Port(w13, shipped_, out, &why) || !other_.Load(out, &why)) {
+      port_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
+      return;
+    }
+    port_ok_ = true;
+    other_size_ = out.size();
+    port_note_ = (fr ? "Prête : " : "Ready: ") + Label13(w13_pick_) + (fr ? ", jouée comme " : ", played as ") +
+                 kSlots[slot_].name + " (" + Human(out.size()) + ").";
+    if (out.size() > budget_)
+      port_note_ += fr ? " Plus grande que la place : ses plus grandes images seront réduites."
+                       : " Bigger than the room: its biggest pictures will be halved.";
+    // Its own banner from WWE '13's menus, else the base's.
+    std::ifstream m(w13_dir_ / "pac" / "menu" / "MatchHD.pac", std::ios::binary);
+    const Bytes matchhd((std::istreambuf_iterator<char>(m)), std::istreambuf_iterator<char>());
+    svrfmt::Image img;
+    if (!matchhd.empty() && port13::Banner(matchhd, w13_pick_, img)) {
+      SetBanner(Fill(img, 256, 128));
+      banner_custom_ = true;
+    } else {
+      banner_custom_ = false;
+      LoadBaseBanner();
+    }
+    snprintf(name_, sizeof(name_), "%s (WWE '13)", *port13::ArenaName(w13_pick_) ? port13::ArenaName(w13_pick_)
+                                                                                  : Label13(w13_pick_).c_str());
+    as_new_ = true;
   }
 
   void DrawOtherFile(bool fr) {
@@ -542,7 +672,7 @@ class Page {
   void Make(bool fr, mods::Manager &mods) {
     message_ok_ = false;
     reduced_note_.clear();
-    arena_edit::Arena &a = mode_ == 1 ? other_ : arena_;
+    arena_edit::Arena &a = mode_ == 1 || mode_ == 3 ? other_ : arena_;
     a.SetStage(kSlots[slot_].number);
     Bytes out;
     const auto reduced = a.Fit(budget_, out);
@@ -570,11 +700,15 @@ class Page {
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     if (as_new_)
-      manifest += "slot=new\nbase=" + std::to_string(kSlots[slot_].number) + "\ndescription=A new arena playing as " +
+      manifest += "slot=new\nbase=" + std::to_string(kSlots[slot_].number) + "\ndescription=" +
+                  (mode_ == 3 ? std::string(name_) + ", ported from WWE '13 (the player's own copy), playing as "
+                              : std::string("A new arena playing as ")) +
                   kSlots[slot_].name + ", made with the WWE '12 Mod Maker.\n";
     else
       manifest += "description=" + std::string(kSlots[slot_].name) + " (" + slot + ".pac)" +
-                  (mode_ == 1 ? " replaced by another arena" : ", " + std::to_string(Changed()) + " picture(s) changed") +
+                  (mode_ == 3 ? " replaced by " + std::string(name_)
+                   : mode_ == 1 ? " replaced by another arena"
+                                : ", " + std::to_string(Changed()) + " picture(s) changed") +
                   ", made with the WWE '12 Mod Maker.\n";
     std::vector<std::pair<std::string, Bytes>> entries = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())}};
     if (as_new_) {
@@ -610,6 +744,13 @@ class Page {
   arena_view::View view_;
   bool view_stale_ = true;
   std::string view_error_;
+
+  // Porting from WWE '13.
+  fs::path w13_dir_;
+  std::vector<int> w13_list_;
+  int w13_pick_ = -1;
+  bool port_ok_ = false, view_port_ = false;
+  std::string port_note_;
 
   // New arena (added, not replacing) and its banner.
   bool as_new_ = true, banner_custom_ = false, banners_read_ = false;
