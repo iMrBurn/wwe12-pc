@@ -3,10 +3,12 @@
 # SDL3 + WWE12Activity, réglages par défaut (port/config/wwe12.toml). AUCUNE donnée du jeu :
 # le joueur copie son ISO dans Android/data/io.github.imrburn.wwe12/files/game.
 # Sortie : D:\Android\build\apk\WWE12-PC-Android-<abi>.apk
-param([ValidateSet("x86_64", "arm64-v8a")] [string]$Abi = "x86_64", [string]$Version = "0.1")
+param([ValidateSet("x86_64", "arm64-v8a")] [string]$Abi = "x86_64", [string]$Version = "")
 $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+# Même numéro que la version PC (fichier VERSION), suivi de « -android ».
+if (-not $Version) { $Version = (Get-Content (Join-Path $Root "VERSION") -TotalCount 1).Trim() + "-android" }
 $Sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "D:\Android\Sdk" }
 $Ndk = (Get-ChildItem "$Sdk\ndk" -Directory | Sort-Object Name | Select-Object -Last 1).FullName
 $Bt = (Get-ChildItem "$Sdk\build-tools" -Directory | Sort-Object Name | Select-Object -Last 1).FullName

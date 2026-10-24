@@ -172,6 +172,41 @@ index ef5bdf4..09ba96d 100644
    return GetExecutablePath().parent_path();
  }
  
+diff --git a/src/core/mapped_memory_posix.cpp b/src/core/mapped_memory_posix.cpp
+index 8ee8e34..fcceeb4 100644
+--- a/src/core/mapped_memory_posix.cpp
++++ b/src/core/mapped_memory_posix.cpp
+@@ -9,7 +9,10 @@
+  * @modified    Tom Clay & Rien Gupta, 2026 - Adapted for ReXGlue runtime (POSIX + macOS)
+  */
+ 
++#include <cstdlib>
+ #include <memory>
++#include <string>
++#include <string_view>
+ 
+ #include <fcntl.h>
+ #include <sys/mman.h>
+@@ -114,7 +117,18 @@ std::unique_ptr<MappedMemory> MappedMemory::Open(const std::filesystem::path& pa
+       open_flags |= O_RDWR;
+       break;
+   }
+-  int file_descriptor = open(path.c_str(), open_flags);
++  int file_descriptor = -1;
++#if REX_PLATFORM_ANDROID
++  // A file the Android app opened for us (an ISO picked with the system file picker) comes as
++  // /proc/self/fd/<n>. Reopening it by path goes through the storage permission checks again,
++  // which deny it: duplicate the descriptor instead.
++  const std::string path_string = path.string();
++  constexpr std::string_view kProcFd = "/proc/self/fd/";
++  if (path_string.starts_with(kProcFd)) {
++    file_descriptor = dup(std::atoi(path_string.c_str() + kProcFd.size()));
++  } else
++#endif
++  file_descriptor = open(path.c_str(), open_flags);
+   if (file_descriptor < 0) {
+     return nullptr;
+   }
 diff --git a/src/core/memory_posix.cpp b/src/core/memory_posix.cpp
 index b52bf39..2cdcd55 100644
 --- a/src/core/memory_posix.cpp
