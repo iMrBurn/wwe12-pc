@@ -1,0 +1,35 @@
+diff --git a/src/core/threading_posix.cpp b/src/core/threading_posix.cpp
+index 3766ed7..baddc64 100644
+--- a/src/core/threading_posix.cpp
++++ b/src/core/threading_posix.cpp
+@@ -421,8 +421,11 @@ class PosixConditionBase {
+       if (timeout == std::chrono::milliseconds::max()) {
+         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+       } else {
+-        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - now);
+-        auto sleep_time = std::min(remaining, std::chrono::milliseconds(1));
++        // Keep the clock's precision: cast to whole milliseconds, any remaining time under 1 ms
++        // became a 0 ms sleep, and the alertable waits (1 ms slices) spun a core at 100 %.
++        auto remaining = end_time - now;
++        auto sleep_time = std::min<std::chrono::steady_clock::duration>(
++            remaining, std::chrono::milliseconds(1));
+         std::this_thread::sleep_for(sleep_time);
+       }
+     }
+diff --git a/src/ui/windowed_app_context_sdl.cpp b/src/ui/windowed_app_context_sdl.cpp
+index dc0b4c2..54be5e2 100644
+--- a/src/ui/windowed_app_context_sdl.cpp
++++ b/src/ui/windowed_app_context_sdl.cpp
+@@ -68,6 +68,12 @@ bool SDLWindowedAppContext::Initialize() {
+     return false;
+   }
+   event_watch_registered_ = true;
++#ifdef __ANDROID__
++  // On Android every event added to the queue wakes SDL_WaitEvent, and each of its pumps adds a
++  // POLL_SENTINEL: the UI thread never slept (a core at 100 %). The sentinel only serves
++  // SDL_PollEvent loops, which this loop is not; controllers are still pumped on each game read.
++  SDL_SetEventEnabled(SDL_EVENT_POLL_SENTINEL, false);
++#endif
+   return true;
+ }
+ 
