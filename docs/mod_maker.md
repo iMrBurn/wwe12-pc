@@ -535,9 +535,15 @@ les copies les plus récentes).
 - **Kaiko (SvR 2011, `port/docs/SUPERSTAR_MODS.md` de son dépôt, `work/kaiko-svr2011`)** ajoute des catcheurs dans les
   emplacements vides du jeu (137 numéros), fiche et profil copiés d'un catcheur de base (`base=`), modèle renommé au
   numéro, portraits générés, `slots.txt` pour garder les numéros ; mode simple en 10 étapes dans son Mod Maker.
-- **Essai 1 (2026-10-24, à tester)** : pack maison n° 5 `WWE12PCTESTPACK05` (outil `mkdlc`, à partir du pack 4 de
+- **Essai 1 (2026-10-24)** : pack maison n° 5 `WWE12PCTESTPACK05` (outil `mkdlc`, à partir du pack 4 de
   l'utilisateur) : catcheur 85 « TEST STAR » = fiche, prises et modèle de Batista (70), portraits de Batista en 0085,
   `IGST/VOL5` ajouté à `DLC.pac`. Cache `xbox_cache` mis de côté et sauvegardes copiées avant l'essai.
+  1er lancement : erreur disque puis plantage, chemins de la liste sans « \ » (`DLC4:\PACCHCHETC.PAC` : faute de
+  l'outil). **2e lancement : ça marche** : TEST STAR à l'écran de choix (portrait de Batista, « DOWNLOADABLE CONTENT »,
+  OVERALL 90, RAW), entrée et match contre Cena normaux. Les packs sont montés dans l'ordre (le nôtre = `DLC4:`), et
+  l'annuaire du dernier pack l'emporte. **Méthode validée : un catcheur ajouté = un emplacement DLC libre rempli par
+  un pack maison.** Suite : le pack fabriqué au démarrage par le jeu (comme les arènes ajoutées) à partir des mods
+  (modèle, nom, catcheur de base, portraits), sans recopier de données dans les mods ; page « Nouveau catcheur ».
 
 ## 7. Questions ouvertes
 
