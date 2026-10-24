@@ -5,6 +5,8 @@
 // another superstar file (a chNNN.pac), or an attire of SvR 2011 ported over the base's first attire (port_svr.h).
 // Its entrance video (titantron and minitron, superstar/titantron.bik) can be its own, made from the base's: the
 // game plays it during its entrance in place of the base's.
+// The base is optional: without one, an average superstar of the disc gives the moves, ratings, entrance and
+// portraits (kDefaultBases), and the look must then be the mod's own.
 #pragma once
 
 #include <algorithm>
@@ -30,26 +32,37 @@ namespace new_star_page {
 namespace fs = std::filesystem;
 using svrfmt::Bytes;
 
+// The superstar a new one starts from when no base is chosen: average ratings, an ordinary entrance (the first of
+// these the disc has).
+constexpr int kDefaultBases[] = {261 /* Ted DiBiase */, 327 /* Justin Gabriel */, 175 /* John Morrison */};
+
 class Page {
  public:
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &disc, mods::Manager &mods) {
     device_ = device;
     const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f), yellow(0.94f, 0.75f, 0.24f, 1.0f);
     ImGui::TextWrapped("%s", fr ? "Ajoutez un catcheur au jeu, à côté des autres (il apparaît dans la case DLC de "
-                                  "l'écran de choix). Il part d'un catcheur de base (ses prises, ses stats, ses "
-                                  "portraits) ; son apparence peut être celle de la base, un autre fichier de catcheur, "
-                                  "ou une tenue portée de SvR 2011."
+                                  "l'écran de choix). Il peut partir d'un catcheur de base (ses prises, ses stats, ses "
+                                  "portraits), sinon d'un catcheur moyen ; son apparence peut être celle de la base, un "
+                                  "autre fichier de catcheur, ou une tenue portée de SvR 2011."
                                 : "Add a superstar to the game, next to the others (shown in the select screen's DLC "
-                                  "tile). It starts from a base superstar (moves, ratings and portraits); its look can "
-                                  "be the base's, another superstar file, or an attire ported from SvR 2011.");
+                                  "tile). It can start from a base superstar (moves, ratings and portraits), else from an "
+                                  "average one; its look can be the base's, another superstar file, or an attire ported "
+                                  "from SvR 2011.");
     if (movie_.Finished())
       Finished(fr, mods);
     if (!disc.Found()) {
       ImGui::TextColored(red, "%s", fr ? "Fichiers du jeu introuvables." : "Game files not found.");
       return;
     }
-    if (!listed_)
+    if (!listed_) {
       List(disc);
+      if (default_ >= 0) {
+        base_ = default_;
+        look_ = 1;
+        OpenBase(fr, disc);
+      }
+    }
 
     // 1. Name and base.
     ImGui::SeparatorText(fr ? "1. Nom et catcheur de base" : "1. Name and base superstar");
@@ -57,25 +70,41 @@ class Page {
     ImGui::InputTextWithHint("##ns_name", fr ? "Nom (comme en jeu)" : "Name (as in the game)", name_, sizeof(name_));
     ImGui::SameLine();
     ImGui::SetNextItemWidth(300);
-    if (ImGui::BeginCombo(fr ? "Base" : "Base", base_ < 0 ? (fr ? "Choisir..." : "Choose...") : stars_[base_].name.c_str(),
+    const char *none = fr ? "Aucune (catcheur moyen)" : "None (an average superstar)";
+    if (ImGui::BeginCombo(fr ? "Base (facultatif)" : "Base (optional)",
+                          base_ < 0 ? (fr ? "Choisir..." : "Choose...") : chosen_ ? stars_[base_].name.c_str() : none,
                           ImGuiComboFlags_HeightLarge)) {
       ImGui::SetNextItemWidth(-1);
       if (ImGui::IsWindowAppearing())
         ImGui::SetKeyboardFocusHere();
       ImGui::InputTextWithHint("##ns_filter", fr ? "Rechercher" : "Search", filter_, sizeof(filter_));
+      if (default_ >= 0 && !filter_[0] && ImGui::Selectable(none, !chosen_)) {
+        chosen_ = false;
+        base_ = default_;
+        if (look_ == 0)
+          look_ = 1;
+        OpenBase(fr, disc);
+      }
       for (int i = 0; i < int(stars_.size()); ++i) {
         std::string a = stars_[i].name, b = filter_;
         for (auto *x : {&a, &b})
           std::transform(x->begin(), x->end(), x->begin(), [](unsigned char c) { return char(std::tolower(c)); });
         if (!b.empty() && a.find(b) == std::string::npos)
           continue;
-        if (ImGui::Selectable(stars_[i].name.c_str(), i == base_)) {
+        if (ImGui::Selectable(stars_[i].name.c_str(), chosen_ && i == base_)) {
           base_ = i;
+          chosen_ = true;
           OpenBase(fr, disc);
         }
       }
       ImGui::EndCombo();
     }
+    if (!chosen_ && base_ >= 0)
+      ImGui::TextDisabled("%s", (std::string(fr ? "Sans base, ses prises, ses stats, son entrée et ses portraits sont "
+                                                  "ceux de "
+                                                : "Without a base, its moves, ratings, entrance and portraits are ") +
+                                 stars_[base_].name + (fr ? " ; son apparence est la vôtre." : "; its look is yours."))
+                                    .c_str());
     if (!error_.empty())
       ImGui::TextColored(red, "%s", error_.c_str());
     if (base_ < 0)
@@ -84,7 +113,9 @@ class Page {
     // 2. Look.
     ImGui::SeparatorText(fr ? "2. Apparence" : "2. Look");
     int look = look_;
+    ImGui::BeginDisabled(!chosen_);  // (without a base, the base's look would be the average superstar's)
     ImGui::RadioButton(fr ? "Celle de la base" : "The base's", &look, 0);
+    ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::RadioButton(fr ? "Un autre fichier de catcheur (.pac)" : "Another superstar file (.pac)", &look, 1);
     ImGui::SameLine();
@@ -203,6 +234,10 @@ class Page {
       stars_.push_back(s);
     }
     std::sort(stars_.begin(), stars_.end(), [](const Star &a, const Star &b) { return a.name < b.name; });
+    for (int id : kDefaultBases)
+      for (int i = 0; i < int(stars_.size()) && default_ < 0; ++i)
+        if (stars_[size_t(i)].id == id)
+          default_ = i;
   }
 
   void OpenBase(bool fr, const disc::GameDisc &disc) {
@@ -396,7 +431,8 @@ class Page {
                            "\nbase=" + std::to_string(b.id) + "\nversion=1.0\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
-    manifest += "description=" + std::string(name_) + ", a new superstar starting from " + b.name +
+    manifest += "description=" + std::string(name_) + ", a new superstar starting from " +
+                (chosen_ ? b.name : "an average superstar (" + b.name + ")") +
                 (look_ == 2 ? ", its look ported from SvR 2011 (the player's own file)"
                  : look_ == 1 ? ", with its own look"
                               : "") +
@@ -424,6 +460,8 @@ class Page {
   bool listed_ = false;
   std::vector<Star> stars_;
   int base_ = -1, look_ = 0;
+  int default_ = -1;     // the average superstar used without a base (index in stars_), -1 if the disc has none
+  bool chosen_ = false;  // a base was chosen (else base_ is default_)
   char name_[32] = {}, author_[64] = {}, filter_[64] = {};
   Bytes base_file_, other_, ported_, model_, svr_file_;
   fs::path other_path_, svr_path_;
