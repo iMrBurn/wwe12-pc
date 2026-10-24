@@ -441,6 +441,42 @@ ajoute à la fin de son `MatchHD.pac` servi et, quand l'arène ajoutée est choi
 
 Reste : SvR 2011, 2K14, 2K16.
 
+## 6 undecies. Portage de catcheurs de SvR 2011 (étude du 2026-10-24, Orton `ch161.pac` donné à l'utilisateur)
+
+Fichier tiers sur le Bureau (`Desktop\ch161.pac`, 19 Mo, jamais copié dans le dépôt). Même contenant que WWE '12 (EPK8,
+une entrée « EMD » par tenue `000NNNAA`, chacune un PACH) mais :
+- **4 tenues** (02, 12, 22, 32) contre 2 (02, 12) dans le `ch161.pac` de WWE '12 (6,4 Mo) ; tenue SvR ≈ 4,3-5,5 Mo
+  rangée contre ≈ 3,2 Mo : il faudra réduire des images (le jeu charge une tenue dans une place faite pour elle) ;
+- entrées : SvR a 0 modèle, 10/11/12/13/14 textures (11 = CUBEMAP en plus), 40, 50, 80 (1 648 o, autre format), 100,
+  200/201 (DDS), 20000 (cils), 30000/30001 (sang) ; WWE '12 a 0, 10, 12, 13, 14, 40, 50, 80 (2 816 o), 100, 20000,
+  40000/40010/40040 (« DUMY »). Pour un catcheur déjà dans WWE '12, garder les entrées 40-100 et 4xxxx de WWE '12 ;
+- **squelette différent** : SvR 102 os aux noms japonais (`root`, `koshi` bassin, `mune` poitrine, `onaka` ventre,
+  `momo`/`momo_x` cuisse, `sune` tibia, `ashi` pied, `tsumasaki` orteils, `sakotsu` clavicule, `ninoude`/`_x`/`_m`
+  bras, `kote`/`_x`/`_x2`/`_m` avant-bras et poignet, `te` main, `yubiNK` doigts, `kata_m` épaule, `mune_dummy`,
+  `sakotsu_m`, `kubi`/`kubi_x` cou, `atama` tête) ; WWE '12 107 os « Biped » (`Bip`, `Bip Pelvis`, `Bip L Thigh`,
+  `L_Thigh_x`, `Bip L Calf`, `Bip L Foot`, `Bip L Toe0`, `Bip Spine`, `Bip Spine1`, `L_Chest_Dummy`, `L_Clavicle_m`,
+  `Bip Neck`, `Neck_x`, `Bip Head`, `Bip L Clavicle`, `L_Shoulder_m`, `Bip L UpperArm`, `L_UpperArm_x`/`_m`,
+  `l_Elbow_j`, `L_Elbow_m`, `Bip L Forearm`, `L_Wrist_x`/`x2`, `Bip L Hand`, `Bip L FingerN[1|2]`, Finger0 = pouce) ;
+  **os du visage aux mêmes noms** (`mayu`, `mabuta`, `eye`, `meziri`, `hoho`, `hana`, `kuchi`, `miken`) ;
+- **échelle** : SvR = WWE '12 / 10, centré sur le bassin (cuisse 2,2 / 21,7 ; tibia 4,3 / 43,5 ; bras 2,0 / 20,0 ;
+  avant-bras 1,4 / 14,1 ; main 0,9 / 9,3 : même squelette d'Orton) ; WWE '12 en cm depuis le sol, `Bip` à y −96,6.
+  Sommets : pos × 10 + (0, −96,6, 0) (y vers le bas). Les sommets sont en position du corps (la vue 3D les montre
+  debout sans squelette) ; palettes de maillage = index d'os + 1 → à renuméroter par nom ;
+- **matériaux différents** : SvR `yBumpMapSS` / `yReflect` (37-39 réglages : texDiffuse, texNormal, texOcclusion,
+  Wrinkle/Muscle…) ; WWE '12 `yCh_skin`, `yCh_skin_flex`, `yCh_gear`, `yCh_Reflect` (19-65 réglages : g_mDiffusePrm,
+  g_mCubeLPrm, g_mNormalFxPrm, g_mNoiseTilePrm, g_mSweatPrm, g_mMaskPrm, g_mMusclePrm, IdMap…) ; les réglages
+  « texture » (type 15) sont des index dans la liste de textures du modèle. `vfmt` : 0/3/6/8/9/12 (SvR) contre 0-3
+  (WWE '12), sens inconnu. Mêmes nombres de sommets pour certains maillages (200, 357, 590, 738, 764), mais pas les
+  mêmes sommets ni le même ordre ;
+- format des maillages : fiche de 0xB8 octets dans WWE '12 (un mot de plus, pointeur) contre 0xB4 ; `JboyWrite`
+  n'écrit que le format SvR ; `tools/dev/jboy.py svr_to_w12()` sait insérer le mot (arènes SvR).
+
+**Plan** : 1) convertisseur (Mod Maker) : squelette de la tenue WWE '12 du même catcheur, sommets mis à l'échelle,
+palettes renumérotées par nom, matériau de chaque maillage pris sur le maillage WWE '12 le plus proche (mêmes os,
+même zone), textures `color` / `normal` / `Mask1` / `Mask2` de SvR à la place de celles de WWE '12 ; écriture au format
+0xB8 ; 2) essai en jeu en remplaçant la tenue 1 de l'Orton de WWE '12 ; 3) catcheurs absents de WWE '12 (base = un
+catcheur de même gabarit).
+
 ## 7. Questions ouvertes
 
 - Pour Kaiko : ~~code C++~~ (réglé : `port/modmaker/` de son dépôt) ; ~~extension~~ (réglé : `.svrmod` +
