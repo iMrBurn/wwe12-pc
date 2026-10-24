@@ -1,5 +1,6 @@
-// WWE12-PC: Kaiko's archive.cpp reads xcompressed files (LZX, WWE '13 to 2K17) with wwe13.h. WWE '12's own
-// files are never xcompressed, so the decoder isn't taken (yet): such a file is refused with a clear message.
+// XMemCompress'd files (WWE '13 and later: "0x0FF512ED", 32-128 KB chunks of LZX frames). Kaiko's archive.cpp
+// reads them through this (his wwe13.h); the decoder is xcompress.cpp, over libmspack's LZX reader (Mod Maker
+// only: the game build doesn't include it, its own files are never xcompressed).
 #pragma once
 #include <string>
 
@@ -7,9 +8,13 @@
 
 namespace svrfmt {
 inline bool IsXcompress(const Bytes &b) { return b.size() >= 16 && Be32(b.data()) == 0x0FF512EDu; }
+#ifdef SVRFMT_NO_XCOMPRESS
 inline bool XcompressDecode(const Bytes &, Bytes &, std::string *error = nullptr) {
   if (error)
-    *error = "xcompressed file (WWE '13 and later): not supported here yet";
+    *error = "xcompressed file (WWE '13 and later): not read here";
   return false;
 }
+#else
+bool XcompressDecode(const Bytes &in, Bytes &out, std::string *error = nullptr);
+#endif
 }  // namespace svrfmt

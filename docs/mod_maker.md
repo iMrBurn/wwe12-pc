@@ -384,6 +384,37 @@ aperçu : celle de l'arène de base (lue dans `MatchHD.pac`, `arenaNN`) ou une i
 **Étapes suivantes** : 4) arènes plus grosses que leur base (taille du répertoire déjà prise en charge, mémoire du
 tas 12 à vérifier) ; 5) portages (WWE '13, SvR 2011, 2K14, 2K16).
 
+## 6 decies. Portage d'arènes de WWE '13 (2026-10-24, Capitol Punishment testée en jeu : OK)
+
+Fichiers du joueur : `Desktop\WWE13-Recomp-x64\WWE 13` (lus seulement, rien copié dans le dépôt). Les `bgNN.pac` de
+WWE '13 sont presque tous XMemCompress (« 0x0FF512ED », LZX) : lecteur repris de Kaiko
+(`port/src/modmaker/svrfmt/xcompress.cpp`, sur `lzxd.c` de libmspack du SDK ; le jeu, lui, a un bouchon :
+`SVRFMT_NO_XCOMPRESS`). Sigle des objets → arène : bg05 = **cp (Capitol Punishment)**, bg03 wss, bg04 otl, bg06 mib,
+bg07 ss, bg08 noc, bg09 hic, bg10 vg, bg11 sv, bg12 tlc, bg13 rr, bg14 elc, bg15 wm, bg16 er, bg28-49 = arènes
+« légendes » (sd99, sv97, ono, ss97, wm14, oe98, kr, ss98, JD, sv98, un98, bd, rb, stv, WM15, snh...), bg00-02 non compressés.
+
+**Format** : décompressé, une arène de WWE '13 = celle de WWE '12 à deux octets près (« EPK8 » au lieu de « EPAC », et
+le mot du groupe STG à 0x804 porte un drapeau 0x0010 dans ses 16 bits hauts). Mêmes modèles (0xB8, cm, yBG), mêmes
+paquets de textures.
+
+**Recette (Capitol Punishment, base = 5)**, trouvée par essais (une variante par case, A à I) :
+- décompresser, `EPK8` → `EPAC`, drapeau 0x804 effacé ;
+- **50010 = celui de WWE '12** (le même dans les 21 arènes de WWE '12 : liste XML de 151 textures avec le niveau de
+  mip à charger, 16 en pleine résolution ; celui de WWE '13 en met 129 en pleine résolution → le jeu attend sans fin
+  de la mémoire : allocateur `sub_827D3600`/`sub_827D3438` appelé par `sub_8220D018`, depuis le chargement de la scène
+  `sub_823BEC88` ; le hang_trace l'a montré). Les lumières, la foule, 50003, 50020, 30003 de WWE '13 marchent ;
+- **ring de WWE '12** (951, 952, 953, 956, 960, 964, 973, 974, 980) : celui de WWE '13 est trop haut ; les images du
+  tablier restent celles de WWE '13 (mêmes noms). 981 / 982 (poteau et couvercle en plus de WWE '13) enlevés ;
+- **61000** (DDS 256×128, absente de WWE '13) prise dans la base ;
+- **coins des barricades** 390-397 (`ar_fence01_c/f/g/h`, `ar_fence02_c/f/g/h`, pièces cassables des « OMG moments »,
+  modélisées à l'origine et placées par le code de WWE '13) déplacés dans le modèle (sommets, sphères des maillages
+  et des nœuds) : `_c` (+561, −559), `_f` (−561, −559), `_g` (+533, +560), `_h` (−533, +560) (x, z en cm) ;
+- bannière : `arena05` absente du `MatchHD.pac` de WWE '13 sous ce nom (à chercher), tuile grise pour l'instant.
+
+Outils jetables (scratchpad) : `hybrid13`, `movecorners`, `cmp13`, `names13`. **À faire** : une page « Porter une arène de
+WWE '13 » dans le Mod Maker qui applique cette recette (dossier de WWE '13, arène, base, bannière) ; vérifier la recette
+sur d'autres arènes ; SvR 2011, 2K14, 2K16 ensuite.
+
 ## 7. Questions ouvertes
 
 - Pour Kaiko : ~~code C++~~ (réglé : `port/modmaker/` de son dépôt) ; ~~extension~~ (réglé : `.svrmod` +

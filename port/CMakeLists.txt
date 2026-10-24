@@ -92,6 +92,8 @@ if(WIN32)
         src/modmaker/svrfmt/jboy.cpp
         src/modmaker/svrfmt/pac.cpp
         src/modmaker/svrfmt/texture.cpp
+        src/modmaker/svrfmt/xcompress.cpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/libmspack/cabextract/mspack/lzxd.c"
         src/modmaker/video/bink_decode.c
         src/modmaker/video/bink_encode.c
         src/modmaker/video/movie_maker.c
@@ -102,7 +104,9 @@ if(WIN32)
         "${WWE12_IMGUI_DIR}/imgui_widgets.cpp"
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_win32.cpp"
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp")
+    # (lzxd.c: libmspack's LZX reader, LGPL 2.1, the SDK's copy: WWE '13 files are XMemCompress'd.)
     target_include_directories(wwe12_modmaker PRIVATE src/modmaker src/launcher "${WWE12_IMGUI_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/libmspack/cabextract/mspack"
         "${WWE12_IMGUI_DIR}/backends")
     target_link_libraries(wwe12_modmaker PRIVATE d3d11 dxgi d3dcompiler windowscodecs ole32 shell32
         mfplat mfreadwrite mfuuid propsys delayimp)
@@ -134,6 +138,7 @@ endif()
 target_sources(wwe12 PRIVATE src/modmaker/svrfmt/archive.cpp src/modmaker/svrfmt/pac.cpp
     src/modmaker/svrfmt/texture.cpp)
 target_include_directories(wwe12 PRIVATE src/modmaker)
+target_compile_definitions(wwe12 PRIVATE SVRFMT_NO_XCOMPRESS)
 
 rexglue_setup_target(wwe12 GPU_PLUGINS xenos)
 if(ANDROID)
