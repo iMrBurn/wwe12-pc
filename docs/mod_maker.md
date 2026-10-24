@@ -544,6 +544,11 @@ les copies les plus récentes).
   l'annuaire du dernier pack l'emporte. **Méthode validée : un catcheur ajouté = un emplacement DLC libre rempli par
   un pack maison.** Suite : le pack fabriqué au démarrage par le jeu (comme les arènes ajoutées) à partir des mods
   (modèle, nom, catcheur de base, portraits), sans recopier de données dans les mods ; page « Nouveau catcheur ».
+- **Essai 2 (2026-10-24)** : même pack avec deux catcheurs, 85 « TEST STAR » et **104 « TEST DISC » (fiche vide du
+  disque)** : **TEST DISC apparaît et joue (entrée, match)** : les fiches vides du disque marchent aussi par un pack
+  (~220 places : 29 DLC + 164 fiches « 0 » + 29 réserves 344-372). Défauts : grand portrait absent à l'écran de choix
+  pour TEST DISC (sans doute le portrait vide du disque, trouvé avant le nôtre), TEST STAR plus vu (à vérifier : case
+  partagée haut / bas ? codes `WA`/`WB` de `VOL5` changés depuis l'essai 1 ?).
 
 ## 7. Questions ouvertes
 
