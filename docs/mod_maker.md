@@ -586,7 +586,9 @@ les copies les plus récentes).
   (catcheurs du disque), apparence (celle de la base, un autre `chNNN.pac`, ou une tenue de SvR 2011 portée sur la
   tenue 1 de la base par `port_svr.h`, mise à la taille d'une tenue), vue 3D, puis `.svrmod` `type=superstar`
   (`superstar/ch.pac`, ou `superstar/look.txt` quand c'est l'apparence de la base). Au passage : accents de
-  `modmaker.cpp` réparés (fichier ré-encodé deux fois : « CrÃ©ez »).
+  `modmaker.cpp` réparés (fichier ré-encodé deux fois : « CrÃ©ez »). **Essayée par l'utilisateur** : « orton svr11 » (base Orton, tenue
+  1 de SvR 2011 portée) créé dans la page, installé, ajouté par le jeu au n° 87 (les n° 85 et 86 gardés) : **ORTON SVR11
+  à l'écran de choix (portrait d'Orton, OVERALL 94) et en entrée**.
 
 ## 7. Questions ouvertes
 
