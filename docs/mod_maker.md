@@ -437,7 +437,7 @@ Vengeance ; la mise en page la nomme), nn = numéro de l'arène (= numéro de fi
 format dans WWE '12 et WWE '13 (PACH non compressés ; MB70-84 identiques). Le Mod Maker copie `MB<fichier>` et
 `M<fichier>F` de WWE '13 tels quels (`port13::Card`) dans `arena/card_mb.pac` et `arena/card_mf.pac` ; le jeu les
 ajoute à la fin de son `MatchHD.pac` servi et, quand l'arène ajoutée est choisie, l'annuaire répond avec eux à
-`/MLYE/MBnn` et `/MENU/MnnF` de la base (`wwe12_arena_pages.cpp`). Pas encore testé en jeu.
+`/MLYE/MBnn` et `/MENU/MnnF` de la base (`wwe12_arena_pages.cpp`). **Testé en jeu le 2026-10-24 : identique à WWE '13** (Big Show / Kane), police comprise.
 
 Reste : SvR 2011, 2K14, 2K16.
 
