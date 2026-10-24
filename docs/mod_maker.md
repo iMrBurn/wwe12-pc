@@ -497,6 +497,28 @@ tenue de WWE '12 à remplacer (de préférence le même catcheur), le `chNNN.pac
 « Porter sur la tenue N » ; le résultat s'affiche (images, 3D) puis « Créer le mod » (type=attire, files/pac/ch/chNNN.pac,
 tenu dans la taille d'origine). Le fichier de test déposé à la main a été retiré.
 
+## 6 duodecies. Ajouter des catcheurs (étude commencée le 2026-10-24)
+
+Demande de l'utilisateur : ajouter des catcheurs au jeu (sans en remplacer), portés d'autres jeux ou faits par les
+moddeurs. Le jeu le fait déjà avec ses **DLC** : c'est la piste (un « DLC maison » par mod).
+
+Un pack DLC installé (`Documents\wwe12 0000000000000ť10890 00002\<paquet>\`, ex. pack 4) contient :
+`info/catalog.dlc`, `pac/ch/chNN_dlc04.pac` (modèle, NN = numéro du catcheur), `pac/DLC.pac`, `DLC_HD/SD_dlc04.pac`
+(portraits ?), `pac/string.pac` (textes, copie complète), `edit_dlc04.pac`, `evtmov_dlc04.pac` (entrées), `m_dlc04.pac`
+(prises ?), `gm_dlc04.pac`, `menu/sas_dlc04.pac`, `prtcls_dlc04.pac`, `sound_dlc_04.pac`, `sound/DLC_04.pck`
+(musiques, voix), `movies/titantron/NNN.bik`, et des copies complètes de `audience.pac`, `m3.pac`, `misc.pac`,
+`chEtc.pac`, `menu/mvMot.pac`, `evt/NyujyoC.pac`, `evt/WinningC.pac`. Les packs sont cumulatifs (le dernier porte
+les copies les plus récentes).
+- **`catalog.dlc`** : « DLCC », u16 2, u16 0x18 (taille d'en-tête), u32 numéro du pack, u16 nombre de lignes, u16 ?,
+  8 octets (date) ; puis des lignes de 0x40 octets : u16 0x40, u16 rang, u16 type (1, 0x0B…), u16 pack, u16 ?, u16 ?,
+  u32 0, **u32 numéro du catcheur** (0x46 = 70 Batista), …, **nom** à +0x20 (32 octets : « BATISTA », « DLC_CH_061 »).
+- **`DLC.pac`** (EPAC, cumulatif : 94 208 o au pack 3, 96 256 au pack 4 ; le disque en a un aussi) : `ENEX/LSD`,
+  `ENEX/BIN`, `ENEX/PRP`, **`IGST/VOLn`** (une par pack : u32 nombre, puis par catcheur : u32 type, u32 ?, u32 numéro,
+  u32 0, u32 rang (0x0E…), 2 codes de 2 lettres (`MU`/`NU`, textes ?), u32 1, u32 2, clé de 16 caractères
+  « WWE12BATISTA1234 ») et **`RGRP/MAGG`** (0 : table « HMT » ; 10 / 11 : noms des prises ajoutées, 104 octets
+  chacune : u32 id 0x80EA…, « Scissors kick »…).
+- Packs 1 et 2 installés chez l'utilisateur : seulement `catalog.dlc` (contenu absent).
+
 ## 7. Questions ouvertes
 
 - Pour Kaiko : ~~code C++~~ (réglé : `port/modmaker/` de son dépôt) ; ~~extension~~ (réglé : `.svrmod` +
