@@ -42,10 +42,16 @@ bool WriteFile(const std::string& path, const Bytes& data) {
 // unpacks to at most 4000 bytes); larger blocks hang the arena load.
 constexpr size_t kBpeBlock = 4000;
 
-// One block at pos (its pair table, u16 size, codes): its bytes appended to out, pos past it.
-static bool BpeDecodeBlock(const Bytes& in, size_t& pos, size_t end, Bytes& out) {
+bool BpeDecode(const Bytes& in, Bytes& out) {
+  if (!IsBpe(in)) return false;
+  const uint32_t packed = Le32(&in[8]), unpacked = Le32(&in[12]);
+  if (16 + size_t(packed) > in.size()) return false;
+  out.clear();
+  out.reserve(unpacked);
+  size_t pos = 16;
+  const size_t end = 16 + packed;
   uint8_t left[256], right[256], stack[256];
-  {
+  while (pos < end) {
     for (int i = 0; i < 256; ++i) left[i] = uint8_t(i);
     int c = 0;
     int count = in[pos++];
@@ -80,19 +86,6 @@ static bool BpeDecodeBlock(const Bytes& in, size_t& pos, size_t end, Bytes& out)
     }
     pos += size;
   }
-  return true;
-}
-
-bool BpeDecode(const Bytes& in, Bytes& out) {
-  if (!IsBpe(in)) return false;
-  const uint32_t packed = Le32(&in[8]), unpacked = Le32(&in[12]);
-  if (16 + size_t(packed) > in.size()) return false;
-  out.clear();
-  out.reserve(unpacked);
-  size_t pos = 16;
-  const size_t end = 16 + packed;
-  while (pos < end)
-    if (!BpeDecodeBlock(in, pos, end, out)) return false;
   return out.size() == unpacked;
 }
 
@@ -184,48 +177,18 @@ void CompressBlock(const uint8_t* src, size_t n, Bytes& out) {
 
 }  // namespace
 
-constexpr size_t kBpeEncodeBlock = 1200;
-
-static void EncodeRange(const Bytes& raw, size_t from, size_t to, Bytes& body) {
-  for (size_t at = from; at < to; at += kBpeEncodeBlock)
-    CompressBlock(&raw[at], std::min(kBpeEncodeBlock, to - at), body);
-}
-
-static Bytes BpeWrap(const Bytes& body, size_t size) {
+Bytes BpeEncode(const Bytes& raw) {
+  Bytes body;
+  for (size_t at = 0; at < raw.size(); at += kBpeBlock) {
+    const size_t n = raw.size() - at < kBpeBlock ? raw.size() - at : kBpeBlock;
+    CompressBlock(&raw[at], n, body);
+  }
   Bytes out = {'B', 'P', 'E', ' '};
   AppLe32(out, 0x100);
   AppLe32(out, uint32_t(body.size()));
-  AppLe32(out, uint32_t(size));
+  AppLe32(out, uint32_t(raw.size()));
   App(out, body);
   return out;
-}
-
-Bytes BpeEncode(const Bytes& raw) {
-  Bytes body;
-  EncodeRange(raw, 0, raw.size(), body);
-  return BpeWrap(body, raw.size());
-}
-
-Bytes BpeEncodeLike(const Bytes& raw, const Bytes& old) {
-  if (!IsBpe(old) || 16 + size_t(Le32(&old[8])) > old.size()) return BpeEncode(raw);
-  Bytes body, slice;
-  size_t pos = 16, done = 0, at = 0;  // pos: in old; at: where old's next block starts in the unpacked data
-  const size_t end = 16 + Le32(&old[8]);
-  while (pos < end) {
-    const size_t start = pos;
-    slice.clear();
-    if (!BpeDecodeBlock(old, pos, end, slice)) return BpeEncode(raw);
-    const size_t from = at;
-    at += slice.size();
-    if (from < done) continue;  // (already packed by us, with the block before)
-    if (at <= raw.size() && std::equal(slice.begin(), slice.end(), raw.begin() + ptrdiff_t(from))) {
-      EncodeRange(raw, done, from, body);  // (nothing unless blocks before it changed)
-      App(body, &old[start], pos - start);
-      done = at;
-    }
-  }
-  EncodeRange(raw, done, raw.size(), body);
-  return BpeWrap(body, raw.size());
 }
 
 // WWE 2K14 entries: "ZLIB", u32 version (0x1230), u32 packed size, u32

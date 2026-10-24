@@ -10,7 +10,7 @@
 //    "entrances only" flag (50001): else a white glare covers the ring;
 //  - the ring (951-974 and 980, WWE '12's ropes) and its pictures, entry 30002 and the crowd (20000-20003, 20010)
 //    are the base arena's; SvR's extra ring pieces (957-967) are left out;
-//  - a big entry changed in a few places (the texture package) keeps Yuke's own packing (svrfmt::BpeEncodeLike):
+//  - a big entry changed in a few places (the texture package) keeps Yuke's own packing (bpe_like::EncodeLike):
 //    an arena must not outgrow the shipped file of the arena it plays as.
 // Its collision, placement and visibility files work as they are.
 #pragma once
@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "bpe_like.h"
 #include "port13.h"
 #include "svrfmt/archive.h"
 #include "svrfmt/jboy.h"
@@ -426,7 +427,7 @@ inline Bytes EntranceOnly(const Bytes &d, const std::set<int> &objects) {
 // ---- texture package (400): count, 12 bytes, 32-byte records {name[16], "dds", size, offset, 0}, data on 16.
 // Pictures added in place: a new name takes the record of a picture no model uses (old ring pictures first; never a
 // light map, titantron or movie, which the game may look up itself), its data at the end; the rest keeps its place
-// (BpeEncodeLike then keeps Yuke's packing).
+// (bpe_like::EncodeLike then keeps Yuke's packing).
 inline int AddPictures(Bytes &pkg, const std::vector<svrfmt::BundleTexture> &add, const std::string &models) {
   if (pkg.size() < 16)
     return 0;
@@ -472,7 +473,7 @@ inline void ReplaceLike(svrfmt::ArcNode &n, const Bytes &raw) {
   const Bytes old = n.stored;
   svrfmt::ArchiveReplace(n, raw);
   if (svrfmt::IsBpe(old))
-    n.stored = svrfmt::BpeEncodeLike(raw, old);
+    n.stored = bpe_like::EncodeLike(raw, old);
 }
 
 }  // namespace detail
