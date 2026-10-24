@@ -557,6 +557,19 @@ les copies les plus récentes).
   10 packs. **Suite : trouver dans le code de l'écran de choix la limite de 12 et la contourner (case agrandie ou case
   « mods »), comme Kaiko (case EXTRA dans SvR 2011).** Portraits des catcheurs 100+ : seulement dans
   `menu\menuHD.pac` / `menuSD.pac` (`SSFA` 0100…0343, 262 272 o), pas lus dans les DLC.
+- **Cause réelle (2026-10-24, sonde `wwe12_roster_probe`, `port/src/native/wwe12_roster_probe.cpp`)** : pas de limite de 12.
+  L'écran de choix (constructeur `sub_82570BC8`, panneau par joueur `sub_825A1200`, grille `/MEFP/POSI` de
+  `menu.pac` lue par `sub_828B69D8`, case DLC = type 3 testée par `sub_82567068`) prend ses candidats dans
+  `sub_828ADFB8` : numéros 50..372 (table 0x8307B8D0), gardés s'ils sont « débloqués » (octet 247 de la fiche de
+  sauvegarde, 286 o, `[0x8317FA08]` + (numéro − 50) × 286) et, pour les DLC (octet 283 de la fiche), « possédés »
+  (liste `[0x8322E238]` + 164, fiches {1, numéro, 0, état}, état 2 ; construite par `sub_826B13D0` depuis les lignes
+  des catalogues). Puis **une seule case par « personne » : champ +0x100 de `CHAR/DAT`** (valeurs 0x0001-0x0433 ; les
+  costumes alternatifs 80, 81, 83, 84 partagent celle de leur catcheur). Mes copies gardaient celle de Batista
+  (0x042E) : seul le plus grand numéro restait. **Correctif : un numéro de personne libre par nouveau catcheur**
+  (0x042F pour 85, 0x042D pour 104) : **Batista, TEST STAR et TEST DISC apparaissent tous les trois** (vérifié en jeu).
+  Recette d'un catcheur ajouté : fiche, prises (`PRO`) d'un catcheur de base, numéro (+0x2C, +0xF8, +0x102), nom
+  (+0x2E, +0x72, +0xB6), **codes de l'emplacement gardés (+0xF0 = `DSBD`)**, **personne libre (+0x100)** ; ligne de
+  catalogue + entrée `VOL` (codes « lettre + U » qui se suivent).
 
 ## 7. Questions ouvertes
 
