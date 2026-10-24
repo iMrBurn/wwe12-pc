@@ -483,6 +483,12 @@ tatouages, visage, short, genouillères, bottes corrects. Défauts vus : **doigt
 comprendre), image de couleur réduite de moitié pour tenir dans la place (1024×512). Méthode retenue : les deux jeux
 n'orientent pas les repères des os pareil (tête et pieds de WWE '12 tournés d'un demi-tour) : chaque os est aligné
 d'après la place des articulations (os → enfant le plus loin), pas d'après les rotations.
+**Corrigé et revu en jeu le même jour** : les mains de SvR ont leurs propres images (`BloodHand0_L/R`, relief
+`BloodHand_n_L/R` ; elles saignent en match), pas l'image du corps : elles sont recopiées dans le paquet 10 et le
+matériau WWE '12 (`g_mDiffusePrm`, `g_mNormalFxPrm`) pointe dessus (sinon griffes noires). Image de couleur réencodée
+au format de la base (DXT1) au lieu d'être réduite, **rendue opaque avant** (l'alpha de SvR sert à autre chose ; DXT1
+faisait de tout pixel sous la moitié un pixel transparent noir : corps entièrement noir). Reste réduite : `normal`
+(1024 → 512). Résultat (2e essai) : Orton de SvR 2011 propre en entrée et en match.
 
 ## 7. Questions ouvertes
 
