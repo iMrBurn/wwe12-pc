@@ -590,6 +590,26 @@ les copies les plus récentes).
   1 de SvR 2011 portée) créé dans la page, installé, ajouté par le jeu au n° 87 (les n° 85 et 86 gardés) : **ORTON SVR11
   à l'écran de choix (portrait d'Orton, OVERALL 94) et en entrée**.
 
+## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
+
+- **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,
+  divisions, classements), Créer un scénario (CAST).
+- **Arènes ajoutées** : l'écran des arènes d'un show de l'Univers est le même que celui des matchs
+  (`sub_825A67A0`) : les pages LB / RB y marchent déjà (TEST ARENA en page 2).
+- **Créer un scénario, liste LOCATION des scènes : mis de côté (décision de l'utilisateur)**, peu utile pour le
+  risque (une histoire enregistrée avec une arène moddée, puis le mod retiré). Ce qu'on sait, pour reprendre :
+  - éditeur de scène (vtable 0x82044408, constructeur `sub_8278B918`, destructeur `sub_8278A9E0` qui libère les
+    tableaux par `sub_827D2EA0(p, 2)`) ; 3 onglets à éditeur + 432 + 12 × onglet = {n°, entrées, nombre}, remplis par
+    `sub_8278AB58` (pile du constructeur) : ARENA = 21 entrées fixes {lieu 0-20, 0xB, bit 0, u16 déblocage
+    (0xFFFF = toujours)} + lieux 50-59 si `sub_82A40680(n)` ; BACKSTAGE = lieux 67-79 (78 = 7 variantes) ; liste
+    construite par `sub_8278B4C0`, nom par `sub_82789A40` → `sub_82A31A60(lieu)` = texte 40002 + n° d'arène ;
+  - **table des lieux** du jeu : `[0x8324E24C]` = fiches de 36 octets (n° du lieu = octet +4), `[0x8324E250]` =
+    nombre, cherchée par `sub_82A31780` (accesseurs `sub_82A31AA8` … `sub_82A31F30`) : y ajouter une fiche par arène
+    ajoutée (copie de sa base) la ferait connaître de tout le jeu ;
+  - reste inconnu : comment une scène passe de son lieu à l'arène chargée (le champ +898 des réglages de match,
+    `sub_826CBFB8`, n'est écrit que par l'exhibition) ;
+  - sonde `wwe12_story_probe` (`port/src/native/wwe12_story_probe.cpp`, défaut false, lignes « [story] »).
+
 ## 7. Questions ouvertes
 
 - Pour Kaiko : ~~code C++~~ (réglé : `port/modmaker/` de son dépôt) ; ~~extension~~ (réglé : `.svrmod` +
