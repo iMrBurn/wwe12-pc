@@ -2,7 +2,8 @@
 // des catcheurs"). The mod (.svrmod, type=superstar) holds only its name, its base superstar (whose record, moves
 // and portraits it starts from) and, if it has its own look, superstar/ch.pac; the game makes a DLC pack of the
 // superstar mods at startup (src/native/wwe12_superstar_mods.cpp, modmaker/superstar_pack.h). Its look: the base's,
-// another superstar file (a chNNN.pac), or an attire of SvR 2011 ported over the base's first attire (port_svr.h).
+// another superstar file (a chNNN.pac), or an attire of SvR 2011 or WWE '13 ported over the base's first attire
+// (port_svr.h, port13_star.h).
 // Its entrance video (titantron and minitron, superstar/titantron.bik) can be its own, made from the base's: the
 // game plays it during its entrance in place of the base's.
 // The base is optional: without one, an average superstar of the disc gives the moves, ratings, entrance and
@@ -25,6 +26,7 @@
 #include "imgui.h"
 #include "media.h"
 #include "mods.h"
+#include "port13_star.h"
 #include "port_svr.h"
 
 namespace new_star_page {
@@ -44,11 +46,11 @@ class Page {
     ImGui::TextWrapped("%s", fr ? "Ajoutez un catcheur au jeu, à côté des autres (il apparaît dans la case DLC de "
                                   "l'écran de choix). Il peut partir d'un catcheur de base (ses prises, ses stats, ses "
                                   "portraits), sinon d'un catcheur moyen ; son apparence peut être celle de la base, un "
-                                  "autre fichier de catcheur, ou une tenue portée de SvR 2011."
+                                  "autre fichier de catcheur, ou une tenue portée de SvR 2011 ou de WWE '13."
                                 : "Add a superstar to the game, next to the others (shown in the select screen's DLC "
                                   "tile). It can start from a base superstar (moves, ratings and portraits), else from an "
                                   "average one; its look can be the base's, another superstar file, or an attire ported "
-                                  "from SvR 2011.");
+                                  "from SvR 2011 or WWE '13.");
     if (movie_.Finished())
       Finished(fr, mods);
     if (!disc.Found()) {
@@ -120,7 +122,15 @@ class Page {
     ImGui::RadioButton(fr ? "Un autre fichier de catcheur (.pac)" : "Another superstar file (.pac)", &look, 1);
     ImGui::SameLine();
     ImGui::RadioButton(fr ? "Une tenue de SvR 2011" : "An attire from SvR 2011", &look, 2);
+    ImGui::SameLine();
+    ImGui::RadioButton(fr ? "Une tenue de WWE '13" : "An attire from WWE '13", &look, 3);
     if (look != look_) {
+      if ((look >= 2) != (look_ >= 2) || look >= 2) {  // (another game: its file chosen again)
+        svr_file_.clear();
+        svr_path_.clear();
+        svr_attires_.clear();
+        ported_.clear();
+      }
       look_ = look;
       note_.clear();
       if (look_ == 0)
@@ -136,21 +146,24 @@ class Page {
       }
       ImGui::SameLine();
       ImGui::TextDisabled("%s", other_path_.empty() ? "" : media::Utf8(other_path_.wstring()).c_str());
-    } else if (look_ == 2) {
-      if (ImGui::Button(fr ? "Fichier de SvR 2011 (chNNN.pac)..." : "SvR 2011 file (chNNN.pac)...")) {
+    } else if (look_ >= 2) {
+      const bool w13 = look_ == 3;
+      if (ImGui::Button(w13 ? (fr ? "Fichier de WWE '13 (chNNN.pac)..." : "WWE '13 file (chNNN.pac)...")
+                            : (fr ? "Fichier de SvR 2011 (chNNN.pac)..." : "SvR 2011 file (chNNN.pac)..."))) {
         const fs::path p = arena_page::PickOpen(fr, true);
         if (!p.empty())
           LoadSvr(fr, p);
       }
       ImGui::SameLine();
-      ImGui::TextDisabled("%s", svr_path_.empty() ? (fr ? "(vos fichiers de SvR 2011)" : "(your SvR 2011 files)")
-                                                  : media::Utf8(svr_path_.wstring()).c_str());
+      ImGui::TextDisabled("%s", !svr_path_.empty() ? media::Utf8(svr_path_.wstring()).c_str()
+                                : w13             ? (fr ? "(vos fichiers de WWE '13)" : "(your WWE '13 files)")
+                                                  : (fr ? "(vos fichiers de SvR 2011)" : "(your SvR 2011 files)"));
       if (!svr_attires_.empty()) {
         char label[64];
         snprintf(label, sizeof(label), fr ? "Tenue %d  (%s)" : "Attire %d  (%s)", svr_attire_ + 1,
                  svr_attires_[svr_attire_].c_str());
         ImGui::SetNextItemWidth(260);
-        if (ImGui::BeginCombo(fr ? "Tenue de SvR" : "SvR attire", label)) {
+        if (ImGui::BeginCombo(fr ? "Tenue à porter" : "Attire to port", label)) {
           for (int i = 0; i < int(svr_attires_.size()); ++i) {
             snprintf(label, sizeof(label), fr ? "Tenue %d  (%s)" : "Attire %d  (%s)", i + 1, svr_attires_[i].c_str());
             if (ImGui::Selectable(label, i == svr_attire_))
@@ -253,7 +266,7 @@ class Page {
     char movie[16];
     snprintf(movie, sizeof(movie), "%03d.bik", stars_[base_].id);
     movie_.SetGame(device_, media::CopyGameMovie(disc, movie));  // (its entrance video starts from the base's)
-    if (look_ == 2 && !svr_attires_.empty())
+    if (look_ >= 2 && !svr_attires_.empty())
       PortSvr(fr);  // (ported over the new base)
     SetModel(look_ == 0 ? base_file_ : look_ == 1 ? other_ : ported_);
   }
@@ -315,16 +328,20 @@ class Page {
     }
   }
 
-  // The SvR attire over the base's first attire (port_svr.h), made to fit that attire's room.
+  // The SvR 2011 or WWE '13 attire over the base's first attire (port_svr.h, port13_star.h), made to fit that
+  // attire's room.
   void PortSvr(bool fr) {
     note_.clear();
     ported_.clear();
     svrfmt::Archive s, w;
     std::string why;
     port_svr::Report rep;
-    if (!svrfmt::ArchiveOpen(svr_file_, s, &why) || !svrfmt::ArchiveOpen(base_file_, w, &why) ||
-        size_t(svr_attire_) >= s.root.kids.size() || w.root.kids.empty() ||
-        !port_svr::PortAttire(s.root.kids[size_t(svr_attire_)], w.root.kids[0], &rep, &why)) {
+    port13_star::Report rep13;
+    const bool opened = svrfmt::ArchiveOpen(svr_file_, s, &why) && svrfmt::ArchiveOpen(base_file_, w, &why) &&
+                        size_t(svr_attire_) < s.root.kids.size() && !w.root.kids.empty();
+    if (!opened ||
+        !(look_ == 3 ? port13_star::PortAttire(s.root.kids[size_t(svr_attire_)], w.root.kids[0], &rep13, &why)
+                     : port_svr::PortAttire(s.root.kids[size_t(svr_attire_)], w.root.kids[0], &rep, &why))) {
       note_ok_ = false;
       note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
       SetModel(ported_);
@@ -350,7 +367,7 @@ class Page {
     char b[200];
     snprintf(b, sizeof(b), fr ? "Portée : %d maillages convertis (tenue 1 du nouveau catcheur)."
                               : "Ported: %d meshes converted (the new superstar's attire 1).",
-             rep.meshes);
+             look_ == 3 ? rep13.meshes : rep.meshes);
     note_ = b;
     SetModel(ported_);
   }
@@ -433,7 +450,8 @@ class Page {
       manifest += std::string("author=") + author_ + "\n";
     manifest += "description=" + std::string(name_) + ", a new superstar starting from " +
                 (chosen_ ? b.name : "an average superstar (" + b.name + ")") +
-                (look_ == 2 ? ", its look ported from SvR 2011 (the player's own file)"
+                (look_ == 3   ? ", its look ported from WWE '13 (the player's own copy)"
+                 : look_ == 2 ? ", its look ported from SvR 2011 (the player's own file)"
                  : look_ == 1 ? ", with its own look"
                               : "") +
                 (movie.empty() ? "" : ", its own entrance video (" + movie_.Parts() + ")") +
