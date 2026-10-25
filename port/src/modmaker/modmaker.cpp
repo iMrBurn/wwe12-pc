@@ -21,6 +21,7 @@
 #include "imgui_impl_win32.h"
 
 #include "arena_page.h"
+#include "game_discs.h"
 #include "game_disc.h"
 #include "media.h"
 #include "mods.h"
@@ -132,7 +133,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kFiles, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kFiles, kDiscs, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -144,6 +145,7 @@ pac_page::Browser g_files;
 arena_page::Page g_arenas;
 superstar_page::Page g_stars;
 new_star_page::Page g_new_star;
+game_discs::Discs g_discs;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 
@@ -291,9 +293,11 @@ void DrawUi() {
   ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), "MOD MAKER");
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
-  const char *names_en[] = {"HOME", "VIDEOS", "TEXTURES", "ARENAS", "SUPERSTARS", "NEW SUPERSTAR", "GAME FILES", "ABOUT"};
-  const char *names_fr[] = {"ACCUEIL", "VIDÉOS", "TEXTURES", "ARÈNES", "CATCHEURS", "NOUVEAU", "FICHIERS", "À PROPOS"};
-  for (int i = 0; i < 8; ++i) {
+  const char *names_en[] = {"HOME",       "VIDEOS",     "TEXTURES",     "ARENAS", "SUPERSTARS",
+                            "NEW SUPERSTAR", "GAME FILES", "MY GAME DISCS", "ABOUT"};
+  const char *names_fr[] = {"ACCUEIL", "VIDÉOS",   "TEXTURES",   "ARÈNES",  "CATCHEURS",
+                            "NOUVEAU", "FICHIERS", "MES DISQUES", "À PROPOS"};
+  for (int i = 0; i < int(std::size(names_en)); ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
     if (BigButton(g_fr ? names_fr[i] : names_en[i], ImVec2(kSide - 32, 44), sel ? kGold : IM_COL32(28, 28, 32, 255),
@@ -311,6 +315,10 @@ void DrawUi() {
   case kStars: PageStars(); break;
   case kNewStar: PageNewStar(); break;
   case kFiles: PageFiles(); break;
+  case kDiscs:
+    Title(g_fr ? "MES DISQUES DE JEU" : "MY GAME DISCS");
+    g_discs.Draw(g_fr);
+    break;
   case kAbout: PageAbout(); break;
   }
   ImGui::EndChild();
@@ -348,6 +356,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   g_fr = g_toml.GetInt("user_language", 1) == 4;
   g_disc.Open(ExeDir());
   g_mods.Init(ExeDir() / "mods");
+  g_discs.Load(ExeDir() / "modmaker_discs.txt");
+  g_arenas.discs_ = &g_discs;
 
   WNDCLASSEXW wc{sizeof(wc)};
   wc.style = CS_CLASSDC;

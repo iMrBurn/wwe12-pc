@@ -31,6 +31,7 @@
 #include "port13.h"
 #include "port_svr_arena.h"
 #include "game_disc.h"
+#include "game_discs.h"
 #include "game_process.h"
 #include "imgui.h"
 #include "media.h"
@@ -453,8 +454,22 @@ class Page {
   // An arena of WWE '13: its folder (the game's, with pac/bg), then one of its arenas; it plays as the arena
   // chosen above (its base: the recipe takes a few files from it).
   void DrawPort13(bool fr) {
-    if (ImGui::Button(fr ? "Dossier de WWE '13..." : "WWE '13 folder...")) {
-      const fs::path p = PickFolder(fr);
+    // From My game discs (a game folder: WWE '13's files are read from the folder), else picked here.
+    fs::path from_discs;
+    if (w13_dir_.empty() && discs_ && !discs_tried_13_) {
+      discs_tried_13_ = true;
+      std::error_code ec;
+      from_discs = discs_->PathOf(0x545108B4);
+      if (!from_discs.empty() && !fs::is_directory(from_discs, ec)) {
+        port_note_ = fr ? "WWE '13 est un ISO dans MES DISQUES : pour l'instant, ses arènes se lisent depuis le "
+                          "dossier du jeu (ajoutez le dossier)."
+                        : "WWE '13 is an ISO in MY GAME DISCS: for now its arenas are read from the game's folder "
+                          "(add the folder).";
+        from_discs.clear();
+      }
+    }
+    if (ImGui::Button(fr ? "Dossier de WWE '13..." : "WWE '13 folder...") || !from_discs.empty()) {
+      const fs::path p = !from_discs.empty() ? from_discs : PickFolder(fr);
       if (!p.empty()) {
         w13_dir_ = fs::exists(p / "pac" / "bg") ? p : fs::exists(p / "bg") ? p.parent_path() : p;
         w13_list_.clear();
@@ -510,24 +525,34 @@ class Page {
 
   // An arena of SvR 2011 (its pac/bg/bgNN.pac); it plays as the arena chosen above (its base: the recipe takes the
   // ring, the crowd and the match lights from it).
+  // SvR 2011's ISO (or folder): its arenas listed by name.
+  void OpenSvr(bool fr, const fs::path &p) {
+    svr_list_.clear();
+    svr_pick_ = -1;
+    if (svr_disc_.OpenPath(p)) {
+      svr_game_ = p;
+      for (const auto &n : svr_disc_.List("pac/bg"))
+        if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
+            port_svr_arena::FindSvr(atoi(n.c_str() + 2)))
+          svr_list_.push_back(atoi(n.c_str() + 2));
+      std::sort(svr_list_.begin(), svr_list_.end());
+    }
+    port_note_ = svr_list_.empty() ? (fr ? "Pas d'arènes de SvR 2011 ici." : "No SvR 2011 arenas here.") : "";
+    port_ok_ = false;
+  }
+
   void DrawPortSvr(bool fr) {
-    // The game: its ISO (or its folder), whose arenas are listed by name; or one arena file.
+    // The game: from My game discs (page MES DISQUES), else its ISO (or its folder) picked here; or one arena file.
+    if (svr_game_.empty() && svr_path_.empty() && discs_ && !discs_tried_svr_) {
+      discs_tried_svr_ = true;
+      const fs::path p = discs_->PathOf(0x5451085D);
+      if (!p.empty())
+        OpenSvr(fr, p);
+    }
     if (ImGui::Button(fr ? "ISO ou dossier de SvR 2011..." : "SvR 2011 ISO or folder...")) {
       const fs::path p = PickGame(fr);
-      if (!p.empty()) {
-        svr_list_.clear();
-        svr_pick_ = -1;
-        if (svr_disc_.OpenPath(p)) {
-          svr_game_ = p;
-          for (const auto &n : svr_disc_.List("pac/bg"))
-            if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
-                port_svr_arena::FindSvr(atoi(n.c_str() + 2)))
-              svr_list_.push_back(atoi(n.c_str() + 2));
-          std::sort(svr_list_.begin(), svr_list_.end());
-        }
-        port_note_ = svr_list_.empty() ? (fr ? "Pas d'arènes de SvR 2011 ici." : "No SvR 2011 arenas here.") : "";
-        port_ok_ = false;
-      }
+      if (!p.empty())
+        OpenSvr(fr, p);
     }
     ImGui::SameLine();
     if (ImGui::Button(fr ? "Un fichier d'arène (bgNN.pac)..." : "One arena file (bgNN.pac)...")) {
@@ -1048,6 +1073,12 @@ class Page {
   Thumb banner_thumb_;
   std::vector<svrfmt::BundleTexture> game_banners_;
   const disc::GameDisc *disc_ = nullptr;
+
+ public:
+  const game_discs::Discs *discs_ = nullptr;  // My game discs (set by the Mod Maker)
+
+ private:
+  bool discs_tried_svr_ = false, discs_tried_13_ = false;
 
   fs::path other_path_;
   arena_edit::Arena other_;
