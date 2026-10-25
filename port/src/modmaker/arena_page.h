@@ -631,6 +631,11 @@ class Page {
       banner_custom_ = false;
       LoadBaseBanner();
     }
+    // Its transition video (evtmov.pac MOVT/M0NN: Bink 1 at 640 x 640, as WWE '12's).
+    Bytes evtmov;
+    if (svr_pick_ >= 0 && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&
+        port13::TransitionVideo(evtmov, svr_pick_, movie_))
+      port_note_ += fr ? " Avec sa transition." : " With its transition.";
     const std::string stem = svr_pick_ >= 0 ? port_svr_arena::FindSvr(svr_pick_)->name
                                             : media::Utf8(svr_path_.stem().wstring());
     snprintf(name_, sizeof(name_), "%s (SvR 2011)", stem.c_str());
@@ -949,7 +954,7 @@ class Page {
         entries.push_back({"arena/etex_hd.pac", etex_});
       if (mode_ == 3 && !load_.empty())  // its pre-match screen (LoadHD.pac LOAD/90NN)
         entries.push_back({"arena/load_hd.pac", load_});
-      if (mode_ == 3 && !movie_.empty())  // its transition video (evtmov.pac MOVT/M0NN)
+      if ((mode_ == 3 || mode_ == 4) && !movie_.empty())  // its transition video (evtmov.pac MOVT/M0NN)
         entries.push_back({"arena/transition.bik", movie_});
     } else {
       entries.push_back({"files/" + Path(), std::move(out)});

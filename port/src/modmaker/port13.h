@@ -313,7 +313,7 @@ inline bool PreMatch(const Bytes &loadhd13, int file, Bytes &out) {
 }
 
 // The arena's transition video in WWE '13's pac/evt/evtmov.pac: MOVT/M0NN, Bink 1 at 640 x 640 as WWE '12's (WWE '13's
-// titantron movies are Bink 2, not these), as stored.
+// titantron movies are Bink 2, not these), as stored. SvR 2011's evtmov.pac has the same MOVT group.
 inline bool TransitionVideo(const Bytes &evtmov13, int file, Bytes &out) {
   out.clear();
   svrfmt::Archive a;

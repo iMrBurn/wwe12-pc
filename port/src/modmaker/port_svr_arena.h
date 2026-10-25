@@ -9,8 +9,11 @@
 //  - its beam cones (objects 230-269 and 300-305) get WWE '12's background shaders, a third of their colour and the
 //    "entrances only" flag (50001): else a white glare covers the ring;
 //  - the ring (951-974 and 980, WWE '12's ropes) and its pictures, the light maps WWE '12's code looks up by name
-//    (fade_lightmap00 / 01: else a dark crowd), entry 30002 and the crowd (20000-20003, 20010)
-//    are the base arena's; SvR's extra ring pieces (957-967) are left out;
+//    (fade_lightmap00 / 01: else a dark crowd) and entry 30002 are the base arena's; SvR's extra ring pieces (957-967)
+//    are left out;
+//  - its own crowd (20000-20003, 20010): the people (models of the crowd packs 20000 / 20010) converted but NOT
+//    scaled (their bodies have the same size in both games: scaled, giants stood in front of the camera, v18), their
+//    place files (seats and areas, texts of the same packs) scaled 10 times; the base's crowd if a model can't be;
 //  - a big entry changed in a few places (the texture package) keeps Yuke's own packing (bpe_like::EncodeLike):
 //    an arena must not outgrow the shipped file of the arena it plays as.
 //  - the collision (995, 996, 997, 999) is the base's, as for WWE '13's arenas: SvR 2011's, in 10 cm, let the wrestlers
@@ -412,6 +415,43 @@ inline Bytes ScaleText(uint32_t id, const Bytes &d, float f) {
   return Join(lines);
 }
 
+// The crowd's place files (texts of the crowd packs 20000 / 20010): seats "A (x, z, y, w); count" (the four numbers)
+// and areas ("; R" / "; NR": rows of numbers, all of them) -> scaled. (WWE '12's seats are SvR 2011's times 10.)
+inline Bytes ScaleCrowdText(const Bytes &d, float f) {
+  auto lines = Lines(d);
+  const bool seats = std::any_of(lines.begin(), lines.end(), [](const std::string &l) {
+    return l.find('(') != std::string::npos && l.find(';') != 0;
+  });
+  for (auto &line : lines) {
+    const auto first = line.find_first_not_of(" \t");
+    if (first == std::string::npos || line[first] == ';' || line[first] == '{' || line[first] == '}')
+      continue;
+    if (seats) {
+      const size_t a = line.find('('), b = line.find(')');
+      if (a == std::string::npos || b == std::string::npos || b < a)
+        continue;
+      std::string inner = line.substr(a + 1, b - a - 1), r;
+      size_t q = 0;
+      for (int i = 0;; ++i) {
+        const size_t c = inner.find(',', q);
+        r += (i ? ", " : "") + Num(atof(inner.substr(q, c - q).c_str()) * f);
+        if (c == std::string::npos)
+          break;
+        q = c + 1;
+      }
+      line = line.substr(0, a + 1) + r + line.substr(b);
+    } else {
+      const auto w = Words(line);
+      std::string out;
+      for (size_t i = 0; i < w.size(); ++i)
+        out += (i ? "  " : "") + Num(atof(w[i].c_str()) * f);
+      const size_t end = line.find_last_not_of(" \t\r");
+      line = out + line.substr(end + 1);  // (its lines end "    \r\r\n": the end kept)
+    }
+  }
+  return Join(lines);
+}
+
 // 50001 (each object's flags): "e" (shown during events only: the entrances) on the given objects.
 inline Bytes EntranceOnly(const Bytes &d, const std::set<int> &objects) {
   auto lines = Lines(d);
@@ -656,6 +696,7 @@ inline bool Banner(const Bytes &matchhd, int file, svrfmt::Image &out) {
 struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
   int pictures_added = 0;           // ring and crowd pictures copied from the base
+  bool own_crowd = false;           // its own crowd (else the base's)
   int pictures_missing = 0;         // ... that found no free record in the package
   int fences = 0;                   // barricade pieces taken from the base
   float ramp_svr = 0, ramp12 = 0;   // the ramps' heights (cm)
@@ -683,8 +724,36 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
     return fail("unreadable arena list");
   PortInfo pi;
   const std::set<uint32_t> ring = {951, 952, 953, 956, 960, 964, 973, 974, 980};
-  std::set<uint32_t> from_base = {30002, 20000, 20001, 20002, 20003, 20010, 995, 996, 997, 999};
+  std::set<uint32_t> from_base = {30002, 995, 996, 997, 999};
   from_base.insert(ring.begin(), ring.end());
+  // Its own crowd: the people converted (not scaled), their places scaled; else the base's.
+  const std::set<uint32_t> crowd = {20000, 20001, 20002, 20003, 20010};
+  pi.own_crowd = true;
+  for (auto &k : ga.kids) {
+    if (k.id != 20000 && k.id != 20010)
+      continue;
+    if (!svrfmt::ArchiveExpand(k)) {
+      pi.own_crowd = false;
+      break;
+    }
+    for (auto &c : k.kids) {
+      const Bytes d = svrfmt::ArchiveData(c);
+      if (d.size() >= 4 && memcmp(d.data(), "JBOY", 4) == 0) {
+        Bytes m;
+        if (SvrToW12(d, m))
+          ReplaceLike(c, m);
+        else if (U32(d, 0x18) != 0) {  // (a model without meshes is the same in both games)
+          pi.own_crowd = false;
+          break;
+        }
+      } else if (svrfmt::ArchiveKindOf(c) == "text") {
+        ReplaceLike(c, ScaleCrowdText(d, 10));
+      }
+    }
+    svrfmt::ArchiveTouch(k);
+  }
+  if (!pi.own_crowd)
+    from_base.insert(crowd.begin(), crowd.end());
   const std::set<uint32_t> drop = {957, 958, 959, 961, 962, 963, 965, 966, 967};
   std::set<int> cones;
   for (int i = 230; i <= 269; ++i)
@@ -722,6 +791,8 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
     return false;
   };
   for (auto &k : ga.kids) {
+    if (pi.own_crowd && crowd.count(k.id))  // (done above)
+      continue;
     if (convert(convert, k, cones.count(int(k.id)) != 0))
       continue;
     const Bytes d = svrfmt::ArchiveData(k);
