@@ -692,6 +692,12 @@ places ×10, d'après le code de Kaiko).
   mods pour le même catcheur (l'un titantron, l'autre minitron) assemblés par le jeu ; catcheurs de WWE '13 ; page
   « Bibliothèque » qui liste ce qu'on peut importer des jeux du joueur (jamais de données distribuées).
 
+- **Vidéo d'entrée de SvR 2011 reprise (2026-10-25, compilé, pas encore essayé en jeu)** : à l'étape 4 de l'assistant
+  NOUVEAU, un catcheur venu de SvR 2011 propose « La sienne dans SvR 2011 (NNN.bik) » : `movies/titantron/NNN.bik` de
+  son jeu (disque de MES DISQUES, ou dossier du fichier choisi), même format que WWE '12 (Bink 1 `BIKi` 320 × 320),
+  copiée telle quelle en `superstar/titantron.bik`. Numéro de vidéo = numéro du catcheur (85 vidéos pour 94 catcheurs
+  dans SvR 2011 : les autres n'en ont pas à eux). WWE '13 et les 2K : vidéos en Bink 2 (`.bik2`), pas encore lues.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

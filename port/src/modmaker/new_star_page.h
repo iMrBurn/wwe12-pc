@@ -325,9 +325,39 @@ class Page {
     ImGui::TextWrapped("%s", fr ? "Le titantron et le minitron pendant son entrée : ceux de la base, ou les siens."
                                 : "The titantron and minitron during its entrance: the base's, or its own.");
     ImGui::BeginDisabled(movie_.Busy());
-    ImGui::Checkbox(fr ? "Sa propre vidéo d'entrée (sinon celle de la base)" : "Its own entrance video (else the base's)",
-                    &own_movie_);
+    if (ImGui::RadioButton(fr ? "Celle de la base" : "The base's", !own_movie_ && !svr_movie_))
+      own_movie_ = svr_movie_ = false;
+    // (SvR 2011's entrance movies are WWE '12's kind, Bink 1 at 320 x 320: taken as they are; WWE '13's and the 2K
+    // games' are Bink 2, not read yet)
+    if (look_ != 2)
+      svr_movie_ = false;  // (only with a look from SvR 2011)
+    if (look_ == 2 && !svr_movie_file_.empty()) {
+      ImGui::SameLine();
+      std::string file = media::Utf8(svr_movie_file_.filename().wstring());
+      if (file.rfind("game_", 0) == 0)  // (a copy out of the disc)
+        file.erase(0, 5);
+      char label[64];
+      snprintf(label, sizeof(label), fr ? "La sienne dans SvR 2011 (%s)" : "Its own in SvR 2011 (%s)", file.c_str());
+      if (ImGui::RadioButton(label, svr_movie_)) {
+        svr_movie_ = true;
+        own_movie_ = false;
+      }
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton(fr ? "Une vidéo à vous" : "One of yours", own_movie_)) {
+      own_movie_ = true;
+      svr_movie_ = false;
+    }
     ImGui::EndDisabled();
+    if (look_ == 2 && svr_movie_file_.empty() && !svr_attires_.empty())
+      ImGui::TextDisabled("%s", fr ? "(ce catcheur n'a pas de vidéo à lui dans SvR 2011)"
+                                   : "(this superstar has no movie of its own in SvR 2011)");
+    if (svr_movie_) {
+      ImGui::Dummy(ImVec2(0, 6));
+      ImGui::TextDisabled("%s", fr ? "Sa vidéo de SvR 2011, titantron et minitron, reprise telle quelle :"
+                                   : "Its SvR 2011 movie, titantron and minitron, taken as it is:");
+      svr_view_.DrawGame(200);
+    }
     if (own_movie_)
       movie_.Draw(fr, "ns_movie");
 
@@ -408,6 +438,17 @@ class Page {
     SetModel(look_ == 0 ? base_file_ : look_ == 1 ? other_ : ported_);
   }
 
+  // Its SvR 2011 entrance movie, kept only if it is a Bink 1 movie (WWE '12's kind).
+  void SetSvrMovie(const fs::path &m) {
+    char sig[3] = {};
+    if (!m.empty())
+      std::ifstream(m, std::ios::binary).read(sig, 3);
+    svr_movie_file_ = memcmp(sig, "BIK", 3) == 0 ? m : fs::path();
+    if (svr_movie_file_.empty())
+      svr_movie_ = false;
+    svr_view_.SetGame(device_, svr_movie_file_);
+  }
+
   void SetModel(const Bytes &m) {
     model_ = m;
     view_stale_ = true;
@@ -456,6 +497,13 @@ class Page {
                                                                                                     : -1;
     LoadSvrBytes(fr, p, ReadAll(p), number,
                  [&](const char *menu) { return ReadAll(p.parent_path().parent_path() / "menu" / menu); });
+    if (look_ == 2 && number >= 0) {
+      char movie[16];
+      snprintf(movie, sizeof(movie), "%03d.bik", number);
+      std::error_code ec;
+      const fs::path m = p.parent_path().parent_path().parent_path() / "movies" / "titantron" / movie;
+      SetSvrMovie(fs::exists(m, ec) ? m : fs::path());
+    }
   }
 
   // A superstar of the game chosen (SvR 2011 or WWE '13) from My game discs.
@@ -474,6 +522,11 @@ class Page {
       game_disc_.Read(std::string("pac/menu/") + menu, b);
       return b;
     });
+    if (look_ == 2) {
+      char movie[16];
+      snprintf(movie, sizeof(movie), "%03d.bik", number);
+      SetSvrMovie(media::CopyGameMovie(game_disc_, movie));
+    }
   }
 
   // The superstars of the game chosen: its pac/ch/chNNN.pac files, named from its pac/ch/chEtc.pac (the CHAR / DAT
@@ -540,6 +593,7 @@ class Page {
                     const std::function<Bytes(const char *)> &read_menu) {
     svr_path_ = p;
     svr_file_ = std::move(file);
+    SetSvrMovie({});
     svr_attires_.clear();
     svr_attire_ = 0;
     std::string why;
@@ -669,12 +723,14 @@ class Page {
     save_ = media::PickSave(fr, (file.empty() ? L"superstar" : file) + L".svrmod");
     if (save_.empty())
       return;
+    if (look_ != 2)
+      svr_movie_ = false;
     if (own_movie_) {
       made_ = media::TempDir() / L"made_new_superstar.bik";
       movie_.Start(made_);
       return;
     }
-    Write(fr, mods, {});
+    Write(fr, mods, svr_movie_ ? ReadAll(svr_movie_file_) : Bytes{});
   }
 
   void Finished(bool fr, mods::Manager &mods) {
@@ -705,7 +761,9 @@ class Page {
                  : look_ == 2 ? ", its look ported from SvR 2011 (the player's own file)"
                  : look_ == 1 ? ", with its own look"
                               : "") +
-                (movie.empty() ? "" : ", its own entrance video (" + movie_.Parts() + ")") +
+                (movie.empty()  ? ""
+                 : svr_movie_ ? ", its SvR 2011 entrance video"
+                              : ", its own entrance video (" + movie_.Parts() + ")") +
                 ", made with the WWE '12 Mod Maker.\n";
     std::vector<std::pair<std::string, Bytes>> entries = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())}};
     if (look_ != 0)
@@ -761,6 +819,9 @@ class Page {
   bool note_ok_ = false, message_ok_ = false;
   media::MovieEditor movie_;
   bool own_movie_ = false;
+  bool svr_movie_ = false;     // its SvR 2011 entrance movie, as it is
+  fs::path svr_movie_file_;    // that movie (a copy, or in the player's SvR 2011 folder), "" if it has none
+  media::MovieEditor svr_view_;  // (only its picture)
   fs::path save_, made_;
   Bytes portraits_[2][3];  // a WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
 };

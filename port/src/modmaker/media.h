@@ -98,6 +98,9 @@ class MovieEditor {
     MakePreview();
   }
 
+  // The game's movie's picture alone.
+  void DrawGame(float s) { Picture(game_tex_.Get(), s); }
+
   // The choices and the pictures. Returns nothing: Ready() says whether there is something to make.
   void Draw(bool fr, const char *id) {
     ImGui::PushID(id);
