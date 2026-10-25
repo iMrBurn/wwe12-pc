@@ -101,6 +101,7 @@ class Manager {
   // Installs a .svrmod made by the launcher itself (the entrance movie maker); the result shows in the list.
   void InstallFile(bool french, const fs::path &zip) { Install(french ? kFrench : kEnglish, zip); }
   const std::string &Message() const { return message_; }
+  const std::vector<Mod> &List() const { return list_; }
 
   // Writes a zip (entries stored, not compressed: the movies are compressed already).
   static bool WriteZip(const fs::path &file, const std::vector<std::pair<std::string, std::vector<uint8_t>>> &entries) {

@@ -192,6 +192,17 @@ class Page {
       ImGui::SameLine();
       ImGui::TextDisabled("%s %s", fr ? "taille d'origine :" : "shipped size:", Human(budget_).c_str());
     }
+    // Another added arena on the same base: the game keeps the VS screen it loaded while the stage number stays, so
+    // going from one to the other showed the first one's (seen with Vengeance and Royal Rumble of SvR 2011).
+    if (slot_ >= 0 && mode_ >= 3) {
+      const std::string other = SameBase(mods, kSlots[slot_].number);
+      if (!other.empty())
+        ImGui::TextColored(kRed, fr ? "« %s » joue déjà à la place de cette arène : choisis-en une autre (deux arènes "
+                                      "sur la même base montrent le même écran VS)."
+                                    : "\"%s\" already plays in place of this arena: choose another one (two arenas on "
+                                      "the same base show the same VS screen).",
+                           other.c_str());
+    }
     if (!error_.empty())
       ImGui::TextColored(kRed, "%s", error_.c_str());
     if (slot_ < 0 || budget_ == 0)
@@ -645,6 +656,29 @@ class Page {
                                             : media::Utf8(svr_path_.stem().wstring());
     snprintf(name_, sizeof(name_), "%s (SvR 2011)", stem.c_str());
     as_new_ = true;
+  }
+
+  // The name of an installed added arena (another one than this) playing in place of stage `base`, else "".
+  std::string SameBase(const mods::Manager &mods, int base) const {
+    for (const auto &m : mods.List()) {
+      if (m.type != "arena" || !m.on)
+        continue;
+      std::ifstream f(m.dir / "manifest.txt");
+      std::string line, slot, b, name;
+      while (std::getline(f, line)) {
+        if (!line.empty() && line.back() == '\r')
+          line.pop_back();
+        if (line.rfind("slot=", 0) == 0)
+          slot = line.substr(5);
+        else if (line.rfind("base=", 0) == 0)
+          b = line.substr(5);
+        else if (line.rfind("name=", 0) == 0)
+          name = line.substr(5);
+      }
+      if (slot == "new" && atoi(b.c_str()) == base && name != name_)
+        return name;
+    }
+    return {};
   }
 
   // An ISO (or a game folder).
