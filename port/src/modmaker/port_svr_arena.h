@@ -650,6 +650,55 @@ inline bool Banner(const Bytes &matchhd, int file, svrfmt::Image &out) {
   return false;
 }
 
+// The arena's VS screen ("match card") in SvR 2011's menu/MatchHD.pac, made into WWE '12's: SvR keeps its layout
+// (MENU/MnnL, entry 0: YXMLBIN VER0002, which WWE '12's reader still takes) apart from its pictures and animations
+// (MENU/MnnI, 7001 / 7002); WWE '12 has the three in MLYE/MBnn (7000-7002). The base's MLYE/MBnn (from WWE '12's
+// MatchHD.pac) takes SvR's three, as stored; its font MENU/MnnF is SvR's as stored (same layout: a picture pack and
+// the font's description, "name=font_wm.yfb"). The game serves them for the added arena (wwe12_arena_pages.cpp).
+inline bool Card(const Bytes &matchhd_svr, const Bytes &matchhd12, int file, int base, Bytes &mb, Bytes &mf) {
+  mb.clear();
+  mf.clear();
+  svrfmt::Archive s, w;
+  if (!svrfmt::ArchiveOpen(matchhd_svr, s, nullptr) || !svrfmt::ArchiveOpen(matchhd12, w, nullptr))
+    return false;
+  char nl[8], ni[8], nf[8], nb[8];
+  snprintf(nl, sizeof(nl), "M%02dL", file);
+  snprintf(ni, sizeof(ni), "M%02dI", file);
+  snprintf(nf, sizeof(nf), "M%02dF", file);
+  snprintf(nb, sizeof(nb), "MB%02d", base);
+  std::map<uint32_t, Bytes> parts;  // 7000 layout, 7001 pictures, 7002 animations (as stored)
+  for (auto &k : s.root.kids) {
+    if (k.group != "MENU")
+      continue;
+    if (k.name == nf)
+      mf = k.stored;
+    else if ((k.name == nl || k.name == ni) && svrfmt::ArchiveExpand(k))
+      for (const auto &c : k.kids)
+        parts[k.name == nl ? 7000 : c.id] = c.stored;
+  }
+  if (mf.empty() || !parts.count(7000) || !parts.count(7001) || !parts.count(7002))
+    return mb.clear(), mf.clear(), false;
+  for (auto &k : w.root.kids) {
+    if (k.group != "MLYE" || k.name != nb || !svrfmt::ArchiveExpand(k))
+      continue;
+    for (auto &c : k.kids)
+      if (parts.count(c.id)) {
+        c.stored = parts[c.id];
+        c.kind = svrfmt::ArcKind::Leaf;
+        c.kids.clear();
+        c.parsed = false;
+        c.dirty = true;
+      }
+    svrfmt::ArchiveTouch(k);
+    svrfmt::ArchiveTouch(w.root);
+    svrfmt::ArchiveSave(w);  // (rebuilds k.stored)
+    mb = k.stored;
+  }
+  if (mb.size() < 8 || memcmp(mb.data(), "PACH", 4) != 0 || memcmp(mf.data(), "PACH", 4) != 0)
+    return mb.clear(), mf.clear(), false;
+  return true;
+}
+
 struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
   int pictures_added = 0;           // ring and crowd pictures copied from the base

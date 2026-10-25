@@ -142,6 +142,7 @@ class Page {
  public:
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &disc, mods::Manager &mods) {
     device_ = device;
+    disc_ = &disc;  // (the ports read the game's menus as soon as an arena is chosen)
     ImGui::TextWrapped("%s", fr ? "Changez les images d'une arène (tapis, tabliers, bannières, rampe...) ou mettez un "
                                   "autre fichier d'arène à la place d'une arène du jeu. Le Mod Maker veille à la taille : "
                                   "une arène ne doit jamais dépasser celle qu'elle remplace."
@@ -627,6 +628,11 @@ class Page {
       banner_custom_ = false;
       LoadBaseBanner();
     }
+    // Its own VS screen, in the base's (WWE '12's MatchHD.pac).
+    Bytes matchhd12;
+    if (svr_pick_ >= 0 && !matchhd.empty() && disc_ && disc_->Read("pac/menu/MatchHD.pac", matchhd12) &&
+        port_svr_arena::Card(matchhd, matchhd12, svr_pick_, kSlots[slot_].number, card_mb_, card_mf_))
+      port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     const std::string stem = svr_pick_ >= 0 ? port_svr_arena::FindSvr(svr_pick_)->name
                                             : media::Utf8(svr_path_.stem().wstring());
     snprintf(name_, sizeof(name_), "%s (SvR 2011)", stem.c_str());
@@ -920,7 +926,7 @@ class Page {
         LoadBaseBanner();
       entries.push_back({"arena/arena.pac", std::move(out)});
       entries.push_back({"arena/banner.dds", svrfmt::DdsEncode(banner_, svrfmt::DxtFormat::kDxt5, false)});
-      if (mode_ == 3 && !card_mb_.empty()) {  // its own VS screen (MatchHD.pac MLYE/MBnn and MENU/MnnF)
+      if (mode_ >= 3 && !card_mb_.empty()) {  // its own VS screen (MatchHD.pac MLYE/MBnn and MENU/MnnF)
         entries.push_back({"arena/card_mb.pac", card_mb_});
         entries.push_back({"arena/card_mf.pac", card_mf_});
       }
