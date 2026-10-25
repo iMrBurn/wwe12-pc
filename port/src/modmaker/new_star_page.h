@@ -459,13 +459,14 @@ class Page {
     return Bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
   }
 
-  // A superstar file: an EPK8 of "EMD " entries named 000NNNAA.
-  static bool IsSuperstarFile(const Bytes &b, std::vector<std::string> *attires, std::string *why) {
+  // A superstar file: an EPK8 of "EMD " entries named 000NNNAA (another game's: any names, WWE 2K16's all "0001").
+  static bool IsSuperstarFile(const Bytes &b, std::vector<std::string> *attires, std::string *why,
+                              bool any_name = false) {
     svrfmt::Archive a;
     if (!svrfmt::ArchiveOpen(b, a, why))
       return false;
     for (const auto &k : a.root.kids) {
-      if (k.group != "EMD " || k.name.size() != 8) {
+      if (k.group != "EMD " || (k.name.size() != 8 && !any_name)) {
         if (why)
           *why = "not a superstar file (chNNN.pac)";
         return false;
@@ -655,7 +656,7 @@ class Page {
     svr_attires_.clear();
     svr_attire_ = 0;
     std::string why;
-    if (!IsSuperstarFile(svr_file_, &svr_attires_, &why)) {
+    if (!IsSuperstarFile(svr_file_, &svr_attires_, &why, true)) {
       svr_attires_.clear();
       note_ok_ = false;
       note_ = (fr ? "Fichier refusé : " : "File refused: ") + why;
@@ -666,6 +667,8 @@ class Page {
     for (auto &hd : portraits_)
       for (auto &b : hd)
         b.clear();
+    if (svr_attires_.empty())
+      return;  // (the refusal stays shown)
     if (look_ == 2 && number >= 0)
       SvrPortraits(fr, number, read_pac);
     // WWE '13: its game's pac\menu\menuHD.pac / menuSD.pac (the same pictures as WWE '12's).
@@ -823,7 +826,7 @@ class Page {
     note_ = b;
     if (!portraits_[1][0].empty())
       note_ += look_ == 2 ? (fr ? " Ses portraits de SvR 2011 viendront avec lui." : " Its SvR 2011 portraits come with it.")
-                          : (fr ? " Ses portraits de WWE '13 viendront avec lui." : " Its WWE '13 portraits come with it.");
+                          : (fr ? " Ses portraits viendront avec lui." : " Its portraits come with it.");
     SetModel(ported_);
   }
 
