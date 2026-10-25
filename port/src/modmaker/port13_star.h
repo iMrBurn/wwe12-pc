@@ -4,7 +4,9 @@
 //  - its skeleton has two more bones (L_Thigh_u, R_Thigh_u, children of the pelvis) and a slightly different order:
 //    the nodes are put in the base's order by name (the game's animations know WWE '12's), the two extra ones left
 //    out and their weights given to the thigh (Bip L / R Thigh); every mesh palette follows;
-//  - the eyelashes are entry 20002 (WWE '12: 20000), the same way;
+//  - the eyelashes are entry 20002 (WWE '12: 20000), the same way; the hair (10000, on the head's bones) replaces the
+//    base's (whose spring bones, kami_*, stay in its node list unused); without hair of its own, the base's goes with
+//    its springs (60, 61): else it wears WWE '13's pictures (blocks of hair, seen on Jericho over Ziggler);
 //  - entry 110 (animations WWE '12 doesn't have) is left out; the base keeps its own engine data (40, 50, 80, 100,
 //    40000-40040): the model, its pictures (10) and colour and masks (12-14) are WWE '13's.
 #pragma once
@@ -93,16 +95,28 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
         return &k;
     return nullptr;
   };
-  // The body (0) and the eyelashes (WWE '13: 20002, WWE '12: 20000).
-  for (const auto &[from, to] : std::vector<std::pair<uint32_t, uint32_t>>{{0, 0}, {20002, 20000}}) {
+  // The body (0), the hair (10000) and the eyelashes (WWE '13: 20002, WWE '12: 20000).
+  for (const auto &[from, to] : std::vector<std::pair<uint32_t, uint32_t>>{{0, 0}, {10000, 10000}, {20002, 20000}}) {
     svrfmt::ArcNode *s = child(w13, from), *b = child(base, to);
     if (!s && from == 20002)
       s = child(w13, 20000);
-    if (!s || !b) {
-      if (from == 0)
-        return fail("no model in the attire");
+    if (from == 0 && (!s || !b))
+      return fail("no model in the attire");
+    if (from == 10000 && !s && b) {
+      // No hair of its own: the base's would wear WWE '13's pictures. It goes, with its springs (60, 61).
+      for (size_t i = base.kids.size(); i-- > 0;)
+        if (base.kids[i].id == 10000 || base.kids[i].id == 60 || base.kids[i].id == 61)
+          svrfmt::ArchiveRemove(base, i);
       continue;
     }
+    if (from == 10000 && s && !b) {  // (the base is bald: its hair as it is, on the head's bones)
+      std::string e;
+      if (!svrfmt::ArchiveAdd(base, "", "", 10000, svrfmt::ArchiveData(*s), &e))
+        return fail("can't add the hair: " + e);
+      continue;
+    }
+    if (!s || !b)
+      continue;
     svrfmt::Model ms, mb;
     std::string e;
     if (!svrfmt::JboyRead(svrfmt::ArchiveData(*s), ms, &e) || !svrfmt::JboyRead(svrfmt::ArchiveData(*b), mb, &e))
