@@ -61,6 +61,9 @@ void Wwe12KbdInit(rex::ui::Window* window);  // wwe12_kbd.cpp: keyboard typing i
 void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
 void Wwe12CheckDiscVersion(const std::filesystem::path& user_data_root);  // wwe12_disc.cpp
 void Wwe12ImportSaves(const std::filesystem::path& user_data_root);  // wwe12_saves.cpp
+#if defined(__ANDROID__)
+void Wwe12AndroidCaptureStderr();  // android/wwe12_android.cpp: plume's errors into the log
+#endif
 
 class Wwe12App : public rex::ReXApp {
  public:
@@ -75,6 +78,9 @@ class Wwe12App : public rex::ReXApp {
   // GPU Xenos émulé par défaut ; --gpu_plugin=<nom> permet d'en choisir un autre,
   // et --gpu_backend=d3d12|vulkan le backend de rendu.
   void OnPreSetup(rex::RuntimeConfig& config) override {
+#if defined(__ANDROID__)
+    Wwe12AndroidCaptureStderr();
+#endif
     if (REXCVAR_GET(wwe12_precise_timer)) {
       bd::EnableHighResTimer();
       REXLOG_INFO("Horloge Windows : précision 1 ms");

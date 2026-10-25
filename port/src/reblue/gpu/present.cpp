@@ -29,6 +29,7 @@
 #include "gpu/constant_buffers.h"
 #include "gpu/output.h"
 #include "gpu/settings.h"
+#include "platform/platform.h"
 
 bool Wwe12LoadTurboSkipPresent();  // native/wwe12_load_turbo.cpp
 
@@ -78,6 +79,47 @@ void AbandonFrame(VideoState &s, std::unique_lock<std::mutex> &lock) {
   DrainSlot(s, reclaimed);
 }
 
+// Resizes the swap chain to the window (fences already waited, framebuffers cleared).
+bool ResizeSwapChain(VideoState &s) {
+  if (s.swap_chain->resize() && BuildFramebuffers(s) && BuildPresentSemaphores(s))
+    return true;
+  if (!s.swap_chain->getWidth() || !s.swap_chain->getHeight())
+    return false;  // window minimized or not shown yet: not an error
+  BD_ERROR("Swap chain resize failed");
+#if defined(__ANDROID__) && !defined(REBLUE_D3D12)
+  // Android may give the activity a new window (Retroid Pocket 6, portrait panel turned to
+  // landscape: GitHub issue #21): the Vulkan surface still points at the old one and every
+  // resize fails, a black screen with the game running behind. Build the swap chain again,
+  // surface included, on the current window. The old one goes first: Android lets only one
+  // swap chain hold a window. At most once a second.
+  static std::chrono::steady_clock::time_point s_last_try{};
+  const auto now = std::chrono::steady_clock::now();
+  if (now - s_last_try < std::chrono::seconds(1))
+    return false;
+  s_last_try = now;
+  plume::RenderWindow window{};
+  if (!bd::platform::GetNativeRenderWindow(nullptr, window))
+    return false;
+  s.framebuffers.clear();
+  s.swap_chain.reset();
+  plume::RenderSwapChainDesc desc(window, kSwapChainFormat, kNumFrames + 1, false, kNumFrames);
+  s.swap_chain = s.queue->createSwapChain(desc);
+  if (s.swap_chain)
+    s.swap_chain->resize();
+  if (!s.swap_chain || s.swap_chain->isEmpty() || !BuildFramebuffers(s) ||
+      !BuildPresentSemaphores(s)) {
+    BD_ERROR("Swap chain rebuilt on the current Android window: failed");
+    s.framebuffers.clear();
+    return false;
+  }
+  BD_INFO("Swap chain rebuilt on the current Android window ({}x{})", s.swap_chain->getWidth(),
+          s.swap_chain->getHeight());
+  return true;
+#else
+  return false;
+#endif
+}
+
 void RebuildSwapChain(VideoState &s) {
   SubmitOpenListLocked(s);
   for (u32 i = 0; i < kNumFrames; ++i) {
@@ -87,12 +129,8 @@ void RebuildSwapChain(VideoState &s) {
     }
   }
   s.framebuffers.clear();
-  if (!s.swap_chain->resize() || !BuildFramebuffers(s) ||
-      !BuildPresentSemaphores(s)) {
-    if (s.swap_chain->getWidth() && s.swap_chain->getHeight())
-      BD_ERROR("Swap chain resize failed");
+  if (!ResizeSwapChain(s))
     return;
-  }
   if (static_cast<AspectMode>(Settings::Get().AspectRatio()) ==
       AspectMode::Auto)
     Output::Recompute();
@@ -474,11 +512,7 @@ void Video::PresentOverlayFrame() {
       }
     }
     s.framebuffers.clear();
-    if (!s.swap_chain->resize() || !BuildFramebuffers(s) ||
-        !BuildPresentSemaphores(s)) {
-      if (s.swap_chain->getWidth() && s.swap_chain->getHeight())
-        BD_ERROR("Swap chain resize failed");
-    }
+    ResizeSwapChain(s);
   }
   if (s.framebuffers.empty())
     return;
