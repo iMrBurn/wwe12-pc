@@ -702,6 +702,12 @@ places ×10, d'après le code de Kaiko).
   copiée telle quelle en `superstar/titantron.bik`. Numéro de vidéo = numéro du catcheur (85 vidéos pour 94 catcheurs
   dans SvR 2011 : les autres n'en ont pas à eux). WWE '13 et les 2K : vidéos en Bink 2 (`.bik2`), pas encore lues.
 
+- **Portraits de SvR 2011 (2026-10-25, compilé, vérifié hors du jeu)** : un catcheur porté de SvR 2011 emporte ses
+  portraits : `pac\DLC_HD.pac` / `DLC_SD.pac` de SvR (pas `menu\menuHD.pac`, qui n'a que des `RSCP/4NNN` 256 × 256),
+  `SSFA` / `SSFB` / `SSFC` « NNNN », DXT5 sans mips comme ceux de WWE '12. HD et `SSFC` repris tels quels ; `SSFA` /
+  `SSFB` SD refaits depuis les HD (SvR les range en 256 × 512, WWE '12 en 512 × 256 : l'image HD écrasée en hauteur).
+  Cadrage un peu plus large que WWE '12 (jusqu'aux genoux). Les six ou aucun (sinon ceux de la base).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

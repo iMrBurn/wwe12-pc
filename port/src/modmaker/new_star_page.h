@@ -496,7 +496,7 @@ class Page {
     const int number = stem.size() > 2 && _strnicmp(stem.c_str(), "ch", 2) == 0 && isdigit(stem[2]) ? atoi(stem.c_str() + 2)
                                                                                                     : -1;
     LoadSvrBytes(fr, p, ReadAll(p), number,
-                 [&](const char *menu) { return ReadAll(p.parent_path().parent_path() / "menu" / menu); });
+                 [&](const char *rel) { return ReadAll(p.parent_path().parent_path() / rel); });  // (pac\ch\..)
     if (look_ == 2 && number >= 0) {
       char movie[16];
       snprintf(movie, sizeof(movie), "%03d.bik", number);
@@ -517,9 +517,9 @@ class Page {
       return;
     }
     disc_pick_ = number;
-    LoadSvrBytes(fr, game_path_ / rel, std::move(file), number, [&](const char *menu) {
+    LoadSvrBytes(fr, game_path_ / rel, std::move(file), number, [&](const char *in_pac) {
       Bytes b;
-      game_disc_.Read(std::string("pac/menu/") + menu, b);
+      game_disc_.Read(std::string("pac/") + in_pac, b);
       return b;
     });
     if (look_ == 2) {
@@ -648,7 +648,7 @@ class Page {
   }
 
   void LoadSvrBytes(bool fr, const fs::path &p, Bytes file, int number,
-                    const std::function<Bytes(const char *)> &read_menu) {
+                    const std::function<Bytes(const char *)> &read_pac) {  // (a file of its game's pac folder)
     svr_path_ = p;
     svr_file_ = std::move(file);
     SetSvrMovie({});
@@ -662,18 +662,20 @@ class Page {
     } else {
       note_.clear();
     }
-    // A WWE '13 superstar's portraits: its game's pac\menu\menuHD.pac / menuSD.pac, SSFA/SSFB/SSFC "NNNN" (the
-    // same pictures as WWE '12's).
+    // Its portraits, SSFA/SSFB/SSFC "NNNN" as WWE '12's (DXT5, no mips; HD 512 x 512, 512 x 512, 256 x 256).
     for (auto &hd : portraits_)
       for (auto &b : hd)
         b.clear();
+    if (look_ == 2 && number >= 0)
+      SvrPortraits(fr, number, read_pac);
+    // WWE '13: its game's pac\menu\menuHD.pac / menuSD.pac (the same pictures as WWE '12's).
     if (look_ == 3 && number >= 0) {
       char name[8];
       snprintf(name, sizeof(name), "%04d", number);
       int found = 0;
       for (int hd = 0; hd < 2; ++hd) {
         svrfmt::Archive m;
-        if (!svrfmt::ArchiveOpen(read_menu(hd ? "menuHD.pac" : "menuSD.pac"), m, nullptr))
+        if (!svrfmt::ArchiveOpen(read_pac(hd ? "menu/menuHD.pac" : "menu/menuSD.pac"), m, nullptr))
           continue;
         for (const auto &k : m.root.kids)
           if (k.name == name && k.group.size() == 4 && k.group.compare(0, 3, "SSF") == 0 && k.group[3] >= 'A' &&
@@ -687,6 +689,39 @@ class Page {
         note_ = fr ? "Ses portraits de WWE '13 viendront avec lui." : "Its WWE '13 portraits come with it.";
       }
     }
+  }
+
+  // A SvR 2011 superstar's portraits: pac\DLC_HD.pac / DLC_SD.pac, SSFA/SSFB/SSFC "NNNN", WWE '12's pictures but for
+  // SD's SSFA / SSFB (SvR 256 x 512, WWE '12 512 x 256, the HD picture squeezed): those made from the HD ones.
+  void SvrPortraits(bool fr, int number, const std::function<Bytes(const char *)> &read_pac) {
+    char name[8];
+    snprintf(name, sizeof(name), "%04d", number);
+    for (int hd = 0; hd < 2; ++hd) {
+      svrfmt::Archive m;
+      if (!svrfmt::ArchiveOpen(read_pac(hd ? "DLC_HD.pac" : "DLC_SD.pac"), m, nullptr))
+        continue;
+      for (const auto &k : m.root.kids)
+        if (k.name == name && k.group.size() == 4 && k.group.compare(0, 3, "SSF") == 0 && k.group[3] >= 'A' &&
+            k.group[3] <= 'C')
+          portraits_[hd][k.group[3] - 'A'] = svrfmt::ArchiveData(k);
+    }
+    for (int k = 0; k < 2; ++k) {
+      portraits_[0][k].clear();
+      svrfmt::Image img;
+      if (!portraits_[1][k].empty() && svrfmt::DdsDecode(portraits_[1][k], img))
+        portraits_[0][k] = svrfmt::DdsEncode(svrfmt::Resize(img, 512, 256), svrfmt::DxtFormat::kDxt5, false);
+    }
+    // (all six, or none: the base's then)
+    for (const auto &hd : portraits_)
+      for (const auto &b : hd)
+        if (b.empty()) {
+          for (auto &h : portraits_)
+            for (auto &x : h)
+              x.clear();
+          return;
+        }
+    note_ok_ = true;
+    note_ = fr ? "Ses portraits de SvR 2011 viendront avec lui." : "Its SvR 2011 portraits come with it.";
   }
 
   // The SvR 2011 or WWE '13 attire over the base's first attire (port_svr.h, port13_star.h), made to fit that
@@ -730,8 +765,9 @@ class Page {
                               : "Ported: %d meshes converted (the new superstar's attire 1).",
              look_ == 3 ? rep13.meshes : rep.meshes);
     note_ = b;
-    if (look_ == 3 && !portraits_[1][0].empty())
-      note_ += fr ? " Ses portraits de WWE '13 viendront avec lui." : " Its WWE '13 portraits come with it.";
+    if (!portraits_[1][0].empty())
+      note_ += look_ == 2 ? (fr ? " Ses portraits de SvR 2011 viendront avec lui." : " Its SvR 2011 portraits come with it.")
+                          : (fr ? " Ses portraits de WWE '13 viendront avec lui." : " Its WWE '13 portraits come with it.");
     SetModel(ported_);
   }
 
@@ -830,7 +866,7 @@ class Page {
       entries.push_back({"superstar/look.txt", Bytes{'b', 'a', 's', 'e', '\n'}});  // (a mod needs a superstar/ file)
     if (!movie.empty())
       entries.push_back({"superstar/titantron.bik", movie});
-    if (look_ == 3)  // (its WWE '13 portraits)
+    if (look_ >= 2)  // (its SvR 2011 / WWE '13 portraits)
       for (int hd = 0; hd < 2; ++hd)
         for (int k = 0; k < 3; ++k)
           if (!portraits_[hd][k].empty())
@@ -881,7 +917,7 @@ class Page {
   fs::path svr_movie_file_;    // that movie (a copy, or in the player's SvR 2011 folder), "" if it has none
   media::MovieEditor svr_view_;  // (only its picture)
   fs::path save_, made_;
-  Bytes portraits_[2][3];  // a WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
+  Bytes portraits_[2][3];  // a SvR 2011 / WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
 };
 
 }  // namespace new_star_page
