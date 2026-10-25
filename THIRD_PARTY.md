@@ -11,6 +11,7 @@ shaders extraits, code généré) n'est incluse dans ce dépôt ni dans ses vers
 | [re:Blue](https://github.com/zolaware/reblue) | cœur du rendu natif (`port/src/reblue`) | BSD 3 clauses (`port/src/reblue/LICENSE.reblue`) |
 | [plume](https://github.com/zolaware/plume) | couche Vulkan du rendu natif | MIT |
 | [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler) | compilation HLSL → DXIL / SPIR-V | MIT (LLVM : Apache 2.0 avec exception LLVM) |
+| [libadrenotools](https://github.com/bylaws/libadrenotools) + [liblinkernsbypass](https://github.com/bylaws/liblinkernsbypass) | version Android : chargement d'un pilote Vulkan personnalisé (Turnip) | BSD 2 clauses (Billy Laws) |
 
 Modifications locales appliquées par `setup.ps1` :
 

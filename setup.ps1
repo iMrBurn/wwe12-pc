@@ -77,6 +77,10 @@ Get-PinnedRepo "https://github.com/zolaware/plume.git" (Join-Path $Root "recomp\
 $plumeAndroid = Join-Path $Root "port\patches\plume-android.patch"
 cmd /c "git -C `"$(Join-Path $Root 'recomp\plume')`" apply --reverse --check `"$plumeAndroid`" 2>nul"
 if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume") apply --whitespace=nowarn $plumeAndroid }
+# Puis : pilote Vulkan personnalisé (Turnip) choisi dans le launcher Android (port/src/android/wwe12_driver.cpp).
+$plumeDriver = Join-Path $Root "port\patches\plume-android-driver.patch"
+cmd /c "git -C `"$(Join-Path $Root 'recomp\plume')`" apply --reverse --check `"$plumeDriver`" 2>nul"
+if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume") apply --whitespace=nowarn $plumeDriver }
 Get-PinnedRepo "https://github.com/zolaware/reblue-XenosRecomp.git" `
     (Join-Path $Root "recomp\reblue-XenosRecomp") "339af41" `
     (Join-Path $Root "port\patches\xenosrecomp-reblue-wwe12.patch")  # patch reblue + adaptations WWE '12

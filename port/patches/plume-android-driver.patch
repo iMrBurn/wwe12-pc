@@ -1,0 +1,42 @@
+diff --git a/plume_vulkan.cpp b/plume_vulkan.cpp
+index ecc274f..261398d 100644
+--- a/plume_vulkan.cpp
++++ b/plume_vulkan.cpp
+@@ -28,6 +28,12 @@
+ #   define VULKAN_OBJECT_NAMES_ENABLED
+ #endif
+ 
++#if defined(__ANDROID__)
++#   include <dlfcn.h>
++// Handle of a custom Vulkan driver to use instead of the system libvulkan.so, or null.
++extern "C" void *wwe12_custom_vulkan_driver() __attribute__((weak));
++#endif
++
+ // TODO:
+ // - Fix resource pools.
+ 
+@@ -4507,7 +4513,24 @@ namespace plume {
+     // VulkanInterface
+ 
+     VulkanInterface::VulkanInterface() {
++#if defined(__ANDROID__)
++        // WWE '12 Android: a custom Vulkan driver (Mesa Turnip...) chosen by the player, loaded by
++        // the app (port/src/android/wwe12_driver.cpp, weak: absent = the phone's own driver).
++        VkResult res = VK_ERROR_INITIALIZATION_FAILED;
++        void *customDriver = wwe12_custom_vulkan_driver ? wwe12_custom_vulkan_driver() : nullptr;
++        if (customDriver != nullptr) {
++            auto getInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(customDriver, "vkGetInstanceProcAddr"));
++            if (getInstanceProcAddr != nullptr) {
++                volkInitializeCustom(getInstanceProcAddr);
++                res = VK_SUCCESS;
++            }
++        }
++        if (res != VK_SUCCESS) {
++            res = volkInitialize();
++        }
++#else
+         VkResult res = volkInitialize();
++#endif
+         if (res != VK_SUCCESS) {
+             fprintf(stderr, "volkInitialize failed with error code 0x%X.\n", res);
+             return;

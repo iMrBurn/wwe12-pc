@@ -32,6 +32,7 @@ import java.io.RandomAccessFile;
 
 public class LauncherActivity extends Activity {
     static final int PICK_ISO = 1;
+    static final int PICK_DRIVER = 2;
     static final int YELLOW = Color.rgb(240, 191, 61);   // same accent as the PC launcher
     static final int BG = Color.rgb(17, 17, 17);
     static final int PANEL = Color.rgb(32, 32, 32);
@@ -40,6 +41,7 @@ public class LauncherActivity extends Activity {
     SharedPreferences prefs;
     TextView gameStatus;
     TextView controllerStatus;   // which controller the game will use (hides the on-screen buttons)
+    LinearLayout driverBox;      // GPU DRIVER panel content, rebuilt after import / delete
     Button forget;
 
     @Override
@@ -121,6 +123,10 @@ public class LauncherActivity extends Activity {
         set.addView(toggle("60 fps in entrances (heavier)", "wwe12_60fps"));
 
         // Controls (app settings, not wwe12.toml)
+        // GPU driver: the phone's own, or a custom one (Turnip...) imported from a .zip
+        driverBox = panel(root, "GPU DRIVER");
+        buildDriverPanel();
+
         LinearLayout ctl = panel(root, "CONTROLS");
         final CheckBox touch = new CheckBox(this);
         touch.setText("On-screen buttons (hidden while a controller is connected)");
@@ -284,6 +290,90 @@ public class LauncherActivity extends Activity {
         }
     }
 
+    // ---- GPU driver ----------------------------------------------------------------------------
+
+    void buildDriverPanel() {
+        driverBox.removeAllViews();
+        final java.util.List<DriverManager.Driver> drivers = DriverManager.list(this);
+        driverBox.addView(text("GPU: " + gpuName(), 12, Color.LTGRAY, false));
+        if (gpuLooksUnsupported())
+            driverBox.addView(text("This GPU looks like a Mali / Tensor / Exynos chip: the game may show a black screen"
+                    + " on it, even with a custom driver (custom drivers only exist for Snapdragon / Adreno).",
+                    12, Color.rgb(255, 140, 90), false));
+        driverBox.addView(text("Driver used by the game", 13, Color.LTGRAY, false));
+
+        final String[] ids = new String[drivers.size() + 1];
+        String[] names = new String[drivers.size() + 1];
+        ids[0] = "";
+        names[0] = "System driver (default)";
+        String current = prefs.getString(DriverManager.PREF_SELECTED, "");
+        int sel = 0;
+        for (int i = 0; i < drivers.size(); i++) {
+            ids[i + 1] = drivers.get(i).id;
+            names[i + 1] = drivers.get(i).toString();
+            if (drivers.get(i).id.equals(current)) sel = i + 1;
+        }
+        Spinner s = new Spinner(this);
+        ArrayAdapter<String> a = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, names) {
+            @Override
+            public View getView(int pos, View convert, android.view.ViewGroup parent) {
+                View v = super.getView(pos, convert, parent);
+                ((TextView) v).setTextColor(Color.WHITE);
+                return v;
+            }
+        };
+        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        s.setAdapter(a);
+        s.setSelection(sel);
+        s.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                DriverManager.select(LauncherActivity.this, ids[pos]);
+            }
+            public void onNothingSelected(AdapterView<?> p) {}
+        });
+        driverBox.addView(s);
+
+        Button imp = button("IMPORT DRIVER (.zip)", false);
+        imp.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                startActivityForResult(i, PICK_DRIVER);
+            }
+        });
+        driverBox.addView(imp);
+
+        if (sel > 0) {
+            final String id = ids[sel];
+            Button del = button("DELETE THIS DRIVER", false);
+            del.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    DriverManager.remove(LauncherActivity.this, id);
+                    buildDriverPanel();
+                }
+            });
+            driverBox.addView(del);
+        }
+        driverBox.addView(text("If the game shows a black screen, try a recent Turnip driver (Adreno only). "
+                + "Takes effect at the next PLAY. The log tells which driver was really used.", 12, Color.GRAY, false));
+    }
+
+    static String gpuName() {
+        String soc = android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : "";
+        return android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL
+                + " (" + android.os.Build.HARDWARE + (soc.isEmpty() || soc.equals("unknown") ? "" : ", " + soc) + ")";
+    }
+
+    // Best guess from the chip name: Java cannot ask Vulkan directly. Only used for a hint.
+    static boolean gpuLooksUnsupported() {
+        String soc = android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MODEL : "";
+        String s = (android.os.Build.HARDWARE + " " + soc + " " + android.os.Build.BOARD).toLowerCase();
+        return s.contains("exynos") || s.contains("s5e") || s.contains("tensor") || s.contains("gs101")
+                || s.contains("gs201") || s.contains("zuma") || s.contains("mt6") || s.contains("mt8")
+                || s.contains("mediatek") || s.contains("kirin") || s.contains("unisoc");
+    }
+
     // ---- Game --------------------------------------------------------------------------------
 
     void pickIso() {
@@ -298,6 +388,17 @@ public class LauncherActivity extends Activity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == PICK_DRIVER && result == RESULT_OK && data != null && data.getData() != null) {
+            try {
+                String id = DriverManager.importZip(this, data.getData());
+                DriverManager.select(this, id);
+                Toast.makeText(this, "Driver imported and selected.", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            buildDriverPanel();
+            return;
+        }
         if (request != PICK_ISO || result != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         try {

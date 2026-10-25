@@ -31,6 +31,12 @@ New-Item -ItemType Directory -Force "$Out\classes", "$Out\dex", "$Out\lib\$Abi",
 # 1. Bibliothèques natives (symboles de débogage retirés : l'APK reste raisonnable).
 $libs = @("$GameBuild\libwwe12.so", "$GameBuild\librexgpu-xenos.so", "$SdkOut\librexruntime.so",
           "$Llvm\sysroot\usr\lib\$triple\libc++_shared.so")
+# Bibliothèques « hook » de libadrenotools (pilotes Turnip, port/cmake/android.cmake), quand le jeu
+# a été compilé avec : de vrais fichiers dans le dossier lib de l'appli, chargés par leur chemin.
+$hooks = "$GameBuild\adrenotools\src\hook"
+foreach ($h in "libhook_impl.so", "libmain_hook.so", "libfile_redirect_hook.so", "libgsl_alloc_hook.so") {
+    if (Test-Path "$hooks\$h") { $libs += "$hooks\$h" }
+}
 foreach ($l in $libs) {
     if (-not (Test-Path $l)) { throw "manquant : $l (compiler d'abord le SDK et le jeu pour $Abi)" }
     Run "$Llvm\bin\llvm-strip.exe" --strip-debug $l -o "$Out\lib\$Abi\$(Split-Path $l -Leaf)"

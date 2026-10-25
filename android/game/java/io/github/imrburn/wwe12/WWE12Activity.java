@@ -61,6 +61,8 @@ public class WWE12Activity extends SDLActivity {
         } catch (Exception e) {
             Log.e(TAG, "setenv failed", e);
         }
+        // Custom GPU driver chosen in the launcher (none = the phone's own driver).
+        DriverManager.exportEnvironment(context);
     }
 
     static void copyAssetIfMissing(Context context, String name, File out) {
