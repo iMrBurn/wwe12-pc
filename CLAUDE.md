@@ -290,6 +290,13 @@ compilation à la fois ; rien n'est poussé sauf par la Main avec le « go » de
   `port/src/android/wwe12_touch.cpp`). **Clé de signature `D:\Android\keys\wwe12-android.jks` : à sauvegarder**
   (sans elle, plus de mise à jour possible sans désinstaller, donc perte des sauvegardes des joueurs).
   Reste : optimisations (mesures des testeurs), QUITTER du menu, icônes PS, boutons déplaçables, traces de plantage.
+  **2026-10-24/25 (alpha 2 publiée, alpha 3 en préparation)** : ARMv8.2, boucles à vide corrigées
+  (`rexglue-sdk-android2-cpu.patch`), écran noir après arrière-plan / Retroid #21 (`present.cpp` garde une
+  référence sur la fenêtre Android et refait la swap chain), stderr dans le journal, pilotes Turnip
+  (libadrenotools dans `recomp/libadrenotools`, `plume-android-driver.patch`, `wwe12_driver.cpp`), cache
+  `VkPipelineCache` sur disque (`plume-android-cache.patch`). **Pour la Main / le PC** : nouveau patch SDK
+  `rexglue-sdk-thread-name.patch` (course sur le nom d'un thread au démarrage, plantage possible aussi sur
+  PC) : recompiler le SDK PC avant la prochaine version PC. Testeurs : `work/android/reports/`.
 
 - **Version vraiment native de WWE '12 (souhait de l'utilisateur, 2026-10-21, long terme, après la 1.1)** :
   aujourd'hui le jeu est recompilé automatiquement (le C++ de `port/generated` est illisible et ne se
