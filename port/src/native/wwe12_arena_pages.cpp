@@ -618,7 +618,7 @@ REX_EXTERN(__imp__sub_825A6A98);  // arena select: draw (every frame)
 REX_EXTERN(__imp__sub_825A3318);  // arena select: is this stage available (this, stage)
 REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
-REX_EXTERN(__imp__sub_82780948);  // matchup screen: load the VS screen of a stage (this + 768, stage)
+REX_EXTERN(__imp__sub_827D8B48);  // snprintf (buffer, size, format, ...)
 REX_EXTERN(sub_82A8C070);         // XInputGetState(user, state) (hooked by wwe12_intros.cpp: call the hooked one)
 
 namespace {
@@ -744,11 +744,14 @@ extern "C" REX_FUNC(sub_825A56C8) {
 
 // The VS screen of an added arena with its own: asked as /MLYE/MB<its made-up stage> (the directory below answers it
 // with its base's entry and its own data). The game keeps a loaded VS screen by its name: under the base's name, the
-// first added arena's (or the base's) stayed when another one of the same base was chosen.
-extern "C" REX_FUNC(sub_82780948) {
-  if (g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units && ctx.r4.u32 == g_added[size_t(g_chosen)].base)
-    ctx.r4.u64 = kFirstAdded + u32(g_chosen);
-  __imp__sub_82780948(ctx, base);
+// first added arena's (or the base's) stayed when another one of the same base was chosen. Its name is made by
+// snprintf from "/MLYE/MB%02d" (0x82043824; matchup screen sub_828916B8, sub_82780948).
+constexpr u32 kVsNameFormat = 0x82043824;
+extern "C" REX_FUNC(sub_827D8B48) {
+  if (ctx.r5.u32 == kVsNameFormat && g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units &&
+      ctx.r6.u32 == g_added[size_t(g_chosen)].base)
+    ctx.r6.u64 = kFirstAdded + u32(g_chosen);
+  __imp__sub_827D8B48(ctx, base);
 }
 
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
