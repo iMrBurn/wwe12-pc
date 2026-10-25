@@ -666,8 +666,12 @@ places ×10, d'après le code de Kaiko).
   fichiers de données manquants (50003) ceux de la base). bg00 des quatre jeux converti ; bg66 et plus (structures)
   écartés. Pas de noms d'arènes (ailleurs que dans l'ordre des fichiers) : l'étape 1 montre le **tablier** de l'arène
   choisie (`rin_ep00`). Catcheurs : `port13_star` marche aussi (Jericho ch104 de 2K14 et 2K17 sur Ziggler) ; leurs
-  noms ne sont pas dans `chEtc.pac` (enregistrements de 208 / 220 octets) : ceux de WWE '13 / '12 au même numéro,
-  marqués « ? ». Vérifié en
+  noms ne sont pas dans `chEtc.pac` (enregistrements de 208 / 216 / 220 octets) mais dans leurs textes : la fiche
+  CHAR/DAT a le numéro à +4 et des numéros de textes « numéro + constante » ; nom complet = texte n° numéro + 64000
+  (2K14) ou numéro + 6000 (2K15 à 2K17 ; +1000 / +3000 = noms courts, +9000 = nom Twitter), dans `pac/string.pac`
+  (2K17 : `string_360.pac`, HSPC), tables SDB « u32 0, u32 nombre, nombre × {u32 position, u32 longueur, u32 n°} »,
+  anglais = groupes `SDB /XX00` (2026-10-25 : 113 / 105 / 182 / 175 noms lus). Les numéros sans nom gardent ceux de
+  WWE '13 / '12 au même numéro, marqués « ? ». Arènes 2K : pas de lien numéro → nom trouvé dans ces textes. Vérifié en
   pilotant le Mod Maker (Royal Rumble de SvR → Bragging Rights ; Capitol Punishment de WWE '13) ; Breaking Point
   (SvR) faite par l'utilisateur et chargée en jeu.
 
