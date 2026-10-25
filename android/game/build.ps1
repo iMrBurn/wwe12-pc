@@ -94,7 +94,7 @@ function SaveIcon([int]$size, [int]$inner, [int]$crop, [bool]$blur, [string]$pat
 }
 SaveIcon 192 192 0 $false "$Res\mipmap-xxxhdpi\ic_launcher.png"
 SaveIcon 96 96 0 $false "$Res\mipmap-xhdpi\ic_launcher.png"
-SaveIcon 432 264 30 $false "$Res\drawable-xxxhdpi\ic_launcher_fg.png"   # 66 dp de 108, coins retirés
+SaveIcon 432 320 30 $false "$Res\drawable-xxxhdpi\ic_launcher_fg.png"   # 80 dp de 108, coins retirés
 SaveIcon 432 432 30 $true "$Res\drawable-xxxhdpi\ic_launcher_bg.png"
 $src.Dispose()
 Set-Content "$Res\mipmap-anydpi-v26\ic_launcher.xml" -Encoding utf8 @'

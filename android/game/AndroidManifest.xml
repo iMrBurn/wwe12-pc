@@ -19,7 +19,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
-        android:label="WWE '12 PC"
+        android:label="WWE '12"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:extractNativeLibs="true"
