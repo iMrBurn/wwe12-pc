@@ -1,20 +1,23 @@
-// Mod Maker, "Arenas" page (docs/mod_maker.md, step 5). Two ways to make an arena mod (.svrmod, type=arena,
-// files/pac/bg/bgNN.pac):
+// Mod Maker, "Arenas" page (docs/mod_maker.md, step 5; docs/plan_page_arenes.md). Its tabs:
+//  - New arena: the assistant, an arena of another game (My game discs: SvR 2011 with port_svr_arena.h, WWE '13 with
+//    port13.h; or one SvR 2011 arena file) added as a new arena: its own tile on the arena select screen's next pages,
+//    playing on a base arena's number (manifest slot=new, base=NN; arena/arena.pac, arena/banner.dds 256 x 128 DXT5,
+//    and what comes with it: VS screen, entrance plates, pre-match screen, transition video;
+//    src/native/wwe12_arena_pages.cpp);
 //  - Retexture: pick one of the game's arenas, see all its pictures (mat, aprons, banners, ramp, crowd signs...),
 //    replace any with a picture of yours (fitted to the original's size and format) or export it as PNG to edit;
-//  - Another arena file: put an arena .pac (made elsewhere, another slot's) in a slot.
-// Either way the file is checked against the slot's shipped size and made to fit (arena_edit.h), and its stage
-// number is set to the slot's. A third way: an arena of WWE '13 (the player's own copy) ported with port13.h, the arena
-// chosen above as its base. The mod either replaces the arena, or (the default) is added as a new arena: its own
-// tile on the arena select screen's next pages, playing on the chosen arena's number (manifest slot=new, base=NN;
-// arena/arena.pac and arena/banner.dds, 256 x 128 DXT5: src/native/wwe12_arena_pages.cpp). The banner is a picture
-// of the player's, or the base arena's own banner (menu/MatchHD.pac, MLYE/MUPA entry 7001, "arenaNN").
+//  - Another arena file: put an arena .pac (made elsewhere, another slot's) in a slot;
+//  - 3D view.
+// The file is checked against the base's shipped size and made to fit (arena_edit.h), and its stage number is set to
+// the base's. The banner is a picture of the player's, the game's own (SvR 2011, WWE '13), or the base arena's
+// (menu/MatchHD.pac, MLYE/MUPA entry 7001, "arenaNN").
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 #include <d3d11.h>
+#include <shellapi.h>
 #include <shobjidl.h>
 #include <wrl/client.h>
 
@@ -213,10 +216,6 @@ class Page {
     }
     if (mode_ == 1)
       DrawOtherFile(fr);
-    else if (mode_ == 3)
-      DrawPort13(fr);
-    else if (mode_ == 4)
-      DrawPortSvr(fr);
     else
       DrawRetexture(fr);
 
@@ -449,78 +448,6 @@ class Page {
     }
   }
 
-  // An arena of WWE '13: its folder (the game's, with pac/bg), then one of its arenas; it plays as the arena
-  // chosen above (its base: the recipe takes a few files from it).
-  void DrawPort13(bool fr) {
-    // From My game discs (a game folder: WWE '13's files are read from the folder), else picked here.
-    fs::path from_discs;
-    if (w13_dir_.empty() && discs_ && !discs_tried_13_) {
-      discs_tried_13_ = true;
-      std::error_code ec;
-      from_discs = discs_->PathOf(0x545108B4);
-      if (!from_discs.empty() && !fs::is_directory(from_discs, ec)) {
-        port_note_ = fr ? "WWE '13 est un ISO dans MES DISQUES : pour l'instant, ses arènes se lisent depuis le "
-                          "dossier du jeu (ajoutez le dossier)."
-                        : "WWE '13 is an ISO in MY GAME DISCS: for now its arenas are read from the game's folder "
-                          "(add the folder).";
-        from_discs.clear();
-      }
-    }
-    if (ImGui::Button(fr ? "Dossier de WWE '13..." : "WWE '13 folder...") || !from_discs.empty()) {
-      const fs::path p = !from_discs.empty() ? from_discs : PickFolder(fr);
-      if (!p.empty()) {
-        w13_dir_ = fs::exists(p / "pac" / "bg") ? p : fs::exists(p / "bg") ? p.parent_path() : p;
-        w13_list_.clear();
-        std::error_code ec;
-        for (fs::directory_iterator it(w13_dir_ / "pac" / "bg", ec), end; !ec && it != end; it.increment(ec)) {
-          const std::string n = it->path().filename().string();
-          if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
-              port13::Find13(atoi(n.c_str() + 2)))  // (arenas only: not backstage rooms or match structures)
-            w13_list_.push_back(atoi(n.c_str() + 2));
-        }
-        std::sort(w13_list_.begin(), w13_list_.end());
-        if (w13_list_.empty())
-          port_note_ = fr ? "Pas d'arènes ici (dossier pac\\bg de WWE '13 attendu)." : "No arenas here (WWE '13's "
-                                                                                        "pac\\bg folder expected).";
-        else
-          port_note_.clear();
-      }
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", w13_dir_.empty() ? (fr ? "(vos fichiers de WWE '13)" : "(your WWE '13 files)")
-                                               : media::Utf8(w13_dir_.wstring()).c_str());
-    if (!w13_list_.empty()) {
-      ImGui::SetNextItemWidth(360);
-      if (ImGui::BeginCombo(fr ? "Arène de WWE '13" : "WWE '13 arena", w13_pick_ < 0 ? (fr ? "Choisir..." : "Choose...")
-                                                                                     : Label13(w13_pick_).c_str(),
-                            ImGuiComboFlags_HeightLarge)) {
-        for (int n : w13_list_)
-          if (ImGui::Selectable(Label13(n).c_str(), n == w13_pick_)) {
-            w13_pick_ = n;
-            Port13(fr);
-          }
-        ImGui::EndCombo();
-      }
-    }
-    if (!port_note_.empty())
-      ImGui::TextColored(port_ok_ ? kGreen : kRed, "%s", port_note_.c_str());
-    if (port_ok_ && !ramp_note_.empty()) {
-      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 720);
-      ImGui::TextColored(kYellow, "%s", ramp_note_.c_str());
-      ImGui::PopTextWrapPos();
-    }
-    if (port_ok_) {
-      if (ImGui::Button(fr ? "Voir en 3D" : "See it in 3D")) {
-        view_port_ = true;
-        view_stale_ = true;
-        mode_ = 2;
-      }
-      ImGui::SameLine();
-      ImGui::TextDisabled("%s", fr ? "(revenez ensuite sur « Porter de WWE '13 » pour créer le mod)"
-                                   : "(then come back to \"Port from WWE '13\" to make the mod)");
-    }
-  }
-
   // ---- The assistant "New arena" (docs/plan_page_arenes.md): an arena of another game, step by step: where it comes
   // from (My game discs, or one file), the arena it plays in place of (its base), its name and banner, what comes
   // with it, a look at it, then the mod. The ports themselves are the ones below (PortSvr, Port13).
@@ -552,9 +479,8 @@ class Page {
     ramp_note_.clear();
     if (wiz_src_ == 1) {
       char rel[32];
-      snprintf(rel, sizeof(rel), "bg%02d.pac", w13_pick_);
-      std::ifstream f(w13_dir_ / "pac" / "bg" / rel, std::ios::binary);
-      const Bytes w13((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+      snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", w13_pick_);
+      const Bytes w13 = Read13(rel);
       wiz_src_size_ = w13.size();
       wiz_src_ramp_ = SourceRamp(w13, 1);
     } else {
@@ -722,8 +648,6 @@ class Page {
     ImGui::Dummy(ImVec2(0, 6));
     const fs::path svr = discs_ ? discs_->PathOf(0x5451085D) : fs::path(),
                    w13 = discs_ ? discs_->PathOf(0x545108B4) : fs::path();
-    std::error_code ec;
-    const bool w13_folder = !w13.empty() && fs::is_directory(w13, ec);
     const std::string not_added = fr ? "pas dans MES DISQUES" : "not in MY GAME DISCS",
                       yours = fr ? "depuis vos disques" : "from your discs";
     card_w_ = std::min(250.0f, (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3);
@@ -737,20 +661,10 @@ class Page {
       port_ok_ = false;
     }
     ImGui::SameLine();
-    if (ChoiceCard(1, wiz_src_ == 1, w13_folder, "WWE '13",
-                   w13.empty() ? not_added : w13_folder ? yours : (fr ? "ISO : ajoutez le dossier" : "ISO: add the folder"))) {
+    if (ChoiceCard(1, wiz_src_ == 1, !w13.empty(), "WWE '13", w13.empty() ? not_added : yours)) {
       wiz_src_ = 1;
-      if (w13_dir_ != w13 || w13_list_.empty()) {
-        w13_dir_ = w13;
-        w13_list_.clear();
-        for (fs::directory_iterator it(w13_dir_ / "pac" / "bg", ec), end; !ec && it != end; it.increment(ec)) {
-          const std::string n = it->path().filename().string();
-          if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
-              port13::Find13(atoi(n.c_str() + 2)))
-            w13_list_.push_back(atoi(n.c_str() + 2));
-        }
-        std::sort(w13_list_.begin(), w13_list_.end());
-      }
+      if (w13_game_ != w13 || w13_list_.empty())
+        Open13(w13);
       w13_pick_ = -1;
       port_ok_ = false;
     }
@@ -958,15 +872,48 @@ class Page {
     if (game::IsRunning())
       ImGui::TextColored(kRed, "%s", fr ? "Le jeu est lancé : fermez-le pour installer le mod."
                                         : "The game is running: close it to install the mod.");
+    // Once installed: the game started from here (wwe12.exe next to the Mod Maker), to see it at once.
+    if (message_ok_) {
+      ImGui::SameLine();
+      ImGui::BeginDisabled(game::IsRunning());
+      if (ImGui::Button(fr ? "Tester en jeu" : "Test in game", ImVec2(160, 36))) {
+        wchar_t me[MAX_PATH];
+        GetModuleFileNameW(nullptr, me, MAX_PATH);
+        const fs::path dir = fs::path(me).parent_path();
+        ShellExecuteW(nullptr, L"open", (dir / L"wwe12.exe").wstring().c_str(), nullptr, dir.wstring().c_str(),
+                      SW_SHOWNORMAL);
+      }
+      ImGui::EndDisabled();
+    }
     if (!message_.empty())
       ImGui::TextColored(message_ok_ ? kGreen : kRed, "%s", message_.c_str());
+    if (message_ok_)
+      ImGui::TextDisabled("%s", fr ? "Dans le jeu : choix d'arène, puis LB / RB pour les pages suivantes."
+                                   : "In the game: arena select, then LB / RB for the next pages.");
     if (!reduced_note_.empty())
       ImGui::TextColored(kYellow, "%s", reduced_note_.c_str());
     ImGui::PopTextWrapPos();
   }
 
-  // An arena of SvR 2011 (its pac/bg/bgNN.pac); it plays as the arena chosen above (its base: the recipe takes the
-  // ring, the crowd and the match lights from it).
+  // WWE '13's ISO (or folder): its arenas.
+  void Open13(const fs::path &p) {
+    w13_list_.clear();
+    w13_pick_ = -1;
+    w13_game_ = p;
+    if (!w13_disc_.OpenPath(p))
+      return;
+    for (const auto &n : w13_disc_.List("pac/bg"))
+      if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
+          port13::Find13(atoi(n.c_str() + 2)))  // (arenas only: not backstage rooms or match structures)
+        w13_list_.push_back(atoi(n.c_str() + 2));
+    std::sort(w13_list_.begin(), w13_list_.end());
+  }
+  Bytes Read13(const std::string &rel) const {
+    Bytes b;
+    w13_disc_.Read(rel, b);
+    return b;
+  }
+
   // SvR 2011's ISO (or folder): its arenas listed by name.
   void OpenSvr(bool fr, const fs::path &p) {
     svr_list_.clear();
@@ -981,80 +928,6 @@ class Page {
     }
     port_note_ = svr_list_.empty() ? (fr ? "Pas d'arènes de SvR 2011 ici." : "No SvR 2011 arenas here.") : "";
     port_ok_ = false;
-  }
-
-  void DrawPortSvr(bool fr) {
-    // The game: from My game discs (page MES DISQUES), else its ISO (or its folder) picked here; or one arena file.
-    if (svr_game_.empty() && svr_path_.empty() && discs_ && !discs_tried_svr_) {
-      discs_tried_svr_ = true;
-      const fs::path p = discs_->PathOf(0x5451085D);
-      if (!p.empty())
-        OpenSvr(fr, p);
-    }
-    if (ImGui::Button(fr ? "ISO ou dossier de SvR 2011..." : "SvR 2011 ISO or folder...")) {
-      const fs::path p = PickGame(fr);
-      if (!p.empty())
-        OpenSvr(fr, p);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(fr ? "Un fichier d'arène (bgNN.pac)..." : "One arena file (bgNN.pac)...")) {
-      const fs::path p = PickOpen(fr, true);
-      if (!p.empty()) {
-        std::ifstream f(p, std::ios::binary);
-        svr_file_.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
-        svr_path_ = p;
-        svr_pick_ = -1;
-        PortSvr(fr);
-      }
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", !svr_game_.empty() && svr_pick_ >= 0 ? media::Utf8(svr_game_.filename().wstring()).c_str()
-                              : !svr_path_.empty()                ? media::Utf8(svr_path_.wstring()).c_str()
-                              : !svr_game_.empty() ? media::Utf8(svr_game_.filename().wstring()).c_str()
-                                                   : (fr ? "(votre ISO de SvR 2011)" : "(your SvR 2011 ISO)"));
-    if (!svr_list_.empty()) {
-      ImGui::SetNextItemWidth(360);
-      const auto label = [](int n) {
-        char b[96];
-        snprintf(b, sizeof(b), "%s  (bg%02d)", port_svr_arena::FindSvr(n)->name, n);
-        return std::string(b);
-      };
-      if (ImGui::BeginCombo(fr ? "Arène de SvR 2011" : "SvR 2011 arena",
-                            svr_pick_ < 0 ? (fr ? "Choisir..." : "Choose...") : label(svr_pick_).c_str(),
-                            ImGuiComboFlags_HeightLarge)) {
-        for (int n : svr_list_)
-          if (ImGui::Selectable(label(n).c_str(), n == svr_pick_)) {
-            char rel[32];
-            snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", n);
-            if (svr_disc_.Read(rel, svr_file_)) {
-              svr_pick_ = n;
-              svr_path_.clear();
-              PortSvr(fr);
-            }
-          }
-        ImGui::EndCombo();
-      }
-    }
-    if (!port_note_.empty()) {
-      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 720);
-      ImGui::TextColored(port_ok_ ? kGreen : kRed, "%s", port_note_.c_str());
-      ImGui::PopTextWrapPos();
-    }
-    if (port_ok_ && !ramp_note_.empty()) {
-      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 720);
-      ImGui::TextColored(kYellow, "%s", ramp_note_.c_str());
-      ImGui::PopTextWrapPos();
-    }
-    if (port_ok_) {
-      if (ImGui::Button(fr ? "Voir en 3D##svr" : "See it in 3D##svr")) {
-        view_port_ = true;
-        view_stale_ = true;
-        mode_ = 2;
-      }
-      ImGui::SameLine();
-      ImGui::TextDisabled("%s", fr ? "(revenez ensuite sur « Porter de SvR 2011 » pour créer le mod)"
-                                   : "(then come back to \"Port from SvR 2011\" to make the mod)");
-    }
   }
 
   // The recipe (port_svr_arena.h) on the chosen file, its base the slot chosen above.
@@ -1148,34 +1021,6 @@ class Page {
     return {};
   }
 
-  // An ISO (or a game folder).
-  static fs::path PickGame(bool fr) {
-    IFileOpenDialog *dlg = nullptr;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
-      return {};
-    const COMDLG_FILTERSPEC filter[] = {{fr ? L"Image du jeu (*.iso)" : L"Game image (*.iso)", L"*.iso"},
-                                        {L"*.*", L"*.*"}};
-    dlg->SetFileTypes(2, filter);
-    DWORD opts = 0;
-    dlg->GetOptions(&opts);
-    dlg->SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST);
-    dlg->SetTitle(fr ? L"ISO de SvR 2011" : L"SvR 2011 ISO");
-    fs::path picked;
-    if (SUCCEEDED(dlg->Show(GetActiveWindow()))) {
-      IShellItem *item = nullptr;
-      if (SUCCEEDED(dlg->GetResult(&item))) {
-        PWSTR q = nullptr;
-        if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &q))) {
-          picked = q;
-          CoTaskMemFree(q);
-        }
-        item->Release();
-      }
-    }
-    dlg->Release();
-    return picked;
-  }
-
   static std::string Label13(int n) {
     char b[96];
     const char *name = port13::ArenaName(n);
@@ -1183,37 +1028,12 @@ class Page {
     return b;
   }
 
-  static fs::path PickFolder(bool fr) {
-    IFileOpenDialog *dlg = nullptr;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
-      return {};
-    DWORD opts = 0;
-    dlg->GetOptions(&opts);
-    dlg->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-    dlg->SetTitle(fr ? L"Dossier du jeu WWE '13" : L"The WWE '13 game folder");
-    fs::path picked;
-    if (SUCCEEDED(dlg->Show(GetActiveWindow()))) {
-      IShellItem *item = nullptr;
-      if (SUCCEEDED(dlg->GetResult(&item))) {
-        PWSTR p = nullptr;
-        if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &p))) {
-          picked = p;
-          CoTaskMemFree(p);
-        }
-        item->Release();
-      }
-    }
-    dlg->Release();
-    return picked;
-  }
-
   // The recipe (port13.h) on the chosen arena, its base the slot chosen above.
   void Port13(bool fr) {
     port_ok_ = false;
     char rel[32];
-    snprintf(rel, sizeof(rel), "bg%02d.pac", w13_pick_);
-    std::ifstream f(w13_dir_ / "pac" / "bg" / rel, std::ios::binary);
-    const Bytes w13((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", w13_pick_);
+    const Bytes w13 = Read13(rel);
     Bytes out;
     std::string why;
     port13::PortInfo info;
@@ -1254,23 +1074,19 @@ class Page {
       ramp_note_ = b;
     }
     // Its own banner from WWE '13's menus, else the base's.
-    std::ifstream m(w13_dir_ / "pac" / "menu" / "MatchHD.pac", std::ios::binary);
-    const Bytes matchhd((std::istreambuf_iterator<char>(m)), std::istreambuf_iterator<char>());
+    const Bytes matchhd = Read13("pac/menu/MatchHD.pac");
     svrfmt::Image img;
     if (!matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // Its entrance graphics (location plate, name plates).
-    std::ifstream ev(w13_dir_ / "pac" / "evt" / "evtgdhd.pac", std::ios::binary);
-    const Bytes evtgd((std::istreambuf_iterator<char>(ev)), std::istreambuf_iterator<char>());
+    const Bytes evtgd = Read13("pac/evt/evtgdhd.pac");
     if (!evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_))
       port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
     // Its pre-match screen, and its transition video.
-    std::ifstream ld(w13_dir_ / "pac" / "menu" / "LoadHD.pac", std::ios::binary);
-    const Bytes loadhd((std::istreambuf_iterator<char>(ld)), std::istreambuf_iterator<char>());
+    const Bytes loadhd = Read13("pac/menu/LoadHD.pac");
     if (!loadhd.empty())
       port13::PreMatch(loadhd, w13_pick_, load_);
-    std::ifstream mv(w13_dir_ / "pac" / "evt" / "evtmov.pac", std::ios::binary);
-    const Bytes evtmov((std::istreambuf_iterator<char>(mv)), std::istreambuf_iterator<char>());
+    const Bytes evtmov = Read13("pac/evt/evtmov.pac");
     if (!evtmov.empty() && port13::TransitionVideo(evtmov, w13_pick_, movie_))
       port_note_ += fr ? " Avec sa transition." : " With its transition.";
     if (!matchhd.empty() && port13::Banner(matchhd, w13_pick_, img)) {
@@ -1492,7 +1308,8 @@ class Page {
   std::string view_error_;
 
   // Porting from WWE '13.
-  fs::path w13_dir_;
+  disc::GameDisc w13_disc_;  // WWE '13's ISO or folder (My game discs)
+  fs::path w13_game_;
   std::vector<int> w13_list_;
   int w13_pick_ = -1;
   bool port_ok_ = false, view_port_ = false;
@@ -1529,7 +1346,6 @@ class Page {
   const game_discs::Discs *discs_ = nullptr;  // My game discs (set by the Mod Maker)
 
  private:
-  bool discs_tried_svr_ = false, discs_tried_13_ = false;
 
   fs::path other_path_;
   arena_edit::Arena other_;
