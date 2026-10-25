@@ -890,6 +890,17 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
           }
     pi.pictures_added = AddPictures(pkg, add, models);
     pi.pictures_missing = int(add.size()) - pi.pictures_added;
+    // No free record left for the others (ECW, Night of Champions, Royal Rumble): the package grows (written again
+    // whole: Yuke's packing is lost for it, bigger, and the Mod Maker halves pictures to fit).
+    if (pi.pictures_missing > 0) {
+      std::vector<svrfmt::BundleTexture> all;
+      if (svrfmt::BundleRead(pkg, all)) {
+        all.insert(all.end(), add.begin() + pi.pictures_added, add.end());
+        pkg = svrfmt::BundleWrite(all);
+        pi.pictures_added += pi.pictures_missing;
+        pi.pictures_missing = 0;
+      }
+    }
     if (pi.pictures_added)
       ReplaceLike(*ta, pkg);
   }
