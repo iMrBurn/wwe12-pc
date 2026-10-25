@@ -42,6 +42,10 @@
 //    layout in WWE '12, WWE '13 and SvR 2011) appended to a served evtgdhd.pac; while it is the chosen arena, the
 //    directory answers its base's /ETEX/00NN with it. (A whole evtgdhd.pac rebuilt in mods crashed: the directory
 //    keeps every entry's place, and they had all moved.)
+//  - an added arena's own match transition (arena\load_hd.pac: its LOAD/90NN of pac\menu\LoadHD.pac, as its game
+//    stores it: the VS screen and the transition animation before the match; the same in WWE '12 and WWE '13)
+//    appended to a served LoadHD.pac; while it is the chosen arena, the directory answers its base's /LOAD/90NN
+//    with it.
 //
 // Test: wwe12_arena_pages_test = true adds one page, the 21 arenas in reverse order, and logs the lookups.
 
@@ -93,6 +97,7 @@ constexpr u32 kFirstAdded = 150;  // made-up stage numbers of the added arenas' 
 constexpr u32 kEmptyTile = 149;   // a page's tiles past its last arena (not available)
 constexpr u16 kMatchHdIndex = 234;  // pac\menu\MatchHD.pac in the directory (its line in plist360.h)
 constexpr u16 kEvtGdHdIndex = 190;  // pac\evt\evtgdhd.pac
+constexpr u16 kLoadHdIndex = 233;   // pac\menu\LoadHD.pac
 
 struct Added {
   std::string id, name;
@@ -106,6 +111,8 @@ struct Added {
   u32 mb_sector = 0, mb_units = 0, mf_sector = 0, mf_units = 0;  // ... appended to MatchHD.pac (0: the base's)
   std::vector<uint8_t> etex;  // its own entrance graphics (until appended), else empty
   u32 etex_sector = 0, etex_units = 0;  // ... appended to evtgdhd.pac (0: the base's)
+  std::vector<uint8_t> load;  // its own match transition (until appended), else empty
+  u32 load_sector = 0, load_units = 0;  // ... appended to LoadHD.pac (0: the base's)
 };
 std::vector<Added> g_added;
 // A base arena's file as served (Documents\wwe12\arena_slots\pac\bg\bgNN.pac): the whole file of the arena
@@ -321,6 +328,10 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       REXLOG_WARN("[arena pages] {}: its entrance graphics aren't a pack", a.id);
       a.etex.clear();
     }
+    if (ReadHost(d / "arena" / "load_hd.pac", a.load) && (a.load.size() < 8 || memcmp(a.load.data(), "PACH", 4) != 0)) {
+      REXLOG_WARN("[arena pages] {}: its match transition isn't a pack", a.id);
+      a.load.clear();
+    }
     g_added.push_back(a);
     if (g_added.size() == 35)  // (the banner pack has 35 free textures)
       break;
@@ -356,6 +367,18 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
         a.etex = {};
       }
       WriteHost(out / "pac" / "evt" / "evtgdhd.pac", evtgd);
+    }
+  }
+  if (std::any_of(g_added.begin(), g_added.end(), [](const Added &a) { return !a.load.empty(); })) {
+    std::vector<uint8_t> loadhd;
+    if (ReadForGame(vfs, mods, "pac/menu/LoadHD.pac", loadhd)) {
+      for (auto &a : g_added) {
+        if (a.load.empty())
+          continue;
+        Append(loadhd, a.load.data(), a.load.size(), a.load_sector, a.load_units);
+        a.load = {};
+      }
+      WriteHost(out / "pac" / "menu" / "LoadHD.pac", loadhd);
     }
   }
   auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, out, true);
@@ -646,6 +669,16 @@ extern "C" REX_FUNC(sub_827F29F0) {
       bd::mem::store<u32>(out, a.etex_sector);
       bd::mem::store<u32>(out + 8, a.etex_units);
       REXLOG_INFO("[arena pages] {}: the entrance graphics of {}", n, a.id);
+    }
+  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].load_units && bd::mem::load<u16>(out + 12) == kLoadHdIndex) {
+    // Its own match transition (VS screen and transition animation), in place of its base's.
+    const Added &a = g_added[size_t(g_chosen)];
+    char load[16];
+    snprintf(load, sizeof(load), "/LOAD/90%02u", a.base);
+    if (strcmp(n, load) == 0) {
+      bd::mem::store<u32>(out, a.load_sector);
+      bd::mem::store<u32>(out + 8, a.load_units);
+      REXLOG_INFO("[arena pages] {}: the match transition of {}", n, a.id);
     }
   }
   if (REXCVAR_GET(wwe12_arena_pages_test) &&

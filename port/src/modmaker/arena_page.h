@@ -586,6 +586,7 @@ class Page {
     card_mb_.clear();
     card_mf_.clear();
     etex_.clear();
+    load_.clear();
     Bytes out;
     std::string why;
     port_svr_arena::PortInfo info;
@@ -708,6 +709,7 @@ class Page {
     card_mb_.clear();
     card_mf_.clear();
     etex_.clear();
+    load_.clear();
     if (w13.empty() || !port13::Port(w13, shipped_, out, &why, &info) || !other_.Load(out, &why)) {
       port_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
       return;
@@ -749,6 +751,11 @@ class Page {
     const Bytes evtgd((std::istreambuf_iterator<char>(ev)), std::istreambuf_iterator<char>());
     if (!evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_))
       port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
+    // Its match transition.
+    std::ifstream ld(w13_dir_ / "pac" / "menu" / "LoadHD.pac", std::ios::binary);
+    const Bytes loadhd((std::istreambuf_iterator<char>(ld)), std::istreambuf_iterator<char>());
+    if (!loadhd.empty() && port13::Transition(loadhd, w13_pick_, load_))
+      port_note_ += fr ? " Avec sa transition." : " With its transition.";
     if (!matchhd.empty() && port13::Banner(matchhd, w13_pick_, img)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
@@ -934,6 +941,8 @@ class Page {
       }
       if (mode_ == 3 && !etex_.empty())  // its entrance graphics (evtgdhd.pac ETEX/00NN)
         entries.push_back({"arena/etex_hd.pac", etex_});
+      if (mode_ == 3 && !load_.empty())  // its match transition (LoadHD.pac LOAD/90NN)
+        entries.push_back({"arena/load_hd.pac", load_});
     } else {
       entries.push_back({"files/" + Path(), std::move(out)});
     }
@@ -971,6 +980,7 @@ class Page {
   std::string port_note_, ramp_note_;
   Bytes card_mb_, card_mf_;  // its VS screen from WWE '13 (port13::Card)
   Bytes etex_;                // its entrance graphics from WWE '13 (port13::Etex)
+  Bytes load_;                // its match transition from WWE '13 (port13::Transition)
   Bytes svr_file_;            // the SvR 2011 arena file (port_svr_arena.h)
   fs::path svr_path_;         // ... a file chosen alone
   disc::GameDisc svr_disc_;   // ... or the game's ISO / folder, and its arena chosen
