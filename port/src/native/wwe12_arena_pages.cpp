@@ -133,7 +133,6 @@ struct Served {
 std::map<u32, Served> g_served;
 u32 g_mupa_sector = 0, g_mupa_units = 0;  // the rebuilt banner pack, appended to MatchHD.pac
 int g_chosen = -1;                        // the added arena chosen last (its index), -1: one of the game's
-bool g_vs_stale = false;  // another arena of the same stage number chosen: the matchup screen to set up again
 
 struct Tile {
   u32 stage, banner;  // banner: guest address of the texture name (0: the game's table is kept)
@@ -619,7 +618,6 @@ REX_EXTERN(__imp__sub_825A6A98);  // arena select: draw (every frame)
 REX_EXTERN(__imp__sub_825A3318);  // arena select: is this stage available (this, stage)
 REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
-REX_EXTERN(__imp__sub_82576998);  // matchup screen (PLAY / MATCH CREATOR / SELECT ARENA): its steps (this)
 REX_EXTERN(sub_82A8C070);         // XInputGetState(user, state) (hooked by wwe12_intros.cpp: call the hooked one)
 
 namespace {
@@ -731,37 +729,16 @@ extern "C" REX_FUNC(sub_825A56C8) {
   const u32 stage = ctx.r3.u32;
   if (IsAdded(stage)) {
     const int n = int(stage - kFirstAdded);
-    if (g_chosen != n) {
+    if (g_chosen != n)
       REXLOG_INFO("[arena pages] chosen: {} ({}), plays as stage {}", g_added[size_t(n)].name, g_added[size_t(n)].id,
                   g_added[size_t(n)].base);
-      g_vs_stale = true;
-    }
     g_chosen = n;
     Serve(g_added[size_t(n)].base, n);
     ctx.r3.u64 = g_added[size_t(n)].base;
   } else if (stage < kFirstAdded) {
-    if (g_chosen != -1)
-      g_vs_stale = true;
     g_chosen = -1;
     Serve(stage, -1);  // (one of the game's: its own file back, if an added arena was in it)
   }
-}
-
-// The matchup screen sets itself up again (steps 1 to 10: the VS screen loaded by sub_82574E50 at step 5) when the
-// stage number changed; another arena of the same number (an added one, or its base) kept the first one's VS screen.
-// Then, back on it (step 11, waiting), it starts again from step 1, as for a new number. (Seen with the probe
-// wwe12_vs_probe; when the game starts again itself, step 1 comes first and nothing more is done.)
-extern "C" REX_FUNC(sub_82576998) {
-  if (g_vs_stale) {
-    const u32 step = bd::mem::load<u32>(ctx.r3.u32 + 2576);
-    if (step == 11) {
-      bd::mem::store<u32>(ctx.r3.u32 + 2576, 1);
-      REXLOG_INFO("[arena pages] matchup screen set up again (another arena of stage number {})",
-                  g_chosen >= 0 ? g_added[size_t(g_chosen)].base : 0);
-    }
-    g_vs_stale = false;
-  }
-  __imp__sub_82576998(ctx, base);
 }
 
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
