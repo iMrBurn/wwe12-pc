@@ -777,6 +777,13 @@ places ×10, d'après le code de Kaiko).
   `superstar_pack::Star::attributes`) : écrits dans la fiche du catcheur ajouté. La note générale est calculée par le
   jeu. Pas encore : nom annoncé par le speaker, style de combat, capacités (+28..+35 ?), musique, prises.
 
+- **Portrait perso (2026-10-25, vu à l'écran ; pas encore essayé en jeu)** : étape 1 de NOUVEAU, section « Son
+  portrait » pour toute apparence (même la base) : celui de son jeu (case pour le garder), **« Une image à vous... »**
+  (PNG détouré de préférence) ou celui de la base. L'image est mise **entière** dans le carré 512 × 512 (transparent
+  autour, posée sur le bord du bas), puis les 6 portraits du jeu : HD SSFA / SSFB 512 × 512, SSFC 256 × 256 ; SD
+  SSFA / SSFB le carré écrasé en 512 × 256, SSFC 256 × 256 ; DXT5 sans mips (`superstar/SSF?_HD|SD.dds` du mod, comme
+  ceux portés).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

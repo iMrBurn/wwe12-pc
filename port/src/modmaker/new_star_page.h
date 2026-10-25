@@ -295,20 +295,58 @@ class Page {
       ImGui::TextColored(note_ok_ ? green : red, "%s", note_.c_str());
       ImGui::PopTextWrapPos();
     }
-    // Its portrait (from its game; 2K17's found by looks): to check, and to leave out if it isn't the right one.
-    if (look_ >= 2 && face_.srv) {
-      ImGui::Dummy(ImVec2(0, 4));
+    // Its portrait (menus, select screen): from its game (2K17's found by looks: to check), or a picture of the
+    // player's, else the base's.
+    ImGui::Dummy(ImVec2(0, 6));
+    ImGui::SeparatorText(fr ? "Son portrait (menus, écran de choix)" : "Its portrait (menus, select screen)");
+    if (face_.srv) {
       arena_page::DrawPicture(face_, 140);
       ImGui::SameLine();
-      ImGui::BeginGroup();
-      ImGui::TextDisabled("%s", fr ? "Son portrait (menus, écran de choix)" : "Its portrait (menus, select screen)");
+    }
+    ImGui::BeginGroup();
+    if (face_.srv) {
       ImGui::Checkbox(fr ? "Garder ce portrait (sinon celui de la base)" : "Keep this portrait (else the base's)",
                       &keep_portraits_);
-      if (game_title_ == 0x545408BA)
+      if (!custom_portrait_.empty())
+        ImGui::TextDisabled("%s", media::Utf8(custom_portrait_.filename().wstring()).c_str());
+      else if (game_title_ == 0x545408BA && look_ == 3)
         ImGui::TextDisabled("%s", fr ? "(WWE 2K17 : trouvé par ressemblance ; vérifiez que c'est le bon)"
                                      : "(WWE 2K17: found by its looks; check it is the right one)");
-      ImGui::EndGroup();
+    } else {
+      ImGui::TextDisabled("%s", fr ? "Celui de la base." : "The base's.");
     }
+    if (ImGui::Button(fr ? "Une image à vous..." : "A picture of yours...")) {
+      const fs::path pick = arena_page::PickOpen(fr, false);
+      svrfmt::Image img;
+      if (!pick.empty() && wic_image::Load(pick, img) && img.w > 0 && img.h > 0)
+        CustomPortrait(img, pick);
+    }
+    ImGui::TextDisabled("%s", fr ? "(de préférence le catcheur détouré, fond transparent, en PNG)"
+                                 : "(best: the superstar cut out, transparent background, as a PNG)");
+    ImGui::EndGroup();
+  }
+
+  // A picture of the player's as its portraits: fitted whole into the square (transparent around it, standing on
+  // the bottom edge), as WWE '12's (DXT5, no mips): HD SSFA / SSFB 512 x 512, SSFC 256 x 256; SD SSFA / SSFB the
+  // square squeezed to 512 x 256, SSFC 256 x 256.
+  void CustomPortrait(const svrfmt::Image &img, const fs::path &from) {
+    const double k = (std::min)(512.0 / img.w, 512.0 / img.h);
+    const int w = (std::max)(1, int(img.w * k + 0.5)), h = (std::max)(1, int(img.h * k + 0.5));
+    const svrfmt::Image fitted = svrfmt::Resize(img, w, h);
+    svrfmt::Image sq;
+    sq.w = sq.h = 512;
+    sq.rgba.assign(size_t(512) * 512 * 4, 0);
+    const int x0 = (512 - w) / 2, y0 = 512 - h;
+    for (int y = 0; y < h; ++y)
+      memcpy(&sq.rgba[(size_t(y0 + y) * 512 + x0) * 4], &fitted.rgba[size_t(y) * w * 4], size_t(w) * 4);
+    const int size[2][3][2] = {{{512, 256}, {512, 256}, {256, 256}}, {{512, 512}, {512, 512}, {256, 256}}};
+    for (int hd = 0; hd < 2; ++hd)
+      for (int i = 0; i < 3; ++i)
+        portraits_[hd][i] = svrfmt::DdsEncode(svrfmt::Resize(sq, size[hd][i][0], size[hd][i][1]),
+                                              svrfmt::DxtFormat::kDxt5, false);
+    custom_portrait_ = from;
+    keep_portraits_ = true;
+    face_ = arena_page::MakeThumb(device_, portraits_[1][0]);
   }
 
   // Step 2: the base superstar (the look ported again over the new base).
@@ -810,6 +848,7 @@ class Page {
         b.clear();
     face_ = {};
     keep_portraits_ = true;
+    custom_portrait_.clear();
     if (svr_attires_.empty())
       return;  // (the refusal stays shown)
     if (look_ == 2 && number >= 0)
@@ -1074,7 +1113,7 @@ class Page {
       entries.push_back({"superstar/look.txt", Bytes{'b', 'a', 's', 'e', '\n'}});  // (a mod needs a superstar/ file)
     if (!movie.empty())
       entries.push_back({"superstar/titantron.bik", movie});
-    if (look_ >= 2 && keep_portraits_)  // (its SvR 2011 / WWE '13 / 2K portraits)
+    if (keep_portraits_ && !portraits_[1][0].empty())  // (its game's portraits, or the player's picture)
       for (int hd = 0; hd < 2; ++hd)
         for (int k = 0; k < 3; ++k)
           if (!portraits_[hd][k].empty())
@@ -1137,6 +1176,7 @@ class Page {
   std::map<int, size_t> faces17_;  // 2K17: superstar number -> its portrait (faces2k::Match2K17)
   arena_page::Thumb face_;         // the portrait found, shown at step 1
   bool keep_portraits_ = true;     // ... kept (else the base's)
+  fs::path custom_portrait_;       // the player's picture they were made from, "" if from its game
   std::string menu2_of_;
   Bytes portraits_[2][3];  // a SvR 2011 / WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
 };

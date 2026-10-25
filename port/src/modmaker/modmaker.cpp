@@ -284,14 +284,16 @@ const Guide kGuides[] = {
     {"A new superstar",
      "Un nouveau catcheur",
      {"NEW SUPERSTAR.",
-      "1. Look: a superstar of your other games (with its portraits when the game has them), a file, or the base.",
+      "1. Look: a superstar of your other games (with its portraits when the game has them), a file, or the base. "
+      "Its portrait: its game's, a picture of yours (A picture of yours...), or the base's.",
       "2. Base: gives the moves, ratings and entrance. A superstar WWE '12 also has is its own base at once.",
       "3. Name, 4. Entrance video: the base's, its own from SvR 2011 or WWE 2K15-2K17 (with RAD Video Tools, see "
       "MY GAME DISCS), or one of yours (any video or picture).",
       "5. Look at it in 3D, then 6. Finish: the mod is made and installed; Test in game.",
       "In the game: superstar select screen, DLC tile. Added superstars are everywhere (Universe, Create a Story)."},
      {"NOUVEAU.",
-      "1. Apparence : un catcheur de vos autres jeux (avec ses portraits quand le jeu en a), un fichier, ou la base.",
+      "1. Apparence : un catcheur de vos autres jeux (avec ses portraits quand le jeu en a), un fichier, ou la base. "
+      "Son portrait : celui de son jeu, une image à vous (Une image à vous...), ou celui de la base.",
       "2. Base : donne les prises, les stats et l'entrée. Un catcheur qui existe aussi dans WWE '12 est sa propre "
       "base d'office.",
       "3. Nom, 4. Vidéo d'entrée : celle de la base, la sienne de SvR 2011 ou de WWE 2K15-2K17 (avec RAD Video "
