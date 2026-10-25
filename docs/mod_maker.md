@@ -590,6 +590,29 @@ les copies les plus récentes).
   1 de SvR 2011 portée) créé dans la page, installé, ajouté par le jeu au n° 87 (les n° 85 et 86 gardés) : **ORTON SVR11
   à l'écran de choix (portrait d'Orton, OVERALL 94) et en entrée**.
 
+## 6 quindecies. Arènes de SvR 2011 dans le Mod Maker, depuis l'ISO (2026-10-25, WM 26 validée en jeu)
+
+`port_svr_arena.h` (C++ de `tools/dev/arena_convert.py`, à la manière de `port13.h`), page ARÈNES, mode « Porter de
+SvR 2011 » : l'ISO (ou le dossier) de SvR 2011 (`GameDisc::OpenPath`), ses arènes par nom (ordre de son `string.pac` :
+bg11 = WrestleMania XXVI ; l'arène « bg15 » reçue d'un tiers était bg11 renommée), sa bannière (`MatchHD.pac`
+MENU/MASI 7001, 256 × 128), en nouvelle arène. Vérifié contre la v22 : 225 entrées sur 226 identiques. Corrections
+trouvées ensuite, une par essai :
+- **foule sombre** : le code de WWE '12 cherche par leur nom `fade_lightmap00` / `fade_lightmap01` (aucun modèle ne les
+  nomme ; SvR a `aud_lightmap`) → copiées de la base ;
+- **tablier de WM XXVII sur un côté** : le tablier de la base cherche `rin_ep00` et `rin_ep01`, SvR n'a que `rin_ep00`
+  → `rin_ep01` = le `rin_ep00` de l'arène ;
+- **barricades traversées** : le code cherche les barricades **par nom** (`ar_fence01_a` à `_f`) ; celles de SvR ont
+  d'autres noms → les `ar_fen*` de l'arène partent, celles de la base arrivent (numéros libres, lignes de 50001 avec la
+  lumière des barricades d'origine), elles prennent les images de l'arène par leur nom (logos de WM 26) ;
+- **logo qui disparaît selon la caméra** : 50020 (visibilité : nœuds par **nom**, boîte, nombre d'enfants) gardait la
+  petite boîte de l'ancien `ar_fence02` de WM 26 → nœuds `ar_fen*` remplacés par ceux de la base sous la racine, enfants
+  recomptés ;
+- collisions (995-999) de la base (sans effet sur les barricades, gardé comme pour WWE '13) ; taille : le Mod Maker
+  réduit `rin_mat00` (et une autre) pour tenir dans la place de WM XXVII.
+Restent : **marches blanches** (objets « arme » de `bgEtc.pac` WPON 0x20-0x22, leurs propres images : sans doute
+l'éclairage de WM 26), foule = celle de WM XXVII (la vraie foule de WM 26 : corps sans agrandissement, fichiers de
+places ×10, d'après le code de Kaiko).
+
 ## 6 quaterdecies. Vidéo d'entrée des catcheurs ajoutés ; titantron et minitron séparés (2026-10-24)
 
 - **Minitron** = l'écran de la scène sous le grand écran ; c'est le **bas (320 × 100)** de la même vidéo
