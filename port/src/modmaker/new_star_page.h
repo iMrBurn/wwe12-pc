@@ -221,9 +221,9 @@ class Page {
               snprintf(label, sizeof(label), "%s  (ch%03d)", nm.c_str(), n);
             if (ImGui::Selectable(label, n == disc_pick_)) {
               LoadFromDisc(fr, n);
-              if (!svr_attires_.empty())
-                PortSvr(fr);
               const bool guessed = nm.size() > 2 && nm.compare(nm.size() - 2, 2, " ?") == 0;
+              if (!SameNameBase(fr, guessed ? nm.substr(0, nm.size() - 2) : nm) && !svr_attires_.empty())
+                PortSvr(fr);  // (else ported over that base already)
               if (!name_[0] && !(nm.size() == 5 && nm.compare(0, 2, "ch") == 0))  // (its name, to start with)
                 snprintf(name_, sizeof(name_), "%s", (guessed ? nm.substr(0, nm.size() - 2) : nm).c_str());
             }
@@ -286,6 +286,7 @@ class Page {
       ImGui::InputTextWithHint("##ns_filter", fr ? "Rechercher" : "Search", filter_, sizeof(filter_));
       if (default_ >= 0 && !filter_[0] && ImGui::Selectable(none, !chosen_)) {
         chosen_ = false;
+        base_by_player_ = true;
         base_ = default_;
         if (look_ == 0)
           look_ = 1;
@@ -300,6 +301,7 @@ class Page {
         if (ImGui::Selectable(stars_[i].name.c_str(), chosen_ && i == base_)) {
           base_ = i;
           chosen_ = true;
+          base_by_player_ = true;
           ChooseBase(fr, disc);
         }
       }
@@ -313,6 +315,37 @@ class Page {
                                     .c_str());
     if (!error_.empty())
       ImGui::TextColored(red, "%s", error_.c_str());
+  }
+
+  // The superstar of the same name in WWE '12, if there is one and the player chose no base: the base, so the new
+  // superstar has its moves, ratings and entrance (its look the other game's). Returns whether it was taken (the look
+  // then ported over it).
+  bool SameNameBase(bool fr, const std::string &name) {
+    if (base_by_player_ || !disc12_ || name.empty())
+      return false;
+    const auto key = [](const std::string &t) {
+      std::string k;
+      for (unsigned char c : t)
+        if (std::isalnum(c))
+          k += char(std::toupper(c));
+      return k;
+    };
+    const std::string want = key(name);
+    for (int i = 0; i < int(stars_.size()); ++i)
+      if (key(stars_[size_t(i)].name) == want) {
+        if (!(chosen_ && base_ == i)) {
+          base_ = i;
+          chosen_ = true;
+          OpenBase(fr, *disc12_);
+        } else if (!svr_attires_.empty()) {
+          PortSvr(fr);
+        }
+        note_ += (fr ? " Base : " : " Base: ") + stars_[size_t(i)].name +
+                 (fr ? " de WWE '12 (ses prises, ses stats et son entrée ; à changer à l'étape 2)."
+                     : " of WWE '12 (its moves, ratings and entrance; change it at step 2).");
+        return true;
+      }
+    return false;
   }
 
   void ChooseBase(bool fr, const disc::GameDisc &disc) {
@@ -916,6 +949,7 @@ class Page {
   int base_ = -1, look_ = 0;
   int default_ = -1;     // the average superstar used without a base (index in stars_), -1 if the disc has none
   bool chosen_ = false;  // a base was chosen (else base_ is default_)
+  bool base_by_player_ = false;  // ... by the player (else maybe the one of the same name, SameNameBase)
   char name_[32] = {}, author_[64] = {}, filter_[64] = {};
   Bytes base_file_, other_, ported_, model_, svr_file_;
   fs::path other_path_, svr_path_;

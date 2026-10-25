@@ -719,6 +719,11 @@ places ×10, d'après le code de Kaiko).
   ressemblance jugé peu fiable. Le hachage des noms (HSPC) et des numéros (SHDC) reste inconnu (FNV, xxHash, CRC64,
   MD5/SHA1 tronqués essayés sur des paires « numéro → code » connues : rien).
 
+- **Base du même nom (2026-10-25, vu à l'écran)** : quand on choisit un catcheur d'un autre jeu (MES DISQUES) qui
+  existe aussi dans WWE '12 (même nom, lettres et chiffres seulement), et que le joueur n'a pas choisi de base, ce
+  catcheur de WWE '12 devient la base : le nouveau a ses **prises, stats et entrée** de WWE '12, et l'apparence de
+  l'autre jeu (ex. Big Show de 2K16 sur Big Show de WWE '12). Changeable à l'étape 2 (le choix du joueur prime ensuite).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,
