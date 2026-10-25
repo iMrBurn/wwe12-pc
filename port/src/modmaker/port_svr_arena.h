@@ -466,6 +466,88 @@ inline void SwapFlagLines(Bytes &d, const std::set<uint32_t> &gone, std::vector<
   d = Join(out);
 }
 
+// 50020 (what is drawn from where: "NODE MY_NAME = x PARENT_NAME = y", "{", its box, "}", its number of children; the
+// root VT_ROOT has no parent): the arena's nodes named `prefix...` go, the base's come in under the root, the
+// children counted again (a wrong count made the game read the file askew). An object keeps the node of its name:
+// WM 26's ar_fence02 was a short side piece, and WWE '12's (the logo panels all round) vanished with that box.
+struct VisNode {
+  std::string name, parent;
+  std::vector<std::string> box;  // the lines between the braces, as written
+};
+inline bool ReadVis(const Bytes &d, std::vector<std::string> &head, std::vector<VisNode> &nodes) {
+  const auto lines = Lines(d);
+  size_t i = 0;
+  for (; i < lines.size() && lines[i].rfind("NODE", 0) != 0; ++i)
+    head.push_back(lines[i]);
+  while (i < lines.size()) {
+    const auto w = Words(lines[i]);
+    if (w.empty()) {
+      ++i;
+      continue;
+    }
+    if (w[0] != "NODE" || w.size() < 4 || w[1] != "MY_NAME")
+      return false;
+    VisNode n;
+    n.name = w[3];
+    if (w.size() >= 7 && w[4] == "PARENT_NAME")
+      n.parent = w[6];
+    for (++i; i < lines.size() && Words(lines[i]).empty(); ++i) {
+    }
+    if (i >= lines.size() || Words(lines[i]) != std::vector<std::string>{"{"})
+      return false;
+    for (++i; i < lines.size() && Words(lines[i]) != std::vector<std::string>{"}"}; ++i)
+      if (!Words(lines[i]).empty())
+        n.box.push_back(lines[i]);
+    for (++i; i < lines.size() && Words(lines[i]).empty(); ++i) {
+    }
+    ++i;  // (the count: made again on writing)
+    nodes.push_back(n);
+  }
+  return !nodes.empty();
+}
+inline Bytes SwapVisNodes(const Bytes &arena, const Bytes &base, const std::string &prefix,
+                          const std::set<std::string> &from_base) {
+  std::vector<std::string> head, base_head;
+  std::vector<VisNode> nodes, theirs;
+  if (!ReadVis(arena, head, nodes) || !ReadVis(base, base_head, theirs))
+    return arena;
+  const std::string root = nodes[0].name;
+  std::set<std::string> gone;
+  for (const auto &n : nodes)
+    if (n.name.rfind(prefix, 0) == 0)
+      gone.insert(n.name);
+  for (auto &n : nodes)  // (a node gone with children: they hang on its parent)
+    while (gone.count(n.parent)) {
+      for (const auto &p : nodes)
+        if (p.name == n.parent) {
+          n.parent = p.parent;
+          break;
+        }
+    }
+  nodes.erase(std::remove_if(nodes.begin(), nodes.end(), [&](const VisNode &n) { return gone.count(n.name) != 0; }),
+              nodes.end());
+  for (const auto &t : theirs)
+    if (from_base.count(t.name)) {
+      VisNode n = t;
+      n.parent = root;
+      nodes.push_back(n);
+    }
+  std::vector<std::string> out = head;
+  for (const auto &n : nodes) {
+    int children = 0;
+    for (const auto &c : nodes)
+      children += c.parent == n.name;
+    out.push_back("NODE MY_NAME = " + n.name + (n.parent.empty() ? "" : " PARENT_NAME = " + n.parent));
+    out.push_back("{");
+    out.insert(out.end(), n.box.begin(), n.box.end());
+    out.push_back("}");
+    out.push_back(std::to_string(children));
+    out.push_back("");  // (one empty line between nodes, as the game's files)
+  }
+  out.push_back("");
+  return Join(out);
+}
+
 // ---- texture package (400): count, 12 bytes, 32-byte records {name[16], "dds", size, offset, 0}, data on 16.
 // Pictures added in place: a new name takes the record of a picture no model uses (old ring pictures first; never a
 // light map, titantron or movie, which the game may look up itself), its data at the end; the rest keeps its place
@@ -709,13 +791,24 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
     }
     fence_lines.push_back(line);
   }
-  if (!fence_ids.empty())
+  if (!fence_ids.empty()) {
+    std::set<std::string> fence_names;
+    Bytes base_vis;
+    for (auto &k : gb.kids) {
+      if (model_name(k).rfind("ar_fen", 0) == 0)
+        fence_names.insert(model_name(k));
+      if (k.id == 50020)
+        base_vis = svrfmt::ArchiveData(k);
+    }
     for (auto &k : ga.kids)
       if (k.id == 50001) {
         Bytes d = svrfmt::ArchiveData(k);
         SwapFlagLines(d, fences_gone, fence_lines);
         ReplaceLike(k, d);
+      } else if (k.id == 50020 && !base_vis.empty()) {  // (their visibility boxes too)
+        ReplaceLike(k, SwapVisNodes(svrfmt::ArchiveData(k), base_vis, "ar_fen", fence_names));
       }
+  }
   pi.fences = int(fence_ids.size());
   // The base ring's pictures the arena hasn't: into its package (400), in place.
   svrfmt::ArcNode *ta = nullptr, *tb = nullptr;
