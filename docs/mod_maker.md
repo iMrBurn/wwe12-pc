@@ -659,7 +659,15 @@ places ×10, d'après le code de Kaiko).
   L'assistant (6 étapes, Retour / Suivant, problèmes en bas en rouge / jaune) : point de départ (SvR 2011 ou WWE '13
   depuis Mes disques, ISO ou dossier, ou un fichier d'arène SvR), base (tableau des 21 avec place, rampe, « aussi
   utilisée par » ; base proposée : même rampe, puis libre, puis assez de place ; le portage se fait en la choisissant),
-  nom et bannière, ce qui est repris (cases), aperçu 3D, terminer (créer, installer, **Tester en jeu**). Vérifié en
+  nom et bannière, ce qui est repris (cases), aperçu 3D, terminer (créer, installer, **Tester en jeu**).
+- **WWE 2K14 à 2K17** (2026-10-25, vérifié hors du jeu, **pas encore en jeu**) : leurs arènes sont du genre de WWE '13
+  (modèles de WWE '12 ; 2K14 / 2K15 EPAC, 2K16 EPAC xcompressé à entrées de 20 octets, 2K17 HSPC dont la liste est un
+  SHDC) → la recette de `port13.h` (2K17 : ses entrées remises dans une copie de l'EPAC de la base, sa foule et ses
+  fichiers de données manquants (50003) ceux de la base). bg00 des quatre jeux converti ; bg66 et plus (structures)
+  écartés. Pas de noms d'arènes (ailleurs que dans l'ordre des fichiers) : l'étape 1 montre le **tablier** de l'arène
+  choisie (`rin_ep00`). Catcheurs : `port13_star` marche aussi (Jericho ch104 de 2K14 et 2K17 sur Ziggler) ; leurs
+  noms ne sont pas dans `chEtc.pac` (enregistrements de 208 / 220 octets) : ceux de WWE '13 / '12 au même numéro,
+  marqués « ? ». Vérifié en
   pilotant le Mod Maker (Royal Rumble de SvR → Bragging Rights ; Capitol Punishment de WWE '13) ; Breaking Point
   (SvR) faite par l'utilisateur et chargée en jeu.
 
