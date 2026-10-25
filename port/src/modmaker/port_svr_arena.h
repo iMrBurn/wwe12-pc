@@ -427,6 +427,45 @@ inline Bytes EntranceOnly(const Bytes &d, const std::set<int> &objects) {
   return Join(lines);
 }
 
+// 50001 with the lines of objects `gone` left out and `added` lines put in (before the flags' explanation, "//..."),
+// "@light" in them replaced by the first light ("l(N)") the objects gone had (removed if they had none).
+inline void SwapFlagLines(Bytes &d, const std::set<uint32_t> &gone, std::vector<std::string> added) {
+  const auto lines = Lines(d);
+  const auto is_gone = [&](const std::vector<std::string> &w) {
+    return !w.empty() && std::all_of(w[0].begin(), w[0].end(), ::isdigit) && gone.count(uint32_t(atoi(w[0].c_str())));
+  };
+  std::string light;
+  for (const auto &line : lines) {
+    const auto w = Words(line);
+    if (is_gone(w))
+      for (size_t i = 1; i < w.size() && light.empty(); ++i)
+        if (w[i].rfind("l(", 0) == 0)
+          light = w[i];
+  }
+  for (auto &a : added) {
+    const size_t at = a.find("@light");
+    if (at != std::string::npos)
+      a.replace(at, 6, light);
+    while (!a.empty() && a.back() == ' ')
+      a.pop_back();
+  }
+  std::vector<std::string> out;
+  bool put = false;
+  for (const auto &line : lines) {
+    if (is_gone(Words(line)))
+      continue;
+    if (!put && line.rfind("//", 0) == 0) {
+      out.insert(out.end(), added.begin(), added.end());
+      out.push_back("");
+      put = true;
+    }
+    out.push_back(line);
+  }
+  if (!put)
+    out.insert(out.end(), added.begin(), added.end());
+  d = Join(out);
+}
+
 // ---- texture package (400): count, 12 bytes, 32-byte records {name[16], "dds", size, offset, 0}, data on 16.
 // Pictures added in place: a new name takes the record of a picture no model uses (old ring pictures first; never a
 // light map, titantron or movie, which the game may look up itself), its data at the end; the rest keeps its place
@@ -533,6 +572,7 @@ struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
   int pictures_added = 0;           // ring and crowd pictures copied from the base
   int pictures_missing = 0;         // ... that found no free record in the package
+  int fences = 0;                   // barricade pieces taken from the base
   float ramp_svr = 0, ramp12 = 0;   // the ramps' heights (cm)
   bool RampsMatch() const { return (ramp_svr < 60) == (ramp12 < 60); }
 };
@@ -623,6 +663,60 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
   for (const auto &k : gb.kids)
     if (from_base.count(k.id))
       ga.kids.push_back(k);
+  // The barricades: WWE '12's code finds them by name (ar_fence01_a to _f: the walls the wrestlers stop at, the
+  // pieces that break); SvR 2011's are named otherwise (ar_fence01, ar_fen_bone01...: walked through, seen on WM 26).
+  // Its own go, the base's come in (they wear the arena's pictures by name: ar_fence, ar_fen_wwe...), lit as its own
+  // were.
+  const auto model_name = [](const svrfmt::ArcNode &k) {
+    svrfmt::Model m;
+    return svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr) ? m.name : std::string();
+  };
+  std::set<uint32_t> fences_gone, used;
+  for (const auto &k : ga.kids)
+    if (model_name(k).rfind("ar_fen", 0) == 0)
+      fences_gone.insert(k.id);
+  ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(),
+                               [&](const svrfmt::ArcNode &k) { return fences_gone.count(k.id) != 0; }),
+                ga.kids.end());
+  for (const auto &k : ga.kids)
+    used.insert(k.id);
+  Bytes base_flags;
+  for (auto &k : gb.kids)
+    if (k.id == 50001)
+      base_flags = svrfmt::ArchiveData(k);
+  const auto base_lines = Lines(base_flags);
+  std::vector<std::string> fence_lines;
+  std::vector<uint32_t> fence_ids;
+  for (const auto &k : gb.kids) {
+    if (model_name(k).rfind("ar_fen", 0) != 0)
+      continue;
+    uint32_t id = k.id;
+    while (used.count(id) && id < 999)  // (its number is another object's in the SvR arena: the next free one)
+      ++id;
+    used.insert(id);
+    svrfmt::ArcNode n = k;
+    n.id = id;
+    ga.kids.push_back(n);
+    fence_ids.push_back(id);
+    // Its flags as in the base, its light the arena's own fences'.
+    std::string line = std::to_string(id);
+    for (const auto &l : base_lines) {
+      const auto w = Words(l);
+      if (w.empty() || w[0] != std::to_string(k.id))
+        continue;
+      for (size_t i = 1; i < w.size(); ++i)
+        line += " " + (w[i].rfind("l(", 0) == 0 ? std::string("@light") : w[i]);
+    }
+    fence_lines.push_back(line);
+  }
+  if (!fence_ids.empty())
+    for (auto &k : ga.kids)
+      if (k.id == 50001) {
+        Bytes d = svrfmt::ArchiveData(k);
+        SwapFlagLines(d, fences_gone, fence_lines);
+        ReplaceLike(k, d);
+      }
+  pi.fences = int(fence_ids.size());
   // The base ring's pictures the arena hasn't: into its package (400), in place.
   svrfmt::ArcNode *ta = nullptr, *tb = nullptr;
   for (auto &k : ga.kids)
@@ -689,7 +783,7 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
       }
     };
     for (auto &k : gb.kids)
-      if (from_base.count(k.id))
+      if (from_base.count(k.id) || model_name(k).rfind("ar_fen", 0) == 0)  // (the ring, the crowd, the barricades)
         wanted(wanted, k);
     // The light maps WWE '12's code looks up by name in every arena (no model names them; SvR 2011 has
     // aud_lightmap instead): without them the crowd stays dark.
