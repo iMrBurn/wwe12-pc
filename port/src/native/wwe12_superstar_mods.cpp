@@ -127,6 +127,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   struct Mod {
     std::string key, name;
     int base = 0;
+    std::vector<uint8_t> attributes;  // attributes=12 numbers (0-100), else empty (the base's)
     fs::path model, movie;
   };
   std::vector<Mod> list;
@@ -144,6 +145,16 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     mod.key = d.filename().string();
     mod.name = Value(text, "name");
     mod.base = atoi(Value(text, "base").c_str());
+    {
+      const std::string a = Value(text, "attributes");
+      for (size_t at = 0; at < a.size() && mod.attributes.size() < 12;) {
+        mod.attributes.push_back(uint8_t(std::clamp(atoi(a.c_str() + at), 0, 100)));
+        const size_t comma = a.find(',', at);
+        at = comma == std::string::npos ? a.size() : comma + 1;
+      }
+      if (mod.attributes.size() != 12)
+        mod.attributes.clear();
+    }
     mod.model = d / "superstar" / "ch.pac";
     mod.movie = d / "superstar" / "titantron.bik";
     if (mod.base < 50 || mod.base >= 373) {
@@ -225,6 +236,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     st.key = mod.key;
     st.name = mod.name;
     st.base = mod.base;
+    st.attributes = mod.attributes;
     const auto k = kept.find(mod.key);
     if (k != kept.end() && std::find(free_slots.begin(), free_slots.end(), k->second) != free_slots.end() &&
         std::find(taken.begin(), taken.end(), k->second) == taken.end())

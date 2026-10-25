@@ -76,10 +76,10 @@ class Page {
     }
 
     // The assistant: where its look comes from, its base, its name, its entrance video, a look at it, the mod.
-    const char *steps_fr[] = {"1. Apparence", "2. Catcheur de base", "3. Nom", "4. Vidéo d'entrée", "5. Aperçu",
-                              "6. Terminer"};
-    const char *steps_en[] = {"1. Look", "2. Base superstar", "3. Name", "4. Entrance video", "5. Look at it",
-                              "6. Finish"};
+    const char *steps_fr[] = {"1. Apparence", "2. Catcheur de base", "3. Nom et attributs", "4. Vidéo d'entrée",
+                              "5. Aperçu", "6. Terminer"};
+    const char *steps_en[] = {"1. Look", "2. Base superstar", "3. Name and attributes", "4. Entrance video",
+                              "5. Look at it", "6. Finish"};
     const bool look_ready = !model_.empty() && (look_ == 0 ? chosen_ : model_ != base_file_);
     const int reach = base_ < 0 ? 0 : look_ready ? 5 : 1;
     step_ = std::min(step_, reach);
@@ -103,6 +103,7 @@ class Page {
       ImGui::InputTextWithHint(fr ? "Nom" : "Name", fr ? "(comme en jeu)" : "(as in the game)", name_, sizeof(name_));
       ImGui::SetNextItemWidth(320);
       ImGui::InputTextWithHint(fr ? "Auteur" : "Author", fr ? "(facultatif)" : "(optional)", author_, sizeof(author_));
+      StepAttributes(fr);
       break;
     case 3: StepVideo(fr); break;
     case 4: {
@@ -396,6 +397,59 @@ class Page {
       PortSvr(fr);
   }
 
+  // Step 3: its attributes (the game's 12, 0-100): the base's, or its own.
+  void StepAttributes(bool fr) {
+    static const char *names_en[12] = {"Strike power", "Grapple power", "Submission", "Strike defense",
+                                       "Grapple defense", "Speed", "Agility", "Adrenaline", "Recovery", "Durability",
+                                       "Charisma", "Tag team"};
+    static const char *names_fr[12] = {"Puissance des frappes", "Puissance des prises", "Soumission",
+                                       "Défense contre les frappes", "Défense contre les prises", "Vitesse", "Agilité",
+                                       "Adrénaline", "Récupération", "Résistance", "Charisme", "Équipe"};
+    ImGui::Dummy(ImVec2(0, 8));
+    ImGui::SeparatorText(fr ? "Attributs" : "Attributes");
+    if (base_attributes_.size() != 12) {
+      ImGui::TextDisabled("%s", fr ? "(choisissez d'abord sa base, étape 2)" : "(choose its base first, step 2)");
+      return;
+    }
+    if (ImGui::Checkbox(fr ? "Ses propres attributs (sinon ceux de la base)" : "Its own attributes (else the base's)",
+                        &own_attributes_) &&
+        own_attributes_ && attributes_.size() != 12)
+      attributes_ = base_attributes_;
+    const std::vector<int> &shown = own_attributes_ ? attributes_ : base_attributes_;
+    ImGui::BeginDisabled(!own_attributes_);
+    int total = 0;
+    for (int i = 0; i < 12; ++i) {
+      int v = shown[size_t(i)];
+      total += v;
+      ImGui::SetNextItemWidth(320);
+      if (ImGui::SliderInt(fr ? names_fr[i] : names_en[i], &v, 0, 100) && own_attributes_)
+        attributes_[size_t(i)] = v;
+    }
+    ImGui::EndDisabled();
+    ImGui::TextDisabled(fr ? "Moyenne : %d (le jeu calcule sa note générale lui-même)"
+                           : "Average: %d (the game works out its overall rating itself)",
+                        (total + 6) / 12);
+    if (own_attributes_ && ImGui::SmallButton(fr ? "Reprendre ceux de la base" : "Take the base's again"))
+      attributes_ = base_attributes_;
+  }
+
+  // The base's attributes: its record (pac\ch\chEtc.pac, CHAR / DAT, the child of its number) +4..+15.
+  void LoadBaseAttributes(const disc::GameDisc &disc) {
+    base_attributes_.clear();
+    Bytes etc;
+    svrfmt::Archive a;
+    if (base_ < 0 || !disc.Read("pac/ch/chEtc.pac", etc) || !svrfmt::ArchiveOpen(etc, a, nullptr))
+      return;
+    for (auto &k : a.root.kids)
+      if (k.group == "CHAR" && k.name == "DAT " && svrfmt::ArchiveExpand(k))
+        for (auto &c : k.kids)
+          if (int(c.id) == stars_[size_t(base_)].id) {
+            const Bytes d = svrfmt::ArchiveData(c);
+            if (d.size() >= 16)
+              base_attributes_.assign(d.begin() + 4, d.begin() + 16);
+          }
+  }
+
   // Step 4: its entrance video.
   void StepVideo(bool fr) {
     ImGui::TextWrapped("%s", fr ? "Le titantron et le minitron pendant son entrée : ceux de la base, ou les siens."
@@ -560,6 +614,7 @@ class Page {
     char movie[16];
     snprintf(movie, sizeof(movie), "%03d.bik", stars_[base_].id);
     movie_.SetGame(device_, media::CopyGameMovie(disc, movie));  // (its entrance video starts from the base's)
+    LoadBaseAttributes(disc);
     if (look_ >= 2 && !svr_attires_.empty())
       PortSvr(fr);  // (ported over the new base)
     SetModel(look_ == 0 ? base_file_ : look_ == 1 ? other_ : ported_);
@@ -996,6 +1051,11 @@ class Page {
                            "\nbase=" + std::to_string(b.id) + "\nversion=1.0\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
+    if (own_attributes_ && attributes_.size() == 12) {  // (the game puts them in its record)
+      manifest += "attributes=";
+      for (size_t i = 0; i < 12; ++i)
+        manifest += std::to_string(attributes_[i]) + (i < 11 ? "," : "\n");
+    }
     manifest += "description=" + std::string(name_) + ", a new superstar starting from " +
                 (chosen_ ? b.name : "an average superstar (" + b.name + ")") +
                 (look_ == 3   ? ", its look ported from WWE '13 (the player's own copy)"
@@ -1062,6 +1122,8 @@ class Page {
   bool note_ok_ = false, message_ok_ = false;
   media::MovieEditor movie_;
   bool own_movie_ = false;
+  bool own_attributes_ = false;           // its own attributes (else the base's)
+  std::vector<int> attributes_, base_attributes_;  // the 12 (0-100), STRIKE POWER .. TAG TEAM
   bool svr_movie_ = false;     // its SvR 2011 entrance movie, as it is
   bool twok_movie_ = false;    // its 2K game's entrance movie (Bink 2), made into its own (own_movie_ too)
   std::string twok_movie_file_;  // that movie in movies\titantron, "" if none

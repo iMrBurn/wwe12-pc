@@ -767,6 +767,16 @@ places ×10, d'après le code de Kaiko).
   vidéos (SvR 2011, 2K15 ×2, 2K16, 2K17 ; 2K15 sans `ss_mini`). Noms des catcheurs lus en un seul endroit
   (`strings2k::SuperstarNames`), une fois par jeu.
 
+- **Attributs des catcheurs ajoutés (2026-10-25 ; Mod Maker vu à l'écran, côté jeu compilé mais pas encore essayé en
+  jeu : il faut l'exe refait)** : fiche `CHAR/DAT` (290 octets) **+4..+15 = les 12 attributs** (0-100), recopiés à
+  +16..+27 ; ordre = celui des textes du jeu (`string.pac`, SDB 0000) : STRIKE POWER, GRAPPLE POWER, SUBMISSION, STRIKE
+  DEFENSE, GRAPPLE DEFENSE, SPEED, AGILITY, ADRENALINE, RECOVERY, DURABILITY, CHARISMA, TAG TEAM (ex. Big Show 100 100
+  85 75 80 45 40 65 75 100 90 95 ; Evan Bourne : Speed / Agility / Adrenaline 100). Le nom est en +0x2E, +0x72 et +0xB6
+  (toujours le même : pas de nom court). Mod Maker : étape 3 « Nom et attributs » de NOUVEAU (ceux de la base, ou
+  « ses propres attributs » au curseur) → manifest `attributes=12 nombres` ; jeu (`wwe12_superstar_mods.cpp` →
+  `superstar_pack::Star::attributes`) : écrits dans la fiche du catcheur ajouté. La note générale est calculée par le
+  jeu. Pas encore : nom annoncé par le speaker, style de combat, capacités (+28..+35 ?), musique, prises.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

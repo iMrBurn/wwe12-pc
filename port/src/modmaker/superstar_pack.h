@@ -44,6 +44,10 @@ struct Star {
   Bytes model;       // a chNNN.pac (EPK8, "EMD " entries "000NNNAA"): the mod's or the base's
   Bytes movie;       // its own entrance video (Bink 320 x 320: titantron on top, minitron below), else empty
   int movie_number = 0;  // ... as movies\titantron\<number>.bik (a number no other video has)
+  // Its own attributes (0-100, the record's +4..+15, again at +16..+27: STRIKE POWER, GRAPPLE POWER, SUBMISSION,
+  // STRIKE DEFENSE, GRAPPLE DEFENSE, SPEED, AGILITY, ADRENALINE, RECOVERY, DURABILITY, CHARISMA, TAG TEAM, the game's
+  // own names in that order), else empty (the base's).
+  std::vector<uint8_t> attributes;
   // Its own portraits, else empty (the base's): [0 SD / 1 HD][SSFA, SSFB, SSFC], DDS as the game's (DXT5; HD 512 x 512,
   // 512 x 512, 256 x 256; SD 512 x 256, 512 x 256, 256 x 256: WWE '13's are the same).
   Bytes portraits[2][3];
@@ -297,6 +301,9 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       memset(&d[at], 0, 32);
       memcpy(&d[at], name.data(), name.size());
     }
+    if (st.attributes.size() == 12)
+      for (size_t i = 0; i < 12; ++i)
+        d[4 + i] = d[16 + i] = uint8_t(std::min<int>(st.attributes[i], 100));
     memcpy(&d[0xF0], &own[0xF0], 8);
     d[0x11F] = 1;  // a DLC superstar (the select screen's DLC tile; a disc superstar's copy had 0 and showed nowhere)
     while (person > 0 && person_used[size_t(person)])
