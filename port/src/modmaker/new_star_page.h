@@ -50,11 +50,11 @@ class Page {
     ImGui::TextWrapped("%s", fr ? "Ajoutez un catcheur au jeu, à côté des autres (il apparaît dans la case DLC de "
                                   "l'écran de choix). Il peut partir d'un catcheur de base (ses prises, ses stats, ses "
                                   "portraits), sinon d'un catcheur moyen ; son apparence peut être celle de la base, un "
-                                  "autre fichier de catcheur, ou une tenue portée de SvR 2011 ou de WWE '13."
+                                  "autre fichier de catcheur, ou une tenue portée de SvR 2011, de WWE '13 ou d'un 2K."
                                 : "Add a superstar to the game, next to the others (shown in the select screen's DLC "
                                   "tile). It can start from a base superstar (moves, ratings and portraits), else from an "
                                   "average one; its look can be the base's, another superstar file, or an attire ported "
-                                  "from SvR 2011 or WWE '13.");
+                                  "from SvR 2011, WWE '13 or a 2K game.");
     if (movie_.Finished())
       Finished(fr, mods);
     if (!disc.Found()) {
@@ -65,69 +65,95 @@ class Page {
       List(disc);
       if (default_ >= 0) {
         base_ = default_;
-        look_ = 1;
+        // (its look from another game when My game discs has one: WWE '13 and 2K first, else SvR 2011)
+        look_ = discs_ && !discs_->PathOf(0x545108B4).empty()   ? 3
+                : discs_ && !discs_->PathOf(0x5451085D).empty() ? 2
+                                                                : 1;
         OpenBase(fr, disc);
       }
     }
 
-    // 1. Name and base.
-    ImGui::SeparatorText(fr ? "1. Nom et catcheur de base" : "1. Name and base superstar");
-    ImGui::SetNextItemWidth(300);
-    ImGui::InputTextWithHint("##ns_name", fr ? "Nom (comme en jeu)" : "Name (as in the game)", name_, sizeof(name_));
+    // The assistant: where its look comes from, its base, its name, its entrance video, a look at it, the mod.
+    const char *steps_fr[] = {"1. Apparence", "2. Catcheur de base", "3. Nom", "4. Vidéo d'entrée", "5. Aperçu",
+                              "6. Terminer"};
+    const char *steps_en[] = {"1. Look", "2. Base superstar", "3. Name", "4. Entrance video", "5. Look at it",
+                              "6. Finish"};
+    const bool look_ready = !model_.empty() && (look_ == 0 ? chosen_ : model_ != base_file_);
+    const int reach = base_ < 0 ? 0 : look_ready ? 5 : 1;
+    step_ = std::min(step_, reach);
+    const float h = std::max(320.0f, ImGui::GetContentRegionAvail().y - 72);
+    ImGui::BeginChild("ns_steps", ImVec2(190, h), ImGuiChildFlags_Borders);
+    for (int i = 0; i < 6; ++i) {
+      ImGui::BeginDisabled(i > reach);
+      if (ImGui::Selectable(fr ? steps_fr[i] : steps_en[i], step_ == i, 0, ImVec2(0, 26)))
+        step_ = i;
+      ImGui::EndDisabled();
+    }
+    ImGui::EndChild();
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(300);
-    const char *none = fr ? "Aucune (catcheur moyen)" : "None (an average superstar)";
-    if (ImGui::BeginCombo(fr ? "Base (facultatif)" : "Base (optional)",
-                          base_ < 0 ? (fr ? "Choisir..." : "Choose...") : chosen_ ? stars_[base_].name.c_str() : none,
-                          ImGuiComboFlags_HeightLarge)) {
-      ImGui::SetNextItemWidth(-1);
-      if (ImGui::IsWindowAppearing())
-        ImGui::SetKeyboardFocusHere();
-      ImGui::InputTextWithHint("##ns_filter", fr ? "Rechercher" : "Search", filter_, sizeof(filter_));
-      if (default_ >= 0 && !filter_[0] && ImGui::Selectable(none, !chosen_)) {
-        chosen_ = false;
-        base_ = default_;
-        if (look_ == 0)
-          look_ = 1;
-        OpenBase(fr, disc);
-      }
-      for (int i = 0; i < int(stars_.size()); ++i) {
-        std::string a = stars_[i].name, b = filter_;
-        for (auto *x : {&a, &b})
-          std::transform(x->begin(), x->end(), x->begin(), [](unsigned char c) { return char(std::tolower(c)); });
-        if (!b.empty() && a.find(b) == std::string::npos)
-          continue;
-        if (ImGui::Selectable(stars_[i].name.c_str(), chosen_ && i == base_)) {
-          base_ = i;
-          chosen_ = true;
-          OpenBase(fr, disc);
-        }
-      }
-      ImGui::EndCombo();
+    ImGui::BeginChild("ns_body", ImVec2(0, h), ImGuiChildFlags_Borders);
+    ImGui::PushTextWrapPos(0);
+    switch (step_) {
+    case 0: StepLook(fr); break;
+    case 1: StepBase(fr, disc); break;
+    case 2:
+      ImGui::SetNextItemWidth(320);
+      ImGui::InputTextWithHint(fr ? "Nom" : "Name", fr ? "(comme en jeu)" : "(as in the game)", name_, sizeof(name_));
+      ImGui::SetNextItemWidth(320);
+      ImGui::InputTextWithHint(fr ? "Auteur" : "Author", fr ? "(facultatif)" : "(optional)", author_, sizeof(author_));
+      break;
+    case 3: StepVideo(fr); break;
+    case 4: {
+      ImGui::BeginChild("ns_view", ImVec2(0, 0), ImGuiChildFlags_Borders);
+      Draw3D(fr);
+      ImGui::EndChild();
+      break;
     }
-    if (!chosen_ && base_ >= 0)
-      ImGui::TextDisabled("%s", (std::string(fr ? "Sans base, ses prises, ses stats, son entrée et ses portraits sont "
-                                                  "ceux de "
-                                                : "Without a base, its moves, ratings, entrance and portraits are ") +
-                                 stars_[base_].name + (fr ? " ; son apparence est la vôtre." : "; its look is yours."))
-                                    .c_str());
-    if (!error_.empty())
-      ImGui::TextColored(red, "%s", error_.c_str());
-    if (base_ < 0)
-      return;
-
-    // 2. Look.
-    ImGui::SeparatorText(fr ? "2. Apparence" : "2. Look");
-    int look = look_;
-    ImGui::BeginDisabled(!chosen_);  // (without a base, the base's look would be the average superstar's)
-    ImGui::RadioButton(fr ? "Celle de la base" : "The base's", &look, 0);
+    default: StepFinish(fr, mods); break;
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::EndChild();
+    ImGui::BeginDisabled(step_ == 0);
+    if (ImGui::Button(fr ? "Retour" : "Back", ImVec2(110, 0)))
+      --step_;
     ImGui::EndDisabled();
     ImGui::SameLine();
-    ImGui::RadioButton(fr ? "Un autre fichier de catcheur (.pac)" : "Another superstar file (.pac)", &look, 1);
+    char prog[32];
+    snprintf(prog, sizeof(prog), fr ? "Étape %d sur 6" : "Step %d of 6", step_ + 1);
+    ImGui::ProgressBar((step_ + 1) / 6.0f, ImVec2(ImGui::GetContentRegionAvail().x - 120, 0), prog);
     ImGui::SameLine();
-    ImGui::RadioButton(fr ? "Une tenue de SvR 2011" : "An attire from SvR 2011", &look, 2);
+    ImGui::BeginDisabled(step_ >= 5 || step_ + 1 > reach);
+    if (ImGui::Button(fr ? "Suivant" : "Next", ImVec2(110, 0)))
+      ++step_;
+    ImGui::EndDisabled();
+    // What keeps it from being done.
+    if (!look_ready)
+      ImGui::TextColored(red, "%s", fr ? "Choisissez son apparence (étape 1)." : "Choose its look (step 1).");
+    else if (!name_[0])
+      ImGui::TextColored(red, "%s", fr ? "Donnez-lui un nom (étape 3)." : "Give it a name (step 3).");
+    else if (own_movie_ && !movie_.Ready())
+      ImGui::TextColored(yellow, "%s", fr ? "Sa vidéo d'entrée n'est pas prête (étape 4)." : "Its entrance video isn't ready (step 4).");
+    else
+      ImGui::TextColored(green, "%s", fr ? "Tout est prêt." : "All set.");
+  }
+
+  // Step 1: its look.
+  void StepLook(bool fr) {
+    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
+    ImGui::TextWrapped("%s", fr ? "D'où vient son apparence : un catcheur de vos autres jeux (MES DISQUES), un fichier "
+                                  "de catcheur, ou la base elle-même."
+                                : "Where its look comes from: a superstar of your other games (MY GAME DISCS), a "
+                                  "superstar file, or the base itself.");
+    int look = look_;
+    ImGui::BeginDisabled(!chosen_);  // (without a base, the base's look would be the average superstar's)
+    ImGui::RadioButton(fr ? "La base" : "The base", &look, 0);
+    ImGui::EndDisabled();
     ImGui::SameLine();
-    ImGui::RadioButton(fr ? "Une tenue de WWE '13 ou 2K" : "An attire from WWE '13 or 2K", &look, 3);
+    ImGui::RadioButton(fr ? "Un fichier (.pac)" : "A file (.pac)", &look, 1);
+    ImGui::SameLine();
+    ImGui::RadioButton("SvR 2011", &look, 2);
+    ImGui::SameLine();
+    ImGui::RadioButton(fr ? "WWE '13 ou 2K" : "WWE '13 or 2K", &look, 3);
     if (look != look_) {
       if ((look >= 2) != (look_ >= 2) || look >= 2) {  // (another game: its file chosen again)
         svr_file_.clear();
@@ -194,6 +220,8 @@ class Page {
               snprintf(label, sizeof(label), "%s  (ch%03d)", nm.c_str(), n);
             if (ImGui::Selectable(label, n == disc_pick_)) {
               LoadFromDisc(fr, n);
+              if (!svr_attires_.empty())
+                PortSvr(fr);
               const bool guessed = nm.size() > 2 && nm.compare(nm.size() - 2, 2, " ?") == 0;
               if (!name_[0] && !(nm.size() == 5 && nm.compare(0, 2, "ch") == 0))  // (its name, to start with)
                 snprintf(name_, sizeof(name_), "%s", (guessed ? nm.substr(0, nm.size() - 2) : nm).c_str());
@@ -222,14 +250,13 @@ class Page {
         if (ImGui::BeginCombo(fr ? "Tenue à porter" : "Attire to port", label)) {
           for (int i = 0; i < int(svr_attires_.size()); ++i) {
             snprintf(label, sizeof(label), fr ? "Tenue %d  (%s)" : "Attire %d  (%s)", i + 1, svr_attires_[i].c_str());
-            if (ImGui::Selectable(label, i == svr_attire_))
+            if (ImGui::Selectable(label, i == svr_attire_) && i != svr_attire_) {
               svr_attire_ = i;
+              PortSvr(fr);
+            }
           }
           ImGui::EndCombo();
         }
-        ImGui::SameLine();
-        if (ImGui::Button(fr ? "Porter" : "Port"))
-          PortSvr(fr);
       }
     }
     if (!note_.empty()) {
@@ -238,14 +265,65 @@ class Page {
       ImGui::PopTextWrapPos();
     }
 
-    // 3D view of the model's first attire.
-    const float h = std::max(220.0f, ImGui::GetContentRegionAvail().y - (own_movie_ ? 520 : 150));
-    ImGui::BeginChild("ns_view", ImVec2(0, h), ImGuiChildFlags_Borders);
-    Draw3D(fr);
-    ImGui::EndChild();
+  }
 
-    // 3. Entrance video.
-    ImGui::SeparatorText(fr ? "3. Vidéo d'entrée (titantron et minitron)" : "3. Entrance video (titantron and minitron)");
+  // Step 2: the base superstar (the look ported again over the new base).
+  void StepBase(bool fr, const disc::GameDisc &disc) {
+    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f);
+    ImGui::TextWrapped("%s", fr ? "Le catcheur de base donne ses prises, ses stats, son entrée et ses portraits au "
+                                  "nouveau. Sans base, ce sont ceux d'un catcheur moyen."
+                                : "The base superstar gives the new one its moves, ratings, entrance and portraits. "
+                                  "Without one, an average superstar's.");
+    ImGui::SetNextItemWidth(300);
+    const char *none = fr ? "Aucune (catcheur moyen)" : "None (an average superstar)";
+    if (ImGui::BeginCombo(fr ? "Base (facultatif)" : "Base (optional)",
+                          base_ < 0 ? (fr ? "Choisir..." : "Choose...") : chosen_ ? stars_[base_].name.c_str() : none,
+                          ImGuiComboFlags_HeightLarge)) {
+      ImGui::SetNextItemWidth(-1);
+      if (ImGui::IsWindowAppearing())
+        ImGui::SetKeyboardFocusHere();
+      ImGui::InputTextWithHint("##ns_filter", fr ? "Rechercher" : "Search", filter_, sizeof(filter_));
+      if (default_ >= 0 && !filter_[0] && ImGui::Selectable(none, !chosen_)) {
+        chosen_ = false;
+        base_ = default_;
+        if (look_ == 0)
+          look_ = 1;
+        ChooseBase(fr, disc);
+      }
+      for (int i = 0; i < int(stars_.size()); ++i) {
+        std::string a = stars_[i].name, b = filter_;
+        for (auto *x : {&a, &b})
+          std::transform(x->begin(), x->end(), x->begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        if (!b.empty() && a.find(b) == std::string::npos)
+          continue;
+        if (ImGui::Selectable(stars_[i].name.c_str(), chosen_ && i == base_)) {
+          base_ = i;
+          chosen_ = true;
+          ChooseBase(fr, disc);
+        }
+      }
+      ImGui::EndCombo();
+    }
+    if (!chosen_ && base_ >= 0)
+      ImGui::TextDisabled("%s", (std::string(fr ? "Sans base, ses prises, ses stats, son entrée et ses portraits sont "
+                                                  "ceux de "
+                                                : "Without a base, its moves, ratings, entrance and portraits are ") +
+                                 stars_[base_].name + (fr ? " ; son apparence est la vôtre." : "; its look is yours."))
+                                    .c_str());
+    if (!error_.empty())
+      ImGui::TextColored(red, "%s", error_.c_str());
+  }
+
+  void ChooseBase(bool fr, const disc::GameDisc &disc) {
+    OpenBase(fr, disc);
+    if (look_ >= 2 && !svr_attires_.empty())
+      PortSvr(fr);
+  }
+
+  // Step 4: its entrance video.
+  void StepVideo(bool fr) {
+    ImGui::TextWrapped("%s", fr ? "Le titantron et le minitron pendant son entrée : ceux de la base, ou les siens."
+                                : "The titantron and minitron during its entrance: the base's, or its own.");
     ImGui::BeginDisabled(movie_.Busy());
     ImGui::Checkbox(fr ? "Sa propre vidéo d'entrée (sinon celle de la base)" : "Its own entrance video (else the base's)",
                     &own_movie_);
@@ -253,18 +331,21 @@ class Page {
     if (own_movie_)
       movie_.Draw(fr, "ns_movie");
 
-    // 4. The mod.
-    ImGui::SeparatorText(fr ? "4. Le mod" : "4. The mod");
-    ImGui::BeginDisabled(movie_.Busy());
-    ImGui::SetNextItemWidth(200);
-    ImGui::InputTextWithHint("##ns_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
-    ImGui::SameLine();
-    ImGui::EndDisabled();
-    ImGui::SameLine();
+  }
+
+  // Step 6: the mod.
+  void StepFinish(bool fr, mods::Manager &mods) {
+    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f), yellow(0.94f, 0.75f, 0.24f, 1.0f);
+    ImGui::TextWrapped(fr ? "« %s » apparaîtra dans la case DLC de l'écran de choix. Le mod (.svrmod) est enregistré "
+                            "où vous voulez, pour le partager, puis installé."
+                          : "\"%s\" will show in the select screen's DLC tile. The mod (.svrmod) is saved where you "
+                            "want, to share it, then installed.",
+                       name_);
+    ImGui::Dummy(ImVec2(0, 6));
     const bool ready = name_[0] && !model_.empty() && (look_ == 0 || model_ != base_file_) &&
                        (!own_movie_ || movie_.Ready());
     ImGui::BeginDisabled(!ready || game::IsRunning() || movie_.Busy());
-    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
+    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it...", ImVec2(260, 36)))
       Make(fr, mods);
     ImGui::EndDisabled();
     movie_.DrawProgress(fr);
@@ -670,6 +751,7 @@ class Page {
   std::vector<std::pair<int, std::string>> disc_list_;
   int disc_pick_ = -1;
   uint32_t star_game_ = 0x545108B4;
+  int step_ = 0;  // the assistant's step
   const disc::GameDisc *disc12_ = nullptr;  // WWE '12 (its names, a guess for the 2K games)  // the WWE '13-kind game of "An attire from WWE '13 or 2K"
   std::vector<std::string> svr_attires_;
   int svr_attire_ = 0;
