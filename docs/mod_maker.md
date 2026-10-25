@@ -712,7 +712,12 @@ places ×10, d'après le code de Kaiko).
   `menu\menuHD.pac` / `menuSD.pac` (déjà lus comme WWE '13). 2K15 et 2K16 : `menu\menuHD2.pac` (~70 Mo, gardé ouvert),
   `SFAG` / `SFBG` / `SFCG` « NNNN » en **TGA** non compressé 32 bits (512 × 512, 512 × 512, 256 × 256, même cadrage que
   WWE '12 ; 2K16 sans `SFBG` : `SFAG` à la place), convertis en DDS DXT5 sans mips (SD `SSFA` / `SSFB` 512 × 256).
-  2K17 : `menu\SSFaceHD.pac` (HSPC, noms hachés) : pas encore lu.
+  2K17 : `menu\SSFaceHD.pac` (HSPC, noms hachés) : pas encore lu. Étude (2026-10-25) : 351 TGA 512 × 512 rangés dans le
+  fichier (champ `order`) **dans l'ordre des numéros** (The Rock, Stone Cold ×2, Triple H ×2, Undertaker, Jericho…),
+  mais plusieurs par catcheur (tenues) : l'ordre seul ne dit pas lequel est à qui. Un SHDC interne donne 160 icônes
+  64 × 64 (DDS) **par numéro** (table {id, position, 0x1080, 0} à +0xD00), gros plans du visage : rapprochement par
+  ressemblance jugé peu fiable. Le hachage des noms (HSPC) et des numéros (SHDC) reste inconnu (FNV, xxHash, CRC64,
+  MD5/SHA1 tronqués essayés sur des paires « numéro → code » connues : rien).
 
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
