@@ -628,8 +628,40 @@ places ×10, d'après le code de Kaiko).
   + `MENU/MnnF` ; mis dans le `MLYE/MBnn` de la base → **plantage** : le code de l'écran VS prend les éléments par
   numéro (`sub_82571BA8`, élément 30). Retiré ; les arènes SvR gardent l'écran VS de leur base. Piste : réhabiller
   l'écran VS et les plaques de WWE '12 avec les images de l'arène SvR.
-- À faire : vidéo de transition (sans doute `pac\evt\evtmov.pac`) ; aperçu 3D du Mod Maker cassé sur Vengeance
-  (grands triangles gris, l'arène est juste en jeu) ; marches blanches (vues aussi avec Vengeance).
+- **Vidéo de transition** (2026-10-25, validée en jeu : Vengeance, WM 26) : `pac\evt\evtmov.pac` (index 192),
+  `MOVT/M0NN`, Bink 1 640 × 640, même groupe dans WWE '12, WWE '13 et SvR 2011 → `arena/transition.bik`. Le jeu la
+  met à la fin d'une copie d'`evtmov.pac` gardée dans `Documents\wwe12\arena_movies` (273 Mo, refaite seulement quand
+  les vidéos changent) et redirige `/MOVT/M0NN` de la base. Piège : la mettre dans la copie de `MatchHD.pac` (numéro
+  de fichier changé à +12) → écran noir, le lecteur vidéo attend sans fin.
+- **Écran VS des arènes de SvR 2011** (2026-10-25, Royal Rumble validée en jeu) : un écran VS de WWE '12 habillé des
+  images de l'arène (`port_svr_arena::Card`) : l'écran de WWE '12 aux images de mêmes noms et proportions s'il existe
+  (WWE '12 a repris ceux de Hell in a Cell, RAW, Night of Champions, Superstars de SvR), sinon celui de Hell in a Cell
+  (`MB09`) avec la plus grande image en fond, le logo (sinon la bannière), la plaque ; feu et grille cachés.
+- **Foule de SvR 2011** (2026-10-25, WM 26 validée en jeu) : la sienne, personnes **non agrandies**, fichiers de places
+  ×10 (sièges : les 4 nombres entre parenthèses ; zones `; R` / `; NR` : tous les nombres) ; celle de la base si un
+  modèle ne se convertit pas.
+- **Plaques d'entrée de SvR 2011** : toujours non prises (essai : 2e mise en page copiée dans 10000 / 10020, sans effet).
+- **Écran VS et bases partagées** : le jeu ne recharge l'écran VS (`sub_82574E50` → `sub_828916B8`, partie 16) que
+  si le **numéro** d'arène change (l'écran du match reste à son étape 11 sinon). Deux arènes ajoutées sur la même base
+  (ou une et sa base) : en passant directement de l'une à l'autre, l'écran VS reste celui de la première. 4 essais
+  ratés (renommer `MB%02d`, forcer la partie 16, repartir de l'étape 1 dans `sub_82576998`) : à reprendre.
+- **Aperçu 3D** corrigé : les modèles de WWE '13 écrivent le type de bande `0x06000000` (`Strip::IsStrip`).
+- Reste : marches blanches (objets de `bgEtc.pac`, ni les jeux de lumières 300-306 ni l'entrée 30001) ; locator des
+  arènes de WWE '13 un peu bas (WWE '12 écrit la ville à une hauteur fixe).
+
+### Mes disques de jeu et assistant « Nouvelle arène » (2026-10-25, `docs/plan_page_arenes.md`)
+
+- **MES DISQUES** (`game_discs.h`) : les autres jeux du joueur, ajoutés une fois (ISO ou dossier), reconnus par le
+  numéro de titre de leur `default.xex` (SvR 2011 5451085D, WWE '13 545108B4, 2K14 545408B2, 2K15 545408B6, 2K16
+  315A07D2, 2K17 545408BA), gardés dans `modmaker_discs.txt` à côté du Mod Maker ; « Chercher mes disques » fouille
+  un dossier sur 3 niveaux. Rien n'est copié.
+- **ARÈNES** en onglets : Nouvelle arène (l'assistant), Retoucher une arène du jeu, Autre fichier d'arène, Vue 3D.
+  L'assistant (6 étapes, Retour / Suivant, problèmes en bas en rouge / jaune) : point de départ (SvR 2011 ou WWE '13
+  depuis Mes disques, ISO ou dossier, ou un fichier d'arène SvR), base (tableau des 21 avec place, rampe, « aussi
+  utilisée par » ; base proposée : même rampe, puis libre, puis assez de place ; le portage se fait en la choisissant),
+  nom et bannière, ce qui est repris (cases), aperçu 3D, terminer (créer, installer, **Tester en jeu**). Vérifié en
+  pilotant le Mod Maker (Royal Rumble de SvR → Bragging Rights ; Capitol Punishment de WWE '13) ; Breaking Point
+  (SvR) faite par l'utilisateur et chargée en jeu.
 
 ## 6 quaterdecies. Vidéo d'entrée des catcheurs ajoutés ; titantron et minitron séparés (2026-10-24)
 
