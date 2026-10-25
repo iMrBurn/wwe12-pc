@@ -499,18 +499,63 @@ class Page {
   // An arena of SvR 2011 (its pac/bg/bgNN.pac); it plays as the arena chosen above (its base: the recipe takes the
   // ring, the crowd and the match lights from it).
   void DrawPortSvr(bool fr) {
-    if (ImGui::Button(fr ? "Fichier d'arène de SvR 2011 (bgNN.pac)..." : "SvR 2011 arena file (bgNN.pac)...")) {
+    // The game: its ISO (or its folder), whose arenas are listed by name; or one arena file.
+    if (ImGui::Button(fr ? "ISO ou dossier de SvR 2011..." : "SvR 2011 ISO or folder...")) {
+      const fs::path p = PickGame(fr);
+      if (!p.empty()) {
+        svr_list_.clear();
+        svr_pick_ = -1;
+        if (svr_disc_.OpenPath(p)) {
+          svr_game_ = p;
+          for (const auto &n : svr_disc_.List("pac/bg"))
+            if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
+                port_svr_arena::FindSvr(atoi(n.c_str() + 2)))
+              svr_list_.push_back(atoi(n.c_str() + 2));
+          std::sort(svr_list_.begin(), svr_list_.end());
+        }
+        port_note_ = svr_list_.empty() ? (fr ? "Pas d'arènes de SvR 2011 ici." : "No SvR 2011 arenas here.") : "";
+        port_ok_ = false;
+      }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(fr ? "Un fichier d'arène (bgNN.pac)..." : "One arena file (bgNN.pac)...")) {
       const fs::path p = PickOpen(fr, true);
       if (!p.empty()) {
         std::ifstream f(p, std::ios::binary);
         svr_file_.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
         svr_path_ = p;
+        svr_pick_ = -1;
         PortSvr(fr);
       }
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", svr_path_.empty() ? (fr ? "(vos fichiers de SvR 2011)" : "(your SvR 2011 files)")
-                                                : media::Utf8(svr_path_.wstring()).c_str());
+    ImGui::TextDisabled("%s", !svr_game_.empty() && svr_pick_ >= 0 ? media::Utf8(svr_game_.filename().wstring()).c_str()
+                              : !svr_path_.empty()                ? media::Utf8(svr_path_.wstring()).c_str()
+                              : !svr_game_.empty() ? media::Utf8(svr_game_.filename().wstring()).c_str()
+                                                   : (fr ? "(votre ISO de SvR 2011)" : "(your SvR 2011 ISO)"));
+    if (!svr_list_.empty()) {
+      ImGui::SetNextItemWidth(360);
+      const auto label = [](int n) {
+        char b[96];
+        snprintf(b, sizeof(b), "%s  (bg%02d)", port_svr_arena::FindSvr(n)->name, n);
+        return std::string(b);
+      };
+      if (ImGui::BeginCombo(fr ? "Arène de SvR 2011" : "SvR 2011 arena",
+                            svr_pick_ < 0 ? (fr ? "Choisir..." : "Choose...") : label(svr_pick_).c_str(),
+                            ImGuiComboFlags_HeightLarge)) {
+        for (int n : svr_list_)
+          if (ImGui::Selectable(label(n).c_str(), n == svr_pick_)) {
+            char rel[32];
+            snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", n);
+            if (svr_disc_.Read(rel, svr_file_)) {
+              svr_pick_ = n;
+              svr_path_.clear();
+              PortSvr(fr);
+            }
+          }
+        ImGui::EndCombo();
+      }
+    }
     if (!port_note_.empty()) {
       ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 720);
       ImGui::TextColored(port_ok_ ? kGreen : kRed, "%s", port_note_.c_str());
@@ -571,11 +616,49 @@ class Page {
                kSlots[slot_].name, info.ramp_svr / 100, info.ramp12 / 100);
       ramp_note_ = b;
     }
-    banner_custom_ = false;
-    LoadBaseBanner();
-    std::string stem = media::Utf8(svr_path_.stem().wstring());
+    // Its own banner from SvR 2011's menus (from the ISO), else the base's.
+    Bytes matchhd;
+    svrfmt::Image img;
+    if (svr_pick_ >= 0 && svr_disc_.Read("pac/menu/MatchHD.pac", matchhd) &&
+        port_svr_arena::Banner(matchhd, svr_pick_, img)) {
+      SetBanner(Fill(img, 256, 128));
+      banner_custom_ = true;
+    } else {
+      banner_custom_ = false;
+      LoadBaseBanner();
+    }
+    const std::string stem = svr_pick_ >= 0 ? port_svr_arena::FindSvr(svr_pick_)->name
+                                            : media::Utf8(svr_path_.stem().wstring());
     snprintf(name_, sizeof(name_), "%s (SvR 2011)", stem.c_str());
     as_new_ = true;
+  }
+
+  // An ISO (or a game folder).
+  static fs::path PickGame(bool fr) {
+    IFileOpenDialog *dlg = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
+      return {};
+    const COMDLG_FILTERSPEC filter[] = {{fr ? L"Image du jeu (*.iso)" : L"Game image (*.iso)", L"*.iso"},
+                                        {L"*.*", L"*.*"}};
+    dlg->SetFileTypes(2, filter);
+    DWORD opts = 0;
+    dlg->GetOptions(&opts);
+    dlg->SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST);
+    dlg->SetTitle(fr ? L"ISO de SvR 2011" : L"SvR 2011 ISO");
+    fs::path picked;
+    if (SUCCEEDED(dlg->Show(GetActiveWindow()))) {
+      IShellItem *item = nullptr;
+      if (SUCCEEDED(dlg->GetResult(&item))) {
+        PWSTR q = nullptr;
+        if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &q))) {
+          picked = q;
+          CoTaskMemFree(q);
+        }
+        item->Release();
+      }
+    }
+    dlg->Release();
+    return picked;
   }
 
   static std::string Label13(int n) {
@@ -878,7 +961,11 @@ class Page {
   std::string port_note_, ramp_note_;
   Bytes card_mb_, card_mf_;  // its VS screen from WWE '13 (port13::Card)
   Bytes svr_file_;            // the SvR 2011 arena file (port_svr_arena.h)
-  fs::path svr_path_;
+  fs::path svr_path_;         // ... a file chosen alone
+  disc::GameDisc svr_disc_;   // ... or the game's ISO / folder, and its arena chosen
+  fs::path svr_game_;
+  std::vector<int> svr_list_;
+  int svr_pick_ = -1;
 
   // New arena (added, not replacing) and its banner.
   bool as_new_ = true, banner_custom_ = false, banners_read_ = false;

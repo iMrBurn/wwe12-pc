@@ -46,6 +46,22 @@ class GameDisc {
       }
   }
 
+  // Another game's files (SvR 2011, WWE '13...): its .iso, or its folder (the one holding default.xex or pac).
+  bool OpenPath(const fs::path &p) {
+    folder_.clear();
+    iso_.clear();
+    std::error_code ec;
+    if (fs::is_directory(p, ec)) {
+      for (const auto &d : {p, p.parent_path()})
+        if (fs::exists(d / "default.xex", ec) || fs::exists(d / "pac", ec)) {
+          folder_ = d;
+          return true;
+        }
+      return false;
+    }
+    return OpenIso(p);
+  }
+
   bool Found() const { return !folder_.empty() || !iso_.empty(); }
 
   // A file by its disc path ("pac/ch/chEtc.pac").

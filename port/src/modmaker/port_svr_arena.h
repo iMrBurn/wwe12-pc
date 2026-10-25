@@ -478,6 +478,54 @@ inline void ReplaceLike(svrfmt::ArcNode &n, const Bytes &raw) {
 
 }  // namespace detail
 
+// SvR 2011's arenas by file number (pac/bg/bgNN.pac = its stage NN; names from its string.pac, in that order) and
+// their banners in its menu/MatchHD.pac (MENU/MASI, PACH entry 7001: 256 x 128, the size of WWE '12's tiles).
+// Files not listed are match structures, the moveset editor's ring, test stages.
+struct ArenaSvr {
+  int file;
+  const char *name, *banner;
+};
+inline constexpr ArenaSvr kArenasSvr[] = {
+    {0, "SmackDown", "arena_SD"},          {1, "RAW", "arena_RAW"},
+    {2, "ECW", "arena_ECW"},               {3, "Tribute to the Troops", "arena_ttt"},
+    {4, "SummerSlam", "arena_slam"},       {5, "Breaking Point", "arena_BP"},
+    {6, "Hell in a Cell", "arena_HinC"},   {7, "Survivor Series", "arena_Series"},
+    {8, "TLC", "arena_TLC"},               {9, "Royal Rumble", "arena_RR"},
+    {10, "Elimination Chamber", "arena_EC"}, {11, "WrestleMania XXVI", "arena_WM26"},
+    {12, "Backlash", "arena_back"},        {13, "Judgment Day", "arena_Judg"},
+    {14, "Night of Champions", "arena_NoC"}, {15, "The Bash", "arena_BASH"},
+    {16, "Extreme Rules", "arena_EXT"},    {17, "Superstars", "arena_SS"},
+    {18, "Bragging Rights", "arena_BR"},   {19, "Druid Arena", "arena_drui"},
+};
+
+inline const ArenaSvr *FindSvr(int file) {
+  for (const auto &a : kArenasSvr)
+    if (a.file == file)
+      return &a;
+  return nullptr;
+}
+
+// The arena's banner in SvR 2011's menu/MatchHD.pac.
+inline bool Banner(const Bytes &matchhd, int file, svrfmt::Image &out) {
+  const ArenaSvr *arena = FindSvr(file);
+  svrfmt::Archive a;
+  if (!arena || !svrfmt::ArchiveOpen(matchhd, a, nullptr))
+    return false;
+  for (auto &k : a.root.kids) {
+    if (k.group != "MENU" || k.name != "MASI" || !svrfmt::ArchiveExpand(k))
+      continue;
+    for (auto &e : k.kids) {
+      std::vector<svrfmt::BundleTexture> texs;
+      if (e.id != 7001 || !svrfmt::BundleRead(svrfmt::ArchiveData(e), texs))
+        continue;
+      for (const auto &t : texs)
+        if (t.name == arena->banner && svrfmt::DdsDecode(t.data, out))
+          return true;
+    }
+  }
+  return false;
+}
+
 struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
   int pictures_added = 0;           // ring pictures copied from the base
