@@ -36,7 +36,12 @@
 //  - an added arena's own VS screen ("match card", ported from WWE '13 by the Mod Maker: arena\card_mb.pac and
 //    arena\card_mf.pac, MatchHD.pac's MLYE/MBnn = layout and pictures and MENU/MnnF = its font, nn = the stage, as
 //    stored) appended to that MatchHD.pac too; while it is the chosen arena, the directory answers its base's
-//    /MLYE/MBnn and /MENU/MnnF with them.
+//    /MLYE/MBnn and /MENU/MnnF with them;
+//  - an added arena's own entrance graphics (arena\etex_hd.pac: its ETEX/00NN group of pac\evt\evtgdhd.pac, as its
+//    game stores it: pictures, the 2D animations of the location plate and the name plates, their fonts; the same
+//    layout in WWE '12, WWE '13 and SvR 2011) appended to a served evtgdhd.pac; while it is the chosen arena, the
+//    directory answers its base's /ETEX/00NN with it. (A whole evtgdhd.pac rebuilt in mods crashed: the directory
+//    keeps every entry's place, and they had all moved.)
 //
 // Test: wwe12_arena_pages_test = true adds one page, the 21 arenas in reverse order, and logs the lookups.
 
@@ -87,6 +92,7 @@ constexpr int kTiles = 21;
 constexpr u32 kFirstAdded = 150;  // made-up stage numbers of the added arenas' tiles
 constexpr u32 kEmptyTile = 149;   // a page's tiles past its last arena (not available)
 constexpr u16 kMatchHdIndex = 234;  // pac\menu\MatchHD.pac in the directory (its line in plist360.h)
+constexpr u16 kEvtGdHdIndex = 190;  // pac\evt\evtgdhd.pac
 
 struct Added {
   std::string id, name;
@@ -98,6 +104,8 @@ struct Added {
   u32 banner_name = 0;  // that name in guest memory
   std::vector<uint8_t> card_mb, card_mf;  // its own VS screen (until appended), else empty
   u32 mb_sector = 0, mb_units = 0, mf_sector = 0, mf_units = 0;  // ... appended to MatchHD.pac (0: the base's)
+  std::vector<uint8_t> etex;  // its own entrance graphics (until appended), else empty
+  u32 etex_sector = 0, etex_units = 0;  // ... appended to evtgdhd.pac (0: the base's)
 };
 std::vector<Added> g_added;
 // A base arena's file as served (Documents\wwe12\arena_slots\pac\bg\bgNN.pac): the whole file of the arena
@@ -309,6 +317,10 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
     }
     if (a.card_mb.empty() || a.card_mf.empty())
       a.card_mb.clear(), a.card_mf.clear();
+    if (ReadHost(d / "arena" / "etex_hd.pac", a.etex) && (a.etex.size() < 8 || memcmp(a.etex.data(), "PACH", 4) != 0)) {
+      REXLOG_WARN("[arena pages] {}: its entrance graphics aren't a pack", a.id);
+      a.etex.clear();
+    }
     g_added.push_back(a);
     if (g_added.size() == 35)  // (the banner pack has 35 free textures)
       break;
@@ -333,6 +345,18 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       a.card_mf = {};
     }
     WriteHost(out / "pac" / "menu" / "MatchHD.pac", matchhd);
+  }
+  if (std::any_of(g_added.begin(), g_added.end(), [](const Added &a) { return !a.etex.empty(); })) {
+    std::vector<uint8_t> evtgd;
+    if (ReadForGame(vfs, mods, "pac/evt/evtgdhd.pac", evtgd)) {
+      for (auto &a : g_added) {
+        if (a.etex.empty())
+          continue;
+        Append(evtgd, a.etex.data(), a.etex.size(), a.etex_sector, a.etex_units);
+        a.etex = {};
+      }
+      WriteHost(out / "pac" / "evt" / "evtgdhd.pac", evtgd);
+    }
   }
   auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, out, true);
   if (!overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(overlay))) {
@@ -611,6 +635,17 @@ extern "C" REX_FUNC(sub_827F29F0) {
       bd::mem::store<u32>(out, is_mb ? a.mb_sector : a.mf_sector);
       bd::mem::store<u32>(out + 8, is_mb ? a.mb_units : a.mf_units);
       REXLOG_INFO("[arena pages] {}: the VS screen of {}", n, a.id);
+    }
+  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].etex_units &&
+             bd::mem::load<u16>(out + 12) == kEvtGdHdIndex) {
+    // Its own entrance graphics (location plate, name plates), in place of its base's.
+    const Added &a = g_added[size_t(g_chosen)];
+    char etex[16];
+    snprintf(etex, sizeof(etex), "/ETEX/%04u", a.base);
+    if (strcmp(n, etex) == 0) {
+      bd::mem::store<u32>(out, a.etex_sector);
+      bd::mem::store<u32>(out + 8, a.etex_units);
+      REXLOG_INFO("[arena pages] {}: the entrance graphics of {}", n, a.id);
     }
   }
   if (REXCVAR_GET(wwe12_arena_pages_test) &&
