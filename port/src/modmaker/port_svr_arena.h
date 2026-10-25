@@ -8,7 +8,8 @@
 //  - the match lights (light sets 10-14 of the banks) are the base arena's: SvR 2011's flood the ring;
 //  - its beam cones (objects 230-269 and 300-305) get WWE '12's background shaders, a third of their colour and the
 //    "entrances only" flag (50001): else a white glare covers the ring;
-//  - the ring (951-974 and 980, WWE '12's ropes) and its pictures, entry 30002 and the crowd (20000-20003, 20010)
+//  - the ring (951-974 and 980, WWE '12's ropes) and its pictures, the light maps WWE '12's code looks up by name
+//    (fade_lightmap00 / 01: else a dark crowd), entry 30002 and the crowd (20000-20003, 20010)
 //    are the base arena's; SvR's extra ring pieces (957-967) are left out;
 //  - a big entry changed in a few places (the texture package) keeps Yuke's own packing (bpe_like::EncodeLike):
 //    an arena must not outgrow the shipped file of the arena it plays as.
@@ -528,7 +529,8 @@ inline bool Banner(const Bytes &matchhd, int file, svrfmt::Image &out) {
 
 struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
-  int pictures_added = 0;           // ring pictures copied from the base
+  int pictures_added = 0;           // ring and crowd pictures copied from the base
+  int pictures_missing = 0;         // ... that found no free record in the package
   float ramp_svr = 0, ramp12 = 0;   // the ramps' heights (cm)
   bool RampsMatch() const { return (ramp_svr < 60) == (ramp12 < 60); }
 };
@@ -646,10 +648,18 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
     };
     for (auto &k : ga.kids)
       gather(gather, k);
-    for (const auto &k : gb.kids) {
+    // (the ring's and the crowd's: WWE '12's crowd looks its lights up by name, fade_lightmap00..., and is drawn
+    // black without them)
+    const auto wanted = [&](auto &self, svrfmt::ArcNode &k) -> void {
+      const Bytes d = svrfmt::ArchiveData(k);
       svrfmt::Model m;
-      if (!ring.count(k.id) || !svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr))
-        continue;
+      if (d.size() >= 4 && memcmp(d.data(), "PACH", 4) == 0 && svrfmt::ArchiveExpand(k)) {
+        for (auto &c : k.kids)
+          self(self, c);
+        return;
+      }
+      if (!svrfmt::JboyRead(d, m, nullptr))
+        return;
       for (const auto &n : m.textures)
         if (!names.count(n))
           for (const auto &t : theirs)
@@ -658,8 +668,22 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
               names.insert(n);
               break;
             }
-    }
+    };
+    for (auto &k : gb.kids)
+      if (from_base.count(k.id))
+        wanted(wanted, k);
+    // The light maps WWE '12's code looks up by name in every arena (no model names them; SvR 2011 has
+    // aud_lightmap instead): without them the crowd stays dark.
+    for (const char *n : {"fade_lightmap00", "fade_lightmap01"})
+      if (!names.count(n))
+        for (const auto &t : theirs)
+          if (t.name == n) {
+            add.push_back(t);
+            names.insert(n);
+            break;
+          }
     pi.pictures_added = AddPictures(pkg, add, models);
+    pi.pictures_missing = int(add.size()) - pi.pictures_added;
     if (pi.pictures_added)
       ReplaceLike(*ta, pkg);
   }
