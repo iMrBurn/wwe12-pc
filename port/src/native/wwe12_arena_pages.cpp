@@ -618,6 +618,7 @@ REX_EXTERN(__imp__sub_825A6A98);  // arena select: draw (every frame)
 REX_EXTERN(__imp__sub_825A3318);  // arena select: is this stage available (this, stage)
 REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
+REX_EXTERN(__imp__sub_82780948);  // matchup screen: load the VS screen of a stage (this + 768, stage)
 REX_EXTERN(sub_82A8C070);         // XInputGetState(user, state) (hooked by wwe12_intros.cpp: call the hooked one)
 
 namespace {
@@ -741,9 +742,37 @@ extern "C" REX_FUNC(sub_825A56C8) {
   }
 }
 
+// The VS screen of an added arena with its own: asked as /MLYE/MB<its made-up stage> (the directory below answers it
+// with its base's entry and its own data). The game keeps a loaded VS screen by its name: under the base's name, the
+// first added arena's (or the base's) stayed when another one of the same base was chosen.
+extern "C" REX_FUNC(sub_82780948) {
+  if (g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units && ctx.r4.u32 == g_added[size_t(g_chosen)].base)
+    ctx.r4.u64 = kFirstAdded + u32(g_chosen);
+  __imp__sub_82780948(ctx, base);
+}
+
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
 extern "C" REX_FUNC(sub_827F29F0) {
   const u32 name = ctx.r4.u32, out = ctx.r5.u32;
+  if (name && out && g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units) {
+    // (the VS screen's own name, sub_82780948 above: looked up under its base's, then its own data)
+    const Added &a = g_added[size_t(g_chosen)];
+    char own[16], theirs[16];
+    snprintf(own, sizeof(own), "/MLYE/MB%02u", kFirstAdded + u32(g_chosen));
+    snprintf(theirs, sizeof(theirs), "/MLYE/MB%02u", a.base);
+    char *n = bd::mem::at<char>(name);
+    if (strcmp(n, own) == 0) {
+      memcpy(n, theirs, strlen(theirs) + 1);
+      __imp__sub_827F29F0(ctx, base);
+      memcpy(n, own, strlen(own) + 1);
+      if (ctx.r3.u32 != 0 && bd::mem::load<u16>(out + 12) == kMatchHdIndex) {
+        bd::mem::store<u32>(out, a.mb_sector);
+        bd::mem::store<u32>(out + 8, a.mb_units);
+        REXLOG_INFO("[arena pages] {}: the VS screen of {}", own, a.id);
+      }
+      return;
+    }
+  }
   __imp__sub_827F29F0(ctx, base);
   if (!name || !out || ctx.r3.u32 == 0)
     return;
