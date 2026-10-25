@@ -25,7 +25,9 @@
 #include "game_process.h"
 #include "imgui.h"
 #include "bink2.h"
+#include "game_discs.h"
 #include "mods.h"
+#include "strings2k.h"
 
 extern "C" {
 #include "video/bink_decode.h"
@@ -142,6 +144,15 @@ class MovieEditor {
   }
   void UseBink2(const fs::path &bk2, bool bottom) { UseBink2(bottom ? fs::path() : bk2, bottom ? bk2 : fs::path()); }
   bool Converting() const { return conv_.joinable(); }
+  // Its own titantron and minitron from movies laid out like the game's (e.g. SvR 2011's .bik: its top and bottom).
+  void UseOwnFiles(const fs::path &top, const fs::path &bottom) {
+    top_ = kOwn;
+    bottom_ = kOwn;
+    top_file_ = top;
+    bottom_file_ = bottom;
+    fit_ = MOVIE_FILL;
+    MakePreview();
+  }
   // Its own titantron from a Bink 2 movie, and its minitron from another (else as the titantron), as above.
   void UseOwnBink2(const fs::path &bk2, const fs::path &mini = {}) {
     top_ = kOwn;
@@ -522,6 +533,8 @@ class EntranceVideos {
         if (ImGui::Selectable(l.c_str(), i == star_)) {
           star_ = i;
           editor_.SetGame(device_, CopyGameMovie(disc_, stars_[star_].file));
+          others_.clear();
+          searched_ = false;
         }
       }
       ImGui::EndCombo();
@@ -529,6 +542,7 @@ class EntranceVideos {
     ImGui::EndDisabled();
     if (star_ < 0)
       return;
+    DrawOthers(fr);
     editor_.Draw(fr, "videos");
     ImGui::BeginDisabled(editor_.Busy());
     ImGui::SetNextItemWidth(260);
@@ -554,6 +568,125 @@ class EntranceVideos {
     int id = 0;
     std::string file, name;  // file: "139.bik"
   };
+
+ public:
+  const game_discs::Discs *discs_ = nullptr;  // My game discs (set by the Mod Maker)
+
+ private:
+  // The same superstar (same name) in the player's other games: SvR 2011's movie (WWE '12's kind, its top and
+  // bottom taken as they are), the 2K15-2K17 titantrons (Bink 2) and minitrons (pac\mov\ss_mini), converted with
+  // the player's tool (bink2.h).
+  struct Other {
+    uint32_t title = 0;
+    std::string label, top, mini;  // top / mini: paths on that disc
+  };
+  static std::string Key(const std::string &name) {
+    std::string k;
+    for (unsigned char c : name)
+      if (std::isalnum(c))
+        k += char(std::toupper(c));
+    return k;
+  }
+  void Search() {
+    searched_ = true;
+    others_.clear();
+    if (!discs_)
+      return;
+    const std::string want = Key(stars_[star_].name);
+    if (want.empty())
+      return;
+    struct G {
+      uint32_t title;
+      const char *name;
+    };
+    for (const G g : {G{0x5451085D, "SvR 2011"}, G{0x545408B6, "WWE 2K15"}, G{0x315A07D2, "WWE 2K16"},
+                      G{0x545408BA, "WWE 2K17"}}) {
+      const fs::path at = discs_->PathOf(g.title);
+      disc::GameDisc d;
+      if (at.empty() || !d.OpenPath(at))
+        continue;
+      auto &names = names_[g.title];
+      if (names.empty())
+        names = strings2k::SuperstarNames(d);
+      std::vector<std::string> movies = d.List("movies/titantron"), minis = d.List("pac/mov/ss_mini");
+      std::sort(movies.begin(), movies.end());
+      std::sort(minis.begin(), minis.end());
+      for (const auto &[n, nm] : names) {
+        if (Key(nm) != want)
+          continue;
+        char f[32];
+        if (g.title == 0x5451085D) {
+          snprintf(f, sizeof(f), "%03d.bik", n);
+          if (std::find(movies.begin(), movies.end(), f) != movies.end())
+            others_.push_back({g.title, std::string(g.name) + " : " + nm + "  (" + f + ")",
+                               std::string("movies/titantron/") + f, {}});
+          continue;
+        }
+        snprintf(f, sizeof(f), "ent_%04d_", n);
+        char m[8];
+        snprintf(m, sizeof(m), "%04d", n);
+        std::string mini;
+        for (const auto &x : minis)
+          if (x.size() == 10 && x.compare(0, 4, m) == 0) {
+            mini = "pac/mov/ss_mini/" + x;
+            break;
+          }
+        for (const auto &x : movies)
+          if (x.compare(0, strlen(f), f) == 0 && x.size() > 4 && _stricmp(x.c_str() + x.size() - 4, ".bk2") == 0)
+            others_.push_back({g.title,
+                               std::string(g.name) + " : " + nm + "  (" + x + (mini.empty() ? "" : " + minitron") + ")",
+                               "movies/titantron/" + x, mini});
+      }
+    }
+  }
+  void UseOther(const Other &o) {
+    disc::GameDisc d;
+    std::vector<uint8_t> b;
+    if (!discs_ || !d.OpenPath(discs_->PathOf(o.title)) || !d.Read(o.top, b))
+      return;
+    const fs::path top = TempDir() / ("other_" + fs::path(o.top).filename().string());
+    std::ofstream(top, std::ios::binary).write(reinterpret_cast<const char *>(b.data()), std::streamsize(b.size()));
+    if (o.title == 0x5451085D) {
+      editor_.UseOwnFiles(top, top);
+      return;
+    }
+    fs::path mini = TempDir() / ("other_mini_" + fs::path(o.mini).stem().string() + ".bk2");
+    if (o.mini.empty() || !d.Read(o.mini, b) || !bink2::PacMovie(b, mini))
+      mini.clear();
+    editor_.UseOwnBink2(top, mini);
+  }
+  void DrawOthers(bool fr) {
+    if (!discs_)
+      return;
+    ImGui::BeginDisabled(editor_.Busy());
+    if (!searched_) {
+      if (ImGui::Button(fr ? "Chercher sa vidéo dans mes autres jeux" : "Look for its movie in my other games"))
+        Search();
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", fr ? "(SvR 2011, WWE 2K15 à 2K17 de MES DISQUES)"
+                                   : "(SvR 2011, WWE 2K15 to 2K17 of MY GAME DISCS)");
+    } else if (others_.empty()) {
+      ImGui::TextDisabled("%s", fr ? "Pas de vidéo de ce catcheur dans vos autres jeux."
+                                   : "No movie of this superstar in your other games.");
+    } else {
+      ImGui::TextDisabled("%s", fr ? "Dans vos autres jeux (cliquez pour la prendre) :"
+                                   : "In your other games (click to take it):");
+      for (size_t i = 0; i < others_.size(); ++i) {
+        ImGui::PushID(int(i));
+        if (ImGui::Selectable(others_[i].label.c_str(), false, 0, ImVec2(520, 0)))
+          UseOther(others_[i]);
+        ImGui::PopID();
+      }
+      if (bink2::Found().kind == bink2::Kind::kNone)
+        ImGui::TextDisabled("%s", fr ? "(les vidéos des 2K demandent RAD Video Tools, gratuit : voir MES DISQUES)"
+                                     : "(the 2K games' movies need RAD Video Tools, free: see MY GAME DISCS)");
+    }
+    ImGui::EndDisabled();
+    ImGui::Dummy(ImVec2(0, 4));
+  }
+  std::vector<Other> others_;
+  bool searched_ = false;
+  std::map<uint32_t, std::map<int, std::string>> names_;  // each game's superstar names (read once)
 
   static std::string Label(const Star &s) {
     return s.name.empty() ? "Video " + s.file.substr(0, s.file.size() - 4) : s.name;

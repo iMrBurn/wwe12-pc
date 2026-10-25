@@ -11,6 +11,7 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <vector>
 #include "game_disc.h"
 #include "svrfmt/archive.h"
 
@@ -115,6 +116,58 @@ inline std::map<int, std::string> ArenaNames(const disc::GameDisc &g) {
   for (const auto &[bg, sid] : ids)
     if (const auto it = strings.find(sid); it != strings.end() && !it->second.empty())
       names[bg] = it->second;
+  return names;
+}
+
+// The 2K games' names: their CHAR / DAT records (208, 216 or 220 bytes, number at +4) hold string ids made of the
+// number plus a constant: the full name is number + 64000 in WWE 2K14, number + 6000 in 2K15 to 2K17 (+1000 / +3000
+// are shorter names, +9000 the Twitter name), in the game's strings (Strings).
+inline void Names2K(const disc::GameDisc &g, const std::map<int, std::vector<int>> &ids,
+                    std::map<int, std::string> &names) {
+  const auto strings = Strings(g, 6000);
+  for (const auto &[number, ks] : ids)
+    for (int k : {64000, 6000})
+      if (std::find(ks.begin(), ks.end(), k) != ks.end())
+        if (const auto it = strings.find(uint32_t(number + k)); it != strings.end() && !it->second.empty()) {
+          names[number] = it->second;
+          break;
+        }
+}
+
+// A game's superstar names by number, from its pac/ch/chEtc.pac: the CHAR / DAT records (SvR 2011 264 bytes, id at
+// +36 and name at +38; WWE '12 290 bytes, +44 / +46; WWE '13 324 bytes, +56 / +58), the 2K games' in their strings.
+inline std::map<int, std::string> SuperstarNames(const disc::GameDisc &g) {
+  std::map<int, std::string> names;
+  std::map<int, std::vector<int>> ids;  // the 2K games: number -> its "number + k" string ids' k
+  Bytes etc;
+  svrfmt::Archive a;
+  if (g.Read("pac/ch/chEtc.pac", etc) && svrfmt::ArchiveOpen(etc, a, nullptr)) {
+    const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+      const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
+      const size_t id_at = d.size() == 264 ? 36 : d.size() == 290 ? 44 : d.size() == 324 ? 56 : 0;
+      if (d.size() == 208 || d.size() == 216 || d.size() == 220) {  // (the 2K games: names in their strings)
+        const int number = d[4] | d[5] << 8;
+        for (size_t k = 6; k + 1 < 32; k += 2)
+          if (const int v = d[k] | d[k + 1] << 8; number > 0 && v > number)
+            ids[number].push_back(v - number);
+        return;
+      }
+      if (id_at) {
+        std::string name;
+        for (size_t k = id_at + 2; k < id_at + 34 && k < d.size() && d[k]; ++k)
+          name += d[k] < 0x80 ? std::string(1, char(d[k]))
+                              : std::string{char(0xC0 | (d[k] >> 6)), char(0x80 | (d[k] & 0x3F))};
+        names[d[id_at] | d[id_at + 1] << 8] = name;
+        return;
+      }
+      if (depth < 3 && svrfmt::ArchiveExpand(n))
+        for (auto &c : n.kids)
+          self(self, c, depth + 1);
+    };
+    walk(walk, a.root, 0);
+  }
+  if (names.empty() && !ids.empty())  // (SvR 2011, WWE '12, WWE '13: names in the records)
+    Names2K(g, ids, names);
   return names;
 }
 

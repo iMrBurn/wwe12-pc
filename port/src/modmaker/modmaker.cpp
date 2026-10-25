@@ -301,11 +301,13 @@ const Guide kGuides[] = {
       "scénario)."}},
     {"An entrance video, pictures, textures",
      "Une vidéo d'entrée, des images, des textures",
-     {"VIDEOS: a superstar's titantron (big screen) and minitron (stage screen) from any video or picture.",
+     {"VIDEOS: a superstar's titantron (big screen) and minitron (stage screen) from any video or picture, or from "
+      "its own in your other games (Look for its movie in my other games: SvR 2011, WWE 2K15 to 2K17).",
       "TEXTURES: change any picture of the game (menus, renders, logos) from the texture dumps.",
       "SUPERSTARS / ARENAS (Retexture): change an attire's or an arena's pictures and see them in 3D."},
      {"VIDÉOS : le titantron (grand écran) et le minitron (écran de la scène) d'un catcheur, depuis n'importe quelle "
-      "vidéo ou image.",
+      "vidéo ou image, ou depuis les siens dans vos autres jeux (Chercher sa vidéo dans mes autres jeux : SvR 2011, "
+      "WWE 2K15 à 2K17).",
       "TEXTURES : changer n'importe quelle image du jeu (menus, renders, logos) depuis les dumps de textures.",
       "CATCHEURS / ARÈNES (Retoucher) : changer les images d'une tenue ou d'une arène et les voir en 3D."}},
     {"Your mods: turn on, off, share",
@@ -459,6 +461,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   g_mods.Init(ExeDir() / "mods");
   g_discs.Load(ExeDir() / "modmaker_discs.txt");
   g_arenas.discs_ = &g_discs;
+  g_videos.discs_ = &g_discs;
   g_new_star.discs_ = &g_discs;
 
   WNDCLASSEXW wc{sizeof(wc)};

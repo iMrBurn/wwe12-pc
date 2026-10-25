@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 #include "imgui.h"
+#include "svrfmt/archive.h"
 #include "svrfmt/texture.h"
 
 extern "C" {
@@ -475,6 +476,30 @@ inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, s
   if (progress)
     *progress = 100;
   return ok;
+}
+
+// A .pac holding a Bink 2 movie (WWE 2K17's pac\mov\ss_mini\NNNNvv.pac...): the first one written to out.
+inline bool PacMovie(const std::vector<uint8_t> &pac, const fs::path &out) {
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(pac, a, nullptr))
+    return false;
+  bool done = false;
+  const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+    if (done)
+      return;
+    if (depth < 3 && svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
+      for (auto &c : n.kids)
+        self(self, c, depth + 1);
+      return;
+    }
+    const std::vector<uint8_t> d = depth ? svrfmt::ArchiveData(n) : std::vector<uint8_t>();
+    if (d.size() > 44 && memcmp(d.data(), "KB2", 3) == 0) {
+      std::ofstream(out, std::ios::binary).write(reinterpret_cast<const char *>(d.data()), std::streamsize(d.size()));
+      done = true;
+    }
+  };
+  walk(walk, a.root, 0);
+  return done;
 }
 
 // The tool the player chose (modmaker_bink2.txt next to the Mod Maker), and the one found (looked for once).

@@ -148,26 +148,9 @@ class Page {
     if (!game_disc_.Read("movies/titantron/" + file, b))
       return;
     std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char *>(b.data()), std::streamsize(b.size()));
-    fs::path mini_tmp;
-    svrfmt::Archive a;
-    if (!mini.empty() && game_disc_.Read("pac/mov/ss_mini/" + mini, b) && svrfmt::ArchiveOpen(b, a, nullptr)) {
-      const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
-        if (!mini_tmp.empty())
-          return;
-        if (depth < 3 && svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
-          for (auto &c : n.kids)
-            self(self, c, depth + 1);
-          return;
-        }
-        const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
-        if (d.size() > 44 && memcmp(d.data(), "KB2", 3) == 0) {
-          mini_tmp = media::TempDir() / (L"mini_" + fs::path(mini).stem().wstring() + L".bk2");
-          std::ofstream(mini_tmp, std::ios::binary)
-              .write(reinterpret_cast<const char *>(d.data()), std::streamsize(d.size()));
-        }
-      };
-      walk(walk, a.root, 0);
-    }
+    fs::path mini_tmp = media::TempDir() / (L"mini_" + fs::path(mini).stem().wstring() + L".bk2");
+    if (mini.empty() || !game_disc_.Read("pac/mov/ss_mini/" + mini, b) || !bink2::PacMovie(b, mini_tmp))
+      mini_tmp.clear();
     twok_movie_file_ = file;
     twok_mini_file_ = mini_tmp.empty() ? std::string() : mini;
     twok_movie_ = own_movie_ = true;
@@ -748,56 +731,8 @@ class Page {
     std::sort(disc_list_.begin(), disc_list_.end(), [](const auto &x, const auto &y) { return x.second < y.second; });
   }
 
-  // A game's superstar names by number, from its pac/ch/chEtc.pac (see ListDisc).
-  static std::map<int, std::string> NamesOf(const disc::GameDisc &g) {
-    std::map<int, std::string> names;
-    std::map<int, std::vector<int>> ids;  // the 2K games: number -> its "number + k" string ids' k
-    Bytes etc;
-    svrfmt::Archive a;
-    if (g.Read("pac/ch/chEtc.pac", etc) && svrfmt::ArchiveOpen(etc, a, nullptr)) {
-      const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
-        const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
-        const size_t id_at = d.size() == 264 ? 36 : d.size() == 290 ? 44 : d.size() == 324 ? 56 : 0;
-        if (d.size() == 208 || d.size() == 216 || d.size() == 220) {  // (the 2K games: names in their strings)
-          const int number = d[4] | d[5] << 8;
-          for (size_t k = 6; k + 1 < 32; k += 2)
-            if (const int v = d[k] | d[k + 1] << 8; number > 0 && v > number)
-              ids[number].push_back(v - number);
-          return;
-        }
-        if (id_at) {
-          std::string name;
-          for (size_t k = id_at + 2; k < id_at + 34 && k < d.size() && d[k]; ++k)
-            name += d[k] < 0x80 ? std::string(1, char(d[k]))
-                                : std::string{char(0xC0 | (d[k] >> 6)), char(0x80 | (d[k] & 0x3F))};
-          names[d[id_at] | d[id_at + 1] << 8] = name;
-          return;
-        }
-        if (depth < 3 && svrfmt::ArchiveExpand(n))
-          for (auto &c : n.kids)
-            self(self, c, depth + 1);
-      };
-      walk(walk, a.root, 0);
-    }
-    if (names.empty() && !ids.empty())  // (SvR 2011, WWE '12, WWE '13: names in the records)
-      Names2K(g, ids, names);
-    return names;
-  }
-
-  // The 2K games' names: their CHAR / DAT records (208, 216 or 220 bytes, number at +4) hold string ids made of the
-  // number plus a constant: the full name is number + 64000 in WWE 2K14, number + 6000 in 2K15 to 2K17 (+1000 / +3000
-  // are shorter names, +9000 the Twitter name), in the game's strings (strings2k.h).
-  static void Names2K(const disc::GameDisc &g, const std::map<int, std::vector<int>> &ids,
-                      std::map<int, std::string> &names) {
-    const auto strings = strings2k::Strings(g, 6000);
-    for (const auto &[number, ks] : ids)
-      for (int k : {64000, 6000})
-        if (std::find(ks.begin(), ks.end(), k) != ks.end())
-          if (const auto it = strings.find(uint32_t(number + k)); it != strings.end() && !it->second.empty()) {
-            names[number] = it->second;
-            break;
-          }
-  }
+  // A game's superstar names by number (strings2k::SuperstarNames).
+  static std::map<int, std::string> NamesOf(const disc::GameDisc &g) { return strings2k::SuperstarNames(g); }
 
   void LoadSvrBytes(bool fr, const fs::path &p, Bytes file, int number,
                     const std::function<Bytes(const char *)> &read_pac) {  // (a file of its game's pac folder)

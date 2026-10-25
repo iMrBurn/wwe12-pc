@@ -760,6 +760,13 @@ places ×10, d'après le code de Kaiko).
   « comme le titantron ») : deux conversions à la suite (titantron 512 × 288, minitron à sa taille). Pas encore
   repris : walltrons (pas d'écran de ce genre dans WWE '12), vidéos des arènes 2K, transitions 2K.
 
+- **Page VIDÉOS : la vidéo du même catcheur dans les autres jeux (2026-10-25, vu à l'écran : Randy Orton)** : bouton
+  « Chercher sa vidéo dans mes autres jeux » : même nom (lettres et chiffres) dans SvR 2011 (`movies\titantron\NNN.bik`,
+  pris tel quel : haut et bas) et WWE 2K15-2K17 (chaque `ent_NNNN_*.bk2` + le premier `pac\mov\ss_mini\NNNN*`,
+  convertis avec l'outil du joueur) ; un clic remplit le titantron et le minitron du fabricant de vidéos. Orton : 5
+  vidéos (SvR 2011, 2K15 ×2, 2K16, 2K17 ; 2K15 sans `ss_mini`). Noms des catcheurs lus en un seul endroit
+  (`strings2k::SuperstarNames`), une fois par jeu.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,
