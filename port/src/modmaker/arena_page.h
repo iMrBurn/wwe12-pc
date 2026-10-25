@@ -631,6 +631,11 @@ class Page {
       banner_custom_ = false;
       LoadBaseBanner();
     }
+    // Its VS screen: a WWE '12 one wearing its pictures (port_svr_arena::Card).
+    Bytes matchhd12;
+    if (!matchhd.empty() && disc_ && disc_->Read("pac/menu/MatchHD.pac", matchhd12) &&
+        port_svr_arena::Card(matchhd, matchhd12, svr_pick_, img, card_mb_, card_mf_))
+      port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // Its transition video (evtmov.pac MOVT/M0NN: Bink 1 at 640 x 640, as WWE '12's).
     Bytes evtmov;
     if (svr_pick_ >= 0 && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&
@@ -946,7 +951,7 @@ class Page {
         LoadBaseBanner();
       entries.push_back({"arena/arena.pac", std::move(out)});
       entries.push_back({"arena/banner.dds", svrfmt::DdsEncode(banner_, svrfmt::DxtFormat::kDxt5, false)});
-      if (mode_ == 3 && !card_mb_.empty()) {  // its own VS screen (MatchHD.pac MLYE/MBnn and MENU/MnnF)
+      if ((mode_ == 3 || mode_ == 4) && !card_mb_.empty()) {  // its own VS screen (MatchHD.pac MLYE/MBnn, MENU/MnnF)
         entries.push_back({"arena/card_mb.pac", card_mb_});
         entries.push_back({"arena/card_mf.pac", card_mf_});
       }
@@ -991,7 +996,7 @@ class Page {
   int w13_pick_ = -1;
   bool port_ok_ = false, view_port_ = false;
   std::string port_note_, ramp_note_;
-  Bytes card_mb_, card_mf_;  // its VS screen from WWE '13 (port13::Card)
+  Bytes card_mb_, card_mf_;  // its VS screen (port13::Card, port_svr_arena::Card)
   Bytes etex_;                // its entrance graphics from WWE '13 (port13::Etex)
   Bytes load_;                // its pre-match screen from WWE '13 (port13::PreMatch)
   Bytes movie_;               // its transition video from WWE '13 (port13::TransitionVideo)

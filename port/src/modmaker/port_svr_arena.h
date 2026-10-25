@@ -690,8 +690,216 @@ inline bool Banner(const Bytes &matchhd, int file, svrfmt::Image &out) {
   return false;
 }
 
-// (Its VS screen can't be taken: SvR 2011's layout, MENU/MnnL YXMLBIN VER0002, reads, but WWE '12's VS screen code
-// takes its elements by number (sub_82571BA8: element 30, absent) and crashed. The arena keeps its base's.)
+// Its VS screen ("match card"). SvR 2011's own layout can't be taken: MENU/MnnL (YXMLBIN VER0002) reads, but WWE '12's
+// VS screen code takes its elements by number (sub_82571BA8: element 30, absent) and crashed. So a WWE '12 VS screen
+// (MLYE/MBnn: layout 7000, pictures 7001, 7002; MENU/MnnF: its font) wears the arena's pictures (MENU/MnnI, 7001):
+//  - WWE '12 kept several of SvR 2011's VS screens (Hell in a Cell, RAW, Night of Champions, Superstars...): the one
+//    whose pictures have the same names, with SvR's pictures;
+//  - else Hell in a Cell's (MB09: a background, a logo, a frame under the names) with the arena's biggest picture as
+//    the background, its logo (else its banner) and its plate (else the frame kept); the fire and the cage hidden.
+// Each picture keeps the size and format of the one it replaces. The game serves them for the added arena.
+namespace detail {
+
+inline const svrfmt::BundleTexture *Named(const std::vector<svrfmt::BundleTexture> &t, const std::string &n) {
+  for (const auto &x : t)
+    if (x.name == n)
+      return &x;
+  return nullptr;
+}
+
+// img into the picture `like` (its size, format and mip levels).
+inline Bytes LikePicture(const Bytes &like, const svrfmt::Image &img, bool fill) {
+  svrfmt::DdsInfo info;
+  if (!svrfmt::DdsInfoOf(like, info))
+    return like;
+  svrfmt::Image fit;
+  if (fill) {  // (cut to its proportions, then resized)
+    int cw = img.w, ch = img.w * info.h / info.w;
+    if (ch > img.h) {
+      ch = img.h;
+      cw = img.h * info.w / info.h;
+    }
+    svrfmt::Image crop;
+    crop.w = cw;
+    crop.h = ch;
+    crop.rgba.resize(size_t(cw) * ch * 4);
+    for (int y = 0; y < ch; ++y)
+      memcpy(&crop.rgba[size_t(y) * cw * 4], &img.rgba[(size_t((img.h - ch) / 2 + y) * img.w + (img.w - cw) / 2) * 4],
+             size_t(cw) * 4);
+    fit = svrfmt::Resize(crop, info.w, info.h);
+  } else {  // (whole, centred on a clear picture)
+    const double s = std::min(double(info.w) / img.w, double(info.h) / img.h);
+    const int w = std::max(1, int(img.w * s)), h = std::max(1, int(img.h * s));
+    const svrfmt::Image shrunk = svrfmt::Resize(img, w, h);
+    fit.w = info.w;
+    fit.h = info.h;
+    fit.rgba.assign(size_t(info.w) * info.h * 4, 0);
+    for (int y = 0; y < h; ++y)
+      memcpy(&fit.rgba[(size_t((info.h - h) / 2 + y) * info.w + (info.w - w) / 2) * 4], &shrunk.rgba[size_t(y) * w * 4],
+             size_t(w) * 4);
+  }
+  return svrfmt::DdsEncode(fit, info.format, info.mips > 1);
+}
+
+// Same name and same proportions.
+inline bool SameShape(const svrfmt::BundleTexture *a, const svrfmt::BundleTexture &b) {
+  svrfmt::DdsInfo i, j;
+  return a && svrfmt::DdsInfoOf(a->data, i) && svrfmt::DdsInfoOf(b.data, j) && i.w * j.h == i.h * j.w;
+}
+
+inline Bytes Clear(const Bytes &like) {
+  svrfmt::DdsInfo info;
+  if (!svrfmt::DdsInfoOf(like, info))
+    return like;
+  svrfmt::Image img;
+  img.w = info.w;
+  img.h = info.h;
+  img.rgba.assign(size_t(info.w) * info.h * 4, 0);
+  return svrfmt::DdsEncode(img, info.format, info.mips > 1);
+}
+
+// The pictures of a VS screen (its entry 7001, at any depth).
+inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n) {
+  if (n.id == 7001 && svrfmt::ArchiveKindOf(n) == "textures")
+    return &n;
+  if (svrfmt::ArchiveKindOf(n) == "PACH" && svrfmt::ArchiveExpand(n))
+    for (auto &c : n.kids)
+      if (auto *p = Pictures(c))
+        return p;
+  return nullptr;
+}
+
+}  // namespace detail
+
+inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, const svrfmt::Image &banner, Bytes &mb,
+                 Bytes &mf, std::string *template_name = nullptr) {
+  using namespace detail;
+  mb.clear();
+  mf.clear();
+  svrfmt::Archive s, w;
+  if (!svrfmt::ArchiveOpen(svr_matchhd, s, nullptr) || !svrfmt::ArchiveOpen(matchhd12, w, nullptr))
+    return false;
+  // The arena's pictures.
+  char ni[8];
+  snprintf(ni, sizeof(ni), "M%02dI", file);
+  std::vector<svrfmt::BundleTexture> theirs;
+  for (auto &k : s.root.kids)
+    if (k.group == "MENU" && k.name == ni)
+      if (auto *p = Pictures(k))
+        svrfmt::BundleRead(svrfmt::ArchiveData(*p), theirs);
+  if (theirs.empty())
+    return false;
+  // The WWE '12 VS screen with most of the same pictures, else Hell in a Cell's.
+  const std::set<std::string> generic = {"dummy", "matchup_BG01", "matchup_BG02"};
+  int pick = 9, best = 0;
+  for (auto &k : w.root.kids) {
+    if (k.group != "MLYE" || k.name.size() != 4 || k.name.compare(0, 2, "MB") != 0)
+      continue;
+    std::vector<svrfmt::BundleTexture> ours;
+    if (auto *p = Pictures(k))
+      svrfmt::BundleRead(svrfmt::ArchiveData(*p), ours);
+    int own = 0, same = 0;
+    for (const auto &t : ours)
+      if (!generic.count(t.name)) {
+        ++own;
+        same += SameShape(Named(theirs, t.name), t);  // (a name alone isn't enough: "bg", "plate01"...)
+      }
+    if (own && same * 5 >= own * 3 && same > best) {
+      best = same;
+      pick = atoi(k.name.c_str() + 2);
+    }
+  }
+  char nb[8], nf[8];
+  snprintf(nb, sizeof(nb), "MB%02d", pick);
+  snprintf(nf, sizeof(nf), "M%02dF", pick);
+  svrfmt::ArcNode *card = nullptr;
+  for (auto &k : w.root.kids)
+    if (k.group == "MLYE" && k.name == nb)
+      card = &k;
+    else if (k.group == "MENU" && k.name == nf)
+      mf = k.stored;
+  svrfmt::ArcNode *pics = card ? Pictures(*card) : nullptr;
+  std::vector<svrfmt::BundleTexture> ours;
+  if (!pics || mf.empty() || !svrfmt::BundleRead(svrfmt::ArchiveData(*pics), ours))
+    return false;
+  const auto decode = [](const svrfmt::BundleTexture *t, svrfmt::Image &img) {
+    return t && svrfmt::DdsDecode(t->data, img);
+  };
+  svrfmt::Image img;
+  if (best) {
+    for (auto &t : ours)  // (its own pictures SvR 2011's hasn't: hidden)
+      if (!generic.count(t.name))
+        t.data = decode(Named(theirs, t.name), img) ? LikePicture(t.data, img, true) : Clear(t.data);
+  } else {
+    // The background: its biggest picture; its logo: a picture named so (not a background), else its banner; its
+    // plate: a picture named so, or a frame.
+    const svrfmt::BundleTexture *bg = nullptr, *logo = nullptr, *plate = nullptr;
+    const auto area = [](const svrfmt::BundleTexture *t) {
+      svrfmt::DdsInfo i;
+      return t && svrfmt::DdsInfoOf(t->data, i) ? i.w * i.h : 0;
+    };
+    const auto has = [](const std::string &n, const char *what) {
+      std::string l = n;
+      for (auto &c : l)
+        c = char(tolower(static_cast<unsigned char>(c)));
+      return l.find(what) != std::string::npos;
+    };
+    for (const auto &t : theirs) {
+      if (area(&t) > area(bg))
+        bg = &t;
+      if (has(t.name, "logo") && !has(t.name, "bg") && area(&t) > area(logo))
+        logo = &t;
+      if ((has(t.name, "plate") || has(t.name, "_fr")) && !plate)
+        plate = &t;
+    }
+    for (auto &t : ours) {
+      if (t.name == "hell_bg" && decode(bg, img)) {  // (two pictures one above the other: the background twice)
+        svrfmt::DdsInfo info;
+        svrfmt::DdsInfoOf(t.data, info);
+        svrfmt::Image half;
+        half.w = info.w;
+        half.h = info.h / 2;
+        half.rgba.resize(size_t(half.w) * half.h * 4);
+        svrfmt::Image both;
+        // (filled when its proportions are near, else whole: Royal Rumble's "background" is its square logo)
+        const double ratio = double(img.w) * half.h / (double(img.h) * half.w);
+        svrfmt::DdsDecode(
+            LikePicture(svrfmt::DdsEncode(half, svrfmt::DxtFormat::kDxt5, false), img, ratio > 0.67 && ratio < 1.5),
+            half);
+        both.w = info.w;
+        both.h = info.h;
+        both.rgba = half.rgba;
+        both.rgba.insert(both.rgba.end(), half.rgba.begin(), half.rgba.end());
+        t.data = svrfmt::DdsEncode(both, info.format, info.mips > 1);
+      }
+      else if (t.name == "logo" && (decode(logo, img) || (img = banner, !banner.rgba.empty())))
+        t.data = LikePicture(t.data, img, false);
+      else if (t.name == "hell_fr" && decode(plate, img))
+        t.data = LikePicture(t.data, img, true);
+      else if (t.name == "bg_fire01" || t.name == "bg_fire02" || t.name == "fire_net")
+        t.data = Clear(t.data);
+    }
+  }
+  ReplaceLike(*pics, svrfmt::BundleWrite(ours));
+  // Saved as stored in its pac: the nodes down to the pictures rebuilt.
+  const auto touch = [&](auto &self, svrfmt::ArcNode &n) -> bool {
+    if (&n == pics)
+      return true;
+    for (auto &c : n.kids)
+      if (self(self, c)) {
+        svrfmt::ArchiveTouch(n);
+        return true;
+      }
+    return false;
+  };
+  touch(touch, *card);
+  svrfmt::Archive one;
+  one.root = *card;
+  mb = svrfmt::ArchiveSave(one);
+  if (template_name)
+    *template_name = nb;
+  return mb.size() >= 4 && memcmp(mb.data(), "PACH", 4) == 0;
+}
 
 struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
