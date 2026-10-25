@@ -177,14 +177,16 @@ void PageHome() {
        "La vidéo de titantron d'un catcheur, à partir de n'importe quelle vidéo ou image."},
       {kTextures, "Textures", "Textures", "Change any picture of the game: menus, renders, logos, arenas...",
        "Changer n'importe quelle image du jeu : menus, renders, logos, arènes..."},
-      {kArenas, "Arenas", "Arènes", "Change an arena's pictures, or put another arena file in its place.",
-       "Changer les images d'une arène, ou mettre un autre fichier d'arène à sa place."},
+      {kArenas, "Arenas", "Arènes", "A new arena from your other games (SvR 2011, WWE '13), step by step; or the game's own retextured.",
+       "Une nouvelle arène depuis vos autres jeux (SvR 2011, WWE '13), étape par étape ; ou celles du jeu retouchées."},
       {kStars, "Superstars", "Catcheurs", "Change an attire's pictures and see the superstar in 3D.",
        "Changer les images d'une tenue et voir le catcheur en 3D."},
-      {kNewStar, "New superstar", "Nouveau catcheur", "Add a superstar to the game, next to the others.",
-       "Ajouter un catcheur au jeu, à côté des autres."},
+      {kNewStar, "New superstar", "Nouveau catcheur", "Add a superstar to the game, next to the others (also from SvR 2011 or WWE '13).",
+       "Ajouter un catcheur au jeu, à côté des autres (aussi depuis SvR 2011 ou WWE '13)."},
       {kFiles, "Game files", "Fichiers du jeu", "Look inside the game's archives (.pac) and export what's in them.",
        "Regarder dans les archives du jeu (.pac) et exporter ce qu'elles contiennent."},
+      {kDiscs, "My game discs", "Mes disques de jeu", "Your other WWE games (ISO or folder), added once: the ports read them.",
+       "Vos autres jeux WWE (ISO ou dossier), ajoutés une fois : les portages les lisent."},
   };
   for (const auto &it : items) {
     if (ImGui::Button(g_fr ? it.fr : it.en, ImVec2(220, 0)))
@@ -193,8 +195,10 @@ void PageHome() {
     ImGui::TextDisabled("%s", g_fr ? it.what_fr : it.what_en);
   }
   ImGui::Dummy(ImVec2(0, 10));
-  ImGui::TextDisabled("%s", g_fr ? "Bientôt : renders du menu, sons, couleurs des tenues." : "Coming: menu "
-                                                                                          "renders, sounds, attire colours.");
+  ImGui::TextDisabled("%s", g_fr ? "Bientôt : arènes de WWE 2K14 à 2K17, entrées et prises des catcheurs portés, "
+                                   "renders du menu, sons."
+                                 : "Coming: WWE 2K14 to 2K17 arenas, ported superstars' entrances and moves, menu "
+                                   "renders, sounds.");
   if (ImGui::Button(g_fr ? "Ouvrir le dossier mods" : "Open the mods folder"))
     OpenFolder(ExeDir() / "mods");
 }
