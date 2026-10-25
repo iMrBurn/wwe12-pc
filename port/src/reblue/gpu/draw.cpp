@@ -499,11 +499,12 @@ bool Video::FlushRenderStateLocked(u32 device_guest) {
     }
 
     if (s.dirtyStates.pixelShaderConstants) {
-      auto ps_alloc = UploadPixelShaderConstants(device_guest);
 #if defined(SVR_NATIVE_RENDERER)
-      if (ps_alloc.size && !REXCVAR_GET(wwe12_dof) && IsDepthOfFieldShader(s.pixel_shader))
-        std::memset(ps_alloc.memory + 20 * 16, 0, 2 * 16);  // g_f4DOFParam, g_f4DOFParam2
+      const bool zero_dof = !REXCVAR_GET(wwe12_dof) && IsDepthOfFieldShader(s.pixel_shader);
+#else
+      const bool zero_dof = false;
 #endif
+      auto ps_alloc = UploadPixelShaderConstants(device_guest, zero_dof);
       if (ps_alloc.size) {
 #if defined(REBLUE_D3D12)
         s.command_list->setGraphicsRootDescriptor(ps_alloc.ref, 1);

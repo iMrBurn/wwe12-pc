@@ -8,6 +8,7 @@
 #include "gpu/constant_buffers.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstring>
 #include <memory>
@@ -278,33 +279,93 @@ void PinScreenUVScaleReg(u8 *block) {
   }
 }
 
+// The last block uploaded per stage, to reuse it while the game's constants do not change.
+// Draws in a row often share a material or an object (the same 4 KiB), and every upload writes
+// 4 KiB into write-combined GPU memory: 44 % of the render thread on the Android emulator in a
+// match. Reused only within the frame it was written for (its chunk is rewound after that), and
+// only for the same raw guest bytes and the same edits (key), so the GPU reads the same values.
+#if defined(__ANDROID__)
+constexpr bool kReuseConstantBlocks = true;
+#else
+constexpr bool kReuseConstantBlocks = false;  // PC: unchanged until measured there
+#endif
+struct StageBlockCache {
+  u8 raw[kConstantBlockBytes];
+  ConstantAllocation alloc;
+  u64 epoch = 0;
+  u64 key = 0;
+};
+std::atomic<u64> g_constant_blocks_uploaded{0}, g_constant_blocks_reused{0};
+
+// Returns the cached block if `raw` and `key` match the last upload of this frame.
+bool ReuseBlock(StageBlockCache &cache, const UploadState &s, const u8 *raw, u64 key,
+                ConstantAllocation &out) {
+  if (!kReuseConstantBlocks || !raw || cache.epoch != s.epoch || cache.key != key ||
+      std::memcmp(cache.raw, raw, kConstantBlockBytes) != 0)
+    return false;
+  out = cache.alloc;
+  g_constant_blocks_reused.fetch_add(1, std::memory_order_relaxed);
+  return true;
+}
+
+void RememberBlock(StageBlockCache &cache, const UploadState &s, const u8 *raw, u64 key,
+                   const ConstantAllocation &alloc) {
+  g_constant_blocks_uploaded.fetch_add(1, std::memory_order_relaxed);
+  if (!kReuseConstantBlocks || !raw)
+    return;
+  std::memcpy(cache.raw, raw, kConstantBlockBytes);
+  cache.alloc = alloc;
+  cache.epoch = s.epoch;
+  cache.key = key;
+}
+
 ConstantAllocation UploadVertexShaderConstants(u32 device_guest) {
   BD_CPU_ZONE("UploadVSConstants");
   auto &s = upload_state();
   if (!device_guest)
     return {};
-  auto alloc = Allocate(s, kConstantBlockBytes, kCBVAlignment);
+  static StageBlockCache cache;
+  const u32 src_va = device_guest + offsetof(D3DDevice, vsFloatConstants);
+  const auto *raw = bd::mem::at<const u8>(src_va);
+  ConstantAllocation alloc;
+  if (ReuseBlock(cache, s, raw, 0, alloc))
+    return alloc;
+  alloc = Allocate(s, kConstantBlockBytes, kCBVAlignment);
   if (!alloc.memory)
     return {};
-  CopyByteSwap32FlushNaN(alloc.memory,
-                         device_guest + offsetof(D3DDevice, vsFloatConstants),
-                         kConstantBlockBytes);
+  CopyByteSwap32FlushNaN(alloc.memory, src_va, kConstantBlockBytes);
+  RememberBlock(cache, s, raw, 0, alloc);
   return alloc;
 }
 
-ConstantAllocation UploadPixelShaderConstants(u32 device_guest) {
+ConstantAllocation UploadPixelShaderConstants(u32 device_guest, bool zero_dof) {
   BD_CPU_ZONE("UploadPSConstants");
   auto &s = upload_state();
   if (!device_guest)
     return {};
-  auto alloc = Allocate(s, kConstantBlockBytes, kCBVAlignment);
+  static StageBlockCache cache;
+  const u32 src_va = device_guest + offsetof(D3DDevice, psFloatConstants);
+  const auto *raw = bd::mem::at<const u8>(src_va);
+  // The edits made after the copy depend on the pixel shader (blur pin) and on zero_dof.
+  auto *ps = bd::gpu::state().pipelineState.pixelShader;
+  const u64 key = ((ps && ps->shaderCacheEntry) ? ps->shaderCacheEntry->hash : 0) ^ (zero_dof ? 1 : 0);
+  ConstantAllocation alloc;
+  if (ReuseBlock(cache, s, raw, key, alloc))
+    return alloc;
+  alloc = Allocate(s, kConstantBlockBytes, kCBVAlignment);
   if (!alloc.memory)
     return {};
-  CopyByteSwap32FlushNaN(alloc.memory,
-                         device_guest + offsetof(D3DDevice, psFloatConstants),
-                         kConstantBlockBytes);
+  CopyByteSwap32FlushNaN(alloc.memory, src_va, kConstantBlockBytes);
   PinScreenUVScaleReg(alloc.memory);
+  if (zero_dof)
+    std::memset(alloc.memory + 20 * 16, 0, 2 * 16);  // g_f4DOFParam, g_f4DOFParam2
+  RememberBlock(cache, s, raw, key, alloc);
   return alloc;
+}
+
+void ConstantBlockStats(u64 &uploaded, u64 &reused) {
+  uploaded = g_constant_blocks_uploaded.exchange(0, std::memory_order_relaxed);
+  reused = g_constant_blocks_reused.exchange(0, std::memory_order_relaxed);
 }
 
 // Per-slot entries of the shared block: slots 0-15 in the base arrays, SvR's 16-31 after them.

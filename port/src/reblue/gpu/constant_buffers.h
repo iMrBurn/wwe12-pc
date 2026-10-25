@@ -97,7 +97,10 @@ void ResetFrame(u32 slot);
 // Byte-swap VS/PS float constants from guest device+0x700 / device+0x1700 into
 // the upload heap.
 ConstantAllocation UploadVertexShaderConstants(u32 device_guest);
-ConstantAllocation UploadPixelShaderConstants(u32 device_guest);
+// zero_dof: clear g_f4DOFParam/g_f4DOFParam2 (depth of field off, wwe12_dof).
+ConstantAllocation UploadPixelShaderConstants(u32 device_guest, bool zero_dof = false);
+// Blocks uploaded / reused since the last call (reuse: Android, see constant_buffers.cpp).
+void ConstantBlockStats(u64 &uploaded, u64 &reused);
 
 // Rebuilt from live guest state every draw: sampler fetch constants and bool
 // constants come from unhooked recompiled code, so there is no dirty signal.

@@ -403,11 +403,13 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
             g_geometry_hashed_bytes.exchange(0) / n / 1048576.0, g_geometry_sampled.exchange(0) / n,
             g_texture_hashed_bytes.exchange(0) / n / 1048576.0, g_texture_sampled.exchange(0) / n);
     const double cpu_now = CpuMs(false), process_now = CpuMs(true);
+    u64 blocks_uploaded = 0, blocks_reused = 0;
+    ConstantBlockStats(blocks_uploaded, blocks_reused);
     if (cpu_now >= 0 && fs.window_cpu_ms >= 0)
       BD_INFO("[perf] cpu per frame: render thread {:.1f} ms (work {:.1f} ms) | whole game "
-              "{:.1f} ms",
+              "{:.1f} ms | constant blocks {:.0f} uploaded, {:.0f} reused",
               (cpu_now - fs.window_cpu_ms) / n, fs.sum_work / n,
-              (process_now - fs.window_process_ms) / n);
+              (process_now - fs.window_process_ms) / n, blocks_uploaded / n, blocks_reused / n);
     fs = FrameStats{};
     fs.window_start = now;
     fs.last_present = now;
