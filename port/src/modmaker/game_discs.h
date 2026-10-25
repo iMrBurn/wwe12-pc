@@ -35,10 +35,10 @@ inline constexpr Known kKnown[] = {
     {0x5451085D, "WWE SmackDown vs. Raw 2011", Can::kYes, Can::kYes},
     {0x54510890, "WWE '12", Can::kNo, Can::kNo},  // (this game)
     {0x545108B4, "WWE '13", Can::kYes, Can::kYes},
-    {0x545408B2, "WWE 2K14", Can::kYes, Can::kSoon},
-    {0x545408B6, "WWE 2K15", Can::kYes, Can::kSoon},
-    {0x315A07D2, "WWE 2K16", Can::kYes, Can::kSoon},
-    {0x545408BA, "WWE 2K17", Can::kYes, Can::kSoon},
+    {0x545408B2, "WWE 2K14", Can::kYes, Can::kYes},
+    {0x545408B6, "WWE 2K15", Can::kYes, Can::kYes},
+    {0x315A07D2, "WWE 2K16", Can::kYes, Can::kYes},
+    {0x545408BA, "WWE 2K17", Can::kYes, Can::kYes},
 };
 
 inline const Known *Find(uint32_t title) {

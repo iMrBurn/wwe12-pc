@@ -44,6 +44,7 @@ constexpr int kDefaultBases[] = {261 /* Ted DiBiase */, 327 /* Justin Gabriel */
 class Page {
  public:
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &disc, mods::Manager &mods) {
+    disc12_ = &disc;
     device_ = device;
     const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f), yellow(0.94f, 0.75f, 0.24f, 1.0f);
     ImGui::TextWrapped("%s", fr ? "Ajoutez un catcheur au jeu, à côté des autres (il apparaît dans la case DLC de "
@@ -126,7 +127,7 @@ class Page {
     ImGui::SameLine();
     ImGui::RadioButton(fr ? "Une tenue de SvR 2011" : "An attire from SvR 2011", &look, 2);
     ImGui::SameLine();
-    ImGui::RadioButton(fr ? "Une tenue de WWE '13" : "An attire from WWE '13", &look, 3);
+    ImGui::RadioButton(fr ? "Une tenue de WWE '13 ou 2K" : "An attire from WWE '13 or 2K", &look, 3);
     if (look != look_) {
       if ((look >= 2) != (look_ >= 2) || look >= 2) {  // (another game: its file chosen again)
         svr_file_.clear();
@@ -151,8 +152,29 @@ class Page {
       ImGui::TextDisabled("%s", other_path_.empty() ? "" : media::Utf8(other_path_.wstring()).c_str());
     } else if (look_ >= 2) {
       const bool w13 = look_ == 3;
+      // WWE '13 and the 2K games (2K14 to 2K17: the same superstar files, port13_star.h): which one.
+      if (w13) {
+        static constexpr std::pair<uint32_t, const char *> kGames[] = {{0x545108B4, "WWE '13"}, {0x545408B2, "WWE 2K14"},
+                                                                       {0x545408B6, "WWE 2K15"}, {0x315A07D2, "WWE 2K16"},
+                                                                       {0x545408BA, "WWE 2K17"}};
+        for (int i = 0; i < 5; ++i) {
+          const bool have = discs_ && !discs_->PathOf(kGames[i].first).empty();
+          if (i)
+            ImGui::SameLine();
+          ImGui::BeginDisabled(!have && i);
+          if (ImGui::RadioButton(kGames[i].second, star_game_ == kGames[i].first) && star_game_ != kGames[i].first) {
+            star_game_ = kGames[i].first;
+            svr_file_.clear();
+            svr_path_.clear();
+            svr_attires_.clear();
+            ported_.clear();
+            SetModel(ported_);
+          }
+          ImGui::EndDisabled();
+        }
+      }
       // From My game discs: the game's superstars by name.
-      const uint32_t title = w13 ? 0x545108B4 : 0x5451085D;
+      const uint32_t title = w13 ? star_game_ : 0x5451085D;
       if (discs_ && game_title_ != title)
         ListDisc(title);
       if (!disc_list_.empty()) {
@@ -161,16 +183,20 @@ class Page {
           if (n == disc_pick_)
             current = nm;
         ImGui::SetNextItemWidth(320);
-        if (ImGui::BeginCombo(w13 ? (fr ? "Catcheur de WWE '13" : "WWE '13 superstar")
+        if (ImGui::BeginCombo(w13 ? (fr ? "Catcheur##other" : "Superstar##other")
                                   : (fr ? "Catcheur de SvR 2011" : "SvR 2011 superstar"),
                               current.c_str(), ImGuiComboFlags_HeightLarge)) {
           for (const auto &[n, nm] : disc_list_) {
             char label[96];
-            snprintf(label, sizeof(label), "%s  (ch%03d)", nm.c_str(), n);
+            if (nm.size() == 5 && nm.compare(0, 2, "ch") == 0)
+              snprintf(label, sizeof(label), "%s", nm.c_str());
+            else
+              snprintf(label, sizeof(label), "%s  (ch%03d)", nm.c_str(), n);
             if (ImGui::Selectable(label, n == disc_pick_)) {
               LoadFromDisc(fr, n);
-              if (!name_[0])  // (its name in its game, to start with)
-                snprintf(name_, sizeof(name_), "%s", nm.c_str());
+              const bool guessed = nm.size() > 2 && nm.compare(nm.size() - 2, 2, " ?") == 0;
+              if (!name_[0] && !(nm.size() == 5 && nm.compare(0, 2, "ch") == 0))  // (its name, to start with)
+                snprintf(name_, sizeof(name_), "%s", (guessed ? nm.substr(0, nm.size() - 2) : nm).c_str());
             }
           }
           ImGui::EndCombo();
@@ -379,10 +405,36 @@ class Page {
     game_path_ = discs_ ? discs_->PathOf(title) : fs::path();
     if (game_path_.empty() || !game_disc_.OpenPath(game_path_))
       return;
+    std::map<int, std::string> names = NamesOf(game_disc_), guess;
+    // The 2K games keep their names elsewhere (not in chEtc.pac): the superstar numbers are the same as in WWE '13 and
+    // WWE '12, whose names are shown with a "?" (most of the time right).
+    if (names.empty()) {
+      disc::GameDisc w13;
+      if (discs_ && w13.OpenPath(discs_->PathOf(0x545108B4)))
+        guess = NamesOf(w13);
+      if (disc12_)
+        for (const auto &[n, nm] : NamesOf(*disc12_))
+          guess.emplace(n, nm);
+    }
+    for (const auto &f : game_disc_.List("pac/ch"))
+      if (f.size() == 9 && _strnicmp(f.c_str(), "ch", 2) == 0 && _stricmp(f.c_str() + 5, ".pac") == 0 && isdigit(f[2]) &&
+          isdigit(f[3]) && isdigit(f[4])) {
+        const int n = atoi(f.c_str() + 2);
+        const auto it = names.find(n), g = guess.find(n);
+        const bool named = it != names.end() && it->second.size() > 1;  // (some records hold "0": no name)
+        disc_list_.push_back({n, named ? it->second
+                                 : g != guess.end() && g->second.size() > 1 ? g->second + " ?"
+                                                                            : f.substr(0, 5)});
+      }
+    std::sort(disc_list_.begin(), disc_list_.end(), [](const auto &x, const auto &y) { return x.second < y.second; });
+  }
+
+  // A game's superstar names by number, from its pac/ch/chEtc.pac (see ListDisc).
+  static std::map<int, std::string> NamesOf(const disc::GameDisc &g) {
     std::map<int, std::string> names;
     Bytes etc;
     svrfmt::Archive a;
-    if (game_disc_.Read("pac/ch/chEtc.pac", etc) && svrfmt::ArchiveOpen(etc, a, nullptr)) {
+    if (g.Read("pac/ch/chEtc.pac", etc) && svrfmt::ArchiveOpen(etc, a, nullptr)) {
       const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
         const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
         const size_t id_at = d.size() == 264 ? 36 : d.size() == 290 ? 44 : d.size() == 324 ? 56 : 0;
@@ -400,15 +452,7 @@ class Page {
       };
       walk(walk, a.root, 0);
     }
-    for (const auto &f : game_disc_.List("pac/ch"))
-      if (f.size() == 9 && _strnicmp(f.c_str(), "ch", 2) == 0 && _stricmp(f.c_str() + 5, ".pac") == 0 && isdigit(f[2]) &&
-          isdigit(f[3]) && isdigit(f[4])) {
-        const int n = atoi(f.c_str() + 2);
-        const auto it = names.find(n);
-        const bool named = it != names.end() && it->second.size() > 1;  // (some records hold "0": no name)
-        disc_list_.push_back({n, named ? it->second : f.substr(0, 5)});
-      }
-    std::sort(disc_list_.begin(), disc_list_.end(), [](const auto &x, const auto &y) { return x.second < y.second; });
+    return names;
   }
 
   void LoadSvrBytes(bool fr, const fs::path &p, Bytes file, int number,
@@ -625,6 +669,8 @@ class Page {
   uint32_t game_title_ = 0;
   std::vector<std::pair<int, std::string>> disc_list_;
   int disc_pick_ = -1;
+  uint32_t star_game_ = 0x545108B4;
+  const disc::GameDisc *disc12_ = nullptr;  // WWE '12 (its names, a guess for the 2K games)  // the WWE '13-kind game of "An attire from WWE '13 or 2K"
   std::vector<std::string> svr_attires_;
   int svr_attire_ = 0;
   arena_view::View view_;

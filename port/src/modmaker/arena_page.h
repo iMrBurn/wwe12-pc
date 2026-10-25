@@ -955,7 +955,8 @@ class Page {
     ImGui::PopTextWrapPos();
   }
 
-  // WWE '13's ISO (or folder): its arenas.
+  // WWE '13's (or a 2K game's) ISO or folder: its arenas (the 2K games': bg00-65; from bg66 on, as in WWE '12, the
+  // match structures).
   void Open13(const fs::path &p) {
     w13_list_.clear();
     w13_pick_ = -1;
@@ -964,8 +965,8 @@ class Page {
       return;
     for (const auto &n : w13_disc_.List("pac/bg"))
       if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
-          (y_title_ != kWwe13 || port13::Find13(atoi(n.c_str() + 2))))  // (WWE '13: arenas only, not backstage
-                                                                           // rooms or match structures)
+          (y_title_ != kWwe13 ? atoi(n.c_str() + 2) < 66
+                              : port13::Find13(atoi(n.c_str() + 2)) != nullptr))  // (WWE '13: arenas only)
         w13_list_.push_back(atoi(n.c_str() + 2));
     std::sort(w13_list_.begin(), w13_list_.end());
   }
