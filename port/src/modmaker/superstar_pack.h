@@ -9,7 +9,8 @@
 //    select screen shows one tile per person, alternate costumes share their superstar's: copies of Batista hid
 //    each other) and the DLC flag (+0x11F: the select screen's DLC tile, whatever the base);
 //  - its base's moves (CHAR/PRO);
-//  - its model (a chNNN.pac, its attires "000NNNAA" renamed to the slot) and its base's portraits (SSFA/B/C);
+//  - its model (a chNNN.pac, its attires "000NNNAA" renamed to the slot) and its portraits (SSFA/B/C: its own, else
+//    the base's);
 //  - its own entrance video if it has one (movies\titantron\NNN.bik, listed in the catalog without a directory, as
 //    the game's packs do; the game plays it in place of its base's: wwe12_superstar_mods.cpp);
 //  - a line in the pack's catalog and in its superstar list (DLC.pac IGST/VOL<pack>: codes "lettre + U" that follow
@@ -43,6 +44,9 @@ struct Star {
   Bytes model;       // a chNNN.pac (EPK8, "EMD " entries "000NNNAA"): the mod's or the base's
   Bytes movie;       // its own entrance video (Bink 320 x 320: titantron on top, minitron below), else empty
   int movie_number = 0;  // ... as movies\titantron\<number>.bik (a number no other video has)
+  // Its own portraits, else empty (the base's): [0 SD / 1 HD][SSFA, SSFB, SSFC], DDS as the game's (DXT5; HD 512 x 512,
+  // 512 x 512, 256 x 256; SD 512 x 256, 512 x 256, 256 x 256: WWE '13's are the same).
+  Bytes portraits[2][3];
 };
 
 struct Inputs {
@@ -349,9 +353,14 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
             svrfmt::ArchiveRemove(out_pac.root, i);
           have_template = true;
         }
-        for (const auto &k : entries)
-          if (!svrfmt::ArchiveAdd(out_pac.root, k.group, slot_name, 0, k.stored, &e))
+        for (const auto &k : entries) {
+          // Its own picture if it has one (a DDS, packed as the game's are), else the base's.
+          const int which = k.group.size() == 4 ? k.group[3] - 'A' : -1;
+          const Bytes &own = which >= 0 && which < 3 ? st.portraits[hd][which] : Bytes();
+          if (!svrfmt::ArchiveAdd(out_pac.root, k.group, slot_name, 0, own.empty() ? k.stored : svrfmt::BpeEncode(own),
+                                  &e))
             return fail(st.key + ": portrait: " + e);
+        }
         break;
       }
     }

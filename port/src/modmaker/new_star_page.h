@@ -326,6 +326,31 @@ class Page {
     } else {
       note_.clear();
     }
+    // A WWE '13 superstar's portraits: its game's pac\menu\menuHD.pac / menuSD.pac, SSFA/SSFB/SSFC "NNNN" (the
+    // same pictures as WWE '12's).
+    for (auto &hd : portraits_)
+      for (auto &b : hd)
+        b.clear();
+    const std::string stem = p.stem().string();
+    if (look_ == 3 && stem.size() > 2 && _strnicmp(stem.c_str(), "ch", 2) == 0 && isdigit(stem[2])) {
+      char name[8];
+      snprintf(name, sizeof(name), "%04d", atoi(stem.c_str() + 2));
+      int found = 0;
+      for (int hd = 0; hd < 2; ++hd) {
+        svrfmt::Archive m;
+        if (!svrfmt::ArchiveOpen(ReadAll(p.parent_path().parent_path() / "menu" / (hd ? "menuHD.pac" : "menuSD.pac")), m,
+                                 nullptr))
+          continue;
+        for (const auto &k : m.root.kids)
+          if (k.name == name && k.group.size() == 4 && k.group.compare(0, 3, "SSF") == 0 && k.group[3] >= 'A' &&
+              k.group[3] <= 'C') {
+            portraits_[hd][k.group[3] - 'A'] = svrfmt::ArchiveData(k);
+            ++found;
+          }
+      }
+      if (found)
+        note_ = fr ? "Ses portraits de WWE '13 viendront avec lui." : "Its WWE '13 portraits come with it.";
+    }
   }
 
   // The SvR 2011 or WWE '13 attire over the base's first attire (port_svr.h, port13_star.h), made to fit that
@@ -369,6 +394,8 @@ class Page {
                               : "Ported: %d meshes converted (the new superstar's attire 1).",
              look_ == 3 ? rep13.meshes : rep.meshes);
     note_ = b;
+    if (look_ == 3 && !portraits_[1][0].empty())
+      note_ += fr ? " Ses portraits de WWE '13 viendront avec lui." : " Its WWE '13 portraits come with it.";
     SetModel(ported_);
   }
 
@@ -463,6 +490,12 @@ class Page {
       entries.push_back({"superstar/look.txt", Bytes{'b', 'a', 's', 'e', '\n'}});  // (a mod needs a superstar/ file)
     if (!movie.empty())
       entries.push_back({"superstar/titantron.bik", movie});
+    if (look_ == 3)  // (its WWE '13 portraits)
+      for (int hd = 0; hd < 2; ++hd)
+        for (int k = 0; k < 3; ++k)
+          if (!portraits_[hd][k].empty())
+            entries.push_back({std::string("superstar/SSF") + char('A' + k) + (hd ? "_HD.dds" : "_SD.dds"),
+                               portraits_[hd][k]});
     if (!mods::Manager::WriteZip(save, entries)) {
       message_ = (fr ? "Impossible d'écrire " : "Could not write ") + media::Utf8(save.wstring());
       return;
@@ -492,6 +525,7 @@ class Page {
   media::MovieEditor movie_;
   bool own_movie_ = false;
   fs::path save_, made_;
+  Bytes portraits_[2][3];  // a WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
 };
 
 }  // namespace new_star_page

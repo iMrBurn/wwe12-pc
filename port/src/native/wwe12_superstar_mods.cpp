@@ -1,6 +1,7 @@
 // WWE '12: added superstars (docs/mod_maker.md, "Ajouter des catcheurs"). At startup, after the DLC packs are
 // installed and before the game lists them, the superstar mods (mods\.svrmods\Superstars\<id>, type=superstar,
-// not disabled: manifest name=, base=NNN, superstar\ch.pac optional) become one more DLC pack, WWE12PCMODS, made by
+// not disabled: manifest name=, base=NNN; optional in superstar\: ch.pac, titantron.bik, its portraits SSFA_HD.dds ...
+// SSFC_SD.dds) become one more DLC pack, WWE12PCMODS, made by
 // modmaker/superstar_pack.h from the player's own files: the latest installed pack's (else the disc's) chEtc.pac,
 // DLC.pac and portraits, the base superstars' models when a mod has none. Each mod keeps its number from one start
 // to the next (Documents\wwe12\superstar_slots.txt: "<mod>=<number>"), so a save's records never move. The pack is
@@ -249,6 +250,11 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       REXLOG_WARN("[superstar mods] {}: no free superstar slot left", st.key);
       continue;
     }
+    // Its own portraits, if any (superstar\SSFA_HD.dds ... SSFC_SD.dds).
+    for (int hd = 0; hd < 2; ++hd)
+      for (int k = 0; k < 3; ++k)
+        ReadHost(list[i].model.parent_path() / (std::string("SSF") + char('A' + k) + (hd ? "_HD.dds" : "_SD.dds")),
+                 st.portraits[hd][k]);
     if (ReadHost(list[i].model, st.model))
       continue;
     if (!ReadGame(vfs, "pac/ch/ch" + std::to_string(st.base) + ".pac", st.model))
