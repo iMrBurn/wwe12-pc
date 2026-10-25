@@ -1,0 +1,121 @@
+diff --git a/plume_vulkan.cpp b/plume_vulkan.cpp
+index 261398d..228c940 100644
+--- a/plume_vulkan.cpp
++++ b/plume_vulkan.cpp
+@@ -34,6 +34,98 @@
+ extern "C" void *wwe12_custom_vulkan_driver() __attribute__((weak));
+ #endif
+ 
++#if defined(__ANDROID__)
++#   include <atomic>
++#   include <cstdio>
++#   include <cstdlib>
++#   include <mutex>
++#   include <string>
++#   include <vector>
++// WWE '12 Android: a Vulkan pipeline cache kept on disk (file named by PLUME_PIPELINE_CACHE, set
++// by the app; saved by plume_save_pipeline_cache()). Phone drivers do not always keep their own,
++// so without it every launch compiled every pipeline again (stutters). The driver checks the
++// file's header itself and ignores data from another driver or GPU.
++namespace {
++    std::mutex g_androidCacheMutex;
++    VkDevice g_androidCacheDevice = VK_NULL_HANDLE;
++    VkPipelineCache g_androidCache = VK_NULL_HANDLE;
++    std::atomic<uint32_t> g_androidCacheNew{0};
++
++    VkPipelineCache AndroidPipelineCache(VkDevice device) {
++        std::lock_guard<std::mutex> lock(g_androidCacheMutex);
++        if (g_androidCacheDevice != VK_NULL_HANDLE) {
++            return (g_androidCacheDevice == device) ? g_androidCache : VK_NULL_HANDLE;
++        }
++        g_androidCacheDevice = device;
++        std::vector<char> data;
++        if (const char *path = std::getenv("PLUME_PIPELINE_CACHE")) {
++            if (FILE *f = std::fopen(path, "rb")) {
++                std::fseek(f, 0, SEEK_END);
++                const long size = std::ftell(f);
++                std::fseek(f, 0, SEEK_SET);
++                if (size > 0 && size < (256L << 20)) {
++                    data.resize(size_t(size));
++                    if (std::fread(data.data(), 1, data.size(), f) != data.size()) {
++                        data.clear();
++                    }
++                }
++                std::fclose(f);
++            }
++        }
++        VkPipelineCacheCreateInfo createInfo = {};
++        createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
++        createInfo.initialDataSize = data.size();
++        createInfo.pInitialData = data.empty() ? nullptr : data.data();
++        if (vkCreatePipelineCache(device, &createInfo, nullptr, &g_androidCache) != VK_SUCCESS) {
++            createInfo.initialDataSize = 0;
++            createInfo.pInitialData = nullptr;
++            if (vkCreatePipelineCache(device, &createInfo, nullptr, &g_androidCache) != VK_SUCCESS) {
++                g_androidCache = VK_NULL_HANDLE;
++            }
++            data.clear();
++        }
++        fprintf(stderr, "plume: Vulkan pipeline cache %s (%zu bytes from disk)\n",
++                g_androidCache != VK_NULL_HANDLE ? "ready" : "unavailable", data.size());
++        return g_androidCache;
++    }
++
++    VkPipelineCache AndroidPipelineCacheForNewPipeline(VkDevice device) {
++        g_androidCacheNew.fetch_add(1, std::memory_order_relaxed);
++        return AndroidPipelineCache(device);
++    }
++}
++
++// Writes the cache to its file if pipelines were created since the last call.
++extern "C" void plume_save_pipeline_cache() {
++    std::lock_guard<std::mutex> lock(g_androidCacheMutex);
++    const char *path = std::getenv("PLUME_PIPELINE_CACHE");
++    if (g_androidCache == VK_NULL_HANDLE || path == nullptr || g_androidCacheNew.exchange(0) == 0) {
++        return;
++    }
++    size_t size = 0;
++    if (vkGetPipelineCacheData(g_androidCacheDevice, g_androidCache, &size, nullptr) != VK_SUCCESS || size == 0) {
++        return;
++    }
++    std::vector<char> data(size);
++    if (vkGetPipelineCacheData(g_androidCacheDevice, g_androidCache, &size, data.data()) != VK_SUCCESS) {
++        return;
++    }
++    const std::string tmp = std::string(path) + ".tmp";
++    FILE *f = std::fopen(tmp.c_str(), "wb");
++    if (f == nullptr) {
++        return;
++    }
++    const bool written = std::fwrite(data.data(), 1, size, f) == size;
++    std::fclose(f);
++    if (!written || std::rename(tmp.c_str(), path) != 0) {
++        std::remove(tmp.c_str());
++    }
++}
++#   define PLUME_PIPELINE_CACHE_FOR(device) AndroidPipelineCacheForNewPipeline(device)
++#else
++#   define PLUME_PIPELINE_CACHE_FOR(device) VK_NULL_HANDLE
++#endif
++
+ // TODO:
+ // - Fix resource pools.
+ 
+@@ -1418,7 +1510,7 @@ namespace plume {
+         pipelineInfo.layout = pipelineLayout->vk;
+         pipelineInfo.stage = stageInfo;
+ 
+-        VkResult res = vkCreateComputePipelines(device->vk, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vk);
++        VkResult res = vkCreateComputePipelines(device->vk, PLUME_PIPELINE_CACHE_FOR(device->vk), 1, &pipelineInfo, nullptr, &vk);
+         if (res != VK_SUCCESS) {
+             fprintf(stderr, "vkCreateComputePipelines failed with error code 0x%X.\n", res);
+             return;
+@@ -1677,7 +1769,7 @@ namespace plume {
+         pipelineInfo.layout = pipelineLayout->vk;
+         pipelineInfo.renderPass = renderPass;
+ 
+-        VkResult res = vkCreateGraphicsPipelines(device->vk, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vk);
++        VkResult res = vkCreateGraphicsPipelines(device->vk, PLUME_PIPELINE_CACHE_FOR(device->vk), 1, &pipelineInfo, nullptr, &vk);
+         if (res != VK_SUCCESS) {
+             fprintf(stderr, "vkCreateGraphicsPipelines failed with error code 0x%X.\n", res);
+             return;

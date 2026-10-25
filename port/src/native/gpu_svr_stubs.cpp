@@ -72,7 +72,17 @@ void Enqueue(const PipelineState &state, bool front) {
   if (!Video::HostDevice())
     return;
   static std::once_flag once;
-  std::call_once(once, [] { std::thread(CompileWorker).detach(); });
+  std::call_once(once, [] {
+#if defined(__ANDROID__)
+    // Phone drivers take tens of ms per pipeline: one thread fell behind the match load, and the
+    // render thread compiled the rest itself (5.6 s frozen on a Snapdragon 7s Gen 2).
+    constexpr int kWorkers = 3;
+#else
+    constexpr int kWorkers = 1;
+#endif
+    for (int i = 0; i < kWorkers; ++i)
+      std::thread(CompileWorker).detach();
+  });
   {
     std::lock_guard lock(g_queue_mutex);
     if (!g_queued.insert(HashPipelineState(state)).second)

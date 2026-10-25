@@ -56,6 +56,8 @@ public class WWE12Activity extends SDLActivity {
             Os.setenv("REX_APP_DIR", dir.getAbsolutePath(), true);
             Os.setenv("XDG_DATA_HOME", dir.getAbsolutePath(), true);
             Os.setenv("REX_NATIVE_LIB_DIR", context.getApplicationInfo().nativeLibraryDir, true);
+            // Vulkan pipeline cache kept between launches (plume-android-cache.patch): fewer stutters.
+            Os.setenv("PLUME_PIPELINE_CACHE", new File(context.getCacheDir(), "vk_pipelines.bin").getAbsolutePath(), true);
             // SDL hint read from the environment: landscape only, whatever the phone's rotation lock.
             Os.setenv("SDL_ORIENTATIONS", "LandscapeLeft LandscapeRight", true);
         } catch (Exception e) {

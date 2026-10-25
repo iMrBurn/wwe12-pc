@@ -66,6 +66,10 @@ SIZE_T VirtualQuery(LPCVOID address, MEMORY_BASIC_INFORMATION *info, SIZE_T leng
 
 #include <rex/logging/macros.h>
 
+#include <chrono>
+
+extern "C" void plume_save_pipeline_cache();  // plume-android-cache.patch
+
 void Wwe12AndroidCaptureStderr() {
   int fds[2];
   if (pipe(fds) != 0) return;
@@ -94,4 +98,13 @@ void Wwe12AndroidCaptureStderr() {
     }
   }).detach();
   std::fprintf(stderr, "stderr goes to this log\n");
+
+  // The Vulkan pipeline cache (plume-android-cache.patch) is written every 10 s if it grew: the
+  // game ends with a hard exit, never a clean shutdown.
+  std::thread([] {
+    for (;;) {
+      std::this_thread::sleep_for(std::chrono::seconds(10));
+      plume_save_pipeline_cache();
+    }
+  }).detach();
 }
