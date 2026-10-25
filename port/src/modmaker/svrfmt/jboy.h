@@ -35,6 +35,9 @@ struct Param {
 struct Strip {
   uint32_t prim = 6;  // 6 = triangle strip
   std::vector<uint16_t> indices;
+  // (WWE '13's models write it 0x06000000: a strip too, the game draws them so; read as a triangle list, its arenas
+  // showed big grey triangles in the 3D view)
+  bool IsStrip() const { return prim == 6 || prim == 0x06000000; }
 };
 
 struct Mesh {

@@ -366,7 +366,7 @@ class View {
     }
     std::vector<uint32_t> idx;
     for (const auto &st : s.strips) {
-      if (st.prim == 6) {
+      if (st.IsStrip()) {
         for (const auto &t : svrfmt::StripToTriangles(st.indices))
           if (t[0] < v.size() && t[1] < v.size() && t[2] < v.size())
             idx.insert(idx.end(), {t[0], t[1], t[2]});

@@ -134,7 +134,7 @@ inline std::array<double, 3> Centroid(const svrfmt::Mesh &s) {
 }
 
 inline std::vector<std::array<uint16_t, 3>> Triangles(const svrfmt::Strip &st) {
-  if (st.prim == 6)
+  if (st.IsStrip())
     return svrfmt::StripToTriangles(st.indices);
   std::vector<std::array<uint16_t, 3>> t;
   for (size_t q = 0; q + 2 < st.indices.size(); q += 3)
