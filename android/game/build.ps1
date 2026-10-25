@@ -48,8 +48,11 @@ $SdlJava = "$Root\recomp\rexglue-sdk\thirdparty\sdl3\android-project\app\src\mai
 $javaFiles = @(Get-ChildItem $SdlJava, "$PSScriptRoot\java" -Recurse -Filter *.java | ForEach-Object FullName)
 & "$Java\javac.exe" --release 11 -nowarn -encoding UTF-8 -classpath $AndroidJar -d "$Out\classes" $javaFiles
 if ($LASTEXITCODE -ne 0) { throw "échec de javac" }
-$classes = @(Get-ChildItem "$Out\classes" -Recurse -Filter *.class | ForEach-Object FullName)
-& "$Bt\d8.bat" --release --min-api 28 --lib $AndroidJar --output "$Out\dex" $classes
+# Classes regroupées dans un .jar : passées une par une, la ligne de commande de d8 devenait trop longue.
+Remove-Item "$Out\classes.jar" -ErrorAction SilentlyContinue
+& "$Java\jar.exe" cf "$Out\classes.jar" -C "$Out\classes" .
+if ($LASTEXITCODE -ne 0) { throw "échec de jar" }
+& "$Bt\d8.bat" --release --min-api 28 --lib $AndroidJar --output "$Out\dex" "$Out\classes.jar"
 if ($LASTEXITCODE -ne 0) { throw "échec de d8" }
 
 # 3. Réglages par défaut livrés (copiés au premier lancement s'il n'y en a pas).

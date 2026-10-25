@@ -39,6 +39,12 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".LayoutEditorActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
             android:name=".WWE12Activity"
             android:process=":game"
             android:exported="false"

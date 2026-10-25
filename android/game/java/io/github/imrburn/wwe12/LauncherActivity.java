@@ -171,6 +171,22 @@ public class LauncherActivity extends Activity {
         set.addView(toggle("Shadows", "wwe12_shadows"));
         set.addView(toggle("Crowd", "wwe12_crowd"));
         set.addView(toggle("60 fps in entrances (heavier)", "wwe12_60fps"));
+        // From Yexclsv's work: more settings and one-tap presets.
+        set.addView(toggle("Depth of field (blur, heavier)", "wwe12_dof"));
+        set.addView(toggle("V-sync (no tearing)", "bd_vsync"));
+        set.addView(choice("Texture sharpness at an angle (lower = faster)", "bd_anisotropy",
+                new String[] {"Off (fastest)", "2x", "4x", "8x", "16x"},
+                new String[] {"0", "2", "4", "8", "16"}));
+        set.addView(choice("Loading screens", "wwe12_load_slice_ms",
+                new String[] {"Original pace", "About 2x faster"}, new String[] {"0", "12"}));
+
+        // Quick presets for phones that drop frames.
+        LinearLayout presets = panel(root, "PERFORMANCE PRESETS");
+        presets.addView(text("Sets resolution, shadows, crowd, blur and texture sharpness in one tap.",
+                12, Color.GRAY, false));
+        presets.addView(presetButton("LOW-END PHONE (fastest)", "540", "false", "false", "false", "0"));
+        presets.addView(presetButton("BALANCED", "720", "true", "false", "false", "4"));
+        presets.addView(presetButton("QUALITY (strong phones)", "1080", "true", "true", "true", "16"));
 
         // Controls (app settings, not wwe12.toml)
         // GPU driver: the phone's own, or a custom one (Turnip...) imported from a .zip
@@ -191,6 +207,17 @@ public class LauncherActivity extends Activity {
         ctl.addView(prefChoice("On-screen buttons size", "touch_size",
                 new String[] {"Small (70 %)", "Medium (85 %)", "Normal (100 %)", "Large (110 %)"},
                 new int[] {70, 85, 100, 110}, 100));
+        ctl.addView(prefToggle("Vibration when pressing a button", "touch_haptics", true));
+        ctl.addView(prefChoice("Stick dead zone (raise it if the character drifts)", "touch_deadzone",
+                new String[] {"None", "5 %", "10 %", "15 %", "20 %", "30 %"}, new int[] {0, 5, 10, 15, 20, 30}, 10));
+        ctl.addView(prefChoice("Stick sensitivity", "touch_sens",
+                new String[] {"Low (80 %)", "Normal", "High (115 %)", "Very high (130 %)"},
+                new int[] {80, 100, 115, 130}, 100));
+        Button editLayout = button("EDIT BUTTON LAYOUT (move, resize, custom buttons)", false);
+        editLayout.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { startActivity(new Intent(LauncherActivity.this, LayoutEditorActivity.class)); }
+        });
+        ctl.addView(editLayout);
         controllerStatus = text("", 13, Color.WHITE, false);
         ctl.addView(controllerStatus);
         ctl.addView(text("Bluetooth / USB controllers (Xbox, PlayStation...) work too: pair it in Android's settings.",
@@ -255,6 +282,37 @@ public class LauncherActivity extends Activity {
         bg.setColor(big ? YELLOW : Color.rgb(60, 60, 60));
         bg.setCornerRadius(6 * getResources().getDisplayMetrics().density);
         b.setBackground(bg);
+        return b;
+    }
+
+    // App setting (not wwe12.toml): a checkbox stored in the launcher preferences.
+    View prefToggle(String label, final String key, boolean def) {
+        final CheckBox c = new CheckBox(this);
+        c.setText(label);
+        c.setTextColor(Color.WHITE);
+        c.setChecked(prefs.getBoolean(key, def));
+        c.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { prefs.edit().putBoolean(key, c.isChecked()).apply(); }
+        });
+        return c;
+    }
+
+    // One-tap graphics preset: resolution, shadows, crowd, depth of field, texture sharpness.
+    Button presetButton(String label, final String scale, final String shadows, final String crowd,
+                        final String dof, final String aniso) {
+        Button b = button(label, false);
+        b.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                config.set("svr_render_scale", scale);
+                config.set("wwe12_shadows", shadows);
+                config.set("wwe12_crowd", crowd);
+                config.set("wwe12_dof", dof);
+                config.set("bd_anisotropy", aniso);
+                config.set("wwe12_60fps", "false");
+                config.save();
+                recreate();  // rebuilds the settings with the new values
+            }
+        });
         return b;
     }
 
