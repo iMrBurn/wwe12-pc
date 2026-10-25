@@ -684,11 +684,67 @@ class Page {
             ++found;
           }
       }
+      if (!found)
+        found = Portraits2K(number, read_pac);
       if (found) {
         note_ok_ = true;
-        note_ = fr ? "Ses portraits de WWE '13 viendront avec lui." : "Its WWE '13 portraits come with it.";
+        note_ = fr ? "Ses portraits viendront avec lui." : "Its portraits come with it.";
       }
     }
+  }
+
+  // WWE 2K15 / 2K16: pac\menu\menuHD2.pac, SFAG / SFBG / SFCG "NNNN" (2K16: no SFBG, SFAG again), TGA 512 x 512,
+  // 512 x 512, 256 x 256 framed as WWE '12's; made into WWE '12's DDS (DXT5, no mips; SD SSFA / SSFB 512 x 256).
+  // (2K14 has WWE '12's SSFA-C; 2K17's SSFaceHD.pac has hashed names: not read yet.) The pac (~70 MB) is kept.
+  int Portraits2K(int number, const std::function<Bytes(const char *)> &read_pac) {
+    const std::string key = media::Utf8(svr_path_.parent_path().parent_path().wstring());
+    if (key != menu2_of_) {
+      menu2_of_ = key;
+      menu2_ = {};
+      svrfmt::ArchiveOpen(read_pac("menu/menuHD2.pac"), menu2_, nullptr);
+    }
+    char name[8];
+    snprintf(name, sizeof(name), "%04d", number);
+    svrfmt::Image pic[3];
+    for (const auto &k : menu2_.root.kids)
+      if (k.name == name && k.group.size() == 4 && k.group[0] == 'S' && k.group[1] == 'F' && k.group[3] == 'G' &&
+          k.group[2] >= 'A' && k.group[2] <= 'C')
+        Tga(svrfmt::ArchiveData(k), pic[k.group[2] - 'A']);
+    if (pic[1].w == 0)
+      pic[1] = pic[0];
+    if (pic[0].w == 0 || pic[2].w == 0)
+      return 0;
+    const int size[2][3][2] = {{{512, 256}, {512, 256}, {256, 256}}, {{512, 512}, {512, 512}, {256, 256}}};
+    for (int hd = 0; hd < 2; ++hd)
+      for (int k = 0; k < 3; ++k)
+        portraits_[hd][k] = svrfmt::DdsEncode(svrfmt::Resize(pic[k], size[hd][k][0], size[hd][k][1]),
+                                              svrfmt::DxtFormat::kDxt5, false);
+    return 6;
+  }
+
+  // An uncompressed 32-bit TGA (type 2: BGRA, bottom row first unless the descriptor's bit 5 says top first).
+  static bool Tga(const Bytes &d, svrfmt::Image &out) {
+    if (d.size() < 18 || d[2] != 2 || d[16] != 32)
+      return false;
+    const int w = d[12] | d[13] << 8, h = d[14] | d[15] << 8;
+    const size_t at = 18 + d[0];
+    if (w <= 0 || h <= 0 || d.size() < at + size_t(w) * h * 4)
+      return false;
+    const bool top_first = d[17] & 0x20;
+    out.w = w;
+    out.h = h;
+    out.rgba.resize(size_t(w) * h * 4);
+    for (int y = 0; y < h; ++y) {
+      const uint8_t *row = &d[at + size_t(top_first ? y : h - 1 - y) * w * 4];
+      for (int x = 0; x < w; ++x) {
+        uint8_t *o = &out.rgba[(size_t(y) * w + x) * 4];
+        o[0] = row[x * 4 + 2];
+        o[1] = row[x * 4 + 1];
+        o[2] = row[x * 4 + 0];
+        o[3] = row[x * 4 + 3];
+      }
+    }
+    return true;
   }
 
   // A SvR 2011 superstar's portraits: pac\DLC_HD.pac / DLC_SD.pac, SSFA/SSFB/SSFC "NNNN", WWE '12's pictures but for
@@ -917,6 +973,8 @@ class Page {
   fs::path svr_movie_file_;    // that movie (a copy, or in the player's SvR 2011 folder), "" if it has none
   media::MovieEditor svr_view_;  // (only its picture)
   fs::path save_, made_;
+  svrfmt::Archive menu2_;  // a 2K game's menuHD2.pac (its portraits), for menu2_of_
+  std::string menu2_of_;
   Bytes portraits_[2][3];  // a SvR 2011 / WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
 };
 

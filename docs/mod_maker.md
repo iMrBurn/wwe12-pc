@@ -708,6 +708,12 @@ places ×10, d'après le code de Kaiko).
   `SSFB` SD refaits depuis les HD (SvR les range en 256 × 512, WWE '12 en 512 × 256 : l'image HD écrasée en hauteur).
   Cadrage un peu plus large que WWE '12 (jusqu'aux genoux). Les six ou aucun (sinon ceux de la base).
 
+- **Portraits des catcheurs 2K (2026-10-25, compilé, vérifié hors du jeu)** : 2K14 a les `SSFA-C` de WWE '12 dans
+  `menu\menuHD.pac` / `menuSD.pac` (déjà lus comme WWE '13). 2K15 et 2K16 : `menu\menuHD2.pac` (~70 Mo, gardé ouvert),
+  `SFAG` / `SFBG` / `SFCG` « NNNN » en **TGA** non compressé 32 bits (512 × 512, 512 × 512, 256 × 256, même cadrage que
+  WWE '12 ; 2K16 sans `SFBG` : `SFAG` à la place), convertis en DDS DXT5 sans mips (SD `SSFA` / `SSFB` 512 × 256).
+  2K17 : `menu\SSFaceHD.pac` (HSPC, noms hachés) : pas encore lu.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,
