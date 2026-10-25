@@ -139,6 +139,15 @@ class Page {
       ImGui::TextColored(green, "%s", fr ? "Tout est prêt." : "All set.");
   }
 
+  static const char *GameName(uint32_t title) {
+    return title == 0x545408B2   ? "WWE 2K14"
+           : title == 0x545408B6 ? "WWE 2K15"
+           : title == 0x315A07D2 ? "WWE 2K16"
+           : title == 0x545408BA ? "WWE 2K17"
+           : title == 0x5451085D ? "SvR 2011"
+                                 : "WWE '13";
+  }
+
   // Step 1: its look.
   void StepLook(bool fr) {
     const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
@@ -374,9 +383,9 @@ class Page {
                                 : "The titantron and minitron during its entrance: the base's, or its own.");
     ImGui::BeginDisabled(movie_.Busy());
     if (ImGui::RadioButton(fr ? "Celle de la base" : "The base's", !own_movie_ && !svr_movie_))
-      own_movie_ = svr_movie_ = false;
-    // (SvR 2011's entrance movies are WWE '12's kind, Bink 1 at 320 x 320: taken as they are; WWE '13's and the 2K
-    // games' are Bink 2, not read yet)
+      own_movie_ = svr_movie_ = twok_movie_ = false;
+    // (SvR 2011's entrance movies are WWE '12's kind, Bink 1 at 320 x 320: taken as they are; the 2K games' are
+    // Bink 2, made into its own movie with the player's tool, bink2.h; WWE '13's and 2K14's can't be read)
     if (look_ != 2)
       svr_movie_ = false;  // (only with a look from SvR 2011)
     if (look_ == 2 && !svr_movie_file_.empty()) {
@@ -391,12 +400,34 @@ class Page {
         own_movie_ = false;
       }
     }
+    // a 2K game's (Bink 2: movies\titantron\ent_NNNN_A_B.bk2)
+    if (look_ != 3)
+      twok_movie_ = false;
+    if (look_ == 3 && !twok_movie_file_.empty()) {
+      ImGui::SameLine();
+      char label[96];
+      snprintf(label, sizeof(label), fr ? "La sienne dans %s (%s)" : "Its own in %s (%s)", GameName(game_title_),
+               twok_movie_file_.c_str());
+      if (ImGui::RadioButton(label, twok_movie_) && !twok_movie_) {
+        Bytes b;
+        const fs::path tmp = media::TempDir() / fs::path(twok_movie_file_).filename();
+        if (game_disc_.Read("movies/titantron/" + twok_movie_file_, b)) {
+          std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char *>(b.data()), std::streamsize(b.size()));
+          twok_movie_ = own_movie_ = true;
+          svr_movie_ = false;
+          movie_.UseOwnBink2(tmp);
+        }
+      }
+    }
     ImGui::SameLine();
-    if (ImGui::RadioButton(fr ? "Une vidéo à vous" : "One of yours", own_movie_)) {
+    if (ImGui::RadioButton(fr ? "Une vidéo à vous" : "One of yours", own_movie_ && !twok_movie_)) {
       own_movie_ = true;
-      svr_movie_ = false;
+      svr_movie_ = twok_movie_ = false;
     }
     ImGui::EndDisabled();
+    if (look_ == 3 && !twok_movie_file_.empty() && bink2::Found().kind == bink2::Kind::kNone)
+      ImGui::TextDisabled("%s", fr ? "(pour reprendre sa vidéo : installez RAD Video Tools, gratuit ; voir MES DISQUES)"
+                                   : "(to bring its movie: install RAD Video Tools, free; see MY GAME DISCS)");
     if (look_ == 2 && svr_movie_file_.empty() && !svr_attires_.empty())
       ImGui::TextDisabled("%s", fr ? "(ce catcheur n'a pas de vidéo à lui dans SvR 2011)"
                                    : "(this superstar has no movie of its own in SvR 2011)");
@@ -598,6 +629,22 @@ class Page {
       char movie[16];
       snprintf(movie, sizeof(movie), "%03d.bik", number);
       SetSvrMovie(media::CopyGameMovie(game_disc_, movie));
+    }
+    // its 2K movie (2K15-2K17, KB2i; 2K14's and WWE '13's Bink 2 can't be read): ent_NNNN_<attire>_<n>.bk2, the
+    // first
+    twok_movie_file_.clear();
+    twok_movie_ = false;
+    if (look_ == 3 && (game_title_ == 0x545408B6 || game_title_ == 0x315A07D2 || game_title_ == 0x545408BA)) {
+      char prefix[16];
+      snprintf(prefix, sizeof(prefix), "ent_%04d_", number);
+      auto files = game_disc_.List("movies/titantron");
+      std::sort(files.begin(), files.end());
+      for (const auto &f : files)
+        if (_strnicmp(f.c_str(), prefix, strlen(prefix)) == 0 && f.size() > 4 &&
+            _stricmp(f.c_str() + f.size() - 4, ".bk2") == 0) {
+          twok_movie_file_ = f;
+          break;
+        }
     }
   }
 
@@ -956,6 +1003,7 @@ class Page {
                               : "") +
                 (movie.empty()  ? ""
                  : svr_movie_ ? ", its SvR 2011 entrance video"
+                 : twok_movie_ ? ", its entrance video from " + std::string(GameName(game_title_))
                               : ", its own entrance video (" + movie_.Parts() + ")") +
                 ", made with the WWE '12 Mod Maker.\n";
     std::vector<std::pair<std::string, Bytes>> entries = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())}};
@@ -1014,6 +1062,8 @@ class Page {
   media::MovieEditor movie_;
   bool own_movie_ = false;
   bool svr_movie_ = false;     // its SvR 2011 entrance movie, as it is
+  bool twok_movie_ = false;    // its 2K game's entrance movie (Bink 2), made into its own (own_movie_ too)
+  std::string twok_movie_file_;  // that movie in movies\titantron, "" if none
   fs::path svr_movie_file_;    // that movie (a copy, or in the player's SvR 2011 folder), "" if it has none
   media::MovieEditor svr_view_;  // (only its picture)
   fs::path save_, made_;

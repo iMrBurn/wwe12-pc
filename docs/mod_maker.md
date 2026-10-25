@@ -738,6 +738,18 @@ places ×10, d'après le code de Kaiko).
   vos mods, ce qui n'est pas encore possible), comme le manuel intégré de Kaiko, puis les crédits. L'assistant
   NOUVEAU a, comme celui des arènes, un bouton « Tester en jeu » une fois le mod installé (`arena_page::LaunchGame`).
 
+- **Vidéos Bink 2 des 2K (2026-10-25, vu à l'écran : AJ Styles de 2K17)**, comme le fait Kaiko (idée seulement,
+  code à nous, `bink2.h`) : le Mod Maker utilise un outil **installé par le joueur** : RAD Video Tools (gratuit,
+  `radvideo64.exe BinkConv <in> <out.avi>`, lancé sur un **bureau Windows à lui, jamais affiché** : ses fenêtres
+  n'arrivent pas sur l'écran du joueur ; « Done » fermé, « Error opening » = refus) ou le ffmpeg de Librempeg (images
+  brutes par un tuyau ; un ffmpeg ne compte que si `-decoders` liste bink2). Jamais la `bink2w64.dll` d'un jeu. AVI
+  brut relu par nous, images réencodées par notre encodeur Bink 1. Outil trouvé seul (dossiers habituels, liste de
+  désinstallation, PATH) ou choisi dans MES DISQUES (`modmaker_bink2.txt`). Lisibles : **2K15-2K17 (KB2i)** ; WWE '13
+  (KB2d) et 2K14 (KB2f) : refusés par RAD Video Tools 2024. Mise en page des 2K : `movies\titantron\ent_NNNN_<tenue>_<n>.bk2`,
+  320 × 320 = **une image 16:9 écrasée, sans bandeau** : convertie en 512 × 288 puis passée au fabricant de vidéos
+  (titantron « le vôtre », remplir ; minitron « comme le titantron »). Étape 4 de NOUVEAU : « La sienne dans WWE 2K17
+  (ent_0610_0_0.bk2) » ; la page VIDÉOS accepte aussi les .bk2 / .bik2. Conversion d'Orton (835 images) : 3,7 s.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

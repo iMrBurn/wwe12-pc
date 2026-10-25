@@ -286,14 +286,16 @@ const Guide kGuides[] = {
      {"NEW SUPERSTAR.",
       "1. Look: a superstar of your other games (with its portraits when the game has them), a file, or the base.",
       "2. Base: gives the moves, ratings and entrance. A superstar WWE '12 also has is its own base at once.",
-      "3. Name, 4. Entrance video: the base's, its own from SvR 2011, or one of yours (any video or picture).",
+      "3. Name, 4. Entrance video: the base's, its own from SvR 2011 or WWE 2K15-2K17 (with RAD Video Tools, see "
+      "MY GAME DISCS), or one of yours (any video or picture).",
       "5. Look at it in 3D, then 6. Finish: the mod is made and installed; Test in game.",
       "In the game: superstar select screen, DLC tile. Added superstars are everywhere (Universe, Create a Story)."},
      {"NOUVEAU.",
       "1. Apparence : un catcheur de vos autres jeux (avec ses portraits quand le jeu en a), un fichier, ou la base.",
       "2. Base : donne les prises, les stats et l'entrée. Un catcheur qui existe aussi dans WWE '12 est sa propre "
       "base d'office.",
-      "3. Nom, 4. Vidéo d'entrée : celle de la base, la sienne de SvR 2011, ou une à vous (vidéo ou image).",
+      "3. Nom, 4. Vidéo d'entrée : celle de la base, la sienne de SvR 2011 ou de WWE 2K15-2K17 (avec RAD Video "
+      "Tools, voir MES DISQUES), ou une à vous (vidéo ou image).",
       "5. Regardez-le en 3D, puis 6. Terminer : le mod est créé et installé ; Tester en jeu.",
       "Dans le jeu : écran de choix des catcheurs, case DLC. Les catcheurs ajoutés sont partout (Univers, Créer un "
       "scénario)."}},
@@ -317,10 +319,10 @@ const Guide kGuides[] = {
     {"Not yet",
      "Pas encore",
      {"Moves and entrances of other games' superstars (they take their base's).",
-      "WWE '13 and 2K entrance videos (Bink 2).",
+      "WWE '13 and WWE 2K14 entrance videos (an early Bink 2 that RAD Video Tools doesn't read).",
       "SvR 2011 VS screens exactly like the original."},
      {"Les prises et les entrées des catcheurs des autres jeux (ils prennent celles de leur base).",
-      "Les vidéos d'entrée de WWE '13 et des 2K (Bink 2).",
+      "Les vidéos d'entrée de WWE '13 et de WWE 2K14 (un Bink 2 ancien que RAD Video Tools ne lit pas).",
       "Les écrans VS de SvR 2011 exactement comme l'original."}},
 };
 
@@ -415,6 +417,8 @@ void DrawUi() {
   case kDiscs:
     Title(g_fr ? "MES DISQUES DE JEU" : "MY GAME DISCS");
     g_discs.Draw(g_fr);
+    ImGui::Dummy(ImVec2(0, 12));
+    bink2::DrawSetting(g_fr);
     break;
   case kAbout: PageAbout(); break;
   }

@@ -24,6 +24,7 @@
 #include "game_disc.h"
 #include "game_process.h"
 #include "imgui.h"
+#include "bink2.h"
 #include "mods.h"
 
 extern "C" {
@@ -71,9 +72,16 @@ inline fs::path PickSave(bool fr, const std::wstring &name) {
 // An entrance movie in the making: its top (the titantron, the big screen) and its bottom (the minitron, the screen
 // under it on the stage and the ramp strip), each the game's own movie or a video / picture of the player's (the
 // minitron can also be the titantron's), with the before / after pictures; made by movie_make on a worker thread.
+inline fs::path TempDir();
+
 class MovieEditor {
  public:
-  ~MovieEditor() { Wait(); }
+  ~MovieEditor() {
+    conv_cancel_ = true;
+    if (conv_.joinable())
+      conv_.join();
+    Wait();
+  }
 
   // The game's movie of this superstar (a .bik on disk), "" if it has none: the "before" picture and the parts kept.
   void SetGame(ID3D11Device *device, const fs::path &movie) {
@@ -101,9 +109,62 @@ class MovieEditor {
   // The game's movie's picture alone.
   void DrawGame(float s) { Picture(game_tex_.Get(), s); }
 
+  // A Bink 2 movie (another game's titantron, a 16:9 picture squeezed into 320 x 320) as the titantron (or the
+  // minitron): made into a 512 x 288 Bink 1 first, on a worker thread, with the player's tool (bink2.h).
+  static bool IsBink2(const fs::path &p) {
+    std::wstring e = p.extension().wstring();
+    for (auto &c : e)
+      c = towlower(c);
+    return e == L".bk2" || e == L".bik2";
+  }
+  void UseBink2(const fs::path &bk2, bool bottom) {
+    if (conv_.joinable())
+      conv_.join();
+    conv_err_.clear();
+    conv_bottom_ = bottom;
+    conv_done_ = false;
+    conv_progress_ = 0;
+    conv_out_ = TempDir() / (bk2.stem().wstring() + (bottom ? L"_b.bik" : L"_t.bik"));
+    conv_ = std::thread([this, bk2] {
+      std::wstring err;
+      const bool ok = bink2::ToBink1(bink2::Found(), bk2, conv_out_, &conv_progress_, &conv_cancel_, &err, 512, 288);
+      conv_err_ = ok ? std::wstring() : (err.empty() ? L"?" : err);
+      conv_done_ = true;
+    });
+  }
+  bool Converting() const { return conv_.joinable(); }
+  // Its own titantron (and minitron) from a Bink 2 movie, as above.
+  void UseOwnBink2(const fs::path &bk2) {
+    top_ = kOwn;
+    if (bottom_ == kGame)
+      bottom_ = kSameAsTop;
+    fit_ = MOVIE_FILL;
+    UseBink2(bk2, false);
+  }
+
   // The choices and the pictures. Returns nothing: Ready() says whether there is something to make.
   void Draw(bool fr, const char *id) {
     ImGui::PushID(id);
+    if (conv_.joinable() && conv_done_) {  // (a Bink 2 movie converted)
+      conv_.join();
+      if (conv_err_.empty()) {
+        (conv_bottom_ ? bottom_file_ : top_file_) = conv_out_;
+        MakePreview();
+      }
+    }
+    if (conv_.joinable()) {
+      ImGui::TextDisabled("%s", fr ? "Lecture de la vidéo Bink 2..." : "Reading the Bink 2 movie...");
+      ImGui::SameLine();
+      ImGui::ProgressBar(conv_progress_ / 100.0f, ImVec2(220, 0));
+    } else if (!conv_err_.empty()) {
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s%s",
+                         fr ? "Vidéo Bink 2 non lue : " : "Bink 2 movie not read: ", Utf8(conv_err_).c_str());
+      if (bink2::Found().kind == bink2::Kind::kNone)
+        ImGui::TextDisabled("%s", fr ? "Installez RAD Video Tools (gratuit) : voir MES DISQUES."
+                                     : "Install RAD Video Tools (free): see MY GAME DISCS.");
+      ImGui::PopTextWrapPos();
+    }
     ImGui::BeginDisabled(Busy());
     const bool have_game = !game_movie_.empty();
     // Titantron.
@@ -124,7 +185,9 @@ class MovieEditor {
       ImGui::SameLine();
       if (ImGui::Button(fr ? "Vidéo ou image...##t" : "Video or picture...##t")) {
         const fs::path p = PickSource(fr);
-        if (!p.empty()) {
+        if (IsBink2(p))
+          UseBink2(p, false);
+        else if (!p.empty()) {
           top_file_ = p;
           MakePreview();
         }
@@ -167,7 +230,9 @@ class MovieEditor {
       ImGui::SameLine();
       if (ImGui::Button(fr ? "Vidéo ou image...##b" : "Video or picture...##b")) {
         const fs::path p = PickSource(fr);
-        if (!p.empty()) {
+        if (IsBink2(p))
+          UseBink2(p, true);
+        else if (!p.empty()) {
           bottom_file_ = p;
           MakePreview();
         }
@@ -240,7 +305,7 @@ class MovieEditor {
       done_ = true;
     });
   }
-  bool Busy() const { return worker_.joinable(); }
+  bool Busy() const { return worker_.joinable() || conv_.joinable(); }
   // True once when a movie started is done: Ok(), Error(), Seconds().
   bool Finished() {
     if (!worker_.joinable() || !done_)
@@ -325,7 +390,7 @@ class MovieEditor {
       return {};
     const COMDLG_FILTERSPEC filter[] = {
         {fr ? L"Vidéos et images" : L"Videos and pictures",
-         L"*.mp4;*.m4v;*.mov;*.wmv;*.avi;*.mkv;*.webm;*.bik;*.png;*.jpg;*.jpeg;*.bmp;*.gif"},
+         L"*.mp4;*.m4v;*.mov;*.wmv;*.avi;*.mkv;*.webm;*.bik;*.bk2;*.bik2;*.png;*.jpg;*.jpeg;*.bmp;*.gif"},
         {L"*.*", L"*.*"}};
     dlg->SetFileTypes(2, filter);
     DWORD opts = 0;
@@ -373,6 +438,12 @@ class MovieEditor {
   std::atomic<bool> done_{false};
   std::atomic<int> progress_{0};
   bool ok_ = false;
+  std::thread conv_;  // a Bink 2 movie being converted (UseBink2)
+  std::atomic<bool> conv_done_{false}, conv_cancel_{false};
+  std::atomic<int> conv_progress_{0};
+  bool conv_bottom_ = false;
+  fs::path conv_out_;
+  std::wstring conv_err_;
 };
 
 // The temporary folder for movies being made and game movies copied out.
