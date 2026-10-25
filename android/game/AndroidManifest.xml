@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.github.imrburn.wwe12"
-    android:versionCode="2"
+    android:versionCode="3"
     android:versionName="0.1">
 
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="36" />
@@ -13,6 +13,10 @@
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Launcher updates (Updater.java): GitHub release check + APK download, then Android's own
+         install prompt (the player confirms; Android asks once to allow installs from this app). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:label="WWE '12 PC"
@@ -26,6 +30,7 @@
         <activity
             android:name=".LauncherActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@android:style/Theme.Material.NoActionBar"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>

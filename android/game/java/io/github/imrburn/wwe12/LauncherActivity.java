@@ -42,6 +42,7 @@ public class LauncherActivity extends Activity {
     TextView gameStatus;
     TextView controllerStatus;   // which controller the game will use (hides the on-screen buttons)
     LinearLayout driverBox;      // GPU DRIVER panel content, rebuilt after import / delete
+    LinearLayout updateArea;     // UPDATE AVAILABLE panel, shown when GitHub has a newer version
     Button forget;
 
     @Override
@@ -59,6 +60,50 @@ public class LauncherActivity extends Activity {
         }
         setContentView(buildUi(dir));
         refreshGame();
+        Updater.check(this, new Updater.Found() {
+            public void found(Updater.Release r) { showUpdate(r); }
+        });
+        onNewIntent(getIntent());
+    }
+
+    // Android's answer to an update install (Updater.install's PendingIntent).
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent == null || !Updater.ACTION_STATUS.equals(intent.getAction())) return;
+        String error = Updater.handleStatus(this, intent);
+        if (error != null) Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+    }
+
+    void showUpdate(final Updater.Release r) {
+        updateArea.removeAllViews();
+        LinearLayout p = panel(updateArea, "UPDATE AVAILABLE");
+        p.addView(text("New version: " + (r.name.isEmpty() ? r.tag : r.name)
+                + ". Your saves, settings and game files are kept.", 14, Color.WHITE, false));
+        final TextView status = text("", 12, Color.LTGRAY, false);
+        final Button go = button("DOWNLOAD AND INSTALL", true);
+        go.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                // Android asks once to allow installs from this app.
+                if (!getPackageManager().canRequestPackageInstalls()) {
+                    Toast.makeText(LauncherActivity.this, "Allow \"Install unknown apps\" for WWE '12 PC, "
+                            + "then come back and tap again.", Toast.LENGTH_LONG).show();
+                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:" + getPackageName())));
+                    return;
+                }
+                go.setEnabled(false);
+                Updater.install(LauncherActivity.this, r, new Updater.Progress() {
+                    public void progress(String text, boolean done, boolean failed) {
+                        status.setText(text);
+                        if (failed) go.setEnabled(true);
+                    }
+                });
+            }
+        });
+        p.addView(go);
+        p.addView(status);
+        updateArea.setVisibility(View.VISIBLE);
     }
 
     @Override
@@ -88,6 +133,11 @@ public class LauncherActivity extends Activity {
         if (cpuTooOld())
             root.addView(text("This phone's processor is too old for the game (it needs ARMv8.2: Snapdragon 845 / 7xx "
                     + "from 2018 or newer). The game cannot start on it.", 14, Color.rgb(255, 110, 90), true));
+        // Filled by Updater.check when GitHub has a newer Android release.
+        updateArea = new LinearLayout(this);
+        updateArea.setOrientation(LinearLayout.VERTICAL);
+        updateArea.setVisibility(View.GONE);
+        root.addView(updateArea);
 
         // Game
         LinearLayout game = panel(root, "GAME");
