@@ -712,12 +712,21 @@ places ×10, d'après le code de Kaiko).
   `menu\menuHD.pac` / `menuSD.pac` (déjà lus comme WWE '13). 2K15 et 2K16 : `menu\menuHD2.pac` (~70 Mo, gardé ouvert),
   `SFAG` / `SFBG` / `SFCG` « NNNN » en **TGA** non compressé 32 bits (512 × 512, 512 × 512, 256 × 256, même cadrage que
   WWE '12 ; 2K16 sans `SFBG` : `SFAG` à la place), convertis en DDS DXT5 sans mips (SD `SSFA` / `SSFB` 512 × 256).
-  2K17 : `menu\SSFaceHD.pac` (HSPC, noms hachés) : pas encore lu. Étude (2026-10-25) : 351 TGA 512 × 512 rangés dans le
-  fichier (champ `order`) **dans l'ordre des numéros** (The Rock, Stone Cold ×2, Triple H ×2, Undertaker, Jericho…),
-  mais plusieurs par catcheur (tenues) : l'ordre seul ne dit pas lequel est à qui. Un SHDC interne donne 160 icônes
-  64 × 64 (DDS) **par numéro** (table {id, position, 0x1080, 0} à +0xD00), gros plans du visage : rapprochement par
-  ressemblance jugé peu fiable. Le hachage des noms (HSPC) et des numéros (SHDC) reste inconnu (FNV, xxHash, CRC64,
-  MD5/SHA1 tronqués essayés sur des paires « numéro → code » connues : rien).
+  **2K17 (2026-10-25, vu à l'écran : AJ Styles)** : `menu\SSFaceHD.pac` (HSPC, noms hachés par une recette
+  inconnue) : 352 TGA 512 × 512 = deux séries de 176 dans le même ordre (cadrages façon SSFA / SSFB), rangées dans
+  le fichier (`order`) **par numéro**, parfois plusieurs par catcheur ; un SHDC dans un SHDC donne 161 icônes 64 × 64
+  (DDS) **par numéro** (positions de l'en-tête en blocs de 16 octets : +0x0C = 16 ; lu et réécrit à l'identique par
+  `svrfmt` maintenant). `faces2k::Match2K17` : chaque icône comparée au visage de chaque portrait (vers x 168, y 88,
+  144 × 144), puis meilleure attribution **dans l'ordre** (programmation dynamique) : 99 sûres (toutes justes à l'œil),
+  159 avec un second passage plus large (quelques erreurs, ex. The Rock → Stone Cold) : l'étape 1 montre le portrait
+  trouvé, avec « Garder ce portrait (sinon celui de la base) ». SSFC fait depuis le premier.
+- **Hachage des SHDC de 2K17 trouvé (2026-10-25)** : index d'un enfant = **MurmurHash64A du numéro en décimal
+  (« 161 »), graine 0x12345678** (les 454 paires vues collent). `svrfmt::ShdcHashFor` le calcule : on peut ajouter
+  n'importe quel numéro à une liste SHDC. Les noms des HSPC restent inconnus (essayés : noms de groupes, numéros,
+  langues, « numéro + tenue » : rien).
+- **Fichiers de catcheurs de 2K17 acceptés** (HSPC de SHDC, une par tenue ; « Tenue N (2K17) ») : AJ Styles porté et vu
+  en 3D. **Noms des arènes de 2K14** : pas de table dans le jeu (logos) : liste écrite d'après les tabliers
+  (`strings2k::kArenas2K14` : WrestleMania 1 à XIX = bg28-46, XX à XXVIII = bg47-55, XXX = bg56, 29 = bg15).
 
 - **Base du même nom (2026-10-25, vu à l'écran)** : quand on choisit un catcheur d'un autre jeu (MES DISQUES) qui
   existe aussi dans WWE '12 (même nom, lettres et chiffres seulement), et que le joueur n'a pas choisi de base, ce

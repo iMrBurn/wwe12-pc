@@ -81,7 +81,7 @@ std::string ArchiveKindOf(const ArcNode& n);
 // New data for a leaf (wrapped like it was: BPE / ZLIB stored / none).
 void ArchiveReplace(ArcNode& n, const Bytes& raw);
 // Why a container can't take a new entry ("" = it can). HSPC: never (its names are hashes of a function nobody
-// knows); SHDC: only an id whose hash was seen in another SHDC (pass the id).
+// knows); SHDC: any id (its hash is known, ShdcHashFor).
 std::string ArchiveCantAdd(const ArcNode& parent, uint32_t id = 0);
 // A new entry holding raw (wrapped like its siblings): EPAC group + name (4 characters, 8 in 16-byte pacs; a new
 // group type adds a group), PACH / SHDC id (in id order). Null (and why) when it can't be added.
@@ -104,8 +104,8 @@ Bytes XcompressStore(const Bytes& plain, const Bytes& like_header);
 // "ZLIB" entry, stored form.
 Bytes ZlibStore(const Bytes& raw);
 
-// A new SHDC child id's index hash: the hash the same id has in other SHDCs seen so far (they are
-// per id, the same in every file); 0 when unknown (the child can't be added: the editor says so).
+// A new SHDC child id's index hash: MurmurHash64A of the id in decimal, seed 0x12345678 (the same id has the same
+// hash in every file; one seen in an SHDC read is used first).
 uint64_t ShdcHashFor(uint32_t id);
 
 }  // namespace svrfmt

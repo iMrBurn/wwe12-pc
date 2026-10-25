@@ -3,6 +3,8 @@
 #include "archive.h"
 
 #include <algorithm>
+#include <cstring>
+#include <string>
 #include <cstdio>
 #include <map>
 #include <mutex>
@@ -101,7 +103,10 @@ bool ReadHspc(const Bytes& raw, ArcNode& n) {
 
 bool ReadShdc(const Bytes& raw, ArcNode& n) {
   if (raw.size() < 0x40 || !Is(raw, "SHDC")) return false;
-  const uint32_t ix = Le32(&raw[0x14]), t = Le32(&raw[0x1C]), cnt = Le32(&raw[0x38]);
+  // +0x0C: the unit of the header's offsets (1; 16 in some nested SHDCs, e.g. WWE 2K17's SSFaceHD.pac icons)
+  const size_t u = Le32(&raw[0x0C]) == 16 ? 16 : 1;
+  const size_t ix = Le32(&raw[0x14]) * u, t = Le32(&raw[0x1C]) * u;
+  const uint32_t cnt = Le32(&raw[0x38]);
   if (t + size_t(cnt) * 16 > raw.size() || ix + size_t(cnt) * 20 > raw.size()) {
     n.note = "SHDC table out of range";
     return false;
@@ -110,7 +115,7 @@ bool ReadShdc(const Bytes& raw, ArcNode& n) {
   n.head.assign(raw.begin(), raw.begin() + 0x40);
   n.kids.clear();
   n.trailer.clear();
-  const uint32_t sec = Le32(&raw[0x24]);
+  const size_t sec = Le32(&raw[0x24]) * u;
   if (sec && sec <= raw.size()) n.trailer.assign(raw.begin() + sec, raw.end());
   std::lock_guard<std::mutex> lock(g_hash_mutex);
   for (uint32_t i = 0; i < cnt; ++i) {
@@ -187,12 +192,13 @@ Bytes BuildPach(ArcNode& n) {
 
 Bytes BuildShdc(ArcNode& n) {
   const uint32_t cnt = uint32_t(n.kids.size());
-  const size_t ix = 0x40, t = ix + 20 * size_t(cnt), first = t + 16 * size_t(cnt);
+  const size_t u = Le32(&n.head[0x0C]) == 16 ? 16 : 1;   // (the offsets' unit, ReadShdc)
+  const size_t ix = Align(0x40, u), t = Align(ix + 20 * size_t(cnt), u), first = t + 16 * size_t(cnt);
   Bytes out(n.head);
   out.resize(first, 0);
-  PutLe32(&out[0x14], uint32_t(ix));
+  PutLe32(&out[0x14], uint32_t(ix / u));
   PutLe32(&out[0x18], 20 * cnt);
-  PutLe32(&out[0x1C], uint32_t(t));
+  PutLe32(&out[0x1C], uint32_t(t / u));
   PutLe32(&out[0x20], 16 * cnt);
   PutLe32(&out[0x38], cnt);
   for (uint32_t i = 0; i < cnt; ++i) {
@@ -214,8 +220,8 @@ Bytes BuildShdc(ArcNode& n) {
   }
   PutLe32(&out[0x3C], uint32_t(Align(out.size() - first, 4)));
   if (!n.trailer.empty()) {   // the two sections after the data, moved with it
-    Pad(out, 4);
-    const uint32_t was = Le32(&n.head[0x24]), now = uint32_t(out.size()), second = Le32(&n.head[0x2C]);
+    Pad(out, std::max<size_t>(4, u));
+    const uint32_t was = Le32(&n.head[0x24]), now = uint32_t(out.size() / u), second = Le32(&n.head[0x2C]);
     PutLe32(&out[0x24], now);
     if (second) PutLe32(&out[0x2C], second - was + now);
     App(out, n.trailer);
@@ -378,10 +384,47 @@ Bytes XcompressStore(const Bytes& plain, const Bytes& like) {
   return out;
 }
 
+// MurmurHash64A (Austin Appleby, public domain).
+static uint64_t Murmur64A(const void* key, size_t len, uint64_t seed) {
+  const uint64_t m = 0xc6a4a7935bd1e995ull;
+  const int r = 47;
+  uint64_t h = seed ^ (len * m);
+  const uint8_t* p = static_cast<const uint8_t*>(key);
+  for (size_t i = 0; i + 8 <= len; i += 8) {
+    uint64_t k;
+    memcpy(&k, p + i, 8);
+    k *= m;
+    k ^= k >> r;
+    k *= m;
+    h ^= k;
+    h *= m;
+  }
+  const uint8_t* t = p + (len & ~size_t(7));
+  switch (len & 7) {
+    case 7: h ^= uint64_t(t[6]) << 48; [[fallthrough]];
+    case 6: h ^= uint64_t(t[5]) << 40; [[fallthrough]];
+    case 5: h ^= uint64_t(t[4]) << 32; [[fallthrough]];
+    case 4: h ^= uint64_t(t[3]) << 24; [[fallthrough]];
+    case 3: h ^= uint64_t(t[2]) << 16; [[fallthrough]];
+    case 2: h ^= uint64_t(t[1]) << 8; [[fallthrough]];
+    case 1: h ^= uint64_t(t[0]); h *= m;
+  }
+  h ^= h >> r;
+  h *= m;
+  h ^= h >> r;
+  return h;
+}
+
+// An SHDC child's index hash is MurmurHash64A of its id in decimal ("161"), seed 0x12345678 (found 2026-10-25: all
+// 454 ids seen in WWE 2K17's files match). The hashes seen are still preferred.
 uint64_t ShdcHashFor(uint32_t id) {
-  std::lock_guard<std::mutex> lock(g_hash_mutex);
-  auto it = g_shdc_hash.find(id);
-  return it == g_shdc_hash.end() ? 0 : it->second;
+  {
+    std::lock_guard<std::mutex> lock(g_hash_mutex);
+    auto it = g_shdc_hash.find(id);
+    if (it != g_shdc_hash.end()) return it->second;
+  }
+  const std::string text = std::to_string(id);
+  return Murmur64A(text.data(), text.size(), 0x12345678);
 }
 
 // ---- the tree
@@ -471,10 +514,7 @@ std::string ArchiveCantAdd(const ArcNode& p, uint32_t id) {
       return "WWE 2K17's HSPC pacs find entries by a hash of their name, and that hash isn't known: entries can be "
              "replaced and removed, not added.";
     case ArcKind::Shdc:
-      if (!ShdcHashFor(id))
-        return "SHDC lists find children by a hash of the id, and the hash for " + Hex(id) +
-               " isn't known (it is learned from SHDCs that have that id: open one).";
-      return "";
+      return "";  // (any id: ShdcHashFor)
     case ArcKind::Epac:
     case ArcKind::Pach: return "";
     default: return "not a list of entries";

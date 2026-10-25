@@ -2,7 +2,8 @@
 // discs, My game discs). Strings: pac/string.pac (2K17: string_360.pac, HSPC), tables of u32 0, u32 count, count x
 // {u32 offset, u32 length, u32 id}; English = groups "SDB /XX00" (2K17's names are hashed: every table, the first
 // id seen kept). Arenas: pac/wuniData.pac, "udt" tables (u32 "udt\2", u32 count, u32 52, ...; records from +32)
-// of {name[40], u32 string id, u32 arena number, u32 index} (2K15 to 2K17; 2K14 has none).
+// of {name[40], u32 string id, u32 arena number, u32 index} (2K15 to 2K17). WWE 2K14 has no such table (its arena
+// select screen shows logos): its arenas were named from their aprons (rin_ep00), kArenas2K14.
 #pragma once
 
 #include <algorithm>
@@ -55,6 +56,26 @@ inline std::map<uint32_t, std::string> Strings(const disc::GameDisc &g, uint32_t
   walk(walk, s.root, 0);
   return strings;
 }
+
+struct NamedArena {
+  int file;
+  const char *name;
+};
+inline constexpr NamedArena kArenas2K14[] = {
+    {0, "SmackDown"},         {1, "RAW"},                 {2, "NXT"},                {3, "Superstars"},
+    {4, "Over the Limit"},    {5, "No Way Out"},          {6, "Money in the Bank"},  {7, "SummerSlam"},
+    {8, "Night of Champions"}, {9, "Hell in a Cell"},     {11, "Survivor Series"},   {12, "TLC"},
+    {13, "Royal Rumble"},     {14, "Elimination Chamber"}, {15, "WrestleMania 29"},  {16, "Extreme Rules"},
+    {17, "Main Event"},       {21, "Elimination Chamber (2)"}, {22, "Royal Rumble (2)"}, {23, "RAW (2)"},
+    {28, "WrestleMania"},     {29, "WrestleMania 2"},     {30, "WrestleMania III"},  {31, "WrestleMania IV"},
+    {32, "WrestleMania V"},   {33, "WrestleMania VI"},    {34, "WrestleMania VII"},  {35, "WrestleMania VIII"},
+    {36, "WrestleMania IX"},  {37, "WrestleMania X"},     {38, "WrestleMania XI"},   {39, "WrestleMania XII"},
+    {40, "WrestleMania 13"},  {41, "WrestleMania XIV"},   {42, "WrestleMania XV"},   {43, "WrestleMania 2000"},
+    {44, "WrestleMania X-Seven"}, {45, "WrestleMania X8"}, {46, "WrestleMania XIX"}, {47, "WrestleMania XX"},
+    {48, "WrestleMania 21"},  {49, "WrestleMania 22"},    {50, "WrestleMania 23"},   {51, "WrestleMania XXIV"},
+    {52, "WrestleMania 25"},  {53, "WrestleMania XXVI"},  {54, "WrestleMania XXVII"}, {55, "WrestleMania XXVIII"},
+    {56, "WrestleMania XXX"},
+};
 
 // The arenas' names by arena number (bgNN), for the 2K games that have them.
 inline std::map<int, std::string> ArenaNames(const disc::GameDisc &g) {

@@ -969,8 +969,11 @@ class Page {
     names2k_.clear();
     if (!w13_disc_.OpenPath(p))
       return;
-    if (y_title_ != kWwe13)
-      names2k_ = strings2k::ArenaNames(w13_disc_);  // (2K15 to 2K17; 2K14: none, its apron shown)
+    if (y_title_ == 0x545408B2)  // (2K14: named from its aprons)
+      for (const auto &a : strings2k::kArenas2K14)
+        names2k_[a.file] = a.name;
+    else if (y_title_ != kWwe13)
+      names2k_ = strings2k::ArenaNames(w13_disc_);
     for (const auto &n : w13_disc_.List("pac/bg"))
       if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
           (y_title_ != kWwe13 ? atoi(n.c_str() + 2) < 66

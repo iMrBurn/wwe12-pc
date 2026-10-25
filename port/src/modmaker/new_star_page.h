@@ -31,6 +31,7 @@
 #include "mods.h"
 #include "port13_star.h"
 #include "port_svr.h"
+#include "faces2k.h"
 #include "strings2k.h"
 
 namespace new_star_page {
@@ -265,7 +266,20 @@ class Page {
       ImGui::TextColored(note_ok_ ? green : red, "%s", note_.c_str());
       ImGui::PopTextWrapPos();
     }
-
+    // Its portrait (from its game; 2K17's found by looks): to check, and to leave out if it isn't the right one.
+    if (look_ >= 2 && face_.srv) {
+      ImGui::Dummy(ImVec2(0, 4));
+      arena_page::DrawPicture(face_, 140);
+      ImGui::SameLine();
+      ImGui::BeginGroup();
+      ImGui::TextDisabled("%s", fr ? "Son portrait (menus, écran de choix)" : "Its portrait (menus, select screen)");
+      ImGui::Checkbox(fr ? "Garder ce portrait (sinon celui de la base)" : "Keep this portrait (else the base's)",
+                      &keep_portraits_);
+      if (game_title_ == 0x545408BA)
+        ImGui::TextDisabled("%s", fr ? "(WWE 2K17 : trouvé par ressemblance ; vérifiez que c'est le bon)"
+                                     : "(WWE 2K17: found by its looks; check it is the right one)");
+      ImGui::EndGroup();
+    }
   }
 
   // Step 2: the base superstar (the look ported again over the new base).
@@ -503,12 +517,25 @@ class Page {
     return Bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
   }
 
-  // A superstar file: an EPK8 of "EMD " entries named 000NNNAA (another game's: any names, WWE 2K16's all "0001").
+  // A superstar file: an EPK8 of "EMD " entries named 000NNNAA (another game's: any names, WWE 2K16's all "0001";
+  // WWE 2K17's an HSPC of SHDCs, names hashed).
   static bool IsSuperstarFile(const Bytes &b, std::vector<std::string> *attires, std::string *why,
                               bool any_name = false) {
     svrfmt::Archive a;
     if (!svrfmt::ArchiveOpen(b, a, why))
       return false;
+    if (any_name && a.root.kind == svrfmt::ArcKind::Hspc) {
+      for (const auto &k : a.root.kids) {
+        if (svrfmt::ArchiveKindOf(k) != "SHDC") {
+          if (why)
+            *why = "not a superstar file (chNNN.pac)";
+          return false;
+        }
+        if (attires)
+          attires->push_back("2K17");
+      }
+      return !a.root.kids.empty();
+    }
     for (const auto &k : a.root.kids) {
       if (k.group != "EMD " || (k.name.size() != 8 && !any_name)) {
         if (why)
@@ -678,6 +705,8 @@ class Page {
     for (auto &hd : portraits_)
       for (auto &b : hd)
         b.clear();
+    face_ = {};
+    keep_portraits_ = true;
     if (svr_attires_.empty())
       return;  // (the refusal stays shown)
     if (look_ == 2 && number >= 0)
@@ -705,17 +734,41 @@ class Page {
         note_ = fr ? "Ses portraits viendront avec lui." : "Its portraits come with it.";
       }
     }
+    if (!portraits_[1][0].empty())
+      face_ = arena_page::MakeThumb(device_, portraits_[1][0]);
   }
 
   // WWE 2K15 / 2K16: pac\menu\menuHD2.pac, SFAG / SFBG / SFCG "NNNN" (2K16: no SFBG, SFAG again), TGA 512 x 512,
   // 512 x 512, 256 x 256 framed as WWE '12's; made into WWE '12's DDS (DXT5, no mips; SD SSFA / SSFB 512 x 256).
-  // (2K14 has WWE '12's SSFA-C; 2K17's SSFaceHD.pac has hashed names: not read yet.) The pac (~70 MB) is kept.
+  // WWE 2K17: pac\menu\SSFaceHD.pac, its portraits matched with the superstars by their icons (faces2k.h): two
+  // series in the same order (SSFA-like, SSFB-like), SSFC made from the first. (2K14 has WWE '12's SSFA-C.) The pac
+  // (~70 MB) is kept, and 2K17's matching.
   int Portraits2K(int number, const std::function<Bytes(const char *)> &read_pac) {
     const std::string key = media::Utf8(svr_path_.parent_path().parent_path().wstring());
     if (key != menu2_of_) {
       menu2_of_ = key;
       menu2_ = {};
-      svrfmt::ArchiveOpen(read_pac("menu/menuHD2.pac"), menu2_, nullptr);
+      faces17_.clear();
+      if (!svrfmt::ArchiveOpen(read_pac("menu/menuHD2.pac"), menu2_, nullptr) &&
+          svrfmt::ArchiveOpen(read_pac("menu/SSFaceHD.pac"), menu2_, nullptr))
+        faces17_ = faces2k::Match2K17(menu2_, 80, 80);  // (each icon on a portrait; the player checks it, step 1)
+    }
+    if (!faces17_.empty()) {
+      const auto it = faces17_.find(number);
+      const auto all = faces2k::Portraits2K17(menu2_);
+      const size_t half = all.size() / 2;
+      svrfmt::Image a, b;
+      if (it == faces17_.end() || it->second + half >= all.size() ||
+          !faces2k::Tga(svrfmt::ArchiveData(*all[it->second]), a) ||
+          !faces2k::Tga(svrfmt::ArchiveData(*all[it->second + half]), b))
+        return 0;
+      const svrfmt::Image *pic[3] = {&a, &b, &a};
+      const int size[2][3][2] = {{{512, 256}, {512, 256}, {256, 256}}, {{512, 512}, {512, 512}, {256, 256}}};
+      for (int hd = 0; hd < 2; ++hd)
+        for (int k = 0; k < 3; ++k)
+          portraits_[hd][k] = svrfmt::DdsEncode(svrfmt::Resize(*pic[k], size[hd][k][0], size[hd][k][1]),
+                                                svrfmt::DxtFormat::kDxt5, false);
+      return 6;
     }
     char name[8];
     snprintf(name, sizeof(name), "%04d", number);
@@ -723,7 +776,7 @@ class Page {
     for (const auto &k : menu2_.root.kids)
       if (k.name == name && k.group.size() == 4 && k.group[0] == 'S' && k.group[1] == 'F' && k.group[3] == 'G' &&
           k.group[2] >= 'A' && k.group[2] <= 'C')
-        Tga(svrfmt::ArchiveData(k), pic[k.group[2] - 'A']);
+        faces2k::Tga(svrfmt::ArchiveData(k), pic[k.group[2] - 'A']);
     if (pic[1].w == 0)
       pic[1] = pic[0];
     if (pic[0].w == 0 || pic[2].w == 0)
@@ -736,30 +789,6 @@ class Page {
     return 6;
   }
 
-  // An uncompressed 32-bit TGA (type 2: BGRA, bottom row first unless the descriptor's bit 5 says top first).
-  static bool Tga(const Bytes &d, svrfmt::Image &out) {
-    if (d.size() < 18 || d[2] != 2 || d[16] != 32)
-      return false;
-    const int w = d[12] | d[13] << 8, h = d[14] | d[15] << 8;
-    const size_t at = 18 + d[0];
-    if (w <= 0 || h <= 0 || d.size() < at + size_t(w) * h * 4)
-      return false;
-    const bool top_first = d[17] & 0x20;
-    out.w = w;
-    out.h = h;
-    out.rgba.resize(size_t(w) * h * 4);
-    for (int y = 0; y < h; ++y) {
-      const uint8_t *row = &d[at + size_t(top_first ? y : h - 1 - y) * w * 4];
-      for (int x = 0; x < w; ++x) {
-        uint8_t *o = &out.rgba[(size_t(y) * w + x) * 4];
-        o[0] = row[x * 4 + 2];
-        o[1] = row[x * 4 + 1];
-        o[2] = row[x * 4 + 0];
-        o[3] = row[x * 4 + 3];
-      }
-    }
-    return true;
-  }
 
   // A SvR 2011 superstar's portraits: pac\DLC_HD.pac / DLC_SD.pac, SSFA/SSFB/SSFC "NNNN", WWE '12's pictures but for
   // SD's SSFA / SSFB (SvR 256 x 512, WWE '12 512 x 256, the HD picture squeezed): those made from the HD ones.
@@ -936,7 +965,7 @@ class Page {
       entries.push_back({"superstar/look.txt", Bytes{'b', 'a', 's', 'e', '\n'}});  // (a mod needs a superstar/ file)
     if (!movie.empty())
       entries.push_back({"superstar/titantron.bik", movie});
-    if (look_ >= 2)  // (its SvR 2011 / WWE '13 portraits)
+    if (look_ >= 2 && keep_portraits_)  // (its SvR 2011 / WWE '13 / 2K portraits)
       for (int hd = 0; hd < 2; ++hd)
         for (int k = 0; k < 3; ++k)
           if (!portraits_[hd][k].empty())
@@ -988,7 +1017,10 @@ class Page {
   fs::path svr_movie_file_;    // that movie (a copy, or in the player's SvR 2011 folder), "" if it has none
   media::MovieEditor svr_view_;  // (only its picture)
   fs::path save_, made_;
-  svrfmt::Archive menu2_;  // a 2K game's menuHD2.pac (its portraits), for menu2_of_
+  svrfmt::Archive menu2_;  // a 2K game's menuHD2.pac or (2K17) SSFaceHD.pac (its portraits), for menu2_of_
+  std::map<int, size_t> faces17_;  // 2K17: superstar number -> its portrait (faces2k::Match2K17)
+  arena_page::Thumb face_;         // the portrait found, shown at step 1
+  bool keep_portraits_ = true;     // ... kept (else the base's)
   std::string menu2_of_;
   Bytes portraits_[2][3];  // a SvR 2011 / WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
 };

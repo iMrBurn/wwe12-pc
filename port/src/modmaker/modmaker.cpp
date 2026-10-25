@@ -317,10 +317,10 @@ const Guide kGuides[] = {
     {"Not yet",
      "Pas encore",
      {"Moves and entrances of other games' superstars (they take their base's).",
-      "WWE '13 and 2K entrance videos (Bink 2), WWE 2K17 portraits, WWE 2K14 arena names.",
+      "WWE '13 and 2K entrance videos (Bink 2).",
       "SvR 2011 VS screens exactly like the original."},
      {"Les prises et les entrées des catcheurs des autres jeux (ils prennent celles de leur base).",
-      "Les vidéos d'entrée de WWE '13 et des 2K (Bink 2), les portraits de WWE 2K17, les noms des arènes de WWE 2K14.",
+      "Les vidéos d'entrée de WWE '13 et des 2K (Bink 2).",
       "Les écrans VS de SvR 2011 exactement comme l'original."}},
 };
 
