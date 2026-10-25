@@ -20,6 +20,7 @@
 
     <application
         android:label="WWE '12 PC"
+        android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:extractNativeLibs="true"
         android:hardwareAccelerated="true"

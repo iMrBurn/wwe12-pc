@@ -67,10 +67,49 @@ if ((Test-Path $Seed) -and [BitConverter]::ToUInt32([IO.File]::ReadAllBytes($See
     Write-Warning "Pas de cache de pipelines ($Seed) : l'APK partira sans pipelines_seed.w12p."
 }
 
-# 4. APK : manifeste + assets, puis dex et .so, alignement, signature.
+# 4. Icône de l'appli, tirée de celle de l'exe (port/res/wwe12.png, 512x512 à coins arrondis) :
+#    icône classique (vieux Android et lanceurs qui ne découpent pas) + icône adaptative (Android 8+ :
+#    le lanceur découpe un cercle ou un carré arrondi dans 108 dp ; le logo tient dans les 72 dp du
+#    milieu, sur un fond flou de la même image).
+Add-Type -AssemblyName System.Drawing
+$Res = "$Out\res"
+New-Item -ItemType Directory -Force "$Res\mipmap-xxxhdpi", "$Res\mipmap-xhdpi", "$Res\drawable-xxxhdpi", "$Res\mipmap-anydpi-v26" | Out-Null
+$src = [System.Drawing.Image]::FromFile("$Root\port\res\wwe12.png")
+function SaveIcon([int]$size, [int]$inner, [int]$crop, [bool]$blur, [string]$path) {
+    $bmp = New-Object System.Drawing.Bitmap $size, $size
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.InterpolationMode = "HighQualityBicubic"
+    $from = New-Object System.Drawing.Rectangle $crop, $crop, ($src.Width - 2 * $crop), ($src.Height - 2 * $crop)
+    if ($blur) {  # flou : réduite à 16 px puis agrandie
+        $tiny = New-Object System.Drawing.Bitmap 16, 16
+        $gt = [System.Drawing.Graphics]::FromImage($tiny); $gt.InterpolationMode = "HighQualityBicubic"
+        $gt.DrawImage($src, (New-Object System.Drawing.Rectangle 0, 0, 16, 16), $from, "Pixel"); $gt.Dispose()
+        $g.DrawImage($tiny, (New-Object System.Drawing.Rectangle -2, -2, ($size + 4), ($size + 4)))
+        $tiny.Dispose()
+    } else {
+        $o = [int](($size - $inner) / 2)
+        $g.DrawImage($src, (New-Object System.Drawing.Rectangle $o, $o, $inner, $inner), $from, "Pixel")
+    }
+    $g.Dispose(); $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+}
+SaveIcon 192 192 0 $false "$Res\mipmap-xxxhdpi\ic_launcher.png"
+SaveIcon 96 96 0 $false "$Res\mipmap-xhdpi\ic_launcher.png"
+SaveIcon 432 264 30 $false "$Res\drawable-xxxhdpi\ic_launcher_fg.png"   # 66 dp de 108, coins retirés
+SaveIcon 432 432 30 $true "$Res\drawable-xxxhdpi\ic_launcher_bg.png"
+$src.Dispose()
+Set-Content "$Res\mipmap-anydpi-v26\ic_launcher.xml" -Encoding utf8 @'
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_bg" />
+    <foreground android:drawable="@drawable/ic_launcher_fg" />
+</adaptive-icon>
+'@
+Run "$Bt\aapt2.exe" compile --dir $Res -o "$Out\res.zip"
+
+# 5. APK : manifeste + ressources + assets, puis dex et .so, alignement, signature.
 $manifest = (Get-Content "$PSScriptRoot\AndroidManifest.xml" -Raw) -replace 'android:versionName="[^"]*"', "android:versionName=`"$Version`""
 Set-Content "$Out\AndroidManifest.xml" $manifest -Encoding utf8
-Run "$Bt\aapt2.exe" link --manifest "$Out\AndroidManifest.xml" -I $AndroidJar -A "$Out\assets" -o "$Out\base.apk"
+Run "$Bt\aapt2.exe" link --manifest "$Out\AndroidManifest.xml" -I $AndroidJar -A "$Out\assets" -R "$Out\res.zip" --auto-add-overlay -o "$Out\base.apk"
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::Open("$Out\base.apk", "Update")
 try {
