@@ -13,7 +13,9 @@
 //    are the base arena's; SvR's extra ring pieces (957-967) are left out;
 //  - a big entry changed in a few places (the texture package) keeps Yuke's own packing (bpe_like::EncodeLike):
 //    an arena must not outgrow the shipped file of the arena it plays as.
-// Its collision, placement and visibility files work as they are.
+//  - the collision (995, 996, 997, 999) is the base's, as for WWE '13's arenas: SvR 2011's, in 10 cm, let the wrestlers
+//    walk through the barricades.
+// Its placement and visibility files work as they are (scaled).
 #pragma once
 
 #include <algorithm>
@@ -556,7 +558,7 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
     return fail("unreadable arena list");
   PortInfo pi;
   const std::set<uint32_t> ring = {951, 952, 953, 956, 960, 964, 973, 974, 980};
-  std::set<uint32_t> from_base = {30002, 20000, 20001, 20002, 20003, 20010};
+  std::set<uint32_t> from_base = {30002, 20000, 20001, 20002, 20003, 20010, 995, 996, 997, 999};
   from_base.insert(ring.begin(), ring.end());
   const std::set<uint32_t> drop = {957, 958, 959, 961, 962, 963, 965, 966, 967};
   std::set<int> cones;
@@ -660,14 +662,31 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
       }
       if (!svrfmt::JboyRead(d, m, nullptr))
         return;
-      for (const auto &n : m.textures)
-        if (!names.count(n))
-          for (const auto &t : theirs)
-            if (t.name == n) {
-              add.push_back(t);
-              names.insert(n);
+      for (const auto &n : m.textures) {
+        if (names.count(n))
+          continue;
+        // The apron's second side (WWE '12: rin_ep00 and rin_ep01, SvR 2011: rin_ep00 alone) wears the arena's own
+        // apron, not the base's (seen: WM XXVII's apron on one side of WM 26's ring).
+        if (n == "rin_ep01") {
+          bool own = false;
+          for (const auto &t : have)
+            if (t.name == "rin_ep00") {
+              add.push_back({n, "dds", t.data});
+              own = true;
               break;
             }
+          if (own) {
+            names.insert(n);
+            continue;
+          }
+        }
+        for (const auto &t : theirs)
+          if (t.name == n) {
+            add.push_back(t);
+            names.insert(n);
+            break;
+          }
+      }
     };
     for (auto &k : gb.kids)
       if (from_base.count(k.id))
