@@ -110,6 +110,8 @@ if(WIN32)
         "${WWE12_IMGUI_DIR}/backends")
     target_link_libraries(wwe12_modmaker PRIVATE d3d11 dxgi d3dcompiler windowscodecs ole32 shell32
         mfplat mfreadwrite mfuuid propsys delayimp)
+    # svrfmt reads "ZLIB" entries (WWE '13's entrance graphics) with the launcher's inflate.
+    target_compile_definitions(wwe12_modmaker PRIVATE SVRFMT_INFLATE)
     # Media Foundation is missing on Windows "N" editions: loaded only when a movie is made.
     target_link_options(wwe12_modmaker PRIVATE -Wl,/DELAYLOAD:mfplat.dll -Wl,/DELAYLOAD:mfreadwrite.dll)
     set_target_properties(wwe12_modmaker PROPERTIES OUTPUT_NAME "WWE12 Mod Maker")

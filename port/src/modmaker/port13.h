@@ -17,7 +17,8 @@
 //  - entry 61000 (a 256 x 128 picture every WWE '12 arena has) comes from the base;
 //  - the breakable barricade corners (390-397, ar_fence01/02_c/f/g/h: modelled at the centre, placed by WWE '13's
 //    code for its "OMG moments") are moved into the corners in the model itself.
-// Lights, crowd, placement and visibility files of WWE '13 work as they are.
+// Lights, crowd, placement and visibility files of WWE '13 work as they are. Besides the arena file: its banner, its
+// VS screen (MatchHD.pac) and its entrance plates (evtgdhd.pac), served by the game for the added arena.
 #pragma once
 
 #include <algorithm>
@@ -265,6 +266,32 @@ inline bool Banner(const Bytes &matchhd13, int file, svrfmt::Image &out) {
         if (t.name == arena->banner && svrfmt::DdsDecode(t.data, out))
           return true;
     }
+  }
+  return false;
+}
+
+// The arena's entrance graphics (location plate, name plates) in WWE '13's pac/evt/evtgdhd.pac: its ETEX/00NN group,
+// the same entries as WWE '12's (pictures 0-40, 2D animations 10000-10040, fonts 20000-20011), each "ZLIB"-wrapped
+// where WWE '12 has BPE: unwrapped and packed again as BPE. The game serves it for the added arena.
+inline bool Etex(const Bytes &evtgdhd13, int file, Bytes &out) {
+  out.clear();
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(evtgdhd13, a, nullptr))
+    return false;
+  char name[8];
+  snprintf(name, sizeof(name), "%04d", file);
+  for (auto &k : a.root.kids) {
+    if (k.group != "ETEX" || k.name != name || !svrfmt::ArchiveExpand(k))
+      continue;
+    std::vector<svrfmt::PachEntry> entries;
+    for (const auto &c : k.kids) {
+      const Bytes raw = svrfmt::ArchiveData(c);
+      if (raw.empty())
+        return false;  // (no zlib in this build, or a broken entry)
+      entries.push_back({c.id, svrfmt::BpeEncode(raw)});
+    }
+    out = svrfmt::PachWrite(entries);
+    return !entries.empty();
   }
   return false;
 }
