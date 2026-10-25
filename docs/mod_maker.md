@@ -724,6 +724,11 @@ places ×10, d'après le code de Kaiko).
   catcheur de WWE '12 devient la base : le nouveau a ses **prises, stats et entrée** de WWE '12, et l'apparence de
   l'autre jeu (ex. Big Show de 2K16 sur Big Show de WWE '12). Changeable à l'étape 2 (le choix du joueur prime ensuite).
 
+- **Page AIDE et « Tester en jeu » (2026-10-25, vus à l'écran)** : À PROPOS devient AIDE / HELP (et une ligne de
+  l'accueil) : guides pas à pas repliables (vos autres jeux, nouvelle arène, nouveau catcheur, vidéos et textures,
+  vos mods, ce qui n'est pas encore possible), comme le manuel intégré de Kaiko, puis les crédits. L'assistant
+  NOUVEAU a, comme celui des arènes, un bouton « Tester en jeu » une fois le mod installé (`arena_page::LaunchGame`).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

@@ -413,6 +413,13 @@ class Page {
       Make(fr, mods);
     ImGui::EndDisabled();
     movie_.DrawProgress(fr);
+    if (message_ok_) {
+      ImGui::SameLine();
+      ImGui::BeginDisabled(game::IsRunning());
+      if (ImGui::Button(fr ? "Tester en jeu" : "Test in game", ImVec2(160, 36)))
+        arena_page::LaunchGame();
+      ImGui::EndDisabled();
+    }
     if (!name_[0]) {
       ImGui::SameLine();
       ImGui::TextDisabled("%s", fr ? "(donnez-lui un nom)" : "(give it a name)");
@@ -422,6 +429,9 @@ class Page {
                                        : "The game is running: close it to install the mod.");
     if (!message_.empty())
       ImGui::TextColored(message_ok_ ? green : red, "%s", message_.c_str());
+    if (message_ok_)
+      ImGui::TextDisabled("%s", fr ? "Dans le jeu : écran de choix des catcheurs, case DLC."
+                                   : "In the game: superstar select screen, DLC tile.");
     if (!reduced_.empty())
       ImGui::TextColored(yellow, "%s", reduced_.c_str());
   }

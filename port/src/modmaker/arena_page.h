@@ -73,6 +73,15 @@ inline std::string SlotLabel(const Slot &s) {
   return b;
 }
 
+// Starts the game (wwe12.exe next to the Mod Maker), to try a mod just installed.
+inline void LaunchGame() {
+  wchar_t me[MAX_PATH];
+  GetModuleFileNameW(nullptr, me, MAX_PATH);
+  const fs::path dir = fs::path(me).parent_path();
+  ShellExecuteW(nullptr, L"open", (dir / L"wwe12.exe").wstring().c_str(), nullptr, dir.wstring().c_str(),
+                SW_SHOWNORMAL);
+}
+
 inline fs::path PickOpen(bool fr, bool pac) {
   IFileOpenDialog *dlg = nullptr;
   if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
@@ -937,13 +946,8 @@ class Page {
     if (message_ok_) {
       ImGui::SameLine();
       ImGui::BeginDisabled(game::IsRunning());
-      if (ImGui::Button(fr ? "Tester en jeu" : "Test in game", ImVec2(160, 36))) {
-        wchar_t me[MAX_PATH];
-        GetModuleFileNameW(nullptr, me, MAX_PATH);
-        const fs::path dir = fs::path(me).parent_path();
-        ShellExecuteW(nullptr, L"open", (dir / L"wwe12.exe").wstring().c_str(), nullptr, dir.wstring().c_str(),
-                      SW_SHOWNORMAL);
-      }
+      if (ImGui::Button(fr ? "Tester en jeu" : "Test in game", ImVec2(160, 36)))
+        LaunchGame();
       ImGui::EndDisabled();
     }
     if (!message_.empty())
