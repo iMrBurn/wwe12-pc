@@ -750,6 +750,16 @@ places ×10, d'après le code de Kaiko).
   (titantron « le vôtre », remplir ; minitron « comme le titantron »). Étape 4 de NOUVEAU : « La sienne dans WWE 2K17
   (ent_0610_0_0.bk2) » ; la page VIDÉOS accepte aussi les .bk2 / .bik2. Conversion d'Orton (835 images) : 3,7 s.
 
+- **Minitrons, walltrons et autres vidéos de WWE 2K17 (2026-10-25, vu à l'écran : AJ Styles)** : pas dans
+  `movies\titantron` (que des titantrons plein écran : `ent_` catcheurs, `tag_` équipes, `bel_` ceintures 880 × 720,
+  `cre_` créés, `uni_` Univers ; `ent_NNNN_<a>_<b>` = plusieurs versions, ex. Undertaker : croix, lune…) mais dans
+  **`pac\mov`** (remarque de l'utilisateur) : `ss_mini` (112, minitrons des catcheurs, Bink 2 KB2i 256 × 128),
+  `ss_wall` (96, walltrons 256 × 256), `bg_mini` / `bg_wall` / `bg_name` / `bg_locator` (arènes), `transition` (43) ;
+  un `.pac` (HSPC) = une vidéo, nommé `NNNNvv` (numéro + version ; 1000xx / 2900xx : autres). Étape 4 de NOUVEAU :
+  « La sienne dans WWE 2K17 » prend le titantron (version au choix) **et son minitron** (`ss_mini`, au choix, ou
+  « comme le titantron ») : deux conversions à la suite (titantron 512 × 288, minitron à sa taille). Pas encore
+  repris : walltrons (pas d'écran de ce genre dans WWE '12), vidéos des arènes 2K, transitions 2K.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

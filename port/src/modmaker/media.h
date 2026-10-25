@@ -117,29 +117,37 @@ class MovieEditor {
       c = towlower(c);
     return e == L".bk2" || e == L".bik2";
   }
-  void UseBink2(const fs::path &bk2, bool bottom) {
-    if (conv_.joinable())
+  // (the titantron at 512 x 288; the minitron, e.g. WWE 2K17's 256 x 128, at its own size; either may be "")
+  void UseBink2(const fs::path &top, const fs::path &bottom) {
+    if (conv_.joinable()) {
+      conv_cancel_ = true;
       conv_.join();
+      conv_cancel_ = false;
+    }
     conv_err_.clear();
-    conv_bottom_ = bottom;
     conv_done_ = false;
     conv_progress_ = 0;
-    conv_out_ = TempDir() / (bk2.stem().wstring() + (bottom ? L"_b.bik" : L"_t.bik"));
-    conv_ = std::thread([this, bk2] {
+    conv_top_out_ = top.empty() ? fs::path() : TempDir() / (top.stem().wstring() + L"_t.bik");
+    conv_bottom_out_ = bottom.empty() ? fs::path() : TempDir() / (bottom.stem().wstring() + L"_b.bik");
+    conv_ = std::thread([this, top, bottom] {
       std::wstring err;
-      const bool ok = bink2::ToBink1(bink2::Found(), bk2, conv_out_, &conv_progress_, &conv_cancel_, &err, 512, 288);
+      bool ok = true;
+      if (!top.empty())
+        ok = bink2::ToBink1(bink2::Found(), top, conv_top_out_, &conv_progress_, &conv_cancel_, &err, 512, 288);
+      if (ok && !bottom.empty())
+        ok = bink2::ToBink1(bink2::Found(), bottom, conv_bottom_out_, &conv_progress_, &conv_cancel_, &err);
       conv_err_ = ok ? std::wstring() : (err.empty() ? L"?" : err);
       conv_done_ = true;
     });
   }
+  void UseBink2(const fs::path &bk2, bool bottom) { UseBink2(bottom ? fs::path() : bk2, bottom ? bk2 : fs::path()); }
   bool Converting() const { return conv_.joinable(); }
-  // Its own titantron (and minitron) from a Bink 2 movie, as above.
-  void UseOwnBink2(const fs::path &bk2) {
+  // Its own titantron from a Bink 2 movie, and its minitron from another (else as the titantron), as above.
+  void UseOwnBink2(const fs::path &bk2, const fs::path &mini = {}) {
     top_ = kOwn;
-    if (bottom_ == kGame)
-      bottom_ = kSameAsTop;
+    bottom_ = mini.empty() ? kSameAsTop : kOwn;
     fit_ = MOVIE_FILL;
-    UseBink2(bk2, false);
+    UseBink2(bk2, mini);
   }
 
   // The choices and the pictures. Returns nothing: Ready() says whether there is something to make.
@@ -148,7 +156,10 @@ class MovieEditor {
     if (conv_.joinable() && conv_done_) {  // (a Bink 2 movie converted)
       conv_.join();
       if (conv_err_.empty()) {
-        (conv_bottom_ ? bottom_file_ : top_file_) = conv_out_;
+        if (!conv_top_out_.empty())
+          top_file_ = conv_top_out_;
+        if (!conv_bottom_out_.empty())
+          bottom_file_ = conv_bottom_out_;
         MakePreview();
       }
     }
@@ -193,7 +204,9 @@ class MovieEditor {
         }
       }
       ImGui::SameLine();
+      ImGui::PushTextWrapPos(-1.0f);  // (on one line)
       ImGui::TextDisabled("%s", top_file_.empty() ? "" : Utf8(top_file_.filename().wstring()).c_str());
+      ImGui::PopTextWrapPos();
       const char *fits_en[] = {"Whole picture (black bars)", "Fill the screen (edges cut)", "Stretch"};
       const char *fits_fr[] = {"Image entière (bandes noires)", "Remplir l'écran (bords coupés)", "Étirer"};
       ImGui::Dummy(ImVec2(182, 0));
@@ -238,7 +251,9 @@ class MovieEditor {
         }
       }
       ImGui::SameLine();
+      ImGui::PushTextWrapPos(-1.0f);  // (on one line)
       ImGui::TextDisabled("%s", bottom_file_.empty() ? "" : Utf8(bottom_file_.filename().wstring()).c_str());
+      ImGui::PopTextWrapPos();
     }
     ImGui::SetNextItemWidth(260);
     ImGui::SliderInt(fr ? "Durée max." : "Max. length", &max_seconds_, 0, 180,
@@ -441,8 +456,7 @@ class MovieEditor {
   std::thread conv_;  // a Bink 2 movie being converted (UseBink2)
   std::atomic<bool> conv_done_{false}, conv_cancel_{false};
   std::atomic<int> conv_progress_{0};
-  bool conv_bottom_ = false;
-  fs::path conv_out_;
+  fs::path conv_top_out_, conv_bottom_out_;
   std::wstring conv_err_;
 };
 

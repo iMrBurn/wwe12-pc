@@ -139,6 +139,42 @@ class Page {
       ImGui::TextColored(green, "%s", fr ? "Tout est prêt." : "All set.");
   }
 
+  // A 2K game's movie (movies\titantron\<file>) made into its own titantron, and its minitron
+  // (pac\mov\ss_mini\<mini>, a pac holding one Bink 2 movie, 256 x 128 in 2K17) its minitron, else the
+  // titantron again (converted with the player's tool, bink2.h).
+  void UseTwoKMovie(const std::string &file, const std::string &mini) {
+    Bytes b;
+    const fs::path tmp = media::TempDir() / fs::path(file).filename();
+    if (!game_disc_.Read("movies/titantron/" + file, b))
+      return;
+    std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char *>(b.data()), std::streamsize(b.size()));
+    fs::path mini_tmp;
+    svrfmt::Archive a;
+    if (!mini.empty() && game_disc_.Read("pac/mov/ss_mini/" + mini, b) && svrfmt::ArchiveOpen(b, a, nullptr)) {
+      const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+        if (!mini_tmp.empty())
+          return;
+        if (depth < 3 && svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
+          for (auto &c : n.kids)
+            self(self, c, depth + 1);
+          return;
+        }
+        const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
+        if (d.size() > 44 && memcmp(d.data(), "KB2", 3) == 0) {
+          mini_tmp = media::TempDir() / (L"mini_" + fs::path(mini).stem().wstring() + L".bk2");
+          std::ofstream(mini_tmp, std::ios::binary)
+              .write(reinterpret_cast<const char *>(d.data()), std::streamsize(d.size()));
+        }
+      };
+      walk(walk, a.root, 0);
+    }
+    twok_movie_file_ = file;
+    twok_mini_file_ = mini_tmp.empty() ? std::string() : mini;
+    twok_movie_ = own_movie_ = true;
+    svr_movie_ = false;
+    movie_.UseOwnBink2(tmp, mini_tmp);
+  }
+
   static const char *GameName(uint32_t title) {
     return title == 0x545408B2   ? "WWE 2K14"
            : title == 0x545408B6 ? "WWE 2K15"
@@ -406,23 +442,42 @@ class Page {
     if (look_ == 3 && !twok_movie_file_.empty()) {
       ImGui::SameLine();
       char label[96];
-      snprintf(label, sizeof(label), fr ? "La sienne dans %s (%s)" : "Its own in %s (%s)", GameName(game_title_),
-               twok_movie_file_.c_str());
-      if (ImGui::RadioButton(label, twok_movie_) && !twok_movie_) {
-        Bytes b;
-        const fs::path tmp = media::TempDir() / fs::path(twok_movie_file_).filename();
-        if (game_disc_.Read("movies/titantron/" + twok_movie_file_, b)) {
-          std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char *>(b.data()), std::streamsize(b.size()));
-          twok_movie_ = own_movie_ = true;
-          svr_movie_ = false;
-          movie_.UseOwnBink2(tmp);
-        }
-      }
+      if (twok_movies_.size() > 1)
+        snprintf(label, sizeof(label), fr ? "La sienne dans %s (%zu versions)" : "Its own in %s (%zu versions)",
+                 GameName(game_title_), twok_movies_.size());
+      else
+        snprintf(label, sizeof(label), fr ? "La sienne dans %s (%s)" : "Its own in %s (%s)", GameName(game_title_),
+                 twok_movie_file_.c_str());
+      if (ImGui::RadioButton(label, twok_movie_) && !twok_movie_)
+        UseTwoKMovie(twok_movie_file_, twok_minis_.empty() ? std::string() : twok_minis_[0]);
     }
     ImGui::SameLine();
     if (ImGui::RadioButton(fr ? "Une vidéo à vous" : "One of yours", own_movie_ && !twok_movie_)) {
       own_movie_ = true;
       svr_movie_ = twok_movie_ = false;
+    }
+    // its versions (the 2K games keep several titantrons for some superstars: eras, attires): one to choose
+    if (twok_movie_ && twok_movies_.size() > 1) {
+      ImGui::SetNextItemWidth(260);
+      if (ImGui::BeginCombo(fr ? "Titantron (version)" : "Titantron (version)", twok_movie_file_.c_str())) {
+        for (const auto &f : twok_movies_)
+          if (ImGui::Selectable(f.c_str(), f == twok_movie_file_) && f != twok_movie_file_)
+            UseTwoKMovie(f, twok_mini_file_);
+        ImGui::EndCombo();
+      }
+    }
+    if (twok_movie_ && !twok_minis_.empty()) {  // (its own minitron, pac\mov\ss_mini)
+      ImGui::SetNextItemWidth(260);
+      const char *none = fr ? "comme le titantron" : "as the titantron";
+      if (ImGui::BeginCombo(fr ? "Minitron (le sien)" : "Minitron (its own)",
+                            twok_mini_file_.empty() ? none : twok_mini_file_.c_str())) {
+        if (ImGui::Selectable(none, twok_mini_file_.empty()) && !twok_mini_file_.empty())
+          UseTwoKMovie(twok_movie_file_, {});
+        for (const auto &f : twok_minis_)
+          if (ImGui::Selectable(f.c_str(), f == twok_mini_file_) && f != twok_mini_file_)
+            UseTwoKMovie(twok_movie_file_, f);
+        ImGui::EndCombo();
+      }
     }
     ImGui::EndDisabled();
     if (look_ == 3 && !twok_movie_file_.empty() && bink2::Found().kind == bink2::Kind::kNone)
@@ -633,6 +688,9 @@ class Page {
     // its 2K movie (2K15-2K17, KB2i; 2K14's and WWE '13's Bink 2 can't be read): ent_NNNN_<attire>_<n>.bk2, the
     // first
     twok_movie_file_.clear();
+    twok_mini_file_.clear();
+    twok_movies_.clear();
+    twok_minis_.clear();
     twok_movie_ = false;
     if (look_ == 3 && (game_title_ == 0x545408B6 || game_title_ == 0x315A07D2 || game_title_ == 0x545408BA)) {
       char prefix[16];
@@ -641,10 +699,18 @@ class Page {
       std::sort(files.begin(), files.end());
       for (const auto &f : files)
         if (_strnicmp(f.c_str(), prefix, strlen(prefix)) == 0 && f.size() > 4 &&
-            _stricmp(f.c_str() + f.size() - 4, ".bk2") == 0) {
-          twok_movie_file_ = f;
-          break;
-        }
+            _stricmp(f.c_str() + f.size() - 4, ".bk2") == 0)
+          twok_movies_.push_back(f);
+      if (!twok_movies_.empty())
+        twok_movie_file_ = twok_movies_[0];
+      // its minitrons: pac\mov\ss_mini\NNNNvv.pac
+      char mini[8];
+      snprintf(mini, sizeof(mini), "%04d", number);
+      auto minis = game_disc_.List("pac/mov/ss_mini");
+      std::sort(minis.begin(), minis.end());
+      for (const auto &f : minis)
+        if (f.size() == 10 && f.compare(0, 4, mini) == 0 && _stricmp(f.c_str() + 6, ".pac") == 0)
+          twok_minis_.push_back(f);
     }
   }
 
@@ -1064,6 +1130,9 @@ class Page {
   bool svr_movie_ = false;     // its SvR 2011 entrance movie, as it is
   bool twok_movie_ = false;    // its 2K game's entrance movie (Bink 2), made into its own (own_movie_ too)
   std::string twok_movie_file_;  // that movie in movies\titantron, "" if none
+  std::vector<std::string> twok_movies_;  // all its versions (ent_NNNN_<a>_<b>.bk2)
+  std::vector<std::string> twok_minis_;   // its minitrons (pac\mov\ss_mini\NNNNvv.pac)
+  std::string twok_mini_file_;            // the one used, "" = as the titantron
   fs::path svr_movie_file_;    // that movie (a copy, or in the player's SvR 2011 folder), "" if it has none
   media::MovieEditor svr_view_;  // (only its picture)
   fs::path save_, made_;
