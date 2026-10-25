@@ -18,8 +18,8 @@
 //  - the breakable barricade corners (390-397, ar_fence01/02_c/f/g/h: modelled at the centre, placed by WWE '13's
 //    code for its "OMG moments") are moved into the corners in the model itself.
 // Lights, crowd, placement and visibility files of WWE '13 work as they are. Besides the arena file: its banner, its
-// VS screen (MatchHD.pac), its entrance plates (evtgdhd.pac) and its match transition (LoadHD.pac), served by the game
-// for the added arena.
+// VS screen (MatchHD.pac), its entrance plates (evtgdhd.pac), its pre-match screen (LoadHD.pac) and its transition
+// video (evtmov.pac), served by the game for the added arena.
 #pragma once
 
 #include <algorithm>
@@ -297,9 +297,9 @@ inline bool Etex(const Bytes &evtgdhd13, int file, Bytes &out) {
   return false;
 }
 
-// The arena's match transition in WWE '13's menu/LoadHD.pac: LOAD/90NN (the VS screen and the transition animation
-// before the match, YXMLBIN VER0003 as WWE '12's; "ZLIB" entries, which WWE '12's LoadHD.pac has too), as stored.
-inline bool Transition(const Bytes &loadhd13, int file, Bytes &out) {
+// The arena's pre-match screen in WWE '13's menu/LoadHD.pac: LOAD/90NN (the VS screen and its animation before the
+// match, YXMLBIN VER0003 as WWE '12's; "ZLIB" entries, which WWE '12's LoadHD.pac has too), as stored.
+inline bool PreMatch(const Bytes &loadhd13, int file, Bytes &out) {
   out.clear();
   svrfmt::Archive a;
   if (!svrfmt::ArchiveOpen(loadhd13, a, nullptr))
@@ -310,6 +310,21 @@ inline bool Transition(const Bytes &loadhd13, int file, Bytes &out) {
     if (k.group == "LOAD" && k.name == name)
       out = k.stored;
   return out.size() >= 8 && memcmp(out.data(), "PACH", 4) == 0;
+}
+
+// The arena's transition video in WWE '13's pac/evt/evtmov.pac: MOVT/M0NN, Bink 1 at 640 x 640 as WWE '12's (WWE '13's
+// titantron movies are Bink 2, not these), as stored.
+inline bool TransitionVideo(const Bytes &evtmov13, int file, Bytes &out) {
+  out.clear();
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(evtmov13, a, nullptr))
+    return false;
+  char name[8];
+  snprintf(name, sizeof(name), "M%03d", file);
+  for (const auto &k : a.root.kids)
+    if (k.group == "MOVT" && k.name == name)
+      out = k.stored;
+  return out.size() >= 8 && memcmp(out.data(), "BIKi", 4) == 0;
 }
 
 // The arena's VS screen ("match card") in WWE '13's menu/MatchHD.pac, as stored: MLYE/MBnn (its layout, YXMLBIN, and

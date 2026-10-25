@@ -42,10 +42,13 @@
 //    layout in WWE '12, WWE '13 and SvR 2011) appended to a served evtgdhd.pac; while it is the chosen arena, the
 //    directory answers its base's /ETEX/00NN with it. (A whole evtgdhd.pac rebuilt in mods crashed: the directory
 //    keeps every entry's place, and they had all moved.)
-//  - an added arena's own match transition (arena\load_hd.pac: its LOAD/90NN of pac\menu\LoadHD.pac, as its game
-//    stores it: the VS screen and the transition animation before the match; the same in WWE '12 and WWE '13)
-//    appended to a served LoadHD.pac; while it is the chosen arena, the directory answers its base's /LOAD/90NN
-//    with it.
+//  - an added arena's own pre-match screen (arena\load_hd.pac: its LOAD/90NN of pac\menu\LoadHD.pac, as its game
+//    stores it: the VS screen and its animation before the match; the same in WWE '12 and WWE '13) appended to a
+//    served LoadHD.pac; while it is the chosen arena, the directory answers its base's /LOAD/90NN with it;
+//  - an added arena's own transition video (arena\transition.bik: its MOVT/M0NN of pac\evt\evtmov.pac, Bink 1 at
+//    640 x 640 in WWE '12 and WWE '13): evtmov.pac (273 MB) is too big to copy at every start, so it goes at the end
+//    of the served MatchHD.pac, and the directory answers the base's /MOVT/M0NN with that file's number (+12) and
+//    the video's place.
 //
 // Test: wwe12_arena_pages_test = true adds one page, the 21 arenas in reverse order, and logs the lookups.
 
@@ -98,6 +101,7 @@ constexpr u32 kEmptyTile = 149;   // a page's tiles past its last arena (not ava
 constexpr u16 kMatchHdIndex = 234;  // pac\menu\MatchHD.pac in the directory (its line in plist360.h)
 constexpr u16 kEvtGdHdIndex = 190;  // pac\evt\evtgdhd.pac
 constexpr u16 kLoadHdIndex = 233;   // pac\menu\LoadHD.pac
+constexpr u16 kEvtMovIndex = 192;   // pac\evt\evtmov.pac
 
 struct Added {
   std::string id, name;
@@ -111,8 +115,10 @@ struct Added {
   u32 mb_sector = 0, mb_units = 0, mf_sector = 0, mf_units = 0;  // ... appended to MatchHD.pac (0: the base's)
   std::vector<uint8_t> etex;  // its own entrance graphics (until appended), else empty
   u32 etex_sector = 0, etex_units = 0;  // ... appended to evtgdhd.pac (0: the base's)
-  std::vector<uint8_t> load;  // its own match transition (until appended), else empty
+  std::vector<uint8_t> load;  // its own pre-match screen (until appended), else empty
   u32 load_sector = 0, load_units = 0;  // ... appended to LoadHD.pac (0: the base's)
+  std::vector<uint8_t> movie;  // its own transition video (until appended), else empty
+  u32 movie_sector = 0, movie_units = 0;  // ... appended to MatchHD.pac (0: the base's)
 };
 std::vector<Added> g_added;
 // A base arena's file as served (Documents\wwe12\arena_slots\pac\bg\bgNN.pac): the whole file of the arena
@@ -329,8 +335,12 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       a.etex.clear();
     }
     if (ReadHost(d / "arena" / "load_hd.pac", a.load) && (a.load.size() < 8 || memcmp(a.load.data(), "PACH", 4) != 0)) {
-      REXLOG_WARN("[arena pages] {}: its match transition isn't a pack", a.id);
+      REXLOG_WARN("[arena pages] {}: its pre-match screen isn't a pack", a.id);
       a.load.clear();
+    }
+    if (ReadHost(d / "arena" / "transition.bik", a.movie) && (a.movie.size() < 8 || memcmp(a.movie.data(), "BIK", 3) != 0)) {
+      REXLOG_WARN("[arena pages] {}: its transition isn't a Bink video", a.id);
+      a.movie.clear();
     }
     g_added.push_back(a);
     if (g_added.size() == 35)  // (the banner pack has 35 free textures)
@@ -354,6 +364,12 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       Append(matchhd, a.card_mf.data(), a.card_mf.size(), a.mf_sector, a.mf_units);
       a.card_mb = {};
       a.card_mf = {};
+    }
+    for (auto &a : g_added) {  // (the transition videos: see above)
+      if (a.movie.empty())
+        continue;
+      Append(matchhd, a.movie.data(), a.movie.size(), a.movie_sector, a.movie_units);
+      a.movie = {};
     }
     WriteHost(out / "pac" / "menu" / "MatchHD.pac", matchhd);
   }
@@ -671,14 +687,25 @@ extern "C" REX_FUNC(sub_827F29F0) {
       REXLOG_INFO("[arena pages] {}: the entrance graphics of {}", n, a.id);
     }
   } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].load_units && bd::mem::load<u16>(out + 12) == kLoadHdIndex) {
-    // Its own match transition (VS screen and transition animation), in place of its base's.
+    // Its own pre-match screen (VS screen and its animation), in place of its base's.
     const Added &a = g_added[size_t(g_chosen)];
     char load[16];
     snprintf(load, sizeof(load), "/LOAD/90%02u", a.base);
     if (strcmp(n, load) == 0) {
       bd::mem::store<u32>(out, a.load_sector);
       bd::mem::store<u32>(out + 8, a.load_units);
-      REXLOG_INFO("[arena pages] {}: the match transition of {}", n, a.id);
+      REXLOG_INFO("[arena pages] {}: the pre-match screen of {}", n, a.id);
+    }
+  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].movie_units && bd::mem::load<u16>(out + 12) == kEvtMovIndex) {
+    // Its own transition video, from the served MatchHD.pac (its file number too).
+    const Added &a = g_added[size_t(g_chosen)];
+    char movt[16];
+    snprintf(movt, sizeof(movt), "/MOVT/M%03u", a.base);
+    if (strcmp(n, movt) == 0) {
+      bd::mem::store<u32>(out, a.movie_sector);
+      bd::mem::store<u32>(out + 8, a.movie_units);
+      bd::mem::store<u16>(out + 12, kMatchHdIndex);
+      REXLOG_INFO("[arena pages] {}: the transition of {}", n, a.id);
     }
   }
   if (REXCVAR_GET(wwe12_arena_pages_test) &&
