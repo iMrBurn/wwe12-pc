@@ -467,6 +467,21 @@ class Page {
       return 0;
     return port13::RampHeight(a.root.kids[0]) * to_cm;
   }
+  // An arena's apron picture (rin_ep00 in its texture package, 400), as stored (DDS); empty if none.
+  static Bytes Apron(const Bytes &file) {
+    svrfmt::Archive a;
+    if (!svrfmt::ArchiveOpen(file, a, nullptr) || a.root.kids.empty() || !svrfmt::ArchiveExpand(a.root.kids[0]))
+      return {};
+    for (const auto &k : a.root.kids[0].kids) {
+      std::vector<svrfmt::BundleTexture> t;
+      if (k.id != 400 || !svrfmt::BundleRead(svrfmt::ArchiveData(k), t))
+        continue;
+      for (const auto &x : t)
+        if (_stricmp(x.name.c_str(), "rin_ep00") == 0)
+          return x.data;
+    }
+    return {};
+  }
   static bool FlatBase(int number) {
     return std::find(std::begin(port13::kFlatBases12), std::end(port13::kFlatBases12), number) !=
            std::end(port13::kFlatBases12);
@@ -483,9 +498,11 @@ class Page {
       const Bytes w13 = Read13(rel);
       wiz_src_size_ = w13.size();
       wiz_src_ramp_ = SourceRamp(w13, 1);
+      wiz_apron_ = MakeThumb(device_, Apron(w13));
     } else {
       wiz_src_size_ = svr_file_.size();
       wiz_src_ramp_ = SourceRamp(svr_file_, 10);
+      wiz_apron_ = MakeThumb(device_, Apron(svr_file_));
     }
     mode_ = wiz_src_ == 1 ? 3 : 4;
     if (slot_ >= 0 && budget_) {
@@ -659,6 +676,7 @@ class Page {
       svr_file_.clear();
       svr_pick_ = -1;
       port_ok_ = false;
+      wiz_apron_ = {};
     }
     ImGui::SameLine();
     if (ChoiceCard(1, wiz_src_ == 1 && y_title_ == kWwe13, !w13.empty(), "WWE '13", w13.empty() ? not_added : yours)) {
@@ -669,6 +687,7 @@ class Page {
       }
       w13_pick_ = -1;
       port_ok_ = false;
+      wiz_apron_ = {};
     }
     ImGui::SameLine();
     if (ChoiceCard(2, wiz_src_ == 2, true, fr ? "Un fichier d'arène" : "One arena file", "SvR 2011 (bgNN.pac)")) {
@@ -702,6 +721,7 @@ class Page {
         }
         w13_pick_ = -1;
         port_ok_ = false;
+        wiz_apron_ = {};
       }
     }
     // The games that can't bring arenas yet.
@@ -733,6 +753,16 @@ class Page {
           clicked = n;
       }
       ImGui::EndChild();
+      // The arena chosen, recognised by its apron (the show's name on it).
+      if (wiz_apron_.srv) {
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        ImGui::TextDisabled("%s", fr ? "Son tablier :" : "Its apron:");
+        const float w = std::min(ImGui::GetContentRegionAvail().x, 420.0f);
+        ImGui::Image(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(wiz_apron_.srv.Get()))),
+                     ImVec2(w, w * wiz_apron_.h / std::max(1, wiz_apron_.w)));
+        ImGui::EndGroup();
+      }
       if (clicked >= 0 && wiz_src_ == 0) {
         char rel[32];
         snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", clicked);
@@ -745,6 +775,11 @@ class Page {
         WizardSourceChosen(fr);
       }
     } else if (wiz_src_ == 2 && !svr_path_.empty()) {
+      if (wiz_apron_.srv) {
+        const float w = std::min(ImGui::GetContentRegionAvail().x, 420.0f);
+        ImGui::Image(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(wiz_apron_.srv.Get()))),
+                     ImVec2(w, w * wiz_apron_.h / std::max(1, wiz_apron_.w)));
+      }
       ImGui::Text("%s", media::Utf8(svr_path_.filename().wstring()).c_str());
     }
   }
@@ -1372,7 +1407,8 @@ class Page {
 
   // The assistant.
   int tab_ = 0, wiz_step_ = 0;
-  float card_w_ = 250;  // (the start step's three choices share the width)
+  float card_w_ = 250;
+  Thumb wiz_apron_;  // the source arena's apron (step 1)  // (the start step's three choices share the width)
   int wiz_src_ = -1;  // 0 SvR 2011 (My game discs), 1 WWE '13 (My game discs), 2 one SvR 2011 arena file
   size_t wiz_src_size_ = 0;
   float wiz_src_ramp_ = 0;  // cm
