@@ -1,0 +1,20 @@
+diff --git a/src/system/xthread.cpp b/src/system/xthread.cpp
+index e1a8649..7605688 100644
+--- a/src/system/xthread.cpp
++++ b/src/system/xthread.cpp
+@@ -439,8 +439,13 @@ X_STATUS XThread::Create() {
+     // Set thread ID override. This is used by logging.
+     rex::thread::set_current_thread_id(handle());
+ 
+-    // Set name immediately, if we have one.
+-    thread_->set_name(thread_name_);
++    // Set name immediately, if we have one. Under thread_lock_: the creating thread may be giving
++    // the default name at the same moment (set_name below), and two unguarded writes to the same
++    // strings freed memory twice (Scudo abort seen at start on Android).
++    {
++      std::lock_guard<std::mutex> lock(thread_lock_);
++      thread_->set_name(thread_name_);
++    }
+ 
+     PROFILE_THREAD_ENTER(thread_name_.c_str());
+     PROFILE_THREAD_CREATED();
