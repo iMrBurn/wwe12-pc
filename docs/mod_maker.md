@@ -613,6 +613,24 @@ Restent : **marches blanches** (objets « arme » de `bgEtc.pac` WPON 0x20-0x22,
 l'éclairage de WM 26), foule = celle de WM XXVII (la vraie foule de WM 26 : corps sans agrandissement, fichiers de
 places ×10, d'après le code de Kaiko).
 
+### Éléments 2D des arènes (2026-10-25)
+
+- **Plaques d'entrée** (locator « ATLANTA, GA », plaques de nom) : `pac\evt\evtgdhd.pac` (index 190 de l'annuaire ;
+  `evtgdsd.pac` en SD), un groupe **`ETEX/00NN` par arène** : images (0, 10, 20, 40), animations 2D `AG2D`
+  (10000-10040), polices (20000-20011). **Même organisation dans WWE '12, WWE '13 et SvR 2011.** Le jeu sert celui d'une
+  arène ajoutée (`arena/etex_hd.pac`, ajouté à la fin d'une copie servie, `/ETEX/00NN` de la base redirigé) :
+  **WWE '13 validé en jeu (Vengeance : écran VS, locator, plaque de nom)** — ses entrées sont en `ZLIB`, décompressées
+  et repassées en BPE (`port13::Etex` ; le Mod Maker est maintenant compilé avec `SVRFMT_INFLATE`). **SvR 2011 : pas de
+  plantage, sa police s'affiche, mais les images des plaques sont mal placées** (ses animations 2D diffèrent) → non
+  pris. Piège : un `evtgdhd.pac` reconstruit en entier dans `mods` a planté (l'annuaire garde la place de chaque
+  entrée).
+- **Écran VS de SvR 2011** : `MENU/MnnL` (mise en page YXMLBIN **VER0002**, lue par WWE '12) + `MENU/MnnI` (7001 / 7002)
+  + `MENU/MnnF` ; mis dans le `MLYE/MBnn` de la base → **plantage** : le code de l'écran VS prend les éléments par
+  numéro (`sub_82571BA8`, élément 30). Retiré ; les arènes SvR gardent l'écran VS de leur base. Piste : réhabiller
+  l'écran VS et les plaques de WWE '12 avec les images de l'arène SvR.
+- À faire : vidéo de transition (sans doute `pac\evt\evtmov.pac`) ; aperçu 3D du Mod Maker cassé sur Vengeance
+  (grands triangles gris, l'arène est juste en jeu) ; marches blanches (vues aussi avec Vengeance).
+
 ## 6 quaterdecies. Vidéo d'entrée des catcheurs ajoutés ; titantron et minitron séparés (2026-10-24)
 
 - **Minitron** = l'écran de la scène sous le grand écran ; c'est le **bas (320 × 100)** de la même vidéo
