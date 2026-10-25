@@ -133,6 +133,7 @@ struct Served {
 std::map<u32, Served> g_served;
 u32 g_mupa_sector = 0, g_mupa_units = 0;  // the rebuilt banner pack, appended to MatchHD.pac
 int g_chosen = -1;                        // the added arena chosen last (its index), -1: one of the game's
+bool g_vs_stale = false;                  // another arena of the same stage chosen: its VS screen to load again
 
 struct Tile {
   u32 stage, banner;  // banner: guest address of the texture name (0: the game's table is kept)
@@ -619,6 +620,7 @@ REX_EXTERN(__imp__sub_825A3318);  // arena select: is this stage available (this
 REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
 REX_EXTERN(__imp__sub_827D8B48);  // snprintf (buffer, size, format, ...)
+REX_EXTERN(__imp__sub_8288FE70);  // matchup screen: is part r4 there (16: the VS screen)
 REX_EXTERN(sub_82A8C070);         // XInputGetState(user, state) (hooked by wwe12_intros.cpp: call the hooked one)
 
 namespace {
@@ -730,13 +732,17 @@ extern "C" REX_FUNC(sub_825A56C8) {
   const u32 stage = ctx.r3.u32;
   if (IsAdded(stage)) {
     const int n = int(stage - kFirstAdded);
-    if (g_chosen != n)
+    if (g_chosen != n) {
       REXLOG_INFO("[arena pages] chosen: {} ({}), plays as stage {}", g_added[size_t(n)].name, g_added[size_t(n)].id,
                   g_added[size_t(n)].base);
+      g_vs_stale = true;
+    }
     g_chosen = n;
     Serve(g_added[size_t(n)].base, n);
     ctx.r3.u64 = g_added[size_t(n)].base;
   } else if (stage < kFirstAdded) {
+    if (g_chosen != -1)
+      g_vs_stale = true;
     g_chosen = -1;
     Serve(stage, -1);  // (one of the game's: its own file back, if an added arena was in it)
   }
@@ -752,6 +758,21 @@ extern "C" REX_FUNC(sub_827D8B48) {
       ctx.r6.u32 == g_added[size_t(g_chosen)].base)
     ctx.r6.u64 = kFirstAdded + u32(g_chosen);
   __imp__sub_827D8B48(ctx, base);
+}
+
+// The matchup screen loads the VS screen again only when it hasn't one (sub_82574E50 asks part 16), which it keeps
+// while the stage number stays: another arena of the same stage (an added one, or its base) kept the VS screen of the
+// first. Once after such a choice, the answer is "not there".
+extern "C" REX_FUNC(sub_8288FE70) {
+  const bool vs = ctx.r4.u32 == 16 && ctx.lr == 0x82574ECC;
+  __imp__sub_8288FE70(ctx, base);
+  if (vs && g_vs_stale) {
+    g_vs_stale = false;
+    if (ctx.r3.u32 != 0) {
+      ctx.r3.u64 = 0;
+      REXLOG_INFO("[arena pages] the VS screen loaded again (another arena of the same stage)");
+    }
+  }
 }
 
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
