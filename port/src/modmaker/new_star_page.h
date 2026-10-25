@@ -14,6 +14,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <map>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -22,6 +24,7 @@
 #include "arena_page.h"
 #include "arena_view.h"
 #include "game_disc.h"
+#include "game_discs.h"
 #include "game_process.h"
 #include "imgui.h"
 #include "media.h"
@@ -148,6 +151,33 @@ class Page {
       ImGui::TextDisabled("%s", other_path_.empty() ? "" : media::Utf8(other_path_.wstring()).c_str());
     } else if (look_ >= 2) {
       const bool w13 = look_ == 3;
+      // From My game discs: the game's superstars by name.
+      const uint32_t title = w13 ? 0x545108B4 : 0x5451085D;
+      if (discs_ && game_title_ != title)
+        ListDisc(title);
+      if (!disc_list_.empty()) {
+        std::string current = fr ? "Choisir..." : "Choose...";
+        for (const auto &[n, nm] : disc_list_)
+          if (n == disc_pick_)
+            current = nm;
+        ImGui::SetNextItemWidth(320);
+        if (ImGui::BeginCombo(w13 ? (fr ? "Catcheur de WWE '13" : "WWE '13 superstar")
+                                  : (fr ? "Catcheur de SvR 2011" : "SvR 2011 superstar"),
+                              current.c_str(), ImGuiComboFlags_HeightLarge)) {
+          for (const auto &[n, nm] : disc_list_) {
+            char label[96];
+            snprintf(label, sizeof(label), "%s  (ch%03d)", nm.c_str(), n);
+            if (ImGui::Selectable(label, n == disc_pick_)) {
+              LoadFromDisc(fr, n);
+              if (!name_[0])  // (its name in its game, to start with)
+                snprintf(name_, sizeof(name_), "%s", nm.c_str());
+            }
+          }
+          ImGui::EndCombo();
+        }
+        ImGui::TextDisabled("%s", fr ? "(depuis MES DISQUES ; ou un fichier :)" : "(from MY GAME DISCS; or one file:)");
+        ImGui::SameLine();
+      }
       if (ImGui::Button(w13 ? (fr ? "Fichier de WWE '13 (chNNN.pac)..." : "WWE '13 file (chNNN.pac)...")
                             : (fr ? "Fichier de SvR 2011 (chNNN.pac)..." : "SvR 2011 file (chNNN.pac)..."))) {
         const fs::path p = arena_page::PickOpen(fr, true);
@@ -314,8 +344,77 @@ class Page {
   }
 
   void LoadSvr(bool fr, const fs::path &p) {
+    const std::string stem = p.stem().string();
+    const int number = stem.size() > 2 && _strnicmp(stem.c_str(), "ch", 2) == 0 && isdigit(stem[2]) ? atoi(stem.c_str() + 2)
+                                                                                                    : -1;
+    LoadSvrBytes(fr, p, ReadAll(p), number,
+                 [&](const char *menu) { return ReadAll(p.parent_path().parent_path() / "menu" / menu); });
+  }
+
+  // A superstar of the game chosen (SvR 2011 or WWE '13) from My game discs.
+  void LoadFromDisc(bool fr, int number) {
+    char rel[32];
+    snprintf(rel, sizeof(rel), "pac/ch/ch%03d.pac", number);
+    Bytes file;
+    if (!game_disc_.Read(rel, file)) {
+      note_ok_ = false;
+      note_ = (fr ? "Lecture impossible : " : "Could not read: ") + std::string(rel);
+      return;
+    }
+    disc_pick_ = number;
+    LoadSvrBytes(fr, game_path_ / rel, std::move(file), number, [&](const char *menu) {
+      Bytes b;
+      game_disc_.Read(std::string("pac/menu/") + menu, b);
+      return b;
+    });
+  }
+
+  // The superstars of the game chosen: its pac/ch/chNNN.pac files, named from its pac/ch/chEtc.pac (the CHAR / DAT
+  // records: SvR 2011 264 bytes, id at +36 and name at +38; WWE '12 290 bytes, +44 / +46; WWE '13 324 bytes, +56 /
+  // +58), else "chNNN".
+  void ListDisc(uint32_t title) {
+    disc_list_.clear();
+    disc_pick_ = -1;
+    game_title_ = title;
+    game_path_ = discs_ ? discs_->PathOf(title) : fs::path();
+    if (game_path_.empty() || !game_disc_.OpenPath(game_path_))
+      return;
+    std::map<int, std::string> names;
+    Bytes etc;
+    svrfmt::Archive a;
+    if (game_disc_.Read("pac/ch/chEtc.pac", etc) && svrfmt::ArchiveOpen(etc, a, nullptr)) {
+      const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+        const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
+        const size_t id_at = d.size() == 264 ? 36 : d.size() == 290 ? 44 : d.size() == 324 ? 56 : 0;
+        if (id_at) {
+          std::string name;
+          for (size_t k = id_at + 2; k < id_at + 34 && k < d.size() && d[k]; ++k)
+            name += d[k] < 0x80 ? std::string(1, char(d[k]))
+                                : std::string{char(0xC0 | (d[k] >> 6)), char(0x80 | (d[k] & 0x3F))};
+          names[d[id_at] | d[id_at + 1] << 8] = name;
+          return;
+        }
+        if (depth < 3 && svrfmt::ArchiveExpand(n))
+          for (auto &c : n.kids)
+            self(self, c, depth + 1);
+      };
+      walk(walk, a.root, 0);
+    }
+    for (const auto &f : game_disc_.List("pac/ch"))
+      if (f.size() == 9 && _strnicmp(f.c_str(), "ch", 2) == 0 && _stricmp(f.c_str() + 5, ".pac") == 0 && isdigit(f[2]) &&
+          isdigit(f[3]) && isdigit(f[4])) {
+        const int n = atoi(f.c_str() + 2);
+        const auto it = names.find(n);
+        const bool named = it != names.end() && it->second.size() > 1;  // (some records hold "0": no name)
+        disc_list_.push_back({n, named ? it->second : f.substr(0, 5)});
+      }
+    std::sort(disc_list_.begin(), disc_list_.end(), [](const auto &x, const auto &y) { return x.second < y.second; });
+  }
+
+  void LoadSvrBytes(bool fr, const fs::path &p, Bytes file, int number,
+                    const std::function<Bytes(const char *)> &read_menu) {
     svr_path_ = p;
-    svr_file_ = ReadAll(p);
+    svr_file_ = std::move(file);
     svr_attires_.clear();
     svr_attire_ = 0;
     std::string why;
@@ -331,15 +430,13 @@ class Page {
     for (auto &hd : portraits_)
       for (auto &b : hd)
         b.clear();
-    const std::string stem = p.stem().string();
-    if (look_ == 3 && stem.size() > 2 && _strnicmp(stem.c_str(), "ch", 2) == 0 && isdigit(stem[2])) {
+    if (look_ == 3 && number >= 0) {
       char name[8];
-      snprintf(name, sizeof(name), "%04d", atoi(stem.c_str() + 2));
+      snprintf(name, sizeof(name), "%04d", number);
       int found = 0;
       for (int hd = 0; hd < 2; ++hd) {
         svrfmt::Archive m;
-        if (!svrfmt::ArchiveOpen(ReadAll(p.parent_path().parent_path() / "menu" / (hd ? "menuHD.pac" : "menuSD.pac")), m,
-                                 nullptr))
+        if (!svrfmt::ArchiveOpen(read_menu(hd ? "menuHD.pac" : "menuSD.pac"), m, nullptr))
           continue;
         for (const auto &k : m.root.kids)
           if (k.name == name && k.group.size() == 4 && k.group.compare(0, 3, "SSF") == 0 && k.group[3] >= 'A' &&
@@ -348,8 +445,10 @@ class Page {
             ++found;
           }
       }
-      if (found)
+      if (found) {
+        note_ok_ = true;
         note_ = fr ? "Ses portraits de WWE '13 viendront avec lui." : "Its WWE '13 portraits come with it.";
+      }
     }
   }
 
@@ -516,6 +615,16 @@ class Page {
   char name_[32] = {}, author_[64] = {}, filter_[64] = {};
   Bytes base_file_, other_, ported_, model_, svr_file_;
   fs::path other_path_, svr_path_;
+
+ public:
+  const game_discs::Discs *discs_ = nullptr;  // My game discs (set by the Mod Maker)
+
+ private:
+  disc::GameDisc game_disc_;  // the other game's disc (My game discs), its superstars
+  fs::path game_path_;
+  uint32_t game_title_ = 0;
+  std::vector<std::pair<int, std::string>> disc_list_;
+  int disc_pick_ = -1;
   std::vector<std::string> svr_attires_;
   int svr_attire_ = 0;
   arena_view::View view_;

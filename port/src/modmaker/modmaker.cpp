@@ -358,6 +358,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   g_mods.Init(ExeDir() / "mods");
   g_discs.Load(ExeDir() / "modmaker_discs.txt");
   g_arenas.discs_ = &g_discs;
+  g_new_star.discs_ = &g_discs;
 
   WNDCLASSEXW wc{sizeof(wc)};
   wc.style = CS_CLASSDC;
