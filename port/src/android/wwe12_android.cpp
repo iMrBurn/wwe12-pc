@@ -80,10 +80,12 @@ void Wwe12AndroidCaptureStderr() {
   std::thread([fd = fds[0]] {
     std::string line;
     char buf[512];
+    int lines = 0;  // a chatty driver must not flood the log: 500 lines, then silence
     for (ssize_t n; (n = read(fd, buf, sizeof(buf))) > 0;) {
       for (ssize_t i = 0; i < n; ++i) {
         if (buf[i] == '\n') {
-          if (!line.empty()) REXLOG_WARN("[stderr] {}", line);
+          if (!line.empty() && lines < 500 && ++lines)
+            REXLOG_WARN("[stderr] {}{}", line, lines == 500 ? " (stderr: no more lines logged)" : "");
           line.clear();
         } else if (line.size() < 1000) {
           line += buf[i];

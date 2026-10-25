@@ -424,6 +424,9 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
       BD_ERROR("Plume createSwapChain failed");
       return false;
     }
+#if defined(__ANDROID__)
+    NoteSwapChainWindow(render_window);
+#endif
     if (!BuildFramebuffers(s)) {
       return false;
     }

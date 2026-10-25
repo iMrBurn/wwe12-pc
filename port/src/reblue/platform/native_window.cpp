@@ -158,7 +158,12 @@ bool GetNativeRenderWindow(rex::ui::Window *window, plume::RenderWindow &out) {
                          nullptr))
                    : nullptr;
   if (!out) {
-    BD_ERROR("No Android window available for the Vulkan surface");
+    // Normal while the app is in the background (the renderer checks for a new window).
+    static bool s_logged = false;
+    if (!s_logged) {
+      s_logged = true;
+      BD_ERROR("No Android window available for the Vulkan surface");
+    }
     return false;
   }
   return true;

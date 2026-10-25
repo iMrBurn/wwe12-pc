@@ -17,6 +17,8 @@
 #include <thread>
 #if defined(__ANDROID__)
 #include <time.h>
+
+#include <android/native_window.h>
 #endif
 
 #include <plume_render_interface.h>
@@ -79,48 +81,87 @@ void AbandonFrame(VideoState &s, std::unique_lock<std::mutex> &lock) {
   DrainSlot(s, reclaimed);
 }
 
-// Resizes the swap chain to the window (fences already waited, framebuffers cleared).
-bool ResizeSwapChain(VideoState &s) {
-  if (s.swap_chain->resize() && BuildFramebuffers(s) && BuildPresentSemaphores(s))
-    return true;
-  if (!s.swap_chain->getWidth() || !s.swap_chain->getHeight())
-    return false;  // window minimized or not shown yet: not an error
-  BD_ERROR("Swap chain resize failed");
 #if defined(__ANDROID__) && !defined(REBLUE_D3D12)
-  // Android may give the activity a new window (Retroid Pocket 6, portrait panel turned to
-  // landscape: GitHub issue #21): the Vulkan surface still points at the old one and every
-  // resize fails, a black screen with the game running behind. Build the swap chain again,
-  // surface included, on the current window. The old one goes first: Android lets only one
-  // swap chain hold a window. At most once a second.
-  static std::chrono::steady_clock::time_point s_last_try{};
+// Android gives the activity a new window after it went to the background (and on the Retroid
+// Pocket 6 at start, portrait panel turned to landscape: GitHub issue #21). The swap chain keeps
+// the old one: presents still succeed into a window nobody shows, or vkCreateSwapchainKHR answers
+// NATIVE_WINDOW_IN_USE / SURFACE_LOST (all seen on the emulator). Black screen with the game
+// running behind. So the window the swap chain was built on is watched, and the swap chain built
+// again, surface included, when SDL hands another one.
+// SDL keeps handing the old pointer after Android destroyed that window (onNativeSurfaceDestroyed
+// releases it without clearing the property): we hold our own reference on the swap chain's
+// window, so it is never freed under us, and a new window always has another address.
+plume::RenderWindow g_swap_window = nullptr;
+
+void HoldSwapWindow(plume::RenderWindow window) {
+  if (window)
+    ANativeWindow_acquire(window);
+  if (g_swap_window)
+    ANativeWindow_release(g_swap_window);
+  g_swap_window = window;
+}
+
+// The SDL window if it is not the swap chain's, checked 4 times a second; else null.
+plume::RenderWindow NewAndroidWindow() {
+  static std::chrono::steady_clock::time_point s_last{};
   const auto now = std::chrono::steady_clock::now();
-  if (now - s_last_try < std::chrono::seconds(1))
-    return false;
-  s_last_try = now;
+  if (now - s_last < std::chrono::milliseconds(250))
+    return nullptr;
+  s_last = now;
   plume::RenderWindow window{};
-  if (!bd::platform::GetNativeRenderWindow(nullptr, window))
-    return false;
+  if (!bd::platform::GetNativeRenderWindow(nullptr, window) || window == g_swap_window)
+    return nullptr;
+  return window;
+}
+
+// The old swap chain goes first: Android lets only one swap chain hold a window.
+bool RebuildOnWindow(VideoState &s, plume::RenderWindow window) {
+  ANativeWindow_acquire(window);  // kept alive while we build on it
   s.framebuffers.clear();
   s.swap_chain.reset();
   plume::RenderSwapChainDesc desc(window, kSwapChainFormat, kNumFrames + 1, false, kNumFrames);
   s.swap_chain = s.queue->createSwapChain(desc);
   if (s.swap_chain)
     s.swap_chain->resize();
-  if (!s.swap_chain || s.swap_chain->isEmpty() || !BuildFramebuffers(s) ||
-      !BuildPresentSemaphores(s)) {
-    BD_ERROR("Swap chain rebuilt on the current Android window: failed");
+  const bool ok = s.swap_chain && !s.swap_chain->isEmpty() && BuildFramebuffers(s) &&
+                  BuildPresentSemaphores(s);
+  HoldSwapWindow(window);  // even on failure: watch for the next window, not this one again
+  ANativeWindow_release(window);
+  if (!ok) {
+    BD_ERROR("Swap chain rebuilt on the new Android window: failed");
     s.framebuffers.clear();
     return false;
   }
-  BD_INFO("Swap chain rebuilt on the current Android window ({}x{})", s.swap_chain->getWidth(),
+  BD_INFO("Swap chain rebuilt on the new Android window ({}x{})", s.swap_chain->getWidth(),
           s.swap_chain->getHeight());
   return true;
+}
+#endif
+
+// Resizes the swap chain to the window (fences already waited, framebuffers cleared).
+bool ResizeSwapChain(VideoState &s) {
+#if defined(__ANDROID__) && !defined(REBLUE_D3D12)
+  // Android, app in the background: the window is gone and every try fails. Once a second; the
+  // new window, when the app comes back, is caught by NewAndroidWindow.
+  static std::chrono::steady_clock::time_point s_last_fail{};
+  const auto now = std::chrono::steady_clock::now();
+  if (now - s_last_fail < std::chrono::seconds(1))
+    return false;
+  if (s.swap_chain && s.swap_chain->resize() && BuildFramebuffers(s) && BuildPresentSemaphores(s))
+    return true;
+  s_last_fail = now;
+  return false;
 #else
+  if (s.swap_chain && s.swap_chain->resize() && BuildFramebuffers(s) && BuildPresentSemaphores(s))
+    return true;
+  if (s.swap_chain && s.swap_chain->getWidth() && s.swap_chain->getHeight())  // else minimized
+    BD_ERROR("Swap chain resize failed");
   return false;
 #endif
 }
 
-void RebuildSwapChain(VideoState &s) {
+// new_window (Android): build the swap chain again on that window instead of resizing it.
+void RebuildSwapChain(VideoState &s, plume::RenderWindow new_window = nullptr) {
   SubmitOpenListLocked(s);
   for (u32 i = 0; i < kNumFrames; ++i) {
     if (s.command_list_submitted[i]) {
@@ -129,8 +170,14 @@ void RebuildSwapChain(VideoState &s) {
     }
   }
   s.framebuffers.clear();
+#if defined(__ANDROID__) && !defined(REBLUE_D3D12)
+  if (new_window ? !RebuildOnWindow(s, new_window) : !ResizeSwapChain(s))
+    return;
+#else
+  (void)new_window;
   if (!ResizeSwapChain(s))
     return;
+#endif
   if (static_cast<AspectMode>(Settings::Get().AspectRatio()) ==
       AspectMode::Auto)
     Output::Recompute();
@@ -240,6 +287,16 @@ void RecordPresentPass(VideoState &s, GuestTexture *rt,
 }
 
 } // namespace
+
+#if defined(__ANDROID__)
+void NoteSwapChainWindow(plume::RenderWindow window) {
+#if !defined(REBLUE_D3D12)
+  HoldSwapWindow(window);
+#else
+  (void)window;
+#endif
+}
+#endif
 
 void Video::Clear(u32 flags, u32 color_argb, float depth, u32 stencil) {
   auto &s = state();
@@ -378,7 +435,12 @@ void Video::Present(GuestTexture *frontBuffer) {
 
   const bool resize_requested =
       s.resize_requested.exchange(false, std::memory_order_acq_rel);
-  if (s.swap_chain->needsResize() || resize_requested) {
+#if defined(__ANDROID__) && !defined(REBLUE_D3D12)
+  if (plume::RenderWindow window = NewAndroidWindow())
+    RebuildSwapChain(s, window);
+  else
+#endif
+  if (!s.swap_chain || s.swap_chain->needsResize() || resize_requested) {
     RebuildSwapChain(s);
   }
 

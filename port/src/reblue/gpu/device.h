@@ -513,6 +513,9 @@ bool BuildPipelineLayout(VideoState &s);
 bool BuildCopyPipeline(VideoState &s);
 bool BuildFramebuffers(VideoState &s);
 bool BuildPresentSemaphores(VideoState &s);
+#if defined(__ANDROID__)
+void NoteSwapChainWindow(plume::RenderWindow window);  // present.cpp: window to watch
+#endif
 u32 AllocateSlot(VideoState &s);
 u32 BindTextureSRVLocked(VideoState &s, GuestTexture *tex);
 void ReleaseTextureSRVLocked(VideoState &s, GuestTexture *tex);
