@@ -661,10 +661,12 @@ class Page {
       port_ok_ = false;
     }
     ImGui::SameLine();
-    if (ChoiceCard(1, wiz_src_ == 1, !w13.empty(), "WWE '13", w13.empty() ? not_added : yours)) {
+    if (ChoiceCard(1, wiz_src_ == 1 && y_title_ == kWwe13, !w13.empty(), "WWE '13", w13.empty() ? not_added : yours)) {
       wiz_src_ = 1;
-      if (w13_game_ != w13 || w13_list_.empty())
+      if (y_title_ != kWwe13 || w13_game_ != w13 || w13_list_.empty()) {
+        y_title_ = kWwe13;
         Open13(w13);
+      }
       w13_pick_ = -1;
       port_ok_ = false;
     }
@@ -678,6 +680,28 @@ class Page {
         svr_pick_ = -1;
         wiz_src_ = 2;
         WizardSourceChosen(fr);
+      }
+    }
+    // WWE 2K14, 2K15, 2K16: their arenas are WWE '13's kind (EPAC, WWE '12's models; 2K16 xcompressed): the same
+    // recipe (port13.h).
+    struct TwoK {
+      uint32_t title;
+      const char *name;
+    };
+    static constexpr TwoK kTwoK[] = {{0x545408B2, "WWE 2K14"}, {0x545408B6, "WWE 2K15"}, {0x315A07D2, "WWE 2K16"}};
+    for (int i = 0; i < 3; ++i) {
+      const fs::path p = discs_ ? discs_->PathOf(kTwoK[i].title) : fs::path();
+      if (i)
+        ImGui::SameLine();
+      if (ChoiceCard(3 + i, wiz_src_ == 1 && y_title_ == kTwoK[i].title, !p.empty(), kTwoK[i].name,
+                     p.empty() ? not_added : yours)) {
+        wiz_src_ = 1;
+        if (y_title_ != kTwoK[i].title || w13_game_ != p || w13_list_.empty()) {
+          y_title_ = kTwoK[i].title;
+          Open13(p);
+        }
+        w13_pick_ = -1;
+        port_ok_ = false;
       }
     }
     // The games that can't bring arenas yet.
@@ -904,7 +928,8 @@ class Page {
       return;
     for (const auto &n : w13_disc_.List("pac/bg"))
       if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
-          port13::Find13(atoi(n.c_str() + 2)))  // (arenas only: not backstage rooms or match structures)
+          (y_title_ != kWwe13 || port13::Find13(atoi(n.c_str() + 2))))  // (WWE '13: arenas only, not backstage
+                                                                           // rooms or match structures)
         w13_list_.push_back(atoi(n.c_str() + 2));
     std::sort(w13_list_.begin(), w13_list_.end());
   }
@@ -1021,10 +1046,18 @@ class Page {
     return {};
   }
 
-  static std::string Label13(int n) {
+  // The game of a WWE '13-kind source (WWE '13, 2K14, 2K15, 2K16) and its arenas' names (WWE '13's known; the 2K
+  // games' still to read from their string files).
+  const char *YukesGame() const {
+    return y_title_ == 0x545408B2   ? "WWE 2K14"
+           : y_title_ == 0x545408B6 ? "WWE 2K15"
+           : y_title_ == 0x315A07D2 ? "WWE 2K16"
+                                    : "WWE '13";
+  }
+  std::string Label13(int n) const {
     char b[96];
-    const char *name = port13::ArenaName(n);
-    snprintf(b, sizeof(b), "%s  (bg%02d)", *name ? name : "WWE '13 arena", n);
+    const char *name = y_title_ == kWwe13 ? port13::ArenaName(n) : "";
+    snprintf(b, sizeof(b), "%s  (bg%02d)", *name ? name : (std::string(YukesGame()) + (" arena")).c_str(), n);
     return b;
   }
 
@@ -1096,8 +1129,10 @@ class Page {
       banner_custom_ = false;
       LoadBaseBanner();
     }
-    snprintf(name_, sizeof(name_), "%s (WWE '13)", *port13::ArenaName(w13_pick_) ? port13::ArenaName(w13_pick_)
-                                                                                  : Label13(w13_pick_).c_str());
+    if (y_title_ == kWwe13 && *port13::ArenaName(w13_pick_))
+      snprintf(name_, sizeof(name_), "%s (WWE '13)", port13::ArenaName(w13_pick_));
+    else
+      snprintf(name_, sizeof(name_), "%s bg%02d", YukesGame(), w13_pick_);
     as_new_ = true;
   }
 
@@ -1252,7 +1287,7 @@ class Page {
       manifest += std::string("author=") + author_ + "\n";
     if (as_new_)
       manifest += "slot=new\nbase=" + std::to_string(kSlots[slot_].number) + "\ndescription=" +
-                  (mode_ == 3   ? std::string(name_) + ", ported from WWE '13 (the player's own copy), playing as "
+                  (mode_ == 3   ? std::string(name_) + ", ported from " + std::string(YukesGame()) + " (the player's own copy), playing as "
                    : mode_ == 4 ? std::string(name_) + ", ported from SvR 2011 (the player's own file), playing as "
                                 : std::string("A new arena playing as ")) +
                   kSlots[slot_].name + ", made with the WWE '12 Mod Maker.\n";
@@ -1310,6 +1345,8 @@ class Page {
   // Porting from WWE '13.
   disc::GameDisc w13_disc_;  // WWE '13's ISO or folder (My game discs)
   fs::path w13_game_;
+  static constexpr uint32_t kWwe13 = 0x545108B4;
+  uint32_t y_title_ = kWwe13;  // the WWE '13-kind game read through w13_disc_ (WWE '13, 2K14, 2K15, 2K16)
   std::vector<int> w13_list_;
   int w13_pick_ = -1;
   bool port_ok_ = false, view_port_ = false;
