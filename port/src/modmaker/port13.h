@@ -17,6 +17,9 @@
 //  - entry 61000 (a 256 x 128 picture every WWE '12 arena has) comes from the base;
 //  - the breakable barricade corners (390-397, ar_fence01/02_c/f/g/h: modelled at the centre, placed by WWE '13's
 //    code for its "OMG moments") are moved into the corners in the model itself.
+// WWE 2K14, 2K15 and 2K16 arenas are the same kind (EPAC, WWE '12's models; 2K16 xcompressed with 20-byte entries)
+// and go through the same recipe; WWE 2K17's are an HSPC whose arena list is an SHDC: its entries are put in a copy of
+// the base's EPAC first (its crowd packs and missing data files: the base's). (Checked offline with each game's bg00.)
 // Lights, crowd, placement and visibility files of WWE '13 work as they are. Besides the arena file: its banner, its
 // VS screen (MatchHD.pac), its entrance plates (evtgdhd.pac), its pre-match screen (LoadHD.pac) and its transition
 // video (evtmov.pac), served by the game for the added arena.
@@ -148,12 +151,50 @@ struct PortInfo {
 };
 
 // The WWE '13 file (as on the disc) and the base arena's WWE '12 file -> the WWE '12 arena.
+inline bool PortTree(svrfmt::Archive &a, svrfmt::Archive &b, Bytes &out, std::string *why, PortInfo *info);
+
 inline bool Port(const Bytes &w13, const Bytes &base12, Bytes &out, std::string *why, PortInfo *info = nullptr) {
   auto fail = [&](const std::string &w) {
     if (why)
       *why = w;
     return false;
   };
+  // WWE 2K17: an HSPC (names hashed) whose arena list is an SHDC, PACH's place with the same children (ids): its
+  // entries are put in a copy of the base's EPAC in place of the base's own, its nested crowd packs (SHDC too) left
+  // for the base's; then the same recipe.
+  {
+    svrfmt::Archive h, b;
+    std::string e;
+    if (svrfmt::ArchiveOpen(w13, h, &e) && h.root.kind == svrfmt::ArcKind::Hspc) {
+      if (h.root.kids.empty() || !svrfmt::ArchiveExpand(h.root.kids[0]) || !svrfmt::ArchiveOpen(base12, b, &e) ||
+          b.root.kids.empty() || !svrfmt::ArchiveExpand(b.root.kids[0]))
+        return fail("unreadable WWE 2K17 arena");
+      svrfmt::Archive a;
+      svrfmt::ArchiveOpen(base12, a, &e);
+      svrfmt::ArcNode &ga = a.root.kids[0];
+      svrfmt::ArchiveExpand(ga);
+      std::vector<svrfmt::ArcNode> kids;
+      for (auto &k : h.root.kids[0].kids) {
+        if (svrfmt::ArchiveKindOf(k) == "SHDC" || svrfmt::ArchiveKindOf(k) == "PACH") {
+          for (const auto &bk : b.root.kids[0].kids)
+            if (bk.id == k.id)
+              kids.push_back(bk);
+          continue;
+        }
+        svrfmt::ArcNode n;
+        n.id = k.id;
+        n.wrap = k.wrap;
+        n.stored = k.stored;
+        kids.push_back(n);
+      }
+      // (data files WWE 2K17 hasn't, the light zones 50003 seen: the base's)
+      for (const auto &bk : b.root.kids[0].kids)
+        if (bk.id >= 30000 && std::none_of(kids.begin(), kids.end(), [&](const svrfmt::ArcNode &k) { return k.id == bk.id; }))
+          kids.push_back(bk);
+      ga.kids = kids;
+      return PortTree(a, b, out, why, info);
+    }
+  }
   Bytes plain;
   if (svrfmt::IsXcompress(w13)) {
     std::string e;
@@ -172,6 +213,16 @@ inline bool Port(const Bytes &w13, const Bytes &base12, Bytes &out, std::string 
   std::string e;
   if (!svrfmt::ArchiveOpen(plain, a, &e) || !svrfmt::ArchiveOpen(base12, b, &e))
     return fail("unreadable arena: " + e);
+  return PortTree(a, b, out, why, info);
+}
+
+// The recipe on the opened arena (a) and base (b).
+inline bool PortTree(svrfmt::Archive &a, svrfmt::Archive &b, Bytes &out, std::string *why, PortInfo *info) {
+  auto fail = [&](const std::string &w) {
+    if (why)
+      *why = w;
+    return false;
+  };
   if (a.root.kids.empty() || b.root.kids.empty())
     return fail("no arena data");
   svrfmt::ArcNode &ga = a.root.kids[0], &gb = b.root.kids[0];

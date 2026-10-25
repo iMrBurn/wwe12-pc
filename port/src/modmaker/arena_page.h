@@ -701,16 +701,17 @@ class Page {
         WizardSourceChosen(fr);
       }
     }
-    // WWE 2K14, 2K15, 2K16: their arenas are WWE '13's kind (EPAC, WWE '12's models; 2K16 xcompressed): the same
-    // recipe (port13.h).
+    // WWE 2K14 to 2K17: their arenas are WWE '13's kind (WWE '12's models; 2K16 xcompressed, 2K17 an HSPC put back
+    // in an EPAC): the same recipe (port13.h).
     struct TwoK {
       uint32_t title;
       const char *name;
     };
-    static constexpr TwoK kTwoK[] = {{0x545408B2, "WWE 2K14"}, {0x545408B6, "WWE 2K15"}, {0x315A07D2, "WWE 2K16"}};
-    for (int i = 0; i < 3; ++i) {
+    static constexpr TwoK kTwoK[] = {
+        {0x545408B2, "WWE 2K14"}, {0x545408B6, "WWE 2K15"}, {0x315A07D2, "WWE 2K16"}, {0x545408BA, "WWE 2K17"}};
+    for (int i = 0; i < 4; ++i) {
       const fs::path p = discs_ ? discs_->PathOf(kTwoK[i].title) : fs::path();
-      if (i)
+      if (i % 3)
         ImGui::SameLine();
       if (ChoiceCard(3 + i, wiz_src_ == 1 && y_title_ == kTwoK[i].title, !p.empty(), kTwoK[i].name,
                      p.empty() ? not_added : yours)) {
@@ -1087,6 +1088,7 @@ class Page {
     return y_title_ == 0x545408B2   ? "WWE 2K14"
            : y_title_ == 0x545408B6 ? "WWE 2K15"
            : y_title_ == 0x315A07D2 ? "WWE 2K16"
+           : y_title_ == 0x545408BA ? "WWE 2K17"
                                     : "WWE '13";
   }
   std::string Label13(int n) const {
