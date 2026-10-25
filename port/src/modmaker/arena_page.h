@@ -202,17 +202,6 @@ class Page {
       ImGui::SameLine();
       ImGui::TextDisabled("%s %s", fr ? "taille d'origine :" : "shipped size:", Human(budget_).c_str());
     }
-    // Another added arena on the same base: the game keeps the VS screen it loaded while the stage number stays, so
-    // going from one to the other showed the first one's (seen with Vengeance and Royal Rumble of SvR 2011).
-    if (slot_ >= 0 && mode_ >= 3) {
-      const std::string other = SameBase(mods, kSlots[slot_].number);
-      if (!other.empty())
-        ImGui::TextColored(kRed, fr ? "« %s » joue déjà à la place de cette arène : choisis-en une autre (deux arènes "
-                                      "sur la même base montrent le même écran VS)."
-                                    : "\"%s\" already plays in place of this arena: choose another one (two arenas on "
-                                      "the same base show the same VS screen).",
-                           other.c_str());
-    }
     if (!error_.empty())
       ImGui::TextColored(kRed, "%s", error_.c_str());
     if (slot_ < 0 || budget_ == 0)
@@ -593,15 +582,15 @@ class Page {
     }
   }
 
-  // The base proposed: free (no other added arena on it), a ramp like the source's, room for it; then the most room.
+  // The base proposed: a ramp like the source's, free (no other added arena on it), room for it; then the most room.
   int ProposedBase(const mods::Manager &mods) const {
     int best = -1, best_score = -1;
     for (int i = 0; i < int(std::size(kSlots)); ++i) {
       const int n = kSlots[i].number;
       const size_t room = i < int(wiz_rooms_.size()) ? wiz_rooms_[size_t(i)] : 0;
       int score = 0;
-      score += SameBase(mods, n).empty() ? 1000 : 0;
-      score += FlatBase(n) == (wiz_src_ramp_ < 60) ? 100 : 0;
+      score += FlatBase(n) == (wiz_src_ramp_ < 60) ? 1000 : 0;  // (else the wrestlers float or sink at the entrances)
+      score += SameBase(mods, n).empty() ? 100 : 0;
       score += room >= wiz_src_size_ ? 10 : 0;
       if (score > best_score || (score == best_score && room > wiz_rooms_[size_t(best)])) {
         best = i;
@@ -693,16 +682,20 @@ class Page {
                                                         : port_note_.c_str());
       return;
     }
+    // (another added arena on the same base is fine; only going straight from one to the other keeps the first one's
+    // VS screen: the game loads it again only when the stage number changes)
     const std::string other = SameBase(mods, kSlots[slot_].number);
-    if (!other.empty())
-      ImGui::TextColored(kYellow, fr ? "« %s » joue déjà à la place de %s : leurs écrans VS se mélangeront."
-                                     : "\"%s\" already plays in place of %s: their VS screens will mix up.",
-                         other.c_str(), kSlots[slot_].name);
-    else if (!ramp_note_.empty())
+    if (!ramp_note_.empty())
       ImGui::TextColored(kYellow, "%s", fr ? "La rampe n'est pas à la même hauteur que celle de la base (étape 2)."
                                            : "The ramp doesn't stand at the base's height (step 2).");
     else
       ImGui::TextColored(kGreen, "%s", fr ? "Tout est prêt." : "All set.");
+    if (!other.empty())
+      ImGui::TextDisabled(fr ? "(%s est aussi utilisée par « %s » : pour voir le bon écran VS, passez par une autre "
+                               "arène entre les deux.)"
+                             : "(%s is also used by \"%s\": to see the right VS screen, choose another arena in "
+                               "between.)",
+                          kSlots[slot_].name, other.c_str());
   }
 
   // A big choice button (the one chosen in gold).
@@ -822,11 +815,11 @@ class Page {
   void WizardBase(bool fr, const disc::GameDisc &disc, const mods::Manager &mods) {
     WizardRooms(disc);
     ImGui::TextWrapped("%s", fr ? "Votre arène joue à la place d'une arène du jeu : son numéro, sa place en mémoire, sa "
-                                  "rampe pour les entrées. Choisissez une base libre (une seule arène ajoutée par base), "
-                                  "avec une rampe comme la sienne."
+                                  "rampe pour les entrées. Choisissez une base avec une rampe comme la sienne, libre de "
+                                  "préférence (plusieurs arènes peuvent partager une base)."
                                 : "Your arena plays in place of one of the game's: its number, its room in memory, its "
-                                  "ramp for the entrances. Choose a free base (one added arena per base), with a ramp "
-                                  "like its own.");
+                                  "ramp for the entrances. Choose a base with a ramp like its own, a free one if you "
+                                  "can (several arenas can share a base).");
     ImGui::Text("%s %s, %s %s", fr ? "Votre arène :" : "Your arena:", Human(wiz_src_size_).c_str(),
                 fr ? "rampe" : "ramp",
                 wiz_src_ramp_ < 60 ? (fr ? "au sol" : "at floor level") : (fr ? "surélevée" : "raised"));
@@ -856,7 +849,8 @@ class Page {
                            FlatBase(n) ? (fr ? "au sol" : "floor") : (fr ? "surélevée" : "raised"));
         ImGui::TableNextColumn();
         if (!other.empty())
-          ImGui::TextColored(kRed, "%s %s", fr ? "prise :" : "taken:", other.c_str());
+          ImGui::TextDisabled("%s%s %s", i == proposed ? (fr ? "proposée, " : "proposed, ") : "",
+                              fr ? "aussi utilisée par" : "also used by", other.c_str());
         else if (i == proposed)
           ImGui::TextColored(kGreen, "%s", fr ? "proposée" : "proposed");
       }
