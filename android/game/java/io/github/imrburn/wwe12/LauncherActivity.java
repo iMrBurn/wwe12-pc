@@ -223,6 +223,15 @@ public class LauncherActivity extends Activity {
         ctl.addView(text("Bluetooth / USB controllers (Xbox, PlayStation...) work too: pair it in Android's settings.",
                 12, Color.GRAY, false));
 
+        // Debug: tests asked of testers, without editing wwe12.toml by hand (Android/data is hard to
+        // reach on recent phones). Both keys exist on PC too.
+        LinearLayout dbg = panel(root, "DEBUG (only if asked)");
+        dbg.addView(toggle("Release unused render targets (untick to test a freeze)",
+                "svr_release_stale_targets", true));
+        dbg.addView(toggle("Game debug messages in the log (Universe, replays)", "wwe12_game_log", false));
+        dbg.addView(text("Then play until the problem, and send the log with SHARE LAST LOG.",
+                12, Color.GRAY, false));
+
         // Play
         Button play = button("PLAY", true);
         play.setOnClickListener(new View.OnClickListener() {
@@ -317,10 +326,15 @@ public class LauncherActivity extends Activity {
     }
 
     View toggle(String label, final String key) {
+        return toggle(label, key, false);
+    }
+
+    // def = the game's default when wwe12.toml has no line for the key.
+    View toggle(String label, final String key, boolean def) {
         final CheckBox c = new CheckBox(this);
         c.setText(label);
         c.setTextColor(Color.WHITE);
-        c.setChecked("true".equals(config.get(key, "false")));
+        c.setChecked("true".equals(config.get(key, def ? "true" : "false")));
         c.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 config.set(key, c.isChecked() ? "true" : "false");
@@ -594,13 +608,27 @@ public class LauncherActivity extends Activity {
             Toast.makeText(this, "No log yet: play once first.", Toast.LENGTH_SHORT).show();
             return;
         }
+        // Shared as text, so it must stay small: the start of the log (phone, GPU, settings) and its
+        // end (what happened last), without the pipeline detail lines that fill most of it.
         String body;
-        try (RandomAccessFile f = new RandomAccessFile(last, "r")) {
-            long size = f.length(), max = 200 * 1024;  // the end of the log is what matters
-            f.seek(Math.max(0, size - max));
-            byte[] buf = new byte[(int) Math.min(size, max)];
-            f.readFully(buf);
-            body = new String(buf, "UTF-8");
+        try (java.io.BufferedReader r = new java.io.BufferedReader(
+                new java.io.InputStreamReader(new java.io.FileInputStream(last), "UTF-8"))) {
+            StringBuilder head = new StringBuilder();
+            java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
+            long tailSize = 0, max = 180 * 1024;
+            int n = 0, dropped = 0;
+            for (String l; (l = r.readLine()) != null; ) {
+                if (l.contains("SvR pipeline: element") || l.contains("vertex declaration 0x")
+                        || l.contains("WWE12 shader 0x")) continue;
+                if (n++ < 150) { head.append(l).append('\n'); continue; }
+                tail.addLast(l);
+                tailSize += l.length() + 1;
+                while (tailSize > max) { tailSize -= tail.removeFirst().length() + 1; dropped++; }
+            }
+            StringBuilder b = new StringBuilder(head);
+            if (dropped > 0) b.append("\n[... ").append(dropped).append(" lines left out ...]\n\n");
+            for (String l : tail) b.append(l).append('\n');
+            body = b.toString();
         } catch (Exception e) {
             body = "cannot read " + last + ": " + e;
         }
