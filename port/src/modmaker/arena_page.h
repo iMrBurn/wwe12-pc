@@ -154,23 +154,32 @@ class Page {
       ImGui::TextColored(kRed, "%s", fr ? "Fichiers du jeu introuvables." : "Game files not found.");
       return;
     }
-    if (ImGui::RadioButton(fr ? "Retoucher une arène" : "Retexture an arena", mode_ == 0))
-      mode_ = 0;
-    ImGui::SameLine();
-    if (ImGui::RadioButton(fr ? "Autre fichier d'arène" : "Another arena file", mode_ == 1))
-      mode_ = 1;
-    ImGui::SameLine();
-    if (ImGui::RadioButton(fr ? "Porter de WWE '13" : "Port from WWE '13", mode_ == 3))
-      mode_ = 3;
-    ImGui::SameLine();
-    if (ImGui::RadioButton(fr ? "Porter de SvR 2011" : "Port from SvR 2011", mode_ == 4))
-      mode_ = 4;
-    ImGui::SameLine();
-    if (ImGui::RadioButton(fr ? "Vue 3D" : "3D view", mode_ == 2)) {
-      mode_ = 2;
-      view_port_ = false;
-      view_stale_ = true;
+    // The tabs: a new arena from another game (the assistant), the game's arenas retextured, another arena file in
+    // place of one, the 3D view.
+    int tab = tab_;
+    if (ImGui::BeginTabBar("arena_tabs")) {
+      const char *names[] = {fr ? "Nouvelle arène" : "New arena", fr ? "Retoucher une arène du jeu" : "Retexture an arena",
+                             fr ? "Autre fichier d'arène" : "Another arena file", fr ? "Vue 3D" : "3D view"};
+      for (int i = 0; i < 4; ++i)
+        if (ImGui::BeginTabItem(names[i])) {
+          tab = i;
+          ImGui::EndTabItem();
+        }
+      ImGui::EndTabBar();
     }
+    if (tab != tab_) {
+      tab_ = tab;
+      view_port_ = tab_ == 0;
+      view_stale_ = true;
+      message_.clear();
+    }
+    if (tab_ == 0) {
+      if (wiz_src_ >= 0)
+        mode_ = wiz_src_ == 1 ? 3 : 4;
+      DrawWizard(fr, disc, mods);
+      return;
+    }
+    mode_ = tab_ == 1 ? 0 : tab_ == 2 ? 1 : 2;
 
     // The slot (and, to retexture, the arena opened from it).
     ImGui::SetNextItemWidth(360);
@@ -521,6 +530,445 @@ class Page {
       ImGui::TextDisabled("%s", fr ? "(revenez ensuite sur « Porter de WWE '13 » pour créer le mod)"
                                    : "(then come back to \"Port from WWE '13\" to make the mod)");
     }
+  }
+
+  // ---- The assistant "New arena" (docs/plan_page_arenes.md): an arena of another game, step by step: where it comes
+  // from (My game discs, or one file), the arena it plays in place of (its base), its name and banner, what comes
+  // with it, a look at it, then the mod. The ports themselves are the ones below (PortSvr, Port13).
+
+  // The last step that can be reached: the arena chosen opens the base step, the port done all the others.
+  int WizardReach() const {
+    const bool source = (wiz_src_ == 1 && w13_pick_ >= 0) || ((wiz_src_ == 0 || wiz_src_ == 2) && !svr_file_.empty());
+    if (!source)
+      return 0;
+    return slot_ >= 0 && port_ok_ ? 5 : 1;
+  }
+
+  // The source arena's ramp height (cm; SvR 2011 counts in 10 cm).
+  static float SourceRamp(const Bytes &file, float to_cm) {
+    svrfmt::Archive a;
+    if (!svrfmt::ArchiveOpen(file, a, nullptr) || a.root.kids.empty() || !svrfmt::ArchiveExpand(a.root.kids[0]))
+      return 0;
+    return port13::RampHeight(a.root.kids[0]) * to_cm;
+  }
+  static bool FlatBase(int number) {
+    return std::find(std::begin(port13::kFlatBases12), std::end(port13::kFlatBases12), number) !=
+           std::end(port13::kFlatBases12);
+  }
+
+  // The source arena chosen: read, measured, and ported again if a base is chosen already.
+  void WizardSourceChosen(bool fr) {
+    port_ok_ = false;
+    port_note_.clear();
+    ramp_note_.clear();
+    if (wiz_src_ == 1) {
+      char rel[32];
+      snprintf(rel, sizeof(rel), "bg%02d.pac", w13_pick_);
+      std::ifstream f(w13_dir_ / "pac" / "bg" / rel, std::ios::binary);
+      const Bytes w13((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+      wiz_src_size_ = w13.size();
+      wiz_src_ramp_ = SourceRamp(w13, 1);
+    } else {
+      wiz_src_size_ = svr_file_.size();
+      wiz_src_ramp_ = SourceRamp(svr_file_, 10);
+    }
+    mode_ = wiz_src_ == 1 ? 3 : 4;
+    if (slot_ >= 0 && budget_) {
+      if (wiz_src_ == 1)
+        Port13(fr);
+      else
+        PortSvr(fr);
+    }
+  }
+
+  // The room of each base arena (its shipped file's size), read once.
+  void WizardRooms(const disc::GameDisc &disc) {
+    if (!wiz_rooms_.empty())
+      return;
+    for (const auto &sl : kSlots) {
+      char p[32];
+      snprintf(p, sizeof(p), "pac/bg/bg%02d.pac", sl.number);
+      Bytes b;
+      wiz_rooms_.push_back(disc.Read(p, b) ? b.size() : 0);
+    }
+  }
+
+  // The base proposed: free (no other added arena on it), a ramp like the source's, room for it; then the most room.
+  int ProposedBase(const mods::Manager &mods) const {
+    int best = -1, best_score = -1;
+    for (int i = 0; i < int(std::size(kSlots)); ++i) {
+      const int n = kSlots[i].number;
+      const size_t room = i < int(wiz_rooms_.size()) ? wiz_rooms_[size_t(i)] : 0;
+      int score = 0;
+      score += SameBase(mods, n).empty() ? 1000 : 0;
+      score += FlatBase(n) == (wiz_src_ramp_ < 60) ? 100 : 0;
+      score += room >= wiz_src_size_ ? 10 : 0;
+      if (score > best_score || (score == best_score && room > wiz_rooms_[size_t(best)])) {
+        best = i;
+        best_score = score;
+      }
+    }
+    return best;
+  }
+
+  void WizardChooseBase(bool fr, const disc::GameDisc &disc, int i) {
+    slot_ = i;
+    OpenSlot(fr, disc);
+    view_stale_ = true;
+    if (!budget_)
+      return;
+    if (wiz_src_ == 1)
+      Port13(fr);
+    else
+      PortSvr(fr);
+  }
+
+  void DrawWizard(bool fr, const disc::GameDisc &disc, mods::Manager &mods) {
+    const char *steps_fr[] = {"1. Point de départ", "2. Arène de base", "3. Nom et bannière",
+                              "4. Ce qui est repris", "5. Aperçu", "6. Terminer"};
+    const char *steps_en[] = {"1. Start from", "2. Base arena", "3. Name and banner", "4. What comes with it",
+                              "5. Look at it", "6. Finish"};
+    const int reach = WizardReach();
+    wiz_step_ = std::min(wiz_step_, reach);
+    const float h = std::max(320.0f, ImGui::GetContentRegionAvail().y - 72);
+    ImGui::BeginChild("wiz_steps", ImVec2(190, h), ImGuiChildFlags_Borders);
+    for (int i = 0; i < 6; ++i) {
+      ImGui::BeginDisabled(i > reach);
+      if (ImGui::Selectable(fr ? steps_fr[i] : steps_en[i], wiz_step_ == i, 0, ImVec2(0, 26)))
+        wiz_step_ = i;
+      ImGui::EndDisabled();
+    }
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("wiz_body", ImVec2(0, h), ImGuiChildFlags_Borders);
+    switch (wiz_step_) {
+    case 0: WizardStart(fr); break;
+    case 1: WizardBase(fr, disc, mods); break;
+    case 2: WizardName(fr); break;
+    case 3: WizardWith(fr); break;
+    case 4: WizardLook(fr); break;
+    default: WizardFinish(fr, mods); break;
+    }
+    ImGui::EndChild();
+
+    // Below: back / next and the progress; then what keeps it from being done (red) or is worth a look (yellow).
+    ImGui::BeginDisabled(wiz_step_ == 0);
+    if (ImGui::Button(fr ? "Retour" : "Back", ImVec2(110, 0)))
+      --wiz_step_;
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    char prog[32];
+    snprintf(prog, sizeof(prog), fr ? "Étape %d sur 6" : "Step %d of 6", wiz_step_ + 1);
+    ImGui::ProgressBar((wiz_step_ + 1) / 6.0f, ImVec2(ImGui::GetContentRegionAvail().x - 120, 0), prog);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(wiz_step_ >= 5 || wiz_step_ + 1 > reach);
+    if (ImGui::Button(fr ? "Suivant" : "Next", ImVec2(110, 0))) {
+      ++wiz_step_;
+      if (wiz_step_ == 1 && slot_ < 0) {  // (the proposed base, chosen for a start)
+        WizardRooms(disc);
+        const int b = ProposedBase(mods);
+        if (b >= 0)
+          WizardChooseBase(fr, disc, b);
+      }
+    }
+    ImGui::EndDisabled();
+    WizardProblems(fr, mods);
+  }
+
+  void WizardProblems(bool fr, const mods::Manager &mods) {
+    if (wiz_src_ < 0) {
+      ImGui::TextColored(kRed, "%s", fr ? "Choisissez d'où vient l'arène." : "Choose where the arena comes from.");
+      return;
+    }
+    if (WizardReach() == 0) {
+      ImGui::TextColored(kRed, "%s", fr ? "Choisissez une arène dans la liste." : "Choose an arena in the list.");
+      return;
+    }
+    if (slot_ < 0) {
+      ImGui::TextColored(kRed, "%s", fr ? "Choisissez l'arène de base (étape 2)." : "Choose the base arena (step 2).");
+      return;
+    }
+    if (!port_ok_) {
+      ImGui::TextColored(kRed, "%s", port_note_.empty() ? (fr ? "Le portage n'est pas fait." : "Not ported yet.")
+                                                        : port_note_.c_str());
+      return;
+    }
+    const std::string other = SameBase(mods, kSlots[slot_].number);
+    if (!other.empty())
+      ImGui::TextColored(kYellow, fr ? "« %s » joue déjà à la place de %s : leurs écrans VS se mélangeront."
+                                     : "\"%s\" already plays in place of %s: their VS screens will mix up.",
+                         other.c_str(), kSlots[slot_].name);
+    else if (!ramp_note_.empty())
+      ImGui::TextColored(kYellow, "%s", fr ? "La rampe n'est pas à la même hauteur que celle de la base (étape 2)."
+                                           : "The ramp doesn't stand at the base's height (step 2).");
+    else
+      ImGui::TextColored(kGreen, "%s", fr ? "Tout est prêt." : "All set.");
+  }
+
+  // A big choice button (the one chosen in gold).
+  bool ChoiceCard(int id, bool on, bool enabled, const std::string &title, const std::string &what) {
+    ImGui::PushID(id);
+    ImGui::PushStyleColor(ImGuiCol_Button, on ? ImVec4(0.94f, 0.75f, 0.24f, 1.0f) : ImVec4(0.17f, 0.17f, 0.19f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, on ? ImVec4(0.08f, 0.08f, 0.08f, 1.0f) : ImVec4(0.92f, 0.92f, 0.92f, 1.0f));
+    ImGui::BeginDisabled(!enabled);
+    const bool hit = ImGui::Button((title + "\n" + what).c_str(), ImVec2(card_w_, 58));
+    ImGui::EndDisabled();
+    ImGui::PopStyleColor(2);
+    ImGui::PopID();
+    return hit;
+  }
+
+  // Step 1: the game (My game discs) and its arena, or one arena file.
+  void WizardStart(bool fr) {
+    ImGui::TextWrapped("%s", fr ? "Votre arène vient d'un autre jeu WWE : choisissez le jeu (ajouté dans MES DISQUES), "
+                                  "puis l'arène. Elle jouera à la place d'une arène du jeu (étape suivante) et aura sa "
+                                  "propre case dans le choix d'arène."
+                                : "Your arena comes from another WWE game: choose the game (added in MY GAME DISCS), then "
+                                  "the arena. It plays in place of one of the game's arenas (next step) and has its own "
+                                  "tile on the arena select screen.");
+    ImGui::Dummy(ImVec2(0, 6));
+    const fs::path svr = discs_ ? discs_->PathOf(0x5451085D) : fs::path(),
+                   w13 = discs_ ? discs_->PathOf(0x545108B4) : fs::path();
+    std::error_code ec;
+    const bool w13_folder = !w13.empty() && fs::is_directory(w13, ec);
+    const std::string not_added = fr ? "pas dans MES DISQUES" : "not in MY GAME DISCS",
+                      yours = fr ? "depuis vos disques" : "from your discs";
+    card_w_ = std::min(250.0f, (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3);
+    if (ChoiceCard(0, wiz_src_ == 0, !svr.empty(), "SvR 2011", svr.empty() ? not_added : yours)) {
+      wiz_src_ = 0;
+      svr_path_.clear();
+      if (svr_game_ != svr || svr_list_.empty())
+        OpenSvr(fr, svr);
+      svr_file_.clear();
+      svr_pick_ = -1;
+      port_ok_ = false;
+    }
+    ImGui::SameLine();
+    if (ChoiceCard(1, wiz_src_ == 1, w13_folder, "WWE '13",
+                   w13.empty() ? not_added : w13_folder ? yours : (fr ? "ISO : ajoutez le dossier" : "ISO: add the folder"))) {
+      wiz_src_ = 1;
+      if (w13_dir_ != w13 || w13_list_.empty()) {
+        w13_dir_ = w13;
+        w13_list_.clear();
+        for (fs::directory_iterator it(w13_dir_ / "pac" / "bg", ec), end; !ec && it != end; it.increment(ec)) {
+          const std::string n = it->path().filename().string();
+          if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
+              port13::Find13(atoi(n.c_str() + 2)))
+            w13_list_.push_back(atoi(n.c_str() + 2));
+        }
+        std::sort(w13_list_.begin(), w13_list_.end());
+      }
+      w13_pick_ = -1;
+      port_ok_ = false;
+    }
+    ImGui::SameLine();
+    if (ChoiceCard(2, wiz_src_ == 2, true, fr ? "Un fichier d'arène" : "One arena file", "SvR 2011 (bgNN.pac)")) {
+      const fs::path p = PickOpen(fr, true);
+      if (!p.empty()) {
+        std::ifstream f(p, std::ios::binary);
+        svr_file_.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+        svr_path_ = p;
+        svr_pick_ = -1;
+        wiz_src_ = 2;
+        WizardSourceChosen(fr);
+      }
+    }
+    // The games that can't bring arenas yet.
+    if (discs_) {
+      std::string soon;
+      for (const auto &k : game_discs::kKnown)
+        if (k.arenas == game_discs::Can::kSoon && !discs_->PathOf(k.title).empty())
+          soon += std::string(soon.empty() ? "" : ", ") + k.name;
+      if (!soon.empty())
+        ImGui::TextDisabled("%s %s", fr ? "Bientôt :" : "Coming:", soon.c_str());
+    }
+    ImGui::Dummy(ImVec2(0, 6));
+    // The arenas of the game chosen.
+    const std::vector<int> *list = wiz_src_ == 0 ? &svr_list_ : wiz_src_ == 1 ? &w13_list_ : nullptr;
+    if (list && !list->empty()) {
+      int clicked = -1;
+      ImGui::BeginChild("wiz_list", ImVec2(440, std::max(160.0f, ImGui::GetContentRegionAvail().y - 4)),
+                        ImGuiChildFlags_Borders);
+      for (int n : *list) {
+        std::string label;
+        if (wiz_src_ == 0) {
+          char b[96];
+          snprintf(b, sizeof(b), "%s  (bg%02d)", port_svr_arena::FindSvr(n)->name, n);
+          label = b;
+        } else {
+          label = Label13(n);
+        }
+        if (ImGui::Selectable(label.c_str(), n == (wiz_src_ == 0 ? svr_pick_ : w13_pick_)))
+          clicked = n;
+      }
+      ImGui::EndChild();
+      if (clicked >= 0 && wiz_src_ == 0) {
+        char rel[32];
+        snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", clicked);
+        if (svr_disc_.Read(rel, svr_file_)) {
+          svr_pick_ = clicked;
+          WizardSourceChosen(fr);
+        }
+      } else if (clicked >= 0) {
+        w13_pick_ = clicked;
+        WizardSourceChosen(fr);
+      }
+    } else if (wiz_src_ == 2 && !svr_path_.empty()) {
+      ImGui::Text("%s", media::Utf8(svr_path_.filename().wstring()).c_str());
+    }
+  }
+
+  // Step 2: the base arena (its number, room and lights): free ones, the ramp, the room.
+  void WizardBase(bool fr, const disc::GameDisc &disc, const mods::Manager &mods) {
+    WizardRooms(disc);
+    ImGui::TextWrapped("%s", fr ? "Votre arène joue à la place d'une arène du jeu : son numéro, sa place en mémoire, sa "
+                                  "rampe pour les entrées. Choisissez une base libre (une seule arène ajoutée par base), "
+                                  "avec une rampe comme la sienne."
+                                : "Your arena plays in place of one of the game's: its number, its room in memory, its "
+                                  "ramp for the entrances. Choose a free base (one added arena per base), with a ramp "
+                                  "like its own.");
+    ImGui::Text("%s %s, %s %s", fr ? "Votre arène :" : "Your arena:", Human(wiz_src_size_).c_str(),
+                fr ? "rampe" : "ramp",
+                wiz_src_ramp_ < 60 ? (fr ? "au sol" : "at floor level") : (fr ? "surélevée" : "raised"));
+    const int proposed = ProposedBase(mods);
+    int clicked = -1;
+    if (ImGui::BeginTable("bases", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY,
+                          ImVec2(0, std::max(180.0f, ImGui::GetContentRegionAvail().y - 60)))) {
+      ImGui::TableSetupColumn(fr ? "Arène de base" : "Base arena", ImGuiTableColumnFlags_WidthFixed, 280);
+      ImGui::TableSetupColumn(fr ? "Place" : "Room", ImGuiTableColumnFlags_WidthFixed, 80);
+      ImGui::TableSetupColumn(fr ? "Rampe" : "Ramp", ImGuiTableColumnFlags_WidthFixed, 90);
+      ImGui::TableSetupColumn("");
+      ImGui::TableSetupScrollFreeze(0, 1);
+      ImGui::TableHeadersRow();
+      for (int i = 0; i < int(std::size(kSlots)); ++i) {
+        const int n = kSlots[i].number;
+        const std::string other = SameBase(mods, n);
+        const bool ramp_ok = FlatBase(n) == (wiz_src_ramp_ < 60);
+        const size_t room = i < int(wiz_rooms_.size()) ? wiz_rooms_[size_t(i)] : 0;
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        if (ImGui::Selectable(SlotLabel(kSlots[i]).c_str(), slot_ == i, ImGuiSelectableFlags_SpanAllColumns))
+          clicked = i;
+        ImGui::TableNextColumn();
+        ImGui::TextColored(room >= wiz_src_size_ ? kGreen : kYellow, "%s", Human(room).c_str());
+        ImGui::TableNextColumn();
+        ImGui::TextColored(ramp_ok ? kGreen : kYellow, "%s",
+                           FlatBase(n) ? (fr ? "au sol" : "floor") : (fr ? "surélevée" : "raised"));
+        ImGui::TableNextColumn();
+        if (!other.empty())
+          ImGui::TextColored(kRed, "%s %s", fr ? "prise :" : "taken:", other.c_str());
+        else if (i == proposed)
+          ImGui::TextColored(kGreen, "%s", fr ? "proposée" : "proposed");
+      }
+      ImGui::EndTable();
+    }
+    if (clicked >= 0)
+      WizardChooseBase(fr, disc, clicked);
+    ImGui::PushTextWrapPos(0);
+    if (!port_note_.empty())
+      ImGui::TextColored(port_ok_ ? kGreen : kRed, "%s", port_note_.c_str());
+    if (port_ok_ && !ramp_note_.empty())
+      ImGui::TextColored(kYellow, "%s", ramp_note_.c_str());
+    ImGui::PopTextWrapPos();
+  }
+
+  // Step 3: the name on the tile, the author, the banner.
+  void WizardName(bool fr) {
+    ImGui::SetNextItemWidth(320);
+    ImGui::InputText(fr ? "Nom" : "Name", name_, sizeof(name_));
+    ImGui::SetNextItemWidth(320);
+    ImGui::InputTextWithHint(fr ? "Auteur" : "Author", fr ? "(facultatif)" : "(optional)", author_, sizeof(author_));
+    ImGui::Dummy(ImVec2(0, 6));
+    DrawBanner(fr);
+  }
+
+  // Step 4: what the port brought besides the arena; each one kept, or the base's.
+  void WizardWith(bool fr) {
+    ImGui::TextWrapped("%s", fr ? "Ce qui vient avec l'arène. Décochez pour garder celui de l'arène de base."
+                                : "What comes with the arena. Untick to keep the base arena's.");
+    ImGui::Dummy(ImVec2(0, 4));
+    const auto row = [&](bool have, bool &keep, const char *what, const char *none) {
+      ImGui::BeginDisabled(!have);
+      bool k = have && keep;
+      if (ImGui::Checkbox(what, &k))
+        keep = k;
+      ImGui::EndDisabled();
+      if (!have) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", none);
+      }
+    };
+    const char *none = fr ? "(pas trouvé : celui de la base)" : "(not found: the base's)";
+    const bool w13 = wiz_src_ == 1;
+    row(!card_mb_.empty(), wiz_keep_vs_,
+        w13 ? (fr ? "Son écran VS" : "Its VS screen")
+            : (fr ? "Son écran VS (un écran de WWE '12 avec ses images)" : "Its VS screen (a WWE '12 one with its pictures)"),
+        none);
+    row(!etex_.empty(), wiz_keep_etex_, fr ? "Ses plaques d'entrée et son locator" : "Its entrance plates and locator",
+        w13 ? none : (fr ? "(SvR 2011 : pas encore, ceux de la base)" : "(SvR 2011: not yet, the base's)"));
+    row(!load_.empty(), wiz_keep_load_, fr ? "Son écran d'avant-match" : "Its pre-match screen",
+        w13 ? none : (fr ? "(SvR 2011 : celui de la base)" : "(SvR 2011: the base's)"));
+    row(!movie_.empty(), wiz_keep_movie_, fr ? "Sa vidéo de transition" : "Its transition video", none);
+    if (!w13)
+      ImGui::TextDisabled("%s", fr ? "Sa foule : la sienne (celle de la base si elle ne se convertit pas)."
+                                   : "Its crowd: its own (the base's if it can't be converted).");
+  }
+
+  // Step 5: the port's report and the arena in 3D.
+  void WizardLook(bool fr) {
+    ImGui::PushTextWrapPos(0);
+    if (!port_note_.empty())
+      ImGui::TextColored(kGreen, "%s", port_note_.c_str());
+    if (!ramp_note_.empty())
+      ImGui::TextColored(kYellow, "%s", ramp_note_.c_str());
+    ImGui::PopTextWrapPos();
+    if (!view_port_) {
+      view_port_ = true;
+      view_stale_ = true;
+    }
+    Draw3D(fr);
+  }
+
+  // Step 6: the mod made (the .svrmod saved where you choose, to share) and installed.
+  void WizardFinish(bool fr, mods::Manager &mods) {
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextWrapped(fr ? "« %s » jouera à la place de %s, sur sa propre case du choix d'arène (pages suivantes, LB / "
+                            "RB). Le mod (.svrmod) est enregistré où vous voulez, pour le partager, puis installé."
+                          : "\"%s\" will play in place of %s, on its own tile of the arena select screen (next pages, LB "
+                            "/ RB). The mod (.svrmod) is saved where you want, to share it, then installed.",
+                       name_, kSlots[slot_].name);
+    ImGui::Dummy(ImVec2(0, 6));
+    ImGui::BeginDisabled(!port_ok_ || game::IsRunning());
+    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it...", ImVec2(260, 36))) {
+      as_new_ = true;
+      // (what was unticked at step 4 stays out of the mod)
+      const Bytes vs_b = card_mb_, vs_f = card_mf_, et = etex_, ld = load_, mv = movie_;
+      if (!wiz_keep_vs_) {
+        card_mb_.clear();
+        card_mf_.clear();
+      }
+      if (!wiz_keep_etex_)
+        etex_.clear();
+      if (!wiz_keep_load_)
+        load_.clear();
+      if (!wiz_keep_movie_)
+        movie_.clear();
+      Make(fr, mods);
+      card_mb_ = vs_b;
+      card_mf_ = vs_f;
+      etex_ = et;
+      load_ = ld;
+      movie_ = mv;
+    }
+    ImGui::EndDisabled();
+    if (game::IsRunning())
+      ImGui::TextColored(kRed, "%s", fr ? "Le jeu est lancé : fermez-le pour installer le mod."
+                                        : "The game is running: close it to install the mod.");
+    if (!message_.empty())
+      ImGui::TextColored(message_ok_ ? kGreen : kRed, "%s", message_.c_str());
+    if (!reduced_note_.empty())
+      ImGui::TextColored(kYellow, "%s", reduced_note_.c_str());
+    ImGui::PopTextWrapPos();
   }
 
   // An arena of SvR 2011 (its pac/bg/bgNN.pac); it plays as the arena chosen above (its base: the recipe takes the
@@ -1073,6 +1521,15 @@ class Page {
   Thumb banner_thumb_;
   std::vector<svrfmt::BundleTexture> game_banners_;
   const disc::GameDisc *disc_ = nullptr;
+
+  // The assistant.
+  int tab_ = 0, wiz_step_ = 0;
+  float card_w_ = 250;  // (the start step's three choices share the width)
+  int wiz_src_ = -1;  // 0 SvR 2011 (My game discs), 1 WWE '13 (My game discs), 2 one SvR 2011 arena file
+  size_t wiz_src_size_ = 0;
+  float wiz_src_ramp_ = 0;  // cm
+  std::vector<size_t> wiz_rooms_;
+  bool wiz_keep_vs_ = true, wiz_keep_etex_ = true, wiz_keep_load_ = true, wiz_keep_movie_ = true;
 
  public:
   const game_discs::Discs *discs_ = nullptr;  // My game discs (set by the Mod Maker)

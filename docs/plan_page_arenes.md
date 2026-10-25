@@ -57,8 +57,8 @@ survol.
 
 | # | Étape | Test |
 |---|---|---|
-| 1 | Page **Mes disques de jeu** : ajouter / retirer un jeu, reconnaissance (SvR 2011, WWE '13, 2K14-2K17), mémorisé | tes ISO de SvR 2011, 2K14, 2K15, 2K16, 2K17 et ton dossier WWE '13 reconnus |
-| 2 | **Assistant** étapes 1 à 3 et 6 (départ, base, nom/bannière, installer) branché sur les portages actuels (SvR 2011, WWE '13) | refaire Vengeance et WM 26 par l'assistant, en jeu |
+| 1 ✅ | Page **Mes disques de jeu** : ajouter / retirer un jeu, reconnaissance (SvR 2011, WWE '13, 2K14-2K17), mémorisé | tes ISO de SvR 2011, 2K14, 2K15, 2K16, 2K17 et ton dossier WWE '13 reconnus |
+| 2 ✅ (2026-10-25, tout l'assistant : étapes 1 à 6, base proposée, problèmes en bas) | **Assistant** étapes 1 à 3 et 6 (départ, base, nom/bannière, installer) branché sur les portages actuels (SvR 2011, WWE '13) | refaire Vengeance et WM 26 par l'assistant, en jeu |
 | 3 | Étapes 4 et 5 (choix de ce qui est repris, aperçu, rapport) + problèmes en direct | refaire Royal Rumble (SvR) en gardant / enlevant l'écran VS |
 | 4 | « Tester en jeu » | un clic installe et lance |
 | 5 | Retrait des anciens boutons radio, manuel (`docs/mod_maker.md`) | — |
