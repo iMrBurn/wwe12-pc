@@ -33,6 +33,7 @@
 #include "arena_view.h"
 #include "port13.h"
 #include "port_svr_arena.h"
+#include "strings2k.h"
 #include "game_disc.h"
 #include "game_discs.h"
 #include "game_process.h"
@@ -961,8 +962,11 @@ class Page {
     w13_list_.clear();
     w13_pick_ = -1;
     w13_game_ = p;
+    names2k_.clear();
     if (!w13_disc_.OpenPath(p))
       return;
+    if (y_title_ != kWwe13)
+      names2k_ = strings2k::ArenaNames(w13_disc_);  // (2K15 to 2K17; 2K14: none, its apron shown)
     for (const auto &n : w13_disc_.List("pac/bg"))
       if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
           (y_title_ != kWwe13 ? atoi(n.c_str() + 2) < 66
@@ -1083,8 +1087,8 @@ class Page {
     return {};
   }
 
-  // The game of a WWE '13-kind source (WWE '13, 2K14, 2K15, 2K16) and its arenas' names (WWE '13's known; the 2K
-  // games' still to read from their string files).
+  // The game of a WWE '13-kind source (WWE '13, 2K14 to 2K17) and its arenas' names (WWE '13's known; the 2K
+  // games' read from their discs, strings2k.h).
   const char *YukesGame() const {
     return y_title_ == 0x545408B2   ? "WWE 2K14"
            : y_title_ == 0x545408B6 ? "WWE 2K15"
@@ -1094,7 +1098,8 @@ class Page {
   }
   std::string Label13(int n) const {
     char b[96];
-    const char *name = y_title_ == kWwe13 ? port13::ArenaName(n) : "";
+    const auto it = names2k_.find(n);
+    const char *name = y_title_ == kWwe13 ? port13::ArenaName(n) : it != names2k_.end() ? it->second.c_str() : "";
     snprintf(b, sizeof(b), "%s  (bg%02d)", *name ? name : (std::string(YukesGame()) + (" arena")).c_str(), n);
     return b;
   }
@@ -1171,6 +1176,8 @@ class Page {
       snprintf(name_, sizeof(name_), "%s (WWE '13)", port13::ArenaName(w13_pick_));
     else
       snprintf(name_, sizeof(name_), "%s bg%02d", YukesGame(), w13_pick_);
+    if (const auto it = names2k_.find(w13_pick_); it != names2k_.end())
+      snprintf(name_, sizeof(name_), "%s (%s)", it->second.c_str(), YukesGame());
     as_new_ = true;
   }
 
@@ -1383,6 +1390,7 @@ class Page {
   // Porting from WWE '13.
   disc::GameDisc w13_disc_;  // WWE '13's ISO or folder (My game discs)
   fs::path w13_game_;
+  std::map<int, std::string> names2k_;  // a 2K game's arenas' names by number (strings2k.h), else empty
   static constexpr uint32_t kWwe13 = 0x545108B4;
   uint32_t y_title_ = kWwe13;  // the WWE '13-kind game read through w13_disc_ (WWE '13, 2K14, 2K15, 2K16)
   std::vector<int> w13_list_;

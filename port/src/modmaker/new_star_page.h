@@ -31,6 +31,7 @@
 #include "mods.h"
 #include "port13_star.h"
 #include "port_svr.h"
+#include "strings2k.h"
 
 namespace new_star_page {
 
@@ -602,48 +603,15 @@ class Page {
 
   // The 2K games' names: their CHAR / DAT records (208, 216 or 220 bytes, number at +4) hold string ids made of the
   // number plus a constant: the full name is number + 64000 in WWE 2K14, number + 6000 in 2K15 to 2K17 (+1000 / +3000
-  // are shorter names, +9000 the Twitter name). The strings: pac/string.pac (2K17: string_360.pac), SDB tables of
-  // u32 0, u32 count, count x {u32 offset, u32 length, u32 id}, English first ("SDB /XX00"; 2K17's names are hashed).
+  // are shorter names, +9000 the Twitter name), in the game's strings (strings2k.h).
   static void Names2K(const disc::GameDisc &g, const std::map<int, std::vector<int>> &ids,
                       std::map<int, std::string> &names) {
-    Bytes str;
-    svrfmt::Archive s;
-    if ((!g.Read("pac/string.pac", str) && !g.Read("pac/string_360.pac", str)) || !svrfmt::ArchiveOpen(str, s, nullptr))
-      return;
-    std::map<uint32_t, std::string> strings;
-    const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
-      if (depth == 1 && n.group == "SDB " && n.name.size() == 4 && n.name.compare(2, 2, "00") != 0)
-        return;  // (another language)
-      const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
-      uint32_t zero = 1, count = 0;
-      if (d.size() >= 8) {
-        memcpy(&zero, d.data(), 4);
-        memcpy(&count, d.data() + 4, 4);
-      }
-      if (depth && zero == 0 && count && 8 + size_t(count) * 12 <= d.size()) {
-        for (uint32_t i = 0; i < count; ++i) {
-          uint32_t e[3];
-          memcpy(e, d.data() + 8 + i * 12, 12);
-          if (e[0] < d.size() && e[1] <= d.size() - e[0] && e[2] >= 6000)
-            strings.emplace(e[2], std::string(reinterpret_cast<const char *>(d.data() + e[0]),
-                                              strnlen(reinterpret_cast<const char *>(d.data() + e[0]), e[1])));
-        }
-        return;
-      }
-      if (depth < 3 && svrfmt::ArchiveExpand(n))
-        for (auto &c : n.kids)
-          self(self, c, depth + 1);
-    };
-    walk(walk, s.root, 0);
+    const auto strings = strings2k::Strings(g, 6000);
     for (const auto &[number, ks] : ids)
       for (int k : {64000, 6000})
         if (std::find(ks.begin(), ks.end(), k) != ks.end())
           if (const auto it = strings.find(uint32_t(number + k)); it != strings.end() && !it->second.empty()) {
-            std::string name = it->second;
-            for (const char *q : {"\xE2\x80\x9C", "\xE2\x80\x9D"})  // (curly quotes: plain ones for the font)
-              for (size_t at; (at = name.find(q)) != std::string::npos;)
-                name.replace(at, 3, "\"");
-            names[number] = name;
+            names[number] = it->second;
             break;
           }
   }

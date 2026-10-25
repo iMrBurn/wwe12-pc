@@ -671,7 +671,7 @@ places ×10, d'après le code de Kaiko).
   (2K14) ou numéro + 6000 (2K15 à 2K17 ; +1000 / +3000 = noms courts, +9000 = nom Twitter), dans `pac/string.pac`
   (2K17 : `string_360.pac`, HSPC), tables SDB « u32 0, u32 nombre, nombre × {u32 position, u32 longueur, u32 n°} »,
   anglais = groupes `SDB /XX00` (2026-10-25 : 113 / 105 / 182 / 175 noms lus). Les numéros sans nom gardent ceux de
-  WWE '13 / '12 au même numéro, marqués « ? ». Arènes 2K : pas de lien numéro → nom trouvé dans ces textes. Vérifié en
+  WWE '13 / '12 au même numéro, marqués « ? ». **Noms des arènes 2K** (2026-10-25, vus à l'écran pour 2K16) : `pac\wuniData.pac` (données de l'Univers), tables « udt » (u32 `udt\2`, nombre, 52, … ; lignes dès +32) de {nom interne[40] (`PPV_RAW`, `PPV_WM31`…), u32 n° du texte, u32 **numéro d'arène**, u32 rang} : bg00 SMACKDOWN, bg01 RAW, bg04 WWE PAYBACK '14, bg15 WRESTLEMANIA 31… (2K15 à 2K17 ; n° < 1000 = emplacements d'arènes créées, sans nom). 2K14 n'a pas ces tables : aperçu du tablier seulement. Lecture commune : `strings2k.h`. Vérifié en
   pilotant le Mod Maker (Royal Rumble de SvR → Bragging Rights ; Capitol Punishment de WWE '13) ; Breaking Point
   (SvR) faite par l'utilisateur et chargée en jeu.
 
