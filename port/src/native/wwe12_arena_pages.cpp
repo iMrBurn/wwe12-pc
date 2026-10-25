@@ -46,9 +46,11 @@
 //    stores it: the VS screen and its animation before the match; the same in WWE '12 and WWE '13) appended to a
 //    served LoadHD.pac; while it is the chosen arena, the directory answers its base's /LOAD/90NN with it;
 //  - an added arena's own transition video (arena\transition.bik: its MOVT/M0NN of pac\evt\evtmov.pac, Bink 1 at
-//    640 x 640 in WWE '12 and WWE '13): evtmov.pac (273 MB) is too big to copy at every start, so it goes at the end
-//    of the served MatchHD.pac, and the directory answers the base's /MOVT/M0NN with that file's number (+12) and
-//    the video's place.
+//    640 x 640 in WWE '12 and WWE '13) appended to a served evtmov.pac; while it is the chosen arena, the directory
+//    answers its base's /MOVT/M0NN with it. evtmov.pac is 273 MB, so that copy lives apart
+//    (Documents\wwe12\arena_movies) and is only rebuilt when the videos change. (Appended to the served MatchHD.pac
+//    instead, with the directory's file number at +12 changed to it: the video player waited forever on a black
+//    screen.)
 //
 // Test: wwe12_arena_pages_test = true adds one page, the 21 arenas in reverse order, and logs the lookups.
 
@@ -118,7 +120,7 @@ struct Added {
   std::vector<uint8_t> load;  // its own pre-match screen (until appended), else empty
   u32 load_sector = 0, load_units = 0;  // ... appended to LoadHD.pac (0: the base's)
   std::vector<uint8_t> movie;  // its own transition video (until appended), else empty
-  u32 movie_sector = 0, movie_units = 0;  // ... appended to MatchHD.pac (0: the base's)
+  u32 movie_sector = 0, movie_units = 0;  // ... appended to evtmov.pac (0: the base's)
 };
 std::vector<Added> g_added;
 // A base arena's file as served (Documents\wwe12\arena_slots\pac\bg\bgNN.pac): the whole file of the arena
@@ -189,6 +191,96 @@ bool ReadGameFile(rex::filesystem::VirtualFileSystem *vfs, const std::string &pa
   const bool ok = file->ReadSync(std::span<uint8_t>(out.data(), out.size()), 0, &read) == 0 && read == out.size();
   file->Destroy();
   return ok;
+}
+
+// The added arenas' transition videos appended to a copy of evtmov.pac in movies_root (pac\evt\evtmov.pac), kept
+// between starts with a key (the base's size, each video's size and hash) and rebuilt when it changes. False: none
+// (or no copy), so nothing to serve.
+bool ServeMovies(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, const fs::path &movies_root) {
+  std::error_code ec;
+  const fs::path served = movies_root / "pac" / "evt" / "evtmov.pac", key_file = movies_root / "key.txt";
+  if (std::none_of(g_added.begin(), g_added.end(), [](const Added &a) { return !a.movie.empty(); })) {
+    fs::remove_all(movies_root, ec);
+    return false;
+  }
+  // The game's evtmov.pac: the mods folder's, else the disc's.
+  const fs::path host_base = mods / "pac" / "evt" / "evtmov.pac";
+  rex::filesystem::File *file = nullptr;
+  uint64_t base_size = 0;
+  if (fs::exists(host_base, ec)) {
+    base_size = fs::file_size(host_base, ec);
+  } else {
+    rex::filesystem::Entry *entry = vfs->ResolvePath("game:\\pac\\evt\\evtmov.pac");
+    if (!entry || entry->Open(rex::filesystem::FileAccess::kFileReadData, &file) != 0 || !file)
+      return false;
+    base_size = entry->size();
+  }
+  // Where each video goes, and the key.
+  uint64_t end = (base_size + 0x7FF) & ~uint64_t(0x7FF);
+  std::string key = std::to_string(base_size);
+  for (auto &a : g_added) {
+    if (a.movie.empty())
+      continue;
+    a.movie_sector = u32(end / 0x800);
+    a.movie_units = u32((a.movie.size() + 0xFF) / 0x100);
+    end = (end + a.movie.size() + 0x7FF) & ~uint64_t(0x7FF);
+    uint64_t h = 1469598103934665603ull;
+    for (uint8_t c : a.movie)
+      h = (h ^ c) * 1099511628211ull;
+    key += " " + std::to_string(a.movie.size()) + ":" + std::to_string(h);
+  }
+  std::vector<uint8_t> old_key;
+  if (ReadHost(key_file, old_key) && std::string(old_key.begin(), old_key.end()) == key &&
+      fs::file_size(served, ec) == end && !ec) {
+    if (file)
+      file->Destroy();
+    for (auto &a : g_added)
+      a.movie = {};
+    return true;
+  }
+  fs::remove_all(movies_root, ec);
+  fs::create_directories(served.parent_path(), ec);
+  bool ok = true;
+  if (!file) {
+    ok = fs::copy_file(host_base, served, fs::copy_options::overwrite_existing, ec) && !ec;
+  } else {
+    std::ofstream o(served, std::ios::binary | std::ios::trunc);
+    std::vector<uint8_t> chunk(8u << 20);
+    for (uint64_t at = 0; ok && at < base_size;) {
+      const size_t n = size_t(std::min<uint64_t>(chunk.size(), base_size - at));
+      size_t read = 0;
+      ok = file->ReadSync(std::span<uint8_t>(chunk.data(), n), at, &read) == 0 && read == n &&
+           o.write(reinterpret_cast<const char *>(chunk.data()), std::streamsize(n));
+      at += n;
+    }
+    file->Destroy();
+  }
+  if (ok) {
+    std::fstream o(served, std::ios::binary | std::ios::in | std::ios::out);
+    for (auto &a : g_added) {
+      if (a.movie.empty())
+        continue;
+      o.seekp(std::streamoff(uint64_t(a.movie_sector) * 0x800));
+      o.write(reinterpret_cast<const char *>(a.movie.data()), std::streamsize(a.movie.size()));
+      a.movie = {};
+    }
+    o.close();
+    ok = bool(o);
+    if (ok) {
+      fs::resize_file(served, end, ec);
+      ok = !ec;
+    }
+  }
+  if (!ok) {
+    REXLOG_WARN("[arena pages] could not write {}", rex::path_to_utf8(served));
+    fs::remove_all(movies_root, ec);
+    for (auto &a : g_added)
+      a.movie_units = 0;
+    return false;
+  }
+  WriteHost(key_file, std::vector<uint8_t>(key.begin(), key.end()));
+  REXLOG_INFO("[arena pages] transition videos served in {}", rex::path_to_utf8(served));
+  return true;
 }
 
 // A disc file as the game would get it without us: the mods folder's copy, else the disc's.
@@ -365,12 +457,6 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       a.card_mb = {};
       a.card_mf = {};
     }
-    for (auto &a : g_added) {  // (the transition videos: see above)
-      if (a.movie.empty())
-        continue;
-      Append(matchhd, a.movie.data(), a.movie.size(), a.movie_sector, a.movie_units);
-      a.movie = {};
-    }
     WriteHost(out / "pac" / "menu" / "MatchHD.pac", matchhd);
   }
   if (std::any_of(g_added.begin(), g_added.end(), [](const Added &a) { return !a.etex.empty(); })) {
@@ -397,11 +483,21 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       WriteHost(out / "pac" / "menu" / "LoadHD.pac", loadhd);
     }
   }
+  const fs::path movies = user_root / "arena_movies";
+  const bool serve_movies = ServeMovies(vfs, mods, movies);
   auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, out, true);
   if (!overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(overlay))) {
     REXLOG_WARN("[arena pages] could not serve {}", rex::path_to_utf8(out));
     g_added.clear();
     return;
+  }
+  if (serve_movies) {
+    auto movie_overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, movies, true);
+    if (!movie_overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(movie_overlay))) {
+      REXLOG_WARN("[arena pages] could not serve {}", rex::path_to_utf8(movies));
+      for (auto &a : g_added)
+        a.movie_units = 0;
+    }
   }
   REXLOG_INFO("[arena pages] {} added arena(s), served from {}", g_added.size(), rex::path_to_utf8(out));
 }
@@ -697,14 +793,13 @@ extern "C" REX_FUNC(sub_827F29F0) {
       REXLOG_INFO("[arena pages] {}: the pre-match screen of {}", n, a.id);
     }
   } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].movie_units && bd::mem::load<u16>(out + 12) == kEvtMovIndex) {
-    // Its own transition video, from the served MatchHD.pac (its file number too).
+    // Its own transition video, in place of its base's.
     const Added &a = g_added[size_t(g_chosen)];
     char movt[16];
     snprintf(movt, sizeof(movt), "/MOVT/M%03u", a.base);
     if (strcmp(n, movt) == 0) {
       bd::mem::store<u32>(out, a.movie_sector);
       bd::mem::store<u32>(out + 8, a.movie_units);
-      bd::mem::store<u16>(out + 12, kMatchHdIndex);
       REXLOG_INFO("[arena pages] {}: the transition of {}", n, a.id);
     }
   }
