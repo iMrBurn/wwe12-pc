@@ -849,6 +849,26 @@ places ×10, d'après le code de Kaiko).
   n'affiche) et y répond avec la carte ajoutée. Fausses pistes : un nom propre `MB150` (numéro utilisé ailleurs,
   affichage cassé), le calque 16 de l'écran (jamais le chemin pris).
 
+## 6 sexdecies. Import FBX des catcheurs (2026-10-26, vu en jeu)
+
+- **Mod Maker** : NOUVEAU CATCHEUR, étape 1, « Un modèle 3D (.fbx) » (`fbx_star.h`). Lecture par ufbx 0.23.1 (MIT,
+  `third_party/ufbx`), squelette reconnu par le nom des os (`rig_map.cpp` de Kaiko : Mixamo, Unity / VRChat, Rigify,
+  3ds Max Biped, Unreal, SvR, WWE / 2K), pose et taille sur le squelette WWE '12 de la base (code de pose de Kaiko,
+  `char_fbx.cpp`), chaque sommet recollé sur les articulations de la base, matériaux de la base (peau `yCh_skin` sans
+  muscles ni rides, `yCh_gear`, `yCh_Reflect`), 20 os par maillage, textures en une image à la taille de la couleur de la
+  base, détail réduit au-delà d'un budget (12 000 par défaut), masques Superstar Threads vides, 10000 / 20000 retirés.
+- **Essai** : l'Orton de SvR 2011 exporté en FBX (export de Kaiko, hors dépôt) importé sur CM Punk : **en jeu, en match
+  et en entrée (celle de CM Punk)**. Défaut vu : une tache claire sur le front (sans doute une décalcomanie de rides de
+  SvR, transparente chez lui, opaque ici). Pas encore essayé : un FBX venu d'ailleurs (Mixamo…).
+- **Places des catcheurs ajoutés (trouvé en chemin)** : la sauvegarde garde sa copie de chaque fiche (`SaveData.Dat` :
+  CHAR/DAT sans ses 4 premiers octets à 0x1C, 286 o par catcheur, 13 nombres 16 bits retournés ; CHAR/PRO = prises et
+  entrée, sans ses 4 octets, 1068 o, nombres 16 bits retournés jusqu'à l'octet 486, à 324792 ; même ordre, index = table
+  u16 0x8307B5E0). Le jeu ne la prépare pour une place DLC (85-99) qu'en découvrant un pack : une place ajoutée plus tard à
+  notre pack restait verrouillée (cachée), puis « DLC 37 » / OVERALL 0, écran noir au match. **Les nouveaux catcheurs
+  prennent maintenant d'abord une fiche vide du disque (100+)**, et le jeu recopie la fiche et les prises du mod dans la
+  sauvegarde quand elles diffèrent (`sub_828ADFB8`, cvar `wwe12_superstar_roster_fix`, contrôle sur John Cena avant
+  d'écrire les prises). Sans les prises, pas d'entrée.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

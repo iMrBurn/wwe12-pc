@@ -46,6 +46,7 @@ struct Options {
   bool keep_face = true;                    // ... the head's kept as long as possible
   std::map<std::string, bool> include;      // by mesh name ("node / material"): off leaves it out
   std::map<std::string, std::string> kind;  // by mesh name: "skin", "gear", "eye", "hair" (default: by its names)
+  bool keep_extras = false;                 // (test) the base's hair, eyelashes and masks kept as they are
 };
 
 struct Report {
@@ -1360,6 +1361,8 @@ inline bool FbxToAttire(const fs::path &fbx, svrfmt::ArcNode &attire, const Opti
     svrfmt::ArchiveReplace(*nrm_node, svrfmt::BundleWrite(nrm_bundle));
   }
   for (uint32_t id : {13u, 14u}) {  // Superstar Threads masks: blank (no zone to colour)
+    if (opts.keep_extras)
+      break;
     svrfmt::ArcNode *k = child(id);
     std::vector<svrfmt::BundleTexture> b;
     svrfmt::DdsInfo i;
@@ -1372,7 +1375,7 @@ inline bool FbxToAttire(const fs::path &fbx, svrfmt::ArcNode &attire, const Opti
     svrfmt::ArchiveReplace(*k, svrfmt::BundleWrite(b));
   }
   for (uint32_t id : {15u, 10000u, 20000u})
-    for (size_t i = 0; i < attire.kids.size(); ++i)
+    for (size_t i = 0; i < attire.kids.size() && !opts.keep_extras; ++i)
       if (attire.kids[i].id == id) {
         svrfmt::ArchiveRemove(attire, i);
         break;

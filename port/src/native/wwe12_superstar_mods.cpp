@@ -47,6 +47,18 @@ using Bytes = std::vector<uint8_t>;
 constexpr const char *kPackName = "WWE12PCMODS";
 
 std::map<uint32_t, uint32_t> g_movies;  // added superstar -> the number of its own entrance video
+std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the save keeps it (286 bytes)
+std::map<uint32_t, Bytes> g_moves;      // ... its moves and entrance (CHAR / PRO) as the save keeps them (1068 bytes)
+Bytes g_cena_moves;                     // John Cena's (139), as the save keeps them: where they are is checked on his
+
+// A CHAR / PRO record (1072 bytes) as the save keeps it: without its first 4 bytes, its 16-bit numbers big-endian up
+// to byte 486 (exact on 204 of 273 superstars of a save; the others were empty records or edited, 2026-10-26).
+Bytes SavedMoves(const Bytes &d) {
+  Bytes r(d.begin() + 4, d.end());
+  for (size_t a = 0; a + 1 < 486 && a + 1 < r.size(); a += 2)
+    std::swap(r[a], r[a + 1]);
+  return r;
+}
 
 std::string Value(const std::string &text, const char *key) {
   const std::string k = std::string(key) + "=";
@@ -331,6 +343,43 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;
   }
+  // Their records as the save keeps them (the select screen's roster, below): the pack's CHAR / DAT record without
+  // its first 4 bytes, its 16-bit numbers big-endian (13 of them, found on 254 records of a save, 2026-10-26).
+  g_records.clear();
+  g_moves.clear();
+  {
+    svrfmt::Archive etc;
+    if (svrfmt::ArchiveOpen(in.chetc, etc, nullptr))
+      for (auto &k : etc.root.kids)
+        if (k.group == "CHAR" && k.name == "PRO " && svrfmt::ArchiveExpand(k))
+          for (auto &c : k.kids)
+            if (c.id == 139 && svrfmt::ArchiveData(c).size() == 1072)
+              g_cena_moves = SavedMoves(svrfmt::ArchiveData(c));
+  }
+  for (const auto &f : files) {
+    svrfmt::Archive etc;
+    if (f.path != "pac/ch/chEtc.pac" || !svrfmt::ArchiveOpen(f.data, etc, nullptr))
+      continue;
+    for (auto &k : etc.root.kids)
+      if (k.group == "CHAR" && k.name == "PRO " && svrfmt::ArchiveExpand(k))
+        for (auto &c : k.kids) {
+          const Bytes d = svrfmt::ArchiveData(c);
+          if (d.size() == 1072 &&
+              std::any_of(stars.begin(), stars.end(), [&](const auto &st) { return uint32_t(st.slot) == c.id; }))
+            g_moves[c.id] = SavedMoves(d);
+        }
+    for (auto &k : etc.root.kids)
+      if (k.group == "CHAR" && k.name == "DAT " && svrfmt::ArchiveExpand(k))
+        for (auto &c : k.kids) {
+          const Bytes d = svrfmt::ArchiveData(c);
+          if (d.size() != 290 || std::none_of(stars.begin(), stars.end(), [&](const auto &st) { return uint32_t(st.slot) == c.id; }))
+            continue;
+          Bytes r(d.begin() + 4, d.end());
+          for (const size_t at : {36, 38, 40, 236, 238, 240, 242, 244, 252, 254, 268, 270, 272})
+            std::swap(r[at], r[at + 1]);
+          g_records[c.id] = std::move(r);
+        }
+  }
   // The numbers kept for next time.
   {
     std::string text;
@@ -430,4 +479,62 @@ extern "C" REX_FUNC(sub_82A316A0) {
       ctx.r3.u64 = it->second;
   }
   __imp__sub_82A316A0(ctx, base);
+}
+
+// The select screen's candidates (sub_828ADFB8: numbers 50..372 that the save says are unlocked). The save keeps its
+// own copy of every superstar's record (the roster: [0x8317FA08] + index * 286, index = u16 table 0x8307B5E0[number];
+// sub_82684BF8 / sub_82684910 read it), made when it first saw the superstar: its name, ratings and "unlocked" (byte
+// 247) are shown from there. A number another mod had before kept that one's copy (FBX TEST at 86, where an old
+// test's superstar was: hidden as locked, then shown as "DLC 37" with OVERALL 0 and a black screen at the match,
+// 2026-10-26, wwe12_roster_probe): an added superstar's copy is made again from its record when it differs, unlocked.
+REXCVAR_DEFINE_BOOL(wwe12_superstar_roster_fix, true, "WWE12",
+                    "Added superstars: the save's copy of their record made again when it differs (unlocked).");
+REX_EXTERN(__imp__sub_828ADFB8);
+extern "C" REX_FUNC(sub_828ADFB8) {
+  const uint32_t roster = REXCVAR_GET(wwe12_superstar_roster_fix) ? bd::mem::load<uint32_t>(0x8317FA08) : 0;
+  for (const auto &[id, rec] : g_records) {
+    const uint32_t index = id < 373 ? bd::mem::load<uint16_t>(0x8307B5E0 + id * 2) : 0xFFFF;
+    if (!roster || index >= 373)
+      continue;
+    const uint32_t at = roster + index * 286;
+    bool same = true;
+    for (uint32_t k = 0; k < 286 && same; ++k)
+      same = k == 247 || bd::mem::load<uint8_t>(at + k) == rec[k];
+    if (same && bd::mem::load<uint8_t>(at + 247))
+      continue;
+    for (uint32_t k = 0; k < 286; ++k)
+      if (k != 247)
+        bd::mem::store<uint8_t>(at + k, rec[k]);
+    bd::mem::store<uint8_t>(at + 247, 1);
+    REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its record made again{}", id,
+                same ? " (it was locked)" : "");
+  }
+  // Its moves and entrance too: the save keeps them after the records (SaveData.Dat: the records at 0x1C, the moves at
+  // 324792, 1068 bytes each, same order). A disc's empty record's were empty: no entrance (FBX TEST at 108, 2026-10-26).
+  // Only once that place holds John Cena's as they should be.
+  const uint32_t moves = roster ? roster - 0x1C + 324792 : 0;
+  const auto index_of = [](uint32_t id) { return id < 373 ? uint32_t(bd::mem::load<uint16_t>(0x8307B5E0 + id * 2)) : 0xFFFFu; };
+  bool found = moves && g_cena_moves.size() == 1068 && index_of(139) < 373;
+  for (uint32_t k = 0; found && k < 1068; ++k)
+    found = bd::mem::load<uint8_t>(moves + index_of(139) * 1068 + k) == g_cena_moves[k];
+  if (moves && !found && !g_moves.empty()) {
+    static bool told = false;
+    if (!told)
+      REXLOG_WARN("[superstar mods] the save's moves not found where expected: added superstars' left as they are");
+    told = true;
+  }
+  for (const auto &[id, mv] : g_moves) {
+    if (!found || index_of(id) >= 373)
+      continue;
+    const uint32_t at = moves + index_of(id) * 1068;
+    bool same = true;
+    for (uint32_t k = 0; k < 1068 && same; ++k)
+      same = bd::mem::load<uint8_t>(at + k) == mv[k];
+    if (same)
+      continue;
+    for (uint32_t k = 0; k < 1068; ++k)
+      bd::mem::store<uint8_t>(at + k, mv[k]);
+    REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its moves and entrance made again", id);
+  }
+  __imp__sub_828ADFB8(ctx, base);
 }

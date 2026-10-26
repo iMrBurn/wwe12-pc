@@ -177,13 +177,16 @@ inline std::vector<int> FreeSlots(const Inputs &in) {
       return n.rfind("DLC ", 0) == 0;
     return !n.empty() && std::all_of(n.begin(), n.end(), [](char ch) { return ch >= '0' && ch <= '9'; });
   };
+  // The disc's empty records first: the save has them ready (unlocked, set up). A DLC slot is set up by the game only
+  // when a pack it hasn't seen brings it: one added to our pack later stayed locked, and set unlocked by hand it went
+  // to a black screen at the match (FBX TEST at 86, 90, 91, 2026-10-26; at 104, CHRIS JERICHO played at once).
+  for (int id = 100; id < 373; ++id)
+    if (blank(id))
+      out.push_back(id);
   for (int id = 85; id < 100; ++id)
     if (blank(id))
       out.push_back(id);
   for (int id = 50; id < 85; ++id)
-    if (blank(id))
-      out.push_back(id);
-  for (int id = 100; id < 373; ++id)
     if (blank(id))
       out.push_back(id);
   return out;
