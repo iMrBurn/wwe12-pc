@@ -1170,8 +1170,31 @@ class Page {
     if (!loadhd.empty())
       port13::PreMatch(loadhd, w13_pick_, load_);
     const Bytes evtmov = Read13("pac/evt/evtmov.pac");
-    if (!evtmov.empty() && port13::TransitionVideo(evtmov, w13_pick_, movie_))
+    if (!evtmov.empty() && port13::TransitionVideo(evtmov, w13_pick_, movie_)) {
       port_note_ += fr ? " Avec sa transition." : " With its transition.";
+    } else if (y_title_ != kWwe13) {
+      // WWE 2K15-2K17: Bink 2, made into WWE '12's Bink 1 (320 x 320 as its M021: our encoder packs little, 640 x 640
+      // came out 13 MB against WWE '12's 0.4-0.9 MB; a fade in and out for its alpha)
+      Bytes bk2;
+      if (port13::Transition2K([&](const char *p) { return Read13(p); }, w13_pick_, bk2)) {
+        wchar_t tmp[MAX_PATH];
+        GetTempPathW(MAX_PATH, tmp);
+        const fs::path in = fs::path(tmp) / L"wwe12_transition.bk2", out = fs::path(tmp) / L"wwe12_transition.bik";
+        std::ofstream(in, std::ios::binary).write(reinterpret_cast<const char *>(bk2.data()), std::streamsize(bk2.size()));
+        std::wstring err;
+        if (bink2::ToBink1(bink2::Found(), in, out, nullptr, nullptr, &err, 320, 320, 8)) {
+          std::ifstream f(out, std::ios::binary);
+          movie_.assign(std::istreambuf_iterator<char>(f), {});
+          port_note_ += fr ? " Avec sa transition." : " With its transition.";
+        } else {
+          port_note_ += fr ? " Sa transition (Bink 2) n'a pas pu être convertie : " + media::Utf8(err) + "."
+                           : " Its transition (Bink 2) couldn't be converted: " + media::Utf8(err) + ".";
+        }
+        std::error_code ec;
+        fs::remove(in, ec);
+        fs::remove(out, ec);
+      }
+    }
     if (y_title_ == kWwe13 ? !matchhd.empty() && port13::Banner(matchhd, w13_pick_, img)
                            : port13::Banner2K([&](const char *p) { return Read13(p); }, y_title_, w13_pick_, img)) {
       SetBanner(Fill(img, 256, 128));

@@ -20,6 +20,9 @@ BinkWriter *bink_writer_open(FILE *f, int frames);
 /* The same at width x height (multiples of 16, 16..1024). NULL: out of
  * memory or a bad size. */
 BinkWriter *bink_writer_open_size(FILE *f, int frames, int width, int height);
+/* The same with an alpha plane (the BGRA's A; header flag 0x00100000), as the
+ * game's arena transition movies (evtmov.pac MOVT, 640 x 640). */
+BinkWriter *bink_writer_open_alpha(FILE *f, int frames, int width, int height);
 /* Encodes the next frame (width x height BGRA): 1, 0 out of memory, -1 write failed. */
 int bink_writer_frame(BinkWriter *w, const uint8_t *bgra);
 /* The next frame the same as the last one (all skip blocks; encoded once,

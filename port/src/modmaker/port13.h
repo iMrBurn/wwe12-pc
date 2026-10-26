@@ -660,6 +660,38 @@ inline bool TransitionVideo(const Bytes &evtmov13, int file, Bytes &out) {
   return out.size() >= 8 && memcmp(out.data(), "BIKi", 4) == 0;
 }
 
+// The arena's transition movie in WWE 2K15-2K17 (Bink 2, 640 x 640 with alpha; made into WWE '12's Bink 1 by
+// bink2::ToBink1): 2K16 / 2K17 pac/mov/transition/0000NN.pac (one movie each), 2K15 pac/evt/evtmov_transition.pac
+// MOVT/M0000NN. (WWE 2K14's are WWE '13's kind: evtmov.pac MOVT/M0NN, Bink 1, TransitionVideo.)
+inline bool Transition2K(const std::function<Bytes(const char *)> &read, int file, Bytes &bk2) {
+  bk2.clear();
+  const auto first = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+    if (!bk2.empty())
+      return;
+    if (depth < 3 && svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
+      for (auto &c : n.kids)
+        self(self, c, depth + 1);
+      return;
+    }
+    const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
+    if (d.size() > 44 && memcmp(d.data(), "KB2", 3) == 0)
+      bk2 = d;
+  };
+  char p[48];
+  snprintf(p, sizeof(p), "pac/mov/transition/%06d.pac", file);
+  svrfmt::Archive a;
+  if (svrfmt::ArchiveOpen(read(p), a, nullptr))
+    first(first, a.root, 0);
+  if (bk2.empty() && svrfmt::ArchiveOpen(read("pac/evt/evtmov_transition.pac"), a, nullptr)) {
+    char name[16];
+    snprintf(name, sizeof(name), "M%06d", file);
+    for (auto &k : a.root.kids)
+      if (k.group == "MOVT" && k.name.compare(0, 7, name) == 0)
+        first(first, k, 1);
+  }
+  return !bk2.empty();
+}
+
 // The arena's VS screen ("match card") in WWE '13's menu/MatchHD.pac, as stored: MLYE/MBnn (its layout, YXMLBIN, and
 // pictures, as WWE '12's) and MENU/MnnF (its font, "font_venge" for Vengeance: the layout names it), nn = the arena's
 // file number. The game serves them for the added arena (wwe12_arena_pages.cpp).

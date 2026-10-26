@@ -329,9 +329,11 @@ inline bool ReadAvi(const fs::path &p, const std::function<bool(const uint8_t *b
 }
 
 // in (Bink 2) -> out (Bink 1, WWE '12's titantron layout when the source is 320 x 320), with the tool; progress
-// 0-100. The temporary files are removed.
+// 0-100. The temporary files are removed. fade > 0: with an alpha plane, opaque but over the first and last `fade`
+// frames (an arena's transition movie: the 2K games' have alpha, but neither tool gives it back: RAD Video Tools
+// writes 24-bit AVI and TGA; WWE '12's are a fade in and out over the picture).
 inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, std::atomic<int> *progress,
-                    std::atomic<bool> *cancel, std::wstring *err, int out_w = 0, int out_h = 0) {
+                    std::atomic<bool> *cancel, std::wstring *err, int out_w = 0, int out_h = 0, int fade = 0) {
   Info info;
   if (!ReadInfo(in, info)) {
     if (err)
@@ -353,7 +355,7 @@ inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, s
       *err = L"can't write " + out.wstring();
     return false;
   }
-  BinkWriter *bw = bink_writer_open_size(f, frames, W, H);
+  BinkWriter *bw = fade > 0 ? bink_writer_open_alpha(f, frames, W, H) : bink_writer_open_size(f, frames, W, H);
   if (!bw) {
     fclose(f);
     if (err)
@@ -386,6 +388,11 @@ inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, s
         last[i + 2] = s.rgba[i];
         last[i + 3] = 255;
       }
+    }
+    if (fade > 0) {
+      const int a = (std::min)({255, 255 * (done + 1) / fade, 255 * (frames - done) / fade});
+      for (size_t i = 3; i < last.size(); i += 4)
+        last[i] = uint8_t((std::max)(0, a));
     }
     if (bink_writer_frame(bw, last.data()) != 1)
       return false;

@@ -196,9 +196,9 @@ static void to_yuv(const uint8_t *bgra, uint8_t *Y, uint8_t *U, uint8_t *V, int 
 
 struct BinkWriter {
     FILE *f;
-    int frames, done, w, h;
+    int frames, done, w, h, alpha;
     uint8_t *same; size_t same_n;  /* bink_writer_repeat's frame */
-    uint8_t *Y, *U, *V, *rY, *rU, *rV;
+    uint8_t *Y, *U, *V, *rY, *rU, *rV, *A, *rA;
     uint32_t *offs, largest;
     Bits b;
 };
@@ -209,6 +209,7 @@ void bink_writer_free(BinkWriter *w)
 {
     if (!w) return;
     free(w->b.p); free(w->same); free(w->Y); free(w->U); free(w->V); free(w->rY); free(w->rU); free(w->rV); free(w->offs);
+    free(w->A); free(w->rA);
     free(w);
 }
 
@@ -240,9 +241,25 @@ BinkWriter *bink_writer_open_size(FILE *f, int frames, int MOVIE_W, int MOVIE_H)
     return w;
 }
 
+BinkWriter *bink_writer_open_alpha(FILE *f, int frames, int MOVIE_W, int MOVIE_H)
+{
+    BinkWriter *w = bink_writer_open_size(f, frames, MOVIE_W, MOVIE_H);
+    if (!w) return NULL;
+    w->alpha = 1;
+    w->A = (uint8_t *)malloc((size_t)MOVIE_W * MOVIE_H); w->rA = (uint8_t *)calloc((size_t)MOVIE_W * MOVIE_H, 1);
+    if (!w->A || !w->rA) { bink_writer_free(w); return NULL; }
+    return w;
+}
+
 int bink_writer_frame(BinkWriter *w, const uint8_t *bgra)
 {
-    if (bgra) to_yuv(bgra, w->Y, w->U, w->V, w->w, w->h);
+    if (bgra) {
+        to_yuv(bgra, w->Y, w->U, w->V, w->w, w->h);
+        if (w->alpha) {
+            size_t i, n = (size_t)w->w * w->h;
+            for (i = 0; i < n; i++) w->A[i] = bgra[i * 4 + 3];
+        }
+    }
     return bink_writer_frame_yuv(w);
 }
 
@@ -270,15 +287,25 @@ static int bink_writer_frame_yuv(BinkWriter *w)
 {
     const int MOVIE_W = w->w, MOVIE_H = w->h;
     Bits *b = &w->b;
-    size_t pos, ysize;
+    size_t pos, ysize, at = 0;
     const int key = w->done == 0;
     b->n = 0; b->bits = 0; b->acc = 0;
+    /* with alpha, the alpha plane first (encoded as Y), then the rest as without; each of the two parts starts with
+     * its size, its own 4 bytes counted (as the game's transition movies have them) */
+    if (w->alpha) {
+        size_t asize;
+        bits_put(b, 0, 32);
+        if (!encode_plane(b, w->A, w->rA, MOVIE_W, MOVIE_H, key, 2, 2)) return 0;
+        asize = b->n;
+        b->p[0] = (uint8_t)asize; b->p[1] = (uint8_t)(asize >> 8); b->p[2] = (uint8_t)(asize >> 16); b->p[3] = (uint8_t)(asize >> 24);
+        at = b->n;
+    }
     bits_put(b, 0, 32);                                          /* size of the Y plane, below */
     if (!encode_plane(b, w->Y, w->rY, MOVIE_W, MOVIE_H, key, 2, 2)) return 0;
-    ysize = b->n;
+    ysize = b->n - at;
     if (!encode_plane(b, w->V, w->rV, MOVIE_W / 2, MOVIE_H / 2, key, 2, 2)) return 0;   /* Bink 'i': V before U */
     if (!encode_plane(b, w->U, w->rU, MOVIE_W / 2, MOVIE_H / 2, key, 2, 2)) return 0;
-    b->p[0] = (uint8_t)ysize; b->p[1] = (uint8_t)(ysize >> 8); b->p[2] = (uint8_t)(ysize >> 16); b->p[3] = (uint8_t)(ysize >> 24);
+    b->p[at] = (uint8_t)ysize; b->p[at + 1] = (uint8_t)(ysize >> 8); b->p[at + 2] = (uint8_t)(ysize >> 16); b->p[at + 3] = (uint8_t)(ysize >> 24);
     pos = (size_t)bink_tell(w->f);
     w->offs[w->done] = (uint32_t)pos | (key ? 1u : 0u);
     if (fwrite(b->p, 1, b->n, w->f) != b->n) return -1;
@@ -294,7 +321,7 @@ int bink_writer_close(BinkWriter *w)
     w->offs[n] = (uint32_t)bink_tell(w->f);
     memcpy(hdr, "BIKi", 4);
     hdr[1] = w->offs[n] - 8; hdr[2] = (uint32_t)n; hdr[3] = w->largest; hdr[4] = (uint32_t)n;
-    hdr[5] = (uint32_t)w->w; hdr[6] = (uint32_t)w->h; hdr[7] = FPS; hdr[8] = 1; hdr[9] = 0; hdr[10] = 0;
+    hdr[5] = (uint32_t)w->w; hdr[6] = (uint32_t)w->h; hdr[7] = FPS; hdr[8] = 1; hdr[9] = w->alpha ? 0x00100000u : 0; hdr[10] = 0;
     bink_seek(w->f, 0, SEEK_SET);
     fwrite(hdr, 4, 11, w->f);
     fwrite(w->offs, 4, (size_t)n + 1, w->f);
