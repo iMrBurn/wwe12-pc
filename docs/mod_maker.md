@@ -821,6 +821,18 @@ places ×10, d'après le code de Kaiko).
   2K17 `Pbg_NN_*` (512 × 256, NN = le fichier, `MnLayHD.pac` / `MnLayHD_WWEUnivese.pac`) ; 2K15 `arena_<nom>`
   (256 × 128, `MnLayHD.pac` MLYE/USCH) d'après les fiches `PPV_<nom>` de `wuniData.pac` (noms raccourcis : même
   début, même numéro ; PPV_ER = arena_ex) ; 2K14 table `kBanners2K14`. Vérifié hors du jeu sur 28 arènes.
+- **Arènes 2K, suite (2026-10-26, vérifié en jeu sur WrestleMania 31 de 2K16)** : (3) **écrans vidéo** : WWE '12
+  choisit la vidéo d'un écran **par son numéro** (RenderDoc : 800/803/806/808 titantron, 801/807/809 vidéo de l'arène,
+  804/805 caméra en direct = effet « miroir ») ; les 2K les dessinent depuis une image `layout_*` (quart haut = rubans,
+  reste = titantron) ; `port13::ScreensTo12` renumérote par rôle (801 mur → 808, 808 bandeau → 800, 805 bande LED →
+  803, 800 → 807 ; doublons 802-804/807/809 retirés ; caches `titan_off` retirés) et recale les UV sur la vidéo
+  320 × 320 de WWE '12 ; `LedPanelsTo12` : panneaux `yBG_UVScroll` à plusieurs images → `yBG_Default` ; (4)
+  **transition** : 2K15-2K17 en Bink 2 (2K16/17 `pac/mov/transition/0000NN.pac`, 2K15 `evtmov_transition.pac`)
+  → Bink 1 320 × 320 avec alpha (encodeur : plan alpha avant Y, chaque partie précédée de sa taille ; RAD Video Tools
+  ne rend pas l'alpha : fondu de 8 images) ; 2K14 déjà en Bink 1 ; (5) **écran VS** : la mise en page 2K a 14
+  éléments contre 15 (pris par numéro : noms absents, rectangle noir) et une police version 104 ; un écran VS de
+  WWE '12 porte les images de 2K (`port_svr_arena::CardWearing`, commun avec SvR 2011). Reste : le disque du rond
+  central de WM 31 caché par le mur vidéo (laissé de côté).
 
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
