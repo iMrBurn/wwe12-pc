@@ -915,14 +915,14 @@ places ×10, d'après le code de Kaiko).
 
 ## 6 vicies. Fonds du menu principal (2026-10-26, vu en jeu)
 
-- Le menu principal affiche \MnLayHD.pac\ MLYE/EM00 (EL00 selon la région) : \ortontex02\ (1024 x 1024, 32 bits dans EM00,
-  DXT5 dans EL00) = Orton à côté du menu, \ortontex01\ (512 x 1024) = l'écran-titre. Le jeu nomme \/MLYE/EM%02d\ (n° au
-  champ +268 de l'objet du menu, \sub_82543700\), mais ces mises en page sont lues d'un bloc au démarrage : un EM01 dans
+- Le menu principal affiche `MnLayHD.pac` MLYE/EM00 (EL00 selon la région) : `ortontex02` (1024 × 1024, 32 bits dans EM00,
+  DXT5 dans EL00) = Orton à côté du menu, `ortontex01` (512 × 1024) = l'écran-titre. Le jeu nomme `/MLYE/EM%02d` (n° au
+  champ +268 de l'objet du menu, `sub_82543700`), mais ces mises en page sont lues d'un bloc au démarrage : un EM01 dans
   notre pack donnait un écran noir.
-- Mod \	ype=background\ (\ackgrounds/NN/menu.dds\, \	itle.dds\ facultatif) : à chaque lancement, un fond est tiré au sort
+- Mod `type=background` (`backgrounds/NN/menu.dds`, `title.dds` facultatif) : à chaque lancement, un fond est tiré au sort
   (ceux des mods et celui du jeu) ; les images d'EM00 / EL00 sont remplacées dans une copie de MnLayHD / MnLaySD.pac, au
-  même format et à la même taille (chaque entrée garde sa place), servie depuis \Documents\\wwe12\\menu_background\.
-  **Vu en jeu : Jericho au menu principal.** Page **FONDS DU MENU** du Mod Maker (\ackgrounds_page.h\).
+  même format et à la même taille (chaque entrée garde sa place), servie depuis `Documents\wwe12\menu_background`.
+  **Vu en jeu : Jericho au menu principal.** Page **FONDS DU MENU** du Mod Maker (`backgrounds_page.h`).
 
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
