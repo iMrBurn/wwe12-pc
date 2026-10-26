@@ -6,6 +6,7 @@
  *            See LICENSE file in the project root for full license text.
  */
 #include "gpu/constant_buffers.h"
+#include "gpu/cpu_zones.h"
 
 #include <algorithm>
 #include <atomic>
@@ -36,6 +37,8 @@ REXCVAR_DECLARE(bool, svr_match_guest_mips);
 
 #if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
+#elif defined(__aarch64__)
+#include <arm_neon.h>
 #endif
 
 namespace bd::gpu {
@@ -200,6 +203,16 @@ void CopyByteSwap32Impl(u8 *dst, u32 guest_va, u32 size) {
     }
     _mm_storeu_si128(reinterpret_cast<__m128i *>(out + i), v);
   }
+#elif defined(__aarch64__)
+  // Android phones: same as above with NEON (4 KiB per draw, hundreds of draws per frame).
+  const uint32x4_t abs_mask = vdupq_n_u32(0x7FFFFFFFu);
+  const uint32x4_t inf_bits = vdupq_n_u32(0x7F800000u);
+  for (; i + 4 <= count; i += 4) {
+    uint32x4_t v = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(reinterpret_cast<const uint8_t *>(src + i))));
+    if constexpr (kFlushNaN)
+      v = vbicq_u32(v, vcgtq_u32(vandq_u32(v, abs_mask), inf_bits));
+    vst1q_u32(out + i, v);
+  }
 #endif
   for (; i < count; ++i) {
 #if defined(_MSC_VER)
@@ -321,6 +334,7 @@ void RememberBlock(StageBlockCache &cache, const UploadState &s, const u8 *raw, 
 
 ConstantAllocation UploadVertexShaderConstants(u32 device_guest) {
   BD_CPU_ZONE("UploadVSConstants");
+  WWE12_CPU_ZONE(kConstants);
   auto &s = upload_state();
   if (!device_guest)
     return {};
@@ -340,6 +354,7 @@ ConstantAllocation UploadVertexShaderConstants(u32 device_guest) {
 
 ConstantAllocation UploadPixelShaderConstants(u32 device_guest, bool zero_dof) {
   BD_CPU_ZONE("UploadPSConstants");
+  WWE12_CPU_ZONE(kConstants);
   auto &s = upload_state();
   if (!device_guest)
     return {};
@@ -391,6 +406,7 @@ static u32 &SamplerIndex(SharedConstants &c, u32 i) { return c.samplerIndices[i]
 
 ConstantAllocation UploadSharedConstants(u32 device_guest) {
   BD_CPU_ZONE("UploadSharedConstants");
+  WWE12_CPU_ZONE(kConstants);
   auto &s = upload_state();
   if (!s.ready)
     return {};

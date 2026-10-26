@@ -1,6 +1,7 @@
 // SvR 2008 host resources for the game's own D3D textures and surfaces (see svr_resources.h).
 
 #include "svr_resources.h"
+#include "gpu/cpu_zones.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1063,6 +1064,7 @@ u64 SvrFrameIndex() { return g_frame.load(std::memory_order_relaxed); }
 // used and rebuilt when the fetch constant or the bytes changed. A texture that can't be mirrored
 // is remembered the same way, so it isn't retried (or logged) until it changes.
 GuestTexture *SvrResolveTexture(u32 texture_va) {
+  WWE12_CPU_ZONE(kTextures);
   if (!texture_va)
     return nullptr;
   const u64 frame = g_frame.load(std::memory_order_relaxed);

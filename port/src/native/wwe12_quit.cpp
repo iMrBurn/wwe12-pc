@@ -220,7 +220,15 @@ void Wwe12QuitEntryTick(u64 frame) {
   // each loading screen (the game reloads its tables after a match and rebuilds the main menu
   // right away), every 10 s otherwise. A scan reads all of the game's memory (100-200 ms of a fast
   // core): every 2 s, in matches too, it cost 5-10 % of a core (profile 2026-10-20).
-  const u64 period = (frame < 1800 || Wwe12MsSinceLoadScreen() < 5000) ? 60 : 600;
+  const bool around_load = frame < 1800 || Wwe12MsSinceLoadScreen() < 5000;
+  const u64 period = around_load ? 60 : 600;
+#if defined(__ANDROID__)
+  // On phones a scan takes 2-3 s of a core (log of issue #22): every 10 s in matches, that was
+  // a quarter of a core taken from the game. The tables load with the screens, so the scans at
+  // start-up and around the loading screens find them.
+  if (!around_load)
+    return;
+#endif
   if ((!REXCVAR_GET(wwe12_quit_entry) && !REXCVAR_GET(wwe12_pc_texts)) || frame % period != 0 ||
       g_scanning.exchange(true))
     return;

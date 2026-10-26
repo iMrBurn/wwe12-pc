@@ -10,6 +10,7 @@
  *            See LICENSE file in the project root for full license text.
  */
 #include "gpu/frame.h"
+#include "gpu/cpu_zones.h"
 
 #include <atomic>
 #include <chrono>
@@ -364,12 +365,21 @@ double MsSince(FrameStats::Clock::time_point t) {
   return std::chrono::duration<double, std::milli>(FrameStats::Clock::now() - t).count();
 }
 
+#if defined(__ANDROID__)
+}  // namespace bd::gpu
+void Wwe12PerfHintReport(double work_ms);  // android/wwe12_perf_hint.cpp
+namespace bd::gpu {
+#endif
+
 void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
   auto &fs = g_frame_stats;
   const auto now = FrameStats::Clock::now();
   if (fs.last_present.time_since_epoch().count() != 0) {
     const double interval = std::chrono::duration<double, std::milli>(now - fs.last_present).count();
     const double work = std::max(0.0, interval - fs.wait_ms);
+#if defined(__ANDROID__)
+    Wwe12PerfHintReport(work);
+#endif
     fs.sum_interval += interval;
     fs.max_interval = std::max(fs.max_interval, interval);
     fs.sum_work += work;
@@ -410,6 +420,18 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
               "{:.1f} ms | constant blocks {:.0f} uploaded, {:.0f} reused",
               (cpu_now - fs.window_cpu_ms) / n, fs.sum_work / n,
               (process_now - fs.window_process_ms) / n, blocks_uploaded / n, blocks_reused / n);
+#if defined(__ANDROID__)
+    {
+      using namespace zones;
+      const auto ms = [&](Id id) { return g_ns[id].exchange(0, std::memory_order_relaxed) / n / 1e6; };
+      const double draws = ms(kDraws), constants = ms(kConstants), geometry = ms(kGeometry),
+                   textures = ms(kTextures), present = ms(kPresent);
+      // The rest of the render thread's time is the game's own code (recompiled).
+      BD_INFO("[perf] render thread split per frame: draws {:.1f} ms (constants {:.1f} of it) | "
+              "textures {:.1f} ms | geometry {:.1f} ms | present {:.1f} ms (waits included)",
+              draws, constants, textures, geometry, present);
+    }
+#endif
     fs = FrameStats{};
     fs.window_start = now;
     fs.last_present = now;
@@ -419,6 +441,7 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
 }
 
 void Video::Present(GuestTexture *frontBuffer) {
+  WWE12_CPU_ZONE(kPresent);
   auto &s = state();
   if (s.shutting_down.load(std::memory_order_acquire))
     return;

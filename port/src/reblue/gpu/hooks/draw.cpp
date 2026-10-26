@@ -32,6 +32,7 @@
 #include "core/memory_helpers.h"
 #include "core/profiling.h"
 #include "gpu/constant_buffers.h"
+#include "gpu/cpu_zones.h"
 #include "gpu/d3d.h"
 #if defined(SVR_NATIVE_RENDERER)
 #include "svr_draw_log.h"
@@ -115,6 +116,7 @@ plume::RenderPrimitiveTopology MapPrimitiveType(u32 prim) {
 
 void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
                   const DrawArgs &args = {}) {
+  WWE12_CPU_ZONE(kDraws);
 #if defined(SVR_NATIVE_RENDERER)
   // A clear the Xbox did after resolving this surface's tiles, due now that it is drawn again.
   if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest)) {

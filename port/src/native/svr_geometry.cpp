@@ -13,6 +13,7 @@
 // content that keeps changing streams through the per-frame upload ring instead.
 
 #include "svr_geometry.h"
+#include "gpu/cpu_zones.h"
 
 #include <algorithm>
 #include <atomic>
@@ -387,6 +388,7 @@ void IndexBufferUnlocked(u32 ib_va) {
 }  // namespace
 
 void SvrBindDrawGeometry(u32 device_guest, bool indexed) {
+  WWE12_CPU_ZONE(kGeometry);
   const auto *device = bd::mem::at<const D3DDevice>(device_guest);
   if (!device)
     return;
