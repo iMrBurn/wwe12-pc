@@ -82,14 +82,16 @@ inline void LaunchGame() {
                 SW_SHOWNORMAL);
 }
 
-inline fs::path PickOpen(bool fr, bool pac) {
+// (kind / pattern: another kind of file, e.g. L"FBX", L"*.fbx")
+inline fs::path PickOpen(bool fr, bool pac, const wchar_t *kind = nullptr, const wchar_t *pattern = nullptr) {
   IFileOpenDialog *dlg = nullptr;
   if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg))))
     return {};
   const COMDLG_FILTERSPEC pics[] = {{fr ? L"Images" : L"Pictures", L"*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff"},
                                     {L"*.*", L"*.*"}};
   const COMDLG_FILTERSPEC pacs[] = {{fr ? L"Arènes (*.pac)" : L"Arenas (*.pac)", L"*.pac"}, {L"*.*", L"*.*"}};
-  dlg->SetFileTypes(2, pac ? pacs : pics);
+  const COMDLG_FILTERSPEC other[] = {{kind ? kind : L"", pattern ? pattern : L"*.*"}, {L"*.*", L"*.*"}};
+  dlg->SetFileTypes(2, kind ? other : pac ? pacs : pics);
   DWORD opts = 0;
   dlg->GetOptions(&opts);
   dlg->SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST);

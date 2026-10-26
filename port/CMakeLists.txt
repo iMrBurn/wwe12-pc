@@ -88,6 +88,8 @@ if(WIN32)
         OBJECT_DEPENDS "${WWE12_RES_DIR}/wwe12.ico;${WWE12_RES_DIR}/wwe12.png")
     add_executable(wwe12_modmaker WIN32
         src/modmaker/modmaker.cpp
+        src/modmaker/rig_map.cpp
+        src/modmaker/third_party/ufbx/ufbx.c
         src/modmaker/svrfmt/archive.cpp
         src/modmaker/svrfmt/jboy.cpp
         src/modmaker/svrfmt/pac.cpp
@@ -104,6 +106,7 @@ if(WIN32)
         "${WWE12_IMGUI_DIR}/imgui_widgets.cpp"
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_win32.cpp"
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp")
+    # (ufbx.c: the FBX reader of the FBX import, MIT / public domain; rig_map.cpp: Kaiko's bone names.)
     # (lzxd.c: libmspack's LZX reader, LGPL 2.1, the SDK's copy: WWE '13 files are XMemCompress'd.)
     target_include_directories(wwe12_modmaker PRIVATE src/modmaker src/launcher "${WWE12_IMGUI_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/libmspack/cabextract/mspack"

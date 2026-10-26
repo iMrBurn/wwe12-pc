@@ -30,6 +30,7 @@
 #include "media.h"
 #include "mods.h"
 #include "port13_star.h"
+#include "fbx_star.h"
 #include "port_svr.h"
 #include "faces2k.h"
 #include "strings2k.h"
@@ -185,6 +186,8 @@ class Page {
     ImGui::RadioButton("SvR 2011", &look, 2);
     ImGui::SameLine();
     ImGui::RadioButton(fr ? "WWE '13 ou 2K" : "WWE '13 or 2K", &look, 3);
+    ImGui::SameLine();
+    ImGui::RadioButton(fr ? "Un modèle 3D (.fbx)" : "A 3D model (.fbx)", &look, 4);
     if (look != look_) {
       if ((look >= 2) != (look_ >= 2) || look >= 2) {  // (another game: its file chosen again)
         svr_file_.clear();
@@ -207,7 +210,34 @@ class Page {
       }
       ImGui::SameLine();
       ImGui::TextDisabled("%s", other_path_.empty() ? "" : media::Utf8(other_path_.wstring()).c_str());
-    } else if (look_ >= 2) {
+    } else if (look_ == 4) {
+      // A model of any game or tool (Blender, Mixamo, VRChat...): its skeleton recognised by its bones' names, posed
+      // and sized on the base's, its pictures in one colour picture (fbx_star.h).
+      ImGui::TextDisabled("%s", fr ? "Un personnage avec son squelette (Mixamo, Unity / VRChat, Blender, 3ds Max Biped, "
+                                     "Unreal...) ; ses textures à côté du fichier ou dans un dossier textures."
+                                   : "A character with its skeleton (Mixamo, Unity / VRChat, Blender, 3ds Max Biped, "
+                                     "Unreal...); its textures beside the file or in a textures folder.");
+      if (ImGui::Button(fr ? "Choisir le modèle (.fbx)..." : "Choose the model (.fbx)...")) {
+        const fs::path p = arena_page::PickOpen(fr, false, fr ? L"Modèles 3D (*.fbx)" : L"3D models (*.fbx)", L"*.fbx");
+        if (!p.empty()) {
+          fbx_path_ = p;
+          PortFbx(fr);
+          if (!name_[0])  // (its file's name, to start with)
+            snprintf(name_, sizeof(name_), "%s", media::Utf8(p.stem().wstring()).c_str());
+        }
+      }
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", fbx_path_.empty() ? "" : media::Utf8(fbx_path_.wstring()).c_str());
+      ImGui::SetNextItemWidth(200);
+      ImGui::SliderInt(fr ? "Sommets au plus" : "Vertices at most", &fbx_budget_, 4000, 30000, "%d",
+                       ImGuiSliderFlags_AlwaysClamp);
+      if (ImGui::IsItemDeactivatedAfterEdit() && !fbx_path_.empty())
+        PortFbx(fr);
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", fr ? "(un catcheur du jeu : ~9 000)" : "(a game superstar: ~9,000)");
+      for (const auto &l : fbx_lines_)
+        ImGui::BulletText("%s", l.c_str());
+    } else if (look_ == 2 || look_ == 3) {
       const bool w13 = look_ == 3;
       // WWE '13 and the 2K games (2K14 to 2K17: the same superstar files, port13_star.h): which one.
       if (w13) {
@@ -430,9 +460,7 @@ class Page {
   }
 
   void ChooseBase(bool fr, const disc::GameDisc &disc) {
-    OpenBase(fr, disc);
-    if (look_ >= 2 && !svr_attires_.empty())
-      PortSvr(fr);
+    OpenBase(fr, disc);  // (the look ported over it again)
   }
 
   // Step 3: its attributes (the game's 12, 0-100): the base's, or its own.
@@ -655,6 +683,8 @@ class Page {
     LoadBaseAttributes(disc);
     if (look_ >= 2 && !svr_attires_.empty())
       PortSvr(fr);  // (ported over the new base)
+    if (look_ == 4 && !fbx_path_.empty())
+      PortFbx(fr);
     SetModel(look_ == 0 ? base_file_ : look_ == 1 ? other_ : ported_);
   }
 
@@ -1067,6 +1097,56 @@ class Page {
     SetModel(ported_);
   }
 
+  // The FBX model over the base's attire 1 (fbx_star.h), fitted into its room as a port.
+  void PortFbx(bool fr) {
+    note_.clear();
+    ported_.clear();
+    fbx_lines_.clear();
+    svrfmt::Archive w;
+    std::string why;
+    fbx_star::Options opts;
+    opts.max_vertices = fbx_budget_;
+    fbx_star::Report rep;
+    if (!svrfmt::ArchiveOpen(base_file_, w, &why) || w.root.kids.empty() ||
+        !fbx_star::FbxToAttire(fbx_path_, w.root.kids[0], opts, rep, &why)) {
+      note_ok_ = false;
+      note_ = (fr ? "Import impossible : " : "Can't import it: ") + why;
+      SetModel(ported_);
+      return;
+    }
+    const size_t budget = w.root.kids[0].stored.size();
+    svrfmt::ArchiveTouch(w.root);
+    const Bytes out = svrfmt::ArchiveSave(w);
+    arena_edit::Arena fit;
+    if (!fit.Load(out, &why, 0)) {
+      note_ok_ = false;
+      note_ = (fr ? "Import illisible : " : "Unreadable import: ") + why;
+      return;
+    }
+    const auto halved = fit.Fit(budget, ported_, true);
+    reduced_.clear();
+    if (!halved.empty()) {
+      reduced_ = fr ? "Réduites de moitié pour tenir dans la place d'une tenue :" : "Halved to fit an attire's room:";
+      for (const auto &n : halved)
+        reduced_ += " " + n;
+    }
+    char b[256];
+    snprintf(b, sizeof(b),
+             fr ? "Squelette : %s, %d os reconnus sur %d. %d sommets, %d maillages, %d texture(s)."
+                : "Skeleton: %s, %d bones recognised of %d. %d vertices, %d meshes, %d texture(s).",
+             rep.rig.c_str(), rep.mapped, rep.bones, rep.vertices, rep.meshes, rep.textures);
+    fbx_lines_.push_back(b);
+    if (rep.reduced_from)
+      fbx_lines_.push_back((fr ? "Détail réduit : " : "Detail reduced: ") + std::to_string(rep.reduced_from) + " -> " +
+                           std::to_string(rep.vertices) + (fr ? " sommets" : " vertices"));
+    for (const auto &warn : rep.warnings)
+      fbx_lines_.push_back("! " + warn);
+    note_ok_ = true;
+    note_ = fr ? "Importé (tenue 1 du nouveau catcheur). Regardez-le à l'étape 5."
+               : "Imported (the new superstar's attire 1). Look at it at step 5.";
+    SetModel(ported_);
+  }
+
   void Draw3D(bool fr) {
     if (model_.empty()) {
       ImGui::TextDisabled("%s", fr ? "Pas encore de modèle." : "No model yet.");
@@ -1152,7 +1232,8 @@ class Page {
     }
     manifest += "description=" + std::string(name_) + ", a new superstar starting from " +
                 (chosen_ ? b.name : "an average superstar (" + b.name + ")") +
-                (look_ == 3   ? ", its look ported from WWE '13 (the player's own copy)"
+                (look_ == 4   ? ", its look from a 3D model (FBX)"
+                 : look_ == 3 ? ", its look ported from WWE '13 (the player's own copy)"
                  : look_ == 2 ? ", its look ported from SvR 2011 (the player's own file)"
                  : look_ == 1 ? ", with its own look"
                               : "") +
@@ -1234,6 +1315,9 @@ class Page {
   fs::path custom_portrait_;       // the player's picture they were made from, "" if from its game
   std::string menu2_of_;
   Bytes portraits_[2][3];  // a SvR 2011 / WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
+  fs::path fbx_path_;                   // the FBX model (look 4)
+  int fbx_budget_ = 12000;              // ... its vertices at most
+  std::vector<std::string> fbx_lines_;  // ... what the import found
 };
 
 }  // namespace new_star_page
