@@ -967,7 +967,7 @@ places ×10, d'après le code de Kaiko).
   vues dans les banques ZMVM), les doigts, les animations d'entrée (autres fichiers), les cheveux et vêtements qui
   bougent.
 
-## 6 tervicies. Cheveux qui bougent des catcheurs portés de SvR 2011 (2026-10-26, pas encore vu en jeu)
+## 6 tervicies. Cheveux qui bougent des catcheurs portés de SvR 2011 (2026-10-26, vu en jeu)
 
 - **Le jeu** : comme SvR 2011, les cheveux longs de WWE '12 sont des chaînes d'os `kami_bNN` (racine sous « Bip Head »,
   puis `kami_bNN_00`, `_01`... alignés sur l'axe x local, 6 à 7 cm) dans le modèle des cheveux (10000), animées par la
@@ -983,7 +983,9 @@ places ×10, d'après le code de Kaiko).
   catcheurs du jeu, aucun lien) ; 61 : celle de la base, sinon celle d'un catcheur aux cheveux longs lue sur le disque
   du joueur (`hair_donor.h`). Vérifié hors du jeu (SvR ch102 sur la base ch137 : 53 os, chaque maillon à 0,3-6 cm de ses
   mèches).
-- **Pas encore** : vu en jeu ; les modèles FBX (os de cheveux à reconnaître et à changer en chaînes) ; les vêtements
+- **Vu en jeu** (2026-10-26, validé par l'utilisateur) : CM PUNK '10 (SvR ch131 sur la base ch131), 24 os de
+  cheveux, entrée et match contre Big Show : les cheveux bougent, rien ne s'étire.
+- **Pas encore** : les modèles FBX (os de cheveux à reconnaître et à changer en chaînes) ; les vêtements
   (les `R_Bone*` du corps de certains catcheurs : autre mécanisme, non étudié).
 
 ## 6 quatervicies. Types de match : état de la recherche (2026-10-26, rien de fait dans le jeu)
