@@ -44,7 +44,7 @@ aucune émulation ; ✅ DX12 en plus de Vulkan (fait le 2026-10-26 : 2 exe, shad
 | Jukebox dans les menus | Lot 1.0 choisi, attend le « go » (Gameplay ; page OPTIONS > JUKEBOX, cvar `wwe12_jukebox`, défaut off). |
 | Minimum de 15 catcheurs par show | Lot 1.0 choisi, étudié (Univers ; cvar `wwe12_universe_min_roster` ; test sur une COPIE de la sauvegarde). |
 | Sang pour les femmes | Reporté à la 1.0. On connaît l'option BLOOD ; le test homme/femme du saignement n'est pas trouvé (voir `CLAUDE.md`). |
-| I Quit, arbitre spécial | Étudiés (Limit breaking). « I Quit » simple = abandon seulement ; l'arbitre spécial (type 83) demande un test en jeu avec l'accord de l'utilisateur. |
+| I Quit, arbitre spécial | **Décision de l'utilisateur (2026-10-26) : pour la 1.1, pas la 1.0.** Étude chiffrée dans `docs/limit_breaking.md` : I Quit léger 1-2 séances (version fidèle WWE '13 : 4-6 séances si les animations existent) ; Special Referee : essai léger 2 séances (règle 83 depuis le menu via `sub_82449898`), version jouable 4-6 séances de plus, IA 4-6 de plus. |
 | Titres vacants utilisés par un show | Impossible (casse le mode). Seuls les titres sans émission peuvent être vacants : fait. |
 
 ### Faisable, travail raisonnable (à étudier)
