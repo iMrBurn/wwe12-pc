@@ -40,6 +40,11 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".SavesActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
             android:name=".LayoutEditorActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"

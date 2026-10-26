@@ -33,6 +33,7 @@ import java.io.RandomAccessFile;
 public class LauncherActivity extends Activity {
     static final int PICK_ISO = 1;
     static final int PICK_DRIVER = 2;
+    static final int PICK_DLC = 3;
     static final int YELLOW = Color.rgb(240, 191, 61);   // same accent as the PC launcher
     static final int BG = Color.rgb(17, 17, 17);
     static final int PANEL = Color.rgb(32, 32, 32);
@@ -43,6 +44,8 @@ public class LauncherActivity extends Activity {
     TextView controllerStatus;   // which controller the game will use (hides the on-screen buttons)
     LinearLayout driverBox;      // GPU DRIVER panel content, rebuilt after import / delete
     LinearLayout updateArea;     // UPDATE AVAILABLE panel, shown when GitHub has a newer version
+    LinearLayout dlcBox;         // DLC panel content, rebuilt after add / remove
+    TextView dlcStatus;
     Button forget;
 
     @Override
@@ -130,9 +133,14 @@ public class LauncherActivity extends Activity {
         TextView title = text("WWE '12 PC", 28, YELLOW, true);
         root.addView(title);
         root.addView(text("Android " + versionName() + " - early test build", 13, Color.LTGRAY, false));
-        if (cpuTooOld())
-            root.addView(text("This phone's processor is too old for the game (it needs ARMv8.2: Snapdragon 845 / 7xx "
-                    + "from 2018 or newer). The game cannot start on it.", 14, Color.rgb(255, 110, 90), true));
+        // Device warning: what will stop the game, or make it run badly, on this phone.
+        DeviceCheck device = new DeviceCheck(this);
+        if (!device.ok()) {
+            LinearLayout warn = panel(root, device.blockers.isEmpty() ? "THIS PHONE MAY STRUGGLE" : "THIS PHONE CANNOT RUN THE GAME");
+            for (String s : device.blockers) warn.addView(text("• " + s, 14, Color.rgb(255, 110, 90), false));
+            for (String s : device.warnings) warn.addView(text("• " + s, 14, Color.rgb(255, 190, 90), false));
+        }
+        root.addView(text(device.summary, 11, Color.GRAY, false));
         // Filled by Updater.check when GitHub has a newer Android release.
         updateArea = new LinearLayout(this);
         updateArea.setOrientation(LinearLayout.VERTICAL);
@@ -158,6 +166,17 @@ public class LauncherActivity extends Activity {
         game.addView(forget);
         game.addView(text("Or copy your game files (or ISO) into:\n" + new File(dir, "game").getAbsolutePath(),
                 12, Color.GRAY, false));
+
+        // Saves (own screen, like the PC launcher's SAVES page)
+        Button saves = button("MANAGE MY SAVES (backups, Xbox 360 import)", false);
+        saves.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { startActivity(new Intent(LauncherActivity.this, SavesActivity.class)); }
+        });
+        game.addView(saves);
+
+        // DLC: packages copied into dlc/, installed by the game at its next start (as on PC)
+        dlcBox = panel(root, "DLC");
+        buildDlcPanel();
 
         // Settings
         LinearLayout set = panel(root, "SETTINGS");
@@ -496,6 +515,87 @@ public class LauncherActivity extends Activity {
                 || s.contains("mediatek") || s.contains("kirin") || s.contains("unisoc");
     }
 
+    // ---- DLC ---------------------------------------------------------------------------------
+
+    void buildDlcPanel() {
+        dlcBox.removeAllViews();
+        java.util.List<GameFiles.Dlc> list = GameFiles.listDlc(this);
+        dlcBox.addView(text(list.isEmpty() ? "No DLC yet." : list.size() + " DLC package(s):", 14, Color.WHITE, false));
+        for (final GameFiles.Dlc d : list) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            TextView name = text(d.file.getName() + "\n" + GameFiles.formatSize(d.file.length())
+                    + (d.installed ? ", installed" : ", installed at the next start"), 12, Color.LTGRAY, false);
+            row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            Button del = button("REMOVE", false);
+            del.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    new android.app.AlertDialog.Builder(LauncherActivity.this)
+                            .setMessage("Remove " + d.file.getName() + "? Its wrestlers and items leave the game.")
+                            .setPositiveButton("Remove", new android.content.DialogInterface.OnClickListener() {
+                                public void onClick(android.content.DialogInterface di, int w) {
+                                    if (GameFiles.gameRunning(LauncherActivity.this)) {
+                                        Toast.makeText(LauncherActivity.this, "Close the game first.", Toast.LENGTH_LONG).show();
+                                        return;
+                                    }
+                                    GameFiles.removeDlc(LauncherActivity.this, d);
+                                    buildDlcPanel();
+                                }
+                            })
+                            .setNegativeButton("Cancel", null).show();
+                }
+            });
+            row.addView(del);
+            dlcBox.addView(row);
+        }
+        dlcStatus = text("", 12, Color.rgb(240, 191, 61), false);
+        dlcBox.addView(dlcStatus);
+        Button add = button("ADD DLC FILES", false);
+        add.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                startActivityForResult(i, PICK_DLC);
+            }
+        });
+        dlcBox.addView(add);
+        dlcBox.addView(text("Pick the DLC packages of your Xbox 360 (files with long names such as 961C4A43...54, "
+                + "from Content\\0000000000000000\\54510890\\00000002). You can select several at once.",
+                12, Color.GRAY, false));
+    }
+
+    void addDlc(Intent data) {
+        final java.util.List<Uri> uris = new java.util.ArrayList<>();
+        if (data.getClipData() != null)
+            for (int k = 0; k < data.getClipData().getItemCount(); k++) uris.add(data.getClipData().getItemAt(k).getUri());
+        else if (data.getData() != null)
+            uris.add(data.getData());
+        if (uris.isEmpty()) return;
+        if (GameFiles.gameRunning(this)) {
+            Toast.makeText(this, "Close the game first.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        dlcStatus.setText("Copying...");
+        new Thread(new Runnable() {
+            public void run() {
+                final String report = GameFiles.addDlc(LauncherActivity.this, uris, new GameFiles.Progress() {
+                    public void progress(final String t) {
+                        runOnUiThread(new Runnable() { public void run() { dlcStatus.setText("Copying " + t); } });
+                    }
+                });
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        buildDlcPanel();
+                        dlcStatus.setText(report);
+                    }
+                });
+            }
+        }).start();
+    }
+
     // ---- Game --------------------------------------------------------------------------------
 
     void pickIso() {
@@ -510,6 +610,10 @@ public class LauncherActivity extends Activity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == PICK_DLC) {
+            if (result == RESULT_OK && data != null) addDlc(data);
+            return;
+        }
         if (request == PICK_DRIVER && result == RESULT_OK && data != null && data.getData() != null) {
             try {
                 String id = DriverManager.importZip(this, data.getData());
