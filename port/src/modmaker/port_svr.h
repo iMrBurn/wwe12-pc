@@ -7,7 +7,8 @@
 //    units 10 cm from the hips, WWE '12: cm from the floor, y down in both);
 //  - materials: SvR's shaders (yBumpMapSS, yReflect) aren't WWE '12's (yCh_skin, yCh_skin_flex, yCh_gear,
 //    yCh_Reflect): each mesh takes the material of the base's mesh of the same part nearest to it;
-//  - pictures: SvR's colour (12), colour masks (13, 14) and normal map; the base's others (noise, cube, muscles...).
+//  - pictures: SvR's colour (12), colour masks (13, 14, 15) and normal map; the base's others (noise, cube,
+//    muscles...).
 #pragma once
 
 #include <algorithm>
@@ -477,9 +478,11 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
   if (!ConvertModel(ms, mb, mo, rep))
     return fail("the model can't be converted");
   svrfmt::ArchiveReplace(*bm, svrfmt::JboyWrite(mo));
-  // Colour and masks as SvR has them (same bundle format). The colour in the base's DDS format (WWE '12: DXT1, half
-  // of SvR's DXT5) when it differs, so it keeps its full size in the attire's room.
-  for (uint32_t id : {12u, 13u, 14u}) {
+  // Colour and masks as SvR has them (same bundle format), all three masks: the base's Mask3 (15) fits the base's
+  // colour picture, not SvR's (CM Punk of SvR came out with white eyes and a wrong face, 2026-10-26). The colour in
+  // the base's DDS format (WWE '12: DXT1, half of SvR's DXT5) when it differs, so it keeps its full size in the
+  // attire's room.
+  for (uint32_t id : {12u, 13u, 14u, 15u}) {
     svrfmt::ArcNode *s = child(svr, id), *b = child(base, id);
     if (!s || !b)
       continue;
@@ -502,6 +505,14 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
       svrfmt::ArchiveReplace(*b, svrfmt::BundleWrite(st));
     }
   }
+  // A Mask3 (15) the other game hasn't: the base's would be on the wrong picture: left out (WWE 2K17's AJ Styles has
+  // none and looks right).
+  if (!child(svr, 15))
+    for (size_t i = 0; i < base.kids.size(); ++i)
+      if (base.kids[i].id == 15) {
+        svrfmt::ArchiveRemove(base, i);
+        break;
+      }
   // The normal map, in the base's bundle 10.
   svrfmt::ArcNode *s10 = child(svr, 10), *b10 = child(base, 10);
   if (s10 && b10) {

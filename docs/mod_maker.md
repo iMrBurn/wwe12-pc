@@ -784,6 +784,16 @@ places ×10, d'après le code de Kaiko).
   SSFA / SSFB le carré écrasé en 512 × 256, SSFC 256 × 256 ; DXT5 sans mips (`superstar/SSF?_HD|SD.dds` du mod, comme
   ceux portés).
 
+- **Test en jeu du 2026-10-26 (triple menace : CM Punk de SvR, AJ Styles de 2K17, Big Show de 2K16 + Orton)** :
+  écran VS avec les portraits portés, AJ Styles et Big Show parfaits, vidéos de SvR et de 2K17 jouées, match normal.
+  Défauts : (1) **plantage juste après le chargement de l'arène WrestleMania 31 de 2K16** (veille) : 207 de ses 227
+  entrées gardaient l'emballage « ZLIB » de 2K16, que WWE '12 ne lit pas dans une arène ; `port13::PortTree` les
+  remet en BPE (sous-paquets compris ; 2K14 à 2K17) ; à refaire et retester ; (2) **CM Punk de SvR : yeux blancs,
+  visage raté** : le portage ne prenait que `Mask1` / `Mask2` (13, 14) de SvR et laissait le **`Mask3` (15) de la
+  base**, dessiné pour l'image de couleur de la base ; maintenant les trois (SvR et WWE '13 / 2K), et le `Mask3` de
+  la base est retiré quand le jeu d'origine n'en a pas (AJ Styles n'en a pas et s'affiche bien) ; à retester ;
+  (3) un rectangle noir au milieu de l'écran VS (pas encore regardé).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

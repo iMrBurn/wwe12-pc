@@ -129,12 +129,20 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
       rep->meshes = int(ms.meshes.size());
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(ms));
   }
-  // Its pictures, colour and masks.
-  for (uint32_t id : {10u, 12u, 13u, 14u}) {
+  // Its pictures, colour and masks (all three: the base's Mask3 fits the base's colour picture).
+  for (uint32_t id : {10u, 12u, 13u, 14u, 15u}) {
     svrfmt::ArcNode *s = child(w13, id), *b = child(base, id);
     if (s && b)
       svrfmt::ArchiveReplace(*b, svrfmt::ArchiveData(*s));
   }
+  // A Mask3 (15) the other game hasn't: the base's would be on the wrong picture: left out (WWE 2K17's AJ Styles has
+  // none and looks right).
+  if (!child(w13, 15))
+    for (size_t i = 0; i < base.kids.size(); ++i)
+      if (base.kids[i].id == 15) {
+        svrfmt::ArchiveRemove(base, i);
+        break;
+      }
   svrfmt::ArchiveTouch(base);
   return true;
 }

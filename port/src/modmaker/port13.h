@@ -293,6 +293,23 @@ inline bool PortTree(svrfmt::Archive &a, svrfmt::Archive &b, Bytes &out, std::st
     MoveModel(d, it->second.first, it->second.second);
     svrfmt::ArchiveReplace(k, d);
   }
+  // The 2K games keep entries "ZLIB"-wrapped (2K16's arena: 207 of 227) where WWE '12 has BPE, and WWE '12 crashes
+  // on them (2026-10-25: WrestleMania 31 of 2K16, right after the arena loaded): unwrapped and packed again as BPE,
+  // in the nested packs too.
+  const auto to_bpe = [](auto &self, svrfmt::ArcNode &n) -> void {
+    if (n.wrap == svrfmt::ArcWrap::Zlib) {
+      const Bytes d = svrfmt::ArchiveData(n);
+      n.wrap = svrfmt::ArcWrap::Bpe;
+      svrfmt::ArchiveReplace(n, d);
+    }
+    if (svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
+      for (auto &c : n.kids)
+        self(self, c);
+      svrfmt::ArchiveTouch(n);
+    }
+  };
+  for (auto &k : ga.kids)
+    to_bpe(to_bpe, k);
   svrfmt::ArchiveTouch(ga);
   svrfmt::ArchiveTouch(a.root);
   out = svrfmt::ArchiveSave(a);
