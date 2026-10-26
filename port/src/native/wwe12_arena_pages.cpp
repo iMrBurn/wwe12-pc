@@ -759,9 +759,24 @@ extern "C" REX_FUNC(sub_828A9898) {
     bd::mem::store<u32>(ctx.r3.u32 + 88, 0xFFFFFFFFu);
   }
 }
+
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
 extern "C" REX_FUNC(sub_827F29F0) {
   const u32 name = ctx.r4.u32, out = ctx.r5.u32;
+  // An added arena's VS screen: the caller's "/MLYE/MB<base>" rewritten for good to a VS screen entry no arena
+  // shows, MB21 / MB22 (the arena select has stages 0-20), one per added arena. The game keeps what it has read of an
+  // entry: under its base's entry, after its base's VS screen had been shown, it got that one back (WrestleMania 31
+  // showed Superstars', 2026-10-26; the directory answered, the data was the old). Answered below with its own.
+  static constexpr u32 kSpareMb[] = {21, 22};
+  if (name && (name < 0x82000000 || name >= 0x84000000) && g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units) {
+    // (a string the game built, never one of its image's: "/MLYE/MB00" is there)
+    char mb[16], spare[16];
+    snprintf(mb, sizeof(mb), "/MLYE/MB%02u", g_added[size_t(g_chosen)].base);
+    snprintf(spare, sizeof(spare), "/MLYE/MB%02u", kSpareMb[size_t(g_chosen) % std::size(kSpareMb)]);
+    if (strcmp(bd::mem::str(name), mb) == 0)
+      for (size_t i = 0; i <= strlen(spare); ++i)
+        bd::mem::store<u8>(name + u32(i), u8(spare[i]));
+  }
   __imp__sub_827F29F0(ctx, base);
   if (!name || !out || ctx.r3.u32 == 0)
     return;
@@ -781,7 +796,7 @@ extern "C" REX_FUNC(sub_827F29F0) {
     // Its own VS screen, in place of its base's.
     const Added &a = g_added[size_t(g_chosen)];
     char mb[16], mf[16];
-    snprintf(mb, sizeof(mb), "/MLYE/MB%02u", a.base);
+    snprintf(mb, sizeof(mb), "/MLYE/MB%02u", kSpareMb[size_t(g_chosen) % std::size(kSpareMb)]);
     snprintf(mf, sizeof(mf), "/MENU/M%02uF", a.base);
     const bool is_mb = strcmp(n, mb) == 0;
     if (is_mb || strcmp(n, mf) == 0) {
