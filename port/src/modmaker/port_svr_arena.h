@@ -901,6 +901,49 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
   return mb.size() >= 4 && memcmp(mb.data(), "PACH", 4) == 0;
 }
 
+// The entrance graphics (location plate, name plates: pac/evt/evtgdhd.pac ETEX/00NN) of a game whose own lack them:
+// the WWE 2K games' ETEX hold only the copyright plate (20) and fonts WWE '12 can't read (their plates are movies,
+// pac/mov/bg_name, bg_locator), so WrestleMania 31 of 2K16 had none (2026-10-26). WWE '12's WrestleMania XXVII's
+// (ETEX/0015: blue lights, chevrons and its logo, the logo's pictures 0 and 6-20 of entries 0 and 10, the steps of
+// its animation) wears the arena's logo (made `logo_wide` times as wide as high, fitted whole) and its copyright
+// plate (`plate`, entry 20). Its animations and fonts are WWE '12's.
+inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double logo_wide, const svrfmt::Image &plate,
+                        Bytes &out) {
+  using namespace detail;
+  out.clear();
+  svrfmt::Archive w;
+  if (logo.rgba.empty() || !svrfmt::ArchiveOpen(evtgd12, w, nullptr))
+    return false;
+  svrfmt::ArcNode *tpl = nullptr;
+  for (auto &k : w.root.kids)
+    if (k.group == "ETEX" && k.name == "0015")
+      tpl = &k;
+  if (!tpl || !svrfmt::ArchiveExpand(*tpl))
+    return false;
+  const svrfmt::Image wide = svrfmt::Resize(logo, std::max(1, int(logo.h * logo_wide)), logo.h);
+  const auto wear = [](svrfmt::ArcNode &pic, const svrfmt::Image &img) {
+    const Bytes d = svrfmt::ArchiveData(pic);
+    if (d.size() > 128 && memcmp(d.data(), "DDS ", 4) == 0)
+      svrfmt::ArchiveReplace(pic, LikePicture(d, img, false));
+  };
+  for (auto &e : tpl->kids) {
+    if ((e.id != 0 && e.id != 10 && e.id != 20) || !svrfmt::ArchiveExpand(e))
+      continue;
+    for (auto &pic : e.kids) {
+      if (e.id == 20 && !plate.rgba.empty())
+        wear(pic, plate);
+      else if (e.id != 20 && (pic.id == 0 || (pic.id >= 6 && pic.id <= 20)))
+        wear(pic, wide);
+    }
+    svrfmt::ArchiveTouch(e);
+  }
+  svrfmt::ArchiveTouch(*tpl);
+  svrfmt::Archive one;
+  one.root = *tpl;
+  out = svrfmt::ArchiveSave(one);
+  return out.size() >= 4 && memcmp(out.data(), "PACH", 4) == 0;
+}
+
 inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, const svrfmt::Image &banner, Bytes &mb,
                  Bytes &mf, std::string *template_name = nullptr) {
   using namespace detail;

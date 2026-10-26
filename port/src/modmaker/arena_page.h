@@ -1178,8 +1178,30 @@ class Page {
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // Its entrance graphics (location plate, name plates).
     const Bytes evtgd = Read13("pac/evt/evtgdhd.pac");
-    if (!evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_))
-      port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
+    if (!evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_)) {
+      // (a 2K game's has no plates of its own: WWE '12's WrestleMania XXVII ones wearing its logo and copyright plate)
+      svrfmt::Archive e;
+      bool plates = false;
+      svrfmt::Image plate, logo;
+      if (svrfmt::ArchiveOpen(etex_, e, nullptr))
+        for (auto &k : e.root.kids) {
+          plates = plates || k.id == 0;
+          if (k.id == 20 && svrfmt::ArchiveExpand(k) && !k.kids.empty())
+            svrfmt::DdsDecode(svrfmt::ArchiveData(k.kids[0]), plate);
+        }
+      Bytes evtgd12;
+      if (!plates && y_title_ != kWwe13) {
+        etex_.clear();
+        if (const auto *l = port_svr_arena::detail::Named(pictures2k, "logo"))
+          svrfmt::DdsDecode(l->data, logo);
+        if (logo.rgba.empty())
+          logo = banner_;
+        if (disc_ && disc_->Read("pac/evt/evtgdhd.pac", evtgd12))
+          port_svr_arena::EtexWearing(evtgd12, logo, 3.4, plate, etex_);
+      }
+      if (!etex_.empty())
+        port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
+    }
     // Its pre-match screen, and its transition video.
     const Bytes loadhd = Read13("pac/menu/LoadHD.pac");
     if (!loadhd.empty())
