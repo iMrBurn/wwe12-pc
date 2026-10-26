@@ -1159,13 +1159,23 @@ class Page {
     // Its own banner from WWE '13's menus (the 2K games': their Universe's pictures), else the base's.
     const Bytes matchhd = Read13("pac/menu/MatchHD.pac");
     svrfmt::Image img;
-    if (!matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_)) {
-      port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
-      // (a 2K game's font WWE '12 can't read: the base arena's instead)
-      Bytes matchhd12;
-      if (y_title_ != kWwe13 && disc_ && slot_ >= 0 && disc_->Read("pac/menu/MatchHD.pac", matchhd12))
-        port13::CardFontTo12(card_mb_, card_mf_, matchhd12, kSlots[slot_].number);
+    // (a 2K game's own: its layout has an element less than WWE '12's (no names, a black box), so a WWE '12 VS screen
+    // wears its pictures, as SvR 2011's)
+    Bytes matchhd12;
+    std::vector<svrfmt::BundleTexture> pictures2k;
+    if (y_title_ != kWwe13 && !matchhd.empty() && disc_ && disc_->Read("pac/menu/MatchHD.pac", matchhd12)) {
+      svrfmt::Archive m;
+      char nb[8];
+      snprintf(nb, sizeof(nb), "MB%02d", w13_pick_);
+      if (svrfmt::ArchiveOpen(matchhd, m, nullptr))
+        for (auto &k : m.root.kids)
+          if (k.group == "MLYE" && k.name == nb)
+            if (auto *p = port_svr_arena::detail::Pictures(k))
+              svrfmt::BundleRead(svrfmt::ArchiveData(*p), pictures2k);
     }
+    if (y_title_ != kWwe13 ? port_svr_arena::CardWearing(pictures2k, matchhd12, svrfmt::Image(), card_mb_, card_mf_)
+                           : !matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))
+      port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // Its entrance graphics (location plate, name plates).
     const Bytes evtgd = Read13("pac/evt/evtgdhd.pac");
     if (!evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_))

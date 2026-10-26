@@ -771,23 +771,16 @@ inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n) {
 
 }  // namespace detail
 
-inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, const svrfmt::Image &banner, Bytes &mb,
-                 Bytes &mf, std::string *template_name = nullptr) {
+// A WWE '12 VS screen wearing another game's VS screen pictures (`theirs`): SvR 2011's, and the WWE 2K games' (their
+// own layout has a number of elements less than WWE '12's, 14 against 15: WrestleMania 31 of 2K16 showed no names
+// and a black box, 2026-10-26).
+inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const Bytes &matchhd12,
+                        const svrfmt::Image &banner, Bytes &mb, Bytes &mf, std::string *template_name = nullptr) {
   using namespace detail;
   mb.clear();
   mf.clear();
-  svrfmt::Archive s, w;
-  if (!svrfmt::ArchiveOpen(svr_matchhd, s, nullptr) || !svrfmt::ArchiveOpen(matchhd12, w, nullptr))
-    return false;
-  // The arena's pictures.
-  char ni[8];
-  snprintf(ni, sizeof(ni), "M%02dI", file);
-  std::vector<svrfmt::BundleTexture> theirs;
-  for (auto &k : s.root.kids)
-    if (k.group == "MENU" && k.name == ni)
-      if (auto *p = Pictures(k))
-        svrfmt::BundleRead(svrfmt::ArchiveData(*p), theirs);
-  if (theirs.empty())
+  svrfmt::Archive w;
+  if (theirs.empty() || !svrfmt::ArchiveOpen(matchhd12, w, nullptr))
     return false;
   // The WWE '12 VS screen with most of the same pictures, else Hell in a Cell's.
   const std::set<std::string> generic = {"dummy", "matchup_BG01", "matchup_BG02"};
@@ -849,7 +842,7 @@ inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, con
         bg = &t;
       if (has(t.name, "logo") && !has(t.name, "bg") && area(&t) > area(logo))
         logo = &t;
-      if ((has(t.name, "plate") || has(t.name, "_fr")) && !plate)
+      if ((has(t.name, "plate") || has(t.name, "_fr") || t.name == "fr") && !plate)
         plate = &t;
     }
     for (auto &t : ours) {
@@ -899,6 +892,23 @@ inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, con
   if (template_name)
     *template_name = nb;
   return mb.size() >= 4 && memcmp(mb.data(), "PACH", 4) == 0;
+}
+
+inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, const svrfmt::Image &banner, Bytes &mb,
+                 Bytes &mf, std::string *template_name = nullptr) {
+  using namespace detail;
+  svrfmt::Archive s;
+  if (!svrfmt::ArchiveOpen(svr_matchhd, s, nullptr))
+    return false;
+  // The arena's pictures.
+  char ni[8];
+  snprintf(ni, sizeof(ni), "M%02dI", file);
+  std::vector<svrfmt::BundleTexture> theirs;
+  for (auto &k : s.root.kids)
+    if (k.group == "MENU" && k.name == ni)
+      if (auto *p = Pictures(k))
+        svrfmt::BundleRead(svrfmt::ArchiveData(*p), theirs);
+  return CardWearing(theirs, matchhd12, banner, mb, mf, template_name);
 }
 
 struct PortInfo {
