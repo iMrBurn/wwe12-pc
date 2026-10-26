@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "svrfmt/archive.h"
+#include "svrfmt/texture.h"
 
 namespace superstar_pack {
 
@@ -76,8 +77,20 @@ struct MediaPortraits {
   Bytes dds[2][3];    // [0 SD / 1 HD][SSFA, SSFB, SSFC], DDS as the game's; empty = the game's own
 };
 
+// A crowd sign (type=signs, signs/NNN_K.dds: superstar NNN, sign K 1-4): the crowd holds up a superstar's signs while
+// he's in the match. The game keeps them in pac\audience.pac AUDE/BORD, a PACH of texture bundles (one 128 x 64 DXT1
+// picture "no01" each) whose child ids are superstar x 10 + K (1611-1614: Randy Orton's). Our pack brings that entry
+// again with the signs replaced or added (its directory comes before the disc's), and the added superstars get their
+// bases' signs.
+struct Sign {
+  std::string key;  // the mod's folder name
+  int id = 0;       // superstar x 10 + K
+  Bytes dds;        // 128 x 64 DXT1, as the game's
+};
+
 struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
+  Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)
   std::vector<Bytes> portraits_hd, portraits_sd;   // pacs that may hold the bases' SSFA/SSFB/SSFC "%04d"
   std::vector<std::pair<int, Bytes>> catalogs;     // the installed packs (number, info/catalog.dlc), not ours
 };
@@ -225,7 +238,8 @@ inline int PackNumber(const Inputs &in) {
 
 // The pack's files for `stars` (slots set). False (and why) when it can't be made.
 inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<File> &files, std::string *why,
-                  const std::vector<Attire> &attires = {}, const std::vector<MediaPortraits> &media = {}) {
+                  const std::vector<Attire> &attires = {}, const std::vector<MediaPortraits> &media = {},
+                  const std::vector<Sign> &signs = {}) {
   using namespace detail;
   auto fail = [&](const std::string &w) {
     if (why)
@@ -416,6 +430,58 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       attire_files[superstar] = svrfmt::ArchiveSave(a);
     }
   }
+  // 3c. The crowd's signs: the signs mods' and the added superstars' (their bases').
+  Bytes audience_out;
+  if (!in.audience.empty() && (!signs.empty() || !stars.empty())) {
+    svrfmt::Archive aud;
+    ArcNode *bord = nullptr;
+    if (svrfmt::ArchiveOpen(in.audience, aud, nullptr))
+      bord = Find(aud.root, "AUDE", "BORD");
+    ArcNode *pack_node = bord && svrfmt::ArchiveExpand(*bord) && !bord->kids.empty() ? &bord->kids[0] : nullptr;
+    if (pack_node && svrfmt::ArchiveExpand(*pack_node)) {
+      auto child = [&](uint32_t id) -> ArcNode * {
+        for (auto &k : pack_node->kids)
+          if (k.id == id)
+            return &k;
+        return nullptr;
+      };
+      bool changed = false;
+      // a sign's bundle: the one of that id (its picture replaced), else a copy of another one with that picture
+      auto put = [&](uint32_t id, const Bytes &dds) {
+        std::vector<svrfmt::BundleTexture> t;
+        ArcNode *k = child(id);
+        ArcNode *like = k ? k : pack_node->kids.empty() ? nullptr : &pack_node->kids[0];
+        if (!like || !svrfmt::BundleRead(svrfmt::ArchiveData(*like), t) || t.empty())
+          return;
+        t[0].data = dds;
+        const Bytes raw = svrfmt::BundleWrite(t);
+        if (k)
+          svrfmt::ArchiveReplace(*k, raw);
+        else if (!svrfmt::ArchiveAdd(*pack_node, "", "", id, raw, nullptr))
+          return;
+        changed = true;
+      };
+      std::set<uint32_t> given;
+      for (const auto &sg : signs)
+        if (sg.id > 0 && given.insert(uint32_t(sg.id)).second)
+          put(uint32_t(sg.id), sg.dds);
+      for (const auto &st : stars)
+        for (uint32_t k = 1; k <= 4; ++k) {
+          const uint32_t mine = uint32_t(st.slot) * 10 + k, theirs = uint32_t(st.base) * 10 + k;
+          ArcNode *b = child(theirs);
+          std::vector<svrfmt::BundleTexture> t;
+          if (given.count(mine) || child(mine) || !b || !svrfmt::BundleRead(svrfmt::ArchiveData(*b), t) || t.empty())
+            continue;
+          put(mine, t[0].data);
+        }
+      if (changed) {
+        svrfmt::ArchiveTouch(*pack_node);
+        svrfmt::ArchiveTouch(*bord);
+        svrfmt::ArchiveTouch(aud.root);
+        audience_out = svrfmt::ArchiveSave(aud);
+      }
+    }
+  }
   // 4. Portraits: the bases' SSFA/SSFB/SSFC under the slots' numbers (taken from the first pac that has them).
   Bytes portraits[2];
   for (int hd = 0; hd < 2; ++hd) {
@@ -504,6 +570,10 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     entries.push_back({"pac/ch/ch" + std::to_string(stars[i].slot) + "_dlc" + tag + ".pac", next, next, &models[i]});
   for (const auto &[superstar, file] : attire_files) {
     entries.push_back({"pac/ch/ch" + std::to_string(superstar) + "_dlc" + tag + ".pac", next, next, &file});
+    ++next;
+  }
+  if (!audience_out.empty()) {
+    entries.push_back({"pac/audience_dlc" + std::string(tag) + ".pac", next, next, &audience_out});
     ++next;
   }
   entries.push_back({"pac/ch/chEtc.pac", next, next, &etc_out});

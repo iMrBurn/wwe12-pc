@@ -265,7 +265,42 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       ec.clear();
     }
   }
-  if (list.empty() && attires.empty() && media.empty()) {
+  // The signs mods (signs/NNN_K.dds).
+  std::vector<superstar_pack::Sign> signs;
+  {
+    std::vector<fs::path> sdirs;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Signs", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec))
+        sdirs.push_back(it->path());
+    ec.clear();
+    std::sort(sdirs.begin(), sdirs.end());
+    for (const auto &d : sdirs) {
+      if (fs::exists(d / "disabled", ec))
+        continue;
+      int n = 0;
+      for (fs::directory_iterator it(d / "signs", ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string f = it->path().filename().string();
+        const size_t us = f.find('_');
+        superstar_pack::Sign sg;
+        sg.key = d.filename().string();
+        if (it->path().extension() != ".dds" || !ReadHost(it->path(), sg.dds))
+          continue;
+        // NNN_K.dds: superstar NNN's sign K; <id>.dds: any sign by its number (the crowd's general ones: 4001-5151)
+        const int superstar = atoi(f.c_str()), k = us == std::string::npos ? 0 : atoi(f.c_str() + us + 1);
+        sg.id = us == std::string::npos ? superstar : superstar * 10 + k;
+        if (us != std::string::npos && (superstar < 50 || superstar >= 373 || k < 1 || k > 4))
+          continue;
+        if (sg.id < 500 || sg.id > 9999)
+          continue;
+        signs.push_back(std::move(sg));
+        ++n;
+      }
+      ec.clear();
+      if (n)
+        REXLOG_INFO("[superstar mods] signs mod {}: {} sign(s)", d.filename().string(), n);
+    }
+  }
+  if (list.empty() && attires.empty() && media.empty() && signs.empty()) {
     RemovePack(content, headers);
     return;
   }
@@ -423,13 +458,14 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   for (const auto &st : stars)
     if (st.movie_number)
       g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
-  if (stars.empty() && attires.empty() && media.empty()) {
+  if (stars.empty() && attires.empty() && media.empty() && signs.empty()) {
     RemovePack(content, headers);
     return;
   }
   std::vector<superstar_pack::File> files;
   std::string why;
-  if (!superstar_pack::Build(in, stars, files, &why, attires, media)) {
+  latest("pac/audience.pac", in.audience);
+  if (!superstar_pack::Build(in, stars, files, &why, attires, media, signs)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;
   }

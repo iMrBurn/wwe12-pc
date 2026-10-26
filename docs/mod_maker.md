@@ -902,6 +902,17 @@ places ×10, d'après le code de Kaiko).
   par là demanderait d'écrire ses entrées dans la sauvegarde : pas fait.
 - Vidéos d'entrée : page VIDÉOS ; autres images et sons : page TEXTURES et mods de fichiers (`files/`).
 
+## 6 novodecies. Pancartes du public (2026-10-26, vues en jeu)
+
+- `pacudience.pac` AUDE/BORD : un PACH (enfant 0) de 393 lots d'une image « no01 » 128 × 64 DXT1 (mips) ; numéro =
+  catcheur × 10 + 1..4 (1611-1614 : Randy Orton), plus les pancartes générales du public 4001-4621 et 5001-5151.
+- Mod `type=signs` : `signs/NNN_K.dds` (catcheur NNN, pancarte K) ou `signs/<numéro>.dds` (n'importe laquelle, les
+  générales aussi). Le jeu remet AUDE/BORD (et CTRL) dans notre pack (`pac/audience_dlcNN.pac`), pancartes remplacées
+  ou ajoutées ; **les catcheurs ajoutés reçoivent celles de leur base**. Vu en jeu : les pancartes générales
+  remplacées par des magenta.
+- Page **PANCARTES** du Mod Maker (`signs_page.h`, d'après celle de Kaiko) : un catcheur, quatre images (posées sur un
+  carton blanc).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,
