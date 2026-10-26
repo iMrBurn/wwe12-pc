@@ -13,12 +13,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
+#include <map>
 #include <set>
+#include <cmath>
 #include <string>
 #include <vector>
 
 #include "bpe_like.h"
 #include "svrfmt/archive.h"
+#include "svrfmt/jboy.h"
 #include "svrfmt/texture.h"
 
 namespace arena_edit {
@@ -66,6 +69,16 @@ struct Texture {
   bool replaced = false, reduced = false;
 };
 
+// An object of the arena moved (its root nodes' places, cm), turned about the up axis (degrees) or hidden (sent far
+// under the floor: removing it could leave the game looking for it), after the Arena Editor of Kaiko's SvR 2011 Mod
+// Maker (editor.cpp; credit in docs/mod_maker.md).
+struct Move {
+  float d[3] = {0, 0, 0};
+  float turn = 0;
+  bool hide = false;
+  bool None() const { return !d[0] && !d[1] && !d[2] && !turn && !hide; }
+};
+
 struct Package {
   svrfmt::ArcNode *node = nullptr;
   std::vector<svrfmt::BundleTexture> textures, original;
@@ -80,6 +93,9 @@ class Arena {
   bool Load(Bytes file, std::string *error, int section = -1) {
     packages_.clear();
     textures_.clear();
+    originals_.clear();
+    moves_.clear();
+    moves_changed_ = false;
     archive_ = svrfmt::Archive();
     if (!svrfmt::ArchiveOpen(file, archive_, error))
       return false;
@@ -150,8 +166,69 @@ class Arena {
     packages_[t.package].changed = true;  // (Build finds it unchanged again if it is)
   }
 
+  // The section's models: (child id, name).
+  std::vector<std::pair<uint32_t, std::string>> Models() {
+    std::vector<std::pair<uint32_t, std::string>> out;
+    if (archive_.root.kids.size() <= section_)
+      return out;
+    for (auto &k : archive_.root.kids[section_].kids) {
+      const Bytes d = originals_.count(k.id) ? originals_[k.id] : svrfmt::ArchiveData(k);
+      if (!svrfmt::IsJboy(d))
+        continue;
+      svrfmt::Model m;
+      out.push_back({k.id, svrfmt::JboyRead(d, m, nullptr) && !m.name.empty() ? m.name : std::to_string(k.id)});
+    }
+    return out;
+  }
+  const Move &MoveOf(uint32_t id) {
+    static const Move none;
+    const auto it = moves_.find(id);
+    return it == moves_.end() ? none : it->second;
+  }
+  void SetMove(uint32_t id, const Move &m) {
+    if (archive_.root.kids.size() <= section_)
+      return;
+    for (auto &k : archive_.root.kids[section_].kids)
+      if (k.id == id && !originals_.count(id))
+        originals_[id] = svrfmt::ArchiveData(k);
+    moves_[id] = m;
+    moves_changed_ = true;
+  }
+  size_t Moved() const {
+    size_t n = 0;
+    for (const auto &[id, m] : moves_)
+      n += !m.None();
+    return n;
+  }
+
   // The rebuilt file (the original bytes if nothing changed).
   Bytes Build() {
+    if (moves_changed_ && archive_.root.kids.size() > section_) {
+      moves_changed_ = false;
+      for (auto &k : archive_.root.kids[section_].kids) {
+        const auto o = originals_.find(k.id);
+        if (o == originals_.end())
+          continue;
+        const Move &mv = moves_[k.id];
+        svrfmt::Model m;
+        if (mv.None() || !svrfmt::JboyRead(o->second, m, nullptr)) {
+          svrfmt::ArchiveReplace(k, o->second);
+          continue;
+        }
+        const float a = mv.turn * 3.14159265f / 180.0f, c = std::cos(a), sn = std::sin(a);
+        for (auto &n : m.nodes) {
+          if (n.parent >= 0)
+            continue;
+          const float x = n.t[0], z = n.t[2];
+          n.t[0] = c * x + sn * z + mv.d[0];
+          n.t[2] = -sn * x + c * z + mv.d[2];
+          n.t[1] += mv.d[1] + (mv.hide ? 100000.0f : 0.0f);  // (y points down: far under the floor)
+          n.r[1] += a;
+        }
+        svrfmt::ArchiveReplace(k, svrfmt::JboyWrite(m));
+      }
+      svrfmt::ArchiveTouch(archive_.root.kids[section_]);
+    }
     for (auto &p : packages_) {
       if (!p.changed)
         continue;
@@ -218,6 +295,9 @@ class Arena {
   }
 
  private:
+  std::map<uint32_t, Bytes> originals_;  // the moved models as shipped
+  std::map<uint32_t, Move> moves_;
+  bool moves_changed_ = false;
   svrfmt::Archive archive_;
   size_t section_ = 0;
   std::vector<Package> packages_;

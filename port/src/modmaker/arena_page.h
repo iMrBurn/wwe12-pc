@@ -189,8 +189,9 @@ class Page {
     int tab = tab_;
     if (ImGui::BeginTabBar("arena_tabs")) {
       const char *names[] = {fr ? "Nouvelle arène" : "New arena", fr ? "Retoucher une arène du jeu" : "Retexture an arena",
-                             fr ? "Autre fichier d'arène" : "Another arena file", fr ? "Vue 3D" : "3D view"};
-      for (int i = 0; i < 4; ++i)
+                             fr ? "Autre fichier d'arène" : "Another arena file", fr ? "Vue 3D" : "3D view",
+                             fr ? "Éditeur 3D" : "3D editor"};
+      for (int i = 0; i < 5; ++i)
         if (ImGui::BeginTabItem(names[i])) {
           tab = i;
           ImGui::EndTabItem();
@@ -209,7 +210,7 @@ class Page {
       DrawWizard(fr, disc, mods);
       return;
     }
-    mode_ = tab_ == 1 ? 0 : tab_ == 2 ? 1 : 2;
+    mode_ = tab_ == 1 ? 0 : tab_ == 2 ? 1 : tab_ == 3 ? 2 : 5;
 
     // The slot (and, to retexture, the arena opened from it).
     ImGui::SetNextItemWidth(360);
@@ -243,6 +244,8 @@ class Page {
     }
     if (mode_ == 1)
       DrawOtherFile(fr);
+    else if (mode_ == 5)
+      DrawEditor(fr);
     else
       DrawRetexture(fr);
 
@@ -295,13 +298,65 @@ class Page {
   }
 
   int Changed() {
-    int n = 0;
+    int n = int(arena_.Moved());
     for (const auto &t : arena_.Textures())
       n += t.replaced;
     return n;
   }
 
+  // The 3D editor: an object of the arena moved, turned or hidden (arena_edit.h Move), seen in the 3D view.
+  void DrawEditor(bool fr) {
+    const float h = std::max(300.0f, ImGui::GetContentRegionAvail().y - 110);
+    ImGui::BeginChild("ed_list", ImVec2(300, h), ImGuiChildFlags_Borders);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextWithHint("##ed_filter", fr ? "Rechercher un objet" : "Search an object", ed_filter_, sizeof(ed_filter_));
+    if (ed_models_.empty())
+      ed_models_ = arena_.Models();
+    for (const auto &[id, name] : ed_models_) {
+      std::string a = name, b = ed_filter_;
+      for (auto *x : {&a, &b})
+        std::transform(x->begin(), x->end(), x->begin(), [](unsigned char c) { return char(std::tolower(c)); });
+      if (!b.empty() && a.find(b) == std::string::npos)
+        continue;
+      const bool moved = !arena_.MoveOf(id).None();
+      char label[96];
+      snprintf(label, sizeof(label), "%s%s##%u", name.c_str(), moved ? "  *" : "", id);
+      if (ImGui::Selectable(label, ed_pick_ == int(id))) {
+        ed_pick_ = int(id);
+        ed_move_ = arena_.MoveOf(id);
+      }
+    }
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("ed_right", ImVec2(0, h), ImGuiChildFlags_Borders);
+    if (ed_pick_ >= 0) {
+      bool changed = false;
+      ImGui::SetNextItemWidth(360);
+      changed |= ImGui::DragFloat3(fr ? "Décalage X / Y / Z (cm, Y vers le bas)" : "Offset X / Y / Z (cm, Y down)",
+                                   ed_move_.d, 1.0f, -5000.0f, 5000.0f, "%.0f");
+      ImGui::SetNextItemWidth(160);
+      changed |= ImGui::DragFloat(fr ? "Rotation (degrés)" : "Turn (degrees)", &ed_move_.turn, 1.0f, -180.0f, 180.0f, "%.0f");
+      changed |= ImGui::Checkbox(fr ? "Cacher" : "Hide", &ed_move_.hide);
+      ImGui::SameLine();
+      if (ImGui::SmallButton(fr ? "Remettre" : "Reset")) {
+        ed_move_ = arena_edit::Move();
+        changed = true;
+      }
+      if (changed) {
+        arena_.SetMove(uint32_t(ed_pick_), ed_move_);
+        view_stale_ = true;
+      }
+    } else {
+      ImGui::TextDisabled("%s", fr ? "Choisissez un objet à gauche, puis déplacez-le, tournez-le ou cachez-le."
+                                   : "Pick an object on the left, then move, turn or hide it.");
+    }
+    Draw3D(fr);
+    ImGui::EndChild();
+  }
+
   void OpenSlot(bool fr, const disc::GameDisc &disc) {
+    ed_models_.clear();
+    ed_pick_ = -1;
     error_.clear();
     message_.clear();
     reduced_note_.clear();
@@ -1388,7 +1443,7 @@ class Page {
   void Make(bool fr, mods::Manager &mods) {
     message_ok_ = false;
     reduced_note_.clear();
-    arena_edit::Arena &a = mode_ == 1 || mode_ >= 3 ? other_ : arena_;
+    arena_edit::Arena &a = mode_ == 1 || (mode_ >= 3 && mode_ != 5) ? other_ : arena_;
     a.SetStage(kSlots[slot_].number);
     Bytes out;
     const auto reduced = a.Fit(Room(), out);
@@ -1508,6 +1563,10 @@ class Page {
 
   // The assistant.
   int tab_ = 0, wiz_step_ = 0;
+  std::vector<std::pair<uint32_t, std::string>> ed_models_;  // the 3D editor's list (the arena opened)
+  int ed_pick_ = -1;
+  arena_edit::Move ed_move_;
+  char ed_filter_[64] = {};
   float card_w_ = 250;
   Thumb wiz_apron_;  // the source arena's apron (step 1)  // (the start step's three choices share the width)
   int wiz_src_ = -1;  // 0 SvR 2011 (My game discs), 1 WWE '13 (My game discs), 2 one SvR 2011 arena file

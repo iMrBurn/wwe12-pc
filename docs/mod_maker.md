@@ -924,6 +924,21 @@ places ×10, d'après le code de Kaiko).
   même format et à la même taille (chaque entrée garde sa place), servie depuis `Documents\wwe12\menu_background`.
   **Vu en jeu : Jericho au menu principal.** Page **FONDS DU MENU** du Mod Maker (`backgrounds_page.h`).
 
+## 6 unvicies. Éditeur 3D d'arène, visionneuses, projets, manuel (2026-10-26)
+
+- **Éditeur 3D** (page ARÈNES, onglet « Éditeur 3D », `arena_edit.h` Move, d'après l'Arena Editor de Kaiko) : un objet
+  de l'arène (modèle de la section STG) déplacé (nœuds racines, cm, y vers le bas), tourné autour de la verticale, ou
+  caché (envoyé 1 km sous le sol : le retirer pourrait laisser le jeu le chercher) ; le mod se fait comme une retouche.
+  Vérifié hors du jeu (nœud racine de `ji_chair` de bg15 : 0 → 300 cm). Pas encore vu en jeu ; piège possible : les
+  boîtes de visibilité de 50020 (par nom de nœud) ne bougent pas avec l'objet.
+- **REGARDER** (`look_page.h`) : les images du jeu par usage (portraits, bannières, écrans de chargement, pancartes,
+  catcheur du menu, ceintures, logos des shows ; enregistrables en PNG) et les mods installés en 3D (catcheurs, tenues,
+  arènes). Pas encore : les animations jouées sur un catcheur.
+- **Projets** (NOUVEAU CATCHEUR) : `.wwe12proj` (lignes clé=valeur : base, apparence et ses fichiers, nom, attributs,
+  portrait, tenue) enregistré et rouvert.
+- **Manuel** : la page AIDE a des guides pour toutes les pages (FBX, tenues, média, pancartes, fonds, vérification).
+- **Modes simples** : NOUVEAU CATCHEUR et Nouvelle arène sont des assistants pas à pas.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,
