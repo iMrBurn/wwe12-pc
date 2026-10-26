@@ -163,47 +163,39 @@ struct PortInfo {
 // bytes (JboyWrite doesn't give these models back byte for byte).
 inline void ScreensTo12(svrfmt::ArcNode &ga) {
   constexpr size_t B = 8;
-  // WWE '12's 801 shows the live camera (or the arena's movie), its 808 the titantron; the 2K games' 801 is the big
-  // titantron wall and 808 a strip: swapped (WrestleMania 31: the wall behind the ramp showed the arena like a mirror).
+  // WWE '12 gives each screen its movie by number (RenderDoc, WrestleMania 31, 2026-10-26: renamed, screen 805 still
+  // showed the live camera): the titantron on 800/803/806/808, the arena's movie on 801/807/809, the live camera on
+  // 804 and 805; 802 none of WWE '12's. The 2K games' screens by role, renumbered to WWE '12's: their 801 (the big
+  // wall) -> 808, 808 (the strip above the stage) -> 800, 805 (an LED band) -> 803, 806 (the ribbons) stays, 800
+  // (the high screens) -> 807 (the arena's movie) when 808 takes 800; their repeats with another layout (a show's
+  // look: 802 = 801, 803/804 = 800, 807 = 806, 809 = 808) left out. Their "screen off" covers (titan_off, hidden by
+  // the 2K games during the entrances) left out too: WrestleMania 31's hid its central circle.
   {
     const auto layout = [](const svrfmt::ArcNode &k) {
       const Bytes d = svrfmt::ArchiveData(k);
       return svrfmt::IsJboy(d) && std::search(d.begin(), d.end(), "layout_", "layout_" + 7) != d.end();
     };
-    svrfmt::ArcNode *a = nullptr, *b = nullptr;
-    for (auto &k : ga.kids) {
-      if (k.id == 801 && layout(k))
-        a = &k;
-      if (k.id == 808 && layout(k))
-        b = &k;
-    }
-    if (a && b)
-      std::swap(a->id, b->id);
-    // WWE '12 gives each screen its movie by number (RenderDoc, WrestleMania 31, 2026-10-26: renamed, screen 805 still
-    // showed the live camera): titantron on 800/803/806/808, the arena's movie on 801/807/809, the live camera on 804
-    // and 805; 802 none of WWE '12's. The 2K games' 802, 803 and 804 repeat 801 and 800 with another layout (a show's
-    // look): left out; their 805 (an LED band of its own) becomes 803. Their "screen off" covers (titan_off, hidden
-    // by the 2K games during the entrances) left out too: WrestleMania 31's hid its central circle.
     const auto has = [&](uint32_t id) {
       for (const auto &k : ga.kids)
         if (k.id == id && layout(k))
           return true;
       return false;
     };
-    const bool band = has(805);
     bool twok = false;  // (a 2K game's arena: screens drawn from layout_ pictures)
     for (const auto &k : ga.kids)
       twok = twok || (k.id >= 800 && k.id <= 899 && layout(k));
+    const bool strip = has(808);
     std::vector<svrfmt::ArcNode> kept;
     for (auto &k : ga.kids) {
       if (!twok) {
         kept.push_back(std::move(k));
         continue;
       }
-      if ((k.id == 802 || k.id == 804 || (band && k.id == 803)) && layout(k))
-        continue;
-      if (band && k.id == 805 && layout(k))
-        k.id = 803;
+      if (layout(k)) {
+        if (k.id == 802 || k.id == 803 || k.id == 804 || k.id == 807 || k.id == 809)
+          continue;
+        k.id = k.id == 801 ? 808 : k.id == 808 ? 800 : k.id == 805 ? 803 : k.id == 800 && strip ? 807 : k.id;
+      }
       const Bytes d = svrfmt::ArchiveData(k);
       svrfmt::Model m;
       if (svrfmt::IsJboy(d) && svrfmt::JboyRead(d, m, nullptr) && !m.textures.empty() &&
