@@ -775,7 +775,7 @@ inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n) {
 // own layout has a number of elements less than WWE '12's, 14 against 15: WrestleMania 31 of 2K16 showed no names
 // and a black box, 2026-10-26).
 // stretched_logo: their logo is stored squeezed, drawn wide (the 2K games: WrestleMania 31's, 256 x 256 for a wide
-// logo, came out narrow): stretched to the template's logo picture instead of fitted whole.
+// logo, came out narrow): made 3.4 times as wide as high again, then fitted whole.
 inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const Bytes &matchhd12,
                         const svrfmt::Image &banner, Bytes &mb, Bytes &mf, std::string *template_name = nullptr,
                         bool stretched_logo = false) {
@@ -869,9 +869,9 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
         t.data = svrfmt::DdsEncode(both, info.format, info.mips > 1);
       }
       else if (t.name == "logo" && stretched_logo && decode(logo, img)) {
-        svrfmt::DdsInfo info;
-        svrfmt::DdsInfoOf(t.data, info);
-        t.data = svrfmt::DdsEncode(svrfmt::Resize(img, info.w, info.h), info.format, info.mips > 1);
+        // (drawn 3.4 times as wide as high by WWE 2K16's VS screen: back to that, then fitted whole; stretched to the
+        // template's 2:1 picture it still looked squeezed)
+        t.data = LikePicture(t.data, svrfmt::Resize(img, int(img.h * 3.4), img.h), false);
       } else if (t.name == "logo" && (decode(logo, img) || (img = banner, !banner.rgba.empty())))
         t.data = LikePicture(t.data, img, false);
       else if (t.name == "hell_fr" && decode(plate, img))
