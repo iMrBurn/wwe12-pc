@@ -64,7 +64,7 @@ aucune émulation ; DX12 en plus de Vulkan, peut-être DX11.
 
 ### Gros chantiers
 - Jeu en full natif : long terme, par étapes (décompilation progressive, système par système).
-- **Choix de l'API graphique (voulu pour la 1.0 « si possible », décision du 2026-10-26)** : DX12 en plus de
+- **Choix de l'API graphique (DÉCIDÉ pour la 1.0 le 2026-10-26, D3D12 d'abord, estimation Rendu 5-8 séances, 2 exe)** : DX12 en plus de
   Vulkan (plume le gère, il est coupé dans `native_renderer.cmake`), sélecteur « Automatic / Vulkan / Direct3D 12 »
   dans le launcher et le jeu. Piste : les pavés d'entrée sur Intel HD/UHD (#7, #11, #13) viennent peut-être du
   pilote Vulkan Intel ; en D3D12 ils disparaîtraient peut-être (hypothèse). **DX11** : Kaiko l'a fait pour SvR 2011

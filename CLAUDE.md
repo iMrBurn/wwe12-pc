@@ -131,9 +131,24 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   `wwe12_saves.cpp` (appelé après les DLC dans `wwe12_app.h`) extrait chaque paquet (même nom = remplacé),
   supprime la liste et écrit `saves_import_result.txt`. Signatures non vérifiées (pas de re-signature).
   Testé en vrai avec « A Promoter's Dream » de Petchy (95 paquets, CAW visibles dans le jeu).
-- Choix du rendu : impossible aujourd'hui. Le rendu natif est compilé Vulkan seul (plume D3D12 coupé dans
-  `native_renderer.cmake`, `REBLUE_D3D12` = build D3D12 seul) et le cvar `gpu_backend` de `wwe12.toml`
-  est ignoré (`wwe12_app.h` quitte avant de le lire avec `SVR_NATIVE_RENDERER`).
+- **Choix du rendu (2026-10-26, pour la 1.0)** : DEUX exe, `wwe12.exe` (Vulkan, défaut) et `wwe12_d3d12.exe`
+  (cible CMake `WWE12_D3D12_EXE`, ON par défaut sur Windows ; réutilise `wwe12_recomp`, carte `.map` à part).
+  `build.ps1` produit les deux + `dxcompiler.dll` et `dxil.dll`. Le launcher lance l'un ou l'autre selon
+  `gpu_backend` de `wwe12.toml` (`any`/`vulkan` = wwe12.exe, `d3d12` = wwe12_d3d12.exe) ; OPTIONS > GRAPHICS >
+  ADVANCED a la ligne « GRAPHICS API » (même valeurs, appliquée au prochain lancement). Fusion en un seul exe
+  avec choix à l'exécution (comme Kaiko : `gpu.h` + `backend_*.cpp`) = plus tard : `g_vulkan` est constexpr à
+  ~50 endroits dans 16 fichiers. **Pièges D3D12** : 1) garder la profondeur inversée (MinZ > MaxZ), sinon
+  catcheurs et foule disparaissent ; 2) `dxil.dll` est OBLIGATOIRE (il signe le DXIL lié, sans lui toutes les
+  pipelines échouent) ; 3) le choix de carte se fait par fabricant (noms DXGI ≠ noms Vulkan) ; 4) correctifs
+  plume dans `port/patches/plume-d3d12.patch` (read-backs, choix de carte), appliqué par `setup.ps1` ; 5) les
+  4 fichiers de re:Blue (`shader_linker`, `dxc_link`, BSD-3, commit 85aae68) sont crédités dans `THIRD_PARTY.md`.
+  Liaison DXC au 1er passage : ~113 liaisons, ~9 ms chacune (≈ 1,5 s étalées), puis le cache de pipelines rejoue
+  en arrière-plan ; cache pré-lié possible avec `reblue_prelink` (non téléchargé, plus tard si besoin).
+  **Licence DXC** (v1.8.2407, textes dans `port/third_party/dxc/`) : `LICENSE-MS.txt` autorise de redistribuer
+  `dxil.dll` avec une appli MAIS exige que les utilisateurs acceptent des conditions qui protègent Microsoft et
+  que le distributeur **indemnise Microsoft** : décision de l'utilisateur avant de livrer. Le D3D12 n'est pas
+  prouvé utile pour les pavés Intel Gen9 (#7/#11/#13) : seul un joueur Gen9 peut le dire. Kaiko autorise de
+  lire et d'adapter son D3D11 avec crédit (voir la mémoire `kaiko-permission-2026-10-26`).
 - Clavier (2026-10-16) : le jeu n'accepte que des noms de touches exacts et sensibles à la casse (table de
   `rexglue-sdk/src/ui/keybinds.cpp`, recopiée dans `launcher/keybinds.h`) ; un nom inconnu ou un modificateur
   seul (`Shift`) est ignoré sans message. Le launcher corrige/valide les noms et propose « Définir ».
