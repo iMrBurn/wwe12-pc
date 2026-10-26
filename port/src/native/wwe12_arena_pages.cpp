@@ -618,6 +618,7 @@ REX_EXTERN(__imp__sub_825A6A98);  // arena select: draw (every frame)
 REX_EXTERN(__imp__sub_825A3318);  // arena select: is this stage available (this, stage)
 REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
+REX_EXTERN(__imp__sub_82780948);  // VS screen: load its layout "/MLYE/MB%02d", else MB00 (this + 768, stage)
 REX_EXTERN(sub_82A8C070);         // XInputGetState(user, state) (hooked by wwe12_intros.cpp: call the hooked one)
 
 namespace {
@@ -741,10 +742,48 @@ extern "C" REX_FUNC(sub_825A56C8) {
   }
 }
 
+// The VS screen of an added arena is asked under a name of its own, "/MLYE/MB<its tile's made-up stage>" (150 + n):
+// under its base's name the game took its base's VS screen from its own cache when that one had been shown before
+// (WrestleMania 31 in Superstars' place showed Superstars', 2026-10-26: the directory wasn't even asked). The
+// directory answers that name with the added arena's VS screen. (Its font needs nothing: WWE '12's layouts name
+// "font000", the stage's font.)
+extern "C" REX_FUNC(sub_82780948) {
+  if (g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units && ctx.r4.u32 == g_added[size_t(g_chosen)].base)
+    ctx.r4.u64 = kFirstAdded + u32(g_chosen);
+  __imp__sub_82780948(ctx, base);
+}
+
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
 extern "C" REX_FUNC(sub_827F29F0) {
   const u32 name = ctx.r4.u32, out = ctx.r5.u32;
+  // the added arena's VS screen under its own name: looked up as its base's (the name written in the guest's string
+  // for the call, then put back), then pointed at its own
+  bool own_mb = false;
+  std::string asked;
+  if (name && out && g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units) {
+    char own[16];
+    snprintf(own, sizeof(own), "/MLYE/MB%02u", kFirstAdded + u32(g_chosen));
+    if (strcmp(bd::mem::str(name), own) == 0) {
+      own_mb = true;
+      asked = own;
+      char as[16];
+      snprintf(as, sizeof(as), "/MLYE/MB%02u", g_added[size_t(g_chosen)].base);
+      for (size_t i = 0; i <= strlen(as); ++i)
+        bd::mem::store<u8>(name + u32(i), u8(as[i]));
+    }
+  }
   __imp__sub_827F29F0(ctx, base);
+  if (own_mb) {
+    for (size_t i = 0; i <= asked.size(); ++i)
+      bd::mem::store<u8>(name + u32(i), u8(asked[i]));
+    if (ctx.r3.u32 != 0) {
+      const Added &a = g_added[size_t(g_chosen)];
+      bd::mem::store<u32>(out, a.mb_sector);
+      bd::mem::store<u32>(out + 8, a.mb_units);
+      REXLOG_INFO("[arena pages] {}: the VS screen of {}", asked, a.id);
+    }
+    return;
+  }
   if (!name || !out || ctx.r3.u32 == 0)
     return;
   const char *n = bd::mem::str(name);
