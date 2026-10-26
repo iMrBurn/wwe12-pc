@@ -10,6 +10,7 @@
 #include <d3d11.h>
 #include <dxgi.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 
@@ -24,6 +25,7 @@
 #include "game_discs.h"
 #include "game_disc.h"
 #include "media.h"
+#include "mod_doctor.h"
 #include "mods.h"
 #include "pac_page.h"
 #include "new_star_page.h"
@@ -124,6 +126,16 @@ fs::path ExeDir() {
   return fs::path(buf).parent_path();
 }
 
+// Documents\wwe12: the game's own files (saves, the added superstars' numbers).
+fs::path UserRoot() {
+  PWSTR p = nullptr;
+  fs::path out;
+  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &p)))
+    out = fs::path(p) / "wwe12";
+  CoTaskMemFree(p);
+  return out;
+}
+
 void OpenFolder(const fs::path &p) {
   std::error_code ec;
   fs::create_directories(p, ec);
@@ -133,7 +145,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kFiles, kDiscs, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kFiles, kDiscs, kDoctor, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -146,6 +158,7 @@ arena_page::Page g_arenas;
 superstar_page::Page g_stars;
 new_star_page::Page g_new_star;
 game_discs::Discs g_discs;
+mod_doctor::Page g_doctor;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 
@@ -187,6 +200,8 @@ void PageHome() {
        "Regarder dans les archives du jeu (.pac) et exporter ce qu'elles contiennent."},
       {kDiscs, "My game discs", "Mes disques de jeu", "Your other WWE games (ISO or folder), added once: the ports read them.",
        "Vos autres jeux WWE (ISO ou dossier), ajoutés une fois : les portages les lisent."},
+      {kDoctor, "Check mods", "Vérifier les mods", "The mod doctor: what will go wrong in the game with your mods, and a fix.",
+       "Le docteur des mods : ce qui ira mal dans le jeu avec vos mods, et de quoi le réparer."},
       {kAbout, "Help", "Aide", "How to make each kind of mod, step by step; what isn't possible yet.",
        "Comment faire chaque sorte de mod, pas à pas ; ce qui n'est pas encore possible."},
   };
@@ -397,9 +412,9 @@ void DrawUi() {
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
   const char *names_en[] = {"HOME",       "VIDEOS",     "TEXTURES",     "ARENAS", "SUPERSTARS",
-                            "NEW SUPERSTAR", "GAME FILES", "MY GAME DISCS", "HELP"};
+                            "NEW SUPERSTAR", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
   const char *names_fr[] = {"ACCUEIL", "VIDÉOS",   "TEXTURES",   "ARÈNES",  "CATCHEURS",
-                            "NOUVEAU", "FICHIERS", "MES DISQUES", "AIDE"};
+                            "NOUVEAU", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
   for (int i = 0; i < int(std::size(names_en)); ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
@@ -423,6 +438,10 @@ void DrawUi() {
     g_discs.Draw(g_fr);
     ImGui::Dummy(ImVec2(0, 12));
     bink2::DrawSetting(g_fr);
+    break;
+  case kDoctor:
+    Title(g_fr ? "VÉRIFIER LES MODS" : "CHECK MODS");
+    g_doctor.Draw(g_fr, g_disc, g_mods, ExeDir() / "mods", UserRoot());
     break;
   case kAbout: PageAbout(); break;
   }
