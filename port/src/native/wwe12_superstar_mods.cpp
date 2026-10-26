@@ -121,13 +121,14 @@ uint64_t Fnv(const Bytes &b, uint64_t h) {
   return h;
 }
 
+// No mods for the pack: it is KEPT. Every build shares Documents\wwe12 (saves and installed DLC); a save made with the
+// added superstars needs their pack, else the game refuses it ("downloadable content missing or damaged"): a test
+// build with an empty mods folder removed it and the player's 0.9 couldn't load his save (2026-10-26).
 void RemovePack(const fs::path &content, const fs::path &headers) {
+  (void)headers;
   std::error_code ec;
-  if (fs::exists(content / kPackName, ec)) {
-    fs::remove_all(content / kPackName, ec);
-    fs::remove(headers / (std::string(kPackName) + ".header"), ec);
-    REXLOG_INFO("[superstar mods] no superstar mods: pack {} removed", kPackName);
-  }
+  if (fs::exists(content / kPackName, ec))
+    REXLOG_INFO("[superstar mods] no superstar mods now: pack {} kept (a save may use its superstars)", kPackName);
 }
 
 }  // namespace
