@@ -233,6 +233,7 @@ struct Texts {
   const char *icons, *icons_auto, *icons_xbox, *icons_ps, *icons_hint;
   const char *gpu_used, *gpu_dedicated, *gpu_integrated, *gpu_others;
   const char *keys_mod_alone;
+  const char *api, *api_auto, *api_vulkan, *api_d3d12, *api_hint, *api_d3d12_missing;
 };
 
 const Texts kEnglish = {
@@ -306,7 +307,10 @@ const Texts kEnglish = {
     "started; if you still see Xbox icons with your PlayStation controller, pick PlayStation. Applies the next "
     "time you start the game.",
     "Graphics card used: %s", "dedicated", "integrated", "Cards found: %s",
-    "Shift, Ctrl or Alt set on its own is a key of its own, so these combinations will do nothing: %s"};
+    "Shift, Ctrl or Alt set on its own is a key of its own, so these combinations will do nothing: %s",
+    "Graphics API", "Automatic", "Vulkan", "Direct3D 12",
+    "Vulkan by default; try Direct3D 12 if you have graphics problems. Applies the next time you start the game.",
+    "The Direct3D 12 version of the game (wwe12_d3d12.exe) was not found: the game starts with Vulkan instead."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -385,7 +389,10 @@ const Texts kFrench = {
     "démarrage du jeu ; si vous voyez encore les icônes Xbox avec votre manette PlayStation, choisissez "
     "PlayStation. S'applique au prochain lancement du jeu.",
     "Carte graphique utilisée : %s", "dédiée", "intégrée", "Cartes détectées : %s",
-    "Shift, Ctrl ou Alt réglé seul devient une touche à part entière : ces combinaisons ne marcheront donc pas : %s"};
+    "Shift, Ctrl ou Alt réglé seul devient une touche à part entière : ces combinaisons ne marcheront donc pas : %s",
+    "API graphique", "Automatique", "Vulkan", "Direct3D 12",
+    "Vulkan par défaut ; essayez Direct3D 12 si vous avez des problèmes graphiques. S'applique au prochain lancement du jeu.",
+    "La version Direct3D 12 du jeu (wwe12_d3d12.exe) est introuvable : le jeu démarre avec Vulkan à la place."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -433,6 +440,7 @@ struct Settings {
   bool vsync = true;
   bool fps60 = false;
   int aniso = 16;
+  int api = 0;  // gpu_backend: 0 automatic ("any"), 1 vulkan, 2 d3d12 (wwe12_d3d12.exe)
   bool crowd = true;
   bool shadows = true;
   bool dof = true;  // depth of field
@@ -463,6 +471,10 @@ void LoadSettings() {
   g_s.vsync = g_toml.GetBool("bd_vsync", true);
   g_s.fps60 = g_toml.GetBool("wwe12_60fps", false);
   g_s.aniso = g_toml.GetInt("bd_anisotropy", 16);
+  {
+    const std::string api = g_toml.GetString("gpu_backend", "any");
+    g_s.api = api == "d3d12" ? 2 : api == "vulkan" ? 1 : 0;
+  }
   g_s.crowd = g_toml.GetBool("wwe12_crowd", true);
   g_s.shadows = g_toml.GetBool("wwe12_shadows", true);
   g_s.dof = g_toml.GetBool("wwe12_dof", true);
@@ -493,6 +505,7 @@ void SaveSettings() {
   g_toml.SetBool("bd_vsync", g_s.vsync);
   g_toml.SetBool("wwe12_60fps", g_s.fps60);
   g_toml.SetInt("bd_anisotropy", g_s.aniso);
+  g_toml.SetString("gpu_backend", g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
   g_toml.SetBool("wwe12_crowd", g_s.crowd);
   g_toml.SetBool("wwe12_shadows", g_s.shadows);
   g_toml.SetBool("wwe12_dof", g_s.dof);
@@ -703,6 +716,14 @@ void PageSettings() {
       ImGui::EndTabItem();
     }
     if (ImGui::BeginTabItem(t.tab_graphics)) {
+      {
+        const char *api_names[] = {t.api_auto, t.api_vulkan, t.api_d3d12};
+        changed |= ImGui::Combo(t.api, &g_s.api, api_names, 3);
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("%s", t.api_hint);
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy(ImVec2(0, 6));
+      }
       static const int kAniso[] = {0, 2, 4, 8, 16};
       int ai = 4;
       for (int i = 0; i < 5; ++i)
@@ -1078,6 +1099,16 @@ std::string BuildDiagnostics() {
   for (const auto &e : fs::directory_iterator(DocumentsDir() / "wwe12" / "0000000000000000" / "54510890" / "00000002", ec))
     if (e.is_directory(ec))
       ++dlc;
+  {
+    std::error_code e2;
+    const bool d3d12_present = fs::exists(ExeDir() / L"wwe12_d3d12.exe", e2);
+    const bool use_d3d12 = g_s.api == 2 && d3d12_present;
+    r += std::string("Graphics API: ") + (use_d3d12 ? "Direct3D 12 (wwe12_d3d12.exe)" : "Vulkan (wwe12.exe)");
+    r += std::string(", gpu_backend=") + (g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
+    r += std::string(", wwe12_d3d12.exe ") + (d3d12_present ? "present" : "missing");
+    r += std::string(", dxcompiler.dll ") + (fs::exists(ExeDir() / L"dxcompiler.dll", e2) ? "present" : "missing");
+    r += std::string(", dxil.dll ") + (fs::exists(ExeDir() / L"dxil.dll", e2) ? "present" : "missing") + "\n";
+  }
   r += std::string("Game files: ") + (GameFilesFound(ExeDir()) ? "found" : "missing") + "\n";
   r += "Mod files: " + std::to_string(mods) + ", DLC installed: " + std::to_string(dlc) + "\n";
   return r;
@@ -1163,9 +1194,24 @@ void DrawUi() {
   ImGui::End();
 }
 
-bool LaunchGame() {
+// wwe12_d3d12.exe when the player chose Direct3D 12 (gpu_backend = "d3d12") and it is there,
+// wwe12.exe (Vulkan) otherwise, with a message if the Direct3D 12 build is missing.
+bool LaunchGame(HWND hwnd) {
   const fs::path dir = ExeDir();
-  const std::wstring exe = (dir / L"wwe12.exe").wstring();
+  fs::path exe_path = dir / L"wwe12.exe";
+  if (g_s.api == 2) {
+    std::error_code ec;
+    if (fs::exists(dir / L"wwe12_d3d12.exe", ec)) {
+      exe_path = dir / L"wwe12_d3d12.exe";
+    } else {
+      const std::string msg = T().api_d3d12_missing;
+      std::wstring wide(msg.size() + 1, L'\0');
+      const int n = MultiByteToWideChar(CP_UTF8, 0, msg.c_str(), -1, wide.data(), int(wide.size()));
+      wide.resize(n > 0 ? size_t(n - 1) : 0);
+      MessageBoxW(hwnd, wide.c_str(), L"WWE '12 PC", MB_ICONINFORMATION);
+    }
+  }
+  const std::wstring exe = exe_path.wstring();
   std::wstring cmd = L"\"" + exe + L"\"";
   STARTUPINFOW si{sizeof(si)};
   PROCESS_INFORMATION pi{};
@@ -1283,10 +1329,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
         g_play_note = 1;  // one game at a time
       else if (g_saves.Busy() || g_updater.Busy())
         g_play_note = 2;  // closing now would cut it short
-      else if (LaunchGame())
+      else if (LaunchGame(hwnd))
         done = true;
       else
-        MessageBoxW(hwnd, L"wwe12.exe could not be started.", L"WWE '12 PC", MB_ICONERROR);
+        MessageBoxW(hwnd, L"The game could not be started.", L"WWE '12 PC", MB_ICONERROR);
     }
     if (g_updater.RestartRequested())
       done = true;
