@@ -548,6 +548,65 @@ inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out) {
   }
 }
 
+using UvTri = std::array<std::array<float, 2>, 3>;
+
+// The texels of a w x h picture inside UV triangles (one over half the picture is skipped: wrapped UVs).
+inline std::vector<uint8_t> UvMask(const std::vector<UvTri> &tris, int w, int h) {
+  std::vector<uint8_t> keep(size_t(w) * h, 0);
+  for (const auto &t : tris) {
+    float x[3], y[3];
+    for (int c = 0; c < 3; ++c) {
+      x[c] = t[size_t(c)][0] * w;
+      y[c] = t[size_t(c)][1] * h;
+    }
+    const int x0 = std::max(0, int(std::floor(std::min({x[0], x[1], x[2]})))),
+              x1 = std::min(w - 1, int(std::ceil(std::max({x[0], x[1], x[2]})))),
+              y0 = std::max(0, int(std::floor(std::min({y[0], y[1], y[2]})))),
+              y1 = std::min(h - 1, int(std::ceil(std::max({y[0], y[1], y[2]}))));
+    const float area = (x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0]);
+    if (std::abs(area) < 1e-6f || x1 - x0 > w / 2 || y1 - y0 > h / 2)
+      continue;
+    for (int py = y0; py <= y1; ++py)
+      for (int px = x0; px <= x1; ++px) {
+        const float cx = px + 0.5f, cy = py + 0.5f;
+        const float w0 = (x[1] - cx) * (y[2] - cy) - (x[2] - cx) * (y[1] - cy);
+        const float w1 = (x[2] - cx) * (y[0] - cy) - (x[0] - cx) * (y[2] - cy);
+        const float w2 = (x[0] - cx) * (y[1] - cy) - (x[1] - cx) * (y[0] - cy);
+        if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0))
+          keep[size_t(py) * w + px] = 1;
+      }
+  }
+  return keep;
+}
+
+// WWE '12's hair shader cuts the hair out with the NORMAL map's alpha (the base's: white strands with their tips),
+// SvR's with the colour's; SvR's normal alpha (the shine) is near black there, so every strand fragment was thrown
+// away (CM Punk of SvR: long hair invisible, only the scalp; RenderDoc 2026-10-26, pixel shader Kill on
+// normal.a * vertex alpha). The normal map's alpha under the hair's UVs: SvR's colour alpha (averaged down).
+inline Bytes HairCut(const Bytes &normal, const Bytes &colour, const std::vector<UvTri> &hair) {
+  svrfmt::Image n, c;
+  svrfmt::DdsInfo ni;
+  if (hair.empty() || !svrfmt::DdsInfoOf(normal, ni) || ni.format == svrfmt::DxtFormat::kDxt1 ||
+      ni.format == svrfmt::DxtFormat::kUnknown || !svrfmt::DdsDecode(normal, n) || !svrfmt::DdsDecode(colour, c) ||
+      n.w <= 0 || n.h <= 0 || c.w <= 0 || c.h <= 0)
+    return normal;
+  const auto keep = UvMask(hair, n.w, n.h);
+  for (int py = 0; py < n.h; ++py)
+    for (int px = 0; px < n.w; ++px) {
+      if (!keep[size_t(py) * n.w + px])
+        continue;
+      const int cx0 = px * c.w / n.w, cx1 = std::max(cx0 + 1, (px + 1) * c.w / n.w);
+      const int cy0 = py * c.h / n.h, cy1 = std::max(cy0 + 1, (py + 1) * c.h / n.h);
+      unsigned sum = 0, cnt = 0;
+      for (int y = cy0; y < cy1 && y < c.h; ++y)
+        for (int x = cx0; x < cx1 && x < c.w; ++x, ++cnt)
+          sum += c.rgba[(size_t(y) * c.w + x) * 4 + 3];
+      if (cnt)
+        n.rgba[(size_t(py) * n.w + px) * 4 + 3] = uint8_t((sum + cnt / 2) / cnt);
+    }
+  return svrfmt::DdsEncode(n, ni.format, ni.mips > 1);
+}
+
 // SvR's attire (its EMD PACH node) into the WWE '12 base attire's node (both expanded): the model, the colour and
 // masks, the normal map. The base's other entries stay (eyelashes, material data, physics...).
 inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep, std::string *why) {
@@ -593,7 +652,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
           break;
         }
   }
-  std::vector<std::array<std::array<float, 2>, 3>> see_through;  // UV triangles of the hair and the eyes' pieces
+  std::vector<UvTri> see_through, hair_uv;  // UV triangles of the hair and the eyes' pieces; of the hair alone
   for (uint32_t id : {10000u, 20000u}) {
     svrfmt::ArcNode *s = child(svr, id), *b = child(base, id);
     svrfmt::Model xs, xb, xo;
@@ -606,8 +665,11 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
       for (const auto &st : m.strips) {
         const auto &ix = st.indices;
         for (size_t q = 0; q + 2 < ix.size(); q += st.IsStrip() ? 1 : 3)
-          if (ix[q] < m.uvs.size() && ix[q + 1] < m.uvs.size() && ix[q + 2] < m.uvs.size())
+          if (ix[q] < m.uvs.size() && ix[q + 1] < m.uvs.size() && ix[q + 2] < m.uvs.size()) {
             see_through.push_back({m.uvs[ix[q]], m.uvs[ix[q + 1]], m.uvs[ix[q + 2]]});
+            if (id == 10000)
+              hair_uv.push_back(see_through.back());
+          }
       }
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(xo));
     rep->textures.insert(rep->textures.end(), extra.textures.begin(), extra.textures.end());
@@ -636,30 +698,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
       // Except where the hair and the eyes' pieces (eyelashes, strands) take their colours: there SvR's alpha is
       // their see-through edges (WWE '12 draws them blended): kept (DXT1: on or off), else they came out as solid
       // dark bands (CM Punk: bars under the eyes).
-      std::vector<uint8_t> keep(size_t(img.w) * img.h, 0);
-      for (const auto &t : see_through) {
-        float x[3], y[3];
-        for (int c = 0; c < 3; ++c) {
-          x[c] = t[size_t(c)][0] * img.w;
-          y[c] = t[size_t(c)][1] * img.h;
-        }
-        const int x0 = std::max(0, int(std::floor(std::min({x[0], x[1], x[2]})))),
-                  x1 = std::min(img.w - 1, int(std::ceil(std::max({x[0], x[1], x[2]})))),
-                  y0 = std::max(0, int(std::floor(std::min({y[0], y[1], y[2]})))),
-                  y1 = std::min(img.h - 1, int(std::ceil(std::max({y[0], y[1], y[2]}))));
-        const float area = (x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0]);
-        if (std::abs(area) < 1e-6f || x1 - x0 > img.w / 2 || y1 - y0 > img.h / 2)
-          continue;
-        for (int py = y0; py <= y1; ++py)
-          for (int px = x0; px <= x1; ++px) {
-            const float cx = px + 0.5f, cy = py + 0.5f;
-            const float w0 = (x[1] - cx) * (y[2] - cy) - (x[2] - cx) * (y[1] - cy);
-            const float w1 = (x[2] - cx) * (y[0] - cy) - (x[0] - cx) * (y[2] - cy);
-            const float w2 = (x[0] - cx) * (y[1] - cy) - (x[1] - cx) * (y[0] - cy);
-            if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0))
-              keep[size_t(py) * img.w + px] = 1;
-          }
-      }
+      const auto keep = UvMask(see_through, img.w, img.h);
       for (size_t q = 0; q < keep.size(); ++q)
         if (!keep[q])
           img.rgba[q * 4 + 3] = 255;
@@ -676,14 +715,18 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
         break;
       }
   // The normal map, in the base's bundle 10.
-  svrfmt::ArcNode *s10 = child(svr, 10), *b10 = child(base, 10);
+  svrfmt::ArcNode *s10 = child(svr, 10), *b10 = child(base, 10), *s12 = child(svr, 12);
   if (s10 && b10) {
-    std::vector<svrfmt::BundleTexture> st, bt;
+    std::vector<svrfmt::BundleTexture> st, bt, sc;
     if (svrfmt::BundleRead(svrfmt::ArchiveData(*s10), st) && svrfmt::BundleRead(svrfmt::ArchiveData(*b10), bt)) {
+      const bool colour = s12 && svrfmt::BundleRead(svrfmt::ArchiveData(*s12), sc) && !sc.empty();
       for (auto &t : bt)
         for (const auto &u : st)
-          if (t.name == "normal" && u.name == "normal")
+          if (t.name == "normal" && u.name == "normal") {
             t.data = Shine(u.data, t.data);
+            if (colour)
+              t.data = HairCut(t.data, sc[0].data, hair_uv);
+          }
       // The pictures of its own the model now names (the hands').
       for (const auto &name : rep->textures)
         for (const auto &u : st)
