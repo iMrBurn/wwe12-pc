@@ -944,7 +944,8 @@ class Page {
   // SD's SSFA / SSFB (SvR 256 x 512, WWE '12 512 x 256, the HD picture squeezed): those made from the HD ones.
   // A SvR 2011 portrait framed as WWE '12's (a bust, the head's top near the top edge). SvR's show the superstar
   // smaller, down to the knees, and stored for SvR's frame: shown in WWE '12's they came out ~1.25 times too wide
-  // (CM Punk next to Drew McIntyre, 2026-10-26). Scaled 1.45 high and 1.16 wide, the head's top 12 pixels from the top
+  // (CM Punk next to Drew McIntyre, 2026-10-26). Scaled 1.45 high and 0.92 wide (1.16 wide: his face still ~1.25
+  // times Chavo Guerrero's, same height, 2026-10-26), the head's top 12 pixels from the top
   // (at 512), centred on the shoulders (a row a fifth of the way down the figure); the legs go past the bottom edge.
   static svrfmt::Image Reframe(const svrfmt::Image &img) {
     if (img.w <= 0 || img.h <= 0)
@@ -968,7 +969,7 @@ class Page {
         right = x;
       }
     const double cx = left < 0 ? img.w / 2.0 : (left + right) / 2.0;
-    constexpr double ky = 1.45, kx = 1.16;
+    constexpr double ky = 1.45, kx = 0.92;
     const int w = int(img.w * kx + 0.5), h = int(img.h * ky + 0.5);
     const svrfmt::Image big = svrfmt::Resize(img, w, h);
     svrfmt::Image out;
