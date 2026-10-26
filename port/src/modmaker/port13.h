@@ -152,6 +152,70 @@ struct PortInfo {
   bool RampsMatch() const { return (ramp13 < 60) == (ramp12 < 60); }
 };
 
+// The video screens (models 800-899). Same numbers in WWE '12 and the 2K games (800 small screen, 801/802 and
+// 803/804 big ones, 806/807 the wide ribbons, 808/809 strips), but the 2K games draw them from one "layout_*" picture
+// of their own: its top quarter (v 0-0.25) for the ribbons, the rest (v 0.25-1) the titantron. WWE '12 puts its
+// movie there (320 x 320: the titantron's top 0-0.684, the two side panels' strip 0.691-0.998 under it; arena and
+// minitron movies whole): drawn as they were, the 2K screens showed the wrestler cut and stretched across the
+// ribbons (WWE 2K16's WrestleMania 31, 2026-10-26). Their UVs moved from the 2K places to WWE '12's: the titantron
+// part to the titantron's, the ribbons' part to the side panels', the whole picture to the whole; their textures
+// named as WWE '12's screen of that number (titantron_movie / arena_movie / minitron_movie). Changed in the model's
+// bytes (JboyWrite doesn't give these models back byte for byte).
+inline void ScreensTo12(svrfmt::ArcNode &ga) {
+  constexpr size_t B = 8;
+  for (auto &k : ga.kids) {
+    if (k.id < 800 || k.id > 899)
+      continue;
+    Bytes d = svrfmt::ArchiveData(k);
+    svrfmt::Model m;
+    if (!svrfmt::IsJboy(d) || !svrfmt::JboyRead(d, m, nullptr))
+      continue;
+    const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
+    bool changed = false;
+    for (auto &me : m.meshes) {
+      int slot = -1;
+      for (const auto &p : me.params)
+        if (p.type == 0x0f && p.value.size() >= 4 && svrfmt::Be32(p.value.data()) < m.textures.size() &&
+            m.textures[svrfmt::Be32(p.value.data())].rfind("layout_", 0) == 0)
+          slot = int(svrfmt::Be32(p.value.data()));
+      if (slot < 0 || me.uvs.empty())
+        continue;
+      const bool mini = m.textures[size_t(slot)].find("mini") != std::string::npos;
+      const char *name = mini || k.id == 804                         ? "minitron_movie"
+                         : k.id == 801 || k.id == 807 || k.id == 809 ? "arena_movie"
+                                                                     : "titantron_movie";
+      float v0 = 1e9f, v1 = -1e9f;
+      for (const auto &uv : me.uvs) {
+        v0 = std::min(v0, uv[1]);
+        v1 = std::max(v1, uv[1]);
+      }
+      // from (the 2K picture's part this mesh shows) to (WWE '12's part for it)
+      float f0 = 0, f1 = 1, t0 = 0, t1 = 1;
+      const bool whole = mini || std::strcmp(name, "titantron_movie") != 0;
+      if (v1 <= 0.26f) {
+        f1 = 0.25f;
+        if (!whole)
+          t0 = 0.691f, t1 = 0.998f;
+      } else if (v0 >= 0.24f) {
+        f0 = 0.25f;
+        if (!whole)
+          t1 = 0.684f;
+      }
+      const size_t uvs = B + svrfmt::Be32(&me.raw[0x70]);
+      if (uvs + 8 * me.uvs.size() > d.size() || B + tptr + 16 * (size_t(slot) + 1) > d.size())
+        continue;
+      for (size_t q = 0; q < me.uvs.size(); ++q)
+        svrfmt::PutBeF(&d[uvs + 8 * q + 4], t0 + (std::clamp(me.uvs[q][1], f0, f1) - f0) / (f1 - f0) * (t1 - t0));
+      uint8_t *tn = &d[B + tptr + 16 * size_t(slot)];
+      std::memset(tn, 0, 16);
+      std::memcpy(tn, name, std::strlen(name));
+      changed = true;
+    }
+    if (changed)
+      svrfmt::ArchiveReplace(k, d);
+  }
+}
+
 // The WWE '13 file (as on the disc) and the base arena's WWE '12 file -> the WWE '12 arena.
 inline bool PortTree(svrfmt::Archive &a, svrfmt::Archive &b, Bytes &out, std::string *why, PortInfo *info);
 
@@ -310,6 +374,7 @@ inline bool PortTree(svrfmt::Archive &a, svrfmt::Archive &b, Bytes &out, std::st
       svrfmt::ArchiveTouch(n);
     }
   };
+  ScreensTo12(ga);
   for (auto &k : ga.kids)
     to_bpe(to_bpe, k);
   svrfmt::ArchiveTouch(ga);
