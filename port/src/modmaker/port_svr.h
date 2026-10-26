@@ -512,6 +512,70 @@ inline Bytes Shine(const Bytes &svr_normal, const Bytes &base_normal) {
   return svrfmt::DdsEncode(s, bi.format, si.mips > 1);
 }
 
+// SvR's long hair hangs from hair bones (kami_*, moved by its physics), which WWE '12 hasn't: converted, the strands
+// followed the head stiffly and swung behind the back when the head turned up (CM Punk of SvR: hair "slicked back"
+// in the game, 2026-10-26; RenderDoc: the strands drawn, opaque, behind the shoulders). The strands' vertices are
+// weighted from the head to the upper chest (Bip Spine1, in the hair model's skeleton) as they go down, from the
+// head's joint to the chest's: they hang from the shoulders more than from the head.
+inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out) {
+  int head = -1, chest = -1;
+  for (size_t i = 0; i < out.nodes.size(); ++i) {
+    if (out.nodes[i].name == "Bip Head")
+      head = int(i);
+    if (out.nodes[i].name == "Bip Spine1")
+      chest = int(i);
+  }
+  if (head < 0 || chest < 0)
+    return;
+  const auto w = World(out);
+  const double hy = w[size_t(head)].m[7], cy = w[size_t(chest)].m[7];
+  if (std::abs(cy - hy) < 1)
+    return;
+  for (size_t mi = 0; mi < out.meshes.size() && mi < svr.meshes.size(); ++mi) {
+    const svrfmt::Mesh &src = svr.meshes[mi];
+    svrfmt::Mesh &m = out.meshes[mi];
+    if (m.weights.size() < 2 || src.verts.size() != m.verts.size())
+      continue;
+    // its palette slots for the head and the chest (added if missing)
+    auto slot = [&](int node) {
+      for (size_t q = 0; q < m.palette.size(); ++q)
+        if (m.palette[q] == node + 1)
+          return int(q);
+      m.palette.push_back(node + 1);
+      return int(m.palette.size() - 1);
+    };
+    bool any = false;
+    for (size_t k = 0; k < src.verts.size() && !any; ++k)
+      for (const auto &blk : src.weights)
+        if (k < blk.size() && blk[k].bones[0] < src.palette.size()) {
+          const int n = src.palette[blk[k].bones[0]] - 1;
+          any = any || (n >= 0 && size_t(n) < svr.nodes.size() && svr.nodes[size_t(n)].name.rfind("kami", 0) == 0);
+        }
+    if (!any)
+      continue;  // (not strands: the beard, the scalp)
+    const int sh = slot(head), sc = slot(chest);
+    if (sh >= 255 || sc >= 255)
+      continue;
+    for (size_t k = 0; k < m.verts.size(); ++k) {
+      bool strand = false;
+      for (const auto &blk : src.weights)
+        if (k < blk.size() && blk[k].bones[0] < src.palette.size()) {
+          const int n = src.palette[blk[k].bones[0]] - 1;
+          strand = strand || (n >= 0 && size_t(n) < svr.nodes.size() && svr.nodes[size_t(n)].name.rfind("kami", 0) == 0);
+        }
+      if (!strand)
+        continue;
+      const double t = std::clamp((m.verts[k].pos[1] - hy) / (cy - hy), 0.0, 1.0);
+      for (size_t j = 0; j < m.weights.size(); ++j) {
+        auto &wt = m.weights[j][k];
+        wt.bones[0] = j == 0 ? uint8_t(sh) : j == 1 ? uint8_t(sc) : 255;
+        wt.bones[1] = wt.bones[2] = wt.bones[3] = 255;
+        wt.weight = j == 0 ? float(1 - t) : j == 1 ? float(t) : 0.0f;
+      }
+    }
+  }
+}
+
 // SvR's attire (its EMD PACH node) into the WWE '12 base attire's node (both expanded): the model, the colour and
 // masks, the normal map. The base's other entries stay (eyelashes, material data, physics...).
 inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep, std::string *why) {
@@ -560,6 +624,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     if (!s || !b || !svrfmt::JboyRead(svrfmt::ArchiveData(*s), xs, &e) ||
         !svrfmt::JboyRead(svrfmt::ArchiveData(*b), xb, &e) || xs.w12 || !ConvertModel(xs, xb, xo, &extra))
       continue;
+    HangHair(xs, xo);
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(xo));
     rep->textures.insert(rep->textures.end(), extra.textures.begin(), extra.textures.end());
   }
