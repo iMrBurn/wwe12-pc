@@ -26,7 +26,8 @@ struct Image {
   std::vector<uint8_t> rgba;  // w*h*4
 };
 
-enum class DxtFormat { kDxt1, kDxt3, kDxt5, kArgb, kUnknown };
+// kArgb4444: 16-bit A4R4G4B4, uncompressed (the attires' colour zone masks Mask1-3).
+enum class DxtFormat { kDxt1, kDxt3, kDxt5, kArgb, kUnknown, kArgb4444 };
 struct DdsInfo {
   int w = 0, h = 0, mips = 1;
   DxtFormat format = DxtFormat::kUnknown;

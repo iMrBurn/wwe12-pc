@@ -225,7 +225,7 @@ class Browser {
     p.dds = dds;
     svrfmt::DdsInfo info;
     if (svrfmt::DdsInfoOf(dds, info)) {
-      static const char *fmts[] = {"DXT1", "DXT3", "DXT5", "ARGB", "?"};
+      static const char *fmts[] = {"DXT1", "DXT3", "DXT5", "ARGB", "?", "ARGB 4444"};
       p.info = std::to_string(info.w) + " x " + std::to_string(info.h) + " " + fmts[int(info.format)];
     }
     svrfmt::Image img;

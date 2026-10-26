@@ -51,6 +51,10 @@
 //    (Documents\wwe12\arena_movies) and is only rebuilt when the videos change. (Appended to the served MatchHD.pac
 //    instead, with the directory's file number at +12 changed to it: the video player waited forever on a black
 //    screen.)
+// 4:3 (the game's flag at 0x8324CE3C, set below 1280 x 720: sub_826A5F60 then reads plist360_4x3.arc, whose file
+// numbers are the same with the SD files: 234 = MatchSD.pac, 233 = LoadSD.pac, 190 = evtgdsd.pac): MatchSD.pac gets
+// the same banner pack and VS screens (the same 71 textures, 256 x 128); the entrance graphics and pre-match screen
+// stay the base's there (they only exist in HD).
 //
 // Test: wwe12_arena_pages_test = true adds one page, the 21 arenas in reverse order, and logs the lookups.
 
@@ -115,6 +119,7 @@ struct Added {
   u32 banner_name = 0;  // that name in guest memory
   std::vector<uint8_t> card_mb, card_mf;  // its own VS screen (until appended), else empty
   u32 mb_sector = 0, mb_units = 0, mf_sector = 0, mf_units = 0;  // ... appended to MatchHD.pac (0: the base's)
+  u32 mb_sd_sector = 0, mb_sd_units = 0, mf_sd_sector = 0, mf_sd_units = 0;  // ... and to MatchSD.pac
   std::vector<uint8_t> etex;  // its own entrance graphics (until appended), else empty
   u32 etex_sector = 0, etex_units = 0;  // ... appended to evtgdhd.pac (0: the base's)
   std::vector<uint8_t> load;  // its own pre-match screen (until appended), else empty
@@ -132,6 +137,7 @@ struct Served {
 };
 std::map<u32, Served> g_served;
 u32 g_mupa_sector = 0, g_mupa_units = 0;  // the rebuilt banner pack, appended to MatchHD.pac
+u32 g_mupa_sd_sector = 0, g_mupa_sd_units = 0;  // ... and to MatchSD.pac
 int g_chosen = -1;                        // the added arena chosen last (its index), -1: one of the game's
 bool g_reload_vs = false;                 // the match setup's VS screen to load again (another arena on the same stage)
 
@@ -305,13 +311,16 @@ void Append(std::vector<uint8_t> &file, const uint8_t *data, size_t size, u32 &s
   units = u32((size + 0xFF) / 0x100);
 }
 
-// The banner pack (MatchHD.pac MLYE/MUPA, PACH entry 7001) with the added arenas' banners in CAR_dummyNN, appended
-// to MatchHD.pac. The textures keep their size, so the pack unpacks to the same size as the game's.
-bool BuildBanners(std::vector<uint8_t> &matchhd, const std::vector<std::vector<uint8_t>> &banners) {
+// The banner pack (MatchHD.pac / MatchSD.pac MLYE/MUPA, PACH entry 7001) with the added arenas' banners in
+// CAR_dummyNN, appended to that file. The textures keep their size, so the pack unpacks to the same size as the game's.
+// hd: the arenas take their banner's texture name from it; MatchSD.pac's must be the same.
+bool BuildBanners(std::vector<uint8_t> &matchhd, const std::vector<std::vector<uint8_t>> &banners, bool hd,
+                  u32 &sector, u32 &units) {
+  const char *file = hd ? "MatchHD.pac" : "MatchSD.pac";
   svrfmt::Archive a;
   std::string why;
   if (!svrfmt::ArchiveOpen(matchhd, a, &why)) {
-    REXLOG_WARN("[arena pages] MatchHD.pac unreadable: {}", why);
+    REXLOG_WARN("[arena pages] {} unreadable: {}", file, why);
     return false;
   }
   svrfmt::ArcNode *mupa = nullptr;
@@ -319,7 +328,7 @@ bool BuildBanners(std::vector<uint8_t> &matchhd, const std::vector<std::vector<u
     if (k.group == "MLYE" && k.name == "MUPA")
       mupa = &k;
   if (!mupa || !svrfmt::ArchiveExpand(*mupa)) {
-    REXLOG_WARN("[arena pages] MatchHD.pac: no MLYE/MUPA banner pack");
+    REXLOG_WARN("[arena pages] {}: no MLYE/MUPA banner pack", file);
     return false;
   }
   svrfmt::ArcNode *pack = nullptr;
@@ -328,7 +337,7 @@ bool BuildBanners(std::vector<uint8_t> &matchhd, const std::vector<std::vector<u
       pack = &k;
   std::vector<svrfmt::BundleTexture> texs;
   if (!pack || !svrfmt::BundleRead(svrfmt::ArchiveData(*pack), texs)) {
-    REXLOG_WARN("[arena pages] MatchHD.pac: banner pack unreadable");
+    REXLOG_WARN("[arena pages] {}: banner pack unreadable", file);
     return false;
   }
   size_t next = 0;
@@ -340,15 +349,20 @@ bool BuildBanners(std::vector<uint8_t> &matchhd, const std::vector<std::vector<u
       ++next;
     if (next == texs.size())
       break;  // no room left: the other arenas keep the "dummy" banner
+    if (!hd && texs[next].name != g_added[i].banner) {
+      REXLOG_WARN("[arena pages] MatchSD.pac: its banner pack differs from MatchHD.pac's");
+      return false;
+    }
     texs[next].data = banners[i];
-    g_added[i].banner = texs[next].name;
+    if (hd)
+      g_added[i].banner = texs[next].name;
     ++next;
   }
   const svrfmt::Bytes raw = svrfmt::BundleWrite(texs);
   pack->stored = svrfmt::IsBpe(pack->stored) ? bpe_like::EncodeLike(raw, pack->stored) : raw;
   pack->dirty = true;
   svrfmt::ArchiveSave(a);  // (rebuilds mupa->stored)
-  Append(matchhd, mupa->stored.data(), mupa->stored.size(), g_mupa_sector, g_mupa_units);
+  Append(matchhd, mupa->stored.data(), mupa->stored.size(), sector, units);
   return true;
 }
 
@@ -448,17 +462,24 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
     if (!WriteHost(sv.path, game))
       REXLOG_WARN("[arena pages] could not write {}", rex::path_to_utf8(sv.path));
   }
-  std::vector<uint8_t> matchhd;
-  if (ReadForGame(vfs, mods, "pac/menu/MatchHD.pac", matchhd) && BuildBanners(matchhd, banners)) {
+  for (const bool hd : {true, false}) {  // (HD first: it names the banners)
+    std::vector<uint8_t> match;
+    if (!ReadForGame(vfs, mods, hd ? "pac/menu/MatchHD.pac" : "pac/menu/MatchSD.pac", match) ||
+        !BuildBanners(match, banners, hd, hd ? g_mupa_sector : g_mupa_sd_sector, hd ? g_mupa_units : g_mupa_sd_units))
+      continue;
     for (auto &a : g_added) {
       if (a.card_mb.empty())
         continue;
-      Append(matchhd, a.card_mb.data(), a.card_mb.size(), a.mb_sector, a.mb_units);
-      Append(matchhd, a.card_mf.data(), a.card_mf.size(), a.mf_sector, a.mf_units);
-      a.card_mb = {};
-      a.card_mf = {};
+      Append(match, a.card_mb.data(), a.card_mb.size(), hd ? a.mb_sector : a.mb_sd_sector,
+             hd ? a.mb_units : a.mb_sd_units);
+      Append(match, a.card_mf.data(), a.card_mf.size(), hd ? a.mf_sector : a.mf_sd_sector,
+             hd ? a.mf_units : a.mf_sd_units);
     }
-    WriteHost(out / "pac" / "menu" / "MatchHD.pac", matchhd);
+    WriteHost(out / "pac" / "menu" / (hd ? "MatchHD.pac" : "MatchSD.pac"), match);
+  }
+  for (auto &a : g_added) {
+    a.card_mb = {};
+    a.card_mf = {};
   }
   if (std::any_of(g_added.begin(), g_added.end(), [](const Added &a) { return !a.etex.empty(); })) {
     std::vector<uint8_t> evtgd;
@@ -620,6 +641,7 @@ REX_EXTERN(__imp__sub_825A3318);  // arena select: is this stage available (this
 REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
 REX_EXTERN(__imp__sub_828A9898);  // match setup: its object (+88: the stage set)
+REX_EXTERN(__imp__sub_8253A028);  // menus: the selected entry's record (menu)
 REX_EXTERN(sub_82A8C070);         // XInputGetState(user, state) (hooked by wwe12_intros.cpp: call the hooked one)
 
 namespace {
@@ -760,6 +782,29 @@ extern "C" REX_FUNC(sub_828A9898) {
   }
 }
 
+// A menu's selected entry (sub_8253A028(menu) -> record: +8 page), asked when an entry is decided. A main menu
+// entry (page 1: a mode) forgets the added arena chosen before: until then it kept playing on its base's stage, in
+// a Universe match on that stage too.
+extern "C" REX_FUNC(sub_8253A028) {
+  __imp__sub_8253A028(ctx, base);
+  const u32 entry = ctx.r3.u32;
+  if (g_chosen >= 0 && entry && entry != 0xFFFFFFFFu && bd::mem::load<u32>(entry + 8) == 1) {
+    REXLOG_INFO("[arena pages] main menu: {} no longer chosen", g_added[size_t(g_chosen)].id);
+    Serve(g_added[size_t(g_chosen)].base, -1);
+    g_chosen = -1;
+    g_reload_vs = true;
+  }
+}
+
+// 4:3: the directory's file numbers are the SD files' (plist360_4x3.arc).
+static bool FourThree() { return bd::mem::load<u32>(0x8324CE3C) != 0; }
+
+// The chosen added arena's VS screen in the served MatchHD.pac / MatchSD.pac: {mb sector, units, mf sector, units}.
+static std::array<u32, 4> Card(const Added &a) {
+  return FourThree() ? std::array<u32, 4>{a.mb_sd_sector, a.mb_sd_units, a.mf_sd_sector, a.mf_sd_units}
+                     : std::array<u32, 4>{a.mb_sector, a.mb_units, a.mf_sector, a.mf_units};
+}
+
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
 extern "C" REX_FUNC(sub_827F29F0) {
   const u32 name = ctx.r4.u32, out = ctx.r5.u32;
@@ -768,7 +813,7 @@ extern "C" REX_FUNC(sub_827F29F0) {
   // entry: under its base's entry, after its base's VS screen had been shown, it got that one back (WrestleMania 31
   // showed Superstars', 2026-10-26; the directory answered, the data was the old). Answered below with its own.
   static constexpr u32 kSpareMb[] = {21, 22};
-  if (name && (name < 0x82000000 || name >= 0x84000000) && g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units) {
+  if (name && (name < 0x82000000 || name >= 0x84000000) && g_chosen >= 0 && Card(g_added[size_t(g_chosen)])[1]) {
     // (a string the game built, never one of its image's: "/MLYE/MB00" is there)
     char mb[16], spare[16];
     snprintf(mb, sizeof(mb), "/MLYE/MB%02u", g_added[size_t(g_chosen)].base);
@@ -781,9 +826,11 @@ extern "C" REX_FUNC(sub_827F29F0) {
   if (!name || !out || ctx.r3.u32 == 0)
     return;
   const char *n = bd::mem::str(name);
-  if (g_mupa_units && strcmp(n, "/MLYE/MUPA") == 0 && bd::mem::load<u16>(out + 12) == kMatchHdIndex) {
-    bd::mem::store<u32>(out, g_mupa_sector);
-    bd::mem::store<u32>(out + 8, g_mupa_units);
+  const bool sd = FourThree();
+  if ((sd ? g_mupa_sd_units : g_mupa_units) && strcmp(n, "/MLYE/MUPA") == 0 &&
+      bd::mem::load<u16>(out + 12) == kMatchHdIndex) {
+    bd::mem::store<u32>(out, sd ? g_mupa_sd_sector : g_mupa_sector);
+    bd::mem::store<u32>(out + 8, sd ? g_mupa_sd_units : g_mupa_units);
   } else if (g_chosen >= 0 && strncmp(n, "/STG/", 5) == 0 && u32(atoi(n + 5)) == g_added[size_t(g_chosen)].base &&
              n[5] >= '0' && n[5] <= '9') {
     // The added arena is the served file now: its own start, and room for the bigger of the two. Never less than
@@ -792,19 +839,20 @@ extern "C" REX_FUNC(sub_827F29F0) {
     bd::mem::store<u32>(out, a.sector);
     bd::mem::store<u32>(out + 8, std::max(a.units, bd::mem::load<u32>(out + 8)));
     REXLOG_INFO("[arena pages] {}: the added arena {} ({} KB)", n, a.id, a.units / 4);
-  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units && bd::mem::load<u16>(out + 12) == kMatchHdIndex) {
+  } else if (g_chosen >= 0 && Card(g_added[size_t(g_chosen)])[1] && bd::mem::load<u16>(out + 12) == kMatchHdIndex) {
     // Its own VS screen, in place of its base's.
     const Added &a = g_added[size_t(g_chosen)];
+    const auto card = Card(a);
     char mb[16], mf[16];
     snprintf(mb, sizeof(mb), "/MLYE/MB%02u", kSpareMb[size_t(g_chosen) % std::size(kSpareMb)]);
     snprintf(mf, sizeof(mf), "/MENU/M%02uF", a.base);
     const bool is_mb = strcmp(n, mb) == 0;
     if (is_mb || strcmp(n, mf) == 0) {
-      bd::mem::store<u32>(out, is_mb ? a.mb_sector : a.mf_sector);
-      bd::mem::store<u32>(out + 8, is_mb ? a.mb_units : a.mf_units);
+      bd::mem::store<u32>(out, card[is_mb ? 0 : 2]);
+      bd::mem::store<u32>(out + 8, card[is_mb ? 1 : 3]);
       REXLOG_INFO("[arena pages] {}: the VS screen of {}", n, a.id);
     }
-  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].etex_units &&
+  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].etex_units && !sd &&
              bd::mem::load<u16>(out + 12) == kEvtGdHdIndex) {
     // Its own entrance graphics (location plate, name plates), in place of its base's.
     const Added &a = g_added[size_t(g_chosen)];
@@ -815,7 +863,8 @@ extern "C" REX_FUNC(sub_827F29F0) {
       bd::mem::store<u32>(out + 8, a.etex_units);
       REXLOG_INFO("[arena pages] {}: the entrance graphics of {}", n, a.id);
     }
-  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].load_units && bd::mem::load<u16>(out + 12) == kLoadHdIndex) {
+  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].load_units && !sd &&
+             bd::mem::load<u16>(out + 12) == kLoadHdIndex) {
     // Its own pre-match screen (VS screen and its animation), in place of its base's.
     const Added &a = g_added[size_t(g_chosen)];
     char load[16];

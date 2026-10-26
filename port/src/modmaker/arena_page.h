@@ -121,6 +121,21 @@ inline Thumb MakeThumb(ID3D11Device *device_, const Bytes &dds) {
   svrfmt::Image img;
   if (!device_ || !svrfmt::DdsDecode(dds, img) || img.w <= 0)
     return t;
+  // A colour zone mask (Mask1-3: one zone per channel, mostly transparent): each zone in its own colour.
+  svrfmt::DdsInfo info;
+  if (svrfmt::DdsInfoOf(dds, info) && info.format == svrfmt::DxtFormat::kArgb4444) {
+    static const int kZone[4][3] = {{230, 70, 60}, {80, 200, 90}, {70, 120, 235}, {240, 200, 60}};
+    for (size_t i = 0; i < img.rgba.size(); i += 4) {
+      int c[3] = {24, 24, 28};
+      for (int z = 0; z < 4; ++z)
+        if (img.rgba[i + z] >= 128)
+          for (int k = 0; k < 3; ++k)
+            c[k] = std::max(c[k], kZone[z][k]);
+      for (int k = 0; k < 3; ++k)
+        img.rgba[i + k] = uint8_t(c[k]);
+      img.rgba[i + 3] = 255;
+    }
+  }
   D3D11_TEXTURE2D_DESC td{};
   td.Width = UINT(img.w);
   td.Height = UINT(img.h);
@@ -356,7 +371,7 @@ class Page {
       const auto &tex = arena_.Get(t);
       svrfmt::DdsInfo info;
       svrfmt::DdsInfoOf(tex.data, info);
-      static const char *fmts[] = {"DXT1", "DXT3", "DXT5", "ARGB", "?"};
+      static const char *fmts[] = {"DXT1", "DXT3", "DXT5", "ARGB", "?", "ARGB 4444"};
       ImGui::Text("%s", tex.name.c_str());
       ImGui::TextDisabled("%d x %d  %s%s", info.w, info.h, fmts[int(info.format)],
                           t.replaced ? (fr ? "  -  remplacée" : "  -  replaced") : "");

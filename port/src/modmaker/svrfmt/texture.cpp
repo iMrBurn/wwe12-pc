@@ -64,6 +64,9 @@ bool DdsInfoOf(const Bytes& dds, DdsInfo& info) {
     else if (!std::memcmp(&dds[84], "DXT5", 4)) info.format = DxtFormat::kDxt5;
   } else if (Le32(&dds[88]) == 32) {
     info.format = DxtFormat::kArgb;
+  } else if (Le32(&dds[88]) == 16 && Le32(&dds[92]) == 0x0F00 && Le32(&dds[96]) == 0x00F0 &&
+             Le32(&dds[100]) == 0x000F && Le32(&dds[104]) == 0xF000) {
+    info.format = DxtFormat::kArgb4444;
   }
   return info.format != DxtFormat::kUnknown;
 }
@@ -114,6 +117,17 @@ bool DdsDecode(const Bytes& dds, Image& out) {
       out.rgba[i * 4 + 1] = p[i * 4 + 1];
       out.rgba[i * 4 + 2] = p[i * 4 + 0];
       out.rgba[i * 4 + 3] = p[i * 4 + 3];
+    }
+    return true;
+  }
+  if (info.format == DxtFormat::kArgb4444) {
+    if (p + size_t(info.w) * info.h * 2 > end) return false;
+    for (size_t i = 0; i < size_t(info.w) * info.h; ++i) {
+      const uint16_t v = Le16(p + i * 2);
+      out.rgba[i * 4 + 0] = uint8_t((v >> 8 & 15) * 17);
+      out.rgba[i * 4 + 1] = uint8_t((v >> 4 & 15) * 17);
+      out.rgba[i * 4 + 2] = uint8_t((v & 15) * 17);
+      out.rgba[i * 4 + 3] = uint8_t((v >> 12 & 15) * 17);
     }
     return true;
   }
@@ -332,13 +346,14 @@ Bytes DdsEncode(const Image& img, DxtFormat format, bool mips) {
   std::memcpy(out.data(), "DDS ", 4);
   PutLe32(&out[4], 124);
   uint32_t flags = 0x1 | 0x2 | 0x4 | 0x1000 | (levels > 1 ? 0x20000 : 0);
-  flags |= format == DxtFormat::kArgb ? 0x8 : 0x80000;
+  flags |= format == DxtFormat::kArgb ? 0x8 : 0x80000;  // pitch, else linear size (A4R4G4B4 too, as the game's)
   PutLe32(&out[8], flags);
   PutLe32(&out[12], uint32_t(img.h));
   PutLe32(&out[16], uint32_t(img.w));
   const int bs = format == DxtFormat::kDxt1 ? 8 : 16;
-  PutLe32(&out[20], format == DxtFormat::kArgb ? uint32_t(img.w * 4)
-                                               : uint32_t(std::max(1, (img.w + 3) / 4) * std::max(1, (img.h + 3) / 4) * bs));
+  PutLe32(&out[20], format == DxtFormat::kArgb       ? uint32_t(img.w * 4)
+                    : format == DxtFormat::kArgb4444 ? uint32_t(img.w * img.h * 2)
+                                                     : uint32_t(std::max(1, (img.w + 3) / 4) * std::max(1, (img.h + 3) / 4) * bs));
   PutLe32(&out[28], uint32_t(levels));
   PutLe32(&out[76], 32);
   if (format == DxtFormat::kArgb) {
@@ -348,6 +363,13 @@ Bytes DdsEncode(const Image& img, DxtFormat format, bool mips) {
     PutLe32(&out[96], 0x0000FF00);
     PutLe32(&out[100], 0x000000FF);
     PutLe32(&out[104], 0xFF000000);
+  } else if (format == DxtFormat::kArgb4444) {
+    PutLe32(&out[80], 0x41);
+    PutLe32(&out[88], 16);
+    PutLe32(&out[92], 0x0F00);
+    PutLe32(&out[96], 0x00F0);
+    PutLe32(&out[100], 0x000F);
+    PutLe32(&out[104], 0xF000);
   } else {
     PutLe32(&out[80], 0x4);
     std::memcpy(&out[84], format == DxtFormat::kDxt1 ? "DXT1" : format == DxtFormat::kDxt3 ? "DXT3" : "DXT5", 4);
@@ -361,6 +383,13 @@ Bytes DdsEncode(const Image& img, DxtFormat format, bool mips) {
         out.push_back(cur.rgba[i * 4 + 1]);
         out.push_back(cur.rgba[i * 4 + 0]);
         out.push_back(cur.rgba[i * 4 + 3]);
+      }
+    } else if (format == DxtFormat::kArgb4444) {
+      auto q = [&](size_t i, int k) { return uint16_t((cur.rgba[i * 4 + k] * 15 + 127) / 255); };
+      for (size_t i = 0; i < size_t(cur.w) * cur.h; ++i) {
+        const uint16_t v = uint16_t(q(i, 3) << 12 | q(i, 0) << 8 | q(i, 1) << 4 | q(i, 2));
+        out.push_back(uint8_t(v));
+        out.push_back(uint8_t(v >> 8));
       }
     } else {
       EncodeLevel(cur, format, out);

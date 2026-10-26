@@ -37,6 +37,7 @@ inline bool DropTopMip(Bytes &dds) {
   case svrfmt::DxtFormat::kDxt3:
   case svrfmt::DxtFormat::kDxt5: top = bw * bh * 16; break;
   case svrfmt::DxtFormat::kArgb: top = size_t(info.w) * info.h * 4; break;
+  case svrfmt::DxtFormat::kArgb4444: top = size_t(info.w) * info.h * 2; break;
   default: return false;
   }
   if (128 + top >= dds.size())
@@ -48,6 +49,7 @@ inline bool DropTopMip(Bytes &dds) {
   const uint32_t flags = svrfmt::Le32(&out[8]);
   const size_t nbw = std::max<uint32_t>(1, (w + 3) / 4), nbh = std::max<uint32_t>(1, (h + 3) / 4);
   const size_t next = info.format == svrfmt::DxtFormat::kArgb      ? size_t(w) * 4
+                      : info.format == svrfmt::DxtFormat::kArgb4444 ? size_t(w) * 2
                       : info.format == svrfmt::DxtFormat::kDxt1    ? nbw * nbh * 8
                                                                    : nbw * nbh * 16;
   svrfmt::PutLe32(&out[20], uint32_t(next));  // pitch (ARGB) or linear size (DXT), as the flags say
