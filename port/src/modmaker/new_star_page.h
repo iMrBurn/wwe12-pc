@@ -934,6 +934,40 @@ class Page {
 
   // A SvR 2011 superstar's portraits: pac\DLC_HD.pac / DLC_SD.pac, SSFA/SSFB/SSFC "NNNN", WWE '12's pictures but for
   // SD's SSFA / SSFB (SvR 256 x 512, WWE '12 512 x 256, the HD picture squeezed): those made from the HD ones.
+  // A SvR 2011 portrait framed as WWE '12's (a bust, the head's top near the top edge): SvR's show the superstar
+  // smaller, down to the knees (compared with WWE '12's on six superstars, 2026-10-26): scaled by 1.1, the head's
+  // top 12 pixels from the top (at 512), the figure centred; the legs go past the bottom edge.
+  static svrfmt::Image Reframe(const svrfmt::Image &img) {
+    if (img.w <= 0 || img.h <= 0)
+      return img;
+    int top = -1, left = img.w, right = -1;
+    for (int y = 0; y < img.h; ++y)
+      for (int x = 0; x < img.w; ++x)
+        if (img.rgba[(size_t(y) * img.w + x) * 4 + 3] > 128) {
+          if (top < 0)
+            top = y;
+          left = std::min(left, x);
+          right = std::max(right, x);
+        }
+    if (top < 0)
+      return img;
+    constexpr double k = 1.1;
+    const int w = int(img.w * k + 0.5), h = int(img.h * k + 0.5);
+    const svrfmt::Image big = svrfmt::Resize(img, w, h);
+    svrfmt::Image out;
+    out.w = img.w;
+    out.h = img.h;
+    out.rgba.assign(size_t(img.w) * img.h * 4, 0);
+    const int dx = int(img.w / 2.0 - (left + right) / 2.0 * k + 0.5), dy = int(img.h * 12 / 512.0 - top * k + 0.5);
+    for (int y = 0; y < h; ++y)
+      for (int x = 0; x < w; ++x) {
+        const int ox = x + dx, oy = y + dy;
+        if (ox >= 0 && oy >= 0 && ox < out.w && oy < out.h)
+          memcpy(&out.rgba[(size_t(oy) * out.w + ox) * 4], &big.rgba[(size_t(y) * w + x) * 4], 4);
+      }
+    return out;
+  }
+
   void SvrPortraits(bool fr, int number, const std::function<Bytes(const char *)> &read_pac) {
     char name[8];
     snprintf(name, sizeof(name), "%04d", number);
@@ -949,8 +983,11 @@ class Page {
     for (int k = 0; k < 2; ++k) {
       portraits_[0][k].clear();
       svrfmt::Image img;
-      if (!portraits_[1][k].empty() && svrfmt::DdsDecode(portraits_[1][k], img))
-        portraits_[0][k] = svrfmt::DdsEncode(svrfmt::Resize(img, 512, 256), svrfmt::DxtFormat::kDxt5, false);
+      if (portraits_[1][k].empty() || !svrfmt::DdsDecode(portraits_[1][k], img))
+        continue;
+      img = Reframe(img);
+      portraits_[1][k] = svrfmt::DdsEncode(img, svrfmt::DxtFormat::kDxt5, false);
+      portraits_[0][k] = svrfmt::DdsEncode(svrfmt::Resize(img, 512, 256), svrfmt::DxtFormat::kDxt5, false);
     }
     // (all six, or none: the base's then)
     for (const auto &hd : portraits_)
