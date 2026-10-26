@@ -25,7 +25,7 @@ Colonne « Qui » : la conversation qui s'en charge (Univers, Gameplay, Rendu…
 
 | Idée | Piste | Qui | Statut |
 |------|-------|-----|--------|
-| I Quit | Absent de WWE '12 (aucun texte). Base : victoire « SUBMISSION ONLY » du Match Creator + résultat « GIVEUP » qui existe déjà. Voir notes 2026-10-22 | LB | **étude chiffrée 2026-10-26** : version simple = ce que fait WWE '13, **1 à 2 séances**, risque faible (voir « Étude chiffrée ») |
+| I Quit | Absent de WWE '12 (aucun texte). Base : victoire « SUBMISSION ONLY » du Match Creator + résultat « GIVEUP » qui existe déjà. Voir notes 2026-10-22 | LB | **étude chiffrée 2026-10-26** : version légère **1 à 2 séances**, risque faible ; version WWE '13 (arbitre au micro, menace, mini-jeu en Lua) 4 à 6 séances si les animations sont dans WWE '12 (voir « Étude chiffrée ») |
 | Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | **étude chiffrée 2026-10-26** : la fiche de règles 83 est intacte (3e place = arbitre) ; version légère 2 à 4 séances, complète (WWE '13) 10 à 15 séances |
 | Gauntlet (SvR 2011) | **Déjà dans WWE '12** : JOUER > HANDICAP > GAUNTLET (et Match Creator). Même place dans SvR 2011 (Handicap > Gauntlet, apparu dans SvR 2009) : rien à ajouter. Seule piste : plus d'adversaires (voir « plus de catcheurs ») | LB | **existe déjà** |
 | Combinaisons (cage en tag, HIAC à plus de 2…) | Mêmes tables de types de match | LB | idée |
@@ -517,14 +517,14 @@ copie locale du 2026-10-22). Règle : on lit pour comprendre, on réécrit notre
   tableau des textes 2942–2950 et l'indexe par +68). 3 = GIVEUP.
 
 **I Quit**
-1. **Meilleure source : WWE '13.** C'est le successeur direct, et son I Quit est la version simple : sa liste
-   des fins (`sub_82316198`) est celle de WWE '12 **plus une seule valeur, 9 = texte 2951 « I QUIT »**, au même
-   champ +68. Aucun texte de micro (« do you quit ? ») ni nouveau type de match : I Quit n'y existe que comme
-   match du mode Attitude Era (objectif 18343 « Win the I Quit match »), à soumission, avec cette fin.
-   2K14/2K16 : versions plus lourdes et moteur plus éloigné (2K14 sans code lisible). SvR 2011 : coupé, il ne
-   reste que le nom (Kaiko : « I Quit » dans la liste « Cut, with only names left »).
-2. **Travail** : environ **4 crochets** à écrire, **0 animation, 0 fichier** ; 1 texte du portage (« I QUIT »,
-   numéro libre à partir de 43100). Décalages : seulement +68 (fin) et le marquage du match.
+1. **Meilleure source : WWE '13.** C'est le successeur direct. Sa liste des fins (`sub_82316198`) est celle de
+   WWE '12 **plus une valeur, 9 = texte 2951 « I QUIT »**, au même champ +68 ; elle vient d'une **raison de fin
+   n° 12** (WWE '12 s'arrête à 11 : `sub_825065F0` contre `sub_82316CC0` de WWE '13 ; raison rangée à
+   **match+336**, même décalage dans les deux jeux). **Correction (2026-10-26, même jour)** : ce n'est PAS une
+   version simple, voir « I Quit dans WWE '13 » plus bas. 2K14/2K16 : moteur plus éloigné (2K14 sans code
+   lisible). SvR 2011 : coupé, il ne reste que le nom (Kaiko : « Cut, with only names left »).
+2. **Travail (version légère)** : environ **4 crochets** à écrire, **0 animation, 0 fichier** ; 1 texte du portage
+   (« I QUIT », numéro libre à partir de 43100). Décalages : +68 (fin), +336 (raison) et le marquage du match.
 3. Entrée : une ligne qui pointe sur la règle 67 via `sub_82449898` (renommer une ligne existante, ou insérer
    une ligne en mémoire à la manière de Kaiko : à essayer, l'insertion a cassé la navigation du menu principal).
 4. **Plan (1 à 2 séances, risque de plantage faible)** :
@@ -567,3 +567,48 @@ copie locale du 2026-10-22). Règle : on lit pour comprendre, on réécrit notre
 
 **Recommandation** : I Quit en premier (1 à 2 séances, faible risque), pour la 1.0. Special Referee : faire
 l'essai a/b de la version légère (2 séances) ; on décide après, la version complète irait en 1.1 au plus tôt.
+
+**Les deux matchs dans WWE '13, regardés de plus près (2026-10-26, lecture seule)**
+
+Découverte : dans WWE '13, **le comportement en match des personnages est écrit en Lua, en texte clair**
+(`pac/yase/InGameLua.pac`, ≈ 1 700 changements d'état `ChgState`, fonctions natives `yGame.*`, `yChar.*`,
+`yPad.*`, `ySound.*`). **WWE '12 n'a pas ce fichier** (pas de dossier `yase`, aucun script d'état dans ses
+`.pac`) : chez lui tout est en C++. On ne peut donc pas reprendre le script ; il sert de **plan lisible** pour
+écrire notre C++ (lu en local, jamais copié ni publié ; copie de travail dans le scratchpad uniquement).
+
+*I Quit dans WWE '13* : une vraie stipulation, pas un simple texte.
+- Le match est marqué par **la règle n° 1 du match = 3** (`yGame.GetRule(1)==3`, commenté « i quit match » ; la
+  règle 0 = 67 marque le match SUBMISSION). Les menus ont des cartes de règles `MATCH_ON_1_1_IQUIT_COUNT/POINT`
+  et `MATCH_OFF_1_1_IQUIT_TIME` (absentes de WWE '12, qui a celles de SUBMISSION).
+- Déroulé : quand l'adversaire est au sol, le saisir **appelle l'arbitre** (`StateIQuitMiniGameCallReferee`) ;
+  l'arbitre vient avec une animation dédiée (**mouvements 13200/13201**) et **pose la question**
+  (`CheckIQuitAskHim`, commentaire `E_SC_IQUIT_ASK`) ; le bouton de provocation près de l'adversaire déclenche
+  **une menace** (`StateIQuitMiniGameMakeAThreat`, `IQuit_CheckMakeAThreat`) qui enchaîne sur une prise de
+  soumission ; une **boucle de soumission** (`SubmissionLoop_A`, `IQuitSubmissionRelease` pour lâcher) ; le
+  perdant passe en `IQuitMiniGameLoop_B` au lieu de l'abandon normal ; la fin = raison 12 → « I QUIT ».
+- Pièces : 7 états Lua (≈ 100 lignes), **5 fonctions natives** (`IQuit_CheckMakeAThreat`,
+  `IsIQuitMiniGameExist`, `IQuitSubmissionRelease`, `CheckIQuitAskHim`, et la fin n° 12), la carte de règles,
+  le commentaire, **les animations de l'arbitre au micro et de la menace** (à chercher dans WWE '12 ; sinon il
+  faudrait les importer de WWE '13 = très lourd).
+- **Version « comme WWE '13 » dans WWE '12** : réécrire en C++ ces états dans la machine d'états native de
+  WWE '12 (à trouver : là où il gère l'abandon) + la fin n° 12 + la carte. **4 à 6 séances si les animations
+  existent déjà dans WWE '12**, bloqué (import d'animations) sinon. La **version légère** (plus haut, 1 à 2
+  séances) reste la bonne première étape : c'en est le socle (fin n° 12, marquage, texte).
+
+*Special Referee dans WWE '13* : le script confirme la conception et la simplifie.
+- `yGame.IsSpecialReferee(acteur)`, `GetSpecialRefereeState()` avec **8 situations** : regarder, compter un
+  tombé, compter à l'extérieur, compte au sol (Last Man Standing), compte de DQ, vérifier une soumission,
+  prononcer la DQ, avertir un manager. Selon la situation, la touche d'action du joueur-arbitre lance **les
+  mêmes états que l'arbitre normal** (`StateRefereeFallCountStart`, `…RingOutCount`, `…DqCount`,
+  `…LastManCount`, `…SubmissionCheckB/C`, `…PronounceDq`, `…CautionManager`), plus deux à lui : **compte
+  rapide/lent** (`IsRefereeCountSliding`) et **« screw job »** ; lâcher la touche annule le compte
+  (`IsAbortFallCount`). Il peut aussi quitter le match (`IsSpecialRefereeLeaving`).
+- Cartes de règles `…SPREF_COUNT/POINT` pour normal, Extreme Rules, HIAC, Iron Man, Last Man Standing et
+  Submission (absentes de WWE '12).
+- **Conséquence pour WWE '12** : l'arbitre spécial n'a pas besoin d'un comportement neuf, il **pilote les
+  actions de l'arbitre normal**, qui existent déjà en C++ dans WWE '12. Le gros du travail = (1) savoir dans
+  quelle situation est le match (équivalent de `GetSpecialRefereeState`), (2) brancher la touche du joueur sur
+  l'action d'arbitre correspondante, (3) le choix de l'arbitre dans la fiche 83. Le composant SREF (27 fonctions)
+  sert surtout l'IA et la jauge ; on peut s'en passer pour un arbitre **joué**. Nouvelle estimation :
+  **version jouable fidèle à WWE '13 (sans IA de l'arbitre spécial) : 4 à 6 séances**, après l'essai a/b ;
+  l'IA (arbitre spécial à l'ordinateur) en plus : 4 à 6 séances.
