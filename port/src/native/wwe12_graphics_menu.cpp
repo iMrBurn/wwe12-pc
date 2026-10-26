@@ -51,6 +51,7 @@ REXCVAR_DECLARE(bool, wwe12_shadows);
 REXCVAR_DECLARE(bool, wwe12_dof);
 REXCVAR_DECLARE(int32_t, wwe12_fps_limit);
 REXCVAR_DECLARE(bool, wwe12_show_fps);
+REXCVAR_DECLARE(std::string, gpu_backend);
 
 namespace {
 
@@ -92,6 +93,7 @@ struct Texts {
       *edge_blur, *frame_limit, *show_fps, *none, *tabs;
   const char *mode, *mode_full, *mode_window, *mode_border, *win_size, *screen_size, *cpu, *prio_normal,
       *prio_above, *prio_high, *exit_entry;
+  const char *api;
 };
 constexpr Texts kTexts[] = {
     {"GRAPHICS", "INTERNAL RESOLUTION", "TEXTURE SHARPNESS", "VERTICAL SYNC",
@@ -101,7 +103,8 @@ constexpr Texts kTexts[] = {
      "DISPLAY", "GRAPHICS", "ADVANCED", "ANTI-ALIASING", "SHADOWS", "SHADOW DISTANCE",
      "DEPTH OF FIELD", "CROWD", "EDGE BLUR", "FRAME LIMIT", "FPS COUNTER", "NONE", "TABS",
      "DISPLAY MODE", "FULL SCREEN", "WINDOW", "BORDERLESS WINDOW", "WINDOW SIZE", "SCREEN SIZE",
-     "CPU PRIORITY", "NORMAL", "ABOVE NORMAL", "HIGH", "EXIT ENTRY IN THE MAIN MENU"},
+     "CPU PRIORITY", "NORMAL", "ABOVE NORMAL", "HIGH", "EXIT ENTRY IN THE MAIN MENU",
+     "GRAPHICS API"},
     {"GRAPHISMES", "R\xC3\x89SOLUTION INTERNE", "NETTET\xC3\x89 DES TEXTURES", "SYNCHRO VERTICALE",
      "ENTR\xC3\x89" "ES \xC3\x80 60 FPS", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "OUI", "NON",
      "AUTO", "APPLIQU\xC3\x89 AU PROCHAIN LANCEMENT DU JEU", "OPTIONS", "CHANGER", "RETOUR",
@@ -111,7 +114,8 @@ constexpr Texts kTexts[] = {
      "COMPTEUR FPS", "AUCUNE", "ONGLETS",
      "MODE D'AFFICHAGE", "PLEIN \xC3\x89" "CRAN", "FEN\xC3\x8A" "TRE", "FEN\xC3\x8A" "TRE SANS BORDURE",
      "TAILLE DE LA FEN\xC3\x8A" "TRE", "TAILLE DE L'\xC3\x89" "CRAN", "PRIORIT\xC3\x89 DU PROCESSEUR",
-     "NORMALE", "SUP\xC3\x89" "RIEURE", "HAUTE", "ENTR\xC3\x89" "E QUITTER DANS LE MENU PRINCIPAL"},
+     "NORMALE", "SUP\xC3\x89" "RIEURE", "HAUTE", "ENTR\xC3\x89" "E QUITTER DANS LE MENU PRINCIPAL",
+     "API GRAPHIQUE"},
     {"GRAFIK", "INTERNE AUFL\xC3\x96SUNG", "TEXTURSCH\xC3\x84RFE", "VERTIKALE SYNC.",
      "EINZ\xC3\x9CGE MIT 60 FPS", "AUS", "AN", "JA", "NEIN", "AUTO",
      "WIRD BEIM N\xC3\x84" "CHSTEN SPIELSTART \xC3\x9C" "BERNOMMEN", "OPTIONEN",
@@ -122,7 +126,7 @@ constexpr Texts kTexts[] = {
      "FPS-ANZEIGE", "KEINE", "REITER",
      "ANZEIGEMODUS", "VOLLBILD", "FENSTER", "RANDLOSES FENSTER", "FENSTERGR\xC3\x96" "SSE",
      "BILDSCHIRMGR\xC3\x96" "SSE", "CPU-PRIORIT\xC3\x84" "T", "NORMAL", "\xC3\x9C" "BER NORMAL", "HOCH",
-     "EXIT-EINTRAG IM HAUPTMEN\xC3\x9C"},
+     "EXIT-EINTRAG IM HAUPTMEN\xC3\x9C", "GRAFIK-API"},
     {"GR\xC3\x81" "FICOS", "RESOLUCI\xC3\x93N INTERNA", "NITIDEZ DE TEXTURAS",
      "SINCRONIZACI\xC3\x93N VERTICAL", "ENTRADAS A 60 FPS", "NO", "S\xC3\x8D", "S\xC3\x8D", "NO",
      "AUTO", "SE APLICA LA PR\xC3\x93XIMA VEZ QUE SE INICIE EL JUEGO", "OPCIONES", "CAMBIAR",
@@ -132,7 +136,7 @@ constexpr Texts kTexts[] = {
      "L\xC3\x8D" "MITE DE FPS", "CONTADOR DE FPS", "NINGUNO", "PESTA\xC3\x91" "AS",
      "MODO DE PANTALLA", "PANTALLA COMPLETA", "VENTANA", "VENTANA SIN BORDES", "TAMA\xC3\x91" "O DE VENTANA",
      "TAMA\xC3\x91" "O DE PANTALLA", "PRIORIDAD DE CPU", "NORMAL", "SUPERIOR", "ALTA",
-     "ENTRADA SALIR EN EL MEN\xC3\x9A" " PRINCIPAL"},
+     "ENTRADA SALIR EN EL MEN\xC3\x9A" " PRINCIPAL", "API GR\xC3\x81" "FICA"},
     {"GRAFICA", "RISOLUZIONE INTERNA", "NITIDEZZA TEXTURE", "SINCRONIA VERTICALE",
      "INGRESSI A 60 FPS", "NO", "S\xC3\x8C", "S\xC3\x8C", "NO", "AUTO",
      "APPLICATO AL PROSSIMO AVVIO DEL GIOCO", "OPZIONI", "CAMBIA", "INDIETRO",
@@ -141,7 +145,8 @@ constexpr Texts kTexts[] = {
      "PROFONDIT\xC3\x80 DI CAMPO", "FOLLA", "SFOCATURA BORDI", "LIMITE FPS", "CONTATORE FPS", "NESSUNO",
      "SCHEDE",
      "MODALIT\xC3\x80 SCHERMO", "SCHERMO INTERO", "FINESTRA", "FINESTRA SENZA BORDI", "DIMENSIONE FINESTRA",
-     "DIMENSIONE SCHERMO", "PRIORIT\xC3\x80 CPU", "NORMALE", "SUPERIORE", "ALTA", "VOCE ESCI NEL MENU PRINCIPALE"},
+     "DIMENSIONE SCHERMO", "PRIORIT\xC3\x80 CPU", "NORMALE", "SUPERIORE", "ALTA", "VOCE ESCI NEL MENU PRINCIPALE",
+     "API GRAFICA"},
 };
 
 const Texts &T() { return kTexts[CurrentLang()]; }
@@ -332,12 +337,29 @@ std::vector<Setting> BuildSettings() {
     e.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_quit_entry", i ? "true" : "false"); };
     e.save = [](TomlFile &f, int i) { f.SetBool("wwe12_quit_entry", i != 0); };
     s.push_back(std::move(e));
+
+    // Graphics API (next start): the launcher starts wwe12.exe (Vulkan) or wwe12_d3d12.exe
+    // (Direct3D 12) from gpu_backend; "any" = Vulkan.
+    Setting g;
+    g.label = &Texts::api;
+    g.tab = 2;
+    g.next_start = true;
+    g.values = {t.automatic, "VULKAN", "DIRECTX 12"};
+    const std::string &backend = REXCVAR_GET(gpu_backend);
+    g.index = backend == "d3d12" ? 2 : backend == "vulkan" ? 1 : 0;
+    g.apply = [](int i) {
+      rex::cvar::SetFlagByName("gpu_backend", i == 2 ? "d3d12" : i == 1 ? "vulkan" : "any");
+    };
+    g.save = [](TomlFile &f, int i) {
+      f.SetString("gpu_backend", i == 2 ? "d3d12" : i == 1 ? "vulkan" : "any");
+    };
+    s.push_back(std::move(g));
   }
   // Same order as the launcher's tabs.
   {
     const std::vector<const char *Texts::*> order = {
         &Texts::mode,    &Texts::win_size, &Texts::resolution, &Texts::frame_limit, &Texts::vsync,
-        &Texts::aniso,   &Texts::crowd,    &Texts::shadow_res, &Texts::dof,         &Texts::cpu,
+        &Texts::aniso,   &Texts::crowd,    &Texts::shadow_res, &Texts::dof,         &Texts::api, &Texts::cpu,
         &Texts::fps60,   &Texts::exit_entry, &Texts::show_fps};
     const auto rank = [&](const Setting &x) {
       for (size_t i = 0; i < order.size(); ++i)

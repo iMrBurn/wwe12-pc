@@ -1,16 +1,16 @@
 
 local inst, pad = -1, -1
-local NAME = "DrawIngameOptions"
+local NAME = "DrawRTWMOptions"
 local WIN, FONT0 = "OptionWindow", "font000"
-local N = 4
-local LBL = {"font001_R01", "font001_R02", "font001_R03", "font001_R04"}
-local VAL = {"font001_L01", "font001_L02", "font001_L03", "font001_L04"}
-local LINE = {"option_line01_01", "option_line01_02", "option_line01_03", "option_line01_04"}
-local CUR = {"CorsorSet07_01", "CorsorSet07_02", "CorsorSet07_03", "CorsorSet07_04"}
-local MAXV = {2, 1, 1, 1}
+local N = 5
+local LBL = {"font001_R01", "font001_R02", "font001_R03", "font001_R04", "font001_R05"}
+local VAL = {"font001_L01", "font001_L02", "font001_L03", "font001_L04", "font001_L05"}
+local LINE = {"option_line01_01", "option_line01_02", "option_line01_03", "option_line01_04", "option_line01_05"}
+local CUR = {"CorsorSet06_01", "CorsorSet06_02", "CorsorSet06_03", "CorsorSet06_04", "CorsorSet06_05"}
+local MAXV = {2, 2, 1, 1, 1}
 local TITLE = 43102
-local LABELS = {43130, 43131, 43132, 43133}
-local TEXTS = {{43250, 43251, 43252}, {43258, 43259}, {43266, 43267}, {43274, 43275}}
+local LABELS = {43130, 43131, 43132, 43133, 43134}
+local TEXTS = {{43250, 43251, 43252}, {43258, 43259, 43260}, {43266, 43267}, {43274, 43275}, {43282, 43283}}
 local PAGE = 102
 local val, en, mx, bak = {}, {}, {}, {}
 local ST_LOAD, ST_FADEIN, ST_RUN, ST_OUT, ST_WARN = 0, 1, 2, 3, 6
