@@ -200,10 +200,10 @@ inline void ScreensTo12(svrfmt::ArcNode &ga) {
           slot = int(svrfmt::Be32(p.value.data()));
       if (slot < 0 || me.uvs.empty())
         continue;
+      // (never minitron_movie: WWE '12's minitron is its live camera, the 2K screens show movies: WrestleMania 31's
+      // LED band under the letters, layout_mini_tro, came out as a mirror of the arena)
       const bool mini = m.textures[size_t(slot)].find("mini") != std::string::npos;
-      const char *name = mini || k.id == 804                         ? "minitron_movie"
-                         : k.id == 801 || k.id == 807 || k.id == 809 ? "arena_movie"
-                                                                     : "titantron_movie";
+      const char *name = !mini && (k.id == 801 || k.id == 807 || k.id == 809) ? "arena_movie" : "titantron_movie";
       float v0 = 1e9f, v1 = -1e9f;
       for (const auto &uv : me.uvs) {
         v0 = std::min(v0, uv[1]);
@@ -211,8 +211,10 @@ inline void ScreensTo12(svrfmt::ArcNode &ga) {
       }
       // from (the 2K picture's part this mesh shows) to (WWE '12's part for it)
       float f0 = 0, f1 = 1, t0 = 0, t1 = 1;
-      const bool whole = mini || std::strcmp(name, "titantron_movie") != 0;
-      if (v1 <= 0.26f) {
+      const bool whole = std::strcmp(name, "titantron_movie") != 0;
+      if (mini) {
+        t1 = 0.684f;  // (its own movie, whole: the titantron's part)
+      } else if (v1 <= 0.26f) {
         f1 = 0.25f;
         if (!whole)
           t0 = 0.691f, t1 = 0.998f;
@@ -229,6 +231,34 @@ inline void ScreensTo12(svrfmt::ArcNode &ga) {
       uint8_t *tn = &d[B + tptr + 16 * size_t(slot)];
       std::memset(tn, 0, 16);
       std::memcpy(tn, name, std::strlen(name));
+      changed = true;
+    }
+    if (changed)
+      svrfmt::ArchiveReplace(k, d);
+  }
+}
+
+// The 2K games' animated LED panels: yBG_UVScroll with 2 to 5 pictures (WWE '12's has one); WWE '12 fills the other
+// slots with whatever it has bound (WrestleMania 31's central circle and ramp sides showed pieces of the screen):
+// made yBG_Default with their first picture (still, as WWE 2K16 shows the circle). Changed in place.
+inline void LedPanelsTo12(svrfmt::ArcNode &ga) {
+  constexpr size_t B = 8;
+  for (auto &k : ga.kids) {
+    Bytes d = svrfmt::ArchiveData(k);
+    svrfmt::Model m;
+    if (!svrfmt::IsJboy(d) || !svrfmt::JboyRead(d, m, nullptr) || !m.w12)
+      continue;
+    const uint32_t mptr = svrfmt::Be32(&d[0x1C]);
+    bool changed = false;
+    for (size_t i = 0; i < m.meshes.size(); ++i) {
+      int pictures = 0;
+      for (const auto &p : m.meshes[i].params)
+        pictures += p.type == 0x0f;
+      const size_t rec = B + mptr + 0xB8 * i;
+      if (m.meshes[i].shader != "yBG_UVScroll" || pictures < 2 || rec + 0x8C > d.size())
+        continue;
+      std::memset(&d[rec + 0x7C], 0, 16);
+      std::memcpy(&d[rec + 0x7C], "yBG_Default", 11);
       changed = true;
     }
     if (changed)
@@ -395,6 +425,7 @@ inline bool PortTree(svrfmt::Archive &a, svrfmt::Archive &b, Bytes &out, std::st
     }
   };
   ScreensTo12(ga);
+  LedPanelsTo12(ga);
   for (auto &k : ga.kids)
     to_bpe(to_bpe, k);
   svrfmt::ArchiveTouch(ga);
