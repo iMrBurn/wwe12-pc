@@ -808,6 +808,20 @@ places ×10, d'après le code de Kaiko).
   les yeux de CM Punk paraissent encore clairs dans l'aperçu (Orton correct). Le `Mask` (512 × 512, paquet 10) de la
   base est gardé : SvR a un `Mk` aux canaux différents (essayé puis retiré).
 
+- **CM Punk de SvR validé en jeu (2026-10-26)** : cheveux longs, barbe, yeux, portrait. Les mèches étaient
+  dessinées mais toutes rejetées : le shader des cheveux de WWE '12 découpe avec **l'alpha de la normal map**
+  (`Kill` si normal.a × alpha du sommet < seuil ; RenderDoc), et le **bleu** de la normal map y vaut à peu près la
+  luminosité des cheveux (CM Punk de base : 15) ; SvR a sa brillance dans l'alpha et un bleu plein (cheveux
+  invisibles, puis blonds et tachés). `port_svr::HairCut` : sous les UV des cheveux (10000), alpha = alpha de la
+  couleur de SvR, bleu = luminosité de la couleur. Portraits SvR : 1,45 en hauteur, 0,92 en largeur.
+- **Arènes 2K (2026-10-26, pas encore vu en jeu)** : (1) **place d'une arène ajoutée = 12,5 Mo** (au lieu de la
+  taille de sa base) : le jeu la sert avec sa propre taille (`wwe12_arena_pages.cpp`), la limite est le tas 12
+  (≈ 18,7 Mo, taille + 5 Mo libres) ; WrestleMania 31 de 2K16 (12,2 Mo une fois en BPE) n'a plus d'images réduites ;
+  remplacer une arène garde la taille d'origine ; (2) **bannière du jeu d'origine** (`port13::Banner2K`) : 2K16 /
+  2K17 `Pbg_NN_*` (512 × 256, NN = le fichier, `MnLayHD.pac` / `MnLayHD_WWEUnivese.pac`) ; 2K15 `arena_<nom>`
+  (256 × 128, `MnLayHD.pac` MLYE/USCH) d'après les fiches `PPV_<nom>` de `wuniData.pac` (noms raccourcis : même
+  début, même numéro ; PPV_ER = arena_ex) ; 2K14 table `kBanners2K14`. Vérifié hors du jeu sur 28 arènes.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

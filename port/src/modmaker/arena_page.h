@@ -1032,7 +1032,7 @@ class Page {
                info.models_left);
       port_note_ += b;
     }
-    if (out.size() > budget_)
+    if (out.size() > Room())
       port_note_ += fr ? " Plus grande que la place : ses plus grandes images seront réduites."
                        : " Bigger than the room: its biggest pictures will be halved.";
     if (!info.RampsMatch()) {
@@ -1134,7 +1134,7 @@ class Page {
     other_size_ = out.size();
     port_note_ = (fr ? "Prête : " : "Ready: ") + Label13(w13_pick_) + (fr ? ", jouée comme " : ", played as ") +
                  kSlots[slot_].name + " (" + Human(out.size()) + ").";
-    if (out.size() > budget_)
+    if (out.size() > Room())
       port_note_ += fr ? " Plus grande que la place : ses plus grandes images seront réduites."
                        : " Bigger than the room: its biggest pictures will be halved.";
     // The entrance follows the base's ramp: a WWE '13 ramp at floor level wants a base without a raised one.
@@ -1156,7 +1156,7 @@ class Page {
                  info.ramp13 / 100, kSlots[slot_].name);
       ramp_note_ = b;
     }
-    // Its own banner from WWE '13's menus, else the base's.
+    // Its own banner from WWE '13's menus (the 2K games': their Universe's pictures), else the base's.
     const Bytes matchhd = Read13("pac/menu/MatchHD.pac");
     svrfmt::Image img;
     if (!matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))
@@ -1172,7 +1172,8 @@ class Page {
     const Bytes evtmov = Read13("pac/evt/evtmov.pac");
     if (!evtmov.empty() && port13::TransitionVideo(evtmov, w13_pick_, movie_))
       port_note_ += fr ? " Avec sa transition." : " With its transition.";
-    if (!matchhd.empty() && port13::Banner(matchhd, w13_pick_, img)) {
+    if (y_title_ == kWwe13 ? !matchhd.empty() && port13::Banner(matchhd, w13_pick_, img)
+                           : port13::Banner2K([&](const char *p) { return Read13(p); }, y_title_, w13_pick_, img)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
     } else {
@@ -1210,8 +1211,8 @@ class Page {
       return;
     }
     ImGui::Text("%s %s, %s %s", fr ? "Taille :" : "Size:", Human(other_size_).c_str(),
-                fr ? "place disponible :" : "room:", Human(budget_).c_str());
-    if (other_size_ > budget_)
+                fr ? "place disponible :" : "room:", Human(Room()).c_str());
+    if (other_size_ > Room())
       ImGui::TextColored(kYellow, "%s", fr ? "Trop grande : ses plus grandes images seront réduites de moitié pour tenir."
                                            : "Too big: its biggest pictures will be halved to fit.");
     if (other_.Stage() != kSlots[slot_].number)
@@ -1313,8 +1314,8 @@ class Page {
     arena_edit::Arena &a = mode_ == 1 || mode_ >= 3 ? other_ : arena_;
     a.SetStage(kSlots[slot_].number);
     Bytes out;
-    const auto reduced = a.Fit(budget_, out);
-    if (out.size() > budget_) {
+    const auto reduced = a.Fit(Room(), out);
+    if (out.size() > Room()) {
       message_ = fr ? "Impossible de faire tenir l'arène dans la taille d'origine, même en réduisant ses images."
                     : "The arena can't be made to fit the shipped size, even with its pictures reduced.";
       return;
@@ -1383,6 +1384,11 @@ class Page {
   ID3D11Device *device_ = nullptr;
   int mode_ = 0, slot_ = -1, selected_ = -1;
   size_t budget_ = 0;
+  // An added arena (slot=new) is served under its own size: its room is the arena heap's (heap 12, ~18.7 MB, wants
+  // the file + 5 MB free), not its base's file (WWE 2K16's WrestleMania 31, 12.2 MB packed as BPE, had pictures
+  // halved for bg10's 10.4 MB). Replacing an arena keeps the shipped size.
+  static constexpr size_t kAddedRoom = size_t(12.5 * 1024 * 1024);
+  size_t Room() const { return as_new_ ? std::max(budget_, kAddedRoom) : budget_; }
   Bytes shipped_;
   arena_edit::Arena arena_;
   std::vector<Thumb> thumbs_;

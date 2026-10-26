@@ -27,7 +27,9 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cctype>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -337,6 +339,126 @@ inline bool Banner(const Bytes &matchhd13, int file, svrfmt::Image &out) {
     }
   }
   return false;
+}
+
+// The arena's banner in a WWE 2K game's menus (its select screen shows none we can use: these are the Universe's):
+//  - 2K16, 2K17: "Pbg_NN_<short name>" (512 x 256, NN = the arena file), in menu/MnLayHD.pac (2K16, MLYE/UMTX) or
+//    menu/MnLayHD_WWEUnivese.pac (2K17);
+//  - 2K15: "arena_<name>" (256 x 128, MnLayHD.pac MLYE/USCH), named after the arena's "PPV_<name>" record in
+//    pac/wuniData.pac's 52-byte udt tables {name[40], string id, arena number, index}: PPV_raw'02 -> arena_raw02, but
+//    shortened: PPV_main -> arena_maineve, PPV_armage'02 -> arena_arm02, PPV_survivor'02 -> arena_surviv02 (one of
+//    the names starts with the other, same number), PPV_ER -> arena_ex;
+//  - 2K14: the same pictures, no such records: by the arena's number (kBanners2K14, from its names kArenas2K14).
+// (2026-10-26: WWE 2K16's WrestleMania 31 came with the base's banner.)
+struct Banner2K14 {
+  int file;
+  const char *name;
+};
+inline constexpr Banner2K14 kBanners2K14[] = {
+    {0, "smack"},  {1, "raw"},       {2, "NXT"},    {3, "super"},   {4, "over"},     {5, "out"},     {6, "money"},
+    {7, "summer"}, {8, "NofC"},      {9, "hell"},   {11, "survivor"}, {12, "TLC"},   {13, "royal"},  {14, "chamber"},
+    {15, "WM29"},  {16, "ex"},       {17, "maineve"}, {21, "chamber"}, {22, "royal"}, {23, "raw"},   {56, "WM30"}};
+
+inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t title, int file, svrfmt::Image &out) {
+  // Every picture of the menu packs that may hold them, by name.
+  std::map<std::string, Bytes> pics;
+  const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+    const Bytes d = svrfmt::ArchiveData(n);
+    std::vector<svrfmt::BundleTexture> texs;
+    if (svrfmt::BundleRead(d, texs)) {
+      for (auto &t : texs)
+        if (t.name.rfind("Pbg_", 0) == 0 || t.name.rfind("arena_", 0) == 0)
+          pics.emplace(t.name, std::move(t.data));
+      return;
+    }
+    if (depth < 4 && svrfmt::ArchiveExpand(n))
+      for (auto &c : n.kids)
+        self(self, c, depth + 1);
+  };
+  for (const char *p : {"pac/menu/MnLayHD.pac", "pac/menu/MnLayHD_WWEUnivese.pac"}) {
+    svrfmt::Archive a;
+    if (svrfmt::ArchiveOpen(read(p), a, nullptr))
+      for (auto &k : a.root.kids)
+        walk(walk, k, 0);
+  }
+  const auto take = [&](const Bytes &dds) { return svrfmt::DdsDecode(dds, out); };
+  char pbg[16];
+  snprintf(pbg, sizeof(pbg), "Pbg_%02d_", file);
+  for (const auto &[name, dds] : pics)
+    if (name.rfind(pbg, 0) == 0 && take(dds))
+      return true;
+  // The arena_ picture's name: 2K14's table, else the PPV_ record.
+  std::string stem;
+  if (title == 0x545408B2) {
+    for (const auto &b : kBanners2K14)
+      if (b.file == file)
+        stem = b.name;
+    if (file >= 28 && file <= 55)
+      stem = "WM" + std::to_string(file - 27);
+  } else {
+    svrfmt::Archive u;
+    if (svrfmt::ArchiveOpen(read("pac/wuniData.pac"), u, nullptr)) {
+      const auto udt = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+        if (depth < 4 && svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
+          for (auto &c : n.kids)
+            self(self, c, depth + 1);
+          return;
+        }
+        const Bytes b = svrfmt::ArchiveData(n);
+        uint32_t count = 0, size = 0;
+        if (b.size() < 32 || memcmp(b.data(), "udt", 3) != 0)
+          return;
+        memcpy(&count, b.data() + 4, 4);
+        memcpy(&size, b.data() + 8, 4);
+        if (size != 52)
+          return;
+        count = std::min<uint32_t>(count, uint32_t((b.size() - 32) / 52));
+        for (uint32_t i = 0; i < count && stem.empty(); ++i) {
+          const uint8_t *r = b.data() + 32 + size_t(i) * 52;
+          uint32_t bg;
+          memcpy(&bg, r + 44, 4);
+          const std::string name(reinterpret_cast<const char *>(r), strnlen(reinterpret_cast<const char *>(r), 40));
+          if (bg == uint32_t(file) && name.rfind("PPV_", 0) == 0)
+            for (char c : name.substr(4))
+              if (c != '\'')
+                stem += c;
+        }
+      };
+      for (auto &k : u.root.kids)
+        udt(udt, k, 0);
+    }
+  }
+  if (stem.empty())
+    return false;
+  const auto lower = [](std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    return s;
+  };
+  const auto split = [](const std::string &s, std::string &letters, std::string &digits) {
+    size_t k = s.size();
+    while (k > 0 && std::isdigit(static_cast<unsigned char>(s[k - 1])))
+      --k;
+    letters = s.substr(0, k);
+    digits = s.substr(k);
+  };
+  stem = lower(stem);
+  if (stem == "er")
+    stem = "ex";
+  std::string sl, sd;
+  split(stem, sl, sd);
+  const Bytes *best = nullptr;
+  for (const auto &[name, dds] : pics) {
+    if (name.rfind("arena_", 0) != 0)
+      continue;
+    const std::string n = lower(name.substr(6));
+    if (n == stem)
+      return take(dds);
+    std::string nl, nd;
+    split(n, nl, nd);
+    if (!best && nd == sd && !nl.empty() && !sl.empty() && (nl.rfind(sl, 0) == 0 || sl.rfind(nl, 0) == 0))
+      best = &dds;
+  }
+  return best && take(*best);
 }
 
 // The arena's entrance graphics (location plate, name plates) in WWE '13's pac/evt/evtgdhd.pac: its ETEX/00NN group,
