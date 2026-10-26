@@ -232,6 +232,7 @@ struct Texts {
       *music_empty;
   const char *icons, *icons_auto, *icons_xbox, *icons_ps, *icons_hint;
   const char *gpu_used, *gpu_dedicated, *gpu_integrated, *gpu_others;
+  const char *keys_mod_alone;
 };
 
 const Texts kEnglish = {
@@ -304,7 +305,8 @@ const Texts kEnglish = {
     "Automatic shows PlayStation icons only if the PlayStation controller was already detected when the game "
     "started; if you still see Xbox icons with your PlayStation controller, pick PlayStation. Applies the next "
     "time you start the game.",
-    "Graphics card used: %s", "dedicated", "integrated", "Cards found: %s"};
+    "Graphics card used: %s", "dedicated", "integrated", "Cards found: %s",
+    "Shift, Ctrl or Alt set on its own is a key of its own, so these combinations will do nothing: %s"};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -382,7 +384,8 @@ const Texts kFrench = {
     "Automatique affiche les icônes PlayStation seulement si la manette PlayStation était déjà détectée au "
     "démarrage du jeu ; si vous voyez encore les icônes Xbox avec votre manette PlayStation, choisissez "
     "PlayStation. S'applique au prochain lancement du jeu.",
-    "Carte graphique utilisée : %s", "dédiée", "intégrée", "Cartes détectées : %s"};
+    "Carte graphique utilisée : %s", "dédiée", "intégrée", "Cartes détectées : %s",
+    "Shift, Ctrl ou Alt réglé seul devient une touche à part entière : ces combinaisons ne marcheront donc pas : %s"};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -863,6 +866,14 @@ void PageControls() {
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), t.keys_bad, bad_list.c_str());
   if (!dup_list.empty())
     ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), t.keys_dup, dup_list.c_str());
+  {
+    std::vector<std::string> all;
+    for (size_t i = 0; i < std::size(kBinds); ++i)
+      all.push_back(keys::Normalize(g_s.binds[i]).text);
+    const std::string conflicts = keys::ModifierConflicts(all);
+    if (!conflicts.empty())
+      ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), t.keys_mod_alone, conflicts.c_str());
+  }
   if (ImGui::Button(t.reset_keys)) {
     for (size_t i = 0; i < std::size(kBinds); ++i)
       snprintf(g_s.binds[i], sizeof(g_s.binds[i]), "%s", kBinds[i].def);

@@ -4,8 +4,10 @@
 // The game (rexglue-sdk, src/ui/keybinds.cpp and src/input/mnk/mnk_input_driver.cpp) reads each
 // keybind_* setting as comma-separated alternatives, each "Key" or "Shift+Key" (also Ctrl+, Alt+).
 // Names are case-sensitive and come from a fixed table: "j", "Enter" or "space" are silently
-// ignored, and a modifier alone ("Shift") can never fire. This header keeps the same table
-// (kept in sync by hand), corrects what was typed (j -> J, Enter -> Return) and flags the rest.
+// ignored. A modifier alone ("Shift", "Ctrl", "Alt") is a key of its own (issue #18,
+// rexglue-sdk-mnk-modifiers.patch): then it no longer works as a prefix anywhere ("Shift+Up" stays
+// silent), which ModifierConflicts reports. This header keeps the same table (kept in sync by
+// hand), corrects what was typed (j -> J, Enter -> Return) and flags the rest.
 #pragma once
 
 #include <algorithm>
@@ -151,10 +153,14 @@ inline Result Normalize(const std::string &typed) {
       else
         ok = false;
     }
-    const char *key = ok ? Canonical(parts.back()) : nullptr;
     const std::string lower_key = ok ? Lower(parts.back()) : std::string();
-    // A modifier on its own can never fire in the game ("Shift" held makes the mask non-zero).
-    if (!key || lower_key == "shift" || lower_key == "ctrl" || lower_key == "control" || lower_key == "alt") {
+    // A modifier on its own is a key of its own; it cannot also prefix itself.
+    const char *modifier = lower_key == "shift"                           ? "Shift"
+                           : lower_key == "ctrl" || lower_key == "control" ? "Ctrl"
+                           : lower_key == "alt"                             ? "Alt"
+                                                                            : nullptr;
+    const char *key = !ok ? nullptr : modifier ? (parts.size() == 1 ? modifier : nullptr) : Canonical(parts.back());
+    if (!key) {
       r.bad.push_back(piece);
       continue;
     }
@@ -174,12 +180,30 @@ inline Result Normalize(const std::string &typed) {
 }
 
 // Call every frame while waiting for the player to press a key. Returns true once, with the
-// game's name for the key (with "Shift+", "Ctrl+", "Alt+" if held). Modifiers alone are skipped.
+// game's name for the key (with "Shift+", "Ctrl+", "Alt+" if held). A modifier pressed and
+// released on its own gives "Shift", "Ctrl" or "Alt".
 inline bool Capture(std::string &out) {
   const ImGuiIO &io = ImGui::GetIO();
+  static const char *alone = nullptr;  // a modifier held with no other key yet
+  const struct {
+    ImGuiKey left, right;
+    const char *name;
+  } mods[] = {{ImGuiKey_LeftShift, ImGuiKey_RightShift, "Shift"},
+              {ImGuiKey_LeftCtrl, ImGuiKey_RightCtrl, "Ctrl"},
+              {ImGuiKey_LeftAlt, ImGuiKey_RightAlt, "Alt"}};
+  for (const auto &m : mods) {
+    if (ImGui::IsKeyPressed(m.left, false) || ImGui::IsKeyPressed(m.right, false))
+      alone = m.name;
+    if (alone == m.name && (ImGui::IsKeyReleased(m.left) || ImGui::IsKeyReleased(m.right))) {
+      alone = nullptr;
+      out = m.name;
+      return true;
+    }
+  }
   for (const Def &d : Table()) {
     if (d.key == ImGuiKey_None || !ImGui::IsKeyPressed(d.key, false))
       continue;
+    alone = nullptr;
     out.clear();
     if (io.KeyShift)
       out += "Shift+";
@@ -191,6 +215,32 @@ inline bool Capture(std::string &out) {
     return true;
   }
   return false;
+}
+
+// Modifiers bound on their own whose combinations ("Shift+Up") will then do nothing, as
+// "Shift (Shift+Up)": the game treats a modifier bound alone as a key of its own.
+inline std::string ModifierConflicts(const std::vector<std::string> &binds) {
+  std::vector<std::string> alone, combos;
+  for (const std::string &b : binds) {
+    size_t from = 0;
+    while (from <= b.size()) {
+      size_t comma = b.find(',', from);
+      if (comma == std::string::npos)
+        comma = b.size();
+      const std::string piece = Trim(b.substr(from, comma - from));
+      from = comma + 1;
+      if (piece == "Shift" || piece == "Ctrl" || piece == "Alt")
+        alone.push_back(piece);
+      else if (piece.find('+') != std::string::npos && piece != "+")
+        combos.push_back(piece);
+    }
+  }
+  std::string out;
+  for (const std::string &m : alone)
+    for (const std::string &c : combos)
+      if (c.rfind(m + "+", 0) == 0 || c.find("+" + m + "+") != std::string::npos)
+        out += (out.empty() ? "" : ", ") + m + " (" + c + ")";
+  return out;
 }
 
 }  // namespace keys

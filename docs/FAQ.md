@@ -61,6 +61,17 @@ starting the game to get PlayStation button icons (automatic since 0.9; in 0.8 a
 
 **FPS counter?** F2 in game.
 
+**Which key names can I use for the keyboard?** Launcher → CONTROLS → Set, then press the key: it
+writes the exact name. Typed names are case-sensitive: `A`-`Z`, `0`-`9`, `F1`-`F24`, `Up` `Down`
+`Left` `Right`, `Space` `Return` `Escape` `Tab` `Backspace` `Delete` `Insert` `Home` `End` `PageUp`
+`PageDown`, `Minus` `Plus` `Comma` `Period` `Semicolon` `Slash` `Backslash` `LBracket` `RBracket`
+`Quote` `Backtick`, `Numpad0`-`Numpad9` `NumpadEnter` `NumpadPlus` `NumpadMinus` `NumpadStar`
+`NumpadSlash`, `CapsLock` `NumLock` `ScrollLock` `PrintScreen` `Pause`, mouse `LMB` `RMB` `MMB`, and
+`Shift`, `Ctrl`, `Alt`. Several keys: separate them with commas (`Z,W`); a combination: `Shift+Up`.
+Since 1.0, `Shift`, `Ctrl` or `Alt` can be a button on its own (issue #18). Left and right Shift are
+the same key. A modifier set on its own no longer works in combinations (`Shift+Up` does nothing
+then): the launcher warns about it.
+
 ## Saves
 
 **Can I use my Xbox 360 saves?** Yes: launcher → SAVES → import your WWE '12 save packages.
@@ -110,6 +121,9 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
 - **Manette PlayStation** : branchez-la avant de lancer le jeu pour avoir les icônes PlayStation (en 0.8 la détection automatique ne marche pas : ajoutez
   `wwe12_button_icons = "playstation"` à la fin de `wwe12.toml`, corrigé en 0.9). **Deux
   joueurs avec une manette** : launcher → CONTRÔLES → clavier = joueur 2. **Compteur FPS** : F2.
+- **Noms des touches du clavier** : launcher → CONTRÔLES → Définir, puis appuyez sur la touche (liste des
+  noms exacts dans la partie anglaise). Depuis la 1.0, `Shift`, `Ctrl` ou `Alt` peut être un bouton à lui
+  seul (issue #18) ; il ne marche plus alors dans les combinaisons (`Shift+Up`), le launcher le signale.
 - **Sauvegardes Xbox 360** : launcher → SAUVEGARDES → importer. Copies de sauvegarde automatiques.
 - **« Not signed in with a gamer profile »** : corrigé en 0.9.
 - **Mods** : les fichiers du dossier `mods` remplacent ceux du jeu (même chemin).
