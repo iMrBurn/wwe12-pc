@@ -831,8 +831,20 @@ places ×10, d'après le code de Kaiko).
   → Bink 1 320 × 320 avec alpha (encodeur : plan alpha avant Y, chaque partie précédée de sa taille ; RAD Video Tools
   ne rend pas l'alpha : fondu de 8 images) ; 2K14 déjà en Bink 1 ; (5) **écran VS** : la mise en page 2K a 14
   éléments contre 15 (pris par numéro : noms absents, rectangle noir) et une police version 104 ; un écran VS de
-  WWE '12 porte les images de 2K (`port_svr_arena::CardWearing`, commun avec SvR 2011). Reste : le disque du rond
-  central de WM 31 caché par le mur vidéo (laissé de côté).
+  WWE '12 porte les images de 2K (`port_svr_arena::CardWearing`, commun avec SvR 2011) ; leur logo est rangé tassé
+  (256 × 256) et affiché 3,4 fois plus large que haut par 2K16 : remis à ces proportions ; (6) **plaques de nom /
+  locator** : les ETEX des 2K n'ont que le bandeau © (20) et des polices v104 (leurs plaques sont des vidéos,
+  `pac/mov/bg_name`, `bg_locator`) : l'ETEX/0015 de WWE '12 (WrestleMania XXVII ; logo = images 0 et 6-20 des
+  entrées 0 et 10) porte le logo de l'arène et son bandeau © (`EtexWearing`) ; jugé « bof » par l'utilisateur, à
+  revoir plus tard (et reprendre davantage des jeux récents). Reste : le disque du rond central de WM 31 caché par le
+  mur vidéo (laissé de côté).
+- **Écran VS d'une arène ajoutée, défaut de mémoire (corrigé et vérifié en jeu, 2026-10-26, `wwe12_arena_pages.cpp`)**
+  : choisie après son arène de base (même numéro de scène), elle montrait l'écran VS de la base. Deux causes : (a) le
+  réglage du match (`sub_82576120`) ne refait la scène et son écran VS (`sub_828AC150`) que si le numéro change (+88
+  de l'objet de `sub_828A9898`) : après un tel choix, ce numéro est oublié (-1) ; (b) le jeu garde ce qu'il a lu d'une
+  entrée du répertoire : la demande `/MLYE/MB<base>` est réécrite en `MB21` / `MB22` (entrées qu'aucune arène
+  n'affiche) et y répond avec la carte ajoutée. Fausses pistes : un nom propre `MB150` (numéro utilisé ailleurs,
+  affichage cassé), le calque 16 de l'écran (jamais le chemin pris).
 
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
