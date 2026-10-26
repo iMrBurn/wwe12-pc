@@ -1159,8 +1159,13 @@ class Page {
     // Its own banner from WWE '13's menus (the 2K games': their Universe's pictures), else the base's.
     const Bytes matchhd = Read13("pac/menu/MatchHD.pac");
     svrfmt::Image img;
-    if (!matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))
+    if (!matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_)) {
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
+      // (a 2K game's font WWE '12 can't read: the base arena's instead)
+      Bytes matchhd12;
+      if (y_title_ != kWwe13 && disc_ && slot_ >= 0 && disc_->Read("pac/menu/MatchHD.pac", matchhd12))
+        port13::CardFontTo12(card_mb_, card_mf_, matchhd12, kSlots[slot_].number);
+    }
     // Its entrance graphics (location plate, name plates).
     const Bytes evtgd = Read13("pac/evt/evtgdhd.pac");
     if (!evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_))

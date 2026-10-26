@@ -718,4 +718,74 @@ inline bool Card(const Bytes &matchhd13, int file, Bytes &mb, Bytes &mf) {
   return true;
 }
 
+// A font package's descriptor (entry 1: u32 x3, then "name=<font>.yfb"): its version (WWE '12 / '13: 100; the 2K
+// games: 104, three letter sheets instead of two) and its name.
+inline bool FontInfo(const Bytes &mf, uint32_t &version, std::string &name) {
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(mf, a, nullptr))
+    return false;
+  for (auto &k : a.root.kids) {
+    if (k.id != 1)
+      continue;
+    const Bytes d = svrfmt::ArchiveData(k);
+    if (d.size() < 32 || memcmp(&d[16], "name=", 5) != 0)
+      return false;
+    memcpy(&version, &d[8], 4);
+    const char *s = reinterpret_cast<const char *>(&d[21]);
+    name.assign(s, strnlen(s, d.size() - 21));
+    if (name.size() > 4 && name.compare(name.size() - 4, 4, ".yfb") == 0)
+      name.resize(name.size() - 4);
+    return !name.empty();
+  }
+  return false;
+}
+
+// The 2K games' VS screens use a font WWE '12 can't read (version 104): the names didn't show and a black box stood in
+// the middle (WWE 2K16's WrestleMania 31, 2026-10-26). Their font is replaced by the base arena's (WWE '12's
+// MENU/MnnF), and their layout (entry 7000, YXMLBIN) made to name it: the font's name, in place, padded with zeros
+// (when it is no longer). False: nothing to do or not possible (left as it was).
+inline bool CardFontTo12(Bytes &mb, Bytes &mf, const Bytes &matchhd12, int base) {
+  uint32_t v = 0, v12 = 0;
+  std::string theirs, ours;
+  if (!FontInfo(mf, v, theirs) || v == 100)
+    return false;
+  svrfmt::Archive w;
+  if (!svrfmt::ArchiveOpen(matchhd12, w, nullptr))
+    return false;
+  char nf[8];
+  snprintf(nf, sizeof(nf), "M%02dF", base);
+  Bytes base_mf;
+  for (const auto &k : w.root.kids)
+    if (k.group == "MENU" && k.name == nf)
+      base_mf = k.stored;
+  if (base_mf.empty() || !FontInfo(base_mf, v12, ours) || ours.size() > theirs.size())
+    return false;
+  svrfmt::Archive card;
+  if (!svrfmt::ArchiveOpen(mb, card, nullptr))
+    return false;
+  bool changed = false;
+  for (auto &k : card.root.kids) {
+    if (k.id != 7000)
+      continue;
+    Bytes d = svrfmt::ArchiveData(k);
+    for (size_t i = 0; i + theirs.size() < d.size(); ++i)
+      if ((i == 0 || d[i - 1] == 0) && d[i + theirs.size()] == 0 && memcmp(&d[i], theirs.data(), theirs.size()) == 0) {
+        memset(&d[i], 0, theirs.size());
+        memcpy(&d[i], ours.data(), ours.size());
+        changed = true;
+      }
+    if (changed) {
+      if (k.wrap == svrfmt::ArcWrap::Zlib)
+        k.wrap = svrfmt::ArcWrap::Bpe;
+      svrfmt::ArchiveReplace(k, d);
+    }
+  }
+  if (!changed)
+    return false;
+  svrfmt::ArchiveTouch(card.root);
+  mb = svrfmt::ArchiveSave(card);
+  mf = base_mf;
+  return true;
+}
+
 }  // namespace port13
