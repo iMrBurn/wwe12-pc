@@ -231,10 +231,8 @@ void PageHome() {
     ImGui::TextDisabled("%s", g_fr ? it.what_fr : it.what_en);
   }
   ImGui::Dummy(ImVec2(0, 10));
-  ImGui::TextDisabled("%s", g_fr ? "Bientôt : prises et entrées des catcheurs portés, "
-                                   "renders du menu, sons."
-                                 : "Coming: ported superstars' moves and entrances, menu "
-                                   "renders, sounds.");
+  ImGui::TextDisabled("%s", g_fr ? "Bientôt : prises et entrées des catcheurs portés, sons du jeu, une tenue de plus."
+                                 : "Coming: ported superstars' moves and entrances, the game's sounds, one more attire.");
   if (ImGui::Button(g_fr ? "Ouvrir le dossier mods" : "Open the mods folder"))
     OpenFolder(ExeDir() / "mods");
 }
@@ -451,10 +449,22 @@ void DrawUi() {
   dl->AddRectFilledMultiColor(ImVec2(o.x + kSide, o.y), ImVec2(o.x + W, o.y + H), IM_COL32(26, 22, 14, 255),
                               IM_COL32(14, 14, 16, 255), IM_COL32(14, 14, 16, 255), IM_COL32(14, 14, 16, 255));
 
+  // The rail fits the window's height (14 pages): the buttons get lower first (44 down to 34), then the logo smaller,
+  // then the buttons again (down to 24); a 1080p screen was too short for all of them (HELP cut off, 2026-10-26).
+  constexpr int kPages = 14;
+  const float gap = ImGui::GetStyle().ItemSpacing.y, title_h = 42, room = H - 18 - title_h - 48;
+  const float logo_full = g_logo ? (kSide - 60) * float(g_logo_h) / float(g_logo_w) : 0;
+  float bh = std::clamp((room - logo_full) / kPages - gap, 34.0f, 44.0f);
+  float logo_h = std::clamp(room - kPages * (bh + gap), 0.0f, logo_full);
+  if (logo_h < 70) {  // (a logo that small is no use: none, and the buttons share its room)
+    logo_h = 0;
+    bh = std::clamp(room / kPages - gap, 24.0f, 44.0f);
+  }
   ImGui::SetCursorPos(ImVec2(20, 18));
-  if (g_logo) {
-    const float lw = kSide - 60, lh = lw * float(g_logo_h) / float(g_logo_w);
-    ImGui::Image(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(g_logo.Get()))), ImVec2(lw, lh));
+  if (g_logo && logo_h > 0) {
+    const float lw = logo_h * float(g_logo_w) / float(g_logo_h);
+    ImGui::SetCursorPosX(20 + (kSide - 60 - lw) / 2);
+    ImGui::Image(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(g_logo.Get()))), ImVec2(lw, logo_h));
   }
   ImGui::SetCursorPosX(20);
   ImGui::PushFont(g_font_title, 30.0f);
@@ -468,7 +478,7 @@ void DrawUi() {
   for (int i = 0; i < int(std::size(names_en)); ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
-    if (BigButton(g_fr ? names_fr[i] : names_en[i], ImVec2(kSide - 32, 44), sel ? kGold : IM_COL32(28, 28, 32, 255),
+    if (BigButton(g_fr ? names_fr[i] : names_en[i], ImVec2(kSide - 32, bh), sel ? kGold : IM_COL32(28, 28, 32, 255),
                   sel ? IM_COL32(20, 20, 20, 255) : IM_COL32(235, 235, 235, 255)))
       g_page = Page(i);
   }
