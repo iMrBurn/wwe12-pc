@@ -929,8 +929,12 @@ places ×10, d'après le code de Kaiko).
 - **Éditeur 3D** (page ARÈNES, onglet « Éditeur 3D », `arena_edit.h` Move, d'après l'Arena Editor de Kaiko) : un objet
   de l'arène (modèle de la section STG) déplacé (nœuds racines, cm, y vers le bas), tourné autour de la verticale, ou
   caché (envoyé 1 km sous le sol : le retirer pourrait laisser le jeu le chercher) ; le mod se fait comme une retouche.
-  Vérifié hors du jeu (nœud racine de `ji_chair` de bg15 : 0 → 300 cm). Pas encore vu en jeu ; piège possible : les
-  boîtes de visibilité de 50020 (par nom de nœud) ne bougent pas avec l'objet.
+  **Vu en jeu** (2026-10-26, bg13 Royal Rumble : la barrière `ar_fence02` soulevée d'un mètre). Le jeu dessine
+  les sommets où ils sont stockés : déplacer le nœud racine ne fait rien, ce sont les sommets (et les sphères
+  englobantes) qui bougent, la rotation se fait autour du centre de l'objet. Les pièces du ring (ids 951-980 :
+  poteaux, cordes, tapis) sont placées par le jeu lui-même : retirées de la liste. Le modèle recompressé est un peu
+  plus gros (notre BPE ~10 % moins bon que celui de Yuke's) : `Fit` réduit au besoin une image pour tenir dans la
+  taille d'origine (un fichier trop gros fait planter le décompresseur du jeu, `sub_827E1428`).
 - **REGARDER** (`look_page.h`) : les images du jeu par usage (portraits, bannières, écrans de chargement, pancartes,
   catcheur du menu, ceintures, logos des shows ; enregistrables en PNG) et les mods installés en 3D (catcheurs, tenues,
   arènes), et les animations (section suivante).

@@ -69,7 +69,7 @@ struct Texture {
   bool replaced = false, reduced = false;
 };
 
-// An object of the arena moved (its root nodes' places, cm), turned about the up axis (degrees) or hidden (sent far
+// An object of the arena moved (its vertices, cm), turned about the up axis (degrees) or hidden (sent far
 // under the floor: removing it could leave the game looking for it), after the Arena Editor of Kaiko's SvR 2011 Mod
 // Maker (editor.cpp; credit in docs/mod_maker.md).
 struct Move {
@@ -215,16 +215,38 @@ class Arena {
           svrfmt::ArchiveReplace(k, o->second);
           continue;
         }
+        // The game draws an arena model's vertices where they are stored (its root node's place is not used: a
+        // barricade moved by its node stayed put, 2026-10-26): the vertices move, turned about the object's centre.
         const float a = mv.turn * 3.14159265f / 180.0f, c = std::cos(a), sn = std::sin(a);
-        for (auto &n : m.nodes) {
-          if (n.parent >= 0)
-            continue;
-          const float x = n.t[0], z = n.t[2];
-          n.t[0] = c * x + sn * z + mv.d[0];
-          n.t[2] = -sn * x + c * z + mv.d[2];
-          n.t[1] += mv.d[1] + (mv.hide ? 100000.0f : 0.0f);  // (y points down: far under the floor)
-          n.r[1] += a;
+        float lo[2] = {1e30f, 1e30f}, hi[2] = {-1e30f, -1e30f};
+        for (const auto &s : m.meshes)
+          for (const auto &v : s.verts)
+            for (int q = 0; q < 2; ++q)
+              lo[q] = std::min(lo[q], v.pos[q * 2]), hi[q] = std::max(hi[q], v.pos[q * 2]);
+        const float cx = (lo[0] + hi[0]) / 2, cz = (lo[1] + hi[1]) / 2;
+        const float dy = mv.d[1] + (mv.hide ? 100000.0f : 0.0f);  // (y points down: far under the floor)
+        auto place = [&](float *p) {
+          const float x = p[0] - cx, z = p[2] - cz;
+          p[0] = c * x + sn * z + cx + mv.d[0];
+          p[2] = -sn * x + c * z + cz + mv.d[2];
+          p[1] += dy;
+        };
+        auto turn = [&](float *v) {
+          const float x = v[0], z = v[2];
+          v[0] = c * x + sn * z;
+          v[2] = -sn * x + c * z;
+        };
+        for (auto &s : m.meshes) {
+          for (auto &v : s.verts)
+            place(v.pos), turn(v.normal);
+          for (auto &t : s.tangents)
+            turn(t.data());
+          if (s.sphere[3] > 0)
+            place(s.sphere.data());
         }
+        for (auto &n : m.nodes)
+          if (n.sphere[3] > 0)
+            place(n.sphere);
         svrfmt::ArchiveReplace(k, svrfmt::JboyWrite(m));
       }
       svrfmt::ArchiveTouch(archive_.root.kids[section_]);

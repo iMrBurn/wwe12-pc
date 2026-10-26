@@ -313,6 +313,8 @@ class Page {
     if (ed_models_.empty())
       ed_models_ = arena_.Models();
     for (const auto &[id, name] : ed_models_) {
+      if (id >= 950 && id < 1000)  // (the ring's pieces, 951-980: the game puts them in place itself; moved, they stay)
+        continue;
       std::string a = name, b = ed_filter_;
       for (auto *x : {&a, &b})
         std::transform(x->begin(), x->end(), x->begin(), [](unsigned char c) { return char(std::tolower(c)); });
