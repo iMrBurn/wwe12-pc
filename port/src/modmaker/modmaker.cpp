@@ -124,6 +124,47 @@ ComPtr<ID3D11ShaderResourceView> LoadLogo(int &w, int &h) {
   return srv;
 }
 
+// The title screen's Randy Orton, from behind (MnLayHD.pac MLYE/EM00 or EL00, child 7001, "ortontex01", 512 x 1024
+// cut out), read from the player's game files: drawn faintly behind the pages. Empty without the game.
+ComPtr<ID3D11ShaderResourceView> LoadTitleOrton(const disc::GameDisc &disc, int &w, int &h) {
+  ComPtr<ID3D11ShaderResourceView> srv;
+  svrfmt::Bytes pac;
+  svrfmt::Archive a;
+  if (!disc.Read("pac/menu/MnLayHD.pac", pac) || !svrfmt::ArchiveOpen(pac, a, nullptr))
+    return srv;
+  for (auto &k : a.root.kids) {
+    if (k.group != "MLYE" || (k.name != "EM00" && k.name != "EL00") || !svrfmt::ArchiveExpand(k))
+      continue;
+    for (auto &c : k.kids) {
+      std::vector<svrfmt::BundleTexture> t;
+      if (c.id != 7001 || !svrfmt::BundleRead(svrfmt::ArchiveData(c), t))
+        continue;
+      for (auto &x : t) {
+        svrfmt::Image img;
+        if (x.name != "ortontex01" || !svrfmt::DdsDecode(x.data, img) || img.w <= 0 || img.h <= 0)
+          continue;
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = UINT(img.w);
+        td.Height = UINT(img.h);
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA init{img.rgba.data(), UINT(img.w * 4), 0};
+        ComPtr<ID3D11Texture2D> tex;
+        if (SUCCEEDED(g_device->CreateTexture2D(&td, &init, &tex)))
+          g_device->CreateShaderResourceView(tex.Get(), nullptr, &srv);
+        w = img.w;
+        h = img.h;
+        return srv;
+      }
+    }
+  }
+  return srv;
+}
+
 fs::path ExeDir() {
   wchar_t buf[MAX_PATH];
   GetModuleFileNameW(nullptr, buf, MAX_PATH);
@@ -169,6 +210,8 @@ backgrounds_page::Page g_backgrounds;
 look_page::Page g_look;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
+ComPtr<ID3D11ShaderResourceView> g_orton;  // (LoadTitleOrton)
+int g_orton_w = 0, g_orton_h = 0;
 
 // ---------------------------------------------------------------------------------------------
 // Pages
@@ -448,6 +491,12 @@ void DrawUi() {
   Stroke(dl, ImVec2(o.x - 30, o.y + H - 16), kSide - 40, 5, kGold, 30);
   dl->AddRectFilledMultiColor(ImVec2(o.x + kSide, o.y), ImVec2(o.x + W, o.y + H), IM_COL32(26, 22, 14, 255),
                               IM_COL32(14, 14, 16, 255), IM_COL32(14, 14, 16, 255), IM_COL32(14, 14, 16, 255));
+  if (g_orton) {  // the title screen's Orton, faint, against the right edge, as tall as the window
+    const float oh = H, ow = oh * float(g_orton_w) / float(g_orton_h);
+    const float x = std::max(o.x + kSide, o.x + W - ow);
+    dl->AddImage(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(g_orton.Get()))), ImVec2(x, o.y),
+                 ImVec2(x + ow, o.y + oh), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 46));
+  }
 
   // The rail fits the window's height (14 pages): the buttons get lower first (44 down to 34), then the logo smaller,
   // then the buttons again (down to 24); a 1080p screen was too short for all of them (HELP cut off, 2026-10-26).
@@ -594,6 +643,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   ImGui_ImplWin32_Init(hwnd);
   ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());
   g_logo = LoadLogo(g_logo_w, g_logo_h);
+  g_orton = LoadTitleOrton(g_disc, g_orton_w, g_orton_h);
 
   bool done = false;
   while (!done) {
