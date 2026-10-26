@@ -2,7 +2,8 @@
 // gamepad (port/src/android/wwe12_touch.cpp) that the game sees like a real controller.
 // Hidden while a real controller is connected. Layout in fractions of the screen (landscape).
 //
-// Layout editor, custom buttons and stick options: from Yexclsv's work. The layout is customisable: every control can be moved, resized or hidden, and the player can
+// Layout editor, custom buttons, button pictures and stick options: from Yexclsv's work.
+// The layout is customisable: every control can be moved, resized or hidden, and the player can
 // add custom buttons (one or several gamepad inputs on one button, e.g. A+B). The layout is saved
 // as JSON in the "launcher" preferences (key touch_layout). LayoutEditorActivity uses this same
 // view in edit mode (no native calls: the editor runs in the launcher process, without the game libraries).
@@ -10,11 +11,14 @@ package io.github.imrburn.wwe12;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.hardware.input.InputManager;
 import android.os.Handler;
@@ -27,6 +31,7 @@ import android.view.View;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -66,6 +71,8 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         boolean visible = true;
         boolean latch;          // custom button: tap = on, tap again = off (e.g. a held run button)
         boolean latched;
+        String icon;            // file in touch_icons/ replacing the look of the button (null = normal look)
+        Bitmap bmp;             // the loaded icon
         float cx, cy, r;
         float textSize, textOff;  // cached at layout time, not per frame
         int pointer = -1;       // touch holding it
@@ -91,8 +98,8 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     final Handler handler = new Handler(Looper.getMainLooper());
     final SharedPreferences prefs;
     final int alpha;          // 0-255, from the launcher's opacity setting
-    final float scale;        // launcher's size setting, applied to the default layout (1 = normal)
     final boolean editMode;   // layout editor: drag to move, nothing is sent to the game
+    final float scale;        // launcher's size setting (1 = normal); the editor always shows 1
     boolean attached;
     boolean hidden;
     int viewW, viewH;
@@ -103,6 +110,9 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     final float sens;         // stick travel needed for full tilt: 1.0 = whole circle, 1.25 = a bit less
     final DashPathEffect selDash;
     final Rect clip = new Rect();
+    final RectF dst = new RectF();
+    final Paint bmpPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    final File iconDir;       // custom button pictures (PNG), shared by the launcher and the game process
 
     // Last state sent to the game: events that change nothing are not sent (saves a JNI call each).
     boolean haveLast;
@@ -115,21 +125,22 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     int dragPointer = -1;
     Runnable onSelectionChanged;
 
-    // In the game (WWE12Activity).
+    public TouchControls(Context context, int opacityPercent) {
+        this(context, opacityPercent, 100, false);
+    }
+
     public TouchControls(Context context, int opacityPercent, int sizePercent) {
         this(context, opacityPercent, sizePercent, false);
     }
 
-    // In the layout editor (LayoutEditorActivity): same size setting as the game.
     public TouchControls(Context context, int opacityPercent, boolean editMode) {
-        this(context, opacityPercent,
-                context.getSharedPreferences("launcher", Context.MODE_PRIVATE).getInt("touch_size", 100), editMode);
+        this(context, opacityPercent, 100, editMode);
     }
 
-    TouchControls(Context context, int opacityPercent, int sizePercent, boolean editMode) {
+    public TouchControls(Context context, int opacityPercent, int sizePercent, boolean editMode) {
         super(context);
         this.editMode = editMode;
-        scale = clamp(sizePercent, 50, 150) / 100f;
+        scale = editMode ? 1f : Math.max(50, Math.min(150, sizePercent)) / 100f;
         prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE);
         int a = Math.max(30, Math.min(255, opacityPercent * 255 / 100));
         alpha = editMode ? Math.max(a, 150) : a;
@@ -138,8 +149,10 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         sens = clamp(prefs.getInt("touch_sens", 100) / 100f, 0.5f, 2f);
         float d = context.getResources().getDisplayMetrics().density;
         selDash = new DashPathEffect(new float[] {8 * d, 5 * d}, 0);
+        iconDir = new File(context.getFilesDir(), "touch_icons");
         buildDefaults();
         loadLayout();
+        loadIcons();
 
         stroke.setStyle(Paint.Style.STROKE);
         text.setTextAlign(Paint.Align.CENTER);
@@ -180,15 +193,8 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         add("START", "START", 1 << START, 0, 0, 0.58f, 0.08f, 0.06f, 0);
     }
 
-    // The size setting scales each default control and its distance to its screen corner (or to
-    // the top middle for BACK / START), so groups shrink towards the edges and stay together. Only
-    // the top row (shoulders, BACK / START) hangs from the top edge. A layout saved in the editor
-    // replaces these positions.
     void add(String key, String label, int mask, int trig, int stick, float fx, float fy, float fr, int color) {
-        float axf = fx > 0.4f && fx < 0.6f ? 0.5f : (fx < 0.5f ? 0f : 1f);
-        float ayf = fy < 0.25f ? 0f : 1f;
-        controls.add(new Control(key, label, mask, trig, stick, axf + (fx - axf) * scale,
-                ayf + (fy - ayf) * scale, fr * scale, color, false));
+        controls.add(new Control(key, label, mask, trig, stick, fx, fy, fr, color, false));
     }
 
     Control addCustom(String label, int mask, int trig, int colorIndex, boolean latch) {
@@ -222,6 +228,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
                 o.put("y", c.fy);
                 o.put("r", c.fr);
                 o.put("v", c.visible);
+                if (c.icon != null) o.put("i", c.icon);
                 if (c.custom) {
                     o.put("l", c.label);
                     o.put("m", c.mask);
@@ -233,6 +240,37 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
             }
             prefs.edit().putString(PREF_LAYOUT, arr.toString()).apply();
         } catch (Exception ignored) {
+        }
+    }
+
+    // ---- Custom button pictures ----------------------------------------------------------------------
+
+    void loadIcons() {
+        for (Control c : controls) {
+            c.bmp = null;
+            if (c.icon == null) continue;
+            try {
+                c.bmp = BitmapFactory.decodeFile(new File(iconDir, c.icon).getPath());
+            } catch (Throwable ignored) {
+            }
+            if (c.bmp == null) c.icon = null;  // file gone: back to the normal look
+        }
+    }
+
+    void setIcon(Control c, String file, Bitmap bmp) {
+        c.icon = file;
+        c.bmp = bmp;
+        invalidate();
+    }
+
+    // Deletes the picture files no button uses any more (replaced, removed, button deleted, layout reset).
+    void cleanupIcons() {
+        File[] files = iconDir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            boolean used = false;
+            for (Control c : controls) if (f.getName().equals(c.icon)) used = true;
+            if (!used) f.delete();
         }
     }
 
@@ -262,6 +300,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
                 c.fy = clamp((float) o.optDouble("y", c.fy), 0.02f, 0.98f);
                 c.fr = clamp((float) o.optDouble("r", c.fr), MIN_R, MAX_R);
                 c.visible = o.optBoolean("v", true);
+                c.icon = o.has("i") ? o.optString("i", null) : null;
             }
         } catch (Exception e) {
             buildDefaults();
@@ -273,9 +312,13 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     }
 
     void applySize(Control c) {
-        c.cx = c.fx * viewW;
-        c.cy = c.fy * viewH;
-        c.r = c.fr * viewH;
+        // The size setting scales each button and its distance to its screen corner (or to the
+        // top middle for BACK / START), so groups shrink towards the edges and stay together.
+        float axf = c.fx > 0.4f && c.fx < 0.6f ? 0.5f : (c.fx < 0.5f ? 0f : 1f);
+        float ayf = c.fy < 0.25f ? 0f : 1f;
+        c.cx = (axf + (c.fx - axf) * scale) * viewW;
+        c.cy = (ayf + (c.fy - ayf) * scale) * viewH;
+        c.r = c.fr * scale * viewH;
         if (!c.isStick()) {
             c.textSize = c.r * (c.label.length() > 2 ? 0.45f : 0.8f);
             text.setTextSize(c.textSize);
@@ -373,23 +416,38 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
             boolean down = c.on();
             boolean ghost = !c.visible;  // hidden control, shown faintly in the editor only
             int a = ghost ? 40 : alpha;
-            fill.setColor(c.color());
-            fill.setAlpha(down ? Math.min(255, a + 80) : a / 2);
-            stroke.setPathEffect(null);
-            stroke.setColor(Color.WHITE);
-            stroke.setAlpha(a);
-            stroke.setStrokeWidth(c.r * 0.06f);
-            canvas.drawCircle(c.cx, c.cy, c.r, fill);
-            canvas.drawCircle(c.cx, c.cy, c.r, stroke);
-            if (c.isStick()) {
-                fill.setColor(Color.WHITE);
-                fill.setAlpha(a);
-                canvas.drawCircle(c.cx + c.ax * c.r * 0.6f, c.cy + c.ay * c.r * 0.6f, c.r * 0.4f, fill);
+            if (c.bmp != null && !c.isStick()) {
+                // A picture replaces the whole button (a little smaller while pressed).
+                float rr = down ? c.r * 0.92f : c.r;
+                dst.set(c.cx - rr, c.cy - rr, c.cx + rr, c.cy + rr);
+                bmpPaint.setAlpha(ghost ? 40 : down ? 255 : Math.min(255, a + 70));
+                canvas.drawBitmap(c.bmp, null, dst, bmpPaint);
             } else {
-                text.setColor(Color.WHITE);
-                text.setAlpha(Math.min(255, a + 60));
-                text.setTextSize(c.textSize);
-                canvas.drawText(c.label, c.cx, c.cy + c.textOff, text);
+                fill.setColor(c.color());
+                fill.setAlpha(down ? Math.min(255, a + 80) : a / 2);
+                stroke.setPathEffect(null);
+                stroke.setColor(Color.WHITE);
+                stroke.setAlpha(a);
+                stroke.setStrokeWidth(c.r * 0.06f);
+                canvas.drawCircle(c.cx, c.cy, c.r, fill);
+                canvas.drawCircle(c.cx, c.cy, c.r, stroke);
+                if (c.isStick()) {
+                    float kx = c.cx + c.ax * c.r * 0.6f, ky = c.cy + c.ay * c.r * 0.6f, kr = c.r * 0.4f;
+                    if (c.bmp != null) {  // the picture is the stick's knob
+                        dst.set(kx - kr, ky - kr, kx + kr, ky + kr);
+                        bmpPaint.setAlpha(ghost ? 40 : Math.min(255, a + 70));
+                        canvas.drawBitmap(c.bmp, null, dst, bmpPaint);
+                    } else {
+                        fill.setColor(Color.WHITE);
+                        fill.setAlpha(a);
+                        canvas.drawCircle(kx, ky, kr, fill);
+                    }
+                } else {
+                    text.setColor(Color.WHITE);
+                    text.setAlpha(Math.min(255, a + 60));
+                    text.setTextSize(c.textSize);
+                    canvas.drawText(c.label, c.cx, c.cy + c.textOff, text);
+                }
             }
             if (editMode && c == selected) {
                 stroke.setColor(Color.rgb(240, 191, 61));

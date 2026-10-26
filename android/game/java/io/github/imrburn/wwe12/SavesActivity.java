@@ -51,6 +51,7 @@ public class SavesActivity extends Activity {
     static final int PICK_XBOX = 1;
     static final int PICK_ZIP = 2;
     static final int EXPORT_ZIP = 3;
+    static final int PICK_XBOX_FOLDER = 4;
     static final int KEEP_AUTOMATIC = 10;
 
     LinearLayout root;
@@ -149,8 +150,11 @@ public class SavesActivity extends Activity {
         imp.addView(text("Xbox 360 save: pick the save files copied from your console (for example SaveData.dat, "
                 + "00CreateSuperStar.cas). Packages with the same name as yours are replaced, your other saves stay.",
                 12, Color.GRAY, false));
-        imp.addView(action("IMPORT AN XBOX 360 SAVE", running || pending, new Runnable() {
+        imp.addView(action("IMPORT XBOX 360 SAVE FILES", running || pending, new Runnable() {
             public void run() { pick(PICK_XBOX, true); }
+        }));
+        imp.addView(action("IMPORT A WHOLE FOLDER", running || pending, new Runnable() {
+            public void run() { startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_XBOX_FOLDER); }
         }));
         if (pending)
             imp.addView(action("CANCEL THE IMPORT", running, new Runnable() {
@@ -421,6 +425,13 @@ public class SavesActivity extends Activity {
             work(new Job() {
                 public String run() throws IOException { return importZip(from); }
             });
+        } else if (request == PICK_XBOX_FOLDER && data.getData() != null) {
+            final Uri tree = data.getData();
+            work(new Job() {
+                public String run() throws IOException {
+                    return importXbox(GameFiles.treeFiles(SavesActivity.this, tree, 5000));
+                }
+            });
         } else if (request == PICK_XBOX) {
             final List<Uri> uris = new ArrayList<>();
             if (data.getClipData() != null)
@@ -508,8 +519,14 @@ public class SavesActivity extends Activity {
         int found = 0, skipped = 0;
         for (Uri u : uris) {
             byte[] h = GameFiles.head(this, u, 0x364);
-            if (!GameFiles.isStfs(h) || GameFiles.contentType(h) != 1 || !GameFiles.forWwe12(h)) { skipped++; continue; }
-            GameFiles.copy(this, u, new File(importStage(), GameFiles.safeName(GameFiles.displayName(this, u))), null, "");
+            if (!GameFiles.isStfs(h) || GameFiles.contentType(h) != 1 || !GameFiles.forWwe12(h)) {
+                if (h.length >= 4) skipped++;
+                continue;
+            }
+            // One folder per file: the game installs a package under its file name, and two
+            // folders of a console copy can hold files of the same name (from Yexclsv's importer).
+            File one = new File(importStage(), String.valueOf(found + 1));
+            GameFiles.copy(this, u, new File(one, GameFiles.safeName(GameFiles.displayName(this, u))), null, "");
             found++;
         }
         if (found == 0) {

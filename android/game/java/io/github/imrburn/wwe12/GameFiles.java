@@ -54,6 +54,33 @@ public class GameFiles {
         return s.isEmpty() || s.equals(".") || s.equals("..") ? "file" : s;
     }
 
+    // Every file under a folder picked with ACTION_OPEN_DOCUMENT_TREE (from Yexclsv's SaveImporter):
+    // a console's Content folder can be picked whole. Stops after `max` entries (a whole storage
+    // picked by mistake).
+    static List<Uri> treeFiles(Context c, Uri tree, int max) {
+        List<Uri> out = new ArrayList<>();
+        walk(c, tree, android.provider.DocumentsContract.getTreeDocumentId(tree), out, new int[] {0}, max);
+        return out;
+    }
+
+    private static void walk(Context c, Uri tree, String docId, List<Uri> out, int[] looked, int max) {
+        Uri children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId);
+        try (Cursor cur = c.getContentResolver().query(children, new String[] {
+                android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
+            if (cur == null) return;
+            while (cur.moveToNext()) {
+                if (++looked[0] > max) return;
+                String id = cur.getString(0);
+                if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(cur.getString(1)))
+                    walk(c, tree, id, out, looked, max);
+                else
+                    out.add(android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id));
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     static byte[] head(Context c, Uri uri, int n) throws IOException {
         byte[] b = new byte[n];
         try (InputStream in = c.getContentResolver().openInputStream(uri)) {
@@ -183,7 +210,10 @@ public class GameFiles {
             try {
                 byte[] h = head(c, u, 0x364);
                 // Content type 2 = marketplace content (DLC); a save (type 1) is refused here.
-                if (!isStfs(h) || !forWwe12(h) || contentType(h) == 1) { refused++; continue; }
+                if (!isStfs(h) || !forWwe12(h) || contentType(h) == 1) {
+                    if (h.length >= 4) refused++;  // empty / tiny files of a picked folder: not worth a mention
+                    continue;
+                }
                 copy(c, u, new File(dlcDir(c), name), progress, name);
                 added++;
             } catch (IOException e) {

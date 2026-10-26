@@ -7,7 +7,11 @@ package io.github.imrburn.wwe12;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.content.Intent;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -28,6 +32,10 @@ import android.widget.Toast;
 public class LayoutEditorActivity extends Activity {
     static final int YELLOW = Color.rgb(240, 191, 61);
 
+    static final int PICK_ICON = 1;
+    final java.util.List<String> newIcons = new java.util.ArrayList<>();  // files made in this session
+    boolean saved;
+    Button iconBtn, noIconBtn;
     TouchControls pad;
     TextView info;
     Button hideBtn, deleteBtn;
@@ -124,12 +132,27 @@ public class LayoutEditorActivity extends Activity {
         edit.addView(small("ADD BUTTON", false, new Runnable() { public void run() { addButtonDialog(); } }));
         body.addView(edit);
 
+        LinearLayout icons = row();
+        iconBtn = small("SET ICON (PNG)", false, new Runnable() { public void run() { pickIcon(); } });
+        icons.addView(iconBtn);
+        noIconBtn = small("REMOVE ICON", false, new Runnable() {
+            public void run() {
+                if (pad.selected == null) return;
+                pad.setIcon(pad.selected, null, null);
+                refreshPanel();
+            }
+        });
+        icons.addView(noIconBtn);
+        body.addView(icons);
+
         LinearLayout end = row();
         end.addView(small("RESET", false, new Runnable() { public void run() { confirmReset(); } }));
         end.addView(small("CANCEL", false, new Runnable() { public void run() { finish(); } }));
         Button save = small("SAVE", true, new Runnable() {
             public void run() {
                 pad.saveLayout();
+                pad.cleanupIcons();
+                saved = true;
                 Toast.makeText(LayoutEditorActivity.this, "Layout saved", Toast.LENGTH_SHORT).show();
                 finish();
             }
@@ -153,6 +176,8 @@ public class LayoutEditorActivity extends Activity {
             info.setText("Drag a button to move it. Tap one to select it.");
             hideBtn.setEnabled(false);
             deleteBtn.setEnabled(false);
+            iconBtn.setEnabled(false);
+            noIconBtn.setEnabled(false);
         } else {
             String name = c.isStick() ? (c.stick == 1 ? "Left stick" : "Right stick")
                     : (c.label.isEmpty() ? c.key : c.label);
@@ -160,6 +185,8 @@ public class LayoutEditorActivity extends Activity {
             hideBtn.setEnabled(true);
             hideBtn.setText(c.visible ? "HIDE" : "SHOW");
             deleteBtn.setEnabled(c.custom);
+            iconBtn.setEnabled(true);
+            noIconBtn.setEnabled(c.icon != null);
         }
     }
 
@@ -173,6 +200,7 @@ public class LayoutEditorActivity extends Activity {
                     public void onClick(DialogInterface d, int w) {
                         pad.resetLayout();
                         pad.clearSavedLayout();
+                        pad.cleanupIcons();
                         refreshPanel();
                         pad.invalidate();
                     }
@@ -268,6 +296,63 @@ public class LayoutEditorActivity extends Activity {
             case 14: return new int[] {1 << TouchControls.LEFT, 0};
             default: return new int[] {1 << TouchControls.RIGHT, 0};
         }
+    }
+
+    // ---- Button pictures -----------------------------------------------------------------------------
+
+    void pickIcon() {
+        if (pad.selected == null) return;
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("image/*");
+        startActivityForResult(i, PICK_ICON);
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != PICK_ICON || result != RESULT_OK || data == null || data.getData() == null
+                || pad.selected == null) return;
+        TouchControls.Control c = pad.selected;
+        try {
+            // Decode a reduced copy, put it in a square (transparent edges, so it is not stretched),
+            // keep it as a small PNG that the game process reads too.
+            android.net.Uri uri = data.getData();
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+                BitmapFactory.decodeStream(in, null, bounds);
+            }
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inSampleSize = Math.max(1, Math.max(bounds.outWidth, bounds.outHeight) / 512);
+            Bitmap src;
+            try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+                src = BitmapFactory.decodeStream(in, null, o);
+            }
+            if (src == null) throw new java.io.IOException("not a picture");
+            int side = 256;
+            float k = Math.min(side / (float) src.getWidth(), side / (float) src.getHeight());
+            int w = Math.max(1, Math.round(src.getWidth() * k)), h = Math.max(1, Math.round(src.getHeight() * k));
+            Bitmap sq = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888);
+            new Canvas(sq).drawBitmap(Bitmap.createScaledBitmap(src, w, h, true), (side - w) / 2f, (side - h) / 2f, null);
+            pad.iconDir.mkdirs();
+            String file = c.key.replaceAll("[^A-Za-z0-9_-]", "_") + "_" + System.currentTimeMillis() + ".png";
+            try (java.io.OutputStream out = new java.io.FileOutputStream(new java.io.File(pad.iconDir, file))) {
+                sq.compress(Bitmap.CompressFormat.PNG, 100, out);
+            }
+            newIcons.add(file);
+            pad.setIcon(c, file, sq);
+            refreshPanel();
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not use that picture.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (!saved)  // cancelled: forget the pictures picked in this session
+            for (String f : newIcons) new java.io.File(pad.iconDir, f).delete();
     }
 
     // ---- Small UI helpers ----------------------------------------------------------------------

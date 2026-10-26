@@ -34,6 +34,7 @@ public class LauncherActivity extends Activity {
     static final int PICK_ISO = 1;
     static final int PICK_DRIVER = 2;
     static final int PICK_DLC = 3;
+    static final int PICK_DLC_FOLDER = 4;
     static final int YELLOW = Color.rgb(240, 191, 61);   // same accent as the PC launcher
     static final int BG = Color.rgb(17, 17, 17);
     static final int PANEL = Color.rgb(32, 32, 32);
@@ -46,6 +47,8 @@ public class LauncherActivity extends Activity {
     LinearLayout updateArea;     // UPDATE AVAILABLE panel, shown when GitHub has a newer version
     LinearLayout dlcBox;         // DLC panel content, rebuilt after add / remove
     TextView dlcStatus;
+    LinearLayout deviceBox;      // device warning + summary, filled by checkDevice()
+    volatile DeviceCheck device;
     Button forget;
 
     @Override
@@ -63,6 +66,7 @@ public class LauncherActivity extends Activity {
         }
         setContentView(buildUi(dir));
         refreshGame();
+        checkDevice();
         Updater.check(this, new Updater.Found() {
             public void found(Updater.Release r) { showUpdate(r); }
         });
@@ -133,14 +137,11 @@ public class LauncherActivity extends Activity {
         TextView title = text("WWE '12 PC", 28, YELLOW, true);
         root.addView(title);
         root.addView(text("Android " + versionName() + " - early test build", 13, Color.LTGRAY, false));
-        // Device warning: what will stop the game, or make it run badly, on this phone.
-        DeviceCheck device = new DeviceCheck(this);
-        if (!device.ok()) {
-            LinearLayout warn = panel(root, device.blockers.isEmpty() ? "THIS PHONE MAY STRUGGLE" : "THIS PHONE CANNOT RUN THE GAME");
-            for (String s : device.blockers) warn.addView(text("• " + s, 14, Color.rgb(255, 110, 90), false));
-            for (String s : device.warnings) warn.addView(text("• " + s, 14, Color.rgb(255, 190, 90), false));
-        }
-        root.addView(text(device.summary, 11, Color.GRAY, false));
+        // Device warning: what will stop the game, or make it run badly, on this phone. Filled by
+        // checkDevice() (the check needs a background thread).
+        deviceBox = new LinearLayout(this);
+        deviceBox.setOrientation(LinearLayout.VERTICAL);
+        root.addView(deviceBox);
         // Filled by Updater.check when GitHub has a newer Android release.
         updateArea = new LinearLayout(this);
         updateArea.setOrientation(LinearLayout.VERTICAL);
@@ -515,6 +516,30 @@ public class LauncherActivity extends Activity {
                 || s.contains("mediatek") || s.contains("kirin") || s.contains("unisoc");
     }
 
+    // ---- Device warning ------------------------------------------------------------------------
+
+    void checkDevice() {
+        final File dir = getExternalFilesDir(null);
+        new Thread(new Runnable() {
+            public void run() {
+                final DeviceCheck d = new DeviceCheck(LauncherActivity.this, dir);
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        device = d;
+                        deviceBox.removeAllViews();
+                        if (!d.ok()) {
+                            LinearLayout warn = panel(deviceBox, d.blockers.isEmpty() ? "THIS PHONE MAY STRUGGLE"
+                                    : "THIS PHONE CANNOT RUN THE GAME");
+                            for (String s : d.blockers) warn.addView(text("• " + s, 14, Color.rgb(255, 110, 90), false));
+                            for (String s : d.warnings) warn.addView(text("• " + s, 14, Color.rgb(255, 190, 90), false));
+                        }
+                        deviceBox.addView(text(d.summary, 11, Color.GRAY, false));
+                    }
+                });
+            }
+        }).start();
+    }
+
     // ---- DLC ---------------------------------------------------------------------------------
 
     void buildDlcPanel() {
@@ -562,25 +587,36 @@ public class LauncherActivity extends Activity {
             }
         });
         dlcBox.addView(add);
+        Button addFolder = button("ADD A DLC FOLDER", false);
+        addFolder.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_DLC_FOLDER);
+            }
+        });
+        dlcBox.addView(addFolder);
         dlcBox.addView(text("Pick the DLC packages of your Xbox 360 (files with long names such as 961C4A43...54, "
-                + "from Content\\0000000000000000\\54510890\\00000002). You can select several at once.",
-                12, Color.GRAY, false));
+                + "from Content\\0000000000000000\\54510890\\00000002), several at once, or a whole folder: "
+                + "only WWE '12 DLC packages are taken from it.", 12, Color.GRAY, false));
     }
 
-    void addDlc(Intent data) {
+    void addDlc(Intent data, boolean folder) {
         final java.util.List<Uri> uris = new java.util.ArrayList<>();
-        if (data.getClipData() != null)
+        final Uri tree = folder ? data.getData() : null;
+        if (folder) {
+            if (tree == null) return;
+        } else if (data.getClipData() != null)
             for (int k = 0; k < data.getClipData().getItemCount(); k++) uris.add(data.getClipData().getItemAt(k).getUri());
         else if (data.getData() != null)
             uris.add(data.getData());
-        if (uris.isEmpty()) return;
+        if (tree == null && uris.isEmpty()) return;
         if (GameFiles.gameRunning(this)) {
             Toast.makeText(this, "Close the game first.", Toast.LENGTH_LONG).show();
             return;
         }
-        dlcStatus.setText("Copying...");
+        dlcStatus.setText(tree != null ? "Looking in the folder..." : "Copying...");
         new Thread(new Runnable() {
             public void run() {
+                if (tree != null) uris.addAll(GameFiles.treeFiles(LauncherActivity.this, tree, 5000));
                 final String report = GameFiles.addDlc(LauncherActivity.this, uris, new GameFiles.Progress() {
                     public void progress(final String t) {
                         runOnUiThread(new Runnable() { public void run() { dlcStatus.setText("Copying " + t); } });
@@ -610,8 +646,8 @@ public class LauncherActivity extends Activity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request == PICK_DLC) {
-            if (result == RESULT_OK && data != null) addDlc(data);
+        if (request == PICK_DLC || request == PICK_DLC_FOLDER) {
+            if (result == RESULT_OK && data != null) addDlc(data, request == PICK_DLC_FOLDER);
             return;
         }
         if (request == PICK_DRIVER && result == RESULT_OK && data != null && data.getData() != null) {
@@ -673,7 +709,36 @@ public class LauncherActivity extends Activity {
         return false;
     }
 
+    // PLAY: when the device warning found something, say so first (Yexclsv's idea). The player can
+    // still go on; for warnings only, also stop asking.
     void play() {
+        final DeviceCheck d = device;
+        if (d != null && !d.ok() && (!d.blockers.isEmpty() || !prefs.getBoolean("ignore_device_warning", false))) {
+            StringBuilder sb = new StringBuilder();
+            for (String s : d.blockers) sb.append("• ").append(s).append("\n\n");
+            for (String s : d.warnings) sb.append("• ").append(s).append("\n\n");
+            sb.append("The game may not start, or may run badly, on this phone.");
+            android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(this)
+                    .setTitle("This phone may not run the game")
+                    .setMessage(sb.toString())
+                    .setNegativeButton("CANCEL", null)
+                    .setPositiveButton("PLAY ANYWAY", new android.content.DialogInterface.OnClickListener() {
+                        public void onClick(android.content.DialogInterface di, int w) { startGame(); }
+                    });
+            if (d.blockers.isEmpty())
+                b.setNeutralButton("PLAY, DON'T ASK AGAIN", new android.content.DialogInterface.OnClickListener() {
+                    public void onClick(android.content.DialogInterface di, int w) {
+                        prefs.edit().putBoolean("ignore_device_warning", true).apply();
+                        startGame();
+                    }
+                });
+            b.show();
+            return;
+        }
+        startGame();
+    }
+
+    void startGame() {
         if (cpuTooOld()) {
             Toast.makeText(this, "This processor is too old for the game (ARMv8.2 needed).", Toast.LENGTH_LONG).show();
             return;
