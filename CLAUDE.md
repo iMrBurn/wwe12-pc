@@ -140,12 +140,13 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   **Clavier = joueur 2** : cvar `mnk_player` (1 = partage le joueur 1 avec la manette 1, défaut ; 2-4 = manette
   séparée), patch SDK `port/patches/rexglue-sdk-keyboard-player.patch` (`DeviceInfo::slot`, `SlotAssignment`,
   `MnkInputDriver`). Testé en vrai : Xbox One S = joueur 1, clavier = joueur 2.
-  **Shift / Ctrl / Alt seuls sur un bouton (issue #18, reporté à la 1.0)** : impossible aujourd'hui. Le pilote mnk
-  exige le masque exact des modificateurs (« Shift » seul attend 0, mais tenir Shift met le bit) ; `Ctrl` seul
-  n'est pas un nom (seul `Control`) ; gauche/droite non distinguées (`sdl_virtual_key.cpp`) ; le launcher les
-  refuse et sa capture les ignore (`keybinds.h`). Correctif prévu : un modificateur lié seul devient une touche
-  normale et sort du masque de toutes les liaisons (les « Shift+… », dont la croix par défaut, ne marchent plus
-  alors : avertir dans le launcher), alias `Ctrl`, launcher qui les accepte, noms valides dans la FAQ.
+  **Shift / Ctrl / Alt seuls sur un bouton (issue #18, corrigé pour la 1.0 le 2026-10-26, vérifié en jeu : Shift = A,
+  Ctrl = B)** : le pilote mnk exigeait le masque exact des modificateurs (« Shift » seul attend 0, mais tenir Shift met
+  le bit). Patch SDK `rexglue-sdk-mnk-modifiers.patch` : un modificateur lié seul (`Shift`, `Ctrl`/`Control`, `Alt`)
+  devient une touche normale et sort du masque de toutes les liaisons (les « Shift+… » ne marchent plus alors) ;
+  gauche/droite toujours non distinguées (`sdl_virtual_key.cpp`). Launcher (`keybinds.h`) : les accepte, les capture
+  (modificateur appuyé puis relâché seul), avertit des combinaisons alors mortes ; noms valides dans la FAQ. Capture
+  du launcher pas encore essayée à la main. Lanceur `tools/dev/lancer_test_touches.bat`.
   **Profil et joueurs (2026-10-18, issue #17)** : le runtime n'a qu'un profil (user 0, XUID fixe
   B13EBABEBABEBABE) ; avant, START pressé depuis un autre slot (clavier en joueur 2, 2e manette, appareil
   arrivé en slot 1) donnait « You are not currently signed in with a gamer profile… unable to save ».
