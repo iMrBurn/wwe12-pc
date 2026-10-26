@@ -607,17 +607,22 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
   if (!ConvertModel(ms, mb, mo, rep))
     return fail("the model can't be converted");
   svrfmt::ArchiveReplace(*bm, svrfmt::JboyWrite(mo));
-  // The hair (10000) as SvR has it too: the base's takes its colours from the colour picture, which is SvR's now
-  // (CM Punk of SvR: hair in the wrong place, 2026-10-26). Converted on the base's hair (its material); kept when it
-  // can't be. The base's eyelashes (20000) are left out: on SvR's picture they drew dark rings round the eyes, and
-  // SvR's 20000 (four pieces round the eyes) covered them; some of WWE '12's own attires have none (Michael Cole,
-  // Jerry Lawler, the referee, Sin Cara).
-  for (size_t i = 0; i < base.kids.size(); ++i)
-    if (base.kids[i].id == 20000) {
-      svrfmt::ArchiveRemove(base, i);
-      break;
-    }
-  for (uint32_t id : {10000u}) {
+  // The hair (10000) and the pieces round the eyes (20000: SvR's eyelids and the skin round the eyeballs, four
+  // meshes; WWE '12's: eyelashes) as SvR has them too: the base's take their colours from the colour picture, which is
+  // SvR's now (CM Punk of SvR: hair in the wrong place, dark rings round the eyes), and without SvR's 20000 the eye
+  // sockets are holes (the background seen through his eyes, RenderDoc 2026-10-26). Converted on the base's piece of
+  // the same number (its materials); the base's 20000 left out when SvR has none to put there.
+  {
+    svrfmt::ArcNode *s20 = child(svr, 20000);
+    if (!s20)
+      for (size_t i = 0; i < base.kids.size(); ++i)
+        if (base.kids[i].id == 20000) {
+          svrfmt::ArchiveRemove(base, i);
+          break;
+        }
+  }
+  std::vector<std::array<std::array<float, 2>, 3>> see_through;  // UV triangles of the hair and the eyes' pieces
+  for (uint32_t id : {10000u, 20000u}) {
     svrfmt::ArcNode *s = child(svr, id), *b = child(base, id);
     svrfmt::Model xs, xb, xo;
     Report extra;
@@ -625,6 +630,13 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
         !svrfmt::JboyRead(svrfmt::ArchiveData(*b), xb, &e) || xs.w12 || !ConvertModel(xs, xb, xo, &extra))
       continue;
     HangHair(xs, xo);
+    for (const auto &m : xo.meshes)  // (their places in the colour picture: its alpha kept there, below)
+      for (const auto &st : m.strips) {
+        const auto &ix = st.indices;
+        for (size_t q = 0; q + 2 < ix.size(); q += st.IsStrip() ? 1 : 3)
+          if (ix[q] < m.uvs.size() && ix[q + 1] < m.uvs.size() && ix[q + 2] < m.uvs.size())
+            see_through.push_back({m.uvs[ix[q]], m.uvs[ix[q + 1]], m.uvs[ix[q + 2]]});
+      }
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(xo));
     rep->textures.insert(rep->textures.end(), extra.textures.begin(), extra.textures.end());
   }
@@ -647,10 +659,38 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     svrfmt::Image img;
     if (svrfmt::DdsInfoOf(st[0].data, si) && svrfmt::DdsInfoOf(bt[0].data, bi) && si.format != bi.format &&
         bi.format == svrfmt::DxtFormat::kDxt1 && svrfmt::DdsDecode(st[0].data, img)) {
-      // Opaque first: SvR's alpha is something else, and DXT1 would make every pixel under half alpha a transparent
-      // (black) one (the whole body came out black).
-      for (size_t q = 3; q < img.rgba.size(); q += 4)
-        img.rgba[q] = 255;
+      // Opaque first: SvR's alpha is something else on the body, and DXT1 would make every pixel under half alpha a
+      // transparent (black) one (the whole body came out black).
+      // Except where the hair and the eyes' pieces (eyelashes, strands) take their colours: there SvR's alpha is
+      // their see-through edges (WWE '12 draws them blended): kept (DXT1: on or off), else they came out as solid
+      // dark bands (CM Punk: bars under the eyes).
+      std::vector<uint8_t> keep(size_t(img.w) * img.h, 0);
+      for (const auto &t : see_through) {
+        float x[3], y[3];
+        for (int c = 0; c < 3; ++c) {
+          x[c] = t[size_t(c)][0] * img.w;
+          y[c] = t[size_t(c)][1] * img.h;
+        }
+        const int x0 = std::max(0, int(std::floor(std::min({x[0], x[1], x[2]})))),
+                  x1 = std::min(img.w - 1, int(std::ceil(std::max({x[0], x[1], x[2]})))),
+                  y0 = std::max(0, int(std::floor(std::min({y[0], y[1], y[2]})))),
+                  y1 = std::min(img.h - 1, int(std::ceil(std::max({y[0], y[1], y[2]}))));
+        const float area = (x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0]);
+        if (std::abs(area) < 1e-6f || x1 - x0 > img.w / 2 || y1 - y0 > img.h / 2)
+          continue;
+        for (int py = y0; py <= y1; ++py)
+          for (int px = x0; px <= x1; ++px) {
+            const float cx = px + 0.5f, cy = py + 0.5f;
+            const float w0 = (x[1] - cx) * (y[2] - cy) - (x[2] - cx) * (y[1] - cy);
+            const float w1 = (x[2] - cx) * (y[0] - cy) - (x[0] - cx) * (y[2] - cy);
+            const float w2 = (x[0] - cx) * (y[1] - cy) - (x[1] - cx) * (y[0] - cy);
+            if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0))
+              keep[size_t(py) * img.w + px] = 1;
+          }
+      }
+      for (size_t q = 0; q < keep.size(); ++q)
+        if (!keep[q])
+          img.rgba[q * 4 + 3] = 255;
       st[0].data = svrfmt::DdsEncode(img, svrfmt::DxtFormat::kDxt1, si.mips > 1);
       svrfmt::ArchiveReplace(*b, svrfmt::BundleWrite(st));
     }
