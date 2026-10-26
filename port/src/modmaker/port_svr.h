@@ -264,9 +264,16 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
     } else if (p >= 0 && size_t(p) < i) {
       rot[i] = rot[size_t(p)];
     }
-    // The eyes move with the head (the face round them does): placed by their own joints, the two games' eye joints
-    // not being where the eyeballs are alike, they ended up inside the head (CM Punk of SvR: white eyes).
-    if ((svr.nodes[i].name == "l_eye" || svr.nodes[i].name == "r_eye") && p >= 0 && size_t(p) < i) {
+    // The face's bones move with the head, keeping SvR's face as it is: placed by their own joints (the two games'
+    // face joints aren't in the same places), the eyelids, teeth and lips moved off the face (CM Punk of SvR: eyes
+    // shut, teeth out of the mouth, 2026-10-26).
+    bool face = false;  // (a bone under the head: jaw, lips, cheeks, eyelids, brows, eyes)
+    for (int q = p; q >= 0 && size_t(q) < svr.nodes.size(); q = svr.nodes[size_t(q)].parent)
+      if (svr.nodes[size_t(q)].name == "atama") {
+        face = true;
+        break;
+      }
+    if (face && p >= 0 && size_t(p) < i) {
       rot[i] = rot[size_t(p)];
       move[i] = move[size_t(p)];
       continue;
