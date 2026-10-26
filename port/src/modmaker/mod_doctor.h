@@ -9,6 +9,8 @@
 //  - added arenas (src/native/wwe12_arena_pages.cpp): a base 0-22, an arena file (its STG record at 0x800) that fits
 //    the room an added arena gets (12.5 MB), a 256 x 128 banner, VS screen / entrance graphics as packs, a Bink 1
 //    transition; at most 35 (the banner pack's free places);
+//  - attire mods (src/native/wwe12_attire_mods.cpp): a superstar the game has, an attire name of his ("000NNNAK"),
+//    an attire file with that one attire; two mods on one attire (the first one wins);
 //  - replacing files (mods.h): a file the disc has (else the game never reads it), an arena no bigger than the one it
 //    replaces, Bink 1 videos; two mods giving the same file (the first one wins).
 #pragma once
@@ -108,6 +110,7 @@ class Page {
     const fs::path root = mods_dir / ".svrmods";
     std::map<std::string, std::string> owner;  // a file given to the game -> the first mod (by folder) giving it
     std::set<std::string> superstar_ids;
+    std::map<std::string, std::string> attire_owner;  // "NNN/entry" -> the first mod giving it
     int added_arenas = 0;
     std::vector<fs::path> dirs;
     for (fs::directory_iterator k(root, ec), end; !ec && k != end; k.increment(ec))
@@ -153,6 +156,14 @@ class Page {
       if (type == "superstar") {
         superstar_ids.insert(Value(text, "id").empty() ? id : Value(text, "id"));
         CheckSuperstar(fr, disc, dir, text, add, off, disable());
+      } else if (type == "attire" && fs::exists(dir / "attire" / "attire.pac", ec)) {
+        const std::string key = Value(text, "superstar") + "/" + Value(text, "attire");
+        if (auto o = attire_owner.find(key); o != attire_owner.end())
+          add(1, (fr ? "Même tenue que le mod " : "The same attire as the mod ") + o->second +
+                     (fr ? " : le sien est utilisé." : ": that one is used."));
+        else
+          attire_owner.emplace(key, label);
+        CheckAttire(fr, disc, dir, text, add, off, disable());
       } else if (type == "arena" && Value(text, "slot") == "new") {
         ++added_arenas;
         CheckAddedArena(fr, dir, text, add, off, disable());
@@ -337,6 +348,37 @@ class Page {
                 return fs::remove(p, e);
               });
       }
+  }
+
+  // An attire mod: its superstar, its attire's name, its file.
+  void CheckAttire(bool fr, const disc::GameDisc &disc, const fs::path &dir, const std::string &text, const Add &add,
+                   const char *off, std::function<bool()> disable) {
+    const int superstar = atoi(Value(text, "superstar").c_str());
+    const std::string entry = Value(text, "attire");
+    char nnn[8];
+    snprintf(nnn, sizeof(nnn), "%06d", superstar);
+    Bytes pac;
+    if (disc.Found() && (superstar <= 0 || !disc.Read("pac/ch/ch" + std::to_string(superstar) + ".pac", pac)))
+      add(2, fr ? "Son catcheur n'est pas dans le jeu (superstar=) : la tenue ne sera pas mise."
+                : "Its superstar isn't in the game (superstar=): the attire won't be put in.",
+          off, disable);
+    if (entry.size() != 8 || entry.compare(0, 6, nnn) != 0 || entry[6] < '0' || entry[6] > '3')
+      add(2, fr ? "Le nom de sa tenue (attire=) ne va pas avec son catcheur : elle ne sera pas mise."
+                : "Its attire's name (attire=) doesn't go with its superstar: it won't be put in.",
+          off, disable);
+    svrfmt::Archive a;
+    const Bytes t = ReadBytes(dir / "attire" / "attire.pac");
+    if (!svrfmt::ArchiveOpen(t, a, nullptr) || a.root.kids.empty() || a.root.kids[0].group != "EMD ")
+      add(2, fr ? "Son fichier de tenue ne se lit pas : elle ne sera pas mise." : "Its attire file can't be read: it won't be put in.",
+          off, disable);
+    else if (!pac.empty()) {
+      svrfmt::Archive b;
+      if (svrfmt::ArchiveOpen(pac, b, nullptr) && !b.root.kids.empty() &&
+          a.root.kids[0].stored.size() > b.root.kids[0].stored.size() * 3 / 2)
+        add(1, fr ? "Tenue bien plus grosse que celles du catcheur : le jeu peut manquer de place en match à 4 ou 6."
+                  : "Much bigger than the superstar's attires: the game may run out of room in 4- or 6-man matches.",
+            "", {});
+    }
   }
 
   // An added arena: its base, its file, its pictures and videos.

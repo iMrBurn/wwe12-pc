@@ -175,7 +175,44 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     }
     list.push_back(mod);
   }
-  if (list.empty()) {
+  // The attire mods (type=attire with attire/attire.pac; older ones, a whole file, go through the mods folder).
+  std::vector<superstar_pack::Attire> attires;
+  {
+    std::vector<fs::path> adirs;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Attires", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec))
+        adirs.push_back(it->path());
+    ec.clear();
+    std::sort(adirs.begin(), adirs.end());
+    for (const auto &d : adirs) {
+      Bytes m;
+      superstar_pack::Attire at;
+      if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m) || !ReadHost(d / "attire" / "attire.pac", at.file))
+        continue;
+      const std::string text(m.begin(), m.end());
+      at.key = d.filename().string();
+      at.superstar = atoi(Value(text, "superstar").c_str());
+      at.entry = Value(text, "attire");
+      char nnn[8];
+      snprintf(nnn, sizeof(nnn), "%06d", at.superstar);
+      if (at.superstar < 50 || at.superstar >= 373 || at.entry.size() != 8 || at.entry.compare(0, 6, nnn) != 0) {
+        REXLOG_WARN("[superstar mods] {}: superstar={} attire={} don't go together", at.key, at.superstar, at.entry);
+        continue;
+      }
+      // A new attire: one his file (the game's, the latest pack's or the disc's) hasn't.
+      {
+        Bytes game;
+        svrfmt::Archive g;
+        at.added = ReadGame(vfs, "pac/ch/ch" + std::to_string(at.superstar) + ".pac", game) &&
+                   svrfmt::ArchiveOpen(game, g, nullptr) &&
+                   std::none_of(g.root.kids.begin(), g.root.kids.end(), [&](const auto &k) { return k.name == at.entry; });
+      }
+      REXLOG_INFO("[superstar mods] attire mod {}: superstar {}, attire {}{}", at.key, at.superstar, at.entry,
+                  at.added ? " (a new one)" : "");
+      attires.push_back(std::move(at));
+    }
+  }
+  if (list.empty() && attires.empty()) {
     RemovePack(content, headers);
     return;
   }
@@ -333,13 +370,13 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   for (const auto &st : stars)
     if (st.movie_number)
       g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
-  if (stars.empty()) {
+  if (stars.empty() && attires.empty()) {
     RemovePack(content, headers);
     return;
   }
   std::vector<superstar_pack::File> files;
   std::string why;
-  if (!superstar_pack::Build(in, stars, files, &why)) {
+  if (!superstar_pack::Build(in, stars, files, &why, attires)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;
   }

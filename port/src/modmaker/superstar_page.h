@@ -2,7 +2,7 @@
 // attire, "000NNNAA" = superstar NNN, attire AA; each a PACH with the body model (id 0), its textures (10: normal
 // map and parts, 12: "color", 13-15: the colour masks of Superstar Threads) and the eyes (20000)). Pick a superstar
 // and an attire, see its pictures and the superstar in 3D, replace or export pictures, and make a mod
-// (.svrmod, type=attire, files/pac/ch/chNNN.pac). An attire never grows past its shipped size (arena_edit.h Fit:
+// (.svrmod, type=attire, attire/attire.pac: that attire alone, attire_mod.h). An attire never grows past its shipped size (arena_edit.h Fit:
 // the game loads it into memory made for it). An attire can also be replaced by one of SvR 2011 (the player's own
 // chNNN.pac), converted by port_svr.h over the chosen attire (best: the same superstar in WWE '12).
 #pragma once
@@ -18,6 +18,7 @@
 #include "arena_edit.h"
 #include "arena_page.h"
 #include "arena_view.h"
+#include "attire_mod.h"
 #include "game_disc.h"
 #include "game_process.h"
 #include "imgui.h"
@@ -442,14 +443,22 @@ class Page {
     const fs::path save = media::PickSave(fr, (file.empty() ? L"attire" : file) + L".svrmod");
     if (save.empty())
       return;
-    std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=1.0\n";
+    // Only this attire goes in the mod (attire_mod.h): the game puts it into the superstar's file at startup.
+    Bytes one;
+    std::string why;
+    if (!attire_mod::OneAttire(out, attires_[attire_], one, &why)) {
+      message_ = (fr ? "Tenue introuvable : " : "Attire not found: ") + why;
+      return;
+    }
+    std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=1.0\n" +
+                           "superstar=" + std::to_string(s.id) + "\nattire=" + attires_[attire_] + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     manifest += "description=" + s.name + ", attire " + std::to_string(attire_ + 1) + " (" + attires_[attire_] + ")" +
                 (ported_ ? ", replaced by an attire ported from SvR 2011 (the player's own file)" : "") +
                 ", made with the WWE '12 Mod Maker.\n";
     if (!mods::Manager::WriteZip(save, {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
-                                        {"files/" + s.file, std::move(out)}})) {
+                                        {"attire/attire.pac", std::move(one)}})) {
       message_ = (fr ? "Impossible d'écrire " : "Could not write ") + media::Utf8(save.wstring());
       return;
     }

@@ -869,6 +869,26 @@ places ×10, d'après le code de Kaiko).
   sauvegarde quand elles diffèrent (`sub_828ADFB8`, cvar `wwe12_superstar_roster_fix`, contrôle sur John Cena avant
   d'écrire les prises). Sans les prises, pas d'entrée.
 
+## 6 septdecies. Mod doctor et tenues comme mod à part (2026-10-26)
+
+- **VÉRIFIER LES MODS** (`mod_doctor.h`, d'après le `mod_check.cpp` de Kaiko) : lit chaque mod installé et dit en clair
+  ce qui ira mal (base absente, modèle illisible, NaN, plus de 20 os par maillage, vidéo pas en Bink 1, arène de plus de
+  12,5 Mo, bannière pas en 256 × 128, fichier que le disque n'a pas, deux mods sur le même fichier ou la même tenue,
+  numéros gardés pour des mods partis…), avec un bouton quand c'est réparable (désactiver, retirer la vidéo, oublier les
+  numéros).
+- **Tenues** (`attire_mod.h`) : un mod `type=attire` ne contient plus que sa tenue (`attire/attire.pac` + `superstar=NNN`,
+  `attire=000NNNAK`) ; le jeu la met dans notre pack DLC (`superstar_pack.h`), dont l'annuaire passe avant celui du disque :
+  **remplacer une tenue marche (vu en jeu : Orton, tenue 2 remplacée par un modèle importé, entrée et match)**. Plusieurs
+  mods sur un catcheur vont ensemble. Faits par la page CATCHEURS (retouche) et par NOUVEAU CATCHEUR (« Une tenue de
+  <base> » : toute source, SvR, WWE '13 / 2K, FBX).
+- **Ajouter une tenue (5ᵉ… ou 3ᵉ d'Orton) : pas encore**. Le jeu la trouve (`sub_82A342B0` / `sub_82A335C0` cherchent
+  `/EMD/%06d%02d` dans l'annuaire, code = (catcheur × 10 + tenue) × 10 + sorte), et les lignes de DLC de sorte 2
+  (VOL / catalog.dlc : catcheur, indice de tenue, comme Miz, Hawk, Animal) sont écrites, mais l'écran des tenues ne la
+  propose pas : sa liste vient d'ailleurs (pas de `DSBD` = numéros des noms ? pas les octets +0x116 de la fiche). Option
+  retirée du Mod Maker en attendant.
+- Pièges : un fichier de catcheur refait et servi entier garde l'annuaire du disque (tenue plus grosse = suivantes
+  décalées) ; d'où le pack.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

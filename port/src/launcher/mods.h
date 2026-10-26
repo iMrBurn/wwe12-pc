@@ -20,6 +20,9 @@
 // folder, where the game reads them at startup (src/native/wwe12_arena_pages.cpp); nothing is put in mods\.
 // Added superstars (type=superstar, base=NNN) give superstar/ch.pac (and later its pictures): they stay in their folder
 // too; the game makes its own DLC pack of them at startup (src/native/wwe12_superstar_mods.cpp).
+// Attire mods (type=attire, superstar=NNN, attire=<entry>) give attire/attire.pac (one attire): the game puts it into
+// the superstar's file at startup (src/native/wwe12_attire_mods.cpp). Signs, backgrounds, media and match types give
+// signs/, backgrounds/, media/, matchtype/: read by the game from their folder too.
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -578,7 +581,8 @@ class Manager {
     if (std::none_of(entries.begin(), entries.end(), [](const Entry &e) {
           const std::string n = Lower(e.name);
           return n.rfind("files/", 0) == 0 || n.rfind("textures/", 0) == 0 || n.rfind("arena/", 0) == 0 ||
-                 n.rfind("superstar/", 0) == 0;
+                 n.rfind("superstar/", 0) == 0 || n.rfind("attire/", 0) == 0 || n.rfind("signs/", 0) == 0 ||
+                 n.rfind("backgrounds/", 0) == 0 || n.rfind("media/", 0) == 0 || n.rfind("matchtype/", 0) == 0;
         })) {
       message_ = t.no_files;
       return;

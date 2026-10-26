@@ -30,6 +30,7 @@
 #include "media.h"
 #include "mods.h"
 #include "port13_star.h"
+#include "attire_mod.h"
 #include "fbx_star.h"
 #include "port_svr.h"
 #include "faces2k.h"
@@ -603,17 +604,65 @@ class Page {
   // Step 6: the mod.
   void StepFinish(bool fr, mods::Manager &mods) {
     const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f), yellow(0.94f, 0.75f, 0.24f, 1.0f);
-    ImGui::TextWrapped(fr ? "« %s » apparaîtra dans la case DLC de l'écran de choix. Le mod (.svrmod) est enregistré "
-                            "où vous voulez, pour le partager, puis installé."
-                          : "\"%s\" will show in the select screen's DLC tile. The mod (.svrmod) is saved where you "
-                            "want, to share it, then installed.",
-                       name_);
+    // A new superstar, or this look as an attire of the base (attire_mod.h: replaced, or added as a new one).
+    const bool can_attire = chosen_ && look_ != 0 && !model_.empty();
+    if (!can_attire)
+      as_attire_ = false;
+    ImGui::BeginDisabled(!can_attire);
+    if (ImGui::RadioButton(fr ? "Un nouveau catcheur" : "A new superstar", !as_attire_))
+      as_attire_ = false;
+    ImGui::SameLine();
+    const std::string base_name = base_ >= 0 ? stars_[size_t(base_)].name : "";
+    if (ImGui::RadioButton(((fr ? "Une tenue de " : "An attire of ") + (base_name.empty() ? std::string("...") : base_name) +
+                               "##as_attire").c_str(),
+                           as_attire_))
+      as_attire_ = true;
+    ImGui::EndDisabled();
+    if (!can_attire)
+      ImGui::TextDisabled("%s", fr ? "(une tenue : choisissez une base à l'étape 2 et une autre apparence à l'étape 1)"
+                                   : "(an attire: choose a base at step 2 and another look at step 1)");
+    if (as_attire_) {
+      // Its attires (kind 2) and, if it has fewer than four, a new one.
+      std::vector<std::pair<std::string, std::string>> choices;  // (entry, label)
+      svrfmt::Archive b;
+      const int id = stars_[size_t(base_)].id;
+      if (svrfmt::ArchiveOpen(base_file_, b, nullptr))
+        for (int n = 1; n <= 4; ++n)
+          for (const auto &k : b.root.kids)
+            if (k.name == attire_mod::EntryName(id, n))
+              choices.push_back({k.name, (fr ? "Remplacer la tenue " : "Replace attire ") + std::to_string(n)});
+      // (Adding one more: the game reads it from our pack but its attire select screen doesn't offer it yet, 2026-10-26:
+      // the list comes from somewhere not found yet; docs/mod_maker.md "Tenues".)
+      if (std::none_of(choices.begin(), choices.end(), [&](const auto &c) { return c.first == attire_entry_; }))
+        attire_entry_ = choices.empty() ? "" : choices.back().first;
+      for (const auto &[entry, label] : choices) {
+        if (ImGui::RadioButton((label + "##" + entry).c_str(), attire_entry_ == entry))
+          attire_entry_ = entry;
+        ImGui::SameLine();
+      }
+      ImGui::NewLine();
+      ImGui::TextWrapped(fr ? "La tenue de « %s » sera une tenue de %s, à choisir à l'écran de choix des tenues. Le mod ne "
+                              "contient que cette tenue : le jeu la met dans le fichier du catcheur au démarrage."
+                            : "\"%s\"'s look will be an attire of %s, picked on the attire select screen. The mod holds only "
+                              "that attire: the game puts it into the superstar's file at startup.",
+                         name_, base_name.c_str());
+    } else {
+      ImGui::TextWrapped(fr ? "« %s » apparaîtra dans la case DLC de l'écran de choix. Le mod (.svrmod) est enregistré "
+                              "où vous voulez, pour le partager, puis installé."
+                            : "\"%s\" will show in the select screen's DLC tile. The mod (.svrmod) is saved where you "
+                              "want, to share it, then installed.",
+                         name_);
+    }
     ImGui::Dummy(ImVec2(0, 6));
     const bool ready = name_[0] && !model_.empty() && (look_ == 0 || model_ != base_file_) &&
                        (!own_movie_ || movie_.Ready());
     ImGui::BeginDisabled(!ready || game::IsRunning() || movie_.Busy());
-    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it...", ImVec2(260, 36)))
-      Make(fr, mods);
+    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it...", ImVec2(260, 36))) {
+      if (as_attire_)
+        MakeAttire(fr, mods);
+      else
+        Make(fr, mods);
+    }
     ImGui::EndDisabled();
     movie_.DrawProgress(fr);
     if (message_ok_) {
@@ -1203,6 +1252,46 @@ class Page {
     Write(fr, mods, svr_movie_ ? ReadAll(svr_movie_file_) : Bytes{});
   }
 
+  // This look as an attire of the base (type=attire): its attire 1 as made over the base (the port, the FBX...), put by
+  // the game in place of the attire chosen, or as a new one.
+  void MakeAttire(bool fr, mods::Manager &mods) {
+    message_ok_ = false;
+    message_.clear();
+    svrfmt::Archive a;
+    std::string why;
+    Bytes one;
+    if (attire_entry_.empty() || !svrfmt::ArchiveOpen(model_, a, &why) || a.root.kids.empty() ||
+        !attire_mod::OneAttire(model_, a.root.kids[0].name, one, &why)) {
+      message_ = (fr ? "Tenue impossible : " : "No attire: ") + why;
+      return;
+    }
+    std::wstring file;
+    std::string id = "attire_ch" + std::to_string(stars_[size_t(base_)].id) + "_" + attire_entry_ + "_";
+    for (unsigned char c : std::string(name_)) {
+      id += std::isalnum(c) ? char(std::tolower(c)) : '_';
+      file += std::isalnum(c) ? wchar_t(c) : L'_';
+    }
+    save_ = media::PickSave(fr, (file.empty() ? L"attire" : file) + L".svrmod");
+    if (save_.empty())
+      return;
+    const Star &b = stars_[size_t(base_)];
+    std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=1.0\n" +
+                           "superstar=" + std::to_string(b.id) + "\nattire=" + attire_entry_ + "\n";
+    if (author_[0])
+      manifest += std::string("author=") + author_ + "\n";
+    manifest += "description=" + std::string(name_) + ", an attire of " + b.name +
+                (look_ == 4 ? " from a 3D model (FBX)" : look_ == 3 ? " ported from WWE '13 or 2K" : look_ == 2 ? " ported from SvR 2011" : "") +
+                ", made with the WWE '12 Mod Maker.\n";
+    if (!mods::Manager::WriteZip(save_, {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
+                                         {"attire/attire.pac", std::move(one)}})) {
+      message_ = (fr ? "Impossible d'écrire " : "Could not write ") + media::Utf8(save_.wstring());
+      return;
+    }
+    mods.InstallFile(fr, save_);
+    message_ok_ = true;
+    message_ = (fr ? "Mod de tenue créé et installé : " : "Attire mod made and installed: ") + media::Utf8(save_.wstring());
+  }
+
   void Finished(bool fr, mods::Manager &mods) {
     if (!movie_.Ok()) {
       message_ok_ = false;
@@ -1316,6 +1405,8 @@ class Page {
   std::string menu2_of_;
   Bytes portraits_[2][3];  // a SvR 2011 / WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
   fs::path fbx_path_;                   // the FBX model (look 4)
+  bool as_attire_ = false;              // the mod: an attire of the base (else a new superstar)
+  std::string attire_entry_;            // ... which ("000NNNAK"): one of its attires, or a new one
   int fbx_budget_ = 12000;              // ... its vertices at most
   std::vector<std::string> fbx_lines_;  // ... what the import found
 };

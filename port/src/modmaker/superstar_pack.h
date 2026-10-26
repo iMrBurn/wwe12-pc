@@ -53,6 +53,21 @@ struct Star {
   Bytes portraits[2][3];
 };
 
+// An attire mod's attire (attire_mod.h): put into our pack as the game's superstar's own entry, so the pack's
+// directory (newer than the disc's) gives it: an attire replaced, or one more (2026-10-26: a superstar file of the
+// disc rebuilt and served whole kept the disc's directory: an added attire wasn't offered).
+struct Attire {
+  std::string key;    // the mod's folder name
+  int superstar = 0;  // a superstar of the game (his file pac/ch/chNNN.pac)
+  std::string entry;  // "000NNNAK"
+  Bytes file;         // attire/attire.pac: a superstar file holding only that attire
+  // One the superstar hasn't (a new attire): listed as a DLC attire too (the select screen offers a superstar's attires
+  // from those lists, not from his file: an added one in the file alone wasn't offered, 2026-10-26). The lists' rows
+  // (DLC.pac IGST/VOL, info/catalog.dlc) of the game's DLC attires (The Miz, Hawk, Animal): kind 2, the superstar,
+  // the attire's index (0-3).
+  bool added = false;
+};
+
 struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   std::vector<Bytes> portraits_hd, portraits_sd;   // pacs that may hold the bases' SSFA/SSFB/SSFC "%04d"
@@ -201,7 +216,8 @@ inline int PackNumber(const Inputs &in) {
 }
 
 // The pack's files for `stars` (slots set). False (and why) when it can't be made.
-inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<File> &files, std::string *why) {
+inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<File> &files, std::string *why,
+                  const std::vector<Attire> &attires = {}) {
   using namespace detail;
   auto fail = [&](const std::string &w) {
     if (why)
@@ -244,7 +260,30 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       if (!codes.count(c))
         free_codes.push_back(c);
     }
-  if (free_codes.size() < 2 * stars.size())
+  // The rows of the lists: the added superstars (kind 1), then the new attires (kind 2).
+  struct Row {
+    int kind, id, sub;
+    std::string name;
+  };
+  std::vector<Row> rows;
+  for (const auto &st : stars)
+    rows.push_back({1, st.slot, 0, st.name.empty() ? st.key : st.name});
+  {
+    std::set<std::string> listed;
+    for (const auto &at : attires)
+      if (at.added && listed.insert(at.entry).second)
+        rows.push_back({2, at.superstar, at.entry[6] - '0', "ATTIRE " + at.entry});
+  }
+  if (free_codes.size() < 2 * rows.size()) {
+    free_codes.clear();
+    for (char second = 'U'; second <= 'Z' && free_codes.size() < 2 * rows.size(); ++second)
+      for (char first = 'A'; first <= 'Z' && free_codes.size() < 2 * rows.size(); ++first) {
+        const std::string c{first, second};
+        if (!codes.count(c))
+          free_codes.push_back(c);
+      }
+  }
+  if (free_codes.size() < 2 * rows.size())
     return fail("no codes left");
   char vol_name[8];
   snprintf(vol_name, sizeof(vol_name), "VOL%d", pack);
@@ -253,20 +292,24 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   ArcNode *vol = svrfmt::ArchiveAdd(dlc.root, "IGST", vol_name, 0, model_vol->stored, &e);
   if (!vol || !svrfmt::ArchiveExpand(*vol) || vol->kids.empty())
     return fail("can't add " + std::string(vol_name) + ": " + e);
-  Bytes list(4 + 52 * stars.size(), 0);
-  Le32(list, 0, uint32_t(stars.size()));
-  for (size_t i = 0; i < stars.size(); ++i) {
+  Bytes list(4 + 52 * rows.size(), 0);
+  Le32(list, 0, uint32_t(rows.size()));
+  for (size_t i = 0; i < rows.size(); ++i) {
     const size_t o = 4 + 52 * i;
     Le32(list, o, 1);
-    Le32(list, o + 4, 1);
-    Le32(list, o + 8, uint32_t(stars[i].slot));
+    Le32(list, o + 4, uint32_t(rows[i].kind));
+    Le32(list, o + 8, uint32_t(rows[i].id));
+    Le32(list, o + 12, uint32_t(rows[i].sub));
     Le32(list, o + 16, uint32_t(serial + 1 + int(i)));
     memcpy(&list[o + 20], free_codes[2 * i].data(), 2);
     memcpy(&list[o + 24], free_codes[2 * i + 1].data(), 2);
     Le32(list, o + 28, 1);
     Le32(list, o + 32, 2);
     char key[17];
-    snprintf(key, sizeof(key), "WWE12PCMOD%06d", stars[i].slot);
+    if (rows[i].kind == 1)
+      snprintf(key, sizeof(key), "WWE12PCMOD%06d", rows[i].id);
+    else
+      snprintf(key, sizeof(key), "WWE12PCATT%04d%d%d", rows[i].id % 10000, rows[i].sub, 2);
     memcpy(&list[o + 36], key, 16);
   }
   svrfmt::ArchiveReplace(vol->kids[0], list);
@@ -339,6 +382,32 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     svrfmt::ArchiveTouch(ch.root);
     models.push_back(svrfmt::ArchiveSave(ch));
   }
+  // 3b. The attire mods' attires, one file per superstar (the first mod giving an attire wins).
+  std::map<int, Bytes> attire_files;
+  {
+    std::map<int, svrfmt::Archive> by_star;
+    std::set<std::string> given;
+    for (const auto &at : attires) {
+      if (!given.insert(at.entry).second)
+        continue;
+      svrfmt::Archive one;
+      if (!svrfmt::ArchiveOpen(at.file, one, &e) || one.root.kids.empty())
+        return fail(at.key + ": attire unreadable: " + e);
+      auto it = by_star.find(at.superstar);
+      if (it == by_star.end()) {
+        one.root.kids.resize(1);
+        if (!svrfmt::ArchiveRename(one.root, 0, at.entry, &e))
+          return fail(at.key + ": " + e);
+        by_star.emplace(at.superstar, std::move(one));
+      } else if (!svrfmt::ArchiveAdd(it->second.root, "EMD ", at.entry, 0, svrfmt::ArchiveData(one.root.kids[0]), &e)) {
+        return fail(at.key + ": " + e);
+      }
+    }
+    for (auto &[superstar, a] : by_star) {
+      svrfmt::ArchiveTouch(a.root);
+      attire_files[superstar] = svrfmt::ArchiveSave(a);
+    }
+  }
   // 4. Portraits: the bases' SSFA/SSFB/SSFC under the slots' numbers (taken from the first pac that has them).
   Bytes portraits[2];
   for (int hd = 0; hd < 2; ++hd) {
@@ -403,6 +472,10 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     ++next;
   for (size_t i = 0; i < stars.size(); ++i, ++next)
     entries.push_back({"pac/ch/ch" + std::to_string(stars[i].slot) + "_dlc" + tag + ".pac", next, next, &models[i]});
+  for (const auto &[superstar, file] : attire_files) {
+    entries.push_back({"pac/ch/ch" + std::to_string(superstar) + "_dlc" + tag + ".pac", next, next, &file});
+    ++next;
+  }
   entries.push_back({"pac/ch/chEtc.pac", next, next, &etc_out});
   for (int hd = 0; hd < 2; ++hd) {
     Bytes arc;
@@ -415,23 +488,24 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       arc.push_back(0xFF);
     files.push_back({hd ? "info/catalog_hd.arc" : "info/catalog_sd.arc", std::move(arc)});
   }
-  Bytes cat(0x18 + 0x40 * stars.size(), 0);
+  Bytes cat(0x18 + 0x40 * rows.size(), 0);
   memcpy(cat.data(), "DLCC", 4);
   Le16(cat, 4, 2);
   Le16(cat, 6, 0x18);
   Le32(cat, 8, uint32_t(pack));
-  Le16(cat, 12, uint16_t(stars.size()));
+  Le16(cat, 12, uint16_t(rows.size()));
   Le16(cat, 14, uint16_t(entries.size()));
-  for (size_t i = 0; i < stars.size(); ++i) {
+  for (size_t i = 0; i < rows.size(); ++i) {
     const size_t r = 0x18 + 0x40 * i;
     Le16(cat, r, 0x40);
     Le16(cat, r + 2, uint16_t(i + 1));
-    Le16(cat, r + 4, 1);
+    Le16(cat, r + 4, uint16_t(rows[i].kind));
     Le16(cat, r + 6, uint16_t(pack));
     Le16(cat, r + 8, uint16_t(i));
     Le16(cat, r + 10, uint16_t(i));
-    Le32(cat, r + 0x10, uint32_t(stars[i].slot));
-    const std::string name = Latin1(stars[i].name.empty() ? stars[i].key : stars[i].name);
+    Le32(cat, r + 0x10, uint32_t(rows[i].id));
+    Le32(cat, r + 0x14, uint32_t(rows[i].sub));
+    const std::string name = Latin1(rows[i].name).substr(0, 31);
     memcpy(&cat[r + 0x20], name.data(), name.size());
   }
   for (const auto &en : entries) {
