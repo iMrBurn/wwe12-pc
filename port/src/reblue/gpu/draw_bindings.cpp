@@ -225,9 +225,10 @@ void Video::FlushViewport() {
 
   if (s.dirtyStates.viewport) {
     plume::RenderViewport vp = s.viewport;
-#if defined(SVR_NATIVE_RENDERER) && !defined(REBLUE_D3D12)
-    // SvR passes the game's own MinZ/MaxZ; Vulkan maps a reversed range (MinZ > MaxZ) exactly as
-    // Xenos does, so it is kept. (D3D12 requires MinZ <= MaxZ.)
+#if defined(SVR_NATIVE_RENDERER)
+    // SvR passes the game's own MinZ/MaxZ: Vulkan and D3D12 both map a reversed range (MinZ >
+    // MaxZ) exactly as Xenos does, so it is kept. WWE '12 draws its 3D scenes with one: swapped,
+    // the D3D12 exe lost every wrestler and most of the crowd to the depth test.
 #else
     if (vp.minDepth > vp.maxDepth)
       std::swap(vp.minDepth, vp.maxDepth);

@@ -20,8 +20,7 @@ set(WWE12_NATIVE_GEN "${CMAKE_BINARY_DIR}/native_gen")
 # Rendering hardware interface: Vulkan (wwe12.exe), plus D3D12 on Windows (wwe12_d3d12.exe, the
 # same game code with re:Blue built REBLUE_D3D12; the launcher starts one or the other from
 # gpu_backend). plume builds both backends into one library; each exe uses one.
-# OFF until the D3D12 exe builds (re:Blue shader_linker missing): the other conversations build too.
-option(WWE12_D3D12_EXE "Also build wwe12_d3d12.exe (D3D12 renderer)" OFF)
+option(WWE12_D3D12_EXE "Also build wwe12_d3d12.exe (D3D12 renderer)" ${WIN32})
 if(WIN32 AND WWE12_D3D12_EXE)
     set(PLUME_D3D12_ENABLED ON CACHE BOOL "" FORCE)
 else()
@@ -97,15 +96,25 @@ function(wwe12_add_native_renderer target)
         message(FATAL_ERROR "generated/native/shader_cache.cpp manquant : extraire et convertir "
                             "les shaders du jeu d'abord (voir le README, rendu natif)")
     endif()
+    set(sources ${WWE12_NATIVE_SOURCES})
     if(ARG_D3D12)
         set(host_shaders ${WWE12_HOST_SHADER_HEADERS_DXIL})
         target_compile_definitions(${target} PRIVATE REBLUE_D3D12=1)
-        target_link_libraries(${target} PRIVATE d3d12 dxgi dxguid)
+        # dxc_link.cpp links the game's spec-constant shaders at run time (DXC, dxcompiler.dll).
+        target_include_directories(${target} PRIVATE "${WWE12_XENOS_DIR}/thirdparty/dxc-bin/inc")
+        target_link_libraries(${target} PRIVATE d3d12 dxgi dxguid
+            "${WWE12_XENOS_DIR}/thirdparty/dxc-bin/lib/x64/dxcompiler.lib")
+        # miniz (public domain), for re:Blue's pre-linked shader cache (empty for WWE '12).
+        set(miniz_dir "${WWE12_XENOS_DIR}/thirdparty/smol-v/testing/external/miniz")
+        target_include_directories(${target} PRIVATE "${miniz_dir}")
+        target_sources(${target} PRIVATE "${miniz_dir}/miniz.c")
     else()
         set(host_shaders ${WWE12_HOST_SHADER_HEADERS})
+        # re:Blue's DXIL linker serves the D3D12 exe only.
+        list(FILTER sources EXCLUDE REGEX "/gpu/shaders/(shader_linker|dxc_link|linked_shader_cache_empty)\\.(cpp|h)$")
     endif()
     target_sources(${target} PRIVATE
-        ${WWE12_NATIVE_SOURCES}
+        ${sources}
         ${host_shaders}
         "${WWE12_NATIVE_ROOT}/generated/native/shader_cache.cpp")
     # Secondary shader keys (tools/gen_shader_keys.py): match containers the game altered in memory.

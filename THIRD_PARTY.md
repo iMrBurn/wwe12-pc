@@ -8,9 +8,10 @@ shaders extraits, code généré) n'est incluse dans ce dépôt ni dans ses vers
 |---|---|---|
 | [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk) | recompilation statique, runtime | BSD 3 clauses (dérivé de [Xenia](https://xenia.jp)) |
 | [XenosRecomp](https://github.com/hedge-dev/XenosRecomp) | conversion des shaders Xbox 360 en HLSL | MIT |
-| [re:Blue](https://github.com/zolaware/reblue) | cœur du rendu natif (`port/src/reblue`) | BSD 3 clauses (`port/src/reblue/LICENSE.reblue`) |
-| [plume](https://github.com/zolaware/plume) | couche Vulkan du rendu natif | MIT |
-| [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler) | compilation HLSL → DXIL / SPIR-V | MIT (LLVM : Apache 2.0 avec exception LLVM) |
+| [re:Blue](https://github.com/zolaware/reblue) | cœur du rendu natif (`port/src/reblue`) ; pour `wwe12_d3d12.exe`, `gpu/shaders/shader_linker.*` et `dxc_link.*` repris tels quels du dépôt (zolaware, commit 85aae68, 2026-10-26) | BSD 3 clauses (`port/src/reblue/LICENSE.reblue`) |
+| [plume](https://github.com/zolaware/plume) | couche Vulkan / D3D12 du rendu natif | MIT |
+| [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler) | compilation HLSL → DXIL / SPIR-V ; `dxcompiler.dll` et `dxil.dll` livrés à côté de `wwe12_d3d12.exe` (liaison des shaders à l'exécution) | MIT (LLVM : Apache 2.0 avec exception LLVM) |
+| [miniz](https://github.com/richgel999/miniz) | `wwe12_d3d12.exe` : décompression du cache de shaders préliés de re:Blue | domaine public (unlicense) |
 | [libadrenotools](https://github.com/bylaws/libadrenotools) + [liblinkernsbypass](https://github.com/bylaws/liblinkernsbypass) | version Android : chargement d'un pilote Vulkan personnalisé (Turnip) | BSD 2 clauses (Billy Laws) |
 
 Modifications locales appliquées par `setup.ps1` :

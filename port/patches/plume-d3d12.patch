@@ -1,0 +1,16 @@
+diff --git a/plume_d3d12.cpp b/plume_d3d12.cpp
+index dcae4e3..58f8601 100644
+--- a/plume_d3d12.cpp
++++ b/plume_d3d12.cpp
+@@ -2322,7 +2322,10 @@ namespace plume {
+ 
+         const D3D12_TEXTURE_COPY_LOCATION copyDstLocation = toD3D12(dstLocation);
+         const D3D12_TEXTURE_COPY_LOCATION copySrcLocation = toD3D12(srcLocation);
+-        setSamplePositions(dstLocation.texture);
++        // WWE '12: a texture-to-buffer copy (read-back) has a buffer destination, no texture.
++        if (dstLocation.type == RenderTextureCopyType::SUBRESOURCE) {
++            setSamplePositions(dstLocation.texture);
++        }
+         d3d->CopyTextureRegion(&copyDstLocation, dstX, dstY, dstZ, &copySrcLocation, (srcBox != nullptr) ? &copyBox : nullptr);
+         resetSamplePositions();
+     }
