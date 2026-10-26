@@ -986,6 +986,27 @@ places ×10, d'après le code de Kaiko).
 - **Pas encore** : vu en jeu ; les modèles FBX (os de cheveux à reconnaître et à changer en chaînes) ; les vêtements
   (les `R_Bone*` du corps de certains catcheurs : autre mécanisme, non étudié).
 
+## 6 quatervicies. Types de match : état de la recherche (2026-10-26, rien de fait dans le jeu)
+
+- **Chez Kaiko (SvR 2011)** : `docs/MATCH_TYPES_RESEARCH.md` et `port/src/match_types.cpp` de son portage. Chaque
+  match = une fiche de règles (119 dans `misc.pac` `RUL`) ; 36 fiches sans ligne de menu, dont des matchs complets
+  rendus jouables en ajoutant seulement une ligne de menu (Falls Count Anywhere, cage « pin & give up », Rumble à 15 et
+  25...) ; d'autres types écrits dans son code natif (Lumberjack, Three Stages of Hell...).
+- **WWE '12** : même table, `pac/misc.pac` à 0x9630 (copie à 0x46C630) : `RUL `, 119 fiches (0x77) de **108 octets**
+  (SvR : 100) ; mêmes champs : +0 nombre de personnes, +2 six places de 3 octets, +28 / +32 / +44 / +48 textes
+  (catégorie, sous-nom, famille, libellé), +36 mode (1 normal, 4 spécial), +40 arène imposée (Rumble 22, Chamber 21,
+  coulisses 78), +56 nom complet, +60 nom interne, +68 drapeaux. En mémoire : `*(0x8324E238) + id × 108` (lecteurs :
+  `mulli r,r3,108` dans une vingtaine de fonctions). Noms trouvés : Falls Count Anywhere (0x2B-0x30, dont « SINGLE
+  w/MANAGER »), Special Referee (0x53), Championship Scramble (0x26), 40-Man Royal Rumble (0x17), Armageddon Hell in
+  a Cell (0x35), Brawl-4-All / coulisses (0x18-0x21, 0x68-0x76).
+- **Différence avec SvR** : le choix du type de match n'a pas de lignes dans `menu.pac` (seules « NORMAL MATCH »,
+  lien 0x7D0, règle 0 en +0x5C) ni dans les scripts Lua de `MScript.pac` : la liste est faite par le code, à partir des
+  fiches. Falls Count Anywhere 1 contre 1 (0x2B) a **exactement les drapeaux** du match normal (0x00) : son
+  comportement est dans le code (tests par numéro), comme dans SvR.
+- **Suite** : trouver la fonction qui construit la liste des types (appelants du lecteur de fiches), voir ce qui
+  cache une fiche, puis l'essayer en jeu sur Falls Count Anywhere. C'est du code de jeu (conversation Gameplay ou
+  Limit breaking) plus qu'un mod : à décider avec l'utilisateur.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,
