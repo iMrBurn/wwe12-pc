@@ -1,0 +1,113 @@
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_io.cpp b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+index 27d11f3..25c35c5 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_io.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+@@ -14,7 +14,14 @@
+ 
+ #include <atomic>
+ #include <chrono>
++#include <cstring>
++#include <rex/cvar.h>
+ #include <rex/filesystem/device.h>
++#include <rex/platform.h>
++#if REX_PLATFORM_ANDROID
++#include <dlfcn.h>
++#include <unwind.h>
++#endif
+ #include <rex/kernel/xboxkrnl/private.h>
+ #include <rex/logging.h>
+ #include <rex/memory.h>
+@@ -31,9 +38,57 @@
+ #include <rex/system/xtypes.h>
+ #include <rex/thread/mutex.h>
+ 
++REXCVAR_DEFINE_BOOL(replay_io_log, false, "Kernel",
++                    "WWE '12 port, diagnostic: log the game's opens, reads and writes of its replay "
++                    "file (cache:\\Spectacular.rps) as [replayio] lines.");
++
+ namespace rex::kernel::xboxkrnl {
+ using namespace rex::system;
+ 
++// replay_io_log: the first 40 calls of each kind, then one in 200, and every failure.
++static void NoteReplayIo(const char* op, const std::string& path, uint64_t offset, uint32_t length,
++                         uint32_t done, X_STATUS result) {
++  if (!REXCVAR_GET(replay_io_log) ||
++      (path.find(".rps") == std::string::npos && path.find(".cac") == std::string::npos))
++    return;
++  static std::atomic<uint32_t> counts[3];
++  const int kind = op[0] == 'o' ? 0 : op[0] == 'r' ? 1 : 2;
++  const uint32_t n = counts[kind].fetch_add(1, std::memory_order_relaxed) + 1;
++  if (n <= 40 || n % 200 == 0 || XFAILED(result)) {
++    REXKRNL_INFO("[replayio] {} #{} '{}' offset {:#x} length {:#x} -> {} bytes, status {:#x}", op,
++                 n, path, offset, length, done, result);
++#if REX_PLATFORM_ANDROID
++    // Host return addresses as offsets in their library, for llvm-symbolizer (the guest
++    // functions are sub_XXXXXXXX symbols of libwwe12.so).
++    if (n <= 4) {
++      struct Trace {
++        uintptr_t pcs[24];
++        int count = 0;
++      } trace;
++      _Unwind_Backtrace(
++          [](_Unwind_Context* uc, void* arg) -> _Unwind_Reason_Code {
++            auto* t = static_cast<Trace*>(arg);
++            if (t->count >= 24)
++              return _URC_END_OF_STACK;
++            t->pcs[t->count++] = _Unwind_GetIP(uc);
++            return _URC_NO_REASON;
++          },
++          &trace);
++      std::string line;
++      for (int i = 0; i < trace.count; ++i) {
++        Dl_info info{};
++        if (dladdr(reinterpret_cast<void*>(trace.pcs[i]), &info) && info.dli_fname) {
++          const char* lib = std::strrchr(info.dli_fname, '/');
++          line += fmt::format(" {}+{:#x}", lib ? lib + 1 : info.dli_fname,
++                              trace.pcs[i] - reinterpret_cast<uintptr_t>(info.dli_fbase));
++        }
++      }
++      REXKRNL_INFO("[replayio] {} #{} stack:{}", op, n, line);
++    }
++#endif
++  }
++}
++
+ struct CreateOptions {
+   // https://processhacker.sourceforge.io/doc/ntioapi_8h.html
+   static const uint32_t FILE_DIRECTORY_FILE = 0x00000001;
+@@ -170,6 +225,8 @@ u32 NtCreateFile_entry(mapped_u32 handle_out, u32 desired_access,
+   }
+ 
+   *handle_out = handle;
++  NoteReplayIo("open", std::string(target_path), creation_disposition, desired_access,
++               (uint32_t)file_action, result);
+   if (XFAILED(result)) {
+     REXKRNL_IMPORT_FAIL("NtCreateFile", "path='{}' -> {:#x}", target_path, result);
+   } else {
+@@ -235,6 +292,8 @@ u32 NtReadFile_entry(u32 file_handle, u32 event_handle, mapped_void apc_routine_
+                         std::memory_order_relaxed);
+       g_io_bytes.fetch_add(bytes_read, std::memory_order_relaxed);
+       g_io_calls.fetch_add(1, std::memory_order_relaxed);
++      NoteReplayIo("read", file->path(), byte_offset_ptr ? uint64_t(*byte_offset_ptr) : ~0ull,
++                   buffer_length, bytes_read, result);
+       if (io_status_block) {
+         io_status_block->status = result;
+         io_status_block->information = bytes_read;
+@@ -338,6 +397,8 @@ u32 NtReadFileScatter_entry(u32 file_handle, u32 event_handle, mapped_void apc_r
+       result = file->ReadScatter(segment_array.guest_address(), length,
+                                  byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : -1,
+                                  &bytes_read, apc_context.guest_address());
++      NoteReplayIo("read-scatter", file->path(),
++                   byte_offset_ptr ? uint64_t(*byte_offset_ptr) : ~0ull, length, bytes_read, result);
+       if (io_status_block) {
+         io_status_block->status = result;
+         io_status_block->information = bytes_read;
+@@ -425,6 +486,8 @@ u32 NtWriteFile_entry(u32 file_handle, u32 event_handle, u32 apc_routine, mapped
+       result = file->Write(buffer.guest_address(), buffer_length,
+                            byte_offset_ptr ? static_cast<uint64_t>(*byte_offset_ptr) : -1,
+                            &bytes_written, apc_context.guest_address());
++      NoteReplayIo("write", file->path(), byte_offset_ptr ? uint64_t(*byte_offset_ptr) : ~0ull,
++                   buffer_length, bytes_written, result);
+ 
+       if (io_status_block) {
+         io_status_block->status = result;

@@ -155,7 +155,7 @@ inline unsigned long _byteswap_ulong(unsigned long v) {
   return __builtin_bswap32(static_cast<uint32_t>(v));
 }
 inline unsigned long long _byteswap_uint64(unsigned long long v) { return __builtin_bswap64(v); }
-inline int localtime_s(std::tm *out, const std::time_t *t) { return localtime_r(t, out) ? 0 : 1; }
+#include "wwe12_crt_compat.h"  // localtime_s
 
 // Taille de l'écran (liste des tailles de fenêtre du menu GRAPHICS) : sans objet sur Android.
 #define SM_CXSCREEN 0

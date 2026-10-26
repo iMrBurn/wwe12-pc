@@ -1,0 +1,94 @@
+diff --git a/src/audio/audio_system.cpp b/src/audio/audio_system.cpp
+index f6ea2dc..72a59cc 100644
+--- a/src/audio/audio_system.cpp
++++ b/src/audio/audio_system.cpp
+@@ -9,6 +9,11 @@
+  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
+  */
+ 
++#include <atomic>
++#include <string>
++
++#include <fmt/format.h>
++
+ #include <rex/assert.h>
+ #include <rex/audio/audio_driver.h>
+ #include <rex/audio/audio_system.h>
+@@ -44,8 +49,28 @@ namespace rex::audio {
+ 
+ namespace {
+ constexpr std::chrono::milliseconds kWorkerShutdownTimeout{500};
++
++// audio_flow_log: the game's audio callback (run on the audio worker), for the [apuflow] line.
++std::atomic<int64_t> g_callback_start_ms{0};  // 0 = not running
++std::atomic<uint32_t> g_callback_calls{0};
++std::atomic<int64_t> g_callback_slowest_ms{0};
++
++int64_t NowMs() {
++  return std::chrono::duration_cast<std::chrono::milliseconds>(
++             std::chrono::steady_clock::now().time_since_epoch())
++      .count();
++}
+ }  // namespace
+ 
++std::string AudioCallbackState() {
++  const int64_t start = g_callback_start_ms.load();
++  const uint32_t calls = g_callback_calls.exchange(0);
++  const int64_t slowest = g_callback_slowest_ms.exchange(0);
++  return start ? fmt::format("game callback RUNNING for {} ms ({} calls, slowest {} ms)",
++                             NowMs() - start, calls, slowest)
++               : fmt::format("game callback idle ({} calls, slowest {} ms)", calls, slowest);
++}
++
+ AudioSystem::AudioSystem(runtime::FunctionDispatcher* function_dispatcher)
+     : memory_(function_dispatcher->memory()),
+       function_dispatcher_(function_dispatcher),
+@@ -146,8 +171,15 @@ void AudioSystem::WorkerThreadMain() {
+         }
+         SCOPE_profile_cpu_i("apu", "rex::audio::AudioSystem->client_callback");
+         uint64_t args[] = {client_callback_arg};
++        const int64_t start_ms = NowMs();
++        g_callback_start_ms.store(start_ms);
+         function_dispatcher_->Execute(worker_thread_->thread_state(), client_callback, args,
+                                       rex::countof(args));
++        g_callback_start_ms.store(0);
++        g_callback_calls.fetch_add(1);
++        const int64_t took = NowMs() - start_ms;
++        if (took > g_callback_slowest_ms.load())
++          g_callback_slowest_ms.store(took);
+         if (diag_pump_count < 10) {
+           REXAPU_DEBUG("AudioWorker: callback returned for client {}", index);
+         }
+diff --git a/src/audio/sdl/sdl_audio_driver.cpp b/src/audio/sdl/sdl_audio_driver.cpp
+index 74fa6e5..3759a1f 100644
+--- a/src/audio/sdl/sdl_audio_driver.cpp
++++ b/src/audio/sdl/sdl_audio_driver.cpp
+@@ -29,6 +29,13 @@
+ #include <SDL3/SDL.h>
+ 
+ REXCVAR_DEFINE_BOOL(audio_mute, false, "Audio", "Mute audio output");
++REXCVAR_DEFINE_BOOL(audio_flow_log, false, "Audio",
++                    "WWE '12 port, diagnostic: one [apuflow] line every 2 s (frames the game "
++                    "submitted / played / silence, and its audio callback's state).");
++
++namespace rex::audio {
++std::string AudioCallbackState();  // audio_system.cpp
++}
+ 
+ namespace rex::audio::sdl {
+ 
+@@ -339,8 +346,12 @@ void SDLAudioDriver::SDLCallback(void* userdata, SDL_AudioStream* stream, int ad
+     const auto consumed = flow.consumed.exchange(0, std::memory_order_relaxed);
+     const auto silences = flow.silences.exchange(0, std::memory_order_relaxed);
+     const auto peak = flow.peak.exchange(0.0f, std::memory_order_relaxed);
+-    REXAPU_DEBUG("APU flow: last {:.1f}s: submits={} consumed={} silence={} peak={:.4f}", dt,
+-                 submits, consumed, silences, peak);
++    if (REXCVAR_GET(audio_flow_log))
++      REXAPU_INFO("[apuflow] last {:.1f}s: submits={} consumed={} silence={} peak={:.4f} | {}", dt,
++                  submits, consumed, silences, peak, AudioCallbackState());
++    else
++      REXAPU_DEBUG("APU flow: last {:.1f}s: submits={} consumed={} silence={} peak={:.4f}", dt,
++                   submits, consumed, silences, peak);
+   }
+ }
+ 

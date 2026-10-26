@@ -187,6 +187,9 @@ public class LauncherActivity extends Activity {
         set.addView(choice("Internal resolution (lower = faster)", "svr_render_scale",
                 new String[] {"540p (fastest)", "720p (recommended)", "1080p", "Automatic (screen size)"},
                 new String[] {"540", "720", "1080", "0"}));
+        set.addView(choice("Picture shape", "bd_aspect_ratio",
+                new String[] {"16:9 with black bars (original)", "Fill the whole screen (stretched)"},
+                new String[] {"5", "6"}));
         set.addView(toggle("FPS counter", "wwe12_show_fps"));
         set.addView(toggle("Shadows", "wwe12_shadows"));
         set.addView(toggle("Crowd", "wwe12_crowd"));
@@ -249,6 +252,10 @@ public class LauncherActivity extends Activity {
         dbg.addView(toggle("Release unused render targets (untick to test a freeze)",
                 "svr_release_stale_targets", true));
         dbg.addView(toggle("Game debug messages in the log (Universe, replays)", "wwe12_game_log", false));
+        dbg.addView(toggle("Instant replay after matches (can freeze the game for now)",
+                "wwe12_instant_replay", false));
+        dbg.addView(toggle("Empty the game's cache at each start", "wwe12_fresh_cache", false));
+        dbg.addView(toggle("Log the replay file's reads and writes", "replay_io_log", false));
         dbg.addView(text("Then play until the problem, and send the log with SHARE LAST LOG.",
                 12, Color.GRAY, false));
 

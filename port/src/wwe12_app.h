@@ -63,6 +63,9 @@ void Wwe12KbdInit(rex::ui::Window* window);  // wwe12_kbd.cpp: keyboard typing i
 
 // Installe les DLC posés dans le dossier « dlc » à côté de l'exe (wwe12_dlc.cpp).
 void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
+#if REX_PLATFORM_ANDROID
+void Wwe12AndroidFreshCache(const std::filesystem::path& cache_dir);  // android/wwe12_replay.cpp
+#endif
 void Wwe12CheckDiscVersion(const std::filesystem::path& user_data_root);  // wwe12_disc.cpp
 void Wwe12ImportSaves(const std::filesystem::path& user_data_root);  // wwe12_saves.cpp
 #if defined(__ANDROID__)
@@ -163,6 +166,9 @@ class Wwe12App : public rex::ReXApp {
       return;
     const std::filesystem::path dir = user_data_root_ / "xbox_cache";
     std::error_code ec;
+#if REX_PLATFORM_ANDROID
+    Wwe12AndroidFreshCache(dir);  // android/wwe12_replay.cpp: stale cache = endless loading
+#endif
     std::filesystem::create_directories(dir, ec);
     auto* fs = REX_KERNEL_FS();
     auto device = std::make_unique<rex::filesystem::HostPathDevice>("\\CACHE", dir, false);

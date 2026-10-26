@@ -127,6 +127,30 @@ extern "C" REX_FUNC(sub_822EAA80) {
             ctx.r3.u32);
 }
 
+// Replay file (cache:\Spectacular.rps). sub_822EAD80 sets the replay system up (r7 != 0 skips
+// opening the file for writing); sub_822B8130(file manager, read, slot, r6) opens it: read != 0
+// makes a read stream (sub_822B7788), 0 a write stream (sub_822B7C98). Android issue #22-#31.
+REX_EXTERN(__imp__sub_822EAD80);
+extern "C" REX_FUNC(sub_822EAD80) {
+  const u32 self = ctx.r3.u32, r5 = ctx.r5.u32, r6 = ctx.r6.u32, r7 = ctx.r7.u32,
+            r8 = ctx.r8.u32;
+  __imp__sub_822EAD80(ctx, base);
+  if (REXCVAR_GET(wwe12_game_log))
+    BD_INFO("[replay] setup sub_822EAD80(0x{:08X}, {}, 0x{:08X}, r7 {}, r8 {}) | "
+            "*0x83174250={} manager 0x{:08X}",
+            self, r5, r6, r7, r8, bd::mem::load<u32>(0x83174250),
+            bd::mem::load<u32>(self + 1524));
+}
+
+REX_EXTERN(__imp__sub_822B8130);
+extern "C" REX_FUNC(sub_822B8130) {
+  const u32 self = ctx.r3.u32, read = ctx.r4.u32, slot = ctx.r5.u32, r6 = ctx.r6.u32;
+  __imp__sub_822B8130(ctx, base);
+  if (REXCVAR_GET(wwe12_game_log))
+    BD_INFO("[replay] file open sub_822B8130(0x{:08X}, {}, slot {}, {}) = {}", self,
+            read ? "read" : "write", slot, r6, ctx.r3.u32);
+}
+
 // The same thread then runs sub_82959CC0(part) for each wrestler's 'CMIF' component: it notes
 // the match's moments for the post-match replay and MATCH HIGHLIGHTS, after a row of checks.
 // The moments land in 20 slots of 20 bytes at (*0x8317C84C)+128+6200 (word 0 != 0 = used, +8 =

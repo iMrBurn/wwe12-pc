@@ -21,7 +21,8 @@ set_property(TARGET wwe12 PROPERTY SOURCES ${_wwe12_sources})
 target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_android.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_touch.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_driver.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_perf_hint.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_perf_hint.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_replay.cpp")
 
 # Pilotes Vulkan personnalisés (Turnip…, choisis dans le launcher) : libadrenotools
 # (https://github.com/bylaws/libadrenotools, BSD-2-Clause, avec son sous-module) clonée dans
@@ -41,6 +42,11 @@ endif()
 # Remplaçant de <windows.h> pour les fichiers du portage qui l'incluent (src/android/compat).
 target_include_directories(wwe12 BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/compat"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android")
+
+# Fonctions du runtime C de MSVC (localtime_s...) pour tous les fichiers C++ du jeu, même ceux
+# qui n'incluent pas <windows.h>.
+target_compile_options(wwe12 PRIVATE
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/android/compat/wwe12_crt_compat.h>")
 
 target_link_libraries(wwe12 PRIVATE android log)
 
