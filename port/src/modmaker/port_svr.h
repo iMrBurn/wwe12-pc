@@ -177,7 +177,100 @@ inline void Tangents(svrfmt::Mesh &s) {
 }  // namespace detail
 
 // SvR's model (entry 0) on the WWE '12 base model (same superstar or build) -> the WWE '12 model.
-inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, svrfmt::Model &out, Report *rep) {
+// A rotation matrix (R = Rz Ry Rx, as Local) back to its angles.
+inline void EulerOf(const M4 &w, float r[3]) {
+  const double sy = std::clamp(-w.m[8], -1.0, 1.0);
+  r[1] = float(std::asin(sy));
+  if (std::abs(sy) < 0.99999) {
+    r[0] = float(std::atan2(w.m[9], w.m[10]));
+    r[2] = float(std::atan2(w.m[4], w.m[0]));
+  } else {
+    r[0] = float(std::atan2(-w.m[6], w.m[5]));
+    r[2] = 0;
+  }
+}
+
+// See ConvertModel's keep_chains. ws: SvR's bind (its units), move: each SvR node's move into WWE '12's bind (x10),
+// target: each SvR node's WWE '12 node (updated: the kept chain bones).
+inline void KeepChains(const svrfmt::Model &svr, const std::vector<M4> &ws, const std::vector<M4> &move,
+                       svrfmt::Model &out, std::vector<int> &target, Report *rep) {
+  auto kami = [](const std::string &n) { return n.rfind("kami", 0) == 0; };
+  bool any = false;
+  for (const auto &n : svr.nodes)
+    any = any || kami(n.name);
+  if (!any)
+    return;
+  // the base's own chains out (their indices: the later nodes move down)
+  std::vector<int> remap(out.nodes.size(), -1);
+  std::vector<svrfmt::Node> kept;
+  for (size_t i = 0; i < out.nodes.size(); ++i)
+    if (!kami(out.nodes[i].name)) {
+      remap[i] = int(kept.size());
+      kept.push_back(out.nodes[i]);
+    }
+  for (auto &n : kept)
+    n.parent = n.parent >= 0 && size_t(n.parent) < remap.size() ? remap[size_t(n.parent)] : -1;
+  out.nodes = std::move(kept);
+  for (auto &t : target)
+    t = t >= 0 && size_t(t) < remap.size() ? remap[size_t(t)] : -1;
+  int head = -1;
+  for (size_t i = 0; i < out.nodes.size(); ++i)
+    if (out.nodes[i].name == "Bip Head")
+      head = int(i);
+  if (head < 0)
+    return;
+  auto wo = World(out);
+  std::vector<int> now(svr.nodes.size(), -1);  // SvR chain bone -> its new node
+  int added = 0;
+  for (size_t i = 0; i < svr.nodes.size(); ++i) {
+    if (!kami(svr.nodes[i].name))
+      continue;
+    const int p = svr.nodes[i].parent;
+    if (p < 0 || size_t(p) >= svr.nodes.size())
+      continue;
+    const int parent = kami(svr.nodes[size_t(p)].name) ? now[size_t(p)] : svr.nodes[size_t(p)].name == "atama" ? head : -1;
+    if (parent < 0)
+      continue;
+    // its new world: SvR's moved as its strands' vertices are (the rotation without the x10)
+    const M4 &d = move[i], &w = ws[i];
+    M4 nw;
+    for (int r = 0; r < 3; ++r) {
+      for (int c = 0; c < 3; ++c) {
+        double x = 0;
+        for (int k = 0; k < 3; ++k)
+          x += d.m[r * 4 + k] / 10 * w.m[k * 4 + c];
+        nw.m[r * 4 + c] = x;
+      }
+      nw.m[r * 4 + 3] = d.m[r * 4] * w.m[3] + d.m[r * 4 + 1] * w.m[7] + d.m[r * 4 + 2] * w.m[11] + d.m[r * 4 + 3];
+    }
+    const M4 local = Mul(InvRigid(wo[size_t(parent)]), nw);
+    svrfmt::Node n;
+    n.name = svr.nodes[i].name;
+    n.parent = parent;
+    for (int c = 0; c < 3; ++c)
+      n.t[c] = float(local.m[c * 4 + 3]);
+    EulerOf(local, n.r);
+    if (kami(svr.nodes[size_t(p)].name)) {  // (as WWE '12's chain bones: a bounding sphere at the joint)
+      n.sphere[0] = float(nw.m[3]);
+      n.sphere[1] = float(nw.m[7]);
+      n.sphere[2] = float(nw.m[11]);
+      n.sphere[3] = 6;
+    }
+    now[i] = int(out.nodes.size());
+    target[i] = now[i];
+    out.nodes.push_back(n);
+    wo.push_back(Mul(wo[size_t(parent)], Local(n)));
+    ++added;
+  }
+  if (rep)
+    rep->notes.push_back("hair: " + std::to_string(added) + " chain bones kept");
+}
+
+// keep_chains (the hair, 10000): SvR's hair bones (kami_bNN chains under the head, moved by the game's hair physics in
+// both games, same names and layout) are kept, placed under WWE '12's head as the head moved, the strands weighted to
+// them as in SvR (the base's own chains, if any, left out: they'd hold none of SvR's strands).
+inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, svrfmt::Model &out, Report *rep,
+                         bool keep_chains = false) {
   if (!base.w12 || base.meshes.empty() || svr.meshes.empty())
     return false;
   const auto ws = World(svr), wb = World(base);
@@ -289,6 +382,8 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
   out = base;
   out.meshes.clear();
   out.parts.clear();
+  if (keep_chains)
+    KeepChains(svr, ws, move, out, target, rep);
   // Parts: SvR's (their meshes come in that order), named as WWE '12's.
   std::vector<int> part_of;
   for (const auto &p : svr.parts) {
@@ -618,7 +713,62 @@ inline Bytes HairCut(const Bytes &normal, const Bytes &colour, const std::vector
 
 // SvR's attire (its EMD PACH node) into the WWE '12 base attire's node (both expanded): the model, the colour and
 // masks, the normal map. The base's other entries stay (eyelashes, material data, physics...).
-inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep, std::string *why) {
+// SvR's hair settings (entry 60: one line a chain, `kami_bNN radius visc grav spring damp A lencorr bend movecorr`,
+// SvR's units) as WWE '12's (entry 60 "Version2": the chains' lines in four settings 1, 2, 3, 5 - each headed by two
+// numbers, the hair stiffer and lighter from one to the next as the base superstars have them - then "ReferenceHair",
+// five links a chain, none here). Radius and gravity x10 (the models' scale). Empty when SvR's has no chain.
+inline Bytes HairSettings(const Bytes &svr60) {
+  struct Line {
+    std::string name;
+    double v[9];
+  };
+  std::vector<Line> lines;
+  std::string text(svr60.begin(), svr60.end());
+  size_t at = 0;
+  while (at < text.size()) {
+    size_t e = text.find('\n', at);
+    if (e == std::string::npos)
+      e = text.size();
+    const std::string l = text.substr(at, e - at);
+    at = e + 1;
+    char name[32] = {};
+    Line x;
+    if (sscanf(l.c_str(), " %31s %lf %lf %lf %lf %lf %lf %lf %lf %lf", name, &x.v[0], &x.v[1], &x.v[2], &x.v[3], &x.v[4],
+               &x.v[5], &x.v[6], &x.v[7], &x.v[8]) == 10 &&
+        std::string(name).rfind("kami_b", 0) == 0) {
+      x.name = name;
+      lines.push_back(x);
+    }
+  }
+  if (lines.empty())
+    return {};
+  std::string o = "; SpringHairSetting (ported from SvR 2011)\r\nVersion2\r\n";
+  const struct {
+    int id;
+    const char *head;
+    double grav;  // (the base superstars' settings: gravity 0.52, 0.45, 0.3, 0.2)
+  } sets[] = {{1, "0\t0.2", 1.0}, {2, "4\t0.2", 0.45 / 0.52}, {3, "6\t0", 0.3 / 0.52}, {5, "10\t0", 0.2 / 0.52}};
+  char b[256];
+  for (const auto &st : sets) {
+    o += "Setting" + std::to_string(st.id) + "\r\n" + st.head + "\r\n";
+    for (const auto &x : lines) {
+      snprintf(b, sizeof(b), "%s\t%g\t%g\t%g\t%g\t%g\t%d\t%g\t%g\t%g\r\n", x.name.c_str(), x.v[0] * 10, x.v[1],
+               x.v[2] * 10 * st.grav, x.v[3], x.v[4], int(x.v[5]), x.v[6], x.v[7], x.v[8]);
+      o += b;
+    }
+    o += "*\r\n";
+  }
+  o += "ReferenceHair\r\n";
+  for (const auto &x : lines)
+    o += x.name + "\t0\t0\t0\t0\t0\r\n";
+  o += "*\r\n";
+  return Bytes(o.begin(), o.end());
+}
+
+// collision: the hair's collision capsules (entry 61, WWE '12's) for a base that has none (a long-haired superstar's,
+// read from the player's disc); null: none.
+inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep, std::string *why,
+                       const Bytes *collision = nullptr) {
   Report own;
   if (!rep)
     rep = &own;
@@ -662,14 +812,28 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
         }
   }
   std::vector<UvTri> see_through, hair_uv;  // UV triangles of the hair and the eyes' pieces; of the hair alone
+  Bytes hair_settings;    // the hair's physics (entry 60) when its chains are kept
+  bool hair_done = false;
   for (uint32_t id : {10000u, 20000u}) {
     svrfmt::ArcNode *s = child(svr, id), *b = child(base, id);
     svrfmt::Model xs, xb, xo;
     Report extra;
     if (!s || !b || !svrfmt::JboyRead(svrfmt::ArchiveData(*s), xs, &e) ||
-        !svrfmt::JboyRead(svrfmt::ArchiveData(*b), xb, &e) || xs.w12 || !ConvertModel(xs, xb, xo, &extra))
+        !svrfmt::JboyRead(svrfmt::ArchiveData(*b), xb, &e) || xs.w12)
       continue;
-    HangHair(xs, xo);
+    // The hair keeps its chains when SvR has the settings that move them (entry 60), else hangs from head and chest.
+    const Bytes settings = id == 10000 && child(svr, 60) ? HairSettings(svrfmt::ArchiveData(*child(svr, 60))) : Bytes();
+    if (!ConvertModel(xs, xb, xo, &extra, !settings.empty()))
+      continue;
+    bool chains = false;
+    for (const auto &n : xo.nodes)
+      chains = chains || n.name.rfind("kami", 0) == 0;
+    if (id == 10000) {
+      hair_settings = chains ? settings : Bytes();
+      hair_done = true;
+    }
+    if (!chains)
+      HangHair(xs, xo);
     for (const auto &m : xo.meshes)  // (their places in the colour picture: its alpha kept there, below)
       for (const auto &st : m.strips) {
         const auto &ix = st.indices;
@@ -681,6 +845,26 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
           }
       }
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(xo));
+    b = nullptr;  // (adding or removing entries below moves the others)
+    if (id == 10000 && hair_done) {
+      if (!hair_settings.empty()) {
+        if (svrfmt::ArcNode *b60 = child(base, 60))
+          svrfmt::ArchiveReplace(*b60, hair_settings);
+        else
+          svrfmt::ArchiveAdd(base, "", "", 60, hair_settings, &e);
+        if (!child(base, 61) && collision && !collision->empty())
+          svrfmt::ArchiveAdd(base, "", "", 61, *collision, &e);
+        rep->notes.push_back("hair physics: entry 60 written" + std::string(child(base, 61) ? ", collisions (61)" : ""));
+      } else {
+        // (a base with chains of its own: its settings would name bones the hair hasn't now)
+        for (uint32_t gone : {60u, 61u})
+          for (size_t i = 0; i < base.kids.size(); ++i)
+            if (base.kids[i].id == gone) {
+              svrfmt::ArchiveRemove(base, i);
+              break;
+            }
+      }
+    }
     rep->textures.insert(rep->textures.end(), extra.textures.begin(), extra.textures.end());
   }
   // Colour and masks as SvR has them (same bundle format), all three masks: the base's Mask3 (15) fits the base's

@@ -25,6 +25,7 @@
 #include "media.h"
 #include "mods.h"
 #include "port_svr.h"
+#include "hair_donor.h"
 #include "wic_image.h"
 
 namespace superstar_page {
@@ -36,6 +37,7 @@ using svrfmt::Bytes;
 class Page {
  public:
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &disc, mods::Manager &mods) {
+    disc_ = &disc;
     device_ = device;
     const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f), yellow(0.94f, 0.75f, 0.24f, 1.0f);
     ImGui::TextWrapped("%s", fr ? "Changez les images d'une tenue (peau, vêtements, accessoires, tatouages...) et "
@@ -181,6 +183,7 @@ class Page {
   }
 
  private:
+  const disc::GameDisc *disc_ = nullptr;  // (the game files, for the hair's collisions)
   struct Star {
     int id = 0;
     std::string name, file;  // "pac/ch/ch139.pac"
@@ -316,7 +319,8 @@ class Page {
     port_svr::Report rep;
     if (!svrfmt::ArchiveOpen(svr_file_, s, &why) || !svrfmt::ArchiveOpen(file_, w, &why) ||
         size_t(svr_attire_) >= s.root.kids.size() || size_t(attire_) >= w.root.kids.size() ||
-        !port_svr::PortAttire(s.root.kids[size_t(svr_attire_)], w.root.kids[size_t(attire_)], &rep, &why)) {
+        !port_svr::PortAttire(s.root.kids[size_t(svr_attire_)], w.root.kids[size_t(attire_)], &rep, &why,
+                              disc_ ? &hair_donor::Collision(*disc_) : nullptr)) {
       svr_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
       return;
     }

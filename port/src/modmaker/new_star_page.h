@@ -33,6 +33,7 @@
 #include "attire_mod.h"
 #include "fbx_star.h"
 #include "port_svr.h"
+#include "hair_donor.h"
 #include "faces2k.h"
 #include "strings2k.h"
 
@@ -48,6 +49,7 @@ constexpr int kDefaultBases[] = {261 /* Ted DiBiase */, 327 /* Justin Gabriel */
 class Page {
  public:
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &disc, mods::Manager &mods) {
+    disc_ = &disc;
     disc12_ = &disc;
     device_ = device;
     const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f), yellow(0.94f, 0.75f, 0.24f, 1.0f);
@@ -1122,7 +1124,8 @@ class Page {
                         size_t(svr_attire_) < s.root.kids.size() && !w.root.kids.empty();
     if (!opened ||
         !(look_ == 3 ? port13_star::PortAttire(s.root.kids[size_t(svr_attire_)], w.root.kids[0], &rep13, &why)
-                     : port_svr::PortAttire(s.root.kids[size_t(svr_attire_)], w.root.kids[0], &rep, &why))) {
+                     : port_svr::PortAttire(s.root.kids[size_t(svr_attire_)], w.root.kids[0], &rep, &why,
+                                            disc_ ? &hair_donor::Collision(*disc_) : nullptr))) {
       note_ok_ = false;
       note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
       SetModel(ported_);
@@ -1520,6 +1523,7 @@ class Page {
   Bytes portraits_[2][3];  // a SvR 2011 / WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
   fs::path fbx_path_;                   // the FBX model (look 4)
   std::string project_note_;            // the last project saved / opened
+  const disc::GameDisc *disc_ = nullptr;  // (the game files, for the hair's collisions)
   bool as_attire_ = false;              // the mod: an attire of the base (else a new superstar)
   std::string attire_entry_;            // ... which ("000NNNAK"): one of its attires, or a new one
   int fbx_budget_ = 12000;              // ... its vertices at most

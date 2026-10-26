@@ -967,6 +967,25 @@ places ×10, d'après le code de Kaiko).
   vues dans les banques ZMVM), les doigts, les animations d'entrée (autres fichiers), les cheveux et vêtements qui
   bougent.
 
+## 6 tervicies. Cheveux qui bougent des catcheurs portés de SvR 2011 (2026-10-26, pas encore vu en jeu)
+
+- **Le jeu** : comme SvR 2011, les cheveux longs de WWE '12 sont des chaînes d'os `kami_bNN` (racine sous « Bip Head »,
+  puis `kami_bNN_00`, `_01`... alignés sur l'axe x local, 6 à 7 cm) dans le modèle des cheveux (10000), animées par la
+  physique du jeu. Réglages dans la tenue : **entrée 60** (« ; SpringHairSetting », `Version2`, puis `Setting1`, `2`,
+  `3`, `5`, chacun avec deux nombres d'en-tête et une ligne par chaîne `kami_bNN rayon viscosité gravité ressort
+  amortissement A corrLongueur flexion corrMouvement`, fin `*` ; puis `ReferenceHair`, cinq liens par chaîne) et
+  **entrée 61** (« ; SpringHairCollision », capsules `os x0 y0 z0 r0 x1 y1 z1 r1 k` sur les os Biped). 25 catcheurs du
+  disque les ont (ch102, ch117...). SvR 2011 : même 60 sans en-têtes (une ligne par chaîne, unités de SvR ≈ 11 cm).
+- **Portage** (`port_svr.h` `KeepChains`, `HairSettings`) : les os de cheveux de SvR sont gardés dans le modèle 10000
+  converti, déplacés comme la tête (même déplacement que les mèches), rattachés à « Bip Head » ; les sommets restent
+  pondérés sur eux (avant : collés à la tête et au haut du torse, `HangHair`, gardé quand SvR n'a pas de 60). Les chaînes
+  de la base sont retirées. Entrée 60 écrite depuis celle de SvR (rayon et gravité x10, quatre réglages comme les
+  catcheurs du jeu, aucun lien) ; 61 : celle de la base, sinon celle d'un catcheur aux cheveux longs lue sur le disque
+  du joueur (`hair_donor.h`). Vérifié hors du jeu (SvR ch102 sur la base ch137 : 53 os, chaque maillon à 0,3-6 cm de ses
+  mèches).
+- **Pas encore** : vu en jeu ; les modèles FBX (os de cheveux à reconnaître et à changer en chaînes) ; les vêtements
+  (les `R_Bone*` du corps de certains catcheurs : autre mécanisme, non étudié).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,
