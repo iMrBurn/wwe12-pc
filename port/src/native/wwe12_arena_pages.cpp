@@ -621,8 +621,7 @@ REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
 REX_EXTERN(__imp__sub_82780948);  // VS screen: load its layout "/MLYE/MB%02d", else MB00 (this + 768, stage)
 REX_EXTERN(__imp__sub_828916B8);  // match setup's VS screen: the same (this, stage, ?, ?)
-REX_EXTERN(__imp__sub_82574E50);  // match setup screen: update (loads the VS screen when its layer 16 isn't there)
-REX_EXTERN(__imp__sub_8288FE70);  // screen: is layer r4 (0-31) there (this, layer)
+REX_EXTERN(__imp__sub_828A9898);  // match setup: its object (+88: the stage set)
 REX_EXTERN(sub_82A8C070);         // XInputGetState(user, state) (hooked by wwe12_intros.cpp: call the hooked one)
 
 namespace {
@@ -769,27 +768,18 @@ extern "C" REX_FUNC(sub_828916B8) {
   __imp__sub_828916B8(ctx, base);
 }
 
-// The match setup screen loads its VS screen only when its layer 16 isn't there yet (sub_82574E50 asks
-// sub_8288FE70): choosing an added arena after its base, or the base after it, kept the one shown (the stage number
-// is the same). After such a choice (g_reload_vs, set by sub_825A56C8) the question gets "no" once, during that
-// screen's update only; sub_828916B8 frees the one shown before making the new one.
-namespace {
-bool g_in_setup = false;
-}  // namespace
-extern "C" REX_FUNC(sub_82574E50) {
-  g_in_setup = true;
-  __imp__sub_82574E50(ctx, base);
-  g_in_setup = false;
-}
-extern "C" REX_FUNC(sub_8288FE70) {
-  const u32 layer = ctx.r4.u32;
-  __imp__sub_8288FE70(ctx, base);
-  if (g_in_setup && g_reload_vs && layer == 16 && ctx.r3.u32 != 0) {
+// After choosing, the match setup (sub_82576120) compares the stage chosen with the one it has (+88 of the object
+// sub_828A9898 gives) and sets it again, its VS screen with it (sub_828AC150), only when they differ: an added arena
+// plays on its base's stage number, so choosing it after its base (or the base after it) kept the VS screen shown
+// (WrestleMania 31 showed Superstars', 2026-10-26). After such a choice (g_reload_vs, set by sub_825A56C8), the
+// next sub_828A9898 forgets the stage it had (-1): the two differ.
+extern "C" REX_FUNC(sub_828A9898) {
+  __imp__sub_828A9898(ctx, base);
+  if (g_reload_vs && ctx.r3.u32) {
     g_reload_vs = false;
-    ctx.r3.u64 = 0;
+    bd::mem::store<u32>(ctx.r3.u32 + 88, 0xFFFFFFFFu);
   }
 }
-
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
 extern "C" REX_FUNC(sub_827F29F0) {
   const u32 name = ctx.r4.u32, out = ctx.r5.u32;
