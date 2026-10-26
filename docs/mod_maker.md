@@ -1031,6 +1031,22 @@ places ×10, d'après le code de Kaiko).
   cache une fiche, puis l'essayer en jeu sur Falls Count Anywhere. C'est du code de jeu (conversation Gameplay ou
   Limit breaking) plus qu'un mod : à décider avec l'utilisateur.
 
+## 6 sexvicies. Protéger les sauvegardes qui utilisent des catcheurs ajoutés (2026-10-26)
+
+- **Le piège** : toutes les versions du jeu sur un PC partagent `Documents\wwe12` (sauvegarde, DLC installés, pack
+  WWE12PCMODS). Une version de test lancée avec un dossier `mods` vide a retiré le pack, et la 0.9 de l'utilisateur a
+  refusé sa sauvegarde (« le contenu téléchargeable semble manquant ou endommagé ») : la sauvegarde garde les fiches
+  des catcheurs ajoutés. Réparé en relançant une fois la version qui avait les mods (pack refait, mêmes numéros).
+- **Désormais** (`wwe12_superstar_mods.cpp`) : le pack n'est **jamais** retiré ; il note ses catcheurs
+  (`WWE12PCMODS\wwe12pc_stars.txt`, « mod=numéro ») ; si l'un d'eux n'a plus son mod, le pack reste **tel quel**
+  (avertissement dans le journal et `Documents\wwe12\mods_warning.txt`, affiché par la page MODS du launcher ; les
+  mods de catcheurs ajoutés depuis n'entrent pas) jusqu'à ce que le Mod Maker l'en retire (VÉRIFIER > Retirer du
+  pack). Avant chaque changement du pack, la sauvegarde est copiée dans `SaveBackups` (même format que les copies
+  automatiques du launcher, 10 gardées).
+- **Essais sans risque** : `tools/dev/lancer_isole.bat` lance la version de test avec `--user_data_root
+  %USERPROFILE%\Documents\wwe12_test` (réglage du SDK) : sauvegarde, DLC et pack à part.
+- **Règle pour les joueurs** (FAQ) : avant d'enlever un mod de catcheur, ne plus l'utiliser dans sa sauvegarde.
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

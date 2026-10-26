@@ -76,6 +76,12 @@ with some controller setups in 0.8).
 Files in the `mods` folder next to the game replace the game's own (same path as in the game). See
 `mods\HOW_TO_USE_MODS.txt`.
 
+**Removing an added superstar (Mod Maker).** Before you turn off or remove a superstar mod, stop using him in
+your save (Universe, matches, rivalries). A save made with an added superstar needs him: the game keeps his
+pack as it was (the launcher's MODS page says so, and superstar mods added since don't get in) until you take
+him out in the Mod Maker (CHECK MODS > Take out of the pack). The save is copied (SaveBackups) before the pack
+changes.
+
 ---
 
 # FAQ en français
@@ -107,3 +113,7 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
 - **Sauvegardes Xbox 360** : launcher → SAUVEGARDES → importer. Copies de sauvegarde automatiques.
 - **« Not signed in with a gamer profile »** : corrigé en 0.9.
 - **Mods** : les fichiers du dossier `mods` remplacent ceux du jeu (même chemin).
+- **Enlever un catcheur ajouté (Mod Maker)** : avant de désactiver ou d'enlever son mod, ne l'utilisez plus
+  dans votre sauvegarde (Univers, matchs, rivalités). Le jeu garde son pack tant que vous ne l'avez pas retiré
+  dans le Mod Maker (VÉRIFIER > Retirer du pack) : la page MODS du launcher le signale. La sauvegarde est
+  copiée (SaveBackups) avant chaque changement du pack.

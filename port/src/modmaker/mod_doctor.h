@@ -5,7 +5,9 @@
 //  - added superstars (src/native/wwe12_superstar_mods.cpp, superstar_pack.h): a base the game has, a model that
 //    reads, at most 20 bones a mesh (the game's palette), no broken numbers (NaN: the game crashes), not much bigger
 //    than a game attire (the room it loads into), an entrance video in Bink 1 (WWE '12 doesn't play Bink 2), portraits
-//    of the game's sizes; the numbers kept for mods no longer installed (Documents\wwe12\superstar_slots.txt);
+//    of the game's sizes; the numbers kept for mods no longer installed (Documents\wwe12\superstar_slots.txt); the
+//    superstars kept in the game's pack whose mod is gone (WWE12PCMODS\wwe12pc_stars.txt: the game keeps the pack as it
+//    was, a save may use them; taken out here once no save does);
 //  - added arenas (src/native/wwe12_arena_pages.cpp): a base 0-22, an arena file (its STG record at 0x800) that fits
 //    the room an added arena gets (12.5 MB), a 256 x 128 banner, VS screen / entrance graphics as packs, a Bink 1
 //    transition; at most 35 (the banner pack's free places);
@@ -209,6 +211,7 @@ class Page {
                               : "Over 35 added arenas: the next ones have no banner.",
                            "", {}});
     CheckSlots(fr, user_root, superstar_ids);
+    CheckPack(fr, user_root, superstar_ids);
     std::stable_sort(problems_.begin(), problems_.end(),
                      [](const Problem &a, const Problem &b) { return a.mod < b.mod; });
   }
@@ -468,6 +471,52 @@ class Page {
            for (const auto &[k, n] : lines)
              if (installed.count(k))
                out += k + "=" + std::to_string(n) + "\n";
+           std::ofstream(f, std::ios::binary).write(out.data(), std::streamsize(out.size()));
+           return true;
+         }});
+  }
+
+  // The game's pack of added superstars (Documents\wwe12\...\00000002\WWE12PCMODS): a superstar it holds whose mod
+  // is gone keeps the pack as it was (a save made with him needs him: the game refuses a save whose superstar's pack
+  // is missing). Taken out of its list here, the next start makes the pack without him.
+  void CheckPack(bool fr, const fs::path &user_root, const std::set<std::string> &installed) {
+    const fs::path f = user_root / "0000000000000000" / "54510890" / "00000002" / "WWE12PCMODS" / "wwe12pc_stars.txt";
+    const std::string text = ReadText(f);
+    std::vector<std::pair<std::string, std::string>> lines;
+    size_t pos = 0;
+    while (pos < text.size()) {
+      size_t end = text.find('\n', pos);
+      if (end == std::string::npos)
+        end = text.size();
+      std::string l = text.substr(pos, end - pos);
+      if (!l.empty() && l.back() == '\r')
+        l.pop_back();
+      if (const size_t eq = l.rfind('='); eq != std::string::npos && eq > 0)
+        lines.push_back({l.substr(0, eq), l.substr(eq + 1)});
+      pos = end + 1;
+    }
+    std::string list;
+    for (const auto &[k, n] : lines)
+      if (!installed.count(k))
+        list += (list.empty() ? "" : ", ") + k + " (" + n + ")";
+    if (list.empty())
+      return;
+    problems_.push_back(
+        {1, fr ? "Catcheurs gardés dans le pack" : "Superstars kept in the pack",
+         (fr ? "Leur mod n'est plus installé (" + list +
+                   ") : le jeu garde son pack tel quel pour ne pas casser une sauvegarde qui les utilise, et les mods "
+                   "ajoutés depuis n'y entrent pas. Remettez le mod ; ou, si aucune sauvegarde ne les utilise plus "
+                   "(retirés de l'Univers, des matchs et des rivalités), retirez-les du pack (une copie de la "
+                   "sauvegarde est faite au prochain lancement)."
+             : "Their mod isn't installed any more (" + list +
+                   "): the game keeps its pack as it was so a save using them still loads, and mods added since don't "
+                   "get in. Put the mod back; or, once no save uses them (out of Universe, matches and rivalries), take "
+                   "them out of the pack (the save is copied at the next start)."),
+         fr ? "Retirer du pack" : "Take out of the pack", [f, lines, installed] {
+           std::string out;
+           for (const auto &[k, n] : lines)
+             if (installed.count(k))
+               out += k + "=" + n + "\n";
            std::ofstream(f, std::ios::binary).write(out.data(), std::streamsize(out.size()));
            return true;
          }});

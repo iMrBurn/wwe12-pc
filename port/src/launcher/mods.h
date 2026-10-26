@@ -28,6 +28,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <shlobj.h>
 #include <shobjidl.h>
 
 #include <algorithm>
@@ -131,6 +132,21 @@ class Manager {
     return bool(f);
   }
 
+  // Documents\wwe12\mods_warning.txt's "missing=" line (the superstars the game keeps in its pack), else "".
+  static std::string PackWarning() {
+    PWSTR docs = nullptr;
+    if (FAILED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &docs)))
+      return {};
+    const fs::path f = fs::path(docs) / "wwe12" / "mods_warning.txt";
+    CoTaskMemFree(docs);
+    std::ifstream in(f);
+    std::string line;
+    while (std::getline(in, line))
+      if (line.rfind("missing=", 0) == 0)
+        return line.substr(8);
+    return {};
+  }
+
   void Draw(bool french) {
     const Texts &t = french ? kFrench : kEnglish;
     const bool running = game::IsRunning();
@@ -147,6 +163,17 @@ class Manager {
     if (!message_.empty())
       ImGui::TextColored(message_ok_ ? ImVec4(0.55f, 0.85f, 0.45f, 1.0f) : ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
                          "%s", message_.c_str());
+    // Added superstars: the game keeps its pack when one of them is gone (a save may use him) and says so in
+    // Documents\wwe12\mods_warning.txt (src/native/wwe12_superstar_mods.cpp).
+    if (const std::string gone = PackWarning(); !gone.empty())
+      ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
+                         (french ? "Catcheurs ajoutés retirés mais gardés par le jeu (votre sauvegarde peut les utiliser) : " +
+                                       gone + ". Les mods de catcheurs ajoutés depuis n'entrent pas en jeu : remettez le "
+                                              "mod, ou Mod Maker > VÉRIFIER > Retirer du pack."
+                                 : "Added superstars removed but kept by the game (your save may use them): " + gone +
+                                       ". Superstar mods added since don't get into the game: put the mod back, or Mod "
+                                       "Maker > CHECK MODS > Take out of the pack.")
+                             .c_str());
     for (const auto &c : conflicts_) {
       char line[1024];
       if (c.other.empty())
@@ -156,6 +183,11 @@ class Manager {
       ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), "%s", line);
     }
 
+    if (std::any_of(list_.begin(), list_.end(), [](const Mod &m) { return m.type == "superstar"; }))
+      ImGui::TextDisabled("%s", french ? "Avant d'enlever un catcheur ajouté, ne l'utilisez plus dans votre sauvegarde "
+                                         "(Univers, matchs, rivalités) : sinon le jeu garde son pack."
+                                       : "Before removing an added superstar, stop using him in your save (Universe, "
+                                         "matches, rivalries): else the game keeps his pack.");
     if (list_.empty()) {
       ImGui::TextDisabled("%s", t.none);
     } else if (ImGui::BeginTable("svrmods", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {

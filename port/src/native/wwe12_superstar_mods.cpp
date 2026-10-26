@@ -6,7 +6,11 @@
 // DLC.pac and portraits, the base superstars' models when a mod has none. Each mod keeps its number from one start
 // to the next (Documents\wwe12\superstar_slots.txt: "<mod>=<number>"), so a save's records never move. The pack is
 // written again only when its contents change (then the game's cache, made from the packs present, is emptied as
-// for a new DLC: wwe12_dlc.cpp); without superstar mods it is removed.
+// for a new DLC: wwe12_dlc.cpp). A save made with added superstars needs them in the pack (else the game refuses it:
+// "downloadable content missing or damaged"), so the pack is never removed, and a superstar it holds whose mod is gone
+// keeps it as it was (a warning in the log and Documents\wwe12\mods_warning.txt, shown by the launcher) until the
+// Mod Maker's CHECK MODS takes him out of the pack's list (wwe12pc_stars.txt). Before the pack changes, the save is
+// copied (Documents\wwe12\SaveBackups, as the launcher's automatic backups).
 //
 // Entrance videos. An added superstar plays its base's entrance, whose script names the video to show (titantron
 // on top, minitron below): sub_828F2410 reads that number (command + 172, from sub_828D83B8; 999 = the superstar's own,
@@ -18,6 +22,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -119,6 +124,65 @@ uint64_t Fnv(const Bytes &b, uint64_t h) {
   for (uint8_t c : b)
     h = (h ^ c) * 0x100000001B3ull;
   return h;
+}
+
+// The save copied as the launcher's automatic backups do (SaveBackups\<date>\: the save package and the achievements,
+// backup.txt "auto" + why; the latest 10 automatic ones kept): before the pack changes.
+void BackupSave(const fs::path &user_root, const std::string &why) {
+  const fs::path save = user_root / "B13EBABEBABEBABE" / "54510890",
+                 ach = user_root / "achievements" / "54510890.toml", all = user_root / "SaveBackups";
+  std::error_code ec;
+  if (!fs::exists(save, ec))
+    return;
+  const std::time_t now = std::time(nullptr);
+  std::tm tm{};
+  localtime_s(&tm, &now);
+  char stamp[32];
+  std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", &tm);
+  std::string name = stamp;
+  for (int n = 2; fs::exists(all / name, ec); ++n)
+    name = std::string(stamp) + "_" + std::to_string(n);
+  const fs::path dest = all / name;
+  fs::create_directories(dest / "B13EBABEBABEBABE", ec);
+  fs::copy(save, dest / "B13EBABEBABEBABE" / "54510890", fs::copy_options::recursive, ec);
+  if (!ec && fs::exists(ach)) {
+    fs::create_directories(dest / "achievements", ec);
+    fs::copy_file(ach, dest / "achievements" / ach.filename(), fs::copy_options::overwrite_existing, ec);
+  }
+  if (ec) {
+    REXLOG_WARN("[superstar mods] the save could not be copied before the pack changed: {}", ec.message());
+    std::error_code ignore;
+    fs::remove_all(dest, ignore);
+    return;
+  }
+  std::ofstream(dest / "backup.txt") << "auto\n" << why << "\n";
+  REXLOG_INFO("[superstar mods] save copied to SaveBackups\\{} ({})", name, why);
+  // the latest 10 automatic copies kept (names are dates: newest last)
+  std::vector<std::string> autos;
+  for (fs::directory_iterator it(all, ec), end; !ec && it != end; it.increment(ec)) {
+    std::ifstream info(it->path() / "backup.txt");
+    std::string kind;
+    if (std::getline(info, kind) && kind == "auto")
+      autos.push_back(it->path().filename().string());
+  }
+  std::sort(autos.begin(), autos.end());
+  for (size_t i = 0; i + 10 < autos.size(); ++i)
+    fs::remove_all(all / autos[i], ec);
+}
+
+// The pack's superstars ("<mod>=<number>" lines, wwe12pc_stars.txt in the pack).
+std::map<std::string, int> PackStars(const fs::path &pack) {
+  std::map<std::string, int> out;
+  std::ifstream f(pack / "wwe12pc_stars.txt");
+  std::string line;
+  while (std::getline(f, line)) {
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+    const size_t eq = line.rfind('=');
+    if (eq != std::string::npos && eq > 0)
+      out[line.substr(0, eq)] = atoi(line.c_str() + eq + 1);
+  }
+  return out;
 }
 
 // No mods for the pack: it is KEPT. Every build shares Documents\wwe12 (saves and installed DLC); a save made with the
@@ -514,6 +578,28 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   for (const auto &st : stars)
     if (st.movie_number)
       g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
+  // A superstar of the pack whose mod is gone: the pack stays as it is (a save may use him), with a warning.
+  {
+    std::vector<std::string> gone;
+    for (const auto &[key, slot] : PackStars(content / kPackName))
+      if (std::none_of(stars.begin(), stars.end(), [&](const auto &st) { return st.key == key; }))
+        gone.push_back(key + " (" + std::to_string(slot) + ")");
+    std::error_code e2;
+    if (!gone.empty()) {
+      std::string list;
+      for (const auto &g : gone)
+        list += (list.empty() ? "" : ", ") + g;
+      REXLOG_WARN("[superstar mods] superstar mod(s) gone but still in the pack: {}. Pack {} kept as it was (a save "
+                  "may use them); take them out with the Mod Maker's CHECK MODS once no save uses them",
+                  list, kPackName);
+      const std::string text = "missing=" + list + "\n";
+      WriteHost(user_root / "mods_warning.txt", Bytes(text.begin(), text.end()));
+      g_records.clear();  // (the kept pack's records are the save's already; its videos keep their numbers)
+      g_moves.clear();
+      return;
+    }
+    fs::remove(user_root / "mods_warning.txt", e2);
+  }
   if (stars.empty() && attires.empty() && media.empty() && signs.empty()) {
     RemovePack(content, headers);
     return;
@@ -585,8 +671,16 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   if (ReadHost(stamp_file, old) && std::string(old.begin(), old.end()) == stamp &&
       fs::exists(headers / (std::string(kPackName) + ".header"), ec)) {
     REXLOG_INFO("[superstar mods] {} added superstar(s), pack {} unchanged", stars.size(), kPackName);
+    if (!fs::exists(content / kPackName / "wwe12pc_stars.txt", ec)) {  // (packs made before the list)
+      std::string list;
+      for (const auto &st : stars)
+        list += st.key + "=" + std::to_string(st.slot) + "\n";
+      WriteHost(content / kPackName / "wwe12pc_stars.txt", Bytes(list.begin(), list.end()));
+    }
     return;
   }
+  if (fs::exists(content / kPackName, ec))
+    BackupSave(user_root, "before the mods pack (WWE12PCMODS) changed");
   fs::remove_all(content / kPackName, ec);
   for (const auto &f : files)
     if (!WriteHost(content / kPackName / fs::path(f.path), f.data)) {
@@ -594,6 +688,12 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       return;
     }
   WriteHost(stamp_file, Bytes(stamp, stamp + 16));
+  {
+    std::string list;
+    for (const auto &st : stars)
+      list += st.key + "=" + std::to_string(st.slot) + "\n";
+    WriteHost(content / kPackName / "wwe12pc_stars.txt", Bytes(list.begin(), list.end()));
+  }
   // Its header, as an installed pack's (the first one found, else a blank one): device 1, type 2, display name
   // (UTF-16BE) at 8, file name at 0x108.
   Bytes header;
