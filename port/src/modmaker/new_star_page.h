@@ -77,6 +77,16 @@ class Page {
       }
     }
 
+    // A project: the work so far, saved and opened again later (Kaiko's .svrproj, here a .wwe12proj of key=value lines).
+    if (ImGui::SmallButton(fr ? "Enregistrer le projet..." : "Save the project..."))
+      SaveProject(fr);
+    ImGui::SameLine();
+    if (ImGui::SmallButton(fr ? "Ouvrir un projet..." : "Open a project..."))
+      OpenProject(fr, disc);
+    if (!project_note_.empty()) {
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", project_note_.c_str());
+    }
     // The assistant: where its look comes from, its base, its name, its entrance video, a look at it, the mod.
     const char *steps_fr[] = {"1. Apparence", "2. Catcheur de base", "3. Nom et attributs", "4. Vidéo d'entrée",
                               "5. Aperçu", "6. Terminer"};
@@ -1146,6 +1156,110 @@ class Page {
     SetModel(ported_);
   }
 
+  // ---- projects
+  void SaveProject(bool fr) {
+    std::wstring file;
+    for (unsigned char c : std::string(name_))
+      file += std::isalnum(c) ? wchar_t(c) : L'_';
+    const fs::path out = media::PickSave(fr, (file.empty() ? L"superstar" : file) + L".wwe12proj");
+    if (out.empty())
+      return;
+    auto u8 = [](const fs::path &p) { return media::Utf8(p.wstring()); };
+    std::string t = "kind=new_superstar\nlook=" + std::to_string(look_) + "\nstar_game=" + std::to_string(star_game_) +
+                    "\nbase=" + std::to_string(base_ >= 0 ? stars_[size_t(base_)].id : 0) + "\nchosen=" + (chosen_ ? "1" : "0") +
+                    "\nname=" + name_ + "\nauthor=" + author_ + "\nother=" + u8(other_path_) + "\nsvr=" + u8(svr_path_) +
+                    "\ndisc_pick=" + std::to_string(disc_pick_) + "\nsvr_attire=" + std::to_string(svr_attire_) +
+                    "\nfbx=" + u8(fbx_path_) + "\nfbx_budget=" + std::to_string(fbx_budget_) + "\nportrait=" +
+                    u8(custom_portrait_) + "\nkeep_portraits=" + (keep_portraits_ ? "1" : "0") + "\nas_attire=" +
+                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_attributes=" +
+                    (own_attributes_ ? "1" : "0") + "\nattributes=";
+    for (size_t i = 0; i < attributes_.size(); ++i)
+      t += std::to_string(attributes_[i]) + (i + 1 < attributes_.size() ? "," : "");
+    t += "\n";
+    std::ofstream(out, std::ios::binary).write(t.data(), std::streamsize(t.size()));
+    project_note_ = (fr ? "Projet enregistré : " : "Project saved: ") + media::Utf8(out.filename().wstring());
+  }
+
+  void OpenProject(bool fr, const disc::GameDisc &disc) {
+    const fs::path in = arena_page::PickOpen(fr, false, fr ? L"Projets (*.wwe12proj)" : L"Projects (*.wwe12proj)", L"*.wwe12proj");
+    if (in.empty())
+      return;
+    std::ifstream f(in, std::ios::binary);
+    const std::string t((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    auto value = [&](const char *key) {
+      const std::string k = std::string("\n") + key + "=";
+      const size_t at = ("\n" + t).find(k);
+      if (at == std::string::npos)
+        return std::string();
+      const size_t from = at + k.size() - 1, end = t.find('\n', from);
+      return t.substr(from, end == std::string::npos ? std::string::npos : end - from);
+    };
+    if (value("kind") != "new_superstar") {
+      project_note_ = fr ? "Ce n'est pas un projet de nouveau catcheur." : "Not a new superstar project.";
+      return;
+    }
+    auto path = [](const std::string &u) { return u.empty() ? fs::path() : fs::u8path(u); };
+    // the base first (the look is ported over it)
+    look_ = atoi(value("look").c_str());
+    star_game_ = uint32_t(strtoul(value("star_game").c_str(), nullptr, 10));
+    const int base_id = atoi(value("base").c_str());
+    for (int i = 0; i < int(stars_.size()); ++i)
+      if (stars_[size_t(i)].id == base_id)
+        base_ = i;
+    chosen_ = value("chosen") == "1";
+    base_by_player_ = chosen_;
+    svr_attires_.clear();
+    svr_file_.clear();
+    OpenBase(fr, disc);
+    // its look
+    if (look_ == 1 && !value("other").empty()) {
+      LoadOther(fr, path(value("other")));
+    } else if (look_ == 2 || look_ == 3) {
+      const int pick = atoi(value("disc_pick").c_str());
+      const uint32_t title = look_ == 3 ? star_game_ : 0x5451085D;
+      if (pick >= 0 && discs_) {
+        ListDisc(title);
+        LoadFromDisc(fr, pick);
+      } else if (!value("svr").empty()) {
+        LoadSvr(fr, path(value("svr")));
+      }
+      svr_attire_ = std::max(0, std::min(atoi(value("svr_attire").c_str()), int(svr_attires_.size()) - 1));
+      if (!svr_attires_.empty())
+        PortSvr(fr);
+    } else if (look_ == 4 && !value("fbx").empty()) {
+      fbx_path_ = path(value("fbx"));
+      fbx_budget_ = std::clamp(atoi(value("fbx_budget").c_str()), 4000, 30000);
+      PortFbx(fr);
+    }
+    snprintf(name_, sizeof(name_), "%s", value("name").c_str());
+    snprintf(author_, sizeof(author_), "%s", value("author").c_str());
+    own_attributes_ = value("own_attributes") == "1";
+    attributes_.clear();
+    for (const std::string a = value("attributes"); const auto &part : [&] {
+           std::vector<std::string> v;
+           size_t at = 0;
+           while (at < a.size()) {
+             const size_t c = a.find(',', at);
+             v.push_back(a.substr(at, c == std::string::npos ? std::string::npos : c - at));
+             at = c == std::string::npos ? a.size() : c + 1;
+           }
+           return v;
+         }())
+      attributes_.push_back(std::clamp(atoi(part.c_str()), 0, 100));
+    if (attributes_.size() != 12)
+      attributes_ = base_attributes_;
+    if (const fs::path pic = path(value("portrait")); !pic.empty()) {
+      svrfmt::Image img;
+      if (wic_image::Load(pic, img) && img.w > 0 && img.h > 0)
+        CustomPortrait(img, pic);
+    }
+    keep_portraits_ = value("keep_portraits") != "0";
+    as_attire_ = value("as_attire") == "1";
+    attire_entry_ = value("attire_entry");
+    step_ = 0;
+    project_note_ = (fr ? "Projet ouvert : " : "Project opened: ") + media::Utf8(in.filename().wstring());
+  }
+
   // The FBX model over the base's attire 1 (fbx_star.h), fitted into its room as a port.
   void PortFbx(bool fr) {
     note_.clear();
@@ -1405,6 +1519,7 @@ class Page {
   std::string menu2_of_;
   Bytes portraits_[2][3];  // a SvR 2011 / WWE '13 superstar's portraits ([SD / HD][SSFA, SSFB, SSFC]), else empty
   fs::path fbx_path_;                   // the FBX model (look 4)
+  std::string project_note_;            // the last project saved / opened
   bool as_attire_ = false;              // the mod: an attire of the base (else a new superstar)
   std::string attire_entry_;            // ... which ("000NNNAK"): one of its attires, or a new one
   int fbx_budget_ = 12000;              // ... its vertices at most
