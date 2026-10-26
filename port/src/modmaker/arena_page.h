@@ -1173,7 +1173,7 @@ class Page {
             if (auto *p = port_svr_arena::detail::Pictures(k))
               svrfmt::BundleRead(svrfmt::ArchiveData(*p), pictures2k);
     }
-    if (y_title_ != kWwe13 ? port_svr_arena::CardWearing(pictures2k, matchhd12, svrfmt::Image(), card_mb_, card_mf_)
+    if (y_title_ != kWwe13 ? port_svr_arena::CardWearing(pictures2k, matchhd12, svrfmt::Image(), card_mb_, card_mf_, nullptr, true)
                            : !matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // Its entrance graphics (location plate, name plates).
