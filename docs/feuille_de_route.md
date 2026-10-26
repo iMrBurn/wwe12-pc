@@ -64,7 +64,13 @@ aucune émulation ; DX12 en plus de Vulkan, peut-être DX11.
 
 ### Gros chantiers
 - Jeu en full natif : long terme, par étapes (décompilation progressive, système par système).
-- DX12 (plume le gère) en plus de Vulkan ; DX11 à part.
+- **Choix de l'API graphique (voulu pour la 1.0 « si possible », décision du 2026-10-26)** : DX12 en plus de
+  Vulkan (plume le gère, il est coupé dans `native_renderer.cmake`), sélecteur « Automatic / Vulkan / Direct3D 12 »
+  dans le launcher et le jeu. Piste : les pavés d'entrée sur Intel HD/UHD (#7, #11, #13) viennent peut-être du
+  pilote Vulkan Intel ; en D3D12 ils disparaîtraient peut-être (hypothèse). **DX11** : Kaiko l'a fait pour SvR 2011
+  (backend plume D3D11 + SDK `graphics/d3d11` + shaders DXBC, plan dans son `port/docs/D3D11_PLAN.md`), donc
+  possible mais lourd ; pour les cartes sans Vulkan (Intel HD 5500…). **Son dépôt n'a PAS de licence : ne rien
+  copier sans sa permission** (message à Kaiko rédigé le 2026-10-26). Rendu étudie d'abord le D3D12.
 
 ## Règles rappelées
 - On peut porter des fonctions de WWE '13 / 2K14, mais **rien de dérivé du jeu ne se publie**.
