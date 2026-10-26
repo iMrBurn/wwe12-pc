@@ -502,8 +502,8 @@ class Page {
     if (look_ == 2 && !svr_movie_file_.empty()) {
       ImGui::SameLine();
       std::string file = media::Utf8(svr_movie_file_.filename().wstring());
-      if (file.rfind("game_", 0) == 0)  // (a copy out of the disc)
-        file.erase(0, 5);
+      if (file.rfind("svr_", 0) == 0)  // (a copy out of the disc)
+        file.erase(0, 4);
       char label[64];
       snprintf(label, sizeof(label), fr ? "La sienne dans SvR 2011 (%s)" : "Its own in SvR 2011 (%s)", file.c_str());
       if (ImGui::RadioButton(label, svr_movie_)) {
@@ -759,7 +759,15 @@ class Page {
     if (look_ == 2) {
       char movie[16];
       snprintf(movie, sizeof(movie), "%03d.bik", number);
-      SetSvrMovie(media::CopyGameMovie(game_disc_, movie));
+      // (its own copy: "game_NNN.bik" is the base's too, written over when the base has the same number, CM Punk:
+      // the mod got WWE '12's video, 2026-10-26)
+      Bytes bik;
+      fs::path copy;
+      if (game_disc_.Read(std::string("movies/titantron/") + movie, bik)) {
+        copy = media::TempDir() / (std::string("svr_") + movie);
+        std::ofstream(copy, std::ios::binary).write(reinterpret_cast<const char *>(bik.data()), std::streamsize(bik.size()));
+      }
+      SetSvrMovie(copy);
     }
     // its 2K movie (2K15-2K17, KB2i; 2K14's and WWE '13's Bink 2 can't be read): ent_NNNN_<attire>_<n>.bk2, the
     // first
