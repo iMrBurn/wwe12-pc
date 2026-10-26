@@ -88,6 +88,56 @@ struct Sign {
   Bytes dds;        // 128 x 64 DXT1, as the game's
 };
 
+// A main menu background (type=background, backgrounds/NN/menu.dds, title.dds): the main menu shows MnLayHD.pac MLYE/EM00
+// (EL00 in some regions), a layout whose pictures are the superstar beside the menu (ortontex02, 1024 x 1024, cut out)
+// and on the title screen (ortontex01, 512 x 1024). The menu layouts are read whole at startup, not through the packs'
+// directories (EM01 in our pack: a black screen, 2026-10-26): one background is drawn at each start and EM00 / EL00's
+// pictures replaced in a copy of MnLayHD.pac / MnLaySD.pac, in their own format and size, so every entry keeps its
+// place (src/native/wwe12_superstar_mods.cpp serves it).
+struct Background {
+  std::string key;  // the mod's folder name
+  Bytes menu;       // DDS for ortontex02 (the main menu)
+  Bytes title;      // DDS for ortontex01 (the title screen), else empty (the game's)
+};
+
+// MnLayHD.pac / MnLaySD.pac with EM00 / EL00 wearing this background, false if the file couldn't keep its size.
+inline bool DressMenu(Bytes &mnlay, const Background &bg) {
+  svrfmt::Archive m;
+  if (!svrfmt::ArchiveOpen(mnlay, m, nullptr))
+    return false;
+  bool any = false;
+  for (auto &k : m.root.kids) {
+    if (k.group != "MLYE" || (k.name != "EM00" && k.name != "EL00") || !svrfmt::ArchiveExpand(k))
+      continue;
+    for (auto &c : k.kids) {
+      std::vector<svrfmt::BundleTexture> t;
+      if (c.id != 7001 || !svrfmt::BundleRead(svrfmt::ArchiveData(c), t))
+        continue;
+      for (auto &x : t) {
+        const Bytes &mine = x.name == "ortontex02" ? bg.menu : x.name == "ortontex01" ? bg.title : Bytes();
+        svrfmt::Image img;
+        svrfmt::DdsInfo want;
+        if (mine.empty() || !svrfmt::DdsInfoOf(x.data, want) || !svrfmt::DdsDecode(mine, img))
+          continue;
+        if (img.w != want.w || img.h != want.h)
+          img = svrfmt::Resize(img, want.w, want.h);
+        x.data = svrfmt::DdsEncode(img, want.format, want.mips > 1);
+      }
+      svrfmt::ArchiveReplace(c, svrfmt::BundleWrite(t));
+      any = true;
+    }
+    svrfmt::ArchiveTouch(k);
+  }
+  if (!any)
+    return false;
+  svrfmt::ArchiveTouch(m.root);
+  const Bytes out = svrfmt::ArchiveSave(m);
+  if (out.size() != mnlay.size())
+    return false;
+  mnlay = out;
+  return true;
+}
+
 struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)

@@ -22,6 +22,7 @@
 #include "imgui_impl_win32.h"
 
 #include "arena_page.h"
+#include "backgrounds_page.h"
 #include "game_discs.h"
 #include "game_disc.h"
 #include "media.h"
@@ -147,7 +148,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kMedia, kSigns, kFiles, kDiscs, kDoctor, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kMedia, kSigns, kBackgrounds, kFiles, kDiscs, kDoctor, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -163,6 +164,7 @@ game_discs::Discs g_discs;
 mod_doctor::Page g_doctor;
 media_page::Page g_media;
 signs_page::Page g_signs;
+backgrounds_page::Page g_backgrounds;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 
@@ -204,6 +206,8 @@ void PageHome() {
        "Les portraits et les musiques d'entrée des catcheurs du jeu, en un seul pack."},
       {kSigns, "Crowd signs", "Pancartes", "The signs the crowd holds up for a superstar during his match.",
        "Les pancartes que la foule brandit pour un catcheur pendant son match."},
+      {kBackgrounds, "Menu backgrounds", "Fonds du menu", "The superstar on the main menu and title screen, drawn at each start.",
+       "Le catcheur du menu principal et de l'écran-titre, tiré au sort à chaque lancement."},
       {kFiles, "Game files", "Fichiers du jeu", "Look inside the game's archives (.pac) and export what's in them.",
        "Regarder dans les archives du jeu (.pac) et exporter ce qu'elles contiennent."},
       {kDiscs, "My game discs", "Mes disques de jeu", "Your other WWE games (ISO or folder), added once: the ports read them.",
@@ -420,9 +424,9 @@ void DrawUi() {
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
   const char *names_en[] = {"HOME",       "VIDEOS",     "TEXTURES",     "ARENAS", "SUPERSTARS",
-                            "NEW SUPERSTAR", "MEDIA", "SIGNS", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
+                            "NEW SUPERSTAR", "MEDIA", "SIGNS", "BACKGROUNDS", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
   const char *names_fr[] = {"ACCUEIL", "VIDÉOS",   "TEXTURES",   "ARÈNES",  "CATCHEURS",
-                            "NOUVEAU", "MÉDIA", "PANCARTES", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
+                            "NOUVEAU", "MÉDIA", "PANCARTES", "FONDS", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
   for (int i = 0; i < int(std::size(names_en)); ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
@@ -447,6 +451,10 @@ void DrawUi() {
   case kSigns:
     Title(g_fr ? "PANCARTES" : "CROWD SIGNS");
     g_signs.Draw(g_fr, g_device.Get(), g_disc, g_mods);
+    break;
+  case kBackgrounds:
+    Title(g_fr ? "FONDS DU MENU" : "MENU BACKGROUNDS");
+    g_backgrounds.Draw(g_fr, g_device.Get(), g_mods);
     break;
   case kFiles: PageFiles(); break;
   case kDiscs:

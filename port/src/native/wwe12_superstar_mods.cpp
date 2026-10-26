@@ -16,16 +16,19 @@
 // sub_8267CD30(sub_823F8270(place)) + 16 = number x 100 + attire), the path is made with that number instead.
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
+#include <rex/filesystem/devices/host_path_device.h>
 #include <rex/filesystem/entry.h>
 #include <rex/filesystem/file.h>
 #include <rex/filesystem/vfs.h>
@@ -47,6 +50,7 @@ using Bytes = std::vector<uint8_t>;
 constexpr const char *kPackName = "WWE12PCMODS";
 
 std::map<uint32_t, uint32_t> g_movies;  // added superstar -> the number of its own entrance video
+fs::path g_menu_dir;                    // the dressed menu files of this start, "" = the game's
 std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the save keeps it (286 bytes)
 std::map<uint32_t, Bytes> g_moves;      // ... its moves and entrance (CHAR / PRO) as the save keeps them (1068 bytes)
 Bytes g_cena_moves;                     // John Cena's (139), as the save keeps them: where they are is checked on his
@@ -298,6 +302,57 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       ec.clear();
       if (n)
         REXLOG_INFO("[superstar mods] signs mod {}: {} sign(s)", d.filename().string(), n);
+    }
+  }
+  // The main menu backgrounds mods (backgrounds/NN/menu.dds, title.dds).
+  std::vector<superstar_pack::Background> backgrounds;
+  {
+    std::vector<fs::path> bdirs;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Backgrounds", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec))
+        bdirs.push_back(it->path());
+    ec.clear();
+    std::sort(bdirs.begin(), bdirs.end());
+    for (const auto &d : bdirs) {
+      if (fs::exists(d / "disabled", ec))
+        continue;
+      std::vector<fs::path> one;
+      for (fs::directory_iterator it(d / "backgrounds", ec), end; !ec && it != end; it.increment(ec))
+        if (it->is_directory(ec))
+          one.push_back(it->path());
+      ec.clear();
+      std::sort(one.begin(), one.end());
+      for (const auto &b : one) {
+        superstar_pack::Background bg;
+        bg.key = d.filename().string();
+        if (!ReadHost(b / "menu.dds", bg.menu))
+          continue;
+        ReadHost(b / "title.dds", bg.title);
+        backgrounds.push_back(std::move(bg));
+      }
+      if (!one.empty())
+        REXLOG_INFO("[superstar mods] backgrounds mod {}: {} background(s)", d.filename().string(), one.size());
+    }
+  }
+  // One background drawn for this start (or the game's own): MnLayHD / MnLaySD.pac dressed, served from
+  // Documents\wwe12\menu_background ahead of the mods folder (Wwe12MountMenuBackground).
+  g_menu_dir.clear();
+  if (!backgrounds.empty()) {
+    const uint32_t seed = uint32_t(std::chrono::steady_clock::now().time_since_epoch().count() / 1000);
+    const size_t pick = (seed * 2654435761u >> 8) % (backgrounds.size() + 1);
+    const fs::path dir = user_root / "menu_background";
+    fs::remove_all(dir, ec);
+    if (pick > 0) {
+      int dressed = 0;
+      for (const char *rel : {"pac/menu/MnLayHD.pac", "pac/menu/MnLaySD.pac"}) {
+        Bytes f;
+        if (ReadGame(vfs, rel, f) && superstar_pack::DressMenu(f, backgrounds[pick - 1]) && WriteHost(dir / fs::path(rel), f))
+          ++dressed;
+      }
+      if (dressed)
+        g_menu_dir = dir;
+      REXLOG_INFO("[superstar mods] main menu background {} of {} ({}): {} file(s)", pick, backgrounds.size(),
+                  backgrounds[pick - 1].key, dressed);
     }
   }
   if (list.empty() && attires.empty() && media.empty() && signs.empty()) {
@@ -663,4 +718,14 @@ extern "C" REX_FUNC(sub_828ADFB8) {
     REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its moves and entrance made again", id);
   }
   __imp__sub_828ADFB8(ctx, base);
+}
+
+
+// The dressed menu files (a main menu background drawn for this start), served ahead of the mods folder.
+void Wwe12MountMenuBackground(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device) {
+  if (g_menu_dir.empty())
+    return;
+  auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, g_menu_dir, true);
+  if (!overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(overlay)))
+    REXLOG_WARN("[superstar mods] could not serve {}", rex::path_to_utf8(g_menu_dir));
 }
