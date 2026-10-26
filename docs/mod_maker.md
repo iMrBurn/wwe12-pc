@@ -555,8 +555,11 @@ les copies les plus récentes).
   avait déjà 12 catcheurs (avec Batista) : **la case DLC de l'écran de choix est limitée à 12** ; chaque ajout en chasse
   un (les divas ont leur case). Le jeu lit `/IGST/VOL0` à `VOL9` (boucle de 10 vers 0x8257AB78, chaîne 0x8202657C) :
   10 packs. **Suite : trouver dans le code de l'écran de choix la limite de 12 et la contourner (case agrandie ou case
-  « mods »), comme Kaiko (case EXTRA dans SvR 2011).** Portraits des catcheurs 100+ : seulement dans
-  `menu\menuHD.pac` / `menuSD.pac` (`SSFA` 0100…0343, 262 272 o), pas lus dans les DLC.
+  « mods »), comme Kaiko (case EXTRA dans SvR 2011).** Portraits des catcheurs 100+ : sur le disque seulement dans
+  `menu\menuHD.pac` / `menuSD.pac` (`SSFA` 0100…0343, 262 272 o), **mais le jeu les cherche aussi dans les packs**
+  (2026-10-26 : `sub_828B1428` / `sub_828AFE00` font `/SSFx/%04d` (table 0x83079B44), et `/SSFx/9000` (vide) si
+  l'entrée manque ; même chemin pour tous les numéros ≥ 50) : **Jericho placé au n° 104 a ses portraits (écran de
+  choix, écran VS), vérifié en jeu**. Pas de limite à 29 mods.
 - **Cause réelle (2026-10-24, sonde `wwe12_roster_probe`, `port/src/native/wwe12_roster_probe.cpp`)** : pas de limite de 12.
   L'écran de choix (constructeur `sub_82570BC8`, panneau par joueur `sub_825A1200`, grille `/MEFP/POSI` de
   `menu.pac` lue par `sub_828B69D8`, case DLC = type 3 testée par `sub_82567068`) prend ses candidats dans
@@ -850,7 +853,9 @@ places ×10, d'après le code de Kaiko).
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,
   divisions, classements), Créer un scénario (CAST).
-- **Arènes ajoutées** : l'écran des arènes d'un show de l'Univers est le même que celui des matchs
+- **Arènes ajoutées : retirées de l'Univers (décision de l'utilisateur, 2026-10-26, « c'est bugué »)** : l'écran
+  des arènes d'un show n'a plus que la page du jeu (indicateur 0x8324E51C = 1), et choisir un mode au menu principal
+  oublie l'arène ajoutée choisie avant (`sub_8253A028`). Avant : l'écran des arènes d'un show de l'Univers est le même que celui des matchs
   (`sub_825A67A0`) : les pages LB / RB y marchent déjà (TEST ARENA en page 2).
 - **Créer un scénario, liste LOCATION des scènes : mis de côté (décision de l'utilisateur)**, peu utile pour le
   risque (une histoire enregistrée avec une arène moddée, puis le mod retiré). Ce qu'on sait, pour reprendre :

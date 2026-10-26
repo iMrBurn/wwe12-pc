@@ -658,6 +658,10 @@ extern "C" REX_FUNC(sub_825A67A0) {
     SaveOriginal();
     if (g_saved) {
       BuildPages();
+      // Not in the Universe (*0x8324E51C == 1, wwe12_universe.cpp): its shows keep their stage number from week to
+      // week, and an added arena only plays while it is the one chosen last (decision of the user, 2026-10-26).
+      if (bd::mem::load<u32>(0x8324E51C) == 1)
+        g_pages.resize(1);
       g_page = 0;
       WritePage(0);
       REXLOG_INFO("[arena pages] arena select opened: {} page(s)", g_pages.size());
