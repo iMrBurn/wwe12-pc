@@ -163,6 +163,26 @@ struct PortInfo {
 // bytes (JboyWrite doesn't give these models back byte for byte).
 inline void ScreensTo12(svrfmt::ArcNode &ga) {
   constexpr size_t B = 8;
+  // WWE '12's 801 shows the live camera (or the arena's movie), its 808 the titantron; the 2K games' 801 is the big
+  // titantron wall and 808 a strip: swapped (WrestleMania 31: the wall behind the ramp showed the arena like a mirror).
+  {
+    const auto layout = [](const svrfmt::ArcNode &k) {
+      const Bytes d = svrfmt::ArchiveData(k);
+      return svrfmt::IsJboy(d) && std::search(d.begin(), d.end(), "layout_", "layout_" + 7) != d.end();
+    };
+    svrfmt::ArcNode *a = nullptr, *b = nullptr;
+    for (auto &k : ga.kids) {
+      if (k.id == 801 && layout(k))
+        a = &k;
+      if (k.id == 808 && layout(k))
+        b = &k;
+    }
+    if (a && b) {
+      std::swap(a->id, b->id);
+      std::sort(ga.kids.begin(), ga.kids.end(),
+                [](const svrfmt::ArcNode &x, const svrfmt::ArcNode &y) { return x.id < y.id; });
+    }
+  }
   for (auto &k : ga.kids) {
     if (k.id < 800 || k.id > 899)
       continue;
