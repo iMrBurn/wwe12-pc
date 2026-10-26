@@ -32,9 +32,11 @@
 #include <rex/logging/macros.h>
 
 #include "wwe12_graphics_menu.h"
+#include "wwe12_jukebox.h"
 
 REXCVAR_DECLARE(bool, wwe12_quit_entry);
 REXCVAR_DECLARE(bool, wwe12_graphics_menu);
+REXCVAR_DECLARE(bool, wwe12_jukebox_menu);
 
 namespace {
 
@@ -100,6 +102,26 @@ bool PatchGraphicsPages(std::vector<uint8_t> &d, size_t base) {
   return n == 3;
 }
 
+// OPTIONS > JUKEBOX (wwe12_jukebox_menu, wwe12_jukebox.cpp): the OPTIONS menu's CREDITS record
+// (label 41039, kind 5 = a screen, link 1315) becomes JUKEBOX (label kWwe12JukeboxText), linked to
+// 1304 like the GRAPHICS pages: the game's IN-GAME OPTIONS page, whose script is then replaced.
+bool PatchJukeboxEntry(std::vector<uint8_t> &d, size_t base) {
+  const uint32_t count = Be32(&d[base + 4]);
+  const size_t first = base + 0x10;
+  if (first + size_t(count) * kRecordSize > d.size())
+    return false;
+  for (uint32_t k = 0; k < count; ++k) {
+    uint8_t *r = &d[first + size_t(k) * kRecordSize];
+    if (Be32(r + 0x18) != 41039 || Be32(r + 0x54) != 5)
+      continue;
+    SetBe32(r + 0x18, kWwe12JukeboxText);
+    SetBe32(r + 0x6C, 1304);
+    SetBe32(r + 0x70, 2);
+    return true;
+  }
+  return false;
+}
+
 // Relabels the main menu's SHOP record of the table whose header is at 'base'.
 bool RelabelShop(std::vector<uint8_t> &d, size_t base) {
   const uint32_t count = Be32(&d[base + 4]);
@@ -123,7 +145,8 @@ bool RelabelShop(std::vector<uint8_t> &d, size_t base) {
 void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem *fs, const std::string &game_device,
                          const std::filesystem::path &user_root) {
   const bool native_graphics = REXCVAR_GET(wwe12_graphics_menu);
-  if ((!REXCVAR_GET(wwe12_quit_entry) && !native_graphics) || user_root.empty())
+  const bool jukebox = REXCVAR_GET(wwe12_jukebox_menu);
+  if ((!REXCVAR_GET(wwe12_quit_entry) && !native_graphics && !jukebox) || user_root.empty())
     return;
   std::vector<uint8_t> d;
   if (!ReadGameFile(fs, "game:\\pac\\menu\\menu.pac", d)) {
@@ -147,6 +170,10 @@ void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem *fs, const std::stri
     if (native_graphics && PatchGraphicsPages(d, p)) {
       ++patched;
       REXLOG_INFO("Menu : OPTIONS > GRAPHICS dans les menus du jeu (table à 0x{:X})", p);
+    }
+    if (jukebox && PatchJukeboxEntry(d, p)) {
+      ++patched;
+      REXLOG_INFO("Menu : OPTIONS > CREDITS devient JUKEBOX (table à 0x{:X})", p);
     }
     p += size_t(count) * kRecordSize;
   }

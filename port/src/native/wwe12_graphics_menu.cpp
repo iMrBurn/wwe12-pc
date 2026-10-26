@@ -435,6 +435,7 @@ uint32_t Wwe12RelabelGraphicsEntry(uint8_t *region_start, uint8_t *region_end) {
 
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
+#include "wwe12_jukebox.h"
 
 REX_EXTERN(__imp__sub_827E74A8);  // lua_tointeger (L, index)
 
@@ -536,18 +537,26 @@ void SaveNativeSettings() {
 // The page number our script passed (100 + tab), or -1. Natives get the Lua state in r3; the
 // argument is read with lua_tointeger(L, -1), as the game's own natives do.
 int NativePageArg(const PPCContext &ctx, u8 *base) {
-  if (!REXCVAR_GET(wwe12_graphics_menu) || g_native_tab < 0)
+  if (g_native_tab < 0 || (g_native_tab == kWwe12JukeboxPage ? !Wwe12JukeboxMenuEnabled()
+                                                              : !REXCVAR_GET(wwe12_graphics_menu)))
     return -1;
   PPCContext x = ctx;
   x.r4.u64 = ~uint64_t(0);  // index -1: the top of the Lua stack
   __imp__sub_827E74A8(x, base);
   const int arg = int(x.r3.u32);
+  if (arg == kNativePage + kWwe12JukeboxPage)
+    return kWwe12JukeboxPage;  // OPTIONS > JUKEBOX (wwe12_jukebox.cpp)
   return arg >= kNativePage && arg < kNativePage + 3 ? arg - kNativePage : -1;
 }
 
 }  // namespace
 
 void Wwe12GraphicsNativeDecide(uint32_t label) {
+  if (label == kWwe12JukeboxText && Wwe12JukeboxMenuEnabled()) {
+    g_pending_tab = kWwe12JukeboxPage;
+    BD_INFO("[graphics] jukebox page chosen");
+    return;
+  }
   if (!REXCVAR_GET(wwe12_graphics_menu))
     return;
   if (label >= kNativeTabText && label < kNativeTabText + 3) {
@@ -556,9 +565,27 @@ void Wwe12GraphicsNativeDecide(uint32_t label) {
   }
 }
 
-bool Wwe12GraphicsNativeEnabled() { return REXCVAR_GET(wwe12_graphics_menu); }
+bool Wwe12GraphicsNativeEnabled() { return REXCVAR_GET(wwe12_graphics_menu) || Wwe12JukeboxMenuEnabled(); }
 
 uint32_t Wwe12NativeGraphicsGuestText(uint32_t id) {
+  if (Wwe12JukeboxMenuEnabled()) {
+    const std::string text = Wwe12JukeboxText(id);
+    if (!text.empty()) {
+      // One 128-byte guest slot per id, rewritten when its text changes.
+      static std::map<u32, std::pair<u32, std::string>> s_slots;
+      auto &slot = s_slots[id];
+      if (!slot.first)
+        slot.first = REX_KERNEL_MEMORY()->SystemHeapAlloc(128, 0x20);
+      if (!slot.first)
+        return 0;
+      if (slot.second != text) {
+        std::memset(bd::mem::at<char>(slot.first), 0, 128);
+        std::memcpy(bd::mem::at<char>(slot.first), text.data(), std::min<size_t>(text.size(), 127));
+        slot.second = text;
+      }
+      return slot.first;
+    }
+  }
   if (id < kNativeTabText || id >= kNativeTextEnd || !REXCVAR_GET(wwe12_graphics_menu))
     return 0;
   const std::string text = NativeText(id);
@@ -584,7 +611,23 @@ uint32_t Wwe12NativeGraphicsGuestText(uint32_t id) {
 // luaL_loadbuffer (L, buffer, size, name): our page script instead of IN-GAME OPTIONS's.
 REX_EXTERN(__imp__sub_827E9418);
 extern "C" REX_FUNC(sub_827E9418) {
-  if (g_pending_tab >= 0 && REXCVAR_GET(wwe12_graphics_menu) &&
+  if (g_pending_tab == kWwe12JukeboxPage && ctx.r5.u32 == kIngameOptionsScriptSize &&
+      bd::mem::try_load<u8>(ctx.r4.u32) == 0x1B) {
+    g_pending_tab = -1;
+    size_t size = 0;
+    const uint8_t *script = Wwe12JukeboxPageScript(&size);
+    static u32 s_buffer = 0;
+    if (!s_buffer)
+      s_buffer = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(size), 0x20);
+    if (s_buffer) {
+      std::memcpy(bd::mem::at<u8>(s_buffer), script, size);
+      ctx.r4.u64 = s_buffer;
+      ctx.r5.u64 = size;
+      g_native_tab = kWwe12JukeboxPage;
+      BD_INFO("[graphics] jukebox page: script of {} bytes", size);
+    }
+  }
+  if (g_pending_tab >= 0 && g_pending_tab < 3 && REXCVAR_GET(wwe12_graphics_menu) &&
       ctx.r5.u32 == kIngameOptionsScriptSize && bd::mem::try_load<u8>(ctx.r4.u32) == 0x1B) {
     const int tab = g_pending_tab;
     g_pending_tab = -1;
@@ -614,6 +657,12 @@ extern "C" REX_FUNC(sub_82DEDD70) {
     return;
   }
   const u32 array = PageArray();
+  if (tab == kWwe12JukeboxPage) {
+    if (array)
+      Wwe12JukeboxPageInit(array);
+    ctx.r3.u64 = 0;
+    return;
+  }
   const u32 n = u32(g_native_rows.size());
   if (array)
     for (u32 r = 0; r < n; ++r) {
@@ -635,6 +684,12 @@ extern "C" REX_FUNC(sub_82DEC528) {
     return;
   }
   const u32 array = PageArray();
+  if (tab == kWwe12JukeboxPage) {
+    if (array)
+      Wwe12JukeboxPageUpdate(array);
+    ctx.r3.u64 = 0;
+    return;
+  }
   bool changed = false;
   for (u32 r = 0; array && r < g_native_rows.size(); ++r) {
     Setting &s = g_native_settings[g_native_rows[r]];

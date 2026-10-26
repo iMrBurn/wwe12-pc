@@ -25,6 +25,7 @@
 #include "gpu/imgui_overlay_drawer.h"
 #include "native/wwe12_display.h"
 #include "native/wwe12_graphics_menu.h"
+#include "native/wwe12_jukebox.h"
 #include <rex/input/input_system.h>
 #endif
 
@@ -240,6 +241,7 @@ class Wwe12App : public rex::ReXApp {
     });
     // OPTIONS > GRAPHICS (wwe12_graphics_menu.cpp): the game's own option pages, saved here.
     Wwe12GraphicsMenuInit(rex::filesystem::GetExecutableFolder() / "wwe12.toml");
+    Wwe12JukeboxInit(rex::filesystem::GetExecutableFolder() / "wwe12.toml");  // OPTIONS > JUKEBOX
     Wwe12DisplayInit(imgui_drawer());  // FPS counter (F2), CPU priority
     Wwe12KbdInit(window());  // physical keyboard in the game's letter grids (Create a Story...)
     if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
