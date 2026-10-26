@@ -133,6 +133,7 @@ struct Served {
 std::map<u32, Served> g_served;
 u32 g_mupa_sector = 0, g_mupa_units = 0;  // the rebuilt banner pack, appended to MatchHD.pac
 int g_chosen = -1;                        // the added arena chosen last (its index), -1: one of the game's
+bool g_reload_vs = false;                 // the match setup's VS screen to load again (another arena on the same stage)
 
 struct Tile {
   u32 stage, banner;  // banner: guest address of the texture name (0: the game's table is kept)
@@ -620,6 +621,8 @@ REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
 REX_EXTERN(__imp__sub_82780948);  // VS screen: load its layout "/MLYE/MB%02d", else MB00 (this + 768, stage)
 REX_EXTERN(__imp__sub_828916B8);  // match setup's VS screen: the same (this, stage, ?, ?)
+REX_EXTERN(__imp__sub_82574E50);  // match setup screen: update (loads the VS screen when its layer 16 isn't there)
+REX_EXTERN(__imp__sub_8288FE70);  // screen: is layer r4 (0-31) there (this, layer)
 REX_EXTERN(sub_82A8C070);         // XInputGetState(user, state) (hooked by wwe12_intros.cpp: call the hooked one)
 
 namespace {
@@ -731,13 +734,17 @@ extern "C" REX_FUNC(sub_825A56C8) {
   const u32 stage = ctx.r3.u32;
   if (IsAdded(stage)) {
     const int n = int(stage - kFirstAdded);
-    if (g_chosen != n)
+    if (g_chosen != n) {
       REXLOG_INFO("[arena pages] chosen: {} ({}), plays as stage {}", g_added[size_t(n)].name, g_added[size_t(n)].id,
                   g_added[size_t(n)].base);
+      g_reload_vs = true;
+    }
     g_chosen = n;
     Serve(g_added[size_t(n)].base, n);
     ctx.r3.u64 = g_added[size_t(n)].base;
   } else if (stage < kFirstAdded) {
+    if (g_chosen >= 0)
+      g_reload_vs = true;  // (from an added arena back to the game's)
     g_chosen = -1;
     Serve(stage, -1);  // (one of the game's: its own file back, if an added arena was in it)
   }
@@ -760,6 +767,27 @@ extern "C" REX_FUNC(sub_82780948) {
 extern "C" REX_FUNC(sub_828916B8) {
   OwnVsName(ctx);
   __imp__sub_828916B8(ctx, base);
+}
+
+// The match setup screen loads its VS screen only when its layer 16 isn't there yet (sub_82574E50 asks
+// sub_8288FE70): choosing an added arena after its base, or the base after it, kept the one shown (the stage number
+// is the same). After such a choice (g_reload_vs, set by sub_825A56C8) the question gets "no" once, during that
+// screen's update only; sub_828916B8 frees the one shown before making the new one.
+namespace {
+bool g_in_setup = false;
+}  // namespace
+extern "C" REX_FUNC(sub_82574E50) {
+  g_in_setup = true;
+  __imp__sub_82574E50(ctx, base);
+  g_in_setup = false;
+}
+extern "C" REX_FUNC(sub_8288FE70) {
+  const u32 layer = ctx.r4.u32;
+  __imp__sub_8288FE70(ctx, base);
+  if (g_in_setup && g_reload_vs && layer == 16 && ctx.r3.u32 != 0) {
+    g_reload_vs = false;
+    ctx.r3.u64 = 0;
+  }
 }
 
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
