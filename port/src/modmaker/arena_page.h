@@ -322,7 +322,8 @@ class Page {
         continue;
       const bool moved = !arena_.MoveOf(id).None();
       char label[96];
-      snprintf(label, sizeof(label), "%s%s##%u", name.c_str(), moved ? "  *" : "", id);
+      snprintf(label, sizeof(label), "%s%s%s##%u", name.c_str(), arena_.IsCopy(id) ? (fr ? " (copie)" : " (copy)") : "",
+               moved ? "  *" : "", id);
       if (ImGui::Selectable(label, ed_pick_ == int(id))) {
         ed_pick_ = int(id);
         ed_move_ = arena_.MoveOf(id);
@@ -347,6 +348,29 @@ class Page {
       if (changed) {
         arena_.SetMove(uint32_t(ed_pick_), ed_move_);
         view_stale_ = true;
+      }
+      // Another one of it (a second barricade, screen, ladder...), placed beside it; a copy can be taken away again.
+      if (ImGui::Button(fr ? "Dupliquer" : "Duplicate")) {
+        if (const uint32_t id = arena_.AddCopy(uint32_t(ed_pick_))) {
+          arena_.Build();
+          ed_models_.clear();
+          ed_pick_ = int(id);
+          ed_move_ = arena_.MoveOf(id);
+          view_stale_ = true;
+        }
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", fr ? "Ajoute une copie de cet objet dans l'arène, 3 m à côté : déplacez-la ensuite."
+                                   : "Adds a copy of this object to the arena, 3 m beside it: then move it.");
+      if (arena_.IsCopy(uint32_t(ed_pick_))) {
+        ImGui::SameLine();
+        if (ImGui::Button(fr ? "Supprimer la copie" : "Remove the copy")) {
+          arena_.RemoveCopy(uint32_t(ed_pick_));
+          arena_.Build();
+          ed_models_.clear();
+          ed_pick_ = -1;
+          view_stale_ = true;
+        }
       }
     } else {
       ImGui::TextDisabled("%s", fr ? "Choisissez un objet à gauche, puis déplacez-le, tournez-le ou cachez-le."

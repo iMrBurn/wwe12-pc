@@ -935,6 +935,10 @@ places ×10, d'après le code de Kaiko).
   poteaux, cordes, tapis) sont placées par le jeu lui-même : retirées de la liste. Le modèle recompressé est un peu
   plus gros (notre BPE ~10 % moins bon que celui de Yuke's) : `Fit` réduit au besoin une image pour tenir dans la
   taille d'origine (un fichier trop gros fait planter le décompresseur du jeu, `sub_827E1428`).
+- **Ajouter un objet** (bouton Dupliquer, `arena_edit.h` `AddCopy`) : une copie d'un objet de l'arène sous un numéro
+  libre (39-99 puis 300-799 ; 950-999 sont au ring), avec la ligne de son modèle recopiée dans la table 50001
+  (`<n> l(121) p`...), puis déplacée comme les autres. **Vu en jeu** (2026-10-26, bg13 : la barrière `ar_fence02`
+  copiée 110 cm au-dessus de l'originale, les deux dessinées). Une copie se retire (Supprimer la copie).
 - **REGARDER** (`look_page.h`) : les images du jeu par usage (portraits, bannières, écrans de chargement, pancartes,
   catcheur du menu, ceintures, logos des shows ; enregistrables en PNG) et les mods installés en 3D (catcheurs, tenues,
   arènes), et les animations (section suivante).
@@ -991,6 +995,20 @@ places ×10, d'après le code de Kaiko).
   cheveux, entrée et match contre Big Show : les cheveux bougent, rien ne s'étire.
 - **Pas encore** : les modèles FBX (os de cheveux à reconnaître et à changer en chaînes) ; les vêtements
   (les `R_Bone*` du corps de certains catcheurs : autre mécanisme, non étudié).
+
+## 6 quinvicies. Ajouter une tenue : recherche (2026-10-26, pas trouvé)
+
+- L'écran CHANGE ATTIRE ne vérifie pas l'existence des tenues quand on les fait défiler : une sonde sur
+  `sub_827D98D8` (le jeu demande si une entrée existe : « /SSFB/0161 », « /MLYE/... ») n'a vu **aucune** demande
+  « /EMD/... » ; seulement le portrait de la tenue suivante (/SSFB/1161, absent → celui de base). Le nombre de tenues
+  est donc connu d'avance.
+- Il n'est pas dans la fiche CHAR/DAT de `chEtc.pac` : ni octet, ni masque, ni moitié d'octet ne suit le nombre de
+  tenues des 72 catcheurs (1 : 49, 2 : 14, 3 : 2, 4 : 2). Les 4 nombres à +0xF0 (id × 10 + 1..4) sont là pour tous.
+- Les noms des tenues (« ORIGINAL ATTIRE », « Civilian Clothes », « Wrestling Gear », « Suit »...) sont une petite
+  table de textes de l'écran de choix (`string.pac` SDB/0000 enfant 3, entrées de 16 octets {décalage, longueur, id, 0},
+  ids 9 à 19) : le jeu a donc quelque part une table catcheur → tenues → nom, pas encore trouvée (ni dans les tables de
+  `image.bin` qui listent les catcheurs par numéro).
+- Suite possible : tracer en jeu la fonction de l'écran CHANGE ATTIRE (DROITE / GAUCHE) jusqu'à son maximum.
 
 ## 6 quatervicies. Types de match : état de la recherche (2026-10-26, rien de fait dans le jeu)
 

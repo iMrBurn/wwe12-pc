@@ -81,6 +81,7 @@ struct Move {
 
 struct Package {
   svrfmt::ArcNode *node = nullptr;
+  uint32_t id = 0;  // its child id (node found again when the list's children move: an object added or removed)
   std::vector<svrfmt::BundleTexture> textures, original;
   Bytes shipped;  // the package as stored in the shipped file (the blocks EncodeLike keeps)
   bool changed = false;
@@ -95,6 +96,8 @@ class Arena {
     textures_.clear();
     originals_.clear();
     moves_.clear();
+    copies_.clear();
+    flags_text_.clear();
     moves_changed_ = false;
     archive_ = svrfmt::Archive();
     if (!svrfmt::ArchiveOpen(file, archive_, error))
@@ -117,6 +120,7 @@ class Arena {
         continue;
       Package p;
       p.node = &k;
+      p.id = k.id;
       if (!svrfmt::BundleRead(svrfmt::ArchiveData(k), p.textures))
         continue;
       p.original = p.textures;
@@ -195,16 +199,99 @@ class Arena {
     moves_changed_ = true;
   }
   size_t Moved() const {
-    size_t n = 0;
+    size_t n = copies_.size();
     for (const auto &[id, m] : moves_)
-      n += !m.None();
+      n += !m.None() && !copies_.count(id);
     return n;
   }
+
+  // A copy of an object (the arena's own model, under a free child id, with the source's line of the flag table
+  // 50001), placed with SetMove like the others (it starts 3 m along x, beside its source). Its id, 0 if none is free.
+  uint32_t AddCopy(uint32_t source) {
+    if (archive_.root.kids.size() <= section_)
+      return 0;
+    auto &kids = archive_.root.kids[section_].kids;
+    Bytes data;
+    for (auto &k : kids)
+      if (k.id == source)
+        data = originals_.count(source) ? originals_[source] : svrfmt::ArchiveData(k);
+    if (!svrfmt::IsJboy(data))
+      return 0;
+    auto used = [&](uint32_t id) {
+      for (auto &k : kids)
+        if (k.id == id)
+          return true;
+      return copies_.count(id) > 0;
+    };
+    uint32_t id = 0;  // (39-99 and 300-799 are free in the shipped arenas; 950-999 are the ring's)
+    for (uint32_t c = 39; c < 800 && !id; c = c == 99 ? 300 : c + 1)
+      if (!used(c))
+        id = c;
+    if (!id)
+      return 0;
+    copies_[id] = source;
+    originals_[id] = data;
+    Move m;
+    m.d[0] = 300;
+    moves_[id] = m;
+    moves_changed_ = true;
+    return id;
+  }
+  void RemoveCopy(uint32_t id) {
+    if (!copies_.erase(id) || archive_.root.kids.size() <= section_)
+      return;
+    originals_.erase(id);
+    moves_.erase(id);
+    auto &list = archive_.root.kids[section_];
+    for (size_t i = 0; i < list.kids.size(); ++i)
+      if (list.kids[i].id == id) {
+        svrfmt::ArchiveRemove(list, i);
+        break;
+      }
+    Repoint();
+    moves_changed_ = true;
+  }
+  bool IsCopy(uint32_t id) const { return copies_.count(id) > 0; }
 
   // The rebuilt file (the original bytes if nothing changed).
   Bytes Build() {
     if (moves_changed_ && archive_.root.kids.size() > section_) {
       moves_changed_ = false;
+      // the copies first: their children (in id order), their lines in the flag table
+      auto &list = archive_.root.kids[section_];
+      for (const auto &[id, source] : copies_) {
+        bool have = false;
+        for (auto &k : list.kids)
+          have = have || k.id == id;
+        std::string why;
+        if (!have)
+          svrfmt::ArchiveAdd(list, "", "", id, originals_[id], &why);
+      }
+      for (auto &k : list.kids) {
+        if (k.id != 50001)
+          continue;
+        if (flags_text_.empty())
+          flags_text_ = svrfmt::ArchiveData(k);
+        std::string t(flags_text_.begin(), flags_text_.end());
+        for (const auto &[id, source] : copies_) {  // "<source> flags" again as "<id> flags"
+          const std::string key = std::to_string(source);
+          size_t at = 0;
+          while (at < t.size()) {
+            size_t e = t.find('\n', at);
+            if (e == std::string::npos)
+              e = t.size();
+            const std::string line = t.substr(at, e - at);
+            if (line.rfind(key, 0) == 0 && (line.size() == key.size() || line[key.size()] == ' ' || line[key.size()] == '\r')) {
+              const std::string copy = std::to_string(id) + line.substr(key.size());
+              t.insert(e < t.size() ? e + 1 : e, (e < t.size() ? "" : "\n") + copy + (e < t.size() ? "\n" : ""));
+              break;
+            }
+            at = e + 1;
+          }
+        }
+        svrfmt::ArchiveReplace(k, Bytes(t.begin(), t.end()));
+      }
+      Repoint();
       for (auto &k : archive_.root.kids[section_].kids) {
         const auto o = originals_.find(k.id);
         if (o == originals_.end())
@@ -317,6 +404,17 @@ class Arena {
   }
 
  private:
+  // The texture packages' nodes again (an object added or removed moves the list's children).
+  void Repoint() {
+    if (archive_.root.kids.size() <= section_)
+      return;
+    for (auto &p : packages_)
+      for (auto &k : archive_.root.kids[section_].kids)
+        if (k.id == p.id)
+          p.node = &k;
+  }
+  std::map<uint32_t, uint32_t> copies_;  // copy's id -> its source's
+  Bytes flags_text_;                     // the flag table (50001) as shipped
   std::map<uint32_t, Bytes> originals_;  // the moved models as shipped
   std::map<uint32_t, Move> moves_;
   bool moves_changed_ = false;
