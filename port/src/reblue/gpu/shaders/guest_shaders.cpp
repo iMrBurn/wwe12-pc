@@ -29,6 +29,8 @@
 #define MINIZ_HEADER_FILE_ONLY
 #include "gpu/shaders/linked_shader_cache.h"
 #include "gpu/shaders/shader_linker.h"
+#include <unordered_set>
+bool Wwe12DxcAvailable();  // native/wwe12_dxc.cpp
 #include <miniz.h>
 #else
 #include <cstdio>
@@ -386,6 +388,18 @@ plume::RenderShader *GetOrLinkShader(GuestShader *gs, u32 specConstants) {
     sh = device->createShader(linkedCache + pre->dxilOffset, pre->dxilSize,
                               "main", plume::RenderShaderFormat::DXIL);
   } else {
+    // WWE '12: the shipped exe has no DXC (wwe12_prelink links every variant at build time).
+    // Without it a missing variant is not drawn, logged once.
+    if (!Wwe12DxcAvailable()) {
+      static std::mutex s_missing_mutex;
+      static std::unordered_set<u64> s_missing;
+      std::lock_guard missing_lock(s_missing_mutex);
+      if (s_missing.insert(entry->hash ^ (u64(masked) << 56)).second)
+        BD_WARN("GetOrLinkShader: no prelinked variant and no DXC, not drawn "
+                "(hash=0x{:016X} mask=0x{:X})",
+                entry->hash, masked);
+      return nullptr;
+    }
     BD_WARN("GetOrLinkShader: no prelinked variant, runtime DXC link "
             "(hash=0x{:016X} mask=0x{:X})",
             entry->hash, masked);

@@ -84,6 +84,40 @@ foreach(shader IN ITEMS copy_color_ps copy_depth_ps gamma_correction_ps pfx_occl
     wwe12_host_shader(${shader} ps_6_0)
 endforeach()
 
+# D3D12: every spec-constant variant of the game's DXIL shaders linked at build time by
+# wwe12_prelink (port/src/prelink), compiled into wwe12_d3d12.exe as linked_shader_cache.cpp, so
+# the exe needs no DXC at run time (dxcompiler.dll / dxil.dll are never shipped: Microsoft's
+# dxil.dll licence). The tool runs DXC on the build machine; the two DLLs land next to it in the
+# build folder, where the dev exe can still link a missing variant.
+if(PLUME_D3D12_ENABLED)
+    set(WWE12_DXC_DIR "${WWE12_XENOS_DIR}/thirdparty/dxc-bin")
+    set(WWE12_MINIZ_DIR "${WWE12_XENOS_DIR}/thirdparty/smol-v/testing/external/miniz")
+    add_executable(wwe12_prelink
+        "${WWE12_NATIVE_ROOT}/src/prelink/wwe12_prelink.cpp"
+        "${WWE12_NATIVE_ROOT}/src/reblue/gpu/shaders/dxc_link.cpp"
+        "${WWE12_NATIVE_ROOT}/generated/native/shader_cache.cpp"
+        "${WWE12_NATIVE_ROOT}/third_party/reblue_thirdparty/zstd/zstddeclib.c"
+        "${WWE12_MINIZ_DIR}/miniz.c")
+    target_include_directories(wwe12_prelink PRIVATE
+        "${WWE12_NATIVE_ROOT}/src/reblue"
+        "${WWE12_NATIVE_ROOT}/third_party/reblue_thirdparty/zstd"
+        "${WWE12_MINIZ_DIR}"
+        "${WWE12_DXC_DIR}/inc")
+    target_link_libraries(wwe12_prelink PRIVATE "${WWE12_DXC_DIR}/lib/x64/dxcompiler.lib")
+    add_custom_command(TARGET wwe12_prelink POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${WWE12_DXC_DIR}/bin/x64/dxcompiler.dll" "${WWE12_DXC_DIR}/bin/x64/dxil.dll"
+            $<TARGET_FILE_DIR:wwe12_prelink>
+        VERBATIM)
+    set(WWE12_LINKED_SHADER_CACHE "${WWE12_NATIVE_GEN}/linked_shader_cache.cpp")
+    add_custom_command(
+        OUTPUT "${WWE12_LINKED_SHADER_CACHE}"
+        COMMAND wwe12_prelink "${WWE12_LINKED_SHADER_CACHE}"
+        DEPENDS wwe12_prelink "${WWE12_NATIVE_ROOT}/generated/native/shader_cache.cpp"
+        COMMENT "Pre-linking the D3D12 spec-constant shader variants"
+        VERBATIM)
+endif()
+
 file(GLOB_RECURSE WWE12_NATIVE_SOURCES CONFIGURE_DEPENDS
     "${WWE12_NATIVE_ROOT}/src/reblue/*.cpp" "${WWE12_NATIVE_ROOT}/src/reblue/*.h"
     "${WWE12_NATIVE_ROOT}/src/native/*.cpp" "${WWE12_NATIVE_ROOT}/src/native/*.h")
@@ -102,16 +136,18 @@ function(wwe12_add_native_renderer target)
         target_compile_definitions(${target} PRIVATE REBLUE_D3D12=1)
         # dxc_link.cpp links the game's spec-constant shaders at run time (DXC, dxcompiler.dll).
         target_include_directories(${target} PRIVATE "${WWE12_XENOS_DIR}/thirdparty/dxc-bin/inc")
-        target_link_libraries(${target} PRIVATE d3d12 dxgi dxguid
-            "${WWE12_XENOS_DIR}/thirdparty/dxc-bin/lib/x64/dxcompiler.lib")
-        # miniz (public domain), for re:Blue's pre-linked shader cache (empty for WWE '12).
-        set(miniz_dir "${WWE12_XENOS_DIR}/thirdparty/smol-v/testing/external/miniz")
-        target_include_directories(${target} PRIVATE "${miniz_dir}")
-        target_sources(${target} PRIVATE "${miniz_dir}/miniz.c")
+        # dxcompiler.dll is loaded only when a variant is missing from the pre-linked cache (dev
+        # builds): the shipped exe starts without it (guest_shaders.cpp checks before linking).
+        target_link_libraries(${target} PRIVATE d3d12 dxgi dxguid delayimp
+            "${WWE12_DXC_DIR}/lib/x64/dxcompiler.lib")
+        target_link_options(${target} PRIVATE "-Wl,/DELAYLOAD:dxcompiler.dll")
+        # miniz (public domain) unpacks the pre-linked cache.
+        target_include_directories(${target} PRIVATE "${WWE12_MINIZ_DIR}")
+        target_sources(${target} PRIVATE "${WWE12_MINIZ_DIR}/miniz.c" "${WWE12_LINKED_SHADER_CACHE}")
     else()
         set(host_shaders ${WWE12_HOST_SHADER_HEADERS})
         # re:Blue's DXIL linker serves the D3D12 exe only.
-        list(FILTER sources EXCLUDE REGEX "/gpu/shaders/(shader_linker|dxc_link|linked_shader_cache_empty)\\.(cpp|h)$")
+        list(FILTER sources EXCLUDE REGEX "/gpu/shaders/(shader_linker|dxc_link)\\.(cpp|h)$")
     endif()
     target_sources(${target} PRIVATE
         ${sources}

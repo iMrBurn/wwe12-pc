@@ -185,11 +185,7 @@ if(WIN32 AND WWE12_NATIVE_RENDERER AND WWE12_D3D12_EXE AND TARGET wwe12_recomp)
             PREFIX "icons")
     endif()
     rexglue_configure_target(wwe12_d3d12 GPU_PLUGINS xenos)
-    # Compilateur de shaders D3D12 (re:Blue lie les shaders du jeu à l'exécution), à côté de l'exe.
-    set(WWE12_DXC_BIN "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/reblue-XenosRecomp/thirdparty/dxc-bin/bin/x64")
-    add_custom_command(TARGET wwe12_d3d12 POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${WWE12_DXC_BIN}/dxcompiler.dll" "${WWE12_DXC_BIN}/dxil.dll"
-            $<TARGET_FILE_DIR:wwe12_d3d12>
-        VERBATIM)
+    # Ses shaders sont pré-liés à la compilation (wwe12_prelink, cmake/native_renderer.cmake) : les
+    # DLL de DXC ne sont pas livrées. Elles restent dans le dossier de compilation (copiées par
+    # wwe12_prelink), où l'exe de dev peut encore lier une variante manquante.
 endif()
