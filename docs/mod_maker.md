@@ -794,6 +794,20 @@ places ×10, d'après le code de Kaiko).
   la base est retiré quand le jeu d'origine n'en a pas (AJ Styles n'en a pas et s'affiche bien) ; à retester ;
   (3) un rectangle noir au milieu de l'écran VS (pas encore regardé).
 
+- **Ports de SvR 2011 : visage, yeux, mains (2026-10-26, vérifié en rendu hors du jeu, pas encore en jeu)** :
+  (1) **cheveux** : le portage ne convertissait que le corps (0) ; la pièce 10000 (cheveux) de la base restait et
+  prenait ses couleurs dans l'image de SvR (CM Punk : cheveux de travers) → les cheveux de SvR sont convertis aussi
+  (matériau des cheveux de la base) ; (2) **cils** : la pièce 20000 de la base (cils) dessinait des anneaux sombres
+  sur l'image de SvR, et celle de SvR (4 morceaux autour des yeux) couvrait les yeux → **retirée** (des tenues de
+  WWE '12 n'en ont pas : Michael Cole, Lawler, l'arbitre, Sin Cara) ; (3) **yeux** : SvR a deux morceaux (globes +
+  voile plat brillant, ajouté par-dessus en SvR) ; le voile, avec le matériau opaque de l'œil de WWE '12, couvrait les
+  yeux → retiré ; les yeux suivent la tête (pas leurs propres articulations) ; (4) **mains** : CM Punk a une pièce
+  `blood_hand` (calque de sang rouge, montré en SvR seulement quand il saigne) → retirée (rendue telle quelle :
+  mains rouges aux doigts pointus) ; les vraies mains d'Orton utilisent aussi les images BloodHand : gardées ;
+  (5) les trois masques (Mask1-3). Les 93 catcheurs de SvR 2011 passent le portage sans erreur. Reste à voir en jeu ;
+  les yeux de CM Punk paraissent encore clairs dans l'aperçu (Orton correct). Le `Mask` (512 × 512, paquet 10) de la
+  base est gardé : SvR a un `Mk` aux canaux différents (essayé puis retiré).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

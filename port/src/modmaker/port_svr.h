@@ -264,6 +264,13 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
     } else if (p >= 0 && size_t(p) < i) {
       rot[i] = rot[size_t(p)];
     }
+    // The eyes move with the head (the face round them does): placed by their own joints, the two games' eye joints
+    // not being where the eyeballs are alike, they ended up inside the head (CM Punk of SvR: white eyes).
+    if ((svr.nodes[i].name == "l_eye" || svr.nodes[i].name == "r_eye") && p >= 0 && size_t(p) < i) {
+      rot[i] = rot[size_t(p)];
+      move[i] = move[size_t(p)];
+      continue;
+    }
     M4 to, from, x10;
     x10.m[0] = x10.m[5] = x10.m[10] = 10;
     for (int q = 0; q < 3; ++q) {
@@ -290,6 +297,11 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
     out.parts.push_back(std::move(q));
   }
   part_of.resize(svr.meshes.size(), 0);
+  std::vector<int> svr_part_of;  // (SvR's part of each mesh)
+  for (size_t pi = 0; pi < svr.parts.size(); ++pi)
+    for (uint32_t k = 0; k < svr.parts[pi].meshes; ++k)
+      svr_part_of.push_back(int(pi));
+  svr_part_of.resize(svr.meshes.size(), 0);
   // The base's meshes by part, and their centres.
   std::vector<int> base_part;
   for (size_t i = 0; i < base.parts.size(); ++i)
@@ -299,6 +311,14 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
 
   for (size_t mi = 0; mi < svr.meshes.size(); ++mi) {
     const svrfmt::Mesh &src = svr.meshes[mi];
+    // SvR's blood layer on the hands (a part named "blood_hand": yDefault meshes over the hands, painted plain red,
+    // shown in SvR only when the superstar bleeds; WWE '12 has its own blood): left out, else red hands with pointed
+    // fingers (CM Punk of SvR, 2026-10-26). (Other superstars' real hands use BloodHand pictures too: Orton's.)
+    if (size_t(svr_part_of[mi]) < svr.parts.size() && svr.parts[size_t(svr_part_of[mi])].name == "blood_hand") {
+      if (size_t(part_of[mi]) < out.parts.size() && out.parts[size_t(part_of[mi])].meshes)
+        --out.parts[size_t(part_of[mi])].meshes;
+      continue;
+    }
     svrfmt::Mesh dst = src;
     // Vertices into WWE '12's pose: the blend of their bones' moves.
     for (size_t k = 0; k < src.verts.size(); ++k) {
@@ -418,6 +438,44 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
                            tm.shader + " of base mesh " + std::to_string(best));
     out.meshes.push_back(std::move(dst));
   }
+  // SvR's eyes are two meshes, the eyeballs and a flat glossy layer over them (drawn additively in SvR); WWE '12's
+  // one: the layer, given the eyeballs' opaque material, covered them (CM Punk of SvR: white eyes): left out.
+  {
+    std::vector<size_t> eyes;
+    for (size_t i = 0; i < out.meshes.size(); ++i)
+      if (out.meshes[i].shader == "yCh_Reflect")
+        eyes.push_back(i);
+    if (eyes.size() > 1) {
+      size_t first = 0;
+      for (size_t pi = 0; pi < out.parts.size(); ++pi) {
+        const size_t end = first + out.parts[pi].meshes;
+        for (size_t i = end; i-- > first;) {
+          const auto &m = out.meshes[i];
+          if (m.shader != "yCh_Reflect" || m.verts.empty())
+            continue;
+          float lo = 1e9f, hi = -1e9f;
+          for (const auto &v : m.verts) {
+            lo = std::min(lo, v.pos[2]);
+            hi = std::max(hi, v.pos[2]);
+          }
+          if (hi - lo < 1.0f && eyes.size() > 1) {  // (flat: the layer)
+            out.meshes.erase(out.meshes.begin() + long(i));
+            --out.parts[pi].meshes;
+            eyes.pop_back();
+          }
+        }
+        first += out.parts[pi].meshes;
+      }
+    }
+  }
+  // Parts left without a mesh (the blood layers'): removed, the later parts' meshes told their new number.
+  for (size_t i = out.parts.size(); i-- > 0;)
+    if (!out.parts[i].meshes) {
+      out.parts.erase(out.parts.begin() + long(i));
+      for (auto &m : out.meshes)
+        if (m.raw.size() >= 0x64 && svrfmt::Be32(&m.raw[0x60]) > i)
+          svrfmt::PutBe32(&m.raw[0x60], svrfmt::Be32(&m.raw[0x60]) - 1);
+    }
   out.w12 = true;
   if (rep)
     rep->meshes = int(out.meshes.size());
@@ -478,6 +536,26 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
   if (!ConvertModel(ms, mb, mo, rep))
     return fail("the model can't be converted");
   svrfmt::ArchiveReplace(*bm, svrfmt::JboyWrite(mo));
+  // The hair (10000) as SvR has it too: the base's takes its colours from the colour picture, which is SvR's now
+  // (CM Punk of SvR: hair in the wrong place, 2026-10-26). Converted on the base's hair (its material); kept when it
+  // can't be. The base's eyelashes (20000) are left out: on SvR's picture they drew dark rings round the eyes, and
+  // SvR's 20000 (four pieces round the eyes) covered them; some of WWE '12's own attires have none (Michael Cole,
+  // Jerry Lawler, the referee, Sin Cara).
+  for (size_t i = 0; i < base.kids.size(); ++i)
+    if (base.kids[i].id == 20000) {
+      svrfmt::ArchiveRemove(base, i);
+      break;
+    }
+  for (uint32_t id : {10000u}) {
+    svrfmt::ArcNode *s = child(svr, id), *b = child(base, id);
+    svrfmt::Model xs, xb, xo;
+    Report extra;
+    if (!s || !b || !svrfmt::JboyRead(svrfmt::ArchiveData(*s), xs, &e) ||
+        !svrfmt::JboyRead(svrfmt::ArchiveData(*b), xb, &e) || xs.w12 || !ConvertModel(xs, xb, xo, &extra))
+      continue;
+    svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(xo));
+    rep->textures.insert(rep->textures.end(), extra.textures.begin(), extra.textures.end());
+  }
   // Colour and masks as SvR has them (same bundle format), all three masks: the base's Mask3 (15) fits the base's
   // colour picture, not SvR's (CM Punk of SvR came out with white eyes and a wrong face, 2026-10-26). The colour in
   // the base's DDS format (WWE '12: DXT1, half of SvR's DXT5) when it differs, so it keeps its full size in the
