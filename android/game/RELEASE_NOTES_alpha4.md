@@ -59,8 +59,9 @@ saves and settings. If you have alpha 3, the launcher offers it by itself (**UPD
 
 ## Known issues
 
-- **Stuck after a match** (the winner freezes, no victory scene, cannot leave). We reproduced it and
-  are working on it. If it happens to you, please send the log (see below).
+- **Stuck after a match** (the winner freezes, no victory scene, cannot leave). It comes from the
+  instant replay after the match: its playback never starts on Android. **For now, turn the instant
+  replay off in the game's options**: the match then ends normally. We are working on a fix.
 - No PlayStation button icons yet (Xbox icons only).
 - Uninstalling the app deletes its folder (`Android/data/io.github.imrburn.wwe12`): your saves and
   any game files copied there. Updating keeps them. Export a backup first (MY SAVES).
