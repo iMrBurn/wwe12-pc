@@ -583,6 +583,8 @@ inline std::vector<uint8_t> UvMask(const std::vector<UvTri> &tris, int w, int h)
 // SvR's with the colour's; SvR's normal alpha (the shine) is near black there, so every strand fragment was thrown
 // away (CM Punk of SvR: long hair invisible, only the scalp; RenderDoc 2026-10-26, pixel shader Kill on
 // normal.a * vertex alpha). The normal map's alpha under the hair's UVs: SvR's colour alpha (averaged down).
+// Its blue there is no normal either: WWE '12's hair has it dark, about the hair colour's brightness (CM Punk: 15 for
+// a colour of 13), and full blue (SvR's) made the hair shine blond and blotchy: the colour's brightness.
 inline Bytes HairCut(const Bytes &normal, const Bytes &colour, const std::vector<UvTri> &hair) {
   svrfmt::Image n, c;
   svrfmt::DdsInfo ni;
@@ -598,11 +600,18 @@ inline Bytes HairCut(const Bytes &normal, const Bytes &colour, const std::vector
       const int cx0 = px * c.w / n.w, cx1 = std::max(cx0 + 1, (px + 1) * c.w / n.w);
       const int cy0 = py * c.h / n.h, cy1 = std::max(cy0 + 1, (py + 1) * c.h / n.h);
       unsigned sum = 0, cnt = 0;
+      double lum = 0;
       for (int y = cy0; y < cy1 && y < c.h; ++y)
-        for (int x = cx0; x < cx1 && x < c.w; ++x, ++cnt)
-          sum += c.rgba[(size_t(y) * c.w + x) * 4 + 3];
-      if (cnt)
-        n.rgba[(size_t(py) * n.w + px) * 4 + 3] = uint8_t((sum + cnt / 2) / cnt);
+        for (int x = cx0; x < cx1 && x < c.w; ++x, ++cnt) {
+          const uint8_t *p = &c.rgba[(size_t(y) * c.w + x) * 4];
+          sum += p[3];
+          lum += 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2];
+        }
+      if (cnt) {
+        uint8_t *q = &n.rgba[(size_t(py) * n.w + px) * 4];
+        q[2] = uint8_t(std::min(255.0, lum / cnt + 0.5));
+        q[3] = uint8_t((sum + cnt / 2) / cnt);
+      }
     }
   return svrfmt::DdsEncode(n, ni.format, ni.mips > 1);
 }
