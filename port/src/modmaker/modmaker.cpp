@@ -210,8 +210,11 @@ void PageHome() {
        "Les pancartes que la foule brandit pour un catcheur pendant son match."},
       {kBackgrounds, "Menu backgrounds", "Fonds du menu", "The superstar on the main menu and title screen, drawn at each start.",
        "Le catcheur du menu principal et de l'écran-titre, tiré au sort à chaque lancement."},
-      {kLook, "Look", "Regarder", "The game's pictures by what they are for (save one as PNG), and the installed mods in 3D.",
-       "Les images du jeu rangées par usage (à enregistrer en PNG), et les mods installés en 3D."},
+      {kLook, "Look", "Regarder",
+       "The game's pictures by what they are for (save one as PNG), the installed mods in 3D, and the game's "
+       "animations played on a superstar.",
+       "Les images du jeu rangées par usage (à enregistrer en PNG), les mods installés en 3D, et les animations du jeu "
+       "jouées par un catcheur."},
       {kFiles, "Game files", "Fichiers du jeu", "Look inside the game's archives (.pac) and export what's in them.",
        "Regarder dans les archives du jeu (.pac) et exporter ce qu'elles contiennent."},
       {kDiscs, "My game discs", "Mes disques de jeu", "Your other WWE games (ISO or folder), added once: the ports read them.",
@@ -547,6 +550,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   g_arenas.discs_ = &g_discs;
   g_videos.discs_ = &g_discs;
   g_new_star.discs_ = &g_discs;
+  // (test aid: WWE12_MM_PAGE=<page number> opens on that page)
+  if (const char *pg = getenv("WWE12_MM_PAGE"))
+    g_page = Page(std::clamp(atoi(pg), 0, int(kAbout)));
 
   WNDCLASSEXW wc{sizeof(wc)};
   wc.style = CS_CLASSDC;

@@ -933,11 +933,39 @@ places ×10, d'après le code de Kaiko).
   boîtes de visibilité de 50020 (par nom de nœud) ne bougent pas avec l'objet.
 - **REGARDER** (`look_page.h`) : les images du jeu par usage (portraits, bannières, écrans de chargement, pancartes,
   catcheur du menu, ceintures, logos des shows ; enregistrables en PNG) et les mods installés en 3D (catcheurs, tenues,
-  arènes). Pas encore : les animations jouées sur un catcheur.
+  arènes), et les animations (section suivante).
 - **Projets** (NOUVEAU CATCHEUR) : `.wwe12proj` (lignes clé=valeur : base, apparence et ses fichiers, nom, attributs,
   portrait, tenue) enregistré et rouvert.
 - **Manuel** : la page AIDE a des guides pour toutes les pages (FBX, tenues, média, pancartes, fonds, vérification).
 - **Modes simples** : NOUVEAU CATCHEUR et Nouvelle arène sont des assistants pas à pas.
+
+## 6 duovicies. Animations jouées sur un catcheur (2026-10-26, vu dans le Mod Maker)
+
+- **Format** : les animations de WWE '12 ne sont pas les YMBs/YMKs de SvR 2011 mais des **YANM** (Yuke's, gros-boutiste),
+  le même format que WWE '13 : le décodeur de Kaiko (`port/tools/yanm_decode.py` de son portage SvR 2011, rétro-ingénierie
+  de l'exe de WWE '13) les lit tels quels. Porté en C++ : `port/src/modmaker/yanm.h` (crédit Kaiko).
+- **Où** : `pac/m.pac` (270 Mo), groupes `ZMVM` (les banques du move-set : STAT postures, BASE provocations, FINI
+  finitions, SPE1/2, STN1/2, GRND, CORN, CETB, ROPE, APRO/APR2, DIVI, RUN, TEAM, WEAP, ANAS/ANA2, ABIL, RUMB, LADR,
+  CELL), `ZMOT` (CA01-CA92, WE00-04, UN00, RES0), `ZMBS`, `ZCAF`, `CAV` : 50 503 enregistrements en tout. Chaque entrée est
+  un arbre PACH dont les feuilles sont les enregistrements ; l'id de la feuille = le numéro de l'animation
+  (ex. ZMVM/FINI 33002 = Attitude Adjustment de Cena).
+- **Enregistrement** : en-tête {taille, total, 0x20, premier bloc ; +0x20 u16 sorte ; +0x48 nombre de blocs ; +0x4C le
+  numéro en texte}, table des blocs à 0x70 (0x28 octets : +4 nom sur 8 caractères, +0x24 décalage). Nom du bloc
+  « PPPPWWWW » : P la partie, W la personne (0000 celui qui fait la prise, 0001 l'adversaire, 0002...). Un bloc = un
+  morceau YANM : pistes nommées par un hachage du nom d'os (`h = rotl(h, 7) ^ c`), 24 pistes (« Bip », « Bip Pelvis »,
+  jambes, colonne, bras, « vector »), ou un gabarit (en-tête mode ≠ 0) ; clés en angles d'Euler 8/16 bits, charnières à
+  un axe, positions en deltas ; images à 60 Hz. Les rotations remplacent celle de l'os au repos, les positions
+  s'ajoutent à sa translation ; les os hors piste (aides `_x`, `_m`, visage, doigts) gardent leur pose de repos.
+- **Vue** (`arena_view.h`, `keep_skin` + `SetPose`) : chaque modèle d'une tenue a son squelette (table des nœuds, local
+  = T(t) Rz Ry Rx) ; ses sommets sont dans la pose de repos ; palette du maillage → os = palette[emplacement] − 1 ;
+  déformation sur le CPU (≈ 15 000 sommets), tampon dynamique. Un 2e catcheur (`Add`, personne 1) joue la piste de
+  l'adversaire, face à lui (les positions des deux pistes sont dans le même repère).
+- **Page** : REGARDER > Animations : catcheur et tenue, adversaire, catégorie, numéro, parties ; lecture, image,
+  vitesse, boucle, caméra qui suit les hanches. Aides de test : `WWE12_MM_PAGE=9` et
+  `WWE12_MM_ANIM=<catégorie>,<numéro>[,<partie>,<image>]`.
+- **Pas encore** : les noms des prises (table des prises du jeu), la cinématique inverse des pieds (pistes 0x0001, non
+  vues dans les banques ZMVM), les doigts, les animations d'entrée (autres fichiers), les cheveux et vêtements qui
+  bougent.
 
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 

@@ -80,6 +80,33 @@ class GameDisc {
     return ReadAt(uint64_t(it.sector) * 2048, it.size, out);
   }
 
+  // `size` bytes of a file from `at` (a part of a big .pac, m.pac's 270 MB).
+  bool ReadPart(const std::string &path, uint64_t at, uint32_t size, std::vector<uint8_t> &out) const {
+    out.clear();
+    if (!folder_.empty()) {
+      std::ifstream f(folder_ / path, std::ios::binary);
+      if (!f)
+        return false;
+      f.seekg(std::streamoff(at));
+      out.resize(size);
+      f.read(reinterpret_cast<char *>(out.data()), size);
+      return bool(f);
+    }
+    Item it;
+    if (iso_.empty() || !Find(path, it) || it.dir || at + size > it.size)
+      return false;
+    return ReadAt(uint64_t(it.sector) * 2048 + at, size, out);
+  }
+  uint64_t SizeOf(const std::string &path) const {
+    if (!folder_.empty()) {
+      std::error_code ec;
+      const auto n = fs::file_size(folder_ / path, ec);
+      return ec ? 0 : n;
+    }
+    Item it;
+    return !iso_.empty() && Find(path, it) && !it.dir ? it.size : 0;
+  }
+
   // The file names in a disc folder ("movies/titantron").
   std::vector<std::string> List(const std::string &dir) const {
     std::vector<std::string> names;

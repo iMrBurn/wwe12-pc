@@ -5,6 +5,8 @@
 // placed by an animation (light rigs, beams: left out, they sit at the centre until the game moves them), "e"
 // entrance only, "g" match only. Pictures come from the arena's texture packages (sampDiffusePrm = the slot in the
 // model's texture list); light maps and shader effects are not drawn: it's a preview, not the game's look.
+// Superstars can be posed (keep_skin before Load, then SetPose: the game's motions, yanm.h): each model's node table
+// is its skeleton (local = T(t) Rz Ry Rx, y down), its vertices sit in the bind pose, skinned on the CPU.
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -19,11 +21,13 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "svrfmt/archive.h"
 #include "svrfmt/jboy.h"
 #include "svrfmt/texture.h"
+#include "yanm.h"
 
 namespace arena_view {
 
@@ -80,9 +84,18 @@ struct Vtx {
   uint32_t color;  // RGBA8
 };
 
+// A bone's pose from a motion: its local rotation (replacing the bind one) and an offset added to its translation.
+struct BonePose {
+  bool has_rot = false, has_pos = false;
+  yanm::Q rot{0, 0, 0, 1};
+  yanm::V pos{0, 0, 0};
+};
+
 class View {
  public:
   bool show_entrance = false;  // entrance-only models (stage, ramp lights...) instead of match-only ones
+  bool keep_skin = false;      // (before Load) keep what SetPose needs: the skeletons, the bind-pose vertices
+  bool show_others = true;     // the superstars added with Add drawn
 
   // Reads every model of an arena file (or of `section`, an entry of another pac: a superstar's attire) and
   // uploads it. False (and why) if nothing could be read.
@@ -91,8 +104,25 @@ class View {
     dev->GetImmediateContext(&ctx_);
     draws_.clear();
     textures_.clear();
+    skels_.clear();
     if (!CreatePipeline(error))
       return false;
+    lo_[0] = lo_[1] = lo_[2] = 1e30f;
+    hi_[0] = hi_[1] = hi_[2] = -1e30f;
+    if (!Add(file, error, section, 0))
+      return false;
+    ResetCamera();
+    return true;
+  }
+
+  // Another superstar in the same view (after Load, keep_skin): `person` 1 = the other person of a two-person
+  // motion, posed apart (SetPose's person). Remove takes him away.
+  bool Add(const Bytes &file, std::string *error, size_t section, int person) {
+    if (!ctx_)
+      return false;
+    Remove(person);
+    tex_prefix_ = std::to_string(person) + ":";
+    const size_t before = draws_.size();
     svrfmt::Archive a;
     if (!svrfmt::ArchiveOpen(file, a, error) || a.root.kids.size() <= section)
       return false;
@@ -115,8 +145,6 @@ class View {
             dds[Lower(x.name)] = std::move(x.data);  // (models name them in another case: "mf01" for "MF01")
       }
     }
-    lo_[0] = lo_[1] = lo_[2] = 1e30f;
-    hi_[0] = hi_[1] = hi_[2] = -1e30f;
     for (auto &k : stg.kids) {
       const Bytes data = svrfmt::ArchiveData(k);
       if (!svrfmt::IsJboy(data))
@@ -127,16 +155,50 @@ class View {
       const Flags f = flags.count(k.id) ? flags[k.id] : Flags{};
       if (f.animated)
         continue;
+      int skel = -1;
+      if (keep_skin && !m.nodes.empty()) {
+        Skel sk;
+        sk.person = person;
+        for (const auto &n : m.nodes) {
+          sk.names.push_back(n.name);
+          sk.parent.push_back(n.parent);
+          sk.t.push_back({n.t[0], n.t[1], n.t[2]});
+          sk.r.push_back(yanm::Euler(n.r[0], n.r[1], n.r[2]));
+        }
+        const auto bind = sk.World({});
+        for (const auto &b : bind)
+          sk.inv_bind.push_back(Inverse(b));
+        skel = int(skels_.size());
+        skels_.push_back(std::move(sk));
+      }
       for (const auto &s : m.meshes)
-        AddMesh(k.id, m, s, f, dds);
+        AddMesh(k.id, m, s, f, dds, skel);
     }
-    if (draws_.empty()) {
+    if (draws_.size() == before) {
       if (error)
         *error = "no models";
       return false;
     }
-    ResetCamera();
     return true;
+  }
+  void Remove(int person) {
+    std::vector<int> remap(skels_.size(), -1);
+    std::vector<Skel> keep;
+    for (size_t i = 0; i < skels_.size(); ++i)
+      if (skels_[i].person != person)
+        remap[i] = int(keep.size()), keep.push_back(std::move(skels_[i]));
+    skels_ = std::move(keep);
+    std::vector<Draw> left;
+    for (auto &d : draws_) {
+      if (d.skel >= 0 && remap[size_t(d.skel)] < 0)
+        continue;
+      if (d.skel >= 0)
+        d.skel = remap[size_t(d.skel)];
+      left.push_back(std::move(d));
+    }
+    draws_ = std::move(left);
+    for (auto it = textures_.begin(); it != textures_.end();)
+      it = it->first.rfind(std::to_string(person) + ":", 0) == 0 && person ? textures_.erase(it) : std::next(it);
   }
 
   void ResetCamera() {
@@ -206,6 +268,8 @@ class View {
       for (const auto &d : draws_) {
         if (d.flags.additive != (pass == 1))
           continue;
+        if (d.skel >= 0 && skels_[size_t(d.skel)].person != 0 && !show_others)
+          continue;
         if (show_entrance ? d.flags.match_only : d.flags.entrance_only)
           continue;
         for (int mirror = 0; mirror < (d.flags.mirrored ? 2 : 1); ++mirror) {
@@ -264,6 +328,64 @@ class View {
     return true;
   }
 
+  // The skinned models posed: bones not in `pose` keep their bind pose (an empty pose = the bind pose).
+  bool Posable() const { return !skels_.empty(); }
+  void SetPose(const std::map<std::string, BonePose> &pose, int person = 0) {
+    std::vector<std::vector<M34>> skin(skels_.size());
+    bool first = true;
+    for (size_t i = 0; i < skels_.size(); ++i) {
+      if (skels_[i].person != person)
+        continue;
+      const auto world = skels_[i].World(pose);
+      if (person == 0 && std::exchange(first, false))
+        for (size_t b = 0; b < world.size(); ++b)
+          if (skels_[i].names[b] == "Bip")
+            for (int c = 0; c < 3; ++c)
+              hips_[c] = world[b].m[c][3];
+      skin[i].resize(world.size());
+      for (size_t b = 0; b < world.size(); ++b)
+        skin[i][b] = MulM(world[b], skels_[i].inv_bind[b]);
+    }
+    std::vector<Vtx> v;
+    for (auto &d : draws_) {
+      if (d.skel < 0 || !d.vb_dynamic || skels_[size_t(d.skel)].person != person)
+        continue;
+      const auto &S = skin[size_t(d.skel)];
+      v = d.base;
+      for (size_t k = 0; k < v.size(); ++k) {
+        float p[3] = {0, 0, 0}, n[3] = {0, 0, 0}, wsum = 0;
+        for (int j = 0; j < d.per; ++j) {
+          const int node = d.inode[k * size_t(d.per) + size_t(j)];
+          const float w = d.iw[k * size_t(d.per) + size_t(j)];
+          if (node < 0 || size_t(node) >= S.size() || w == 0)
+            continue;
+          const M34 &m = S[size_t(node)];
+          const float *a = d.base[k].pos, *b = d.base[k].normal;
+          for (int r = 0; r < 3; ++r) {
+            p[r] += w * (m.m[r][0] * a[0] + m.m[r][1] * a[1] + m.m[r][2] * a[2] + m.m[r][3]);
+            n[r] += w * (m.m[r][0] * b[0] + m.m[r][1] * b[1] + m.m[r][2] * b[2]);
+          }
+          wsum += w;
+        }
+        if (wsum > 0)
+          for (int r = 0; r < 3; ++r)
+            v[k].pos[r] = p[r] / wsum, v[k].normal[r] = n[r] / wsum;
+      }
+      D3D11_MAPPED_SUBRESOURCE mp;
+      if (SUCCEEDED(ctx_->Map(d.vb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mp))) {
+        memcpy(mp.pData, v.data(), v.size() * sizeof(Vtx));
+        ctx_->Unmap(d.vb.Get(), 0);
+      }
+    }
+  }
+
+  // The hips (bone "Bip") as last posed; the camera looking at a point.
+  const float *Hips() const { return hips_; }
+  void SetTarget(const float t[3]) {
+    for (int c = 0; c < 3; ++c)
+      target_[c] = t[c];
+  }
+
   size_t Models() const { return models_; }
   size_t Triangles() const { return triangles_; }
 
@@ -273,7 +395,83 @@ class View {
     float mirror, additive, textured, baked;
     float opaque, pad[3];
   };
+  // 3x4 affine matrices, column vectors (p' = m p).
+  struct M34 {
+    float m[3][4] = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}};
+  };
+  static M34 MulM(const M34 &a, const M34 &b) {
+    M34 o;
+    for (int r = 0; r < 3; ++r)
+      for (int c = 0; c < 4; ++c)
+        o.m[r][c] = a.m[r][0] * b.m[0][c] + a.m[r][1] * b.m[1][c] + a.m[r][2] * b.m[2][c] + (c == 3 ? a.m[r][3] : 0);
+    return o;
+  }
+  static M34 Inverse(const M34 &a) {  // (rotation and translation: a skeleton has no scale)
+    M34 o;
+    for (int r = 0; r < 3; ++r)
+      for (int c = 0; c < 3; ++c)
+        o.m[r][c] = a.m[c][r];
+    for (int r = 0; r < 3; ++r)
+      o.m[r][3] = -(o.m[r][0] * a.m[0][3] + o.m[r][1] * a.m[1][3] + o.m[r][2] * a.m[2][3]);
+    return o;
+  }
+  static M34 Trs(const yanm::V &t, const yanm::Q &q) {
+    const float x = q[0], y = q[1], z = q[2], w = q[3];
+    M34 o;
+    o.m[0][0] = 1 - 2 * (y * y + z * z), o.m[0][1] = 2 * (x * y - z * w), o.m[0][2] = 2 * (x * z + y * w);
+    o.m[1][0] = 2 * (x * y + z * w), o.m[1][1] = 1 - 2 * (x * x + z * z), o.m[1][2] = 2 * (y * z - x * w);
+    o.m[2][0] = 2 * (x * z - y * w), o.m[2][1] = 2 * (y * z + x * w), o.m[2][2] = 1 - 2 * (x * x + y * y);
+    o.m[0][3] = t[0], o.m[1][3] = t[1], o.m[2][3] = t[2];
+    return o;
+  }
+  struct Skel {
+    int person = 0;
+    std::vector<std::string> names;
+    std::vector<int> parent;
+    std::vector<yanm::V> t;
+    std::vector<yanm::Q> r;
+    std::vector<M34> inv_bind;
+    std::vector<M34> World(const std::map<std::string, BonePose> &pose) const {
+      std::vector<M34> w(names.size());
+      std::vector<char> done(names.size(), 0);
+      for (size_t i = 0; i < names.size(); ++i)
+        Fill(i, pose, w, done);
+      return w;
+    }
+    void Fill(size_t i, const std::map<std::string, BonePose> &pose, std::vector<M34> &w, std::vector<char> &done) const {
+      if (done[i])
+        return;
+      done[i] = 1;  // (set first: a broken table with a loop stops here)
+      yanm::V tt = t[i];
+      yanm::Q rr = r[i];
+      if (const auto it = pose.find(names[i]); it != pose.end()) {
+        if (it->second.has_rot)
+          rr = it->second.rot;
+        if (it->second.has_pos)
+          for (int c = 0; c < 3; ++c)
+            tt[size_t(c)] += it->second.pos[size_t(c)];
+      }
+      const M34 local = Trs(tt, rr);
+      const int p = parent[i];
+      if (p >= 0 && size_t(p) < names.size()) {
+        Fill(size_t(p), pose, w, done);
+        w[i] = MulM(w[size_t(p)], local);
+      } else {
+        w[i] = local;
+      }
+    }
+  };
+  std::vector<Skel> skels_;
+  float hips_[3] = {0, -100, 0};
+  std::string tex_prefix_ = "0:";
+
   struct Draw {
+    int skel = -1;               // its model's skeleton (keep_skin)
+    bool vb_dynamic = false;
+    std::vector<Vtx> base;       // the bind-pose vertices
+    int per = 0;                 // influences a vertex
+    std::vector<int> inode;      // per vertex x per: node index (-1 none)
+    std::vector<float> iw;       // and its weight
     ComPtr<ID3D11Buffer> vb, ib;
     UINT count = 0;
     ID3D11ShaderResourceView *tex = nullptr;  // owned by textures_
@@ -318,7 +516,8 @@ class View {
   }
 
   ID3D11ShaderResourceView *Texture(const std::string &name, const std::map<std::string, Bytes> &dds) {
-    auto it = textures_.find(name);
+    const std::string key = tex_prefix_ + name;  // (two superstars both have a "color" picture)
+    auto it = textures_.find(key);
     if (it != textures_.end())
       return it->second.Get();
     ComPtr<ID3D11ShaderResourceView> srv;
@@ -342,12 +541,12 @@ class View {
           ctx_->GenerateMips(srv.Get());
       }
     }
-    textures_[name] = srv;
+    textures_[key] = srv;
     return srv.Get();
   }
 
   void AddMesh(uint32_t id, const svrfmt::Model &m, const svrfmt::Mesh &s, const Flags &f,
-               const std::map<std::string, Bytes> &dds) {
+               const std::map<std::string, Bytes> &dds, int skel = -1) {
     if (s.verts.empty())
       return;
     std::vector<Vtx> v(s.verts.size());
@@ -396,14 +595,39 @@ class View {
     }
     d.count = UINT(idx.size());
     d.tex = tex.empty() ? nullptr : Texture(tex, dds);
+    if (skel >= 0) {  // the vertices' bones: node = palette[slot] - 1
+      d.skel = skel;
+      d.vb_dynamic = true;
+      d.base = v;
+      d.per = std::max(1, int(s.weights.size()));
+      d.inode.assign(v.size() * size_t(d.per), -1);
+      d.iw.assign(v.size() * size_t(d.per), 0.0f);
+      for (size_t k = 0; k < v.size(); ++k) {
+        if (s.weights.empty()) {
+          d.inode[k] = s.palette.empty() ? -1 : s.palette[0] - 1;
+          d.iw[k] = 1;
+          continue;
+        }
+        for (size_t j = 0; j < s.weights.size(); ++j) {
+          const auto &w = s.weights[j][k];
+          if (w.bones[0] == 255 || w.bones[0] >= s.palette.size())
+            continue;
+          d.inode[k * size_t(d.per) + j] = s.palette[w.bones[0]] - 1;
+          d.iw[k * size_t(d.per) + j] = w.weight;
+        }
+      }
+    }
     D3D11_BUFFER_DESC bd{};
-    bd.Usage = D3D11_USAGE_IMMUTABLE;
+    bd.Usage = d.vb_dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_IMMUTABLE;
+    bd.CPUAccessFlags = d.vb_dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     bd.ByteWidth = UINT(v.size() * sizeof(Vtx));
     D3D11_SUBRESOURCE_DATA init{v.data(), 0, 0};
     if (FAILED(device_->CreateBuffer(&bd, &init, &d.vb)))
       return;
     bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    bd.Usage = D3D11_USAGE_IMMUTABLE;
+    bd.CPUAccessFlags = 0;
     bd.ByteWidth = UINT(idx.size() * 4);
     init.pSysMem = idx.data();
     if (FAILED(device_->CreateBuffer(&bd, &init, &d.ib)))
