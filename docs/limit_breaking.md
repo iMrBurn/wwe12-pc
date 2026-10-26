@@ -25,8 +25,8 @@ Colonne « Qui » : la conversation qui s'en charge (Univers, Gameplay, Rendu…
 
 | Idée | Piste | Qui | Statut |
 |------|-------|-----|--------|
-| I Quit | Absent de WWE '12 (aucun texte). Base : victoire « SUBMISSION ONLY » du Match Creator + résultat « GIVEUP » qui existe déjà. Voir notes 2026-10-22 | LB | étudié : version simple **moyen**, vraie (micro, animations 2K14) **très lourd** |
-| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | **très lourd** : logique retirée de WWE '12 (5 traces contre 49 usages dans WWE '13, où c'est une option du match) ; essais : rôle 1 = arbitre, le catcheur ne se bat plus mais n'arbitre pas |
+| I Quit | Absent de WWE '12 (aucun texte). Base : victoire « SUBMISSION ONLY » du Match Creator + résultat « GIVEUP » qui existe déjà. Voir notes 2026-10-22 | LB | **étude chiffrée 2026-10-26** : version simple = ce que fait WWE '13, **1 à 2 séances**, risque faible (voir « Étude chiffrée ») |
+| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | **étude chiffrée 2026-10-26** : la fiche de règles 83 est intacte (3e place = arbitre) ; version légère 2 à 4 séances, complète (WWE '13) 10 à 15 séances |
 | Gauntlet (SvR 2011) | **Déjà dans WWE '12** : JOUER > HANDICAP > GAUNTLET (et Match Creator). Même place dans SvR 2011 (Handicap > Gauntlet, apparu dans SvR 2009) : rien à ajouter. Seule piste : plus d'adversaires (voir « plus de catcheurs ») | LB | **existe déjà** |
 | Combinaisons (cage en tag, HIAC à plus de 2…) | Mêmes tables de types de match | LB | idée |
 | Enlever les restrictions du Match Creator | Menus grisés ; cf. `sub_825910F8` / `sub_82591750` (First Blood grisé) | LB | idée |
@@ -487,3 +487,83 @@ stipulations « assemblées ».
 - **Risque** : faible tant qu'on ne touche qu'aux réglages d'un match ; moyen dès qu'on force un type
   que les menus ne proposent plus (code mort possible, plantage en match) ; Univers et sauvegardes
   non concernés.
+
+### Étude chiffrée I Quit et Special Referee (2026-10-26, lecture seule, demande de Main)
+
+Rien lancé, rien compilé. Jeux regardés : WWE '13 (code généré dans `work/wwe13`), WWE 2K16 (code généré
+de l'utilisateur, `Desktop\WWE 2K16 Recomp\wwe2k16-pc-src\generated`), WWE 2K14 (exécutable seulement, pas de
+code lisible), 2K15/2K17 (ISO seulement), SvR 2011 (notes de Kaiko, `work/kaiko-svr2011/docs/MATCH_TYPES_RESEARCH.md`,
+copie locale du 2026-10-22). Règle : on lit pour comprendre, on réécrit notre code ; rien de copié ni publié.
+
+**Ce que WWE '12 a déjà (vérifié dans ses fichiers et son code)** :
+- **Table des règles = la même que SvR 2011** : `misc.pac`, bloc `RUL\0` à 0x9630 (copie à 0x46C630),
+  **119 fiches de 108 octets** (100 dans SvR), puis `OPT\0` à 0xC86C (119 fiches). Même début de fiche que
+  chez Kaiko : +0 nombre de personnes (u16), +2..+19 six places de 3 octets {numéro, équipe, **genre**}.
+  Lecteur : `sub_82A30590(id)` = `[0x8324E238] + id × 108` (l'équivalent de `sub_828B4A48` de SvR).
+- **Fiche 83 SPECIAL REFEREE intacte** : 3 personnes, places (0,0,0) (1,1,0) **(2,2,1)** : la 3e place est de
+  genre 1 = arbitre spécial, comme dans SvR. Notre essai du 22 avait forcé le type 83 sur une fiche déjà
+  construite depuis le TRIPLE THREAT (13) : la 3e personne n'a jamais reçu le genre 1 par la règle.
+- **Fiche 67 SUBMISSION** (1 contre 1) et sa ligne de menu **ONE ON ONE > SUBMISSION** (fiche de menu 44) :
+  le match à soumission existe et se joue déjà.
+- **Liste des types de match construite dans le code** : les 124 feuilles de menu de match (lien 0x7D0) ont
+  +0x5C = 0, contrairement à SvR où la règle y est écrite. La correspondance est dans **`sub_82449898(menu,
+  ligne, &a, &b)`** : `switch` sur la page (menu+48, 0 à 51) puis sur la ligne, rend deux numéros (on y voit
+  les règles 54 IRON MAN, 59 LAST MAN STANDING, 67 SUBMISSION, 81 INFERNO et des numéros > 119, sans doute un
+  2e catalogue ; lequel des deux est la règle selon la page : à confirmer au 1er essai). 9 appelants
+  (`sub_8244B800`, `sub_82452E68` ×2, `sub_82456590`, `sub_82DD51F8`, `sub_82DD5920`, `sub_82DD8D40`,
+  `sub_82DD9308`, `sub_82DD9870`, `sub_82DE2178`). **C'est l'équivalent du crochet de Kaiko** : un crochet
+  sur cette fonction fait jouer une autre règle depuis une ligne existante, sans toucher à `menu.pac`.
+- Fin de match : champ « type de fin » à +68 de l'objet de l'écran de résultat (`sub_82505BC8` construit le
+  tableau des textes 2942–2950 et l'indexe par +68). 3 = GIVEUP.
+
+**I Quit**
+1. **Meilleure source : WWE '13.** C'est le successeur direct, et son I Quit est la version simple : sa liste
+   des fins (`sub_82316198`) est celle de WWE '12 **plus une seule valeur, 9 = texte 2951 « I QUIT »**, au même
+   champ +68. Aucun texte de micro (« do you quit ? ») ni nouveau type de match : I Quit n'y existe que comme
+   match du mode Attitude Era (objectif 18343 « Win the I Quit match »), à soumission, avec cette fin.
+   2K14/2K16 : versions plus lourdes et moteur plus éloigné (2K14 sans code lisible). SvR 2011 : coupé, il ne
+   reste que le nom (Kaiko : « I Quit » dans la liste « Cut, with only names left »).
+2. **Travail** : environ **4 crochets** à écrire, **0 animation, 0 fichier** ; 1 texte du portage (« I QUIT »,
+   numéro libre à partir de 43100). Décalages : seulement +68 (fin) et le marquage du match.
+3. Entrée : une ligne qui pointe sur la règle 67 via `sub_82449898` (renommer une ligne existante, ou insérer
+   une ligne en mémoire à la manière de Kaiko : à essayer, l'insertion a cassé la navigation du menu principal).
+4. **Plan (1 à 2 séances, risque de plantage faible)** :
+   a. ligne « I QUIT » = règle 67 marquée par notre code ; essai en jeu : le match se lance et se joue ;
+   b. pendant le match : pas de DQ ni de décompte à l'extérieur (octets des règles du match en cours, comme le
+      « Three Stages of Hell » de Kaiko) ; essai ;
+   c. fin par GIVEUP dans un match marqué → texte « I QUIT » sur l'écran de résultat et dans l'annonce
+      (crochet sur le gestionnaire de textes `sub_821A4400` ou sur +68) ; essai ;
+   d. Univers et historiques gardent GIVEUP (3) : rien à changer dans les sauvegardes.
+   Version encore plus légère : seulement l'étape c, sur le match SUBMISSION existant (1 séance).
+5. **Faisable maintenant : oui**, rien ne bloque. 1 séance pour a + c, 2 avec b et les essais.
+
+**Special Referee**
+1. **Meilleure source pour la logique : WWE '13** (seul jeu local avec le comportement complet et du code
+   lisible). SvR 2011 n'apporte pas de logique : comme WWE '12, il garde la règle 0x53 (3e place genre 1) et
+   un seul test en match (`sub_8260E150`), jamais essayé par Kaiko ; mais il confirme le mécanisme « genre 1
+   dans la fiche de règles ». 2K14/2K16 : plus éloignés.
+2. **Chiffres** :
+   - **Version légère** (sans WWE '13) : 5 à 8 crochets. Faire jouer la règle 83 depuis une ligne (TRIPLE
+     THREAT par ex.) ; recopier les champs de sélection de la règle 13 dans la fiche 83 pendant le choix des
+     catcheurs (Kaiko a dû le faire pour Lumberjack, sinon l'écran montre 2 places et plante au 2e choix) ;
+     voir si la 3e personne devient l'arbitre du match (case 6 de 0x8317B770) ; affectation des manettes
+     (`sub_826E09D8`/`sub_826E0B18` sautent le rôle 1) pour le jouer. 0 animation nouvelle si l'arbitre
+     utilise celles de l'arbitre normal (même classe d'acteur, comportement selon le rôle : à vérifier).
+   - **Version complète** (WWE '13) : réécrire le composant SREF (27 fonctions) et adapter environ 50 points
+     d'appel (54 appels de `sub_82537D20`, 49 de `sub_82285A60`) : **≈ 30 à 80 fonctions**. Décalages connus :
+     rôle +3336 → +3428, liste des acteurs 0x83408DC0 → 0x8317B770, option du match +45 → type 83, état
+     global [0x8347C554]+100 → à trouver dans WWE '12. Animations de l'arbitre spécial (compte rapide, refus de
+     compter…) : à inventorier dans WWE '13, probablement absentes de WWE '12.
+3. Entrée : même crochet `sub_82449898` (règle 83 au lieu d'une règle existante).
+4. **Plan** :
+   a. (1 séance) jouer la règle 83 depuis une ligne + champs de sélection de la 13 ; journal des rôles et des
+      9 acteurs. Résultat attendu : 3 choix, la 3e personne au rôle 1 dès la création ;
+   b. (1 séance) qui arbitre ? Si l'arbitre normal (modèle 102, retiré par `sub_82328E28` en type 83) n'est
+      plus là et que la 3e personne compte les tombés : version légère presque finie ;
+   c. (1 à 2 séances) manette pour l'arbitre ; compte déclenché par le joueur ;
+   d. (8 à 12 séances, seulement si on veut la version complète) réécriture du comportement de WWE '13.
+   **Légère : 2 à 4 séances, risque moyen** (sélection et création des acteurs : plantages possibles mais
+   faciles à voir). **Complète : 10 à 15 séances, risque élevé.**
+
+**Recommandation** : I Quit en premier (1 à 2 séances, faible risque), pour la 1.0. Special Referee : faire
+l'essai a/b de la version légère (2 séances) ; on décide après, la version complète irait en 1.1 au plus tôt.
