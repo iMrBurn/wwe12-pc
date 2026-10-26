@@ -25,6 +25,7 @@
 #include "game_discs.h"
 #include "game_disc.h"
 #include "media.h"
+#include "media_page.h"
 #include "mod_doctor.h"
 #include "mods.h"
 #include "pac_page.h"
@@ -145,7 +146,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kFiles, kDiscs, kDoctor, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kMedia, kFiles, kDiscs, kDoctor, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -159,6 +160,7 @@ superstar_page::Page g_stars;
 new_star_page::Page g_new_star;
 game_discs::Discs g_discs;
 mod_doctor::Page g_doctor;
+media_page::Page g_media;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 
@@ -196,6 +198,8 @@ void PageHome() {
        "Changer les images d'une tenue et voir le catcheur en 3D."},
       {kNewStar, "New superstar", "Nouveau catcheur", "Add a superstar to the game, next to the others (also from SvR 2011, WWE '13 or 2K14-2K17).",
        "Ajouter un catcheur au jeu, à côté des autres (aussi depuis SvR 2011, WWE '13 ou 2K14-2K17)."},
+      {kMedia, "Media", "Média", "The game's superstars' portraits and entrance songs, in one pack.",
+       "Les portraits et les musiques d'entrée des catcheurs du jeu, en un seul pack."},
       {kFiles, "Game files", "Fichiers du jeu", "Look inside the game's archives (.pac) and export what's in them.",
        "Regarder dans les archives du jeu (.pac) et exporter ce qu'elles contiennent."},
       {kDiscs, "My game discs", "Mes disques de jeu", "Your other WWE games (ISO or folder), added once: the ports read them.",
@@ -412,9 +416,9 @@ void DrawUi() {
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
   const char *names_en[] = {"HOME",       "VIDEOS",     "TEXTURES",     "ARENAS", "SUPERSTARS",
-                            "NEW SUPERSTAR", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
+                            "NEW SUPERSTAR", "MEDIA", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
   const char *names_fr[] = {"ACCUEIL", "VIDÉOS",   "TEXTURES",   "ARÈNES",  "CATCHEURS",
-                            "NOUVEAU", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
+                            "NOUVEAU", "MÉDIA", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
   for (int i = 0; i < int(std::size(names_en)); ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
@@ -432,6 +436,10 @@ void DrawUi() {
   case kArenas: PageArenas(); break;
   case kStars: PageStars(); break;
   case kNewStar: PageNewStar(); break;
+  case kMedia:
+    Title(g_fr ? "MÉDIA" : "MEDIA");
+    g_media.Draw(g_fr, g_device.Get(), g_disc, g_mods);
+    break;
   case kFiles: PageFiles(); break;
   case kDiscs:
     Title(g_fr ? "MES DISQUES DE JEU" : "MY GAME DISCS");

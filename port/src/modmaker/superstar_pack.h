@@ -68,6 +68,14 @@ struct Attire {
   bool added = false;
 };
 
+// A media mod's portraits for a superstar the game has (type=media, media/portraits/NNN/SSFA_HD.dds ...): in our pack's
+// DLC_HD / DLC_SD pacs under his own number, found before the disc's (menu\menuHD.pac, DLC_HD.pac).
+struct MediaPortraits {
+  std::string key;    // the mod's folder name
+  int superstar = 0;  // a superstar of the game
+  Bytes dds[2][3];    // [0 SD / 1 HD][SSFA, SSFB, SSFC], DDS as the game's; empty = the game's own
+};
+
 struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   std::vector<Bytes> portraits_hd, portraits_sd;   // pacs that may hold the bases' SSFA/SSFB/SSFC "%04d"
@@ -217,7 +225,7 @@ inline int PackNumber(const Inputs &in) {
 
 // The pack's files for `stars` (slots set). False (and why) when it can't be made.
 inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<File> &files, std::string *why,
-                  const std::vector<Attire> &attires = {}) {
+                  const std::vector<Attire> &attires = {}, const std::vector<MediaPortraits> &media = {}) {
   using namespace detail;
   auto fail = [&](const std::string &w) {
     if (why)
@@ -441,6 +449,28 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
             return fail(st.key + ": portrait: " + e);
         }
         break;
+      }
+    }
+    // The media mods' portraits of the game's superstars (the first mod giving one wins).
+    std::set<std::string> media_given;
+    for (const auto &mp : media) {
+      if (!have_template) {
+        svrfmt::Archive p;
+        if (sources.empty() || !svrfmt::ArchiveOpen(sources.front(), p, nullptr))
+          break;
+        out_pac = p;
+        for (size_t i = out_pac.root.kids.size(); i-- > 0;)
+          svrfmt::ArchiveRemove(out_pac.root, i);
+        have_template = true;
+      }
+      char name[8];
+      snprintf(name, sizeof(name), "%04d", mp.superstar);
+      for (int k = 0; k < 3; ++k) {
+        const std::string group = std::string("SSF") + char('A' + k);
+        if (mp.dds[hd][k].empty() || !media_given.insert(group + name).second || Find(out_pac.root, group.c_str(), name))
+          continue;
+        if (!svrfmt::ArchiveAdd(out_pac.root, group, name, 0, svrfmt::BpeEncode(mp.dds[hd][k]), &e))
+          return fail(mp.key + ": portrait: " + e);
       }
     }
     if (have_template && !out_pac.root.kids.empty()) {

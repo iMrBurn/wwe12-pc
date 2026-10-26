@@ -889,6 +889,19 @@ places ×10, d'après le code de Kaiko).
 - Pièges : un fichier de catcheur refait et servi entier garde l'annuaire du disque (tenue plus grosse = suivantes
   décalées) ; d'où le pack.
 
+## 6 octodecies. Pack média (2026-10-26)
+
+- Page **MÉDIA** (`media_page.h`) : pour les catcheurs du jeu, un **portrait** (une image → SSFA/B/C HD et SD, comme le
+  portrait perso de NOUVEAU CATCHEUR) et une **musique d'entrée** ; un `.svrmod` `type=media` (`media/portraits/NNN/`,
+  `media/music/NNN.mp3`).
+- **Portraits : vus en jeu** (Randy Orton avec le portrait de Jericho à l'écran de choix) : le jeu les met dans les pacs
+  DLC_HD / DLC_SD de notre pack sous le numéro du catcheur ; l'annuaire du pack passe avant `menuHD.pac`. Reste : les
+  petites icônes de la grille (ailleurs : MENU/SSFD d'après Kaiko).
+- **Musiques** : copiées au démarrage dans le dossier `music` (« <pack> <numéro>.mp3 ») ; on les choisit dans Créer une
+  entrée (PLAYLIST UTILISATEUR), volume réglé comme les musiques du jeu. Remplacer le thème d'un catcheur sans passer
+  par là demanderait d'écrire ses entrées dans la sauvegarde : pas fait.
+- Vidéos d'entrée : page VIDÉOS ; autres images et sons : page TEXTURES et mods de fichiers (`files/`).
+
 ## 6 terdecies. Les ajouts dans les autres modes (2026-10-24, vérifié en jeu)
 
 - **Catcheurs ajoutés** : présents partout sans rien de plus (le jeu les traite comme des DLC) : Univers (effectif,

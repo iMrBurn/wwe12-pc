@@ -212,7 +212,60 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       attires.push_back(std::move(at));
     }
   }
-  if (list.empty() && attires.empty()) {
+  // The media mods' portraits of the game's superstars (media/portraits/NNN/SSFx_HD.dds, SSFx_SD.dds).
+  std::vector<superstar_pack::MediaPortraits> media;
+  {
+    std::vector<fs::path> mdirs;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Media", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec))
+        mdirs.push_back(it->path());
+    ec.clear();
+    std::sort(mdirs.begin(), mdirs.end());
+    for (const auto &d : mdirs) {
+      if (fs::exists(d / "disabled", ec))
+        continue;
+      // Its songs: into the music folder beside the exe ("<pack> <number>.mp3"), where Create an Entrance's USER
+      // PLAYLIST lists them (the SDK's music player, rexglue-sdk-xmp-music.patch).
+      {
+        Bytes m;
+        ReadHost(d / "manifest.txt", m);
+        std::string pack_name = Value(std::string(m.begin(), m.end()), "name");
+        if (pack_name.empty())
+          pack_name = d.filename().string();
+        for (auto &c : pack_name)
+          if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
+            c = '_';
+        for (fs::directory_iterator it(d / "media" / "music", ec), end; !ec && it != end; it.increment(ec)) {
+          const fs::path to = mods.parent_path() / "music" / fs::u8path(pack_name + " " + it->path().filename().string());
+          std::error_code e2;
+          if (!fs::exists(to, e2) || fs::file_size(to, e2) != it->file_size(e2)) {
+            fs::create_directories(to.parent_path(), e2);
+            fs::copy_file(it->path(), to, fs::copy_options::overwrite_existing, e2);
+            REXLOG_INFO("[superstar mods] media mod {}: song {} added to the music folder", d.filename().string(),
+                        rex::path_to_utf8(to.filename()));
+          }
+        }
+        ec.clear();
+      }
+      for (fs::directory_iterator it(d / "media" / "portraits", ec), end; !ec && it != end; it.increment(ec)) {
+        superstar_pack::MediaPortraits mp;
+        mp.key = d.filename().string();
+        mp.superstar = atoi(it->path().filename().string().c_str());
+        if (mp.superstar < 50 || mp.superstar >= 373)
+          continue;
+        bool any = false;
+        for (int hd = 0; hd < 2; ++hd)
+          for (int k = 0; k < 3; ++k)
+            any |= ReadHost(it->path() / (std::string("SSF") + char('A' + k) + (hd ? "_HD.dds" : "_SD.dds")), mp.dds[hd][k]);
+        if (any) {
+          REXLOG_INFO("[superstar mods] media mod {}: portraits of superstar {}", mp.key, mp.superstar);
+          media.push_back(std::move(mp));
+        }
+      }
+      ec.clear();
+    }
+  }
+  if (list.empty() && attires.empty() && media.empty()) {
     RemovePack(content, headers);
     return;
   }
@@ -370,13 +423,13 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   for (const auto &st : stars)
     if (st.movie_number)
       g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
-  if (stars.empty() && attires.empty()) {
+  if (stars.empty() && attires.empty() && media.empty()) {
     RemovePack(content, headers);
     return;
   }
   std::vector<superstar_pack::File> files;
   std::string why;
-  if (!superstar_pack::Build(in, stars, files, &why, attires)) {
+  if (!superstar_pack::Build(in, stars, files, &why, attires, media)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;
   }
