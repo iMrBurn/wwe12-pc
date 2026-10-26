@@ -157,3 +157,39 @@ add_custom_command(TARGET wwe12 POST_BUILD
         $<TARGET_FILE_DIR:wwe12>/wwe12.toml
     VERBATIM
 )
+
+# wwe12_d3d12.exe : le même jeu avec le rendu D3D12 (re:Blue compilé REBLUE_D3D12). Le launcher
+# lance l'un ou l'autre selon gpu_backend. Il réutilise le code du jeu déjà compilé (wwe12_recomp)
+# au lieu de le recompiler.
+if(WIN32 AND WWE12_NATIVE_RENDERER AND WWE12_D3D12_EXE AND TARGET wwe12_recomp)
+    add_executable(wwe12_d3d12 WIN32 ${WWE12_SOURCES})
+    wwe12_add_native_renderer(wwe12_d3d12 D3D12)
+    if(DEFINED ENV{WWE12_DEV_PROBES})
+        target_compile_definitions(wwe12_d3d12 PRIVATE WWE12_DEV_PROBES)
+    endif()
+    target_sources(wwe12_d3d12 PRIVATE src/modmaker/svrfmt/archive.cpp src/modmaker/svrfmt/pac.cpp
+        src/modmaker/svrfmt/texture.cpp)
+    target_include_directories(wwe12_d3d12 PRIVATE src/modmaker)
+    target_compile_definitions(wwe12_d3d12 PRIVATE SVRFMT_NO_XCOMPRESS)
+    # Ce que rexglue_setup_target fait, sans recompiler le code du jeu.
+    target_link_libraries(wwe12_d3d12 PRIVATE wwe12_recomp)
+    add_dependencies(wwe12_d3d12 wwe12_codegen)
+    target_include_directories(wwe12_d3d12 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${REXGLUE_ENTRYPOINT_INCLUDE_DIR})
+    target_link_libraries(wwe12_d3d12 PRIVATE rex::runtime)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/metadata/icons")
+        rexglue_embed_metadata(wwe12_d3d12
+            DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/metadata/icons"
+            PREFIX "icons")
+    endif()
+    rexglue_configure_target(wwe12_d3d12 GPU_PLUGINS xenos)
+    # Compilateur de shaders D3D12 (re:Blue lie les shaders du jeu à l'exécution), à côté de l'exe.
+    set(WWE12_DXC_BIN "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/reblue-XenosRecomp/thirdparty/dxc-bin/bin/x64")
+    add_custom_command(TARGET wwe12_d3d12 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${WWE12_DXC_BIN}/dxcompiler.dll" "${WWE12_DXC_BIN}/dxil.dll"
+            $<TARGET_FILE_DIR:wwe12_d3d12>
+        VERBATIM)
+endif()
