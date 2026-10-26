@@ -177,11 +177,46 @@ inline void ScreensTo12(svrfmt::ArcNode &ga) {
       if (k.id == 808 && layout(k))
         b = &k;
     }
-    if (a && b) {
+    if (a && b)
       std::swap(a->id, b->id);
-      std::sort(ga.kids.begin(), ga.kids.end(),
-                [](const svrfmt::ArcNode &x, const svrfmt::ArcNode &y) { return x.id < y.id; });
+    // WWE '12 gives each screen its movie by number (RenderDoc, WrestleMania 31, 2026-10-26: renamed, screen 805 still
+    // showed the live camera): titantron on 800/803/806/808, the arena's movie on 801/807/809, the live camera on 804
+    // and 805; 802 none of WWE '12's. The 2K games' 802, 803 and 804 repeat 801 and 800 with another layout (a show's
+    // look): left out; their 805 (an LED band of its own) becomes 803. Their "screen off" covers (titan_off, hidden
+    // by the 2K games during the entrances) left out too: WrestleMania 31's hid its central circle.
+    const auto has = [&](uint32_t id) {
+      for (const auto &k : ga.kids)
+        if (k.id == id && layout(k))
+          return true;
+      return false;
+    };
+    const bool band = has(805);
+    bool twok = false;  // (a 2K game's arena: screens drawn from layout_ pictures)
+    for (const auto &k : ga.kids)
+      twok = twok || (k.id >= 800 && k.id <= 899 && layout(k));
+    std::vector<svrfmt::ArcNode> kept;
+    for (auto &k : ga.kids) {
+      if (!twok) {
+        kept.push_back(std::move(k));
+        continue;
+      }
+      if ((k.id == 802 || k.id == 804 || (band && k.id == 803)) && layout(k))
+        continue;
+      if (band && k.id == 805 && layout(k))
+        k.id = 803;
+      const Bytes d = svrfmt::ArchiveData(k);
+      svrfmt::Model m;
+      if (svrfmt::IsJboy(d) && svrfmt::JboyRead(d, m, nullptr) && !m.textures.empty() &&
+          std::all_of(m.textures.begin(), m.textures.end(), [](std::string t) {
+            std::transform(t.begin(), t.end(), t.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+            return t == "titan_off";
+          }))
+        continue;
+      kept.push_back(std::move(k));
     }
+    ga.kids = std::move(kept);
+    std::sort(ga.kids.begin(), ga.kids.end(),
+              [](const svrfmt::ArcNode &x, const svrfmt::ArcNode &y) { return x.id < y.id; });
   }
   for (auto &k : ga.kids) {
     if (k.id < 800 || k.id > 899)
