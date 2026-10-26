@@ -619,6 +619,7 @@ REX_EXTERN(__imp__sub_825A3318);  // arena select: is this stage available (this
 REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
 REX_EXTERN(__imp__sub_82780948);  // VS screen: load its layout "/MLYE/MB%02d", else MB00 (this + 768, stage)
+REX_EXTERN(__imp__sub_828916B8);  // match setup's VS screen: the same (this, stage, ?, ?)
 REX_EXTERN(sub_82A8C070);         // XInputGetState(user, state) (hooked by wwe12_intros.cpp: call the hooked one)
 
 namespace {
@@ -747,10 +748,18 @@ extern "C" REX_FUNC(sub_825A56C8) {
 // (WrestleMania 31 in Superstars' place showed Superstars', 2026-10-26: the directory wasn't even asked). The
 // directory answers that name with the added arena's VS screen. (Its font needs nothing: WWE '12's layouts name
 // "font000", the stage's font.)
-extern "C" REX_FUNC(sub_82780948) {
+static void OwnVsName(PPCContext &ctx) {
   if (g_chosen >= 0 && g_added[size_t(g_chosen)].mb_units && ctx.r4.u32 == g_added[size_t(g_chosen)].base)
     ctx.r4.u64 = kFirstAdded + u32(g_chosen);
+}
+extern "C" REX_FUNC(sub_82780948) {
+  OwnVsName(ctx);
   __imp__sub_82780948(ctx, base);
+}
+// (the match setup screen's, the one seen after choosing the arena)
+extern "C" REX_FUNC(sub_828916B8) {
+  OwnVsName(ctx);
+  __imp__sub_828916B8(ctx, base);
 }
 
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
