@@ -445,36 +445,8 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
                            tm.shader + " of base mesh " + std::to_string(best));
     out.meshes.push_back(std::move(dst));
   }
-  // SvR's eyes are two meshes, the eyeballs and a flat glossy layer over them (drawn additively in SvR); WWE '12's
-  // one: the layer, given the eyeballs' opaque material, covered them (CM Punk of SvR: white eyes): left out.
-  {
-    std::vector<size_t> eyes;
-    for (size_t i = 0; i < out.meshes.size(); ++i)
-      if (out.meshes[i].shader == "yCh_Reflect")
-        eyes.push_back(i);
-    if (eyes.size() > 1) {
-      size_t first = 0;
-      for (size_t pi = 0; pi < out.parts.size(); ++pi) {
-        const size_t end = first + out.parts[pi].meshes;
-        for (size_t i = end; i-- > first;) {
-          const auto &m = out.meshes[i];
-          if (m.shader != "yCh_Reflect" || m.verts.empty())
-            continue;
-          float lo = 1e9f, hi = -1e9f;
-          for (const auto &v : m.verts) {
-            lo = std::min(lo, v.pos[2]);
-            hi = std::max(hi, v.pos[2]);
-          }
-          if (hi - lo < 1.0f && eyes.size() > 1) {  // (flat: the layer)
-            out.meshes.erase(out.meshes.begin() + long(i));
-            --out.parts[pi].meshes;
-            eyes.pop_back();
-          }
-        }
-        first += out.parts[pi].meshes;
-      }
-    }
-  }
+  // (SvR's eyes are two meshes: the eyeballs, and the irises over them, a flat mesh on the eye picture's middle: both
+  // kept. Left out once as "a glossy layer" while the face's bones were still misplaced: white eyes, 2026-10-26.)
   // Parts left without a mesh (the blood layers'): removed, the later parts' meshes told their new number.
   for (size_t i = out.parts.size(); i-- > 0;)
     if (!out.parts[i].meshes) {

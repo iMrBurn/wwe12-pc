@@ -934,31 +934,40 @@ class Page {
 
   // A SvR 2011 superstar's portraits: pac\DLC_HD.pac / DLC_SD.pac, SSFA/SSFB/SSFC "NNNN", WWE '12's pictures but for
   // SD's SSFA / SSFB (SvR 256 x 512, WWE '12 512 x 256, the HD picture squeezed): those made from the HD ones.
-  // A SvR 2011 portrait framed as WWE '12's (a bust, the head's top near the top edge): SvR's show the superstar
-  // smaller, down to the knees (compared with WWE '12's on six superstars, 2026-10-26): scaled by 1.1, the head's
-  // top 12 pixels from the top (at 512), the figure centred; the legs go past the bottom edge.
+  // A SvR 2011 portrait framed as WWE '12's (a bust, the head's top near the top edge). SvR's show the superstar
+  // smaller, down to the knees, and stored for SvR's frame: shown in WWE '12's they came out ~1.25 times too wide
+  // (CM Punk next to Drew McIntyre, 2026-10-26). Scaled 1.45 high and 1.16 wide, the head's top 12 pixels from the top
+  // (at 512), centred on the shoulders (a row a fifth of the way down the figure); the legs go past the bottom edge.
   static svrfmt::Image Reframe(const svrfmt::Image &img) {
     if (img.w <= 0 || img.h <= 0)
       return img;
-    int top = -1, left = img.w, right = -1;
-    for (int y = 0; y < img.h; ++y)
+    auto solid = [&](int x, int y) { return img.rgba[(size_t(y) * img.w + x) * 4 + 3] > 128; };
+    int top = -1;
+    for (int y = 0; y < img.h && top < 0; ++y)
       for (int x = 0; x < img.w; ++x)
-        if (img.rgba[(size_t(y) * img.w + x) * 4 + 3] > 128) {
-          if (top < 0)
-            top = y;
-          left = std::min(left, x);
-          right = std::max(right, x);
+        if (solid(x, y)) {
+          top = y;
+          break;
         }
     if (top < 0)
       return img;
-    constexpr double k = 1.1;
-    const int w = int(img.w * k + 0.5), h = int(img.h * k + 0.5);
+    const int row = std::min(img.h - 1, top + int(0.22 * (img.h - top)));
+    int left = -1, right = -1;
+    for (int x = 0; x < img.w; ++x)
+      if (solid(x, row)) {
+        if (left < 0)
+          left = x;
+        right = x;
+      }
+    const double cx = left < 0 ? img.w / 2.0 : (left + right) / 2.0;
+    constexpr double ky = 1.45, kx = 1.16;
+    const int w = int(img.w * kx + 0.5), h = int(img.h * ky + 0.5);
     const svrfmt::Image big = svrfmt::Resize(img, w, h);
     svrfmt::Image out;
     out.w = img.w;
     out.h = img.h;
     out.rgba.assign(size_t(img.w) * img.h * 4, 0);
-    const int dx = int(img.w / 2.0 - (left + right) / 2.0 * k + 0.5), dy = int(img.h * 12 / 512.0 - top * k + 0.5);
+    const int dx = int(img.w / 2.0 - cx * kx + 0.5), dy = int(img.h * 12 / 512.0 - top * ky + 0.5);
     for (int y = 0; y < h; ++y)
       for (int x = 0; x < w; ++x) {
         const int ox = x + dx, oy = y + dy;
