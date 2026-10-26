@@ -32,6 +32,10 @@
 #endif
 
 #include <rex/cvar.h>
+#if defined(__ANDROID__)
+#include <rex/system/kernel_state.h>
+#include <rex/system/xmemory.h>
+#endif
 
 #include "core/logging.h"
 #include "core/memory_helpers.h"
@@ -120,6 +124,22 @@ u32 PatchLoadedTables(u32 &candidates, u32 &pc_texts, u32 &graphics_texts) {
     u8 *p = base + lo;
     u8 *const end = base + hi;
     while (p < end) {
+#if defined(__ANDROID__)
+      // The guest's own page table: its whole address space is one big host mapping on
+      // Android (/proc/self/maps cannot tell used pages from untouched ones), so the host view
+      // read gigabytes of never-used memory, 2-3 s per scan on a phone.
+      const u32 va = u32(p - base);
+      auto *heap = REX_KERNEL_MEMORY()->LookupHeap(va);
+      rex::memory::HeapAllocationInfo info{};
+      if (!heap || !heap->QueryRegionInfo(va, &info) || !info.region_size) {
+        p = base + ((u64(va) + 0x10000) & ~u64(0xFFFF));  // between heaps: on to the next 64 KB
+        continue;
+      }
+      u8 *region_start = p;
+      u8 *region_end = std::min(end, p + info.region_size);
+      const bool writable = (info.state & rex::memory::kMemoryAllocationCommit) &&
+                            (info.protect & rex::memory::kMemoryProtectWrite);
+#else
       MEMORY_BASIC_INFORMATION mbi;
       if (!VirtualQuery(p, &mbi, sizeof(mbi)))
         break;
@@ -130,6 +150,7 @@ u32 PatchLoadedTables(u32 &candidates, u32 &pc_texts, u32 &graphics_texts) {
       const bool writable = mbi.State == MEM_COMMIT &&
                             !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) &&
                             (mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE));
+#endif
       if (writable) {
         graphics_texts += Wwe12RelabelGraphicsEntry(p, region_end);
         for (u8 *t = p; t + sizeof(kText) <= region_end;) {

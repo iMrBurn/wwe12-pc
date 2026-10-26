@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -363,9 +364,11 @@ uint32_t Wwe12RelabelGraphicsEntry(uint8_t *region_start, uint8_t *region_end) {
   uint32_t patched = 0;
   for (const EntryText *e : {&lang, &kEntryTexts[kEn]}) {
     const size_t len = std::strlen(e->manual);
+    // Skips ahead by the text's length on a mismatch: the scan reads all of the game's memory.
+    const std::boyer_moore_horspool_searcher find(reinterpret_cast<const uint8_t *>(e->manual),
+                                                  reinterpret_cast<const uint8_t *>(e->manual) + len);
     for (uint8_t *t = region_start; t + len + 1 <= region_end;) {
-      t = std::search(t, region_end - len, reinterpret_cast<const uint8_t *>(e->manual),
-                      reinterpret_cast<const uint8_t *>(e->manual) + len);
+      t = std::search(t, region_end - len, find);
       if (t >= region_end - len)
         break;
       if (t[len] != 0 || (t > region_start && t[-1] != 0)) {
