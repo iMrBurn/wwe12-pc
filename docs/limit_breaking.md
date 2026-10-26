@@ -25,8 +25,8 @@ Colonne « Qui » : la conversation qui s'en charge (Univers, Gameplay, Rendu…
 
 | Idée | Piste | Qui | Statut |
 |------|-------|-----|--------|
-| I Quit | Absent de WWE '12 (aucun texte). Base : victoire « SUBMISSION ONLY » du Match Creator + résultat « GIVEUP » qui existe déjà. Voir notes 2026-10-22 | LB | **étude chiffrée 2026-10-26** : version légère **1 à 2 séances**, risque faible ; version WWE '13 (arbitre au micro, menace, mini-jeu en Lua) 4 à 6 séances si les animations sont dans WWE '12 (voir « Étude chiffrée ») |
-| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | **étude chiffrée 2026-10-26** : la fiche de règles 83 est intacte (3e place = arbitre) ; version légère 2 à 4 séances, complète (WWE '13) 10 à 15 séances |
+| I Quit | Absent de WWE '12 (aucun texte). Base : victoire « SUBMISSION ONLY » du Match Creator + résultat « GIVEUP » qui existe déjà. Voir notes 2026-10-22 | LB | **prévu pour la 1.1** (décision de l'utilisateur, 2026-10-26). Étude chiffrée : version légère **1 à 2 séances**, risque faible ; version WWE '13 (arbitre au micro, menace, mini-jeu en Lua) 4 à 6 séances si les animations sont dans WWE '12 (voir « Étude chiffrée ») |
+| Special Guest Referee | Le type existe dans la liste interne (n° 83, « SPECIAL REFEREE ») mais aucun menu ne l'offre : reste de SvR 2011, retiré dans '12. Logique encore là ? inconnu | LB | **prévu pour la 1.1** (décision de l'utilisateur, 2026-10-26). La fiche de règles 83 est intacte (3e place = arbitre) ; version légère 2 à 4 séances, complète (WWE '13) 10 à 15 séances |
 | Gauntlet (SvR 2011) | **Déjà dans WWE '12** : JOUER > HANDICAP > GAUNTLET (et Match Creator). Même place dans SvR 2011 (Handicap > Gauntlet, apparu dans SvR 2009) : rien à ajouter. Seule piste : plus d'adversaires (voir « plus de catcheurs ») | LB | **existe déjà** |
 | Combinaisons (cage en tag, HIAC à plus de 2…) | Mêmes tables de types de match | LB | idée |
 | Enlever les restrictions du Match Creator | Menus grisés ; cf. `sub_825910F8` / `sub_82591750` (First Blood grisé) | LB | idée |
@@ -564,6 +564,8 @@ copie locale du 2026-10-22). Règle : on lit pour comprendre, on réécrit notre
    d. (8 à 12 séances, seulement si on veut la version complète) réécriture du comportement de WWE '13.
    **Légère : 2 à 4 séances, risque moyen** (sélection et création des acteurs : plantages possibles mais
    faciles à voir). **Complète : 10 à 15 séances, risque élevé.**
+
+**Décision (2026-10-26)** : les deux matchs sont prévus pour la **1.1**.
 
 **Recommandation** : I Quit en premier (1 à 2 séances, faible risque), pour la 1.0. Special Referee : faire
 l'essai a/b de la version légère (2 séances) ; on décide après, la version complète irait en 1.1 au plus tôt.
