@@ -9,21 +9,21 @@ Liste écrite par l'utilisateur (iMrBurn), rangée par la conversation Main. Les
 **Stipulations à ajouter** : I Quit, arbitre invité spécial (« compliqué, voir avec Kaiko »).
 
 **1. Mode Univers**
-- Titres utilisés vacants ? (pas possible, ça casse le mode)
+- Titres utilisés vacants ? (pas possible, ça casse le mode ; ✅ vacant pour les titres sans émission, fait)
 - Menu Stat Tracking comme WWE '13 (historiques des vainqueurs du Royal Rumble, MITB, KOTR…)
 - Tournoi pour couronner des titres vacants
 - Modifier dans le code le booking (ex. défenses de titre spontanées en weekly)
 - Restreindre des catcheurs à certains titres (Cena : titres majeurs seulement, Evan Bourne : mineurs)
 - Backport des cutscenes de WWE '13 et 2K14
 - Intégrer les cutscenes de Create a Story et les déclencher comme les vraies cinématiques de l'Univers
-- Enlever le minimum de 15 catcheurs par show (univers 100 % CAW)
+- Enlever le minimum de 15 catcheurs par show (univers 100 % CAW) (codé, pas encore compilé ni testé)
 - Un seul show majeur possible (le jeu en réclame 2 minimum)
 
 **2. Modifs de jeu**
 - Sang pour les femmes ? (pas sûr)
 - 5 contre 5 ? Plus de 6 superstars sur le ring ?
-- Touches de clavier à la place des boutons Xbox / Sony
-- Jukebox dans les menus
+- Touches de clavier à la place des boutons Xbox / Sony (le clavier marche et ✅ Shift/Ctrl/Alt seuls, issue #18 ; reste l'affichage des icônes de touches)
+- ✅ Jukebox dans les menus (fait, validé en jeu le 2026-10-26)
 - Moments OMG de WWE '13
 - Enlever les restrictions du Match Creator
 - De 50 slots CAW à 100/200
@@ -31,8 +31,8 @@ Liste écrite par l'utilisateur (iMrBurn), rangée par la conversation Main. Les
 - Autres résolutions (360p, 480p…)
 - Widescreen (16:10)
 
-**Gros chantiers** : Mod Maker pour la 1.0 (fait, voir `docs/mod_maker.md`) ; jeu en full natif sans
-aucune émulation ; DX12 en plus de Vulkan, peut-être DX11.
+**Gros chantiers** : ✅ Mod Maker pour la 1.0 (fait, voir `docs/mod_maker.md`) ; jeu en full natif sans
+aucune émulation ; ✅ DX12 en plus de Vulkan (fait le 2026-10-26 : 2 exe, shaders pré-liés, testé sur RTX 5070), peut-être DX11 (plus tard).
 
 ## État et difficulté (estimation, 2026-10-26)
 
