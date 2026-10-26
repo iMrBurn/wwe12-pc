@@ -26,6 +26,7 @@
 #include "game_discs.h"
 #include "game_disc.h"
 #include "media.h"
+#include "look_page.h"
 #include "media_page.h"
 #include "mod_doctor.h"
 #include "signs_page.h"
@@ -148,7 +149,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kMedia, kSigns, kBackgrounds, kFiles, kDiscs, kDoctor, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kMedia, kSigns, kBackgrounds, kLook, kFiles, kDiscs, kDoctor, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -165,6 +166,7 @@ mod_doctor::Page g_doctor;
 media_page::Page g_media;
 signs_page::Page g_signs;
 backgrounds_page::Page g_backgrounds;
+look_page::Page g_look;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 
@@ -208,6 +210,8 @@ void PageHome() {
        "Les pancartes que la foule brandit pour un catcheur pendant son match."},
       {kBackgrounds, "Menu backgrounds", "Fonds du menu", "The superstar on the main menu and title screen, drawn at each start.",
        "Le catcheur du menu principal et de l'écran-titre, tiré au sort à chaque lancement."},
+      {kLook, "Look", "Regarder", "The game's pictures by what they are for (save one as PNG), and the installed mods in 3D.",
+       "Les images du jeu rangées par usage (à enregistrer en PNG), et les mods installés en 3D."},
       {kFiles, "Game files", "Fichiers du jeu", "Look inside the game's archives (.pac) and export what's in them.",
        "Regarder dans les archives du jeu (.pac) et exporter ce qu'elles contiennent."},
       {kDiscs, "My game discs", "Mes disques de jeu", "Your other WWE games (ISO or folder), added once: the ports read them.",
@@ -311,21 +315,24 @@ const Guide kGuides[] = {
     {"A new superstar",
      "Un nouveau catcheur",
      {"NEW SUPERSTAR.",
-      "1. Look: a superstar of your other games (with its portraits when the game has them), a file, or the base. "
-      "Its portrait: its game's, a picture of yours (A picture of yours...), or the base's.",
+      "1. Look: a superstar of your other games (with its portraits when the game has them), a file, a 3D model "
+      "(.fbx: Mixamo, VRChat, Blender...), or the base. Its portrait: its game's, a picture of yours, or the base's.",
       "2. Base: gives the moves, ratings and entrance. A superstar WWE '12 also has is its own base at once.",
       "3. Name, 4. Entrance video: the base's, its own from SvR 2011 or WWE 2K15-2K17 (with RAD Video Tools, see "
       "MY GAME DISCS), or one of yours (any video or picture).",
-      "5. Look at it in 3D, then 6. Finish: the mod is made and installed; Test in game.",
+      "5. Look at it in 3D, then 6. Finish: a new superstar, or An attire of <base> (in place of one of his attires); "
+      "the mod is made and installed; Test in game.",
       "In the game: superstar select screen, DLC tile. Added superstars are everywhere (Universe, Create a Story)."},
      {"NOUVEAU.",
-      "1. Apparence : un catcheur de vos autres jeux (avec ses portraits quand le jeu en a), un fichier, ou la base. "
-      "Son portrait : celui de son jeu, une image à vous (Une image à vous...), ou celui de la base.",
+      "1. Apparence : un catcheur de vos autres jeux (avec ses portraits quand le jeu en a), un fichier, un modèle 3D "
+      "(.fbx : Mixamo, VRChat, Blender...), ou la base. Son portrait : celui de son jeu, une image à vous, ou celui de la "
+      "base.",
       "2. Base : donne les prises, les stats et l'entrée. Un catcheur qui existe aussi dans WWE '12 est sa propre "
       "base d'office.",
       "3. Nom, 4. Vidéo d'entrée : celle de la base, la sienne de SvR 2011 ou de WWE 2K15-2K17 (avec RAD Video "
       "Tools, voir MES DISQUES), ou une à vous (vidéo ou image).",
-      "5. Regardez-le en 3D, puis 6. Terminer : le mod est créé et installé ; Tester en jeu.",
+      "5. Regardez-le en 3D, puis 6. Terminer : un nouveau catcheur, ou Une tenue de <base> (à la place d'une de ses "
+      "tenues) ; le mod est créé et installé ; Tester en jeu.",
       "Dans le jeu : écran de choix des catcheurs, case DLC. Les catcheurs ajoutés sont partout (Univers, Créer un "
       "scénario)."}},
     {"An entrance video, pictures, textures",
@@ -347,14 +354,42 @@ const Guide kGuides[] = {
      {"Chaque mod est un fichier .svrmod, enregistré où vous l'avez choisi : c'est ce fichier qu'on partage.",
       "Le launcher (page MODS) active, désactive et supprime les mods ; un .svrmod reçu s'y installe.",
       "Fermez le jeu avant de créer ou d'installer un mod (ses fichiers sont utilisés)."}},
+    {"Portraits, songs, crowd signs, menu backgrounds",
+     "Portraits, musiques, pancartes, fonds du menu",
+     {"MEDIA: the game's superstars' portraits (a picture each) and entrance songs, in one pack. The songs go to your "
+      "music: pick them in CREATIONS > Create an Entrance (USER PLAYLIST).",
+      "SIGNS: four signs a superstar, held up by the crowd during his match. Added superstars have their base's.",
+      "BACKGROUNDS: the superstar on the main menu and title screen; the game draws one at each start (yours or its own).",
+      "SUPERSTARS (Retexture) and NEW SUPERSTAR (An attire of...): an attire mod holds only its attire; several go "
+      "together."},
+     {"MÉDIA : les portraits des catcheurs du jeu (une image chacun) et leurs musiques d'entrée, en un pack. Les musiques "
+      "vont dans vos musiques : choisissez-les dans CRÉATIONS > Créer une entrée (PLAYLIST UTILISATEUR).",
+      "PANCARTES : quatre par catcheur, brandies par la foule pendant son match. Les catcheurs ajoutés ont celles de leur "
+      "base.",
+      "FONDS : le catcheur du menu principal et de l'écran-titre ; le jeu en tire un à chaque lancement (les vôtres ou le "
+      "sien).",
+      "CATCHEURS (Retoucher) et NOUVEAU (Une tenue de...) : un mod de tenue ne contient que sa tenue ; plusieurs vont "
+      "ensemble."}},
+    {"When something goes wrong",
+     "Quand quelque chose ne va pas",
+     {"CHECK MODS reads your installed mods and says what will go wrong in the game, with a button when it can fix it.",
+      "A black screen at a match with an added superstar: check its mod there; an old number kept for a mod you removed "
+      "can be forgotten (Forget them).",
+      "Still stuck: turn the last mod off in the launcher (MODS page) and start again."},
+     {"VÉRIFIER lit vos mods installés et dit ce qui ira mal dans le jeu, avec un bouton quand il peut le réparer.",
+      "Un écran noir au match avec un catcheur ajouté : vérifiez son mod là ; un ancien numéro gardé pour un mod retiré "
+      "peut être oublié (Les oublier).",
+      "Toujours bloqué : désactivez le dernier mod dans le launcher (page MODS) et relancez."}},
     {"Not yet",
      "Pas encore",
      {"Moves and entrances of other games' superstars (they take their base's).",
+      "Adding a fifth attire (or a third to a superstar who has two): replacing one works.",
       "WWE '13 and WWE 2K14 entrance videos (an early Bink 2 that RAD Video Tools doesn't read).",
-      "SvR 2011 VS screens exactly like the original."},
+      "Moving hair and cloth on imported models (they follow the head and body)."},
      {"Les prises et les entrées des catcheurs des autres jeux (ils prennent celles de leur base).",
+      "Ajouter une tenue (une 3e à un catcheur qui en a deux) : en remplacer une marche.",
       "Les vidéos d'entrée de WWE '13 et de WWE 2K14 (un Bink 2 ancien que RAD Video Tools ne lit pas).",
-      "Les écrans VS de SvR 2011 exactement comme l'original."}},
+      "Les cheveux et vêtements qui bougent sur les modèles importés (ils suivent la tête et le corps)."}},
 };
 
 void PageAbout() {
@@ -424,9 +459,9 @@ void DrawUi() {
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
   const char *names_en[] = {"HOME",       "VIDEOS",     "TEXTURES",     "ARENAS", "SUPERSTARS",
-                            "NEW SUPERSTAR", "MEDIA", "SIGNS", "BACKGROUNDS", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
+                            "NEW SUPERSTAR", "MEDIA", "SIGNS", "BACKGROUNDS", "LOOK", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
   const char *names_fr[] = {"ACCUEIL", "VIDÉOS",   "TEXTURES",   "ARÈNES",  "CATCHEURS",
-                            "NOUVEAU", "MÉDIA", "PANCARTES", "FONDS", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
+                            "NOUVEAU", "MÉDIA", "PANCARTES", "FONDS", "REGARDER", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
   for (int i = 0; i < int(std::size(names_en)); ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
@@ -455,6 +490,10 @@ void DrawUi() {
   case kBackgrounds:
     Title(g_fr ? "FONDS DU MENU" : "MENU BACKGROUNDS");
     g_backgrounds.Draw(g_fr, g_device.Get(), g_mods);
+    break;
+  case kLook:
+    Title(g_fr ? "REGARDER" : "LOOK");
+    g_look.Draw(g_fr, g_device.Get(), g_disc, ExeDir() / "mods");
     break;
   case kFiles: PageFiles(); break;
   case kDiscs:
