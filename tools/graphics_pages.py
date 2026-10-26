@@ -18,8 +18,8 @@ luac for that format: Lua 5.1.5 (lua.org) with, in luaconf.h, LUA_NUMBER float (
 unsigned int and luaU_header in lundump.c writing 4 for sizeof(size_t); built with
 `clang -O1 -D_CRT_SECURE_NO_WARNINGS -o luac_wwe12.exe <src/*.c except lua.c>`.
 
-The OPTIONS > JUKEBOX page (wwe12_jukebox.cpp) is built from the same script: 3 rows in the 4-row
-layout (the 4th hidden), and the values' texts are a base id per row + the value (the themes' row
+The OPTIONS > JUKEBOX page (wwe12_jukebox.cpp) is built from the same script: 4 rows, and the
+values' texts are a base id per row + the value (the themes' row
 has as many values as the game has themes, its maximum comes from the exe):
   title 43103, label of row r 43400 + r, value v of row r JUKEBOX_VALUES[r] + v
 
@@ -33,7 +33,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, '..', 'port', 'src', 'native', 'graphics_pages')
 INC = os.path.join(HERE, '..', 'port', 'src', 'native', 'wwe12_graphics_pages.inc')
 JUKEBOX_INC = os.path.join(HERE, '..', 'port', 'src', 'native', 'wwe12_jukebox_page.inc')
-JUKEBOX_VALUES = [43410, 43420, 44000]  # JUKEBOX off/on, ORDER random/one theme, THEME
+JUKEBOX_VALUES = [43410, 43420, 44000, 43430]  # JUKEBOX off/on, ORDER, THEME, GAME MENU MUSIC no/yes
 
 # Number of values of each row, per tab (DISPLAY, GRAPHICS, ADVANCED), in BuildSettings() order.
 TABS = [
@@ -254,8 +254,8 @@ def page_source(tab, counts):
 
 
 def jukebox_source():
-    """The JUKEBOX page: the 4-row layout with 3 rows; values' texts = base id + value, maximum
-    from the exe (yFrame.Get32BitArray), the 4th row hidden."""
+    """The JUKEBOX page: values' texts = base id + value, maximum from the exe
+    (yFrame.Get32BitArray)."""
     n = len(JUKEBOX_VALUES)
     src = TEMPLATE % {
         'frame': 'DrawIngameOptions',
@@ -275,13 +275,7 @@ def jukebox_source():
             ('TEXTS[c][val[c] + 1]', 'VBASE[c] + val[c]'),
             ('TEXTS[i][val[i] + 1]', 'VBASE[i] + val[i]'),
             ('if val[c] < 0 then val[c] = MAXV[c] end', 'if val[c] < 0 then val[c] = mx[c] end'),
-            ('if MAXV[c] < val[c] then val[c] = 0 end', 'if mx[c] < val[c] then val[c] = 0 end'),
-            ('  Cursor()\n  yFrame.SetLayoutStr(WIN, FONT0, TITLE)',
-             '  yFrame.SetLayoutHide(NAME, "font001_R04", true)\n'
-             '  yFrame.SetLayoutHide(NAME, "font001_L04", true)\n'
-             '  yFrame.SetLayoutHide(NAME, "option_line01_04", true)\n'
-             '  yFrame.SetLayoutHide(NAME, "CorsorSet07_04", true)\n'
-             '  Cursor()\n  yFrame.SetLayoutStr(WIN, FONT0, TITLE)')):
+            ('if MAXV[c] < val[c] then val[c] = 0 end', 'if mx[c] < val[c] then val[c] = 0 end')):
         assert old in src, old
         src = src.replace(old, new)
     return src

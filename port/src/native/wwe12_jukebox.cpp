@@ -2,9 +2,15 @@
 //
 // OPTIONS's CREDITS entry becomes JUKEBOX (wwe12_menu_patch.cpp, wwe12_jukebox_menu); it opens one
 // of the game's option pages (run by wwe12_graphics_menu.cpp, script from tools/graphics_pages.py):
-// JUKEBOX off / on, ORDER random / one theme, THEME (every theme, by its superstar's name). With
-// the jukebox on, the menus play entrance themes instead of their own music, one after another.
-// Saved in wwe12.toml (wwe12_jukebox, wwe12_jukebox_order, wwe12_jukebox_theme).
+// JUKEBOX off / on, ORDER random / one theme, THEME (the game's menu music, then every theme by its
+// superstar's name, owned DLC superstars' included), GAME MENU MUSIC no / yes (in the random
+// order). With the jukebox on, the menus play entrance themes instead of their own music, one after
+// another. Saved in wwe12.toml (wwe12_jukebox, wwe12_jukebox_order, wwe12_jukebox_theme,
+// wwe12_jukebox_game_music).
+//
+// The game's own menu music cannot be chosen song by song (the sound engine picks it): its turn
+// gives the menus their music back ([M+32] set, slot 0 stopped: the update starts a song), and
+// the jukebox takes over again when the update picks the next one (that song has ended).
 //
 // Found (2026-10-26):
 //   - The music manager M = [[0x83231754] + 52] (sub_8270AC50, sub_8270B008) has players in slots
@@ -53,7 +59,9 @@ REXCVAR_DEFINE_BOOL(wwe12_jukebox, false, "WWE12",
                     "Jukebox: the menus play entrance themes instead of their own music.");
 REXCVAR_DEFINE_INT32(wwe12_jukebox_order, 0, "WWE12", "Jukebox: 0 = random themes, 1 = the chosen theme only.");
 REXCVAR_DEFINE_INT32(wwe12_jukebox_theme, 139, "WWE12",
-                     "Jukebox: the chosen theme (its superstar's number; 139 = John Cena).");
+                     "Jukebox: the chosen theme (its superstar's number; 139 = John Cena; 1 = the game's menu music).");
+REXCVAR_DEFINE_BOOL(wwe12_jukebox_game_music, true, "WWE12",
+                    "Jukebox: the game's own menu music also comes up in the random order.");
 REXCVAR_DECLARE(uint32_t, user_language);
 
 REX_EXTERN(__imp__sub_8271BFD0);
@@ -74,23 +82,33 @@ constexpr int kThemeSlot = 2;              // Create an Entrance's preview slot
 constexpr u32 kThemeList = 0x83073BA0u;    // u16 theme numbers, sorted
 constexpr u32 kRoster = 0x8317FA08u;       // the save's superstar records
 constexpr u32 kRosterIndex = 0x8307B5E0u;  // u16 [373]: number -> record index
-constexpr u32 kLabelText = 43400, kOnOffText = 43410, kOrderText = 43420, kThemeText = 44000;
+constexpr u32 kLabelText = 43400, kOnOffText = 43410, kOrderText = 43420, kNoYesText = 43430;
+constexpr u32 kThemeText = 44000;
 constexpr int kMaxThemes = 400;
+constexpr u32 kGameMusic = 1;              // the "theme" that is the game's own menu music
+constexpr u32 kContentList = 0x8322E238u;  // the downloadable content's state (owned superstars)
 
 std::filesystem::path g_toml_path;
 
 // ---- texts ---------------------------------------------------------------------------------
 
 struct Texts {
-  const char *jukebox, *order, *theme, *off, *on, *random, *one, *theme_n;
+  const char *jukebox, *order, *theme, *off, *on, *random, *one, *theme_n, *game_music, *game_music_row, *no,
+      *yes, *subtitle;
 };
 constexpr Texts kTexts[] = {
-    {"JUKEBOX", "ORDER", "THEME", "OFF", "ON", "RANDOM", "CHOSEN THEME ONLY", "THEME "},
+    {"JUKEBOX", "ORDER", "THEME", "OFF", "ON", "RANDOM", "CHOSEN THEME ONLY", "THEME ", "GAME MENU MUSIC",
+     "GAME MENU MUSIC TOO", "NO", "YES", "MENU MUSIC"},
     {"JUKEBOX", "ORDRE", "TH\xC3\x88ME", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "AL\xC3\x89" "ATOIRE",
-     "TH\xC3\x88ME CHOISI SEULEMENT", "TH\xC3\x88ME "},
-    {"JUKEBOX", "REIHENFOLGE", "THEMA", "AUS", "AN", "ZUF\xC3\x84LLIG", "NUR GEW\xC3\x84HLTES THEMA", "THEMA "},
-    {"JUKEBOX", "ORDEN", "TEMA", "NO", "S\xC3\x8D", "ALEATORIO", "SOLO EL TEMA ELEGIDO", "TEMA "},
-    {"JUKEBOX", "ORDINE", "TEMA", "NO", "S\xC3\x8C", "CASUALE", "SOLO IL TEMA SCELTO", "TEMA "},
+     "TH\xC3\x88ME CHOISI SEULEMENT", "TH\xC3\x88ME ", "MUSIQUE DES MENUS (JEU)", "MUSIQUE DES MENUS DU JEU AUSSI",
+     "NON", "OUI", "MUSIQUE DES MENUS"},
+    {"JUKEBOX", "REIHENFOLGE", "THEMA", "AUS", "AN", "ZUF\xC3\x84LLIG", "NUR GEW\xC3\x84HLTES THEMA", "THEMA ",
+     "MEN\xC3\x9CMUSIK DES SPIELS", "AUCH MEN\xC3\x9CMUSIK DES SPIELS", "NEIN", "JA", "MEN\xC3\x9CMUSIK"},
+    {"JUKEBOX", "ORDEN", "TEMA", "NO", "S\xC3\x8D", "ALEATORIO", "SOLO EL TEMA ELEGIDO", "TEMA ",
+     "M\xC3\x9ASICA DE LOS MEN\xC3\x9AS (JUEGO)", "TAMBI\xC3\x89N M\xC3\x9ASICA DEL JUEGO", "NO", "S\xC3\x8D",
+     "M\xC3\x9ASICA DE LOS MEN\xC3\x9AS"},
+    {"JUKEBOX", "ORDINE", "TEMA", "NO", "S\xC3\x8C", "CASUALE", "SOLO IL TEMA SCELTO", "TEMA ",
+     "MUSICA DEI MEN\xC3\x99 (GIOCO)", "ANCHE LA MUSICA DEL GIOCO", "NO", "S\xC3\x8C", "MUSICA DEI MEN\xC3\x99"},
 };
 
 const Texts &T() {
@@ -126,9 +144,27 @@ std::string SuperstarName(u32 number) {
   return name;
 }
 
-// The game's theme numbers with their superstars' names (themes without one: "THEME n").
+// The downloadable content's state of a superstar (2 = owned), as the select screen's DLC tile
+// reads it (wwe12_roster_probe.cpp): the content list [0x8322E238] + 164, 16-byte entries
+// {kind 1, number, 0, state}.
+u32 OwnedState(u32 number) {
+  const u32 obj = bd::mem::try_load<u32>(kContentList);
+  if (!obj)
+    return 0;
+  const u32 entries = bd::mem::try_load<u32>(obj + 164 + 4), count = bd::mem::try_load<u32>(obj + 164 + 12);
+  for (u32 i = 0; i < count && i < 4096 && entries; ++i) {
+    const u32 e = entries + i * 16;
+    if (bd::mem::try_load<u32>(e) == 1 && bd::mem::try_load<u32>(e + 4) == number && bd::mem::try_load<u32>(e + 8) == 0)
+      return bd::mem::try_load<u32>(e + 12);
+  }
+  return 0;
+}
+
+// The game's menu music, then the game's theme numbers with their superstars' names (themes
+// without one: "THEME n"), then the owned DLC superstars' (numbers 50-99).
 void LoadThemes() {
   g_themes.clear();
+  g_themes.push_back({kGameMusic, T().game_music});
   u32 last = 0;
   for (int i = 0; i < kMaxThemes; ++i) {
     const u32 n = bd::mem::try_load<u16>(kThemeList + i * 2);
@@ -141,6 +177,11 @@ void LoadThemes() {
     if (name.empty() || name == "0")
       name = T().theme_n + std::to_string(n);
     g_themes.push_back({n, name});
+  }
+  for (u32 n = 50; n < 100; ++n) {
+    const std::string name = SuperstarName(n);
+    if (!name.empty() && name != "0" && OwnedState(n) == 2)
+      g_themes.push_back({n, name});
   }
   BD_INFO("[jukebox] {} themes (first {} {}, last {} {})", g_themes.size(),
           g_themes.empty() ? 0 : g_themes.front().number, g_themes.empty() ? "" : g_themes.front().name,
@@ -156,7 +197,7 @@ int ThemeIndex(u32 number) {
 
 // ---- player (game thread, in the music manager's update) -----------------------------------
 
-enum class Step { Idle, Stop, WaitStop, Prepare, WaitReady, Play, Playing };
+enum class Step { Idle, Stop, WaitStop, Prepare, WaitReady, Play, Playing, GameSong };
 Step g_step = Step::Idle;
 int g_frames = 0;          // updates spent in the current step
 u32 g_playing = 0;         // theme being played
@@ -166,6 +207,7 @@ std::atomic<bool> g_restart{false};   // the page asked for its theme now
 bool g_play_chosen = false;           // the next theme is the chosen one
 std::atomic<bool> g_give_back{false}; // the page turned the jukebox off: menu music back
 std::mt19937 g_rng{std::random_device{}()};
+std::vector<u32> g_failed;  // themes that could not be loaded (left out of the random order)
 
 using GuestFn = void (*)(PPCContext &, u8 *);
 
@@ -211,13 +253,14 @@ u32 NextTheme() {
   g_play_chosen = false;
   if (REXCVAR_GET(wwe12_jukebox_order) == 1 || play_chosen)
     return g_themes[ThemeIndex(chosen)].number;
-  if (g_themes.size() == 1)
-    return g_themes[0].number;
-  for (;;) {
-    const u32 n = g_themes[std::uniform_int_distribution<size_t>(0, g_themes.size() - 1)(g_rng)].number;
-    if (n != g_playing)
-      return n;
-  }
+  std::vector<u32> pool;
+  for (const Theme &t : g_themes)
+    if (t.number != g_playing && (t.number != kGameMusic || REXCVAR_GET(wwe12_jukebox_game_music)) &&
+        std::find(g_failed.begin(), g_failed.end(), t.number) == g_failed.end())
+      pool.push_back(t.number);
+  if (pool.empty())
+    return g_playing ? g_playing : kGameMusic;
+  return pool[std::uniform_int_distribution<size_t>(0, pool.size() - 1)(g_rng)];
 }
 
 void Run(PPCContext &ctx, u8 *base, u32 m) {
@@ -247,6 +290,13 @@ void Run(PPCContext &ctx, u8 *base, u32 m) {
       Go(Step::Idle);
       break;
     }
+    if (g_playing == kGameMusic) {
+      // The game's turn: its update starts a menu song (slot 0 is stopped).
+      bd::mem::store<u32>(m + 32, 1);
+      BD_INFO("[jukebox] now playing the game's menu music");
+      Go(Step::GameSong);
+      break;
+    }
     const u32 desc = Scratch(ctx) + 16;
     for (u32 i = 0; i < 160; i += 4)
       bd::mem::store<u32>(desc + i, 0);
@@ -260,9 +310,11 @@ void Run(PPCContext &ctx, u8 *base, u32 m) {
   case Step::WaitReady:
     if (Call(__imp__sub_8271BF58, ctx, base, m, kThemeSlot)) {
       Go(Step::Play);
-    } else if (g_frames > 300) {
+    } else if (g_frames > 150) {
       BD_WARN("[jukebox] theme {} could not be loaded (state {:X}): next one", g_playing,
               SlotState(ctx, base, m, kThemeSlot));
+      g_failed.push_back(g_playing);
+      StopSlot(ctx, base, m, kThemeSlot);
       Go(Step::Prepare);
     }
     break;
@@ -302,6 +354,7 @@ void Save() {
   f.SetBool("wwe12_jukebox", REXCVAR_GET(wwe12_jukebox));
   f.SetInt("wwe12_jukebox_order", REXCVAR_GET(wwe12_jukebox_order));
   f.SetInt("wwe12_jukebox_theme", REXCVAR_GET(wwe12_jukebox_theme));
+  f.SetBool("wwe12_jukebox_game_music", REXCVAR_GET(wwe12_jukebox_game_music));
   if (f.Save())
     BD_INFO("[jukebox] settings saved to {}", rex::path_to_utf8(g_toml_path));
 }
@@ -322,9 +375,10 @@ int Wwe12JukeboxPageRows() { return kJukeboxPageRows; }
 void Wwe12JukeboxPageInit(uint32_t array) {
   LoadThemes();
   const u32 n = kJukeboxPageRows;
-  const u32 values[3] = {REXCVAR_GET(wwe12_jukebox) ? 1u : 0u, REXCVAR_GET(wwe12_jukebox_order) == 1 ? 1u : 0u,
-                         u32(ThemeIndex(u32(REXCVAR_GET(wwe12_jukebox_theme))))};
-  const u32 maxima[3] = {1, 1, g_themes.empty() ? 0u : u32(g_themes.size() - 1)};
+  const u32 values[4] = {REXCVAR_GET(wwe12_jukebox) ? 1u : 0u, REXCVAR_GET(wwe12_jukebox_order) == 1 ? 1u : 0u,
+                         u32(ThemeIndex(u32(REXCVAR_GET(wwe12_jukebox_theme)))),
+                         REXCVAR_GET(wwe12_jukebox_game_music) ? 1u : 0u};
+  const u32 maxima[4] = {1, 1, g_themes.empty() ? 0u : u32(g_themes.size() - 1), 1};
   for (u32 r = 0; r < n; ++r) {
     bd::mem::store<u32>(array + r * 4, values[r]);
     bd::mem::store<u32>(array + (n + r) * 4, 1);
@@ -336,10 +390,13 @@ void Wwe12JukeboxPageUpdate(uint32_t array) {
   const bool on = bd::mem::load<u32>(array) != 0;
   const int order = bd::mem::load<u32>(array + 4) ? 1 : 0;
   const u32 index = bd::mem::load<u32>(array + 8);
+  const bool game_music = bd::mem::load<u32>(array + 12) != 0;
   const u32 theme = index < g_themes.size() ? g_themes[index].number : u32(REXCVAR_GET(wwe12_jukebox_theme));
   const bool was_on = REXCVAR_GET(wwe12_jukebox);
   const bool changed = on != was_on || order != REXCVAR_GET(wwe12_jukebox_order) ||
-                       int(theme) != REXCVAR_GET(wwe12_jukebox_theme);
+                       int(theme) != REXCVAR_GET(wwe12_jukebox_theme) ||
+                       game_music != REXCVAR_GET(wwe12_jukebox_game_music);
+  rex::cvar::SetFlagByName("wwe12_jukebox_game_music", game_music ? "true" : "false");
   rex::cvar::SetFlagByName("wwe12_jukebox", on ? "true" : "false");
   rex::cvar::SetFlagByName("wwe12_jukebox_order", std::to_string(order));
   rex::cvar::SetFlagByName("wwe12_jukebox_theme", std::to_string(theme));
@@ -352,6 +409,8 @@ void Wwe12JukeboxPageUpdate(uint32_t array) {
   BD_INFO("[jukebox] page: {}, order {}, theme {}{}", on ? "on" : "off", order, theme, changed ? "" : " (no change)");
 }
 
+std::string Wwe12JukeboxSubtitle() { return T().subtitle; }
+
 std::string Wwe12JukeboxText(uint32_t id) {
   const Texts &t = T();
   switch (id) {
@@ -359,6 +418,9 @@ std::string Wwe12JukeboxText(uint32_t id) {
   case kLabelText: return t.jukebox;
   case kLabelText + 1: return t.order;
   case kLabelText + 2: return t.theme;
+  case kLabelText + 3: return t.game_music_row;
+  case kNoYesText: return t.no;
+  case kNoYesText + 1: return t.yes;
   case kOnOffText: return t.off;
   case kOnOffText + 1: return t.on;
   case kOrderText: return t.random;
@@ -405,16 +467,20 @@ extern "C" REX_FUNC(sub_8271BFD0) {
   }
   const bool picked = bd::mem::try_field<u32>(m, 40) != before;
   if (g_restart.exchange(false)) {
-    // The page: the chosen theme now (the menus' music stopped first if it still plays).
+    // The page: the chosen theme now (the menus' music and ours stopped first).
     g_play_chosen = true;
-    const bool ours = g_menus;
     g_menus = true;
-    Go(ours ? Step::WaitStop : Step::Stop);
-    if (ours)
-      StopSlot(saved, base, m, kThemeSlot);
+    Go(Step::Stop);
   } else if (picked && !g_menus) {
     g_menus = true;
     Go(Step::Stop);
+  } else if (picked && g_step == Step::GameSong && g_frames > 1) {
+    // The update picked the song after the game's (that one has ended): the jukebox again, unless
+    // the game's music is the only one chosen.
+    const bool only_game =
+        REXCVAR_GET(wwe12_jukebox_order) == 1 && u32(REXCVAR_GET(wwe12_jukebox_theme)) == kGameMusic;
+    if (!only_game)
+      Go(Step::Stop);
   }
   if (g_menus && g_step != Step::Idle)
     Run(saved, base, m);

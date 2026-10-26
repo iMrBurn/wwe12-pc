@@ -29,3 +29,7 @@ void Wwe12JukeboxPageUpdate(uint32_t array);
 
 // The text of one of the page's text ids in the player's language, or empty.
 std::string Wwe12JukeboxText(uint32_t id);
+
+// The page's subtitle, in place of the reused page's "IN-GAME OPTIONS" (text 41142) while it is open.
+constexpr uint32_t kWwe12JukeboxSubtitleText = 41142;
+std::string Wwe12JukeboxSubtitle();

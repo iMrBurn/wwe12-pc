@@ -185,6 +185,16 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   saigner vite : Extreme Rules + MATCH CREATOR > WIN CONDITION > FIRST BLOOD = ON. **Plantage vu 3 fois (même
   sans la sonde) au chargement qui suit la fin d'un match First Blood** : lecture de guest 0 dans
   `sub_82488DE0` (lr 82488DE8), build du 2026-10-22 avec des changements de Rendu non commités ; confié à Rendu.
+- **Jukebox (1.0, 2026-10-26, `wwe12_jukebox.cpp`)** : OPTIONS > CREDITS devient JUKEBOX (`wwe12_jukebox_menu`,
+  choix de l'utilisateur), page d'options native (4 lignes : JUKEBOX, ORDRE, THÈME, MUSIQUE DES MENUS DU JEU AUSSI ;
+  `wwe12_jukebox` désactivé par défaut). Numéro d'un thème d'entrée = numéro du catcheur (Cena 139) ; nom pour le
+  moteur de son `sub_8271F080` = « @Entrance_Music-MUS_%04d_0_0 ». La musique des menus est un conteneur du moteur
+  (« @System-Menu_Music ») qui choisit seul : sa liste de 19 numéros (0x83074908) ne décide rien. Lecture d'un thème
+  comme l'écoute de Créer une entrée (`sub_829EBBE8`) : couper les pistes 0-2 du gestionnaire de musique
+  (`sub_8271BB60`), charger sur la piste 2 (`sub_8271BC90`), attendre prêt (`sub_8271BF58`), jouer (`sub_8271BD28`).
+  Vérifié en jeu : thème choisi, arrêt au match, reprise au menu. Pas encore vérifiés en jeu : thème d'un catcheur DLC
+  (82 entrées listées) et le tour « musique des menus du jeu ». Lanceur `tools/dev/lancer_test_jukebox.bat` (données
+  isolées `Documents\wwe12_test`).
 - **Interrupteur « jeu d'origine » (2026-10-22, reporté à la 1.0 : PAS dans l'arbre, sauvé dans
   `work/original-game-1.0.patch`, hors dépôt ; `git apply` pour le reprendre)** : `wwe12_original.h` (`Wwe12OriginalGame()`) +
   `wwe12_original.cpp` (cvar `wwe12_original_game`, défaut false ; le launcher n'écrira que cette clé). À true,

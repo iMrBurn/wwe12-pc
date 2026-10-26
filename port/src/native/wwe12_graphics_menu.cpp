@@ -449,6 +449,7 @@ constexpr u32 kIngameOptionsScriptSize = 5158;  // "/MENS/0014", the script we r
 
 int g_pending_tab = -1;  // an entry was chosen, its page script not loaded yet
 int g_native_tab = -1;   // the page shown
+bool g_jukebox_open = false;  // the JUKEBOX page is open (its subtitle replaces "IN-GAME OPTIONS")
 std::vector<Setting> g_native_settings;
 std::vector<int> g_native_rows;  // indices into g_native_settings, for g_native_tab
 
@@ -552,6 +553,7 @@ int NativePageArg(const PPCContext &ctx, u8 *base) {
 }  // namespace
 
 void Wwe12GraphicsNativeDecide(uint32_t label) {
+  g_jukebox_open = false;
   if (label == kWwe12JukeboxText && Wwe12JukeboxMenuEnabled()) {
     g_pending_tab = kWwe12JukeboxPage;
     BD_INFO("[graphics] jukebox page chosen");
@@ -569,7 +571,8 @@ bool Wwe12GraphicsNativeEnabled() { return REXCVAR_GET(wwe12_graphics_menu) || W
 
 uint32_t Wwe12NativeGraphicsGuestText(uint32_t id) {
   if (Wwe12JukeboxMenuEnabled()) {
-    const std::string text = Wwe12JukeboxText(id);
+    const std::string text =
+        id == kWwe12JukeboxSubtitleText ? (g_jukebox_open ? Wwe12JukeboxSubtitle() : std::string()) : Wwe12JukeboxText(id);
     if (!text.empty()) {
       // One 128-byte guest slot per id, rewritten when its text changes.
       static std::map<u32, std::pair<u32, std::string>> s_slots;
@@ -611,6 +614,7 @@ uint32_t Wwe12NativeGraphicsGuestText(uint32_t id) {
 // luaL_loadbuffer (L, buffer, size, name): our page script instead of IN-GAME OPTIONS's.
 REX_EXTERN(__imp__sub_827E9418);
 extern "C" REX_FUNC(sub_827E9418) {
+  g_jukebox_open = false;
   if (g_pending_tab == kWwe12JukeboxPage && ctx.r5.u32 == kIngameOptionsScriptSize &&
       bd::mem::try_load<u8>(ctx.r4.u32) == 0x1B) {
     g_pending_tab = -1;
@@ -624,6 +628,7 @@ extern "C" REX_FUNC(sub_827E9418) {
       ctx.r4.u64 = s_buffer;
       ctx.r5.u64 = size;
       g_native_tab = kWwe12JukeboxPage;
+      g_jukebox_open = true;
       BD_INFO("[graphics] jukebox page: script of {} bytes", size);
     }
   }

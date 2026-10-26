@@ -2,15 +2,15 @@
 local inst, pad = -1, -1
 local NAME = "DrawIngameOptions"
 local WIN, FONT0 = "OptionWindow", "font000"
-local N = 3
-local LBL = {"font001_R01", "font001_R02", "font001_R03"}
-local VAL = {"font001_L01", "font001_L02", "font001_L03"}
-local LINE = {"option_line01_01", "option_line01_02", "option_line01_03"}
-local CUR = {"CorsorSet07_01", "CorsorSet07_02", "CorsorSet07_03"}
-local MAXV = {0, 0, 0}
+local N = 4
+local LBL = {"font001_R01", "font001_R02", "font001_R03", "font001_R04"}
+local VAL = {"font001_L01", "font001_L02", "font001_L03", "font001_L04"}
+local LINE = {"option_line01_01", "option_line01_02", "option_line01_03", "option_line01_04"}
+local CUR = {"CorsorSet07_01", "CorsorSet07_02", "CorsorSet07_03", "CorsorSet07_04"}
+local MAXV = {0, 0, 0, 0}
 local TITLE = 43103
-local LABELS = {43400, 43401, 43402}
-local VBASE = {43410, 43420, 44000}
+local LABELS = {43400, 43401, 43402, 43403}
+local VBASE = {43410, 43420, 44000, 43430}
 local PAGE = 103
 local val, en, mx, bak = {}, {}, {}, {}
 local ST_LOAD, ST_FADEIN, ST_RUN, ST_OUT, ST_WARN = 0, 1, 2, 3, 6
@@ -74,10 +74,6 @@ local function Setup()
     yFrame.SetLayoutColor(NAME, LBL[i], sColNo)
     yFrame.SetLayoutColor(NAME, VAL[i], sColNo)
   end
-  yFrame.SetLayoutHide(NAME, "font001_R04", true)
-  yFrame.SetLayoutHide(NAME, "font001_L04", true)
-  yFrame.SetLayoutHide(NAME, "option_line01_04", true)
-  yFrame.SetLayoutHide(NAME, "CorsorSet07_04", true)
   Cursor()
   yFrame.SetLayoutStr(WIN, FONT0, TITLE)
   for i = 1, N do
