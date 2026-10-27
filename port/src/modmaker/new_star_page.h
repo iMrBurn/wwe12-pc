@@ -28,6 +28,7 @@
 #include "game_process.h"
 #include "imgui.h"
 #include "mod_version.h"
+#include "moveset_port.h"
 #include "media.h"
 #include "mods.h"
 #include "port13_star.h"
@@ -441,6 +442,7 @@ class Page {
                                     .c_str());
     if (!error_.empty())
       ImGui::TextColored(red, "%s", error_.c_str());
+    DrawOwnMoves(fr);
   }
 
   // The superstar of the same name in WWE '12, if there is one and the player chose no base: the base, so the new
@@ -979,6 +981,61 @@ class Page {
     }
     if (!portraits_[1][0].empty())
       face_ = arena_page::MakeThumb(device_, portraits_[1][0]);
+    OwnMoves(number);
+  }
+
+  // Its SvR 2011 moves in WWE '12's slots (moveset_port.h), from the player's SvR 2011 in My game discs.
+  void OwnMoves(int number) {
+    own_moves_ = {};
+    own_moves_why_.clear();
+    if (look_ != 2 || number < 0 || !disc12_ || !discs_)
+      return;
+    disc::GameDisc svr;
+    const fs::path p = discs_->PathOf(0x5451085D);
+    if (p.empty() || !svr.OpenPath(p)) {
+      own_moves_why_ = "no SvR 2011 in My game discs";
+      return;
+    }
+    moveset_port::FromSvr(*disc12_, svr, number, own_moves_, &own_moves_why_);
+  }
+
+  // Step 2's part: its own moves, slot by slot.
+  void DrawOwnMoves(bool fr) {
+    if (own_moves_.rows.empty())
+      return;
+    ImGui::Dummy(ImVec2(0, 6));
+    const int n = int(own_moves_.rows.size());
+    char label[200];
+    snprintf(label, sizeof(label),
+             fr ? "Ses propres prises de SvR 2011 (%d cases sur %d trouvées dans WWE '12, les autres : celles de la base)"
+                : "Its own SvR 2011 moves (%d slots of %d found in WWE '12, the others: the base's)",
+             own_moves_.exact + own_moves_.variant, n);
+    ImGui::Checkbox(label, &use_own_moves_);
+    if (use_own_moves_ && ImGui::TreeNode(fr ? "Détail des prises" : "The moves, slot by slot")) {
+      if (ImGui::BeginTable("own_moves", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
+                            ImVec2(0, 220))) {
+        ImGui::TableSetupColumn(fr ? "Case" : "Slot", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("SvR 2011");
+        ImGui::TableSetupColumn("WWE '12");
+        ImGui::TableHeadersRow();
+        for (const auto &r : own_moves_.rows) {
+          ImGui::TableNextRow();
+          ImGui::TableNextColumn();
+          ImGui::Text("%03X", r.off);
+          ImGui::TableNextColumn();
+          ImGui::TextUnformatted(r.from.empty() ? "?" : r.from.c_str());
+          ImGui::TableNextColumn();
+          if (r.to.empty())
+            ImGui::TextDisabled("%s", fr ? "(celle de la base)" : "(the base's)");
+          else if (r.variant)
+            ImGui::Text("%s  %s", r.to.c_str(), fr ? "(autre version)" : "(another version)");
+          else
+            ImGui::TextUnformatted(r.to.c_str());
+        }
+        ImGui::EndTable();
+      }
+      ImGui::TreePop();
+    }
   }
 
   // WWE 2K15 / 2K16: pac\menu\menuHD2.pac, SFAG / SFBG / SFCG "NNNN" (2K16: no SFBG, SFAG again), TGA 512 x 512,
@@ -1176,7 +1233,7 @@ class Page {
                     "\ndisc_pick=" + std::to_string(disc_pick_) + "\nsvr_attire=" + std::to_string(svr_attire_) +
                     "\nfbx=" + u8(fbx_path_) + "\nfbx_budget=" + std::to_string(fbx_budget_) + "\nportrait=" +
                     u8(custom_portrait_) + "\nkeep_portraits=" + (keep_portraits_ ? "1" : "0") + "\nas_attire=" +
-                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_attributes=" +
+                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_moves=" + (use_own_moves_ ? "1" : "0") + "\nown_attributes=" +
                     (own_attributes_ ? "1" : "0") + "\nattributes=";
     for (size_t i = 0; i < attributes_.size(); ++i)
       t += std::to_string(attributes_[i]) + (i + 1 < attributes_.size() ? "," : "");
@@ -1240,6 +1297,7 @@ class Page {
     snprintf(author_, sizeof(author_), "%s", value("author").c_str());
     snprintf(version_, sizeof(version_), "%s", value("version").c_str());
     own_attributes_ = value("own_attributes") == "1";
+    use_own_moves_ = value("own_moves") != "0";
     attributes_.clear();
     for (const std::string a = value("attributes"); const auto &part : [&] {
            std::vector<std::string> v;
@@ -1439,6 +1497,8 @@ class Page {
       for (size_t i = 0; i < 12; ++i)
         manifest += std::to_string(attributes_[i]) + (i < 11 ? "," : "\n");
     }
+    if (use_own_moves_ && !own_moves_.moves.empty())  // (the game puts them over the base's)
+      manifest += "moves=" + moveset_port::ManifestValue(own_moves_.moves) + "\n";
     manifest += "description=" + std::string(name_) + ", a new superstar starting from " +
                 (chosen_ ? b.name : "an average superstar (" + b.name + ")") +
                 (look_ == 4   ? ", its look from a 3D model (FBX)"
@@ -1506,6 +1566,9 @@ class Page {
   bool note_ok_ = false, message_ok_ = false;
   media::MovieEditor movie_;
   bool own_movie_ = false;
+  moveset_port::Result own_moves_;  // its SvR 2011 moves in WWE '12's slots (moveset_port.h)
+  std::string own_moves_why_;
+  bool use_own_moves_ = true;
   bool own_attributes_ = false;           // its own attributes (else the base's)
   std::vector<int> attributes_, base_attributes_;  // the 12 (0-100), STRIKE POWER .. TAG TEAM
   bool svr_movie_ = false;     // its SvR 2011 entrance movie, as it is

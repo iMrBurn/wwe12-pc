@@ -49,6 +49,9 @@ struct Star {
   // STRIKE DEFENSE, GRAPPLE DEFENSE, SPEED, AGILITY, ADRENALINE, RECOVERY, DURABILITY, CHARISMA, TAG TEAM, the game's
   // own names in that order), else empty (the base's).
   std::vector<uint8_t> attributes;
+  // Its own moves over its base's (CHAR / PRO byte offset, move number, big-endian there: the Mod Maker's
+  // moveset_port.h), else empty.
+  std::vector<std::pair<int, int>> moves;
   // Its own portraits, else empty (the base's): [0 SD / 1 HD][SSFA, SSFB, SSFC], DDS as the game's (DXT5; HD 512 x 512,
   // 512 x 512, 256 x 256; SD 512 x 256, 512 x 256, 256 x 256: WWE '13's are the same).
   Bytes portraits[2][3];
@@ -429,7 +432,13 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     person_used[size_t(person)] = true;
     Le16(d, 0x100, uint16_t(person));
     svrfmt::ArchiveReplace(*s, d);
-    svrfmt::ArchiveReplace(*sp, svrfmt::ArchiveData(*bp));
+    Bytes moves = svrfmt::ArchiveData(*bp);
+    for (const auto &[at, id] : st.moves)
+      if (at >= 0x00A && at < 0x1C2 && (at & 1) == 0 && size_t(at) + 1 < moves.size()) {  // (the moves, not the entrance)
+        moves[size_t(at)] = uint8_t(id >> 8);
+        moves[size_t(at) + 1] = uint8_t(id);
+      }
+    svrfmt::ArchiveReplace(*sp, moves);
   }
   svrfmt::ArchiveTouch(*dat);
   svrfmt::ArchiveTouch(*pro);
