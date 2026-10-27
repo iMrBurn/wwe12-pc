@@ -58,4 +58,20 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
 - **2K14-2K17 : pas encore.** Noms dans `createmode.pac` MOVS/WAZE (nom d'entrée avec des octets en plus après
   « WAZE ») ; la fiche PRO de 2K14 ne s'ouvre pas en arbre (0 enfant) ; 2K16/2K17 : tables à entrées de 20 octets et
   HSPC chez Kaiko (`moves_port.py` Game14, Game2K16, Game2K17 ; `superstar_port.py` 1084-1224).
-- Étapes 3 et 4 : pas commencées.
+- **Ce que l'étape 3 apporterait** (mesuré hors jeu, `moveset_port::FromGame` sur tout le roster) : SvR 2011, 222
+  catcheurs, cases mises en correspondance : 83 % même nom, 12 % autre version, **5 % gardent la base** (220 prises
+  distinctes manquent : Five Star Frog Splash, Rolling Thunder, Quake, Book of Ezekiel, Texas Piledriver…) ;
+  WWE '13, 273 catcheurs : 84 % / 4 % / **12 %** (291 prises : Beast Bite, White Noise, Saito Suplex, Vise Grip,
+  Glam Slam Stretch…).
+- **Animations de WWE '13 : lisibles telles quelles.** Pas dans `m.pac` (30 Ko chez lui) mais dans `pac/mot06-08.pac`
+  (EPK8 en clair dans la copie de l'utilisateur ; `dlc_mot01.pac` est xcompressé), mêmes banques ZMVM qu'en WWE '12
+  (STAT, BASE, STN1/2, GRND, CORN, FINI, SPE0-2, RUMB, LADR, CELL… plus ABL0/1, LIMB) : **100 % des fiches lues par
+  `yanm::Read`**. Différence : **20 pistes par personne en WWE '13, 24 en WWE '12** (Kaiko : WWE '13 a un flux IK,
+  WWE '12 du FK pur) → copier tel quel ne suffira pas, il faut recalculer les pistes de WWE '12 (le visionneur
+  d'animations du Mod Maker sait déjà les échantillonner).
+- **Ce qui manque pour l'étape 3, dans le jeu** : un « pack de prises » (l'équivalent de `move_packs.cpp` de Kaiko,
+  hors de ses outils) : ajouter des fiches ZMVM à `m.pac` (270 Mo : pas de copie, une redirection d'entrées comme
+  pour les vidéos d'arènes) et cloner les fiches WAZE de `misc.pac` (petit : copie patchée par l'overlay, comme
+  `menu.pac`) ; les autres données d'une prise (dégâts, contres, événements) ne sont décodées nulle part : on part
+  d'une prise « modèle » de WWE '12 du même genre (méthode de Kaiko).
+- Étape 4 : pas commencée.
