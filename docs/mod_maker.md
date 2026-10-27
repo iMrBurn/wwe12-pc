@@ -1002,6 +1002,7 @@ places ×10, d'après le code de Kaiko).
   `kami_b00` de la base (le Drew de WWE '12 a sa propre coiffure à chaînes) : toute la tête des cheveux pivotait, le
   crâne rond ne le montrait pas, les mèches sortaient du front. Les os de cheveux ne servent plus à orienter un os
   (`ConvertModel`). Vérifié hors jeu : Drew propre ; CM Punk (ch131), ch117 et Undertaker (ch103) inchangés.
+  **Vu en jeu** (2026-10-27, validé par l'utilisateur) : Drew refait, front propre à l'entrée.
   Fausses pistes : transparence, envers des faces (cheveux de SvR dessinés des deux côtés : drapeaux de rendu du
   maillage à +0x88 = 0x114, sans 0x2, d'après `svr11_build.py` de Kaiko), retirer les faces tournées vers la tête.
 - **Brillance** (2026-10-27) : l'alpha de la carte des normales de SvR est ramené à 0,8 de la moyenne de la base (plus
