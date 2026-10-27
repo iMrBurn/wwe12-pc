@@ -1010,19 +1010,21 @@ class Page {
     OwnMoves(number);
   }
 
-  // Its SvR 2011 moves in WWE '12's slots (moveset_port.h), from the player's SvR 2011 in My game discs.
+  // Its moves in its game (SvR 2011, WWE '13; the 2K games' aren't read yet) in WWE '12's slots (moveset_port.h), from
+  // that game in My game discs.
   void OwnMoves(int number) {
     own_moves_ = {};
     own_moves_why_.clear();
-    if (look_ != 2 || number < 0 || !disc12_ || !discs_)
+    own_moves_game_ = look_ == 2 ? 0x5451085D : star_game_;
+    if ((look_ != 2 && look_ != 3) || number < 0 || !disc12_ || !discs_)
       return;
-    disc::GameDisc svr;
-    const fs::path p = discs_->PathOf(0x5451085D);
-    if (p.empty() || !svr.OpenPath(p)) {
-      own_moves_why_ = "no SvR 2011 in My game discs";
+    disc::GameDisc src;
+    const fs::path p = discs_->PathOf(own_moves_game_);
+    if (p.empty() || !src.OpenPath(p)) {
+      own_moves_why_ = "its game isn't in My game discs";
       return;
     }
-    moveset_port::FromSvr(*disc12_, svr, number, own_moves_, &own_moves_why_);
+    moveset_port::FromGame(*disc12_, src, number, own_moves_, &own_moves_why_);
   }
 
   // Step 2's part: its own moves, slot by slot.
@@ -1033,15 +1035,16 @@ class Page {
     const int n = int(own_moves_.rows.size());
     char label[200];
     snprintf(label, sizeof(label),
-             fr ? "Ses propres prises de SvR 2011 (%d cases sur %d trouvées dans WWE '12, les autres : celles de la base)"
-                : "Its own SvR 2011 moves (%d slots of %d found in WWE '12, the others: the base's)",
-             own_moves_.exact + own_moves_.variant, n);
+             fr ? "Ses propres prises de %s (%d cases sur %d trouvées dans WWE '12, les autres : celles de la base)"
+                : "Its own moves from %s (%d slots of %d found in WWE '12, the others: the base's)",
+             own_moves_game_ == 0x5451085D ? "SvR 2011" : GameName(own_moves_game_), own_moves_.exact + own_moves_.variant,
+             n);
     ImGui::Checkbox(label, &use_own_moves_);
     if (use_own_moves_ && ImGui::TreeNode(fr ? "Détail des prises" : "The moves, slot by slot")) {
       if (ImGui::BeginTable("own_moves", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
                             ImVec2(0, 220))) {
         ImGui::TableSetupColumn(fr ? "Case" : "Slot", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("SvR 2011");
+        ImGui::TableSetupColumn(own_moves_game_ == 0x5451085D ? "SvR 2011" : GameName(own_moves_game_));
         ImGui::TableSetupColumn("WWE '12");
         ImGui::TableHeadersRow();
         for (const auto &r : own_moves_.rows) {
@@ -1600,6 +1603,7 @@ class Page {
   bool own_movie_ = false;
   moveset_port::Result own_moves_;  // its SvR 2011 moves in WWE '12's slots (moveset_port.h)
   std::string own_moves_why_;
+  uint32_t own_moves_game_ = 0;  // the game its own moves come from
   bool use_own_moves_ = true;
   int entrance_ = -1;  // its entrance: another superstar's (index in stars_), else -1: the base's
   char entrance_filter_[64] = {};
