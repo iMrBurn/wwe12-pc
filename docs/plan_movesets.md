@@ -112,6 +112,13 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   (1 à 16 Mo) par une redirection d'entrée comme pour les vidéos d'arènes ; (3) vérifier que ce numéro est libre en
   WWE '12 ; (4) les mains / orteils absents restent au repos. SvR 2011 (YMKs, autre numérotation) viendra après.
 - Étape 4 : pas commencée.
-- **Écrans VS** (demandés le 2026-10-27, pas commencés) : les outils de Kaiko sur le bureau ne font que le fond
-  (`arena_port.py` VS_BACKGROUND) ; son vrai portage (`vs_port.py`, `VS_STYLES.md`) est dans son dépôt GitHub (le
-  télécharger : demander à l'utilisateur). Le défaut des bases partagées demande des essais en jeu.
+- **Écrans VS** (demandés le 2026-10-27) : les outils de Kaiko sur le bureau ne font que le fond
+  (`arena_port.py` VS_BACKGROUND). `VS_STYLES.md` / `vs_port.py` **ne sont pas dans son dépôt public**
+  (KaikoClanworth1/wwe-svr2011-pc, arbre complet lu le 2026-10-27 avec l'accord de l'utilisateur). Sa méthode est dans
+  `docs/ARENA_MOD_MAKER_PLAN.md` (« New arenas and custom VS screens ») : une arène ajoutée garde le thème VS de sa
+  base (`MatchHD.pac` M<nn>I, DXT5, non tuilées en mémoire, mots de 16 bits inversés) ; **pendant qu'elle est
+  choisie, un fil de fond (`arena_mods.cpp` VsLoop) retrouve ces textures en mémoire par leur contenu et écrit les
+  images du mod dessus ; les originales reviennent quand on choisit une autre arène**. → Piste pour notre défaut des
+  bases partagées (le jeu ne recharge pas l'écran VS si le numéro d'arène ne change pas) : ne plus compter sur le
+  rechargement, réécrire les textures en mémoire au choix de l'arène (nous avons déjà des crochets de textures,
+  `wwe12_buttons.cpp`, et le choix d'arène). À essayer en jeu.
