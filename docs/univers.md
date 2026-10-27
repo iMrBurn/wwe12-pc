@@ -796,3 +796,16 @@ encore trouvé.
   `sub_826CCC38` est un pointeur, pas un nombre.
 - À faire : la remise à zéro de l'Univers ne remet pas les effectifs des émissions (l'émission d'un Superstar
   est dans SA fiche : `sub_826D2B50(id)` = `sub_82A341A0(id, 3)` = octet +27 de `sub_82684910(id)`).
+
+## 27. Émissions d'origine remises à la remise à zéro (2026-10-27)
+
+L'émission d'un catcheur est dans SA fiche (286 octets, `sub_82684910(id)`, octets +24..+27 identiques,
+l'Univers lit +27 par `sub_826D2B50`), pas dans le bloc Univers. Les fiches d'origine viennent de misc.pac,
+groupe /CHAR/DAT (classe à 0x820ECC78), lu à chaque lancement par `sub_82DCAA58(this, données, taille)` :
+place k < 323 → catcheur `sub_82A33440(k)`, entrée de 4 + 286 octets ; avec this+48 non nul, il écrit dans ce
+tampon au lieu des fiches. On garde les données lues, et la remise à zéro les relit dans un tampon à nous puis
+remet +24..+27 de chaque fiche (catcheurs créés, ids < 50, gardés). Valeurs : 0 RAW, 1 SmackDown, 4 et 6
+autres marques (6 = 164 catcheurs, sans doute FreeAgent). Testé sur la copie : les fiches étaient déjà à
+l'origine (0 octet changé) et SmackDown montre ses 20 catcheurs débloqués (27 dans les données).
+Le « 8 à SmackDown » vu avant n'a pas été reproduit. Sonde : `wwe12_universe_probe` écrit logs/brands.txt et
+les lignes « [univers] brands: » à la remise à zéro.

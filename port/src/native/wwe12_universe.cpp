@@ -561,6 +561,104 @@ void StatsReset() {
     std::filesystem::rename(file, file.parent_path() / "universe_stats_before_reset.txt", ec);
 }
 
+// ---- the Superstars' original brands ------------------------------------------------------------
+//
+// A Superstar's brand (RAW 0, SmackDown 1, ...) is in his own record (286 bytes, sub_82684910(id),
+// +24..+27, the Universe reads +27 by sub_826D2B50), not in the Universe block: a reset left the
+// brands as they were. The original records come from misc.pac's group /CHAR/DAT (class at 0x820ECC78),
+// read by sub_82DCAA58(this, data, size): for each roster place k < 323 (sub_82683878), its Superstar
+// sub_82A33440(k), entry of 4 + 286 bytes (u16 version 1, u16 size + 4), into the record k
+// (sub_82683940) or, when this+48 is set, into the buffer there. The data is kept when the game reads
+// it; a reset reads it again into a buffer of ours and puts back bytes +24..+27 of every record.
+// Created Superstars (ids < 50, sub_82A330D8) have no original record: their brand is kept.
+REX_EXTERN(__imp__sub_82DCAA58);  // /CHAR/DAT reader (this, data, size)
+REX_EXTERN(__imp__sub_82A33418);  // Superstar -> roster place (512: none)
+REX_EXTERN(__imp__sub_82A330D8);  // a created Superstar?
+REX_EXTERN(__imp__sub_82684910);  // a Superstar's record
+REX_EXTERN(__imp__sub_82A33458);  // a Superstar in the game's data (the reader skips the others)
+
+constexpr u32 kRosterPlaces = 323, kRecordSize = 286;
+u32 g_char_data = 0, g_char_size = 0;
+
+extern "C" REX_FUNC(sub_82DCAA58) {
+  const u32 data = ctx.r4.u32, size = ctx.r5.u32;
+  if (!bd::mem::load<u32>(ctx.r3.u32 + 48) && data && size && size < 0x400000) {
+    auto *memory = REX_KERNEL_MEMORY();
+    if (g_char_data && g_char_size < size) {
+      memory->SystemHeapFree(g_char_data);
+      g_char_data = 0;
+    }
+    if (!g_char_data)
+      g_char_data = memory->SystemHeapAlloc(size, 0x20);
+    if (g_char_data) {
+      std::memcpy(bd::mem::at<u8>(g_char_data), bd::mem::at<u8>(data), size);
+      g_char_size = size;
+    }
+    BD_INFO("[univers] /CHAR/DAT read: {} bytes kept", g_char_size);
+  }
+  __imp__sub_82DCAA58(ctx, base);
+}
+
+void RestoreBrands(const PPCContext &ctx, u8 *base) {
+  PPCContext in = ctx;  // the reader needs ~3 KB of stack
+  in.r1.u32 = (in.r1.u32 - 0x1000) & ~0xFu;
+  if (!g_char_data) {
+    BD_INFO("[univers] reset: /CHAR/DAT not read this session, brands kept");
+    return;
+  }
+  auto *memory = REX_KERNEL_MEMORY();
+  const u32 reader = memory->SystemHeapAlloc(64, 0x10);
+  const u32 records = memory->SystemHeapAlloc(kRosterPlaces * kRecordSize, 0x10);
+  if (reader && records) {
+    std::memset(bd::mem::at<u8>(reader), 0, 64);
+    std::memset(bd::mem::at<u8>(records), 0, kRosterPlaces * kRecordSize);
+    bd::mem::store<u32>(reader + 48, records);
+    Call(in, base, __imp__sub_82DCAA58, reader, g_char_data, g_char_size);
+    u32 changed = 0, read = 0;
+    for (u32 k = 0; k < kRosterPlaces; ++k)
+      for (u32 o = 0; o < kRecordSize; o += 4)
+        if (bd::mem::load<u32>(records + k * kRecordSize + o)) {
+          ++read;
+          break;
+        }
+    BD_INFO("[univers] reset: {} original records read, reader now at +{}", read,
+            bd::mem::load<u32>(reader + 48) - records);
+    for (u32 id = 50; id < 512 && REXCVAR_GET(wwe12_universe_probe); ++id) {
+      const u32 place = Call(in, base, __imp__sub_82A33418, id);
+      const u32 to = Call(in, base, __imp__sub_82684910, id);
+      if (place >= kRosterPlaces || !to)
+        continue;
+      const u32 from = records + place * kRecordSize;
+      BD_INFO("[univers] brands: {} place {} in data {} now {}/{}/{}/{} original {}/{}/{}/{}", id,
+              place, Call(in, base, __imp__sub_82A33458, id), bd::mem::load<u8>(to + 24),
+              bd::mem::load<u8>(to + 25), bd::mem::load<u8>(to + 26), bd::mem::load<u8>(to + 27),
+              bd::mem::load<u8>(from + 24), bd::mem::load<u8>(from + 25),
+              bd::mem::load<u8>(from + 26), bd::mem::load<u8>(from + 27));
+    }
+    for (u32 id = 50; id < 512; ++id) {
+      if (Call(in, base, __imp__sub_82A330D8, id))
+        continue;
+      const u32 place = Call(in, base, __imp__sub_82A33418, id);
+      if (place >= kRosterPlaces)
+        continue;
+      const u32 from = records + place * kRecordSize;
+      const u32 to = Call(in, base, __imp__sub_82684910, id);
+      if (!to || !Call(in, base, __imp__sub_82A33458, id))  // no original record for him
+        continue;
+      for (u32 k = 24; k < 28; ++k)
+        if (bd::mem::load<u8>(to + k) != bd::mem::load<u8>(from + k)) {
+          bd::mem::store<u8>(to + k, bd::mem::load<u8>(from + k));
+          ++changed;
+        }
+    }
+    BD_INFO("[univers] reset: original brands put back ({} bytes changed)", changed);
+  }
+  if (reader)
+    memory->SystemHeapFree(reader);
+  if (records)
+    memory->SystemHeapFree(records);
+}
+
 bool ResetUniverse(const PPCContext &in, u8 *base) {
   const u32 universe = Call(in, base, __imp__sub_82683A30, 0);
   if (!g_start_data || !g_start_size || !universe) {
@@ -571,6 +669,7 @@ bool ResetUniverse(const PPCContext &in, u8 *base) {
   Call(in, base, __imp__sub_826D5938, universe);
   Call(in, base, __imp__sub_826BE3C0, g_start_data, g_start_size);
   ResetUniverseChampions();
+  RestoreBrands(in, base);
   StatsReset();
   BD_INFO("[univers] reset: done (block 0x{:08X} cleared, start data applied, default champions)",
           universe);
@@ -1783,8 +1882,34 @@ void DumpRankLayout(u32 r) {
 // The Universe menu's screens are made by sub_82545A70(menu): +260 MATCH CARDS, +264 RANKINGS (the
 // ranking object R, vtable 0x820232C8, its layout screen at R+28), +268 ... (one object each).
 REX_EXTERN(__imp__sub_82545A70);
+REX_EXTERN(__imp__sub_82A341A0);  // a Superstar's brand byte k (record +24 + k; 3 = the Universe's)
+REX_EXTERN(__imp__sub_826D3218);  // a Superstar in use (id, 1)
+REX_EXTERN(__imp__sub_82A32618);  // Superstar: name
+
+// Dev (wwe12_universe_probe): every Superstar's four brand bytes, to find the original brands.
+void DumpBrands(const PPCContext &in, u8 *base) {
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator())
+    return;
+  std::error_code ec;
+  std::filesystem::create_directories(state->emulator()->user_data_root() / "logs", ec);
+  std::ofstream f(state->emulator()->user_data_root() / "logs" / "brands.txt");
+  for (u32 id = 0; id < 512; ++id) {
+    if (!Call(in, base, __imp__sub_826D3218, id, 1))
+      continue;
+    const u32 name = Call(in, base, __imp__sub_82A32618, id);
+    const char *n = name ? bd::mem::try_at<const char>(name) : nullptr;
+    f << fmt::format("{} {} {} {} {} {}\n", id, Call(in, base, __imp__sub_82A341A0, id, 0),
+                     Call(in, base, __imp__sub_82A341A0, id, 1),
+                     Call(in, base, __imp__sub_82A341A0, id, 2),
+                     Call(in, base, __imp__sub_82A341A0, id, 3), n ? n : "?");
+  }
+}
+
 extern "C" REX_FUNC(sub_82545A70) {
   g_universe_menu = ctx.r3.u32;
+  if (REXCVAR_GET(wwe12_universe_probe))
+    DumpBrands(ctx, base);
   __imp__sub_82545A70(ctx, base);
 }
 
@@ -1813,7 +1938,6 @@ REX_EXTERN(__imp__sub_82551CB8);
 REX_EXTERN(__imp__sub_82551F48);  // rankings: the show's four title names
 REX_EXTERN(__imp__sub_82552048);  // rankings: the champions
 REX_EXTERN(__imp__sub_826D2508);  // a title's ranking (view, title, out, max): count
-REX_EXTERN(__imp__sub_82A32618);  // Superstar: name
 REX_EXTERN(__imp__sub_826CC0B8);  // show: is this Superstar on it (show, id)
 
 namespace {
@@ -2492,9 +2616,7 @@ REX_EXTERN(__imp__sub_826D3B58);  // roster: may this Superstar leave his show?
 REX_EXTERN(__imp__sub_826D0598);  // roster: a show's size (show, 0, 0, 1)
 REX_EXTERN(__imp__sub_826CC0B8);  // roster: is this Superstar on the show? (show, id)
 REX_EXTERN(__imp__sub_82583B78);  // EDIT BRAND: the show's brands chosen
-REX_EXTERN(__imp__sub_826D3218);  // Superstar: in the game? (id, 1)
 REX_EXTERN(__imp__sub_82A32DB8);  // Superstar: a woman?
-REX_EXTERN(__imp__sub_82A330D8);  // Superstar: not on a show (1)
 REX_EXTERN(__imp__sub_826D2B50);  // Superstar: his brand
 REX_EXTERN(__imp__sub_826CC0E0);  // show: set a brand (shows, brand, on)
 REX_EXTERN(__imp__sub_82550538);  // EDIT BRAND: done
