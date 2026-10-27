@@ -80,8 +80,10 @@
 #include <vector>
 
 #include <rex/cvar.h>
+#include <rex/filesystem.h>
 #include <rex/runtime.h>
 
+#include "../launcher/toml_file.h"
 #include "core/logging.h"
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
@@ -89,6 +91,12 @@
 
 REXCVAR_DECLARE(uint32_t, user_language);
 
+REXCVAR_DEFINE_BOOL(wwe12_universe_qualifiers, false, "WWE12",
+                    "Universe: qualifying matches before Money in the Bank and the Elimination Chamber, "
+                    "with news.");
+REXCVAR_DEFINE_INT32(wwe12_universe_title_defenses, 0, "WWE12",
+                     "Universe: chance (percent) that a weekly match with a champion in it becomes his "
+                     "title's defense (0 = the game's own cards).");
 REXCVAR_DEFINE_BOOL(wwe12_universe_probe, false, "WWE12",
                     "Dev: log the screen, its vtable, action and first words on every A button of a "
                     "layout menu, and the call chain of each Decision sound (to find a screen's code).");
@@ -1951,11 +1959,85 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
 
 // ---- EDIT UNIVERSE (as WWE 2K14's list) -------------------------------------------------------
 
+// ---- UNIVERSE OPTIONS: title defenses and qualifying matches -----------------------------------
+//
+// Two settings of ours, set here and saved to wwe12.toml next to the exe (the launcher's file):
+// wwe12_universe_title_defenses (0 / 10 / 25 / 50 / 100, percent; 0 = the game's own cards) and
+// wwe12_universe_qualifiers (true / false).
+
+struct OptionWords {
+  const char *options, *defenses, *qualifiers, *off, *on, *done_defenses, *done_qualifiers;
+};
+const OptionWords &OWords() {
+  static const OptionWords kWords[5] = {
+      {"UNIVERSE OPTIONS", "TITLE DEFENSES", "QUALIFYING MATCHES", "OFF", "ON",
+       "Title defenses on weekly shows: %s.", "Qualifying matches (Money in the Bank, Elimination "
+       "Chamber): %s."},
+      {"OPTIONS DE L'UNIVERS", "D\xC3\x89" "FENSES DE TITRE", "MATCHS DE QUALIFICATION", "NON", "OUI",
+       "D\xC3\xA9" "fenses de titre dans les shows : %s.",
+       "Matchs de qualification (Money in the Bank, Elimination Chamber) : %s."},
+      {"WWE-WELT-OPTIONEN", "TITELVERTEIDIGUNGEN", "QUALIFIKATIONSMATCHES", "AUS", "AN",
+       "Titelverteidigungen in den Wochenshows: %s.",
+       "Qualifikationsmatches (Money in the Bank, Elimination Chamber): %s."},
+      {"OPCIONES DEL UNIVERSO", "DEFENSAS DE T\xC3\x8DTULO", "COMBATES CLASIFICATORIOS", "NO", "S\xC3\x8D",
+       "Defensas de t\xC3\xADtulo en los shows semanales: %s.",
+       "Combates clasificatorios (Money in the Bank, Elimination Chamber): %s."},
+      {"OPZIONI UNIVERSE", "DIFESE DEL TITOLO", "INCONTRI DI QUALIFICAZIONE", "NO", "S\xC3\x8C",
+       "Difese del titolo negli show settimanali: %s.",
+       "Incontri di qualificazione (Money in the Bank, Elimination Chamber): %s."}};
+  return kWords[CurrentLang()];
+}
+
+void SaveUniverseOption(const char *key, const std::string &value) {
+  rex::cvar::SetFlagByName(key, value);
+  const std::filesystem::path toml = rex::filesystem::GetExecutableFolder() / "wwe12.toml";
+  TomlFile f;
+  if (!f.Load(toml)) {
+    BD_WARN("[univers] options: cannot read {}", rex::path_to_utf8(toml));
+    return;
+  }
+  f.SetRaw(key, value);
+  if (f.Save())
+    BD_INFO("[univers] options: {} = {} saved", key, value);
+}
+
+void UniverseOptions(const PPCContext &in, u8 *base) {
+  const OptionWords &o = OWords();
+  const int32_t pct = REXCVAR_GET(wwe12_universe_title_defenses);
+  const std::string defenses = pct > 0 ? std::to_string(pct) + " %" : o.off;
+  const std::string qualifiers = REXCVAR_GET(wwe12_universe_qualifiers) ? o.on : o.off;
+  Choose(in, base, o.options,
+         {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers},
+         [](const PPCContext &in, u8 *base, size_t i) {
+           const OptionWords &o = OWords();
+           if (i == 0) {
+             Choose(in, base, o.defenses, {o.off, "10 %", "25 %", "50 %", "100 %"},
+                    [](const PPCContext &in, u8 *base, size_t k) {
+                      static const int kPct[5] = {0, 10, 25, 50, 100};  // as the launcher's
+                      SaveUniverseOption("wwe12_universe_title_defenses", std::to_string(kPct[k]));
+                      char text[256];
+                      std::snprintf(text, sizeof(text), OWords().done_defenses,
+                                    k ? (std::to_string(kPct[k]) + " %").c_str() : OWords().off);
+                      Inform(in, base, text);
+                    });
+           } else {
+             Choose(in, base, o.qualifiers, {o.off, o.on},
+                    [](const PPCContext &in, u8 *base, size_t k) {
+                      SaveUniverseOption("wwe12_universe_qualifiers", k ? "true" : "false");
+                      char text[256];
+                      std::snprintf(text, sizeof(text), OWords().done_qualifiers,
+                                    k ? OWords().on : OWords().off);
+                      Inform(in, base, text);
+                    });
+           }
+         });
+}
+
 void OpenUniverseMenu(const PPCContext &in, u8 *base) {
   const CalendarWords &w = CWords();
   Choose(in, base, Text(kAskText),
          {Text(kChoiceText + kEditSuperstars), Text(kChoiceText + kEditTitles), w.calendar,
-          w.matches, Text(kChoiceText + kResetUniverse)},
+          w.matches, OWords().options, Text(kChoiceText + kResetUniverse)},
          [](const PPCContext &in, u8 *base, size_t i) {
            BD_INFO("[univers] EDIT UNIVERSE: choice {}", i);
            if (i == 0) {
@@ -1967,6 +2049,8 @@ void OpenUniverseMenu(const PPCContext &in, u8 *base) {
              EditCalendar(in, base);
            } else if (i == 3) {
              EditMatches(in, base);
+           } else if (i == 4) {
+             UniverseOptions(in, base);
            } else {
              g_step = Step::kConfirm;
              Call(in, base, __imp__sub_8254E7E8, kConfirmText);
@@ -4006,9 +4090,6 @@ extern "C" REX_FUNC(sub_826CCAB8) {
 // texts (27068-27071, empty in WWE '12) are ours while such a news is drawn (sub_82559468 /
 // sub_82559A08 read the news given in r4). Kept in universe_stats.txt: "qualifier <event> <year> <a>
 // <b> <day>", "qualified <event> <year> <id> <day>", "qualbegin <event> <year>" (year = day / 336).
-REXCVAR_DEFINE_BOOL(wwe12_universe_qualifiers, false, "WWE12",
-                    "Universe: qualifying matches before Money in the Bank and the Elimination Chamber, "
-                    "with news.");
 
 REX_EXTERN(__imp__sub_826D1630);  // Universe view: add a news (view, record of 16 bytes)
 REX_EXTERN(__imp__sub_826D51A0);  // a news record: cleared
@@ -5174,9 +5255,6 @@ bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen) {
 // that already has a champion of the show in it (both champions on one team for a tag title, against
 // one other team) becomes that title's match, with chance p; once a card at most; never a Royal Rumble,
 // Money in the Bank or Elimination Chamber, a WrestleMania build or a rivalry's match. Nobody moved.
-REXCVAR_DEFINE_INT32(wwe12_universe_title_defenses, 0, "WWE12",
-                     "Universe: chance (percent) that a weekly match with a champion in it becomes his "
-                     "title's defense (0 = the game's own cards).");
 
 REX_EXTERN(__imp__sub_826EAEB0);  // booker: record i -> card entry
 REX_EXTERN(__imp__sub_826D4DD8);  // card entry: title match on / off
