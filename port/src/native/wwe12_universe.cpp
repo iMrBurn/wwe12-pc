@@ -1024,11 +1024,38 @@ u32 g_universe_menu_for_bar = 0;  // the Universe menu (its +288 the panel shown
 // plus "   Y MATCHES" while SHOW EDIT is open.
 constexpr u32 kCancelPlusMatchesText = 27055, kGameCancelText = 45041;
 bool g_show_edit_open = false;
+// RANKINGS' first screen (set 9: A SELECT, B BACK, shared by many screens): its BACK becomes 27056 =
+// the game's BACK plus "   Y STATISTICS" while RANKINGS shows its titles (menu +288 == +264, R+2360
+// = 0: no title's ranking open).
+constexpr u32 kBackPlusStatsText = 27056;
 
 extern "C" REX_FUNC(sub_821A4400) {
   if (g_save_label && ctx.r4.u32 == g_save_label)
     ctx.r4.u64 = kGameSaveText;
   const u32 asked = ctx.r4.u32;
+  if (asked == kBackPlusStatsText) {
+    ctx.r4.u64 = kGameBackText;
+    __imp__sub_821A4400(ctx, base);
+    const u32 m = g_universe_menu_for_bar;
+    const u32 r = m ? bd::mem::load<u32>(m + 264) : 0;
+    const bool rankings = Enabled() && r && bd::mem::load<u32>(0x8324E51C) == 1 &&
+                          bd::mem::load<u32>(m + 288) == r && bd::mem::load<u32>(r + 2360) == 0;
+    const char *game = ctx.r3.u32 ? bd::mem::try_at<const char>(ctx.r3.u32) : nullptr;
+    if (rankings && game) {
+      static const char *const kStats[5] = {"STATISTICS", "STATISTIQUES", "STATISTIKEN",
+                                            "ESTAD\xC3\x8DSTICAS", "STATISTICHE"};
+      static u32 s_at = 0;
+      if (!s_at)
+        s_at = REX_KERNEL_MEMORY()->SystemHeapAlloc(128, 0x10);
+      if (s_at) {
+        const std::string text = std::string(game) + "   \xEE\x80\x87 " + kStats[CurrentLang()];
+        std::memset(bd::mem::at<char>(s_at), 0, 128);
+        std::memcpy(bd::mem::at<char>(s_at), text.data(), std::min<size_t>(text.size(), 127));
+        ctx.r3.u64 = s_at;
+      }
+    }
+    return;
+  }
   if (asked == kCancelPlusMatchesText) {
     ctx.r4.u64 = kGameCancelText;
     __imp__sub_821A4400(ctx, base);
@@ -2641,8 +2668,15 @@ void DumpBrands(const PPCContext &in, u8 *base) {
   }
 }
 
+namespace {
+void SetPromptLabel(u32 set, u32 k, u32 from, u32 to);
+}
+
 extern "C" REX_FUNC(sub_82545A70) {
   g_universe_menu = ctx.r3.u32;
+  g_universe_menu_for_bar = ctx.r3.u32;
+  if (Enabled())
+    SetPromptLabel(9, 1, kGameBackText, kBackPlusStatsText);  // before the Universe's bars
   if (const u32 u = Enabled() ? Call(ctx, base, __imp__sub_82683A30, 0) : 0) {
     std::string week, ppv;
     for (u32 d = 0; d < 7; ++d)
