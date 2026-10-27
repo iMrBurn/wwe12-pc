@@ -752,3 +752,17 @@ M+28+224 = 0). Au retour il faut remettre ce que le réaffichage d'EDIT UNIVERSE
 - les +224 de la fiche et du menu tels qu'avant.
 Testé (télécommande `wwe12_remote_pad`, sur la copie) : RB → aspirant (CHAMPION / RANK 8), bas + X → OFF
 (enregistré), RB → statistiques (HELD 1), RB → fiche, B → liste (curseur gardé), B → menu, RANKINGS normal.
+
+## 24. Page STATISTIQUES en tableau, comme 2K14 (2026-10-27, testé sur la copie)
+
+LB depuis la fiche (ou RB depuis la page aspirant) : la page détaillée d'un classement (RANKINGS puis A)
+sert de tableau. Ouverture `sub_82553770(R+28)` (R+56 = place du titre, ici 0), fermeture `sub_82552D40(R+28)`
+(son B) ; pages de liste R+56 = 1, 2 (R+60 = nombre de pages), 12 lignes : 1020 + k (libellé), 1032 + k
+(colonne du rang, vidée), 1044 + k (valeur ; texte en +200, drapeau 0x10 de +228 effacé). Le jeu redessine
+les lignes (`sub_82552A78`) et le haut (`sub_82552240`) : nos crochets remettent nos textes juste après. Haut :
+897 = « STATISTICS », 898/899 vidés, 911 vidé, 912 = le nom du Superstar, 913-915 (portrait du champion) cachés.
+Lignes : TITLES (DÉTENU - SEMAINES par titre de son émission, « -- » si pas pour lui, TOTAL), ROYAL RUMBLE
+(victoires, participations), WRESTLEMANIA (matchs, main events, victoires, taux), MONEY IN THE BANK
+(victoires, taux après cash-in) ; sections en rouge ; haut/bas = page 1/2 du tableau. Les blocs Rumble,
+WrestleMania et MITB lisent des lignes « rumble / mania / mitb / cashin » de `universe_stats.txt` qui ne sont
+**pas encore écrites** (prochaine étape : le résultat des matchs de l'Univers).

@@ -522,6 +522,38 @@ std::vector<Reign> LoadReigns() {
   return reigns;
 }
 
+// The match lines of universe_stats.txt (written after each Universe match, see the match results
+// hook): "rumble <id> <won> <day>", "mania <id> <main event> <won> <day>", "mitb <id> <day>"
+// (won the briefcase), "cashin <id> <won> <day>".
+struct MatchStats {
+  u32 rumble_wins = 0, rumble_entries = 0, mania_matches = 0, mania_main_events = 0,
+      mania_wins = 0, mitb_wins = 0, cash_ins = 0, cash_in_wins = 0;
+};
+
+MatchStats LoadMatchStats(u32 id) {
+  MatchStats m;
+  std::ifstream f(StatsFile());
+  std::string line;
+  while (std::getline(f, line)) {
+    u32 who, a, b, day;
+    if (std::sscanf(line.c_str(), "rumble %u %u %u", &who, &a, &day) == 3 && who == id) {
+      ++m.rumble_entries;
+      m.rumble_wins += a ? 1 : 0;
+    } else if (std::sscanf(line.c_str(), "mania %u %u %u %u", &who, &a, &b, &day) == 4 &&
+               who == id) {
+      ++m.mania_matches;
+      m.mania_main_events += a ? 1 : 0;
+      m.mania_wins += b ? 1 : 0;
+    } else if (std::sscanf(line.c_str(), "mitb %u %u", &who, &day) == 2 && who == id) {
+      ++m.mitb_wins;
+    } else if (std::sscanf(line.c_str(), "cashin %u %u %u", &who, &a, &day) == 3 && who == id) {
+      ++m.cash_ins;
+      m.cash_in_wins += a ? 1 : 0;
+    }
+  }
+  return m;
+}
+
 void StatsReset() {
   const std::filesystem::path file = StatsFile();
   std::error_code ec;
@@ -1795,10 +1827,16 @@ struct SuperstarPages {
   u32 old_panel = 0;
   u32 id = 0, show = 0, row = 0;
   u32 titles[4] = {23, 23, 23, 23};
-  std::string lines[4], header;
+  std::string lines[4], header, name;
   u32 page_input = 2, menu_input = 0;  // the +224 of his page and of the Universe menu, before
   u32 list_row = 0, list_top = 0;  // the Superstar list's row and first row shown
   u32 menu_state = 0;              // the Universe menu's +296 (2: a panel's screen is open)
+  struct Row {
+    std::string label, value;
+    bool section = false;  // a section's title (red, as in 2K14)
+  };
+  std::vector<Row> table;  // the STATISTICS page's rows
+  u32 table_page = 1;      // its page of 12 rows (the rankings list's pages 1, 2)
 };
 SuperstarPages g_pages;
 
@@ -1894,7 +1932,8 @@ void BuildLines(const PPCContext &in, u8 *base) {
   const u32 lang = CurrentLang();
   const u32 name = Call(in, base, __imp__sub_82A32618, g_pages.id);
   const char *n = name ? bd::mem::try_at<const char>(name) : nullptr;
-  g_pages.header = std::string(n ? n : "") + "  -  " + kPage[g_pages.page - 1][lang];
+  g_pages.name = n ? n : "";
+  g_pages.header = g_pages.name + "  -  " + kPage[g_pages.page - 1][lang];
   LoadContenders();
   const u32 mask = g_contenders.count(g_pages.id) ? g_contenders[g_pages.id] : 0;
   u32 reigns[23] = {}, weeks[23] = {};
@@ -1957,13 +1996,178 @@ void ApplyPage(u32 r) {
   }
 }
 
+// ---- the STATISTICS page: a table on the rankings' list page -----------------------------------
+//
+// A title's ranking (RANKINGS, then A) is opened by its screen's sub_82553770 (R+28; R+56 = the
+// title's place) and closed by sub_82552D40 (its B); its list pages (R+56 = page >= 1, R+60 =
+// pages) draw 12 rows (sub_82552CE8): name 1020 + k, number 1032 + k, last week's 1044 + k (numbers
+// in +220 with flag 0x10 of +228; texts in +200 without it). The page shows our rows instead, as
+// WWE 2K14's STATISTICS: sections (TITLES, ROYAL RUMBLE, WRESTLEMANIA, MONEY IN THE BANK) and
+// their lines, two columns. Its top: 897 the page's name, 898 / 899 the columns' names (cleared),
+// 911 / 912 the champion's label and name (the Superstar's), 913-915 his portrait (hidden).
+
+REX_EXTERN(__imp__sub_82553770);  // a title's ranking: open (its screen)
+REX_EXTERN(__imp__sub_82552D40);  // a title's ranking: close (its screen)
+
+constexpr u32 kTableRows = 12, kRowLabel = 1020, kRowHeld = 1032, kRowTotal = 1044;
+
+struct StatWords {
+  const char *titles, *held, *weeks, *total, *rumble, *singles, *wins, *entries, *mania, *matches,
+      *main_events, *win_rate, *mitb, *cash_rate, *page, *kinds[4];
+};
+const StatWords &Words() {
+  static const StatWords kWords[5] = {
+      {"TITLES", "HELD", "WEEKS", "TOTAL", "ROYAL RUMBLE", "WINS", "WINS", "ENTRIES", "WRESTLEMANIA",
+       "MATCHES", "MAIN EVENTS", "WIN RATE", "MONEY IN THE BANK", "WIN RATE AFTER CASH-IN",
+       "STATISTICS", {"MAJOR", "MINOR", "TAG", "DIVA"}},
+      {"TITRES", "D\xC3\x89TENU", "SEMAINES", "TOTAL", "ROYAL RUMBLE", "VICTOIRES", "VICTOIRES",
+       "PARTICIPATIONS", "WRESTLEMANIA", "PARTICIPATIONS", "MAIN EVENT", "TAUX DE VICTOIRE",
+       "MONEY IN THE BANK", "TAUX DE VICTOIRE APR\xC3\x88S CASH-IN", "STATISTIQUES",
+       {"MAJEUR", "MINEUR", "TAG", "DIVA"}},
+      {"TITEL", "GEHALTEN", "WOCHEN", "GESAMT", "ROYAL RUMBLE", "SIEGE", "SIEGE", "TEILNAHMEN",
+       "WRESTLEMANIA", "MATCHES", "MAIN EVENTS", "SIEGQUOTE", "MONEY IN THE BANK",
+       "SIEGQUOTE NACH CASH-IN", "STATISTIKEN", {"MAJOR", "MINOR", "TAG", "DIVA"}},
+      {"T\xC3\x8DTULOS", "VECES", "SEMANAS", "TOTAL", "ROYAL RUMBLE", "VICTORIAS", "VICTORIAS",
+       "PARTICIPACIONES", "WRESTLEMANIA", "COMBATES", "EVENTO PRINCIPAL", "\xC3\x89XITO",
+       "MONEY IN THE BANK", "\xC3\x89XITO TRAS CANJEAR", "ESTAD\xC3\x8DSTICAS",
+       {"MAYOR", "MENOR", "PAREJAS", "DIVA"}},
+      {"TITOLI", "DETENUTO", "SETTIMANE", "TOTALE", "ROYAL RUMBLE", "VITTORIE", "VITTORIE",
+       "PARTECIPAZIONI", "WRESTLEMANIA", "INCONTRI", "MAIN EVENT", "PERCENTUALE VITTORIE",
+       "MONEY IN THE BANK", "VITTORIE DOPO IL CASH-IN", "STATISTICHE",
+       {"MAGGIORE", "MINORE", "TAG", "DIVA"}}};
+  return kWords[CurrentLang()];
+}
+
+// The Superstar's lines, from universe_stats.txt.
+void BuildTable(const PPCContext &in, u8 *base) {
+  const StatWords &w = Words();
+  const u32 u = Call(in, base, __imp__sub_82683A30, 0);
+  const u32 now = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+  u32 reigns[23] = {}, weeks[23] = {};
+  for (const Reign &r : LoadReigns())
+    if (r.holder == g_pages.id && r.title < 23) {
+      ++reigns[r.title];
+      const u32 to = r.to_day == ~0u ? now : r.to_day;
+      weeks[r.title] += (to > r.from_day ? to - r.from_day : 0) / 7;
+    }
+  const MatchStats m = LoadMatchStats(g_pages.id);
+  const auto num = [](u32 v) { return std::to_string(v); };
+  const auto rate = [](u32 won, u32 of) {
+    return of ? std::to_string(won * 100 / of) + "%" : std::string("0%");
+  };
+  auto &t = g_pages.table;
+  t.clear();
+  const auto two = [](const std::string &a, const std::string &b) { return a + "  -  " + b; };
+  t.push_back({w.titles, two(w.held, w.weeks), true});
+  u32 all_reigns = 0, all_weeks = 0;
+  for (u32 i = 0; i < 4; ++i) {
+    const u32 title = g_pages.titles[i];
+    std::string name = w.kinds[i];
+    if (title < 23) {
+      const u32 n = Call(in, base, __imp__sub_826D2C30, title);
+      const char *s = n ? bd::mem::try_at<const char>(n) : nullptr;
+      name += std::string("  ") + (s ? s : "");
+    }
+    const bool his = title < 23 && Call(in, base, __imp__sub_82A39EF8, g_pages.id, title, 1);
+    t.push_back({name, his ? two(num(reigns[title]), num(weeks[title])) : "--"});
+  }
+  for (u32 title = 0; title < 23; ++title) {
+    all_reigns += reigns[title];
+    all_weeks += weeks[title];
+  }
+  t.push_back({w.total, two(num(all_reigns), num(all_weeks))});
+  t.push_back({w.rumble, w.total, true});
+  t.push_back({w.wins, num(m.rumble_wins)});
+  t.push_back({w.entries, num(m.rumble_entries)});
+  t.push_back({w.mania, w.total, true});
+  t.push_back({w.matches, num(m.mania_matches)});
+  t.push_back({w.main_events, num(m.mania_main_events)});
+  t.push_back({w.wins, num(m.mania_wins)});
+  t.push_back({w.win_rate, rate(m.mania_wins, m.mania_matches)});
+  t.push_back({w.mitb, w.total, true});
+  t.push_back({w.wins, num(m.mitb_wins)});
+  t.push_back({w.cash_rate, rate(m.cash_in_wins, m.cash_ins)});
+}
+
+u32 TableText(u32 slot, const std::string &text) {  // guest strings of ours, 64 bytes each
+  static u32 s_block = 0;
+  constexpr u32 kSlots = 3 * kTableRows + 8;
+  if (!s_block)
+    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(kSlots * 64, 0x10);
+  if (!s_block || slot >= kSlots)
+    return 0;
+  const u32 at = s_block + slot * 64;
+  std::memset(bd::mem::at<char>(at), 0, 64);
+  std::memcpy(bd::mem::at<char>(at), text.data(), std::min<size_t>(text.size(), 63));
+  return at;
+}
+
+// Our rows on the list page, every frame.
+void ApplyTable(u32 r) {
+  const u32 layout = r ? bd::mem::load<u32>(r + 296) : 0;
+  const u32 array = layout ? bd::mem::load<u32>(layout + 8) : 0;
+  if (!array || bd::mem::load<u32>(layout + 24) < kRowTotal + kTableRows)  // up to element 1055
+    return;
+  const auto element = [&](u32 e) { return array + e * 240; };
+  const auto text = [&](u32 e, u32 t) {
+    bd::mem::store<u32>(element(e) + 200, t);
+    bd::mem::store<u32>(element(e) + 228, bd::mem::load<u32>(element(e) + 228) & ~0x10u);
+  };
+  const auto hide = [&](u32 e, bool hidden) { bd::mem::store<u32>(element(e) + 180, hidden); };
+  text(897, TableText(3 * kTableRows, Words().page));
+  text(898, TableText(3 * kTableRows + 1, ""));
+  text(899, TableText(3 * kTableRows + 2, ""));
+  text(911, TableText(3 * kTableRows + 3, ""));
+  text(912, TableText(3 * kTableRows + 4, g_pages.name));
+  for (u32 e : {913u, 914u, 915u})
+    hide(e, true);
+  for (u32 k = 0; k < kTableRows; ++k) {
+    const size_t i = (g_pages.table_page - 1) * kTableRows + k;
+    const bool shown = i < g_pages.table.size();
+    for (u32 e : {kRowLabel + k, kRowHeld + k, kRowTotal + k})
+      hide(e, !shown);
+    if (!shown)
+      continue;
+    const auto &row = g_pages.table[i];
+    text(kRowLabel + k, TableText(k * 3, row.label));
+    text(kRowHeld + k, TableText(k * 3 + 1, ""));  // the rank's column: unused
+    text(kRowTotal + k, TableText(k * 3 + 2, row.value));
+    const float red[4] = {0.8039f, 0.0784f, 0.0784f, 1.0f}, white[4] = {1, 1, 1, 1};
+    for (u32 c = 0; c < 4; ++c)
+      bd::mem::store<float>(element(kRowLabel + k) + 184 + c * 4, row.section ? red[c] : white[c]);
+    for (u32 c = 0; c < 4; ++c)  // the values white too (the game's last-week column is grey)
+      bd::mem::store<float>(element(kRowTotal + k) + 184 + c * 4, row.section ? red[c] : white[c]);
+  }
+}
+
+void ShowTablePage(const PPCContext &in, u8 *base, u32 r, u32 page) {
+  g_pages.table_page = page;
+  bd::mem::store<u32>(r + 56, page);  // the list's page
+  bd::mem::store<u32>(r + 60, std::max<u32>(bd::mem::load<u32>(r + 60), 3));
+  Call(in, base, __imp__sub_82552CE8, r + 28);
+  ApplyTable(r);
+}
+
+void OpenTable(const PPCContext &in, u8 *base, u32 r) {
+  bd::mem::store<u32>(r + 56, 0);  // the show's first title: its ranking has rows enough
+  Call(in, base, __imp__sub_82553770, r + 28);
+  ShowTablePage(in, base, r, 1);
+}
+
+void CloseTable(const PPCContext &in, u8 *base, u32 r) {
+  if (bd::mem::load<u32>(r + 2360) == 1)
+    Call(in, base, __imp__sub_82552D40, r + 28);
+}
+
 void KeepButtons();
 
 void OpenPage(const PPCContext &in, u8 *base, u32 page) {
   const u32 m = g_universe_menu;
   const u32 r = m ? bd::mem::load<u32>(m + kRankingsPanel) : 0;
-  if (!r || bd::mem::load<u32>(r + 2360) != 0)
+  if (!r || (g_pages.page == 0 && bd::mem::load<u32>(r + 2360) != 0))
     return;
+  if (g_pages.page == 2 && page != 2)
+    CloseTable(in, base, r);
   if (g_pages.page == 0) {
     g_pages.old_panel = bd::mem::load<u32>(m + kPanelShown);
     g_pages.page_input = bd::mem::load<u32>(g_pages.screen + 224);
@@ -1986,6 +2190,10 @@ void OpenPage(const PPCContext &in, u8 *base, u32 page) {
   Call(in, base, __imp__sub_82551F48, r);
   Call(in, base, __imp__sub_82552048, r);
   BuildLines(in, base);
+  if (page == 2) {
+    BuildTable(in, base);
+    OpenTable(in, base, r);
+  }
   BD_INFO("[univers] Superstar {} page {} (show {}, titles {} {} {} {})", g_pages.id, page,
           g_pages.show, g_pages.titles[0], g_pages.titles[1], g_pages.titles[2],
           g_pages.titles[3]);
@@ -1999,9 +2207,13 @@ void KeepButtons() {
     return;
   bd::mem::store<u32>(g_pages.screen + 224, 2);
   bd::mem::store<u32>(g_universe_menu + 28 + 224, 0);
+  if (const u32 r = bd::mem::load<u32>(g_universe_menu + kRankingsPanel))
+    bd::mem::store<u32>(r + 28 + 224, 0);  // a title's ranking (the table) takes none either
 }
 
 void ClosePages(const PPCContext &in, u8 *base) {
+  if (g_pages.page == 2 && g_universe_menu)
+    CloseTable(in, base, bd::mem::load<u32>(g_universe_menu + kRankingsPanel));
   if (g_pages.page && g_universe_menu && g_pages.old_panel) {
     SetPanel(in, base, g_pages.old_panel);
     const u32 list = g_pages.old_panel + kSuperstarList;
@@ -2040,6 +2252,16 @@ bool SuperstarPageButtons(const PPCContext &in, u8 *base, u32 screen) {
       ClosePages(in, base);
     else
       OpenPage(in, base, next);
+  } else if (g_pages.page == 2) {
+    const u32 dir = std::min<u32>(bd::mem::load<u32>(screen + 20), 3);
+    const u32 up = bd::mem::load<u32>(kListMasks + dir * 16) | kUp;
+    const u32 down = bd::mem::load<u32>(kListMasks + dir * 16 + 8) | kDown;
+    const u32 r = bd::mem::load<u32>(g_universe_menu + kRankingsPanel);
+    const u32 pages = u32((g_pages.table.size() + kTableRows - 1) / kTableRows);
+    if ((pressed & up) && g_pages.table_page > 1)
+      ShowTablePage(in, base, r, g_pages.table_page - 1);
+    else if ((pressed & down) && g_pages.table_page < pages)
+      ShowTablePage(in, base, r, g_pages.table_page + 1);
   } else if (g_pages.page == 1) {
     const u32 dir = std::min<u32>(bd::mem::load<u32>(screen + 20), 3);
     const u32 up = bd::mem::load<u32>(kListMasks + dir * 16) | kUp;
@@ -2061,12 +2283,34 @@ bool SuperstarPageButtons(const PPCContext &in, u8 *base, u32 screen) {
   bd::mem::store<u32>(screen + 64, 0);
   if (g_pages.page) {
     KeepButtons();
-    ApplyPage(bd::mem::load<u32>(g_universe_menu + kRankingsPanel));
+    const u32 r = bd::mem::load<u32>(g_universe_menu + kRankingsPanel);
+    if (g_pages.page == 1)
+      ApplyPage(r);
+    else
+      ApplyTable(r);
   }
   return true;
 }
 
 }  // namespace
+
+// The rankings' list rows and its top block are drawn again by the game (sub_82552A78,
+// sub_82552240, R in r3): while our STATISTICS page shows, our texts go back on after them.
+REX_EXTERN(__imp__sub_82552A78);
+extern "C" REX_FUNC(sub_82552A78) {
+  const u32 r = ctx.r3.u32;
+  __imp__sub_82552A78(ctx, base);
+  if (g_pages.page == 2)
+    ApplyTable(r);
+}
+
+REX_EXTERN(__imp__sub_82552240);
+extern "C" REX_FUNC(sub_82552240) {
+  const u32 r = ctx.r3.u32;
+  __imp__sub_82552240(ctx, base);
+  if (g_pages.page == 2)
+    ApplyTable(r);
+}
 
 extern "C" REX_FUNC(sub_824D20A0) {
   const u32 screen = ctx.r3.u32;
