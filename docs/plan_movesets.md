@@ -90,6 +90,12 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
     le vrai numéro (celui des animations) est l'autre sens.
 - **Mesures 2K** (2026-10-27) : 2K14 / 2K15 / 2K16 lus (noms dans `createmode.pac`) ; 2K15 : 79 % / 8 % / 13 % ;
   2K16 : 84 % / 9 % / 7 % (moins de cases mises en correspondance : leur moveset est plus réorganisé). 2K17 non lu.
+- **WWE '13 et les 2K gardent la numérotation des prises de WWE '12** (le numéro = celui de l'animation), certaines
+  renommées : « White Noise 1 » de WWE '13 = « Celtic Cross 1 » de WWE '12 (animation 50024, mêmes blocs, 526
+  images). `moveset_port` prend donc aussi le même numéro quand le nom manque, pour un jeu qui partage la
+  numérotation (même numéro dans la même case pour plus d'un tiers des catcheurs communs ; SvR 2011 non).
+  Cases gardant la base : WWE '13 12,3 → 11,6 %, 2K15 13 → 10 %. Les prises qui manquent encore sont de vraies
+  nouveautés (Vertical Suplex, Beast Bite, Saito Suplex…) : étape 3.
 - Étape 4 : pas commencée.
 - **Écrans VS** (demandés le 2026-10-27, pas commencés) : les outils de Kaiko sur le bureau ne font que le fond
   (`arena_port.py` VS_BACKGROUND) ; son vrai portage (`vs_port.py`, `VS_STYLES.md`) est dans son dépôt GitHub (le
