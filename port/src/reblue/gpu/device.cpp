@@ -299,6 +299,16 @@ VideoState &state() {
 Video::OverlayDrawHook g_overlay_draw_hook;
 
 bool Video::CreateHostDevice(rex::ui::Window *window) {
+  // The bd_* graphics cvars (config file already loaded here) and their change callbacks: never
+  // done before, so V-sync, texture filtering and the picture shape kept their defaults whatever
+  // the launcher or OPTIONS > GRAPHICS set (Android #32, #35, #39).
+  static bool settings_ready = false;
+  if (!settings_ready) {
+    settings_ready = true;
+    Settings::Get().Init();
+    BD_INFO("[settings] vsync {}, anisotropy {}, picture shape {}", Settings::Get().Vsync(),
+            Settings::Get().Anisotropy(), Settings::Get().AspectRatio());
+  }
   if (!window) {
     BD_ERROR("Video::CreateHostDevice called with null window");
     return false;

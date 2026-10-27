@@ -106,22 +106,35 @@ public class Updater {
                     if (r.size > 0) params.setSize(r.size);
                     int id = installer.createSession(params);
                     session = installer.openSession(id);
-                    HttpURLConnection c = open(r.url);
-                    long total = r.size > 0 ? r.size : c.getContentLengthLong(), done = 0;
+                    // Slow or unstable connections (#40): a cut or a stall resumes where it stopped
+                    // (HTTP Range) instead of failing the whole download, up to 8 times.
+                    long total = r.size, done = 0;
                     int lastPercent = -1;
-                    try (InputStream in = c.getInputStream();
-                         OutputStream out = session.openWrite("base.apk", 0, total > 0 ? total : -1)) {
-                        byte[] buf = new byte[1 << 16];
-                        for (int n; (n = in.read(buf)) > 0; ) {
-                            out.write(buf, 0, n);
-                            done += n;
-                            int percent = total > 0 ? (int) (done * 100 / total) : -1;
-                            if (percent != lastPercent) {
-                                lastPercent = percent;
-                                post(progress, "Downloading " + r.tag + "... " + (percent >= 0 ? percent + " %" : done / 1048576 + " MB"), false, false);
+                    byte[] buf = new byte[1 << 16];
+                    for (int attempt = 0; ; attempt++) {
+                        try {
+                            HttpURLConnection c = open(r.url, done);
+                            if (total <= 0) total = c.getContentLengthLong();
+                            try (InputStream in = c.getInputStream();
+                                 OutputStream out = session.openWrite("base.apk", done, total > 0 ? total - done : -1)) {
+                                for (int n; (n = in.read(buf)) > 0; ) {
+                                    out.write(buf, 0, n);
+                                    done += n;
+                                    int percent = total > 0 ? (int) (done * 100 / total) : -1;
+                                    if (percent != lastPercent) {
+                                        lastPercent = percent;
+                                        post(progress, "Downloading " + r.tag + "... " + (percent >= 0 ? percent + " %" : done / 1048576 + " MB"), false, false);
+                                    }
+                                }
+                                session.fsync(out);
                             }
+                            if (total <= 0 || done >= total) break;
+                            throw new java.io.IOException("connection closed at " + done / 1048576 + " MB");
+                        } catch (java.io.IOException e) {
+                            if (attempt >= 7) throw e;
+                            post(progress, "Connection lost at " + Math.max(lastPercent, 0) + " %, resuming...", false, false);
+                            Thread.sleep(3000);
                         }
-                        session.fsync(out);
                     }
                     Intent status = new Intent(a, LauncherActivity.class).setAction(ACTION_STATUS);
                     int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
@@ -131,7 +144,8 @@ public class Updater {
                     session.close();
                 } catch (Exception e) {
                     if (session != null) session.abandon();
-                    post(progress, "Update failed: " + e.getMessage(), true, true);
+                    post(progress, "Update failed: " + e.getMessage() + ". You can also download the APK from the "
+                            + "project's GitHub page (Releases) and open it.", true, true);
                 }
             }
         }).start();
@@ -154,14 +168,19 @@ public class Updater {
         ui.post(new Runnable() { public void run() { p.progress(text, done, failed); } });
     }
 
-    static HttpURLConnection open(String url) throws Exception {
+    static HttpURLConnection open(String url) throws Exception { return open(url, 0); }
+
+    /** from > 0: ask for the rest of the file only (resumed download). */
+    static HttpURLConnection open(String url, long from) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        if (from > 0) c.setRequestProperty("Range", "bytes=" + from + "-");
         c.setRequestProperty("User-Agent", "WWE12-PC-Android");
         c.setRequestProperty("Accept", "application/vnd.github+json");
         c.setConnectTimeout(15000);
         c.setReadTimeout(30000);
         c.setInstanceFollowRedirects(true);  // release files redirect to GitHub's storage host
-        if (c.getResponseCode() != 200) throw new Exception("HTTP " + c.getResponseCode());
+        int code = c.getResponseCode();
+        if (code != (from > 0 ? 206 : 200)) throw new java.io.IOException("HTTP " + code);
         return c;
     }
 

@@ -361,6 +361,8 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     // ---- Real controllers: hide the touch pad while one is connected --------------------------
 
     boolean realControllerConnected() {
+        // "Always show" (launcher): some phones (Xiaomi Mi 10T Pro, #38) still pass for a controller.
+        if (prefs.getBoolean("touch_always", false)) return false;
         return realControllerName() != null;
     }
 

@@ -225,6 +225,8 @@ public class LauncherActivity extends Activity {
             public void onClick(View v) { prefs.edit().putBoolean("touch_controls", touch.isChecked()).apply(); }
         });
         ctl.addView(touch);
+        // #38: on some phones a built-in device passes for a controller and hid the buttons.
+        ctl.addView(prefToggle("Always show the on-screen buttons (if they vanish in the game)", "touch_always", false));
         ctl.addView(prefChoice("On-screen buttons opacity", "touch_opacity",
                 new String[] {"30 %", "50 %", "70 %", "90 %"}, new int[] {30, 50, 70, 90}, 50));
         ctl.addView(prefChoice("On-screen buttons size", "touch_size",
