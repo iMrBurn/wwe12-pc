@@ -4126,3 +4126,65 @@ extern "C" REX_FUNC(sub_826F1EF8) {  // PPVs: 6
   if (Enabled())
     ctx.r3.u64 = MatchCount(3, ctx.r3.u32);
 }
+
+// SCHEDULE's cells (sub_8255C408): 28 cells (4 weeks x 7 days), each a 16-byte entry (table at
+// 0x82023790..: +4 the layout group 0x2C, +8 its first element, +12 another), drawn with
+// sub_8255BFD8(screen, day, cell): the show of the day (sub_826CCCD8(screen+29708, day)) gives its
+// logo to the cell's picture. The layout only has a real picture (kind 0xBCA, sprite "PPV_raw") in the
+// cells of the game's own days (Monday, Thursday, Friday, Sunday); the others hold a "dummy" (kind
+// 0x1027) that draws nothing: a show moved there (EDIT CALENDAR) was not seen. So a cell with a show
+// and a dummy first element gets a copy of a real picture element (Monday's cell of the same group),
+// keeping its own place (+4 x, +8 y), name (+96) and picture object (+204).
+REX_EXTERN(__imp__sub_8255BFD8);
+REX_EXTERN(__imp__sub_826CCCD8);  // Universe view: the show of a day (view, day)
+REX_EXTERN(__imp__sub_824C5490);  // layout manager: element (manager, group, index)
+constexpr u32 kDummyElement = 0x1027;
+
+extern "C" REX_FUNC(sub_8255BFD8) {
+  const u32 screen = ctx.r3.u32, day = ctx.r4.u32, cell = ctx.r5.u32;
+  if (Enabled() && cell) {
+    PPCContext x = ctx;
+    x.r1.u32 = (x.r1.u32 - 0x200) & ~0xFu;
+    const u32 view = bd::mem::load<u32>(screen + 29708);
+    const u32 show = view ? Call(x, base, __imp__sub_826CCCD8, view, day) : 0;
+    const u32 record = show ? bd::mem::load<u32>(show) : 0;
+    const u32 holder = bd::mem::load<u32>(0x8324DEF4);
+    const u32 manager = holder ? bd::mem::load<u32>(holder + 96) : 0;
+    // weekly shows only (0-9): Sunday's cells draw the PPVs their own way
+    if (record && manager && bd::mem::load<u8>(record + 927) < 10 && day % 7 != 6) {
+      const u32 group = bd::mem::load<u32>(cell + 4), first = bd::mem::load<u32>(cell + 8);
+      // a cell's elements: +0 its picture (+1 / +2 its HD / SD variants, dummies everywhere), +3 a
+      // second picture, +6 its frame, +7 the "today" frame, and the cell entry's +12: the picture
+      // of the day chosen (3 elements a day from 56); a dummy one takes a copy of the same element
+      // of a real cell of the group (another cell: 8 elements a cell, or 3 for the chosen picture)
+      const u32 chosen = bd::mem::load<u32>(cell + 12);
+      for (u32 n : {first, first + 3, first + 6, first + 7, chosen}) {
+        const u32 element = Call(x, base, __imp__sub_824C5490, manager, group, n);
+        if (!element || bd::mem::load<u32>(element) != kDummyElement)
+          continue;
+        const u32 step = n == chosen ? 3 : 8, o = n == chosen ? 56 : n - first;
+        u32 model = 0;
+        for (u32 e = o; e < 224 && !model; e += step) {
+          const u32 at = Call(x, base, __imp__sub_824C5490, manager, group, e);
+          if (at && bd::mem::load<u32>(at) != kDummyElement)
+            model = at;
+        }
+        if (!model)
+          continue;
+        // kept: its place (+4 x, +8 y), its name (+96) and its own picture object (+204: the cell's
+        // object, screen + (cell + 2) * 336, which sub_8255BFD8 gives the show's logo)
+        u8 keep[8 + 16];
+        std::memcpy(keep, bd::mem::at<u8>(element + 4), 8);
+        std::memcpy(keep + 8, bd::mem::at<u8>(element + 96), 16);
+        const u32 picture = bd::mem::load<u32>(element + 204);
+        std::memcpy(bd::mem::at<u8>(element), bd::mem::at<u8>(model), 240);
+        std::memcpy(bd::mem::at<u8>(element + 4), keep, 8);
+        std::memcpy(bd::mem::at<u8>(element + 96), keep + 8, 16);
+        bd::mem::store<u32>(element + 204, picture);
+        BD_INFO("[univers] schedule: day {} element {} of group {:X} made a picture", day, n,
+                group);
+      }
+    }
+  }
+  __imp__sub_8255BFD8(ctx, base);
+}

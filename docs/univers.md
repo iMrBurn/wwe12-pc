@@ -839,8 +839,7 @@ Testé seul sur la copie, à la télécommande.
   U + 27360 + k × 984, +832 nom, +929/+930 marques RAW/SmackDown ; seuls les shows 0-2 ont un booker, `sub_826EB218`) :
   déplacer / retirer un show de la semaine (lundi-samedi), déplacer (mois + semaine, échange avec le PPV déjà là) /
   retirer un PPV, choisir son organisateur. Vu en jeu : SmackDown mis au mardi passe bien juste après RAW.
-  **Défaut** : l'écran SCHEDULE ne dessine pas le logo d'un show dans un jour qui n'était pas le sien (case du mardi
-  vide ; le vendredi est bien vidé) ; à chercher dans `sub_8255C408` / `sub_8255BFD8`. Ligne de journal « calendar:
+  L'écran SCHEDULE ne dessinait pas le logo d'un show dans un jour qui n'était pas le sien : corrigé (§31). Ligne de journal « calendar:
   weekdays … | PPVs by month … » à chaque ouverture du menu Univers. Retirer RAW/SmackDown et l'organisateur d'un
   PPV : pas encore essayés en jeu.
 - **Matchs par show** (étude : chaque type de show a une classe de booker, son slot virtuel 3 = nombre de matchs :
@@ -861,3 +860,17 @@ portraits) : sa page est dessinée comme un titre solo, sans bandeau, avec le ti
 lignes. Les lignes du tableau sont dessinées pour le premier titre solo de la liste. Chaque élément touché
 (position, taille, caché, texte +200, drapeaux +228, couleur +184) est gardé (`Keep`) et remis à la fermeture :
 le vrai classement retrouve THIS WEEK / LAST WEEK.
+
+## 31. SCHEDULE dessine les shows déplacés (2026-10-27, testé seul à la télécommande)
+
+SCHEDULE (`sub_8255C408`) : 28 cases (4 semaines × 7 jours), chacune une entrée de 16 octets (table 0x82023790… :
++4 groupe du layout 0x29-0x2C = la semaine, +8 premier élément de la case (8 par case), +12 l'image « jour choisi »
+(3 éléments par jour à partir de 56)). `sub_8255BFD8(écran, jour, case)` prend le show du jour
+(`sub_826CCCD8(écran+29708, jour)`, journal : bonnes données) et donne son logo à l'objet image de la case
+(écran + (case + 2) × 336). Mais la mise en page n'a de vraie image (élément de type 0xBCA, sprite « PPV_raw ») que
+dans les cases des jours d'origine (lundi, jeudi, vendredi) ; les autres ont un « dummy » (type 0x1027) qui ne dessine
+rien. Correctif : avant `sub_8255BFD8`, pour un show de la semaine (fiche +927 < 10, pas le dimanche : ses cases
+dessinent les PPV autrement), chaque élément dummy de la case (+0 image, +3 2e image, +6 cadre, +7 cadre « aujourd'hui »,
++12 image du jour choisi) reçoit une copie de l'élément au même rang d'une vraie case, en gardant sa place (+4/+8),
+son nom (+96) et **son objet image (+204)** (sinon il montre le logo du modèle). Vu : SmackDown au mardi, Superstars
+au samedi, case du jour en grand, mois suivants, dimanche (SummerSlam) intact.
