@@ -89,7 +89,10 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
     `PPPPWWWW` : phase, personne (0000/0001), jusqu'à 0x0011xxxx et 0x0021xxxx (contres ?). Nos outils lisent ces numéros en gros-boutiste dans WAZE comme dans PRO : cohérent entre eux, mais
     le vrai numéro (celui des animations) est l'autre sens.
 - **Mesures 2K** (2026-10-27) : 2K14 / 2K15 / 2K16 lus (noms dans `createmode.pac`) ; 2K15 : 79 % / 8 % / 13 % ;
-  2K16 : 84 % / 9 % / 7 % (moins de cases mises en correspondance : leur moveset est plus réorganisé). 2K17 non lu.
+  2K16 : 84 % / 9 % / 7 % (moins de cases mises en correspondance : leur moveset est plus réorganisé). **2K17 non lu** : noms
+  d'entrées hachés (`#939ce2614c8dd2cd`…) ; la table des noms se reconnaît à son contenu (entrée de 459 Ko de
+  `createmode.pac`, fiches de 160 o) mais les fiches de catcheurs de `chEtc.pac` sont dans des conteneurs « SHDC »
+  que nous ne lisons pas encore (Kaiko : `superstar_port.py` `hspc` / `shdc`).
 - **WWE '13 et les 2K gardent la numérotation des prises de WWE '12** (le numéro = celui de l'animation), certaines
   renommées : « White Noise 1 » de WWE '13 = « Celtic Cross 1 » de WWE '12 (animation 50024, mêmes blocs, 526
   images). `moveset_port` prend donc aussi le même numéro quand le nom manque, pour un jeu qui partage la
