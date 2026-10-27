@@ -30,6 +30,7 @@
 #include "mod_version.h"
 #include "entrance13.h"
 #include "moveset_port.h"
+#include "newmoves13.h"
 #include "media.h"
 #include "mods.h"
 #include "port13_star.h"
@@ -1027,6 +1028,26 @@ class Page {
       return;
     }
     moveset_port::FromGame(*disc12_, src, number, own_moves_, &own_moves_why_);
+    // Its WWE '13 moves WWE '12 hasn't: added (newmoves13.h; the game puts them in the added superstars' pack).
+    own_new_moves_.clear();
+    if (own_moves_game_ == 0x545108B4) {
+      std::set<int> want;
+      for (const auto &r : own_moves_.rows)
+        if (r.new_move)
+          want.insert(r.from_id);
+      own_new_moves_ = newmoves13::Collect(src, want);
+      std::set<int> got;
+      for (const auto &m : own_new_moves_)
+        got.insert(m.number);
+      for (auto &r : own_moves_.rows)
+        if (r.new_move && got.count(r.from_id)) {
+          r.to = r.from;
+          r.added = true;
+          own_moves_.moves.push_back({r.off, r.from_id});
+          --own_moves_.kept;
+          ++own_moves_.exact;
+        }
+    }
     // Its WWE '13 entrance (entrance13.h: the same format as WWE '12's), when WWE '12 has none with that number.
     own_entrance_.clear();
     own_entrance_number_ = 0;
@@ -1076,6 +1097,8 @@ class Page {
           ImGui::TableNextColumn();
           if (r.to.empty())
             ImGui::TextDisabled("%s", fr ? "(celle de la base)" : "(the base's)");
+          else if (r.added)
+            ImGui::Text("%s  %s", r.to.c_str(), fr ? "(ajoutée depuis WWE '13 ; essai)" : "(added from WWE '13; a test)");
           else if (r.variant)
             ImGui::Text("%s  %s", r.to.c_str(), fr ? "(autre version)" : "(another version)");
           else
@@ -1579,6 +1602,13 @@ class Page {
     if (own_entrance)
       for (const auto &part : own_entrance_)
         entries.push_back({entrance13::ModPath(part), part.data});
+    if (use_own_moves_)  // (its moves WWE '12 hasn't: the game adds them to its pack)
+      for (const auto &m : own_new_moves_) {
+        const std::string n = "superstar/moves/" + std::to_string(m.number);
+        entries.push_back({n + ".waze", m.waze});
+        entries.push_back({n + "_low.yanm", m.low});
+        entries.push_back({n + "_high.yanm", m.high});
+      }
     if (keep_portraits_ && !portraits_[1][0].empty())  // (its game's portraits, or the player's picture)
       for (int hd = 0; hd < 2; ++hd)
         for (int k = 0; k < 3; ++k)
@@ -1632,6 +1662,7 @@ class Page {
   uint32_t own_moves_game_ = 0;  // the game its own moves come from
   bool use_own_moves_ = true;
   int entrance_ = -1;
+  std::vector<newmoves13::Move> own_new_moves_;  // its WWE '13 moves WWE '12 hasn't (newmoves13.h)
   std::vector<entrance13::Part> own_entrance_;  // its WWE '13 entrance (entrance13.h), else empty
   int own_entrance_number_ = 0;
   bool use_own_entrance_ = true;  // its entrance: another superstar's (index in stars_), else -1: the base's

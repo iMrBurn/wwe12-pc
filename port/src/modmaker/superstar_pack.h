@@ -13,6 +13,11 @@
 //    the base's);
 //  - its own entrance video if it has one (movies\titantron\NNN.bik, listed in the catalog without a directory, as
 //    the game's packs do; the game plays it in place of its base's: wwe12_superstar_mods.cpp);
+//  - its moves WWE '12 hasn't (a WWE '13 superstar's, the Mod Maker's newmoves13.h), added as the game's own packs 3
+//    and 4 add moves: their records in a copy of misc.pac (MOVS/WAZE: 160-byte records in name order after a 0x430
+//    header whose u16 at +4 counts them and at 0x08 + 2k counts those with category bit k set), their motions in
+//    m_dlcNN.pac ZMOT/CA(NN + 6) (CA09 and CA10 in packs 3 and 4: a top id, then pairs of children, light and full
+//    records, by motion number); moves the latest misc.pac has already (an installed DLC's) are left out;
 //  - a line in the pack's catalog and in its superstar list (DLC.pac IGST/VOL<pack>: codes "lettre + U" that follow
 //    the installed packs', the next serial numbers).
 // Nothing of the game's goes into a mod: the pack is made from the player's own files.
@@ -30,12 +35,19 @@
 #include <vector>
 
 #include "svrfmt/archive.h"
+#include "svrfmt/pac.h"
 #include "svrfmt/texture.h"
 
 namespace superstar_pack {
 
 using svrfmt::ArcNode;
 using svrfmt::Bytes;
+
+// A move to add (newmoves13.h): its number (as CHAR / PRO holds it), its WAZE record, its motion's two records.
+struct NewMove {
+  int number = 0;
+  Bytes waze, low, high;
+};
 
 struct Star {
   std::string key;   // the mod's folder name
@@ -58,6 +70,8 @@ struct Star {
   // Its own entrance (a WWE '13 one the game serves under that number: wwe12_arena_pages.cpp), else 0: CHAR / PRO
   // +0x1D8, the entrance number of the block at +0x1D4 (music, video, entrance).
   int own_entrance = 0;
+  // Its moves WWE '12 hasn't (added to the pack: misc.pac records, m_dlcNN.pac motions), else empty.
+  std::vector<NewMove> new_moves;
   // Its own portraits, else empty (the base's): [0 SD / 1 HD][SSFA, SSFB, SSFC], DDS as the game's (DXT5; HD 512 x 512,
   // 512 x 512, 256 x 256; SD 512 x 256, 512 x 256, 256 x 256: WWE '13's are the same).
   Bytes portraits[2][3];
@@ -150,6 +164,7 @@ inline bool DressMenu(Bytes &mnlay, const Background &bg) {
 struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)
+  Bytes misc;                                      // ... and pac\misc.pac (the move records), when moves are added
   std::vector<Bytes> portraits_hd, portraits_sd;   // pacs that may hold the bases' SSFA/SSFB/SSFC "%04d"
   std::vector<std::pair<int, Bytes>> catalogs;     // the installed packs (number, info/catalog.dlc), not ours
 };
@@ -618,6 +633,85 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       portraits[hd] = svrfmt::ArchiveSave(out_pac);
     }
   }
+  // 4b. Moves to add: the records into a copy of misc.pac, the motions into m_dlcNN.pac.
+  Bytes misc_out, moves_out;
+  {
+    std::vector<const NewMove *> adds;
+    std::set<int> taken;
+    for (const auto &st : stars)
+      for (const auto &m : st.new_moves)
+        if (m.waze.size() == 160 && !m.low.empty() && !m.high.empty() && taken.insert(m.number).second)
+          adds.push_back(&m);
+    svrfmt::Archive misc;
+    ArcNode *waze = nullptr;
+    if (!adds.empty() && svrfmt::ArchiveOpen(in.misc, misc, nullptr))
+      for (auto &k : misc.root.kids)
+        if (k.group == "MOVS" && k.name.rfind("WAZE", 0) == 0)
+          waze = &k;
+    if (waze) {
+      Bytes t = svrfmt::ArchiveData(*waze);
+      // the records it has (by number) and where the named ones are
+      std::set<int> have;
+      for (size_t o = 0x430; o + 160 <= t.size(); o += 160)
+        if (t[o + 0x10])
+          have.insert(t[o + 0x90] << 8 | t[o + 0x91]);
+      auto name_at = [&](size_t o) { return std::string(reinterpret_cast<const char *>(&t[o + 0x10]), strnlen(reinterpret_cast<const char *>(&t[o + 0x10]), 0x40)); };
+      auto lower = [](std::string x) {
+        for (auto &c : x)
+          c = char(std::tolower(static_cast<unsigned char>(c)));
+        return x;
+      };
+      std::vector<const NewMove *> added;
+      for (const NewMove *m : adds) {
+        if (have.count(m->number) || t.size() < 0x430)
+          continue;  // (the game has it: an installed DLC's move)
+        const std::string name = lower(std::string(reinterpret_cast<const char *>(&m->waze[0x10]), strnlen(reinterpret_cast<const char *>(&m->waze[0x10]), 0x40)));
+        size_t at = 0x430;  // (in name order, as the game's packs insert theirs)
+        while (at + 160 <= t.size() && t[at + 0x10] && lower(name_at(at)) < name)
+          at += 160;
+        t.insert(t.begin() + long(at), m->waze.begin(), m->waze.end());
+        Le16(t, 4, uint16_t((t[4] | t[5] << 8) + 1));
+        for (int bit = 0; bit < 128; ++bit)
+          if ((m->waze[size_t(bit / 8)] >> (bit % 8)) & 1) {
+            const size_t c = 0x08 + 2 * size_t(bit);
+            Le16(t, c, uint16_t((t[c] | t[c + 1] << 8) + 1));
+          }
+        have.insert(m->number);
+        added.push_back(m);
+      }
+      if (!added.empty()) {
+        svrfmt::ArchiveReplace(*waze, t);
+        svrfmt::ArchiveTouch(misc.root);
+        misc_out = svrfmt::ArchiveSave(misc);
+        // m_dlcNN.pac: ZMOT/CA(NN + 6), {top: {2i: {motion: light}, 2i + 1: {motion: full}}}, in chEtc.pac's kind of pac
+        std::vector<svrfmt::PachEntry> pairs;
+        for (const NewMove *m : added) {
+          const uint32_t motion = uint32_t(((m->number & 0xFF) << 8) | (m->number >> 8));
+          pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, m->low}})});
+          pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, m->high}})});
+        }
+        const Bytes tree = svrfmt::PachWrite({{uint32_t(180 + pack), svrfmt::PachWrite(pairs)}});
+        svrfmt::Epac like, out;
+        char bank[8];
+        snprintf(bank, sizeof(bank), "CA%02d", pack + 6);
+        if (svrfmt::EpacRead(in.chetc, like) && !like.groups.empty()) {
+          out.header = like.header;
+          out.epk8 = like.epk8;
+          out.wide = like.wide;
+          out.toc_extra = like.toc_extra;
+          svrfmt::EpacGroup g;
+          g.type = "ZMOT";
+          g.number = like.groups[0].number;
+          g.extra = 0;
+          g.entries.push_back({bank, tree, 0});
+          out.groups.push_back(std::move(g));
+          moves_out = svrfmt::EpacWrite(out);
+        }
+        if (moves_out.empty())
+          misc_out.clear();  // (records without their motions: neither)
+      }
+    }
+  }
   // 5. The files, their directories and the catalog.
   struct Entry {
     std::string path;
@@ -648,6 +742,12 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   }
   if (!audience_out.empty()) {
     entries.push_back({"pac/audience_dlc" + std::string(tag) + ".pac", next, next, &audience_out});
+    ++next;
+  }
+  if (!moves_out.empty()) {
+    entries.push_back({"pac/m_dlc" + std::string(tag) + ".pac", next, next, &moves_out});
+    ++next;
+    entries.push_back({"pac/misc.pac", next, next, &misc_out});
     ++next;
   }
   entries.push_back({"pac/ch/chEtc.pac", next, next, &etc_out});

@@ -36,6 +36,9 @@ struct Row {
   int off = 0;           // the WWE '12 PRO byte offset
   std::string from, to;  // the SvR move's name; the WWE '12 move's ("" = the base's kept)
   bool variant = false;  // found without its variant number (another version of the move)
+  int from_id = 0;       // the other game's move number (as PRO holds it)
+  bool new_move = false;  // WWE '12 hasn't that number (WWE '13, the 2K games): a move to add (newmoves13.h)
+  bool added = false;     // ... and it is added (its record and motions go with the mod)
 };
 
 struct Result {
@@ -282,6 +285,7 @@ inline bool FromGame(const disc::GameDisc &w12, const disc::GameDisc &src, int n
     Row r;
     r.off = o;
     r.from = sn != s.names.end() ? sn->second : "";
+    r.from_id = sv;
     auto pick = [&](const std::vector<int> &cand) {  // the one the roster uses most in this slot, else this section
       int best = -1, score = 0;
       for (int c : cand) {
@@ -309,6 +313,7 @@ inline bool FromGame(const disc::GameDisc &w12, const disc::GameDisc &src, int n
       got = pick({sv});
       r.variant = got >= 0;
     }
+    r.new_move = got < 0 && same_numbers && !w.names.count(sv) && !r.from.empty();
     if (got >= 0) {
       r.to = w.names[got];
       out.moves.push_back({o, got});

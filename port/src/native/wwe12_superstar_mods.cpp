@@ -212,6 +212,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     std::vector<std::pair<int, int>> moves;  // moves=OFF:NUMBER,... (hex offset in CHAR / PRO), else the base's
     int entrance = 0;                         // entrance=NUMBER: that superstar's entrance, else the base's
     int own_entrance = 0;                     // entrance_own=NUMBER: its own (superstar/entrance/), else 0
+    std::vector<superstar_pack::NewMove> new_moves;  // superstar/moves/<number>.waze, _low.yanm, _high.yanm
     fs::path model, movie;
   };
   std::vector<Mod> list;
@@ -255,6 +256,18 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     }
     mod.entrance = std::clamp(atoi(Value(text, "entrance").c_str()), 0, 372);
     mod.own_entrance = std::clamp(atoi(Value(text, "entrance_own").c_str()), 0, 999);
+    for (fs::directory_iterator it(d / "superstar" / "moves", ec), end; !ec && it != end; it.increment(ec)) {
+      const fs::path w = it->path();
+      if (w.extension() != ".waze")
+        continue;
+      superstar_pack::NewMove nm;
+      nm.number = atoi(w.stem().string().c_str());
+      const fs::path dir = w.parent_path(), stem = w.stem();
+      if (nm.number > 0 && ReadHost(w, nm.waze) && ReadHost(dir / (stem.string() + "_low.yanm"), nm.low) &&
+          ReadHost(dir / (stem.string() + "_high.yanm"), nm.high))
+        mod.new_moves.push_back(std::move(nm));
+    }
+    ec.clear();
     mod.model = d / "superstar" / "ch.pac";
     mod.movie = d / "superstar" / "titantron.bik";
     if (mod.base < 50 || mod.base >= 373) {
@@ -516,6 +529,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     st.moves = mod.moves;
     st.entrance = mod.entrance;
     st.own_entrance = mod.own_entrance;
+    st.new_moves = mod.new_moves;
     const auto k = kept.find(mod.key);
     if (k != kept.end() && std::find(free_slots.begin(), free_slots.end(), k->second) != free_slots.end() &&
         std::find(taken.begin(), taken.end(), k->second) == taken.end())
@@ -629,6 +643,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   std::vector<superstar_pack::File> files;
   std::string why;
   latest("pac/audience.pac", in.audience);
+  if (std::any_of(stars.begin(), stars.end(), [](const auto &st) { return !st.new_moves.empty(); }))
+    latest("pac/misc.pac", in.misc);  // (moves to add: their records go into a copy of it)
   if (!superstar_pack::Build(in, stars, files, &why, attires, media, signs)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;
