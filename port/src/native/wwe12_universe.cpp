@@ -4002,7 +4002,7 @@ extern "C" REX_FUNC(sub_826CCAB8) {
 // match (type 76 / an Elimination Chamber type) gets the qualified Superstars in its places when the
 // PPV's card is written (the booker's record, before sub_826EAEB0), unless one is already elsewhere on
 // that card. News (the game's writer sub_826D1630, its two unused types): type 6 "qualifying matches
-// begin this week", type 5 "X has qualified", the event in the news' +4 (0x51000000 + event); their
+// begin this week", type 5 "X has qualified", the event in the news' +14 / +15 (0x51, event); their
 // texts (27068-27071, empty in WWE '12) are ours while such a news is drawn (sub_82559468 /
 // sub_82559A08 read the news given in r4). Kept in universe_stats.txt: "qualifier <event> <year> <a>
 // <b> <day>", "qualified <event> <year> <id> <day>", "qualbegin <event> <year>" (year = day / 336).
@@ -4068,6 +4068,19 @@ const QualEvent kQualEvents[kEvents + 1] = {
       "%s si \xC3\xA8 qualificato per l'Elimination Chamber!"}}};
 
 u32 g_news_event = 0;  // the event of the news being drawn (its texts are ours meanwhile)
+
+// A news of ours: its event (+14 = 0x51, +15 the event; first version: +4 = 0x51000000 + event).
+u32 NewsEvent(u32 rec) {
+  if (!rec)
+    return 0;
+  const u32 type = bd::mem::load<u8>(rec + 12);
+  if (type != kNewsQualified && type != kNewsQualifying)
+    return 0;
+  const u32 e = bd::mem::load<u8>(rec + 14) == 0x51 ? bd::mem::load<u8>(rec + 15)
+                : bd::mem::load<u32>(rec + 4) > kNewsMarker ? bd::mem::load<u32>(rec + 4) - kNewsMarker
+                                                            : 0;
+  return e <= kEvents ? e : 0;
+}
 
 struct Qualifier {
   u32 event, year, a, b;
@@ -4140,9 +4153,11 @@ void FlushNews(const PPCContext &in, u8 *base) {
     const u32 view = x.r1.u32 + 0x400, record = x.r1.u32 + 0x200;
     Call(x, base, __imp__sub_826CDC48, view);
     Call(x, base, __imp__sub_826D51A0, record);
+    // one Superstar (its picture alone: the news shows a picture for each of +0 .. +8), the event
+    // in the free +14 / +15 (0x51, event)
     bd::mem::store<u16>(record, u16(n.b < 512 ? n.b : 512));
-    bd::mem::store<u16>(record + 2, u16(n.b < 512 ? n.b : 512));
-    bd::mem::store<u32>(record + 4, kNewsMarker + n.event);
+    bd::mem::store<u8>(record + 14, 0x51);
+    bd::mem::store<u8>(record + 15, u8(n.event));
     bd::mem::store<u8>(record + 12, u8(n.a));
     Call(x, base, __imp__sub_826D1630, view, record);
     Call(x, base, __imp__sub_826CE098, view);
@@ -4154,15 +4169,13 @@ void FlushNews(const PPCContext &in, u8 *base) {
 // A news drawn: its texts (sub_82559468 the line, sub_82559A08 the title; the news in r4).
 REX_EXTERN(__imp__sub_82559468);
 extern "C" REX_FUNC(sub_82559468) {
-  const u32 rec = ctx.r4.u32, marker = rec ? bd::mem::load<u32>(rec + 4) : 0;
-  g_news_event = marker > kNewsMarker && marker <= kNewsMarker + kEvents ? marker - kNewsMarker : 0;
+  g_news_event = NewsEvent(ctx.r4.u32);
   __imp__sub_82559468(ctx, base);
   g_news_event = 0;
 }
 REX_EXTERN(__imp__sub_82559A08);
 extern "C" REX_FUNC(sub_82559A08) {
-  const u32 rec = ctx.r4.u32, marker = rec ? bd::mem::load<u32>(rec + 4) : 0;
-  g_news_event = marker > kNewsMarker && marker <= kNewsMarker + kEvents ? marker - kNewsMarker : 0;
+  g_news_event = NewsEvent(ctx.r4.u32);
   __imp__sub_82559A08(ctx, base);
   g_news_event = 0;
 }
