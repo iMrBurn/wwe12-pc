@@ -78,4 +78,18 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   pour les vidéos d'arènes) et cloner les fiches WAZE de `misc.pac` (petit : copie patchée par l'overlay, comme
   `menu.pac`) ; les autres données d'une prise (dégâts, contres, événements) ne sont décodées nulle part : on part
   d'une prise « modèle » de WWE '12 du même genre (méthode de Kaiko).
+- **Une prise de WWE '12, vue de près** (2026-10-27, outils `mtree` / `wazerec` du bloc-notes) :
+  - `misc.pac` n'a que MOVS/WAZE pour les prises (les autres entrées : BATS/BATH INIT = tables du jeu STG, COS,
+    RUL, OPT…, CMAI, RVSL) → **les données d'une prise sont sa fiche WAZE de 160 o** : +0x00 genre (0x0C), +0x03
+    catégorie ?, +0x0E/+0x0F drapeaux, nom +0x10, réglages +0x70..+0x8F (dégâts, contres ?), numéro u16 +0x90 (AA 4
+    = 0x96C4, STF = 0xEEE3), puis FF.
+  - `m.pac` ZMVM/FINI : PACH → 112 → 20 sous-groupes (0, 1, 2…) → **numéro d'animation** (AA de Cena : 33002) ; le
+    sous-groupe 0 (10 Ko) et le 1 (35 Ko) ont les mêmes blocs (deux qualités, ou corps / mains-visage ?). Blocs
+    `PPPPWWWW` : phase, personne (0000/0001), jusqu'à 0x0011xxxx et 0x0021xxxx (contres ?). Le lien numéro de prise
+    → numéro d'animation n'est pas encore trouvé (pas dans la fiche WAZE en clair).
+- **Mesures 2K** (2026-10-27) : 2K14 / 2K15 / 2K16 lus (noms dans `createmode.pac`) ; 2K15 : 79 % / 8 % / 13 % ;
+  2K16 : 84 % / 9 % / 7 % (moins de cases mises en correspondance : leur moveset est plus réorganisé). 2K17 non lu.
 - Étape 4 : pas commencée.
+- **Écrans VS** (demandés le 2026-10-27, pas commencés) : les outils de Kaiko sur le bureau ne font que le fond
+  (`arena_port.py` VS_BACKGROUND) ; son vrai portage (`vs_port.py`, `VS_STYLES.md`) est dans son dépôt GitHub (le
+  télécharger : demander à l'utilisateur). Le défaut des bases partagées demande des essais en jeu.
