@@ -953,3 +953,27 @@ Chamber, build WrestleMania ou match de rivalité ; personne n'est déplacé. Su
 de titre que par l'image du show derrière les portraits (élément 23) : `sub_82554B68` est suivi d'un en-tête (élément 30)
 = le nom du titre. Vu : US Evan Bourne vs Mason Ryan → Mason Ryan champion ; « WWE CHAMPIONSHIP » sur Mark Henry vs
 Triple H.
+
+## 36. Matchs de qualification Money in the Bank / Elimination Chamber + news (1.0, 2026-10-27)
+
+Réglage `wwe12_universe_qualifiers` (**false par défaut = le jeu d'origine**). Pas de qualifs pour le Royal Rumble
+(choix de l'utilisateur). Dans les 2 semaines avant le PPV (MITB = show 16, juillet semaine 3 ; EC = show 11, février
+semaine 3 ; là où le calendrier met le PPV), chaque carte hebdo a **un match de qualification** : un 1 contre 1 de deux
+hommes (pas de titre, pas de match spécial, pas déjà qualifiés), 6 au plus par événement et par année (année = jour /
+336). Marqué à l'écriture de la carte (`sub_826EAEB0`, avant la défense de titre, qui ne s'y ajoute pas). Le gagnant
+est qualifié (crochet de résultat `sub_826CEF28`). À l'écriture de la carte du PPV (booker vtable 0x8203EB44), les
+qualifiés prennent les places du match MITB (type 76, `sub_82A2F998`) / EC (`sub_82A2FA98`) dans la fiche du booker,
+avant qu'elle soit écrite, sauf s'ils sont déjà ailleurs sur la carte.
+- En-tête de la carte : « MONEY IN THE BANK QUALIFYING MATCH » (élément 30, remis au nom du type de match du jeu,
+  27400 + type, quand le curseur passe sur une autre ligne).
+- News (écrivain du jeu `sub_826D1630(vue, fiche de 16 octets)`, liste de 240 à U + 51116) : types 5 et 6, non
+  utilisés par le jeu et aux textes vides (27068-27071) ; +4 = 0x51000000 + événement ; nos textes (5 langues) remplacent
+  27068-27071 pendant que cette news est dessinée (`sub_82559468` corps, `sub_82559A08` titre, la news en r4). Type 6 =
+  « … qualifying matches begin this week … », type 5 = « X PLACE SECURED! / X has qualified … ». La liste ne garde que
+  les news écrites avec les résultats : les deux news partent avec le résultat du 1er match de qualif.
+- Fichier `universe_stats.txt` : « qualbegin / qualnews <év> <année> », « qualifier <év> <année> <a> <b> <jour> »,
+  « qualdone … », « qualified <év> <année> <id> <jour> ».
+Vu à la télécommande (MITB, copie) : en-tête QUALIFYING MATCH (Sin Cara vs Tyson Kidd), news « MONEY IN THE BANK PLACE
+SECURED! — Sin Cara has qualified for the Money in the Bank Ladder Match! », 5 qualifiés sur 2 semaines, 4 placés dans
+le match MITB du PPV (le 5e était déjà sur la carte). Elimination Chamber : même code, **pas encore vu en jeu**
+(février).
