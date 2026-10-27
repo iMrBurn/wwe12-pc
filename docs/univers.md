@@ -850,3 +850,14 @@ Testé seul sur la copie, à la télécommande.
   g × 508, +2 = modèles), la case sans modèle était lue par une règle de la carte. Corrigé : pour l'appel du booker
   (retour 0x826F1690), le dernier match prend le dernier modèle (main event / titre) et les autres tournent sur les
   modèles normaux. Vu en jeu : RAW à 6 = MATCH #1 à #5 + MAIN EVENT, pas de plantage. PPV : 6 au plus.
+
+## 30. Ceintures dans les statistiques générales (2026-10-27, testé seul à la télécommande)
+
+TITLES et CHAMPIONS : un titre par page du tableau (haut/bas = titre suivant). Pour un titre solo, le bandeau du
+jeu reste visible : `sub_82552910(R)` dessine la ceinture de R+8848 (éléments 908/917), et `sub_82552240(R)` la photo
+du premier Superstar du haut, lu en R+8900 (puis les 4 aspirants tous les 8 octets). On y met le titre et son champion,
+puis on remet R+8848 / R+8900 de RANKINGS à la fermeture. Un titre par équipes a une autre mise en page (grands
+portraits) : sa page est dessinée comme un titre solo, sans bandeau, avec le titre et ses champions en premières
+lignes. Les lignes du tableau sont dessinées pour le premier titre solo de la liste. Chaque élément touché
+(position, taille, caché, texte +200, drapeaux +228, couleur +184) est gardé (`Keep`) et remis à la fermeture :
+le vrai classement retrouve THIS WEEK / LAST WEEK.

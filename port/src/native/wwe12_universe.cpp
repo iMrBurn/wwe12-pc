@@ -2434,6 +2434,13 @@ struct SuperstarPages {
   bool global = false;        // the Universe's statistics (RANKINGS, Y), not a Superstar's
   u32 section = 0;            // their page: titles, champions, Money in the Bank, Royal Rumble
   u32 global_place = 0;       // RANKINGS' title place (R+56) before they opened
+  // TITLES / CHAMPIONS: one title a table page, with the game's banner (its belt, R+8848 = the title)
+  std::vector<u32> page_titles;
+  std::vector<std::string> page_names, page_champs;
+  std::vector<bool> page_banner;  // false for a tag title (its page has another layout: no belt)
+  std::vector<u32> page_champ_ids;  // the champion's portrait (R+8900, read by sub_82552240)
+  u32 global_champ = 512;           // RANKINGS' own R+8900 before they opened
+  u32 global_title = 0;  // RANKINGS' title (R+8848) before they opened
 };
 SuperstarPages g_pages;
 
@@ -2604,6 +2611,8 @@ void ApplyPage(u32 r) {
 
 REX_EXTERN(__imp__sub_82553770);  // a title's ranking: open (its screen)
 REX_EXTERN(__imp__sub_82552D40);  // a title's ranking: close (its screen)
+REX_EXTERN(__imp__sub_82552240);  // a title's ranking: its top (R)
+REX_EXTERN(__imp__sub_82552910);  // a title's ranking: its belt's image (R)
 
 constexpr u32 kTableRows = 12, kRowLabel = 1020, kRowHeld = 1032, kRowTotal = 1044;
 
@@ -2697,24 +2706,26 @@ void BuildTable(const PPCContext &in, u8 *base) {
 
 struct GlobalWords {
   const char *champions, *most_reigns, *most_weeks, *champion, *former, *holder, *winners, *won,
-      *lost, *wm_rate, *nobody, *weeks;
+      *lost, *wm_rate, *nobody, *weeks, *total_reigns;
 };
 const GlobalWords &GWords() {
   static const GlobalWords kWords[5] = {
       {"CHAMPIONS", "MOST REIGNS", "MOST WEEKS HELD", "CHAMPION", "FORMER CHAMPIONS", "HOLDER",
-       "PREVIOUS WINNERS", "WON", "LOST", "WRESTLEMANIA WIN RATE", "NOBODY YET", "WEEKS"},
+       "PREVIOUS WINNERS", "WON", "LOST", "WRESTLEMANIA WIN RATE", "NOBODY YET", "WEEKS",
+       "TOTAL REIGNS"},
       {"CHAMPIONS", "NB DE FOIS REMPORT\xC3\x89", "NB DE SEMAINES D\xC3\x89TENU", "CHAMPION",
        "ANCIENS CHAMPIONS", "D\xC3\x89TENTEUR", "VAINQUEURS PR\xC3\x89" "C\xC3\x89" "DENTS", "GAGN\xC3\x89",
-       "PERDU", "TAUX DE VICTOIRE WRESTLEMANIA", "PERSONNE POUR L'INSTANT", "SEMAINES"},
+       "PERDU", "TAUX DE VICTOIRE WRESTLEMANIA", "PERSONNE POUR L'INSTANT", "SEMAINES",
+       "R\xC3\x88GNES AU TOTAL"},
       {"CHAMPIONS", "MEISTE REGENTSCHAFTEN", "MEISTE WOCHEN", "CHAMPION", "FR\xC3\x9CHERE CHAMPIONS",
        "INHABER", "FR\xC3\x9CHERE SIEGER", "GEWONNEN", "VERLOREN", "SIEGQUOTE WRESTLEMANIA",
-       "NOCH NIEMAND", "WOCHEN"},
+       "NOCH NIEMAND", "WOCHEN", "REGENTSCHAFTEN INSGESAMT"},
       {"CAMPEONES", "M\xC3\x81S REINADOS", "M\xC3\x81S SEMANAS", "CAMPE\xC3\x93N",
        "CAMPEONES ANTERIORES", "PORTADOR", "GANADORES ANTERIORES", "GAN\xC3\x93", "PERDI\xC3\x93",
-       "\xC3\x89XITO EN WRESTLEMANIA", "NADIE A\xC3\x9AN", "SEMANAS"},
+       "\xC3\x89XITO EN WRESTLEMANIA", "NADIE A\xC3\x9AN", "SEMANAS", "REINADOS EN TOTAL"},
       {"CAMPIONI", "PI\xC3\x99 REGNI", "PI\xC3\x99 SETTIMANE", "CAMPIONE", "EX CAMPIONI", "DETENTORE",
        "VINCITORI PRECEDENTI", "VINTO", "PERSO", "VITTORIE A WRESTLEMANIA", "ANCORA NESSUNO",
-       "SETTIMANE"}};
+       "SETTIMANE", "REGNI IN TOTALE"}};
   return kWords[CurrentLang()];
 }
 
@@ -2799,6 +2810,35 @@ void BuildGlobal(const PPCContext &ctx, u8 *base) {
   auto &t = g_pages.table;
   t.clear();
   g_pages.top = w.page;
+  g_pages.page_titles.clear();
+  g_pages.page_names.clear();
+  g_pages.page_champs.clear();
+  g_pages.page_banner.clear();
+  g_pages.page_champ_ids.clear();
+  const auto champion_of = [&](u32 title) {
+    std::string champ;
+    for (u32 place = 0; place < 2; ++place) {
+      const u32 id = Call(in, base, __imp__sub_82A39FC8, title, place, 1) & 0xFFFF;
+      if (id < 512)
+        champ += (champ.empty() ? "" : " & ") + NameOf(in, base, id);
+    }
+    return champ;
+  };
+  const auto new_page = [&](u32 title) {  // a title's page starts (the last one padded to 12 rows)
+    while (t.size() % kTableRows)
+      t.push_back({"", ""});
+    g_pages.page_titles.push_back(title);
+    g_pages.page_names.push_back(TitleName(in, base, title));
+    const std::string champ = champion_of(title);
+    g_pages.page_champs.push_back(champ.empty() ? "--" : champ);
+    g_pages.page_champ_ids.push_back(Call(in, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF);
+    const bool tag = Call(in, base, __imp__sub_82A39CE8, title) != 0;
+    g_pages.page_banner.push_back(!tag);
+    if (tag)  // no banner: the title and its champions as the page's first rows
+      t.push_back({g_pages.page_names.back(), "", true});
+    if (tag)
+      t.push_back({std::string(GWords().champion) + ":  " + g_pages.page_champs.back(), ""});
+  };
   switch (g_pages.section) {
   case 0:  // TITLES: the records
     g_pages.subtitle = w.titles;
@@ -2818,23 +2858,24 @@ void BuildGlobal(const PPCContext &ctx, u8 *base) {
       };
       const auto [most, times] = best(count);
       const auto [longest, wk] = best(held);
-      t.push_back({TitleName(in, base, title), "", true});
+      u32 all = 0;
+      for (const auto &[id, v] : count)
+        all += v;
+      new_page(title);
+      t.push_back({w.titles, w.total, true});
       t.push_back({std::string(g.most_reigns) + ":  " + (times ? NameOf(in, base, most) : "--"),
                    times ? num(times) : "--"});
       t.push_back({std::string(g.most_weeks) + ":  " + (wk ? NameOf(in, base, longest) : "--"),
                    wk ? num(wk) : "--"});
+      t.push_back({g.total_reigns, num(all)});
     }
     break;
   case 1:  // CHAMPIONS: the champion, then the former ones (latest first), weeks held
     g_pages.subtitle = g.champions;
     for (u32 title : titles) {
-      t.push_back({TitleName(in, base, title), g.weeks, true});
-      std::string champ;
-      for (u32 place = 0; place < 2; ++place) {
-        const u32 id = Call(in, base, __imp__sub_82A39FC8, title, place, 1) & 0xFFFF;
-        if (id < 512)
-          champ += (champ.empty() ? "" : " & ") + NameOf(in, base, id);
-      }
+      new_page(title);
+      t.push_back({g.champions, g.weeks, true});
+      const std::string champ = champion_of(title);
       u32 champ_weeks = 0;
       for (const Reign &r : reigns)
         if (r.title == title && r.to_day == ~0u && r.place == 0)
@@ -2842,7 +2883,7 @@ void BuildGlobal(const PPCContext &ctx, u8 *base) {
       t.push_back({std::string(g.champion) + ":  " + (champ.empty() ? "--" : champ),
                    champ.empty() ? "--" : num(champ_weeks)});
       u32 shown = 0;
-      for (auto r = reigns.rbegin(); r != reigns.rend() && shown < 5; ++r)
+      for (auto r = reigns.rbegin(); r != reigns.rend() && shown < kTableRows - 2; ++r)
         if (r->title == title && r->to_day != ~0u) {
           t.push_back({std::string(shown ? "" : g.former) + (shown ? "      " : ":  ") +
                            NameOf(in, base, r->holder),
@@ -2932,14 +2973,15 @@ u32 TableText(u32 slot, const std::string &text) {  // guest strings of ours, 64
 struct Placed {
   u32 e;
   float x, y, sx, sy;
-  u32 hidden;
+  u32 hidden, text, flags;  // and its text (+200) and its flags (+228)
+  float rgba[4];            // and its colour (+184)
 };
 std::vector<Placed> g_table_placed;
 u32 g_table_array = 0;
 
 constexpr float kStripe0 = 92, kStripeStep = 17;
 
-void Place(u32 array, u32 e, float x, float y, float scale, bool hidden) {
+void Keep(u32 array, u32 e) {  // an element's values, kept to be put back
   const u32 at = array + e * 240;
   if (g_table_array != array) {
     g_table_placed.clear();
@@ -2949,7 +2991,15 @@ void Place(u32 array, u32 e, float x, float y, float scale, bool hidden) {
                    [&](const Placed &p) { return p.e == e; }))
     g_table_placed.push_back({e, bd::mem::load<float>(at + 4), bd::mem::load<float>(at + 8),
                               bd::mem::load<float>(at + 12), bd::mem::load<float>(at + 16),
-                              bd::mem::load<u32>(at + 180)});
+                              bd::mem::load<u32>(at + 180), bd::mem::load<u32>(at + 200),
+                              bd::mem::load<u32>(at + 228),
+                              {bd::mem::load<float>(at + 184), bd::mem::load<float>(at + 188),
+                               bd::mem::load<float>(at + 192), bd::mem::load<float>(at + 196)}});
+}
+
+void Place(u32 array, u32 e, float x, float y, float scale, bool hidden) {
+  const u32 at = array + e * 240;
+  Keep(array, e);
   const Placed &old = *std::find_if(g_table_placed.begin(), g_table_placed.end(),
                                     [&](const Placed &p) { return p.e == e; });
   bd::mem::store<float>(at + 4, x < 0 ? old.x : x);
@@ -2970,6 +3020,10 @@ void RestoreTableLayout(u32 r) {
       bd::mem::store<float>(at + 12, p.sx);
       bd::mem::store<float>(at + 16, p.sy);
       bd::mem::store<u32>(at + 180, p.hidden);
+      bd::mem::store<u32>(at + 200, p.text);
+      bd::mem::store<u32>(at + 228, p.flags);
+      for (u32 c = 0; c < 4; ++c)
+        bd::mem::store<float>(at + 184 + c * 4, p.rgba[c]);
     }
   g_table_placed.clear();
   g_table_array = 0;
@@ -2983,9 +3037,37 @@ void ApplyTable(u32 r) {
     return;
   const auto element = [&](u32 e) { return array + e * 240; };
   const auto text = [&](u32 e, u32 t) {
+    Keep(array, e);
     bd::mem::store<u32>(element(e) + 200, t);
     bd::mem::store<u32>(element(e) + 228, bd::mem::load<u32>(element(e) + 228) & ~0x10u);
   };
+  // a title's page (the Universe's TITLES / CHAMPIONS): the game's own layout, with its banner (the
+  // title's belt and its champion), the values in the rank's column
+  const size_t title_page = g_pages.table_page - 1;
+  if (g_pages.global && title_page < g_pages.page_titles.size() && g_pages.page_banner[title_page]) {
+    text(897, TableText(3 * kTableRows, g_pages.page_names[title_page]));
+    text(898, TableText(3 * kTableRows + 1, std::string(kPageKeys) + g_pages.subtitle));
+    text(899, TableText(3 * kTableRows + 2, ""));
+    text(912, TableText(3 * kTableRows + 4, g_pages.page_champs[title_page]));
+    for (u32 k = 0; k < kTableRows; ++k) {
+      const size_t i = title_page * kTableRows + k;
+      const bool shown = i < g_pages.table.size() && !g_pages.table[i].label.empty();
+      Place(array, kRowLabel + k, -1, -1, -1, !shown);
+      Place(array, kRowHeld + k, 392, -1, -1, !shown);
+      Place(array, kRowTotal + k, -1, -1, -1, true);
+      if (!shown)
+        continue;
+      const auto &row = g_pages.table[i];
+      text(kRowLabel + k, TableText(k * 3, row.label));
+      text(kRowHeld + k, TableText(k * 3 + 1, row.value));
+      const float red[4] = {0.8039f, 0.0784f, 0.0784f, 1.0f}, white[4] = {1, 1, 1, 1};
+      for (u32 c = 0; c < 4; ++c) {
+        bd::mem::store<float>(element(kRowLabel + k) + 184 + c * 4, row.section ? red[c] : white[c]);
+        bd::mem::store<float>(element(kRowHeld + k) + 184 + c * 4, row.section ? red[c] : white[c]);
+      }
+    }
+    return;
+  }
   text(897, TableText(3 * kTableRows, g_pages.top));
   text(898, TableText(3 * kTableRows + 1, std::string(kPageKeys) + g_pages.subtitle));
   text(899, TableText(3 * kTableRows + 2, ""));
@@ -3018,10 +3100,30 @@ void ApplyTable(u32 r) {
 }
 
 void ShowTablePage(const PPCContext &in, u8 *base, u32 r, u32 page) {
+  RestoreTableLayout(r);  // each page lays itself out again (a title's page keeps the game's)
   g_pages.table_page = page;
+  const bool title_page = g_pages.global && page - 1 < g_pages.page_titles.size();
+  // A singles title's page: the game draws its banner (belt, champion) for R+8848. A tag title's
+  // page has another layout (big portraits): drawn as RANKINGS' own title, with our plain table.
+  if (title_page) {
+    u32 singles = g_pages.global_title;  // a singles title for a tag title's page
+    for (size_t i = 0; i < g_pages.page_titles.size(); ++i)
+      if (g_pages.page_banner[i]) {
+        singles = g_pages.page_titles[i];
+        break;
+      }
+    bd::mem::store<u32>(r + 8848, g_pages.page_banner[page - 1] ? g_pages.page_titles[page - 1] : singles);
+  }
   bd::mem::store<u32>(r + 56, page);  // the list's page
   bd::mem::store<u32>(r + 60, std::max<u32>(bd::mem::load<u32>(r + 60), std::max<u32>(3, page + 1)));
   Call(in, base, __imp__sub_82552CE8, r + 28);
+  if (title_page && g_pages.page_banner[page - 1]) {
+    // the title's belt (elements 908 / 917), then its champion's portrait: the top's first
+    // Superstar is R+8900 (then the 4 contenders, every 8 bytes)
+    Call(in, base, __imp__sub_82552910, r);
+    bd::mem::store<u32>(r + 8900, g_pages.page_champ_ids[page - 1]);
+    Call(in, base, __imp__sub_82552240, r);
+  }
   ApplyTable(r);
 }
 
@@ -3181,15 +3283,21 @@ bool GlobalStatsButtons(const PPCContext &in, u8 *base, u32 screen) {
     g_pages.global = true;
     g_pages.section = 0;
     g_pages.global_place = bd::mem::load<u32>(r + 56);
+    g_pages.global_title = bd::mem::load<u32>(r + 8848);
+    g_pages.global_champ = bd::mem::load<u32>(r + 8900);
     BuildGlobal(in, base);
     OpenTable(in, base, r);
     BD_INFO("[univers] statistics: open ({} rows)", g_pages.table.size());
   } else if (!detail) {  // closed meanwhile
     RestoreTableLayout(r);
+    bd::mem::store<u32>(r + 8848, g_pages.global_title);
+    bd::mem::store<u32>(r + 8900, g_pages.global_champ);
     g_pages.global = false;
     return false;
   } else if (pressed & kB) {
     bd::mem::store<u32>(r + 56, g_pages.global_place);
+    bd::mem::store<u32>(r + 8848, g_pages.global_title);
+    bd::mem::store<u32>(r + 8900, g_pages.global_champ);
     CloseTable(in, base, r);
     g_pages.global = false;
     BD_INFO("[univers] statistics: closed");
