@@ -260,9 +260,11 @@ const char *Text(u32 id) {
       {"This Superstar has a single attire.", "Ce Superstar n'a qu'une tenue.",
        "Dieser Superstar hat nur ein Outfit.", "Esta Superstar solo tiene un atuendo.",
        "Questa Superstar ha un solo costume."},
-      // the Superstar page's button bar, after the game's "DEFAULT"
-      {"%s   \xEE\x80\x87 ATTIRE", "%s   \xEE\x80\x87 TENUE", "%s   \xEE\x80\x87 OUTFIT",
-       "%s   \xEE\x80\x87 ATUENDO", "%s   \xEE\x80\x87 COSTUME"},
+      // the Superstar page's button bar, after the game's "DEFAULT" (U+E00E = RB, as in the game's
+      // "RB EDIT")
+      {"%s   \xEE\x80\x87 ATTIRE   \xEE\x80\x8E MORE", "%s   \xEE\x80\x87 TENUE   \xEE\x80\x8E PLUS",
+       "%s   \xEE\x80\x87 OUTFIT   \xEE\x80\x8E MEHR", "%s   \xEE\x80\x87 ATUENDO   \xEE\x80\x8E M\xC3\x81S",
+       "%s   \xEE\x80\x87 COSTUME   \xEE\x80\x8E ALTRO"},
       // done, and saved at once
       {"The WWE Universe has been reset and saved. A backup of your save was made first.\nLeave WWE "
        "Universe and come back to see it.",
@@ -1752,16 +1754,337 @@ extern "C" REX_FUNC(sub_82545A70) {
   __imp__sub_82545A70(ctx, base);
 }
 
+// ---- a Superstar's page: CONTENDERS and STATISTICS pages (as WWE 2K14's, RB / LB) -------------
+//
+// The Universe menu M shows one panel at a time: M+288 = the panel shown, chosen from its list
+// (sub_82544EE8: 0 MATCH CARDS +260, 1 SCHEDULE +276, 2 RANKINGS +264, 3 NEWS +280, 4 EDIT UNIVERSE
+// +268, 5 EDIT TEAM +272, 6 EDIT BRAND +284); changing it = the old one's vtable +92 (hide,
+// sub_82545070 with its chain at +256), M+288 = the new one, its vtable +88 (show, sub_82545008). On a
+// Superstar's page (EDIT UNIVERSE's panel), RB / LB go to our pages and back: they show the RANKINGS
+// panel (R = M+264), the four titles of the Superstar's show (R+2352 = show 0 / 1, refreshed as its own
+// LB / RB do: sub_82552768, sub_82551CB8, sub_82551F48, sub_82552048), while the Superstar's page keeps
+// the buttons (ours here). Each title's champion line (elements 842/854/866/881, their red copies
+// 843/855/867/882 hidden) shows instead:
+// - CONTENDERS: his place in that title's ranking (sub_826D2508), CHAMPION, or OFF when kept out
+//   (§21); up / down choose a title, X turns it on / off;
+// - STATISTICS: his reigns and weeks held (universe_stats.txt).
+// The header (830, the show's name) shows the Superstar and the page. B goes back to his page.
+
+REX_EXTERN(__imp__sub_825ACEC0);  // a Superstar's page: show it (page object; its vtable +88)
+REX_EXTERN(__imp__sub_8258D240);  // the Superstar list: its row changed
+REX_EXTERN(__imp__sub_82545070);  // Universe menu: hide a panel
+REX_EXTERN(__imp__sub_82545008);  // Universe menu: show a panel
+REX_EXTERN(__imp__sub_82552768);  // rankings: refresh (as its LB / RB)
+REX_EXTERN(__imp__sub_82551CB8);
+REX_EXTERN(__imp__sub_82551F48);  // rankings: the show's four title names
+REX_EXTERN(__imp__sub_82552048);  // rankings: the champions
+REX_EXTERN(__imp__sub_826D2508);  // a title's ranking (view, title, out, max): count
+REX_EXTERN(__imp__sub_82A32618);  // Superstar: name
+REX_EXTERN(__imp__sub_826CC0B8);  // show: is this Superstar on it (show, id)
+
+namespace {
+
+constexpr u32 kPanelShown = 288, kRankingsPanel = 264;
+constexpr u32 kTitleRowName[4] = {842, 854, 866, 881}, kTitleRowRed[4] = {843, 855, 867, 882};
+constexpr u32 kHeaderName = 830;
+constexpr u32 kLB = 0x100, kRB = 0x200;
+
+struct SuperstarPages {
+  u32 page = 0;    // 0 the game's page, 1 CONTENDERS, 2 STATISTICS
+  u32 screen = 0;  // the Superstar's page
+  u32 old_panel = 0;
+  u32 id = 0, show = 0, row = 0;
+  u32 titles[4] = {23, 23, 23, 23};
+  std::string lines[4], header;
+  u32 page_input = 2, menu_input = 0;  // the +224 of his page and of the Universe menu, before
+  u32 list_row = 0, list_top = 0;  // the Superstar list's row and first row shown
+  u32 menu_state = 0;              // the Universe menu's +296 (2: a panel's screen is open)
+};
+SuperstarPages g_pages;
+
+u32 PageText(u32 slot, const std::string &text) {  // guest strings of ours, 96 bytes each
+  static u32 s_block = 0;
+  if (!s_block)
+    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(8 * 96, 0x10);
+  if (!s_block)
+    return 0;
+  const u32 at = s_block + slot * 96;
+  std::memset(bd::mem::at<char>(at), 0, 96);
+  std::memcpy(bd::mem::at<char>(at), text.data(), std::min<size_t>(text.size(), 95));
+  return at;
+}
+
+// Changing the panel shown, as the Universe menu does.
+void SetPanel(const PPCContext &in, u8 *base, u32 panel) {
+  const u32 m = g_universe_menu, old = bd::mem::load<u32>(m + kPanelShown);
+  if (old == panel || !panel)
+    return;
+  if (old)
+    Call(in, base, __imp__sub_82545070, old);
+  bd::mem::store<u32>(m + kPanelShown, panel);
+  Call(in, base, __imp__sub_82545008, panel);
+}
+
+// EDIT UNIVERSE's Superstar list (screen, vtable 0x82027970) is its panel's +412 (its screen +28,
+// then +384). Its rows scroll with an object at +1760 ({+0 row in the window, +4 first row shown,
+// +8 rows shown, +12 rows, +16 wrap}, sub_8254DE48 moves it); showing the panel again starts it at
+// the top: its row and first row are kept and put back, then its "row changed" (vtable +80,
+// sub_8258D240, nothing moved: +88 = 0) makes that row's Superstar the current one again
+// (sub_82DEA390) and draws the header.
+constexpr u32 kSuperstarList = 412, kListScroll = 1760;
+// The Universe menu's +296: 2 while a panel's own screen is open (here the Superstar list): the
+// menu takes the buttons back when it closes. Showing a panel sets it to 0: it is put back.
+constexpr u32 kMenuState = 296;
+
+// The Superstar's show (0 / 1, the RANKINGS panel's two) and its four titles; his place in each.
+void ReadSuperstar(const PPCContext &in, u8 *base) {
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x800, titles = view + 0x200;
+  Call(x, base, __imp__sub_826CDC48, view);
+  g_pages.show = 0;
+  for (u32 k = 0; k < 2; ++k) {
+    const u32 show = Call(x, base, __imp__sub_826CCB88, view, k);
+    if (show && bd::mem::load<u32>(show) && Call(x, base, __imp__sub_826CC0B8, show, g_pages.id)) {
+      g_pages.show = k;
+      break;
+    }
+  }
+  const u32 show = Call(x, base, __imp__sub_826CCB88, view, g_pages.show);
+  for (u32 i = 0; i < 4; ++i)
+    bd::mem::store<u32>(titles + i * 4, 23);
+  if (show && bd::mem::load<u32>(show))
+    Call(x, base, __imp__sub_826CC180, show, titles);
+  for (u32 i = 0; i < 4; ++i)
+    g_pages.titles[i] = bd::mem::load<u32>(titles + i * 4);
+  Call(x, base, __imp__sub_826CE098, view);
+}
+
+// His place in a title's ranking: 0 champion, n, or -1 not in it.
+int RankOf(const PPCContext &in, u8 *base, u32 title) {
+  static u32 s_out = 0;
+  if (!s_out)
+    s_out = REX_KERNEL_MEMORY()->SystemHeapAlloc(180 * 32, 0x10);
+  if (!s_out || title >= 23)
+    return -1;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x800;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 n = std::min<u32>(Call(x, base, __imp__sub_826D2508, view, title, s_out, 180), 180);
+  Call(x, base, __imp__sub_826CE098, view);
+  for (u32 i = 0; i < n; ++i)
+    for (u32 k = 0; k < 5; ++k)  // a team's members are +0..+16
+      if (bd::mem::load<u32>(s_out + i * 32 + k * 4) == g_pages.id)
+        return int(i);
+  return -1;
+}
+
+void BuildLines(const PPCContext &in, u8 *base) {
+  static const char *const kPage[2][5] = {
+      {"CONTENDER SETTINGS", "R\xC3\x89GLAGES D'ASPIRANT", "HERAUSFORDERER", "AJUSTES DE ASPIRANTE",
+       "IMPOSTAZIONI SFIDANTE"},
+      {"STATISTICS", "STATISTIQUES", "STATISTIKEN", "ESTAD\xC3\x8DSTICAS", "STATISTICHE"}};
+  static const char *const kRank[5] = {"RANK %d", "RANG %d", "RANG %d", "PUESTO %d", "POSIZIONE %d"};
+  static const char *const kChampion[5] = {"CHAMPION", "CHAMPION", "CHAMPION", "CAMPE\xC3\x93N",
+                                           "CAMPIONE"};
+  static const char *const kHeld[5] = {"HELD %u - %u WEEK(S)", "D\xC3\x89TENU %u - %u SEMAINE(S)",
+                                       "GEHALTEN %u - %u WOCHE(N)", "%u VECES - %u SEMANA(S)",
+                                       "DETENUTO %u - %u SETTIMANA/E"};
+  const u32 lang = CurrentLang();
+  const u32 name = Call(in, base, __imp__sub_82A32618, g_pages.id);
+  const char *n = name ? bd::mem::try_at<const char>(name) : nullptr;
+  g_pages.header = std::string(n ? n : "") + "  -  " + kPage[g_pages.page - 1][lang];
+  LoadContenders();
+  const u32 mask = g_contenders.count(g_pages.id) ? g_contenders[g_pages.id] : 0;
+  u32 reigns[23] = {}, weeks[23] = {};
+  if (g_pages.page == 2) {
+    const u32 u = Call(in, base, __imp__sub_82683A30, 0);
+    const u32 now = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+    for (const Reign &r : LoadReigns())
+      if (r.holder == g_pages.id && r.title < 23) {
+        ++reigns[r.title];
+        const u32 to = r.to_day == ~0u ? now : r.to_day;
+        weeks[r.title] += (to > r.from_day ? to - r.from_day : 0) / 7;
+      }
+  }
+  for (u32 i = 0; i < 4; ++i) {
+    u32 t = g_pages.titles[i];
+    if (t < 23 && !Call(in, base, __imp__sub_82A39EF8, g_pages.id, t, 1))
+      t = 23;  // not his kind of title (a Divas title for a man): "-", as in 2K14
+    char buffer[96] = "-";
+    if (t < 23 && g_pages.page == 1) {
+      if ((mask >> i) & 1) {
+        const u32 off = GameText(in, base, kOffText);
+        const char *o = off ? bd::mem::try_at<const char>(off) : nullptr;
+        std::snprintf(buffer, sizeof(buffer), "%s", o ? o : "OFF");
+      } else {
+        const int rank = RankOf(in, base, t);
+        if (rank == 0)
+          std::snprintf(buffer, sizeof(buffer), "%s", kChampion[lang]);
+        else if (rank > 0)
+          std::snprintf(buffer, sizeof(buffer), kRank[lang], rank);
+      }
+    } else if (t < 23 && g_pages.page == 2) {
+      std::snprintf(buffer, sizeof(buffer), kHeld[lang], reigns[t], weeks[t]);
+    }
+    g_pages.lines[i] = buffer;
+  }
+}
+
+// Our texts on the RANKINGS panel, every frame (the game may draw it again).
+void ApplyPage(u32 r) {
+  const u32 layout = r ? bd::mem::load<u32>(r + 296) : 0;
+  const u32 array = layout ? bd::mem::load<u32>(layout + 8) : 0;
+  if (!array || bd::mem::load<u32>(layout + 24) <= 887)
+    return;
+  const auto set = [&](u32 e, u32 text) {
+    const u32 at = array + e * 240;
+    bd::mem::store<u32>(at + 200, text);
+    bd::mem::store<u32>(at + 228, bd::mem::load<u32>(at + 228) & ~0x10u);  // a text, not a number
+  };
+  set(kHeaderName, PageText(4, g_pages.header));
+  for (u32 i = 0; i < 4; ++i) {
+    const u32 text = PageText(i, g_pages.lines[i]);
+    const bool chosen = g_pages.page == 1 && i == g_pages.row;
+    const float rgba[4] = {chosen ? 0.8039f : 1.0f, chosen ? 0.0784f : 1.0f,
+                           chosen ? 0.0784f : 1.0f, 1.0f};
+    for (u32 e : {kTitleRowName[i], kTitleRowRed[i]}) {  // the line and its copy (the one seen)
+      set(e, text);
+      for (u32 k = 0; k < 4; ++k)
+        bd::mem::store<float>(array + e * 240 + 184 + k * 4, rgba[k]);
+    }
+  }
+}
+
+void KeepButtons();
+
+void OpenPage(const PPCContext &in, u8 *base, u32 page) {
+  const u32 m = g_universe_menu;
+  const u32 r = m ? bd::mem::load<u32>(m + kRankingsPanel) : 0;
+  if (!r || bd::mem::load<u32>(r + 2360) != 0)
+    return;
+  if (g_pages.page == 0) {
+    g_pages.old_panel = bd::mem::load<u32>(m + kPanelShown);
+    g_pages.page_input = bd::mem::load<u32>(g_pages.screen + 224);
+    g_pages.menu_input = bd::mem::load<u32>(m + 28 + 224);
+    BD_INFO("[univers] pages: buttons of his page {}, of the menu {}", g_pages.page_input,
+            g_pages.menu_input);
+    g_pages.id = Call(in, base, __imp__sub_82DEA3A8, 0);
+    g_pages.row = 0;
+    g_pages.menu_state = bd::mem::load<u32>(m + kMenuState);
+    g_pages.list_row = bd::mem::load<u32>(g_pages.old_panel + kSuperstarList + kListScroll);
+    g_pages.list_top = bd::mem::load<u32>(g_pages.old_panel + kSuperstarList + kListScroll + 4);
+    ReadSuperstar(in, base);
+    SetPanel(in, base, r);
+  }
+  g_pages.page = page;
+  KeepButtons();
+  bd::mem::store<u32>(r + 2352, g_pages.show);
+  Call(in, base, __imp__sub_82552768, r);
+  Call(in, base, __imp__sub_82551CB8, r);
+  Call(in, base, __imp__sub_82551F48, r);
+  Call(in, base, __imp__sub_82552048, r);
+  BuildLines(in, base);
+  BD_INFO("[univers] Superstar {} page {} (show {}, titles {} {} {} {})", g_pages.id, page,
+          g_pages.show, g_pages.titles[0], g_pages.titles[1], g_pages.titles[2],
+          g_pages.titles[3]);
+}
+
+// Hiding EDIT UNIVERSE's panel hands the buttons to the Universe menu (its screen S = M+28):
+// while our pages show, the Superstar's page keeps them (layout screens' +224: 0 none, 1 from the
+// next frame, 2 now) and S has none.
+void KeepButtons() {
+  if (!g_pages.page || !g_universe_menu)
+    return;
+  bd::mem::store<u32>(g_pages.screen + 224, 2);
+  bd::mem::store<u32>(g_universe_menu + 28 + 224, 0);
+}
+
+void ClosePages(const PPCContext &in, u8 *base) {
+  if (g_pages.page && g_universe_menu && g_pages.old_panel) {
+    SetPanel(in, base, g_pages.old_panel);
+    const u32 list = g_pages.old_panel + kSuperstarList;
+    bd::mem::store<u32>(list + kListScroll, g_pages.list_row);
+    bd::mem::store<u32>(list + kListScroll + 4, g_pages.list_top);
+    bd::mem::store<u32>(list + 88, 0);
+    Call(in, base, __imp__sub_8258D240, list);                // his row again, and the header
+    Call(in, base, __imp__sub_825ACEC0, g_pages.screen - 28);  // his page drawn again
+    bd::mem::store<u32>(g_universe_menu + kMenuState, g_pages.menu_state);
+    bd::mem::store<u32>(g_pages.screen + 224, g_pages.page_input);  // as before
+    bd::mem::store<u32>(g_universe_menu + 28 + 224, g_pages.menu_input);
+    Call(in, base, sub_825AAD38, g_pages.screen - 28);  // its button bar again
+  }
+  g_pages.page = 0;
+}
+
+// The Superstar's page buttons while our pages show (all of them ours). False: not ours.
+bool SuperstarPageButtons(const PPCContext &in, u8 *base, u32 screen) {
+  if (!Enabled() || !g_universe_menu || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return false;
+  const u32 pressed = bd::mem::load<u32>(screen + 64);
+  if (pressed && REXCVAR_GET(wwe12_universe_probe))
+    BD_INFO("[univers] probe: pages {} buttons 0x{:X}; menu +224 {}, rankings screen +224 {}",
+            g_pages.page, pressed, bd::mem::load<u32>(g_universe_menu + 28 + 224),
+            bd::mem::load<u32>(bd::mem::load<u32>(g_universe_menu + kRankingsPanel) + 28 + 224));
+  if (g_pages.page == 0) {
+    if (!(pressed & (kRB | kLB)))
+      return false;
+    g_pages.screen = screen;
+    OpenPage(in, base, pressed & kRB ? 1 : 2);
+  } else if (pressed & kB) {
+    ClosePages(in, base);
+  } else if (pressed & (kRB | kLB)) {
+    const u32 next = (g_pages.page + (pressed & kRB ? 1 : 2)) % 3;
+    if (next == 0)
+      ClosePages(in, base);
+    else
+      OpenPage(in, base, next);
+  } else if (g_pages.page == 1) {
+    const u32 dir = std::min<u32>(bd::mem::load<u32>(screen + 20), 3);
+    const u32 up = bd::mem::load<u32>(kListMasks + dir * 16) | kUp;
+    const u32 down = bd::mem::load<u32>(kListMasks + dir * 16 + 8) | kDown;
+    if ((pressed & up) && g_pages.row > 0)
+      --g_pages.row;
+    else if ((pressed & down) && g_pages.row < 3)
+      ++g_pages.row;
+    if ((pressed & kX) && g_pages.titles[g_pages.row] < 23) {
+      LoadContenders();
+      u32 &mask = g_contenders[g_pages.id];
+      mask ^= 1u << g_pages.row;
+      if (!mask)
+        g_contenders.erase(g_pages.id);
+      SaveContenders();
+      BuildLines(in, base);
+    }
+  }
+  bd::mem::store<u32>(screen + 64, 0);
+  if (g_pages.page) {
+    KeepButtons();
+    ApplyPage(bd::mem::load<u32>(g_universe_menu + kRankingsPanel));
+  }
+  return true;
+}
+
+}  // namespace
+
 extern "C" REX_FUNC(sub_824D20A0) {
   const u32 screen = ctx.r3.u32;
+  if (bd::mem::try_load<u32>(screen) == kSuperstarPageVtbl) {
+    if (SuperstarPageButtons(ctx, base, screen))
+      return;
+  } else if (g_pages.page && bd::mem::try_load<u32>(g_pages.screen) != kSuperstarPageVtbl) {
+    ClosePages(ctx, base);  // his page closed meanwhile
+  }
   // Dev (wwe12_universe_probe): the buttons of a Superstar's page and of RANKINGS, and the shared
   // layout as each shows it (LB / RB pressed: logs/umsi_<screen>_<n>.txt), for the pages to come.
   if (REXCVAR_GET(wwe12_universe_probe) && bd::mem::load<u32>(kInUniverseFlag) == 1) {
     const u32 vtbl = bd::mem::try_load<u32>(screen), pressed = bd::mem::load<u32>(screen + 64);
+    if (pressed)
+      BD_INFO("[univers] probe: screen {:08X} (vtable {:08X}) buttons 0x{:X}, +224 {}", screen,
+              vtbl, pressed, bd::mem::load<u32>(screen + 224));
     if (pressed && (vtbl == kSuperstarPageVtbl || vtbl == kRankingVtbl)) {
       static u32 s_dumps = 0;
-      BD_INFO("[univers] probe: screen {:08X} (vtable {:08X}) buttons 0x{:X}", screen, vtbl,
-              pressed);
       if ((pressed & 0x300) && s_dumps < 8) {
         const char *what = vtbl == kSuperstarPageVtbl ? "superstar" : "rankings";
         DumpPageLayout(ctx, base, fmt::format("umsi_{}_{}.txt", what, s_dumps).c_str(), false);
@@ -2166,6 +2489,12 @@ REX_EXTERN(__imp__sub_8254E7D0);  // message box: idle (none open)?
 extern "C" REX_FUNC(sub_824D3458) {
   if (REXCVAR_GET(wwe12_universe_probe) && bd::mem::try_load<u32>(ctx.r3.u32) == kSuperstarPageVtbl)
     DumpPageLayout(ctx, base);
+  if (g_pages.page && ctx.r3.u32 == g_pages.screen) {
+    if (bd::mem::try_load<u32>(g_pages.screen) == kSuperstarPageVtbl)
+      KeepButtons();  // before the frame's buttons are read
+    else
+      g_pages.page = 0;
+  }
   // The one-time hint, 120 frames (2 s) after the Universe menu shows.
   if (Enabled() && g_step == Step::kIdle && HintPending() &&
       bd::mem::try_load<u32>(ctx.r3.u32) == kUniverseMenuVtbl) {

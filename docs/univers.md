@@ -724,3 +724,31 @@ Dans 2K14, la fiche a 4 pages (LB/RB) : OPTIONS, PARAMÈTRES ASPIRANT, RELATIONS
   du menu Univers). Sonde : `wwe12_universe_probe` + LB/RB → `logs/umsi_*.txt`, `logs/rlay_*.txt`.
 - **Blessures** : réglage `wwe12_universe_injuries` (true par défaut) ; false = `sub_826CEA88(vue, id, 1)`
   refusé. Pas encore testé en jeu.
+
+## 23. Pages ASPIRANT et STATISTIQUES sur la fiche, avec RB / LB (2026-10-27, testé sur la copie)
+
+Sur la fiche d'un Superstar dans l'Univers, **RB** (barre du bas : « RB MORE ») passe de la fiche à
+**CONTENDER SETTINGS** puis **STATISTICS** puis de nouveau la fiche ; **LB** dans l'autre sens ; **B** revient
+à la fiche. Les pages réutilisent le vrai écran d'accueil de RANKINGS (4 ceintures de l'émission du
+Superstar), comme les pages de 2K14 :
+- en-tête (élément 830) : « NOM - CONTENDER SETTINGS / STATISTICS » ;
+- ligne du champion de chaque titre (842/854/866/881 et leurs copies visibles 843/855/867/882) :
+  ASPIRANT = sa place dans le classement (`sub_826D2508`), CHAMPION, OFF s'il est écarté, « - » si le titre
+  n'est pas pour lui (`sub_82A39EF8`, ex. Divas pour un homme) ; haut/bas choisit, X active/désactive
+  (rouge = ligne choisie) ; STATISTICS = « HELD n - n WEEK(S) » (`universe_stats.txt`).
+
+Comment (écran actif du menu Univers M, r3 de `sub_82545A70`) : M+288 = panneau affiché, choisi dans la liste
+de gauche par `sub_82544EE8` (0 MATCH CARDS +260, 1 SCHEDULE +276, 2 RANKINGS +264, 3 NEWS +280, 4 EDIT
+UNIVERSE +268, 5 EDIT TEAM +272, 6 EDIT BRAND +284) ; changer = cacher l'ancien (`sub_82545070`, vtable +92
+avec sa chaîne +256), M+288 = le nouveau, le montrer (`sub_82545008`, vtable +88). Pour nos pages : afficher
+le panneau RANKINGS (R = M+264, R+2352 = émission 0/1, rafraîchi comme ses LB/RB : `sub_82552768`,
+`sub_82551CB8`, `sub_82551F48`, `sub_82552048`), la fiche garde les touches (son +224 = 2, celui du menu
+M+28+224 = 0). Au retour il faut remettre ce que le réaffichage d'EDIT UNIVERSE efface :
+- **M+296** (2 = « l'écran d'un panneau est ouvert », sinon le menu ne reprend plus la main après la liste) ;
+- la liste des Superstars (écran vtable 0x82027970 = panneau +412) : son défileur à +1760 ({+0 ligne,
+  +4 première ligne affichée, +8 lignes visibles, +12 lignes, +16 boucle}, `sub_8254DE48`), puis sa fonction
+  « ligne changée » `sub_8258D240` (avec +88 = 0) qui remet le Superstar courant (`sub_82DEA390`) et l'en-tête ;
+- la fiche : `sub_825ACEC0` (son affichage) et `sub_825AAD38` (sa barre de boutons) ;
+- les +224 de la fiche et du menu tels qu'avant.
+Testé (télécommande `wwe12_remote_pad`, sur la copie) : RB → aspirant (CHAMPION / RANK 8), bas + X → OFF
+(enregistré), RB → statistiques (HELD 1), RB → fiche, B → liste (curseur gardé), B → menu, RANKINGS normal.
