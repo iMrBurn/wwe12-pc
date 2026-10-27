@@ -210,6 +210,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     int base = 0;
     std::vector<uint8_t> attributes;  // attributes=12 numbers (0-100), else empty (the base's)
     std::vector<std::pair<int, int>> moves;  // moves=OFF:NUMBER,... (hex offset in CHAR / PRO), else the base's
+    int entrance = 0;                         // entrance=NUMBER: that superstar's entrance, else the base's
     fs::path model, movie;
   };
   std::vector<Mod> list;
@@ -251,6 +252,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         at = comma == std::string::npos ? v.size() : comma + 1;
       }
     }
+    mod.entrance = std::clamp(atoi(Value(text, "entrance").c_str()), 0, 372);
     mod.model = d / "superstar" / "ch.pac";
     mod.movie = d / "superstar" / "titantron.bik";
     if (mod.base < 50 || mod.base >= 373) {
@@ -510,6 +512,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     st.base = mod.base;
     st.attributes = mod.attributes;
     st.moves = mod.moves;
+    st.entrance = mod.entrance;
     const auto k = kept.find(mod.key);
     if (k != kept.end() && std::find(free_slots.begin(), free_slots.end(), k->second) != free_slots.end() &&
         std::find(taken.begin(), taken.end(), k->second) == taken.end())

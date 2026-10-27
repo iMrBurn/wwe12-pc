@@ -52,6 +52,9 @@ struct Star {
   // Its own moves over its base's (CHAR / PRO byte offset, move number, big-endian there: the Mod Maker's
   // moveset_port.h), else empty.
   std::vector<std::pair<int, int>> moves;
+  // Another superstar's entrance (CHAR / PRO +0x1D4..+0x1DE: music, video and entrance numbers, two more, 16-bit
+  // little-endian), else 0: the base's.
+  int entrance = 0;
   // Its own portraits, else empty (the base's): [0 SD / 1 HD][SSFA, SSFB, SSFC], DDS as the game's (DXT5; HD 512 x 512,
   // 512 x 512, 256 x 256; SD 512 x 256, 512 x 256, 256 x 256: WWE '13's are the same).
   Bytes portraits[2][3];
@@ -438,6 +441,11 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         moves[size_t(at)] = uint8_t(id >> 8);
         moves[size_t(at) + 1] = uint8_t(id);
       }
+    if (ArcNode *ep = st.entrance > 0 ? Child(*pro, uint32_t(st.entrance)) : nullptr) {
+      const Bytes e = svrfmt::ArchiveData(*ep);
+      if (e.size() >= 0x1DE && moves.size() >= 0x1DE)
+        std::copy(e.begin() + 0x1D4, e.begin() + 0x1DE, moves.begin() + 0x1D4);
+    }
     svrfmt::ArchiveReplace(*sp, moves);
   }
   svrfmt::ArchiveTouch(*dat);

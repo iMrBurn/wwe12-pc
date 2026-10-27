@@ -442,6 +442,32 @@ class Page {
                                     .c_str());
     if (!error_.empty())
       ImGui::TextColored(red, "%s", error_.c_str());
+    // Its entrance: the base's, else another superstar's (music, video, entrance; CHAR / PRO +0x1D4).
+    if (base_ >= 0) {
+      ImGui::SetNextItemWidth(300);
+      const std::string same = fr ? "Celle de la base" : "The base's";
+      if (ImGui::BeginCombo(fr ? "Entrée (musique, vidéo, entrée)" : "Entrance (music, video, entrance)",
+                            entrance_ < 0 ? same.c_str() : stars_[size_t(entrance_)].name.c_str(),
+                            ImGuiComboFlags_HeightLarge)) {
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::IsWindowAppearing())
+          ImGui::SetKeyboardFocusHere();
+        ImGui::InputTextWithHint("##ns_entrance_filter", fr ? "Rechercher" : "Search", entrance_filter_,
+                                 sizeof(entrance_filter_));
+        if (!entrance_filter_[0] && ImGui::Selectable(same.c_str(), entrance_ < 0))
+          entrance_ = -1;
+        for (int i = 0; i < int(stars_.size()); ++i) {
+          std::string a = stars_[size_t(i)].name, b = entrance_filter_;
+          for (auto *x : {&a, &b})
+            std::transform(x->begin(), x->end(), x->begin(), [](unsigned char c) { return char(std::tolower(c)); });
+          if (!b.empty() && a.find(b) == std::string::npos)
+            continue;
+          if (ImGui::Selectable(stars_[size_t(i)].name.c_str(), i == entrance_))
+            entrance_ = i == base_ ? -1 : i;
+        }
+        ImGui::EndCombo();
+      }
+    }
     DrawOwnMoves(fr);
   }
 
@@ -1233,7 +1259,7 @@ class Page {
                     "\ndisc_pick=" + std::to_string(disc_pick_) + "\nsvr_attire=" + std::to_string(svr_attire_) +
                     "\nfbx=" + u8(fbx_path_) + "\nfbx_budget=" + std::to_string(fbx_budget_) + "\nportrait=" +
                     u8(custom_portrait_) + "\nkeep_portraits=" + (keep_portraits_ ? "1" : "0") + "\nas_attire=" +
-                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_moves=" + (use_own_moves_ ? "1" : "0") + "\nown_attributes=" +
+                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_moves=" + (use_own_moves_ ? "1" : "0") + "\nentrance=" + std::to_string(entrance_ >= 0 ? stars_[size_t(entrance_)].id : 0) + "\nown_attributes=" +
                     (own_attributes_ ? "1" : "0") + "\nattributes=";
     for (size_t i = 0; i < attributes_.size(); ++i)
       t += std::to_string(attributes_[i]) + (i + 1 < attributes_.size() ? "," : "");
@@ -1270,6 +1296,10 @@ class Page {
         base_ = i;
     chosen_ = value("chosen") == "1";
     base_by_player_ = chosen_;
+    entrance_ = -1;
+    for (int i = 0, e = atoi(value("entrance").c_str()); e > 0 && i < int(stars_.size()); ++i)
+      if (stars_[size_t(i)].id == e)
+        entrance_ = i;
     svr_attires_.clear();
     svr_file_.clear();
     OpenBase(fr, disc);
@@ -1499,6 +1529,8 @@ class Page {
     }
     if (use_own_moves_ && !own_moves_.moves.empty())  // (the game puts them over the base's)
       manifest += "moves=" + moveset_port::ManifestValue(own_moves_.moves) + "\n";
+    if (entrance_ >= 0 && entrance_ != base_)  // (another superstar's entrance)
+      manifest += "entrance=" + std::to_string(stars_[size_t(entrance_)].id) + "\n";
     manifest += "description=" + std::string(name_) + ", a new superstar starting from " +
                 (chosen_ ? b.name : "an average superstar (" + b.name + ")") +
                 (look_ == 4   ? ", its look from a 3D model (FBX)"
@@ -1569,6 +1601,8 @@ class Page {
   moveset_port::Result own_moves_;  // its SvR 2011 moves in WWE '12's slots (moveset_port.h)
   std::string own_moves_why_;
   bool use_own_moves_ = true;
+  int entrance_ = -1;  // its entrance: another superstar's (index in stars_), else -1: the base's
+  char entrance_filter_[64] = {};
   bool own_attributes_ = false;           // its own attributes (else the base's)
   std::vector<int> attributes_, base_attributes_;  // the 12 (0-100), STRIKE POWER .. TAG TEAM
   bool svr_movie_ = false;     // its SvR 2011 entrance movie, as it is
