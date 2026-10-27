@@ -937,3 +937,19 @@ dimanche vide → y mettre un PPV ; dimanche avec un PPV → MOVE / HOST SHOW / 
   de déplacer UNIVERSE DRAFT, SAVE, DEFAULT et d'apprendre une ligne à son curseur). **Y MATCHES** ouvre le nombre de
   matchs de ce show ; sa barre (jeu 4 : A SELECT, B CANCEL, partagé) montre CANCEL = 27055 (« CANCEL   Y MATCHES »
   tant que SHOW EDIT est ouvert, posé avant que sa barre soit faite).
+
+## 35. Défenses de titre en weekly (1.0, 2026-10-27, testé sur la copie)
+
+Sonde : le jeu ne réserve jamais de match de titre dans les shows hebdo (drapeau à 0 sur toutes les cartes vues).
+Un match devient un match de titre par un drapeau du jeu : à l'écriture de la carte (`sub_826EAEB0(booker, entrée, i)`,
+fiche i = booker + 20 + i × 1320 → entrée de carte de 104 octets), entrée +4 bit 0 (`sub_826D4DD8(entrée, 1)`, lu par
+`sub_826D4DC8`) et octet +1 = le titre. Le reste suit : le titre change de main avec le résultat (`sub_826D4030`), nos
+stats. Fiche : +0 type, +4 titre, +12 drapeau titre, +16 places, +24 build WrestleMania, +28 rivalité, +40 + k × 32 les
+places (+0 catcheur, +4 équipe) ; booker +4..+16 = les 4 titres du show.
+Réglage `wwe12_universe_title_defenses` (pourcentage, **0 par défaut = le jeu d'origine**) : un match d'un show hebdo où
+est déjà un champion du show (les deux champions dans une même équipe contre une seule autre pour un titre par équipes)
+devient la défense de ce titre, avec cette chance ; une par carte au plus ; jamais un Royal Rumble, MITB, Elimination
+Chamber, build WrestleMania ou match de rivalité ; personne n'est déplacé. Sur MATCH CARDS, le jeu ne montre un match
+de titre que par l'image du show derrière les portraits (élément 23) : `sub_82554B68` est suivi d'un en-tête (élément 30)
+= le nom du titre. Vu : US Evan Bourne vs Mason Ryan → Mason Ryan champion ; « WWE CHAMPIONSHIP » sur Mark Henry vs
+Triple H.

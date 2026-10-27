@@ -1039,7 +1039,9 @@ extern "C" REX_FUNC(sub_821A4400) {
     const u32 m = g_universe_menu_for_bar;
     const u32 r = m ? bd::mem::load<u32>(m + 264) : 0;
     const bool rankings = Enabled() && r && bd::mem::load<u32>(0x8324E51C) == 1 &&
-                          bd::mem::load<u32>(m + 288) == r && bd::mem::load<u32>(r + 2360) == 0;
+                          (bd::mem::load<u32>(m + 288) == r ||
+                           bd::mem::load<u32>(m + 28 + 28) == 2) &&  // or RANKINGS' line chosen
+                          bd::mem::load<u32>(r + 2360) == 0;
     const char *game = ctx.r3.u32 ? bd::mem::try_at<const char>(ctx.r3.u32) : nullptr;
     if (rankings && game) {
       static const char *const kStats[5] = {"STATISTICS", "STATISTIQUES", "STATISTIKEN",
@@ -4898,3 +4900,128 @@ bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen) {
   return true;
 }
 }  // namespace
+
+// ---- spontaneous title defenses on weekly shows ---------------------------------------------------
+//
+// A card's match becomes a title match by one flag of the game: when the card is written
+// (sub_826EAEB0(booker, entry, i): the booker's record i = booker + 20 + i * 1320 -> the card entry,
+// 104 bytes), the entry's +4 bit 0 (sub_826D4DD8(entry, on), read by sub_826D4DC8) and its byte 1 =
+// the title. The rest follows by itself: the belt on the card (sub_82554B68), the title changing hands
+// with the result (sub_826D4030 gives the winners the title of byte 1), our statistics. The record:
+// +0 match type, +4 its title, +12 its title flag, +16 places, +24 WrestleMania build, +28 rivalry,
+// +40 + k * 32 the places (+0 the Superstar, +4 his team). The booker's +4 .. +16: the show's four
+// titles (major, minor, tag, divas).
+// With wwe12_universe_title_defenses = p (percent, 0 = the game's own cards), a weekly show's match
+// that already has a champion of the show in it (both champions on one team for a tag title, against
+// one other team) becomes that title's match, with chance p; once a card at most; never a Royal Rumble,
+// Money in the Bank or Elimination Chamber, a WrestleMania build or a rivalry's match. Nobody moved.
+REXCVAR_DEFINE_INT32(wwe12_universe_title_defenses, 0, "WWE12",
+                     "Universe: chance (percent) that a weekly match with a champion in it becomes his "
+                     "title's defense (0 = the game's own cards).");
+
+REX_EXTERN(__imp__sub_826EAEB0);  // booker: record i -> card entry
+REX_EXTERN(__imp__sub_826D4DD8);  // card entry: title match on / off
+REX_EXTERN(__imp__sub_826D4DC8);  // card entry: a title match?
+REX_EXTERN(__imp__sub_82A2F998);  // a match type: Money in the Bank?
+REX_EXTERN(__imp__sub_82A2FA98);  // a match type: Elimination Chamber?
+
+namespace {
+const void *g_defense_card = nullptr;  // the booker whose card already has a defense of ours
+}
+
+extern "C" REX_FUNC(sub_826EAEB0) {
+  const PPCContext in = ctx;
+  const u32 booker = ctx.r3.u32, entry = ctx.r4.u32, i = ctx.r5.u32 & 0xFFFF;
+  __imp__sub_826EAEB0(ctx, base);
+  if (!Enabled() || !entry || i >= 8 || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return;
+  const u32 vtbl = bd::mem::try_load<u32>(booker);
+  if (vtbl != kBookerRaw && vtbl != kBookerSmackDown && vtbl != kBookerSuperstars)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 record = booker + 20 + i * 1320;
+  const u32 type = bd::mem::load<u32>(record), places = std::min<u32>(bd::mem::load<u32>(record + 16), 8);
+  const bool already = Call(x, base, __imp__sub_826D4DC8, entry) != 0;
+  if (REXCVAR_GET(wwe12_universe_probe)) {
+    std::string who;
+    for (u32 k = 0; k < places; ++k)
+      who += fmt::format(" {}/{}", bd::mem::load<u32>(record + 40 + k * 32),
+                         bd::mem::load<u32>(record + 44 + k * 32));
+    BD_INFO("[univers] booking: match {} type {} title {} flag {} (entry: title match {}, byte1 {}) "
+            "wm {} rivalry {} places{}",
+            i, type, bd::mem::load<u32>(record + 4), bd::mem::load<u32>(record + 12), already,
+            bd::mem::load<u8>(entry + 1), bd::mem::load<u32>(record + 24),
+            bd::mem::load<u32>(record + 28), who);
+  }
+  if (i == 0)
+    g_defense_card = nullptr;  // a new card
+  const int32_t chance = REXCVAR_GET(wwe12_universe_title_defenses);
+  if (chance <= 0 || already || g_defense_card == reinterpret_cast<const void *>(uintptr_t(booker)) ||
+      places < 2 || bd::mem::load<u32>(record + 24) || bd::mem::load<u32>(record + 28) ||
+      Call(x, base, __imp__sub_82A2FA18, type) == 1 || Call(x, base, __imp__sub_82A2F998, type) ||
+      Call(x, base, __imp__sub_82A2FA98, type))
+    return;
+  static std::mt19937 s_random{std::random_device{}()};
+  if (int32_t(std::uniform_int_distribution<int>(0, 99)(s_random)) >= chance)
+    return;
+  const auto team_of = [&](u32 id) {
+    for (u32 k = 0; k < places; ++k)
+      if (bd::mem::load<u32>(record + 40 + k * 32) == id)
+        return int(bd::mem::load<u32>(record + 44 + k * 32));
+    return -1;
+  };
+  for (u32 t = 0; t < 4; ++t) {
+    const u32 title = bd::mem::load<u32>(booker + 4 + t * 4);
+    if (title >= 23)
+      continue;
+    const u32 champ = Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;
+    const int team = champ < 512 ? team_of(champ) : -1;
+    if (team < 0)
+      continue;
+    if (Call(x, base, __imp__sub_82A39CE8, title)) {  // a tag title: both champions, one other team
+      const u32 partner = Call(x, base, __imp__sub_82A39FC8, title, 1, 1) & 0xFFFF;
+      std::set<int> teams;
+      for (u32 k = 0; k < places; ++k)
+        teams.insert(int(bd::mem::load<u32>(record + 44 + k * 32)));
+      if (partner >= 512 || team_of(partner) != team || teams.size() != 2 || places != 4)
+        continue;
+    }
+    Call(x, base, __imp__sub_826D4DD8, entry, 1);
+    bd::mem::store<u8>(entry + 1, u8(title));
+    g_defense_card = reinterpret_cast<const void *>(uintptr_t(booker));
+    BD_INFO("[univers] title defense: match {} of the card is now title {}'s (champion {})", i,
+            title, champ);
+    return;
+  }
+}
+
+// MATCH CARDS shows a title match only by the show's match-up picture behind the portraits (element
+// 23, hidden for other matches, sub_82554B68(C): C+552 the row, C+3248 + row * 104 its copy of the
+// card entry, layout C+292, element 30 the header: the match type's name, 27400 + type). After it,
+// a title match's header becomes the title's name (sub_826D2C30), as the game names title matches
+// elsewhere: a defense of ours (or the game's) is seen at once.
+REX_EXTERN(__imp__sub_82554B68);
+extern "C" REX_FUNC(sub_82554B68) {
+  const PPCContext in = ctx;
+  const u32 c = ctx.r3.u32;
+  __imp__sub_82554B68(ctx, base);
+  if (!Enabled() || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return;
+  const u32 row = bd::mem::load<u32>(c + 552);
+  if (row >= 8)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x200) & ~0xFu;
+  const u32 copy = c + 3248 + row * 104;
+  if (!Call(x, base, __imp__sub_826D4DC8, copy))
+    return;
+  const u32 title = bd::mem::load<u8>(copy + 1);
+  const u32 layout = bd::mem::load<u32>(c + 292);
+  const u32 header = title < 23 && layout ? Call(x, base, __imp__sub_824C5458, layout, 30) : 0;
+  const u32 name = header ? Call(x, base, __imp__sub_826D2C30, title) : 0;
+  if (!name)
+    return;
+  bd::mem::store<u32>(header + 200, name);
+  bd::mem::store<u32>(header + 228, bd::mem::load<u32>(header + 228) & ~0x10u);
+}
