@@ -2549,6 +2549,74 @@ extern "C" REX_FUNC(sub_82A3A060) {
           old_holder, holder, day, u32(in.lr));
 }
 
+// The results of the Universe's matches (played or simulated): all go through
+// sub_826CEF28(view, show, -, match, winner's place, loser's place, 1). The show: 0-9 the weekly
+// shows, 10-22 the PPVs in the game's order (10 Royal Rumble, 11 Elimination Chamber, 12
+// WrestleMania, ...); its matches: sub_826CCC38(view, show) +4 (104-byte records), +8 how many; a
+// record's +0 = its match type (sub_82A2FA18(type) == 1: the Royal Rumble, whose result the game
+// keeps with sub_826CCA20), +3 = 2 once played; its places: sub_826D4958(record, out, place), out
+// +0 the Superstar (u16), +3 his side. The winners: the winner's side. Written to universe_stats.txt:
+// "rumble <id> <won> <day>" for everyone in a Royal Rumble, "mania <id> <main event> <won> <day>" for
+// everyone at WrestleMania (main event = the card's last match).
+REX_EXTERN(__imp__sub_826CEF28);  // a Universe match's result
+REX_EXTERN(__imp__sub_826CCC38);  // Universe view: a show's matches
+REX_EXTERN(__imp__sub_826D4958);  // a match record: a place (record, out, place)
+REX_EXTERN(__imp__sub_826D4F90);  // a match record: its places
+REX_EXTERN(__imp__sub_82A2FA18);  // a match type: 1 = Royal Rumble
+
+constexpr u32 kShowWrestleMania = 12;
+
+extern "C" REX_FUNC(sub_826CEF28) {
+  const PPCContext in = ctx;
+  const u32 view = ctx.r3.u32, show = ctx.r4.u32, match = ctx.r6.u32, winner = ctx.r7.u32;
+  std::vector<std::string> lines;
+  if (Enabled() && bd::mem::load<u32>(kInUniverseFlag) == 1) {
+    PPCContext x = in;
+    x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+    const u32 out = x.r1.u32 + 0x200;
+    const u32 entry = Call(x, base, __imp__sub_826CCC38, view, show);
+    const u32 list = entry ? bd::mem::load<u32>(entry + 4) : 0;
+    const u32 count = entry ? bd::mem::load<u32>(entry + 8) : 0;
+    const u32 record = list && match < 8 && match < count ? list + match * 104 : 0;
+    if (record && bd::mem::load<u8>(record + 3) != 2) {
+      const bool rumble = Call(x, base, __imp__sub_82A2FA18, bd::mem::load<u8>(record)) == 1;
+      const bool mania = show == kShowWrestleMania;
+      const u32 places = std::min<u32>(Call(x, base, __imp__sub_826D4F90, record), 40);
+      Call(x, base, __imp__sub_826D4958, record, out, winner);
+      const u32 winner_id = bd::mem::load<u16>(out), winner_side = bd::mem::load<u8>(out + 3);
+      const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+      const u32 day = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+      for (u32 p = 0; (rumble || mania) && p < places; ++p) {
+        if (!Call(x, base, __imp__sub_826D4958, record, out, p))
+          continue;
+        const u32 id = bd::mem::load<u16>(out);
+        if (id >= 512)
+          continue;
+        // a place's +3: its team (the winner's place 6 = no winner, a draw)
+        const bool won = rumble ? winner < 40 && id == winner_id
+                                : winner < 6 && bd::mem::load<u8>(out + 3) == winner_side;
+        if (rumble)
+          lines.push_back(fmt::format("rumble {} {} {}", id, won ? 1 : 0, day));
+        else
+          lines.push_back(fmt::format("mania {} {} {} {}", id, match + 1 == count ? 1 : 0,
+                                      won ? 1 : 0, day));
+      }
+      BD_INFO("[univers] result: show {} match {} ({} places), winner {} (side {}){}{}", show,
+              match, places, winner_id, winner_side, rumble ? ", Royal Rumble" : "",
+              mania ? ", WrestleMania" : "");
+    }
+  }
+  __imp__sub_826CEF28(ctx, base);
+  if (!lines.empty()) {
+    const std::filesystem::path file = StatsFile();
+    if (!file.empty()) {
+      std::ofstream f(file, std::ios::app);
+      for (const std::string &l : lines)
+        f << l << '\n';
+    }
+  }
+}
+
 // ---- injuries on / off (as WWE 2K14's storyline options) ---------------------------------------
 //
 // A Superstar is put out of action by sub_826CEA88(view, id, 1): bit 31 of his Universe record's

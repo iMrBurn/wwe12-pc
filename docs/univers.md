@@ -766,3 +766,18 @@ Lignes : TITLES (DÉTENU - SEMAINES par titre de son émission, « -- » si pas 
 (victoires, taux après cash-in) ; sections en rouge ; haut/bas = page 1/2 du tableau. Les blocs Rumble,
 WrestleMania et MITB lisent des lignes « rumble / mania / mitb / cashin » de `universe_stats.txt` qui ne sont
 **pas encore écrites** (prochaine étape : le résultat des matchs de l'Univers).
+
+## 25. Résultats des matchs notés pour les statistiques (2026-10-27, compilé, pas encore vu en jeu)
+
+Tous les résultats de l'Univers (match joué ou simulé) passent par `sub_826CEF28(vue, émission, -, match,
+place du gagnant, place du perdant, 1)`. Émission : 0-9 les shows de la semaine, 10-22 les PPV dans l'ordre du
+jeu (10 Royal Rumble, 11 Elimination Chamber, **12 WrestleMania**…). Matchs de l'émission : `sub_826CCC38(vue,
+émission)` +4 = fiches de 104 octets, +8 = nombre (même lecture que `sub_826D0B90`). Fiche : +0 type de match
+(`sub_82A2FA18(type) == 1` = Royal Rumble), +2 nombre de places (`sub_826D4F90`), +3 = 2 une fois joué. Place :
+`sub_826D4958(fiche, sortie, place)`, sortie +0 Superstar (u16), +3 son équipe (Rumble : sa place, +5 = gagnant) ;
+gagnant 6 (40 au Rumble) = pas de gagnant. Le Rumble garde son vainqueur à U + 51000 (`sub_826CCA20`).
+Notre crochet lit tout ça avant l'original et ajoute à `universe_stats.txt` : « rumble <id> <gagné> <jour> »
+pour chaque participant du Royal Rumble, « mania <id> <main event> <gagné> <jour> » pour chaque participant
+d'un match de WrestleMania (main event = dernier match de la carte ; gagné = même équipe que le gagnant).
+Journal : ligne « [univers] result: show … ». Reste : Money in the Bank (gagnant de la mallette, cash-in) pas
+encore trouvé.
