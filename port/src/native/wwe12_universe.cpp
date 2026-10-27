@@ -61,6 +61,8 @@
 #include <algorithm>
 #include <array>
 #include <set>
+#include <mutex>
+#include <sstream>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -1013,6 +1015,11 @@ constexpr u32 kGameSaveText = 238;
 
 // The string manager's "text of id": EDIT SUPERSTAR's new label and our questions.
 REX_EXTERN(__imp__sub_821A4400);
+namespace {
+u32 QualNewsText(u32 id);
+void FlushNews(const PPCContext &in, u8 *base);
+}  // namespace
+
 // SCHEDULE's full button bars (set 518: A SELECT, B BACK, X EDIT; set 6: B BACK, shared with other
 // screens) get "Y EDIT DAY" at the end of their last label: that label is one of ours (27053 = the
 // game's EDIT, 27054 = its BACK), the game's text plus "   Y EDIT DAY" while SCHEDULE shows, the
@@ -1100,6 +1107,10 @@ extern "C" REX_FUNC(sub_821A4400) {
   }
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
+  if (const u32 text = Enabled() ? QualNewsText(id) : 0) {
+    ctx.r3.u64 = text;
+    return;
+  }
   if (Enabled() && (id == kEditSuperstarText || id == kContenderText || id == kStatsText ||
                     id == kChooseText || id == kDayText ||
                     (id >= kAskText && id <= kLastText))) {
@@ -3667,6 +3678,7 @@ bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen);  // Y on SHOW 
 extern "C" REX_FUNC(sub_824D20A0) {
   const u32 screen = ctx.r3.u32;
   ChoiceColumns(screen);
+  FlushNews(ctx, base);
   if (CardButtons(ctx, base, screen))
     return;
   if (ScheduleButtons(ctx, base, screen))
@@ -3981,6 +3993,204 @@ extern "C" REX_FUNC(sub_826CCAB8) {
   __imp__sub_826CCAB8(ctx, base);
 }
 
+// ---- qualifying matches for Money in the Bank and the Elimination Chamber (as WWE '13 mods) ----------
+//
+// With wwe12_universe_qualifiers (off by default = the game's own PPVs), in the weeks before the PPV
+// (Money in the Bank, show 16, July week 3; Elimination Chamber, show 11, February week 3; wherever
+// the calendar puts them: the 2 weeks before, in its month) each weekly card gets one qualifying
+// match: a one-on-one of two men, not a title match nor a special one. Its winner qualifies; the PPV's
+// match (type 76 / an Elimination Chamber type) gets the qualified Superstars in its places when the
+// PPV's card is written (the booker's record, before sub_826EAEB0), unless one is already elsewhere on
+// that card. News (the game's writer sub_826D1630, its two unused types): type 6 "qualifying matches
+// begin this week", type 5 "X has qualified", the event in the news' +4 (0x51000000 + event); their
+// texts (27068-27071, empty in WWE '12) are ours while such a news is drawn (sub_82559468 /
+// sub_82559A08 read the news given in r4). Kept in universe_stats.txt: "qualifier <event> <year> <a>
+// <b> <day>", "qualified <event> <year> <id> <day>", "qualbegin <event> <year>" (year = day / 336).
+REXCVAR_DEFINE_BOOL(wwe12_universe_qualifiers, false, "WWE12",
+                    "Universe: qualifying matches before Money in the Bank and the Elimination Chamber, "
+                    "with news.");
+
+REX_EXTERN(__imp__sub_826D1630);  // Universe view: add a news (view, record of 16 bytes)
+REX_EXTERN(__imp__sub_826D51A0);  // a news record: cleared
+
+namespace {
+constexpr u32 kNewsMarker = 0x51000000, kNewsQualified = 5, kNewsQualifying = 6;
+constexpr u32 kEvents = 2;
+struct QualEvent {
+  u32 ppv;  // its PPV (show)
+  const char *qualifying[5], *begin[5], *secured[5], *qualified[5];
+};
+const QualEvent kQualEvents[kEvents + 1] = {
+    {},
+    {16,
+     {"MONEY IN THE BANK QUALIFYING MATCH", "MATCH DE QUALIFICATION MONEY IN THE BANK",
+      "MONEY IN THE BANK QUALIFIKATION", "COMBATE CLASIFICATORIO MONEY IN THE BANK",
+      "QUALIFICAZIONE MONEY IN THE BANK"},
+     {"Money in the Bank qualifying matches begin this week. Superstars will compete for a place in "
+      "the Money in the Bank Ladder Match!",
+      "Les matchs de qualification pour Money in the Bank commencent cette semaine. Les Superstars "
+      "vont se battre pour une place dans le Ladder Match Money in the Bank !",
+      "Diese Woche beginnen die Qualifikationsmatches f\xC3\xBCr Money in the Bank. Die Superstars "
+      "k\xC3\xA4mpfen um einen Platz im Money in the Bank Ladder Match!",
+      "Esta semana empiezan los combates clasificatorios de Money in the Bank. \xC2\xA1Las Superstars "
+      "luchar\xC3\xA1n por un puesto en la Money in the Bank Ladder Match!",
+      "Questa settimana iniziano le qualificazioni per Money in the Bank. Le Superstar lotteranno per "
+      "un posto nel Money in the Bank Ladder Match!"},
+     {"MONEY IN THE BANK PLACE SECURED!", "PLACE ASSUR\xC3\x89" "E POUR MONEY IN THE BANK !",
+      "PLATZ BEI MONEY IN THE BANK SICHER!", "\xC2\xA1PUESTO ASEGURADO EN MONEY IN THE BANK!",
+      "POSTO ASSICURATO A MONEY IN THE BANK!"},
+     {"%s has qualified for the Money in the Bank Ladder Match!",
+      "%s s'est qualifi\xC3\xA9 pour le Ladder Match Money in the Bank !",
+      "%s hat sich f\xC3\xBCr das Money in the Bank Ladder Match qualifiziert!",
+      "\xC2\xA1%s se ha clasificado para la Money in the Bank Ladder Match!",
+      "%s si \xC3\xA8 qualificato per il Money in the Bank Ladder Match!"}},
+    {11,
+     {"ELIMINATION CHAMBER QUALIFYING MATCH", "MATCH DE QUALIFICATION ELIMINATION CHAMBER",
+      "ELIMINATION CHAMBER QUALIFIKATION", "COMBATE CLASIFICATORIO ELIMINATION CHAMBER",
+      "QUALIFICAZIONE ELIMINATION CHAMBER"},
+     {"Elimination Chamber qualifying matches begin this week. Superstars will compete for a place "
+      "inside the Elimination Chamber!",
+      "Les matchs de qualification pour l'Elimination Chamber commencent cette semaine. Les "
+      "Superstars vont se battre pour une place dans l'Elimination Chamber !",
+      "Diese Woche beginnen die Qualifikationsmatches f\xC3\xBCr die Elimination Chamber. Die "
+      "Superstars k\xC3\xA4mpfen um einen Platz in der Elimination Chamber!",
+      "Esta semana empiezan los combates clasificatorios de Elimination Chamber. \xC2\xA1Las "
+      "Superstars luchar\xC3\xA1n por un puesto en la Elimination Chamber!",
+      "Questa settimana iniziano le qualificazioni per l'Elimination Chamber. Le Superstar "
+      "lotteranno per un posto nell'Elimination Chamber!"},
+     {"ELIMINATION CHAMBER PLACE SECURED!", "PLACE ASSUR\xC3\x89" "E DANS L'ELIMINATION CHAMBER !",
+      "PLATZ IN DER ELIMINATION CHAMBER SICHER!", "\xC2\xA1PUESTO ASEGURADO EN ELIMINATION CHAMBER!",
+      "POSTO ASSICURATO NELL'ELIMINATION CHAMBER!"},
+     {"%s has qualified for the Elimination Chamber!",
+      "%s s'est qualifi\xC3\xA9 pour l'Elimination Chamber !",
+      "%s hat sich f\xC3\xBCr die Elimination Chamber qualifiziert!",
+      "\xC2\xA1%s se ha clasificado para la Elimination Chamber!",
+      "%s si \xC3\xA8 qualificato per l'Elimination Chamber!"}}};
+
+u32 g_news_event = 0;  // the event of the news being drawn (its texts are ours meanwhile)
+
+struct Qualifier {
+  u32 event, year, a, b;
+};
+std::mutex g_qual_mutex;
+std::vector<Qualifier> g_pending_news;  // news to add on the game's thread: {event, type, id}
+
+// The qualifier lines of this year and event.
+std::vector<std::array<u32, 3>> QualLines(const char *kind, u32 event, u32 year) {
+  std::vector<std::array<u32, 3>> out;
+  std::ifstream f(StatsFile());
+  std::string line, k;
+  while (std::getline(f, line)) {
+    std::istringstream is(line);
+    u32 ev = 0, yr = 0, a = 0, b = 0;
+    if (!(is >> k) || k != kind || !(is >> ev >> yr) || ev != event || yr != year)
+      continue;
+    is >> a >> b;
+    out.push_back({a, b, 0});
+  }
+  return out;
+}
+
+// The event whose qualifying weeks hold this day (0: none).
+u32 QualEventOn(u32 u, u32 day, u32 month) {
+  const u32 week = (day / 7) % 4;
+  for (u32 e = 1; e <= kEvents; ++e) {
+    const u32 slot = PpvSlot(u, kQualEvents[e].ppv);
+    if (slot >= 48)
+      continue;
+    const u32 m = slot / 4, w = slot % 4;
+    if (month == m && week < w && week + 2 >= w)
+      return e;
+  }
+  return 0;
+}
+
+// A qualifying match still to be played between these two: its event (0: none).
+u32 PendingQualifier(u32 a, u32 b, u32 year) {
+  for (u32 e = 1; e <= kEvents; ++e) {
+    const auto quals = QualLines("qualifier", e, year);
+    const auto done = QualLines("qualdone", e, year);
+    for (const auto &q : quals)
+      if ((q[0] == a && q[1] == b) || (q[0] == b && q[1] == a)) {
+        const bool played = std::any_of(done.begin(), done.end(), [&](const auto &d) {
+          return (d[0] == q[0] && d[1] == q[1]);
+        });
+        if (!played)
+          return e;
+      }
+  }
+  return 0;
+}
+
+void QueueNews(u32 event, u32 type, u32 id) {
+  std::lock_guard<std::mutex> lock(g_qual_mutex);
+  g_pending_news.push_back({event, 0, type, id});  // a = the news' type, b = its Superstar
+}
+
+// The queued news, added on the game's thread (from the menus' input dispatch).
+void FlushNews(const PPCContext &in, u8 *base) {
+  std::vector<Qualifier> news;
+  {
+    std::lock_guard<std::mutex> lock(g_qual_mutex);
+    news.swap(g_pending_news);
+  }
+  for (const Qualifier &n : news) {
+    PPCContext x = in;
+    x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+    const u32 view = x.r1.u32 + 0x400, record = x.r1.u32 + 0x200;
+    Call(x, base, __imp__sub_826CDC48, view);
+    Call(x, base, __imp__sub_826D51A0, record);
+    bd::mem::store<u16>(record, u16(n.b < 512 ? n.b : 512));
+    bd::mem::store<u16>(record + 2, u16(n.b < 512 ? n.b : 512));
+    bd::mem::store<u32>(record + 4, kNewsMarker + n.event);
+    bd::mem::store<u8>(record + 12, u8(n.a));
+    Call(x, base, __imp__sub_826D1630, view, record);
+    Call(x, base, __imp__sub_826CE098, view);
+    BD_INFO("[univers] qualifiers: news type {} for event {} (Superstar {})", n.a, n.event, n.b);
+  }
+}
+}  // namespace
+
+// A news drawn: its texts (sub_82559468 the line, sub_82559A08 the title; the news in r4).
+REX_EXTERN(__imp__sub_82559468);
+extern "C" REX_FUNC(sub_82559468) {
+  const u32 rec = ctx.r4.u32, marker = rec ? bd::mem::load<u32>(rec + 4) : 0;
+  g_news_event = marker > kNewsMarker && marker <= kNewsMarker + kEvents ? marker - kNewsMarker : 0;
+  __imp__sub_82559468(ctx, base);
+  g_news_event = 0;
+}
+REX_EXTERN(__imp__sub_82559A08);
+extern "C" REX_FUNC(sub_82559A08) {
+  const u32 rec = ctx.r4.u32, marker = rec ? bd::mem::load<u32>(rec + 4) : 0;
+  g_news_event = marker > kNewsMarker && marker <= kNewsMarker + kEvents ? marker - kNewsMarker : 0;
+  __imp__sub_82559A08(ctx, base);
+  g_news_event = 0;
+}
+
+namespace {
+// Our news texts (27068 / 27069 type 5, 27070 / 27071 type 6), for the news being drawn.
+u32 QualNewsText(u32 id) {
+  const u32 e = g_news_event;
+  if (!e || id < 27068 || id > 27071)
+    return 0;
+  const QualEvent &q = kQualEvents[e];
+  const u32 lang = CurrentLang();
+  const char *text = id == 27068   ? q.secured[lang]
+                     : id == 27069 ? q.qualified[lang]
+                     : id == 27070 ? q.qualifying[lang]
+                                   : q.begin[lang];
+  static u32 s_at[kEvents + 1][4] = {};
+  u32 &at = s_at[e][id - 27068];
+  if (!at)
+    at = REX_KERNEL_MEMORY()->SystemHeapAlloc(512, 0x10);
+  if (!at)
+    return 0;
+  std::memset(bd::mem::at<char>(at), 0, 512);
+  std::memcpy(bd::mem::at<char>(at), text, std::min<size_t>(std::strlen(text), 511));
+  return at;
+}
+}  // namespace
+
 extern "C" REX_FUNC(sub_826CEF28) {
   const PPCContext in = ctx;
   const u32 view = ctx.r3.u32, show = ctx.r4.u32, match = ctx.r6.u32, winner = ctx.r7.u32;
@@ -4033,6 +4243,23 @@ extern "C" REX_FUNC(sub_826CEF28) {
         else
           lines.push_back(fmt::format("mania {} {} {} {}", id, match + 1 == count ? 1 : 0,
                                       won ? 1 : 0, day));
+      }
+      // a qualifying match of ours: its winner qualifies
+      if (REXCVAR_GET(wwe12_universe_qualifiers) && places == 2 && winner < 2 && g_last_result.size() == 2) {
+        const u32 a = g_last_result[0].first, b = g_last_result[1].first, year = day / 336;
+        if (const u32 event = PendingQualifier(a, b, year)) {
+          const u32 won = g_last_result[0].second ? a : b;
+          // the news list keeps a show's news (written with its results): "qualifying matches
+          // begin" goes with the first qualifier's result
+          if (QualLines("qualnews", event, year).empty()) {
+            lines.push_back(fmt::format("qualnews {} {}", event, year));
+            QueueNews(event, kNewsQualifying, won);
+          }
+          lines.push_back(fmt::format("qualdone {} {} {} {} {}", event, year, a, b, day));
+          lines.push_back(fmt::format("qualified {} {} {} {}", event, year, won, day));
+          QueueNews(event, kNewsQualified, won);
+          BD_INFO("[univers] qualifiers: {} qualified for event {}", won, event);
+        }
       }
       BD_INFO("[univers] result: show {} match {}/{} ({} places), winner {} (side {}){}{}", show,
               match, count, places, winner_id, winner_side, rumble ? ", Royal Rumble" : "",
@@ -4929,10 +5156,118 @@ namespace {
 const void *g_defense_card = nullptr;  // the booker whose card already has a defense of ours
 }
 
+namespace {
+constexpr u32 kBookerPpv = 0x8203EB44;
+
+// A PPV card's Money in the Bank / Elimination Chamber match: its places become the qualified
+// Superstars (the booker's record, before it is written).
+void PlaceQualified(const PPCContext &in, u8 *base, u32 booker, u32 record) {
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 type = bd::mem::load<u32>(record);
+  const u32 event = Call(x, base, __imp__sub_82A2F998, type)   ? 1
+                    : Call(x, base, __imp__sub_82A2FA98, type) ? 2
+                                                               : 0;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!event || !u)
+    return;
+  const u32 year = bd::mem::load<u32>(u + kUniverseDay) / 336;
+  const auto qualified = QualLines("qualified", event, year);
+  if (qualified.empty())
+    return;
+  const u32 places = std::min<u32>(bd::mem::load<u32>(record + 16), 8);
+  // everyone already on this PPV's card
+  std::set<u32> booked;
+  for (u32 k = 0; k < 8; ++k) {
+    const u32 r = booker + 20 + k * 1320;
+    if (bd::mem::load<u32>(r + 8) != 1)
+      continue;
+    for (u32 q = 0; q < std::min<u32>(bd::mem::load<u32>(r + 16), 8); ++q)
+      booked.insert(bd::mem::load<u32>(r + 40 + q * 32));
+  }
+  u32 place = 0;
+  for (const auto &q : qualified) {
+    const u32 id = q[0];
+    bool in_match = false;
+    for (u32 k = 0; k < places; ++k)
+      in_match = in_match || bd::mem::load<u32>(record + 40 + k * 32) == id;
+    if (in_match || booked.count(id) || id >= 512)
+      continue;  // already in it, or elsewhere on the card
+    // a place not held by another qualified Superstar
+    while (place < places &&
+           std::any_of(qualified.begin(), qualified.end(), [&](const auto &o) {
+             return o[0] == bd::mem::load<u32>(record + 40 + place * 32);
+           }))
+      ++place;
+    if (place >= places)
+      break;
+    BD_INFO("[univers] qualifiers: {} takes place {} of the event {} match (was {})", id, place, event,
+            bd::mem::load<u32>(record + 40 + place * 32));
+    bd::mem::store<u32>(record + 40 + place * 32, id);
+    booked.insert(id);
+    ++place;
+  }
+}
+
+const void *g_qualifier_card = nullptr;  // the booker whose card already has a qualifier of ours
+
+// A weekly card's qualifying match, in the qualifying weeks (after the entry is written). True: one.
+bool MarkQualifier(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 record, u32 i) {
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  if (i == 0)
+    g_qualifier_card = nullptr;
+  const u32 type = bd::mem::load<u32>(record);
+  if (g_qualifier_card == reinterpret_cast<const void *>(uintptr_t(booker)) ||
+      bd::mem::load<u32>(record + 16) != 2 || Call(x, base, __imp__sub_826D4DC8, entry) ||
+      bd::mem::load<u32>(record + 24) || bd::mem::load<u32>(record + 28) ||
+      Call(x, base, __imp__sub_82A2FA18, type) == 1 || Call(x, base, __imp__sub_82A2F998, type) ||
+      Call(x, base, __imp__sub_82A2FA98, type))
+    return false;
+  const u32 a = bd::mem::load<u32>(record + 40), b = bd::mem::load<u32>(record + 72);
+  if (a >= 512 || b >= 512 || bd::mem::load<u32>(record + 44) == bd::mem::load<u32>(record + 76) ||
+      Call(x, base, __imp__sub_82A32DB8, a) != 0 || Call(x, base, __imp__sub_82A32DB8, b) != 0)
+    return false;  // two men, one against the other
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u)
+    return false;
+  const u32 day = bd::mem::load<u32>(u + kUniverseDay), year = day / 336;
+  const u32 event = QualEventOn(u, day, Call(x, base, __imp__sub_826D2890, day) % 12);
+  if (!event)
+    return false;
+  const auto quals = QualLines("qualifier", event, year);
+  const auto qualified = QualLines("qualified", event, year);
+  for (const auto &q : qualified)
+    if (q[0] == a || q[0] == b)
+      return false;  // already qualified
+  if (quals.size() >= 6)
+    return false;
+  std::vector<std::string> lines;
+  if (QualLines("qualbegin", event, year).empty())
+    lines.push_back(fmt::format("qualbegin {} {}", event, year));
+  lines.push_back(fmt::format("qualifier {} {} {} {} {}", event, year, a, b, day));
+  AppendStats(lines);
+  g_qualifier_card = reinterpret_cast<const void *>(uintptr_t(booker));
+  BD_INFO("[univers] qualifiers: match {} of the card ({} vs {}) qualifies for event {}", i, a, b,
+          event);
+  return true;
+}
+}  // namespace
+
 extern "C" REX_FUNC(sub_826EAEB0) {
   const PPCContext in = ctx;
   const u32 booker = ctx.r3.u32, entry = ctx.r4.u32, i = ctx.r5.u32 & 0xFFFF;
+  const bool qualifiers = Enabled() && REXCVAR_GET(wwe12_universe_qualifiers) && entry && i < 8 &&
+                          bd::mem::load<u32>(kInUniverseFlag) == 1;
+  if (qualifiers && bd::mem::try_load<u32>(booker) == kBookerPpv)
+    PlaceQualified(in, base, booker, booker + 20 + i * 1320);
   __imp__sub_826EAEB0(ctx, base);
+  if (qualifiers) {
+    const u32 v = bd::mem::try_load<u32>(booker);
+    if ((v == kBookerRaw || v == kBookerSmackDown || v == kBookerSuperstars) &&
+        MarkQualifier(in, base, booker, entry, booker + 20 + i * 1320, i))
+      return;  // no title defense on a qualifier
+  }
   if (!Enabled() || !entry || i >= 8 || bd::mem::load<u32>(kInUniverseFlag) != 1)
     return;
   const u32 vtbl = bd::mem::try_load<u32>(booker);
@@ -5014,6 +5349,42 @@ extern "C" REX_FUNC(sub_82554B68) {
   PPCContext x = in;
   x.r1.u32 = (x.r1.u32 - 0x200) & ~0xFu;
   const u32 copy = c + 3248 + row * 104;
+  // a header text of ours left from another row (the game writes it only when the cursor moves):
+  // the game's own back (the match type's name, 27400 + type)
+  static u32 s_ours[2 + kEvents + 1] = {};
+  if (const u32 layout0 = bd::mem::load<u32>(c + 292)) {
+    const u32 header0 = Call(x, base, __imp__sub_824C5458, layout0, 30);
+    const u32 shown = header0 ? bd::mem::load<u32>(header0 + 200) : 0;
+    if (shown && std::find(std::begin(s_ours), std::end(s_ours), shown) != std::end(s_ours))
+      if (const u32 game = GameText(x, base, 27400 + bd::mem::load<u8>(copy)))
+        bd::mem::store<u32>(header0 + 200, game);
+  }
+  if (REXCVAR_GET(wwe12_universe_qualifiers) && !Call(x, base, __imp__sub_826D4DC8, copy) &&
+      Call(x, base, __imp__sub_826D4F90, copy) == 2) {
+    const u32 out = x.r1.u32 + 0x100;
+    Call(x, base, __imp__sub_826D4958, copy, out, 0);
+    const u32 a = bd::mem::load<u16>(out);
+    Call(x, base, __imp__sub_826D4958, copy, out, 1);
+    const u32 b = bd::mem::load<u16>(out);
+    const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+    const u32 event = u ? PendingQualifier(a, b, bd::mem::load<u32>(u + kUniverseDay) / 336) : 0;
+    const u32 layout = bd::mem::load<u32>(c + 292);
+    const u32 header = event && layout ? Call(x, base, __imp__sub_824C5458, layout, 30) : 0;
+    if (header) {
+      static u32 s_at[kEvents + 1] = {};
+      if (!s_at[event])
+        s_at[event] = REX_KERNEL_MEMORY()->SystemHeapAlloc(96, 0x10);
+      if (s_at[event]) {
+        const char *t = kQualEvents[event].qualifying[CurrentLang()];
+        std::memset(bd::mem::at<char>(s_at[event]), 0, 96);
+        std::memcpy(bd::mem::at<char>(s_at[event]), t, std::min<size_t>(std::strlen(t), 95));
+        bd::mem::store<u32>(header + 200, s_at[event]);
+        s_ours[2 + event] = s_at[event];
+        bd::mem::store<u32>(header + 228, bd::mem::load<u32>(header + 228) & ~0x10u);
+      }
+    }
+    return;
+  }
   if (!Call(x, base, __imp__sub_826D4DC8, copy))
     return;
   const u32 title = bd::mem::load<u8>(copy + 1);
@@ -5022,6 +5393,7 @@ extern "C" REX_FUNC(sub_82554B68) {
   const u32 name = header ? Call(x, base, __imp__sub_826D2C30, title) : 0;
   if (!name)
     return;
+  s_ours[0] = name;
   bd::mem::store<u32>(header + 200, name);
   bd::mem::store<u32>(header + 228, bd::mem::load<u32>(header + 228) & ~0x10u);
 }
