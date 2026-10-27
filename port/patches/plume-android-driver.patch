@@ -15,7 +15,7 @@ index ecc274f..261398d 100644
  // TODO:
  // - Fix resource pools.
  
-@@ -4507,7 +4513,24 @@ namespace plume {
+@@ -4507,7 +4513,29 @@ namespace plume {
      // VulkanInterface
  
      VulkanInterface::VulkanInterface() {
@@ -26,9 +26,14 @@ index ecc274f..261398d 100644
 +        void *customDriver = wwe12_custom_vulkan_driver ? wwe12_custom_vulkan_driver() : nullptr;
 +        if (customDriver != nullptr) {
 +            auto getInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(customDriver, "vkGetInstanceProcAddr"));
++            // Some driver packages only export the loader-interface name (Android #30).
++            if (getInstanceProcAddr == nullptr)
++                getInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(customDriver, "vk_icdGetInstanceProcAddr"));
 +            if (getInstanceProcAddr != nullptr) {
 +                volkInitializeCustom(getInstanceProcAddr);
 +                res = VK_SUCCESS;
++            } else {
++                fprintf(stderr, "custom Vulkan driver: no vkGetInstanceProcAddr in it, using the phone's own driver\n");
 +            }
 +        }
 +        if (res != VK_SUCCESS) {
