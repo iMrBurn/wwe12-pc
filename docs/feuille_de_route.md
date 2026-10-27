@@ -1,76 +1,60 @@
-# Feuille de route : idées de l'utilisateur (bloc-notes du 2026-10-26)
+# Feuille de route (version de l'utilisateur, mise à jour le 2026-10-27)
 
-Liste écrite par l'utilisateur (iMrBurn), rangée par la conversation Main. Les difficultés sont des
-**estimations**, pas des mesures. Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`,
-`docs/limit_breaking.md`, `docs/mod_maker.md` et `docs/suggestions_joueurs.md`.
+Liste écrite par l'utilisateur (iMrBurn), rangée par la conversation Main. Les détails techniques sont dans
+`CLAUDE.md`, `docs/univers.md`, `docs/limit_breaking.md`, `docs/mod_maker.md`, `docs/camera.md` et
+`docs/suggestions_joueurs.md`. Règle : on ne livre que ce qui est testé en jeu ; ce qui n'est pas prêt passe à la version suivante.
 
-## Bloc-notes tel quel
+## Roadmap 1.0 (texte de l'utilisateur)
 
-**Stipulations à ajouter** : I Quit, arbitre invité spécial (« compliqué, voir avec Kaiko »).
+**Mode Univers**
+- Modifier dans le code tout ce qui est booking etc. (ex : défenses de titre en weekly spontanées)
+- Matchs de qualification Royal Rumble, Elimination Chamber et Money in the Bank, ainsi que des news par rapport à ceux-là
 
-**1. Mode Univers**
-- Titres utilisés vacants ? (pas possible, ça casse le mode ; ✅ vacant pour les titres sans émission, fait)
-- Menu Stat Tracking comme WWE '13 (historiques des vainqueurs du Royal Rumble, MITB, KOTR…)
-- Tournoi pour couronner des titres vacants
-- Modifier dans le code le booking (ex. défenses de titre spontanées en weekly)
-- Restreindre des catcheurs à certains titres (Cena : titres majeurs seulement, Evan Bourne : mineurs)
-- Backport des cutscenes de WWE '13 et 2K14
-- Intégrer les cutscenes de Create a Story et les déclencher comme les vraies cinématiques de l'Univers
-- Enlever le minimum de 15 catcheurs par show (univers 100 % CAW) (codé, pas encore compilé ni testé)
-- Un seul show majeur possible (le jeu en réclame 2 minimum)
-
-**2. Modifs de jeu**
-- Sang pour les femmes ? (pas sûr)
-- 5 contre 5 ? Plus de 6 superstars sur le ring ?
-- Touches de clavier à la place des boutons Xbox / Sony (le clavier marche et ✅ Shift/Ctrl/Alt seuls, issue #18 ; reste l'affichage des icônes de touches)
-- ✅ Jukebox dans les menus (fait, validé en jeu le 2026-10-26)
-- Moments OMG de WWE '13
+**Modifs de jeu**
+- Touches de clavier à la place des boutons Xbox ou Sony dans les menus ?
+- Ajouter les moments OMG de WWE '13
 - Enlever les restrictions du Match Creator
-- De 50 slots CAW à 100/200
-- De 20 logos personnalisés à 100/200
-- Autres résolutions (360p, 480p…)
+- Passer de 50 slots CAW à 100/200
+- Passer de 20 logos custom à 100/200
+- Ajouter d'autres résolutions (360p, 480p, etc.)
 - Widescreen (16:10)
+- Optimiser encore plus le jeu
 
-**Gros chantiers** : ✅ Mod Maker pour la 1.0 (fait, voir `docs/mod_maker.md`) ; jeu en full natif sans
-aucune émulation ; ✅ DX12 en plus de Vulkan (fait le 2026-10-26 : 2 exe, shaders pré-liés, testé sur RTX 5070), peut-être DX11 (plus tard).
+**Gros chantier important**
+- Le jeu en full natif, sans aucune émulation
+- Avoir DX11
 
-## État et difficulté (estimation, 2026-10-26)
+## Roadmap 1.1 (texte de l'utilisateur)
 
-### Déjà fait ou décidé
-| Idée | État |
-|---|---|
-| Mod Maker | Fait en grande partie (arènes, catcheurs ajoutés, textures ; `docs/mod_maker.md`). |
-| Clavier au lieu des boutons | Le clavier marche (joueur 1 ou 2). Reste : Shift/Ctrl/Alt seuls (issue #18, 1.0). Les icônes affichées restent celles de la manette. |
-| Jukebox dans les menus | Lot 1.0 choisi, attend le « go » (Gameplay ; page OPTIONS > JUKEBOX, cvar `wwe12_jukebox`, défaut off). |
-| Minimum de 15 catcheurs par show | Lot 1.0 choisi, étudié (Univers ; cvar `wwe12_universe_min_roster` ; test sur une COPIE de la sauvegarde). |
-| Sang pour les femmes | Reporté à la 1.0. On connaît l'option BLOOD ; le test homme/femme du saignement n'est pas trouvé (voir `CLAUDE.md`). |
-| I Quit, arbitre spécial | **Décision de l'utilisateur (2026-10-26) : pour la 1.1, pas la 1.0.** Étude chiffrée dans `docs/limit_breaking.md` : I Quit léger 1-2 séances (version fidèle WWE '13 : 4-6 séances si les animations existent) ; Special Referee : essai léger 2 séances (règle 83 depuis le menu via `sub_82449898`), version jouable 4-6 séances de plus, IA 4-6 de plus. |
-| Titres vacants utilisés par un show | Impossible (casse le mode). Seuls les titres sans émission peuvent être vacants : fait. |
+**Stipulations à ajouter** : I Quit ; Special Guest Referee
 
-### Faisable, travail raisonnable (à étudier)
-- Un seul show majeur au lieu de deux (même famille que le minimum de 15 ; Univers).
-- Restreindre des catcheurs à certains titres (règles dans les tables de l'Univers).
-- Défenses de titre spontanées : seulement si c'est simple (règle de l'utilisateur).
-- Résolutions 360p / 480p : on a 540p ; plus bas = très flou, à tester.
-- Widescreen 16:10 : à vérifier ce que fait le jeu aujourd'hui avant de promettre.
-- Restrictions du Match Creator : à préciser lesquelles.
-- Plus de slots CAW / logos (100/200) : touche les sauvegardes et la mémoire, risqué.
+**Modifs de jeu** : plus de 6 superstars en même temps sur le ring
 
-### Difficile ou gros
-- Stat Tracking : le jeu ne garde ni victoires ni historique, il faut les noter nous-mêmes.
-- Tournoi pour titres vacants ; cutscenes de WWE '13 / 2K14 ; cutscenes de Create a Story dans l'Univers.
-- Moments OMG de WWE '13.
-- Plus de 6 superstars sur le ring / 5 contre 5 (tableaux à 6 cases, mémoire, animations).
+**Mode Univers**
+- Backport des cutscenes de WWE '13 et 2K14
+- Intégrer les cutscenes du mode Create a Story et les faire se déclencher comme les vraies cinématiques de l'Univers
+- Tournoi pour couronner des titres vacants
+- Avoir des titres utilisés vacants ?
 
-### Gros chantiers
-- Jeu en full natif : long terme, par étapes (décompilation progressive, système par système).
-- **Choix de l'API graphique (DÉCIDÉ pour la 1.0 le 2026-10-26, D3D12 d'abord, estimation Rendu 5-8 séances, 2 exe)** : DX12 en plus de
-  Vulkan (plume le gère, il est coupé dans `native_renderer.cmake`), sélecteur « Automatic / Vulkan / Direct3D 12 »
-  dans le launcher et le jeu. Piste : les pavés d'entrée sur Intel HD/UHD (#7, #11, #13) viennent peut-être du
-  pilote Vulkan Intel ; en D3D12 ils disparaîtraient peut-être (hypothèse). **DX11** : Kaiko l'a fait pour SvR 2011
-  (backend plume D3D11 + SDK `graphics/d3d11` + shaders DXBC, plan dans son `port/docs/D3D11_PLAN.md`), donc
-  possible mais lourd ; pour les cartes sans Vulkan (Intel HD 5500…). **Son dépôt n'a PAS de licence : ne rien
-  copier sans sa permission** (message à Kaiko rédigé le 2026-10-26). Rendu étudie d'abord le D3D12.
+## Déjà fait (retiré de la liste, ne plus le promettre comme à faire)
+- Mod Maker, jukebox dans les menus, Shift/Ctrl/Alt seuls (#18), D3D12 en plus de Vulkan (2 exe, shaders pré-liés).
+- Univers : émissions de moins de 15 catcheurs (`wwe12_universe_min_roster`), statistiques façon 2K14, historique des titres,
+  réglages d'aspirant, calendrier modifiable, classements (testé sur une copie de la sauvegarde ; voir `docs/univers.md`).
+- Titres vacants pour les titres sans émission.
+
+## Notes de la Main (estimations, pas des mesures)
+- **DX11** : Kaiko l'a fait pour SvR 2011 et nous a autorisés à adapter son travail avec crédit. Estimation Rendu : au moins 10 séances. Dans la liste 1.0 ; à ne livrer que s'il est testé.
+- **100/200 slots CAW, 100/200 logos** : touche les sauvegardes et la mémoire, risqué.
+- **Résolutions 360p/480p** : on a 540p ; plus bas est très flou, à tester. **16:10** : vérifier ce que fait le jeu avant de promettre.
+- **Match Creator** : préciser quelles restrictions.
+- **Défenses spontanées, qualifications Rumble/Chamber/MITB** : demander à Univers une estimation avant de promettre.
+- **Moments OMG, plus de 6 superstars** : gros chantiers (animations, tableaux à 6 cases, mémoire).
+- **Full natif** : long terme, par étapes.
+
+## Idées de joueurs, pas dans la liste (étudiées le 2026-10-27, après la 1.0 si jamais)
+- Choix de caméra de match comme WWE 2K25/2K26 (`docs/camera.md` : le jeu n'a que CAMERA CUTS ; réglages simples 2-4 séances, vraies caméras 8-15).
+- Option 30 fps partout : le gain vient surtout de la carte graphique, pas du processeur ; mesure à faire plus tard.
+- GM Mode : n'existe pas dans WWE '12, il faudrait créer un mode entier. Pas prévu.
 
 ## Règles rappelées
 - On peut porter des fonctions de WWE '13 / 2K14, mais **rien de dérivé du jeu ne se publie**.
