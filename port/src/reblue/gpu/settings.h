@@ -163,7 +163,9 @@ public:
 
   // The raw cvar value, for the menu row that cycles it.
   // Output::ConfiguredAspect turns it into a ratio.
-  i32 AspectRatio() const { return aspectRatio_; }
+  // Read from the cvar each time: Settings::Init (which adopts the cvars after the config file)
+  // is never called, so aspectRatio_ kept its default and "stretch" did nothing (Android #32).
+  i32 AspectRatio() const;
   bool SetAspectRatio(i32 v);
 
   // Horizontal degrees added to the game's own framing at 16:9, which the menu

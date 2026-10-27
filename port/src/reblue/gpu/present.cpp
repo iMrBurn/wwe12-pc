@@ -231,14 +231,25 @@ void RecordPresentPass(VideoState &s, GuestTexture *rt,
                                back, plume::RenderTextureLayout::COLOR_WRITE));
   s.command_list->setFramebuffer(back_fb);
 
+  // Stretch fills the swap chain whatever the render size: SvR renders at its own 16:9 size
+  // (1280x720 on Android), so its render aspect alone kept the bars (Android #32, #35, #39).
   const double present_aspect =
-      (bd::engine::SofdecPlayer::Playing() && !Output::StretchToFill())
-          ? kDesignCanvasAspect
-          : Output::RenderAspect();
+      Output::StretchToFill()                  ? 0.0
+      : bd::engine::SofdecPlayer::Playing()    ? kDesignCanvasAspect
+                                               : Output::RenderAspect();
   u32 fit_w = swap_w, fit_h = swap_h;
   i32 off_x = 0, off_y = 0;
   Output::ComputeFit(swap_w, swap_h, present_aspect, fit_w, fit_h, off_x,
                           off_y);
+  {
+    static u64 logged = 0;
+    const u64 key = (u64(swap_w) << 48) ^ (u64(swap_h) << 32) ^ (u64(fit_w) << 16) ^ fit_h;
+    if (key != logged) {
+      logged = key;
+      BD_INFO("[present] swap chain {}x{}, picture {}x{} at {},{} (bd_aspect_ratio {})", swap_w,
+              swap_h, fit_w, fit_h, off_x, off_y, Settings::Get().AspectRatio());
+    }
+  }
   if (fit_w != swap_w || fit_h != swap_h) {
     s.command_list->clearColor(0, plume::RenderColor(0.0f, 0.0f, 0.0f, 1.0f));
   }

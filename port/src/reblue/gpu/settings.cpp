@@ -189,6 +189,7 @@ void Settings::AdoptAspectRatio() {
   aspectRatio_ = REXCVAR_GET(bd_aspect_ratio);
   Output::Recompute();
 }
+i32 Settings::AspectRatio() const { return REXCVAR_GET(bd_aspect_ratio); }
 void Settings::AdoptFOVOffset() { fovOffset_ = REXCVAR_GET(bd_fov_offset); }
 void Settings::AdoptShadowDimension() {
   shadowDimension_ = REXCVAR_GET(bd_shadow_dimension);

@@ -171,3 +171,15 @@ inline HRSRC FindResourceW(HMODULE, const wchar_t *, const wchar_t *) { return n
 inline HGLOBAL LoadResource(HMODULE, HRSRC) { return nullptr; }
 inline void *LockResource(HGLOBAL) { return nullptr; }
 inline DWORD SizeofResource(HMODULE, HRSRC) { return 0; }
+
+// DXC (wwe12_dxc.cpp, rendu D3D12 seulement) : jamais présent sur Android.
+#define LOAD_LIBRARY_SEARCH_APPLICATION_DIR 0x00000200
+#define LOAD_LIBRARY_SEARCH_SYSTEM32 0x00000800
+inline HMODULE LoadLibraryExW(const wchar_t *, void *, DWORD) { return nullptr; }
+
+// Horloge en millisecondes (Univers) : temps monotone depuis le démarrage.
+inline unsigned long long GetTickCount64() {
+  timespec ts{};
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return static_cast<unsigned long long>(ts.tv_sec) * 1000ull + ts.tv_nsec / 1000000;
+}
