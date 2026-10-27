@@ -83,10 +83,11 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
     RUL, OPT…, CMAI, RVSL) → **les données d'une prise sont sa fiche WAZE de 160 o** : +0x00 genre (0x0C), +0x03
     catégorie ?, +0x0E/+0x0F drapeaux, nom +0x10, réglages +0x70..+0x8F (dégâts, contres ?), numéro u16 +0x90 (AA 4
     = 0x96C4, STF = 0xEEE3), puis FF.
-  - `m.pac` ZMVM/FINI : PACH → 112 → 20 sous-groupes (0, 1, 2…) → **numéro d'animation** (AA de Cena : 33002) ; le
+  - `m.pac` ZMVM/FINI : PACH → 112 → 20 sous-groupes (0, 1, 2…) → **numéro d'animation = numéro de la prise** (fiche WAZE +0x90 lue en petit-boutiste : 33002 = « Scissors kick » de
+    Booker T, prise DLC ; Attitude Adjustment 4 = 0xC496 = 50326, trouvée dans SPE1 et STN1) ; le
     sous-groupe 0 (10 Ko) et le 1 (35 Ko) ont les mêmes blocs (deux qualités, ou corps / mains-visage ?). Blocs
-    `PPPPWWWW` : phase, personne (0000/0001), jusqu'à 0x0011xxxx et 0x0021xxxx (contres ?). Le lien numéro de prise
-    → numéro d'animation n'est pas encore trouvé (pas dans la fiche WAZE en clair).
+    `PPPPWWWW` : phase, personne (0000/0001), jusqu'à 0x0011xxxx et 0x0021xxxx (contres ?). Nos outils lisent ces numéros en gros-boutiste dans WAZE comme dans PRO : cohérent entre eux, mais
+    le vrai numéro (celui des animations) est l'autre sens.
 - **Mesures 2K** (2026-10-27) : 2K14 / 2K15 / 2K16 lus (noms dans `createmode.pac`) ; 2K15 : 79 % / 8 % / 13 % ;
   2K16 : 84 % / 9 % / 7 % (moins de cases mises en correspondance : leur moveset est plus réorganisé). 2K17 non lu.
 - Étape 4 : pas commencée.

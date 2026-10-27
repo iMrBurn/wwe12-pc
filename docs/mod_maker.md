@@ -956,7 +956,8 @@ places ×10, d'après le code de Kaiko).
   finitions, SPE1/2, STN1/2, GRND, CORN, CETB, ROPE, APRO/APR2, DIVI, RUN, TEAM, WEAP, ANAS/ANA2, ABIL, RUMB, LADR,
   CELL), `ZMOT` (CA01-CA92, WE00-04, UN00, RES0), `ZMBS`, `ZCAF`, `CAV` : 50 503 enregistrements en tout. Chaque entrée est
   un arbre PACH dont les feuilles sont les enregistrements ; l'id de la feuille = le numéro de l'animation
-  (ex. ZMVM/FINI 33002 = Attitude Adjustment de Cena).
+  (ex. ZMVM/FINI 33002 = « Scissors kick », la prise DLC de Booker T : le numéro d'une animation est celui de sa
+  prise, MOVS/WAZE +0x90 en petit-boutiste ; corrigé le 2026-10-27, on l'avait pris pour l'Attitude Adjustment).
 - **Enregistrement** : en-tête {taille, total, 0x20, premier bloc ; +0x20 u16 sorte ; +0x48 nombre de blocs ; +0x4C le
   numéro en texte}, table des blocs à 0x70 (0x28 octets : +4 nom sur 8 caractères, +0x24 décalage). Nom du bloc
   « PPPPWWWW » : P la partie, W la personne (0000 celui qui fait la prise, 0001 l'adversaire, 0002...). Un bloc = un
