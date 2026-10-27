@@ -41,3 +41,21 @@ Son sens est autre jeu → SvR 2011 ; il **lit** les formats de WWE '12 (source)
 4. **Entrées portées** (script EVP, pistes EVZ en YANM, caméras, pyro) : après l'étape 3 (même encodeur).
 
 Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chantier.
+
+## État (2026-10-27 au soir)
+
+- **Étape 1 faite pour SvR 2011 et WWE '13** (`port/src/modmaker/moveset_port.h`, commits ed437af, 76fb312) :
+  NEW SUPERSTAR, étape 2, case « Ses propres prises de … » (cochée par défaut) et détail case par case ; ligne
+  `moves=OFF:NUMÉRO,...` du mod ; le jeu les met sur la fiche PRO du catcheur ajouté (`superstar_pack.h`), la copie
+  de la sauvegarde suit. Correspondance des cases calculée à partir des catcheurs des deux jeux (paires de cases dont
+  les prises ont le plus souvent le même nom, dans l'ordre, au moins 15 % : la méthode de `moveset_maps.py`) ; les
+  fiches de noms trouvées où elles commencent (WWE '13 : pas à 0x430). Vérifié hors jeu : CM Punk de SvR → G.T.S.,
+  Shining Wizard, Tiger Bomb, ses provocations ; de WWE '13 → G.T.S., Anaconda Vise ; Drew de SvR → Future Shock.
+  **Pas encore vu en jeu.** Sur 223 catcheurs SvR, ~78 % des cases trouvent leur prise.
+- **Étape 2 faite** (commit 1d9d064) : « Entrée (musique, vidéo, entrée) » = celle de la base ou d'un autre catcheur
+  de WWE '12 ; ligne `entrance=NUMÉRO` ; le jeu recopie PRO +0x1D4..+0x1DE de ce catcheur (nombres de 16 bits
+  **petit-boutistes** ici, alors que les prises sont gros-boutistes : Cena 139, 139, 139, 602, 602). Pas vu en jeu.
+- **2K14-2K17 : pas encore.** Noms dans `createmode.pac` MOVS/WAZE (nom d'entrée avec des octets en plus après
+  « WAZE ») ; la fiche PRO de 2K14 ne s'ouvre pas en arbre (0 enfant) ; 2K16/2K17 : tables à entrées de 20 octets et
+  HSPC chez Kaiko (`moves_port.py` Game14, Game2K16, Game2K17 ; `superstar_port.py` 1084-1224).
+- Étapes 3 et 4 : pas commencées.

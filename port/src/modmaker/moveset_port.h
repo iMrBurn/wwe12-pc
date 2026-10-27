@@ -61,12 +61,17 @@ struct Game {
 };
 
 inline bool Load(const disc::GameDisc &d, Game &g) {
-  Bytes m, c;
-  svrfmt::Archive M, C;
-  if (!d.Read("pac/misc.pac", m) || !d.Read("pac/ch/chEtc.pac", c) || !svrfmt::ArchiveOpen(m, M, nullptr) ||
-      !svrfmt::ArchiveOpen(c, C, nullptr))
+  Bytes m[2], c;
+  svrfmt::Archive M[2], C;
+  if (!d.Read("pac/ch/chEtc.pac", c) || !svrfmt::ArchiveOpen(c, C, nullptr))
     return false;
-  svrfmt::ArcNode *w = Find(M.root, "MOVS", "WAZE"), *pro = Find(C.root, "CHAR", "PRO ");
+  // (the 2K games keep their move names in createmode.pac, Kaiko's moves_port.py Game14)
+  svrfmt::ArcNode *w = nullptr;
+  const char *files[2] = {"pac/misc.pac", "pac/createmode.pac"};
+  for (int i = 0; i < 2 && !w; ++i)
+    if (d.Read(files[i], m[i]) && svrfmt::ArchiveOpen(m[i], M[i], nullptr))
+      w = Find(M[i].root, "MOVS", "WAZE");
+  svrfmt::ArcNode *pro = Find(C.root, "CHAR", "PRO ");
   if (!w || !pro || !svrfmt::ArchiveExpand(*pro))
     return false;
   const Bytes d0 = svrfmt::ArchiveData(*w);
