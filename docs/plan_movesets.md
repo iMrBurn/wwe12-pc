@@ -147,7 +147,15 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   (+0x1D4) pointant sur ce numéro. → Étape 3 : la banque ZMVM touchée (avec la prise ajoutée) au bout d'une copie
   servie, et la fiche WAZE dans une copie de `misc.pac`. Pièges connus du même fichier : le jeu lit parfois plus que
   la taille donnée (un bgNN complet est servi), et la vidéo ne marchait pas servie depuis un autre fichier.
-- **Étape 4 commencée (2026-10-27)** : `port/src/modmaker/entrance13.h` extrait une entrée de WWE '13 et ses variantes
+- **Étape 4 codée pour WWE '13 (2026-10-27, commit 204d9f2), PAS ESSAYÉE EN JEU** : NEW SUPERSTAR, étape 2, « Sa
+  propre entrée de WWE '13 » quand WWE '12 n'a pas d'entrée de ce numéro (Mankind 246, Cactus Jack 245, Attitude Era
+  310… ; Cena 139 non : WWE '12 a la sienne) → `superstar/entrance/EVP_n.bin`, `EVZ_n.bin` (et variantes),
+  `entrance_own=n` ; le jeu (`wwe12_arena_pages.cpp`, cvar `wwe12_entrance_mods`) les ajoute au bout de copies servies
+  des `NyujyoN.pac` (`Documents\wwe12\entrance_slots`), et le crochet du répertoire, quand il ne trouve pas
+  `/EVP3/246`, redemande comme une entrée du jeu du même fichier et de même longueur puis donne la place ajoutée ;
+  fiche PRO +0x1D8 = n. À vérifier en jeu : que le jeu demande bien `/EVPx/n` (journal « [entrances] »), l'entrée
+  jouée, la musique (celle de la base pour l'instant), les accessoires et le pyro.
+- **Étape 4, avant (2026-10-27)** : `port/src/modmaker/entrance13.h` extrait une entrée de WWE '13 et ses variantes
   (`Entrance()`), et dit où WWE '12 la range (`Group12`, `File12` : tranches de numéros relevées sur le disque,
   Nyujyo0 EVP1 100.., Nyujyo1 EVP2 137.., Nyujyo2 EVP3 179.., Nyujyo3 EVP4 272.., Nyujyo4 EVP5 328.., Nyujyo5 EVPE
   480.., Nyujyo6 EVPF 512.., Nyujyo7 EVPG 532.., Nyujyo8 EVPH 552.., Nyujyo9 EVPI 600..855, NyujyoA EVPK 50..55 ;
@@ -163,7 +171,9 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   identiques** ; EVZ = PACH de 20 / 19 pistes ; Orton 161 : EVP 93 % identiques, EVZ 17 / 18 pistes. Même format
   confirmé. Prochaine étape : mettre une entrée de WWE '13 sur un numéro libre (ex. Mankind 246) dans une copie de
   `Nyujyo*.pac` servie par l'overlay, la fiche PRO du catcheur pointant dessus, et la regarder en jeu.
-- **Écrans VS** (demandés le 2026-10-27) : les outils de Kaiko sur le bureau ne font que le fond
+- **Écrans VS** (demandés le 2026-10-27) : **le défaut des bases partagées est déjà corrigé et vérifié en jeu
+  depuis le 2026-10-26** (`docs/mod_maker.md`, « Écran VS d'une arène ajoutée, défaut de mémoire » : MB21 / MB22 et
+  numéro de scène oublié) ; reste le vrai écran VS des arènes de SvR 2011. les outils de Kaiko sur le bureau ne font que le fond
   (`arena_port.py` VS_BACKGROUND). `VS_STYLES.md` / `vs_port.py` **ne sont pas dans son dépôt public**
   (KaikoClanworth1/wwe-svr2011-pc, arbre complet lu le 2026-10-27 avec l'accord de l'utilisateur). Sa méthode est dans
   `docs/ARENA_MOD_MAKER_PLAN.md` (« New arenas and custom VS screens ») : une arène ajoutée garde le thème VS de sa
