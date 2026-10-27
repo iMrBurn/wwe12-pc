@@ -671,3 +671,31 @@ est refusée** (minimum réglable de 1 à 15) : essayée avec un minimum de 0, l
 marque (carte vide, X ADVANCE pour la passer), mais **plante au Royal Rumble** en fabriquant la carte du PPV
 (`sub_826F0290`, appel de `sub_826F0228`, écriture hors limites). D'où l'abandon de « un seul show majeur »
 (décision de l'utilisateur) : il faudrait réécrire le booking des PPV.
+
+## 21. Idées venues de WWE 2K14 (captures de l'utilisateur, 2026-10-27) : ce qu'on sait
+
+- **Paramètres d'aspirant (MAJEUR / MINEUR / TAG / DIVA par Superstar)** : WWE '12 n'en a pas dans sa
+  sauvegarde. Le jeu décide « peut-il prétendre à ce titre » par `sub_82A39EF8(id, titre, 1)` (seulement
+  homme/femme), appelé par les classements de l'Univers (`sub_826CFDA8` solo, retour 0x826CFF0C ;
+  `sub_826D18E8` équipes, 0x826D1AE0) et par un filtre du booking (`sub_826E1380`, vtable 0x8203E3B4 slot 1,
+  titre à +8, retour 0x826E13A8), mais aussi par TITLE MANAGEMENT, MATCH CREATOR et le match (non touchés).
+  Le genre d'un titre = sa place dans les 4 titres de son émission (`sub_826CC180(émission, out[4])`,
+  émission k = `sub_826CCB88(vue, k)`, vue de 428 octets `sub_826CDC48` / `sub_826CE098`). **Codé le
+  2026-10-27, pas encore testé en jeu** : dernière ligne de la boîte des tenues (Y sur la fiche) →
+  « CONTENDER SETTINGS... » → MAJOR / MINOR / MORE..., TAG / DIVA, chaque ligne ON/OFF (textes du jeu 27606-27609,
+  27613/27614 ; question = notre texte 27048) ; fichier `universe_contenders.txt` (« id masque »).
+- **Options scénaristiques** (rivalités auto, tag teams, foule, blessures) : WWE '12 n'a aucune option de ce
+  genre (aucun texte). Pistes dans le code : la mise hors service d'un Superstar (blessure) est
+  `sub_826CEA88(vue, id, 1)` (bit 31 de la fiche Univers +92, semaine en +96, et il perd sa place d'aspirant
+  n° 1) ; `sub_826E7A10` = blesser, `sub_826E7A70` = guérir (actions de scénario), autres appelants
+  `sub_826C3388`, `sub_826C55E0`. Une option « BLESSURES OFF » = refuser l'appel avec 1 (la NEWS « Serious
+  Injury », texte 27093-27094, s'écrit peut-être ailleurs : à vérifier). Rivalités et tag teams : non étudiés.
+- **Statistiques** (titres : plus de règnes / de semaines ; émissions : anciens champions ; MITB : vainqueurs,
+  cash-in ; Rumble : vainqueurs, WrestleMania) : à noter nous-mêmes. Changement de champion = toujours
+  `sub_82A3A060(titre, catcheur, place)` (appelants : TITLE MANAGEMENT `sub_82564DD0`, résultats
+  `sub_826C6530`, `sub_825396F8`, `sub_82684C00`, `sub_826D4030`, `sub_82DEA418`) ; semaine en cours =
+  [vue+4] + 56772 (U + 0xDDC4) ; Rumble = `sub_826C8520` ; MITB = `sub_826F1028`. Le plus long : l'écran.
+- **Calendrier (ajouter/supprimer une émission, PPV et organisateur)** : non (booking ; une émission vide fait
+  planter les PPV, §20).
+- **Nombre de matchs par émission** (MATCHES 5 de 2K14) : cartes de 8 cases au plus (§3.2), génération
+  `sub_826C8690` non étudiée.
