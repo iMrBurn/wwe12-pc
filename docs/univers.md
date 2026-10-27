@@ -722,8 +722,8 @@ Dans 2K14, la fiche a 4 pages (LB/RB) : OPTIONS, PARAMÈTRES ASPIRANT, RELATIONS
   « caché », et dans l'affichage du cadre (`sub_8254E920`) les éléments 8/9, 40/46, 59/72 ; basculer ces
   drapeaux ne change rien à l'image : le jeu passe d'un écran à l'autre autrement (à trouver : l'écran actif
   du menu Univers). Sonde : `wwe12_universe_probe` + LB/RB → `logs/umsi_*.txt`, `logs/rlay_*.txt`.
-- **Blessures** : réglage `wwe12_universe_injuries` (true par défaut) ; false = `sub_826CEA88(vue, id, 1)`
-  refusé. Pas encore testé en jeu.
+- **Blessures** : un réglage pour les couper (`wwe12_universe_injuries`, refus de `sub_826CEA88(vue, id, 1)`)
+  a été codé puis **retiré à la demande de l'utilisateur** (2026-10-27) : les blessures restent comme dans le jeu.
 
 ## 23. Pages ASPIRANT et STATISTIQUES sur la fiche, avec RB / LB (2026-10-27, testé sur la copie)
 
@@ -809,3 +809,15 @@ autres marques (6 = 164 catcheurs, sans doute FreeAgent). Testé sur la copie : 
 l'origine (0 octet changé) et SmackDown montre ses 20 catcheurs débloqués (27 dans les données).
 Le « 8 à SmackDown » vu avant n'a pas été reproduit. Sonde : `wwe12_universe_probe` écrit logs/brands.txt et
 les lignes « [univers] brands: » à la remise à zéro.
+
+## 28. Money in the Bank noté (2026-10-27)
+
+Détenteur de la mallette : U + 51004 (u16, 512 = personne ; vainqueur du Rumble en U + 51000), lu par
+`sub_826CC718(vue)`, posé par `sub_826CCA90(vue, id, drapeau)` juste après un match Money in the Bank (type 76,
+`sub_82A2F998`) pour son gagnant, effacé par `sub_826CCAB8(vue)` au cash-in. Vu en jeu : le match du cash-in est
+ajouté à la fin de la carte du PPV et la mallette est effacée **après** son résultat (autre chemin dans
+`sub_826C95E0` : effacée avant le match). Notre crochet de résultat garde les catcheurs du dernier match ; à
+l'effacement, si le détenteur y était, « cashin <id> <gagné> <jour> », sinon on attend son prochain résultat.
+« mitb <id> <jour> » à la pose. Testé : Mark Henry gagne la mallette (WINS 1) puis encaisse et gagne le titre ;
+la première version (drapeau +5020 de l'objet 0x83231548) ne voyait pas ce cash-in, corrigé ensuite.
+L'option qui coupait les blessures a été retirée (choix de l'utilisateur).

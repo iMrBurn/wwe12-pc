@@ -2749,6 +2749,62 @@ REX_EXTERN(__imp__sub_82A2FA18);  // a match type: 1 = Royal Rumble
 
 constexpr u32 kShowWrestleMania = 12;
 
+// Money in the Bank: the briefcase's holder is U + 51004 (u16, 512 = nobody; the Royal Rumble's
+// winner is U + 51000), read by sub_826CC718(view), set by sub_826CCA90(view, id, flag) right after a
+// Money in the Bank match (type 76, sub_82A2F998) for its winner, cleared by sub_826CCAB8(view) when
+// he cashes in: the cash-in match is added at the end of the card and the briefcase is cleared just
+// after its result (seen 2026-10-27), or before the match on another path (sub_826C95E0). So the
+// last result's Superstars are kept: at the clear, the holder's result in it is the cash-in's; if he
+// was not in it, his next result is. Lines: "mitb <id> <day>" when he wins the briefcase,
+// "cashin <id> <won> <day>" for the cash-in.
+REX_EXTERN(__imp__sub_826CCA90);  // Money in the Bank: the briefcase's new holder
+REX_EXTERN(__imp__sub_826CCAB8);  // Money in the Bank: the briefcase cashed in (holder cleared)
+
+constexpr u32 kBriefcaseHolder = 51004;
+u32 g_cashed_holder = 512;               // the holder cleared before his cash-in's result
+std::vector<std::pair<u32, bool>> g_last_result;  // the last match's Superstars, won or not
+
+void AppendStats(const std::vector<std::string> &lines) {
+  const std::filesystem::path file = StatsFile();
+  if (lines.empty() || file.empty())
+    return;
+  std::ofstream f(file, std::ios::app);
+  for (const std::string &l : lines)
+    f << l << '\n';
+}
+
+u32 UniverseDay(const PPCContext &in, u8 *base) {
+  const u32 u = Call(in, base, __imp__sub_82683A30, 0);
+  return u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+}
+
+extern "C" REX_FUNC(sub_826CCA90) {
+  const u32 id = ctx.r4.u32;
+  if (Enabled() && id < 512) {
+    BD_INFO("[univers] Money in the Bank: {} holds the briefcase", id);
+    AppendStats({fmt::format("mitb {} {}", id, UniverseDay(ctx, base))});
+  }
+  __imp__sub_826CCA90(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_826CCAB8) {
+  const u32 u = bd::mem::load<u32>(ctx.r3.u32 + 4);
+  const u32 holder = u ? bd::mem::load<u16>(u + kBriefcaseHolder) : 512;
+  if (Enabled() && holder < 512) {
+    const auto it = std::find_if(g_last_result.begin(), g_last_result.end(),
+                                 [&](const auto &r) { return r.first == holder; });
+    if (it != g_last_result.end()) {
+      AppendStats({fmt::format("cashin {} {} {}", holder, it->second ? 1 : 0,
+                               UniverseDay(ctx, base))});
+      BD_INFO("[univers] Money in the Bank: {} cashed in, {}", holder, it->second ? "won" : "lost");
+    } else {
+      g_cashed_holder = holder;
+      BD_INFO("[univers] Money in the Bank: {} cashes in (result to come)", holder);
+    }
+  }
+  __imp__sub_826CCAB8(ctx, base);
+}
+
 extern "C" REX_FUNC(sub_826CEF28) {
   const PPCContext in = ctx;
   const u32 view = ctx.r3.u32, show = ctx.r4.u32, match = ctx.r6.u32, winner = ctx.r7.u32;
@@ -2773,6 +2829,20 @@ extern "C" REX_FUNC(sub_826CEF28) {
       const u32 winner_id = bd::mem::load<u16>(out), winner_side = bd::mem::load<u8>(out + 3);
       const u32 u = Call(x, base, __imp__sub_82683A30, 0);
       const u32 day = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+      // this match's Superstars (a cash-in is known when the briefcase is cleared)
+      g_last_result.clear();
+      for (u32 p = 0; !rumble && p < places; ++p) {
+        if (!Call(x, base, __imp__sub_826D4958, record, out, p) || bd::mem::load<u16>(out) >= 512)
+          continue;
+        const u32 id = bd::mem::load<u16>(out);
+        const bool won = winner < 6 && bd::mem::load<u8>(out + 3) == winner_side;
+        g_last_result.push_back({id, won});
+        if (id == g_cashed_holder) {  // the briefcase was cleared before this match
+          lines.push_back(fmt::format("cashin {} {} {}", id, won ? 1 : 0, day));
+          BD_INFO("[univers] Money in the Bank: {} cashed in, {}", id, won ? "won" : "lost");
+          g_cashed_holder = 512;
+        }
+      }
       for (u32 p = 0; (rumble || mania) && p < places; ++p) {
         if (!Call(x, base, __imp__sub_826D4958, record, out, p))
           continue;
@@ -2794,32 +2864,7 @@ extern "C" REX_FUNC(sub_826CEF28) {
     }
   }
   __imp__sub_826CEF28(ctx, base);
-  if (!lines.empty()) {
-    const std::filesystem::path file = StatsFile();
-    if (!file.empty()) {
-      std::ofstream f(file, std::ios::app);
-      for (const std::string &l : lines)
-        f << l << '\n';
-    }
-  }
-}
-
-// ---- injuries on / off (as WWE 2K14's storyline options) ---------------------------------------
-//
-// A Superstar is put out of action by sub_826CEA88(view, id, 1): bit 31 of his Universe record's
-// +92 with the week in +96 (sub_826D46E8), and he loses his #1 contender places; 0 brings him back.
-// With wwe12_universe_injuries off, the 1 is refused (bringing back still works).
-
-REXCVAR_DEFINE_BOOL(wwe12_universe_injuries, true, "WWE12",
-                    "Universe: Superstars can be injured (out of action for some weeks).");
-
-REX_EXTERN(__imp__sub_826CEA88);  // Universe: put a Superstar out of action / back (view, id, on)
-extern "C" REX_FUNC(sub_826CEA88) {
-  if (Enabled() && !REXCVAR_GET(wwe12_universe_injuries) && ctx.r5.u32 == 1) {
-    BD_INFO("[univers] injuries off: Superstar {} stays in action", ctx.r4.u32);
-    return;
-  }
-  __imp__sub_826CEA88(ctx, base);
+  AppendStats(lines);
 }
 
 // ---- SAVE on an edited match of the card (as in WWE '13) ---------------------------------------
