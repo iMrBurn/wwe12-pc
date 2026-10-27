@@ -665,3 +665,9 @@ formés. **Test** (lanceur `tools/dev/lancer_test_effectif.bat`, copie dans `Doc
 minimum 8) : SmackDown à 8 catcheurs ; la carte se forme (2 matchs, un match d'aspirant n° 1 et un main event,
 parfois « ??? » = adversaire mystère du jeu), toujours 2 matchs trois semaines plus tard, aucun plantage.
 Le contrat (51411) n'a pas été essayé à part.
+
+Suite du test (2026-10-27) : avec SmackDown à 8, le PPV Royal Rumble passe. **Une émission vide (0 catcheur)
+est refusée** (minimum réglable de 1 à 15) : essayée avec un minimum de 0, le jeu accepte SmackDown sans
+marque (carte vide, X ADVANCE pour la passer), mais **plante au Royal Rumble** en fabriquant la carte du PPV
+(`sub_826F0290`, appel de `sub_826F0228`, écriture hors limites). D'où l'abandon de « un seul show majeur »
+(décision de l'utilisateur) : il faudrait réécrire le booking des PPV.
