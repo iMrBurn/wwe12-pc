@@ -14,21 +14,22 @@ Liste écrite par l'utilisateur (iMrBurn), rangée par la conversation Main. Les
 - Touches de clavier à la place des boutons Xbox ou Sony dans les menus ?
 - Ajouter les moments OMG de WWE '13
 - Enlever les restrictions du Match Creator
-- Passer de 50 slots CAW à 100/200
-- Passer de 20 logos custom à 100/200
 - Ajouter d'autres résolutions (360p, 480p, etc.)
 - Widescreen (16:10)
 - Optimiser encore plus le jeu
 
 **Gros chantier important**
-- Le jeu en full natif, sans aucune émulation
 - Avoir DX11
+
+(Décision du 2026-10-27 : le jeu en full natif et les slots CAW / logos 100/200 passent en 1.1.)
 
 ## Roadmap 1.1 (texte de l'utilisateur)
 
 **Stipulations à ajouter** : I Quit ; Special Guest Referee
 
-**Modifs de jeu** : plus de 6 superstars en même temps sur le ring
+**Modifs de jeu** : plus de 6 superstars en même temps sur le ring ; passer de 50 slots CAW à 100/200 ; passer de 20 logos custom à 100/200
+
+**Gros chantier** : le jeu en full natif, sans aucune émulation
 
 **Mode Univers**
 - Backport des cutscenes de WWE '13 et 2K14

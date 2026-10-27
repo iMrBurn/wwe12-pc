@@ -12,10 +12,18 @@
 // busy time. The guest logic is unchanged.
 
 #include <thread>
+#if defined(WWE12_DEV_PROBES)
+#include <chrono>
+#endif
 
 #include <rex/cvar.h>
 
 #include "svr_hook.h"
+
+#if defined(WWE12_DEV_PROBES)
+void Wwe12SyncProbeGpuWait(u64 ns);  // wwe12_syncprobe.cpp
+void Wwe12SyncProbeWaitTurn();
+#endif
 
 REXCVAR_DEFINE_BOOL(wwe12_gpu_wait_yield, true, "WWE12",
                     "While the game waits for the GPU to read its commands, give the CPU to other "
@@ -29,12 +37,22 @@ thread_local unsigned t_wait_turns = 0;
 REX_EXTERN(__imp__sub_82AAAAF8);
 extern "C" REX_FUNC(sub_82AAAAF8) {
   t_wait_turns = 0;
+#if defined(WWE12_DEV_PROBES)
+  const auto t0 = std::chrono::steady_clock::now();
   __imp__sub_82AAAAF8(ctx, base);
+  Wwe12SyncProbeGpuWait(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() - t0).count());
+#else
+  __imp__sub_82AAAAF8(ctx, base);
+#endif
 }
 
 REX_EXTERN(__imp__sub_82AA7040);
 extern "C" REX_FUNC(sub_82AA7040) {
   if (REXCVAR_GET(wwe12_gpu_wait_yield) && ++t_wait_turns > kSpinTurns)
     std::this_thread::yield();
+#if defined(WWE12_DEV_PROBES)
+  Wwe12SyncProbeWaitTurn();
+#endif
   __imp__sub_82AA7040(ctx, base);
 }
