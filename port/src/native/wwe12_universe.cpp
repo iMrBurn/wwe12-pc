@@ -1818,8 +1818,9 @@ namespace {
 constexpr u32 kPanelShown = 288, kRankingsPanel = 264;
 constexpr u32 kTitleRowName[4] = {842, 854, 866, 881}, kTitleRowRed[4] = {843, 855, 867, 882};
 constexpr u32 kHeaderName = 830;
-// The pages' top, as WWE 2K14's: LB / RB (U+E00D / U+E00E) and the page's name.
-constexpr const char *kPageKeys = "\xEE\x80\x8D \xEE\x80\x8E   ";
+// The pages' top, as WWE 2K14's: LB / RB (U+E00B / U+E00E; U+E00D is the left stick) and the
+// page's name.
+constexpr const char *kPageKeys = "\xEE\x80\x8B \xEE\x80\x8E   ";
 constexpr u32 kLB = 0x100, kRB = 0x200;
 
 struct SuperstarPages {
@@ -2102,6 +2103,58 @@ u32 TableText(u32 slot, const std::string &text) {  // guest strings of ours, 64
   return at;
 }
 
+// The table's own layout, as WWE 2K14's: the champion's banner (907-912, its copy 916-921) hidden,
+// the Superstar's name on top (897) with LB / RB and the page's name under it (898), the 12 rows
+// bigger and spread over the banner's place: stripes 996 + k / 1008 + k, labels 1020 + k, values in
+// the rank's column 1032 + k (white; the last-week column 1044 + k is grey and hidden), arrows 900 /
+// 901. Element: +4 x, +8 y, +12 / +16 scale, +180 hidden. The game's values are kept and put back
+// when the table closes (the RANKINGS' own page uses the same layout).
+struct Placed {
+  u32 e;
+  float x, y, sx, sy;
+  u32 hidden;
+};
+std::vector<Placed> g_table_placed;
+u32 g_table_array = 0;
+
+constexpr float kStripe0 = 92, kStripeStep = 17;
+
+void Place(u32 array, u32 e, float x, float y, float scale, bool hidden) {
+  const u32 at = array + e * 240;
+  if (g_table_array != array) {
+    g_table_placed.clear();
+    g_table_array = array;
+  }
+  if (std::none_of(g_table_placed.begin(), g_table_placed.end(),
+                   [&](const Placed &p) { return p.e == e; }))
+    g_table_placed.push_back({e, bd::mem::load<float>(at + 4), bd::mem::load<float>(at + 8),
+                              bd::mem::load<float>(at + 12), bd::mem::load<float>(at + 16),
+                              bd::mem::load<u32>(at + 180)});
+  const Placed &old = *std::find_if(g_table_placed.begin(), g_table_placed.end(),
+                                    [&](const Placed &p) { return p.e == e; });
+  bd::mem::store<float>(at + 4, x < 0 ? old.x : x);
+  bd::mem::store<float>(at + 8, y < 0 ? old.y : y);
+  bd::mem::store<float>(at + 12, scale < 0 ? old.sx : scale);
+  bd::mem::store<float>(at + 16, scale < 0 ? old.sy : scale);
+  bd::mem::store<u32>(at + 180, hidden);
+}
+
+void RestoreTableLayout(u32 r) {
+  const u32 layout = r ? bd::mem::load<u32>(r + 296) : 0;
+  const u32 array = layout ? bd::mem::load<u32>(layout + 8) : 0;
+  if (array && array == g_table_array)
+    for (const Placed &p : g_table_placed) {
+      const u32 at = array + p.e * 240;
+      bd::mem::store<float>(at + 4, p.x);
+      bd::mem::store<float>(at + 8, p.y);
+      bd::mem::store<float>(at + 12, p.sx);
+      bd::mem::store<float>(at + 16, p.sy);
+      bd::mem::store<u32>(at + 180, p.hidden);
+    }
+  g_table_placed.clear();
+  g_table_array = 0;
+}
+
 // Our rows on the list page, every frame.
 void ApplyTable(u32 r) {
   const u32 layout = r ? bd::mem::load<u32>(r + 296) : 0;
@@ -2113,30 +2166,34 @@ void ApplyTable(u32 r) {
     bd::mem::store<u32>(element(e) + 200, t);
     bd::mem::store<u32>(element(e) + 228, bd::mem::load<u32>(element(e) + 228) & ~0x10u);
   };
-  const auto hide = [&](u32 e, bool hidden) { bd::mem::store<u32>(element(e) + 180, hidden); };
-  text(897, TableText(3 * kTableRows, std::string(kPageKeys) + Words().page));
-  text(898, TableText(3 * kTableRows + 1, ""));
+  text(897, TableText(3 * kTableRows, g_pages.name));
+  text(898, TableText(3 * kTableRows + 1, std::string(kPageKeys) + Words().page));
   text(899, TableText(3 * kTableRows + 2, ""));
-  text(911, TableText(3 * kTableRows + 3, ""));
-  text(912, TableText(3 * kTableRows + 4, g_pages.name));
-  for (u32 e : {913u, 914u, 915u})
-    hide(e, true);
+  Place(array, 898, 96, 55, 0.7f, false);
+  for (u32 e = 907; e <= 921; ++e)  // the champion's banner and its copy
+    Place(array, e, -1, -1, -1, true);
+  const float last = kStripe0 + kStripeStep * (kTableRows - 1);
+  Place(array, 900, -1, kStripe0 - 10, -1, false);
+  Place(array, 901, -1, last - 10, -1, false);
   for (u32 k = 0; k < kTableRows; ++k) {
     const size_t i = (g_pages.table_page - 1) * kTableRows + k;
     const bool shown = i < g_pages.table.size();
-    for (u32 e : {kRowLabel + k, kRowHeld + k, kRowTotal + k})
-      hide(e, !shown);
+    const float y = kStripe0 + kStripeStep * k;
+    Place(array, 996 + k, -1, y, -1, false);
+    Place(array, 1008 + k, -1, y, -1, false);
+    Place(array, kRowLabel + k, -1, y - 18, 0.8f, !shown);
+    Place(array, kRowHeld + k, 392, y - 11, 0.85f, !shown);  // the values, white
+    Place(array, kRowTotal + k, -1, -1, -1, true);
     if (!shown)
       continue;
     const auto &row = g_pages.table[i];
     text(kRowLabel + k, TableText(k * 3, row.label));
-    text(kRowHeld + k, TableText(k * 3 + 1, ""));  // the rank's column: unused
-    text(kRowTotal + k, TableText(k * 3 + 2, row.value));
+    text(kRowHeld + k, TableText(k * 3 + 1, row.value));
     const float red[4] = {0.8039f, 0.0784f, 0.0784f, 1.0f}, white[4] = {1, 1, 1, 1};
     for (u32 c = 0; c < 4; ++c)
       bd::mem::store<float>(element(kRowLabel + k) + 184 + c * 4, row.section ? red[c] : white[c]);
-    for (u32 c = 0; c < 4; ++c)  // the values white too (the game's last-week column is grey)
-      bd::mem::store<float>(element(kRowTotal + k) + 184 + c * 4, row.section ? red[c] : white[c]);
+    for (u32 c = 0; c < 4; ++c)
+      bd::mem::store<float>(element(kRowHeld + k) + 184 + c * 4, row.section ? red[c] : white[c]);
   }
 }
 
@@ -2155,6 +2212,7 @@ void OpenTable(const PPCContext &in, u8 *base, u32 r) {
 }
 
 void CloseTable(const PPCContext &in, u8 *base, u32 r) {
+  RestoreTableLayout(r);
   if (bd::mem::load<u32>(r + 2360) == 1)
     Call(in, base, __imp__sub_82552D40, r + 28);
 }
