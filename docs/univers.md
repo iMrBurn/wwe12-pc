@@ -680,8 +680,8 @@ marque (carte vide, X ADVANCE pour la passer), mais **plante au Royal Rumble** e
   `sub_826D18E8` équipes, 0x826D1AE0) et par un filtre du booking (`sub_826E1380`, vtable 0x8203E3B4 slot 1,
   titre à +8, retour 0x826E13A8), mais aussi par TITLE MANAGEMENT, MATCH CREATOR et le match (non touchés).
   Le genre d'un titre = sa place dans les 4 titres de son émission (`sub_826CC180(émission, out[4])`,
-  émission k = `sub_826CCB88(vue, k)`, vue de 428 octets `sub_826CDC48` / `sub_826CE098`). **Codé le
-  2026-10-27, pas encore testé en jeu** : dernière ligne de la boîte des tenues (Y sur la fiche) →
+  émission k = `sub_826CCB88(vue, k)`, vue de 428 octets `sub_826CDC48` / `sub_826CE098`). **Codé et testé le
+  2026-10-27** (copie de la sauvegarde : MINOR = OFF pour un catcheur → il disparaît du classement US, reste au WWE) : dernière ligne de la boîte des tenues (Y sur la fiche) →
   « CONTENDER SETTINGS... » → MAJOR / MINOR / MORE..., TAG / DIVA, chaque ligne ON/OFF (textes du jeu 27606-27609,
   27613/27614 ; question = notre texte 27048) ; fichier `universe_contenders.txt` (« id masque »).
 - **Options scénaristiques** (rivalités auto, tag teams, foule, blessures) : WWE '12 n'a aucune option de ce

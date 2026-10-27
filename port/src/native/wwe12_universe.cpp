@@ -131,6 +131,8 @@ constexpr u32 kDefaultPromptText = 45087;
 // After a reset saved to disk at once (the last of our texts: 27026-27040 are unused in WWE '12).
 constexpr u32 kResetSavedText = 27040;
 constexpr u32 kLastText = kResetSavedText;
+// The contender settings' question (27048: unused in WWE '12, FEUD MANAGER in WWE '13).
+constexpr u32 kContenderText = 27048;
 enum Choice : u32 { kEditSuperstars, kEditTitles, kResetUniverse };
 
 constexpr u32 kUniverseTitles = 0x83226508;   // 23 titles x {holder, partner}, u16
@@ -275,6 +277,19 @@ const char *Text(u32 id) {
     return g_attire_question.c_str();
   if (id == kAttirePromptText && !g_attire_prompt.empty())
     return g_attire_prompt.c_str();
+  if (id == kContenderText) {
+    static const char *const kContender[5] = {
+        "CONTENDER SETTINGS\nThe titles this Superstar may be ranked for (A changes a line).",
+        "R\xC3\x89GLAGES D'ASPIRANT\nLes titres pour lesquels ce Superstar peut \xC3\xAAtre "
+        "class\xC3\xA9 (A change une ligne).",
+        "HERAUSFORDERER\nDie Titel, f\xC3\xBCr die dieser Superstar gewertet werden kann (A "
+        "\xC3\xA4ndert eine Zeile).",
+        "AJUSTES DE ASPIRANTE\nLos t\xC3\xADtulos por los que este Superstar puede clasificarse "
+        "(A cambia una l\xC3\xADnea).",
+        "IMPOSTAZIONI SFIDANTE\nI titoli per cui questa Superstar pu\xC3\xB2 essere in classifica "
+        "(A cambia una riga)."};
+    return kContender[CurrentLang()];
+  }
   size_t row;
   if (id == kEditSuperstarText)
     row = 0;
@@ -289,7 +304,7 @@ const char *Text(u32 id) {
 // slot per text, rewritten when the language changes.
 u32 GuestText(u32 id) {
   constexpr u32 kSlot = 512;
-  constexpr u32 kSlots = 1 + kLastText - kAskText + 1;
+  constexpr u32 kSlots = 1 + kLastText - kAskText + 1 + 1;  // + the contender question
   const char *text = Text(id);
   if (!text)
     return 0;
@@ -299,7 +314,9 @@ u32 GuestText(u32 id) {
     s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(kSlots * kSlot, 0x20);
   if (!s_block)
     return 0;
-  const u32 slot = id == kEditSuperstarText ? 0 : id - kAskText + 1;
+  const u32 slot = id == kEditSuperstarText ? 0
+                   : id == kContenderText   ? kSlots - 1
+                                            : id - kAskText + 1;
   const u32 at = s_block + slot * kSlot;
   if (s_for[slot] != text || id == kAttireText || id == kAttirePromptText) {
     std::memset(bd::mem::at<char>(at), 0, kSlot);
@@ -713,7 +730,8 @@ extern "C" REX_FUNC(sub_821A4400) {
     ctx.r4.u64 = kGameSaveText;
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
-  if (Enabled() && (id == kEditSuperstarText || (id >= kAskText && id <= kLastText))) {
+  if (Enabled() && (id == kEditSuperstarText || id == kContenderText ||
+                    (id >= kAskText && id <= kLastText))) {
     if (const u32 text = GuestText(id))
       ctx.r3.u64 = text;
   } else if (const u32 text = Wwe12NativeGraphicsGuestText(id)) {
@@ -993,6 +1011,186 @@ void ShowAttirePage(const PPCContext &in, u8 *base, size_t first) {
   Call(in, base, __imp__sub_8260DD80, 0, kAttireText, s_choices, g_box_lines, 1, 0);  // 1: B cancels
 }
 
+// ---- contender settings (as WWE 2K14's "contender settings") ----------------------------------
+//
+// Per Superstar, the kinds of title he may be ranked for: a show's titles are, in order, its MAJOR,
+// MINOR, TAG and DIVA (sub_826CC180(show) gives the four, as the RANKINGS screen reads them). A
+// Superstar kept out of a kind is never ranked for those titles, so never #1 contender, so never in
+// their matches: the game's "may he contend for this title" (sub_82A39EF8(id, title, 1), which only
+// looks at men / women) answers no, but only when asked by the Universe's rankings (sub_826CFDA8
+// singles, sub_826D18E8 tag teams) and booking filter (sub_826E1380), known by their return
+// addresses; TITLE MANAGEMENT, MATCH CREATOR and matches still ask the game. Chosen from the
+// attire box (Y on a Superstar's page, its last line), kept in universe_contenders.txt next to
+// universe_attires.txt ("id mask", bit k = kind k kept out), not in the save.
+
+REX_EXTERN(__imp__sub_82A39EF8);  // may this Superstar contend for this title (id, title, 1)
+REX_EXTERN(__imp__sub_826CDC48);  // Universe view: open (428 bytes)
+REX_EXTERN(__imp__sub_826CE098);  // Universe view: close
+REX_EXTERN(__imp__sub_826CCB88);  // Universe view: show k
+REX_EXTERN(__imp__sub_826CC180);  // show: its four titles (show, out[4], 23 = none)
+
+constexpr Attire kContender{-3, -1};  // the attire box's "CONTENDERS..." line
+constexpr u32 kKinds = 4;             // MAJOR, MINOR, TAG, DIVA
+constexpr u32 kKindText = 27606;      // the game's MAJOR, MINOR, TAG, DIVA
+constexpr u32 kOnText = 27613, kOffText = 27614;
+constexpr u32 kContenderReturns[] = {0x826CFF0C, 0x826D1AE0, 0x826E13A8};
+
+std::map<u32, u32> g_contenders;  // Superstar id -> kinds kept out (bits)
+bool g_contenders_loaded = false;
+bool g_contender_box = false;     // the box shows the contender settings
+u32 g_contender_page = 0;         // 0: MAJOR, MINOR, MORE...; 1: TAG, DIVA
+
+std::filesystem::path ContendersFile() {
+  const std::filesystem::path attires = AttiresFile();
+  return attires.empty() ? attires : attires.parent_path() / "universe_contenders.txt";
+}
+
+void LoadContenders() {
+  if (g_contenders_loaded)
+    return;
+  g_contenders_loaded = true;
+  std::ifstream f(ContendersFile());
+  std::string line;
+  while (std::getline(f, line)) {
+    u32 id, mask;
+    if (std::sscanf(line.c_str(), "%u %u", &id, &mask) == 2 && mask)
+      g_contenders[id] = mask & 0xF;
+  }
+}
+
+void SaveContenders() {
+  const std::filesystem::path file = ContendersFile();
+  if (file.empty())
+    return;
+  std::ofstream f(file);
+  f << "# Universe contender settings (Y on a Superstar's page): Superstar id, then the kinds of "
+       "title he is kept out of (1 major, 2 minor, 4 tag, 8 diva, added up).\n";
+  for (const auto &[id, mask] : g_contenders)
+    f << id << ' ' << mask << '\n';
+}
+
+// The kind of a title (0-3), from the show that has it; -1 if no show has it. Kept a second.
+int TitleKind(const PPCContext &in, u8 *base, u32 title) {
+  static int s_kind[24];
+  static long long s_until = 0;
+  const long long now = GetTickCount64();
+  if (now >= s_until) {
+    std::fill(std::begin(s_kind), std::end(s_kind), -1);
+    PPCContext x = in;
+    x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;  // our view and table below the caller's stack
+    const u32 view = x.r1.u32 + 0x800, titles = view + 0x200;
+    Call(x, base, __imp__sub_826CDC48, view);
+    for (u32 k = 0; k < 13; ++k) {
+      const u32 show = Call(x, base, __imp__sub_826CCB88, view, k);
+      if (!show || !bd::mem::load<u32>(show))
+        continue;
+      for (u32 i = 0; i < kKinds; ++i)
+        bd::mem::store<u32>(titles + i * 4, 23);
+      Call(x, base, __imp__sub_826CC180, show, titles);
+      for (u32 i = 0; i < kKinds; ++i) {
+        const u32 t = bd::mem::load<u32>(titles + i * 4);
+        if (t < 23 && s_kind[t] < 0)
+          s_kind[t] = int(i);
+      }
+    }
+    Call(x, base, __imp__sub_826CE098, view);
+    s_until = now + 1000;
+  }
+  return title < 23 ? s_kind[title] : -1;
+}
+
+// The attire box's last line, as a guest string.
+u32 ContenderLine() {
+  static const char *const kLine[5] = {"CONTENDER SETTINGS...", "R\xC3\x89GLAGES D'ASPIRANT...",
+                                       "HERAUSFORDERER...", "AJUSTES DE ASPIRANTE...",
+                                       "IMPOSTAZIONI SFIDANTE..."};
+  static u32 s_at = 0;
+  if (!s_at)
+    s_at = REX_KERNEL_MEMORY()->SystemHeapAlloc(64, 0x10);
+  if (s_at) {
+    std::memset(bd::mem::at<char>(s_at), 0, 64);
+    std::strncpy(bd::mem::at<char>(s_at), kLine[CurrentLang()], 63);
+  }
+  return s_at;
+}
+
+void ShowContenderPage(const PPCContext &in, u8 *base, u32 page) {
+  g_contender_box = true;
+  g_contender_page = page;
+  LoadContenders();
+  const u32 mask = g_contenders.count(g_attire_id) ? g_contenders[g_attire_id] : 0;
+  static u32 s_lines = 0, s_choices = 0;
+  if (!s_lines)
+    s_lines = REX_KERNEL_MEMORY()->SystemHeapAlloc(kKinds * 64, 0x10);
+  if (!s_choices)
+    s_choices = REX_KERNEL_MEMORY()->SystemHeapAlloc(4 * 4, 0x10);
+  if (!s_lines || !s_choices)
+    return;
+  const auto text = [&](u32 id) {
+    const u32 t = GameText(in, base, id);
+    const char *s = t ? bd::mem::try_at<const char>(t) : nullptr;
+    return std::string(s ? s : "");
+  };
+  u32 n = 0;
+  for (u32 k = page * 2; k < page * 2 + 2; ++k) {
+    const std::string line =
+        text(kKindText + k) + "   " + text((mask >> k) & 1 ? kOffText : kOnText);
+    const u32 at = s_lines + k * 64;
+    std::memset(bd::mem::at<char>(at), 0, 64);
+    std::memcpy(bd::mem::at<char>(at), line.data(), std::min<size_t>(line.size(), 63));
+    bd::mem::store<u32>(s_choices + n++ * 4, at);
+  }
+  if (page == 0)
+    bd::mem::store<u32>(s_choices + n++ * 4, GuestText(kAttireMoreText));
+  g_box_lines = n;
+  g_menu_frames = 0;
+  g_saved_ok = false;
+  Call(in, base, __imp__sub_8260DD80, 0, kContenderText, s_choices, n, 1, 0);  // 1: B cancels
+}
+
+void ContenderChosen(const PPCContext &in, u8 *base, u32 answer) {
+  if (answer >= g_box_lines) {
+    g_contender_box = false;
+    g_step = Step::kIdle;
+    return;
+  }
+  if (g_contender_page == 0 && answer == 2) {
+    ShowContenderPage(in, base, 1);
+    return;
+  }
+  const u32 kind = g_contender_page * 2 + answer;
+  LoadContenders();
+  u32 &mask = g_contenders[g_attire_id];
+  mask ^= 1u << kind;
+  if (!mask)
+    g_contenders.erase(g_attire_id);
+  SaveContenders();
+  BD_INFO("[univers] contenders: Superstar {} kept out of kinds 0x{:X}", g_attire_id,
+          g_contenders.count(g_attire_id) ? g_contenders[g_attire_id] : 0);
+  ShowContenderPage(in, base, g_contender_page);  // the line shows its new value
+}
+
+}  // namespace
+
+extern "C" REX_FUNC(sub_82A39EF8) {
+  const u32 from = u32(ctx.lr), id = ctx.r3.u32, title = ctx.r4.u32;
+  const PPCContext in = ctx;
+  __imp__sub_82A39EF8(ctx, base);
+  if (!ctx.r3.u32 || !Enabled() ||
+      std::find(std::begin(kContenderReturns), std::end(kContenderReturns), from) ==
+          std::end(kContenderReturns))
+    return;
+  LoadContenders();
+  const auto it = g_contenders.find(id);
+  if (it == g_contenders.end())
+    return;
+  const int kind = TitleKind(in, base, title);
+  if (kind >= 0 && (it->second >> kind) & 1)
+    ctx.r3.u64 = 0;  // kept out of this kind of title
+}
+
+namespace {
+
 // After the box closed with an answer.
 void AttireChosen(const PPCContext &in, u8 *base, u32 answer) {
   if (answer >= g_attire_page.size()) {
@@ -1000,6 +1198,10 @@ void AttireChosen(const PPCContext &in, u8 *base, u32 answer) {
     return;
   }
   const Attire choice = g_attire_page[answer].first;
+  if (choice == kContender) {
+    ShowContenderPage(in, base, 0);  // g_step stays kAttire
+    return;
+  }
   if (choice == kMore) {
     ShowAttirePage(in, base, g_attire_first + 2);  // g_step stays kAttire
     return;
@@ -1149,12 +1351,10 @@ extern "C" REX_FUNC(sub_824D1AF0) {
     g_attire_options = SuperstarAttires(ctx, base, id);
     g_screen = screen;
     BD_INFO("[univers] attire box: Superstar {}, {} attire(s)", id, g_attire_options.size());
-    if (g_attire_options.size() < 2) {
-      g_step = Step::kHint;  // an information box, closed by the per-frame driver
-      Call(ctx, base, __imp__sub_8254E680, kAttireOnlyText);
-      return;
-    }
-    g_attire_options.push_back({kRandom, GameText(ctx, base, kRandomText)});
+    if (g_attire_options.size() >= 2)
+      g_attire_options.push_back({kRandom, GameText(ctx, base, kRandomText)});
+    g_attire_options.push_back({kContender, ContenderLine()});
+    g_contender_box = false;
     g_step = Step::kAttire;
     ShowAttirePage(ctx, base, 0);
     return;
@@ -1596,6 +1796,24 @@ extern "C" REX_FUNC(sub_82583B78) {
   Call(in, base, __imp__sub_82550538, s - 28);
 }
 
+// ---- injuries on / off (as WWE 2K14's storyline options) ---------------------------------------
+//
+// A Superstar is put out of action by sub_826CEA88(view, id, 1): bit 31 of his Universe record's
+// +92 with the week in +96 (sub_826D46E8), and he loses his #1 contender places; 0 brings him back.
+// With wwe12_universe_injuries off, the 1 is refused (bringing back still works).
+
+REXCVAR_DEFINE_BOOL(wwe12_universe_injuries, true, "WWE12",
+                    "Universe: Superstars can be injured (out of action for some weeks).");
+
+REX_EXTERN(__imp__sub_826CEA88);  // Universe: put a Superstar out of action / back (view, id, on)
+extern "C" REX_FUNC(sub_826CEA88) {
+  if (Enabled() && !REXCVAR_GET(wwe12_universe_injuries) && ctx.r5.u32 == 1) {
+    BD_INFO("[univers] injuries off: Superstar {} stays in action", ctx.r4.u32);
+    return;
+  }
+  __imp__sub_826CEA88(ctx, base);
+}
+
 // ---- SAVE on an edited match of the card (as in WWE '13) ---------------------------------------
 //
 // EDIT on a card match (the card screen's state machine, sub_8254A778 state 2 = sub_82548F80)
@@ -1822,7 +2040,10 @@ extern "C" REX_FUNC(sub_824D3458) {
       case Step::kAttire:
         RestoreChoiceElements();
         BD_INFO("[univers] attire box: answer {}", answer);
-        AttireChosen(ctx, base, answer);
+        if (g_contender_box)
+          ContenderChosen(ctx, base, answer);
+        else
+          AttireChosen(ctx, base, answer);
         break;
       case Step::kMenu:
         RestoreChoiceElements();
