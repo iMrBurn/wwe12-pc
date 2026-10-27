@@ -138,8 +138,11 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   les `Entrance00-08.pac` de WWE '13 (xcompressés) **se lisent avec notre `XcompressDecode`** ; WWE '12 a 247
   entrées (`Nyujyo0-9,A`), WWE '13 305 (sans les variantes 10000+), 207 en commun, **98 entrées de WWE '13 sur des
   numéros libres dans WWE '12** (104, 114, 124, 145, 147, 152, 166, 177, 212, 238, 245 Cactus Jack, 246 Mankind,
-  247, 271, 294-297, 302-321 Attitude Era, 344-358, 423-427, 450-455, 530, 531, 550, 564-579…). Prochaine étape :
-  comparer une entrée commune (EVP + EVZ) octet par octet entre les deux jeux, puis en essayer une en jeu.
+  247, 271, 294-297, 302-321 Attitude Era, 344-358, 423-427, 450-455, 530, 531, 550, 564-579…). **Entrées communes
+  comparées** (`evtcmp`) : Cena 139, EVP « 0FOP » 89 908 o (WWE '12) / 85 304 o (WWE '13), **93 % des octets
+  identiques** ; EVZ = PACH de 20 / 19 pistes ; Orton 161 : EVP 93 % identiques, EVZ 17 / 18 pistes. Même format
+  confirmé. Prochaine étape : mettre une entrée de WWE '13 sur un numéro libre (ex. Mankind 246) dans une copie de
+  `Nyujyo*.pac` servie par l'overlay, la fiche PRO du catcheur pointant dessus, et la regarder en jeu.
 - **Écrans VS** (demandés le 2026-10-27) : les outils de Kaiko sur le bureau ne font que le fond
   (`arena_port.py` VS_BACKGROUND). `VS_STYLES.md` / `vs_port.py` **ne sont pas dans son dépôt public**
   (KaikoClanworth1/wwe-svr2011-pc, arbre complet lu le 2026-10-27 avec l'accord de l'utilisateur). Sa méthode est dans
