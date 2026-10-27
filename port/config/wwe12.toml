@@ -80,7 +80,7 @@ wwe12_universe_qualifiers = false
 
 # Extended Match Creator: unlocks a few rules a match type keeps fixed (time limit everywhere, KO and
 # Last Man Standing in Cage/Hell in a Cell, Over the Top Rope and Elimination with 3+ Superstars).
-wwe12_mc_unlock = false
+wwe12_mc_unlock = true
 
 # ---------------------------------------------------------------------------------------------
 # Controls

@@ -458,7 +458,7 @@ struct Settings {
   int aniso = 16;
   int title_defenses = 0;    // wwe12_universe_title_defenses, percent 0..100 (0 = the original game)
   bool qualifiers = false;   // wwe12_universe_qualifiers
-  bool mc_unlock = false;    // wwe12_mc_unlock (extended Match Creator)
+  bool mc_unlock = true;     // wwe12_mc_unlock (extended Match Creator), on by default
   int api = 0;  // gpu_backend: 0 automatic ("any"), 1 vulkan, 2 d3d12 (wwe12_d3d12.exe)
   bool crowd = true;
   bool shadows = true;
@@ -496,7 +496,7 @@ void LoadSettings() {
   }
   g_s.title_defenses = std::clamp(g_toml.GetInt("wwe12_universe_title_defenses", 0), 0, 100);
   g_s.qualifiers = g_toml.GetBool("wwe12_universe_qualifiers", false);
-  g_s.mc_unlock = g_toml.GetBool("wwe12_mc_unlock", false);
+  g_s.mc_unlock = g_toml.GetBool("wwe12_mc_unlock", true);
   g_s.crowd = g_toml.GetBool("wwe12_crowd", true);
   g_s.shadows = g_toml.GetBool("wwe12_shadows", true);
   g_s.dof = g_toml.GetBool("wwe12_dof", true);
