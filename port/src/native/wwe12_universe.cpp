@@ -4461,3 +4461,62 @@ extern "C" REX_FUNC(sub_82547EE0) {
     }
   }
 }
+
+// Dev (wwe12_universe_probe): the post-match flow (auto-advance study). sub_823F2E60(this) prepares
+// the next Universe match (sub_826C8638, then sub_826C8520's story cues): who calls it, and the
+// after-match handler sub_823DDBB0.
+REX_EXTERN(__imp__sub_823F2E60);
+extern "C" REX_FUNC(sub_823F2E60) {
+  if (REXCVAR_GET(wwe12_universe_probe)) {
+    BD_INFO("[univers] flow: next match prepared by object {:08X} (vtable {:08X})", ctx.r3.u32,
+            bd::mem::try_load<u32>(ctx.r3.u32));
+    LogChain("flow: next match", ctx);
+  }
+  __imp__sub_823F2E60(ctx, base);
+}
+
+REX_EXTERN(__imp__sub_823DDBB0);
+extern "C" REX_FUNC(sub_823DDBB0) {
+  if (REXCVAR_GET(wwe12_universe_probe)) {
+    BD_INFO("[univers] flow: after the match, object {:08X} (vtable {:08X})", ctx.r3.u32,
+            bd::mem::try_load<u32>(ctx.r3.u32));
+    LogChain("flow: after match", ctx);
+  }
+  __imp__sub_823DDBB0(ctx, base);
+  if (REXCVAR_GET(wwe12_universe_probe))
+    BD_INFO("[univers] flow: after the match returned {}", ctx.r3.u32);
+}
+
+// Dev (wwe12_universe_probe): the mode's state machine (sub_823894C0(owner)): owner+32 = the current
+// state object; when it ends (its +4 = 5) the owner's vtable +56 makes the next one. Logged when it
+// changes: the owner, its vtable, the maker, the old and new states' vtables.
+REX_EXTERN(__imp__sub_823894C0);
+extern "C" REX_FUNC(sub_823894C0) {
+  const u32 owner = ctx.r3.u32;
+  const u32 before = bd::mem::load<u32>(owner + 32);
+  const u32 before_vt = before ? bd::mem::try_load<u32>(before) : 0;
+  __imp__sub_823894C0(ctx, base);
+  if (!REXCVAR_GET(wwe12_universe_probe))
+    return;
+  const u32 after = bd::mem::load<u32>(owner + 32);
+  if (after != before) {
+    const u32 vt = bd::mem::try_load<u32>(owner);
+    BD_INFO("[univers] flow: owner {:08X} (vtable {:08X}, maker {:08X}) state {:08X} (vt {:08X}) -> "
+            "{:08X} (vt {:08X})",
+            owner, vt, vt ? bd::mem::try_load<u32>(vt + 56) : 0, before, before_vt, after,
+            after ? bd::mem::try_load<u32>(after) : 0);
+  }
+}
+
+// Dev (wwe12_universe_probe): the state factory sub_823DCC38(-, id 1..34) (the next step of a
+// mode: id 2x = match steps...), logged with its caller, to see what follows a Universe match.
+REX_EXTERN(__imp__sub_823DCC38);
+extern "C" REX_FUNC(sub_823DCC38) {
+  const u32 id = ctx.r4.u32;
+  if (REXCVAR_GET(wwe12_universe_probe))
+    LogChain(fmt::format("flow: state factory id {}", id).c_str(), ctx);
+  __imp__sub_823DCC38(ctx, base);
+  if (REXCVAR_GET(wwe12_universe_probe))
+    BD_INFO("[univers] flow: state factory id {} made {:08X} (vt {:08X})", id, ctx.r3.u32,
+            ctx.r3.u32 ? bd::mem::try_load<u32>(ctx.r3.u32) : 0);
+}

@@ -898,3 +898,19 @@ Le menu EDIT UNIVERSE et le calendrier profitent aussi des 7 lignes.
 **SAVE d'un match modifié** : le match écrit était « le prochain à jouer » quand le jeu joue la carte dans l'ordre
 (+20 = 1), d'où « modifier le match 3 change le match 1 ». Corrigé : RB EDIT (`sub_82554270(C)`) note le match sous le
 curseur, SAVE l'écrit. Vu : le match 3 change, le match 1 reste.
+
+## 33. Enchaînement automatique après un match : étude (2026-10-27, pas encore de correctif)
+
+Demande de joueurs (Discord) : après un match de l'Univers, le jeu lance tout seul le match suivant de la carte.
+Sondes (`wwe12_universe_probe`, lignes « flow: ») sur 3 matchs joués :
+- Le jeu enchaîne des étapes créées par la fabrique `sub_823DCC38(-, id 1..34)` (table de sauts à 0x823DCC70 +
+  4 × (id − 1)), pilotées par un « propriétaire » (vtable 0x8200A8D0, `sub_823894C0` : +32 l'étape en cours, finie quand
+  son +4 = 5 ; créateur vtable +56 → +40 objet, vtable +4). Après le résultat : ids 17, 18, 28, puis l'après-match
+  (vtable 0x8200D310, `sub_823DDBB0` qui note le match suivant U+5068 via `sub_826BF4C0` / `sub_826BAF28`), puis id 0 = fin.
+- Un nouveau mode démarre alors depuis `sub_822B3420` (gestionnaire de modes : this+8 objet, vtable 0 appelé avec
+  this+12 = mode demandé) → `sub_822B5598` → `sub_82389E20` → id 1, puis 24, 20, 2, 25, 3, 5, 6, 7, 23, 8, 9, 10, 11
+  (11 = préparation du match suivant, vtable 0x8200DF18, `sub_823F2E60` → `sub_826C8638`). L'écran MATCH CARDS ne
+  tourne pas entre les deux (`sub_82547EE0` muet).
+- Reste à trouver qui remplit this+12 (le mode demandé) à la fin de l'après-match : c'est là qu'il faudrait demander
+  le mode « menu Univers » au lieu de « match suivant » quand l'option est active. Piste suivante : sonde sur les
+  écritures de this+12 de `sub_822B3420` (ou sur `sub_822B5598` avec la valeur demandée et la pile).
