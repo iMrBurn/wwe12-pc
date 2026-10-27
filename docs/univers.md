@@ -642,3 +642,26 @@ bouge pas.
 - Noms surlignés par numéro d'élément : page 0, #1..#4 = 948..951 ; pages de liste, lignes 1020..1031
   (chercher par texte trouvait parfois le même nom sur l'écran des titres, caché).
 - Pas pour les titres par équipes (la liste classe des équipes).
+
+## 20. Émissions de moins de 15 catcheurs (2026-10-27, testé en jeu sur une copie)
+
+Réglage `wwe12_universe_min_roster` (wwe12.toml, **15 par défaut = jeu d'origine**, de 1 à 15). Le jeu
+teste « 15 » en dur à trois endroits ; chacun a son crochet :
+
+- `sub_826D3B58(id)` « peut quitter son émission » (transfert vers une autre marque, retour par défaut :
+  textes 51274 / 51275 ; aussi `sub_8258A088`) : effectif `sub_826D0598(émission, 0, 0, 1)` > 15. Le crochet
+  de `sub_826D0598` ajoute 15 − minimum, seulement pour l'appel fait là (adresse de retour 0x826D3C84).
+- `sub_82599DB0`, contrat (texte 51411) : compte les catcheurs de l'émission avec `sub_826CC0B8` sur les 373,
+  il en faut 15. Pendant cet appel (adresse de retour 0x8259A028), jusqu'à 15 − minimum réponses « non »
+  deviennent « oui ».
+- `sub_82583B78`, marques choisies dans EDIT BRAND (texte 51413) : compte les catcheurs (hommes) des marques
+  cochées (S + (marque + 66) × 4 = 1) ; sous 15, S+428 = {0, 51413, 1}. Après un refus, notre propre compte ;
+  s'il atteint le minimum, le refus est défait et on fait la fin « acceptée » du jeu (`sub_826CC0E0` pour les
+  13 émissions, drapeau de fin [S+444] = 1, `sub_82550538(S − 28)`).
+
+Copie automatique de la sauvegarde la première fois qu'un effectif sous 15 passe (« Before a show under 15
+Superstars »). Le jeu prévient lui-même (texte 51303) que sous le minimum les matchs risquent d'être mal
+formés. **Test** (lanceur `tools/dev/lancer_test_effectif.bat`, copie dans `Documents\wwe12_test_effectif`,
+minimum 8) : SmackDown à 8 catcheurs ; la carte se forme (2 matchs, un match d'aspirant n° 1 et un main event,
+parfois « ??? » = adversaire mystère du jeu), toujours 2 matchs trois semaines plus tard, aucun plantage.
+Le contrat (51411) n'a pas été essayé à part.

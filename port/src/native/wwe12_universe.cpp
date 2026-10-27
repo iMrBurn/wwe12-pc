@@ -1478,6 +1478,124 @@ extern "C" REX_FUNC(sub_824D20A0) {
 }
 
 
+// ---- a show's minimum roster (15 in the game) --------------------------------------------------
+//
+// The game wants 15 Superstars per show, tested in three places, each with its own 15:
+// - sub_826D3B58(id) "can leave his show" (a transfer to another brand, or back to the default:
+//   messages 51274 / 51275; also sub_8258A088): his show's roster sub_826D0598(show, 0, 0, 1)
+//   must be > 15;
+// - sub_82599DB0, a contract (message 51411): counts the show's Superstars with
+//   sub_826CC0B8(show, id, ...) over all 373, needs 15;
+// - sub_82583B78, a show's brands chosen in EDIT BRAND (message 51413): counts the Superstars of
+//   the chosen brands (S + (brand + 66) * 4 = 1), needs 15, else S+428 = {0, 51413, 1}.
+// With wwe12_universe_min_roster below 15: in the first two, the count is raised by 15 - minimum
+// (only for the call made there, known by its return address); the third is redone after the
+// game refused: our own count, and if it is enough, the game's own "accepted" end (the 13 shows'
+// brands kept with sub_826CC0E0, the screen's done flag, sub_82550538). A copy of the save is made
+// the first time a roster smaller than the game's minimum is let through.
+
+REXCVAR_DEFINE_INT32(wwe12_universe_min_roster, 15, "WWE12",
+                     "Universe: the fewest Superstars a show may have (the game's own is 15).");
+
+REX_EXTERN(__imp__sub_826D3B58);  // roster: may this Superstar leave his show?
+REX_EXTERN(__imp__sub_826D0598);  // roster: a show's size (show, 0, 0, 1)
+REX_EXTERN(__imp__sub_826CC0B8);  // roster: is this Superstar on the show? (show, id)
+REX_EXTERN(__imp__sub_82583B78);  // EDIT BRAND: the show's brands chosen
+REX_EXTERN(__imp__sub_826D3218);  // Superstar: in the game? (id, 1)
+REX_EXTERN(__imp__sub_82A32DB8);  // Superstar: a woman?
+REX_EXTERN(__imp__sub_82A330D8);  // Superstar: not on a show (1)
+REX_EXTERN(__imp__sub_826D2B50);  // Superstar: his brand
+REX_EXTERN(__imp__sub_826CC0E0);  // show: set a brand (shows, brand, on)
+REX_EXTERN(__imp__sub_82550538);  // EDIT BRAND: done
+
+namespace {
+
+constexpr u32 kGameMinRoster = 15;
+constexpr u32 kLeaveCountReturn = 0x826D3C84;     // sub_826D3B58's call to sub_826D0598
+constexpr u32 kContractCountReturn = 0x8259A028;  // sub_82599DB0's call to sub_826CC0B8
+constexpr u32 kShowRosterText = 51413;
+
+u32 MinRoster() {
+  const int32_t min = REXCVAR_GET(wwe12_universe_min_roster);
+  return u32(std::clamp<int32_t>(min, 1, int32_t(kGameMinRoster)));
+}
+
+bool SmallRosters() { return MinRoster() < kGameMinRoster; }
+
+// The first time a roster under the game's minimum gets through: a copy of the save.
+void SmallRosterBackup() {
+  static bool s_done = false;
+  if (!s_done)
+    s_done = BackupSave("Before a show under 15 Superstars");
+}
+
+u32 g_contract_extra = 0;  // the contract count's remaining raise
+
+}  // namespace
+
+extern "C" REX_FUNC(sub_826D0598) {
+  const u32 from = u32(ctx.lr);
+  __imp__sub_826D0598(ctx, base);
+  if (from == kLeaveCountReturn && SmallRosters()) {
+    const u32 size = ctx.r3.u32;
+    ctx.r3.u64 = size + (kGameMinRoster - MinRoster());
+    static u32 s_logged = 0;
+    if (size <= kGameMinRoster && ctx.r3.u32 > kGameMinRoster) {
+      SmallRosterBackup();
+      if (size != s_logged)  // asked every frame while a Superstar is chosen
+        BD_INFO("[univers] roster: {} on the show, may leave (minimum {})", size, MinRoster());
+      s_logged = size;
+    }
+  }
+}
+
+extern "C" REX_FUNC(sub_826CC0B8) {
+  const u32 from = u32(ctx.lr);
+  __imp__sub_826CC0B8(ctx, base);
+  if (from == kContractCountReturn && ctx.r3.u32 == 0 && g_contract_extra) {
+    --g_contract_extra;  // counted as on the show: the count reaches 15 with minimum - 15 fewer
+    ctx.r3.u64 = 1;
+  }
+}
+
+REX_EXTERN(__imp__sub_82599DB0);
+extern "C" REX_FUNC(sub_82599DB0) {
+  g_contract_extra = SmallRosters() ? kGameMinRoster - MinRoster() : 0;
+  __imp__sub_82599DB0(ctx, base);
+  g_contract_extra = 0;
+}
+
+extern "C" REX_FUNC(sub_82583B78) {
+  const PPCContext in = ctx;
+  const u32 s = ctx.r3.u32;
+  const u32 before[3] = {bd::mem::load<u32>(s + 428), bd::mem::load<u32>(s + 432),
+                         bd::mem::load<u32>(s + 436)};
+  __imp__sub_82583B78(ctx, base);
+  if (!SmallRosters() || before[1] == kShowRosterText || bd::mem::load<u32>(s + 432) != kShowRosterText)
+    return;
+  u32 count = 0;
+  for (u32 id = 0; id < 373; ++id) {
+    if (!Call(in, base, __imp__sub_826D3218, id, 1) || Call(in, base, __imp__sub_82A32DB8, id) ||
+        Call(in, base, __imp__sub_82A330D8, id) == 1)
+      continue;
+    const int32_t brand = int32_t(Call(in, base, __imp__sub_826D2B50, id));
+    if (brand >= 0 && brand < 13 && bd::mem::load<u32>(s + (u32(brand) + 66) * 4) == 1)
+      ++count;
+  }
+  BD_INFO("[univers] roster: show of {} Superstars (minimum {})", count, MinRoster());
+  if (count < MinRoster())
+    return;
+  // Accepted after all: the refusal undone, then what the game does when there are 15.
+  for (u32 k = 0; k < 3; ++k)
+    bd::mem::store<u32>(s + 428 + k * 4, before[k]);
+  SmallRosterBackup();
+  for (u32 k = 0; k < 13; ++k)
+    Call(in, base, __imp__sub_826CC0E0, bd::mem::load<u32>(s + 420), k,
+         bd::mem::load<u32>(s + 264 + k * 4));
+  bd::mem::store<u32>(bd::mem::load<u32>(s + 444), 1);
+  Call(in, base, __imp__sub_82550538, s - 28);
+}
+
 // ---- SAVE on an edited match of the card (as in WWE '13) ---------------------------------------
 //
 // EDIT on a card match (the card screen's state machine, sub_8254A778 state 2 = sub_82548F80)
