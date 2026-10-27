@@ -821,3 +821,32 @@ l'effacement, si le détenteur y était, « cashin <id> <gagné> <jour> », sino
 « mitb <id> <jour> » à la pose. Testé : Mark Henry gagne la mallette (WINS 1) puis encaisse et gagne le titre ;
 la première version (drapeau +5020 de l'objet 0x83231548) ne voyait pas ce cash-in, corrigé ensuite.
 L'option qui coupait les blessures a été retirée (choix de l'utilisateur).
+
+## 29. Façon 2K14 : stats générales, calendrier, matchs par show, menu EDIT UNIVERSE (2026-10-27)
+
+Testé seul sur la copie, à la télécommande.
+
+- **Statistiques générales** : Y sur l'écran d'accueil de RANKINGS ; même tableau que la fiche (page d'un classement),
+  LB/RB = TITLES (plus de règnes, plus de semaines par titre), CHAMPIONS (champion + 5 anciens, semaines), MONEY IN
+  THE BANK (détenteur U + 51004, taux après cash-in, anciens vainqueurs et résultat), ROYAL RUMBLE (vainqueurs et leur
+  match de WrestleMania suivant) ; haut/bas = pages, B = retour (R+56 remis). Vu en jeu : OK. La barre du bas montre
+  encore « X EDIT » du jeu (X ne fait rien ici).
+- **Menu EDIT UNIVERSE** : boîte à choix du jeu en pages de 2 lignes + MORE... (`Choose`, texte 27051 pour la question,
+  toujours sur 2 lignes sinon la boîte la pose sur la 1re option) : EDIT SUPERSTARS, EDIT TITLES, EDIT CALENDAR,
+  MATCHES PER SHOW, RESET UNIVERSE.
+- **Calendrier** (étude : table des jours U + 0xDE00, 7 octets, lundi d'abord, 0 RAW / 1 SmackDown / 2 Superstars /
+  0xFF ; le dimanche n'y est jamais lu ; table des PPV U + 0xDDD0, 12 mois × 4 semaines, PPV 10-22 ; fiches de show
+  U + 27360 + k × 984, +832 nom, +929/+930 marques RAW/SmackDown ; seuls les shows 0-2 ont un booker, `sub_826EB218`) :
+  déplacer / retirer un show de la semaine (lundi-samedi), déplacer (mois + semaine, échange avec le PPV déjà là) /
+  retirer un PPV, choisir son organisateur. Vu en jeu : SmackDown mis au mardi passe bien juste après RAW.
+  **Défaut** : l'écran SCHEDULE ne dessine pas le logo d'un show dans un jour qui n'était pas le sien (case du mardi
+  vide ; le vendredi est bien vidé) ; à chercher dans `sub_8255C408` / `sub_8255BFD8`. Ligne de journal « calendar:
+  weekdays … | PPVs by month … » à chaque ouverture du menu Univers. Retirer RAW/SmackDown et l'organisateur d'un
+  PPV : pas encore essayés en jeu.
+- **Matchs par show** (étude : chaque type de show a une classe de booker, son slot virtuel 3 = nombre de matchs :
+  RAW/SmackDown `sub_826F19E0` 4, Superstars `sub_82E05C90` 3 (fonction partagée, reconnue par la vtable 0x8203EB30),
+  PPV `sub_826F1EF8` 6) : notre réglage (`universe_shows.txt`, « matches <0/1/2/10> <n> ») le remplace. **Plantage vu**
+  avec RAW à 6 : 4 modèles de match seulement (`sub_826DC6E8(table, groupe, i)`, table +4 groupes, groupe à table + 8 +
+  g × 508, +2 = modèles), la case sans modèle était lue par une règle de la carte. Corrigé : pour l'appel du booker
+  (retour 0x826F1690), le dernier match prend le dernier modèle (main event / titre) et les autres tournent sur les
+  modèles normaux. Vu en jeu : RAW à 6 = MATCH #1 à #5 + MAIN EVENT, pas de plantage. PPV : 6 au plus.

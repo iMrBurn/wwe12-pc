@@ -160,6 +160,9 @@ Lang CurrentLang() {
 
 // The attire box's question, written when the box opens (the current choice in it).
 std::string g_attire_question;
+// Our paged choice boxes' question (27051: empty in WWE '12) and information messages.
+constexpr u32 kChooseText = 27051;
+std::string g_choose_question;
 // The Superstar page's last button bar label ("DEFAULT   Y ATTIRE"), written when the page shows.
 std::string g_attire_prompt;
 
@@ -284,6 +287,8 @@ const char *Text(u32 id) {
     return g_attire_prompt.c_str();
   if (id == kStatsText)
     return g_stats_text.c_str();
+  if (id == kChooseText)
+    return g_choose_question.c_str();
   if (id == kContenderText) {
     static const char *const kContender[5] = {
         "CONTENDER SETTINGS\nThe titles this Superstar may be ranked for (A changes a line).",
@@ -311,7 +316,7 @@ const char *Text(u32 id) {
 // slot per text, rewritten when the language changes.
 u32 GuestText(u32 id) {
   constexpr u32 kSlot = 512;
-  constexpr u32 kSlots = 1 + kLastText - kAskText + 1 + 2;  // + contender question, statistics
+  constexpr u32 kSlots = 1 + kLastText - kAskText + 1 + 3;  // + contender, statistics, chooser
   const char *text = Text(id);
   if (!text)
     return 0;
@@ -322,11 +327,13 @@ u32 GuestText(u32 id) {
   if (!s_block)
     return 0;
   const u32 slot = id == kEditSuperstarText ? 0
-                   : id == kContenderText   ? kSlots - 2
-                   : id == kStatsText       ? kSlots - 1
+                   : id == kContenderText   ? kSlots - 3
+                   : id == kStatsText       ? kSlots - 2
+                   : id == kChooseText      ? kSlots - 1
                                             : id - kAskText + 1;
   const u32 at = s_block + slot * kSlot;
-  if (s_for[slot] != text || id == kAttireText || id == kAttirePromptText || id == kStatsText) {
+  if (s_for[slot] != text || id == kAttireText || id == kAttirePromptText || id == kStatsText ||
+      id == kChooseText) {
     std::memset(bd::mem::at<char>(at), 0, kSlot);
     std::memcpy(bd::mem::at<char>(at), text, std::min<size_t>(std::strlen(text), kSlot - 1));
     s_for[slot] = text;
@@ -679,7 +686,7 @@ bool ResetUniverse(const PPCContext &in, u8 *base) {
 // ---- the EDIT UNIVERSE dialogue -------------------------------------------------------------
 
 enum class Step {
-  kIdle, kMenu, kConfirm, kDone, kHint, kVacateAsk, kVacateDone, kTitles, kAttire, kSaving
+  kIdle, kMenu, kConfirm, kDone, kHint, kVacateAsk, kVacateDone, kTitles, kAttire, kSaving, kChoose
 };
 Step g_step = Step::kIdle;
 u32 g_screen = 0;  // the Universe menu screen the dialogue belongs to
@@ -728,7 +735,8 @@ bool BoxClosed(const PPCContext &in, u8 *base, u32 &answer) {
   // A choice box closed with B gives the line under the cursor too: the box's word +20 tells them
   // apart (1 after A, sub_824D1A20; 0 after B, sub_824D1A50). B is only allowed in our choice boxes.
   const u32 box = bd::mem::load<u32>(0x8324DEF0);
-  if (box && bd::mem::load<u32>(box + 20) == 0 && (g_step == Step::kMenu || g_step == Step::kAttire))
+  if (box && bd::mem::load<u32>(box + 20) == 0 &&
+      (g_step == Step::kMenu || g_step == Step::kAttire || g_step == Step::kChoose))
     answer = 0xFFFFFFFFu;
   return true;
 }
@@ -920,6 +928,7 @@ extern "C" REX_FUNC(sub_821A4400) {
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
   if (Enabled() && (id == kEditSuperstarText || id == kContenderText || id == kStatsText ||
+                    id == kChooseText ||
                     (id >= kAskText && id <= kLastText))) {
     if (const u32 text = GuestText(id))
       ctx.r3.u64 = text;
@@ -936,6 +945,11 @@ extern "C" REX_FUNC(sub_826EC008) {
   KeepStartData(in, base, in.r4.u32);
 }
 
+namespace {
+void OpenUniverseMenu(const PPCContext &in, u8 *base);
+void Chosen(const PPCContext &in, u8 *base, u32 answer);
+}  // namespace
+
 // The Universe menu's action (A on an entry): EDIT UNIVERSE opens the sub-menu first.
 REX_EXTERN(__imp__sub_825453D8);
 extern "C" REX_FUNC(sub_825453D8) {
@@ -947,7 +961,7 @@ extern "C" REX_FUNC(sub_825453D8) {
     g_box_lines = kChoiceCount;
     g_menu_frames = 0;
     g_saved_ok = false;  // the box lays its lines out again: take them before moving them
-    AskMenu(ctx, base);
+    OpenUniverseMenu(ctx, base);
     return;
   }
   if (g_step != Step::kIdle)
@@ -1199,6 +1213,448 @@ void ShowAttirePage(const PPCContext &in, u8 *base, size_t first) {
   g_saved_ok = false;
   Call(in, base, __imp__sub_8260DD80, 0, kAttireText, s_choices, g_box_lines, 1, 0);  // 1: B cancels
 }
+
+// ---- paged choice boxes (the game's box, 2 lines + MORE... a page) -------------------------------
+//
+// The game's choice box shows 3 lines at most: longer lists go by pages of two lines and "MORE...",
+// as the attire box. The answer goes to a function of ours (B closes the box).
+
+struct Chooser {
+  std::string question;
+  std::vector<std::string> options;
+  std::function<void(const PPCContext &, u8 *, size_t)> done;
+  size_t first = 0;
+  std::vector<size_t> page;  // the options on the box (npos: MORE...)
+};
+Chooser g_chooser;
+
+void ShowChoosePage(const PPCContext &in, u8 *base, size_t first) {
+  Chooser &c = g_chooser;
+  c.first = first < c.options.size() ? first : 0;
+  c.page.clear();
+  const size_t left = c.options.size() - c.first;
+  if (left <= 3) {
+    for (size_t i = c.first; i < c.options.size(); ++i)
+      c.page.push_back(i);
+  } else {
+    c.page = {c.first, c.first + 1, std::string::npos};
+  }
+  static u32 s_lines = 0, s_choices = 0;
+  if (!s_lines)
+    s_lines = REX_KERNEL_MEMORY()->SystemHeapAlloc(3 * 96, 0x10);
+  if (!s_choices)
+    s_choices = REX_KERNEL_MEMORY()->SystemHeapAlloc(4 * 4, 0x10);
+  if (!s_lines || !s_choices)
+    return;
+  for (size_t i = 0; i < c.page.size(); ++i) {
+    const u32 at = s_lines + u32(i) * 96;
+    const std::string &t =
+        c.page[i] == std::string::npos ? std::string(Text(kAttireMoreText)) : c.options[c.page[i]];
+    std::memset(bd::mem::at<char>(at), 0, 96);
+    std::memcpy(bd::mem::at<char>(at), t.data(), std::min<size_t>(t.size(), 95));
+    bd::mem::store<u32>(s_choices + u32(i) * 4, at);
+  }
+  // the box lays a one-line question over its first line: a title line above it (EDIT UNIVERSE,
+  // the first line of our menu's question)
+  g_choose_question = c.question;
+  if (g_choose_question.find('\n') == std::string::npos) {
+    const std::string ask = Text(kAskText);
+    g_choose_question = ask.substr(0, ask.find('\n')) + "\n" + g_choose_question;
+  }
+  g_step = Step::kChoose;
+  g_box_lines = u32(c.page.size());
+  g_menu_frames = 0;
+  g_saved_ok = false;
+  Call(in, base, __imp__sub_8260DD80, 0, kChooseText, s_choices, g_box_lines, 1, 0);  // 1: B cancels
+}
+
+void Choose(const PPCContext &in, u8 *base, std::string question, std::vector<std::string> options,
+            std::function<void(const PPCContext &, u8 *, size_t)> done, size_t first = 0) {
+  g_chooser.question = std::move(question);
+  g_chooser.options = std::move(options);
+  g_chooser.done = std::move(done);
+  ShowChoosePage(in, base, first);
+}
+
+// An information box (closed by the per-frame driver).
+void Inform(const PPCContext &in, u8 *base, const std::string &text) {
+  g_stats_text = text;
+  g_step = Step::kHint;
+  Call(in, base, __imp__sub_8254E680, kStatsText);
+}
+
+void Chosen(const PPCContext &in, u8 *base, u32 answer) {
+  g_step = Step::kIdle;
+  Chooser &c = g_chooser;
+  if (answer >= c.page.size())
+    return;  // B
+  if (c.page[answer] == std::string::npos) {
+    ShowChoosePage(in, base, c.first + 2);
+    return;
+  }
+  const auto done = c.done;  // it may open another box
+  done(in, base, c.page[answer]);
+}
+
+// ---- the Universe's schedule (as WWE 2K14's EDIT CALENDAR) -----------------------------------------
+//
+// U + 0xDE00: 7 bytes, a weekday each (Monday first) = the weekly show airing then (0 RAW, 1
+// SmackDown, 2 Superstars, 0xFF none); Sunday is never read there (PPVs). Only shows 0-2 have a
+// booker (sub_826EB218), so only they can be scheduled. U + 0xDDD0: 48 bytes, month * 4 + week = the
+// PPV (10-22) or 0xFF. Show records: U + 27360 + k * 984 (+832 name; +929 + b: uses brand b,
+// 0 RAW, 1 SmackDown). WWE '12's own SHOW EDIT only flips a show between Monday and Friday (and its
+// label follows the show, not the table).
+
+constexpr u32 kWeekTable = 0xDE00, kPpvTable = 0xDDD0, kShowRecords = 27360, kShowRecordSize = 984;
+constexpr u32 kNoShow = 0xFF;
+
+struct CalendarWords {
+  const char *calendar, *weekly, *ppvs, *days[6], *no_show, *move, *remove, *host, *raw, *smackdown,
+      *both, *week, *airs_on, *pick_show, *pick_day, *pick_ppv, *pick_month, *pick_week, *what,
+      *done_day, *done_none, *done_ppv, *done_ppv_none, *done_host, *matches, *pick_count,
+      *default_count, *all_ppvs, *done_matches, *bumped, *menu;
+};
+const CalendarWords &CWords() {
+  static const CalendarWords kWords[5] = {
+      {"EDIT CALENDAR", "WEEKLY SHOWS", "PPVs", {"MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY",
+       "FRIDAY", "SATURDAY"}, "NOT ON THE CALENDAR", "MOVE", "REMOVE FROM THE CALENDAR",
+       "HOST SHOW", "RAW", "SMACKDOWN", "RAW AND SMACKDOWN", "WEEK", "on %s", "Which show?",
+       "%s airs %s.\nWhich day?", "Which PPV?", "%s: which month?", "%s: which week of %s?",
+       "%s (%s).\nWhat do you want to change?", "%s now airs on %s.", "%s is no longer on the calendar.",
+       "%s now takes place in week %u of %s.", "%s is no longer on the calendar.",
+       "%s is now hosted by %s.", "MATCHES PER SHOW", "%s: how many matches? (now %s)",
+       "GAME DEFAULT", "ALL PPVs", "%s: %s.\nThe next cards will follow it.",
+       "\n%s no longer airs (it was on that day).", "EDIT UNIVERSE"},
+      {"MODIFIER LE CALENDRIER", "SHOWS HEBDOMADAIRES", "PPV", {"LUNDI", "MARDI", "MERCREDI",
+       "JEUDI", "VENDREDI", "SAMEDI"}, "PAS AU CALENDRIER", "D\xC3\x89PLACER",
+       "RETIRER DU CALENDRIER", "SHOW ORGANISATEUR", "RAW", "SMACKDOWN", "RAW ET SMACKDOWN",
+       "SEMAINE", "le %s", "Quel show ?", "%s passe %s.\nQuel jour ?", "Quel PPV ?",
+       "%s : quel mois ?", "%s : quelle semaine de %s ?", "%s (%s).\nQue voulez-vous changer ?",
+       "%s passe maintenant le %s.", "%s n'est plus au calendrier.",
+       "%s a maintenant lieu la semaine %u de %s.", "%s n'est plus au calendrier.",
+       "%s est maintenant organis\xC3\xA9 par %s.", "MATCHS PAR SHOW",
+       "%s : combien de matchs ? (actuellement %s)", "R\xC3\x89GLAGE DU JEU", "TOUS LES PPV",
+       "%s : %s.\nLes prochaines cartes le suivront.",
+       "\n%s ne passe plus (il \xC3\xA9tait ce jour-l\xC3\xA0).", "MODIFIER L'UNIVERS"},
+      {"KALENDER BEARBEITEN", "WOCHENSHOWS", "PPVs", {"MONTAG", "DIENSTAG", "MITTWOCH",
+       "DONNERSTAG", "FREITAG", "SAMSTAG"}, "NICHT IM KALENDER", "VERSCHIEBEN",
+       "AUS DEM KALENDER NEHMEN", "AUSRICHTENDE SHOW", "RAW", "SMACKDOWN", "RAW UND SMACKDOWN",
+       "WOCHE", "am %s", "Welche Show?", "%s l\xC3\xA4uft %s.\nWelcher Tag?", "Welcher PPV?",
+       "%s: welcher Monat?", "%s: welche Woche im %s?", "%s (%s).\nWas m\xC3\xB6" "chtest du \xC3\xA4ndern?",
+       "%s l\xC3\xA4uft jetzt am %s.", "%s ist nicht mehr im Kalender.",
+       "%s findet jetzt in Woche %u im %s statt.", "%s ist nicht mehr im Kalender.",
+       "%s wird jetzt von %s ausgerichtet.", "MATCHES PRO SHOW",
+       "%s: wie viele Matches? (jetzt %s)", "SPIELSTANDARD", "ALLE PPVs",
+       "%s: %s.\nDie n\xC3\xA4" "chsten Matchkarten folgen dem.",
+       "\n%s l\xC3\xA4uft nicht mehr (sie war an dem Tag).", "WWE-WELT BEARBEITEN"},
+      {"EDITAR CALENDARIO", "SHOWS SEMANALES", "PPV", {"LUNES", "MARTES", "MI\xC3\x89RCOLES", "JUEVES",
+       "VIERNES", "S\xC3\x81" "BADO"}, "FUERA DEL CALENDARIO", "MOVER", "QUITAR DEL CALENDARIO",
+       "SHOW ORGANIZADOR", "RAW", "SMACKDOWN", "RAW Y SMACKDOWN", "SEMANA", "el %s",
+       "\xC2\xBF" "Qu\xC3\xA9 show?", "%s se emite %s.\n\xC2\xBF" "Qu\xC3\xA9 d\xC3\xAD" "a?",
+       "\xC2\xBF" "Qu\xC3\xA9 PPV?", "%s: \xC2\xBF" "qu\xC3\xA9 mes?", "%s: \xC2\xBF" "qu\xC3\xA9 semana de %s?",
+       "%s (%s).\n\xC2\xBF" "Qu\xC3\xA9 quieres cambiar?", "%s se emite ahora el %s.",
+       "%s ya no est\xC3\xA1 en el calendario.", "%s es ahora la semana %u de %s.",
+       "%s ya no est\xC3\xA1 en el calendario.", "%s lo organiza ahora %s.",
+       "COMBATES POR SHOW", "%s: \xC2\xBF" "cu\xC3\xA1ntos combates? (ahora %s)", "VALOR DEL JUEGO",
+       "TODOS LOS PPV", "%s: %s.\nLas pr\xC3\xB3ximas carteleras lo seguir\xC3\xA1n.",
+       "\n%s ya no se emite (era ese d\xC3\xAD" "a).", "EDITAR UNIVERSO"},
+      {"MODIFICA CALENDARIO", "SHOW SETTIMANALI", "PPV", {"LUNED\xC3\x8C", "MARTED\xC3\x8C",
+       "MERCOLED\xC3\x8C", "GIOVED\xC3\x8C", "VENERD\xC3\x8C", "SABATO"}, "FUORI CALENDARIO", "SPOSTA",
+       "TOGLI DAL CALENDARIO", "SHOW ORGANIZZATORE", "RAW", "SMACKDOWN", "RAW E SMACKDOWN",
+       "SETTIMANA", "il %s", "Quale show?", "%s va in onda %s.\nQuale giorno?", "Quale PPV?",
+       "%s: quale mese?", "%s: quale settimana di %s?", "%s (%s).\nCosa vuoi cambiare?",
+       "%s ora va in onda il %s.", "%s non \xC3\xA8 pi\xC3\xB9 in calendario.",
+       "%s ora si tiene nella settimana %u di %s.", "%s non \xC3\xA8 pi\xC3\xB9 in calendario.",
+       "%s ora \xC3\xA8 organizzato da %s.", "INCONTRI PER SHOW",
+       "%s: quanti incontri? (ora %s)", "VALORE DEL GIOCO", "TUTTI I PPV",
+       "%s: %s.\nLe prossime card lo seguiranno.",
+       "\n%s non va pi\xC3\xB9 in onda (era quel giorno).", "MODIFICA UNIVERSO"}};
+  return kWords[CurrentLang()];
+}
+
+std::string Format(const char *format, const std::string &a, const std::string &b = {}) {
+  char buffer[512];
+  std::snprintf(buffer, sizeof(buffer), format, a.c_str(), b.c_str());
+  return buffer;
+}
+
+u32 UniverseBlock(const PPCContext &in, u8 *base) { return Call(in, base, __imp__sub_82683A30, 0); }
+
+std::string ShowName(u32 u, u32 show) {
+  const char *n = bd::mem::try_at<const char>(u + kShowRecords + show * kShowRecordSize + 832);
+  std::string name = n ? std::string(n, strnlen(n, 63)) : std::string();
+  return name.empty() ? "?" : name;
+}
+
+std::string MonthName(const PPCContext &in, u8 *base, u32 month) {
+  const u32 t = GameText(in, base, 27250 + month);  // JANUARY ... DECEMBER
+  const char *n = t ? bd::mem::try_at<const char>(t) : nullptr;
+  return n ? n : std::to_string(month + 1);
+}
+
+std::string ShowDay(u32 u, u32 show) {
+  for (u32 d = 0; d < 6; ++d)
+    if (bd::mem::load<u8>(u + kWeekTable + d) == show)
+      return Format(CWords().airs_on, CWords().days[d]);
+  return CWords().no_show;
+}
+
+void PickWeeklyShow(const PPCContext &in, u8 *base) {
+  const CalendarWords &w = CWords();
+  const u32 u = UniverseBlock(in, base);
+  if (!u)
+    return;
+  std::vector<std::string> shows;
+  for (u32 k = 0; k < 3; ++k)
+    shows.push_back(ShowName(u, k));
+  Choose(in, base, w.pick_show, shows, [](const PPCContext &in, u8 *base, size_t show) {
+    const CalendarWords &w = CWords();
+    const u32 u = UniverseBlock(in, base);
+    std::vector<std::string> days(w.days, w.days + 6);
+    days.push_back(w.no_show);
+    Choose(in, base, Format(w.pick_day, ShowName(u, u32(show)), ShowDay(u, u32(show))), days,
+           [show](const PPCContext &in, u8 *base, size_t day) {
+             const CalendarWords &w = CWords();
+             const u32 u = UniverseBlock(in, base);
+             if (!u)
+               return;
+             std::string bumped;
+             for (u32 d = 0; d < 7; ++d)
+               if (bd::mem::load<u8>(u + kWeekTable + d) == show)
+                 bd::mem::store<u8>(u + kWeekTable + d, kNoShow);
+             if (day < 6) {
+               const u8 there = bd::mem::load<u8>(u + kWeekTable + u32(day));
+               if (there != kNoShow && there != show)
+                 bumped = Format(w.bumped, ShowName(u, there));
+               bd::mem::store<u8>(u + kWeekTable + u32(day), u8(show));
+             }
+             BD_INFO("[univers] calendar: show {} on day {} (week table {:02X} {:02X} {:02X} {:02X} "
+                     "{:02X} {:02X} {:02X})", show, day, bd::mem::load<u8>(u + kWeekTable),
+                     bd::mem::load<u8>(u + kWeekTable + 1), bd::mem::load<u8>(u + kWeekTable + 2),
+                     bd::mem::load<u8>(u + kWeekTable + 3), bd::mem::load<u8>(u + kWeekTable + 4),
+                     bd::mem::load<u8>(u + kWeekTable + 5), bd::mem::load<u8>(u + kWeekTable + 6));
+             Inform(in, base,
+                    (day < 6 ? Format(w.done_day, ShowName(u, u32(show)), w.days[day])
+                             : Format(w.done_none, ShowName(u, u32(show)))) + bumped);
+           });
+  });
+}
+
+// Where a PPV is (month * 4 + week), or 48.
+u32 PpvSlot(u32 u, u32 ppv) {
+  for (u32 i = 0; i < 48; ++i)
+    if (bd::mem::load<u8>(u + kPpvTable + i) == ppv)
+      return i;
+  return 48;
+}
+
+std::string PpvWhen(const PPCContext &in, u8 *base, u32 u, u32 ppv) {
+  const u32 slot = PpvSlot(u, ppv);
+  if (slot >= 48)
+    return CWords().no_show;
+  return MonthName(in, base, slot / 4) + " - " + CWords().week + " " + std::to_string(slot % 4 + 1);
+}
+
+void MovePpv(const PPCContext &in, u8 *base, u32 ppv, u32 month) {
+  const CalendarWords &w = CWords();
+  const u32 u = UniverseBlock(in, base);
+  const std::string name = ShowName(u, ppv), month_name = MonthName(in, base, month);
+  std::vector<std::string> weeks;
+  for (u32 k = 1; k <= 4; ++k) {
+    const u8 there = bd::mem::load<u8>(u + kPpvTable + month * 4 + k - 1);
+    weeks.push_back(std::string(w.week) + " " + std::to_string(k) +
+                    (there != kNoShow && there != ppv ? "  (" + ShowName(u, there) + ")" : ""));
+  }
+  char question[256];
+  std::snprintf(question, sizeof(question), w.pick_week, name.c_str(), month_name.c_str());
+  Choose(in, base, question, weeks, [ppv, month](const PPCContext &in, u8 *base, size_t week) {
+    const CalendarWords &w = CWords();
+    const u32 u = UniverseBlock(in, base);
+    if (!u)
+      return;
+    const u32 slot = month * 4 + u32(week), old = PpvSlot(u, ppv);
+    const u8 there = bd::mem::load<u8>(u + kPpvTable + slot);
+    for (u32 i = 0; i < 48; ++i)  // the PPV leaves its date(s)
+      if (bd::mem::load<u8>(u + kPpvTable + i) == ppv)
+        bd::mem::store<u8>(u + kPpvTable + i, kNoShow);
+    if (there != kNoShow && there != ppv && old < 48)
+      bd::mem::store<u8>(u + kPpvTable + old, there);  // the one there takes its old date
+    bd::mem::store<u8>(u + kPpvTable + slot, u8(ppv));
+    BD_INFO("[univers] calendar: PPV {} in month {} week {} (was slot {}, {} moved)", ppv, month,
+            week + 1, old, there);
+    char text[256];
+    std::snprintf(text, sizeof(text), w.done_ppv, ShowName(u, ppv).c_str(), u32(week + 1),
+                  MonthName(in, base, month).c_str());
+    std::string message = text;
+    if (there != kNoShow && there != ppv)
+      message += "\n" + ShowName(u, there) + ": " + PpvWhen(in, base, u, there);
+    Inform(in, base, message);
+  });
+}
+
+void EditPpv(const PPCContext &in, u8 *base, u32 ppv) {
+  const CalendarWords &w = CWords();
+  const u32 u = UniverseBlock(in, base);
+  Choose(in, base, Format(w.what, ShowName(u, ppv), PpvWhen(in, base, u, ppv)),
+         {w.move, w.host, w.remove}, [ppv](const PPCContext &in, u8 *base, size_t what) {
+           const CalendarWords &w = CWords();
+           const u32 u = UniverseBlock(in, base);
+           if (!u)
+             return;
+           const u32 record = u + kShowRecords + ppv * kShowRecordSize;
+           if (what == 0) {
+             std::vector<std::string> months;
+             for (u32 m = 0; m < 12; ++m)
+               months.push_back(MonthName(in, base, m));
+             Choose(in, base, Format(w.pick_month, ShowName(u, ppv)), months,
+                    [ppv](const PPCContext &in, u8 *base, size_t month) {
+                      MovePpv(in, base, ppv, u32(month));
+                    });
+           } else if (what == 1) {
+             Choose(in, base, ShowName(u, ppv), {w.raw, w.smackdown, w.both},
+                    [ppv](const PPCContext &in, u8 *base, size_t host) {
+                      const CalendarWords &w = CWords();
+                      const u32 u = UniverseBlock(in, base);
+                      if (!u)
+                        return;
+                      const u32 record = u + kShowRecords + ppv * kShowRecordSize;
+                      bd::mem::store<u8>(record + 929, host != 1);  // RAW
+                      bd::mem::store<u8>(record + 930, host != 0);  // SmackDown
+                      BD_INFO("[univers] calendar: PPV {} hosted by {}", ppv, host);
+                      Inform(in, base,
+                             Format(w.done_host, ShowName(u, ppv),
+                                    host == 0 ? w.raw : host == 1 ? w.smackdown : w.both));
+                    });
+           } else {
+             for (u32 i = 0; i < 48; ++i)
+               if (bd::mem::load<u8>(u + kPpvTable + i) == ppv)
+                 bd::mem::store<u8>(u + kPpvTable + i, kNoShow);
+             BD_INFO("[univers] calendar: PPV {} removed", ppv);
+             Inform(in, base, Format(w.done_ppv_none, ShowName(u, ppv)));
+           }
+           (void)record;
+         });
+}
+
+void PickPpv(const PPCContext &in, u8 *base) {
+  const u32 u = UniverseBlock(in, base);
+  if (!u)
+    return;
+  std::vector<std::string> ppvs;
+  for (u32 k = 10; k < 23; ++k)
+    ppvs.push_back(ShowName(u, k));
+  Choose(in, base, CWords().pick_ppv, ppvs, [](const PPCContext &in, u8 *base, size_t k) {
+    EditPpv(in, base, 10 + u32(k));
+  });
+}
+
+void EditCalendar(const PPCContext &in, u8 *base) {
+  const CalendarWords &w = CWords();
+  Choose(in, base, w.calendar, {w.weekly, w.ppvs}, [](const PPCContext &in, u8 *base, size_t i) {
+    if (i == 0)
+      PickWeeklyShow(in, base);
+    else
+      PickPpv(in, base);
+  });
+}
+
+// ---- matches per show (as WWE 2K14's show setting MATCHES) ---------------------------------------
+//
+// Each kind of show has a booker class (sub_826EB218 picks it from the current show): its virtual
+// slot 3 is the number of matches of the card, read when the card is booked (sub_826EB510, a job of
+// its own thread) and when it is written (sub_826C8120): RAW / SmackDown sub_826F19E0 (4, vtables
+// 0x8203EB08 / 0x8203EB1C), Superstars sub_82E05C90 (3, a "return 3" shared with other classes,
+// vtable 0x8203EB30), PPVs sub_826F1EF8 (6). A card has 8 records at most; the match templates of a
+// show give 6 at most (the last match is the title / main event one). Our setting replaces the
+// number (universe_shows.txt: "matches <0 RAW / 1 SmackDown / 2 Superstars / 10 PPVs> <n>").
+
+constexpr u32 kBookerRaw = 0x8203EB08, kBookerSmackDown = 0x8203EB1C, kBookerSuperstars = 0x8203EB30;
+std::atomic<u32> g_matches[4] = {0, 0, 0, 0};  // RAW, SmackDown, Superstars, PPVs (0: the game's)
+std::atomic<bool> g_matches_loaded{false};
+
+std::filesystem::path ShowsFile() {
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator() || state->emulator()->user_data_root().empty())
+    return {};
+  return state->emulator()->user_data_root() / "universe_shows.txt";
+}
+
+void LoadMatchCounts() {
+  if (g_matches_loaded.exchange(true))
+    return;
+  std::ifstream f(ShowsFile());
+  std::string line;
+  while (std::getline(f, line)) {
+    u32 key = 0, n = 0;
+    if (std::sscanf(line.c_str(), "matches %u %u", &key, &n) == 2 && n <= 8)
+      g_matches[key >= 10 ? 3 : std::min<u32>(key, 2)] = n;
+  }
+}
+
+void SaveMatchCounts() {
+  const std::filesystem::path file = ShowsFile();
+  if (file.empty())
+    return;
+  std::ofstream f(file);
+  const u32 keys[4] = {0, 1, 2, 10};
+  for (u32 i = 0; i < 4; ++i)
+    if (g_matches[i])
+      f << "matches " << keys[i] << ' ' << g_matches[i] << '\n';
+}
+
+void EditMatches(const PPCContext &in, u8 *base) {
+  const CalendarWords &w = CWords();
+  const u32 u = UniverseBlock(in, base);
+  if (!u)
+    return;
+  LoadMatchCounts();
+  std::vector<std::string> shows = {ShowName(u, 0), ShowName(u, 1), ShowName(u, 2), w.all_ppvs};
+  Choose(in, base, w.matches, shows, [shows](const PPCContext &in, u8 *base, size_t which) {
+    const CalendarWords &w = CWords();
+    static const u32 kDefault[4] = {4, 4, 3, 6};
+    const auto now = [&](u32 n) {
+      return n ? std::to_string(n) : std::string(w.default_count) + " " + std::to_string(kDefault[which]);
+    };
+    std::vector<std::string> counts = {std::string(w.default_count) + " (" +
+                                       std::to_string(kDefault[which]) + ")"};
+    for (u32 n = 1; n <= 6; ++n)
+      counts.push_back(std::to_string(n));
+    Choose(in, base, Format(w.pick_count, shows[which], now(g_matches[which])), counts,
+           [shows, which, now](const PPCContext &in, u8 *base, size_t pick) {
+             const CalendarWords &w = CWords();
+             g_matches[which] = u32(pick);  // 0: the game's
+             SaveMatchCounts();
+             BD_INFO("[univers] matches per show: {} -> {}", which, pick);
+             Inform(in, base, Format(w.done_matches, shows[which], now(u32(pick))));
+           });
+  });
+}
+
+// ---- EDIT UNIVERSE (as WWE 2K14's list) -------------------------------------------------------
+
+void OpenUniverseMenu(const PPCContext &in, u8 *base) {
+  const CalendarWords &w = CWords();
+  Choose(in, base, Text(kAskText),
+         {Text(kChoiceText + kEditSuperstars), Text(kChoiceText + kEditTitles), w.calendar,
+          w.matches, Text(kChoiceText + kResetUniverse)},
+         [](const PPCContext &in, u8 *base, size_t i) {
+           BD_INFO("[univers] EDIT UNIVERSE: choice {}", i);
+           if (i == 0) {
+             Call(in, base, __imp__sub_825453D8, g_screen);  // the Superstar editor, as before
+           } else if (i == 1) {
+             if (OpenTitles(in, base))
+               g_step = Step::kTitles;
+           } else if (i == 2) {
+             EditCalendar(in, base);
+           } else if (i == 3) {
+             EditMatches(in, base);
+           } else {
+             g_step = Step::kConfirm;
+             Call(in, base, __imp__sub_8254E7E8, kConfirmText);
+           }
+         });
+}
+
 
 // ---- contender settings (as WWE 2K14's "contender settings") ----------------------------------
 //
@@ -1718,7 +2174,7 @@ constexpr u32 kRankingVtbl = 0x82023240;
 constexpr u32 kContenders = 0xC750;  // in the Universe block
 constexpr u32 kRankingHelpSet = 515;
 constexpr u32 kButtonX = 45003, kEditLabel = 45409;  // button bar: X icon, the game's "EDIT"
-constexpr u32 kUp = 1, kDown = 2, kA = 16, kB = 32, kX = 128;
+constexpr u32 kUp = 1, kDown = 2, kA = 16, kB = 32, kY = 64, kX = 128;
 constexpr u32 kContenderName = 948, kRowName = 1020;  // layout elements
 constexpr u32 kListMasks = 0x8201AD80;  // per list direction: {previous, -, next, -}
 
@@ -1908,6 +2364,14 @@ void DumpBrands(const PPCContext &in, u8 *base) {
 
 extern "C" REX_FUNC(sub_82545A70) {
   g_universe_menu = ctx.r3.u32;
+  if (const u32 u = Enabled() ? Call(ctx, base, __imp__sub_82683A30, 0) : 0) {
+    std::string week, ppv;
+    for (u32 d = 0; d < 7; ++d)
+      week += fmt::format(" {:02X}", bd::mem::load<u8>(u + 0xDE00 + d));
+    for (u32 i = 0; i < 48; ++i)
+      ppv += fmt::format("{}{:02X}", i % 4 ? "" : " ", bd::mem::load<u8>(u + 0xDDD0 + i));
+    BD_INFO("[univers] calendar: weekdays{} | PPVs by month{}", week, ppv);
+  }
   if (REXCVAR_GET(wwe12_universe_probe))
     DumpBrands(ctx, base);
   __imp__sub_82545A70(ctx, base);
@@ -1966,6 +2430,10 @@ struct SuperstarPages {
   };
   std::vector<Row> table;  // the STATISTICS page's rows
   u32 table_page = 1;      // its page of 12 rows (the rankings list's pages 1, 2)
+  std::string top, subtitle;  // the table's top line (897) and, after LB / RB, the page's (898)
+  bool global = false;        // the Universe's statistics (RANKINGS, Y), not a Superstar's
+  u32 section = 0;            // their page: titles, champions, Money in the Bank, Royal Rumble
+  u32 global_place = 0;       // RANKINGS' title place (R+56) before they opened
 };
 SuperstarPages g_pages;
 
@@ -2215,6 +2683,231 @@ void BuildTable(const PPCContext &in, u8 *base) {
   t.push_back({w.mitb, w.total, true});
   t.push_back({w.wins, num(m.mitb_wins)});
   t.push_back({w.cash_rate, rate(m.cash_in_wins, m.cash_ins)});
+  g_pages.top = g_pages.name;
+  g_pages.subtitle = w.page;
+}
+
+// ---- the Universe's statistics, as WWE 2K14's WWE.com > STATISTICS (RANKINGS, then Y) ------------
+//
+// The same table as a Superstar's STATISTICS (a title's ranking page with our rows), four pages with
+// LB / RB: TITLES (per title: most reigns, most weeks held), CHAMPIONS (per title: the champion and
+// the former ones, weeks held), MONEY IN THE BANK (the briefcase's holder, the former winners and
+// their cash-in), ROYAL RUMBLE (the winners and their WrestleMania match). From universe_stats.txt:
+// what happened since the statistics are kept.
+
+struct GlobalWords {
+  const char *champions, *most_reigns, *most_weeks, *champion, *former, *holder, *winners, *won,
+      *lost, *wm_rate, *nobody, *weeks;
+};
+const GlobalWords &GWords() {
+  static const GlobalWords kWords[5] = {
+      {"CHAMPIONS", "MOST REIGNS", "MOST WEEKS HELD", "CHAMPION", "FORMER CHAMPIONS", "HOLDER",
+       "PREVIOUS WINNERS", "WON", "LOST", "WRESTLEMANIA WIN RATE", "NOBODY YET", "WEEKS"},
+      {"CHAMPIONS", "NB DE FOIS REMPORT\xC3\x89", "NB DE SEMAINES D\xC3\x89TENU", "CHAMPION",
+       "ANCIENS CHAMPIONS", "D\xC3\x89TENTEUR", "VAINQUEURS PR\xC3\x89" "C\xC3\x89" "DENTS", "GAGN\xC3\x89",
+       "PERDU", "TAUX DE VICTOIRE WRESTLEMANIA", "PERSONNE POUR L'INSTANT", "SEMAINES"},
+      {"CHAMPIONS", "MEISTE REGENTSCHAFTEN", "MEISTE WOCHEN", "CHAMPION", "FR\xC3\x9CHERE CHAMPIONS",
+       "INHABER", "FR\xC3\x9CHERE SIEGER", "GEWONNEN", "VERLOREN", "SIEGQUOTE WRESTLEMANIA",
+       "NOCH NIEMAND", "WOCHEN"},
+      {"CAMPEONES", "M\xC3\x81S REINADOS", "M\xC3\x81S SEMANAS", "CAMPE\xC3\x93N",
+       "CAMPEONES ANTERIORES", "PORTADOR", "GANADORES ANTERIORES", "GAN\xC3\x93", "PERDI\xC3\x93",
+       "\xC3\x89XITO EN WRESTLEMANIA", "NADIE A\xC3\x9AN", "SEMANAS"},
+      {"CAMPIONI", "PI\xC3\x99 REGNI", "PI\xC3\x99 SETTIMANE", "CAMPIONE", "EX CAMPIONI", "DETENTORE",
+       "VINCITORI PRECEDENTI", "VINTO", "PERSO", "VITTORIE A WRESTLEMANIA", "ANCORA NESSUNO",
+       "SETTIMANE"}};
+  return kWords[CurrentLang()];
+}
+
+std::string NameOf(const PPCContext &in, u8 *base, u32 id) {
+  if (id >= 512)
+    return "--";
+  const u32 n = Call(in, base, __imp__sub_82A32618, id);
+  const char *t = n ? bd::mem::try_at<const char>(n) : nullptr;
+  return t ? t : "?";
+}
+
+std::string TitleName(const PPCContext &in, u8 *base, u32 title) {
+  const u32 n = Call(in, base, __imp__sub_826D2C30, title);
+  const char *t = n ? bd::mem::try_at<const char>(n) : nullptr;
+  return t ? t : "?";
+}
+
+struct Event {
+  std::string kind;
+  u32 id, a, b, day;
+};
+std::vector<Event> LoadEvents() {
+  std::vector<Event> events;
+  std::ifstream f(StatsFile());
+  std::string line;
+  while (std::getline(f, line)) {
+    char kind[16] = {};
+    u32 v[4] = {};
+    const int n = std::sscanf(line.c_str(), "%15s %u %u %u %u", kind, &v[0], &v[1], &v[2], &v[3]);
+    if (n < 3)
+      continue;
+    const std::string k = kind;
+    if (k == "rumble" && n >= 4)
+      events.push_back({k, v[0], v[1], 0, v[2]});
+    else if (k == "mania" && n >= 5)
+      events.push_back({k, v[0], v[1], v[2], v[3]});
+    else if (k == "mitb")
+      events.push_back({k, v[0], 0, 0, v[1]});
+    else if (k == "cashin" && n >= 4)
+      events.push_back({k, v[0], v[1], 0, v[2]});
+  }
+  return events;
+}
+
+void BuildGlobal(const PPCContext &ctx, u8 *base) {
+  PPCContext in = ctx;
+  in.r1.u32 = (in.r1.u32 - 0x1000) & ~0xFu;
+  const StatWords &w = Words();
+  const GlobalWords &g = GWords();
+  const u32 u = Call(in, base, __imp__sub_82683A30, 0);
+  const u32 now = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+  const auto num = [](u32 v) { return std::to_string(v); };
+  const auto weeks_of = [&](const Reign &r) {
+    const u32 to = r.to_day == ~0u ? now : r.to_day;
+    return (to > r.from_day ? to - r.from_day : 0) / 7;
+  };
+  // the shows' titles, in the shows' order, then any other title with a history
+  std::vector<u32> titles;
+  {
+    const u32 view = in.r1.u32 + 0x800, out = view + 0x200;
+    Call(in, base, __imp__sub_826CDC48, view);
+    for (u32 k = 0; k < 2; ++k) {
+      const u32 show = Call(in, base, __imp__sub_826CCB88, view, k);
+      if (!show || !bd::mem::load<u32>(show))
+        continue;
+      for (u32 i = 0; i < 4; ++i)
+        bd::mem::store<u32>(out + i * 4, 23);
+      Call(in, base, __imp__sub_826CC180, show, out);
+      for (u32 i = 0; i < 4; ++i) {
+        const u32 t = bd::mem::load<u32>(out + i * 4);
+        if (t < 23 && std::find(titles.begin(), titles.end(), t) == titles.end())
+          titles.push_back(t);
+      }
+    }
+    Call(in, base, __imp__sub_826CE098, view);
+  }
+  const std::vector<Reign> reigns = LoadReigns();
+  for (const Reign &r : reigns)
+    if (r.title < 23 && std::find(titles.begin(), titles.end(), r.title) == titles.end())
+      titles.push_back(r.title);
+  const std::vector<Event> events = LoadEvents();
+  auto &t = g_pages.table;
+  t.clear();
+  g_pages.top = w.page;
+  switch (g_pages.section) {
+  case 0:  // TITLES: the records
+    g_pages.subtitle = w.titles;
+    for (u32 title : titles) {
+      std::map<u32, u32> count, held;
+      for (const Reign &r : reigns)
+        if (r.title == title) {
+          ++count[r.holder];
+          held[r.holder] += weeks_of(r);
+        }
+      const auto best = [](const std::map<u32, u32> &m) {
+        std::pair<u32, u32> b{512, 0};
+        for (const auto &[id, v] : m)
+          if (v > b.second)
+            b = {id, v};
+        return b;
+      };
+      const auto [most, times] = best(count);
+      const auto [longest, wk] = best(held);
+      t.push_back({TitleName(in, base, title), "", true});
+      t.push_back({std::string(g.most_reigns) + ":  " + (times ? NameOf(in, base, most) : "--"),
+                   times ? num(times) : "--"});
+      t.push_back({std::string(g.most_weeks) + ":  " + (wk ? NameOf(in, base, longest) : "--"),
+                   wk ? num(wk) : "--"});
+    }
+    break;
+  case 1:  // CHAMPIONS: the champion, then the former ones (latest first), weeks held
+    g_pages.subtitle = g.champions;
+    for (u32 title : titles) {
+      t.push_back({TitleName(in, base, title), g.weeks, true});
+      std::string champ;
+      for (u32 place = 0; place < 2; ++place) {
+        const u32 id = Call(in, base, __imp__sub_82A39FC8, title, place, 1) & 0xFFFF;
+        if (id < 512)
+          champ += (champ.empty() ? "" : " & ") + NameOf(in, base, id);
+      }
+      u32 champ_weeks = 0;
+      for (const Reign &r : reigns)
+        if (r.title == title && r.to_day == ~0u && r.place == 0)
+          champ_weeks = weeks_of(r);
+      t.push_back({std::string(g.champion) + ":  " + (champ.empty() ? "--" : champ),
+                   champ.empty() ? "--" : num(champ_weeks)});
+      u32 shown = 0;
+      for (auto r = reigns.rbegin(); r != reigns.rend() && shown < 5; ++r)
+        if (r->title == title && r->to_day != ~0u) {
+          t.push_back({std::string(shown ? "" : g.former) + (shown ? "      " : ":  ") +
+                           NameOf(in, base, r->holder),
+                       num(weeks_of(*r))});
+          ++shown;
+        }
+    }
+    break;
+  case 2: {  // MONEY IN THE BANK
+    g_pages.subtitle = w.mitb;
+    const u32 holder = u ? bd::mem::load<u16>(u + 51004) : 512;
+    t.push_back({w.mitb, "", true});
+    t.push_back({std::string(g.holder) + ":  " + (holder < 512 ? NameOf(in, base, holder) : "--"),
+                 ""});
+    u32 cash_ins = 0, cash_wins = 0;
+    for (const Event &e : events)
+      if (e.kind == "cashin") {
+        ++cash_ins;
+        cash_wins += e.a ? 1 : 0;
+      }
+    t.push_back({w.cash_rate, cash_ins ? num(cash_wins * 100 / cash_ins) + "%" : "0%"});
+    t.push_back({g.winners, "CASH-IN", true});
+    bool any = false;
+    for (auto e = events.rbegin(); e != events.rend(); ++e) {
+      if (e->kind != "mitb")
+        continue;
+      std::string result = "--";
+      for (const Event &c : events)
+        if (c.kind == "cashin" && c.id == e->id && c.day >= e->day) {
+          result = c.a ? g.won : g.lost;
+          break;
+        }
+      t.push_back({NameOf(in, base, e->id), result});
+      any = true;
+    }
+    if (!any)
+      t.push_back({g.nobody, ""});
+    break;
+  }
+  default: {  // ROYAL RUMBLE: the winners and their next WrestleMania match
+    g_pages.subtitle = w.rumble;
+    u32 wm = 0, wm_wins = 0;
+    std::vector<SuperstarPages::Row> rows;
+    for (auto e = events.rbegin(); e != events.rend(); ++e) {
+      if (e->kind != "rumble" || !e->a)
+        continue;
+      std::string result = "--";
+      for (const Event &m : events)
+        if (m.kind == "mania" && m.id == e->id && m.day > e->day) {
+          result = m.b ? g.won : g.lost;
+          ++wm;
+          wm_wins += m.b ? 1 : 0;
+          break;
+        }
+      rows.push_back({NameOf(in, base, e->id), result});
+    }
+    t.push_back({w.rumble, "", true});
+    t.push_back({g.wm_rate, wm ? num(wm_wins * 100 / wm) + "%" : "0%"});
+    t.push_back({g.winners, "WM", true});
+    if (rows.empty())
+      t.push_back({g.nobody, ""});
+    t.insert(t.end(), rows.begin(), rows.end());
+    break;
+  }
+  }
 }
 
 u32 TableText(u32 slot, const std::string &text) {  // guest strings of ours, 64 bytes each
@@ -2293,8 +2986,8 @@ void ApplyTable(u32 r) {
     bd::mem::store<u32>(element(e) + 200, t);
     bd::mem::store<u32>(element(e) + 228, bd::mem::load<u32>(element(e) + 228) & ~0x10u);
   };
-  text(897, TableText(3 * kTableRows, g_pages.name));
-  text(898, TableText(3 * kTableRows + 1, std::string(kPageKeys) + Words().page));
+  text(897, TableText(3 * kTableRows, g_pages.top));
+  text(898, TableText(3 * kTableRows + 1, std::string(kPageKeys) + g_pages.subtitle));
   text(899, TableText(3 * kTableRows + 2, ""));
   Place(array, 898, 96, 55, 0.7f, false);
   for (u32 e = 907; e <= 921; ++e)  // the champion's banner and its copy
@@ -2327,7 +3020,7 @@ void ApplyTable(u32 r) {
 void ShowTablePage(const PPCContext &in, u8 *base, u32 r, u32 page) {
   g_pages.table_page = page;
   bd::mem::store<u32>(r + 56, page);  // the list's page
-  bd::mem::store<u32>(r + 60, std::max<u32>(bd::mem::load<u32>(r + 60), 3));
+  bd::mem::store<u32>(r + 60, std::max<u32>(bd::mem::load<u32>(r + 60), std::max<u32>(3, page + 1)));
   Call(in, base, __imp__sub_82552CE8, r + 28);
   ApplyTable(r);
 }
@@ -2477,6 +3170,49 @@ bool SuperstarPageButtons(const PPCContext &in, u8 *base, u32 screen) {
   return true;
 }
 
+// RANKINGS' buttons for the Universe's statistics: Y on its first screen opens them; then LB / RB
+// their pages, up / down the table's pages, B back. True: the frame's buttons were ours.
+bool GlobalStatsButtons(const PPCContext &in, u8 *base, u32 screen) {
+  const u32 r = RankObject(screen), pressed = bd::mem::load<u32>(screen + 64);
+  const bool detail = bd::mem::load<u32>(screen + 2332) == 1;
+  if (!g_pages.global) {
+    if (!(pressed & kY) || detail || g_pages.page)
+      return false;
+    g_pages.global = true;
+    g_pages.section = 0;
+    g_pages.global_place = bd::mem::load<u32>(r + 56);
+    BuildGlobal(in, base);
+    OpenTable(in, base, r);
+    BD_INFO("[univers] statistics: open ({} rows)", g_pages.table.size());
+  } else if (!detail) {  // closed meanwhile
+    RestoreTableLayout(r);
+    g_pages.global = false;
+    return false;
+  } else if (pressed & kB) {
+    bd::mem::store<u32>(r + 56, g_pages.global_place);
+    CloseTable(in, base, r);
+    g_pages.global = false;
+    BD_INFO("[univers] statistics: closed");
+  } else if (pressed & (kLB | kRB)) {
+    g_pages.section = (g_pages.section + (pressed & kRB ? 1 : 3)) % 4;
+    BuildGlobal(in, base);
+    ShowTablePage(in, base, r, 1);
+  } else {
+    const u32 dir = std::min<u32>(bd::mem::load<u32>(screen + 20), 3);
+    const u32 up = bd::mem::load<u32>(kListMasks + dir * 16) | kUp;
+    const u32 down = bd::mem::load<u32>(kListMasks + dir * 16 + 8) | kDown;
+    const u32 pages = u32((g_pages.table.size() + kTableRows - 1) / kTableRows);
+    if ((pressed & up) && g_pages.table_page > 1)
+      ShowTablePage(in, base, r, g_pages.table_page - 1);
+    else if ((pressed & down) && g_pages.table_page < pages)
+      ShowTablePage(in, base, r, g_pages.table_page + 1);
+  }
+  bd::mem::store<u32>(screen + 64, 0);
+  if (g_pages.global)
+    ApplyTable(r);
+  return true;
+}
+
 }  // namespace
 
 // The rankings' list rows and its top block are drawn again by the game (sub_82552A78,
@@ -2485,7 +3221,7 @@ REX_EXTERN(__imp__sub_82552A78);
 extern "C" REX_FUNC(sub_82552A78) {
   const u32 r = ctx.r3.u32;
   __imp__sub_82552A78(ctx, base);
-  if (g_pages.page == 2)
+  if (g_pages.page == 2 || g_pages.global)
     ApplyTable(r);
 }
 
@@ -2493,7 +3229,7 @@ REX_EXTERN(__imp__sub_82552240);
 extern "C" REX_FUNC(sub_82552240) {
   const u32 r = ctx.r3.u32;
   __imp__sub_82552240(ctx, base);
-  if (g_pages.page == 2)
+  if (g_pages.page == 2 || g_pages.global)
     ApplyTable(r);
 }
 
@@ -2534,6 +3270,8 @@ extern "C" REX_FUNC(sub_824D20A0) {
     __imp__sub_824D20A0(ctx, base);
     return;
   }
+  if (g_rank.screen != screen && GlobalStatsButtons(ctx, base, screen))
+    return;
   RankEditPrompt();
   const u32 r = RankObject(screen), pressed = bd::mem::load<u32>(screen + 64);
   const bool detail = bd::mem::load<u32>(screen + 2332) == 1;  // a title's ranking is open
@@ -3074,7 +3812,7 @@ extern "C" REX_FUNC(sub_824D3458) {
       g_step = Step::kIdle;
     }
   } else if (g_step != Step::kIdle && ctx.r3.u32 == g_screen) {
-    if (g_step == Step::kMenu || g_step == Step::kAttire) {
+    if (g_step == Step::kMenu || g_step == Step::kAttire || g_step == Step::kChoose) {
       const u32 frame = g_menu_frames++;
       if (!REXCVAR_GET(wwe12_universe_probe)) {
         if (g_box_lines == 3)
@@ -3103,6 +3841,10 @@ extern "C" REX_FUNC(sub_824D3458) {
           ContenderChosen(ctx, base, answer);
         else
           AttireChosen(ctx, base, answer);
+        break;
+      case Step::kChoose:
+        RestoreChoiceElements();
+        Chosen(ctx, base, answer);
         break;
       case Step::kMenu:
         RestoreChoiceElements();
@@ -3156,7 +3898,9 @@ extern "C" REX_FUNC(sub_824D3458) {
 REX_EXTERN(__imp__sub_8288F0A0);
 extern "C" REX_FUNC(sub_8288F0A0) {
   __imp__sub_8288F0A0(ctx, base);
-  if (Enabled() && (g_step == Step::kMenu || g_step == Step::kAttire) && g_box_lines == 3 &&
+  if (Enabled() &&
+      (g_step == Step::kMenu || g_step == Step::kAttire || g_step == Step::kChoose) &&
+      g_box_lines == 3 &&
       !REXCVAR_GET(wwe12_universe_probe))
     PlaceThirdChoice();
 }
@@ -3212,4 +3956,65 @@ extern "C" REX_FUNC(sub_8270EEB0) {
   const char *name = bd::mem::try_at<const char>(object + 8);
   if (name && (std::strncmp(name, "Decision", 8) == 0 || std::strncmp(name, "Cancel", 6) == 0))
     LogChain(name[0] == 'D' ? "cue Decision" : "cue Cancel", in);
+}
+
+// ---- matches per show: the bookers' "number of matches" ------------------------------------------
+
+// A weekly show's match templates (sub_826DC6E8(table, group, i): table +4 groups, group at
+// table + 8 + g * 508, its +2 the templates, NULL past them) are fewer than our number: the booker
+// (sub_826F15E8, the call returning to 0x826F1690) skips a slot without one, but a card rule then
+// reads it (crash seen with RAW at 6, 2026-10-27). So, with our number, the last match takes the
+// last template (the main event / title one, as the game's 4th of 4) and the others cycle through
+// the other templates. PPVs stay at 6 at most (the game's own number).
+thread_local u32 t_weekly_matches = 0;  // our number for the card being booked on this thread
+
+namespace {
+u32 MatchCount(u32 slot, u32 game) {
+  LoadMatchCounts();
+  const u32 n = g_matches[slot];
+  return n ? std::min<u32>(n, slot == 3 ? 6 : 8) : game;
+}
+}  // namespace
+
+REX_EXTERN(__imp__sub_826DC6E8);
+extern "C" REX_FUNC(sub_826DC6E8) {
+  const u32 table = ctx.r3.u32, group = ctx.r4.u32 & 0xFFFF, i = ctx.r5.u32 & 0xFFFF;
+  const u32 n = t_weekly_matches;
+  if (n && ctx.lr == 0x826F1690 && table && group < bd::mem::load<u32>(table + 4)) {
+    const u32 count = bd::mem::load<u16>(table + 8 + group * 508 + 2);
+    if (count >= 2) {
+      const u32 to = i + 1 == n ? count - 1 : i >= count - 1 ? (i - (count - 1)) % (count - 1) : i;
+      if (to != i)
+        ctx.r5.u64 = to;
+    }
+  }
+  __imp__sub_826DC6E8(ctx, base);
+}
+
+REX_EXTERN(__imp__sub_826F19E0);
+extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
+  const u32 vtbl = bd::mem::load<u32>(ctx.r3.u32);
+  __imp__sub_826F19E0(ctx, base);
+  if (Enabled() && (vtbl == kBookerRaw || vtbl == kBookerSmackDown)) {
+    const u32 slot = vtbl == kBookerRaw ? 0 : 1;
+    ctx.r3.u64 = MatchCount(slot, ctx.r3.u32);
+    t_weekly_matches = g_matches[slot] ? ctx.r3.u32 : 0;
+  }
+}
+
+REX_EXTERN(__imp__sub_82E05C90);
+extern "C" REX_FUNC(sub_82E05C90) {  // Superstars: 3 (shared with other classes)
+  const u32 vtbl = bd::mem::try_load<u32>(ctx.r3.u32);
+  __imp__sub_82E05C90(ctx, base);
+  if (Enabled() && vtbl == kBookerSuperstars) {
+    ctx.r3.u64 = MatchCount(2, ctx.r3.u32);
+    t_weekly_matches = g_matches[2] ? ctx.r3.u32 : 0;
+  }
+}
+
+REX_EXTERN(__imp__sub_826F1EF8);
+extern "C" REX_FUNC(sub_826F1EF8) {  // PPVs: 6
+  __imp__sub_826F1EF8(ctx, base);
+  if (Enabled())
+    ctx.r3.u64 = MatchCount(3, ctx.r3.u32);
 }
