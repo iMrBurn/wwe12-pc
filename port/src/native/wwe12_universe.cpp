@@ -4214,7 +4214,9 @@ extern "C" REX_FUNC(sub_826DC6E8) {
 
 REX_EXTERN(__imp__sub_826F19E0);
 extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
-  const u32 vtbl = bd::mem::load<u32>(ctx.r3.u32);
+  // a "return 4" shared with other code (a match calls it with r3 = 0 / 1: crash seen 2026-10-27
+  // when it was read unchecked): only a booker's r3 is a pointer to one of their vtables
+  const u32 vtbl = bd::mem::try_load<u32>(ctx.r3.u32);
   __imp__sub_826F19E0(ctx, base);
   if (Enabled() && (vtbl == kBookerRaw || vtbl == kBookerSmackDown)) {
     const u32 slot = vtbl == kBookerRaw ? 0 : 1;
@@ -4429,5 +4431,33 @@ void ChoiceColumns(u32 screen) {
   if (next != cursor) {
     bd::mem::store<u32>(box + 56, next);
     bd::mem::store<u32>(screen + 64, pressed & ~12u);
+  }
+}
+
+// Dev (wwe12_universe_probe): what the card screens do after a played match (auto-advance study):
+// sub_82547EE0(screen) runs every frame; logged when its state (+32), the menu manager's id
+// (G+372, G = *0x8317C594) or the card context's words (U = *0x83231548: +16, +20 play in order,
+// +32 match, +5032, +5036, +5068 next match) change.
+REX_EXTERN(__imp__sub_82547EE0);
+extern "C" REX_FUNC(sub_82547EE0) {
+  const u32 screen = ctx.r3.u32;
+  const auto snap = [&]() {
+    const u32 g = bd::mem::load<u32>(0x8317C594), u = bd::mem::load<u32>(0x83231548);
+    return fmt::format("state {} G+372 {} U+16 {} U+20 {} U+32 {} U+5032 {} U+5036 {} U+5068 {}",
+                       bd::mem::load<u32>(screen + 32), g ? bd::mem::load<u32>(g + 372) : 0,
+                       u ? bd::mem::load<u32>(u + 16) : 0, u ? bd::mem::load<u32>(u + 20) : 0,
+                       u ? bd::mem::load<u8>(u + 32) : 0, u ? bd::mem::load<u32>(u + 5032) : 0,
+                       u ? bd::mem::load<u32>(u + 5036) : 0, u ? bd::mem::load<u32>(u + 5068) : 0);
+  };
+  const bool probe = REXCVAR_GET(wwe12_universe_probe);
+  const std::string before = probe ? snap() : std::string();
+  __imp__sub_82547EE0(ctx, base);
+  if (probe) {
+    static std::string s_last;
+    const std::string after = snap();
+    if (after != s_last || after != before) {
+      BD_INFO("[univers] cards: {} -> {}", before, after);
+      s_last = after;
+    }
   }
 }
