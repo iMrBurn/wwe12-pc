@@ -83,3 +83,18 @@ Pour la 1.0 : étapes 1 et 2 seulement, c'est-à-dire ce qui est sûr et testé.
 - Textes de valeurs du constructeur, dans l'ordre : OFF/ON, les 5 types de ring, EXTREME RULES (95),
   SLOW/NORMAL/FAST, OFF/BOTH, PIN ONLY/SUBMISSION ONLY, NO EXITING, décomptes, limites de temps, armes.
 - Suite : une capture de chaque page (type simple), pour nommer les lignes, puis l'essai `[+12] = 50`.
+
+## Les lignes, avec les captures (2026-10-27, match simple)
+
+- ENVIRONMENT (4 lignes, vtable 0x820281B4) : ENTRANCE, POST MATCH REPLAY, MOMENTUM BAR CHARGE SPEED, RING TYPE
+  (MATCH TYPE au-dessus, fixe).
+- WIN CONDITION (11 lignes, vtable 0x82027C7C) : 0 PIN AND GIVE UP, 1 2 OUT OF 3 FALLS, 2 IRONMAN, 3 OVER THE TOP
+  ROPE, 4 K.O., 5 LAST MAN STANDING, 6 FINISHER MATCH, 7 FIRST BLOOD, 8 FLAMING TABLE, 9 CLIMB OUT OF CAGE,
+  10 ESCAPE THROUGH DOOR. En match simple, 3 et 7 à 10 sont grisées.
+- RULES (10 lignes, vtable 0x82027CAC) : 0 DQ, 1 ROPE BREAK, 2 RING OUT, 3 ELIMINATION, 4 FALLS COUNT ANYWHERE,
+  5 TIME LIMIT, 6-9 SLOT 1-4 (OBJECT SELECT). En match simple, 3 et 6 à 9 sont grisées.
+- Une ligne est grisée quand son champ « permis » (panneau + 232 + ligne × 24, recopié de la table `[+12]`) vaut 0, 1
+  ou 2 (méthode virtuelle +20, ex. `sub_82591448` pour WIN CONDITION) ; 50 = au choix. FIRST BLOOD est mis à 0
+  par `sub_825910F8` si BLOOD est désactivé. OVER THE TOP ROPE est grisé en match simple alors que sa table dit 50 :
+  un autre test, sans doute le type ou le nombre de catcheurs, le ferme. À trouver.
+- Méthodes d'ouverture (vtable +0) : ENVIRONMENT `sub_82594188`, WIN CONDITION `sub_825910F8`, RULES `sub_82591ED0`.
