@@ -78,6 +78,10 @@ wwe12_universe_title_defenses = 0
 # Qualifying matches and news before Money in the Bank and Elimination Chamber.
 wwe12_universe_qualifiers = false
 
+# Extended Match Creator: unlocks a few rules a match type keeps fixed (time limit everywhere, KO and
+# Last Man Standing in Cage/Hell in a Cell, Over the Top Rope and Elimination with 3+ Superstars).
+wwe12_mc_unlock = false
+
 # ---------------------------------------------------------------------------------------------
 # Controls
 # ---------------------------------------------------------------------------------------------

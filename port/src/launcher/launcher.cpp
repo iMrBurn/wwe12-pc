@@ -235,6 +235,7 @@ struct Texts {
   const char *keys_mod_alone;
   const char *api, *api_auto, *api_vulkan, *api_d3d12, *api_hint, *api_d3d12_missing;
   const char *defenses, *defenses_off, *defenses_hint, *qualifiers, *qualifiers_hint;
+  const char *mc_unlock, *mc_unlock_hint;
 };
 
 const Texts kEnglish = {
@@ -315,7 +316,10 @@ const Texts kEnglish = {
     "Title defenses in weekly shows", "Off (original game)",
     "In Universe mode, a match on the weekly card can become a title match. Percentage chance.",
     "Money in the Bank / Elimination Chamber qualifiers",
-    "Qualifying matches and news before Money in the Bank and Elimination Chamber (Universe mode)."};
+    "Qualifying matches and news before Money in the Bank and Elimination Chamber (Universe mode).",
+    "Extended Match Creator",
+    "Unlocks in the Match Creator: time limit everywhere, KO and Last Man Standing in Cage/Hell in a Cell, "
+    "Over the Top Rope and Elimination with 3+ Superstars."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -401,7 +405,10 @@ const Texts kFrench = {
     "Défenses de titre en weekly", "Désactivées (jeu d'origine)",
     "Dans le mode Univers, un match de la carte weekly peut devenir un match de titre. Pourcentage de chances.",
     "Qualifications Money in the Bank / Elimination Chamber",
-    "Matchs de qualification et news avant Money in the Bank et Elimination Chamber (mode Univers)."};
+    "Matchs de qualification et news avant Money in the Bank et Elimination Chamber (mode Univers).",
+    "Match Creator étendu",
+    "Débloque dans le Match Creator : limite de temps partout, K.O. et Last Man Standing en cage/Hell in a Cell, "
+    "Over the Top Rope et Élimination à 3 catcheurs ou plus."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -451,6 +458,7 @@ struct Settings {
   int aniso = 16;
   int title_defenses = 0;    // wwe12_universe_title_defenses, percent 0..100 (0 = the original game)
   bool qualifiers = false;   // wwe12_universe_qualifiers
+  bool mc_unlock = false;    // wwe12_mc_unlock (extended Match Creator)
   int api = 0;  // gpu_backend: 0 automatic ("any"), 1 vulkan, 2 d3d12 (wwe12_d3d12.exe)
   bool crowd = true;
   bool shadows = true;
@@ -488,6 +496,7 @@ void LoadSettings() {
   }
   g_s.title_defenses = std::clamp(g_toml.GetInt("wwe12_universe_title_defenses", 0), 0, 100);
   g_s.qualifiers = g_toml.GetBool("wwe12_universe_qualifiers", false);
+  g_s.mc_unlock = g_toml.GetBool("wwe12_mc_unlock", false);
   g_s.crowd = g_toml.GetBool("wwe12_crowd", true);
   g_s.shadows = g_toml.GetBool("wwe12_shadows", true);
   g_s.dof = g_toml.GetBool("wwe12_dof", true);
@@ -521,6 +530,7 @@ void SaveSettings() {
   g_toml.SetString("gpu_backend", g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
   g_toml.SetInt("wwe12_universe_title_defenses", g_s.title_defenses);
   g_toml.SetBool("wwe12_universe_qualifiers", g_s.qualifiers);
+  g_toml.SetBool("wwe12_mc_unlock", g_s.mc_unlock);
   g_toml.SetBool("wwe12_crowd", g_s.crowd);
   g_toml.SetBool("wwe12_shadows", g_s.shadows);
   g_toml.SetBool("wwe12_dof", g_s.dof);
@@ -803,6 +813,11 @@ void PageSettings() {
         changed |= ImGui::Checkbox(t.qualifiers, &g_s.qualifiers);
         ImGui::PushTextWrapPos(0);
         ImGui::TextDisabled("%s", t.qualifiers_hint);
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy(ImVec2(0, 4));
+        changed |= ImGui::Checkbox(t.mc_unlock, &g_s.mc_unlock);
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("%s", t.mc_unlock_hint);
         ImGui::PopTextWrapPos();
       }
       ImGui::EndTabItem();
