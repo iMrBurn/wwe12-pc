@@ -914,3 +914,21 @@ Sondes (`wwe12_universe_probe`, lignes « flow: ») sur 3 matchs joués :
 - Reste à trouver qui remplit this+12 (le mode demandé) à la fin de l'après-match : c'est là qu'il faudrait demander
   le mode « menu Univers » au lieu de « match suivant » quand l'option est active. Piste suivante : sonde sur les
   écritures de this+12 de `sub_822B3420` (ou sur `sub_822B5598` avec la valeur demandée et la pile).
+
+## 34. SCHEDULE géré comme le PLANNING de 2K14 (2026-10-27, testé par l'utilisateur et à la télécommande)
+
+Écran SCHEDULE : S (vtable 0x82023988, propriétaire S−28), S+284 le jour du curseur, S+29680 la vue ;
+`sub_8255C408(S−28)` redessine les 28 cases ; X = `sub_8255CB08` (ouvre le SHOW EDIT du jeu, objet de 1332 octets
+`sub_82589958`). **Y EDIT DAY** (Y libre sur cet écran) ouvre notre boîte pour le jour du curseur : jour de semaine vide
+→ y mettre RAW / SMACKDOWN / SUPERSTARS (retiré de son ancien jour) ; jour avec un show → MOVE / MATCHES / REMOVE ;
+dimanche vide → y mettre un PPV ; dimanche avec un PPV → MOVE / HOST SHOW / REMOVE (comme EDIT CALENDAR).
+- Le curseur du jeu (`sub_8255C770`) saute les jours vides (`sub_826CE6C0(vue, jour)` = 255) : appelé depuis là, un
+  jour vide répond 254, le curseur s'y pose. Sur un jour vide, la grande image du jour choisi (élément +12 de la case)
+  est cachée et les cadres (+6, +7) sont donnés à la case, sinon le curseur est invisible ; une case à qui on avait
+  donné une image retrouve son « dummy » quand son jour devient vide (sinon le logo d'un autre mois reste).
+- Barres du bas (données d'aide 0x8324DF18, fiches de 20 octets, 3 paires {bouton, texte}, le jeu en +12) : 522
+  (B BACK, X EDIT) reçoit Y ; 518 (A SELECT, B BACK, X EDIT, pleine) et 6 (B BACK, partagée avec d'autres écrans)
+  ont leur dernier texte remplacé par 27053 / 27054 = le texte du jeu (45409 EDIT / 45040 BACK) suivi de
+  « Y EDIT DAY » quand SCHEDULE est affiché (menu Univers +288 == +276), le texte seul ailleurs. Bouton Y = 45002.
+- Matchs par show : le modèle n° (défaut − 1) du jeu est son main event (le 4e des 4 de RAW) : seul notre dernier
+  match le prend, les autres tournent sur 0 .. défaut − 2 (vu : SmackDown à 5 = 4 matchs + 1 MAIN EVENT).

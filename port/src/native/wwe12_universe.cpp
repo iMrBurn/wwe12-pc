@@ -59,6 +59,8 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
+#include <set>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -162,6 +164,8 @@ Lang CurrentLang() {
 std::string g_attire_question;
 // Our paged choice boxes' question (27051: empty in WWE '12) and information messages.
 constexpr u32 kChooseText = 27051;
+// SCHEDULE's button bar: "Y EDIT DAY" (27052: empty in WWE '12).
+constexpr u32 kDayText = 27052;
 std::string g_choose_question;
 // The Superstar page's last button bar label ("DEFAULT   Y ATTIRE"), written when the page shows.
 std::string g_attire_prompt;
@@ -289,6 +293,11 @@ const char *Text(u32 id) {
     return g_stats_text.c_str();
   if (id == kChooseText)
     return g_choose_question.c_str();
+  if (id == kDayText) {
+    static const char *const kDay[5] = {"EDIT DAY", "MODIFIER LE JOUR", "TAG BEARBEITEN",
+                                        "EDITAR D\xC3\x8D" "A", "MODIFICA GIORNO"};
+    return kDay[CurrentLang()];
+  }
   if (id == kContenderText) {
     static const char *const kContender[5] = {
         "CONTENDER SETTINGS\nThe titles this Superstar may be ranked for (A changes a line).",
@@ -316,7 +325,7 @@ const char *Text(u32 id) {
 // slot per text, rewritten when the language changes.
 u32 GuestText(u32 id) {
   constexpr u32 kSlot = 512;
-  constexpr u32 kSlots = 1 + kLastText - kAskText + 1 + 3;  // + contender, statistics, chooser
+  constexpr u32 kSlots = 1 + kLastText - kAskText + 1 + 4;  // + contender, stats, chooser, day
   const char *text = Text(id);
   if (!text)
     return 0;
@@ -330,6 +339,7 @@ u32 GuestText(u32 id) {
                    : id == kContenderText   ? kSlots - 3
                    : id == kStatsText       ? kSlots - 2
                    : id == kChooseText      ? kSlots - 1
+                   : id == kDayText         ? kSlots - 4
                                             : id - kAskText + 1;
   const u32 at = s_block + slot * kSlot;
   if (s_for[slot] != text || id == kAttireText || id == kAttirePromptText || id == kStatsText ||
@@ -1003,13 +1013,43 @@ constexpr u32 kGameSaveText = 238;
 
 // The string manager's "text of id": EDIT SUPERSTAR's new label and our questions.
 REX_EXTERN(__imp__sub_821A4400);
+// SCHEDULE's full button bars (set 518: A SELECT, B BACK, X EDIT; set 6: B BACK, shared with other
+// screens) get "Y EDIT DAY" at the end of their last label: that label is one of ours (27053 = the
+// game's EDIT, 27054 = its BACK), the game's text plus "   Y EDIT DAY" while SCHEDULE shows, the
+// game's text alone elsewhere.
+constexpr u32 kEditPlusDayText = 27053, kBackPlusDayText = 27054;
+constexpr u32 kGameEditText = 45409, kGameBackText = 45040;
+u32 g_universe_menu_for_bar = 0;  // the Universe menu (its +288 the panel shown, +276 SCHEDULE)
+
 extern "C" REX_FUNC(sub_821A4400) {
   if (g_save_label && ctx.r4.u32 == g_save_label)
     ctx.r4.u64 = kGameSaveText;
+  const u32 asked = ctx.r4.u32;
+  if (asked == kEditPlusDayText || asked == kBackPlusDayText) {
+    ctx.r4.u64 = asked == kEditPlusDayText ? kGameEditText : kGameBackText;
+    __imp__sub_821A4400(ctx, base);
+    const u32 m = g_universe_menu_for_bar;
+    const bool schedule = Enabled() && m && bd::mem::load<u32>(0x8324E51C) == 1 &&  // in the Universe
+                          bd::mem::load<u32>(m + 288) == bd::mem::load<u32>(m + 276);
+    const char *game = ctx.r3.u32 ? bd::mem::try_at<const char>(ctx.r3.u32) : nullptr;
+    if (schedule && game) {
+      static u32 s_at[2] = {};
+      u32 &at = s_at[asked == kBackPlusDayText];
+      if (!at)
+        at = REX_KERNEL_MEMORY()->SystemHeapAlloc(128, 0x10);
+      if (at) {
+        const std::string text = std::string(game) + "   \xEE\x80\x87 " + Text(kDayText);
+        std::memset(bd::mem::at<char>(at), 0, 128);
+        std::memcpy(bd::mem::at<char>(at), text.data(), std::min<size_t>(text.size(), 127));
+        ctx.r3.u64 = at;
+      }
+    }
+    return;
+  }
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
   if (Enabled() && (id == kEditSuperstarText || id == kContenderText || id == kStatsText ||
-                    id == kChooseText ||
+                    id == kChooseText || id == kDayText ||
                     (id >= kAskText && id <= kLastText))) {
     if (const u32 text = GuestText(id))
       ctx.r3.u64 = text;
@@ -1687,6 +1727,31 @@ void SaveMatchCounts() {
       f << "matches " << keys[i] << ' ' << g_matches[i] << '\n';
 }
 
+// The number of matches of one kind of show (0 RAW, 1 SmackDown, 2 Superstars, 3 the PPVs).
+void ChooseMatchCount(const PPCContext &in, u8 *base, u32 which, const std::string &name,
+                      std::function<void(const PPCContext &, u8 *)> after = {}) {
+  const CalendarWords &w = CWords();
+  LoadMatchCounts();
+  static const u32 kDefault[4] = {4, 4, 3, 6};
+  const auto now = [which](u32 n) {
+    return n ? std::to_string(n)
+             : std::string(CWords().default_count) + " " + std::to_string(kDefault[which]);
+  };
+  std::vector<std::string> counts = {std::string(w.default_count) + " (" +
+                                     std::to_string(kDefault[which]) + ")"};
+  for (u32 n = 1; n <= 6; ++n)
+    counts.push_back(std::to_string(n));
+  Choose(in, base, Format(w.pick_count, name, now(g_matches[which])), counts,
+         [name, which, now, after](const PPCContext &in, u8 *base, size_t pick) {
+           g_matches[which] = u32(pick);  // 0: the game's
+           SaveMatchCounts();
+           BD_INFO("[univers] matches per show: {} -> {}", which, pick);
+           if (after)
+             after(in, base);
+           Inform(in, base, Format(CWords().done_matches, name, now(u32(pick))));
+         });
+}
+
 void EditMatches(const PPCContext &in, u8 *base) {
   const CalendarWords &w = CWords();
   const u32 u = UniverseBlock(in, base);
@@ -1695,24 +1760,130 @@ void EditMatches(const PPCContext &in, u8 *base) {
   LoadMatchCounts();
   std::vector<std::string> shows = {ShowName(u, 0), ShowName(u, 1), ShowName(u, 2), w.all_ppvs};
   Choose(in, base, w.matches, shows, [shows](const PPCContext &in, u8 *base, size_t which) {
-    const CalendarWords &w = CWords();
-    static const u32 kDefault[4] = {4, 4, 3, 6};
-    const auto now = [&](u32 n) {
-      return n ? std::to_string(n) : std::string(w.default_count) + " " + std::to_string(kDefault[which]);
-    };
-    std::vector<std::string> counts = {std::string(w.default_count) + " (" +
-                                       std::to_string(kDefault[which]) + ")"};
-    for (u32 n = 1; n <= 6; ++n)
-      counts.push_back(std::to_string(n));
-    Choose(in, base, Format(w.pick_count, shows[which], now(g_matches[which])), counts,
-           [shows, which, now](const PPCContext &in, u8 *base, size_t pick) {
-             const CalendarWords &w = CWords();
-             g_matches[which] = u32(pick);  // 0: the game's
-             SaveMatchCounts();
-             BD_INFO("[univers] matches per show: {} -> {}", which, pick);
-             Inform(in, base, Format(w.done_matches, shows[which], now(u32(pick))));
-           });
+    ChooseMatchCount(in, base, u32(which), shows[which]);
   });
+}
+
+// ---- SCHEDULE: a day's cell edited from the calendar (as WWE 2K14's PLANNING) ---------------------
+//
+// SCHEDULE's screen S (vtable 0x82023988; its owner S-28): S+284 the cursor's day, S+29680 the view
+// (Universe view: +4 = U); sub_8255C408(S-28) draws the 28 cells again. Y (unused there) opens our
+// box for that day: a weekday (day % 7 < 6, Monday first) shows its weekly show (U + 0xDE00 + weekday):
+// empty -> put RAW / SMACKDOWN / SUPERSTARS there (moved from its old day); a show -> MOVE (another
+// day), MATCHES, REMOVE. A Sunday is a PPV date (U + 0xDDD0 + month * 4 + week, week = day / 7 % 4,
+// month = sub_826D2890(day)): empty -> put a PPV there (moved from its old date, swapped with none);
+// a PPV -> MOVE, HOST SHOW, REMOVE.
+
+constexpr u32 kScheduleVtbl = 0x82023988;
+REX_EXTERN(__imp__sub_8255C408);  // SCHEDULE: draw the cells (S - 28)
+REX_EXTERN(__imp__sub_826D2890);  // a day's month
+
+void RedrawSchedule(const PPCContext &in, u8 *base, u32 screen) {
+  if (bd::mem::try_load<u32>(screen) == kScheduleVtbl)
+    Call(in, base, __imp__sub_8255C408, screen - 28);
+}
+
+void PutShow(u32 u, u32 show, u32 weekday) {  // weekday 6: off the calendar
+  for (u32 d = 0; d < 7; ++d)
+    if (bd::mem::load<u8>(u + kWeekTable + d) == show)
+      bd::mem::store<u8>(u + kWeekTable + d, kNoShow);
+  if (weekday < 6)
+    bd::mem::store<u8>(u + kWeekTable + weekday, u8(show));
+}
+
+struct ScheduleWords {
+  const char *put, *move, *remove, *matches, *nothing;
+};
+const ScheduleWords &SWords() {
+  static const ScheduleWords kWords[5] = {
+      {"PUT A SHOW HERE", "MOVE", "REMOVE", "MATCHES", "Nothing on this day."},
+      {"METTRE UN SHOW ICI", "D\xC3\x89PLACER", "RETIRER", "MATCHS", "Rien ce jour-l\xC3\xA0."},
+      {"SHOW HIERHER", "VERSCHIEBEN", "ENTFERNEN", "MATCHES", "Nichts an diesem Tag."},
+      {"PONER UN SHOW AQU\xC3\x8D", "MOVER", "QUITAR", "COMBATES", "Nada este d\xC3\xAD" "a."},
+      {"METTI UNO SHOW QUI", "SPOSTA", "TOGLI", "INCONTRI", "Niente in questo giorno."}};
+  return kWords[CurrentLang()];
+}
+
+void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
+  const CalendarWords &w = CWords();
+  const ScheduleWords &sw = SWords();
+  const u32 u = UniverseBlock(in, base);
+  if (!u)
+    return;
+  const u32 day = bd::mem::load<u32>(screen + 284);
+  const u32 weekday = day % 7;
+  g_screen = screen;
+  if (weekday < 6) {
+    const u8 show = bd::mem::load<u8>(u + kWeekTable + weekday);
+    if (show > 2) {  // empty (or a show without a booker): put one here
+      std::vector<std::string> shows;
+      for (u32 k = 0; k < 3; ++k)
+        shows.push_back(ShowName(u, k) + "  (" + ShowDay(u, k) + ")");
+      Choose(in, base, std::string(w.days[weekday]) + "\n" + sw.put, shows,
+             [screen, weekday](const PPCContext &in, u8 *base, size_t k) {
+               const u32 u = UniverseBlock(in, base);
+               PutShow(u, u32(k), weekday);
+               BD_INFO("[univers] schedule: show {} put on weekday {}", k, weekday);
+               RedrawSchedule(in, base, screen);
+               Inform(in, base, Format(CWords().done_day, ShowName(u, u32(k)), CWords().days[weekday]));
+             });
+      return;
+    }
+    const std::string name = ShowName(u, show);
+    Choose(in, base, name + "  (" + w.days[weekday] + ")", {sw.move, sw.matches, sw.remove},
+           [screen, show, name](const PPCContext &in, u8 *base, size_t what) {
+             const CalendarWords &w = CWords();
+             const u32 u = UniverseBlock(in, base);
+             if (what == 0) {
+               std::vector<std::string> days(w.days, w.days + 6);
+               Choose(in, base, Format(w.pick_day, name, ShowDay(u, show)), days,
+                      [screen, show, name](const PPCContext &in, u8 *base, size_t to) {
+                        const u32 u = UniverseBlock(in, base);
+                        const u8 there = bd::mem::load<u8>(u + kWeekTable + u32(to));
+                        std::string bumped;
+                        if (there != kNoShow && there != show)
+                          bumped = Format(CWords().bumped, ShowName(u, there));
+                        PutShow(u, show, u32(to));
+                        RedrawSchedule(in, base, screen);
+                        Inform(in, base, Format(CWords().done_day, name, CWords().days[to]) + bumped);
+                      });
+             } else if (what == 1) {
+               ChooseMatchCount(in, base, show, name);
+             } else {
+               PutShow(u, show, 6);
+               RedrawSchedule(in, base, screen);
+               Inform(in, base, Format(w.done_none, name));
+             }
+           });
+    return;
+  }
+  // a Sunday: a PPV date
+  const u32 month = Call(in, base, __imp__sub_826D2890, day) % 12, week = (day / 7) % 4;
+  const u32 slot = month * 4 + week;
+  const u8 ppv = bd::mem::load<u8>(u + kPpvTable + slot);
+  if (ppv < 10 || ppv > 22) {
+    std::vector<std::string> ppvs;
+    for (u32 k = 10; k < 23; ++k)
+      ppvs.push_back(ShowName(u, k));
+    Choose(in, base, MonthName(in, base, month) + " - " + w.week + " " + std::to_string(week + 1) +
+                         "\n" + w.pick_ppv,
+           ppvs, [screen, slot, month, week](const PPCContext &in, u8 *base, size_t k) {
+             const u32 u = UniverseBlock(in, base);
+             const u32 ppv = 10 + u32(k);
+             for (u32 i = 0; i < 48; ++i)
+               if (bd::mem::load<u8>(u + kPpvTable + i) == ppv)
+                 bd::mem::store<u8>(u + kPpvTable + i, kNoShow);
+             bd::mem::store<u8>(u + kPpvTable + slot, u8(ppv));
+             BD_INFO("[univers] schedule: PPV {} put in slot {}", ppv, slot);
+             RedrawSchedule(in, base, screen);
+             char text[256];
+             std::snprintf(text, sizeof(text), CWords().done_ppv, ShowName(u, ppv).c_str(), week + 1,
+                           MonthName(in, base, month).c_str());
+             Inform(in, base, text);
+           });
+    return;
+  }
+  EditPpv(in, base, ppv);  // MOVE / HOST SHOW / REMOVE, as from EDIT CALENDAR
 }
 
 // ---- EDIT UNIVERSE (as WWE 2K14's list) -------------------------------------------------------
@@ -3429,11 +3600,16 @@ extern "C" REX_FUNC(sub_82552240) {
 bool CardButtons(const PPCContext &in, u8 *base, u32 screen);  // MATCH CARDS: X chooses the winner
 
 void ChoiceColumns(u32 screen);  // left / right in our two-column choice boxes
+namespace {
+bool ScheduleButtons(const PPCContext &in, u8 *base, u32 screen);  // Y on SCHEDULE: a day's cell
+}
 
 extern "C" REX_FUNC(sub_824D20A0) {
   const u32 screen = ctx.r3.u32;
   ChoiceColumns(screen);
   if (CardButtons(ctx, base, screen))
+    return;
+  if (ScheduleButtons(ctx, base, screen))
     return;
   if (bd::mem::try_load<u32>(screen) == kSuperstarPageVtbl) {
     if (SuperstarPageButtons(ctx, base, screen))
@@ -4188,6 +4364,7 @@ extern "C" REX_FUNC(sub_8270EEB0) {
 // last template (the main event / title one, as the game's 4th of 4) and the others cycle through
 // the other templates. PPVs stay at 6 at most (the game's own number).
 thread_local u32 t_weekly_matches = 0;  // our number for the card being booked on this thread
+thread_local u32 t_weekly_default = 0;  // the game's number for it (its last template: the main event)
 
 namespace {
 u32 MatchCount(u32 slot, u32 game) {
@@ -4200,11 +4377,13 @@ u32 MatchCount(u32 slot, u32 game) {
 REX_EXTERN(__imp__sub_826DC6E8);
 extern "C" REX_FUNC(sub_826DC6E8) {
   const u32 table = ctx.r3.u32, group = ctx.r4.u32 & 0xFFFF, i = ctx.r5.u32 & 0xFFFF;
-  const u32 n = t_weekly_matches;
-  if (n && ctx.lr == 0x826F1690 && table && group < bd::mem::load<u32>(table + 4)) {
+  const u32 n = t_weekly_matches, d = t_weekly_default;
+  if (n && d >= 2 && ctx.lr == 0x826F1690 && table && group < bd::mem::load<u32>(table + 4)) {
+    // the game's template d - 1 is its main event (the 4th of RAW's 4): only our last match takes
+    // it, the others cycle through the game's other ones (0 .. d - 2)
     const u32 count = bd::mem::load<u16>(table + 8 + group * 508 + 2);
-    if (count >= 2) {
-      const u32 to = i + 1 == n ? count - 1 : i >= count - 1 ? (i - (count - 1)) % (count - 1) : i;
+    if (count >= d) {
+      const u32 to = i + 1 == n ? d - 1 : i < d - 1 ? i : (i - (d - 1)) % (d - 1);
       if (to != i)
         ctx.r5.u64 = to;
     }
@@ -4220,6 +4399,7 @@ extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
   __imp__sub_826F19E0(ctx, base);
   if (Enabled() && (vtbl == kBookerRaw || vtbl == kBookerSmackDown)) {
     const u32 slot = vtbl == kBookerRaw ? 0 : 1;
+    t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(slot, ctx.r3.u32);
     t_weekly_matches = g_matches[slot] ? ctx.r3.u32 : 0;
   }
@@ -4230,6 +4410,7 @@ extern "C" REX_FUNC(sub_82E05C90) {  // Superstars: 3 (shared with other classes
   const u32 vtbl = bd::mem::try_load<u32>(ctx.r3.u32);
   __imp__sub_82E05C90(ctx, base);
   if (Enabled() && vtbl == kBookerSuperstars) {
+    t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(2, ctx.r3.u32);
     t_weekly_matches = g_matches[2] ? ctx.r3.u32 : 0;
   }
@@ -4254,6 +4435,7 @@ REX_EXTERN(__imp__sub_8255BFD8);
 REX_EXTERN(__imp__sub_826CCCD8);  // Universe view: the show of a day (view, day)
 REX_EXTERN(__imp__sub_824C5490);  // layout manager: element (manager, group, index)
 constexpr u32 kDummyElement = 0x1027;
+std::map<u32, std::array<u8, 240>> g_cell_original;  // cells' dummy elements we made pictures
 
 extern "C" REX_FUNC(sub_8255BFD8) {
   const u32 screen = ctx.r3.u32, day = ctx.r4.u32, cell = ctx.r5.u32;
@@ -4265,18 +4447,19 @@ extern "C" REX_FUNC(sub_8255BFD8) {
     const u32 record = show ? bd::mem::load<u32>(show) : 0;
     const u32 holder = bd::mem::load<u32>(0x8324DEF4);
     const u32 manager = holder ? bd::mem::load<u32>(holder + 96) : 0;
-    // weekly shows only (0-9): Sunday's cells draw the PPVs their own way
-    if (record && manager && bd::mem::load<u8>(record + 927) < 10 && day % 7 != 6) {
+    if (manager) {
       const u32 group = bd::mem::load<u32>(cell + 4), first = bd::mem::load<u32>(cell + 8);
-      // a cell's elements: +0 its picture (+1 / +2 its HD / SD variants, dummies everywhere), +3 a
-      // second picture, +6 its frame, +7 the "today" frame, and the cell entry's +12: the picture
-      // of the day chosen (3 elements a day from 56); a dummy one takes a copy of the same element
-      // of a real cell of the group (another cell: 8 elements a cell, or 3 for the chosen picture)
       const u32 chosen = bd::mem::load<u32>(cell + 12);
-      for (u32 n : {first, first + 3, first + 6, first + 7, chosen}) {
+      // a cell's elements: +0 its picture (+1 / +2 its HD / SD variants, dummies everywhere), +3 a
+      // second picture, +6 its frame, +7 the cursor's frame, and the cell entry's +12: the picture
+      // of the day chosen (3 elements a day from 56). A dummy one takes a copy of the same element
+      // of a real cell of the group (another cell: 8 elements a cell, or 3 for the chosen picture),
+      // keeping its place (+4 x, +8 y), its name (+96) and its own picture object (+204: the cell's
+      // object, screen + (cell + 2) * 336, which sub_8255BFD8 gives the show's logo).
+      const auto convert = [&](u32 n) {
         const u32 element = Call(x, base, __imp__sub_824C5490, manager, group, n);
         if (!element || bd::mem::load<u32>(element) != kDummyElement)
-          continue;
+          return;
         const u32 step = n == chosen ? 3 : 8, o = n == chosen ? 56 : n - first;
         u32 model = 0;
         for (u32 e = o; e < 224 && !model; e += step) {
@@ -4285,19 +4468,41 @@ extern "C" REX_FUNC(sub_8255BFD8) {
             model = at;
         }
         if (!model)
-          continue;
-        // kept: its place (+4 x, +8 y), its name (+96) and its own picture object (+204: the cell's
-        // object, screen + (cell + 2) * 336, which sub_8255BFD8 gives the show's logo)
+          return;
         u8 keep[8 + 16];
         std::memcpy(keep, bd::mem::at<u8>(element + 4), 8);
         std::memcpy(keep + 8, bd::mem::at<u8>(element + 96), 16);
         const u32 picture = bd::mem::load<u32>(element + 204);
+        auto &original = g_cell_original[element];  // the dummy, put back when its day is empty
+        std::memcpy(original.data(), bd::mem::at<u8>(element), 240);
         std::memcpy(bd::mem::at<u8>(element), bd::mem::at<u8>(model), 240);
         std::memcpy(bd::mem::at<u8>(element + 4), keep, 8);
         std::memcpy(bd::mem::at<u8>(element + 96), keep + 8, 16);
         bd::mem::store<u32>(element + 204, picture);
-        BD_INFO("[univers] schedule: day {} element {} of group {:X} made a picture", day, n,
-                group);
+      };
+      const auto restore = [&](u32 n) {
+        const u32 element = Call(x, base, __imp__sub_824C5490, manager, group, n);
+        const auto it = element ? g_cell_original.find(element) : g_cell_original.end();
+        if (it != g_cell_original.end() && bd::mem::load<u32>(element) != kDummyElement)
+          std::memcpy(bd::mem::at<u8>(element), it->second.data(), 240);
+      };
+      const bool weekly = record && bd::mem::load<u8>(record + 927) < 10 && day % 7 != 6;
+      if (weekly) {
+        for (u32 n : {first, first + 3, first + 6, first + 7, chosen})
+          convert(n);
+      } else if (!record) {
+        // an empty day (the game never puts its cursor there): no picture (another day's logo
+        // would stay), but the frames, so the cursor shows; its big picture hidden
+        for (u32 n : {first, first + 3, chosen})
+          restore(n);
+        convert(first + 6);
+        convert(first + 7);
+        for (u32 n = chosen; n < chosen + 3; ++n)
+          if (const u32 element = Call(x, base, __imp__sub_824C5490, manager, group, n))
+            bd::mem::store<u32>(element + 180, 1);
+      } else {  // a PPV (Sundays draw them their own way)
+        for (u32 n : {first, first + 3, first + 6, first + 7, chosen})
+          restore(n);
       }
     }
   }
@@ -4519,4 +4724,73 @@ extern "C" REX_FUNC(sub_823DCC38) {
   if (REXCVAR_GET(wwe12_universe_probe))
     BD_INFO("[univers] flow: state factory id {} made {:08X} (vt {:08X})", id, ctx.r3.u32,
             ctx.r3.u32 ? bd::mem::try_load<u32>(ctx.r3.u32) : 0);
+}
+
+namespace {
+// A button in a button bar set (the help data's 20-byte records: 3 {button, label} pairs, the set at
+// +12), in its first free pair; once (it stays in the data).
+void AddPrompt(u32 set, u32 button, u32 label) {
+  const u32 help = bd::mem::load<u32>(kHelpData);
+  const u32 records = help ? bd::mem::load<u32>(help + 48) : 0;
+  const u32 count = help ? bd::mem::load<u32>(help + 52) : 0;
+  for (u32 i = 0; records && i < count && i < 4096; ++i) {
+    const u32 at = records + i * 20;
+    if (bd::mem::load<u16>(at + 12) != set)
+      continue;
+    for (u32 k = 0; k < 3; ++k)
+      if (bd::mem::load<u16>(at + k * 4) == button)
+        return;
+    for (u32 k = 0; k < 3; ++k)
+      if (bd::mem::load<u16>(at + k * 4) == 0xFFFF) {
+        bd::mem::store<u16>(at + k * 4, u16(button));
+        bd::mem::store<u16>(at + k * 4 + 2, u16(label));
+        BD_INFO("[univers] button bar set {}: button {} added (place {})", set, button, k);
+        return;
+      }
+    return;
+  }
+}
+
+constexpr u32 kButtonY = 45002;  // the button bar's Y icon (A 45000, B 45001, X 45003)
+
+// A set's pair k label changed from one text to another (once).
+void SetPromptLabel(u32 set, u32 k, u32 from, u32 to) {
+  const u32 help = bd::mem::load<u32>(kHelpData);
+  const u32 records = help ? bd::mem::load<u32>(help + 48) : 0;
+  const u32 count = help ? bd::mem::load<u32>(help + 52) : 0;
+  for (u32 i = 0; records && i < count && i < 4096; ++i) {
+    const u32 at = records + i * 20;
+    if (bd::mem::load<u16>(at + 12) == set && bd::mem::load<u16>(at + k * 4 + 2) == from) {
+      bd::mem::store<u16>(at + k * 4 + 2, u16(to));
+      BD_INFO("[univers] button bar set {}: label {} -> {}", set, from, to);
+    }
+  }
+}
+
+bool ScheduleButtons(const PPCContext &in, u8 *base, u32 screen) {
+  if (Enabled() && bd::mem::try_load<u32>(screen) == kScheduleVtbl) {
+    g_universe_menu_for_bar = g_universe_menu;
+    AddPrompt(522, kButtonY, kDayText);  // B BACK, X EDIT: a free pair
+    SetPromptLabel(518, 2, kGameEditText, kEditPlusDayText);  // A SELECT, B BACK, X EDIT: full
+    SetPromptLabel(6, 0, kGameBackText, kBackPlusDayText);    // B BACK (other screens too)
+  }
+  if (!Enabled() || g_step != Step::kIdle || bd::mem::try_load<u32>(screen) != kScheduleVtbl ||
+      bd::mem::load<u32>(kInUniverseFlag) != 1 || !(bd::mem::load<u32>(screen + 64) & kY))
+    return false;
+  bd::mem::store<u32>(screen + 64, 0);
+  BD_INFO("[univers] schedule: Y on day {}", bd::mem::load<u32>(screen + 284));
+  ScheduleCell(in, base, screen);
+  return true;
+}
+}  // namespace
+
+// SCHEDULE's cursor (sub_8255C770, its arrows) only stops on a day with a show: it asks
+// sub_826CE6C0(view, day) and goes on while 255. From there, an empty day answers 254, so the cursor
+// stops on every day (Y on it puts a show or a PPV there).
+REX_EXTERN(__imp__sub_826CE6C0);
+extern "C" REX_FUNC(sub_826CE6C0) {
+  const u32 lr = u32(ctx.lr);
+  __imp__sub_826CE6C0(ctx, base);
+  if (Enabled() && ctx.r3.u32 == 255 && lr >= 0x8255C770 && lr < 0x8255CB08)
+    ctx.r3.u64 = 254;
 }
