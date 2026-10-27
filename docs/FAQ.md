@@ -99,8 +99,8 @@ itself warns that matches may be badly balanced under 15.
 
 ## Match Creator
 
-**Extended Match Creator.** Off by default (original rules). Turn it on in the launcher or with
-`wwe12_mc_unlock = true` in `wwe12.toml`. It unlocks: time limit everywhere; KO and Last Man Standing in Cage and
+**Extended Match Creator.** On by default. To go back to the original rules, turn it off in the launcher or
+with `wwe12_mc_unlock = false` in `wwe12.toml`. It unlocks: time limit everywhere; KO and Last Man Standing in Cage and
 Hell in a Cell; Over the Top Rope and Elimination with 3 or more Superstars (match types 0 to 26). Entrance/replay
 options and incoherent combinations (like a pinfall in a Ladder match) stay locked on purpose.
 
@@ -155,7 +155,8 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
   MATCHS DE QUALIFICATION en jeu. Les 2 semaines avant Money in the Bank et Elimination Chamber, des qualifications
   ont lieu dans les émissions, avec des news. Pas de qualifications pour le Royal Rumble.
 - **Moins de 15 catcheurs par émission** : `wwe12_universe_min_roster` (1 à 15, 15 = jeu d'origine).
-- **Match Creator étendu** : désactivé par défaut. Launcher, ou `wwe12_mc_unlock = true` dans `wwe12.toml`. Débloque :
+- **Match Creator étendu** : activé par défaut. Pour revenir aux règles d'origine : launcher, ou
+  `wwe12_mc_unlock = false` dans `wwe12.toml`. Débloque :
   limite de temps partout ; K.O. et Last Man Standing en cage et Hell in a Cell ; Over the Top Rope et Élimination à
   3 catcheurs ou plus (types de match 0 à 26). Les options d'entrée/replay et les combinaisons incohérentes (un tombé
   à l'échelle) restent verrouillées volontairement.
