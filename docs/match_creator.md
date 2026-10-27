@@ -56,3 +56,18 @@ sans lancer le jeu. Rien n'est codé.
 3. **Combinaisons à risque (2 à 4 séances, plutôt après la 1.0)** : une par une, avec un test de match chacune.
 
 Pour la 1.0 : étapes 1 et 2 seulement, c'est-à-dire ce qui est sûr et testé.
+
+## Sonde, premier passage (2026-10-27, `wwe12_mc_probe`, `tools/dev/lancer_test_mc.bat`, journal `match_creator.log`)
+
+- Un seul panneau est passé par `sub_825910F8` : 11 lignes, vtable 0x82027C7C, ouvert avec le type de match 0
+  (groupe 0). Les deux autres panneaux s'ouvrent par une autre fonction (classe dérivée) : à trouver.
+- Les quatre tables sont **dans le tas** (0xA3DC5F30…), donc chargées depuis un fichier du jeu et non écrites
+  dans le code : on peut les modifier en mémoire après leur chargement.
+- `[+8]` (67 groupes × 11) : petits nombres (0, 1, 3), sans doute la **valeur de départ** de chaque ligne.
+- `[+12]` (67 × 11) : **50** = le joueur choisit ; **0, 2, 3** = valeur imposée ou ligne fermée, selon le groupe.
+  C'est la restriction par type de match.
+- `[+20]` : une matrice 11 × 11 avec **255 sur la diagonale**. Ce sont sans doute les **compatibilités entre
+  options** (50 = compatibles, 0 = incompatibles, 3 = cas particulier). C'est la restriction entre règles.
+- `[+16]` : autre forme, pas encore comprise.
+- Reste à faire avant de débloquer : relier chaque ligne à son nom (texte affiché), sonder les deux autres panneaux,
+  et confirmer en jeu qu'un 50 forcé dans `[+12]` ou `[+20]` rend bien la ligne choisissable.
