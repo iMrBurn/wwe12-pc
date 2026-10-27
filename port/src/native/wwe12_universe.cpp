@@ -1518,7 +1518,6 @@ extern "C" REX_FUNC(sub_824D1AF0) {
     if (g_attire_options.size() >= 2)
       g_attire_options.push_back({kRandom, GameText(ctx, base, kRandomText)});
     g_attire_options.push_back({kStats, StatsLine()});
-    g_attire_options.push_back({kContender, ContenderLine()});
     g_contender_box = false;
     g_step = Step::kAttire;
     ShowAttirePage(ctx, base, 0);
@@ -1819,6 +1818,8 @@ namespace {
 constexpr u32 kPanelShown = 288, kRankingsPanel = 264;
 constexpr u32 kTitleRowName[4] = {842, 854, 866, 881}, kTitleRowRed[4] = {843, 855, 867, 882};
 constexpr u32 kHeaderName = 830;
+// The pages' top, as WWE 2K14's: LB / RB (U+E00D / U+E00E) and the page's name.
+constexpr const char *kPageKeys = "\xEE\x80\x8D \xEE\x80\x8E   ";
 constexpr u32 kLB = 0x100, kRB = 0x200;
 
 struct SuperstarPages {
@@ -1920,8 +1921,7 @@ int RankOf(const PPCContext &in, u8 *base, u32 title) {
 
 void BuildLines(const PPCContext &in, u8 *base) {
   static const char *const kPage[2][5] = {
-      {"CONTENDER SETTINGS", "R\xC3\x89GLAGES D'ASPIRANT", "HERAUSFORDERER", "AJUSTES DE ASPIRANTE",
-       "IMPOSTAZIONI SFIDANTE"},
+      {"CHAMPIONSHIPS", "CHAMPIONNATS", "TITEL", "CAMPEONATOS", "TITOLI"},
       {"STATISTICS", "STATISTIQUES", "STATISTIKEN", "ESTAD\xC3\x8DSTICAS", "STATISTICHE"}};
   static const char *const kRank[5] = {"RANK %d", "RANG %d", "RANG %d", "PUESTO %d", "POSIZIONE %d"};
   static const char *const kChampion[5] = {"CHAMPION", "CHAMPION", "CHAMPION", "CAMPE\xC3\x93N",
@@ -1933,7 +1933,7 @@ void BuildLines(const PPCContext &in, u8 *base) {
   const u32 name = Call(in, base, __imp__sub_82A32618, g_pages.id);
   const char *n = name ? bd::mem::try_at<const char>(name) : nullptr;
   g_pages.name = n ? n : "";
-  g_pages.header = g_pages.name + "  -  " + kPage[g_pages.page - 1][lang];
+  g_pages.header = std::string(kPageKeys) + kPage[g_pages.page - 1][lang];
   LoadContenders();
   const u32 mask = g_contenders.count(g_pages.id) ? g_contenders[g_pages.id] : 0;
   u32 reigns[23] = {}, weeks[23] = {};
@@ -2114,7 +2114,7 @@ void ApplyTable(u32 r) {
     bd::mem::store<u32>(element(e) + 228, bd::mem::load<u32>(element(e) + 228) & ~0x10u);
   };
   const auto hide = [&](u32 e, bool hidden) { bd::mem::store<u32>(element(e) + 180, hidden); };
-  text(897, TableText(3 * kTableRows, Words().page));
+  text(897, TableText(3 * kTableRows, std::string(kPageKeys) + Words().page));
   text(898, TableText(3 * kTableRows + 1, ""));
   text(899, TableText(3 * kTableRows + 2, ""));
   text(911, TableText(3 * kTableRows + 3, ""));
@@ -2270,7 +2270,7 @@ bool SuperstarPageButtons(const PPCContext &in, u8 *base, u32 screen) {
       --g_pages.row;
     else if ((pressed & down) && g_pages.row < 3)
       ++g_pages.row;
-    if ((pressed & kX) && g_pages.titles[g_pages.row] < 23) {
+    if ((pressed & (kA | kX)) && g_pages.titles[g_pages.row] < 23) {  // on / off
       LoadContenders();
       u32 &mask = g_contenders[g_pages.id];
       mask ^= 1u << g_pages.row;
@@ -2576,8 +2576,12 @@ extern "C" REX_FUNC(sub_826CEF28) {
     const u32 out = x.r1.u32 + 0x200;
     const u32 entry = Call(x, base, __imp__sub_826CCC38, view, show);
     const u32 list = entry ? bd::mem::load<u32>(entry + 4) : 0;
-    const u32 count = entry ? bd::mem::load<u32>(entry + 8) : 0;
-    const u32 record = list && match < 8 && match < count ? list + match * 104 : 0;
+    // the card: 8 records, the unused ones without places (entry +8 is not a count)
+    u32 count = 0;
+    for (u32 k = 0; list && k < 8; ++k)
+      if (const u8 n = bd::mem::load<u8>(list + k * 104 + 2); n && n <= 40)
+        count = k + 1;
+    const u32 record = list && match < count ? list + match * 104 : 0;
     if (record && bd::mem::load<u8>(record + 3) != 2) {
       const bool rumble = Call(x, base, __imp__sub_82A2FA18, bd::mem::load<u8>(record)) == 1;
       const bool mania = show == kShowWrestleMania;
@@ -2601,8 +2605,8 @@ extern "C" REX_FUNC(sub_826CEF28) {
           lines.push_back(fmt::format("mania {} {} {} {}", id, match + 1 == count ? 1 : 0,
                                       won ? 1 : 0, day));
       }
-      BD_INFO("[univers] result: show {} match {} ({} places), winner {} (side {}){}{}", show,
-              match, places, winner_id, winner_side, rumble ? ", Royal Rumble" : "",
+      BD_INFO("[univers] result: show {} match {}/{} ({} places), winner {} (side {}){}{}", show,
+              match, count, places, winner_id, winner_side, rumble ? ", Royal Rumble" : "",
               mania ? ", WrestleMania" : "");
     }
   }
