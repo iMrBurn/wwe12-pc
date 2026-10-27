@@ -28,6 +28,7 @@
 #include "game_process.h"
 #include "imgui.h"
 #include "mod_version.h"
+#include "entrance13.h"
 #include "moveset_port.h"
 #include "media.h"
 #include "mods.h"
@@ -469,6 +470,7 @@ class Page {
       }
     }
     DrawOwnMoves(fr);
+    DrawOwnEntrance(fr);
   }
 
   // The superstar of the same name in WWE '12, if there is one and the player chose no base: the base, so the new
@@ -1025,6 +1027,24 @@ class Page {
       return;
     }
     moveset_port::FromGame(*disc12_, src, number, own_moves_, &own_moves_why_);
+    // Its WWE '13 entrance (entrance13.h: the same format as WWE '12's), when WWE '12 has none with that number.
+    own_entrance_.clear();
+    own_entrance_number_ = 0;
+    if (own_moves_game_ == 0x545108B4 && !entrance13::Exists12(*disc12_, number) &&
+        entrance13::Entrance(src, number, own_entrance_, nullptr))
+      own_entrance_number_ = number;
+  }
+
+  // Step 2's part: its own WWE '13 entrance.
+  void DrawOwnEntrance(bool fr) {
+    if (own_entrance_.empty())
+      return;
+    char label[200];
+    snprintf(label, sizeof(label),
+             fr ? "Sa propre entrée de WWE '13 (n° %d, %d variantes ; essai : pas encore vue en jeu)"
+                : "Its own WWE '13 entrance (no. %d, %d variants; a test: not seen in the game yet)",
+             own_entrance_number_, int(own_entrance_.size() / 2));
+    ImGui::Checkbox(label, &use_own_entrance_);
   }
 
   // Step 2's part: its own moves, slot by slot.
@@ -1534,6 +1554,9 @@ class Page {
       manifest += "moves=" + moveset_port::ManifestValue(own_moves_.moves) + "\n";
     if (entrance_ >= 0 && entrance_ != base_)  // (another superstar's entrance)
       manifest += "entrance=" + std::to_string(stars_[size_t(entrance_)].id) + "\n";
+    const bool own_entrance = use_own_entrance_ && own_entrance_number_ > 0 && !own_entrance_.empty();
+    if (own_entrance)  // (its WWE '13 entrance: superstar/entrance/, served by the game under that number)
+      manifest += "entrance_own=" + std::to_string(own_entrance_number_) + "\n";
     manifest += "description=" + std::string(name_) + ", a new superstar starting from " +
                 (chosen_ ? b.name : "an average superstar (" + b.name + ")") +
                 (look_ == 4   ? ", its look from a 3D model (FBX)"
@@ -1553,6 +1576,9 @@ class Page {
       entries.push_back({"superstar/look.txt", Bytes{'b', 'a', 's', 'e', '\n'}});  // (a mod needs a superstar/ file)
     if (!movie.empty())
       entries.push_back({"superstar/titantron.bik", movie});
+    if (own_entrance)
+      for (const auto &part : own_entrance_)
+        entries.push_back({entrance13::ModPath(part), part.data});
     if (keep_portraits_ && !portraits_[1][0].empty())  // (its game's portraits, or the player's picture)
       for (int hd = 0; hd < 2; ++hd)
         for (int k = 0; k < 3; ++k)
@@ -1605,7 +1631,10 @@ class Page {
   std::string own_moves_why_;
   uint32_t own_moves_game_ = 0;  // the game its own moves come from
   bool use_own_moves_ = true;
-  int entrance_ = -1;  // its entrance: another superstar's (index in stars_), else -1: the base's
+  int entrance_ = -1;
+  std::vector<entrance13::Part> own_entrance_;  // its WWE '13 entrance (entrance13.h), else empty
+  int own_entrance_number_ = 0;
+  bool use_own_entrance_ = true;  // its entrance: another superstar's (index in stars_), else -1: the base's
   char entrance_filter_[64] = {};
   bool own_attributes_ = false;           // its own attributes (else the base's)
   std::vector<int> attributes_, base_attributes_;  // the 12 (0-100), STRIKE POWER .. TAG TEAM

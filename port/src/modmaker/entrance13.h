@@ -58,6 +58,24 @@ inline std::string File12(const std::string &group) {
   return "";
 }
 
+// Whether WWE '12 (w12: the player's) has an entrance `number` already (in its Nyujyo file for that group).
+inline bool Exists12(const disc::GameDisc &w12, int number) {
+  const std::string g = Group12(number), file = File12(g);
+  Bytes b;
+  svrfmt::Archive a;
+  if (file.empty() || !w12.Read(file, b) || !svrfmt::ArchiveOpen(b, a, nullptr))
+    return true;  // (unknown: as taken)
+  for (const auto &k : a.root.kids)
+    if (k.group.rfind("EVP", 0) == 0 && atoi(k.name.c_str()) == number)
+      return true;
+  return false;
+}
+
+// The mod's file of a part (superstar/entrance/EVP_246.bin...): the game serves it as /EVP<group>/<number>.
+inline std::string ModPath(const Part &p) {
+  return "superstar/entrance/" + std::string(p.script ? "EVP_" : "EVZ_") + std::to_string(p.number) + ".bin";
+}
+
 // The WWE '13 entrance `number`'s parts (its own and its variants'), from the player's WWE '13 (w13).
 inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &out, std::string *why) {
   out.clear();

@@ -55,6 +55,9 @@ struct Star {
   // Another superstar's entrance (CHAR / PRO +0x1D4..+0x1DE: music, video and entrance numbers, two more, 16-bit
   // little-endian), else 0: the base's.
   int entrance = 0;
+  // Its own entrance (a WWE '13 one the game serves under that number: wwe12_arena_pages.cpp), else 0: CHAR / PRO
+  // +0x1D8, the entrance number of the block at +0x1D4 (music, video, entrance).
+  int own_entrance = 0;
   // Its own portraits, else empty (the base's): [0 SD / 1 HD][SSFA, SSFB, SSFC], DDS as the game's (DXT5; HD 512 x 512,
   // 512 x 512, 256 x 256; SD 512 x 256, 512 x 256, 256 x 256: WWE '13's are the same).
   Bytes portraits[2][3];
@@ -445,6 +448,10 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       const Bytes e = svrfmt::ArchiveData(*ep);
       if (e.size() >= 0x1DE && moves.size() >= 0x1DE)
         std::copy(e.begin() + 0x1D4, e.begin() + 0x1DE, moves.begin() + 0x1D4);
+    }
+    if (st.own_entrance > 0 && moves.size() >= 0x1DA) {
+      moves[0x1D8] = uint8_t(st.own_entrance);
+      moves[0x1D9] = uint8_t(st.own_entrance >> 8);
     }
     svrfmt::ArchiveReplace(*sp, moves);
   }

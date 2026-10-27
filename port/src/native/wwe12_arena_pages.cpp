@@ -56,6 +56,12 @@
 // the same banner pack and VS screens (the same 71 textures, 256 x 128); the entrance graphics and pre-match screen
 // stay the base's there (they only exist in HD).
 //
+// Added superstars' own entrances (a WWE '13 one, the same format as WWE '12's: the Mod Maker's entrance13.h; superstar
+// mods with entrance_own=NNN and superstar/entrance/EVP_<n>.bin, EVZ_<n>.bin for NNN and its variants 1xNNN): appended
+// to served copies of their pac\evt\NyujyoN.pac (Documents\wwe12\entrance_slots, the file of the number's group);
+// the directory hasn't them, so a lookup of "/EVP3/246" that finds nothing is asked again with an entry of the same
+// file and name length (every field of its answer right) and given the appended entry's place and size.
+//
 // Test: wwe12_arena_pages_test = true adds one page, the 21 arenas in reverse order, and logs the lookups.
 
 #include <algorithm>
@@ -92,6 +98,8 @@
 
 REXCVAR_DEFINE_BOOL(wwe12_arena_pages, true, "WWE12",
                     "Added arenas (arena mods with slot=new) on more pages of the arena select screen (LB / RB).");
+REXCVAR_DEFINE_BOOL(wwe12_entrance_mods, true, "WWE12",
+                    "Added superstars' own entrances (superstar mods with entrance_own=, from WWE '13), served to the game.");
 REXCVAR_DEFINE_BOOL(wwe12_arena_pages_test, false, "WWE12",
                     "Test: a second page on the arena select screen (the 21 arenas in reverse order).");
 
@@ -140,6 +148,13 @@ u32 g_mupa_sector = 0, g_mupa_units = 0;  // the rebuilt banner pack, appended t
 u32 g_mupa_sd_sector = 0, g_mupa_sd_units = 0;  // ... and to MatchSD.pac
 int g_chosen = -1;                        // the added arena chosen last (its index), -1: one of the game's
 bool g_reload_vs = false;                 // the match setup's VS screen to load again (another arena on the same stage)
+// The added entrances by directory name ("/EVP3/246"): where they are in their served Nyujyo file, and an entry of
+// the game's in the same file with a name of the same length (asked in their place).
+struct AddedEntrance {
+  u32 sector = 0, units = 0;
+  std::string like;
+};
+std::map<std::string, AddedEntrance> g_entrances;
 
 struct Tile {
   u32 stage, banner;  // banner: guest address of the texture name (0: the game's table is kept)
@@ -370,8 +385,117 @@ bool BuildBanners(std::vector<uint8_t> &matchhd, const std::vector<std::vector<u
 
 // Called at startup, before the mods overlay is mounted (wwe12_app.h): the files the added arenas need, served
 // from Documents\wwe12\arena_slots ahead of the mods folder.
+namespace {
+
+// WWE '12's entrance groups by number (the last three digits; Nyujyo0 EVP1 100.. NyujyoA EVPK 50..55), -1 for none.
+int EntranceFile(int number) {
+  const int n = number % 1000;
+  if (n >= 50 && n <= 55)
+    return 10;
+  static const int from[] = {100, 137, 179, 272, 328, 480, 512, 532, 552, 600};
+  for (int i = 9; i >= 0; --i)
+    if (n >= from[i])
+      return n > 855 && i == 9 ? -1 : i;
+  return -1;
+}
+
+std::string Trimmed(std::string s) {
+  while (!s.empty() && (s.back() == ' ' || s.back() == '\0'))
+    s.pop_back();
+  return s;
+}
+
+void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device, const fs::path &user_root,
+                    const fs::path &mods) {
+  const fs::path out = user_root / "entrance_slots";
+  std::error_code ec;
+  fs::remove_all(out, ec);
+  g_entrances.clear();
+  if (!REXCVAR_GET(wwe12_entrance_mods))
+    return;
+  static const char kGroups[] = "12345EFGHIK";
+  // The parts by Nyujyo file: (kind "EVP" / "EVZ", number, data).
+  struct Part {
+    std::string kind;
+    int number;
+    std::vector<uint8_t> data;
+  };
+  std::map<int, std::vector<Part>> parts;
+  std::vector<fs::path> dirs;
+  for (fs::directory_iterator it(mods / ".svrmods" / "Superstars", ec), end; !ec && it != end; it.increment(ec))
+    if (it->is_directory(ec))
+      dirs.push_back(it->path());
+  std::sort(dirs.begin(), dirs.end());
+  for (const auto &d : dirs) {
+    std::vector<uint8_t> m;
+    if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m) ||
+        atoi(Value(std::string(m.begin(), m.end()), "entrance_own").c_str()) <= 0)
+      continue;
+    for (fs::directory_iterator it(d / "superstar" / "entrance", ec), end; !ec && it != end; it.increment(ec)) {
+      const std::string f = it->path().filename().string();
+      if (f.size() < 9 || (f.compare(0, 4, "EVP_") != 0 && f.compare(0, 4, "EVZ_") != 0))
+        continue;
+      Part part{f.substr(0, 3), atoi(f.c_str() + 4), {}};
+      const int file = EntranceFile(part.number);
+      if (file < 0 || !ReadHost(it->path(), part.data) || part.data.empty())
+        continue;
+      parts[file].push_back(std::move(part));
+    }
+  }
+  for (auto &[file, list] : parts) {
+    char rel[32];
+    snprintf(rel, sizeof(rel), "pac/evt/Nyujyo%c.pac", file < 10 ? char('0' + file) : 'A');
+    std::vector<uint8_t> pac;
+    svrfmt::Archive a;
+    if (!ReadForGame(vfs, mods, rel, pac) || !svrfmt::ArchiveOpen(pac, a, nullptr)) {
+      REXLOG_WARN("[entrances] {} can't be read: its added entrances left out", rel);
+      continue;
+    }
+    // the game's entries of this file, by group and name
+    std::map<std::string, std::vector<std::string>> names;
+    for (const auto &k : a.root.kids)
+      names[Trimmed(k.group)].push_back(Trimmed(k.name));
+    a = {};
+    for (auto &part : list) {
+      const std::string group = part.kind + kGroups[file], name = std::to_string(part.number);
+      const auto &have = names[group];
+      if (std::find(have.begin(), have.end(), name) != have.end()) {
+        REXLOG_WARN("[entrances] /{}/{} is the game's already: left out", group, name);
+        continue;
+      }
+      std::string like;
+      for (const auto &h : have)
+        if (h.size() == name.size()) {
+          like = "/" + group + "/" + h;
+          break;
+        }
+      if (like.empty())
+        continue;
+      AddedEntrance e;
+      e.like = like;
+      Append(pac, part.data.data(), part.data.size(), e.sector, e.units);
+      part.data = {};
+      g_entrances["/" + group + "/" + name] = e;
+    }
+    WriteHost(out / fs::path(rel), pac);
+  }
+  if (g_entrances.empty())
+    return;
+  auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, out, true);
+  if (!overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(overlay))) {
+    REXLOG_WARN("[entrances] could not serve {}", rex::path_to_utf8(out));
+    g_entrances.clear();
+    return;
+  }
+  REXLOG_INFO("[entrances] {} added entrance entries, served from {}", g_entrances.size(), rex::path_to_utf8(out));
+}
+
+}  // namespace
+
 void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device,
                           const fs::path &user_root, const fs::path &mods) {
+  if (!user_root.empty())
+    MountEntrances(vfs, game_device, user_root, mods);
   if (!REXCVAR_GET(wwe12_arena_pages) || user_root.empty())
     return;
   const fs::path out = user_root / "arena_slots";
@@ -811,7 +935,7 @@ static std::array<u32, 4> Card(const Added &a) {
 
 // The file directory: the banner pack and the chosen added arena come from the data appended to their files.
 extern "C" REX_FUNC(sub_827F29F0) {
-  const u32 name = ctx.r4.u32, out = ctx.r5.u32;
+  const u32 directory = ctx.r3.u32, name = ctx.r4.u32, out = ctx.r5.u32;
   // An added arena's VS screen: the caller's "/MLYE/MB<base>" rewritten for good to a VS screen entry no arena
   // shows, MB21 / MB22 (the arena select has stages 0-20), one per added arena. The game keeps what it has read of an
   // entry: under its base's entry, after its base's VS screen had been shown, it got that one back (WrestleMania 31
@@ -827,6 +951,28 @@ extern "C" REX_FUNC(sub_827F29F0) {
         bd::mem::store<u8>(name + u32(i), u8(spare[i]));
   }
   __imp__sub_827F29F0(ctx, base);
+  // An added entrance the directory hasn't: asked again as an entry of the same file and name length, then its own
+  // place (a string the game built: written for the call, put back after).
+  if (name && out && ctx.r3.u32 == 0 && !g_entrances.empty() && (name < 0x82000000 || name >= 0x84000000)) {
+    const std::string asked = bd::mem::str(name);
+    const auto e = g_entrances.find(asked);
+    if (e != g_entrances.end() && e->second.like.size() == asked.size()) {
+      for (size_t i = 0; i <= asked.size(); ++i)
+        bd::mem::store<u8>(name + u32(i), u8(e->second.like[i]));
+      ctx.r3.u32 = directory;
+      ctx.r4.u32 = name;
+      ctx.r5.u32 = out;
+      __imp__sub_827F29F0(ctx, base);
+      for (size_t i = 0; i <= asked.size(); ++i)
+        bd::mem::store<u8>(name + u32(i), u8(asked[i]));
+      if (ctx.r3.u32) {
+        bd::mem::store<u32>(out, e->second.sector);
+        bd::mem::store<u32>(out + 8, e->second.units);
+        REXLOG_INFO("[entrances] {}: the added entrance (as {})", asked, e->second.like);
+      }
+      return;
+    }
+  }
   if (!name || !out || ctx.r3.u32 == 0)
     return;
   const char *n = bd::mem::str(name);
