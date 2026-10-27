@@ -147,7 +147,14 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   (+0x1D4) pointant sur ce numéro. → Étape 3 : la banque ZMVM touchée (avec la prise ajoutée) au bout d'une copie
   servie, et la fiche WAZE dans une copie de `misc.pac`. Pièges connus du même fichier : le jeu lit parfois plus que
   la taille donnée (un bgNN complet est servi), et la vidéo ne marchait pas servie depuis un autre fichier.
-- Étape 4 : pas commencée (voir juste au-dessus : commencer par WWE '13). **Vérifié le 2026-10-27** (outil `evtlist`) :
+- **Étape 4 commencée (2026-10-27)** : `port/src/modmaker/entrance13.h` extrait une entrée de WWE '13 et ses variantes
+  (`Entrance()`), et dit où WWE '12 la range (`Group12`, `File12` : tranches de numéros relevées sur le disque,
+  Nyujyo0 EVP1 100.., Nyujyo1 EVP2 137.., Nyujyo2 EVP3 179.., Nyujyo3 EVP4 272.., Nyujyo4 EVP5 328.., Nyujyo5 EVPE
+  480.., Nyujyo6 EVPF 512.., Nyujyo7 EVPG 532.., Nyujyo8 EVPH 552.., Nyujyo9 EVPI 600..855, NyujyoA EVPK 50..55 ;
+  variantes 10NNN..14NNN dans le même groupe). Essai hors jeu : **Mankind 246 → 6 scripts « 0FOP » (246, 10246..14246)
+  et 6 jeux de pistes (PACH), à servir comme `/EVP3/246`, `/EVZ3/246`… de `Nyujyo2.pac`** (WWE '12 nomme ses entrées
+  sans zéros, « 179 », et les range non compressées). Reste : le côté jeu (crochet du répertoire, copie servie de
+  Nyujyo2), la page du Mod Maker, la fiche PRO +0x1D4 = 246, et l'essai en jeu. **Vérifié le 2026-10-27** (outil `evtlist`) :
   les `Entrance00-08.pac` de WWE '13 (xcompressés) **se lisent avec notre `XcompressDecode`** ; WWE '12 a 247
   entrées (`Nyujyo0-9,A`), WWE '13 305 (sans les variantes 10000+), 207 en commun, **98 entrées de WWE '13 sur des
   numéros libres dans WWE '12** (104, 114, 124, 145, 147, 152, 166, 177, 212, 238, 245 Cactus Jack, 246 Mankind,
