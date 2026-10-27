@@ -995,6 +995,15 @@ places ×10, d'après le code de Kaiko).
   cheveux, entrée et match contre Big Show : les cheveux bougent, rien ne s'étire.
 - **Pas encore** : les modèles FBX (os de cheveux à reconnaître et à changer en chaînes) ; les vêtements
   (les `R_Bone*` du corps de certains catcheurs : autre mécanisme, non étudié).
+- **Mis de côté (2026-10-27, décision de l'utilisateur)** : DREW McINTYRE '10 (SvR ch278) a dans WWE '12 des mèches
+  raides devant le front (traits noirs), absentes dans SvR (capture du SvR 2011 de Kaiko : cheveux plaqués). Même
+  géométrie dans les deux fichiers (98 triangles tenus par la seule tête, sortant vers l'avant) ; ni la transparence
+  des sommets ni la texture ne les cachent dans SvR. Écartés : retirer les faces tournées vers la tête (presque tous les
+  cheveux de SvR le sont : trous chez Undertaker ch103 et ch117). Piste : capture RenderDoc en jeu pour voir comment
+  le shader de cheveux de WWE '12 les dessine (le canal alpha de coupe est en 512, quatre fois moins fin que celui de
+  SvR). Outils de rendu hors jeu dans le bloc-notes de la session (`headview`, `strand`, `wind`).
+- **Brillance** (2026-10-27) : l'alpha de la carte des normales de SvR est ramené à 0,8 de la moyenne de la base (plus
+  contrasté que celui de WWE '12 : à moyenne égale, ses zones vives brillaient trop).
 
 ## 6 quinvicies. Ajouter une tenue : recherche (2026-10-26, pas trouvé)
 
