@@ -114,6 +114,29 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   sous-groupes que dans WWE '13) ajoutées aux arbres ZMVM de `m.pac` : servir une copie de la banque touchée
   (1 à 16 Mo) par une redirection d'entrée comme pour les vidéos d'arènes ; (3) vérifier que ce numéro est libre en
   WWE '12 ; (4) les mains / orteils absents restent au repos. SvR 2011 (YMKs, autre numérotation) viendra après.
+- **Étape 3 codée pour WWE '13 (2026-10-27, commit 9be496c), PAS ESSAYÉE EN JEU.** Méthode : celle des DLC officiels de
+  WWE '12, que nos catcheurs ajoutés utilisent déjà (pack `WWE12PCMODS`). Trouvé en regardant les DLC 3 et 4 installés :
+  - un pack apporte `pac/m_dlcNN.pac` avec **une banque `ZMOT/CA(NN+6)`** (pack 3 → CA09, pack 4 → CA10 ; le disque a
+    CA01-CA08 et CA90-92) : PACH → un id de tête (CA01 : 56 et 59, CA10 : 187) → **paires de sous-groupes** (pair : fiches
+    légères, impair : fiches complètes des mêmes animations) → animations par numéro. Les banques par catégorie
+    `ZMVM/*` (menus / aperçu, comme MVMT chez Kaiko) et par catcheur `mRR.pac ZMRR/C<n>` (64 catcheurs) ne sont pas
+    touchées par les DLC ;
+  - et **une copie complète de `misc.pac`** dont la table `MOVS/WAZE` a les fiches ajoutées **insérées dans l'ordre
+    alphabétique** (1 936 fiches déplacées entre le disque et le DLC 4) ; l'en-tête (0x430 o) compte : u16 +4 = total
+    (2 379 → 2 426), **u16 à 0x08 + 2k = fiches dont le bit de catégorie k (octets 0-15) est levé** (vérifié pour 119
+    bits sur 128 ; les 9 autres ont un écart constant, sans doute des fiches vides) ;
+  - `DLC.pac RGRP/MAGG` enfant 10 : 824 fiches de 104 o (u16 numéro d'animation, …, nom à +8) : sans doute la liste de
+    l'éditeur de moveset ; **pas mise à jour** pour l'instant.
+  Code : Mod Maker `newmoves13.h` (prises de WWE '13 dont WWE '12 n'a pas le numéro : fiche WAZE avec +0x98.. = FF,
+  animations légère / complète prises dans `mot00/mot01.pac ZMOT/CA*` de WWE '13) → `superstar/moves/<n>.waze`,
+  `_low.yanm`, `_high.yanm`, et leurs cases dans `moves=` ; jeu : `superstar_pack.h` (copie du `misc.pac` le plus récent
+  avec les fiches insérées et les compteurs, `m_dlcNN.pac` dans le genre de pac de `chEtc.pac`, tête 180 + NN), les
+  prises qu'un DLC installé a déjà sont sautées. **Vérifié hors jeu avec le vrai `Build`** : Mankind de WWE '13 → 8 prises
+  (Mandible Claw, Stump Puller Piledriver, Cactus Elbow, Mankind Clothesline…) insérées à leur place, total +8 ; avec le
+  DLC 4 installé, 3 seulement (les 5 autres sont les siennes). Sheamus → Beast Bite.
+  **À vérifier en jeu** : que le jeu charge bien `ZMOT/CA(NN+6)` de notre pack (et pas seulement pour les packs 3/4 :
+  sans DLC installé notre pack est le n° 1, sa banque serait CA07, un nom du disque !), que la prise se joue en match,
+  ce que fait l'éditeur de moveset sans MAGG, et les fiches des 6 octets de catégorie venues de WWE '13.
 - **Notes publiques de Kaiko lues le 2026-10-27** (téléchargées avec l'accord de l'utilisateur dans le bloc-notes de
   la session, hors dépôt : `port/docs/MOVE_PACKS.md`, `OTHER_GAMES_ENTRANCES.md`, `docs/ARENA_MOD_MAKER_PLAN.md`,
   `docs/OTHER_GAMES.md` de KaikoClanworth1/wwe-svr2011-pc) :
