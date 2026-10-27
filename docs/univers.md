@@ -977,3 +977,19 @@ Vu à la télécommande (MITB, copie) : en-tête QUALIFYING MATCH (Sin Cara vs T
 SECURED! — Sin Cara has qualified for the Money in the Bank Ladder Match! », 5 qualifiés sur 2 semaines, 4 placés dans
 le match MITB du PPV (le 5e était déjà sur la carte). Elimination Chamber : même code, **pas encore vu en jeu**
 (février).
+
+### 36 bis. Elimination Chamber, news (suite, 2026-10-27, vu par l'utilisateur)
+
+- Chamber par marque : la carte du PPV a une Chamber par titre (RAW, SmackDown). 5 qualifiés par marque (matchs de qualif
+  entre deux catcheurs de la même marque, jusqu'à 3 par carte pendant les 2 semaines), placés dans la Chamber du titre
+  dont le champion est de leur marque ; le champion garde sa place ; un qualifié déjà ailleurs sur la carte est échangé
+  avec celui qu'il remplace. Money in the Bank : 6 en tout, 1 match par carte.
+- **News : le jeu vide la liste** (`sub_826CD138`) dans `sub_826C8690(owner, match, 1)` après le 1er match joué d'un show
+  (`sub_826C4778`), puis écrit les siennes : nos news (file d'attente) sont écrites après `sub_826C8690`, et la news
+  « … begin this week » quand la 1re carte de qualif est préparée (RAW de février / juillet semaine 1) : elle est dans
+  NEWS en arrivant sur ce RAW, avec celles du show d'avant (Royal Rumble). Le jeu ne dessine pas le type 6 : les deux
+  news sont du type 5, +15 bit 7 = « begin ». Une news sans catcheur n'est pas affichée : « begin » prend la photo du
+  champion WWE. Les marqueurs « news déjà écrite » restent en mémoire (une sauvegarde rechargée la réécrit) ; les lignes
+  du fichier d'un jour plus tard que le jour courant sont ignorées (sauvegarde plus ancienne rechargée).
+Vu : « Elimination Chamber qualifying matches begin this week… » au RAW de février semaine 1, puis « ELIMINATION CHAMBER
+PLACE SECURED! — Kofi Kingston has qualified… » avec une seule photo.

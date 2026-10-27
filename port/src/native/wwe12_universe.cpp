@@ -4070,13 +4070,18 @@ const QualEvent kQualEvents[kEvents + 1] = {
 u32 g_news_event = 0;  // the event of the news being drawn (its texts are ours meanwhile)
 
 // A news of ours: its event (+14 = 0x51, +15 the event; first version: +4 = 0x51000000 + event).
+bool g_news_begin = false;  // the news being drawn is "qualifying matches begin"
+
 u32 NewsEvent(u32 rec) {
+  g_news_begin = false;
   if (!rec)
     return 0;
   const u32 type = bd::mem::load<u8>(rec + 12);
   if (type != kNewsQualified && type != kNewsQualifying)
     return 0;
-  const u32 e = bd::mem::load<u8>(rec + 14) == 0x51 ? bd::mem::load<u8>(rec + 15)
+  g_news_begin = type == kNewsQualifying ||
+                 (bd::mem::load<u8>(rec + 14) == 0x51 && (bd::mem::load<u8>(rec + 15) & 0x80));
+  const u32 e = bd::mem::load<u8>(rec + 14) == 0x51 ? bd::mem::load<u8>(rec + 15) & 0x7F
                 : bd::mem::load<u32>(rec + 4) > kNewsMarker ? bd::mem::load<u32>(rec + 4) - kNewsMarker
                                                             : 0;
   return e <= kEvents ? e : 0;
@@ -4164,9 +4169,10 @@ void FlushNews(const PPCContext &in, u8 *base) {
     // one Superstar (its picture alone: the news shows a picture for each of +0 .. +8), the event
     // in the free +14 / +15 (0x51, event)
     bd::mem::store<u16>(record, u16(n.b < 512 ? n.b : 512));
+    // the game shows type 5 only (its type 6 is never drawn): both are type 5, +15 bit 7 = "begin"
     bd::mem::store<u8>(record + 14, 0x51);
-    bd::mem::store<u8>(record + 15, u8(n.event));
-    bd::mem::store<u8>(record + 12, u8(n.a));
+    bd::mem::store<u8>(record + 15, u8(n.event | (n.a == kNewsQualifying ? 0x80 : 0)));
+    bd::mem::store<u8>(record + 12, u8(kNewsQualified));
     Call(x, base, __imp__sub_826D1630, view, record);
     Call(x, base, __imp__sub_826CE098, view);
     BD_INFO("[univers] qualifiers: news type {} for event {} (Superstar {})", n.a, n.event, n.b);
@@ -4196,12 +4202,11 @@ u32 QualNewsText(u32 id) {
     return 0;
   const QualEvent &q = kQualEvents[e];
   const u32 lang = CurrentLang();
-  const char *text = id == 27068   ? q.secured[lang]
-                     : id == 27069 ? q.qualified[lang]
-                     : id == 27070 ? q.qualifying[lang]
-                                   : q.begin[lang];
-  static u32 s_at[kEvents + 1][4] = {};
-  u32 &at = s_at[e][id - 27068];
+  const bool title = id == 27068 || id == 27070;
+  const char *text = g_news_begin ? (title ? q.qualifying[lang] : q.begin[lang])
+                                  : (title ? q.secured[lang] : q.qualified[lang]);
+  static u32 s_at[kEvents + 1][2][4] = {};
+  u32 &at = s_at[e][g_news_begin][id - 27068];
   if (!at)
     at = REX_KERNEL_MEMORY()->SystemHeapAlloc(512, 0x10);
   if (!at)
@@ -4266,23 +4271,6 @@ extern "C" REX_FUNC(sub_826CEF28) {
           lines.push_back(fmt::format("mania {} {} {} {}", id, match + 1 == count ? 1 : 0,
                                       won ? 1 : 0, day));
       }
-      // "qualifying matches begin this week": NEWS shows the last show's news (written with its
-      // results), so this news goes with the results of the week before the first qualifying week
-      if (REXCVAR_GET(wwe12_universe_qualifiers) && u) {
-        const u32 next = day + 7, next_month = Call(x, base, __imp__sub_826D2890, next) % 12;
-        const u32 next_week = (next / 7) % 4, year = next / 336;
-        for (u32 e = 1; e <= kEvents; ++e) {
-          const u32 slot = PpvSlot(u, kQualEvents[e].ppv);
-          if (slot >= 48 || slot / 4 != next_month || next_week != (slot % 4 >= 2 ? slot % 4 - 2 : 0) ||
-              (day / 7) == (next / 7))
-            continue;
-          if (QualLines("qualnews", e, year).empty()) {
-            lines.push_back(fmt::format("qualnews {} {} {}", e, year, day));
-            QueueNews(e, kNewsQualifying, 512);
-            BD_INFO("[univers] qualifiers: event {} begins next week (news)", e);
-          }
-        }
-      }
       // a qualifying match of ours: its winner qualifies
       if (REXCVAR_GET(wwe12_universe_qualifiers) && places == 2 && winner < 2 && g_last_result.size() == 2) {
         const u32 a = g_last_result[0].first, b = g_last_result[1].first, year = day / 336;
@@ -4302,8 +4290,15 @@ extern "C" REX_FUNC(sub_826CEF28) {
   }
   __imp__sub_826CEF28(ctx, base);
   AppendStats(lines);
-  // our news with the game's, at once: when shows are simulated in a row, the next show clears
-  // the news list before a later flush would come
+}
+
+// After a match's result (sub_826C8690(owner, match, 1)): for a show's first played match it
+// clears the news list (sub_826CD138, when sub_826C4778 says no other match was played) and then
+// writes the game's news. Ours go in after it, so they stay with the show's news.
+REX_EXTERN(__imp__sub_826C8690);
+extern "C" REX_FUNC(sub_826C8690) {
+  const PPCContext in = ctx;
+  __imp__sub_826C8690(ctx, base);
   FlushNews(in, base);
 }
 
@@ -5336,6 +5331,17 @@ bool MarkQualifier(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 re
   std::vector<std::string> lines;
   if (QualLines("qualbegin", event, year).empty())
     lines.push_back(fmt::format("qualbegin {} {} {}", event, year, day));
+  // "qualifying matches begin this week", with the first qualifying card: the game has written the
+  // last show's news by then (written with its results, the news list is that show's) and NEWS
+  // shows them with ours until the next show is played. Once a session (memory, not the file: a
+  // save loaded again gets it again).
+  static std::set<u32> s_begun;
+  if (s_begun.insert(event * 1000 + year).second) {
+    u32 face = Call(x, base, __imp__sub_82A39FC8, 1, 0, 1) & 0xFFFF;
+    if (face >= 512)
+      face = Call(x, base, __imp__sub_82A39FC8, 0, 0, 1) & 0xFFFF;
+    QueueNews(event, kNewsQualifying, face);
+  }
   lines.push_back(fmt::format("qualifier {} {} {} {} {}", event, year, a, b, day));
   AppendStats(lines);
   ++g_qualifier_count;
