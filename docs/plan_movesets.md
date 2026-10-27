@@ -111,7 +111,30 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   sous-groupes que dans WWE '13) ajoutées aux arbres ZMVM de `m.pac` : servir une copie de la banque touchée
   (1 à 16 Mo) par une redirection d'entrée comme pour les vidéos d'arènes ; (3) vérifier que ce numéro est libre en
   WWE '12 ; (4) les mains / orteils absents restent au repos. SvR 2011 (YMKs, autre numérotation) viendra après.
-- Étape 4 : pas commencée.
+- **Notes publiques de Kaiko lues le 2026-10-27** (téléchargées avec l'accord de l'utilisateur dans le bloc-notes de
+  la session, hors dépôt : `port/docs/MOVE_PACKS.md`, `OTHER_GAMES_ENTRANCES.md`, `docs/ARENA_MOD_MAKER_PLAN.md`,
+  `docs/OTHER_GAMES.md` de KaikoClanworth1/wwe-svr2011-pc) :
+  - **Les 16 premiers octets d'une fiche WAZE = les bits de catégorie qui décident dans quelles cases du moveset la
+    prise peut aller** (d'où les 6 octets qui changent entre WWE '13 et WWE '12 : les prendre d'une prise de WWE '12
+    du même genre).
+  - **Son chargeur de packs de prises (SvR 2011, même famille)** : au démarrage, chaque pack est fusionné dans des
+    **copies** de `m.pac`, `misc.pac` (et `mpsp.pac`) dans un dossier overlay (entrées inchangées recopiées, entrées
+    changées reconstruites et recompressées en BPE ; `stamp.txt` pour ne refaire la fusion que si quelque chose
+    change, ~3 s) ; la liste des pacs du jeu (copies de `plist360.h`) nomme les copies ; comme le répertoire
+    précalculé `plist360.arc` ne connaît que les originaux (entrées agrandies = plantage ou blocage au chargement
+    d'un match), le jeu monte alors les pacs en lisant leur propre table (chez lui `sub_825953B0` au lieu de
+    `sub_82595428` : **adresses de SvR 2011, à retrouver dans WWE '12**). DLC avec leur propre `m_dlcNN.pac` :
+    fusionner aussi dans des copies, servies par liens au montage, catalogues recopiés aux nouvelles places.
+    Pièges : les motions YMBs se gardent par leur place dans la banque (en ajouter après les existantes) ; la fin
+    d'une piste de victime (op 49) nomme la motion suivante.
+  - **Entrées (étape 4) : WWE '13 → WWE '12 devrait être presque une copie** : WWE '12 = `pac/evt/Nyujyo0-9,A.pac`,
+    groupes EVP (script, disposition de SvR 2011 mais positions en cm) et EVZ (pistes YANM + YAT2 à 60 Hz, corps en
+    FK) ; WWE '13 = `pac/evt/Entrance00..08.pac`, **même script en cm et mêmes pistes** (317 entrées, dont des
+    légendes sur des numéros libres) ; PRO : WWE '12 +0x1D4 musique, vidéo, entrée, autre, +0x1DC champion ; WWE '13
+    +0x230. Accessoires : à vérifier dans `evtobj.pac` ; pyro `prtcls.pac` même format ; titantrons de WWE '13 en
+    Bink 2 (déjà convertis par le Mod Maker pour les 2K) ; thèmes Wwise `Music.pck`. SvR 2011 / 2K → WWE '12 : il
+    faudra recibler (méthode `w13_retarget` de Kaiko, à l'envers).
+- Étape 4 : pas commencée (voir juste au-dessus : commencer par WWE '13).
 - **Écrans VS** (demandés le 2026-10-27) : les outils de Kaiko sur le bureau ne font que le fond
   (`arena_port.py` VS_BACKGROUND). `VS_STYLES.md` / `vs_port.py` **ne sont pas dans son dépôt public**
   (KaikoClanworth1/wwe-svr2011-pc, arbre complet lu le 2026-10-27 avec l'accord de l'utilisateur). Sa méthode est dans
