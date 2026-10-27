@@ -98,3 +98,17 @@ Pour la 1.0 : étapes 1 et 2 seulement, c'est-à-dire ce qui est sûr et testé.
   par `sub_825910F8` si BLOOD est désactivé. OVER THE TOP ROPE est grisé en match simple alors que sa table dit 50 :
   un autre test, sans doute le type ou le nombre de catcheurs, le ferme. À trouver.
 - Méthodes d'ouverture (vtable +0) : ENVIRONMENT `sub_82594188`, WIN CONDITION `sub_825910F8`, RULES `sub_82591ED0`.
+
+## `wwe12_mc_unlock` (2026-10-27, choix de l'utilisateur, désactivé par défaut)
+
+- Ouvre : TIME LIMIT partout ; K.O. et LAST MAN STANDING en cage et en Hell in a Cell (type de ring lu sur ENVIRONMENT) ;
+  OVER THE TOP ROPE et ELIMINATION à 3 catcheurs ou plus. Seuls les types 0 à 26 sont reconnus (nom = texte
+  40687 + type ; nombres de catcheurs vérifiés).
+- Laissé fermé, à la demande de l'utilisateur : ENTRANCE et POST MATCH REPLAY (l'Elimination Chamber peut casser),
+  et toute incohérence (pas de tombé en Ladder).
+- Testé en jeu (données isolées, lanceur `tools/dev/lancer_test_mc_unlock.bat`) : en Triple Threat, OVER THE TOP ROPE
+  est ouvert (journal : type 13, ligne 3) ; match simple en cage en LAST MAN STANDING joué jusqu'au bout ; en match
+  à échelles, TIME LIMIT est choisissable et PIN reste grisé. Remarque : en match simple, K.O. et LAST MAN STANDING
+  étaient déjà permis par le jeu. Le réglage sert surtout aux types qui les ferment (Hell in a Cell…).
+- À faire : les types 27 et plus (Battle Royal, Elimination Chamber, matchs « à N » en cage, échelles…), une fois
+  leur nombre de catcheurs vérifié ; l'option dans le launcher (conversation Launcher).
