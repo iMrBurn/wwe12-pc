@@ -7,7 +7,10 @@
 // group = the match type's group (sub_825936B0: table 0x82027E28, 67 groups).
 //
 // wwe12_mc_probe: each time a panel opens, the panel's rows and its four tables (67 groups) are
-// logged once ("[mc] ..."), and for the current match type the row values it got.
+// logged once ("[mc] ..."), and for the current match type the row values it got. Every panel also
+// goes through sub_82593BD0(panel) (greys its rows: widgets [+4] layout, indices [+180] + row and
+// [+184] + row, flag at widget +180): there the rows' widgets (name at +0x60, text at [+200]) and
+// their flags are logged once per panel and match type, which names each row.
 
 #include <set>
 #include <string>
@@ -41,6 +44,50 @@ int GroupOf(u32 type) {
 
 std::set<u32> g_dumped;                      // panels whose tables were logged
 std::set<std::pair<u32, u32>> g_seen_types;  // (panel, match type) logged
+std::set<std::pair<u32, u32>> g_seen_rows;   // (panel, match type) rows logged
+
+std::string GuestString(u32 at) {
+  std::string s;
+  for (u32 i = 0; i < 48; ++i) {
+    const u8 c = bd::mem::try_load<u8>(at + i);
+    if (!c)
+      break;
+    s += (c >= 32 && c < 127) ? char(c) : '?';
+  }
+  return s;
+}
+
+// A layout widget (sub_824C5458: [layout+8] + index * 240, index < [layout+24]): name and text.
+std::string Widget(u32 layout, u32 index) {
+  const u32 items = bd::mem::try_field<u32>(layout, 8), count = bd::mem::try_field<u32>(layout, 24);
+  if (!items || index >= count)
+    return "-";
+  const u32 w = items + index * 240;
+  const u32 text = bd::mem::try_field<u32>(w, 200);
+  return fmt::format("{}='{}' flag {}", GuestString(w + 0x60), text ? GuestString(text) : std::string(),
+                     bd::mem::try_field<u32>(w, 180));
+}
+
+void DumpTables(u32 panel, u32 rows) {
+  if (!g_dumped.insert(panel).second)
+    return;
+  std::string words;
+  for (u32 o = 28; o < 164; o += 4)
+    words += fmt::format(" {}", bd::mem::try_field<u32>(panel, o));
+  BD_INFO("[mc] panel {:08X}: vtable {:08X}, {} rows, texts{}", panel, bd::mem::try_field<u32>(panel, 0), rows,
+          words);
+  for (u32 t = 8; t <= 20; t += 4) {
+    const u32 table = bd::mem::try_field<u32>(panel, t);
+    if (!table)
+      continue;
+    for (int g = 0; g < kGroupCount; ++g) {
+      std::string line;
+      for (u32 r = 0; r < rows; ++r)
+        line += fmt::format(" {:3}", bd::mem::try_load<u8>(table + g * rows + r));
+      BD_INFO("[mc] panel {:08X} table +{} ({:08X}) group {:2}:{}", panel, t, table, g, line);
+    }
+  }
+}
 
 }  // namespace
 
@@ -53,24 +100,7 @@ extern "C" REX_FUNC(sub_825910F8) {
   const u32 type_obj = bd::mem::try_field<u32>(panel, 24);
   if (rows == 0 || rows > 16)
     return;
-  if (g_dumped.insert(panel).second) {
-    std::string words;
-    for (u32 o = 28; o < 164; o += 4)
-      words += fmt::format(" {}", bd::mem::try_field<u32>(panel, o));
-    BD_INFO("[mc] panel {:08X}: vtable {:08X}, {} rows, texts{}", panel, bd::mem::try_field<u32>(panel, 0), rows,
-            words);
-    for (u32 t = 8; t <= 20; t += 4) {
-      const u32 table = bd::mem::try_field<u32>(panel, t);
-      if (!table)
-        continue;
-      for (int g = 0; g < kGroupCount; ++g) {
-        std::string line;
-        for (u32 r = 0; r < rows; ++r)
-          line += fmt::format(" {:3}", bd::mem::try_load<u8>(table + g * rows + r));
-        BD_INFO("[mc] panel {:08X} table +{} ({:08X}) group {:2}:{}", panel, t, table, g, line);
-      }
-    }
-  }
+  DumpTables(panel, rows);
   if (g_seen_types.insert({panel, type_obj}).second) {
     std::string fields;
     for (u32 r = 0; r < rows; ++r) {
@@ -82,4 +112,24 @@ extern "C" REX_FUNC(sub_825910F8) {
     BD_INFO("[mc] panel {:08X} opened: match type {} (group {}), first row +168 {}:{}", panel, type_obj,
             GroupOf(type_obj), bd::mem::try_field<u32>(panel, 168), fields);
   }
+}
+
+// sub_82593BD0(panel): greys the panel's rows. Every panel goes through it.
+REX_EXTERN(__imp__sub_82593BD0);
+extern "C" REX_FUNC(sub_82593BD0) {
+  const u32 panel = ctx.r3.u32;
+  __imp__sub_82593BD0(ctx, base);
+  if (!REXCVAR_GET(wwe12_mc_probe))
+    return;
+  const u32 rows = bd::mem::try_field<u32>(panel, 176);
+  const u32 type = bd::mem::try_field<u32>(panel, 24);
+  if (rows == 0 || rows > 16 || !g_seen_rows.insert({panel, type}).second)
+    return;
+  DumpTables(panel, rows);
+  const u32 layout = bd::mem::try_field<u32>(panel, 4);
+  const u32 first = bd::mem::try_field<u32>(panel, 180), second = bd::mem::try_field<u32>(panel, 184);
+  BD_INFO("[mc] panel {:08X} rows (match type {}, group {}, vtable {:08X}, cursor {}):", panel, type, GroupOf(type),
+          bd::mem::try_field<u32>(panel, 0), bd::mem::try_field<u32>(panel, 168));
+  for (u32 r = 0; r < rows; ++r)
+    BD_INFO("[mc]   row {}: {} | {}", r, Widget(layout, first + r), Widget(layout, second + r));
 }

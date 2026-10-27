@@ -71,3 +71,15 @@ Pour la 1.0 : étapes 1 et 2 seulement, c'est-à-dire ce qui est sûr et testé.
 - `[+16]` : autre forme, pas encore comprise.
 - Reste à faire avant de débloquer : relier chaque ligne à son nom (texte affiché), sonder les deux autres panneaux,
   et confirmer en jeu qu'un 50 forcé dans `[+12]` ou `[+20]` rend bien la ligne choisissable.
+
+## Sonde, deuxième passage (2026-10-27)
+
+- Trois panneaux, tous passés par `sub_82593BD0` : **4 lignes** (vtable 0x820281B4), **11 lignes** (0x82027C7C) et
+  **10 lignes** (0x82027CAC ; ses widgets sautent `_07`). Vus avec les types de match 0 (groupe 0), 3 (groupe 14) et
+  62 (groupe 32).
+- Les widgets des lignes s'appellent `_01` … `_11`. Leur texte n'est pas à `[widget+200]`, et l'indicateur à +180
+  est la **surbrillance** (0 sur la ligne du curseur), pas le grisé. Les noms des lignes viennent donc de la mise
+  en page (MnLay) : il faut les relier à l'écran avec une capture.
+- Textes de valeurs du constructeur, dans l'ordre : OFF/ON, les 5 types de ring, EXTREME RULES (95),
+  SLOW/NORMAL/FAST, OFF/BOTH, PIN ONLY/SUBMISSION ONLY, NO EXITING, décomptes, limites de temps, armes.
+- Suite : une capture de chaque page (type simple), pour nommer les lignes, puis l'essai `[+12] = 50`.
