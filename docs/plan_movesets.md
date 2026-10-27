@@ -66,9 +66,13 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
 - **Animations de WWE '13 : lisibles telles quelles.** Pas dans `m.pac` (30 Ko chez lui) mais dans `pac/mot06-08.pac`
   (EPK8 en clair dans la copie de l'utilisateur ; `dlc_mot01.pac` est xcompressé), mêmes banques ZMVM qu'en WWE '12
   (STAT, BASE, STN1/2, GRND, CORN, FINI, SPE0-2, RUMB, LADR, CELL… plus ABL0/1, LIMB) : **100 % des fiches lues par
-  `yanm::Read`**. Différence : **20 pistes par personne en WWE '13, 24 en WWE '12** (Kaiko : WWE '13 a un flux IK,
-  WWE '12 du FK pur) → copier tel quel ne suffira pas, il faut recalculer les pistes de WWE '12 (le visionneur
-  d'animations du Mod Maker sait déjà les échantillonner).
+  `yanm::Read`**. **Mêmes os (Biped : Bip, Pelvis, Spine, Spine1, Neck, Head, bras, jambes, `vector`, `root`)** :
+  banque FINI, 76 fiches de WWE '13 contre 58 de WWE '12 ; dans la moitié des fiches de WWE '13 les pistes des mains
+  et des orteils manquent (20 pistes au lieu de 24 : ces os restent au repos, ou viennent des pistes `#fdd95b2x` /
+  `#fc5bf1xx` propres à WWE '13, sans doute la cible IK dont parle Kaiko). Les clés sont des mêmes sortes (rot8,
+  charnières, positions). → **une copie presque telle quelle des animations de WWE '13 semble possible** (à essayer
+  en jeu : une prise de WWE '13 mise sur un numéro de WWE '12) ; SvR 2011 (YMKs) et les 2K demanderont une vraie
+  conversion.
 - **Ce qui manque pour l'étape 3, dans le jeu** : un « pack de prises » (l'équivalent de `move_packs.cpp` de Kaiko,
   hors de ses outils) : ajouter des fiches ZMVM à `m.pac` (270 Mo : pas de copie, une redirection d'entrées comme
   pour les vidéos d'arènes) et cloner les fiches WAZE de `misc.pac` (petit : copie patchée par l'overlay, comme
