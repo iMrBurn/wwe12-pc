@@ -38,6 +38,7 @@
 #include "game_discs.h"
 #include "game_process.h"
 #include "imgui.h"
+#include "mod_version.h"
 #include "media.h"
 #include "mods.h"
 #include "wic_image.h"
@@ -267,6 +268,7 @@ class Page {
     ImGui::SetNextItemWidth(200);
     ImGui::InputTextWithHint("##arena_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_,
                              sizeof(author_));
+    mod_version::Input("Version##arena_version", version_, sizeof(version_));
     ImGui::SameLine();
     const bool ready = mode_ == 1 ? other_ok_ : mode_ >= 3 ? port_ok_ : Changed() > 0;
     ImGui::BeginDisabled(!ready || game::IsRunning());
@@ -954,6 +956,7 @@ class Page {
     ImGui::InputText(fr ? "Nom" : "Name", name_, sizeof(name_));
     ImGui::SetNextItemWidth(320);
     ImGui::InputTextWithHint(fr ? "Auteur" : "Author", fr ? "(facultatif)" : "(optional)", author_, sizeof(author_));
+    mod_version::Input("Version##arena_version3", version_, sizeof(version_));
     ImGui::Dummy(ImVec2(0, 6));
     DrawBanner(fr);
   }
@@ -1493,7 +1496,7 @@ class Page {
     const fs::path save = media::PickSave(fr, (file.empty() ? L"arena" : file) + L".svrmod");
     if (save.empty())
       return;
-    std::string manifest = "game=wwe12\ntype=arena\nid=" + id + "\nname=" + std::string(name_) + "\nversion=1.0\n";
+    std::string manifest = "game=wwe12\ntype=arena\nid=" + id + "\nname=" + std::string(name_) + "\nversion=" + mod_version::Of(version_) + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     if (as_new_)
@@ -1550,7 +1553,7 @@ class Page {
   Bytes shipped_;
   arena_edit::Arena arena_;
   std::vector<Thumb> thumbs_;
-  char filter_[64] = {}, name_[64] = {}, author_[64] = {};
+  char filter_[64] = {}, name_[64] = {}, author_[64] = {}, version_[16] = {};
   std::string error_, message_, reduced_note_, pick_note_;
   bool message_ok_ = false;
 

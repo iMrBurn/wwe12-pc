@@ -22,6 +22,7 @@
 #include "game_disc.h"
 #include "game_process.h"
 #include "imgui.h"
+#include "mod_version.h"
 #include "media.h"
 #include "mods.h"
 #include "port_svr.h"
@@ -168,6 +169,7 @@ class Page {
     ImGui::SetNextItemWidth(200);
     ImGui::InputTextWithHint("##star_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_,
                              sizeof(author_));
+    mod_version::Input("Version##star_version", version_, sizeof(version_));
     ImGui::SameLine();
     ImGui::BeginDisabled((changed == 0 && !ported_) || game::IsRunning());
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
@@ -454,7 +456,7 @@ class Page {
       message_ = (fr ? "Tenue introuvable : " : "Attire not found: ") + why;
       return;
     }
-    std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=1.0\n" +
+    std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=" + mod_version::Of(version_) + "\n" +
                            "superstar=" + std::to_string(s.id) + "\nattire=" + attires_[attire_] + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
@@ -475,7 +477,7 @@ class Page {
   bool listed_ = false, loaded_ = false;
   std::vector<Star> stars_;
   int star_ = -1, attire_ = 0, selected_ = -1;
-  char star_filter_[64] = {}, name_[64] = {}, author_[64] = {};
+  char star_filter_[64] = {}, name_[64] = {}, author_[64] = {}, version_[16] = {};
   Bytes file_;
   std::vector<std::string> attires_;
   arena_edit::Arena edit_;

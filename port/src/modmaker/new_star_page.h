@@ -27,6 +27,7 @@
 #include "game_discs.h"
 #include "game_process.h"
 #include "imgui.h"
+#include "mod_version.h"
 #include "media.h"
 #include "mods.h"
 #include "port13_star.h"
@@ -117,6 +118,7 @@ class Page {
       ImGui::InputTextWithHint(fr ? "Nom" : "Name", fr ? "(comme en jeu)" : "(as in the game)", name_, sizeof(name_));
       ImGui::SetNextItemWidth(320);
       ImGui::InputTextWithHint(fr ? "Auteur" : "Author", fr ? "(facultatif)" : "(optional)", author_, sizeof(author_));
+      mod_version::Input("Version##new_version", version_, sizeof(version_));
       StepAttributes(fr);
       break;
     case 3: StepVideo(fr); break;
@@ -1170,7 +1172,7 @@ class Page {
     auto u8 = [](const fs::path &p) { return media::Utf8(p.wstring()); };
     std::string t = "kind=new_superstar\nlook=" + std::to_string(look_) + "\nstar_game=" + std::to_string(star_game_) +
                     "\nbase=" + std::to_string(base_ >= 0 ? stars_[size_t(base_)].id : 0) + "\nchosen=" + (chosen_ ? "1" : "0") +
-                    "\nname=" + name_ + "\nauthor=" + author_ + "\nother=" + u8(other_path_) + "\nsvr=" + u8(svr_path_) +
+                    "\nname=" + name_ + "\nauthor=" + author_ + "\nversion=" + version_ + "\nother=" + u8(other_path_) + "\nsvr=" + u8(svr_path_) +
                     "\ndisc_pick=" + std::to_string(disc_pick_) + "\nsvr_attire=" + std::to_string(svr_attire_) +
                     "\nfbx=" + u8(fbx_path_) + "\nfbx_budget=" + std::to_string(fbx_budget_) + "\nportrait=" +
                     u8(custom_portrait_) + "\nkeep_portraits=" + (keep_portraits_ ? "1" : "0") + "\nas_attire=" +
@@ -1236,6 +1238,7 @@ class Page {
     }
     snprintf(name_, sizeof(name_), "%s", value("name").c_str());
     snprintf(author_, sizeof(author_), "%s", value("author").c_str());
+    snprintf(version_, sizeof(version_), "%s", value("version").c_str());
     own_attributes_ = value("own_attributes") == "1";
     attributes_.clear();
     for (const std::string a = value("attributes"); const auto &part : [&] {
@@ -1392,7 +1395,7 @@ class Page {
     if (save_.empty())
       return;
     const Star &b = stars_[size_t(base_)];
-    std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=1.0\n" +
+    std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=" + mod_version::Of(version_) + "\n" +
                            "superstar=" + std::to_string(b.id) + "\nattire=" + attire_entry_ + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
@@ -1428,7 +1431,7 @@ class Page {
     const fs::path &save = save_;
     const Star &b = stars_[base_];
     std::string manifest = "game=wwe12\ntype=superstar\nid=" + id + "\nname=" + std::string(name_) +
-                           "\nbase=" + std::to_string(b.id) + "\nversion=1.0\n";
+                           "\nbase=" + std::to_string(b.id) + "\nversion=" + mod_version::Of(version_) + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     if (own_attributes_ && attributes_.size() == 12) {  // (the game puts them in its record)
@@ -1479,7 +1482,7 @@ class Page {
   int default_ = -1;     // the average superstar used without a base (index in stars_), -1 if the disc has none
   bool chosen_ = false;  // a base was chosen (else base_ is default_)
   bool base_by_player_ = false;  // ... by the player (else maybe the one of the same name, SameNameBase)
-  char name_[32] = {}, author_[64] = {}, filter_[64] = {};
+  char name_[32] = {}, author_[64] = {}, version_[16] = {}, filter_[64] = {};
   Bytes base_file_, other_, ported_, model_, svr_file_;
   fs::path other_path_, svr_path_;
 

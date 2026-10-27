@@ -14,6 +14,7 @@
 #include "arena_page.h"
 #include "game_disc.h"
 #include "imgui.h"
+#include "mod_version.h"
 #include "media.h"
 #include "mods.h"
 #include "svrfmt/texture.h"
@@ -120,6 +121,7 @@ class Page {
     ImGui::SameLine();
     ImGui::SetNextItemWidth(200);
     ImGui::InputTextWithHint("##signs_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
+    mod_version::Input("Version##signs_version", version_, sizeof(version_));
     ImGui::BeginDisabled(!count || !name_[0] || game::IsRunning());
     if (ImGui::Button(fr ? "Créer le pack et l'installer..." : "Make the pack and install it..."))
       Make(fr, mods);
@@ -145,7 +147,7 @@ class Page {
     const fs::path save = media::PickSave(fr, (file.empty() ? L"signs" : file) + L".svrmod");
     if (save.empty())
       return;
-    std::string manifest = "game=wwe12\ntype=signs\nid=" + id + "\nname=" + std::string(name_) + "\nversion=1.0\n";
+    std::string manifest = "game=wwe12\ntype=signs\nid=" + id + "\nname=" + std::string(name_) + "\nversion=" + mod_version::Of(version_) + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     manifest += "description=" + std::string(name_) + ", crowd signs, made with the WWE '12 Mod Maker.\n";
@@ -165,7 +167,7 @@ class Page {
   std::vector<std::pair<int, std::string>> stars_;
   std::map<int, Sign> signs_;  // superstar x 10 + K
   int star_ = -1;
-  char filter_[64] = {}, name_[64] = {}, author_[64] = {};
+  char filter_[64] = {}, name_[64] = {}, author_[64] = {}, version_[16] = {};
   std::string message_;
   bool message_ok_ = false;
 };

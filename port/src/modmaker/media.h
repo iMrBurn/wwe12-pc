@@ -24,6 +24,7 @@
 #include "game_disc.h"
 #include "game_process.h"
 #include "imgui.h"
+#include "mod_version.h"
 #include "bink2.h"
 #include "game_discs.h"
 #include "mods.h"
@@ -547,6 +548,7 @@ class EntranceVideos {
     ImGui::BeginDisabled(editor_.Busy());
     ImGui::SetNextItemWidth(260);
     ImGui::InputText(fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
+    mod_version::Input("Version##video_version", version_, sizeof(version_));
     ImGui::EndDisabled();
 
     // Make it.
@@ -748,7 +750,7 @@ class EntranceVideos {
     fs::remove(made_, ec);
     const std::string number = s.file.substr(0, 3);
     std::string manifest = "game=wwe12\ntype=media\nid=entrance_video_" + number + "\nname=" +
-                           (fr ? "Vidéo d'entrée : " : "Entrance video: ") + Label(s) + "\nversion=1.0\n";
+                           (fr ? "Vidéo d'entrée : " : "Entrance video: ") + Label(s) + "\nversion=" + mod_version::Of(version_) + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     manifest += "description=" + Label(s) + "'s entrance movie (movies/titantron/" + s.file + ": " +
@@ -771,7 +773,7 @@ class EntranceVideos {
   int star_ = -1;
   char filter_[64] = {};
   fs::path out_, made_;
-  char author_[64] = {};
+  char author_[64] = {}, version_[16] = {};
   MovieEditor editor_;
   std::string message_;
   bool message_ok_ = false;
@@ -818,6 +820,7 @@ class TextureMods {
     ImGui::SetNextItemWidth(200);
     ImGui::InputTextWithHint("##texauthor", fr ? "Auteur (facultatif)" : "Author (optional)", author_,
                              sizeof(author_));
+    mod_version::Input("Version##texversion", version_, sizeof(version_));
     if (ImGui::Button(fr ? "Créer un mod de textures..." : "Make a texture mod..."))
       Make(fr);
     if (!message_.empty())
@@ -897,7 +900,7 @@ class TextureMods {
     const fs::path out = PickSave(fr, file + L".svrmod");
     if (out.empty())
       return;
-    std::string manifest = "game=wwe12\ntype=textures\nid=textures_" + id + "\nname=" + name + "\nversion=1.0\n";
+    std::string manifest = "game=wwe12\ntype=textures\nid=textures_" + id + "\nname=" + name + "\nversion=" + mod_version::Of(version_) + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     manifest += "description=" + std::to_string(entries.size()) + " texture(s), made with the WWE '12 launcher.\n";
@@ -914,7 +917,7 @@ class TextureMods {
                      : "; " + std::to_string(skipped) + " file(s) left out (no hash in the name).";
   }
 
-  char name_[64] = {}, author_[64] = {};
+  char name_[64] = {}, author_[64] = {}, version_[16] = {};
   std::string message_;
   bool ok_ = false;
 };

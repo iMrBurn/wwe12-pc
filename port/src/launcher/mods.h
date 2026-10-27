@@ -165,6 +165,7 @@ class Manager {
                          "%s", message_.c_str());
     // Added superstars: the game keeps its pack when one of them is gone (a save may use him) and says so in
     // Documents\wwe12\mods_warning.txt (src/native/wwe12_superstar_mods.cpp).
+    ImGui::PushTextWrapPos(0.0f);  // (these two notes are long: wrapped, else cut at the window's edge)
     if (const std::string gone = PackWarning(); !gone.empty())
       ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
                          (french ? "Catcheurs ajoutés retirés mais gardés par le jeu (votre sauvegarde peut les utiliser) : " +
@@ -188,6 +189,7 @@ class Manager {
                                          "(Univers, matchs, rivalités) : sinon le jeu garde son pack."
                                        : "Before removing an added superstar, stop using him in your save (Universe, "
                                          "matches, rivalries): else the game keeps his pack.");
+    ImGui::PopTextWrapPos();
     if (list_.empty()) {
       ImGui::TextDisabled("%s", t.none);
     } else if (ImGui::BeginTable("svrmods", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
