@@ -889,11 +889,92 @@ void PlaceThirdChoice() {
   }
 }
 
+// More than 3 lines (our paged boxes, up to kMaxLines): the box is laid out for 2 lines (texts D2 /
+// D3, small-font copies D4 / D5 at the same places, underlines D6 / D7); its cursor code walks count
+// lines over 0xD2 + i, so a 5th line's text lands in an underline, and its hidden 7-line list
+// (E1-E8) is never drawn. A text element draws "\n" as a new line (the question does): so D2 shows
+// all our lines but the cursor's (left empty), white, and D3, at the same place, only the cursor's
+// line (the others empty), red; everything else of the choice hidden, every frame after the cursor
+// code.
+constexpr u32 kMaxLines = 7;  // a 6-Superstar match and RANDOM
+SavedElement g_many[12];
+bool g_many_ok = false;
+u32 g_many_text[kMaxLines] = {};  // the lines' guest strings
+
+void PlaceManyChoices() {
+  const u32 lines = std::min(g_box_lines, kMaxLines);
+  if (!g_many_ok) {
+    u32 k = 0;
+    for (u32 id = 0xD2; id <= 0xDD; ++id)
+      g_many[k++].id = id;
+    for (SavedElement &e : g_many) {
+      e.at = BoxElement(e.id);
+      if (!e.at)
+        return;
+      std::memcpy(e.bytes, bd::mem::at<u8>(e.at), 240);
+    }
+    g_many_ok = true;
+  }
+  static u32 s_block = 0;
+  if (!s_block)
+    s_block = REX_KERNEL_MEMORY()->SystemHeapAlloc(4 * 512, 0x10);
+  if (!s_block)
+    return;
+  const u32 box = bd::mem::load<u32>(kMessageBox);
+  const u32 cursor = box ? std::min(bd::mem::load<u32>(box + 56), lines - 1) : 0;
+  // two columns across the box (a block's text is centred on its y): the first half on
+  // the left (D2 white, D3 red), the rest on the right (D4 white, D5 red)
+  const u32 left = (lines + 1) / 2;
+  std::string white[2], red[2];
+  for (u32 k = 0; k < lines; ++k) {
+    const char *t = g_many_text[k] ? bd::mem::try_at<const char>(g_many_text[k]) : nullptr;
+    const std::string line = t ? t : "";
+    const u32 col = k < left ? 0 : 1, row = col ? k - left : k;
+    white[col] += (row ? "\n" : "") + (k == cursor ? std::string(" ") : line);
+    red[col] += (row ? "\n" : "") + (k == cursor ? line : std::string(" "));
+  }
+  // a block is centred on its y: the right column padded to the left one's lines, so rows align
+  for (u32 row = lines - left; row < left; ++row) {
+    white[1] += "\n ";
+    red[1] += "\n ";
+  }
+  for (u32 id = 0xD6; id <= 0xDD; ++id)
+    if (const u32 at = BoxElement(id))
+      bd::mem::store<u32>(at + 180, 1);
+  static const float kRed[4] = {0.8039f, 0.0784f, 0.0784f, 1.0f}, kWhite[4] = {1, 1, 1, 1};
+  const u32 ids[4] = {0xD2, 0xD3, 0xD4, 0xD5};
+  for (u32 i = 0; i < 4; ++i) {
+    const u32 at = BoxElement(ids[i]);
+    if (!at)
+      continue;
+    const u32 col = i / 2;
+    const bool is_red = i % 2 == 1;
+    const std::string &text = is_red ? red[col] : white[col];
+    const u32 str = s_block + i * 512;
+    std::memset(bd::mem::at<char>(str), 0, 512);
+    std::memcpy(bd::mem::at<char>(str), text.data(), std::min<size_t>(text.size(), 511));
+    std::memcpy(bd::mem::at<u8>(at), g_many[0].bytes, 240);  // the first line as laid out
+    bd::mem::store<float>(at + 4, col ? 75.0f : -75.0f);
+    const float scale = left > 3 ? 0.82f : 0.9f;
+    bd::mem::store<float>(at + 8, -2.0f);
+    bd::mem::store<float>(at + 12, scale);
+    bd::mem::store<float>(at + 16, scale);
+    bd::mem::store<u32>(at + 180, 0);
+    bd::mem::store<u32>(at + 200, str);
+    for (u32 c = 0; c < 4; ++c)
+      bd::mem::store<float>(at + 184 + c * 4, (is_red ? kRed : kWhite)[c]);
+  }
+}
+
 void RestoreChoiceElements() {
   if (g_saved_ok)
     for (const SavedElement &e : g_saved)
       std::memcpy(bd::mem::at<u8>(e.at), e.bytes, 240);
   g_saved_ok = false;
+  if (g_many_ok)
+    for (const SavedElement &e : g_many)
+      std::memcpy(bd::mem::at<u8>(e.at), e.bytes, 240);
+  g_many_ok = false;
 }
 
 // Dev (wwe12_universe_probe): the choice elements, to see what the box's layout holds.
@@ -1233,17 +1314,19 @@ void ShowChoosePage(const PPCContext &in, u8 *base, size_t first) {
   c.first = first < c.options.size() ? first : 0;
   c.page.clear();
   const size_t left = c.options.size() - c.first;
-  if (left <= 3) {
+  if (left <= kMaxLines) {
     for (size_t i = c.first; i < c.options.size(); ++i)
       c.page.push_back(i);
   } else {
-    c.page = {c.first, c.first + 1, std::string::npos};
+    for (size_t i = 0; i + 1 < kMaxLines; ++i)
+      c.page.push_back(c.first + i);
+    c.page.push_back(std::string::npos);
   }
   static u32 s_lines = 0, s_choices = 0;
   if (!s_lines)
-    s_lines = REX_KERNEL_MEMORY()->SystemHeapAlloc(3 * 96, 0x10);
+    s_lines = REX_KERNEL_MEMORY()->SystemHeapAlloc(kMaxLines * 96, 0x10);
   if (!s_choices)
-    s_choices = REX_KERNEL_MEMORY()->SystemHeapAlloc(4 * 4, 0x10);
+    s_choices = REX_KERNEL_MEMORY()->SystemHeapAlloc(kMaxLines * 4, 0x10);
   if (!s_lines || !s_choices)
     return;
   for (size_t i = 0; i < c.page.size(); ++i) {
@@ -1253,6 +1336,7 @@ void ShowChoosePage(const PPCContext &in, u8 *base, size_t first) {
     std::memset(bd::mem::at<char>(at), 0, 96);
     std::memcpy(bd::mem::at<char>(at), t.data(), std::min<size_t>(t.size(), 95));
     bd::mem::store<u32>(s_choices + u32(i) * 4, at);
+    g_many_text[i] = at;
   }
   // the box lays a one-line question over its first line: a title line above it (EDIT UNIVERSE,
   // the first line of our menu's question)
@@ -1265,6 +1349,7 @@ void ShowChoosePage(const PPCContext &in, u8 *base, size_t first) {
   g_box_lines = u32(c.page.size());
   g_menu_frames = 0;
   g_saved_ok = false;
+  g_many_ok = false;
   Call(in, base, __imp__sub_8260DD80, 0, kChooseText, s_choices, g_box_lines, 1, 0);  // 1: B cancels
 }
 
@@ -1289,7 +1374,7 @@ void Chosen(const PPCContext &in, u8 *base, u32 answer) {
   if (answer >= c.page.size())
     return;  // B
   if (c.page[answer] == std::string::npos) {
-    ShowChoosePage(in, base, c.first + 2);
+    ShowChoosePage(in, base, c.first + kMaxLines - 1);
     return;
   }
   const auto done = c.done;  // it may open another box
@@ -3341,8 +3426,15 @@ extern "C" REX_FUNC(sub_82552240) {
     ApplyTable(r);
 }
 
+bool CardButtons(const PPCContext &in, u8 *base, u32 screen);  // MATCH CARDS: X chooses the winner
+
+void ChoiceColumns(u32 screen);  // left / right in our two-column choice boxes
+
 extern "C" REX_FUNC(sub_824D20A0) {
   const u32 screen = ctx.r3.u32;
+  ChoiceColumns(screen);
+  if (CardButtons(ctx, base, screen))
+    return;
   if (bd::mem::try_load<u32>(screen) == kSuperstarPageVtbl) {
     if (SuperstarPageButtons(ctx, base, screen))
       return;
@@ -3748,6 +3840,18 @@ u32 EditResult(u32 screen) {
 
 }  // namespace
 
+// RB EDIT on MATCH CARDS (sub_82554270(C), C = the card panel): the match under its cursor (C+552
+// the row, C+4100 + 4 * row its match), kept for SAVE.
+u32 g_edited_match = ~0u;
+REX_EXTERN(__imp__sub_82554270);
+extern "C" REX_FUNC(sub_82554270) {
+  const u32 c = ctx.r3.u32;
+  const u32 row = bd::mem::load<u32>(c + 552);
+  g_edited_match = row < 8 ? bd::mem::load<u32>(c + 4100 + 4 * row) : ~0u;
+  BD_INFO("[univers] match edit: RB on row {} = card match {}", row, int(g_edited_match));
+  __imp__sub_82554270(ctx, base);
+}
+
 extern "C" REX_FUNC(sub_82574BD8) {
   const u32 screen = ctx.r3.u32, flags = ctx.r4.u32;
   u32 bit = 0;
@@ -3793,7 +3897,11 @@ extern "C" REX_FUNC(sub_82548F80) {
     const u32 m = bd::mem::load<u32>(kMatchSelect);
     const u32 card = bd::mem::load<u32>(kCardContext);
     if (m && card) {
-      const u32 match = bd::mem::load<u32>(card + 20) == 1
+      // the match edited: the one under the card's cursor (MATCH CARDS = Universe menu + 260: its
+      // +552 the row, +4100 + 4 * row the match). Not "the next one to play" (+20 = 1, play the show
+      // in order): with that, editing match 3 wrote match 1 (seen 2026-10-27).
+      const u32 match = g_edited_match < 8 ? g_edited_match
+                        : bd::mem::load<u32>(card + 20) == 1
                             ? Call(ctx, base, __imp__sub_826BAF28, card)
                             : bd::mem::load<u8>(card + 32);
       Call(ctx, base, __imp__sub_826C63D8, bd::mem::load<u32>(kCardOwner), match, m);
@@ -3925,6 +4033,8 @@ extern "C" REX_FUNC(sub_824D3458) {
       if (!REXCVAR_GET(wwe12_universe_probe)) {
         if (g_box_lines == 3)
           PlaceThirdChoice();
+        else if (g_box_lines > 3)
+          PlaceManyChoices();
       } else {
         // Dev: the box as the game draws it, logged at frame 20 and at each cursor move.
         static u32 s_cursor = 0xFFFFFFFFu;
@@ -4008,9 +4118,12 @@ extern "C" REX_FUNC(sub_8288F0A0) {
   __imp__sub_8288F0A0(ctx, base);
   if (Enabled() &&
       (g_step == Step::kMenu || g_step == Step::kAttire || g_step == Step::kChoose) &&
-      g_box_lines == 3 &&
-      !REXCVAR_GET(wwe12_universe_probe))
-    PlaceThirdChoice();
+      g_box_lines >= 3 && !REXCVAR_GET(wwe12_universe_probe)) {
+    if (g_box_lines == 3)
+      PlaceThirdChoice();
+    else
+      PlaceManyChoices();
+  }
 }
 
 // ---- dev probe (wwe12_universe_probe) -------------------------------------------------------
@@ -4187,4 +4300,134 @@ extern "C" REX_FUNC(sub_8255BFD8) {
     }
   }
   __imp__sub_8255BFD8(ctx, base);
+}
+
+// ---- choose the winner (as the latest WWE 2K games) --------------------------------------------
+//
+// MATCH CARDS (card C = Universe menu + 260, its screen S = C + 28, vtable 0x82023358): X (SIMULATE)
+// is sub_82556500(S), which finds a match still to play and simulates the one under the cursor (C+552
+// = the row, C+4100 + 4 * row = its match) with sub_82554048(C, 1): sub_826C9050(owner, match, mode
+// r5 = 0, -1, -1). The simulation has a forced-result mode: r5 = 2, r6 = the winner's place, r7 = the
+// loser's (-1: the first place of another team) -> sub_826C4358, which writes the result as the game's
+// own (titles, momentum, news, our statistics). So X first asks "Choose the winner of this match":
+// each team (its Superstars joined by " & ") or, in a Royal Rumble, each Superstar, then RANDOM (the
+// game's own draw). The answer arms the forced result and calls the game's X.
+
+constexpr u32 kCardScreenVtbl = 0x82023358;
+REX_EXTERN(__imp__sub_82556500);  // MATCH CARDS: X (S)
+REX_EXTERN(__imp__sub_826C9050);  // Universe: simulate a match (owner, match, mode, winner, loser)
+REX_EXTERN(__imp__sub_826D0840);  // Universe view: the show of today
+
+namespace {
+struct ForcedWinner {
+  u32 match = ~0u, place = ~0u;  // armed for this match: its winner's place
+};
+ForcedWinner g_forced;
+std::vector<u32> g_winner_places;  // the box's lines: a place each (the last: RANDOM)
+
+const char *ChooseWinnerText() {
+  static const char *const kText[5] = {
+      "SIMULATE\nChoose the winner of this match:", "SIMULER\nChoisissez le vainqueur du match :",
+      "SIMULIEREN\nW\xC3\xA4hle den Sieger dieses Matches:",
+      "SIMULAR\nElige al ganador del combate:", "SIMULA\nScegli il vincitore dell'incontro:"};
+  return kText[CurrentLang()];
+}
+const char *RandomText() {
+  static const char *const kText[5] = {"RANDOM", "AL\xC3\x89" "ATOIRE", "ZUFALL", "ALEATORIO",
+                                       "CASUALE"};
+  return kText[CurrentLang()];
+}
+}  // namespace
+
+bool CardButtons(const PPCContext &in, u8 *base, u32 screen) {
+  if (!Enabled() || g_step != Step::kIdle || bd::mem::try_load<u32>(screen) != kCardScreenVtbl ||
+      bd::mem::load<u32>(kInUniverseFlag) != 1 || !(bd::mem::load<u32>(screen + 64) & kX))
+    return false;
+  const u32 card = screen - 28;
+  const u32 row = bd::mem::load<u32>(card + 552);
+  const u32 match = bd::mem::load<u32>(card + 4100 + 4 * row);
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x800, out = x.r1.u32 + 0x400;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 show = Call(x, base, __imp__sub_826D0840, view);
+  const u32 entry = Call(x, base, __imp__sub_826CCC38, view, show);
+  const u32 list = entry ? bd::mem::load<u32>(entry + 4) : 0;
+  const u32 record = list && match < 8 ? list + match * 104 : 0;
+  std::vector<std::string> options;
+  g_winner_places.clear();
+  if (record && bd::mem::load<u8>(record + 3) == 1) {  // still to play
+    const bool rumble = Call(x, base, __imp__sub_82A2FA18, bd::mem::load<u8>(record)) == 1;
+    const u32 places = std::min<u32>(Call(x, base, __imp__sub_826D4F90, record), 40);
+    std::vector<u32> teams;
+    for (u32 p = 0; p < places; ++p) {
+      if (!Call(x, base, __imp__sub_826D4958, record, out, p) || bd::mem::load<u16>(out) >= 512)
+        continue;
+      const u32 id = bd::mem::load<u16>(out), team = rumble ? p : bd::mem::load<u8>(out + 3);
+      const auto it = std::find(teams.begin(), teams.end(), team);
+      if (it == teams.end()) {
+        teams.push_back(team);
+        g_winner_places.push_back(p);
+        options.push_back(NameOf(in, base, id));
+      } else {
+        options[it - teams.begin()] += " & " + NameOf(in, base, id);
+      }
+    }
+  }
+  Call(x, base, __imp__sub_826CE098, view);
+  if (options.size() < 2)
+    return false;  // nothing to choose: the game's X
+  options.push_back(RandomText());
+  g_winner_places.push_back(~0u);
+  bd::mem::store<u32>(screen + 64, 0);
+  g_screen = screen;
+  BD_INFO("[univers] choose winner: show {} match {} ({} sides)", show, match, options.size() - 1);
+  Choose(in, base, ChooseWinnerText(), options,
+         [screen, match](const PPCContext &in, u8 *base, size_t i) {
+           g_forced = {match, i < g_winner_places.size() ? g_winner_places[i] : ~0u};
+           BD_INFO("[univers] choose winner: match {} -> place {}", match, int(g_forced.place));
+           Call(in, base, __imp__sub_82556500, screen);  // the game's X
+           g_forced = {};
+         });
+  return true;
+}
+
+extern "C" REX_FUNC(sub_826C9050) {
+  if (g_forced.match != ~0u && g_forced.place != ~0u && ctx.r4.u32 == g_forced.match &&
+      ctx.r5.u32 == 0) {
+    ctx.r5.u64 = 2;  // a forced result: the chosen winner, the loser from another team
+    ctx.r6.u64 = g_forced.place;
+    ctx.r7.s64 = -1;
+    BD_INFO("[univers] choose winner: match {} simulated with place {} winning", ctx.r4.u32,
+            g_forced.place);
+  }
+  __imp__sub_826C9050(ctx, base);
+}
+
+// Our two-column choice boxes (more than 3 lines): left / right move the cursor (box +56) to the
+// same row of the other column. The box takes the up / down of the frame's layout screen, so its
+// left / right are read there too (direction bits 4 left, 8 right, or the list masks by its +20).
+void ChoiceColumns(u32 screen) {
+  if (g_step != Step::kChoose || g_box_lines <= 3)
+    return;
+  const u32 pressed = bd::mem::load<u32>(screen + 64);
+  const u32 box = bd::mem::load<u32>(kMessageBox);
+  if (!pressed || !box)
+    return;
+  if (REXCVAR_GET(wwe12_universe_probe))
+    BD_INFO("[univers] choice box: screen {:08X} buttons 0x{:X}, cursor {}", screen, pressed,
+            bd::mem::load<u32>(box + 56));
+  const u32 lines = std::min(g_box_lines, kMaxLines), left = (lines + 1) / 2;
+  const u32 cursor = bd::mem::load<u32>(box + 56);
+  u32 next = cursor;
+  if ((pressed & 8) && cursor < left && cursor + left < lines)
+    next = cursor + left;
+  else if ((pressed & 8) && cursor < left)
+    next = lines - 1;
+  else if ((pressed & 4) && cursor >= left)
+    next = cursor - left;
+  if (next != cursor) {
+    bd::mem::store<u32>(box + 56, next);
+    bd::mem::store<u32>(screen + 64, pressed & ~12u);
+  }
 }

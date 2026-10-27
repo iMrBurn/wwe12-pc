@@ -874,3 +874,27 @@ dessinent les PPV autrement), chaque élément dummy de la case (+0 image, +3 2e
 +12 image du jour choisi) reçoit une copie de l'élément au même rang d'une vraie case, en gardant sa place (+4/+8),
 son nom (+96) et **son objet image (+204)** (sinon il montre le logo du modèle). Vu : SmackDown au mardi, Superstars
 au samedi, case du jour en grand, mois suivants, dimanche (SummerSlam) intact.
+
+## 32. Choisir le vainqueur (X SIMULATE, comme les 2K récents) et SAVE corrigé (2026-10-27, testé par l'utilisateur)
+
+Demande de joueurs (Discord). MATCH CARDS (panneau C = menu Univers + 260, écran S = C + 28, vtable 0x82023358) : X =
+`sub_82556500(S)`, qui simule le match sous le curseur (C+552 la ligne, C+4100 + 4 × ligne le match) par
+`sub_82554048(C, 1)` → `sub_826C9050(owner, match, mode 0, -1, -1)`. La simulation a un mode « résultat imposé » :
+r5 = 2, r6 = place du gagnant, r7 = place du perdant (-1 : la 1re place d'une autre équipe) → `sub_826C4358`, qui écrit
+le résultat comme le jeu (titres, momentum, news, nos stats). Notre X ouvre d'abord « Choose the winner of this
+match » : une ligne par équipe (ses catcheurs joints par « & »), ou par catcheur au Royal Rumble, puis RANDOM (le
+tirage du jeu) ; la réponse arme le mode imposé et appelle le X du jeu. Vu : le catcheur choisi gagne (WON / LOST).
+
+**Boîte à plus de 3 lignes** : la boîte du jeu n'est faite que pour 2 lignes (textes D2/D3, copies petite police D4/D5
+aux mêmes places, soulignements D6/D7) ; son code de curseur (`sub_8288F0A0`, vtable) parcourt count lignes sur
+0xD2 + i et colore 0xD6 + i ; sa liste cachée de 7 lignes (E1-E8) n'est jamais dessinée. Un élément texte dessine
+« 
+ » comme un retour à la ligne et centre son bloc sur son y : on écrit deux colonnes (D2 blanc / D3 rouge à
+gauche, D4 / D5 à droite, la colonne de droite complétée de lignes vides pour aligner les rangées), la ligne du
+curseur seulement dans le bloc rouge. Gauche / droite (bits 4 / 8 de l'écran du cadre, `sub_824D20A0`) changent de
+colonne (box + 56 = curseur). Jusqu'à 7 lignes (6 catcheurs + RANDOM) ; le Royal Rumble garde des pages (MORE...).
+Le menu EDIT UNIVERSE et le calendrier profitent aussi des 7 lignes.
+
+**SAVE d'un match modifié** : le match écrit était « le prochain à jouer » quand le jeu joue la carte dans l'ordre
+(+20 = 1), d'où « modifier le match 3 change le match 1 ». Corrigé : RB EDIT (`sub_82554270(C)`) note le match sous le
+curseur, SAVE l'écrit. Vu : le match 3 change, le match 1 reste.
