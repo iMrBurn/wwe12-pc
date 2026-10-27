@@ -1020,11 +1020,34 @@ REX_EXTERN(__imp__sub_821A4400);
 constexpr u32 kEditPlusDayText = 27053, kBackPlusDayText = 27054;
 constexpr u32 kGameEditText = 45409, kGameBackText = 45040;
 u32 g_universe_menu_for_bar = 0;  // the Universe menu (its +288 the panel shown, +276 SCHEDULE)
+// SHOW EDIT's bar (set 4: A SELECT, B CANCEL, shared): its CANCEL becomes 27055 = the game's CANCEL
+// plus "   Y MATCHES" while SHOW EDIT is open.
+constexpr u32 kCancelPlusMatchesText = 27055, kGameCancelText = 45041;
+bool g_show_edit_open = false;
 
 extern "C" REX_FUNC(sub_821A4400) {
   if (g_save_label && ctx.r4.u32 == g_save_label)
     ctx.r4.u64 = kGameSaveText;
   const u32 asked = ctx.r4.u32;
+  if (asked == kCancelPlusMatchesText) {
+    ctx.r4.u64 = kGameCancelText;
+    __imp__sub_821A4400(ctx, base);
+    const char *game = ctx.r3.u32 ? bd::mem::try_at<const char>(ctx.r3.u32) : nullptr;
+    if (Enabled() && g_show_edit_open && game) {
+      static const char *const kMatches[5] = {"MATCHES", "MATCHS", "MATCHES", "COMBATES",
+                                              "INCONTRI"};
+      static u32 s_at = 0;
+      if (!s_at)
+        s_at = REX_KERNEL_MEMORY()->SystemHeapAlloc(128, 0x10);
+      if (s_at) {
+        const std::string text = std::string(game) + "   \xEE\x80\x87 " + kMatches[CurrentLang()];
+        std::memset(bd::mem::at<char>(s_at), 0, 128);
+        std::memcpy(bd::mem::at<char>(s_at), text.data(), std::min<size_t>(text.size(), 127));
+        ctx.r3.u64 = s_at;
+      }
+    }
+    return;
+  }
   if (asked == kEditPlusDayText || asked == kBackPlusDayText) {
     ctx.r4.u64 = asked == kEditPlusDayText ? kGameEditText : kGameBackText;
     __imp__sub_821A4400(ctx, base);
@@ -3602,6 +3625,7 @@ bool CardButtons(const PPCContext &in, u8 *base, u32 screen);  // MATCH CARDS: X
 void ChoiceColumns(u32 screen);  // left / right in our two-column choice boxes
 namespace {
 bool ScheduleButtons(const PPCContext &in, u8 *base, u32 screen);  // Y on SCHEDULE: a day's cell
+bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen);  // Y on SHOW EDIT: its matches
 }
 
 extern "C" REX_FUNC(sub_824D20A0) {
@@ -3610,6 +3634,8 @@ extern "C" REX_FUNC(sub_824D20A0) {
   if (CardButtons(ctx, base, screen))
     return;
   if (ScheduleButtons(ctx, base, screen))
+    return;
+  if (ShowEditButtons(ctx, base, screen))
     return;
   if (bd::mem::try_load<u32>(screen) == kSuperstarPageVtbl) {
     if (SuperstarPageButtons(ctx, base, screen))
@@ -4794,3 +4820,47 @@ extern "C" REX_FUNC(sub_826CE6C0) {
   if (Enabled() && ctx.r3.u32 == 255 && lr >= 0x8255C770 && lr < 0x8255CB08)
     ctx.r3.u64 = 254;
 }
+
+// ---- SHOW EDIT: Y MATCHES -------------------------------------------------------------------------
+//
+// WWE '12's SHOW EDIT (X EDIT on SCHEDULE: owner O of 1332 bytes made by sub_82589958, its screen
+// O+28, vtable 0x82027188; O+320 its copy of the show's record: +832 the name, +927 the show) is
+// full: a MATCHES row would mean moving its UNIVERSE DRAFT, SAVE and DEFAULT rows. So Y opens the
+// number of matches of that kind of show (as Y EDIT DAY > MATCHES), told in its button bar.
+
+constexpr u32 kShowEditVtbl = 0x82027188;
+REX_EXTERN(__imp__sub_82589958);  // SHOW EDIT: made
+extern "C" REX_FUNC(sub_82589958) {
+  g_show_edit_open = true;
+  if (Enabled())
+    SetPromptLabel(4, 1, kGameCancelText, kCancelPlusMatchesText);  // before its bar is made
+  __imp__sub_82589958(ctx, base);
+}
+REX_EXTERN(__imp__sub_82584E98);  // SHOW EDIT's screen: destroyed
+extern "C" REX_FUNC(sub_82584E98) {
+  g_show_edit_open = false;
+  __imp__sub_82584E98(ctx, base);
+}
+
+namespace {
+bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen) {
+  if (!Enabled() || bd::mem::try_load<u32>(screen) != kShowEditVtbl)
+    return false;
+  SetPromptLabel(4, 1, kGameCancelText, kCancelPlusMatchesText);
+  if (g_step != Step::kIdle || !(bd::mem::load<u32>(screen + 64) & kY))
+    return false;
+  const u32 record = screen - 28 + 320;
+  const u32 show = bd::mem::load<u8>(record + 927);
+  const u32 which = show < 3 ? show : show >= 10 && show <= 22 ? 3 : 4;
+  if (which > 3)
+    return false;
+  bd::mem::store<u32>(screen + 64, 0);
+  const char *n = bd::mem::try_at<const char>(record + 832);
+  const std::string name = which == 3 ? std::string(CWords().all_ppvs)
+                                      : std::string(n ? n : "?", n ? strnlen(n, 63) : 1);
+  g_screen = screen;
+  BD_INFO("[univers] show edit: Y, show {} (matches of kind {})", show, which);
+  ChooseMatchCount(in, base, which, name);
+  return true;
+}
+}  // namespace

@@ -932,3 +932,8 @@ dimanche vide → y mettre un PPV ; dimanche avec un PPV → MOVE / HOST SHOW / 
   « Y EDIT DAY » quand SCHEDULE est affiché (menu Univers +288 == +276), le texte seul ailleurs. Bouton Y = 45002.
 - Matchs par show : le modèle n° (défaut − 1) du jeu est son main event (le 4e des 4 de RAW) : seul notre dernier
   match le prend, les autres tournent sur 0 .. défaut − 2 (vu : SmackDown à 5 = 4 matchs + 1 MAIN EVENT).
+- **SHOW EDIT** (X EDIT sur SCHEDULE : propriétaire O de 1332 octets `sub_82589958`, écran O+28 vtable 0x82027188,
+  O+320 sa copie de la fiche du show, +832 le nom, +927 le show) : écran plein (une vraie ligne MATCHES demanderait
+  de déplacer UNIVERSE DRAFT, SAVE, DEFAULT et d'apprendre une ligne à son curseur). **Y MATCHES** ouvre le nombre de
+  matchs de ce show ; sa barre (jeu 4 : A SELECT, B CANCEL, partagé) montre CANCEL = 27055 (« CANCEL   Y MATCHES »
+  tant que SHOW EDIT est ouvert, posé avant que sa barre soit faite).
