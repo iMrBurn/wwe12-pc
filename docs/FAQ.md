@@ -82,6 +82,21 @@ is made automatically before anything is replaced or deleted.
 **"You are not currently signed in with a gamer profile" / can't save.** Fixed in 0.9 (it happened
 with some controller setups in 0.8).
 
+## Universe mode
+
+**Title defenses in weekly shows.** Off by default (the original game never puts a title match in a weekly show).
+Turn it on in the launcher (Universe options) or in the game: EDIT UNIVERSE > UNIVERSE OPTIONS > TITLE DEFENSES
+(10 / 25 / 50 / 100 %, `wwe12_universe_title_defenses` in `wwe12.toml`). A single match between the champion and
+another Superstar can then become a title match. 25 % is a good start.
+
+**Qualifying matches.** Off by default. EDIT UNIVERSE > UNIVERSE OPTIONS > QUALIFYING MATCHES, or
+`wwe12_universe_qualifiers = true`. The two weeks before Money in the Bank and Elimination Chamber, qualifying
+matches are played on the shows, with news; the winners take their place in the match at the pay-per-view.
+There are no qualifiers for the Royal Rumble.
+
+**Fewer than 15 Superstars per show.** `wwe12_universe_min_roster` (1 to 15, default 15 = original game). The game
+itself warns that matches may be badly balanced under 15.
+
 ## Mods
 
 Files in the `mods` folder next to the game replace the game's own (same path as in the game). See
@@ -126,6 +141,13 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
   seul (issue #18) ; il ne marche plus alors dans les combinaisons (`Shift+Up`), le launcher le signale.
 - **Sauvegardes Xbox 360** : launcher → SAUVEGARDES → importer. Copies de sauvegarde automatiques.
 - **« Not signed in with a gamer profile »** : corrigé en 0.9.
+- **Mode Univers, défenses de titre en weekly** : désactivé par défaut (le jeu d'origine n'en fait jamais).
+  Launcher (options de l'Univers) ou en jeu : MODIFIER L'UNIVERS > OPTIONS DE L'UNIVERS > DÉFENSES DE TITRE
+  (10 / 25 / 50 / 100 %, `wwe12_universe_title_defenses`). 25 % pour commencer.
+- **Mode Univers, matchs de qualification** : désactivé par défaut. `wwe12_universe_qualifiers = true` ou la ligne
+  MATCHS DE QUALIFICATION en jeu. Les 2 semaines avant Money in the Bank et Elimination Chamber, des qualifications
+  ont lieu dans les émissions, avec des news. Pas de qualifications pour le Royal Rumble.
+- **Moins de 15 catcheurs par émission** : `wwe12_universe_min_roster` (1 à 15, 15 = jeu d'origine).
 - **Mods** : les fichiers du dossier `mods` remplacent ceux du jeu (même chemin).
 - **Enlever un catcheur ajouté (Mod Maker)** : avant de désactiver ou d'enlever son mod, ne l'utilisez plus
   dans votre sauvegarde (Univers, matchs, rivalités). Le jeu garde son pack tant que vous ne l'avez pas retiré
