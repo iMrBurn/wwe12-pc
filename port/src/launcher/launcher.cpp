@@ -234,6 +234,7 @@ struct Texts {
   const char *gpu_used, *gpu_dedicated, *gpu_integrated, *gpu_others;
   const char *keys_mod_alone;
   const char *api, *api_auto, *api_vulkan, *api_d3d12, *api_hint, *api_d3d12_missing;
+  const char *defenses, *defenses_off, *defenses_hint, *qualifiers, *qualifiers_hint;
 };
 
 const Texts kEnglish = {
@@ -310,7 +311,11 @@ const Texts kEnglish = {
     "Shift, Ctrl or Alt set on its own is a key of its own, so these combinations will do nothing: %s",
     "Graphics API", "Automatic", "Vulkan", "Direct3D 12",
     "Vulkan by default; try Direct3D 12 if you have graphics problems. Applies the next time you start the game.",
-    "The Direct3D 12 version of the game (wwe12_d3d12.exe) was not found: the game starts with Vulkan instead."};
+    "The Direct3D 12 version of the game (wwe12_d3d12.exe) was not found: the game starts with Vulkan instead.",
+    "Title defenses in weekly shows", "Off (original game)",
+    "In Universe mode, a match on the weekly card can become a title match. Percentage chance.",
+    "Money in the Bank / Elimination Chamber qualifiers",
+    "Qualifying matches and news before Money in the Bank and Elimination Chamber (Universe mode)."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -392,7 +397,11 @@ const Texts kFrench = {
     "Shift, Ctrl ou Alt réglé seul devient une touche à part entière : ces combinaisons ne marcheront donc pas : %s",
     "API graphique", "Automatique", "Vulkan", "Direct3D 12",
     "Vulkan par défaut ; essayez Direct3D 12 si vous avez des problèmes graphiques. S'applique au prochain lancement du jeu.",
-    "La version Direct3D 12 du jeu (wwe12_d3d12.exe) est introuvable : le jeu démarre avec Vulkan à la place."};
+    "La version Direct3D 12 du jeu (wwe12_d3d12.exe) est introuvable : le jeu démarre avec Vulkan à la place.",
+    "Défenses de titre en weekly", "Désactivées (jeu d'origine)",
+    "Dans le mode Univers, un match de la carte weekly peut devenir un match de titre. Pourcentage de chances.",
+    "Qualifications Money in the Bank / Elimination Chamber",
+    "Matchs de qualification et news avant Money in the Bank et Elimination Chamber (mode Univers)."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -440,6 +449,8 @@ struct Settings {
   bool vsync = true;
   bool fps60 = false;
   int aniso = 16;
+  int title_defenses = 0;    // wwe12_universe_title_defenses, percent 0..100 (0 = the original game)
+  bool qualifiers = false;   // wwe12_universe_qualifiers
   int api = 0;  // gpu_backend: 0 automatic ("any"), 1 vulkan, 2 d3d12 (wwe12_d3d12.exe)
   bool crowd = true;
   bool shadows = true;
@@ -475,6 +486,8 @@ void LoadSettings() {
     const std::string api = g_toml.GetString("gpu_backend", "any");
     g_s.api = api == "d3d12" ? 2 : api == "vulkan" ? 1 : 0;
   }
+  g_s.title_defenses = std::clamp(g_toml.GetInt("wwe12_universe_title_defenses", 0), 0, 100);
+  g_s.qualifiers = g_toml.GetBool("wwe12_universe_qualifiers", false);
   g_s.crowd = g_toml.GetBool("wwe12_crowd", true);
   g_s.shadows = g_toml.GetBool("wwe12_shadows", true);
   g_s.dof = g_toml.GetBool("wwe12_dof", true);
@@ -506,6 +519,8 @@ void SaveSettings() {
   g_toml.SetBool("wwe12_60fps", g_s.fps60);
   g_toml.SetInt("bd_anisotropy", g_s.aniso);
   g_toml.SetString("gpu_backend", g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
+  g_toml.SetInt("wwe12_universe_title_defenses", g_s.title_defenses);
+  g_toml.SetBool("wwe12_universe_qualifiers", g_s.qualifiers);
   g_toml.SetBool("wwe12_crowd", g_s.crowd);
   g_toml.SetBool("wwe12_shadows", g_s.shadows);
   g_toml.SetBool("wwe12_dof", g_s.dof);
@@ -758,6 +773,38 @@ void PageSettings() {
       ImGui::SameLine();
       ImGui::TextDisabled("(%s)", t.exit_hint);
       changed |= ImGui::Checkbox(t.show_fps, &g_s.show_fps);
+
+      // Universe mode (the same two settings are in the game's OPTIONS).
+      ImGui::Dummy(ImVec2(0, 8));
+      {
+        static const int kDefenses[] = {0, 10, 25, 50, 100};
+        int di = -1;
+        for (int i = 0; i < 5; ++i)
+          if (kDefenses[i] == g_s.title_defenses)
+            di = i;
+        char names[5][48], custom[48];
+        snprintf(names[0], sizeof(names[0]), "%s", t.defenses_off);
+        for (int i = 1; i < 5; ++i)
+          snprintf(names[i], sizeof(names[i]), "%d %%", kDefenses[i]);
+        const char *shown[6] = {names[0], names[1], names[2], names[3], names[4], custom};
+        int count = 5;
+        if (di < 0) {  // another value typed by hand in wwe12.toml
+          snprintf(custom, sizeof(custom), "%s (%d %%)", t.custom, g_s.title_defenses);
+          di = count++;
+        }
+        if (ImGui::Combo(t.defenses, &di, shown, count) && di < 5) {
+          g_s.title_defenses = kDefenses[di];
+          changed = true;
+        }
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("%s", t.defenses_hint);
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy(ImVec2(0, 4));
+        changed |= ImGui::Checkbox(t.qualifiers, &g_s.qualifiers);
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("%s", t.qualifiers_hint);
+        ImGui::PopTextWrapPos();
+      }
       ImGui::EndTabItem();
     }
     ImGui::EndTabBar();

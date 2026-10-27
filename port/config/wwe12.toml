@@ -68,6 +68,17 @@ wwe12_fps_limit = 0
 wwe12_cpu_priority = 0
 
 # ---------------------------------------------------------------------------------------------
+# Universe mode
+# ---------------------------------------------------------------------------------------------
+
+# Chance, in percent (0 to 100), that a match on the weekly card becomes a title match. 0 = the
+# original game.
+wwe12_universe_title_defenses = 0
+
+# Qualifying matches and news before Money in the Bank and Elimination Chamber.
+wwe12_universe_qualifiers = false
+
+# ---------------------------------------------------------------------------------------------
 # Controls
 # ---------------------------------------------------------------------------------------------
 
