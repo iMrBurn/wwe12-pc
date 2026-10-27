@@ -134,7 +134,12 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
     +0x230. Accessoires : à vérifier dans `evtobj.pac` ; pyro `prtcls.pac` même format ; titantrons de WWE '13 en
     Bink 2 (déjà convertis par le Mod Maker pour les 2K) ; thèmes Wwise `Music.pck`. SvR 2011 / 2K → WWE '12 : il
     faudra recibler (méthode `w13_retarget` de Kaiko, à l'envers).
-- Étape 4 : pas commencée (voir juste au-dessus : commencer par WWE '13).
+- Étape 4 : pas commencée (voir juste au-dessus : commencer par WWE '13). **Vérifié le 2026-10-27** (outil `evtlist`) :
+  les `Entrance00-08.pac` de WWE '13 (xcompressés) **se lisent avec notre `XcompressDecode`** ; WWE '12 a 247
+  entrées (`Nyujyo0-9,A`), WWE '13 305 (sans les variantes 10000+), 207 en commun, **98 entrées de WWE '13 sur des
+  numéros libres dans WWE '12** (104, 114, 124, 145, 147, 152, 166, 177, 212, 238, 245 Cactus Jack, 246 Mankind,
+  247, 271, 294-297, 302-321 Attitude Era, 344-358, 423-427, 450-455, 530, 531, 550, 564-579…). Prochaine étape :
+  comparer une entrée commune (EVP + EVZ) octet par octet entre les deux jeux, puis en essayer une en jeu.
 - **Écrans VS** (demandés le 2026-10-27) : les outils de Kaiko sur le bureau ne font que le fond
   (`arena_port.py` VS_BACKGROUND). `VS_STYLES.md` / `vs_port.py` **ne sont pas dans son dépôt public**
   (KaikoClanworth1/wwe-svr2011-pc, arbre complet lu le 2026-10-27 avec l'accord de l'utilisateur). Sa méthode est dans
