@@ -1515,9 +1515,12 @@ extern "C" REX_FUNC(sub_824D1AF0) {
     g_attire_options = SuperstarAttires(ctx, base, id);
     g_screen = screen;
     BD_INFO("[univers] attire box: Superstar {}, {} attire(s)", id, g_attire_options.size());
-    if (g_attire_options.size() >= 2)
-      g_attire_options.push_back({kRandom, GameText(ctx, base, kRandomText)});
-    g_attire_options.push_back({kStats, StatsLine()});
+    if (g_attire_options.size() < 2) {  // statistics and titles: the RB / LB pages
+      g_step = Step::kHint;  // an information box, closed by the per-frame driver
+      Call(ctx, base, __imp__sub_8254E680, kAttireOnlyText);
+      return;
+    }
+    g_attire_options.push_back({kRandom, GameText(ctx, base, kRandomText)});
     g_contender_box = false;
     g_step = Step::kAttire;
     ShowAttirePage(ctx, base, 0);

@@ -781,3 +781,18 @@ pour chaque participant du Royal Rumble, « mania <id> <main event> <gagné> <jo
 d'un match de WrestleMania (main event = dernier match de la carte ; gagné = même équipe que le gagnant).
 Journal : ligne « [univers] result: show … ». Reste : Money in the Bank (gagnant de la mallette, cash-in) pas
 encore trouvé.
+
+## 26. Pages de la fiche façon 2K14, version finale (2026-10-27, vue en jeu par l'utilisateur)
+
+- Haut des deux pages : icônes LB / RB (U+E00B / U+E00E ; U+E00D est le stick gauche) + nom de la page.
+  CHAMPIONSHIPS (ex-CONTENDER SETTINGS, sans le nom du catcheur) : A ou X met le titre de la ligne sur OFF / ON.
+- STATISTICS : bandeau du champion (éléments 907-921) caché, nom du catcheur en haut (897), « LB RB
+  STATISTICS » en dessous (898, x 96 y 55), 12 lignes espacées (bandes 996/1008 + k à y = 92 + 17k, libellés
+  1020 + k à y - 18 échelle 0,8, valeurs dans la colonne 1032 + k déplacée à x 392, blanche ; 1044 + k cachée).
+  Élément : +4 x, +8 y, +12/+16 échelle, +180 caché. Valeurs d'origine gardées et remises à la fermeture du
+  tableau (`RestoreTableLayout`), l'écran RANKINGS du jeu est inchangé.
+- Boîte Y : tenues seulement (les lignes STATISTICS... et titres sont retirées, la fiche a ses pages RB / LB).
+- Main event de WrestleMania : la carte a 8 fiches, les vides ont 0 place (fiche +2) ; l'entrée +8 de
+  `sub_826CCC38` est un pointeur, pas un nombre.
+- À faire : la remise à zéro de l'Univers ne remet pas les effectifs des émissions (l'émission d'un Superstar
+  est dans SA fiche : `sub_826D2B50(id)` = `sub_82A341A0(id, 3)` = octet +27 de `sub_82684910(id)`).
