@@ -336,8 +336,12 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
     const auto si = pos(ws[i], 10), wi = pos(wb[size_t(target[i])], 1);
     int farthest = -1;
     double farthest_len = 5;  // (cm: a child at the joint gives no direction)
+    // (not a hair chain: the base's chain of the same name is another hairstyle's - Drew McIntyre of SvR on WWE '12's
+    // Drew, both with a kami_b00: the hair model's head turned onto the other ponytail, the strands tucked under his
+    // scalp in SvR stood out of his forehead, 2026-10-27)
     for (size_t c = i + 1; c < svr.nodes.size(); ++c)
-      if (svr.nodes[c].parent == int(i) && !MapBone(svr.nodes[c].name).empty()) {
+      if (svr.nodes[c].parent == int(i) && !MapBone(svr.nodes[c].name).empty() &&
+          svr.nodes[c].name.rfind("kami", 0) != 0) {
         int tc = -1;
         for (size_t j = 0; j < base.nodes.size(); ++j)
           if (base.nodes[j].name == MapBone(svr.nodes[c].name))

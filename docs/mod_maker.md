@@ -995,15 +995,15 @@ places ×10, d'après le code de Kaiko).
   cheveux, entrée et match contre Big Show : les cheveux bougent, rien ne s'étire.
 - **Pas encore** : les modèles FBX (os de cheveux à reconnaître et à changer en chaînes) ; les vêtements
   (les `R_Bone*` du corps de certains catcheurs : autre mécanisme, non étudié).
-- **Mis de côté (2026-10-27, décision de l'utilisateur)** : DREW McINTYRE '10 (SvR ch278) a dans WWE '12 des mèches
-  raides devant le front (traits noirs), absentes dans SvR (capture du SvR 2011 de Kaiko : cheveux plaqués). Même
-  géométrie dans les deux fichiers (98 triangles tenus par la seule tête, sortant vers l'avant) ; ni la transparence
-  des sommets ni la texture ne les cachent dans SvR, ni l'envers des faces : les cheveux de SvR sont dessinés des deux
-  côtés (drapeaux de rendu du maillage à +0x88 = 0x114, sans 0x2 « envers caché » ; d'après `svr11_build.py` de Kaiko).
-  Écartés : retirer les faces tournées vers la tête (presque tous les cheveux de SvR le sont : trous chez Undertaker
-  ch103 et ch117). Piste : capture RenderDoc en jeu pour voir comment
-  le shader de cheveux de WWE '12 les dessine (le canal alpha de coupe est en 512, quatre fois moins fin que celui de
-  SvR). Outils de rendu hors jeu dans le bloc-notes de la session (`headview`, `strand`, `wind`).
+- **Mèches devant le front, corrigé (2026-10-27)** : DREW McINTYRE '10 (SvR ch278) avait dans WWE '12 des mèches
+  raides devant le front (traits noirs), absentes dans SvR (capture du SvR 2011 de Kaiko : cheveux plaqués). Dans SvR
+  ces mèches (tenues par la seule tête) sont glissées sous la peau du crâne du corps. Cause : le sens de la tête du
+  modèle de cheveux se calculait vers son enfant le plus loin, la racine de chaîne `kami_b00`, tournée sur le
+  `kami_b00` de la base (le Drew de WWE '12 a sa propre coiffure à chaînes) : toute la tête des cheveux pivotait, le
+  crâne rond ne le montrait pas, les mèches sortaient du front. Les os de cheveux ne servent plus à orienter un os
+  (`ConvertModel`). Vérifié hors jeu : Drew propre ; CM Punk (ch131), ch117 et Undertaker (ch103) inchangés.
+  Fausses pistes : transparence, envers des faces (cheveux de SvR dessinés des deux côtés : drapeaux de rendu du
+  maillage à +0x88 = 0x114, sans 0x2, d'après `svr11_build.py` de Kaiko), retirer les faces tournées vers la tête.
 - **Brillance** (2026-10-27) : l'alpha de la carte des normales de SvR est ramené à 0,8 de la moyenne de la base (plus
   contrasté que celui de WWE '12 : à moyenne égale, ses zones vives brillaient trop).
 
