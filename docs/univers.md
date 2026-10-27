@@ -699,3 +699,28 @@ marque (carte vide, X ADVANCE pour la passer), mais **plante au Royal Rumble** e
   planter les PPV, §20).
 - **Nombre de matchs par émission** (MATCHES 5 de 2K14) : cartes de 8 cases au plus (§3.2), génération
   `sub_826C8690` non étudiée.
+
+## 22. Fiche du Superstar façon 2K14 : ce qui est fait (2026-10-27)
+
+Dans 2K14, la fiche a 4 pages (LB/RB) : OPTIONS, PARAMÈTRES ASPIRANT, RELATIONS, STATISTIQUES.
+
+- **RELATIONS** : la fiche de WWE '12 montre déjà ALLIES et RIVALS (et le MOMENTUM) : rien à ajouter.
+- **PARAMÈTRES ASPIRANT** et **STATISTIQUES** : dans la boîte Y de la fiche (vraie boîte du jeu), lignes
+  « STATISTICS... » et « CONTENDER SETTINGS... » (§21), après les tenues.
+- **Statistiques** : chaque changement de tenant d'un titre de l'Univers (`sub_82A3A060`, résultats de match,
+  TITLE MANAGEMENT…) est écrit dans `universe_stats.txt` (à côté du dossier de sauvegarde) : « title <titre>
+  <place> <nouveau> <ancien> <jour> ». Le jour = compteur de l'Univers **U + 0xDDC4** (mois = jour / 28 % 12,
+  `sub_826D2890` ; semaine = jour / 7, `sub_826D2860`). La boîte « TITLE HISTORY » donne, par titre, le
+  nombre de règnes et les semaines détenues (nom du titre : `sub_826D2C30(titre)`). Testé sur la copie :
+  WWE Championship donné à Alex Riley dans TITLE MANAGEMENT → « WWE Championship: 1 reign(s), 0 week(s) ».
+  Une remise à zéro de l'Univers met le fichier de côté (`universe_stats_before_reset.txt`). Pas encore
+  notés : Royal Rumble, Money in the Bank, WrestleMania (§21 pour les pistes).
+- **Pages LB/RB** : RB arrive bien sur la fiche (masque 0x200, la fiche n'en fait rien), mais montrer
+  l'écran d'accueil de RANKINGS depuis la fiche n'a pas marché : la fiche et RANKINGS partagent un grand
+  affichage (celui de l'objet RANKINGS, R+296 ; R = menu Univers +264, menu = r3 de `sub_82545A70`, qui crée
+  aussi +260 MATCH CARDS, +268, +272, +276, +280…), où seuls les éléments 3/5 (et 826/829) changent de
+  « caché », et dans l'affichage du cadre (`sub_8254E920`) les éléments 8/9, 40/46, 59/72 ; basculer ces
+  drapeaux ne change rien à l'image : le jeu passe d'un écran à l'autre autrement (à trouver : l'écran actif
+  du menu Univers). Sonde : `wwe12_universe_probe` + LB/RB → `logs/umsi_*.txt`, `logs/rlay_*.txt`.
+- **Blessures** : réglage `wwe12_universe_injuries` (true par défaut) ; false = `sub_826CEA88(vue, id, 1)`
+  refusé. Pas encore testé en jeu.

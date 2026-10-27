@@ -133,6 +133,9 @@ constexpr u32 kResetSavedText = 27040;
 constexpr u32 kLastText = kResetSavedText;
 // The contender settings' question (27048: unused in WWE '12, FEUD MANAGER in WWE '13).
 constexpr u32 kContenderText = 27048;
+// A Superstar's statistics (27049: unused in WWE '12, STATISTICS in WWE '13), written each time.
+constexpr u32 kStatsText = 27049;
+std::string g_stats_text;
 enum Choice : u32 { kEditSuperstars, kEditTitles, kResetUniverse };
 
 constexpr u32 kUniverseTitles = 0x83226508;   // 23 titles x {holder, partner}, u16
@@ -277,6 +280,8 @@ const char *Text(u32 id) {
     return g_attire_question.c_str();
   if (id == kAttirePromptText && !g_attire_prompt.empty())
     return g_attire_prompt.c_str();
+  if (id == kStatsText)
+    return g_stats_text.c_str();
   if (id == kContenderText) {
     static const char *const kContender[5] = {
         "CONTENDER SETTINGS\nThe titles this Superstar may be ranked for (A changes a line).",
@@ -304,7 +309,7 @@ const char *Text(u32 id) {
 // slot per text, rewritten when the language changes.
 u32 GuestText(u32 id) {
   constexpr u32 kSlot = 512;
-  constexpr u32 kSlots = 1 + kLastText - kAskText + 1 + 1;  // + the contender question
+  constexpr u32 kSlots = 1 + kLastText - kAskText + 1 + 2;  // + contender question, statistics
   const char *text = Text(id);
   if (!text)
     return 0;
@@ -315,10 +320,11 @@ u32 GuestText(u32 id) {
   if (!s_block)
     return 0;
   const u32 slot = id == kEditSuperstarText ? 0
-                   : id == kContenderText   ? kSlots - 1
+                   : id == kContenderText   ? kSlots - 2
+                   : id == kStatsText       ? kSlots - 1
                                             : id - kAskText + 1;
   const u32 at = s_block + slot * kSlot;
-  if (s_for[slot] != text || id == kAttireText || id == kAttirePromptText) {
+  if (s_for[slot] != text || id == kAttireText || id == kAttirePromptText || id == kStatsText) {
     std::memset(bd::mem::at<char>(at), 0, kSlot);
     std::memcpy(bd::mem::at<char>(at), text, std::min<size_t>(std::strlen(text), kSlot - 1));
     s_for[slot] = text;
@@ -472,6 +478,55 @@ void ResetUniverseChampions() {
   }
 }
 
+// ---- stat tracking (as WWE 2K14's STATISTICS): the title history ------------------------------
+//
+// WWE '12 keeps no history. Every change of a Universe title's holder goes through the game's
+// sub_82A3A060(title, holder, place) (match results, TITLE MANAGEMENT, ...): in the Universe
+// (*0x8324E51C == 1), each real change is written to universe_stats.txt next to the save folder,
+// one line "title <title> <place> <new holder> <old holder> <day>", the day being the Universe's
+// own counter (U + 0xDDC4: month = day / 28 % 12 by sub_826D2890, week = day / 7). Reigns and weeks
+// held are counted from it. A
+// reset of the Universe moves the file aside (universe_stats_before_reset.txt).
+
+constexpr u32 kUniverseDay = 0xDDC4;  // in the Universe block: days since its start
+
+std::filesystem::path StatsFile() {
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator() || state->emulator()->user_data_root().empty())
+    return {};
+  return state->emulator()->user_data_root() / "universe_stats.txt";
+}
+
+struct Reign {
+  u32 title, place, holder, from_day, to_day;  // to_day = ~0u while it goes on
+};
+
+// The title history, from the file: every reign, in order.
+std::vector<Reign> LoadReigns() {
+  std::vector<Reign> reigns;
+  std::ifstream f(StatsFile());
+  std::string line;
+  while (std::getline(f, line)) {
+    u32 title, place, holder, old_holder, day;
+    if (std::sscanf(line.c_str(), "title %u %u %u %u %u", &title, &place, &holder, &old_holder,
+                    &day) != 5)
+      continue;
+    for (Reign &r : reigns)
+      if (r.title == title && r.place == place && r.to_day == ~0u)
+        r.to_day = day;
+    if (holder != kNobody)
+      reigns.push_back({title, place, holder, day, ~0u});
+  }
+  return reigns;
+}
+
+void StatsReset() {
+  const std::filesystem::path file = StatsFile();
+  std::error_code ec;
+  if (!file.empty() && std::filesystem::exists(file, ec))
+    std::filesystem::rename(file, file.parent_path() / "universe_stats_before_reset.txt", ec);
+}
+
 bool ResetUniverse(const PPCContext &in, u8 *base) {
   const u32 universe = Call(in, base, __imp__sub_82683A30, 0);
   if (!g_start_data || !g_start_size || !universe) {
@@ -482,6 +537,7 @@ bool ResetUniverse(const PPCContext &in, u8 *base) {
   Call(in, base, __imp__sub_826D5938, universe);
   Call(in, base, __imp__sub_826BE3C0, g_start_data, g_start_size);
   ResetUniverseChampions();
+  StatsReset();
   BD_INFO("[univers] reset: done (block 0x{:08X} cleared, start data applied, default champions)",
           universe);
   return true;
@@ -730,7 +786,7 @@ extern "C" REX_FUNC(sub_821A4400) {
     ctx.r4.u64 = kGameSaveText;
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
-  if (Enabled() && (id == kEditSuperstarText || id == kContenderText ||
+  if (Enabled() && (id == kEditSuperstarText || id == kContenderText || id == kStatsText ||
                     (id >= kAskText && id <= kLastText))) {
     if (const u32 text = GuestText(id))
       ctx.r3.u64 = text;
@@ -1030,6 +1086,7 @@ REX_EXTERN(__imp__sub_826CCB88);  // Universe view: show k
 REX_EXTERN(__imp__sub_826CC180);  // show: its four titles (show, out[4], 23 = none)
 
 constexpr Attire kContender{-3, -1};  // the attire box's "CONTENDERS..." line
+constexpr Attire kStats{-4, -1};      // the attire box's "STATISTICS..." line
 constexpr u32 kKinds = 4;             // MAJOR, MINOR, TAG, DIVA
 constexpr u32 kKindText = 27606;      // the game's MAJOR, MINOR, TAG, DIVA
 constexpr u32 kOnText = 27613, kOffText = 27614;
@@ -1097,6 +1154,71 @@ int TitleKind(const PPCContext &in, u8 *base, u32 title) {
     s_until = now + 1000;
   }
   return title < 23 ? s_kind[title] : -1;
+}
+
+REX_EXTERN(__imp__sub_826D2C30);  // a title's name (title)
+
+// The attire box's "STATISTICS..." line, as a guest string.
+u32 StatsLine() {
+  static const char *const kLine[5] = {"STATISTICS...", "STATISTIQUES...", "STATISTIKEN...",
+                                       "ESTAD\xC3\x8DSTICAS...", "STATISTICHE..."};
+  static u32 s_at = 0;
+  if (!s_at)
+    s_at = REX_KERNEL_MEMORY()->SystemHeapAlloc(64, 0x10);
+  if (s_at) {
+    std::memset(bd::mem::at<char>(s_at), 0, 64);
+    std::strncpy(bd::mem::at<char>(s_at), kLine[CurrentLang()], 63);
+  }
+  return s_at;
+}
+
+// A Superstar's title history, as WWE 2K14's STATISTICS page shows it: per title, the reigns and
+// the weeks held (a reign still going counts up to this week). From universe_stats.txt.
+void ShowStats(const PPCContext &in, u8 *base, u32 id) {
+  static const char *const kHead[5] = {"TITLE HISTORY", "HISTORIQUE DES TITRES", "TITELHISTORIE",
+                                       "HISTORIAL DE T\xC3\x8DTULOS", "STORIA DEI TITOLI"};
+  static const char *const kLine[5] = {"%s: %u reign(s), %u week(s)",
+                                       "%s : %u r\xC3\xA8gne(s), %u semaine(s)",
+                                       "%s: %u Regentschaft(en), %u Woche(n)",
+                                       "%s: %u reinado(s), %u semana(s)",
+                                       "%s: %u regno/i, %u settimana/e"};
+  static const char *const kNone[5] = {
+      "No title won since statistics began (version 1.0).",
+      "Aucun titre gagn\xC3\xA9 depuis le d\xC3\xA9" "but des statistiques (version 1.0).",
+      "Kein Titel gewonnen, seit die Statistik l\xC3\xA4uft (Version 1.0).",
+      "Ning\xC3\xBAn t\xC3\xADtulo ganado desde el inicio de las estad\xC3\xADsticas (versi\xC3\xB3n 1.0).",
+      "Nessun titolo vinto dall'inizio delle statistiche (versione 1.0)."};
+  const u32 lang = CurrentLang();
+  const u32 u = Call(in, base, __imp__sub_82683A30, 0);
+  const u32 now = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+  u32 reigns[23] = {}, weeks[23] = {};
+  for (const Reign &r : LoadReigns()) {
+    if (r.holder != id || r.title >= 23)
+      continue;
+    ++reigns[r.title];
+    const u32 to = r.to_day == ~0u ? now : r.to_day;
+    weeks[r.title] += (to > r.from_day ? to - r.from_day : 0) / 7;
+  }
+  std::string text = kHead[lang];
+  bool any = false;
+  for (u32 t = 0; t < 23; ++t) {
+    if (!reigns[t])
+      continue;
+    const u32 name = Call(in, base, __imp__sub_826D2C30, t);
+    const char *n = name ? bd::mem::try_at<const char>(name) : nullptr;
+    char buffer[160];
+    std::snprintf(buffer, sizeof(buffer), kLine[lang], n ? n : "?", reigns[t], weeks[t]);
+    text += '\n';
+    text += buffer;
+    any = true;
+  }
+  if (!any) {
+    text += '\n';
+    text += kNone[lang];
+  }
+  g_stats_text = text;
+  g_step = Step::kHint;  // an information box, closed by the per-frame driver
+  Call(in, base, __imp__sub_8254E680, kStatsText);
 }
 
 // The attire box's last line, as a guest string.
@@ -1202,6 +1324,10 @@ void AttireChosen(const PPCContext &in, u8 *base, u32 answer) {
     ShowContenderPage(in, base, 0);  // g_step stays kAttire
     return;
   }
+  if (choice == kStats) {
+    ShowStats(in, base, g_attire_id);
+    return;
+  }
   if (choice == kMore) {
     ShowAttirePage(in, base, g_attire_first + 2);  // g_step stays kAttire
     return;
@@ -1247,16 +1373,20 @@ namespace {
 // (sub_8254E920(): groups of 144 bytes at +4, count +20, each {+76 count, +112 its elements};
 // elements of 240 bytes at +8, count +24), written once to Documents\wwe12\logs\umsi_layout.txt
 // the first time a Superstar's page shows.
-void DumpPageLayout(const PPCContext &in, u8 *base) {
+void DumpPageLayout(const PPCContext &in, u8 *base, const char *name = "umsi_layout.txt",
+                    bool once = true, u32 layout = 0) {
   static bool s_done = false;
-  if (s_done)
+  if (once && s_done)
     return;
-  s_done = true;
-  const u32 layout = Call(in, base, __imp__sub_8254E920, 0);
+  s_done = s_done || once;
+  if (!layout)
+    layout = Call(in, base, __imp__sub_8254E920, 0);
   auto *state = REX_KERNEL_STATE();
   if (!layout || !state || !state->emulator())
     return;
-  std::ofstream f(state->emulator()->user_data_root() / "logs" / "umsi_layout.txt");
+  std::error_code ec;
+  std::filesystem::create_directories(state->emulator()->user_data_root() / "logs", ec);
+  std::ofstream f(state->emulator()->user_data_root() / "logs" / name);
   const auto str = [](u32 at, u32 max) {
     std::string out;
     for (u32 i = 0; i < max; ++i) {
@@ -1353,6 +1483,7 @@ extern "C" REX_FUNC(sub_824D1AF0) {
     BD_INFO("[univers] attire box: Superstar {}, {} attire(s)", id, g_attire_options.size());
     if (g_attire_options.size() >= 2)
       g_attire_options.push_back({kRandom, GameText(ctx, base, kRandomText)});
+    g_attire_options.push_back({kStats, StatsLine()});
     g_attire_options.push_back({kContender, ContenderLine()});
     g_contender_box = false;
     g_step = Step::kAttire;
@@ -1465,6 +1596,7 @@ struct RankEdit {
   bool backed_up = false;
 };
 RankEdit g_rank;
+u32 g_universe_menu = 0;  // the Universe menu object (sub_82545A70)
 
 u32 RankObject(u32 screen) { return screen - 28; }
 u32 RankCount(u32 r) { return std::min<u32>(bd::mem::load<u32>(r + 8852), 180); }
@@ -1612,8 +1744,39 @@ void DumpRankLayout(u32 r) {
 
 }  // namespace
 
+// The Universe menu's screens are made by sub_82545A70(menu): +260 MATCH CARDS, +264 RANKINGS (the
+// ranking object R, vtable 0x820232C8, its layout screen at R+28), +268 ... (one object each).
+REX_EXTERN(__imp__sub_82545A70);
+extern "C" REX_FUNC(sub_82545A70) {
+  g_universe_menu = ctx.r3.u32;
+  __imp__sub_82545A70(ctx, base);
+}
+
 extern "C" REX_FUNC(sub_824D20A0) {
   const u32 screen = ctx.r3.u32;
+  // Dev (wwe12_universe_probe): the buttons of a Superstar's page and of RANKINGS, and the shared
+  // layout as each shows it (LB / RB pressed: logs/umsi_<screen>_<n>.txt), for the pages to come.
+  if (REXCVAR_GET(wwe12_universe_probe) && bd::mem::load<u32>(kInUniverseFlag) == 1) {
+    const u32 vtbl = bd::mem::try_load<u32>(screen), pressed = bd::mem::load<u32>(screen + 64);
+    if (pressed && (vtbl == kSuperstarPageVtbl || vtbl == kRankingVtbl)) {
+      static u32 s_dumps = 0;
+      BD_INFO("[univers] probe: screen {:08X} (vtable {:08X}) buttons 0x{:X}", screen, vtbl,
+              pressed);
+      if ((pressed & 0x300) && s_dumps < 8) {
+        const char *what = vtbl == kSuperstarPageVtbl ? "superstar" : "rankings";
+        DumpPageLayout(ctx, base, fmt::format("umsi_{}_{}.txt", what, s_dumps).c_str(), false);
+        // the rankings screen's own layout (R+296, R = the Universe menu's +264)
+        const u32 r = g_universe_menu ? bd::mem::load<u32>(g_universe_menu + 264) : 0;
+        const u32 layout = r ? bd::mem::load<u32>(r + 296) : 0;
+        BD_INFO("[univers] probe: Universe menu {:08X}, rankings {:08X}, its layout {:08X}",
+                g_universe_menu, r, layout);
+        if (layout)
+          DumpPageLayout(ctx, base, fmt::format("rlay_{}_{}.txt", what, s_dumps).c_str(), false,
+                         layout);
+        ++s_dumps;
+      }
+    }
+  }
   if (!Enabled() || bd::mem::try_load<u32>(screen) != kRankingVtbl ||
       bd::mem::load<u32>(kInUniverseFlag) != 1) {
     __imp__sub_824D20A0(ctx, base);
@@ -1794,6 +1957,29 @@ extern "C" REX_FUNC(sub_82583B78) {
          bd::mem::load<u32>(s + 264 + k * 4));
   bd::mem::store<u32>(bd::mem::load<u32>(s + 444), 1);
   Call(in, base, __imp__sub_82550538, s - 28);
+}
+
+// The title history: each change of a Universe title's holder, with the week (see StatsFile).
+REX_EXTERN(__imp__sub_82A39FC8);  // a title's holder (title, place, 1)
+extern "C" REX_FUNC(sub_82A3A060) {
+  const PPCContext in = ctx;
+  const u32 title = ctx.r3.u32, holder = ctx.r4.u32 & 0xFFFF, place = ctx.r5.u32;
+  const bool universe = Enabled() && bd::mem::load<u32>(kInUniverseFlag) == 1 && title < 23 &&
+                        place < 2;
+  const u32 old_holder = universe ? Call(in, base, __imp__sub_82A39FC8, title, place, 1) & 0xFFFF
+                                  : 0;
+  __imp__sub_82A3A060(ctx, base);
+  if (!universe || old_holder == holder)
+    return;
+  const u32 u = Call(in, base, __imp__sub_82683A30, 0);
+  const u32 day = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+  const std::filesystem::path file = StatsFile();
+  if (!file.empty())
+    std::ofstream(file, std::ios::app)
+        << "title " << title << ' ' << place << ' ' << holder << ' ' << old_holder << ' ' << day
+        << '\n';
+  BD_INFO("[univers] stats: title {} place {}: {} -> {} (day {}, from 0x{:08X})", title, place,
+          old_holder, holder, day, u32(in.lr));
 }
 
 // ---- injuries on / off (as WWE 2K14's storyline options) ---------------------------------------
