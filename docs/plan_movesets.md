@@ -96,6 +96,16 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   numérotation (même numéro dans la même case pour plus d'un tiers des catcheurs communs ; SvR 2011 non).
   Cases gardant la base : WWE '13 12,3 → 11,6 %, 2K15 13 → 10 %. Les prises qui manquent encore sont de vraies
   nouveautés (Vertical Suplex, Beast Bite, Saito Suplex…) : étape 3.
+- **Fiches WAZE de WWE '13 contre WWE '12** (STF, même numéro 0xEEE3) : nom +0x10, réglages +0x70..+0x8F proches
+  (STF : +0x7C `02 00 01` en WWE '12, `0A 00 05` en WWE '13), numéro +0x90 identique ; **les 16 premiers octets sont
+  rangés autrement** (WWE '12 `0C 00 00 01 … 84 00` : genre +0x00, drapeaux +0x0E ; WWE '13 `… 08 01` vers +0x07)
+  et WWE '13 a des octets après le numéro (+0x98…) où WWE '12 a des FF. Une nouvelle prise de WWE '13 (ex. Vertical
+  Suplex, 0xC520) se recopiera avec ces 16 octets traduits (correspondance à apprendre sur les prises communes).
+- **Plan concret de l'étape 3 pour WWE '13 / 2K** : (1) fiche WAZE recopiée (16 premiers octets traduits) ajoutée à
+  `misc.pac` (copie patchée par l'overlay, comme `menu.pac`) ; (2) ses animations (même numéro, mêmes banques et
+  sous-groupes que dans WWE '13) ajoutées aux arbres ZMVM de `m.pac` : servir une copie de la banque touchée
+  (1 à 16 Mo) par une redirection d'entrée comme pour les vidéos d'arènes ; (3) vérifier que ce numéro est libre en
+  WWE '12 ; (4) les mains / orteils absents restent au repos. SvR 2011 (YMKs, autre numérotation) viendra après.
 - Étape 4 : pas commencée.
 - **Écrans VS** (demandés le 2026-10-27, pas commencés) : les outils de Kaiko sur le bureau ne font que le fond
   (`arena_port.py` VS_BACKGROUND) ; son vrai portage (`vs_port.py`, `VS_STYLES.md`) est dans son dépôt GitHub (le
