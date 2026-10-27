@@ -1608,6 +1608,8 @@ class Page {
         entries.push_back({n + ".waze", m.waze});
         entries.push_back({n + "_low.yanm", m.low});
         entries.push_back({n + "_high.yanm", m.high});
+        if (!m.magg.empty())
+          entries.push_back({n + ".magg", m.magg});
       }
     if (keep_portraits_ && !portraits_[1][0].empty())  // (its game's portraits, or the player's picture)
       for (int hd = 0; hd < 2; ++hd)

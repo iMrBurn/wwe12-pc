@@ -32,6 +32,7 @@ struct Move {
   std::string name;
   Bytes waze;         // its 160-byte record, made WWE '12's
   Bytes low, high;    // its motion's light and full records
+  Bytes magg;         // its DLC.pac RGRP/MAGG records (children 10 and 11, 104 bytes each), else empty
 };
 
 inline int MotionOf(int number) { return ((number & 0xFF) << 8) | (number >> 8); }
@@ -131,6 +132,29 @@ inline std::vector<Move> Collect(const disc::GameDisc &w13, const std::set<int> 
         }
       }
     }
+  }
+  // their RGRP/MAGG records (WWE '13's DLC.pac: children 10 and 11, 104 bytes by motion number)
+  {
+    Bytes dlc;
+    svrfmt::Archive a;
+    if (w13.Read("pac/DLC.pac", dlc) && svrfmt::ArchiveOpen(dlc, a, nullptr))
+      for (auto &k : a.root.kids) {
+        std::vector<svrfmt::PachEntry> kids;
+        if (detail::Trim(k.group) != "RGRP" || !svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(k)), kids))
+          continue;
+        std::map<int, Bytes> rec[2];
+        for (const auto &kid : kids)
+          if (kid.id == 10 || kid.id == 11) {
+            const Bytes d = svrfmt::Unpack(kid.data);
+            for (size_t o = 0; o + 104 <= d.size(); o += 104)
+              rec[kid.id == 11][d[o] | d[o + 1] << 8] = Bytes(d.begin() + long(o), d.begin() + long(o) + 104);
+          }
+        for (auto &[motion, m] : found)
+          if (rec[0].count(motion) && rec[1].count(motion)) {
+            m.magg = rec[0][motion];
+            m.magg.insert(m.magg.end(), rec[1][motion].begin(), rec[1][motion].end());
+          }
+      }
   }
   for (auto &[motion, m] : found)
     if (!m.low.empty() && !m.high.empty())

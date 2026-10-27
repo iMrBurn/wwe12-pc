@@ -16,7 +16,7 @@
 //  - its moves WWE '12 hasn't (a WWE '13 superstar's, the Mod Maker's newmoves13.h), added as the game's own packs 3
 //    and 4 add moves: their records in a copy of misc.pac (MOVS/WAZE: 160-byte records in name order after a 0x430
 //    header whose u16 at +4 counts them and at 0x08 + 2k counts those with category bit k set), their motions in
-//    m_dlcNN.pac ZMOT/CA(NN + 6) (CA09 and CA10 in packs 3 and 4: a top id, then pairs of children, light and full
+//    m_dlcNN.pac ZMOT/CA(NN + 6, at least CA11; the game loads every CA00..CA19) (CA09 and CA10 in packs 3 and 4: a top id, then pairs of children, light and full
 //    records, by motion number); moves the latest misc.pac has already (an installed DLC's) are left out;
 //  - a line in the pack's catalog and in its superstar list (DLC.pac IGST/VOL<pack>: codes "lettre + U" that follow
 //    the installed packs', the next serial numbers).
@@ -47,6 +47,7 @@ using svrfmt::Bytes;
 struct NewMove {
   int number = 0;
   Bytes waze, low, high;
+  Bytes magg;  // its two RGRP/MAGG records (children 10 and 11 of DLC.pac's, 104 bytes each), else empty
 };
 
 struct Star {
@@ -410,6 +411,47 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   }
   svrfmt::ArchiveReplace(vol->kids[0], list);
   svrfmt::ArchiveTouch(*vol);
+  // The added moves' RGRP/MAGG records (children 10 and 11: 104-byte records in motion number order, u16 motion
+  // little-endian at +0, name at +8; the game's pack 4 added one per move), those it hasn't.
+  for (auto &k : dlc.root.kids) {
+    if (k.group != "RGRP")
+      continue;
+    std::vector<svrfmt::PachEntry> kids;
+    if (!svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(k)), kids))
+      break;
+    bool changed = false;
+    for (auto &kid : kids) {
+      if (kid.id != 10 && kid.id != 11)
+        continue;
+      Bytes d = svrfmt::Unpack(kid.data);
+      const size_t which = kid.id == 10 ? 0 : 104;
+      for (const auto &st : stars)
+        for (const auto &m : st.new_moves) {
+          if (m.magg.size() != 208)
+            continue;
+          const int motion = m.magg[which] | m.magg[which + 1] << 8;
+          size_t at = 0;
+          bool have = false;
+          for (; at + 104 <= d.size(); at += 104) {
+            const int x = d[at] | d[at + 1] << 8;
+            have = x == motion;
+            if (x >= motion)
+              break;
+          }
+          if (have)
+            continue;
+          d.insert(d.begin() + long(std::min(at, d.size())), m.magg.begin() + long(which), m.magg.begin() + long(which) + 104);
+          changed = true;
+        }
+      if (changed)
+        kid.data = svrfmt::IsBpe(kid.data) ? svrfmt::BpeEncode(d) : d;
+    }
+    if (changed) {
+      svrfmt::ArchiveReplace(k, svrfmt::PachWrite(kids));
+      svrfmt::ArchiveTouch(k);
+    }
+    break;
+  }
   svrfmt::ArchiveTouch(dlc.root);
   const Bytes dlc_out = svrfmt::ArchiveSave(dlc);
   // 2. chEtc.pac: the records, moves and codes.
@@ -693,7 +735,9 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         const Bytes tree = svrfmt::PachWrite({{uint32_t(180 + pack), svrfmt::PachWrite(pairs)}});
         svrfmt::Epac like, out;
         char bank[8];
-        snprintf(bank, sizeof(bank), "CA%02d", pack + 6);
+        // (the game loads every /ZMOT/CA00..CA19 that exists, wherever it is (sub_822B65xx, the loop at 0x822B665C):
+        // the disc has CA01-CA08, the game's packs 3 and 4 CA09 and CA10; ours never below CA11, whatever its number)
+        snprintf(bank, sizeof(bank), "CA%02d", std::min(19, std::max(pack, 5) + 6));
         if (svrfmt::EpacRead(in.chetc, like) && !like.groups.empty()) {
           out.header = like.header;
           out.epk8 = like.epk8;

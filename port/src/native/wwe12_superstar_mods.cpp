@@ -264,8 +264,10 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       nm.number = atoi(w.stem().string().c_str());
       const fs::path dir = w.parent_path(), stem = w.stem();
       if (nm.number > 0 && ReadHost(w, nm.waze) && ReadHost(dir / (stem.string() + "_low.yanm"), nm.low) &&
-          ReadHost(dir / (stem.string() + "_high.yanm"), nm.high))
+          ReadHost(dir / (stem.string() + "_high.yanm"), nm.high)) {
+        ReadHost(dir / (stem.string() + ".magg"), nm.magg);  // (optional: its RGRP/MAGG records)
         mod.new_moves.push_back(std::move(nm));
+      }
     }
     ec.clear();
     mod.model = d / "superstar" / "ch.pac";

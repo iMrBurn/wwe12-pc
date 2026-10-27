@@ -125,8 +125,12 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
     alphabétique** (1 936 fiches déplacées entre le disque et le DLC 4) ; l'en-tête (0x430 o) compte : u16 +4 = total
     (2 379 → 2 426), **u16 à 0x08 + 2k = fiches dont le bit de catégorie k (octets 0-15) est levé** (vérifié pour 119
     bits sur 128 ; les 9 autres ont un écart constant, sans doute des fiches vides) ;
-  - `DLC.pac RGRP/MAGG` enfant 10 : 824 fiches de 104 o (u16 numéro d'animation, …, nom à +8) : sans doute la liste de
-    l'éditeur de moveset ; **pas mise à jour** pour l'instant.
+  - `DLC.pac RGRP/MAGG` enfants 10 (noms) et 11 (notes japonaises) : fiches de 104 o **triées par numéro
+    d'animation** (u16 petit-boutiste, u16 genre, 0F/FF…, nom à +8) ; le DLC 4 en ajoute une par prise (796 → 824 avec
+    les DLC 3-4). **Ajoutées aussi** (2026-10-27) : celles de WWE '13 (son `DLC.pac` en a 954), insérées à leur place.
+  - **Le jeu charge toutes les banques `/ZMOT/CA00` à `CA19` qui existent** (boucle à 0x822B665C, `sub_827D98D8` =
+    « l'entrée existe ? », sinon `/ZMBS/CA%02d` selon `sub_82A30AA8`) : notre banque est CA(NN+6) mais **jamais sous
+    CA11** (disque CA01-08, DLC 3-4 CA09-10), ce qui règle le cas « aucun DLC installé ».
   Code : Mod Maker `newmoves13.h` (prises de WWE '13 dont WWE '12 n'a pas le numéro : fiche WAZE avec +0x98.. = FF,
   animations légère / complète prises dans `mot00/mot01.pac ZMOT/CA*` de WWE '13) → `superstar/moves/<n>.waze`,
   `_low.yanm`, `_high.yanm`, et leurs cases dans `moves=` ; jeu : `superstar_pack.h` (copie du `misc.pac` le plus récent
