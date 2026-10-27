@@ -557,7 +557,9 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
 }
 
 // WWE '12 reads how much the skin shines in the normal map's alpha (Orton's chest: 16 in WWE '12, 45 in SvR 2011's:
-// the ported Orton shone too much). SvR's normal map with its alpha scaled to the base's mean, in the base's format.
+// the ported Orton shone too much). SvR's normal map with its alpha scaled to 0.8 of the base's mean, in the base's
+// format: SvR's is more contrasted, so at the base's mean its bright patches still shone more (Drew McIntyre of SvR,
+// skin: p90 38 for WWE '12's 31, "a bit too shiny", 2026-10-27); 0.8 brings them to the base's.
 inline Bytes Shine(const Bytes &svr_normal, const Bytes &base_normal) {
   svrfmt::Image s, b;
   svrfmt::DdsInfo si, bi;
@@ -570,7 +572,7 @@ inline Bytes Shine(const Bytes &svr_normal, const Bytes &base_normal) {
       t += im.rgba[q];
     return t / std::max<size_t>(1, im.rgba.size() / 4);
   };
-  const double ms = mean(s), mb = mean(b);
+  const double ms = mean(s), mb = mean(b) * 0.8;
   if (ms < 1 || std::abs(ms - mb) < 2)
     return svr_normal;
   const double k = mb / ms;
