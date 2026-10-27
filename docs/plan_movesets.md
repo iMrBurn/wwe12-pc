@@ -101,6 +101,11 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   rangés autrement** (WWE '12 `0C 00 00 01 … 84 00` : genre +0x00, drapeaux +0x0E ; WWE '13 `… 08 01` vers +0x07)
   et WWE '13 a des octets après le numéro (+0x98…) où WWE '12 a des FF. Une nouvelle prise de WWE '13 (ex. Vertical
   Suplex, 0xC520) se recopiera avec ces 16 octets traduits (correspondance à apprendre sur les prises communes).
+  **Mesuré sur 1 781 prises communes (même numéro et nom, outil `wazefit`)** : +0x70..+0x97 identiques à 97-100 % ;
+  +0x01..+0x0E identiques en place à 83-98 % (STF était une exception) ; seuls +0x00 (43 %), +0x03 (71 %), +0x04
+  (66 %), +0x0B (66 %), +0x0C (69 %), +0x0F (59 %) changent souvent (genre / drapeaux revus entre les jeux) ;
+  +0x98..+0x9F toujours FF en WWE '12. → recopier la fiche de WWE '13 telle quelle avec +0x98.. = FF ; les 6 octets
+  variables : garder ceux de WWE '13, ou mieux, les prendre d'une prise de WWE '12 de même genre (à essayer en jeu).
 - **Plan concret de l'étape 3 pour WWE '13 / 2K** : (1) fiche WAZE recopiée (16 premiers octets traduits) ajoutée à
   `misc.pac` (copie patchée par l'overlay, comme `menu.pac`) ; (2) ses animations (même numéro, mêmes banques et
   sous-groupes que dans WWE '13) ajoutées aux arbres ZMVM de `m.pac` : servir une copie de la banque touchée
