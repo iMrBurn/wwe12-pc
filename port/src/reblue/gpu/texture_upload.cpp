@@ -9,6 +9,8 @@
  */
 #include "gpu/frame.h"
 
+#include <algorithm>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -21,6 +23,7 @@
 #include "gpu/constant_buffers.h"
 #include "gpu/format.h"
 #include "gpu/texture_upload.h"
+#include "wwe12_bc_decode.h"
 
 namespace bd::gpu {
 
@@ -58,9 +61,9 @@ struct BCSubresourceUpload {
 // triggered TDR during load. Uploads precede AllocateSlot so a failure path
 // deletes the texture without leaking a slot (GuestTexture has no destructor-
 // side slot release).
-GuestTexture *BuildBCMirrorCore(const BCMirrorDesc &d,
-                                const BCSubresourceUpload *uploads,
-                                u32 upload_count) {
+GuestTexture *BuildBCMirrorRaw(const BCMirrorDesc &d,
+                               const BCSubresourceUpload *uploads,
+                               u32 upload_count, bool &refused) {
   auto &s = state();
   std::lock_guard lock(s.mutex);
   if (!s.ready)
@@ -90,6 +93,7 @@ GuestTexture *BuildBCMirrorCore(const BCMirrorDesc &d,
   t->textureHolder = CreateHostTexture(s.device.get(), desc, "bc-mirror");
   t->texture = t->textureHolder.get();
   if (!t->texture) {
+    refused = true;
     delete t;
     return nullptr;
   }
@@ -142,6 +146,85 @@ GuestTexture *BuildBCMirrorCore(const BCMirrorDesc &d,
                                    plume::RenderTextureLayout::SHADER_READ);
   s.command_list->barriers(plume::RenderBarrierStage::GRAPHICS, &post, 1);
   t->layout = plume::RenderTextureLayout::SHADER_READ;
+  return t;
+}
+
+// GPUs without BC textures (Mali, Android #34, #36): the first BC image the driver refuses turns
+// this on, and from then on BC1/BC2/BC3 are decoded to RGBA8 on the CPU (wwe12_bc_decode.cpp).
+std::atomic<bool> g_decode_bc{false};
+
+bool DecodableBC(plume::RenderFormat f, Wwe12BCKind &kind) {
+  switch (f) {
+  case plume::RenderFormat::BC1_UNORM:
+    kind = Wwe12BCKind::BC1;
+    return true;
+  case plume::RenderFormat::BC2_UNORM:
+    kind = Wwe12BCKind::BC2;
+    return true;
+  case plume::RenderFormat::BC3_UNORM:
+    kind = Wwe12BCKind::BC3;
+    return true;
+  default:
+    return false;
+  }
+}
+
+GuestTexture *BuildDecodedBC(const BCMirrorDesc &d, Wwe12BCKind kind,
+                             const BCSubresourceUpload *uploads,
+                             u32 upload_count) {
+  const u32 block_bytes = kind == Wwe12BCKind::BC1 ? 8 : 16;
+  std::vector<std::vector<u8>> pixels(upload_count);
+  std::vector<BCSubresourceUpload> ups(uploads, uploads + upload_count);
+  for (u32 i = 0; i < upload_count; ++i) {
+    BCSubresourceUpload &u = ups[i];
+    const u32 mip_w = std::max(1u, d.width >> u.subresource);
+    const u32 mip_h = std::max(1u, d.height >> u.subresource);
+    const u32 w = std::min(u.width, mip_w), h = std::min(u.height, mip_h);
+    const u32 depth = std::max(1u, u.fp_depth);
+    const u32 row_blocks = (std::max(u.row_width_texels, u.width) + 3) / 4;
+    const u32 block_rows = (u.height + 3) / 4;
+    const size_t slice_bytes = size_t(row_blocks) * block_rows * block_bytes;
+    if (u.size < slice_bytes * depth) {
+      BD_WARN("{}: BC data too small to decode ({} < {})", d.caller_name,
+              u.size, slice_bytes * depth);
+      return nullptr;
+    }
+    pixels[i].assign(size_t(w) * h * depth * 4, 0);
+    for (u32 z = 0; z < depth; ++z)
+      Wwe12DecodeBCSlice(kind, static_cast<const u8 *>(u.data) + z * slice_bytes,
+                         row_blocks, block_rows, w, h,
+                         pixels[i].data() + size_t(z) * w * h * 4, w);
+    u.data = pixels[i].data();
+    u.size = pixels[i].size();
+    u.width = w;
+    u.height = h;
+    u.row_width_texels = w;
+  }
+  static std::atomic<u32> decoded{0};
+  const u32 n = decoded.fetch_add(1, std::memory_order_relaxed) + 1;
+  if ((n & (n - 1)) == 0)  // 1, 2, 4, 8...
+    BD_INFO("BC textures decoded on the CPU: {}", n);
+  BCMirrorDesc rgba = d;
+  rgba.format = plume::RenderFormat::R8G8B8A8_UNORM;
+  bool refused = false;
+  return BuildBCMirrorRaw(rgba, ups.data(), upload_count, refused);
+}
+
+GuestTexture *BuildBCMirrorCore(const BCMirrorDesc &d,
+                                const BCSubresourceUpload *uploads,
+                                u32 upload_count) {
+  Wwe12BCKind kind;
+  const bool bc = DecodableBC(d.format, kind);
+  if (bc && (g_decode_bc.load(std::memory_order_relaxed) || Wwe12ForceBCDecode()))
+    return BuildDecodedBC(d, kind, uploads, upload_count);
+  bool refused = false;
+  GuestTexture *t = BuildBCMirrorRaw(d, uploads, upload_count, refused);
+  if (!t && refused && bc && !g_decode_bc.exchange(true)) {
+    BD_WARN("The GPU refuses BC (DXT) textures (Mali?): decoding them on the CPU from now on "
+            "(more memory, slower loading)");
+  }
+  if (!t && refused && bc)
+    return BuildDecodedBC(d, kind, uploads, upload_count);
   return t;
 }
 

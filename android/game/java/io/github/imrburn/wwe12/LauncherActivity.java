@@ -258,6 +258,7 @@ public class LauncherActivity extends Activity {
                 "wwe12_instant_replay", false));
         dbg.addView(toggle("Empty the game's cache at each start", "wwe12_fresh_cache", false));
         dbg.addView(toggle("Log the replay file's reads and writes", "replay_io_log", false));
+        dbg.addView(toggle("Decode compressed textures on the CPU (Mali GPUs get it on their own)", "wwe12_bc_decode", false));
         dbg.addView(text("Then play until the problem, and send the log with SHARE LAST LOG.",
                 12, Color.GRAY, false));
 
