@@ -134,6 +134,16 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
     +0x230. Accessoires : à vérifier dans `evtobj.pac` ; pyro `prtcls.pac` même format ; titantrons de WWE '13 en
     Bink 2 (déjà convertis par le Mod Maker pour les 2K) ; thèmes Wwise `Music.pck`. SvR 2011 / 2K → WWE '12 : il
     faudra recibler (méthode `w13_retarget` de Kaiko, à l'envers).
+- **Le chargeur de WWE '12 existe déjà chez nous** (2026-10-27) : le jeu trouve chaque entrée par son répertoire,
+  `sub_827F29F0(répertoire, "/GROUPE/NOM", out)` (out : début en secteurs de 2 Ko, taille en unités de 256 o, numéro
+  de fichier à +12), et `native/wwe12_arena_pages.cpp` le **crochète déjà** pour les arènes ajoutées : des données
+  ajoutées au bout d'une copie servie d'un pac (MatchHD, evtgdhd, LoadHD, evtmov), le répertoire répondant avec leur
+  place. C'est notre équivalent du montage par table propre de Kaiko (`sub_825953B0`), sans toucher au répertoire.
+  → Étape 4 : une entrée de WWE '13 (EVP + EVZ) ajoutée au bout d'une copie servie de `Nyujyo*.pac`, le crochet
+  répondant à ses `/EVPx/0NNN` et `/EVZx/0NNN` (même pour un nom absent du répertoire : à vérifier), la fiche PRO
+  (+0x1D4) pointant sur ce numéro. → Étape 3 : la banque ZMVM touchée (avec la prise ajoutée) au bout d'une copie
+  servie, et la fiche WAZE dans une copie de `misc.pac`. Pièges connus du même fichier : le jeu lit parfois plus que
+  la taille donnée (un bgNN complet est servi), et la vidéo ne marchait pas servie depuis un autre fichier.
 - Étape 4 : pas commencée (voir juste au-dessus : commencer par WWE '13). **Vérifié le 2026-10-27** (outil `evtlist`) :
   les `Entrance00-08.pac` de WWE '13 (xcompressés) **se lisent avec notre `XcompressDecode`** ; WWE '12 a 247
   entrées (`Nyujyo0-9,A`), WWE '13 305 (sans les variantes 10000+), 207 en commun, **98 entrées de WWE '13 sur des
