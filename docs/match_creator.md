@@ -99,7 +99,7 @@ Pour la 1.0 : étapes 1 et 2 seulement, c'est-à-dire ce qui est sûr et testé.
   un autre test, sans doute le type ou le nombre de catcheurs, le ferme. À trouver.
 - Méthodes d'ouverture (vtable +0) : ENVIRONMENT `sub_82594188`, WIN CONDITION `sub_825910F8`, RULES `sub_82591ED0`.
 
-## `wwe12_mc_unlock` (2026-10-27, choix de l'utilisateur, désactivé par défaut)
+## `wwe12_mc_unlock` (2026-10-27, choix de l'utilisateur, ACTIVÉ par défaut)
 
 - Ouvre : TIME LIMIT partout ; K.O. et LAST MAN STANDING en cage et en Hell in a Cell (type de ring lu sur ENVIRONMENT) ;
   OVER THE TOP ROPE et ELIMINATION à 3 catcheurs ou plus. Seuls les types 0 à 26 sont reconnus (nom = texte

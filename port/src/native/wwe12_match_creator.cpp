@@ -1,7 +1,7 @@
 // WWE '12 PC: Match Creator restrictions (docs/match_creator.md).
 //
-// wwe12_mc_unlock (off by default): a few rules a match type keeps fixed become the player's choice,
-// only where they make sense (the user's choices, 2026-10-27):
+// wwe12_mc_unlock (on by default, the user's choice, 2026-10-27): a few rules a match type keeps
+// fixed become the player's choice, only where they make sense (the user's choices):
 //   - RULES > TIME LIMIT in every match type;
 //   - WIN CONDITION > K.O. and LAST MAN STANDING when the ring is a STEEL CAGE or HELL IN A CELL;
 //   - WIN CONDITION > OVER THE TOP ROPE and RULES > ELIMINATION with 3 superstars or more.
@@ -42,7 +42,7 @@
 
 REXCVAR_DEFINE_BOOL(wwe12_mc_probe, false, "WWE12",
                     "Probe: log the Match Creator's option tables (restrictions by match type).");
-REXCVAR_DEFINE_BOOL(wwe12_mc_unlock, false, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_mc_unlock, true, "WWE12",
                     "Match Creator: win conditions and rules a match type keeps fixed become the player's choice.");
 
 REX_EXTERN(__imp__sub_825910F8);
