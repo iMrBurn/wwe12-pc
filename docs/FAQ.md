@@ -37,6 +37,15 @@ again: the DLC are reinstalled and every wrestler shows up.
 cards since 2016). Intel HD 4000/5000/6000 and some old AMD laptop cards don't have one on Windows.
 Update your graphics driver first.
 
+**Which graphics API should I use?** Leave it on AUTO (launcher → settings → Graphics API). The game comes in
+three versions: Vulkan (default), DirectX 12 (`wwe12_d3d12.exe`) and DirectX 11 (`wwe12_d3d11.exe`, for older
+cards without Vulkan 1.2 or DirectX 12). AUTO tries Vulkan, then DirectX 12, then DirectX 11. You can also set
+`gpu_backend = "vulkan"`, `"d3d12"` or `"d3d11"` in `wwe12.toml`. With DirectX 11 the sun's lens flare isn't drawn yet;
+everything else looks the same.
+
+**Low-end PC.** In the launcher, the LOW-END PC button sets 480p, no crowd, no shadows and no depth of field in one
+click (UNDO puts your old values back). Internal resolutions go down to 360p.
+
 **The game is slow / in slow motion.** The game runs at 60 frames per second; when your PC can't keep up,
 the whole game slows down (that's how the original works). Try, in the launcher: a lower internal
 resolution (720p or 540p); empty stands with `wwe12_crowd = false` in `wwe12.toml`. On a laptop: plug in the charger, use Windows' "Best
@@ -131,6 +140,13 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
   `xbox_cache` et le dossier `0000000000000000\54510890\00000002` (**pas** `00000001` : vos sauvegardes),
   puis relancez.
 - **Title Update** : pas encore prise en charge (prévue pour la 1.1), pas nécessaire.
+- **Quelle API graphique ?** Laissez AUTO (launcher → réglages → API graphique). Trois versions du jeu : Vulkan
+  (par défaut), DirectX 12 (`wwe12_d3d12.exe`) et DirectX 11 (`wwe12_d3d11.exe`, pour les cartes plus anciennes sans
+  Vulkan 1.2 ni DirectX 12). AUTO essaie Vulkan, puis DirectX 12, puis DirectX 11. Ou `gpu_backend = "vulkan"`,
+  `"d3d12"` ou `"d3d11"` dans `wwe12.toml`. En DirectX 11, les reflets du soleil (lens flare) ne s'affichent pas encore ;
+  tout le reste est identique.
+- **PC modeste** : dans le launcher, le bouton PC MODESTE règle 480p, sans foule, sans ombres et sans flou en un clic
+  (ANNULER remet vos anciennes valeurs). Les résolutions vont jusqu'à 360p.
 - **Écran noir / message Vulkan** : il faut une carte graphique avec un pilote Vulkan (pas les Intel HD
   4000/5000/6000). Mettez à jour votre pilote.
 - **Ralentis** : le jeu ralentit si le PC ne tient pas 60 images/s. Baissez la résolution interne (720p,
