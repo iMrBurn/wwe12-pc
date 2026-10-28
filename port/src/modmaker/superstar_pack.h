@@ -65,11 +65,11 @@ struct Star {
   // Its own moves over its base's (CHAR / PRO byte offset, move number, big-endian there: the Mod Maker's
   // moveset_port.h), else empty.
   std::vector<std::pair<int, int>> moves;
-  // Another superstar's entrance (CHAR / PRO +0x1D4..+0x1DE: music, video and entrance numbers, two more, 16-bit
-  // little-endian), else 0: the base's.
+  // Another superstar's entrance (CHAR / PRO +0x1D4..+0x1DE, again at +0x1E0..+0x1EA: music, video and entrance
+  // numbers, two more, 16-bit little-endian), else 0: the base's.
   int entrance = 0;
   // Its own entrance (a WWE '13 one the game serves under that number: wwe12_arena_pages.cpp), else 0: CHAR / PRO
-  // +0x1D8, the entrance number of the block at +0x1D4 (music, video, entrance).
+  // +0x1D8 and +0x1E4, the entrance number of both blocks (music, video, entrance).
   int own_entrance = 0;
   // Its moves WWE '12 hasn't (added to the pack: misc.pac records, m_dlcNN.pac motions), else empty.
   std::vector<NewMove> new_moves;
@@ -303,12 +303,14 @@ inline std::vector<int> FreeSlots(const Inputs &in) {
   return out;
 }
 
-// The pack's number: after the installed packs' (the game reads IGST/VOL0..VOL9).
+// The pack's number: after the installed packs' (the game reads IGST/VOL0..VOL9), and never one of the game's four
+// packs: the disc's DLC.pac lists VOL1 and VOL2 already, and with no pack installed ours was 1, its list in place of
+// VOL1, and its superstars showed nowhere (the select screen's DLC tile empty, 2026-10-28).
 inline int PackNumber(const Inputs &in) {
   int n = 0;
   for (const auto &[number, cat] : in.catalogs)
     n = std::max(n, number);
-  return n + 1;
+  return std::max(5, n + 1);
 }
 
 // The pack's files for `stars` (slots set). False (and why) when it can't be made.
@@ -501,15 +503,20 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         moves[size_t(at)] = uint8_t(id >> 8);
         moves[size_t(at) + 1] = uint8_t(id);
       }
+    // The entrance block is there twice, +0x1D4 and +0x1E0 (equal on the disc's records); the game plays the second
+    // (the first changed alone: the base's entrance, music and video, 2026-10-28). Both written.
     if (ArcNode *ep = st.entrance > 0 ? Child(*pro, uint32_t(st.entrance)) : nullptr) {
       const Bytes e = svrfmt::ArchiveData(*ep);
-      if (e.size() >= 0x1DE && moves.size() >= 0x1DE)
-        std::copy(e.begin() + 0x1D4, e.begin() + 0x1DE, moves.begin() + 0x1D4);
+      for (const size_t at : {size_t(0x1D4), size_t(0x1E0)})
+        if (e.size() >= at + 10 && moves.size() >= at + 10)
+          std::copy(e.begin() + long(at), e.begin() + long(at) + 10, moves.begin() + long(at));
     }
-    if (st.own_entrance > 0 && moves.size() >= 0x1DA) {
-      moves[0x1D8] = uint8_t(st.own_entrance);
-      moves[0x1D9] = uint8_t(st.own_entrance >> 8);
-    }
+    if (st.own_entrance > 0)
+      for (const size_t at : {size_t(0x1D8), size_t(0x1E4)})
+        if (moves.size() >= at + 2) {
+          moves[at] = uint8_t(st.own_entrance);
+          moves[at + 1] = uint8_t(st.own_entrance >> 8);
+        }
     svrfmt::ArchiveReplace(*sp, moves);
   }
   svrfmt::ArchiveTouch(*dat);

@@ -708,8 +708,10 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   snprintf(stamp, sizeof(stamp), "%016llx", static_cast<unsigned long long>(h));
   Bytes old;
   const fs::path stamp_file = content / kPackName / "wwe12pc_stamp.txt";
+  Bytes old_header;  // (one made without the license mask, below, is made again)
   if (ReadHost(stamp_file, old) && std::string(old.begin(), old.end()) == stamp &&
-      fs::exists(headers / (std::string(kPackName) + ".header"), ec)) {
+      ReadHost(headers / (std::string(kPackName) + ".header"), old_header) && old_header.size() == 332 &&
+      old_header[0x148] == 0xFF && old_header[0x14B] == 0xFF) {
     REXLOG_INFO("[superstar mods] {} added superstar(s), pack {} unchanged", stars.size(), kPackName);
     if (!fs::exists(content / kPackName / "wwe12pc_stars.txt", ec)) {  // (packs made before the list)
       std::string list;
@@ -745,6 +747,12 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     header[3] = 1;
     header[7] = 2;
   }
+  // The game's title (0x140, big-endian) and the license mask after the content data (0x148, all bits): a blank
+  // header had none, the game took the pack as not owned (its content list state 1, not 2: sub_826B13D0) and its
+  // superstars showed nowhere when no pack of the game's was installed (2026-10-28).
+  const uint8_t title[4] = {0x54, 0x51, 0x08, 0x90};
+  std::copy(title, title + 4, header.begin() + 0x140);
+  std::fill(header.begin() + 0x148, header.begin() + 0x14C, uint8_t(0xFF));
   std::fill(header.begin() + 8, header.begin() + 0x108 + 42, uint8_t(0));
   const std::string display = "WWE '12 PC superstar mods";
   for (size_t i = 0; i < display.size(); ++i)
