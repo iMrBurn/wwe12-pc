@@ -62,7 +62,11 @@ Write-Host "$count shaders extraits"
 $Gen = Join-Path $Root "port\generated\native"
 New-Item -ItemType Directory -Force $Gen | Out-Null
 Write-Host "== Conversion des shaders avec XenosRecomp"
-Invoke-Checked $XrExe $Xsc (Join-Path $Gen "shader_cache.cpp") (Join-Path $Xr "XenosRecomp\shader_common.h")
+# 4e argument : le HLSL de chaque shader, d'où wwe12_d3d11.exe tire ses shaders DXBC (fxc, à la
+# compilation : tools/convert_shaders_d3d11.py, appelé par CMake).
+$Hlsl = Join-Path $Root "work\shaders\d3d11\hlsl"
+New-Item -ItemType Directory -Force $Hlsl | Out-Null
+Invoke-Checked $XrExe $Xsc (Join-Path $Gen "shader_cache.cpp") (Join-Path $Xr "XenosRecomp\shader_common.h") $Hlsl
 
 # 4. Clés secondaires -> shader_keys.cpp (module Python xxhash)
 # Test par cmd : sous Windows PowerShell 5.1 avec ErrorActionPreference=Stop, la moindre sortie

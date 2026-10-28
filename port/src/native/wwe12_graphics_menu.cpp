@@ -361,15 +361,15 @@ std::vector<Setting> BuildSettings() {
     g.label = &Texts::api;
     g.tab = 2;
     g.next_start = true;
+    // DIRECTX 11 (wwe12_d3d11.exe, gpu_backend "d3d11") is chosen in the launcher for now: a 4th
+    // value needs the page scripts rebuilt (tools/graphics_pages.py, its luac). Shown as AUTO
+    // here; the row is saved only when the player changes it.
+    static constexpr const char *kBackends[] = {"any", "vulkan", "d3d12"};
     g.values = {t.automatic, "VULKAN", "DIRECTX 12"};
     const std::string &backend = REXCVAR_GET(gpu_backend);
     g.index = backend == "d3d12" ? 2 : backend == "vulkan" ? 1 : 0;
-    g.apply = [](int i) {
-      rex::cvar::SetFlagByName("gpu_backend", i == 2 ? "d3d12" : i == 1 ? "vulkan" : "any");
-    };
-    g.save = [](TomlFile &f, int i) {
-      f.SetString("gpu_backend", i == 2 ? "d3d12" : i == 1 ? "vulkan" : "any");
-    };
+    g.apply = [](int i) { rex::cvar::SetFlagByName("gpu_backend", kBackends[i]); };
+    g.save = [](TomlFile &f, int i) { f.SetString("gpu_backend", kBackends[i]); };
     s.push_back(std::move(g));
   }
   // Same order as the launcher's tabs.

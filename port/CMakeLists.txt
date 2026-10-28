@@ -190,13 +190,18 @@ if(WIN32 AND WWE12_NATIVE_RENDERER AND WWE12_D3D12_EXE AND TARGET wwe12_recomp)
     # wwe12_prelink), où l'exe de dev peut encore lier une variante manquante.
 endif()
 
-# wwe12_d3d11.exe : rendu Direct3D 11 (EN COURS, hors de la compilation par défaut : seulement
-# « cmake --build ... --target wwe12_d3d11 »). Il faut generated/native/dxbc_shader_cache.cpp
-# (tools/convert_shaders_d3d11.py).
+# wwe12_d3d11.exe : rendu Direct3D 11 (docs/dx11.md). Avec WWE12_D3D11_EXE=ON il est compilé avec
+# les deux autres (build.ps1) ; sinon seulement sur demande (« cmake --build ... --target
+# wwe12_d3d11 »). Ses shaders viennent de work/shaders/d3d11/hlsl (tools/gen_shaders.ps1).
 if(WIN32 AND WWE12_NATIVE_RENDERER AND TARGET wwe12_recomp AND
-   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/native/dxbc_shader_cache.cpp" AND
+   (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../work/shaders/d3d11/hlsl" OR
+    EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/native/dxbc_shader_cache.cpp") AND
    EXISTS "${WWE12_RECOMP_DIR}/plume/plume_d3d11.cpp")
-    add_executable(wwe12_d3d11 WIN32 EXCLUDE_FROM_ALL ${WWE12_SOURCES})
+    if(WWE12_D3D11_EXE)
+        add_executable(wwe12_d3d11 WIN32 ${WWE12_SOURCES})
+    else()
+        add_executable(wwe12_d3d11 WIN32 EXCLUDE_FROM_ALL ${WWE12_SOURCES})
+    endif()
     wwe12_add_native_renderer(wwe12_d3d11 D3D11)
     target_sources(wwe12_d3d11 PRIVATE src/modmaker/svrfmt/archive.cpp src/modmaker/svrfmt/pac.cpp
         src/modmaker/svrfmt/texture.cpp)

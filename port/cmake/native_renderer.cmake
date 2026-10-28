@@ -21,6 +21,10 @@ set(WWE12_NATIVE_GEN "${CMAKE_BINARY_DIR}/native_gen")
 # same game code with re:Blue built REBLUE_D3D12; the launcher starts one or the other from
 # gpu_backend). plume builds both backends into one library; each exe uses one.
 option(WWE12_D3D12_EXE "Also build wwe12_d3d12.exe (D3D12 renderer)" ${WIN32})
+# wwe12_d3d11.exe (Direct3D 11, plume-d3d11.patch): OFF until the release decides; ON builds it with
+# the others (build.ps1). Its game shaders are converted at build time from the HLSL that
+# tools/gen_shaders.ps1 leaves in work/shaders/d3d11/hlsl.
+option(WWE12_D3D11_EXE "Also build wwe12_d3d11.exe (Direct3D 11 renderer)" OFF)
 if(WIN32 AND WWE12_D3D12_EXE)
     set(PLUME_D3D12_ENABLED ON CACHE BOOL "" FORCE)
 else()
@@ -157,9 +161,24 @@ function(wwe12_add_native_renderer target)
     endif()
     set(sources ${WWE12_NATIVE_SOURCES})
     if(ARG_D3D11)
-        if(NOT EXISTS "${WWE12_NATIVE_ROOT}/generated/native/dxbc_shader_cache.cpp")
-            message(FATAL_ERROR "generated/native/dxbc_shader_cache.cpp manquant : "
-                                "tools/convert_shaders_d3d11.py d'abord")
+        # The game's shaders as DXBC: converted at build time from the dumped HLSL (fxc), or else
+        # a generated/native/dxbc_shader_cache.cpp made by hand.
+        set(dxbc_hlsl "${WWE12_NATIVE_ROOT}/../work/shaders/d3d11/hlsl")
+        if(EXISTS "${dxbc_hlsl}" AND WWE12_FXC AND Python3_FOUND)
+            set(dxbc_cache "${WWE12_NATIVE_GEN}/dxbc_shader_cache.cpp")
+            file(GLOB dxbc_inputs CONFIGURE_DEPENDS "${dxbc_hlsl}/*.hlsl")
+            add_custom_command(
+                OUTPUT "${dxbc_cache}"
+                COMMAND "${Python3_EXECUTABLE}" -I "${WWE12_NATIVE_ROOT}/../tools/convert_shaders_d3d11.py"
+                        "${dxbc_hlsl}" "${dxbc_cache}"
+                DEPENDS ${dxbc_inputs} "${WWE12_NATIVE_ROOT}/../tools/convert_shaders_d3d11.py"
+                COMMENT "Converting the game's shaders to DXBC (fxc)"
+                VERBATIM)
+        elseif(EXISTS "${WWE12_NATIVE_ROOT}/generated/native/dxbc_shader_cache.cpp")
+            set(dxbc_cache "${WWE12_NATIVE_ROOT}/generated/native/dxbc_shader_cache.cpp")
+        else()
+            message(FATAL_ERROR "wwe12_d3d11: no work/shaders/d3d11/hlsl (tools/gen_shaders.ps1) "
+                                "nor generated/native/dxbc_shader_cache.cpp")
         endif()
         set(host_shaders ${WWE12_HOST_SHADER_HEADERS_DXBC})
         target_compile_definitions(${target} PRIVATE REBLUE_D3D12=1 REBLUE_D3D11=1)
@@ -169,7 +188,7 @@ function(wwe12_add_native_renderer target)
         # plume's D3D11 backend (port/patches/plume-d3d11.patch, from the SvR 2011 PC port).
         target_sources(${target} PRIVATE "${WWE12_MINIZ_DIR}/miniz.c"
             "${WWE12_PLUME_DIR}/plume_d3d11.cpp"
-            "${WWE12_NATIVE_ROOT}/generated/native/dxbc_shader_cache.cpp")
+            "${dxbc_cache}")
     elseif(ARG_D3D12)
         set(host_shaders ${WWE12_HOST_SHADER_HEADERS_DXIL})
         target_compile_definitions(${target} PRIVATE REBLUE_D3D12=1)

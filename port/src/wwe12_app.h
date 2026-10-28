@@ -57,6 +57,8 @@ REXCVAR_DECLARE(bool, wwe12_precise_timer);
 
 // Fenêtre d'erreur quand Vulkan ne démarre pas (native/wwe12_vulkan_error.cpp).
 void Wwe12ShowVulkanError();
+// AUTO : démarre l'exe suivant (wwe12.exe -> wwe12_d3d12.exe -> wwe12_d3d11.exe) ; false sinon.
+bool Wwe12TryNextBackend();
 namespace rex::input { class InputSystem; }
 void Wwe12ButtonsSetInput(rex::input::InputSystem* input);  // wwe12_buttons.cpp
 void Wwe12KbdInit(rex::ui::Window* window);  // wwe12_kbd.cpp: keyboard typing in letter grids
@@ -229,8 +231,12 @@ class Wwe12App : public rex::ReXApp {
       REXLOG_ERROR("Rendu natif : échec de création du device hôte");
       // Sans device le jeu tournait quand même, fenêtre noire et sans explication (Intel HD 5500 :
       // pas de Vulkan sous Windows). On le dit au joueur, puis on quitte.
-      Wwe12ShowVulkanError();
-      REXLOG_ERROR("Rendu natif : Vulkan indisponible, arrêt");
+      if (Wwe12TryNextBackend()) {
+        REXLOG_ERROR("Rendu natif : API indisponible, AUTO passe à l'exe suivant");
+      } else {
+        Wwe12ShowVulkanError();
+        REXLOG_ERROR("Rendu natif : aucune API graphique disponible, arrêt");
+      }
       std::_Exit(1);
     }
     // Present tourne sur le fil du jeu et ImGui sur le fil de l'interface : l'overlay est
