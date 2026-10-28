@@ -91,6 +91,56 @@ WrestleMania (leurs scripts utilisent SetMomentum : ne rien changer quand un scr
 **Proposition** : 1.0 = stock / infini + ligne dans une page d'options (3-4 séances). 1.1 = choix par catcheur sur
 l'écran de sélection. **Pour le squash (Limit breaking)** : même objet (jauge +152, `sub_82246E48`, SetMomentumRate).
 
+### Compléments de lecture (2026-10-28, après la proposition 1.0)
+
+- **Nombre de finishers par jauge pleine** : `sub_82248000(objet)` = **3** si l'octet global [0x8317C850+6] est
+  mis (`sub_8267CF38()` + 6 : réglage ou triche, à identifier), **1** si l'acteur n'a pas de fiche de capacités
+  ([acteur+3380] = 0), sinon `sub_82276A98([acteur+3380]+322)` (sans doute 3 avec FIRED UP, 1 sinon).
+- **Compteur des finishers faits pendant la jauge pleine : acteur+2776** (+1 dans `sub_8224B008` tant qu'il est sous
+  le maximum ; remis à 0 quand la jauge repart, fin de `sub_8224BB58`, et par `sub_822483F0` via acteur+2792).
+- Dans `sub_82349648`, la jauge est vidée après **chaque** finisher, sauf si l'octet acteur+998 est mis (état actif,
+  sans doute FIRED UP lancé par LB + Y ; plusieurs fonctions l'écrivent, à confirmer à l'essai).
+- Donc le plus sûr pour un stock de N : après le vidage de `sub_822483F0` appelé depuis `sub_82349648`, si notre
+  compteur par catcheur n'est pas épuisé, remettre la jauge à 1 (`sub_82246E48(objet, 1.0)`). On ne touche ni
+  à acteur+998 ni à `sub_82248000` (FIRED UP garde son fonctionnement).
+
+### Plan de l'essai en jeu (quand l'utilisateur aura donné son go)
+
+**Étape 1, sonde seule (rien de changé dans le jeu)** : cvar `wwe12_finisher_probe` (désactivé par défaut), une
+ligne `[finisher]` dans le journal **seulement quand une valeur change**, pour chaque catcheur du match :
+jauge (objet+152, arrondie à 0,01), mode (+180), minuteur (+188), acteur+998, acteur+2776, résultat de
+`sub_82248000`, et chaque appel de `sub_82349648` / `sub_822483F0` / `sub_8224B008` (avec le n° du catcheur).
+Lanceur isolé `tools/dev/lancer_test_finishers.bat` (`--user_data_root "%USERPROFILE%\Documents\wwe12_test"`).
+
+Ce que l'utilisateur fait (exhibition 1 contre 1, un match par scénario, ~10 min en tout) :
+1. **Normal** : remplir la jauge, attendre sans faire le finisher → on lit si +188 finit par vider la jauge, et en
+   combien de temps. Puis faire un finisher → vidage, compteur +2776.
+2. **FIRED UP** : un catcheur qui a la capacité (à trouver dans la liste des capacités), jauge pleine, LB + Y, puis
+   2 ou 3 finishers → on vérifie acteur+998 et le maximum 3.
+3. **MOVE THIEF** : voler le finisher adverse → quelle jauge est vidée.
+4. **Royal Rumble** (FIRED UP y est coupé) et **FINISHER MATCH** (MATCH CREATOR > WIN CONDITION) : un finisher
+   chacun, on regarde si le chemin est le même.
+
+**Étape 2, le réglage** (`wwe12_starting_finishers` : 0 = jeu d'origine, 1, 2, 3, 4 = INFINITE ; page d'options) :
+- jauge mise à 1 au début du match (premier passage de `sub_8224BB58` pour chaque catcheur) ;
+- stock : après chaque finisher, si le stock restant > 0, jauge remise à 1 et stock - 1 ; INFINITE : toujours ;
+- si +188 vide la jauge alors qu'il reste du stock : la remettre à 1 (sinon le stock serait perdu en attendant).
+
+Essais (un match chacun) :
+| Essai | Attendu |
+|---|---|
+| 1 finisher | jauge pleine à la cloche, vide après le 1er finisher, puis le jeu normal |
+| 2 finishers | 2 finishers de suite, vide après le 2e |
+| INFINITE | toujours pleine, plusieurs finishers |
+| FIRED UP + 2 | FIRED UP marche encore (jusqu'à 3 pendant l'état), le stock ne se perd pas |
+| Royal Rumble 1 | chaque entrant arrive avec sa jauge pleine (entrée en cours de match : premier passage de son objet) |
+| FINISHER MATCH 1 | la victoire au finisher marche |
+| CPU contre CPU INFINITE | l'IA ne bloque pas (enchaîne ou non, pas de gel) |
+| Univers / Road to WrestleMania | réglage ignoré quand un script règle la jauge (SetMomentum / mode +180) : à vérifier qu'aucun script n'est cassé |
+
+**Risques à surveiller** : le minuteur +188 ; l'état FIRED UP (acteur+998) ; MOVE THIEF (jauge de l'autre
+catcheur) ; les entrants du Royal Rumble ; l'IA en INFINITE ; les scripts (Univers, RTWM, didacticiel).
+
 ## 3. Choix libre des finishers (première lecture de la demande, gardée pour plus tard)
 
 **Où WWE '12 range les finishers d'un catcheur** : fiche PRO de `pac/ch/chEtc.pac` (1 072 octets, nombres de 16 bits
