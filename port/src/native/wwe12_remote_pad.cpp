@@ -5,9 +5,13 @@
 // word is a button (A B X Y START BACK UP DOWN LEFT RIGHT LB RB), pressed 120 ms then released
 // 120 ms, in order, or "wait<ms>" (wait2000). The buttons are ORed into player 1's
 // XInputGetState in wwe12_intros.cpp, as for the skipped start-up videos.
+// "scan<hex>" (scan7c92b392) logs every guest address where those bytes are ("[remote] scan"), to find which copies
+// of a record the game keeps (an added superstar's moves, 2026-10-28).
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cstring>
 #include <chrono>
 #include <deque>
 #include <filesystem>
@@ -15,11 +19,16 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <vector>
+
+#include <windows.h>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
 
 #include "core/logging.h"
+#include "core/memory_helpers.h"
 
 REXCVAR_DEFINE_BOOL(wwe12_remote_pad, false, "WWE12",
                     "Dev: press player 1's buttons listed in remote_pad.txt next to the exe.");
@@ -40,6 +49,47 @@ long long NowMs() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::steady_clock::now().time_since_epoch())
       .count();
+}
+
+// The guest address space walked by its host regions (VirtualQuery), committed readable ones only, all the patterns
+// in one pass, on a thread of its own: page by page on the pad's thread it froze the game (2026-10-28).
+void Scan(std::vector<std::string> hexes) {
+  if (hexes.empty() || !bd::mem::ready())
+    return;
+  std::thread([hexes = std::move(hexes)] {
+    std::vector<std::vector<uint8_t>> pats;
+    for (const auto &hex : hexes) {
+      std::vector<uint8_t> pat;
+      for (size_t i = 0; i + 1 < hex.size(); i += 2)
+        pat.push_back(uint8_t(std::stoul(hex.substr(i, 2), nullptr, 16)));
+      pats.push_back(std::move(pat));
+    }
+    const uint8_t *host0 = bd::mem::at<uint8_t>(0x40000000);
+    if (!host0)
+      return;
+    const uint8_t *base = host0 - 0x40000000;
+    std::vector<int> found(pats.size(), 0);
+    for (const uint8_t *h = host0; h < base + 0x100000000ull;) {
+      MEMORY_BASIC_INFORMATION mbi{};
+      if (VirtualQuery(h, &mbi, sizeof(mbi)) != sizeof(mbi))
+        break;
+      const uint8_t *start = static_cast<const uint8_t *>(mbi.BaseAddress);
+      const uint8_t *end = std::min(start + mbi.RegionSize, base + 0x100000000ull);
+      if (mbi.State == MEM_COMMIT && mbi.Protect && !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)))
+        for (size_t k = 0; k < pats.size(); ++k)
+          for (const uint8_t *q = std::max(start, h); found[k] < 64;) {
+            q = std::search(q, end, pats[k].begin(), pats[k].end());
+            if (q == end)
+              break;
+            BD_INFO("[remote] scan {} at {:08X}", hexes[k], u32(q - base));
+            ++found[k];
+            ++q;
+          }
+      h = end;
+    }
+    for (size_t k = 0; k < pats.size(); ++k)
+      BD_INFO("[remote] scan {}: {} place(s)", hexes[k], found[k]);
+  }).detach();
 }
 
 u16 ButtonBit(const std::string &w) {
@@ -72,9 +122,14 @@ void Poll(long long now) {
   std::istringstream words(text);
   std::string w;
   u32 n = 0;
+  std::vector<std::string> scans;
   while (words >> w) {
     for (auto &c : w)
       c = char(std::toupper(static_cast<unsigned char>(c)));
+    if (w.rfind("SCAN", 0) == 0) {
+      scans.push_back(w.substr(4));
+      continue;
+    }
     if (w.rfind("WAIT", 0) == 0) {
       g_steps.push_back({0, std::atoll(w.c_str() + 4)});
     } else if (const u16 bit = ButtonBit(w)) {
@@ -86,6 +141,7 @@ void Poll(long long now) {
     }
     ++n;
   }
+  Scan(std::move(scans));
   BD_INFO("[remote] {} step(s) queued", n);
 }
 
