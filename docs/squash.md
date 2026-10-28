@@ -44,6 +44,45 @@ fait le reste : le jobber, déjà rouge, ne se relève pas des tombés.
 - La partie « multiplicateur de dégâts » plus bas est **abandonnée** au profit de la vie de départ. Elle reste
   notée comme solution de secours si la vie de départ ne peut pas être réglée hors de Create a Story.
 
+## Plan de la sonde STARTING HEALTH (préparé par lecture seulement, 2026-10-28 ; rien codé, rien lancé)
+
+À faire seulement avec le go de l'utilisateur dans cette conversation. Pendant la sonde, la conversation ne
+compile ni ne lance rien d'autre (une seule compile ou un seul jeu à la fois).
+
+**Outils déjà là, à réutiliser** :
+- liste des acteurs du match à **0x8317B770** (9 pointeurs : 0-5 catcheurs, 6 arbitre, 7-8 rôle 4) et le fil qui la
+  lit toutes les 100 ms (`wwe12_kind_probe.cpp`, `WatchActors`) ;
+- piège d'écriture PAGE_GUARD sur une adresse invitée (`wwe12_blood.cpp`, sonde `wwe12_blood_trap`), qui donne le
+  code qui écrit (RIP → `llvm-symbolizer` avec `wwe12.pdb`) ;
+- données isolées (`Documents\wwe12_test`, comme `lancer_test_jukebox.bat`) pour ne pas toucher aux sauvegardes.
+
+**Étape 1 : trouver les champs de vie dans l'acteur (un match d'exhibition, 1 contre 1)**
+- Nouvelle sonde dev `wwe12_health_probe` : toutes les 100 ms, copie des **0x1200 premiers octets** (l'acteur va au
+  moins jusqu'à +4612, vu dans `sub_82213DB0`) des catcheurs 0 et 1. Dans le journal, seulement les mots de
+  32 bits qui **changent quand un coup touche** et restent stables sinon.
+- Ce que l'utilisateur fait : laisser l'adversaire au sol sans le toucher (5 s), puis frapper **seulement la tête**
+  (coups de pied au sol), puis **seulement les jambes** (prises de jambe). Un champ qui ne bouge qu'avec la tête =
+  vie de la tête, etc. Attendu : 4 valeurs (flottants ou entiers) qui baissent, plus peut-être un niveau 0-3
+  (jaune/orange/rouge : `GetDamageLv` dans WWE '13).
+- Au passage : le **stock de prises de finition** (champ qui passe de 0 à 1 quand l'icône FINISHER apparaît, puis
+  revient à 0 après la prise). À donner à Gameplay.
+
+**Étape 2 : trouver qui écrit la vie de départ (Create a Story)**
+- L'utilisateur crée une scène de match dans Create a Story : 1 contre 1, **STARTING HEALTH** du 2e catcheur réglé
+  à des valeurs faciles à reconnaître (par exemple HEAD 10 %, TORSO 20 %, ARMS 30 %, LEGS 40 %), puis la joue.
+- La sonde pose le piège d'écriture sur les 4 champs de l'étape 1 dès que l'acteur existe (création : crochet
+  sur `sub_822CDF78`, comme `wwe12_kind_probe`) et note chaque écrivain jusqu'à la cloche. L'écrivain qui pose
+  les valeurs 10/20/30/40 (converties) = **la fonction qui applique STARTING HEALTH**. Ses appelants donnent l'endroit
+  où Create a Story garde les 4 pourcentages (on remontera le pointeur source dans le code).
+- Contrôle : le même match en exhibition doit passer par l'écrivain « vie pleine » seulement.
+
+**Étape 3 (une fois les deux trouvés, sans lancer le jeu)** : lire la fonction d'application pour savoir si on
+peut l'appeler soi-même (option « prochain match : squash ») ou s'il vaut mieux écrire les 4 champs nous-mêmes
+juste après elle.
+
+**Risque** : faible. La sonde ne fait que lire, sauf le piège PAGE_GUARD, qui ralentit le jeu pendant qu'il est
+posé (seulement jusqu'à la cloche). **Durée** : 1 séance si les champs sont nets, 2 sinon.
+
 ## Première version de l'étude (dégâts), remplacée par ce qui précède
 
 Demande de l'utilisateur, transmise par Main, pour la roadmap : un match court où un catcheur domine l'autre,
