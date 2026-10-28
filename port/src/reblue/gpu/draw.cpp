@@ -538,7 +538,9 @@ bool Video::FlushRenderStateLocked(u32 device_guest) {
   if (s.occlusion_counting) {
     const u32 slot = s.frame.load(std::memory_order_relaxed);
     if (s.occlusion_counter[slot]) {
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+      // (no UAV yet on D3D11: Occlusion::Begin never counts there)
+#elif defined(REBLUE_D3D12)
       s.command_list->setGraphicsRootDescriptor(
           s.occlusion_counter[slot]->at(0), 3);
 #else

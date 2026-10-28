@@ -69,6 +69,9 @@ void BeginCommandList(VideoState &s) {
   s.dirtyStates.pixelShaderConstants = true;
   s.current_pso = nullptr;
   InvalidateSharedBinding();
+#if defined(REBLUE_D3D11)
+  D3D11ForgetSlots();
+#endif
 #if defined(REXGLUE_ENABLE_PROFILING) && defined(REBLUE_D3D12)
   SetGPUProfilerCommandList(
       static_cast<plume::D3D12CommandList *>(s.command_list)->d3d);

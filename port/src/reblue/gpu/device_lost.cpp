@@ -13,7 +13,9 @@
 #include <atomic>
 
 #include <plume_render_interface.h>
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+#include <plume_d3d11.h>
+#elif defined(REBLUE_D3D12)
 #include <plume_d3d12.h>
 #else
 #include <plume_vulkan.h>
@@ -88,7 +90,11 @@ bool CheckDeviceRemoved(const char *context) {
     return true;
 
   auto &s = state();
+#if defined(REBLUE_D3D11)
+  auto *dev = static_cast<plume::D3D11Device *>(s.device.get());
+#else
   auto *dev = static_cast<plume::D3D12Device *>(s.device.get());
+#endif
   if (!dev || !dev->d3d)
     return false; // no device yet, nothing to lose
   const long hr = dev->d3d->GetDeviceRemovedReason();

@@ -24,6 +24,7 @@
 
 #include "core/logging.h"
 #include "gpu/backend.h"
+#include "gpu/constant_buffers.h"
 #include "gpu/format.h"
 
 namespace bd::gpu {
@@ -250,6 +251,9 @@ bool CopySurfaceToTextureLocked(VideoState &s, GuestTexture *src,
       float param1;
     } push{descriptor_index, 0u, depth_dst ? 1.0f : resolve_scale,
            static_cast<float>(box_ratio)};
+#if defined(REBLUE_D3D11)
+    D3D11BindHostSlot(descriptor_index, 0);
+#endif
     s.command_list->setGraphicsPushConstants(kCopyPushConstantRangeIndex, &push,
                                              kCopyPushConstantByteOffset,
                                              sizeof(push));

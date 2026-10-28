@@ -18,7 +18,10 @@
 #include "gpu/constant_buffers.h"
 #include "gpu/device.h"
 
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+#include "src/gpu/shaders/hlsl/imgui_ps.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/imgui_vs.hlsl.dxbc.h"
+#elif defined(REBLUE_D3D12)
 #include "src/gpu/shaders/hlsl/imgui_ps.hlsl.dxil.h"
 #include "src/gpu/shaders/hlsl/imgui_vs.hlsl.dxil.h"
 #else
@@ -365,6 +368,9 @@ void ImGuiOverlayDrawer::Draw(const rex::ui::ImmediateDraw &draw) {
     samp_slot = tex->sampler_slot();
   }
   u32 slots[2] = {tex_slot, samp_slot};
+#if defined(REBLUE_D3D11)
+  D3D11BindHostSlot(tex_slot, samp_slot);
+#endif
   cmd_->setGraphicsPushConstants(1, slots, 0, sizeof(slots)); // PIXEL range 1
 
   cmd_->drawIndexedInstanced(u32(draw.count), 1, u32(draw.index_offset),

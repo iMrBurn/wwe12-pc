@@ -25,6 +25,10 @@ void Occlusion::Begin() {
   std::lock_guard lock(s.mutex);
   if (!s.ready || !s.device)
     return;
+#if defined(REBLUE_D3D11)
+  // WWE '12, D3D11: no UAV in the backend yet, so the sun's lens flare count stays 0.
+  return;
+#endif
   BeginCommandList(s);
   if (!s.command_list_open)
     return;

@@ -7,7 +7,7 @@
  */
 #include "gpu/dred.h"
 
-#if !defined(REBLUE_D3D12)
+#if !defined(REBLUE_D3D12) || defined(REBLUE_D3D11)
 
 namespace bd::gpu {
 bool EnableDred() { return false; }

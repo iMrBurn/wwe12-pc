@@ -24,7 +24,13 @@ namespace bd::gpu {
 // REBLUE_D3D12 builds are D3D12 only, every other build Vulkan only. g_vulkan
 // is constexpr so the other backend's code folds away entirely. The build emits
 // only the active backend's host-shader blobs (see cmake/shaders.cmake).
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+// WWE '12: wwe12_d3d11.exe also defines REBLUE_D3D12 (same layouts); its shaders are DXBC.
+inline constexpr bool g_vulkan = false;
+inline constexpr plume::RenderShaderFormat kHostShaderFormat =
+    plume::RenderShaderFormat::DXBC;
+#define REBLUE_BLOB_SYMBOL(name) g_##name##_dxbc
+#elif defined(REBLUE_D3D12)
 inline constexpr bool g_vulkan = false;
 inline constexpr plume::RenderShaderFormat kHostShaderFormat =
     plume::RenderShaderFormat::DXIL;

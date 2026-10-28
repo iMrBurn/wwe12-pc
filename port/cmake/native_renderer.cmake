@@ -45,6 +45,15 @@ set(WWE12_DXC "${WWE12_XENOS_DIR}/thirdparty/dxc-bin/bin/x64/dxc.exe")
 set(WWE12_HLSL_DIR "${WWE12_NATIVE_ROOT}/src/reblue/gpu/shaders/hlsl")
 set(WWE12_HOST_SHADER_HEADERS "")
 set(WWE12_HOST_SHADER_HEADERS_DXIL "")
+set(WWE12_HOST_SHADER_HEADERS_DXBC "")
+# wwe12_d3d11.exe: the Windows SDK's fxc (Shader Model 5.0) compiles a converted copy of each host
+# shader (tools/host_shader_d3d11.py) and the game's shaders (tools/convert_shaders_d3d11.py).
+if(WIN32)
+    file(GLOB WWE12_FXC_CANDIDATES "C:/Program Files (x86)/Windows Kits/10/bin/10.*/x64/fxc.exe")
+    list(SORT WWE12_FXC_CANDIDATES)
+    list(POP_BACK WWE12_FXC_CANDIDATES WWE12_FXC)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+endif()
 function(wwe12_host_shader STEM PROFILE)
     file(GLOB hlsl_includes "${WWE12_HLSL_DIR}/*.hlsli")
     set(args -spirv -fvk-use-dx-layout)
@@ -72,6 +81,21 @@ function(wwe12_host_shader STEM PROFILE)
             COMMENT "Compiling ${STEM}.hlsl (${PROFILE}, DXIL)"
             VERBATIM)
         set(WWE12_HOST_SHADER_HEADERS_DXIL ${WWE12_HOST_SHADER_HEADERS_DXIL} "${out_dxil}"
+            PARENT_SCOPE)
+    endif()
+    if(WWE12_FXC AND Python3_FOUND)
+        string(REPLACE "_6_0" "_5_0" profile_sm5 "${PROFILE}")
+        set(out_dxbc "${WWE12_NATIVE_GEN}/src/gpu/shaders/hlsl/${STEM}.hlsl.dxbc.h")
+        add_custom_command(
+            OUTPUT "${out_dxbc}"
+            COMMAND "${Python3_EXECUTABLE}" -I "${WWE12_NATIVE_ROOT}/../tools/host_shader_d3d11.py"
+                    "${WWE12_FXC}" ${profile_sm5} "${WWE12_HLSL_DIR}/${STEM}.hlsl" "${out_dxbc}"
+                    g_${STEM}_dxbc -I "${WWE12_NATIVE_ROOT}"
+            DEPENDS "${WWE12_HLSL_DIR}/${STEM}.hlsl" ${hlsl_includes}
+                    "${WWE12_NATIVE_ROOT}/../tools/host_shader_d3d11.py"
+            COMMENT "Compiling ${STEM}.hlsl (${profile_sm5}, DXBC)"
+            VERBATIM)
+        set(WWE12_HOST_SHADER_HEADERS_DXBC ${WWE12_HOST_SHADER_HEADERS_DXBC} "${out_dxbc}"
             PARENT_SCOPE)
     endif()
 endfunction()
@@ -122,16 +146,31 @@ file(GLOB_RECURSE WWE12_NATIVE_SOURCES CONFIGURE_DEPENDS
     "${WWE12_NATIVE_ROOT}/src/reblue/*.cpp" "${WWE12_NATIVE_ROOT}/src/reblue/*.h"
     "${WWE12_NATIVE_ROOT}/src/native/*.cpp" "${WWE12_NATIVE_ROOT}/src/native/*.h")
 
-# wwe12_add_native_renderer(<target> [D3D12]): D3D12 builds re:Blue with REBLUE_D3D12 (D3D12
-# only, DXIL shaders); without it, Vulkan.
+# wwe12_add_native_renderer(<target> [D3D12|D3D11]): D3D12 builds re:Blue with REBLUE_D3D12 (D3D12
+# only, DXIL shaders); D3D11 adds REBLUE_D3D11 to it (plume_d3d11, DXBC shaders, in progress);
+# without either, Vulkan.
 function(wwe12_add_native_renderer target)
-    cmake_parse_arguments(ARG "D3D12" "" "" ${ARGN})
+    cmake_parse_arguments(ARG "D3D12;D3D11" "" "" ${ARGN})
     if(NOT EXISTS "${WWE12_NATIVE_ROOT}/generated/native/shader_cache.cpp")
         message(FATAL_ERROR "generated/native/shader_cache.cpp manquant : extraire et convertir "
                             "les shaders du jeu d'abord (voir le README, rendu natif)")
     endif()
     set(sources ${WWE12_NATIVE_SOURCES})
-    if(ARG_D3D12)
+    if(ARG_D3D11)
+        if(NOT EXISTS "${WWE12_NATIVE_ROOT}/generated/native/dxbc_shader_cache.cpp")
+            message(FATAL_ERROR "generated/native/dxbc_shader_cache.cpp manquant : "
+                                "tools/convert_shaders_d3d11.py d'abord")
+        endif()
+        set(host_shaders ${WWE12_HOST_SHADER_HEADERS_DXBC})
+        target_compile_definitions(${target} PRIVATE REBLUE_D3D12=1 REBLUE_D3D11=1)
+        target_link_libraries(${target} PRIVATE d3d11 dxgi dxguid)
+        target_include_directories(${target} PRIVATE "${WWE12_MINIZ_DIR}")
+        list(FILTER sources EXCLUDE REGEX "/gpu/shaders/(shader_linker|dxc_link)\\.(cpp|h)$")
+        # plume's D3D11 backend (port/patches/plume-d3d11.patch, from the SvR 2011 PC port).
+        target_sources(${target} PRIVATE "${WWE12_MINIZ_DIR}/miniz.c"
+            "${WWE12_PLUME_DIR}/plume_d3d11.cpp"
+            "${WWE12_NATIVE_ROOT}/generated/native/dxbc_shader_cache.cpp")
+    elseif(ARG_D3D12)
         set(host_shaders ${WWE12_HOST_SHADER_HEADERS_DXIL})
         target_compile_definitions(${target} PRIVATE REBLUE_D3D12=1)
         # dxc_link.cpp links the game's spec-constant shaders at run time (DXC, dxcompiler.dll).

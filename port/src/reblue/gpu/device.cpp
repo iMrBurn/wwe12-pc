@@ -21,7 +21,9 @@
 
 #include <plume_render_interface.h>
 #include <plume_render_interface_builders.h>
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+#include <plume_d3d11.h>
+#elif defined(REBLUE_D3D12)
 #include <plume_d3d12.h>
 #else
 #include <plume_vulkan.h>
@@ -52,7 +54,8 @@
 #include "platform/platform.h"
 
 namespace plume {
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+#elif defined(REBLUE_D3D12)
 extern std::unique_ptr<RenderInterface> CreateD3D12Interface();
 #else
 extern std::unique_ptr<RenderInterface> CreateVulkanInterface();
@@ -229,7 +232,11 @@ bool CreateBackBufferTexture(VideoState &s, GuestTexture *bb, u32 w, u32 h) {
 // accepts stands in for one. plume probes shader model 6.0 alone, so its
 // cached shaderModel says nothing.
 std::string DescribeBackend(plume::RenderDevice *device) {
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+  auto *dev = static_cast<plume::D3D11Device *>(device);
+  const u32 fl = dev ? static_cast<u32>(dev->featureLevel) : 0;
+  return std::format("D3D11 {}_{}", (fl >> 12) & 0xF, (fl >> 8) & 0xF);
+#elif defined(REBLUE_D3D12)
   auto *dev = static_cast<plume::D3D12Device *>(device);
   static const D3D_FEATURE_LEVEL kLevels[] = {
       D3D_FEATURE_LEVEL_12_2, D3D_FEATURE_LEVEL_12_1, D3D_FEATURE_LEVEL_12_0,
@@ -330,7 +337,14 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
       s.input_slots[i].index = i;
     }
 
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+    s.render_iface = plume::CreateD3D11Interface();
+    if (!s.render_iface) {
+      BD_ERROR("Plume CreateD3D11Interface failed");
+      return false;
+    }
+    const bool dred_armed = false;
+#elif defined(REBLUE_D3D12)
     s.render_iface = plume::CreateD3D12Interface();
     if (!s.render_iface) {
       BD_ERROR("Plume CreateD3D12Interface failed");
@@ -357,7 +371,7 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
     // plume treats these as optional, the recompiled shaders don't: without them every draw
     // reads nothing and the game runs behind a black screen (old drivers, e.g. issue #14 on a
     // Radeon HD 8790M). Fail here so the player gets the "Vulkan too old" message instead.
-    {
+    if constexpr (g_vulkan) {
       const auto &caps = s.device->getCapabilities();
       if (!caps.bufferDeviceAddress || !caps.descriptorIndexing) {
         BD_ERROR("GPU '{}' lacks Vulkan features the game needs (bufferDeviceAddress {}, "
@@ -802,7 +816,10 @@ CreateHostBuffer(plume::RenderDevice *device,
   // the backend handle. GPU_UPLOAD makes that reachable: DEVICE_LOCAL and
   // HOST_VISIBLE are requiredFlags, so unlike UPLOAD it has no fallback heap.
   if (!buffer
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+      || (!static_cast<plume::D3D11Buffer *>(buffer.get())->d3d &&
+          !static_cast<plume::D3D11Buffer *>(buffer.get())->cpu)
+#elif defined(REBLUE_D3D12)
       || static_cast<plume::D3D12Buffer *>(buffer.get())->d3d == nullptr
 #else
       || static_cast<plume::VulkanBuffer *>(buffer.get())->vk == VK_NULL_HANDLE
@@ -829,7 +846,9 @@ CreateHostTexture(plume::RenderDevice *device,
   }
   auto texture = device->createTexture(desc);
   if (!texture
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+      || static_cast<plume::D3D11Texture *>(texture.get())->d3d == nullptr
+#elif defined(REBLUE_D3D12)
       || static_cast<plume::D3D12Texture *>(texture.get())->d3d == nullptr
 #else
       ||
@@ -859,7 +878,9 @@ CreateHostGraphicsPipeline(plume::RenderDevice *device,
   // vkCreateGraphicsPipelines/CreatePipelineState still hands back a live
   // wrapper holding a null pipeline, which only faults later at bind time.
   if (!pipeline
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+      || !static_cast<plume::D3D11GraphicsPipeline *>(pipeline.get())->valid
+#elif defined(REBLUE_D3D12)
       || static_cast<plume::D3D12GraphicsPipeline *>(pipeline.get())->d3d ==
              nullptr
 #else
@@ -929,7 +950,9 @@ Video::VideoMemory Video::MemoryUsage() {
   auto *device = state().device.get();
   if (!device)
     return m;
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+  (void)device;  // (D3D11 doesn't tell its memory budget)
+#elif defined(REBLUE_D3D12)
   auto *dev = static_cast<plume::D3D12Device *>(device);
   IDXGIAdapter3 *adapter = nullptr;
   if (!dev->adapter ||
@@ -976,7 +999,9 @@ std::string Video::GetDeviceName() {
 }
 
 const char *Video::BackendName() {
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+  return "D3D11";
+#elif defined(REBLUE_D3D12)
   return "D3D12";
 #else
   return "Vulkan";

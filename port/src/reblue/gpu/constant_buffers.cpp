@@ -597,6 +597,9 @@ ConstantAllocation UploadSharedConstants(u32 device_guest) {
   // CBV is still correct, skip the upload and let the caller skip the rebind.
   // SharedConstants padding is zero-initialized and never written, so memcmp
   // is deterministic.
+#if defined(REBLUE_D3D11)
+  D3D11BindSlots(s.shared);
+#endif
   if (s.sharedBound &&
       std::memcmp(&s.shared, &s.lastUploaded, sizeof(SharedConstants)) == 0) {
     return {};

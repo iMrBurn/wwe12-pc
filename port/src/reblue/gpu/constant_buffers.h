@@ -111,6 +111,13 @@ ConstantAllocation UploadSharedConstants(u32 device_guest);
 // Root bindings do not survive begin(), so this drops the 'shared CB still
 // bound' reuse gate. Call on every command list reset.
 void InvalidateSharedBinding();
+#if defined(REBLUE_D3D11)
+// wwe12_d3d11.exe (gpu/d3d11_slots.cpp): the bindless entries of the shared block bound to
+// registers before a draw, and their swizzles written in their place.
+void D3D11BindSlots(SharedConstants &c);
+void D3D11BindHostSlot(u32 texture_index, u32 sampler_index);
+void D3D11ForgetSlots();
+#endif
 
 // alignment defaults to 4 (the upload buffer is WRITE_COMBINE), and CBV callers
 // pass 256.

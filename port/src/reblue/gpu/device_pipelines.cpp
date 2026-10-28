@@ -20,7 +20,19 @@
 #include "gpu/format.h"
 #include "gpu/settings.h"
 
-#if defined(REBLUE_D3D12)
+#if defined(REBLUE_D3D11)
+#include "src/gpu/shaders/hlsl/copy_color_ps.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/copy_depth_ps.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/copy_vs.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/gamma_correction_ps.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/pfx_occlusion_count_ps.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/resolve_msaa_color_2x.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/resolve_msaa_color_4x.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/resolve_msaa_color_8x.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/resolve_msaa_depth_2x.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/resolve_msaa_depth_4x.hlsl.dxbc.h"
+#include "src/gpu/shaders/hlsl/resolve_msaa_depth_8x.hlsl.dxbc.h"
+#elif defined(REBLUE_D3D12)
 #include "src/gpu/shaders/hlsl/copy_color_ps.hlsl.dxil.h"
 #include "src/gpu/shaders/hlsl/copy_depth_ps.hlsl.dxil.h"
 #include "src/gpu/shaders/hlsl/copy_vs.hlsl.dxil.h"

@@ -278,6 +278,9 @@ void RecordPresentPass(VideoState &s, GuestTexture *rt,
     float display_correction;
   } pc{gamma_src_desc, 0, s.guest_gamma * kPresentGamma,
        kPresentDisplayCorrection};
+#if defined(REBLUE_D3D11)
+  D3D11BindHostSlot(gamma_src_desc, 0);
+#endif
   s.command_list->setGraphicsPushConstants(kCopyPushConstantRangeIndex, &pc,
                                            kCopyPushConstantByteOffset,
                                            sizeof(pc));
