@@ -64,8 +64,14 @@ compile ni ne lance rien d'autre (une seule compile ou un seul jeu à la fois).
   (coups de pied au sol), puis **seulement les jambes** (prises de jambe). Un champ qui ne bouge qu'avec la tête =
   vie de la tête, etc. Attendu : 4 valeurs (flottants ou entiers) qui baissent, plus peut-être un niveau 0-3
   (jaune/orange/rouge : `GetDamageLv` dans WWE '13).
-- Au passage : le **stock de prises de finition** (champ qui passe de 0 à 1 quand l'icône FINISHER apparaît, puis
-  revient à 0 après la prise). À donner à Gameplay.
+- **Piste prioritaire** (info de Gameplay, `docs/omg_finishers.md` §2, lecture de code non vérifiée en jeu) : la
+  jauge de momentum est dans le composant **'CHP '** de `[acteur+3436]` (objet = composant + 24). Un composant nommé
+  « CHP » (character HP ?) peut aussi porter la **vie par zone** : copier aussi cet objet (≈ 0x200 octets) en plus de
+  l'acteur.
+- **Finishers prêts au départ** : déjà trouvés par Gameplay, plus besoin de les chercher ici. C'est la jauge
+  (objet CHP +152, flottant 0..1) à 1 au début du match (lecture `sub_82246DE0`, écriture `sub_82246E48`). +180 = mode
+  (2 = jauge remise à 1 à chaque image, « infini »). L'étape c du plan révisé se fait donc avec le travail de
+  Gameplay.
 
 **Étape 2 : trouver qui écrit la vie de départ (Create a Story)**
 - L'utilisateur crée une scène de match dans Create a Story : 1 contre 1, **STARTING HEALTH** du 2e catcheur réglé
