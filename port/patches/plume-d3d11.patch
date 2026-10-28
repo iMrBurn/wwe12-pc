@@ -349,10 +349,10 @@ index 0000000..58c77cd
 +};
 diff --git a/plume_d3d11.cpp b/plume_d3d11.cpp
 new file mode 100644
-index 0000000..d6e7188
+index 0000000..e4d1a90
 --- /dev/null
 +++ b/plume_d3d11.cpp
-@@ -0,0 +1,2158 @@
+@@ -0,0 +1,2162 @@
 +//
 +// plume
 +//
@@ -365,6 +365,7 @@ index 0000000..d6e7188
 +#include <cassert>
 +#include <chrono>
 +#include <cstdio>
++#include <cstdlib>
 +#include <cstring>
 +#include <thread>
 +
@@ -2486,8 +2487,11 @@ index 0000000..d6e7188
 +            }
 +            static const D3D_FEATURE_LEVEL kLevels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0};
 +            UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-+            HRESULT hr = D3D11CreateDevice(adapters[pick].Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, kLevels,
-+                                           UINT(std::size(kLevels)), D3D11_SDK_VERSION, &device, nullptr, &context);
++            // (tests: WWE12_D3D11_LEVEL_11_0=1 caps the device at 11_0, as an older GPU)
++            const char *cap = std::getenv("WWE12_D3D11_LEVEL_11_0");
++            const bool only110 = cap && *cap == '1';
++            HRESULT hr = D3D11CreateDevice(adapters[pick].Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, kLevels + (only110 ? 1 : 0),
++                                           UINT(std::size(kLevels)) - (only110 ? 1 : 0), D3D11_SDK_VERSION, &device, nullptr, &context);
 +            if (hr == E_INVALIDARG) {  // (11_1 unknown to an old runtime)
 +                hr = D3D11CreateDevice(adapters[pick].Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags, kLevels + 1, 1,
 +                                       D3D11_SDK_VERSION, &device, nullptr, &context);
