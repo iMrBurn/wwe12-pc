@@ -39,7 +39,7 @@ JUKEBOX_VALUES = [43410, 43420, 44000, 43430]  # JUKEBOX off/on, ORDER, THEME, G
 TABS = [
     [3, 6, 8, 2, 2],  # display mode, window size, internal resolution, frame limit, vsync
     [2, 5, 2, 2, 2],  # picture format, texture sharpness, crowd, shadows, depth of field
-    [3, 3, 2, 2, 2],  # graphics API, CPU priority, 60 fps entrances, EXIT entry, FPS counter
+    [4, 3, 2, 2, 2],  # graphics API, CPU priority, 60 fps entrances, EXIT entry, FPS counter
 ]
 
 TEMPLATE = r'''
