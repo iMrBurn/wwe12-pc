@@ -46,6 +46,9 @@ REXCVAR_DEFINE_BOOL(wwe12_quit_entry, true, "WWE12",
                     "Main menu: SHOP becomes EXIT (quits the game); \"Xbox LIVE\" is labelled Online.");
 REXCVAR_DEFINE_BOOL(wwe12_pc_texts, true, "WWE12",
                     "Texts that mention the Xbox 360 console (\"do not turn off\") say PC.");
+REXCVAR_DEFINE_BOOL(wwe12_text_scan_periodic, false, "WWE12",
+                    "Also scan the menu texts every 10 s outside loading screens (costs CPU in "
+                    "matches; for tests if a menu text is missed).");
 REXCVAR_DECLARE(uint32_t, user_language);
 REXCVAR_DECLARE(bool, wwe12_graphics_menu);
 
@@ -243,13 +246,13 @@ void Wwe12QuitEntryTick(u64 frame) {
   // core): every 2 s, in matches too, it cost 5-10 % of a core (profile 2026-10-20).
   const bool around_load = frame < 1800 || Wwe12MsSinceLoadScreen() < 5000;
   const u64 period = around_load ? 60 : 600;
-#if defined(__ANDROID__)
   // On phones a scan takes 2-3 s of a core (log of issue #22): every 10 s in matches, that was
   // a quarter of a core taken from the game. The tables load with the screens, so the scans at
-  // start-up and around the loading screens find them.
-  if (!around_load)
+  // start-up and around the loading screens find them. On a PC with 2 slow cores (measured
+  // 2026-10-28) it was among the render thread's biggest costs too: same rule there, unless
+  // wwe12_text_scan_periodic brings the 10 s scans back.
+  if (!around_load && !REXCVAR_GET(wwe12_text_scan_periodic))
     return;
-#endif
   if ((!REXCVAR_GET(wwe12_quit_entry) && !REXCVAR_GET(wwe12_pc_texts)) || frame % period != 0 ||
       g_scanning.exchange(true))
     return;
