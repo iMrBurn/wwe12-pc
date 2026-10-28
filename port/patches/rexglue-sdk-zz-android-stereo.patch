@@ -1,0 +1,16 @@
+diff --git a/src/audio/sdl/sdl_audio_driver.cpp b/src/audio/sdl/sdl_audio_driver.cpp
+--- a/src/audio/sdl/sdl_audio_driver.cpp
++++ b/src/audio/sdl/sdl_audio_driver.cpp
+@@ -149,6 +149,12 @@
+   desired_spec.format = SDL_AUDIO_F32LE;
+   desired_spec.channels = frame_channels_;
+   sdl_device_channels_ = frame_channels_;
++#if defined(__ANDROID__)
++  // Phones play stereo: asking AAudio for 6 channels (low-latency path) left some of them silent
++  // (RedMagic 10S Pro, WWE '12 Android #45). Open in stereo; the callback folds the 5.1 mix.
++  desired_spec.channels = 2;
++  sdl_device_channels_ = 2;
++#endif
+   sdl_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_spec,
+                                           SDLCallback, this);
+   if (!sdl_stream_) {

@@ -1,0 +1,65 @@
+diff --git a/src/system/mmio_handler.cpp b/src/system/mmio_handler.cpp
+--- a/src/system/mmio_handler.cpp
++++ b/src/system/mmio_handler.cpp
+@@ -12,6 +12,10 @@
+ #include <algorithm>
+ #include <cstring>
+ #include <utility>
++#if REX_PLATFORM_ANDROID
++#include <dlfcn.h>
++#include <atomic>
++#endif
+ 
+ #include <rex/assert.h>
+ #include <rex/exception_handler.h>
+@@ -364,6 +368,33 @@
+ #endif  // REX_ARCH
+ }
+ 
++#if REX_PLATFORM_ANDROID
++// WWE '12 Android: where a game crash happened. The log only said "Unhandled guest access
++// violation" (thousands of times for one crash, #46); the host PC and return address, as offsets
++// in their library, give the game function (sub_XXXXXXXX of the unstripped libwwe12.so).
++static void NoteUnhandledAccess(arch::Exception* ex) {
++  static std::atomic<int> notes{0};
++  if (notes.fetch_add(1, std::memory_order_relaxed) >= 3)
++    return;
++  auto where = [](uint64_t a) {
++    Dl_info info{};
++    if (a && dladdr(reinterpret_cast<void*>(a), &info) && info.dli_fname) {
++      const char* lib = std::strrchr(info.dli_fname, '/');
++      return fmt::format("{}+{:#x}", lib ? lib + 1 : info.dli_fname,
++                         a - reinterpret_cast<uintptr_t>(info.dli_fbase));
++    }
++    return fmt::format("{:#x}", a);
++  };
++#if REX_ARCH_ARM64
++  const uint64_t lr = ex->thread_context()->x[30];
++#else
++  const uint64_t lr = 0;
++#endif
++  REXSYS_ERROR("Game crash: fault at {:#x}, code {} (return address {})", ex->fault_address(),
++               where(ex->pc()), where(lr));
++}
++#endif
++
+ bool MMIOHandler::ExceptionCallbackThunk(arch::Exception* ex, void* data) {
+   return reinterpret_cast<MMIOHandler*>(data)->ExceptionCallback(ex);
+ }
+@@ -417,8 +448,16 @@
+     // The address is not found within any range, so either a write watch or an
+     // actual access violation.
+     if (access_violation_callback_) {
++#if REX_PLATFORM_ANDROID
++      const bool handled = access_violation_callback_(
++          std::move(lock), access_violation_callback_context_, fault_host_address, is_write);
++      if (!handled)
++        NoteUnhandledAccess(ex);
++      return handled;
++#else
+       return access_violation_callback_(std::move(lock), access_violation_callback_context_,
+                                         fault_host_address, is_write);
++#endif
+     }
+     return false;
+   }

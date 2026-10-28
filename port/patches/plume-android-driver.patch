@@ -1,5 +1,5 @@
 diff --git a/plume_vulkan.cpp b/plume_vulkan.cpp
-index ecc274f..261398d 100644
+index ecc274f..aa6c499 100644
 --- a/plume_vulkan.cpp
 +++ b/plume_vulkan.cpp
 @@ -28,6 +28,12 @@
@@ -15,7 +15,24 @@ index ecc274f..261398d 100644
  // TODO:
  // - Fix resource pools.
  
-@@ -4507,7 +4513,29 @@ namespace plume {
+@@ -4007,6 +4013,16 @@ namespace plume {
+         }
+ 
+         const bool bufferDeviceAddressSupported = bufferDeviceAddressFeatures.bufferDeviceAddress;
++#if defined(__ANDROID__)
++        // WWE '12 Android (#30, #41, #42): which driver answered and what it offers, when the
++        // game refuses an Adreno 6xx for missing features.
++        fprintf(stderr, "plume: '%s' Vulkan %u.%u.%u, driver %#x | descriptor indexing ext %d (partially bound %d, variable count %d, runtime array %d) | buffer device address ext %d (feature %d)\n",
++                physicalDeviceProperties.deviceName, VK_API_VERSION_MAJOR(physicalDeviceProperties.apiVersion),
++                VK_API_VERSION_MINOR(physicalDeviceProperties.apiVersion), VK_API_VERSION_PATCH(physicalDeviceProperties.apiVersion),
++                physicalDeviceProperties.driverVersion, int(descriptorIndexingFound), int(indexingFeatures.descriptorBindingPartiallyBound),
++                int(indexingFeatures.descriptorBindingVariableDescriptorCount), int(indexingFeatures.runtimeDescriptorArray),
++                int(bufferDeviceAddressFound), int(bufferDeviceAddressFeatures.bufferDeviceAddress));
++#endif
+         if (bufferDeviceAddressSupported) {
+             bufferDeviceAddressFeatures.pNext = createDeviceChain;
+             createDeviceChain = &bufferDeviceAddressFeatures;
+@@ -4507,7 +4523,29 @@ namespace plume {
      // VulkanInterface
  
      VulkanInterface::VulkanInterface() {

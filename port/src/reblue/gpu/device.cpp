@@ -374,10 +374,14 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
     if constexpr (g_vulkan) {
       const auto &caps = s.device->getCapabilities();
       if (!caps.bufferDeviceAddress || !caps.descriptorIndexing) {
-        BD_ERROR("GPU '{}' lacks Vulkan features the game needs (bufferDeviceAddress {}, "
-                 "descriptorIndexing {}): driver too old or GPU too old",
-                 s.device->getDescription().name, caps.bufferDeviceAddress,
-                 caps.descriptorIndexing);
+        // The driver version tells which driver answered (Android #30, #41, #42: with Turnip the
+        // name starts with "Turnip"; the phone's own Adreno 6xx drivers stop at Vulkan 1.1).
+        const u64 drv = s.device->getDescription().driverVersion;
+        BD_ERROR("GPU '{}' (driver version {}.{}.{}, raw {:#x}) lacks Vulkan features the game "
+                 "needs (bufferDeviceAddress {}, descriptorIndexing {}): driver too old or GPU "
+                 "too old",
+                 s.device->getDescription().name, (drv >> 22) & 0x3FF, (drv >> 12) & 0x3FF,
+                 drv & 0xFFF, drv, caps.bufferDeviceAddress, caps.descriptorIndexing);
         s.device.reset();
         return false;
       }
