@@ -40,7 +40,58 @@ son changement en plein match : rien de connu là-dessus.
 **Proposition** : rien pour la 1.0. Pour la 1.1 : la sonde (1-2 séances) puis, si l'utilisateur le veut, le moment
 léger. Les vrais moments OMG passent après les prises ajoutées (étape 3), sans doute en 1.2 ou plus tard.
 
-## 2. Choix libre des finishers (comme WWE 2K14)
+## 2. Finishers de départ (comme WWE 2K14) : demande corrigée
+
+**La demande (corrigée par Main le 2026-10-28, d'après la capture d'un joueur)** : dans WWE 2K14, l'écran de
+sélection des catcheurs a, à côté de ATTIRE, une ligne FINISHERS qui règle combien de finishers le catcheur a **dès
+le début du match** (1, 2, 3 ou infini). Ce n'est pas le choix de la prise (étude gardée plus bas, §3).
+
+**La jauge de momentum de WWE '12 (trouvée dans le code, à vérifier en jeu)** :
+- Les commandes de script du jeu (Road to WrestleMania) ont des noms : table {nom, fonction} vers 0x8200C800,
+  dont `SetMomentum` (`sub_823D5328`), `SetMomentumMax` (`sub_823D53D0`), `SetMomentumRate` (`sub_823D5460`),
+  `GetFinisherNum` (`sub_823D3790`), `IsFinisher` (`sub_823D46D8`), `SetFinishIcon` (`sub_823D5F18`).
+- Objet momentum d'un catcheur : `acteur = sub_8246D3E8(n)`, composant `sub_827D5C28([acteur+3436], 'CHP ')`,
+  objet = composant + 24. Champs :
+  - **+152 : la jauge (float, 0 à 1 ; 1 = pleine = finisher disponible)** ; lue par `sub_82246DE0`, écrite par
+    `sub_82246E48(objet, valeur)` (SetMomentum passe le pourcentage × 0,01) ; `sub_82248218` = jauge ≥ 1 ;
+  - +176 : écrit par SetMomentumMax ;
+  - **+180 : mode ; 2 = la jauge est remise à 1 à chaque image (pleine pour toujours)**, 1 = un autre état forcé
+    (fin de `sub_8224BB58`) : le « infini » existe donc déjà dans le moteur, pour les scripts ;
+  - +188 : minuteur de l'état « finisher » (fixé quand la jauge arrive à 1, d'après une table par difficulté ;
+    à 0, la jauge est vidée) ; +196/+200/+204 : autres minuteurs.
+- Mise à jour par image : `sub_8224BB58(objet)`.
+- **Finisher utilisé → jauge vidée** : `sub_82349648(acteur, objet, prise)` : si la jauge est pleine et que la prise
+  est un finisher (méthode +200 de la prise), `sub_8224B008` puis `sub_822483F0` (jauge à 0, +188 = -1,
+  acteur+2792 = 0). Rien de fait si l'octet acteur+998 est mis (sans doute FIRED UP, qui permet jusqu'à 3 finishers).
+- `IsFinisher` = l'acteur est en train de faire un finisher (acteur+1804, +1816). `GetFinisherNum` = un compteur
+  de statistiques (n° 33, `sub_82236AF8`), pas un stock.
+- **Il n'y a pas de stock de plusieurs finishers dans WWE '12** : un finisher = la jauge pleine. Un « stock » de 2
+  ou 3 se fait en ne vidant pas la jauge après les N-1 premiers finishers (crochet sur `sub_822483F0` appelé depuis
+  `sub_82349648`, compteur par catcheur), comme FIRED UP.
+
+**Ce qu'on ferait** :
+- Au début du match (première image de `sub_8224BB58` du match) : jauge à 1 si FINISHERS ≥ 1.
+- Après chaque finisher : jauge gardée pleine tant qu'il reste du stock ; INFINITE = mode +180 = 2 (ou jauge
+  remise à 1 après chaque finisher).
+- **Où le régler** : l'écran de sélection de WWE '12 est un écran du code (pas une page Lua comme nos options) ;
+  ATTIRE y est une boîte de choix ouverte par un bouton (« CHANGE ATTIRE », texte 280), pas une ligne LB/RB.
+  Deux choix :
+  - **simple (1.0)** : une ligne « STARTING FINISHERS » (OFF / 1 / 2 / 3 / INFINITE) dans une page d'options native
+    (comme JUKEBOX), pour tous les catcheurs, ou deux lignes joueurs / CPU ;
+  - **par catcheur, sur l'écran de sélection (1.1)** : un bouton qui ouvre la boîte de choix du jeu, comme la tenue
+    de l'Univers (`docs/univers.md` §15, écran des participants `sub_825ADD48`).
+
+**Estimation** : stock et infini 2-3 séances (dont 1 essai en jeu avec l'accord de l'utilisateur) ; page d'options
++1 ; choix par catcheur sur l'écran de sélection +3-5.
+
+**Risques** : minuteur +188 (la jauge pleine se vide seule au bout d'un moment : à garder pleine tant qu'il reste du
+stock) ; FIRED UP (acteur+998) ; Royal Rumble, FINISHER MATCH, MOVE THIEF ; l'IA en infini ; Univers et Road to
+WrestleMania (leurs scripts utilisent SetMomentum : ne rien changer quand un script a la main).
+
+**Proposition** : 1.0 = stock / infini + ligne dans une page d'options (3-4 séances). 1.1 = choix par catcheur sur
+l'écran de sélection. **Pour le squash (Limit breaking)** : même objet (jauge +152, `sub_82246E48`, SetMomentumRate).
+
+## 3. Choix libre des finishers (première lecture de la demande, gardée pour plus tard)
 
 **Où WWE '12 range les finishers d'un catcheur** : fiche PRO de `pac/ch/chEtc.pac` (1 072 octets, nombres de 16 bits
 gros-boutistes), **signatures à +0x022 et +0x024, finishers à +0x026 et +0x028** (Cena : Five Knuckle Shuffle,
