@@ -14,10 +14,10 @@ index be1c5c3..c8eb2d2 100644
      enum class RenderRaytracingPipelineLibrarySymbolType {
 diff --git a/plume_d3d11.h b/plume_d3d11.h
 new file mode 100644
-index 0000000..609b3d4
+index 0000000..58c77cd
 --- /dev/null
 +++ b/plume_d3d11.h
-@@ -0,0 +1,328 @@
+@@ -0,0 +1,329 @@
 +//
 +// plume
 +//
@@ -327,9 +327,10 @@ index 0000000..609b3d4
 +    std::unique_ptr<RenderInterface> CreateD3D11Interface();
 +
 +    // WWE '12: bindless sets on D3D11. Entry `index` of `set` (a texture or sampler set made
-+    // bindless) is bound to register t`reg` / s`reg` for the next draws of `list`.
-+    void D3D11SetSlotTexture(RenderCommandList *list, uint32_t reg, const RenderDescriptorSet *set, uint32_t index);
-+    void D3D11SetSlotSampler(RenderCommandList *list, uint32_t reg, const RenderDescriptorSet *set, uint32_t index);
++    // bindless) is bound to register t`reg` / s`reg` of the stages in `stages` (bit 0 vertex,
++    // bit 1 pixel) for the next draws of `list`.
++    void D3D11SetSlotTexture(RenderCommandList *list, uint32_t stages, uint32_t reg, const RenderDescriptorSet *set, uint32_t index);
++    void D3D11SetSlotSampler(RenderCommandList *list, uint32_t stages, uint32_t reg, const RenderDescriptorSet *set, uint32_t index);
 +    // The swizzle of a set entry's view, 3 bits a component (0-3 xyzw, 4 zero, 5 one; 0x688 = xyzw):
 +    // D3D11 views have none, the shaders apply it.
 +    uint32_t D3D11SlotSwizzle(const RenderDescriptorSet *set, uint32_t index);
@@ -348,10 +349,10 @@ index 0000000..609b3d4
 +};
 diff --git a/plume_d3d11.cpp b/plume_d3d11.cpp
 new file mode 100644
-index 0000000..cdc9d1c
+index 0000000..d6e7188
 --- /dev/null
 +++ b/plume_d3d11.cpp
-@@ -0,0 +1,2154 @@
+@@ -0,0 +1,2158 @@
 +//
 +// plume
 +//
@@ -1231,10 +1232,11 @@ index 0000000..cdc9d1c
 +            cmds.push_back(c);
 +        }
 +
-+        void setSlot(Op op, uint32_t reg, const RenderDescriptorSet *set, uint32_t index) {
++        void setSlot(Op op, uint32_t stages, uint32_t reg, const RenderDescriptorSet *set, uint32_t index) {
 +            Cmd c{op};
 +            c.a = reg;
 +            c.b = index;
++            c.c = stages;
 +            c.p0 = set;
 +            cmds.push_back(c);
 +        }
@@ -1428,9 +1430,10 @@ index 0000000..cdc9d1c
 +            const D3D11PipelineLayout *layout = nullptr;
 +            const D3D11Framebuffer *framebuffer = nullptr;
 +            // Wanted (from the sets) and bound, per stage (0 VS, 1 PS).
-+            ID3D11ShaderResourceView *srvWanted[64] = {};
++            // (per stage: WWE '12 binds the vertex and pixel shaders' slots apart)
++            ID3D11ShaderResourceView *srvWanted[2][64] = {};
 +            ID3D11ShaderResourceView *srvBound[2][64] = {};
-+            ID3D11SamplerState *samplerWanted[16] = {};
++            ID3D11SamplerState *samplerWanted[2][16] = {};
 +            ID3D11SamplerState *samplerBound[2][16] = {};
 +            bool texturesDirty = true;
 +            // Root constant buffers by register: (buffer, offset).
@@ -1454,10 +1457,10 @@ index 0000000..cdc9d1c
 +                const D3D11DescriptorSet::Entry &e = set->entries[i];
 +                switch (e.kind) {
 +                case D3D11DescriptorSet::Kind::SRV:
-+                    if (e.reg < 64) s.srvWanted[e.reg] = set->srvs[i];
++                    if (e.reg < 64) s.srvWanted[0][e.reg] = s.srvWanted[1][e.reg] = set->srvs[i];
 +                    break;
 +                case D3D11DescriptorSet::Kind::SAMPLER:
-+                    if (e.reg < 16) s.samplerWanted[e.reg] = set->samplers[i];
++                    if (e.reg < 16) s.samplerWanted[0][e.reg] = s.samplerWanted[1][e.reg] = set->samplers[i];
 +                    break;
 +                default:
 +                    break;
@@ -1473,27 +1476,27 @@ index 0000000..cdc9d1c
 +                const ShaderBindings &b = stage ? s.psBindings : s.vsBindings;
 +                int first = -1, last = -1;
 +                for (int r = 0; r < 64; ++r) {
-+                    if (!(b.textures & (1ull << r)) || s.srvBound[stage][r] == s.srvWanted[r]) continue;
++                    if (!(b.textures & (1ull << r)) || s.srvBound[stage][r] == s.srvWanted[stage][r]) continue;
 +                    if (first < 0) first = r;
 +                    last = r;
-+                    s.srvBound[stage][r] = s.srvWanted[r];
++                    s.srvBound[stage][r] = s.srvWanted[stage][r];
 +                }
 +                if (first >= 0) {
 +                    // (registers in between the shader doesn't use get what's wanted too)
-+                    for (int r = first; r <= last; ++r) s.srvBound[stage][r] = s.srvWanted[r];
-+                    if (stage) s.context->PSSetShaderResources(UINT(first), UINT(last - first + 1), &s.srvWanted[first]);
-+                    else s.context->VSSetShaderResources(UINT(first), UINT(last - first + 1), &s.srvWanted[first]);
++                    for (int r = first; r <= last; ++r) s.srvBound[stage][r] = s.srvWanted[stage][r];
++                    if (stage) s.context->PSSetShaderResources(UINT(first), UINT(last - first + 1), &s.srvWanted[stage][first]);
++                    else s.context->VSSetShaderResources(UINT(first), UINT(last - first + 1), &s.srvWanted[stage][first]);
 +                }
 +                first = last = -1;
 +                for (int r = 0; r < 16; ++r) {
-+                    if (!(b.samplers & (1u << r)) || s.samplerBound[stage][r] == s.samplerWanted[r]) continue;
++                    if (!(b.samplers & (1u << r)) || s.samplerBound[stage][r] == s.samplerWanted[stage][r]) continue;
 +                    if (first < 0) first = r;
 +                    last = r;
 +                }
 +                if (first >= 0) {
-+                    for (int r = first; r <= last; ++r) s.samplerBound[stage][r] = s.samplerWanted[r];
-+                    if (stage) s.context->PSSetSamplers(UINT(first), UINT(last - first + 1), &s.samplerWanted[first]);
-+                    else s.context->VSSetSamplers(UINT(first), UINT(last - first + 1), &s.samplerWanted[first]);
++                    for (int r = first; r <= last; ++r) s.samplerBound[stage][r] = s.samplerWanted[stage][r];
++                    if (stage) s.context->PSSetSamplers(UINT(first), UINT(last - first + 1), &s.samplerWanted[stage][first]);
++                    else s.context->VSSetSamplers(UINT(first), UINT(last - first + 1), &s.samplerWanted[stage][first]);
 +                }
 +            }
 +        }
@@ -1687,14 +1690,16 @@ index 0000000..cdc9d1c
 +            case Op::SET_SLOT_TEXTURE: {
 +                const auto *set = static_cast<const D3D11DescriptorSet *>(c.p0);
 +                if (!set || c.a >= 64 || c.b >= set->srvs.size()) break;
-+                s.srvWanted[c.a] = set->srvs[c.b];
++                for (int stage = 0; stage < 2; ++stage)
++                    if (c.c & (1u << stage)) s.srvWanted[stage][c.a] = set->srvs[c.b];
 +                s.texturesDirty = true;
 +                break;
 +            }
 +            case Op::SET_SLOT_SAMPLER: {
 +                const auto *set = static_cast<const D3D11DescriptorSet *>(c.p0);
 +                if (!set || c.a >= 16 || c.b >= set->samplers.size()) break;
-+                s.samplerWanted[c.a] = set->samplers[c.b];
++                for (int stage = 0; stage < 2; ++stage)
++                    if (c.c & (1u << stage)) s.samplerWanted[stage][c.a] = set->samplers[c.b];
 +                s.texturesDirty = true;
 +                break;
 +            }
@@ -2267,12 +2272,12 @@ index 0000000..cdc9d1c
 +        d3d = existing;
 +    }
 +
-+    void D3D11SetSlotTexture(RenderCommandList *list, uint32_t reg, const RenderDescriptorSet *set, uint32_t index) {
-+        static_cast<D3D11CommandList *>(list)->setSlot(D3D11CommandList::Op::SET_SLOT_TEXTURE, reg, set, index);
++    void D3D11SetSlotTexture(RenderCommandList *list, uint32_t stages, uint32_t reg, const RenderDescriptorSet *set, uint32_t index) {
++        static_cast<D3D11CommandList *>(list)->setSlot(D3D11CommandList::Op::SET_SLOT_TEXTURE, stages, reg, set, index);
 +    }
 +
-+    void D3D11SetSlotSampler(RenderCommandList *list, uint32_t reg, const RenderDescriptorSet *set, uint32_t index) {
-+        static_cast<D3D11CommandList *>(list)->setSlot(D3D11CommandList::Op::SET_SLOT_SAMPLER, reg, set, index);
++    void D3D11SetSlotSampler(RenderCommandList *list, uint32_t stages, uint32_t reg, const RenderDescriptorSet *set, uint32_t index) {
++        static_cast<D3D11CommandList *>(list)->setSlot(D3D11CommandList::Op::SET_SLOT_SAMPLER, stages, reg, set, index);
 +    }
 +
 +    uint32_t D3D11SlotSwizzle(const RenderDescriptorSet *set, uint32_t index) {
