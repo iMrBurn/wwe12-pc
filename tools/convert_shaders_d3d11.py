@@ -93,6 +93,30 @@ def finite_calls(text):
     return "".join(out)
 
 
+MEMBER_RE = re.compile(r"^\s*float4 (\w+)(\[\d+\])? : packoffset\(c(\d+)\);\s*$", re.M)
+
+
+def whole_constant_file(text, cbuffer, array):
+    """cbuffer <cbuffer> { float4 NAME : packoffset(cK); float4 NAME_a[N] : packoffset(cK); ... }
+    -> cbuffer <cbuffer> { float4 <array>[256]; }, NAME -> <array>[K], NAME_a[i] -> <array>[K + i]."""
+    m = re.search(r"cbuffer %s : register\(([^)]*)\)\s*\{(.*?)\};" % cbuffer, text, re.S)
+    if not m:
+        return text
+    body = m.group(2)
+    scalars, arrays = {}, {}
+    for name, is_array, reg in MEMBER_RE.findall(body):
+        (arrays if is_array else scalars)[name] = int(reg)
+    # (the #define wrappers inside the block stay, before the block)
+    defines = "".join(l + "\n" for l in body.splitlines() if l.strip().startswith("#define"))
+    replacement = "cbuffer %s : register(%s)\n{\n\tfloat4 %s[256];\n};\n%s" % (cbuffer, m.group(1), array, defines)
+    text = text[:m.start()] + replacement + text[m.end():]
+    for name, reg in arrays.items():
+        text = re.sub(r"\b%s\[" % re.escape(name), "%s[%d + " % (array, reg), text)
+    for name, reg in scalars.items():
+        text = re.sub(r"\b%s\b" % re.escape(name), "%s[%d]" % (array, reg), text)
+    return text
+
+
 def d3d11_source(text, vertex):
     """The dumped HLSL as fxc / D3D11 wants it."""
     # Heaps -> one register a slot.
@@ -116,6 +140,12 @@ def d3d11_source(text, vertex):
     block = block.replace("{", "{\n\tuint4 g_SvrSwzLo[16] : packoffset(c0);\n\tuint4 g_SvrSwzHi[16] : packoffset(c24);", 1)
     text = (head + "".join(defines) + "#define SVR_SWZ_TABLE %s\n" % ("g_SvrSwzHi" if vertex else "g_SvrSwzLo") +
             sep + block + sep2 + rest)
+    # The game's constants: one float4[256] per stage. fxc sizes a cbuffer to its highest declared
+    # register and reads past it as 0, but the game indexes its arrays beyond their declared
+    # length (bone matrices up to c255 through a 63-entry array): skinning and lights read zeros,
+    # the scene was almost black. DXC (D3D12) reads the raw buffer, as the Xbox's constant file.
+    text = whole_constant_file(text, "VertexShaderConstants", "g_SvrVsC")
+    text = whole_constant_file(text, "PixelShaderConstants", "g_SvrPsC")
     # Fetches: the raw ones, then wrapped with the swizzle.
     for f in ("tfetch2D", "tfetch2DBicubic", "tfetch3D", "tfetchCube"):
         text, n = re.subn(r"float4 %s\(" % f, "float4 %sRaw(" % f, text)
