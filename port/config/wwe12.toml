@@ -41,8 +41,8 @@ wwe12_dof = true
 # Draw the crowd. false = empty stands, much lighter on small PCs.
 wwe12_crowd = true
 
-# Picture format: 5 = automatic (black bars if the screen is not 16:9), 6 = stretch (fills the screen,
-# the picture is about 11 % distorted).
+# Picture format: 5 = automatic (the game's 16:9 shape, black bars on other screens), 6 = stretch (fills
+# the screen; the picture is stretched, about 11 % on a 16:10 screen, more on wider screens).
 bd_aspect_ratio = 5
 
 # Vertical sync: true avoids tearing (horizontal cuts in the picture).

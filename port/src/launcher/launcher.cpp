@@ -322,8 +322,8 @@ const Texts kEnglish = {
     "Extended Match Creator",
     "Unlocks in the Match Creator: time limit everywhere, KO and Last Man Standing in Cage/Hell in a Cell, "
     "Over the Top Rope and Elimination with 3+ Superstars.",
-    "Picture format", "Automatic (black bars if the screen isn't 16:9)", "Stretch (fills the screen)",
-    "Stretch fills the whole screen, but the picture is about 11 % distorted.",
+    "Picture format", "Automatic (black bars)", "Stretch (fills the screen)",
+    "Automatic keeps the game's 16:9 shape, with black bars on other screens (16:10, 21:9...). Stretch fills the whole screen, but the picture is stretched: about 11 % on a 16:10 screen, more on wider screens.",
     "Low-end PC",
     "480p, no crowd, no shadows, no depth of field: for weak PCs. Nothing else changes.",
     "Undo the preset",
@@ -417,8 +417,8 @@ const Texts kFrench = {
     "Match Creator étendu",
     "Débloque dans le Match Creator : limite de temps partout, K.O. et Last Man Standing en cage/Hell in a Cell, "
     "Over the Top Rope et Élimination à 3 catcheurs ou plus.",
-    "Format de l'image", "Automatique (bandes noires si l'écran n'est pas en 16:9)", "Étirer (remplit l'écran)",
-    "Étirer remplit tout l'écran, mais l'image est déformée d'environ 11 %.",
+    "Format de l'image", "Automatique (bandes noires)", "Étirer (remplit l'écran)",
+    "Automatique garde la forme 16:9 du jeu, avec des bandes noires sur les autres écrans (16:10, 21:9...). Étirer remplit tout l'écran, mais l'image est étirée : d'environ 11 % sur un écran 16:10, davantage sur un écran plus large.",
     "PC modeste",
     "480p, sans foule, sans ombres, sans profondeur de champ : pour les PC peu puissants. Rien d'autre ne change.",
     "Annuler le préréglage",
