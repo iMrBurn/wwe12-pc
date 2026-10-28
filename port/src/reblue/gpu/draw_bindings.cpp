@@ -229,6 +229,12 @@ void Video::FlushViewport() {
     // SvR passes the game's own MinZ/MaxZ: Vulkan and D3D12 both map a reversed range (MinZ >
     // MaxZ) exactly as Xenos does, so it is kept. WWE '12 draws its 3D scenes with one: swapped,
     // the D3D12 exe lost every wrestler and most of the crowd to the depth test.
+#if defined(REBLUE_D3D11)
+    // D3D11 refuses MinDepth > MaxDepth: swapped here, and the vertex shaders give z' = w - z
+    // (SharedConstants::depthFlip), the same depth values.
+    if (vp.minDepth > vp.maxDepth)
+      std::swap(vp.minDepth, vp.maxDepth);
+#endif
 #else
     if (vp.minDepth > vp.maxDepth)
       std::swap(vp.minDepth, vp.maxDepth);

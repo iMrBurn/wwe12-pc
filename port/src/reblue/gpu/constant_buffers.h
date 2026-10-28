@@ -53,7 +53,9 @@ struct SharedConstants {
   // Half-pixel NDC nudge read only by the substituted 2D blit VS
   float blitHalfPixelOffsetX{}; // c21.x, byte 336
   float blitHalfPixelOffsetY{}; // c21.y, byte 340
-  u32 _pad_c21_z{};             // c21.z, byte 344
+  // wwe12_d3d11.exe: 1 when the viewport's depth range is reversed (MinZ > MaxZ), which D3D11
+  // refuses: the viewport is swapped and every vertex shader flips z instead (g_SvrDepthFlip).
+  u32 depthFlip{};              // c21.z, byte 344
   u32 _pad_c21_w{};             // c21.w, byte 348
 #if defined(SVR_NATIVE_RENDERER)
   // SvR samples fetch slots 16-31 too; the SvR XenosRecomp patch puts their indices after the

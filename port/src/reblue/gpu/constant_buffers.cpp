@@ -585,6 +585,9 @@ ConstantAllocation UploadSharedConstants(u32 device_guest) {
       vs.vertex_declaration ? vs.vertex_declaration->sintTexcoords : 0u;
 
   s.shared.shadowPcfScale = s.shadowPcfScale;
+#if defined(REBLUE_D3D11)
+  s.shared.depthFlip = vs.viewport.minDepth > vs.viewport.maxDepth ? 1u : 0u;
+#endif
 
   // Viewport extent, not the render target's: the NDC->pixel mapping this
   // cancels is the viewport's. +x/-y = half a pixel right and down.

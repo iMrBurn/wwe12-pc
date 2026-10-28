@@ -137,13 +137,21 @@ def d3d11_source(text, vertex):
             16 + (c - 24 - KIND_BASE[kind]) * 4 + "xyzw".index(comp)
         defines.append("#define %s_%sDescriptorIndex %d\n" % (name, kind, slot & 15))
     block = INDEX_RE.sub("", block)
-    block = block.replace("{", "{\n\tuint4 g_SvrSwzLo[16] : packoffset(c0);\n\tuint4 g_SvrSwzHi[16] : packoffset(c24);", 1)
+    block = block.replace("{", "{\n\tuint4 g_SvrSwzLo[16] : packoffset(c0);\n\tuint4 g_SvrSwzHi[16] : packoffset(c24);"
+                          "\n\tuint g_SvrDepthFlip : packoffset(c21.z);", 1)
     text = (head + "".join(defines) + "#define SVR_SWZ_TABLE %s\n" % ("g_SvrSwzHi" if vertex else "g_SvrSwzLo") +
             sep + block + sep2 + rest)
     # The game's constants: one float4[256] per stage. fxc sizes a cbuffer to its highest declared
     # register and reads past it as 0, but the game indexes its arrays beyond their declared
     # length (bone matrices up to c255 through a 63-entry array): skinning and lights read zeros,
     # the scene was almost black. DXC (D3D12) reads the raw buffer, as the Xbox's constant file.
+    # D3D11 has no reversed viewport depth range (MinZ > MaxZ): the renderer swaps it and sets
+    # g_SvrDepthFlip, and the vertex shader writes z' = w - z, the same depth.
+    if vertex:
+        line = "\toPos.xy = oPos.xy * g_ScreenSpace.xy + g_ScreenSpace.zw * oPos.w;\n"
+        if text.count(line) != 1:
+            raise ValueError("vertex shader without its g_ScreenSpace line")
+        text = text.replace(line, line + "\tif (g_SvrDepthFlip) oPos.z = oPos.w - oPos.z;\n")
     text = whole_constant_file(text, "VertexShaderConstants", "g_SvrVsC")
     text = whole_constant_file(text, "PixelShaderConstants", "g_SvrPsC")
     # Fetches: the raw ones, then wrapped with the swizzle.
