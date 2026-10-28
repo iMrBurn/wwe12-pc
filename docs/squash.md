@@ -1,5 +1,51 @@
 # Squash matchs : étude (Limit breaking, 2026-10-28, lecture seule)
 
+## Cahier des charges corrigé (demande du joueur, transmise par Main le 2026-10-28)
+
+Le joueur ne demande pas un multiplicateur de dégâts. Il demande :
+1. un match SQUASH dans l'Univers, où le jobber **commence avec peu de vie** et le joueur **avec ses prises de
+   finition déjà prêtes** ;
+2. dans « Edit Superstars » de l'Univers, une **vie de départ par catcheur**, pour qu'un catcheur reste blessé d'un
+   match à l'autre (scénarios) ;
+3. il signale que WWE '12 a déjà ce réglage : **STARTING HEALTH** dans Create a Story.
+
+**Ce que confirment les fichiers de WWE '12 (lecture seule)** :
+- Create a Story a bien **STARTING HEALTH** (texte 22690), avec une barre par zone : HEAD, TORSO, ARMS, LEGS
+  (22694–22697), en pourcentage.
+- Ses commentaires de match se déclenchent sur **l'état de santé d'une zone** (22929) : 3 niveaux par zone, YELLOW,
+  ORANGE et RED pour HEAD, TORSO, ARM et LEG (22419–22430, plus HEALTH STATUS / HEALTH STATE). Le moteur a donc
+  **une vie par zone** et sait la régler au départ d'un match.
+- WWE '13 a les mêmes notions (`yChar.GetDamageLv`, `GetMostDamageLv`, `yGame.GetHpLevel` dans son script de
+  match) : rien de neuf à y prendre pour ce besoin.
+- **Pas encore trouvé en lisant le code** : où Create a Story range ces 4 pourcentages pour chaque catcheur
+  d'une scène, et la fonction qui les applique aux catcheurs au début du match. Les numéros de textes ne sont
+  pas dans le code (les écrans les prennent dans leurs données), et la fiche de création d'un catcheur
+  (`sub_82213DB0`, fiche participant : +6 rôle, +12, +20, +72) ne montre pas de champ de vie. Il faut une sonde
+  en jeu pour les trouver.
+- **Le compteur de prises de finition** n'est pas trouvé non plus : rien à partager pour l'instant avec
+  Gameplay. Si la sonde le croise (stock de finishers du catcheur), je le dirai à Main.
+
+**Ce levier est bien plus simple que les dégâts.** On met une valeur de départ, une seule fois, puis le jeu
+fait le reste : le jobber, déjà rouge, ne se relève pas des tombés.
+
+**Plan révisé** :
+
+| Étape | Séances | Risque |
+|---|---|---|
+| a. Sonde en jeu (accord de l'utilisateur, données isolées) : une scène Create a Story avec STARTING HEALTH réglé, puis on cherche les 4 valeurs du catcheur en mémoire et qui les écrit au début du match. On repère au passage le compteur de finishers | 1 à 2 | faible (on lit seulement) |
+| b. Option « prochain match : squash » en exhibition / Univers : le jobber à 15–25 % par zone, appliqué par la même fonction que Create a Story | 1 | faible : c'est un réglage que le jeu sait déjà faire |
+| c. Finishers prêts au départ pour le dominant (à partager avec le travail de Gameplay sur le stock de finishers) | 0 à 1 | faible |
+| d. Univers : case « squash » sur un match de la carte, et vie de départ par catcheur dans Edit Superstars, gardée d'un match à l'autre (il faut la stocker nous-mêmes, à côté de la sauvegarde ; c'est le plus gros morceau) | 2 à 4 | moyen : touche aux sauvegardes de l'Univers |
+
+- **Squash léger (a + b + c) : 2 à 4 séances**, au lieu de 3 à 5 avec les dégâts.
+- **Avec l'Univers complet (d) : 4 à 8 séances.**
+- **Proposition** : a + b + c pour la **1.0** si la place le permet (option « prochain match : squash »), puis d
+  (Univers, blessures qui durent) et l'attaque après le tombé en **1.1**.
+- La partie « multiplicateur de dégâts » plus bas est **abandonnée** au profit de la vie de départ. Elle reste
+  notée comme solution de secours si la vie de départ ne peut pas être réglée hors de Create a Story.
+
+## Première version de l'étude (dégâts), remplacée par ce qui précède
+
 Demande de l'utilisateur, transmise par Main, pour la roadmap : un match court où un catcheur domine l'autre,
 façon WWE '13/2K, avec une fin rapide et parfois une attaque après le tombé. Étude du code et des fichiers seulement :
 je n'ai ni lancé le jeu ni compilé.
