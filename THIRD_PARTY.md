@@ -23,8 +23,11 @@ Modifications locales appliquées par `setup.ps1` :
 
 Projets dont ce portage s'inspire :
 
-- [wwe-svr2011-pc](https://github.com/KaikoClanworth1/wwe-svr2011-pc) : méthode uniquement,
-  aucun code repris (pas de licence publiée).
+- [wwe-svr2011-pc](https://github.com/KaikoClanworth1/wwe-svr2011-pc) (portage PC de SvR 2011,
+  KaikoClanworth1) : pas de licence publiée ; **avec son accord écrit du 2026-10-26**, son backend
+  Direct3D 11 pour plume (`plume_d3d11.h/.cpp`, de son `plume-svr2011.patch`, dépôt au commit b2521fe)
+  est repris et adapté dans `port/patches/plume-d3d11.patch` (version DirectX 11, en cours), crédité
+  « SvR 2011 PC port (KaikoClanworth1) ». Le reste : méthode uniquement.
 - Portages SvR 2008/2009/2010 de [nefariousjosiah](https://github.com/nefariousjosiah)
   (GPL-3.0) : leur rendu natif (src/native, adaptations de src/reblue) est la base du rendu
   natif de WWE '12.

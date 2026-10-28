@@ -89,6 +89,12 @@ if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume"
 $plumeD3d12 = Join-Path $Root "port\patches\plume-d3d12.patch"
 cmd /c "git -C `"$(Join-Path $Root 'recomp\plume')`" apply --reverse --check `"$plumeD3d12`" 2>nul"
 if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume") apply --whitespace=nowarn $plumeD3d12 }
+# Puis : Direct3D 11 (wwe12_d3d11.exe, en cours) : le backend D3D11 du portage SvR 2011 de Kaiko
+# (KaikoClanworth1, adapté avec son accord) + swap chain, carte graphique, constantes et textures par
+# emplacement pour notre rendu.
+$plumeD3d11 = Join-Path $Root "port\patches\plume-d3d11.patch"
+cmd /c "git -C `"$(Join-Path $Root 'recomp\plume')`" apply --reverse --check `"$plumeD3d11`" 2>nul"
+if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume") apply --whitespace=nowarn $plumeD3d11 }
 Get-PinnedRepo "https://github.com/zolaware/reblue-XenosRecomp.git" `
     (Join-Path $Root "recomp\reblue-XenosRecomp") "339af41" `
     (Join-Path $Root "port\patches\xenosrecomp-reblue-wwe12.patch")  # patch reblue + adaptations WWE '12
