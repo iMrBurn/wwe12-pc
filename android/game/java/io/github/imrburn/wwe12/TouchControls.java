@@ -23,6 +23,8 @@ import android.graphics.Typeface;
 import android.hardware.input.InputManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.view.HapticFeedbackConstants;
 import android.view.InputDevice;
 import android.view.MotionEvent;
@@ -104,6 +106,11 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     boolean hidden;
     int viewW, viewH;
 
+    // Phone vibration. Static: the game's rumble arrives from native code (vibrate() below).
+    static volatile Vibrator sVibrator;
+    static volatile boolean sRumble = true;   // game rumble -> phone vibration
+    static volatile int sStrength = 100;      // % of the normal strength
+
     // Options from the launcher (CONTROLS).
     final boolean haptics;
     final float deadzone;     // 0..0.5, fraction of the stick travel ignored around the centre
@@ -145,6 +152,9 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         int a = Math.max(30, Math.min(255, opacityPercent * 255 / 100));
         alpha = editMode ? Math.max(a, 150) : a;
         haptics = prefs.getBoolean("touch_haptics", true);
+        sRumble = prefs.getBoolean("touch_rumble", true);
+        sStrength = Math.max(10, Math.min(200, prefs.getInt("touch_vib_strength", 100)));
+        sVibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         deadzone = clamp(prefs.getInt("touch_deadzone", 10) / 100f, 0f, 0.5f);
         sens = clamp(prefs.getInt("touch_sens", 100) / 100f, 0.5f, 2f);
         float d = context.getResources().getDisplayMetrics().density;
@@ -192,6 +202,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         add("BACK", "BACK", 1 << BACK, 0, 0, 0.42f, 0.08f, 0.06f, 0);
         add("START", "START", 1 << START, 0, 0, 0.58f, 0.08f, 0.06f, 0);
     }
+
 
     void add(String key, String label, int mask, int trig, int stick, float fx, float fy, float fr, int color) {
         controls.add(new Control(key, label, mask, trig, stick, fx, fy, fr, color, false));
@@ -461,6 +472,46 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         }
     }
 
+    // ---- Vibration ------------------------------------------------------------------------------------
+
+    // Short tick when a button is pressed. The phone's vibrator is used directly: View.performHapticFeedback
+    // is silent on many phones (it follows the system "touch feedback" setting and the window's focus),
+    // and kept only as a fallback that ignores those settings.
+    void buzz() {
+        if (!haptics) return;
+        Vibrator v = sVibrator;
+        if (v != null && v.hasVibrator()) {
+            try {
+                v.vibrate(VibrationEffect.createOneShot(16, amplitude(0.5f)));
+                return;
+            } catch (Throwable ignored) {
+            }
+        }
+        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY,
+                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING | HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+    }
+
+    static int amplitude(float fraction) {  // 0..1 -> 1..255, scaled by the strength setting
+        return Math.max(1, Math.min(255, Math.round(255 * fraction * sStrength / 100f)));
+    }
+
+    // Called from native code (wwe12_touch.cpp) when the game rumbles the touch gamepad: motor speeds
+    // 0..65535, (0, 0) = stop. SDL ends a timed rumble by sending (0, 0) itself.
+    static void vibrate(int low, int high) {
+        Vibrator v = sVibrator;
+        if (v == null || !sRumble) return;
+        try {
+            int m = Math.max(low, high);
+            if (m <= 0) {
+                v.cancel();
+                return;
+            }
+            v.vibrate(VibrationEffect.createOneShot(5000, amplitude(m / 65535f)));
+        } catch (Throwable ignored) {
+        }
+    }
+
+
     // ---- Touch ---------------------------------------------------------------------------------
 
     Control controlAt(float x, float y) {
@@ -518,7 +569,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
                     dragPointer = e.getPointerId(0);
                     dragDx = e.getX() - c.cx;
                     dragDy = e.getY() - c.cy;
-                    performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+                    buzz();
                 }
                 break;
             }
@@ -597,7 +648,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
                 break;
             }
         }
-        if (pressed && haptics) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+        if (pressed) buzz();
         send();
         return true;
     }

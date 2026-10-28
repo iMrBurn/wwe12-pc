@@ -191,6 +191,9 @@ public class LauncherActivity extends Activity {
                 new String[] {"16:9 with black bars (original)", "Fill the whole screen (stretched)"},
                 new String[] {"5", "6"}));
         set.addView(toggle("FPS counter", "wwe12_show_fps"));
+        // From Yexclsv's work: phone temperature after the FPS, and a message when it gets hot.
+        set.addView(prefToggle("Show the phone temperature next to the FPS (battery, in C)", "temp_counter", true));
+        set.addView(prefToggle("Warn me when the phone gets too hot (Android 10+)", "thermal_warning", true));
         set.addView(toggle("Shadows", "wwe12_shadows"));
         set.addView(toggle("Crowd", "wwe12_crowd"));
         set.addView(toggle("60 fps in entrances (heavier)", "wwe12_60fps"));
@@ -233,6 +236,9 @@ public class LauncherActivity extends Activity {
                 new String[] {"Small (70 %)", "Medium (85 %)", "Normal (100 %)", "Large (110 %)"},
                 new int[] {70, 85, 100, 110}, 100));
         ctl.addView(prefToggle("Vibration when pressing a button", "touch_haptics", true));
+        ctl.addView(prefToggle("Game vibration (rumble) on the phone", "touch_rumble", true));
+        ctl.addView(prefChoice("Vibration strength", "touch_vib_strength",
+                new String[] {"Light (50 %)", "Normal", "Strong (150 %)"}, new int[] {50, 100, 150}, 100));
         ctl.addView(prefChoice("Stick dead zone (raise it if the character drifts)", "touch_deadzone",
                 new String[] {"None", "5 %", "10 %", "15 %", "20 %", "30 %"}, new int[] {0, 5, 10, 15, 20, 30}, 10));
         ctl.addView(prefChoice("Stick sensitivity", "touch_sens",

@@ -13,6 +13,24 @@ std::mutex g_mutex;
 SDL_JoystickID g_id = 0;
 SDL_Joystick *g_joystick = nullptr;
 
+// Vibrations du jeu vers le vibreur du téléphone (contribution de Yexclsv, côté Java :
+// TouchControls.vibrate). Classe gardée à nativeAttach : un fil natif ne trouve pas les classes de
+// l'appli avec FindClass.
+jclass g_touch_class = nullptr;
+jmethodID g_vibrate = nullptr;
+
+bool Rumble(void *, Uint16 low, Uint16 high) {
+  if (!g_touch_class || !g_vibrate)
+    return false;
+  auto *env = static_cast<JNIEnv *>(SDL_GetAndroidJNIEnv());
+  if (!env)
+    return false;
+  env->CallStaticVoidMethod(g_touch_class, g_vibrate, static_cast<jint>(low), static_cast<jint>(high));
+  if (env->ExceptionCheck())
+    env->ExceptionClear();
+  return true;
+}
+
 // Boutons déclarés. SDL numérote les boutons d'une manette virtuelle dans l'ordre de ce masque
 // (le n-ième bouton présent a l'indice n) : un bouton de la manette n'est donc pas son numéro
 // SDL_GamepadButton, voir JoystickIndex.
@@ -45,6 +63,7 @@ bool Attach() {
   desc.axis_mask = (1u << SDL_GAMEPAD_AXIS_COUNT) - 1;
   desc.button_mask = kButtonMask;
   desc.name = "WWE12 Touch Controls";
+  desc.Rumble = Rumble;
   g_id = SDL_AttachVirtualJoystick(&desc);
   if (!g_id)
     return false;
@@ -89,8 +108,15 @@ Sint16 Trigger(float v) {
 extern "C" {
 
 // true quand la manette virtuelle existe (l'appli réessaie tant que le jeu démarre).
-JNIEXPORT jboolean JNICALL Java_io_github_imrburn_wwe12_TouchControls_nativeAttach(JNIEnv *, jclass) {
+JNIEXPORT jboolean JNICALL Java_io_github_imrburn_wwe12_TouchControls_nativeAttach(JNIEnv *env, jclass cls) {
   std::lock_guard lock(g_mutex);
+  if (!g_touch_class) {
+    g_vibrate = env->GetStaticMethodID(cls, "vibrate", "(II)V");
+    if (g_vibrate)
+      g_touch_class = static_cast<jclass>(env->NewGlobalRef(cls));
+    else
+      env->ExceptionClear();
+  }
   return Attach();
 }
 

@@ -20,6 +20,7 @@ list(FILTER _wwe12_sources EXCLUDE REGEX
 set_property(TARGET wwe12 PROPERTY SOURCES ${_wwe12_sources})
 target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_android.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_touch.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_temp.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_driver.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_perf_hint.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_replay.cpp")

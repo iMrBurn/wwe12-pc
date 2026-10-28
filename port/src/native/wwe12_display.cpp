@@ -13,6 +13,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <thread>
 
 #define WIN32_LEAN_AND_MEAN
@@ -27,6 +29,10 @@
 #include <rex/ui/keybinds.h>
 
 #include "core/logging.h"
+
+#if REX_PLATFORM_ANDROID
+int Wwe12PhoneTempTenths();  // android/wwe12_temp.cpp
+#endif
 
 REXCVAR_DEFINE_BOOL(wwe12_show_fps, false, "WWE12", "Show the FPS counter at start (F2 shows or hides it).");
 REXCVAR_DEFINE_INT32(wwe12_fps_limit, 0, "WWE12",
@@ -75,6 +81,13 @@ class FpsOverlay final : public rex::ui::ImGuiDialog {
       snprintf(text, sizeof(text), "%.0f FPS  %.1f ms", fps_, 1000.0 / fps_);
     else
       snprintf(text, sizeof(text), "-- FPS");
+#if REX_PLATFORM_ANDROID
+    // Phone (battery) temperature after the FPS, when the launcher setting is on (wwe12_temp.cpp).
+    if (const int t = Wwe12PhoneTempTenths(); t > -1000) {
+      const size_t len = strlen(text);
+      snprintf(text + len, sizeof(text) - len, "  %d.%d C", t / 10, std::abs(t % 10));
+    }
+#endif
     const ImU32 color = fps_ >= 55.0 ? IM_COL32(120, 255, 120, 255)
                         : fps_ >= 30.0 ? IM_COL32(255, 220, 90, 255)
                                        : IM_COL32(255, 110, 100, 255);

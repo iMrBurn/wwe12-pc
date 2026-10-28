@@ -30,6 +30,10 @@ public class WWE12Activity extends SDLActivity {
     // through /proc/self/fd/<n> (Android gives apps no plain path to other folders' files).
     static ParcelFileDescriptor pickedIso;
 
+    // Phone temperature for the FPS counter and the "too hot" message (Yexclsv's work).
+    TempMonitor tempMonitor;
+    ThermalWatch thermalWatch;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         prepareFolder(this, getExternalFilesDir(null));
@@ -41,6 +45,9 @@ public class WWE12Activity extends SDLActivity {
                     new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         }
+        if (prefs.getBoolean("temp_counter", true)) tempMonitor = new TempMonitor(this);
+        if (prefs.getBoolean("thermal_warning", true) && android.os.Build.VERSION.SDK_INT >= 29)
+            thermalWatch = new ThermalWatch(this);
     }
 
     // Folder layout, default settings and the variables the runtime reads
@@ -105,6 +112,8 @@ public class WWE12Activity extends SDLActivity {
     // SDL is inside librexruntime.so; the game (with main()) is libwwe12.so, loaded last.
     @Override
     protected void onDestroy() {
+        if (tempMonitor != null) tempMonitor.stop();
+        if (thermalWatch != null) thermalWatch.stop();
         super.onDestroy();
         // Leave nothing of the runtime behind for the next PLAY (see the process note above).
         if (isFinishing()) System.exit(0);
