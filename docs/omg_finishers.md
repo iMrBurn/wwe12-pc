@@ -88,7 +88,9 @@ le début du match** (1, 2, 3 ou infini). Ce n'est pas le choix de la prise (ét
 stock) ; FIRED UP (acteur+998) ; Royal Rumble, FINISHER MATCH, MOVE THIEF ; l'IA en infini ; Univers et Road to
 WrestleMania (leurs scripts utilisent SetMomentum : ne rien changer quand un script a la main).
 
-**Proposition** : 1.0 = stock / infini + ligne dans une page d'options (3-4 séances). 1.1 = choix par catcheur sur
+**Décision de l'utilisateur (2026-10-28) : reporté à la 1.1** (pas de code ni d'essai avant).
+
+**Proposition d'origine** : 1.0 = stock / infini + ligne dans une page d'options (3-4 séances). 1.1 = choix par catcheur sur
 l'écran de sélection. **Pour le squash (Limit breaking)** : même objet (jauge +152, `sub_82246E48`, SetMomentumRate).
 
 ### Compléments de lecture (2026-10-28, après la proposition 1.0)
