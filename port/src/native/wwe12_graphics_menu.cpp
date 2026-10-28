@@ -37,6 +37,7 @@ REXCVAR_DEFINE_BOOL(wwe12_graphics_menu, true, "WWE12",
                     "pages in the game's menus).");
 REXCVAR_DECLARE(uint32_t, user_language);
 REXCVAR_DECLARE(int32_t, svr_render_scale);
+REXCVAR_DECLARE(int32_t, bd_aspect_ratio);
 REXCVAR_DECLARE(int32_t, bd_anisotropy);
 REXCVAR_DECLARE(bool, bd_vsync);
 REXCVAR_DECLARE(bool, wwe12_60fps);
@@ -93,7 +94,7 @@ struct Texts {
       *edge_blur, *frame_limit, *show_fps, *none, *tabs;
   const char *mode, *mode_full, *mode_window, *mode_border, *win_size, *screen_size, *cpu, *prio_normal,
       *prio_above, *prio_high, *exit_entry;
-  const char *api;
+  const char *api, *aspect, *stretch;
 };
 constexpr Texts kTexts[] = {
     {"GRAPHICS", "INTERNAL RESOLUTION", "TEXTURE SHARPNESS", "VERTICAL SYNC",
@@ -104,7 +105,7 @@ constexpr Texts kTexts[] = {
      "DEPTH OF FIELD", "CROWD", "EDGE BLUR", "FRAME LIMIT", "FPS COUNTER", "NONE", "TABS",
      "DISPLAY MODE", "FULL SCREEN", "WINDOW", "BORDERLESS WINDOW", "WINDOW SIZE", "SCREEN SIZE",
      "CPU PRIORITY", "NORMAL", "ABOVE NORMAL", "HIGH", "EXIT ENTRY IN THE MAIN MENU",
-     "GRAPHICS API"},
+     "GRAPHICS API", "PICTURE FORMAT", "STRETCH"},
     {"GRAPHISMES", "R\xC3\x89SOLUTION INTERNE", "NETTET\xC3\x89 DES TEXTURES", "SYNCHRO VERTICALE",
      "ENTR\xC3\x89" "ES \xC3\x80 60 FPS", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "OUI", "NON",
      "AUTO", "APPLIQU\xC3\x89 AU PROCHAIN LANCEMENT DU JEU", "OPTIONS", "CHANGER", "RETOUR",
@@ -115,7 +116,7 @@ constexpr Texts kTexts[] = {
      "MODE D'AFFICHAGE", "PLEIN \xC3\x89" "CRAN", "FEN\xC3\x8A" "TRE", "FEN\xC3\x8A" "TRE SANS BORDURE",
      "TAILLE DE LA FEN\xC3\x8A" "TRE", "TAILLE DE L'\xC3\x89" "CRAN", "PRIORIT\xC3\x89 DU PROCESSEUR",
      "NORMALE", "SUP\xC3\x89" "RIEURE", "HAUTE", "ENTR\xC3\x89" "E QUITTER DANS LE MENU PRINCIPAL",
-     "API GRAPHIQUE"},
+     "API GRAPHIQUE", "FORMAT DE L'IMAGE", "\xC3\x89TIRER"},
     {"GRAFIK", "INTERNE AUFL\xC3\x96SUNG", "TEXTURSCH\xC3\x84RFE", "VERTIKALE SYNC.",
      "EINZ\xC3\x9CGE MIT 60 FPS", "AUS", "AN", "JA", "NEIN", "AUTO",
      "WIRD BEIM N\xC3\x84" "CHSTEN SPIELSTART \xC3\x9C" "BERNOMMEN", "OPTIONEN",
@@ -126,7 +127,7 @@ constexpr Texts kTexts[] = {
      "FPS-ANZEIGE", "KEINE", "REITER",
      "ANZEIGEMODUS", "VOLLBILD", "FENSTER", "RANDLOSES FENSTER", "FENSTERGR\xC3\x96" "SSE",
      "BILDSCHIRMGR\xC3\x96" "SSE", "CPU-PRIORIT\xC3\x84" "T", "NORMAL", "\xC3\x9C" "BER NORMAL", "HOCH",
-     "EXIT-EINTRAG IM HAUPTMEN\xC3\x9C", "GRAFIK-API"},
+     "EXIT-EINTRAG IM HAUPTMEN\xC3\x9C", "GRAFIK-API", "BILDFORMAT", "STRECKEN"},
     {"GR\xC3\x81" "FICOS", "RESOLUCI\xC3\x93N INTERNA", "NITIDEZ DE TEXTURAS",
      "SINCRONIZACI\xC3\x93N VERTICAL", "ENTRADAS A 60 FPS", "NO", "S\xC3\x8D", "S\xC3\x8D", "NO",
      "AUTO", "SE APLICA LA PR\xC3\x93XIMA VEZ QUE SE INICIE EL JUEGO", "OPCIONES", "CAMBIAR",
@@ -136,7 +137,8 @@ constexpr Texts kTexts[] = {
      "L\xC3\x8D" "MITE DE FPS", "CONTADOR DE FPS", "NINGUNO", "PESTA\xC3\x91" "AS",
      "MODO DE PANTALLA", "PANTALLA COMPLETA", "VENTANA", "VENTANA SIN BORDES", "TAMA\xC3\x91" "O DE VENTANA",
      "TAMA\xC3\x91" "O DE PANTALLA", "PRIORIDAD DE CPU", "NORMAL", "SUPERIOR", "ALTA",
-     "ENTRADA SALIR EN EL MEN\xC3\x9A" " PRINCIPAL", "API GR\xC3\x81" "FICA"},
+     "ENTRADA SALIR EN EL MEN\xC3\x9A" " PRINCIPAL", "API GR\xC3\x81" "FICA",
+     "FORMATO DE IMAGEN", "ESTIRAR"},
     {"GRAFICA", "RISOLUZIONE INTERNA", "NITIDEZZA TEXTURE", "SINCRONIA VERTICALE",
      "INGRESSI A 60 FPS", "NO", "S\xC3\x8C", "S\xC3\x8C", "NO", "AUTO",
      "APPLICATO AL PROSSIMO AVVIO DEL GIOCO", "OPZIONI", "CAMBIA", "INDIETRO",
@@ -146,7 +148,7 @@ constexpr Texts kTexts[] = {
      "SCHEDE",
      "MODALIT\xC3\x80 SCHERMO", "SCHERMO INTERO", "FINESTRA", "FINESTRA SENZA BORDI", "DIMENSIONE FINESTRA",
      "DIMENSIONE SCHERMO", "PRIORIT\xC3\x80 CPU", "NORMALE", "SUPERIORE", "ALTA", "VOCE ESCI NEL MENU PRINCIPALE",
-     "API GRAFICA"},
+     "API GRAFICA", "FORMATO IMMAGINE", "ADATTA"},
 };
 
 const Texts &T() { return kTexts[CurrentLang()]; }
@@ -195,6 +197,19 @@ std::vector<Setting> BuildSettings() {
     };
     r.save = [](TomlFile &f, int i) { f.SetInt("svr_render_scale", kHeights[i]); };
     s.push_back(std::move(r));
+  }
+  {
+    // The game always draws 16:9: AUTO keeps that shape with black bars on other screens (16:10,
+    // 4:3), STRETCH fills the screen (bd_aspect_ratio 6, picture ~11% taller on 16:10). Applied
+    // at once (Settings::AdoptAspectRatio).
+    Setting a;
+    a.label = &Texts::aspect;
+    a.tab = 1;  // the display tab has the 5 rows a page can hold
+    a.values = {t.automatic, t.stretch};
+    a.index = REXCVAR_GET(bd_aspect_ratio) == 6 ? 1 : 0;
+    a.apply = [](int i) { rex::cvar::SetFlagByName("bd_aspect_ratio", i ? "6" : "5"); };
+    a.save = [](TomlFile &f, int i) { f.SetInt("bd_aspect_ratio", i ? 6 : 5); };
+    s.push_back(std::move(a));
   }
   {
     static constexpr int kAniso[] = {0, 2, 4, 8, 16};
@@ -360,7 +375,7 @@ std::vector<Setting> BuildSettings() {
   // Same order as the launcher's tabs.
   {
     const std::vector<const char *Texts::*> order = {
-        &Texts::mode,    &Texts::win_size, &Texts::resolution, &Texts::frame_limit, &Texts::vsync,
+        &Texts::mode,    &Texts::win_size, &Texts::resolution, &Texts::aspect, &Texts::frame_limit, &Texts::vsync,
         &Texts::aniso,   &Texts::crowd,    &Texts::shadow_res, &Texts::dof,         &Texts::api, &Texts::cpu,
         &Texts::fps60,   &Texts::exit_entry, &Texts::show_fps};
     const auto rank = [&](const Setting &x) {

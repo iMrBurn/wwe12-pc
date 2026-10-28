@@ -38,7 +38,7 @@ JUKEBOX_VALUES = [43410, 43420, 44000, 43430]  # JUKEBOX off/on, ORDER, THEME, G
 # Number of values of each row, per tab (DISPLAY, GRAPHICS, ADVANCED), in BuildSettings() order.
 TABS = [
     [3, 6, 8, 2, 2],  # display mode, window size, internal resolution, frame limit, vsync
-    [5, 2, 2, 2],     # texture sharpness, crowd, shadows, depth of field
+    [2, 5, 2, 2, 2],  # picture format, texture sharpness, crowd, shadows, depth of field
     [3, 3, 2, 2, 2],  # graphics API, CPU priority, 60 fps entrances, EXIT entry, FPS counter
 ]
 
@@ -234,6 +234,9 @@ end
 
 def page_source(tab, counts):
     n = len(counts)
+    # The game's option layouts hold 4 (DrawIngameOptions) or 5 rows (DrawRTWMOptions): a 6th row
+    # crashes the page when it opens (write to guest 0x28, 2026-10-28).
+    assert n <= 5, 'tab %d has %d rows, a page holds 5' % (tab, n)
     five = n > 4
     cursor = 'CorsorSet06_0' if five else 'CorsorSet07_0'
     quoted = lambda fmt: ', '.join('"%s"' % (fmt % (r + 1)) for r in range(n))
