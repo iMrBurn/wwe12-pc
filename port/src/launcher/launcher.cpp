@@ -236,6 +236,8 @@ struct Texts {
   const char *api, *api_auto, *api_vulkan, *api_d3d12, *api_hint, *api_d3d12_missing;
   const char *defenses, *defenses_off, *defenses_hint, *qualifiers, *qualifiers_hint;
   const char *mc_unlock, *mc_unlock_hint;
+  const char *aspect, *aspect_auto, *aspect_stretch, *aspect_hint;
+  const char *lowend, *lowend_hint, *lowend_undo, *lowend_undo_hint;
 };
 
 const Texts kEnglish = {
@@ -319,7 +321,13 @@ const Texts kEnglish = {
     "Qualifying matches and news before Money in the Bank and Elimination Chamber (Universe mode).",
     "Extended Match Creator",
     "Unlocks in the Match Creator: time limit everywhere, KO and Last Man Standing in Cage/Hell in a Cell, "
-    "Over the Top Rope and Elimination with 3+ Superstars."};
+    "Over the Top Rope and Elimination with 3+ Superstars.",
+    "Picture format", "Automatic (black bars if the screen isn't 16:9)", "Stretch (fills the screen)",
+    "Stretch fills the whole screen, but the picture is about 11 % distorted.",
+    "Low-end PC",
+    "480p, no crowd, no shadows, no depth of field: for weak PCs. Nothing else changes.",
+    "Undo the preset",
+    "Puts back the resolution, crowd, shadows and depth of field you had before the preset."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -408,7 +416,13 @@ const Texts kFrench = {
     "Matchs de qualification et news avant Money in the Bank et Elimination Chamber (mode Univers).",
     "Match Creator étendu",
     "Débloque dans le Match Creator : limite de temps partout, K.O. et Last Man Standing en cage/Hell in a Cell, "
-    "Over the Top Rope et Élimination à 3 catcheurs ou plus."};
+    "Over the Top Rope et Élimination à 3 catcheurs ou plus.",
+    "Format de l'image", "Automatique (bandes noires si l'écran n'est pas en 16:9)", "Étirer (remplit l'écran)",
+    "Étirer remplit tout l'écran, mais l'image est déformée d'environ 11 %.",
+    "PC modeste",
+    "480p, sans foule, sans ombres, sans profondeur de champ : pour les PC peu puissants. Rien d'autre ne change.",
+    "Annuler le préréglage",
+    "Remet la résolution, la foule, les ombres et la profondeur de champ que vous aviez avant le préréglage."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -458,6 +472,7 @@ struct Settings {
   int aniso = 16;
   int title_defenses = 0;    // wwe12_universe_title_defenses, percent 0..100 (0 = the original game)
   bool qualifiers = false;   // wwe12_universe_qualifiers
+  int aspect = 5;            // bd_aspect_ratio: 5 automatic (black bars), 6 stretch
   bool mc_unlock = true;     // wwe12_mc_unlock (extended Match Creator), on by default
   int api = 0;  // gpu_backend: 0 automatic ("any"), 1 vulkan, 2 d3d12 (wwe12_d3d12.exe)
   bool crowd = true;
@@ -497,6 +512,7 @@ void LoadSettings() {
   g_s.title_defenses = std::clamp(g_toml.GetInt("wwe12_universe_title_defenses", 0), 0, 100);
   g_s.qualifiers = g_toml.GetBool("wwe12_universe_qualifiers", false);
   g_s.mc_unlock = g_toml.GetBool("wwe12_mc_unlock", true);
+  g_s.aspect = g_toml.GetInt("bd_aspect_ratio", 5);
   g_s.crowd = g_toml.GetBool("wwe12_crowd", true);
   g_s.shadows = g_toml.GetBool("wwe12_shadows", true);
   g_s.dof = g_toml.GetBool("wwe12_dof", true);
@@ -531,6 +547,7 @@ void SaveSettings() {
   g_toml.SetInt("wwe12_universe_title_defenses", g_s.title_defenses);
   g_toml.SetBool("wwe12_universe_qualifiers", g_s.qualifiers);
   g_toml.SetBool("wwe12_mc_unlock", g_s.mc_unlock);
+  g_toml.SetInt("bd_aspect_ratio", g_s.aspect);
   g_toml.SetBool("wwe12_crowd", g_s.crowd);
   g_toml.SetBool("wwe12_shadows", g_s.shadows);
   g_toml.SetBool("wwe12_dof", g_s.dof);
@@ -621,6 +638,62 @@ void PagePlay() {
   }
 }
 
+// "Low-end PC" preset: 480p, no crowd, no shadows, no depth of field. The values from before are kept
+// in lowend_preset_backup.txt (next to the launcher) so the preset can be undone; clicking the preset
+// again never overwrites that backup.
+fs::path LowEndBackupPath() { return ExeDir() / "lowend_preset_backup.txt"; }
+
+bool LowEndBackupExists() {
+  std::error_code ec;
+  return fs::exists(LowEndBackupPath(), ec);
+}
+
+void ApplyLowEndPreset() {
+  if (!LowEndBackupExists()) {
+    std::ofstream f(LowEndBackupPath(), std::ios::trunc);
+    f << "svr_render_scale=" << g_s.scale << "\n"
+      << "wwe12_crowd=" << (g_s.crowd ? 1 : 0) << "\n"
+      << "wwe12_shadows=" << (g_s.shadows ? 1 : 0) << "\n"
+      << "wwe12_dof=" << (g_s.dof ? 1 : 0) << "\n";
+    if (!f)
+      return;  // no backup, no preset: the player could not get his settings back
+  }
+  g_s.scale = 480;
+  g_s.crowd = false;
+  g_s.shadows = false;
+  g_s.dof = false;
+  SaveSettings();
+}
+
+void UndoLowEndPreset() {
+  std::ifstream f(LowEndBackupPath());
+  std::string line;
+  while (std::getline(f, line)) {
+    const size_t eq = line.find('=');
+    if (eq == std::string::npos)
+      continue;
+    const std::string key = line.substr(0, eq);
+    int value = 0;
+    try {
+      value = std::stoi(line.substr(eq + 1));
+    } catch (...) {
+      continue;
+    }
+    if (key == "svr_render_scale")
+      g_s.scale = value;
+    else if (key == "wwe12_crowd")
+      g_s.crowd = value != 0;
+    else if (key == "wwe12_shadows")
+      g_s.shadows = value != 0;
+    else if (key == "wwe12_dof")
+      g_s.dof = value != 0;
+  }
+  f.close();
+  std::error_code ec;
+  fs::remove(LowEndBackupPath(), ec);
+  SaveSettings();
+}
+
 void PageSettings() {
   const Texts &t = T();
   bool changed = false;
@@ -637,6 +710,25 @@ void PageSettings() {
     g_s.language = kLangValues[li];
     changed = true;
   }
+  ImGui::Dummy(ImVec2(0, 4));
+
+  // One-click preset for weak PCs, and a way back.
+  if (ImGui::Button(t.lowend)) {
+    ApplyLowEndPreset();
+    changed = true;
+  }
+  if (LowEndBackupExists()) {
+    ImGui::SameLine();
+    if (ImGui::Button(t.lowend_undo)) {
+      UndoLowEndPreset();
+      changed = true;
+    }
+  }
+  ImGui::PushTextWrapPos(0);
+  ImGui::TextDisabled("%s", t.lowend_hint);
+  if (LowEndBackupExists())
+    ImGui::TextDisabled("%s", t.lowend_undo_hint);
+  ImGui::PopTextWrapPos();
   ImGui::Dummy(ImVec2(0, 4));
 
   if (ImGui::BeginTabBar("settings_tabs")) {
@@ -699,6 +791,26 @@ void PageSettings() {
       if (ImGui::Combo(t.resolution, &ri, res_names, 8)) {
         g_s.scale = kResHeights[ri];
         changed = true;
+      }
+
+      // Picture format: bd_aspect_ratio 5 (automatic, black bars) or 6 (stretch to the screen).
+      {
+        int ai = g_s.aspect == 6 ? 1 : 0;
+        char custom_aspect[48];
+        const char *aspect_names[3] = {t.aspect_auto, t.aspect_stretch, custom_aspect};
+        int aspect_count = 2;
+        if (g_s.aspect != 5 && g_s.aspect != 6) {  // another ratio typed by hand in wwe12.toml
+          snprintf(custom_aspect, sizeof(custom_aspect), "%s (%d)", t.custom, g_s.aspect);
+          ai = aspect_count++;
+        }
+        if (ImGui::Combo(t.aspect, &ai, aspect_names, aspect_count) && ai < 2) {
+          g_s.aspect = ai == 1 ? 6 : 5;
+          changed = true;
+        }
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("%s", t.aspect_hint);
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy(ImVec2(0, 4));
       }
 
       static std::vector<std::string> gpus = GpuNames();
