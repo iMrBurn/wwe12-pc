@@ -238,6 +238,7 @@ struct Texts {
   const char *mc_unlock, *mc_unlock_hint;
   const char *aspect, *aspect_auto, *aspect_stretch, *aspect_hint;
   const char *lowend, *lowend_hint, *lowend_undo, *lowend_undo_hint;
+  const char *api_d3d11, *api_d3d11_missing;
 };
 
 const Texts kEnglish = {
@@ -312,9 +313,11 @@ const Texts kEnglish = {
     "time you start the game.",
     "Graphics card used: %s", "dedicated", "integrated", "Cards found: %s",
     "Shift, Ctrl or Alt set on its own is a key of its own, so these combinations will do nothing: %s",
-    "Graphics API", "Automatic", "Vulkan", "Direct3D 12",
-    "Vulkan by default; try Direct3D 12 if you have graphics problems. Applies the next time you start the game.",
-    "The Direct3D 12 version of the game (wwe12_d3d12.exe) was not found: the game starts with Vulkan instead.",
+    "Graphics API", "Automatic", "Vulkan", "DirectX 12",
+    "Vulkan by default; try DirectX 12 if you have graphics problems. DirectX 11: for older graphics cards "
+    "without Vulkan 1.2 or DirectX 12. Automatic tries Vulkan, then DirectX 12, then DirectX 11. Applies the "
+    "next time you start the game.",
+    "The DirectX 12 version of the game (wwe12_d3d12.exe) was not found: the game starts with Vulkan instead.",
     "Title defenses in weekly shows", "Off (original game)",
     "In Universe mode, a match on the weekly card can become a title match. Percentage chance.",
     "Money in the Bank / Elimination Chamber qualifiers",
@@ -327,7 +330,9 @@ const Texts kEnglish = {
     "Low-end PC",
     "480p, no crowd, no shadows, no depth of field: for weak PCs. Nothing else changes.",
     "Undo the preset",
-    "Puts back the resolution, crowd, shadows and depth of field you had before the preset."};
+    "Puts back the resolution, crowd, shadows and depth of field you had before the preset.",
+    "DirectX 11",
+    "The DirectX 11 version of the game (wwe12_d3d11.exe) was not found: the game starts with Vulkan instead."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -407,9 +412,11 @@ const Texts kFrench = {
     "PlayStation. S'applique au prochain lancement du jeu.",
     "Carte graphique utilisée : %s", "dédiée", "intégrée", "Cartes détectées : %s",
     "Shift, Ctrl ou Alt réglé seul devient une touche à part entière : ces combinaisons ne marcheront donc pas : %s",
-    "API graphique", "Automatique", "Vulkan", "Direct3D 12",
-    "Vulkan par défaut ; essayez Direct3D 12 si vous avez des problèmes graphiques. S'applique au prochain lancement du jeu.",
-    "La version Direct3D 12 du jeu (wwe12_d3d12.exe) est introuvable : le jeu démarre avec Vulkan à la place.",
+    "API graphique", "Automatique", "Vulkan", "DirectX 12",
+    "Vulkan par défaut ; essayez DirectX 12 si vous avez des problèmes graphiques. DirectX 11 : pour les cartes "
+    "graphiques plus anciennes, sans Vulkan 1.2 ni DirectX 12. Automatique essaie Vulkan, puis DirectX 12, puis "
+    "DirectX 11. S'applique au prochain lancement du jeu.",
+    "La version DirectX 12 du jeu (wwe12_d3d12.exe) est introuvable : le jeu démarre avec Vulkan à la place.",
     "Défenses de titre en weekly", "Désactivées (jeu d'origine)",
     "Dans le mode Univers, un match de la carte weekly peut devenir un match de titre. Pourcentage de chances.",
     "Qualifications Money in the Bank / Elimination Chamber",
@@ -422,7 +429,9 @@ const Texts kFrench = {
     "PC modeste",
     "480p, sans foule, sans ombres, sans profondeur de champ : pour les PC peu puissants. Rien d'autre ne change.",
     "Annuler le préréglage",
-    "Remet la résolution, la foule, les ombres et la profondeur de champ que vous aviez avant le préréglage."};
+    "Remet la résolution, la foule, les ombres et la profondeur de champ que vous aviez avant le préréglage.",
+    "DirectX 11",
+    "La version DirectX 11 du jeu (wwe12_d3d11.exe) est introuvable : le jeu démarre avec Vulkan à la place."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -474,7 +483,7 @@ struct Settings {
   bool qualifiers = false;   // wwe12_universe_qualifiers
   int aspect = 5;            // bd_aspect_ratio: 5 automatic (black bars), 6 stretch
   bool mc_unlock = true;     // wwe12_mc_unlock (extended Match Creator), on by default
-  int api = 0;  // gpu_backend: 0 automatic ("any"), 1 vulkan, 2 d3d12 (wwe12_d3d12.exe)
+  int api = 0;  // gpu_backend: 0 automatic ("any"), 1 vulkan, 2 d3d12 (wwe12_d3d12.exe), 3 d3d11 (wwe12_d3d11.exe)
   bool crowd = true;
   bool shadows = true;
   bool dof = true;  // depth of field
@@ -507,7 +516,7 @@ void LoadSettings() {
   g_s.aniso = g_toml.GetInt("bd_anisotropy", 16);
   {
     const std::string api = g_toml.GetString("gpu_backend", "any");
-    g_s.api = api == "d3d12" ? 2 : api == "vulkan" ? 1 : 0;
+    g_s.api = api == "d3d11" ? 3 : api == "d3d12" ? 2 : api == "vulkan" ? 1 : 0;
   }
   g_s.title_defenses = std::clamp(g_toml.GetInt("wwe12_universe_title_defenses", 0), 0, 100);
   g_s.qualifiers = g_toml.GetBool("wwe12_universe_qualifiers", false);
@@ -543,7 +552,7 @@ void SaveSettings() {
   g_toml.SetBool("bd_vsync", g_s.vsync);
   g_toml.SetBool("wwe12_60fps", g_s.fps60);
   g_toml.SetInt("bd_anisotropy", g_s.aniso);
-  g_toml.SetString("gpu_backend", g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
+  g_toml.SetString("gpu_backend", g_s.api == 3 ? "d3d11" : g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
   g_toml.SetInt("wwe12_universe_title_defenses", g_s.title_defenses);
   g_toml.SetBool("wwe12_universe_qualifiers", g_s.qualifiers);
   g_toml.SetBool("wwe12_mc_unlock", g_s.mc_unlock);
@@ -856,8 +865,8 @@ void PageSettings() {
     }
     if (ImGui::BeginTabItem(t.tab_graphics)) {
       {
-        const char *api_names[] = {t.api_auto, t.api_vulkan, t.api_d3d12};
-        changed |= ImGui::Combo(t.api, &g_s.api, api_names, 3);
+        const char *api_names[] = {t.api_auto, t.api_vulkan, t.api_d3d12, t.api_d3d11};
+        changed |= ImGui::Combo(t.api, &g_s.api, api_names, 4);
         ImGui::PushTextWrapPos(0);
         ImGui::TextDisabled("%s", t.api_hint);
         ImGui::PopTextWrapPos();
@@ -1278,10 +1287,16 @@ std::string BuildDiagnostics() {
   {
     std::error_code e2;
     const bool d3d12_present = fs::exists(ExeDir() / L"wwe12_d3d12.exe", e2);
+    const bool d3d11_present = fs::exists(ExeDir() / L"wwe12_d3d11.exe", e2);
     const bool use_d3d12 = g_s.api == 2 && d3d12_present;
-    r += std::string("Graphics API: ") + (use_d3d12 ? "Direct3D 12 (wwe12_d3d12.exe)" : "Vulkan (wwe12.exe)");
-    r += std::string(", gpu_backend=") + (g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
+    const bool use_d3d11 = g_s.api == 3 && d3d11_present;
+    r += std::string("Graphics API: ") + (use_d3d11   ? "DirectX 11 (wwe12_d3d11.exe)"
+                                          : use_d3d12 ? "DirectX 12 (wwe12_d3d12.exe)"
+                                                      : "Vulkan (wwe12.exe)");
+    r += std::string(", gpu_backend=") +
+         (g_s.api == 3 ? "d3d11" : g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
     r += std::string(", wwe12_d3d12.exe ") + (d3d12_present ? "present" : "missing");
+    r += std::string(", wwe12_d3d11.exe ") + (d3d11_present ? "present" : "missing");
     r += std::string(", dxcompiler.dll ") + (fs::exists(ExeDir() / L"dxcompiler.dll", e2) ? "present" : "missing");
     r += std::string(", dxil.dll ") + (fs::exists(ExeDir() / L"dxil.dll", e2) ? "present" : "missing") + "\n";
   }
@@ -1370,17 +1385,18 @@ void DrawUi() {
   ImGui::End();
 }
 
-// wwe12_d3d12.exe when the player chose Direct3D 12 (gpu_backend = "d3d12") and it is there,
-// wwe12.exe (Vulkan) otherwise, with a message if the Direct3D 12 build is missing.
+// wwe12_d3d12.exe / wwe12_d3d11.exe when the player chose DirectX 12 / 11 (gpu_backend = "d3d12" /
+// "d3d11") and it is there, wwe12.exe (Vulkan) otherwise, with a message if that build is missing.
 bool LaunchGame(HWND hwnd) {
   const fs::path dir = ExeDir();
   fs::path exe_path = dir / L"wwe12.exe";
-  if (g_s.api == 2) {
+  if (g_s.api == 2 || g_s.api == 3) {
     std::error_code ec;
-    if (fs::exists(dir / L"wwe12_d3d12.exe", ec)) {
-      exe_path = dir / L"wwe12_d3d12.exe";
+    const fs::path api_exe = dir / (g_s.api == 3 ? L"wwe12_d3d11.exe" : L"wwe12_d3d12.exe");
+    if (fs::exists(api_exe, ec)) {
+      exe_path = api_exe;
     } else {
-      const std::string msg = T().api_d3d12_missing;
+      const std::string msg = g_s.api == 3 ? T().api_d3d11_missing : T().api_d3d12_missing;
       std::wstring wide(msg.size() + 1, L'\0');
       const int n = MultiByteToWideChar(CP_UTF8, 0, msg.c_str(), -1, wide.data(), int(wide.size()));
       wide.resize(n > 0 ? size_t(n - 1) : 0);

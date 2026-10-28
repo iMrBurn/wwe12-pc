@@ -147,7 +147,8 @@ wwe12_load_slice_ms = 12
 wwe12_load_turbo = false
 
 # Graphics API, chosen in the launcher (SETTINGS > GRAPHICS): "any" or "vulkan" starts wwe12.exe
-# (Vulkan, the default); "d3d12" starts wwe12_d3d12.exe (Direct3D 12). Try Direct3D 12 if you have
+# (Vulkan, the default); "d3d12" starts wwe12_d3d12.exe (DirectX 12); "d3d11" starts wwe12_d3d11.exe
+# (DirectX 11, for older graphics cards without Vulkan 1.2 or DirectX 12). Try DirectX 12 if you have
 # graphics problems. Used by the launcher only.
 gpu_backend = "any"
 
