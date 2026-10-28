@@ -7,8 +7,8 @@ Liste écrite par l'utilisateur (iMrBurn), rangée par la conversation Main. Les
 ## Roadmap 1.0 (texte de l'utilisateur)
 
 **Modifs de jeu** (liste restante, 2026-10-28)
-- Ajouter les moments OMG de WWE '13 (étude demandée à Gameplay)
-- Demander pour le choix des finishers comme 2K14 (étude demandée à Gameplay)
+- ~~Ajouter les moments OMG de WWE '13~~ : **abandonné (décision de l'utilisateur, 2026-10-28)**. Étude dans `docs/omg_finishers.md` : les vrais OMG coûtent 15 à 30 séances, le ring qui s'effondre plus de 30 ; pas prévu.
+- Choix des finishers comme 2K14 : stock de finishers de départ 1 / 2 / 3 / infini sur l'écran de sélection (étude demandée à Gameplay)
 - Squash matchs (étude demandée à Limit breaking)
 
 Fait depuis la liste précédente : défenses de titre en weekly et qualifications MITB / Elimination Chamber (Univers, testé) ;
