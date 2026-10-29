@@ -959,6 +959,101 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
   return out.size() >= 4 && memcmp(out.data(), "PACH", 4) == 0;
 }
 
+// The arena's own SvR 2011 entrance graphics (pac/evt/evtgdhd.pac ETEX/00NN: the same entries as WWE '12's, pictures
+// 0-90, 2D animations 10000-10040, fonts 20000-20011). Their 2D animations (AG2D: {"AG2D", size, 0x10001, frames,
+// names (count, offset), layers (0x20: w, h, parent, track, name), tracks (0x18: ?, rows << 16 | columns, frames << 16
+// | parent, offset in the table, flags, offset of its keys), table (rows x columns u32 per track)}, then the keys)
+// are SvR's but for their keys: a WWE '12 key is 108 bytes and every track has the 0x1000000 flag; SvR 2011's are 96
+// bytes with that flag {frame, x, y, angle, scale x, y, colour, 3 x ?, u0, v0, u1, v1, pivot x, y, 8 x 0}, else 44
+// {frame, x, y, angle, scale x, y, colour, u0, v0, u1, v1}. WWE '12's has three more words before u0 (0, 0, 1.0;
+// some of its own have 0x64 and flags there). Seen in the game as they were (2026-10-29, Breaking Point): the plates'
+// pictures out of place, upside down and too big, their text right.
+namespace detail {
+
+inline Bytes Ag2dToW12(const Bytes &d) {
+  if (d.size() < 0x30 || memcmp(d.data(), "AG2D", 4) != 0)
+    return d;
+  const uint32_t nt = U32(d, 0x20), to = U32(d, 0x24), nk = U32(d, 0x28), ko = U32(d, 0x2C);
+  const size_t keys = size_t(ko) + 4 * size_t(nk);
+  if (keys > d.size() || to + 0x18 * size_t(nt) > keys)
+    return d;
+  std::vector<uint32_t> offs;
+  for (uint32_t i = 0; i < nt; ++i)
+    offs.push_back(U32(d, to + 0x18 * i + 20));
+  Bytes out(d.begin(), d.begin() + keys);
+  for (uint32_t i = 0; i < nt; ++i) {
+    const size_t rec = to + 0x18 * i;
+    const bool ext = U32(d, rec + 16) & 0x1000000;
+    const size_t size = ext ? 96 : 44;
+    size_t end = d.size();
+    for (uint32_t o : offs)
+      if (o > offs[i] && o < end)
+        end = o;
+    if (offs[i] < keys || end > d.size())
+      return d;
+    Put32(out, rec + 16, U32(d, rec + 16) | 0x1000000);
+    Put32(out, rec + 20, uint32_t(out.size()));
+    for (size_t k = offs[i]; k + size <= end; k += size) {
+      uint32_t w[27] = {};
+      const auto in = [&](int j) { return U32(d, k + 4 * j); };
+      for (int j = 0; j < 7; ++j)
+        w[j] = in(j);
+      w[12] = 0x3F800000;  // 1.0
+      if (ext) {
+        for (int j = 7; j < 10; ++j)
+          w[j] = in(j);
+        for (int j = 10; j < 24; ++j)
+          w[j + 3] = in(j);
+      } else {
+        for (int j = 7; j < 11; ++j)
+          w[j + 6] = in(j);
+        w[17] = w[18] = 0x3F000000;  // pivot 0.5
+      }
+      const size_t at = out.size();
+      out.resize(at + sizeof(w));
+      for (int j = 0; j < 27; ++j)
+        Put32(out, at + 4 * j, w[j]);
+    }
+  }
+  Put32(out, 4, uint32_t(out.size()));
+  return out;
+}
+
+}  // namespace detail
+
+inline bool SvrEtex(const Bytes &evtgdhd_svr, int file, Bytes &out) {
+  using namespace detail;
+  out.clear();
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(evtgdhd_svr, a, nullptr))
+    return false;
+  char name[8];
+  snprintf(name, sizeof(name), "%04d", file);
+  for (auto &k : a.root.kids) {
+    if (k.group != "ETEX" || k.name != name || !svrfmt::ArchiveExpand(k))
+      continue;
+    std::vector<svrfmt::PachEntry> entries;
+    for (const auto &c : k.kids) {
+      Bytes raw = svrfmt::ArchiveData(c);
+      std::vector<svrfmt::PachEntry> kids;
+      if (c.id >= 10000 && c.id < 20000 && svrfmt::PachRead(raw, kids)) {
+        for (auto &kid : kids) {
+          const Bytes was = svrfmt::Unpack(kid.data);
+          if (was.size() >= 4 && memcmp(was.data(), "AG2D", 4) == 0)
+            kid.data = svrfmt::BpeEncode(Ag2dToW12(was));
+        }
+        raw = svrfmt::PachWrite(kids);
+      }
+      if (raw.empty())
+        return false;
+      entries.push_back({c.id, svrfmt::BpeEncode(raw)});
+    }
+    out = svrfmt::PachWrite(entries);
+    return !entries.empty();
+  }
+  return false;
+}
+
 inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, const svrfmt::Image &banner, Bytes &mb,
                  Bytes &mf, std::string *template_name = nullptr) {
   using namespace detail;
@@ -1319,23 +1414,43 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
         }
     }
   }
-  // Floor pieces shown in the match only ("g": SvR 2011's stage deck, sd_tile_core / sd_tile0 on Breaking Point): during
-  // its entrances SvR put its own floor there, WWE '12 doesn't, and the ramp had a hole at the stage (2026-10-29). A
-  // flat piece between the ground and the stage's height (y -200 to 0 cm) is shown at all times.
+  // Pieces standing on the ground or the stage shown in the match only ("g": Breaking Point's stage deck sd_tile_core /
+  // sd_tile0 and its stage set bp_obj0): during its entrances SvR put its own there, WWE '12 doesn't: holes in the ramp
+  // and at the back of the stage (2026-10-29). Shown at all times, unless the arena has an entrance twin of it (a model
+  // named the same plus more, shown in the entrances only, "e", not additive: bp_p_black / bp_p_black01).
   {
-    std::set<int> floor;
+    std::map<int, std::string> names;
+    std::set<int> standing;
     for (const auto &k : ga.kids) {
       svrfmt::Model m;
       if (k.id >= 50000 || !svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr))
         continue;
-      float lo = 1e9f, hi = -1e9f;
+      float hi = -1e9f;
       for (const auto &s : m.meshes)
-        for (const auto &v : s.verts) {
-          lo = std::min(lo, v.pos[1]);
+        for (const auto &v : s.verts)
           hi = std::max(hi, v.pos[1]);
+      names[int(k.id)] = m.name;
+      if (hi >= -200 && hi <= 1)  // (its lowest point on the ground or the stage: y is down)
+        standing.insert(int(k.id));
+    }
+    std::set<std::string> entrance_names;
+    for (const auto &k : ga.kids)
+      if (k.id == 50001)
+        for (const auto &line : Lines(svrfmt::ArchiveData(k))) {
+          const auto w = Words(line);
+          if (!w.empty() && std::all_of(w[0].begin(), w[0].end(), ::isdigit) &&
+              std::find(w.begin() + 1, w.end(), "e") != w.end() &&
+              std::find(w.begin() + 1, w.end(), "a") == w.end() &&  // (an additive one is a glow over it: sd_tile0e)
+              names.count(atoi(w[0].c_str())))
+            entrance_names.insert(names[atoi(w[0].c_str())]);
         }
-      if (lo >= -200 && hi <= 1 && lo < hi)
-        floor.insert(int(k.id));
+    std::set<int> floor;
+    for (const int id : standing) {
+      const std::string &n = names[id];
+      if (n.empty() || std::none_of(entrance_names.begin(), entrance_names.end(), [&](const std::string &e) {
+            return e.size() > n.size() && e.compare(0, n.size(), n) == 0;
+          }))
+        floor.insert(id);
     }
     for (auto &k : ga.kids)
       if (k.id == 50001) {

@@ -1177,6 +1177,10 @@ class Page {
     if (!matchhd12.empty() && svr_pick_ >= 0)
       port_svr_arena::SvrCard(matchhd, matchhd12, svr_pick_, real_mb_, real_mf_);
     UseRealVs();
+    // Its entrance plates and locator (evtgdhd.pac ETEX/00NN, keys of its 2D animations made WWE '12's).
+    Bytes evtgd;
+    if (svr_pick_ >= 0 && svr_disc_.Read("pac/evt/evtgdhd.pac", evtgd) && port_svr_arena::SvrEtex(evtgd, svr_pick_, etex_))
+      port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
     // Its transition video (evtmov.pac MOVT/M0NN: Bink 1 at 640 x 640, as WWE '12's).
     Bytes evtmov;
     if (svr_pick_ >= 0 && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&
@@ -1537,7 +1541,7 @@ class Page {
         entries.push_back({"arena/card_mb.pac", card_mb_});
         entries.push_back({"arena/card_mf.pac", card_mf_});
       }
-      if (mode_ == 3 && !etex_.empty())  // its entrance graphics (evtgdhd.pac ETEX/00NN)
+      if ((mode_ == 3 || mode_ == 4) && !etex_.empty())  // its entrance graphics (evtgdhd.pac ETEX/00NN)
         entries.push_back({"arena/etex_hd.pac", etex_});
       if (mode_ == 3 && !load_.empty())  // its pre-match screen (LoadHD.pac LOAD/90NN)
         entries.push_back({"arena/load_hd.pac", load_});
