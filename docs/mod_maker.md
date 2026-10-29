@@ -1120,3 +1120,9 @@ d'arènes mods ; gardés dans Downloads, hors dépôt ; crédit à mettre si on 
     `sd_tile0`) restent visibles pendant les entrées (SvR y mettait son propre plancher d'entrée : trou dans la rampe).
   - Reste : **plaques de nom et locator** de SvR (`ETEX/00NN` : même format, mais WWE '12 a deux versions de chaque
     `AG2D` et compte les positions autrement : « copylight » à (106, 64) contre (500, 308) chez SvR) ; ceux de la base.
+
+- **Arènes SvR 2011, suite (2026-10-29, vérifié en jeu sur Breaking Point)** : ses **plaques d'entrée et son locator**
+  sont pris (`port_svr_arena::SvrEtex`) : les images clés de ses animations 2D (AG2D) font 96 octets (ou 44 sans le
+  drapeau 0x1000000), celles de WWE '12 108 (3 mots de plus avant les coordonnées de texture : 0, 0, 1.0) ; toutes
+  passent au format de WWE '12. Les **boîtes de visibilité (50020)** de SvR sont en mètres : ×100, pas ×10 (sinon
+  tribunes, scène, rampe et sol disparaissaient selon la caméra pendant les entrées).
