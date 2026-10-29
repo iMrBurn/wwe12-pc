@@ -231,6 +231,21 @@ inline void BgShaders(Bytes &d) {
   }
 }
 
+// SvR 2011's reflecting surfaces (yReflect: a diffuse picture plus a cube map at g_fReflectAlpha 0.5) drawn as plain
+// ones (yDefault: its parameters are among yReflect's): in WWE '12 Breaking Point's ramp floor came out see-through
+// during the entrances (2026-10-29).
+inline void NoReflect(Bytes &d) {
+  for (uint32_t i = 0; i < U32(d, 0x18); ++i) {
+    const size_t at = kPofBase + kMeshTable + i * kW12Mesh + 0x7C;
+    if (at + 16 > d.size())
+      return;
+    if (svrfmt::Name16(&d[at]) == "yReflect") {
+      memset(&d[at], 0, 16);
+      memcpy(&d[at], "yDefault", 8);
+    }
+  }
+}
+
 // Material colours (g_f4MatAmbCol, g_f4MatDifCol: name[16], u16 type 0x0D = float4, u16 size, value) times f.
 inline void Dim(Bytes &d, double f) {
   for (const char *name : {"g_f4MatAmbCol", "g_f4MatDifCol"}) {
@@ -1227,6 +1242,7 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
         BgShaders(m);
         Dim(m, 0.3);
       }
+      NoReflect(m);
       ReplaceLike(k, m);
       ++pi.models;
       return true;
@@ -1278,6 +1294,70 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
     svrfmt::Model m;
     return svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr) ? m.name : std::string();
   };
+  // The moving lights (objects moved by the light bank's motions, "m(N)" in their flag line: Breaking Point's 230-269,
+  // the lights and their 10 m beams): in WWE '12 the motions put them on the ring (dark lights on the mat and the
+  // apron, the beams' blue ends on the mat, 2026-10-29). Left out with their flag lines.
+  {
+    std::set<uint32_t> beams;
+    for (const auto &k : ga.kids)
+      if (k.id == 50001)
+        for (const auto &line : Lines(svrfmt::ArchiveData(k))) {
+          const auto w = Words(line);
+          if (!w.empty() && std::all_of(w[0].begin(), w[0].end(), ::isdigit) &&
+              std::any_of(w.begin() + 1, w.end(), [](const std::string &x) { return x.rfind("m(", 0) == 0; }))
+            beams.insert(uint32_t(atoi(w[0].c_str())));
+        }
+    if (!beams.empty()) {
+      ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(),
+                                   [&](const svrfmt::ArcNode &k) { return beams.count(k.id) != 0; }),
+                    ga.kids.end());
+      for (auto &k : ga.kids)
+        if (k.id == 50001) {
+          Bytes d = svrfmt::ArchiveData(k);
+          SwapFlagLines(d, beams, {});
+          ReplaceLike(k, d);
+        }
+    }
+  }
+  // Floor pieces shown in the match only ("g": SvR 2011's stage deck, sd_tile_core / sd_tile0 on Breaking Point): during
+  // its entrances SvR put its own floor there, WWE '12 doesn't, and the ramp had a hole at the stage (2026-10-29). A
+  // flat piece between the ground and the stage's height (y -200 to 0 cm) is shown at all times.
+  {
+    std::set<int> floor;
+    for (const auto &k : ga.kids) {
+      svrfmt::Model m;
+      if (k.id >= 50000 || !svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr))
+        continue;
+      float lo = 1e9f, hi = -1e9f;
+      for (const auto &s : m.meshes)
+        for (const auto &v : s.verts) {
+          lo = std::min(lo, v.pos[1]);
+          hi = std::max(hi, v.pos[1]);
+        }
+      if (lo >= -200 && hi <= 1 && lo < hi)
+        floor.insert(int(k.id));
+    }
+    for (auto &k : ga.kids)
+      if (k.id == 50001) {
+        auto lines = Lines(svrfmt::ArchiveData(k));
+        bool changed = false;
+        for (auto &line : lines) {
+          auto w = Words(line);
+          if (w.empty() || !std::all_of(w[0].begin(), w[0].end(), ::isdigit) || !floor.count(atoi(w[0].c_str())))
+            continue;
+          const auto g = std::find(w.begin() + 1, w.end(), "g");
+          if (g == w.end())
+            continue;
+          w.erase(g);
+          line.clear();
+          for (const auto &x : w)
+            line += (line.empty() ? "" : " ") + x;
+          changed = true;
+        }
+        if (changed)
+          ReplaceLike(k, Join(lines));
+      }
+  }
   std::set<uint32_t> fences_gone, used;
   for (const auto &k : ga.kids)
     if (model_name(k).rfind("ar_fen", 0) == 0)

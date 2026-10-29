@@ -1111,3 +1111,12 @@ d'arènes mods ; gardés dans Downloads, hors dépôt ; crédit à mettre si on 
   (ATB0 version 1 de SvR lue telle quelle par WWE '12) et sa police. **Piège** : si l'arène de base est verrouillée dans
   la sauvegarde du joueur, le jeu cherche le thème « /MLYE/MB-1 » (absent) et montre celui de SmackDown (profil de test
   neuf, 2026-10-28). Royal Rumble : son deuxième cadre `rr_fr02` n'a pas de place (laissé).
+- **2026-10-29 : entrées dans les arènes de SvR 2011, corrigées et VUES EN JEU (Breaking Point)** :
+  - les **projecteurs mobiles** (objets dont la ligne de 50001 porte un mouvement `m(N)` : appareils `bp_lig*` et
+    faisceaux `bp_glow_mo*` de 10 m, plus 167-182) sont retirés : leurs mouvements les posaient sur le ring (appareils
+    sombres sur le tapis et le tablier, bouts de faisceaux bleus) ;
+  - les surfaces **`yReflect`** de SvR deviennent `yDefault` (sol de la rampe à moitié transparent : reflet à 0,5) ;
+  - les pièces de sol **« en match seulement »** (`g` dans 50001, entre le sol et la hauteur de la scène : `sd_tile_core`,
+    `sd_tile0`) restent visibles pendant les entrées (SvR y mettait son propre plancher d'entrée : trou dans la rampe).
+  - Reste : **plaques de nom et locator** de SvR (`ETEX/00NN` : même format, mais WWE '12 a deux versions de chaque
+    `AG2D` et compte les positions autrement : « copylight » à (106, 64) contre (500, 308) chez SvR) ; ceux de la base.
