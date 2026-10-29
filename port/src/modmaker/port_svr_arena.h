@@ -3,8 +3,9 @@
 //  - its models (JBOY) have 180-byte mesh records where WWE '12's have 184: a word is inserted at +0x74 (WWE '12
 //    keeps there a second pointer to the mesh's strips, which its background shaders need), everything behind moves
 //    and the pointer list (POF0) follows;
-//  - SvR 2011 counts in 10 cm, WWE '12 in cm: models, light zones (50003), visibility boxes (50020) and the light
-//    banks' positions (30000 / 31010, channels 10-13) are scaled 10 times;
+//  - SvR 2011 counts in 10 cm, WWE '12 in cm: models, light zones (50003) and the light banks' positions (30000 /
+//    31010, channels 10-13) are scaled 10 times; its visibility boxes (50020) count in metres: 100 times (at 10 times,
+//    stands, stage, ramp and floor came and went with the camera in the entrances, 2026-10-29);
 //  - the match lights (light sets 10-14 of the banks) are the base arena's: SvR 2011's flood the ring;
 //  - its beam cones (objects 230-269 and 300-305) get WWE '12's background shaders, a third of their colour and the
 //    "entrances only" flag (50001): else a white glare covers the ring;
@@ -1359,7 +1360,7 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
       continue;
     const Bytes d = svrfmt::ArchiveData(k);
     if (k.id == 50003 || k.id == 50020)
-      ReplaceLike(k, ScaleText(k.id, d, 10));
+      ReplaceLike(k, ScaleText(k.id, d, k.id == 50020 ? 100 : 10));
     else if (k.id == 50001)
       ReplaceLike(k, EntranceOnly(d, cones));
   }
