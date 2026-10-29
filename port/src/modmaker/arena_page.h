@@ -987,6 +987,14 @@ class Page {
         w13 ? none : (fr ? "(SvR 2011 : pas encore, ceux de la base)" : "(SvR 2011: not yet, the base's)"));
     row(!load_.empty(), wiz_keep_load_, fr ? "Son écran d'avant-match" : "Its pre-match screen",
         w13 ? none : (fr ? "(SvR 2011 : celui de la base)" : "(SvR 2011: the base's)"));
+    if (!w13 && !real_mb_.empty()) {  // (SvR 2011's own VS screen, a test)
+      ImGui::Indent();
+      if (ImGui::Checkbox(fr ? "Son vrai écran VS de SvR 2011 (sinon : un écran de WWE '12 avec ses images)"
+                             : "Its real SvR 2011 VS screen (else: a WWE '12 one with its pictures)",
+                          &svr_real_vs_))
+        UseRealVs();
+      ImGui::Unindent();
+    }
     row(!movie_.empty(), wiz_keep_movie_, fr ? "Sa vidéo de transition" : "Its transition video", none);
     if (!w13)
       ImGui::TextDisabled("%s", fr ? "Sa foule : la sienne (celle de la base si elle ne se convertit pas)."
@@ -1161,6 +1169,14 @@ class Page {
     if (!matchhd.empty() && disc_ && disc_->Read("pac/menu/MatchHD.pac", matchhd12) &&
         port_svr_arena::Card(matchhd, matchhd12, svr_pick_, img, card_mb_, card_mf_))
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
+    // ... or its own SvR 2011 VS screen (port_svr_arena::SvrCard, after Kaiko's notes; Breaking Point seen in the game)
+    dressed_mb_ = card_mb_;
+    dressed_mf_ = card_mf_;
+    real_mb_.clear();
+    real_mf_.clear();
+    if (!matchhd12.empty() && svr_pick_ >= 0)
+      port_svr_arena::SvrCard(matchhd, matchhd12, svr_pick_, real_mb_, real_mf_);
+    UseRealVs();
     // Its transition video (evtmov.pac MOVT/M0NN: Bink 1 at 640 x 640, as WWE '12's).
     Bytes evtmov;
     if (svr_pick_ >= 0 && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&
@@ -1572,6 +1588,15 @@ class Page {
   bool port_ok_ = false, view_port_ = false;
   std::string port_note_, ramp_note_;
   Bytes card_mb_, card_mf_;  // its VS screen (port13::Card, port_svr_arena::Card)
+  // An SvR 2011 arena's two VS screens: a WWE '12 one wearing its pictures, its own (port_svr_arena::SvrCard); one in
+  // card_mb_ / card_mf_ (svr_real_vs_).
+  Bytes dressed_mb_, dressed_mf_, real_mb_, real_mf_;
+  bool svr_real_vs_ = true;
+  void UseRealVs() {
+    const bool real = svr_real_vs_ && !real_mb_.empty();
+    card_mb_ = real ? real_mb_ : dressed_mb_;
+    card_mf_ = real ? real_mf_ : dressed_mf_;
+  }
   Bytes etex_;                // its entrance graphics from WWE '13 (port13::Etex)
   Bytes load_;                // its pre-match screen from WWE '13 (port13::PreMatch)
   Bytes movie_;               // its transition video from WWE '13 (port13::TransitionVideo)

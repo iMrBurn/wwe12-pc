@@ -1091,3 +1091,23 @@ places ×10, d'après le code de Kaiko).
   l'installation et la gestion des mods. Plan validé par l'utilisateur le même jour.
 - Pour l'utilisateur : le partage en ligne de mods (« Discovery » chez Kaiko) : oui / non / plus tard ?
 - Le jeu original sans mods : garder un bouton « Jouer sans mods » (Kaiko a « Start Without Mods ») ?
+
+## Écrans VS des arènes SvR (2026-10-28, notes de Kaiko reçues)
+
+Kaiko a envoyé à l'utilisateur `VS_STYLES.md` et `tools/vs_port.py` (son SvR 2011 : thèmes VS de SvR 2008-2010 et
+d'arènes mods ; gardés dans Downloads, hors dépôt ; crédit à mettre si on adapte). Comparaison faite hors jeu :
+- **Même système dans WWE '12** : thème = mise en page YXML + images (`0x1B59`, DXT5) + animations ATB (`0x1B5A`) + police.
+  SvR 2011 : `MENU/MnnL` (YXML **VER0002**, PACH enfant 0) + `MENU/MnnI` (0x1B59, 0x1B5A) + `MENU/MnnF`. WWE '12 :
+  `MLYE/MBnn` = **un seul** PACH (0x1B58 YXML **VER0003**, 0x1B59, 0x1B5A) + `MENU/MnnF` (police, même forme).
+- Mêmes 7 groupes (racine, 4 groupes de texte, `beta`, fond), mêmes ressources (`RAW_fr`, `RAW_bg`, `font000`,
+  `nearbg01-05`, `farbg`) ; WWE '12 ajoute `matchup_BG01/02` et `dummy` (type 3 : `_paintHD/SD`, `_Normal`, `_SDSD`,
+  `_SDHD`). Nœud : **0x90 o en VER0002, 0x84 en VER0003** (même début : id de ressource, x, y, échelles, largeur,
+  hauteur ; noms raccourcis en VER0003 : « font000 » + « _lname » au lieu de « font000_lname »).
+- → Un vrai écran VS de SvR 2011 (et 2008-2010 via le `reshape` de Kaiko) pour nos arènes portées de SvR : convertir le
+  YXML VER0002 → VER0003, fusionner L + I en un MBnn, reprendre les nœuds propres à WWE '12 (`dummy`, `matchup_BG`) du
+  thème WWE '12 de la base, garder la police. Pas fait.
+- **2026-10-29 : vrai écran VS de SvR 2011 VU EN JEU** (`port_svr_arena::SvrCard`, case cochée par défaut dans l'assistant,
+  étape « Ce qui est repris ») : Breaking Point (base Fatal 4-Way) avec son fond, son cadre, son logo, ses animations
+  (ATB0 version 1 de SvR lue telle quelle par WWE '12) et sa police. **Piège** : si l'arène de base est verrouillée dans
+  la sauvegarde du joueur, le jeu cherche le thème « /MLYE/MB-1 » (absent) et montre celui de SmackDown (profil de test
+  neuf, 2026-10-28). Royal Rumble : son deuxième cadre `rr_fr02` n'a pas de place (laissé).

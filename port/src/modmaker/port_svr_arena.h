@@ -961,6 +961,189 @@ inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, con
   return CardWearing(theirs, matchhd12, banner, mb, mf, template_name);
 }
 
+// The arena's own SvR 2011 VS screen, after Kaiko's notes (VS_STYLES.md and vs_port.py, sent to the user 2026-10-28;
+// his SvR 2011 port takes SvR 2008-2010's themes the same way). The same system as WWE '12's, one version older:
+// SvR 2011's theme is MENU/MnnL (PACH: the layout, YXMLBIN VER0002), MENU/MnnI (7001 pictures, 7002 animations, ATB0
+// version 1) and MENU/MnnF (font); WWE '12's MLYE/MBnn holds the layout (VER0003), pictures and animations, and
+// MENU/MnnF its font. Every WWE '12 layout has the same frame - 15 resources, 36 nodes in groups 1, 8, 9, 5, 6, 1, 6 -
+// and its VS screen takes node 30 (the background) by number (sub_824C5458 then sub_82571BA8, which faulted on SvR
+// 2011's 22 nodes); every SvR 2011 one has 12 resources, 22 nodes, a frame "<x>_fr" (resource 5000: the four text
+// groups' first node), a background "<x>_bg" (5001) and beta, each an animation of its pictures. So WWE '12's RAW
+// layout (MB01) is kept as it is (its text lines, its "dummy" and "matchup_BG" pictures, its node numbers) and wears
+// SvR's frame, background and beta: their resource records and nodes' places, its pictures (WWE '12's dummy and
+// matchup_BG added), animations and font. Royal Rumble's second frame (rr_fr02) has no place in it: left out.
+// Seen in the game (2026-10-29, Breaking Point on Fatal 4-Way's place): background, frame, logo and their animations
+// (WWE '12 plays SvR's ATB0 version 1 as they are) and SvR's font. The base arena must be unlocked in the player's
+// save: a locked one's VS screen is looked up as "MB-1" (none) and SmackDown's is shown.
+namespace detail {
+
+inline uint32_t Rd32(const Bytes &b, size_t at) {
+  return at + 4 <= b.size() ? uint32_t(b[at] | b[at + 1] << 8 | b[at + 2] << 16 | uint32_t(b[at + 3]) << 24) : 0;
+}
+
+struct Yxml {
+  Bytes head;                       // the header (0x20) and the resources (0x4C each)
+  std::vector<std::vector<Bytes>> groups;
+  Bytes tail;
+  size_t rec = 0;                   // a node's size: 0x90 (VER0002), 0x84 (VER0003)
+};
+
+inline bool ReadYxml(const Bytes &y, Yxml &out) {
+  if (y.size() < 0x20 || memcmp(y.data(), "YXMLBIN VER000", 14) != 0)
+    return false;
+  out.rec = y[14] == '3' ? 0x84 : 0x90;
+  const uint32_t nres = Rd32(y, 16), nnodes = Rd32(y, 20), ngroups = Rd32(y, 24);
+  size_t p = 0x20 + size_t(nres) * 0x4C;
+  if (p > y.size() || ngroups > 64)
+    return false;
+  out.head.assign(y.begin(), y.begin() + long(p));
+  out.groups.clear();
+  uint32_t seen = 0;
+  for (uint32_t g = 0; g < ngroups; ++g) {
+    if (p + 4 > y.size())
+      return false;
+    const uint32_t n = Rd32(y, p);
+    p += 4;
+    if (p + n * out.rec > y.size())
+      return false;
+    std::vector<Bytes> nodes;
+    for (uint32_t i = 0; i < n; ++i, p += out.rec)
+      nodes.emplace_back(y.begin() + long(p), y.begin() + long(p + out.rec));
+    out.groups.push_back(std::move(nodes));
+    seen += n;
+  }
+  if (seen != nnodes)
+    return false;
+  out.tail.assign(y.begin() + long(p), y.end());
+  return true;
+}
+
+inline Bytes WriteYxml(const Yxml &y) {
+  Bytes out = y.head;
+  for (const auto &g : y.groups) {
+    const uint32_t n = uint32_t(g.size());
+    out.insert(out.end(), {uint8_t(n), uint8_t(n >> 8), uint8_t(n >> 16), uint8_t(n >> 24)});
+    for (const auto &r : g)
+      out.insert(out.end(), r.begin(), r.end());
+  }
+  out.insert(out.end(), y.tail.begin(), y.tail.end());
+  return out;
+}
+
+inline std::string ResName(const Bytes &head, size_t i) {
+  const char *s = reinterpret_cast<const char *>(&head[0x20 + i * 0x4C + 12]);
+  return std::string(s, strnlen(s, 0x40));
+}
+
+// The resource of that type whose name ends so ("_fr", "_bg"), else -1.
+inline int ResourceEnding(const Bytes &head, uint32_t type, const char *end) {
+  const uint32_t n = Rd32(head, 16);
+  for (uint32_t i = 0; i < n; ++i) {
+    const std::string name = ResName(head, i);
+    if (Rd32(head, 0x20 + i * 0x4C + 4) == type && name.size() >= strlen(end) &&
+        name.compare(name.size() - strlen(end), std::string::npos, end) == 0)
+      return int(i);
+  }
+  return -1;
+}
+
+inline svrfmt::ArcNode *Kid(svrfmt::ArcNode &n, uint32_t id) {
+  if (!svrfmt::ArchiveExpand(n))
+    return nullptr;
+  for (auto &c : n.kids)
+    if (c.id == id)
+      return &c;
+  return nullptr;
+}
+
+}  // namespace detail
+
+inline bool SvrCard(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, Bytes &mb, Bytes &mf,
+                    std::string *why = nullptr) {
+  using namespace detail;
+  auto fail = [&](const std::string &w) {
+    if (why)
+      *why = w;
+    mb.clear();
+    mf.clear();
+    return false;
+  };
+  svrfmt::Archive s, w;
+  if (!svrfmt::ArchiveOpen(svr_matchhd, s, nullptr) || !svrfmt::ArchiveOpen(matchhd12, w, nullptr))
+    return fail("unreadable MatchHD.pac");
+  char nl[8], ni[8], nf[8];
+  snprintf(nl, sizeof(nl), "M%02dL", file);
+  snprintf(ni, sizeof(ni), "M%02dI", file);
+  snprintf(nf, sizeof(nf), "M%02dF", file);
+  svrfmt::ArcNode *sl = nullptr, *si = nullptr, *card = nullptr;
+  mf.clear();
+  for (auto &k : s.root.kids)
+    if (k.group == "MENU" && k.name == nl)
+      sl = &k;
+    else if (k.group == "MENU" && k.name == ni)
+      si = &k;
+    else if (k.group == "MENU" && k.name == nf)
+      mf = k.stored;
+  for (auto &k : w.root.kids)
+    if (k.group == "MLYE" && k.name == "MB01")
+      card = &k;
+  if (!sl || !si || mf.empty())
+    return fail("SvR 2011 has no VS theme " + std::to_string(file));
+  svrfmt::ArcNode *l2 = Kid(*sl, 0), *p2 = Kid(*si, 7001), *a2 = Kid(*si, 7002);
+  svrfmt::ArcNode *l3 = card ? Kid(*card, 7000) : nullptr, *p3 = card ? Kid(*card, 7001) : nullptr,
+                  *a3 = card ? Kid(*card, 7002) : nullptr;
+  if (!l2 || !p2 || !a2 || !l3 || !p3 || !a3)
+    return fail("a VS theme of an unknown shape");
+  Yxml y2, y3;
+  if (!ReadYxml(svrfmt::ArchiveData(*l2), y2) || !ReadYxml(svrfmt::ArchiveData(*l3), y3) || y2.rec != 0x90 ||
+      y3.rec != 0x84 || y2.groups.size() != 7 || y3.groups.size() != 7)
+    return fail("a VS layout of an unknown shape");
+  // SvR's frame, background and beta: their resources' records, and their nodes' places and animations (the node's
+  // +0x04..+0x3F; +0x40, the resource's number, stays WWE '12's), its resource's name at +0x4C.
+  struct Part {
+    uint32_t type;
+    const char *end;
+  };
+  for (const Part part : {Part{5, "_fr"}, Part{5, "_bg"}, Part{2, "beta"}}) {
+    const int r2 = ResourceEnding(y2.head, part.type, part.end), r3 = ResourceEnding(y3.head, part.type, part.end);
+    if (r2 < 0 || r3 < 0)
+      return fail(std::string("no ") + part.end + " in one of the layouts");
+    memcpy(&y3.head[0x20 + size_t(r3) * 0x4C], &y2.head[0x20 + size_t(r2) * 0x4C], 0x4C);
+    const Bytes name2(&y2.head[0x20 + size_t(r2) * 0x4C + 12], &y2.head[0x20 + size_t(r2) * 0x4C + 28]);
+    const uint32_t id2 = Rd32(y2.head, 0x20 + size_t(r2) * 0x4C);
+    std::vector<const Bytes *> from;  // (SvR's nodes of that resource, in order)
+    for (const auto &g : y2.groups)
+      for (const auto &n : g)
+        if (Rd32(n, 0) == id2)
+          from.push_back(&n);
+    size_t k = 0;
+    for (auto &g : y3.groups)
+      for (auto &n : g)
+        if (Rd32(n, 0x40) == uint32_t(r3) && !from.empty()) {
+          const Bytes &src = *from[std::min(k++, from.size() - 1)];
+          memcpy(&n[0], &src[0], 0x40);
+          memcpy(&n[0x4C], name2.data(), name2.size());
+        }
+  }
+  // Its pictures, with WWE '12's own the layout keeps.
+  std::vector<svrfmt::BundleTexture> pics, ours;
+  if (!svrfmt::BundleRead(svrfmt::ArchiveData(*p2), pics) || !svrfmt::BundleRead(svrfmt::ArchiveData(*p3), ours))
+    return fail("unreadable VS pictures");
+  for (const auto &t : ours)
+    if ((t.name == "dummy" || t.name == "matchup_BG01" || t.name == "matchup_BG02") && !Named(pics, t.name))
+      pics.push_back(t);
+  ReplaceLike(*l3, WriteYxml(y3));
+  ReplaceLike(*p3, svrfmt::BundleWrite(pics));
+  ReplaceLike(*a3, svrfmt::ArchiveData(*a2));
+  svrfmt::ArchiveTouch(*card);
+  svrfmt::Archive one;
+  one.root = *card;
+  mb = svrfmt::ArchiveSave(one);
+  if (mb.size() < 4 || memcmp(mb.data(), "PACH", 4) != 0)
+    return fail("the VS screen couldn't be written");
+  return true;
+}
+
 struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
   int pictures_added = 0;           // ring and crowd pictures copied from the base
