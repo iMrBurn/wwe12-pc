@@ -1,0 +1,306 @@
+name: ios-port
+
+# WWE '12 PC for iOS (arm64): builds the recompiled game + the port for iPhone, as an unsigned IPA.
+# Lives in a PRIVATE repo, next to generated/ (the game translated to C++: never public), host_shaders/
+# and icon/icon.png. See docs/ios/README.md in the public repo for the list of files and the steps.
+#
+# Based on Ke619's SvR 2011 iOS workflow (github.com/Ke619/WWE-SvR11-IOS), which works; the pieces
+# that are specific to WWE '12 are in docs/ios/ios_sdk_edits.py and docs/ios/ios_port_edits.py
+# (public repo, anchors asserted), so this file only assembles the tree and builds it.
+on:
+  workflow_dispatch:
+    inputs:
+      port_ref:
+        description: "Branch, tag or commit of iMrBurn/wwe12-pc to build"
+        default: main
+
+env:
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_MAXSIZE: 2G
+  CCACHE_SLOPPINESS: pch_defines,time_macros,include_file_mtime,include_file_ctime
+  # Pinned like port/setup.ps1: our patches apply on exactly these.
+  SDK_COMMIT: c94f5ebdcb3c9d1a460ca48e04f9758448f8d518
+  PLUME_COMMIT: e0c8871
+  XENOS_COMMIT: 339af41
+
+jobs:
+  port:
+    runs-on: macos-15
+    timeout-minutes: 330
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the private files are here (and no game file)
+        run: |
+          set -euo pipefail
+          test -f generated/rexglue.cmake && echo "rexglue.cmake ok"
+          test -f generated/default/sources.cmake && echo "sources.cmake ok"
+          test -f generated/default/wwe12_pch.h && echo "pch ok"
+          test -f generated/native/shader_cache.cpp && echo "shader_cache.cpp ok"
+          echo "files in generated: $(find generated -type f | wc -l)"
+          n=$(ls host_shaders/*.hlsl.spirv.h | wc -l)
+          echo "host shader headers: $n (want 13)"
+          test "$n" -eq 13
+          if find . \( -name "default.xex" -o -name "default.xexp" -o -name "*.iso" \) | grep -q .; then
+            echo "ERROR: a game file is in this repo"; exit 1
+          fi
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-${{ github.run_id }}
+          restore-keys: ccache-
+
+      - name: Tools
+        run: brew install ninja ccache || true
+
+      - name: Fetch the port, the SDK, plume and XenosRecomp (pinned)
+        run: |
+          set -euo pipefail
+          git clone https://github.com/iMrBurn/wwe12-pc port-src
+          git -C port-src checkout "${{ inputs.port_ref }}"
+          mkdir -p port-src/recomp
+          git clone https://github.com/rexglue/rexglue-sdk port-src/recomp/rexglue-sdk
+          git -C port-src/recomp/rexglue-sdk checkout "$SDK_COMMIT"
+          git -C port-src/recomp/rexglue-sdk submodule update --init --recursive --jobs 8
+          git clone https://github.com/zolaware/plume port-src/recomp/plume
+          git -C port-src/recomp/plume checkout "$PLUME_COMMIT"
+          git -C port-src/recomp/plume submodule update --init --recursive --jobs 8
+          git clone https://github.com/zolaware/reblue-XenosRecomp port-src/recomp/reblue-XenosRecomp
+          git -C port-src/recomp/reblue-XenosRecomp checkout "$XENOS_COMMIT"
+          git -C port-src/recomp/reblue-XenosRecomp submodule update --init --recursive --jobs 8
+          git -C port-src log -1 --format='port: %h %s'
+
+      - name: Apply the port's patches (same order as setup.ps1)
+        run: |
+          set -euo pipefail
+          P="$PWD/port-src/port/patches"
+          # SDK: every rexglue-sdk-*.patch, by name (the Android ones are guarded by REX_PLATFORM_ANDROID)
+          for f in $(ls "$P"/rexglue-sdk-*.patch | LC_ALL=C sort); do
+            echo "sdk <- $(basename "$f")"
+            git -C port-src/recomp/rexglue-sdk apply --whitespace=nowarn "$f"
+          done
+          # plume: re:Blue's, then Android, D3D12, D3D11 (the D3D ones add Windows backends and the
+          # read-back / texture-slot changes our renderer calls)
+          for n in plume-reblue plume-android plume-android-driver plume-android-cache plume-d3d12 plume-d3d11; do
+            echo "plume <- $n.patch"
+            git -C port-src/recomp/plume apply --whitespace=nowarn "$P/$n.patch"
+          done
+          echo "xenosrecomp <- xenosrecomp-reblue-wwe12.patch"
+          git -C port-src/recomp/reblue-XenosRecomp apply --whitespace=nowarn "$P/xenosrecomp-reblue-wwe12.patch"
+
+      - name: iOS edits to the SDK and plume
+        run: |
+          python3 -I port-src/docs/ios/ios_sdk_edits.py \
+            port-src/recomp/rexglue-sdk port-src/recomp/plume port-src/port/patches/ios/plume_ios.mm
+
+      - name: Put the generated code and the host shaders in place
+        run: |
+          set -euo pipefail
+          cp -R generated port-src/port/generated
+          mkdir -p port-src/port/prebuilt_spirv
+          cp host_shaders/*.hlsl.spirv.h port-src/port/prebuilt_spirv/
+
+      - name: iOS edits to the port (CMake, window, phone defaults, no codegen)
+        run: |
+          python3 -I port-src/docs/ios/ios_port_edits.py port-src/port
+          test -f port-src/port/cmake/ios.cmake
+          test -f port-src/port/src/ios/wwe12_ios.cpp
+
+      - name: Configure the port (iOS arm64)
+        run: |
+          set -o pipefail
+          cmake -S port-src/port -B build -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_SYSTEM_PROCESSOR=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
+            -DCMAKE_MACOSX_BUNDLE=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS_RELEASE="-O1 -DNDEBUG" \
+            -DCMAKE_CXX_FLAGS_RELEASE="-O1 -DNDEBUG" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_OBJC_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_SHARED_LINKER_FLAGS="-framework UIKit -framework CoreGraphics" \
+            -DCMAKE_EXE_LINKER_FLAGS="-framework UIKit -framework CoreGraphics -lz" \
+            -DREXSDK_DIR="$PWD/port-src/recomp/rexglue-sdk" \
+            -DREXGLUE_USE_VULKAN=ON \
+            -DREXGLUE_ENABLE_TRACY=OFF \
+            -DWWE12_NATIVE_RENDERER=ON \
+            -DWWE12_D3D12_EXE=OFF \
+            -DWWE12_D3D11_EXE=OFF \
+            -DWWE12_PREBUILT_SPIRV="$PWD/port-src/port/prebuilt_spirv" \
+            2>&1 | tee configure.log
+
+      - name: Build wwe12 (keeps going to show every error, then fails if there were any)
+        run: |
+          set -o pipefail
+          cmake --build build --target wwe12 -- -j3 -k 0 2>&1 | tee build.log
+
+      - name: Inspect the binary (platform, size, dependencies)
+        run: |
+          set -euo pipefail
+          exec > >(tee -a package.log) 2>&1
+          B=build/wwe12
+          ls -l "$B"
+          file "$B"
+          otool -l "$B" | grep -A5 LC_BUILD_VERSION
+          echo "---- exe dependencies ----"
+          otool -L "$B"
+          echo "---- exe rpaths ----"
+          otool -l "$B" | grep -A2 LC_RPATH || echo "(none)"
+          echo "---- SDK dylibs ----"
+          ls -l port-src/recomp/rexglue-sdk/out/mac-arm64/*.dylib || find port-src/recomp/rexglue-sdk -name "*.dylib" | head -20
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          exec > >(tee -a package.log) 2>&1
+          SDKOUT="port-src/recomp/rexglue-sdk/out/mac-arm64"
+          APP="ipa/Payload/WWE12.app"
+          FW="$APP/Frameworks"
+          rm -rf ipa wwe12-unsigned.ipa
+          mkdir -p "$FW"
+          cp build/wwe12 "$APP/wwe12"
+          cp port-src/port/config/wwe12.toml "$APP/wwe12.toml"   # copied to Documents on the first start
+
+          # the SDK's staged Vulkan runtime (lib/ + share/vulkan/icd.d/); the app looks in <bundle>/vulkan
+          test -f build/vulkan/lib/libvulkan.1.dylib
+          test -f build/vulkan/lib/libMoltenVK.dylib
+          test -f build/vulkan/share/vulkan/icd.d/MoltenVK_icd.json
+          cp -RL build/vulkan "$APP/vulkan"
+
+          # the GPU plugin dylibs (real files, not the symlink names)
+          for n in librexruntime.dylib librexgpu-xenos.dylib; do
+            src="$SDKOUT/$n"
+            cp -L "$src" "$FW/$(basename "$(realpath "$src")")"
+          done
+
+          # point every dependency that lives in the build tree at @rpath/<file>, pulling it into Frameworks
+          for pass in 1 2 3; do
+            for f in "$APP/wwe12" "$FW"/*.dylib; do
+              otool -L "$f" | tail -n +2 | awk '{print $1}' | while read -r dep; do
+                case "$dep" in
+                  /usr/lib/*|/System/*) continue ;;
+                  @rpath/*) cand="$SDKOUT/${dep#@rpath/}" ;;
+                  /*) cand="$dep" ;;
+                  *) continue ;;
+                esac
+                [ -e "$cand" ] || { echo "MISSING: $f -> $dep"; continue; }
+                base="$(basename "$(realpath "$cand")")"
+                [ -e "$FW/$base" ] || cp -L "$cand" "$FW/$base"
+                install_name_tool -change "$dep" "@rpath/$base" "$f"
+              done
+            done
+          done
+
+          # each dylib: own name; every file: drop build-machine rpaths, add the app's
+          for f in "$FW"/*.dylib; do install_name_tool -id "@rpath/$(basename "$f")" "$f"; done
+          for f in "$APP/wwe12" "$FW"/*.dylib; do
+            for rp in $(otool -l "$f" | awk '/LC_RPATH/{r=1} r && /path /{print $2; r=0}'); do
+              case "$rp" in /Users/*) install_name_tool -delete_rpath "$rp" "$f" ;; esac
+            done
+          done
+          install_name_tool -add_rpath "@executable_path/Frameworks" "$APP/wwe12"
+          for f in "$FW"/*.dylib; do install_name_tool -add_rpath "@loader_path" "$f"; done
+
+          cat > "$APP/Info.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleIdentifier</key><string>io.github.imrburn.wwe12</string>
+            <key>CFBundleName</key><string>WWE12</string>
+            <key>CFBundleDisplayName</key><string>WWE '12</string>
+            <key>CFBundleExecutable</key><string>wwe12</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>0.1</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>CFBundleSupportedPlatforms</key><array><string>iPhoneOS</string></array>
+            <key>MinimumOSVersion</key><string>17.0</string>
+            <key>UIDeviceFamily</key><array><integer>1</integer></array>
+            <key>CFBundleIcons</key>
+            <dict>
+              <key>CFBundlePrimaryIcon</key>
+              <dict>
+                <key>CFBundleIconFiles</key>
+                <array><string>AppIcon60x60</string></array>
+              </dict>
+            </dict>
+            <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
+            <key>UISupportedInterfaceOrientations</key>
+            <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+            <key>UIRequiresFullScreen</key><true/>
+            <key>UIStatusBarHidden</key><true/>
+            <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+            <key>UILaunchScreen</key><dict/>
+            <key>UIFileSharingEnabled</key><true/>
+            <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint "$APP/Info.plist"
+
+          # the home-screen icon: icon/icon.png of this repo, made into the two sizes iPhones use
+          if [ -f icon/icon.png ]; then
+            sips -s format jpeg icon/icon.png --out "$RUNNER_TEMP/icon.jpg" > /dev/null
+            sips -s format png -z 120 120 "$RUNNER_TEMP/icon.jpg" --out "$APP/AppIcon60x60@2x.png" > /dev/null
+            sips -s format png -z 180 180 "$RUNNER_TEMP/icon.jpg" --out "$APP/AppIcon60x60@3x.png" > /dev/null
+          else
+            echo "NOTE: no icon/icon.png in the repo - the app keeps the blank icon."
+          fi
+
+          # leftover references to the build machine would make the app fail at launch
+          if otool -L "$APP/wwe12" "$FW"/*.dylib "$APP/vulkan/lib"/*.dylib | grep "/Users/"; then
+            echo "ERROR: build-machine paths left in the binaries"; exit 1
+          fi
+
+          # ad-hoc signature (the sideload tool replaces it)
+          codesign --force --sign - "$FW"/*.dylib "$APP/vulkan/lib"/*.dylib
+          codesign --force --sign - "$APP/wwe12"
+
+          (cd ipa && zip -qry ../wwe12-unsigned.ipa Payload)
+          ls -l wwe12-unsigned.ipa
+          echo "---- app contents ----"
+          ls -l "$APP" "$FW"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wwe12-unsigned-ipa
+          path: wwe12-unsigned.ipa
+          retention-days: 3
+
+      - name: Cache stats
+        if: always()
+        run: ccache -s || true
+
+      - name: Error summary
+        if: always()
+        run: |
+          {
+            echo "### WWE '12 on iOS"
+            echo '```'
+            grep -hE "error:|CMake Error|FAILED:|fatal error|Undefined symbols" configure.log build.log 2>/dev/null | sed -E 's#/Users/runner/work/[^/]+/[^/]+/##' | sort -u | head -80 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: port-logs
+          path: |
+            configure.log
+            build.log
+            package.log
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .ccache
+          key: ccache-${{ github.run_id }}
