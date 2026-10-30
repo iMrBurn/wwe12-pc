@@ -54,6 +54,14 @@ s = s.replace('set(WWE12_DXC "${WWE12_XENOS_DIR}/thirdparty/dxc-bin/bin/x64/dxc.
               'endif()', 1)
 write(nr, s)
 print("ok: native_renderer.cmake: prebuilt SPIR-V host shaders")
+# The PC/Android builds link the installed SDK, where the export names the library rex::o1heap; here
+# the SDK is built from source and the target is plain `o1heap`.
+replace(nr, "    target_link_libraries(${target} PRIVATE plume wwe12_native_thirdparty rex::o1heap)",
+        "    if(NOT TARGET rex::o1heap AND TARGET o1heap)\n"
+        "        add_library(rex::o1heap ALIAS o1heap)\n"
+        "    endif()\n"
+        "    target_link_libraries(${target} PRIVATE plume wwe12_native_thirdparty rex::o1heap)",
+        "native_renderer.cmake: rex::o1heap alias for the in-tree SDK")
 # Apple's linker has no -Map=.
 replace(nr, '    else()\n        target_link_options(${target} PRIVATE "-Wl,-Map=${CMAKE_BINARY_DIR}/${target}.map")',
         '    elseif(NOT APPLE)\n        target_link_options(${target} PRIVATE "-Wl,-Map=${CMAKE_BINARY_DIR}/${target}.map")',
