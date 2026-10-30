@@ -1129,12 +1129,14 @@ d'arènes mods ; gardés dans Downloads, hors dépôt ; crédit à mettre si on 
 
 ## Ajouts du 2026-10-30 (d'après le tableau comparatif avec le Mod Maker de Kaiko)
 
-Hors jeu seulement ; rien de tout ça n'a encore été vu en jeu.
+Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
 - **Lanceur, « Jouer sans mods »** (page JOUER, sous le grand bouton) : lance le jeu avec `--wwe12_no_mods=true`
   (cvar de `main.cpp`, lue dans `wwe12_app.h` : coupe `wwe12_texture_packs`, `wwe12_superstar_mods`,
   `wwe12_entrance_mods`, ne monte ni le dossier `mods` ni les arènes ajoutées ; le QUITTER du menu reste). Rien n'est
   supprimé. **Limite** : le pack des catcheurs ajoutés déjà fait reste dans les DLC (le jeu le lit comme un DLC) : les
   catcheurs ajoutés restent donc, figés tels qu'au dernier lancement normal.
+  **Vérifié une fois (2026-10-30, données de test, sans le lanceur : `--wwe12_no_mods=true`)** : écran-titre d'origine,
+  journal sans aucune ligne « Mods : les fichiers… », « [superstar mods] » ni « Textures : » (12 au lancement d'avant).
 - **Lanceur, « Signaler un problème »** (page À PROPOS) : un zip sur le Bureau (`WWE12-PC-report-AAAAMMJJ-HHMM.zip`) :
   `diagnostics.txt` (le texte de « Copier le diagnostic »), `mods.txt` (mods installés, activés ou non), les 3
   derniers `logs\wwe12_*.log` d'à côté de l'exe, `crash_trace.txt` / `hang_trace.txt` / `stderr.txt` de
