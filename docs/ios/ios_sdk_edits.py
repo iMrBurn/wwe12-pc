@@ -178,3 +178,40 @@ s += "\nif(IOS)\n  target_sources(plume PRIVATE plume_ios.mm)\nendif()\n"
 write(pc, s)
 shutil.copy(plume_ios, plume / "plume_ios.mm")
 print("ok: plume: no Metal, plume_ios.mm")
+
+# plume starts Vulkan with a bare dlopen("libvulkan.dylib"): on macOS the game relaunches itself with
+# DYLD_LIBRARY_PATH for that, which iOS forbids. Load the MoltenVK of the app bundle by its full
+# path instead and hand its vkGetInstanceProcAddr to volk (no Vulkan loader, no ICD file needed).
+pv = plume / "plume_vulkan.cpp"
+old = "#else\n        VkResult res = volkInitialize();\n#endif\n"
+new = r"""#elif defined(__APPLE__) && TARGET_OS_IPHONE
+        VkResult res = VK_ERROR_INITIALIZATION_FAILED;
+        {
+            uint32_t exeSize = 0;
+            _NSGetExecutablePath(nullptr, &exeSize);
+            std::string exePath(exeSize, '\0');
+            if (_NSGetExecutablePath(exePath.data(), &exeSize) == 0) {
+                std::string dir(exePath.c_str());
+                dir = dir.substr(0, dir.find_last_of('/'));
+                const std::string mvk = dir + "/vulkan/lib/libMoltenVK.dylib";
+                void *mvkLib = dlopen(mvk.c_str(), RTLD_NOW | RTLD_LOCAL);
+                if (mvkLib == nullptr) {
+                    fprintf(stderr, "MoltenVK: dlopen %s failed: %s\n", mvk.c_str(), dlerror());
+                } else {
+                    auto getInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(mvkLib, "vkGetInstanceProcAddr"));
+                    if (getInstanceProcAddr != nullptr) {
+                        volkInitializeCustom(getInstanceProcAddr);
+                        res = VK_SUCCESS;
+                    } else {
+                        fprintf(stderr, "MoltenVK: no vkGetInstanceProcAddr in %s\n", mvk.c_str());
+                    }
+                }
+            }
+        }
+#else
+        VkResult res = volkInitialize();
+#endif
+"""
+replace_once(pv, old, new, "plume_vulkan: MoltenVK of the bundle on iOS")
+prepend(pv, "#if defined(__APPLE__)\n#include <TargetConditionals.h>\n#include <dlfcn.h>\n#include <mach-o/dyld.h>\n#include <cstdio>\n#include <string>\n#endif\n",
+        "plume_vulkan: includes")
