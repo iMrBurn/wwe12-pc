@@ -169,6 +169,7 @@ struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)
   Bytes misc;                                      // ... and pac\misc.pac (the move records), when moves are added
+  Bytes edit;  // ... the Superstar Threads table: the latest pack's pac\edit\edit_dlcNN.pac, else the disc's edit.pac
   std::vector<Bytes> portraits_hd, portraits_sd;   // pacs that may hold the bases' SSFA/SSFB/SSFC "%04d"
   std::vector<std::pair<int, Bytes>> catalogs;     // the installed packs (number, info/catalog.dlc), not ours
 };
@@ -832,6 +833,65 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       }
     }
   }
+  // 4d. Superstar Threads: the game lists a superstar there when the parts table EDIT/SSTL has his record. Each pack
+  // brings the whole table again (edit\edit_dlcNN.pac, EDIT/SSTL alone; the disc's is in edit\edit.pac): u16 count,
+  // then 484-byte records by superstar number {u32 superstar, 48 x u32 part name string (4 attires x 12, -1: none),
+  // the parts' colour zones and default colours}. An added superstar gets his base's record (the zones are the
+  // base's Mask1-3: right for a model made over the base, the closest guess for a ported one).
+  Bytes edit_out;
+  if (!in.edit.empty()) {
+    svrfmt::Archive ed;
+    bool added = false;
+    if (svrfmt::ArchiveOpen(in.edit, ed, nullptr)) {
+      std::vector<svrfmt::ArcNode> keep;
+      for (auto &k : ed.root.kids) {
+        if (k.group.rfind("EDIT", 0) != 0 || k.name.rfind("SSTL", 0) != 0 || !svrfmt::ArchiveExpand(k))
+          continue;
+        for (auto &c : k.kids) {
+          Bytes t = svrfmt::ArchiveData(c);
+          constexpr size_t kRec = 484;
+          if (c.id != 0 || t.size() < 2 || t.size() < 2 + kRec * size_t(t[0] | t[1] << 8))
+            continue;
+          size_t count = size_t(t[0] | t[1] << 8);
+          t.resize(2 + kRec * count);
+          auto find = [&](uint32_t id) {
+            for (size_t r = 0; r < count; ++r)
+              if (svrfmt::Le32(&t[2 + r * kRec]) == id)
+                return r;
+            return count;
+          };
+          for (const auto &st : stars) {
+            const size_t b = find(uint32_t(st.base));
+            if (b == count)
+              continue;
+            Bytes rec(t.begin() + long(2 + b * kRec), t.begin() + long(2 + (b + 1) * kRec));
+            svrfmt::PutLe32(rec.data(), uint32_t(st.slot));
+            const size_t own = find(uint32_t(st.slot));
+            if (own != count) {
+              std::copy(rec.begin(), rec.end(), t.begin() + long(2 + own * kRec));
+            } else {
+              size_t at = 0;
+              while (at < count && svrfmt::Le32(&t[2 + at * kRec]) < uint32_t(st.slot))
+                ++at;
+              t.insert(t.begin() + long(2 + at * kRec), rec.begin(), rec.end());
+              ++count;
+            }
+            added = true;
+          }
+          t[0] = uint8_t(count);
+          t[1] = uint8_t(count >> 8);
+          svrfmt::ArchiveReplace(c, t);
+        }
+        svrfmt::ArchiveTouch(k);
+        keep.push_back(k);
+      }
+      if (added && keep.size() == 1) {
+        ed.root.kids = std::move(keep);  // (from the disc's edit.pac: the table alone, as a pack's)
+        svrfmt::ArchiveTouch(ed.root);
+        edit_out = svrfmt::ArchiveSave(ed);
+      }
+    }
+  }
   // 5. The files, their directories and the catalog.
   struct Entry {
     std::string path;
@@ -873,6 +933,9 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     ++next;
   }
   entries.push_back({"pac/ch/chEtc.pac", next, next, &etc_out});
+  ++next;
+  if (!edit_out.empty())
+    entries.push_back({"pac/edit/edit_dlc" + std::string(tag) + ".pac", next, next, &edit_out});
   for (int hd = 0; hd < 2; ++hd) {
     Bytes arc;
     for (const auto &en : entries) {

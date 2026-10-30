@@ -661,8 +661,19 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   std::vector<superstar_pack::File> files;
   std::string why;
   latest("pac/audience.pac", in.audience);
-  if (!stars.empty())
+  if (!stars.empty()) {
     latest("pac/misc.pac", in.misc);  // (moves to add, attire lines: they go into a copy of it)
+    // Superstar Threads: the newest pack's table (pac\edit\edit_dlcNN.pac, the number is the pack's), else the disc's.
+    for (const auto &[n, dir] : packs) {
+      for (fs::directory_iterator it(dir / "pac" / "edit", ec), end; !ec && it != end; it.increment(ec))
+        if (it->path().filename().string().rfind("edit_dlc", 0) == 0 && ReadHost(it->path(), in.edit))
+          break;
+      if (!in.edit.empty())
+        break;
+    }
+    if (in.edit.empty())
+      ReadGame(vfs, "pac/edit/edit.pac", in.edit);
+  }
   if (!superstar_pack::Build(in, stars, files, &why, attires, media, signs)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;

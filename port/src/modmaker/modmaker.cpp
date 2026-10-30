@@ -23,6 +23,8 @@
 
 #include "arena_page.h"
 #include "backgrounds_page.h"
+#include "caw_page.h"
+#include "objects_page.h"
 #include "game_discs.h"
 #include "game_disc.h"
 #include "media.h"
@@ -190,7 +192,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kMedia, kSigns, kBackgrounds, kLook, kFiles, kDiscs, kDoctor, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kCaw, kObjects, kMedia, kSigns, kBackgrounds, kLook, kFiles, kDiscs, kDoctor, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -207,6 +209,8 @@ mod_doctor::Page g_doctor;
 media_page::Page g_media;
 signs_page::Page g_signs;
 backgrounds_page::Page g_backgrounds;
+caw_page::Page g_caw;
+objects_page::Page g_objects;
 look_page::Page g_look;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
@@ -329,6 +333,10 @@ void PageHome() {
        "Changer les images d'une tenue et voir le catcheur en 3D."},
       {kNewStar, "New superstar", "Nouveau catcheur", "Add a superstar to the game, next to the others (also from SvR 2011, WWE '13 or 2K14-2K17).",
        "Ajouter un catcheur au jeu, à côté des autres (aussi depuis SvR 2011, WWE '13 ou 2K14-2K17)."},
+      {kCaw, "CAW", "CAW", "Your created superstars: their picture in the game's lists, export and import (share them).",
+       "Vos catcheurs créés : leur image dans les listes du jeu, export et import (pour les partager)."},
+      {kObjects, "Belts & weapons", "Ceintures et armes", "The pictures of the title belts, weapons and other objects.",
+       "Les images des ceintures, des armes et des autres objets du jeu."},
       {kMedia, "Media", "Média", "The game's superstars' portraits and entrance songs, in one pack.",
        "Les portraits et les musiques d'entrée des catcheurs du jeu, en un seul pack."},
       {kSigns, "Crowd signs", "Pancartes", "The signs the crowd holds up for a superstar during his match.",
@@ -582,7 +590,7 @@ void DrawUi() {
 
   // The rail fits the window's height (14 pages): the buttons get lower first (44 down to 34), then the logo smaller,
   // then the buttons again (down to 24); a 1080p screen was too short for all of them (HELP cut off, 2026-10-26).
-  constexpr int kPages = 14;
+  constexpr int kPages = kAbout + 1;
   const float gap = ImGui::GetStyle().ItemSpacing.y, title_h = 42, room = H - 18 - title_h - 48;
   const float logo_full = g_logo ? (kSide - 60) * float(g_logo_h) / float(g_logo_w) : 0;
   float bh = std::clamp((room - logo_full) / kPages - gap, 34.0f, 44.0f);
@@ -603,9 +611,9 @@ void DrawUi() {
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
   const char *names_en[] = {"HOME",       "VIDEOS",     "TEXTURES",     "ARENAS", "SUPERSTARS",
-                            "NEW SUPERSTAR", "MEDIA", "SIGNS", "BACKGROUNDS", "LOOK", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
+                            "NEW SUPERSTAR", "CAW", "BELTS & WEAPONS", "MEDIA", "SIGNS", "BACKGROUNDS", "LOOK", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
   const char *names_fr[] = {"ACCUEIL", "VIDÉOS",   "TEXTURES",   "ARÈNES",  "CATCHEURS",
-                            "NOUVEAU", "MÉDIA", "PANCARTES", "FONDS", "REGARDER", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
+                            "NOUVEAU", "CAW", "CEINTURES", "MÉDIA", "PANCARTES", "FONDS", "REGARDER", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
   for (int i = 0; i < int(std::size(names_en)); ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
@@ -630,6 +638,14 @@ void DrawUi() {
   case kSigns:
     Title(g_fr ? "PANCARTES" : "CROWD SIGNS");
     g_signs.Draw(g_fr, g_device.Get(), g_disc, g_mods);
+    break;
+  case kCaw:
+    Title("CAW");
+    g_caw.Draw(g_fr, g_device.Get(), UserRoot());
+    break;
+  case kObjects:
+    Title(g_fr ? "CEINTURES ET ARMES" : "BELTS & WEAPONS");
+    g_objects.Draw(g_fr, g_device.Get(), g_disc, g_mods);
     break;
   case kBackgrounds:
     Title(g_fr ? "FONDS DU MENU" : "MENU BACKGROUNDS");

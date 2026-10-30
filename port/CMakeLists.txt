@@ -110,6 +110,7 @@ if(WIN32)
     # (lzxd.c: libmspack's LZX reader, LGPL 2.1, the SDK's copy: WWE '13 files are XMemCompress'd.)
     target_include_directories(wwe12_modmaker PRIVATE src/modmaker src/launcher "${WWE12_IMGUI_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/libmspack/cabextract/mspack"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/xxHash"
         "${WWE12_IMGUI_DIR}/backends")
     target_link_libraries(wwe12_modmaker PRIVATE d3d11 dxgi d3dcompiler windowscodecs ole32 shell32
         mfplat mfreadwrite mfuuid propsys delayimp)

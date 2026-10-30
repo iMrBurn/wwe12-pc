@@ -1219,3 +1219,25 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   copies de la tenue de la base (`port13_star::AddPortedAttire`), chacune avec sa tenue d'entrée, chacune réduite à la
   place d'une tenue. **Vu en jeu le 2026-10-30** : Cena de WWE '13 (4 tenues) sur la base 261 : ADVANCED à l'écran de
   choix propose 4 tenues ; la 3e entre avec son t-shirt « Rise Above Hate » (sa tenue d'entrée).
+
+## Panoplies, CAW, ceintures et armes (2026-10-30)
+
+- **Panoplies (Superstar Threads) des catcheurs ajoutés** : la liste des panoplies est `EDIT/SSTL` (`edit\edit.pac` sur
+  le disque ; chaque DLC en apporte une copie entière, `pac\edit\edit_dlcNN.pac`, qui remplace la précédente) : u16
+  nombre, puis des fiches de 484 octets triées par numéro {u32 catcheur, 48 × u32 nom de partie (4 tenues × 12, -1 :
+  aucune), zones de couleur, couleurs par défaut}. Notre pack ajoute `edit_dlc05.pac` (la table la plus récente + une
+  fiche par catcheur ajouté, copiée de sa base) : `superstar_pack.h` étape 4d. Vu dans le pack (85 fiches = 80 + 5) ;
+  **pas encore vu dans le menu du jeu**. Les noms de parties de WWE '13 sont d'autres numéros de textes : pas repris.
+- **Page CAW** (`caw_page.h`, d'après Kaiko) : liste les CAW de la sauvegarde, change l'image des listes (rendu
+  256 × 512 DXT5 à 755 044 + 0x220 + tenue × 149 528, vignette 128 × 128 à +0x20414 ; décodage vérifié), exporte en
+  `.wwe12caw` (zip : `caw.cas`, `record.bin`, `header.bin`), importe dans la première place libre. Sommes de contrôle :
+  `.cas` +12, +0x14B254 et à la fin (la somme bouge de la différence des octets des images, méthode de Kaiko) ; fiche
+  du CAW dans `SaveData.dat` à 0x1B9E8 + place × 0x6E4 (nom à +0x2A, copie de la somme du `.cas` à +0x684) ; somme de
+  `SaveData.dat` (+0x18) = octets de 0x1C à 0x1C + les deux tailles en tête (vérifié). **Supposé, à vérifier en jeu** :
+  taille d'une fiche (0x6E4) et 50 places (une seule fiche vue : un 2e CAW le confirmera). Copie de la sauvegarde
+  avant chaque écriture (`SaveBackups`).
+- **Page CEINTURES ET ARMES** (`objects_page.h`) : objets de `evtobj.pac` (SOBJ/NNNN, nommés par SOBJ/LIST : fiches de
+  64 octets {u16 objet, nom}) dont 30 ceintures (dépliée / pliée / roulée), armes de `bgEtc.pac` (STG/WPON, STG3/WPON,
+  STG3/WPO2, STGR/WPON). Une image remplacée devient un pack de textures (`textures/<nom>_<empreinte>.dds`) : l'empreinte
+  du jeu (XXH3 du niveau 0 tel que le DDS de svrfmt le tient) est **la même** que celle des captures du jeu (vérifié sur
+  les 26 captures du menu), donc pas besoin de capturer en jeu. Pas encore vu en jeu sur une ceinture.
