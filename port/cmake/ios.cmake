@@ -14,6 +14,11 @@ target_compile_definitions(wwe12 PRIVATE WWE12_IOS=1)
 
 # The stand-in for <windows.h> and the MSVC runtime functions are the Android ones (the header
 # accepts WWE12_IOS, see the workflow), shared so there is one copy to keep.
-target_include_directories(wwe12 BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/compat")
+target_include_directories(wwe12 BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/compat"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/android")
+
+# The SDK is built from source here (PC and Android link the installed one, which ships the headers):
+# the Dear ImGui headers that rex/ui/style.h and wwe12_display.cpp include.
+target_include_directories(wwe12 PRIVATE "${REXSDK_DIR}/thirdparty/imgui")
 target_compile_options(wwe12 PRIVATE
     "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/android/compat/wwe12_crt_compat.h>")
