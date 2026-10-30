@@ -1154,11 +1154,19 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   `MatchHD.pac` : la même image décalée (tout change) dépasse de 0,7 Ko sa place (entrées serrées à 256 octets) et
   est refusée : remplacer une image d'un paquet compressé ne marchera que si elle se compresse aussi bien. Plus tard :
   agrandir la place en corrigeant aussi `plist360.arc`, ou réduire d'autres images comme `Arena::Fit`.
-- **Réglages du catcheur (piste n° 2 du tableau), étude seulement** : fiche `CHAR/DAT` de 290 octets
-  (`chEtc.pac`, 373 fiches). Connu : +4..+15 et +16..+27 attributs, +0x2E nom, +0x11F « DLC ». Pistes **non
-  vérifiées en jeu** : +0x28 / +0x2A deux u16 proches d'une taille (Big Show 4591, Khali 4764, Cena et Mark Henry 3988,
-  Rey 3449 ; DiBiase 4117 / 4052) ; +0x104 une liste d'octets (jusqu'à 5 vus) qui ressemble aux capacités (Rey
-  0b 0e 13 14 16, Sin Cara 0b 13 14 16, Big Show 09 0b, Khali aucune) ; +0x10C un octet 0-3 (Kelly 0, Show / Khali /
-  Henry 1, Lesnar 2, Cena / Rey 3) ; +0x110 trois u16 (0x08EB…). Noms des capacités dans `pac/string.pac`,
-  `SDB /0000` enfant 0 (DIRTY PIN, RESILIENCY, OUTSIDE DIVES, FIRED UP…, page ABILITY INFO), sans le lien avec les
-  numéros de la fiche. À vérifier en jeu avant d'en faire des réglages.
+- **Réglages du catcheur (piste n° 2 du tableau) : taille et capacités, faits.** Fiche `CHAR/DAT` de 290 octets
+  (`chEtc.pac`). Le mod écrit des octets de sa fiche par `record=OFF:HEX,...` (offset en hexa dans la fiche, octets en
+  hexa ; jamais 0x2C..0x103 : numéro, noms, personne), appliqué par `superstar_pack.h` après le reste.
+  - **Taille = +0x28 et +0x2A**, deux échelles où 4096 = 1,0 (Rey 3449, Cena 3988, Big Show 4591, Khali 4764 ; chez
+    certaines divas la 2e est plus grande, Trish 3513 / 4096). **Vu en jeu le 2026-10-30** : Mankind avec 4764 sur les
+    deux dépasse Cena d'une tête. Rôle exact de la 2e non vérifié : le Mod Maker garde le rapport de la base.
+  - **Capacités = +0x104**, jusqu'à 5 numéros puis 0. Numéro N = N-ième nom de la table du jeu à 0x8206AD30
+    (`image.bin` 0x6AD30 : 0 → 40677 « NONE », N → texte 40616 + N, `pac/string.pac` `SDB /0000` enfant 0, entrées
+    de **16 octets** {début, longueur, id, 0}). Utilisés par le jeu : 1 Dirty Pin, 7 Move Thief, 9 Hammer Throw,
+    11 Resiliency, 14 Comeback, 19 Outside Dives, 20 Springboard Dives, 22 Leverage Pin, 24 Ring Escape (+ 23 Fired Up,
+    qui a sa page d'aide). L'écran de choix (SUPERSTAR INFO) ne montre que prises de finition et attributs : effet en
+    match pas encore vu.
+  - Catégorie de poids : le jeu la lit sur un octet 1-5 (`sub_8292C538`, +235 d'une autre structure, textes 40678-40683),
+    pas trouvée dans la fiche : laissée.
+  - Mod Maker, NOUVEAU CATCHEUR, étape 3 : « Taille et capacités » (curseur + catcheur de même taille ; 10 cases, 5 au
+    plus), gardés dans le projet (`own_size`, `size`, `own_abilities`, `abilities`).

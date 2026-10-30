@@ -543,11 +543,92 @@ class Page {
                         (total + 6) / 12);
     if (own_attributes_ && ImGui::SmallButton(fr ? "Reprendre ceux de la base" : "Take the base's again"))
       attributes_ = base_attributes_;
+    StepSettings(fr);
+  }
+
+  // Its size and abilities (CHAR / DAT record, written by the game from the mod's record= line). Size: +0x28 and +0x2A,
+  // two scales where 4096 = 1.0 (a diva's second one is bigger; seen in the game: Khali's 4764 made Mankind a head
+  // taller than Cena). Abilities: +0x104, up to 5 numbers, 0 after them; number N is the N-th name of the game's
+  // table at 0x8206AD30 (strings 40616 + N).
+  struct Ability {
+    int id;
+    const char *en, *fr;
+  };
+  static constexpr Ability kAbilities[] = {
+      {1, "Dirty Pin", "Tombé déloyal (Dirty Pin)"},       {7, "Move Thief", "Voleur de prise (Move Thief)"},
+      {9, "Hammer Throw", "Projection (Hammer Throw)"},    {11, "Resiliency", "Résilience (Resiliency)"},
+      {14, "Comeback", "Retour en force (Comeback)"},      {19, "Outside Dives", "Plongeons dehors (Outside Dives)"},
+      {20, "Springboard Dives", "Tremplin (Springboard Dives)"}, {22, "Leverage Pin", "Tombé en levier (Leverage Pin)"},
+      {23, "Fired Up", "Déchaîné (Fired Up)"},             {24, "Ring Escape", "Fuite du ring (Ring Escape)"}};
+  static constexpr int kMaxAbilities = 5;
+
+  void StepSettings(bool fr) {
+    ImGui::Dummy(ImVec2(0, 8));
+    ImGui::SeparatorText(fr ? "Taille et capacités" : "Size and abilities");
+    if (base_size_[0] <= 0)
+      return;
+    ImGui::Checkbox(fr ? "Sa propre taille (sinon celle de la base)" : "Its own size (else the base's)", &own_size_);
+    ImGui::BeginDisabled(!own_size_);
+    int v = own_size_ ? size_ : base_size_[0];
+    ImGui::SetNextItemWidth(320);
+    if (ImGui::SliderInt(fr ? "Taille##size" : "Size##size", &v, 3200, 5000, "") && own_size_)
+      size_ = v;
+    ImGui::SameLine();
+    static const std::pair<int, const char *> refs[] = {{3449, "Rey Mysterio"}, {3621, "Kelly Kelly"},
+                                                        {3988, "John Cena"},    {4484, "Undertaker"},
+                                                        {4591, "Big Show"},     {4764, "The Great Khali"}};
+    const auto *closest = &refs[0];
+    for (const auto &r : refs)
+      if (std::abs(r.first - v) < std::abs(closest->first - v))
+        closest = &r;
+    ImGui::TextDisabled("x%.2f  (%s %s)", v / 4096.0, fr ? "comme" : "like", closest->second);
+    ImGui::EndDisabled();
+    ImGui::Checkbox(fr ? "Ses propres capacités (sinon celles de la base)" : "Its own abilities (else the base's)",
+                    &own_abilities_);
+    const std::vector<int> &shown = own_abilities_ ? abilities_ : base_abilities_;
+    ImGui::BeginDisabled(!own_abilities_);
+    for (size_t i = 0; i < std::size(kAbilities); ++i) {
+      const auto &a = kAbilities[i];
+      bool on = std::find(shown.begin(), shown.end(), a.id) != shown.end();
+      if (i % 2)
+        ImGui::SameLine(260);
+      ImGui::BeginDisabled(!on && shown.size() >= size_t(kMaxAbilities));
+      if (ImGui::Checkbox(fr ? a.fr : a.en, &on) && own_abilities_) {
+        if (on)
+          abilities_.push_back(a.id);
+        else
+          abilities_.erase(std::remove(abilities_.begin(), abilities_.end(), a.id), abilities_.end());
+        std::sort(abilities_.begin(), abilities_.end());
+      }
+      ImGui::EndDisabled();
+    }
+    ImGui::EndDisabled();
+    ImGui::TextDisabled(fr ? "%d au plus." : "%d at most.", kMaxAbilities);
+  }
+
+  // The manifest's record= line for its size and abilities ("" if both are the base's).
+  std::string RecordValue() const {
+    std::string r;
+    char buf[64];
+    if (own_size_ && base_size_[0] > 0) {
+      const int second = std::clamp(base_size_[1] * size_ / base_size_[0], 1000, 0xFFFF);
+      snprintf(buf, sizeof(buf), "28:%02X%02X%02X%02X", size_ & 0xFF, size_ >> 8, second & 0xFF, second >> 8);
+      r += buf;
+    }
+    if (own_abilities_) {
+      r += r.empty() ? "104:" : ",104:";
+      for (int i = 0; i < kMaxAbilities; ++i) {
+        snprintf(buf, sizeof(buf), "%02X", i < int(abilities_.size()) ? abilities_[size_t(i)] : 0);
+        r += buf;
+      }
+    }
+    return r;
   }
 
   // The base's attributes: its record (pac\ch\chEtc.pac, CHAR / DAT, the child of its number) +4..+15.
   void LoadBaseAttributes(const disc::GameDisc &disc) {
     base_attributes_.clear();
+    base_size_[0] = base_size_[1] = 0;
     Bytes etc;
     svrfmt::Archive a;
     if (base_ < 0 || !disc.Read("pac/ch/chEtc.pac", etc) || !svrfmt::ArchiveOpen(etc, a, nullptr))
@@ -559,6 +640,18 @@ class Page {
             const Bytes d = svrfmt::ArchiveData(c);
             if (d.size() >= 16)
               base_attributes_.assign(d.begin() + 4, d.begin() + 16);
+            if (d.size() >= 0x10C) {
+              base_size_[0] = d[0x28] | d[0x29] << 8;
+              base_size_[1] = d[0x2A] | d[0x2B] << 8;
+              base_abilities_.clear();
+              for (size_t k = 0x104; k < 0x104 + kMaxAbilities; ++k)
+                if (d[k])
+                  base_abilities_.push_back(d[k]);
+              if (!own_size_)
+                size_ = base_size_[0];
+              if (!own_abilities_)
+                abilities_ = base_abilities_;
+            }
           }
   }
 
@@ -1309,6 +1402,10 @@ class Page {
                     (own_attributes_ ? "1" : "0") + "\nattributes=";
     for (size_t i = 0; i < attributes_.size(); ++i)
       t += std::to_string(attributes_[i]) + (i + 1 < attributes_.size() ? "," : "");
+    t += "\nown_size=" + std::string(own_size_ ? "1" : "0") + "\nsize=" + std::to_string(size_) +
+         "\nown_abilities=" + (own_abilities_ ? "1" : "0") + "\nabilities=";
+    for (size_t i = 0; i < abilities_.size(); ++i)
+      t += std::to_string(abilities_[i]) + (i + 1 < abilities_.size() ? "," : "");
     t += "\n";
     std::ofstream(out, std::ios::binary).write(t.data(), std::streamsize(t.size()));
     project_note_ = (fr ? "Projet enregistré : " : "Project saved: ") + media::Utf8(out.filename().wstring());
@@ -1388,6 +1485,21 @@ class Page {
       attributes_.push_back(std::clamp(atoi(part.c_str()), 0, 100));
     if (attributes_.size() != 12)
       attributes_ = base_attributes_;
+    own_size_ = value("own_size") == "1";
+    if (own_size_)
+      size_ = std::clamp(atoi(value("size").c_str()), 3200, 5000);
+    own_abilities_ = value("own_abilities") == "1";
+    if (own_abilities_) {
+      abilities_.clear();
+      const std::string a = value("abilities");
+      for (size_t at = 0; at < a.size() && abilities_.size() < size_t(kMaxAbilities);) {
+        const int id = atoi(a.c_str() + at);
+        if (std::any_of(std::begin(kAbilities), std::end(kAbilities), [&](const Ability &k) { return k.id == id; }))
+          abilities_.push_back(id);
+        const size_t c = a.find(',', at);
+        at = c == std::string::npos ? a.size() : c + 1;
+      }
+    }
     if (const fs::path pic = path(value("portrait")); !pic.empty()) {
       svrfmt::Image img;
       if (wic_image::Load(pic, img) && img.w > 0 && img.h > 0)
@@ -1573,6 +1685,8 @@ class Page {
       for (size_t i = 0; i < 12; ++i)
         manifest += std::to_string(attributes_[i]) + (i < 11 ? "," : "\n");
     }
+    if (const std::string r = RecordValue(); !r.empty())  // (its size and abilities: the game puts them in its record)
+      manifest += "record=" + r + "\n";
     if (use_own_moves_ && !own_moves_.moves.empty())  // (the game puts them over the base's)
       manifest += "moves=" + moveset_port::ManifestValue(own_moves_.moves) + "\n";
     if (entrance_ >= 0 && entrance_ != base_)  // (another superstar's entrance)
@@ -1671,6 +1785,9 @@ class Page {
   char entrance_filter_[64] = {};
   bool own_attributes_ = false;           // its own attributes (else the base's)
   std::vector<int> attributes_, base_attributes_;  // the 12 (0-100), STRIKE POWER .. TAG TEAM
+  bool own_size_ = false, own_abilities_ = false;  // its own size / abilities (else the base's)
+  int size_ = 4096, base_size_[2] = {0, 0};          // record +0x28 (+0x2A: the base's ratio kept), 4096 = 1.0
+  std::vector<int> abilities_, base_abilities_;      // record +0x104.. (kAbilities' numbers)
   bool svr_movie_ = false;     // its SvR 2011 entrance movie, as it is
   bool twok_movie_ = false;    // its 2K game's entrance movie (Bink 2), made into its own (own_movie_ too)
   std::string twok_movie_file_;  // that movie in movies\titantron, "" if none

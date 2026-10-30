@@ -209,6 +209,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     std::string key, name;
     int base = 0;
     std::vector<uint8_t> attributes;  // attributes=12 numbers (0-100), else empty (the base's)
+    std::vector<std::pair<int, std::vector<uint8_t>>> record;  // record=OFF:HEX,... (CHAR / DAT bytes)
     std::vector<std::pair<int, int>> moves;  // moves=OFF:NUMBER,... (hex offset in CHAR / PRO), else the base's
     int entrance = 0;                         // entrance=NUMBER: that superstar's entrance, else the base's
     int own_entrance = 0;                     // entrance_own=NUMBER: its own (superstar/entrance/), else 0
@@ -239,6 +240,20 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       }
       if (mod.attributes.size() != 12)
         mod.attributes.clear();
+    }
+    {
+      const std::string v = Value(text, "record");
+      for (size_t at = 0; at < v.size();) {
+        const size_t comma = std::min(v.find(',', at), v.size()), colon = v.find(':', at);
+        if (colon < comma) {
+          std::vector<uint8_t> bytes;
+          for (size_t k = colon + 1; k + 1 < comma; k += 2)
+            bytes.push_back(uint8_t(strtoul(v.substr(k, 2).c_str(), nullptr, 16)));
+          if (!bytes.empty())
+            mod.record.push_back({int(strtoul(v.substr(at, colon - at).c_str(), nullptr, 16)), bytes});
+        }
+        at = comma + 1;
+      }
     }
     {
       const std::string v = Value(text, "moves");
@@ -528,6 +543,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     st.name = mod.name;
     st.base = mod.base;
     st.attributes = mod.attributes;
+    st.record = mod.record;
     st.moves = mod.moves;
     st.entrance = mod.entrance;
     st.own_entrance = mod.own_entrance;

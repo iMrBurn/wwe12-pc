@@ -62,6 +62,9 @@ struct Star {
   // STRIKE DEFENSE, GRAPPLE DEFENSE, SPEED, AGILITY, ADRENALINE, RECOVERY, DURABILITY, CHARISMA, TAG TEAM, the game's
   // own names in that order), else empty (the base's).
   std::vector<uint8_t> attributes;
+  // Bytes of its CHAR / DAT record set by the mod (record=OFF:HEX,...: offset in the record, hex bytes), after
+  // everything else: the Mod Maker's superstar settings (size, abilities...).
+  std::vector<std::pair<int, Bytes>> record;
   // Its own moves over its base's (CHAR / PRO byte offset, move number, big-endian there: the Mod Maker's
   // moveset_port.h), else empty.
   std::vector<std::pair<int, int>> moves;
@@ -491,6 +494,9 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       for (size_t i = 0; i < 12; ++i)
         d[4 + i] = d[16 + i] = uint8_t(std::min<int>(st.attributes[i], 100));
     memcpy(&d[0xF0], &own[0xF0], 8);
+    for (const auto &[at, bytes] : st.record)
+      if (at >= 4 && size_t(at) + bytes.size() <= d.size() && (at >= 0x104 || at + bytes.size() <= 0x2E))
+        memcpy(&d[size_t(at)], bytes.data(), bytes.size());  // (never its number, names or person: 0x2C..0x103)
     d[0x11F] = 1;  // a DLC superstar (the select screen's DLC tile; a disc superstar's copy had 0 and showed nowhere)
     while (person > 0 && person_used[size_t(person)])
       --person;
