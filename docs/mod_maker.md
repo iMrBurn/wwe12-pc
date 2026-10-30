@@ -1126,3 +1126,37 @@ d'arènes mods ; gardés dans Downloads, hors dépôt ; crédit à mettre si on 
   drapeau 0x1000000), celles de WWE '12 108 (3 mots de plus avant les coordonnées de texture : 0, 0, 1.0) ; toutes
   passent au format de WWE '12. Les **boîtes de visibilité (50020)** de SvR sont en mètres : ×100, pas ×10 (sinon
   tribunes, scène, rampe et sol disparaissaient selon la caméra pendant les entrées).
+
+## Ajouts du 2026-10-30 (d'après le tableau comparatif avec le Mod Maker de Kaiko)
+
+Hors jeu seulement ; rien de tout ça n'a encore été vu en jeu.
+- **Lanceur, « Jouer sans mods »** (page JOUER, sous le grand bouton) : lance le jeu avec `--wwe12_no_mods=true`
+  (cvar de `main.cpp`, lue dans `wwe12_app.h` : coupe `wwe12_texture_packs`, `wwe12_superstar_mods`,
+  `wwe12_entrance_mods`, ne monte ni le dossier `mods` ni les arènes ajoutées ; le QUITTER du menu reste). Rien n'est
+  supprimé. **Limite** : le pack des catcheurs ajoutés déjà fait reste dans les DLC (le jeu le lit comme un DLC) : les
+  catcheurs ajoutés restent donc, figés tels qu'au dernier lancement normal.
+- **Lanceur, « Signaler un problème »** (page À PROPOS) : un zip sur le Bureau (`WWE12-PC-report-AAAAMMJJ-HHMM.zip`) :
+  `diagnostics.txt` (le texte de « Copier le diagnostic »), `mods.txt` (mods installés, activés ou non), les 3
+  derniers `logs\wwe12_*.log` d'à côté de l'exe, `crash_trace.txt` / `hang_trace.txt` / `stderr.txt` de
+  `Documents\wwe12\logs`. L'Explorateur s'ouvre sur le zip. Les journaux peuvent contenir le nom d'utilisateur Windows
+  (chemins) : dit dans l'info-bulle.
+- **Mod Maker, FICHIERS DU JEU : « Remplacer... »** (une entrée feuille) puis « Créer le mod et l'installer... »
+  (archive du jeu : `.svrmod` `type=files`, `files/<chemin du jeu>`, nouveau type `files` → dossier `Files` dans le
+  lanceur) ou « Enregistrer l'archive sous... ». **Écriture en place** (`pac_page::Browser::InPlace`) : le jeu trouve
+  chaque entrée d'une archive par sa place (`plist360.arc`), donc chaque entrée de premier niveau garde son début et
+  sa taille dans la table ; une entrée changée est écrite dans sa place (des zéros après) et ne doit être ni plus
+  grosse ni (BPE) plus grosse une fois décompressée ; une entrée BPE est recompressée en gardant les blocs de Yuke's
+  (`bpe_like::EncodeLike`). Archives XMemCompress (WWE '13 et après) refusées. Test hors jeu
+  (`inplace_test`, scratchpad) : `menu.pac`, une image de 512 Ko de `MENU/ASPC` remplacée → fichier de même taille,
+  1 entrée sur 15 changée, aucune déplacée, image relue identique ; une image deux fois plus grosse refusée.
+  `MatchHD.pac` : la même image décalée (tout change) dépasse de 0,7 Ko sa place (entrées serrées à 256 octets) et
+  est refusée : remplacer une image d'un paquet compressé ne marchera que si elle se compresse aussi bien. Plus tard :
+  agrandir la place en corrigeant aussi `plist360.arc`, ou réduire d'autres images comme `Arena::Fit`.
+- **Réglages du catcheur (piste n° 2 du tableau), étude seulement** : fiche `CHAR/DAT` de 290 octets
+  (`chEtc.pac`, 373 fiches). Connu : +4..+15 et +16..+27 attributs, +0x2E nom, +0x11F « DLC ». Pistes **non
+  vérifiées en jeu** : +0x28 / +0x2A deux u16 proches d'une taille (Big Show 4591, Khali 4764, Cena et Mark Henry 3988,
+  Rey 3449 ; DiBiase 4117 / 4052) ; +0x104 une liste d'octets (jusqu'à 5 vus) qui ressemble aux capacités (Rey
+  0b 0e 13 14 16, Sin Cara 0b 13 14 16, Big Show 09 0b, Khali aucune) ; +0x10C un octet 0-3 (Kelly 0, Show / Khali /
+  Henry 1, Lesnar 2, Cena / Rey 3) ; +0x110 trois u16 (0x08EB…). Noms des capacités dans `pac/string.pac`,
+  `SDB /0000` enfant 0 (DIRTY PIN, RESILIENCY, OUTSIDE DIVES, FIRED UP…, page ABILITY INFO), sans le lien avec les
+  numéros de la fiche. À vérifier en jeu avant d'en faire des réglages.

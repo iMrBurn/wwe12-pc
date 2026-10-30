@@ -54,6 +54,7 @@ inline void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem*, const std:
 // (D3D12 en priorité sous Windows) : ce réglage permet de forcer Vulkan.
 REXCVAR_DECLARE(std::string, gpu_backend);
 REXCVAR_DECLARE(bool, wwe12_precise_timer);
+REXCVAR_DECLARE(bool, wwe12_no_mods);
 
 // Fenêtre d'erreur quand Vulkan ne démarre pas (native/wwe12_vulkan_error.cpp).
 void Wwe12ShowVulkanError();
@@ -90,6 +91,12 @@ class Wwe12App : public rex::ReXApp {
 #if defined(__ANDROID__)
     Wwe12AndroidCaptureStderr();
 #endif
+    // Jouer sans mods : les mods restent sur le disque, ils ne sont simplement pas lus cette fois.
+    if (REXCVAR_GET(wwe12_no_mods)) {
+      for (const char* name : {"wwe12_texture_packs", "wwe12_superstar_mods", "wwe12_entrance_mods"})
+        rex::cvar::SetFlagByName(name, "false");
+      REXLOG_INFO("Mods : partie SANS mods (wwe12_no_mods)");
+    }
     if (REXCVAR_GET(wwe12_precise_timer)) {
       bd::EnableHighResTimer();
       REXLOG_INFO("Horloge Windows : précision 1 ms");
@@ -207,6 +214,10 @@ class Wwe12App : public rex::ReXApp {
     const std::filesystem::path mods = rex::filesystem::GetExecutableFolder() / "mods";
     std::error_code ec;
     std::filesystem::create_directories(mods, ec);
+    if (REXCVAR_GET(wwe12_no_mods)) {
+      Wwe12MountMenuPatch(fs, game_device, user_data_root_);  // (QUITTER : le portage, pas un mod)
+      return;
+    }
     // Arènes ajoutées : leurs fichiers passent avant ceux du dossier mods (wwe12_arena_pages.cpp).
     Wwe12MountArenaSlots(fs, game_device, user_data_root_, mods);
     auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, mods, true);

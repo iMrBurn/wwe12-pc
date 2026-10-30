@@ -7,6 +7,10 @@
 REXCVAR_DEFINE_STRING(gpu_backend, "any", "GPU",
                       "Backend du plugin GPU : any (D3D12 sous Windows), d3d12 ou vulkan")
     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+REXCVAR_DEFINE_BOOL(wwe12_no_mods, false, "WWE12",
+                    "Play without mods (the launcher's PLAY WITHOUT MODS): no mods folder, added arenas, texture "
+                    "packs or superstar mods this time; the superstar pack already made stays as it is")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
 
 REX_DEFINE_APP(wwe12, Wwe12App::Create)
 

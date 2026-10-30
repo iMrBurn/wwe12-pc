@@ -582,6 +582,7 @@ int g_logo_w = 0, g_logo_h = 0;
 saves::Manager g_saves;
 mods::Manager g_mods;
 bool g_launch = false;
+bool g_launch_no_mods = false;  // PLAY WITHOUT MODS: --wwe12_no_mods=true for this game only
 int g_play_note = 0;  // 1 game already running, 2 something is busy
 Updater g_updater;
 VulkanCheck g_vulkan;
@@ -628,6 +629,20 @@ void PagePlay() {
   ImGui::Dummy(ImVec2(0, 20));
   if (BigButton(t.play_button, ImVec2(340, 90), kGold, IM_COL32(20, 20, 20, 255)))
     g_launch = true;
+  {
+    const bool fr = g_s.language == 4;
+    if (ImGui::Button(fr ? "Jouer sans mods" : "Play without mods")) {
+      g_launch = true;
+      g_launch_no_mods = true;
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("%s", fr ? "Une partie sans le dossier mods, les arènes ajoutées ni les packs de textures, pour "
+                                   "savoir si un problème vient d'un mod. Rien n'est supprimé. Les catcheurs ajoutés "
+                                   "restent (le jeu les garde comme un DLC)."
+                                 : "One game without the mods folder, added arenas or texture packs, to find out "
+                                   "whether a problem comes from a mod. Nothing is deleted. Added superstars stay (the "
+                                   "game keeps them like a DLC).");
+  }
   if (g_play_note)
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", g_play_note == 1 ? t.already_running : t.wait_busy);
   ImGui::Dummy(ImVec2(0, 30));
@@ -1307,6 +1322,57 @@ std::string BuildDiagnostics() {
 
 int g_diag_msg = 0;  // 1 copied, 2 failed
 
+// REPORT A PROBLEM: one zip on the Desktop with what a bug report needs: the machine and settings (the diagnostics
+// text), the installed mods, the game's 3 latest logs (the logs folder next to the exe) and its crash / hang traces
+// (Documents\wwe12\logs). No game data. Returns the zip, or empty if it could not be written.
+fs::path MakeReport() {
+  std::vector<std::pair<std::string, std::vector<uint8_t>>> entries;
+  auto text = [&](const std::string &name, const std::string &body) {
+    entries.emplace_back(name, std::vector<uint8_t>(body.begin(), body.end()));
+  };
+  auto file = [&](const std::string &name, const fs::path &p) {
+    std::ifstream f(p, std::ios::binary);
+    if (f)
+      entries.emplace_back(name, std::vector<uint8_t>(std::istreambuf_iterator<char>(f), {}));
+  };
+  text("diagnostics.txt", BuildDiagnostics());
+  std::string mods;
+  for (const auto &m : g_mods.List())
+    mods += (m.on ? "on   " : "off  ") + m.type + "  " + m.name + "  (" + m.id + " " + m.version + ", " +
+            std::to_string(m.files) + " files)\n";
+  text("mods.txt", mods.empty() ? "no mods installed\n" : mods);
+  std::error_code ec;
+  std::vector<fs::path> logs;
+  for (const auto &e : fs::directory_iterator(ExeDir() / "logs", ec))
+    if (e.is_regular_file(ec) && e.path().extension() == ".log")
+      logs.push_back(e.path());
+  std::sort(logs.begin(), logs.end(), [](const fs::path &a, const fs::path &b) {
+    std::error_code e1;
+    return fs::last_write_time(a, e1) > fs::last_write_time(b, e1);
+  });
+  for (size_t i = 0; i < logs.size() && i < 3; ++i)
+    file("logs/" + logs[i].filename().string(), logs[i]);
+  for (const char *name : {"crash_trace.txt", "hang_trace.txt", "stderr.txt"})
+    file(std::string("traces/") + name, DocumentsDir() / "wwe12" / "logs" / name);
+  PWSTR desk = nullptr;
+  fs::path dir;
+  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Desktop, 0, nullptr, &desk)))
+    dir = desk;
+  CoTaskMemFree(desk);
+  if (dir.empty())
+    dir = ExeDir();
+  SYSTEMTIME st;
+  GetLocalTime(&st);
+  char name[64];
+  snprintf(name, sizeof(name), "WWE12-PC-report-%04u%02u%02u-%02u%02u.zip", st.wYear, st.wMonth, st.wDay, st.wHour,
+           st.wMinute);
+  const fs::path zip = dir / name;
+  return mods::Manager::WriteZip(zip, entries) ? zip : fs::path();
+}
+
+int g_report_msg = 0;  // 1 written, 2 failed
+fs::path g_report;
+
 void PageAbout() {
   const Texts &t = T();
   Title(t.about);
@@ -1323,6 +1389,27 @@ void PageAbout() {
   ImGui::SameLine();
   if (ImGui::Button(t.open_logs))
     OpenFolder(DocumentsDir() / "wwe12" / "logs");
+  const bool fr = g_s.language == 4;
+  if (ImGui::Button(fr ? "Signaler un problème" : "Report a problem")) {
+    g_report = MakeReport();
+    g_report_msg = g_report.empty() ? 2 : 1;
+    if (!g_report.empty())
+      ShellExecuteW(nullptr, L"open", L"explorer.exe", (L"/select,\"" + g_report.wstring() + L"\"").c_str(), nullptr,
+                    SW_SHOWNORMAL);
+  }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("%s", fr ? "Fait un zip sur le Bureau : la machine, les réglages, les mods installés et les "
+                                 "derniers journaux du jeu. Joignez-le à votre message (GitHub ou Discord). Les "
+                                 "journaux peuvent contenir votre nom d'utilisateur Windows (dans les chemins)."
+                               : "Makes a zip on the Desktop: the machine, the settings, the installed mods and the "
+                                 "game's latest logs. Attach it to your message (GitHub or Discord). The logs may "
+                                 "hold your Windows user name (in folder paths).");
+  if (g_report_msg == 1)
+    ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s %s", fr ? "Zip prêt :" : "Zip ready:",
+                       Narrow(g_report.filename().wstring()).c_str());
+  else if (g_report_msg == 2)
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
+                       fr ? "Le zip n'a pas pu être écrit." : "The zip could not be written.");
   if (g_diag_msg == 1)
     ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", t.diag_copied);
   else if (g_diag_msg == 2)
@@ -1387,7 +1474,7 @@ void DrawUi() {
 
 // wwe12_d3d12.exe / wwe12_d3d11.exe when the player chose DirectX 12 / 11 (gpu_backend = "d3d12" /
 // "d3d11") and it is there, wwe12.exe (Vulkan) otherwise, with a message if that build is missing.
-bool LaunchGame(HWND hwnd) {
+bool LaunchGame(HWND hwnd, bool no_mods) {
   const fs::path dir = ExeDir();
   fs::path exe_path = dir / L"wwe12.exe";
   if (g_s.api == 2 || g_s.api == 3) {
@@ -1405,6 +1492,8 @@ bool LaunchGame(HWND hwnd) {
   }
   const std::wstring exe = exe_path.wstring();
   std::wstring cmd = L"\"" + exe + L"\"";
+  if (no_mods)
+    cmd += L" --wwe12_no_mods=true";
   STARTUPINFOW si{sizeof(si)};
   PROCESS_INFORMATION pi{};
   if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr,
@@ -1516,12 +1605,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
 
     if (g_launch) {
       g_launch = false;
+      const bool no_mods = g_launch_no_mods;
+      g_launch_no_mods = false;
       g_play_note = 0;
       if (game::IsRunning())
         g_play_note = 1;  // one game at a time
       else if (g_saves.Busy() || g_updater.Busy())
         g_play_note = 2;  // closing now would cut it short
-      else if (LaunchGame(hwnd))
+      else if (LaunchGame(hwnd, no_mods))
         done = true;
       else
         MessageBoxW(hwnd, L"The game could not be started.", L"WWE '12 PC", MB_ICONERROR);

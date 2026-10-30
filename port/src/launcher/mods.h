@@ -302,7 +302,7 @@ class Manager {
         {"superstar", "Superstars"}, {"attire", "Attires"},   {"arena", "Arenas"},
         {"moves", "Moves"},          {"backstage", "Backstage"}, {"signs", "Signs"},
         {"media", "Media"},          {"background", "Backgrounds"}, {"matchtype", "MatchTypes"},
-        {"textures", "Textures"}};
+        {"textures", "Textures"}, {"files", "Files"}};  // (files: ours, the Mod Maker's GAME FILES page)
     const auto it = kinds.find(Lower(type));
     return it == kinds.end() ? std::string() : it->second;
   }

@@ -319,7 +319,7 @@ void PageNewStar() {
 
 void PageFiles() {
   Title(g_fr ? "FICHIERS DU JEU" : "GAME FILES");
-  g_files.Draw(g_fr, g_device.Get(), g_disc);
+  g_files.Draw(g_fr, g_device.Get(), g_disc, g_mods);
 }
 
 // The help: short step-by-step guides (like the manual in Kaiko's Mod Maker), then the credits.
