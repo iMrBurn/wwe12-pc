@@ -22,3 +22,6 @@ target_include_directories(wwe12 BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src
 target_include_directories(wwe12 PRIVATE "${REXSDK_DIR}/thirdparty/imgui")
 target_compile_options(wwe12 PRIVATE
     "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/android/compat/wwe12_crt_compat.h>")
+
+# encoding.cpp converts texts with iconv (libiconv ships with the iOS SDK, not linked by default).
+target_link_libraries(wwe12 PRIVATE iconv)
