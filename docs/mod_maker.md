@@ -1196,3 +1196,10 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   - *CAW* : `.cas` de SvR 1 347 532 o (rendus DXT5 par tenue, sommes de contrôle), fiche par case dans `SaveData.dat`
     liée par la somme. Notre `.cas` WWE '12 fait 1 357 028 o : format à refaire.
   - *Ceintures / armes* : chez lui seulement des retextures ; *types de match* : pas lus par son jeu non plus.
+- **Tenue d'entrée des catcheurs portés de WWE '13 (piste n° 5)** : `port13_star::AddEntranceOutfit` porte l'entrée
+  « ...A4 » (même nom que la tenue avec la sorte 4, comme `00013904` dans WWE '12) sur une copie de la tenue de la base
+  et l'ajoute au `ch.pac` du mod (le pack renomme déjà toutes les entrées au numéro du catcheur), réduite comme une
+  tenue (`Arena::Fit` sur sa section). Case « Avec sa tenue d'entrée » (cochée par défaut) sous « Tenue à porter ».
+  ~30 catcheurs de WWE '13 en ont une (Rock, Cena, Miz, R-Truth, Del Rio, Cody...) ; Mankind non. **Vu en jeu le
+  2026-10-30** (programme de test `outfit_test` qui fait le même portage) : Miz de WWE '13 sur la base 218 entre avec son
+  manteau, puis combat en tenue de ring.

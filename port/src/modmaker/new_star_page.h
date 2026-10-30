@@ -336,6 +336,10 @@ class Page {
           }
           ImGui::EndCombo();
         }
+        if (w13 && ImGui::Checkbox(fr ? "Avec sa tenue d'entrée (veste, chapeau...), s'il en a une"
+                                      : "With its entrance outfit (jacket, hat...), if it has one",
+                                   &entrance_outfit_))
+          PortSvr(fr);
       }
     }
     if (!note_.empty()) {
@@ -1356,6 +1360,14 @@ class Page {
       return;
     }
     const size_t budget = w.root.kids[0].stored.size();  // (before Save: the base's attire as shipped)
+    // Its WWE '13 entrance outfit too, if its attire has one (port13_star::AddEntranceOutfit).
+    bool has_outfit = false;
+    std::string outfit_why;
+    const size_t kids_before = w.root.kids.size();
+    if (look_ == 3 && entrance_outfit_ &&
+        !port13_star::AddEntranceOutfit(s, size_t(svr_attire_), base_file_, 0, w, &has_outfit, &outfit_why))
+      has_outfit = false;
+    const bool outfit_added = w.root.kids.size() > kids_before;
     svrfmt::ArchiveTouch(w.root);
     const Bytes out = svrfmt::ArchiveSave(w);
     arena_edit::Arena fit;
@@ -1364,7 +1376,16 @@ class Page {
       note_ = (fr ? "Portage illisible : " : "Unreadable port: ") + why;
       return;
     }
-    const auto halved = fit.Fit(budget, ported_, true);
+    auto halved = fit.Fit(budget, ported_, true);
+    if (outfit_added) {  // (the outfit in the same room as an attire)
+      arena_edit::Arena fit2;
+      Bytes fitted;
+      if (fit2.Load(ported_, &why, int(kids_before))) {
+        for (const auto &n : fit2.Fit(budget, fitted, true))
+          halved.push_back(n);
+        ported_ = std::move(fitted);
+      }
+    }
     reduced_.clear();
     if (!halved.empty()) {
       reduced_ = fr ? "Réduites de moitié pour tenir dans la place d'une tenue :" : "Halved to fit an attire's room:";
@@ -1377,6 +1398,10 @@ class Page {
                               : "Ported: %d meshes converted (the new superstar's attire 1).",
              look_ == 3 ? rep13.meshes : rep.meshes);
     note_ = b;
+    if (outfit_added)
+      note_ += fr ? " Avec sa tenue d'entrée." : " With its entrance outfit.";
+    else if (has_outfit && !outfit_why.empty())
+      note_ += (fr ? " Tenue d'entrée non portée : " : " Entrance outfit not ported: ") + outfit_why;
     if (!portraits_[1][0].empty())
       note_ += look_ == 2 ? (fr ? " Ses portraits de SvR 2011 viendront avec lui." : " Its SvR 2011 portraits come with it.")
                           : (fr ? " Ses portraits viendront avec lui." : " Its portraits come with it.");
@@ -1785,6 +1810,7 @@ class Page {
   char entrance_filter_[64] = {};
   bool own_attributes_ = false;           // its own attributes (else the base's)
   std::vector<int> attributes_, base_attributes_;  // the 12 (0-100), STRIKE POWER .. TAG TEAM
+  bool entrance_outfit_ = true;  // its WWE '13 entrance outfit too (kind 4), when its attire has one
   bool own_size_ = false, own_abilities_ = false;  // its own size / abilities (else the base's)
   int size_ = 4096, base_size_[2] = {0, 0};          // record +0x28 (+0x2A: the base's ratio kept), 4096 = 1.0
   std::vector<int> abilities_, base_abilities_;      // record +0x104.. (kAbilities' numbers)

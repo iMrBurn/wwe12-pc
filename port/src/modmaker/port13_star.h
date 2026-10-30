@@ -147,4 +147,44 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
   return true;
 }
 
+// Its entrance outfit (jacket, hat... worn only during the entrance): the WWE '13 file's entry named like the attire
+// with kind 4 ("00013902" -> "00013904", as in WWE '12: Cena, Undertaker...), ported over a copy of the base's attire
+// (base_file's entry `base_attire`) and added to `w` under the base attire's name with kind 4. *found tells whether
+// the attire has one. False (and why) when it has one that can't be ported.
+inline bool AddEntranceOutfit(svrfmt::Archive &w13, size_t attire, const std::vector<uint8_t> &base_file,
+                              size_t base_attire, svrfmt::Archive &w, bool *found, std::string *why) {
+  *found = false;
+  if (attire >= w13.root.kids.size() || base_attire >= w.root.kids.size())
+    return true;
+  std::string name = w13.root.kids[attire].name;
+  if (name.size() != 8 || name[7] != '2')
+    return true;
+  name[7] = '4';
+  svrfmt::ArcNode *outfit = nullptr;
+  for (auto &k : w13.root.kids)
+    if (k.name == name)
+      outfit = &k;
+  if (!outfit)
+    return true;
+  *found = true;
+  svrfmt::Archive copy;
+  std::string e;
+  if (!svrfmt::ArchiveOpen(base_file, copy, &e) || base_attire >= copy.root.kids.size())
+    return why && (*why = "base unreadable: " + e, false);
+  if (!PortAttire(*outfit, copy.root.kids[base_attire], nullptr, why))
+    return false;
+  svrfmt::ArchiveTouch(copy.root);
+  svrfmt::Archive again;
+  if (!svrfmt::ArchiveOpen(svrfmt::ArchiveSave(copy), again, &e))
+    return why && (*why = "ported outfit unreadable: " + e, false);
+  std::string to = w.root.kids[base_attire].name;
+  to[7] = '4';
+  for (const auto &k : w.root.kids)
+    if (k.name == to)
+      return true;  // (the base has its own already: kept)
+  if (!svrfmt::ArchiveAdd(w.root, "EMD ", to, 0, svrfmt::ArchiveData(again.root.kids[base_attire]), &e))
+    return why && (*why = "can't add the outfit: " + e, false);
+  return true;
+}
+
 }  // namespace port13_star
