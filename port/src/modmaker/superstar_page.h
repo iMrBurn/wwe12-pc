@@ -159,6 +159,7 @@ class Page {
       ImGui::TextDisabled("%s", fr ? "Choisissez une image à gauche pour la changer." : "Choose a picture on the left "
                                                                                        "to change it.");
     }
+    Materials(fr);
     Draw3D(fr);
     ImGui::EndChild();
 
@@ -171,7 +172,7 @@ class Page {
                              sizeof(author_));
     mod_version::Input("Version##star_version", version_, sizeof(version_));
     ImGui::SameLine();
-    ImGui::BeginDisabled((changed == 0 && !ported_) || game::IsRunning());
+    ImGui::BeginDisabled((changed == 0 && !ported_ && !edit_.MaterialsChanged()) || game::IsRunning());
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
       Make(fr, mods);
     ImGui::EndDisabled();
@@ -389,6 +390,42 @@ class Page {
     const fs::path out = media::PickSave(fr, name + L".png");
     if (!out.empty() && !wic_image::SavePng(out, img))
       note_ = fr ? "Export impossible." : "Export failed.";
+  }
+
+  // Materials (Kaiko's Mod Maker has them): the shine and tint of the skin and of each part of the attire
+  // (arena_edit::Material, written into the attire's body model).
+  void Materials(bool fr) {
+    if (!ImGui::CollapsingHeader(fr ? "Matières (brillance, teinte)" : "Materials (shine, tint)"))
+      return;
+    for (const auto &g : edit_.MaterialGroups()) {
+      ImGui::PushID(g.c_str());
+      arena_edit::Material m = edit_.MaterialOf(g);
+      std::string label = g == "skin" ? (fr ? "Peau" : "Skin") : (fr ? "Tenue : " : "Attire: ") + g.substr(5);
+      bool changed = false;
+      ImGui::SetNextItemWidth(160);
+      changed |= ImGui::SliderFloat("##shine", &m.shine, 0.0f, 3.0f, fr ? "brillance x%.2f" : "shine x%.2f");
+      ImGui::SameLine();
+      changed |= ImGui::ColorEdit3("##tint", m.tint, ImGuiColorEditFlags_NoInputs);
+      ImGui::SameLine();
+      ImGui::TextUnformatted(label.c_str());
+      if (!m.Default()) {
+        ImGui::SameLine();
+        if (ImGui::SmallButton(fr ? "Remettre" : "Reset")) {
+          m = arena_edit::Material();
+          changed = true;
+        }
+      }
+      if (changed) {
+        edit_.SetMaterial(g, m);
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+          view_stale_ = true;
+      }
+      if (ImGui::IsItemDeactivatedAfterEdit())
+        view_stale_ = true;
+      ImGui::PopID();
+    }
+    ImGui::TextDisabled("%s", fr ? "La teinte multiplie la couleur de l'image (blanc = inchangé)."
+                                 : "The tint multiplies the picture's colour (white = unchanged).");
   }
 
   void Draw3D(bool fr) {

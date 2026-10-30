@@ -79,6 +79,15 @@ struct Move {
   bool None() const { return !d[0] && !d[1] && !d[2] && !turn && !hide; }
 };
 
+// A superstar's material (Kaiko's Mod Maker has them): the shine and tint of a group of its body model's meshes (child
+// 0 of the attire): "skin" (yCh_skin*, not the teeth) or "gear:<part>" (yCh_gear, by the model's part: body, boots,
+// shorts...). Shine multiplies g_fSpecLev and g_fSpecLvBase; tint multiplies g_f4MatDifCol's colour.
+struct Material {
+  float shine = 1.0f;
+  float tint[3] = {1.0f, 1.0f, 1.0f};
+  bool Default() const { return shine == 1.0f && tint[0] == 1.0f && tint[1] == 1.0f && tint[2] == 1.0f; }
+};
+
 struct Package {
   svrfmt::ArcNode *node = nullptr;
   uint32_t id = 0;  // its child id (node found again when the list's children move: an object added or removed)
@@ -99,6 +108,9 @@ class Arena {
     copies_.clear();
     flags_text_.clear();
     moves_changed_ = false;
+    materials_.clear();
+    materials_changed_ = false;
+    body_.clear();
     archive_ = svrfmt::Archive();
     if (!svrfmt::ArchiveOpen(file, archive_, error))
       return false;
@@ -253,8 +265,69 @@ class Arena {
   }
   bool IsCopy(uint32_t id) const { return copies_.count(id) > 0; }
 
+  // The material groups of the section's body model (child 0), in the order met: "skin", "gear:body"...
+  std::vector<std::string> MaterialGroups() {
+    std::vector<std::string> out;
+    svrfmt::Model m;
+    if (!BodyModel(m))
+      return out;
+    ForEachMesh(m, [&](svrfmt::Mesh &, const std::string &group) {
+      if (!group.empty() && std::find(out.begin(), out.end(), group) == out.end())
+        out.push_back(group);
+    });
+    return out;
+  }
+  const Material &MaterialOf(const std::string &group) {
+    static const Material none;
+    const auto it = materials_.find(group);
+    return it == materials_.end() ? none : it->second;
+  }
+  void SetMaterial(const std::string &group, const Material &m) {
+    materials_[group] = m;
+    materials_changed_ = true;
+  }
+  bool MaterialsChanged() const {
+    for (const auto &[g, m] : materials_)
+      if (!m.Default())
+        return true;
+    return false;
+  }
+
   // The rebuilt file (the original bytes if nothing changed).
   Bytes Build() {
+    if (materials_changed_ && archive_.root.kids.size() > section_) {
+      materials_changed_ = false;
+      svrfmt::Model m;
+      if (BodyModel(m)) {
+        ForEachMesh(m, [&](svrfmt::Mesh &me, const std::string &group) {
+          const auto it = materials_.find(group);
+          if (it == materials_.end())
+            return;
+          for (auto &p : me.params) {
+            auto scale = [&](size_t at, float k) {
+              if (p.value.size() < at + 4)
+                return;
+              uint32_t u = uint32_t(p.value[at]) << 24 | p.value[at + 1] << 16 | p.value[at + 2] << 8 | p.value[at + 3];
+              float f;
+              memcpy(&f, &u, 4);
+              f *= k;
+              memcpy(&u, &f, 4);
+              for (int b = 0; b < 4; ++b)
+                p.value[at + size_t(b)] = uint8_t(u >> (24 - 8 * b));
+            };
+            if (p.type == 0x0a && (p.name == "g_fSpecLev" || p.name == "g_fSpecLvBase"))
+              scale(0, it->second.shine);
+            else if (p.type == 0x0d && p.name == "g_f4MatDifCol")
+              for (int c = 0; c < 3; ++c)
+                scale(size_t(c) * 4, it->second.tint[c]);
+          }
+        });
+        for (auto &k : archive_.root.kids[section_].kids)
+          if (k.id == 0)
+            svrfmt::ArchiveReplace(k, svrfmt::JboyWrite(m));
+        svrfmt::ArchiveTouch(archive_.root.kids[section_]);
+      }
+    }
     if (moves_changed_ && archive_.root.kids.size() > section_) {
       moves_changed_ = false;
       // the copies first: their children (in id order), their lines in the flag table
@@ -348,6 +421,36 @@ class Arena {
     return svrfmt::ArchiveSave(archive_);
   }
 
+  // The body model as shipped (child 0 of the section), kept the first time.
+  bool BodyModel(svrfmt::Model &m) {
+    if (archive_.root.kids.size() <= section_)
+      return false;
+    if (body_.empty())
+      for (auto &k : archive_.root.kids[section_].kids)
+        if (k.id == 0)
+          body_ = svrfmt::ArchiveData(k);
+    return svrfmt::IsJboy(body_) && svrfmt::JboyRead(body_, m, nullptr);
+  }
+  template <class F> static void ForEachMesh(svrfmt::Model &m, F f) {
+    size_t part = 0, left = m.parts.empty() ? m.meshes.size() : m.parts[0].meshes;
+    for (auto &me : m.meshes) {
+      while (left == 0 && part + 1 < m.parts.size())
+        left = m.parts[++part].meshes;
+      if (left)
+        --left;
+      std::string pname = part < m.parts.size() ? m.parts[part].name : "";
+      for (auto &c : pname)
+        c = char(std::tolower(static_cast<unsigned char>(c)));
+      std::string group;
+      if (me.shader.rfind("yCh_skin", 0) == 0 && pname != "tooth" && pname != "mouth")
+        group = "skin";
+      else if (me.shader.rfind("yCh_gear", 0) == 0)
+        group = "gear:" + pname;
+      f(me, group);
+    }
+  }
+
+ public:
   // Makes the file fit `budget` bytes: the biggest textures not replaced lose their top level, one at a time.
   // The textures reduced (names); the file built last is in `out`.
   // section_budget: the budget is for the section (an attire), not the whole file.
@@ -418,6 +521,9 @@ class Arena {
   std::map<uint32_t, Bytes> originals_;  // the moved models as shipped
   std::map<uint32_t, Move> moves_;
   bool moves_changed_ = false;
+  std::map<std::string, Material> materials_;  // by group (MaterialGroups)
+  bool materials_changed_ = false;
+  Bytes body_;  // the section's body model as shipped
   svrfmt::Archive archive_;
   size_t section_ = 0;
   std::vector<Package> packages_;
