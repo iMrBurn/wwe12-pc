@@ -1,0 +1,24 @@
+diff --git a/src/ui/windowed_app_context_sdl.cpp b/src/ui/windowed_app_context_sdl.cpp
+--- a/src/ui/windowed_app_context_sdl.cpp
++++ b/src/ui/windowed_app_context_sdl.cpp
+@@ -87,10 +87,20 @@ int SDLWindowedAppContext::RunMainMessageLoop() {
+ int SDLWindowedAppContext::RunMainMessageLoop() {
+   while (!HasQuitFromUIThread()) {
+     SDL_Event event;
++#ifdef __ANDROID__
++    // A wakeup pushed while the loop is about to sleep can be lost in SDL's Android pump (it then
++    // waits for a lifecycle event, forever); the render thread waits on this thread for the
++    // overlay, so a match loading never ended. Never sleep for more than 50 ms.
++    if (!SDL_WaitEventTimeout(&event, 50)) {
++      ExecutePendingFunctionsFromUIThread();
++      continue;
++    }
++#else
+     if (!SDL_WaitEvent(&event)) {
+       REXLOG_ERROR("SDL_WaitEvent failed: {}", SDL_GetError());
+       return EXIT_FAILURE;
+     }
++#endif
+     ProcessEvent(event);
+   }
+   return EXIT_SUCCESS;

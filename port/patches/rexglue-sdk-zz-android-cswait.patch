@@ -1,0 +1,81 @@
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp b/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp
+index 8b862fc..b172fc0 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp
+@@ -13,7 +13,12 @@
+ #pragma GCC diagnostic ignored "-Wunused-parameter"
+ 
+ #include <algorithm>
++#include <map>
++#include <mutex>
+ #include <string>
++#if defined(__ANDROID__)
++#include <unistd.h>
++#endif
+ 
+ #include <rex/chrono/chrono_steady_cast.h>
+ #include <rex/kernel/xboxkrnl/private.h>
+@@ -376,8 +381,24 @@ u32 RtlInitializeCriticalSectionAndSpinCount_entry(ppc_ptr_t<X_RTL_CRITICAL_SECT
+   return xeRtlInitializeCriticalSectionAndSpinCount(cs, cs.guest_address(), spin_count);
+ }
+ 
++#if REX_PLATFORM_ANDROID
++// WWE '12 Android: guest thread object -> Android thread id, to name a critical section's owner.
++static std::mutex g_cswait_mutex;
++static std::map<uint32_t, int> g_cswait_tids;
++#endif
++
+ void RtlEnterCriticalSection_entry(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs) {
+   uint32_t cur_thread = XThread::GetCurrentThread()->guest_object();
++#if REX_PLATFORM_ANDROID
++  {
++    static thread_local bool registered = false;
++    if (!registered) {
++      registered = true;
++      std::lock_guard<std::mutex> lock(g_cswait_mutex);
++      g_cswait_tids[cur_thread] = static_cast<int>(gettid());
++    }
++  }
++#endif
+   uint32_t spin_count = cs->header.absolute * 256;
+ 
+   if (cs->owning_thread == cur_thread) {
+@@ -399,7 +420,38 @@ void RtlEnterCriticalSection_entry(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs) {
+ 
+   if (rex::thread::atomic_inc(&cs->lock_count) != 0) {
+     // Create a full waiter.
++#if REX_PLATFORM_ANDROID
++    // WWE '12 Android: match loadings that never end have a loader thread waiting here forever.
++    // Wait in 5 s steps and say who holds the lock, to tell a deadlock (an owner that waits for
++    // something else) from a lost wakeup (no owner).
++    for (int waited = 5;; waited += 5) {
++      uint64_t timeout = static_cast<uint64_t>(-50000000ll);  // 5 s, relative
++      if (xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0, &timeout) !=
++          X_STATUS_TIMEOUT) {
++        if (waited > 5)
++          REXKRNL_WARN("[cswait] thread {:08X} got critical section {:08X} after {}+ s", cur_thread,
++                       cs.guest_address(), waited - 5);
++        break;
++      }
++      if (waited == 5 || waited % 60 == 0) {
++        int owner_tid = 0;
++        {
++          std::lock_guard<std::mutex> lock(g_cswait_mutex);
++          auto it = g_cswait_tids.find(static_cast<uint32_t>(cs->owning_thread));
++          if (it != g_cswait_tids.end())
++            owner_tid = it->second;
++        }
++        REXKRNL_WARN("[cswait] thread {:08X} (tid {}) waits {} s for critical section {:08X}: owner "
++                     "{:08X} (tid {}), lock_count {}, recursion {}, signal {}",
++                     cur_thread, static_cast<int>(gettid()), waited, cs.guest_address(),
++                     static_cast<uint32_t>(cs->owning_thread), owner_tid,
++                     static_cast<int32_t>(cs->lock_count), static_cast<int32_t>(cs->recursion_count),
++                     static_cast<int32_t>(cs->header.signal_state));
++      }
++    }
++#else
+     xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0, nullptr);
++#endif
+   }
+ 
+   assert_true(cs->owning_thread == 0);

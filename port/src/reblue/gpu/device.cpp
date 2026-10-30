@@ -877,7 +877,20 @@ CreateHostGraphicsPipeline(plume::RenderDevice *device,
     BD_ERROR("CreateHostGraphicsPipeline({}): no host device", tag ? tag : "?");
     return nullptr;
   }
+#if defined(__ANDROID__)
+  // Android #49: the render thread stopped right after two new shaders; these lines show
+  // whether the driver was still compiling one.
+  BD_INFO("[pso] building '{}'", tag ? tag : "?");
+  const auto psoStart = std::chrono::steady_clock::now();
+#endif
   auto pipeline = device->createGraphicsPipeline(desc);
+#if defined(__ANDROID__)
+  {
+    const auto psoMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - psoStart).count();
+    BD_INFO("[pso] built '{}' in {} ms", tag ? tag : "?", psoMs);
+  }
+#endif
   // Both backends fail soft: a failed
   // vkCreateGraphicsPipelines/CreatePipelineState still hands back a live
   // wrapper holding a null pipeline, which only faults later at bind time.
