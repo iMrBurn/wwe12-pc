@@ -78,6 +78,10 @@ __attribute__((constructor(101))) void IosBootLog() {
   std::setvbuf(stdout, nullptr, _IOLBF, 0);
   std::fprintf(stderr, "[boot] started t=%ld home=%s\n", static_cast<long>(std::time(nullptr)), home);
   std::atexit([] { std::fprintf(stderr, "[boot] process exit\n"); });
+  // The SDK's user folder is $XDG_DATA_HOME, else $HOME/.local/share: $HOME is the app container's
+  // root, where iOS refuses to create folders (filesystem_error "Operation not permitted"). Saves
+  // go to Documents, with the rest.
+  setenv("XDG_DATA_HOME", dir.c_str(), 0);
 }
 
 // The app bundle is read-only and the game reads wwe12.toml from "the exe folder", which is
