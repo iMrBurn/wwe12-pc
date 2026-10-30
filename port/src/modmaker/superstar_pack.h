@@ -769,6 +769,69 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       }
     }
   }
+  // 4c. Superstars with more than one attire in their model ("000NNNA2", A = 0-3): their line in misc.pac's attire
+  // table "COS" (BATS/INIT and BATH/INIT, children 5 and 201: "COS\0", u32 count, then 40-byte lines {u32 superstar,
+  // u32 attires, 4 x {u32 name string, i32 unlock (-1: unlocked)}}, by superstar number; the game's own superstars
+  // only: an added one had 1 attire).
+  {
+    std::vector<std::pair<int, int>> counts;  // (slot, attires)
+    for (size_t i = 0; i < stars.size(); ++i) {
+      svrfmt::Archive ch;
+      int n = 0;
+      if (svrfmt::ArchiveOpen(models[i], ch, nullptr))
+        for (const auto &k : ch.root.kids)
+          if (k.name.size() == 8 && k.name[7] == '2' && k.name[6] >= '0' && k.name[6] <= '3')
+            n = std::max(n, k.name[6] - '0' + 1);
+      if (n > 1)
+        counts.push_back({stars[i].slot, n});
+    }
+    svrfmt::Archive misc;
+    if (!counts.empty() && svrfmt::ArchiveOpen(misc_out.empty() ? in.misc : misc_out, misc, nullptr)) {
+      bool changed = false;
+      for (auto &k : misc.root.kids) {
+        if ((k.group != "BATS" && k.group != "BATH") || k.name.rfind("INIT", 0) != 0 || !svrfmt::ArchiveExpand(k))
+          continue;
+        for (auto &c : k.kids) {
+          Bytes t = svrfmt::ArchiveData(c);
+          if ((c.id != 5 && c.id != 201) || t.size() < 8 || memcmp(t.data(), "COS", 4))
+            continue;
+          uint32_t count = svrfmt::Le32(&t[4]);
+          for (const auto &[slot, n] : counts) {
+            Bytes line(40, 0);
+            svrfmt::PutLe32(&line[0], uint32_t(slot));
+            svrfmt::PutLe32(&line[4], uint32_t(n));
+            // (the game has no "ATTIRE 2" text: ORIGINAL ATTIRE, Wrestling Gear, T-Shirt, Civilian Clothes)
+            static const uint32_t names[4] = {9, 11, 13, 10};
+            for (int a = 0; a < 4; ++a) {
+              svrfmt::PutLe32(&line[8 + size_t(a) * 8], a < n ? names[a] : 0);
+              svrfmt::PutLe32(&line[12 + size_t(a) * 8], a < n ? 0xFFFFFFFFu : 0);
+            }
+            size_t at = 8;
+            bool same = false;
+            for (uint32_t r = 0; r < count; ++r, at += 40) {
+              const uint32_t id = svrfmt::Le32(&t[at]);
+              same = id == uint32_t(slot);
+              if (id >= uint32_t(slot))
+                break;
+            }
+            if (same) {
+              std::copy(line.begin(), line.end(), t.begin() + long(at));
+            } else {
+              t.insert(t.begin() + long(at), line.begin(), line.end());
+              svrfmt::PutLe32(&t[4], ++count);
+            }
+          }
+          svrfmt::ArchiveReplace(c, t);
+          changed = true;
+        }
+        svrfmt::ArchiveTouch(k);
+      }
+      if (changed) {
+        svrfmt::ArchiveTouch(misc.root);
+        misc_out = svrfmt::ArchiveSave(misc);
+      }
+    }
+  }
   // 5. The files, their directories and the catalog.
   struct Entry {
     std::string path;
@@ -804,6 +867,8 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   if (!moves_out.empty()) {
     entries.push_back({"pac/m_dlc" + std::string(tag) + ".pac", next, next, &moves_out});
     ++next;
+  }
+  if (!misc_out.empty()) {  // (moves added, or added superstars' attire lines)
     entries.push_back({"pac/misc.pac", next, next, &misc_out});
     ++next;
   }

@@ -340,6 +340,11 @@ class Page {
                                       : "With its entrance outfit (jacket, hat...), if it has one",
                                    &entrance_outfit_))
           PortSvr(fr);
+        if (w13 && svr_attires_.size() > 1 &&
+            ImGui::Checkbox(fr ? "Toutes ses tenues (4 au plus, à choisir en jeu : ADVANCED à l'écran de choix)"
+                               : "All its attires (4 at most, chosen in the game: ADVANCED on the select screen)",
+                            &all_attires_))
+          PortSvr(fr);
       }
     }
     if (!note_.empty()) {
@@ -1367,6 +1372,23 @@ class Page {
     if (look_ == 3 && entrance_outfit_ &&
         !port13_star::AddEntranceOutfit(s, size_t(svr_attire_), base_file_, 0, w, &has_outfit, &outfit_why))
       has_outfit = false;
+    // Its other WWE '13 attires (up to 4 in all), each with its entrance outfit: "000BBB12", "000BBB22"...
+    int attires = 1;
+    if (look_ == 3 && all_attires_) {
+      const std::string base_name = w.root.kids[0].name;
+      for (size_t i = 0; i < s.root.kids.size() && attires < 4; ++i) {
+        const std::string &nm = s.root.kids[i].name;
+        if (int(i) == svr_attire_ || nm.size() != 8 || nm[7] != '2')
+          continue;
+        std::string to = base_name, e;
+        to[6] = char('0' + attires);
+        if (!port13_star::AddPortedAttire(s.root.kids[i], base_file_, 0, w, to, &e))
+          continue;
+        bool found = false;
+        port13_star::AddEntranceOutfit(s, i, base_file_, 0, w, &found, &e, to);
+        ++attires;
+      }
+    }
     const bool outfit_added = w.root.kids.size() > kids_before;
     svrfmt::ArchiveTouch(w.root);
     const Bytes out = svrfmt::ArchiveSave(w);
@@ -1377,12 +1399,13 @@ class Page {
       return;
     }
     auto halved = fit.Fit(budget, ported_, true);
-    if (outfit_added) {  // (the outfit in the same room as an attire)
+    for (size_t sec = kids_before; outfit_added && sec < w.root.kids.size(); ++sec) {  // (each in an attire's room)
       arena_edit::Arena fit2;
       Bytes fitted;
-      if (fit2.Load(ported_, &why, int(kids_before))) {
+      if (fit2.Load(ported_, &why, int(sec))) {
         for (const auto &n : fit2.Fit(budget, fitted, true))
-          halved.push_back(n);
+          if (std::find(halved.begin(), halved.end(), n) == halved.end())
+            halved.push_back(n);
         ported_ = std::move(fitted);
       }
     }
@@ -1398,8 +1421,10 @@ class Page {
                               : "Ported: %d meshes converted (the new superstar's attire 1).",
              look_ == 3 ? rep13.meshes : rep.meshes);
     note_ = b;
+    if (attires > 1)
+      note_ += fr ? " " + std::to_string(attires) + " tenues." : " " + std::to_string(attires) + " attires.";
     if (outfit_added)
-      note_ += fr ? " Avec sa tenue d'entrée." : " With its entrance outfit.";
+      note_ += fr ? " Avec ses tenues d'entrée." : " With its entrance outfits.";
     else if (has_outfit && !outfit_why.empty())
       note_ += (fr ? " Tenue d'entrée non portée : " : " Entrance outfit not ported: ") + outfit_why;
     if (!portraits_[1][0].empty())
@@ -1810,7 +1835,8 @@ class Page {
   char entrance_filter_[64] = {};
   bool own_attributes_ = false;           // its own attributes (else the base's)
   std::vector<int> attributes_, base_attributes_;  // the 12 (0-100), STRIKE POWER .. TAG TEAM
-  bool entrance_outfit_ = true;  // its WWE '13 entrance outfit too (kind 4), when its attire has one
+  bool entrance_outfit_ = true;
+  bool all_attires_ = true;  // its other WWE '13 attires too (up to 4)  // its WWE '13 entrance outfit too (kind 4), when its attire has one
   bool own_size_ = false, own_abilities_ = false;  // its own size / abilities (else the base's)
   int size_ = 4096, base_size_[2] = {0, 0};          // record +0x28 (+0x2A: the base's ratio kept), 4096 = 1.0
   std::vector<int> abilities_, base_abilities_;      // record +0x104.. (kAbilities' numbers)

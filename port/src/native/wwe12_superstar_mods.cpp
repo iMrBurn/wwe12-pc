@@ -661,8 +661,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   std::vector<superstar_pack::File> files;
   std::string why;
   latest("pac/audience.pac", in.audience);
-  if (std::any_of(stars.begin(), stars.end(), [](const auto &st) { return !st.new_moves.empty(); }))
-    latest("pac/misc.pac", in.misc);  // (moves to add: their records go into a copy of it)
+  if (!stars.empty())
+    latest("pac/misc.pac", in.misc);  // (moves to add, attire lines: they go into a copy of it)
   if (!superstar_pack::Build(in, stars, files, &why, attires, media, signs)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;

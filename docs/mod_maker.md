@@ -1203,3 +1203,18 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   ~30 catcheurs de WWE '13 en ont une (Rock, Cena, Miz, R-Truth, Del Rio, Cody...) ; Mankind non. **Vu en jeu le
   2026-10-30** (programme de test `outfit_test` qui fait le même portage) : Miz de WWE '13 sur la base 218 entre avec son
   manteau, puis combat en tenue de ring.
+- **Matières (piste n° 6)** : page CATCHEURS, section « Matières (brillance, teinte) » : par groupe de maillages du
+  modèle du corps (enfant 0 de la tenue) : « Peau » (shaders `yCh_skin*`, sauf dents) et « Tenue : <partie> »
+  (`yCh_gear`, par partie du modèle : boots, shorts, kneepad...). Brillance = × `g_fSpecLev` et `g_fSpecLvBase` ; teinte
+  = × la couleur de `g_f4MatDifCol` (`arena_edit::Material`, écrit au Build). Vu dans le Mod Maker ; **pas encore vu
+  en jeu** (test interrompu).
+- **Plusieurs tenues pour un catcheur ajouté (piste n° 4, pour les portés de WWE '13)** : le nombre de tenues vient de
+  la table **COS** de `misc.pac` (BATS/INIT et BATH/INIT, enfants 5 et 201 : « COS\0 », u32 nombre, puis lignes de
+  40 o {u32 catcheur, u32 tenues, 4 × {u32 texte du nom, i32 déblocage (-1 : débloquée)}}, triées par numéro ; seulement
+  les catcheurs du jeu, les DLC officiels ne la changent pas). Le pack (`superstar_pack.h`, étape 4c) y ajoute une ligne
+  par catcheur ajouté dont le modèle a plusieurs tenues « 000NNNA2 » et sert sa copie de `misc.pac`. Noms : le jeu n'a pas
+  de texte « TENUE 2 » ; pris ORIGINAL ATTIRE, Wrestling Gear, T-Shirt, Civilian Clothes (textes 9, 11, 13, 10).
+  Mod Maker : case « Toutes ses tenues » (cochée par défaut) : les autres tenues de WWE '13 (4 au plus) portées sur des
+  copies de la tenue de la base (`port13_star::AddPortedAttire`), chacune avec sa tenue d'entrée, chacune réduite à la
+  place d'une tenue. **Vu en jeu le 2026-10-30** : Cena de WWE '13 (4 tenues) sur la base 261 : ADVANCED à l'écran de
+  choix propose 4 tenues ; la 3e entre avec son t-shirt « Rise Above Hate » (sa tenue d'entrée).
