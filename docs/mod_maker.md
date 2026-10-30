@@ -1226,8 +1226,9 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   le disque ; chaque DLC en apporte une copie entière, `pac\edit\edit_dlcNN.pac`, qui remplace la précédente) : u16
   nombre, puis des fiches de 484 octets triées par numéro {u32 catcheur, 48 × u32 nom de partie (4 tenues × 12, -1 :
   aucune), zones de couleur, couleurs par défaut}. Notre pack ajoute `edit_dlc05.pac` (la table la plus récente + une
-  fiche par catcheur ajouté, copiée de sa base) : `superstar_pack.h` étape 4d. Vu dans le pack (85 fiches = 80 + 5) ;
-  **pas encore vu dans le menu du jeu**. Les noms de parties de WWE '13 sont d'autres numéros de textes : pas repris.
+  fiche par catcheur ajouté, copiée de sa base) : `superstar_pack.h` étape 4d. **Vu en jeu par l'utilisateur
+  (2026-10-30)** : Mankind (WWE '13) dans SUPERSTAR THREADS, avec les parties de sa base ; sa cravate rentre dans son
+  corps (défaut du modèle porté, pas des panoplies). Les noms de parties de WWE '13 sont d'autres numéros de textes : pas repris.
 - **Page CAW** (`caw_page.h`, d'après Kaiko) : liste les CAW de la sauvegarde, change l'image des listes (rendu
   256 × 512 DXT5 à 755 044 + 0x220 + tenue × 149 528, vignette 128 × 128 à +0x20414 ; décodage vérifié), exporte en
   `.wwe12caw` (zip : `caw.cas`, `record.bin`, `header.bin`), importe dans la première place libre. Sommes de contrôle :
