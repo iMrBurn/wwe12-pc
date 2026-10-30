@@ -921,9 +921,17 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
 // it. Its rows: the ones where something lit runs across a fifth of the picture without a break (the plate's edges; the
 // lights are dots), a third of their height more above and below; its columns: the lit ones in those rows. Black made
 // clear (the Bink 2 movies' alpha is lost). A picture with its alpha (WWE 2K14's Bink 1 plates) is only cut to its
-// opaque part. Empty if no plate is found.
-inline svrfmt::Image PlateCut(const svrfmt::Image &f) {
+// opaque part. Empty if no plate is found. `rect`: where it was in the picture (x, y, w, h).
+inline svrfmt::Image PlateCut(const svrfmt::Image &f, int *rect = nullptr) {
   svrfmt::Image out;
+  const auto keep = [&](int x0, int y0) {
+    if (rect) {
+      rect[0] = x0;
+      rect[1] = y0;
+      rect[2] = out.w;
+      rect[3] = out.h;
+    }
+  };
   if (f.w <= 0 || f.h <= 0 || f.rgba.size() < size_t(f.w) * f.h * 4)
     return out;
   bool alpha = false;
@@ -949,6 +957,7 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f) {
     // (their faint haze over the whole picture showed as a dark box in the game: cleared)
     for (size_t i = 3; i < out.rgba.size(); i += 4)
       out.rgba[i] = out.rgba[i] < 24 ? 0 : uint8_t((out.rgba[i] - 24) * 255 / 231);
+    keep(x0, y0);
     return out;
   }
   const auto lum = [&](int x, int y) {
@@ -1000,7 +1009,97 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f) {
       d[2] = s[2];
       d[3] = uint8_t(std::clamp((int(std::max({s[0], s[1], s[2]})) - 8) * 5, 0, 255));
     }
+  keep(x0, y0);
   return out;
+}
+
+// A WWE 2K plate and where it goes on a 1920 x 1080 screen. The WWE 2K games show their plate movies 1.5 times as
+// big, the location's at the top of the screen, the name's at the bottom (seen in WWE 2K14, 2026-10-30); WWE '12 writes
+// its text at fixed places of its own, which fall about where theirs are: the name in the plate's box as it stands,
+// the city further left (WWE '12's around x = 605: the plate's middle put there).
+struct Plate2K {
+  svrfmt::Image img;
+  float x = 0, y = 0, w = 0, h = 0;
+};
+
+namespace detail {
+
+// A WWE '12 2D animation (AG2D, big-endian: +0x18 layers (count, offset; 0x20 each: w, h, picture, track, name[16]),
+// +0x20 tracks (count, offset; 0x18 each: what its keys hold (bit 0: x, y), keys << 16 | fields, frames << 16 | parent
+// track, its keys (keys x fields u32: frame, previous, next, then x, y...), ?, its rest (+4 x, +8 y, +16 / +20 scale))
+// with its layer `name` moved and sized so it covers screen rectangle (x, y, w, h) of 1920 x 1080 at the end. Screen =
+// 3 x the animation's place, 29 lower (measured in the game: WrestleMania XXVII's plates, 2026-10-30). Its keys are moved
+// with it (they slide it in).
+inline Bytes Ag2dPlace(const Bytes &in, const char *name, float x, float y, float w, float h) {
+  Bytes d = in;
+  if (d.size() < 0x30 || memcmp(d.data(), "AG2D", 4) != 0)
+    return d;
+  const auto f = [&](size_t o) {
+    const uint32_t u = U32(d, o);
+    float v;
+    memcpy(&v, &u, 4);
+    return v;
+  };
+  const auto putf = [&](size_t o, float v) {
+    uint32_t u;
+    memcpy(&u, &v, 4);
+    Put32(d, o, u);
+  };
+  const uint32_t nl = U32(d, 0x18), lo = U32(d, 0x1C), nt = U32(d, 0x20), to = U32(d, 0x24);
+  for (uint32_t i = 0; i < nl; ++i) {
+    const size_t r = lo + 0x20 * size_t(i);
+    if (r + 0x20 > d.size() || strncmp(reinterpret_cast<const char *>(&d[r + 16]), name, 16) != 0)
+      continue;
+    const uint32_t t = U32(d, r + 12);
+    if (t >= nt)
+      return in;
+    // the parents' place and scale (their rest: they don't move)
+    float px = 0, py = 0, ps = 1;
+    std::vector<uint32_t> chain;
+    for (uint32_t p = U32(d, to + 0x18 * size_t(t) + 8) & 0xFFFF; p < nt && chain.size() < 16;
+         p = U32(d, to + 0x18 * size_t(p) + 8) & 0xFFFF)
+      chain.push_back(p);
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+      const size_t rest = U32(d, to + 0x18 * size_t(*it) + 20);
+      px += ps * f(rest + 4);
+      py += ps * f(rest + 8);
+      ps *= f(rest + 16);
+    }
+    if (ps <= 0)
+      return in;
+    const size_t tr = to + 0x18 * size_t(t), rest = U32(d, tr + 20), table = U32(d, tr + 12);
+    const float nx = ((x + w / 2) / 3 - px) / ps, ny = ((y + h / 2 - 29) / 3 - py) / ps;
+    const float dx = nx - f(rest + 4), dy = ny - f(rest + 8);
+    putf(rest + 4, nx);
+    putf(rest + 8, ny);
+    if (U32(d, tr) & 1) {
+      const uint32_t keys = U32(d, tr + 4) & 0xFFFF, fields = U32(d, tr + 4) >> 16;
+      for (uint32_t k = 0; k < keys; ++k) {
+        const size_t o = table + 4 * (size_t(k) * fields);
+        putf(o + 12, f(o + 12) + dx);
+        putf(o + 16, f(o + 16) + dy);
+      }
+    }
+    Put32(d, r, uint32_t(int32_t(w / 3 / ps + 0.5f)));
+    Put32(d, r + 4, uint32_t(int32_t(h / 3 / ps + 0.5f)));
+    return d;
+  }
+  return d;
+}
+
+}  // namespace detail
+
+inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name) {
+  Plate2K p;
+  int r[4] = {};
+  p.img = PlateCut(still, r);
+  if (p.img.rgba.empty())
+    return p;
+  p.w = 1.5f * r[2];
+  p.h = 1.5f * r[3];
+  p.x = name ? 1.5f * r[0] : 605.f - p.w / 2;
+  p.y = name ? 1080.f - 1.5f * still.h + 1.5f * r[1] : 1.5f * r[1];
+  return p;
 }
 
 // The entrance graphics (location plate, name plates: pac/evt/evtgdhd.pac ETEX/00NN) of a game whose own lack them:
@@ -1009,11 +1108,11 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f) {
 // (ETEX/0015: blue lights, chevrons and its logo, the logo's pictures 0 and 6-20 of entries 0 and 10, the steps of
 // its animation) wears the arena's logo (made `logo_wide` times as wide as high, fitted whole) and its copyright
 // plate (`plate`, entry 20). Its animations and fonts are WWE '12's.
-// With the arena's own plates (`location`, `name`: PlateCut of its movies), entry 10 (location) or 0 (name) shows only
-// that plate, in its bar (picture 21, where the text is written): its other pictures (logo, chevrons, light lines) are
-// made clear, the plate having its logo.
+// With the arena's own plates (`location`, `name`: PlateOnScreen of its movies), entry 10 (location) or 0 (name) shows
+// only that plate, in its bar (picture 21, layer "base" of animations 10010 / 10000, moved and sized to the plate's
+// place): its other pictures (logo, chevrons, light lines) are made clear, the plate having its logo.
 inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double logo_wide, const svrfmt::Image &plate,
-                        Bytes &out, const svrfmt::Image &location = {}, const svrfmt::Image &name = {}) {
+                        Bytes &out, const Plate2K &location = {}, const Plate2K &name = {}) {
   using namespace detail;
   out.clear();
   svrfmt::Archive w;
@@ -1032,17 +1131,30 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
       svrfmt::ArchiveReplace(pic, LikePicture(d, img, false));
   };
   for (auto &e : tpl->kids) {
-    if ((e.id != 0 && e.id != 10 && e.id != 20) || !svrfmt::ArchiveExpand(e))
+    if (e.id != 0 && e.id != 10 && e.id != 20 && e.id != 10000 && e.id != 10010)
       continue;
     // (seen in the game, 2026-10-30: entry 10's bar goes with the city, entry 0's with the superstar's name)
-    const svrfmt::Image &own = e.id == 10 ? location : e.id == 0 ? name : svrfmt::Image();
+    const Plate2K &own = e.id == 10 || e.id == 10010 ? location : name;
+    if (e.id >= 10000) {  // its animation: the bar where the plate goes
+      if (own.img.rgba.empty() || !svrfmt::ArchiveExpand(e))
+        continue;
+      for (auto &a : e.kids)
+        svrfmt::ArchiveReplace(a, Ag2dPlace(svrfmt::ArchiveData(a), "base", own.x, own.y, own.w, own.h));
+      svrfmt::ArchiveTouch(e);
+      continue;
+    }
+    if (!svrfmt::ArchiveExpand(e))
+      continue;
     for (auto &pic : e.kids) {
       if (e.id == 20 && !plate.rgba.empty()) {
         wear(pic, plate);
-      } else if (!own.rgba.empty()) {
+      } else if (e.id != 20 && !own.img.rgba.empty()) {
         const Bytes d = svrfmt::ArchiveData(pic);
-        if (d.size() > 128 && memcmp(d.data(), "DDS ", 4) == 0)
-          svrfmt::ArchiveReplace(pic, pic.id == 21 ? LikePicture(d, own, false) : Clear(d));
+        svrfmt::DdsInfo info;
+        if (d.size() > 128 && memcmp(d.data(), "DDS ", 4) == 0 && svrfmt::DdsInfoOf(d, info))
+          svrfmt::ArchiveReplace(pic, pic.id == 21 ? svrfmt::DdsEncode(svrfmt::Resize(own.img, info.w, info.h),
+                                                                       info.format, info.mips > 1)
+                                                   : Clear(d));
       } else if (e.id != 20 && (pic.id == 0 || (pic.id >= 6 && pic.id <= 20))) {
         wear(pic, wide);
       }

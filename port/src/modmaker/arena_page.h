@@ -1554,7 +1554,7 @@ class Page {
           logo = banner_;
         // ... and its own plates, a picture of each of its plate movies (2K15-2K17: Bink 2, when a decoder is
         // installed; 2K14: Bink 1 with alpha, read by ours)
-        svrfmt::Image own[2];
+        port_svr_arena::Plate2K own[2];
         for (int n = 0; n < 2; ++n) {
           Bytes bk2;
           if (!port13::PlateMovie2K([&](const char *p) { return Read13(p); }, w13_pick_, n == 1, bk2))
@@ -1565,13 +1565,13 @@ class Page {
           std::ofstream(in, std::ios::binary).write(reinterpret_cast<const char *>(bk2.data()), std::streamsize(bk2.size()));
           svrfmt::Image still;
           if (bink2::Still(bink2::Found(), in, still, nullptr))
-            own[n] = port_svr_arena::PlateCut(still);
+            own[n] = port_svr_arena::PlateOnScreen(still, n == 1);
           std::error_code ec;
           fs::remove(in, ec);
         }
         if (disc_ && disc_->Read("pac/evt/evtgdhd.pac", evtgd12))
           port_svr_arena::EtexWearing(evtgd12, logo, 3.4, plate, etex_, own[0], own[1]);
-        if (!etex_.empty() && (!own[0].rgba.empty() || !own[1].rgba.empty()))
+        if (!etex_.empty() && (!own[0].img.rgba.empty() || !own[1].img.rgba.empty()))
           port_note_ += fr ? " Avec ses plaques d'entrée (images de ses vidéos)."
                            : " With its entrance plates (pictures of its movies).";
       }

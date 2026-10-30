@@ -663,7 +663,14 @@ places ×10, d'après le code de Kaiko).
   (locator) et 0 (plaque de nom ; vu en jeu le 2026-10-30, d'abord inversées) et rend transparentes leurs autres images
   (logo, chevrons, traits). Le voile de l'alpha de 2K14 (< 24) est effacé (il faisait un rectangle sombre). Le texte reste
   écrit par WWE '12 à la place prévue pour la barre de WM XXVII : 1er essai en jeu (RAW de 2K14), nom du catcheur sur la
-  plaque, ville au-dessus à gauche : **à revoir après l'inversion**.
+  plaque, ville au-dessus à gauche. 2e essai (inversion corrigée) : bonnes plaques, texte sur le logo.
+  **Position (3e version)** : le texte de WWE '12 est placé par le code (les entrées 20001 / 20011 ne sont que la police),
+  le calque `base` (image 21) des animations 10000 (nom) / 10010 (ville) est donc déplacé et agrandi
+  (`detail::Ag2dPlace`) : AG2D gros-boutiste, calques (w, h, image, piste, nom), pistes (bit 0 = clés avec x, y ; clés
+  = images × champs : image, précédente, suivante, x, y…), repos (+4 x, +8 y, +16 échelle) ; écran 1080p = 3 × place
+  + 29 en y (mesuré). La plaque garde la taille et la place qu'elle a dans 2K (vidéo × 1,5, locator en haut, nom en
+  bas) : la case du nom tombe sous le texte de WWE '12 ; le locator est recentré sur x = 605 (ville de WWE '12). Dans
+  les 2K la case du texte change d'une arène à l'autre (2K17 : `evt/evtlayout.pac`, YXML par plaque, non lu).
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 
