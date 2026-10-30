@@ -1206,8 +1206,9 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
 - **Matières (piste n° 6)** : page CATCHEURS, section « Matières (brillance, teinte) » : par groupe de maillages du
   modèle du corps (enfant 0 de la tenue) : « Peau » (shaders `yCh_skin*`, sauf dents) et « Tenue : <partie> »
   (`yCh_gear`, par partie du modèle : boots, shorts, kneepad...). Brillance = × `g_fSpecLev` et `g_fSpecLvBase` ; teinte
-  = × la couleur de `g_f4MatDifCol` (`arena_edit::Material`, écrit au Build). Vu dans le Mod Maker ; **pas encore vu
-  en jeu** (test interrompu).
+  = × la couleur de `g_f4MatDifCol` (`arena_edit::Material`, écrit au Build). **Vu en jeu le 2026-10-30** :
+  Orton à la peau teintée en vert et brillance ×3 (programme `mat_test`, même code). Une teinte sur une partie noire ne
+  se voit pas (multiplication).
 - **Plusieurs tenues pour un catcheur ajouté (piste n° 4, pour les portés de WWE '13)** : le nombre de tenues vient de
   la table **COS** de `misc.pac` (BATS/INIT et BATH/INIT, enfants 5 et 201 : « COS\0 », u32 nombre, puis lignes de
   40 o {u32 catcheur, u32 tenues, 4 × {u32 texte du nom, i32 déblocage (-1 : débloquée)}}, triées par numéro ; seulement
