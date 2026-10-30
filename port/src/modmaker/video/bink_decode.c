@@ -5,7 +5,8 @@
  *
  * Reads the game's titantron movies (to reuse a superstar's bottom strip)
  * and entrance movies made earlier (to make them again). Bink version 'i'
- * only (what the game uses): video, no alpha, planes Y, V, U.
+ * only (what the game uses): video, planes Y, V, U, and an alpha plane before them when the
+ * movie has one (WWE 2K14's entrance plates; WWE12-PC addition, as FFmpeg reads it).
  *
  * Ported from FFmpeg's libavcodec/bink.c and binkdsp.c
  * (Copyright (c) 2009 Konstantin Shishkov, Copyright (C) 2011 Peter Ross).
@@ -74,8 +75,9 @@ struct BinkReader {
     LONGLONG frame_time;
     uint32_t *index;              /* frame offsets (low bit: key frame), then the file size */
     uint8_t *packet;
-    uint8_t *plane[3], *last[3];  /* Y, U, V: current and previous frame */
-    int pw[3], ph[3];
+    uint8_t *plane[4], *last[4];  /* Y, U, V (and alpha): current and previous frame */
+    int pw[4], ph[4];
+    int planes;                   /* 3, or 4 with an alpha plane */
     Bundle bundle[NB_SRC];
     uint8_t *bundle_mem;
     Tree col_high[16];
@@ -702,10 +704,7 @@ BinkReader *bink_open(const WCHAR *path, WCHAR *err, size_t errn)
         swprintf_s(err, errn, L"%s is not a Bink movie the game uses.", path);
         goto fail;
     }
-    if (hdr[9] & 0x00100000) {
-        swprintf_s(err, errn, L"%s has an alpha channel (not supported).", path);
-        goto fail;
-    }
+    r->planes = (hdr[9] & 0x00100000) ? 4 : 3;
     audio = hdr[10];
     if (audio) _fseeki64(r->f, (long long)audio * 12, SEEK_CUR);   /* per track: 4 + 4 + 4 bytes */
     r->frames = (int)hdr[2];
@@ -723,7 +722,8 @@ BinkReader *bink_open(const WCHAR *path, WCHAR *err, size_t errn)
     r->pw[0] = (r->w + 7) & ~7; r->ph[0] = (r->h + 7) & ~7;
     r->pw[1] = r->pw[2] = ((r->w + 15) & ~15) / 2;
     r->ph[1] = r->ph[2] = ((r->h + 15) & ~15) / 2;
-    for (i = 0; i < 3; i++) {
+    r->pw[3] = r->pw[0]; r->ph[3] = r->ph[0];
+    for (i = 0; i < r->planes; i++) {
         r->plane[i] = (uint8_t *)calloc((size_t)r->pw[i] * r->ph[i] + 64, 1);
         r->last[i] = (uint8_t *)calloc((size_t)r->pw[i] * r->ph[i] + 64, 1);
         if (!r->plane[i] || !r->last[i]) goto nomem;
@@ -749,7 +749,7 @@ void bink_close(BinkReader *r)
     if (!r) return;
     if (r->f) fclose(r->f);
     free(r->index); free(r->packet); free(r->bundle_mem);
-    for (i = 0; i < 3; i++) { free(r->plane[i]); free(r->last[i]); }
+    for (i = 0; i < 4; i++) { free(r->plane[i]); free(r->last[i]); }
     free(r);
 }
 
@@ -758,11 +758,12 @@ int bink_height(const BinkReader *r) { return r->h; }
 int bink_frames(const BinkReader *r) { return r->frames; }
 LONGLONG bink_frame_time(const BinkReader *r) { return r->frame_time; }
 int bink_position(const BinkReader *r) { return r->pos; }
+int bink_has_alpha(const BinkReader *r) { return r->planes == 4; }
 void bink_rewind(BinkReader *r)
 {
     int i;
     r->pos = 0;
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < r->planes; i++) {
         memset(r->last[i], 0, (size_t)r->pw[i] * r->ph[i]);
         memset(r->plane[i], 0, (size_t)r->pw[i] * r->ph[i]);
     }
@@ -778,7 +779,7 @@ int bink_next(BinkReader *r)
     end = r->index[r->pos + 1] & ~1u;
     r->pos++;
     size = end - start;
-    for (i = 0; i < 3; i++) {                        /* this frame builds on the last one */
+    for (i = 0; i < r->planes; i++) {                /* this frame builds on the last one */
         uint8_t *t = r->last[i]; r->last[i] = r->plane[i]; r->plane[i] = t;
         memcpy(r->plane[i], r->last[i], (size_t)r->pw[i] * r->ph[i]);
     }
@@ -791,6 +792,10 @@ int bink_next(BinkReader *r)
     if (_fseeki64(r->f, start, SEEK_SET) || fread(r->packet, 1, size, r->f) != size) return 0;
     memset(r->packet + size, 0, 8);
     g.p = r->packet; g.size_bits = (size_t)size * 8; g.pos = 32;   /* 'i': 32 bits before the planes */
+    if (r->planes == 4) {                            /* the alpha plane first, then 32 bits again */
+        if (!decode_plane(r, &g, 3, 0)) return 0;
+        g.pos += 32;
+    }
     for (k = 0; k < 3; k++) {
         const int p = k == 0 ? 0 : (k ^ 3);          /* Y, V, U */
         if (!decode_plane(r, &g, p, k != 0)) return 0;
@@ -815,6 +820,6 @@ void bink_bgra(const BinkReader *r, uint8_t *bgra)
             o[0] = (uint8_t)(B < 0 ? 0 : B > 255 ? 255 : B);
             o[1] = (uint8_t)(G < 0 ? 0 : G > 255 ? 255 : G);
             o[2] = (uint8_t)(R < 0 ? 0 : R > 255 ? 255 : R);
-            o[3] = 255;
+            o[3] = r->planes == 4 ? r->plane[3][y * r->pw[3] + x] : 255;
         }
 }

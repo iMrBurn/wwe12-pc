@@ -1552,10 +1552,30 @@ class Page {
           svrfmt::DdsDecode(l->data, logo);
         if (logo.rgba.empty())
           logo = banner_;
+        // ... and its own plates, a picture of each of its plate movies (2K15-2K17: Bink 2, when a decoder is
+        // installed; 2K14: Bink 1 with alpha, read by ours)
+        svrfmt::Image own[2];
+        for (int n = 0; n < 2; ++n) {
+          Bytes bk2;
+          if (!port13::PlateMovie2K([&](const char *p) { return Read13(p); }, w13_pick_, n == 1, bk2))
+            continue;
+          wchar_t tmp[MAX_PATH];
+          GetTempPathW(MAX_PATH, tmp);
+          const fs::path in = fs::path(tmp) / L"wwe12_plate.bk2";
+          std::ofstream(in, std::ios::binary).write(reinterpret_cast<const char *>(bk2.data()), std::streamsize(bk2.size()));
+          svrfmt::Image still;
+          if (bink2::Still(bink2::Found(), in, still, nullptr))
+            own[n] = port_svr_arena::PlateCut(still);
+          std::error_code ec;
+          fs::remove(in, ec);
+        }
         if (disc_ && disc_->Read("pac/evt/evtgdhd.pac", evtgd12))
-          port_svr_arena::EtexWearing(evtgd12, logo, 3.4, plate, etex_);
+          port_svr_arena::EtexWearing(evtgd12, logo, 3.4, plate, etex_, own[0], own[1]);
+        if (!etex_.empty() && (!own[0].rgba.empty() || !own[1].rgba.empty()))
+          port_note_ += fr ? " Avec ses plaques d'entrée (images de ses vidéos)."
+                           : " With its entrance plates (pictures of its movies).";
       }
-      if (!etex_.empty())
+      if (!etex_.empty() && port_note_.find(fr ? "plaques d'entrée" : "entrance plates") == std::string::npos)
         port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
     }
     // Its pre-match screen, and its transition video.

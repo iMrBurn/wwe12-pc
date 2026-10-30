@@ -692,6 +692,45 @@ inline bool Transition2K(const std::function<Bytes(const char *)> &read, int fil
   return !bk2.empty();
 }
 
+// A WWE 2K arena's entrance plate movie, `name` the name plate, else the location plate (the WWE 2K games draw the
+// text over them with their fonts): 2K16 / 2K17 pac/mov/bg_name|bg_locator/NNNNNN.pac, 2K15
+// pac/evt/evtmov_bg_name|evtmov_bg_locate.pac MOVN|MOVL/MNNNNNN (Bink 2, alpha the tools don't give back: the plate on
+// black, with the arena's lights), 2K14 pac/evt/evtmov2|evtmov3.pac MOVN|MOVL/MNNN (Bink 1 with an alpha plane).
+inline bool PlateMovie2K(const std::function<Bytes(const char *)> &read, int file, bool name, Bytes &bk2) {
+  bk2.clear();
+  const auto first = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+    if (!bk2.empty())
+      return;
+    if (depth < 3 && svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
+      for (auto &c : n.kids)
+        self(self, c, depth + 1);
+      return;
+    }
+    const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
+    if (d.size() > 44 && (memcmp(d.data(), "KB2", 3) == 0 || memcmp(d.data(), "BIK", 3) == 0))
+      bk2 = d;
+  };
+  char p[48];
+  snprintf(p, sizeof(p), "pac/mov/%s/%06d.pac", name ? "bg_name" : "bg_locator", file);
+  svrfmt::Archive a;
+  if (svrfmt::ArchiveOpen(read(p), a, nullptr))
+    first(first, a.root, 0);
+  const auto in_pac = [&](const char *pac, const char *group, const char *entry) {
+    if (!bk2.empty() || !svrfmt::ArchiveOpen(read(pac), a, nullptr))
+      return;
+    for (auto &k : a.root.kids)
+      if (k.group == group && k.name.compare(0, strlen(entry), entry) == 0 &&
+          (k.name.size() == strlen(entry) || k.name[strlen(entry)] == ' ' || k.name[strlen(entry)] == '\0'))
+        first(first, k, 1);
+  };
+  char m6[16], m3[16];
+  snprintf(m6, sizeof(m6), "M%06d", file);
+  snprintf(m3, sizeof(m3), "M%03d", file);
+  in_pac(name ? "pac/evt/evtmov_bg_name.pac" : "pac/evt/evtmov_bg_locate.pac", name ? "MOVN" : "MOVL", m6);
+  in_pac(name ? "pac/evt/evtmov2.pac" : "pac/evt/evtmov3.pac", name ? "MOVN" : "MOVL", m3);
+  return !bk2.empty();
+}
+
 // The arena's VS screen ("match card") in WWE '13's menu/MatchHD.pac, as stored: MLYE/MBnn (its layout, YXMLBIN, and
 // pictures, as WWE '12's) and MENU/MnnF (its font, "font_venge" for Vengeance: the layout names it), nn = the arena's
 // file number. The game serves them for the added arena (wwe12_arena_pages.cpp).

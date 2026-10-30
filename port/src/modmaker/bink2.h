@@ -28,6 +28,7 @@
 #include "svrfmt/texture.h"
 
 extern "C" {
+#include "video/bink_decode.h"
 #include "video/bink_encode.h"
 }
 
@@ -328,6 +329,144 @@ inline bool ReadAvi(const fs::path &p, const std::function<bool(const uint8_t *b
   return w > 0;
 }
 
+// The frames of `in` (Bink 2), decoded by the tool, each as BGRA top row first (RAD Video Tools: at the movie's size;
+// Librempeg: scaled to W x H). `put` returns false to stop. False if the tool couldn't decode it.
+inline bool Decode(const Tool &tool, const fs::path &in, int frames, int W, int H,
+                   const std::function<bool(const uint8_t *bgra, int w, int h)> &put, std::wstring *err) {
+  bool ok = false;
+  if (tool.kind == Kind::kRad) {
+    wchar_t tmp[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp);
+    const fs::path avi = fs::path(tmp) / (L"wwe12_bink2_" + std::to_wstring(GetTickCount()) + L".avi");
+    const int code = RunOnOwnDesktop(Quote(tool.exe) + L" BinkConv " + Quote(fs::absolute(in)) + L" " + Quote(avi),
+                                     120000 + DWORD(frames) * 200, err);
+    std::error_code ec;
+    if (fs::exists(avi, ec) && fs::file_size(avi, ec) > 0)
+      ok = ReadAvi(avi, put, err);
+    else if (err && err->empty())
+      *err = L"RAD Video Tools couldn't decode it (code " + std::to_wstring(code) + L")";
+    fs::remove(avi, ec);
+  } else if (tool.kind == Kind::kLibrempeg) {
+    // raw BGRA frames on the pipe
+    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+    HANDLE rd = nullptr, wr = nullptr;
+    if (CreatePipe(&rd, &wr, &sa, 1 << 20)) {
+      SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
+      STARTUPINFOW si{sizeof(si)};
+      si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+      si.wShowWindow = SW_HIDE;
+      si.hStdOutput = wr;
+      si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+      PROCESS_INFORMATION pi{};
+      std::wstring line = Quote(tool.exe) + L" -v error -nostdin -i " + Quote(fs::absolute(in)) + L" -vf scale=" +
+                          std::to_wstring(W) + L":" + std::to_wstring(H) + L" -f rawvideo -pix_fmt bgra -";
+      const BOOL started = CreateProcessW(nullptr, line.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
+                                          nullptr, &si, &pi);
+      CloseHandle(wr);
+      if (started) {
+        std::vector<uint8_t> frame(size_t(W) * H * 4);
+        size_t have = 0, got = 0;
+        DWORD n = 0;
+        bool go = true;
+        while (go && ReadFile(rd, frame.data() + have, DWORD(frame.size() - have), &n, nullptr) && n) {
+          have += n;
+          if (have == frame.size()) {
+            go = put(frame.data(), W, H);
+            have = 0;
+            ++got;
+          }
+        }
+        if (WaitForSingleObject(pi.hProcess, 5000) == WAIT_TIMEOUT)
+          TerminateProcess(pi.hProcess, 1);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        ok = got > 0;
+        if (!ok && err)
+          *err = L"Librempeg couldn't decode it";
+      } else if (err) {
+        *err = L"Librempeg didn't start";
+      }
+      CloseHandle(rd);
+    }
+  } else if (err) {
+    *err = L"no Bink 2 decoder installed";
+  }
+  return ok;
+}
+
+// One picture of a movie (Bink 2 with the tool, or Bink 1 with our reader): among the frames between 30 % and 80 % of
+// it, the one with the most lit (or, with an alpha plane, opaque) pixels (the WWE 2K games' entrance plates: the plate
+// built, before it goes away). RGBA; alpha 255 but for a Bink 1 movie with an alpha plane (WWE 2K14's plates).
+inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std::wstring *err) {
+  int from = 0, to = 0, at = 0;
+  size_t best = 0;
+  std::vector<uint8_t> keep;
+  int kw = 0, kh = 0;
+  bool alpha = false;
+  const auto put = [&](const uint8_t *bgra, int w, int h) {
+    const int i = at++;
+    if (i < from)
+      return true;
+    if (i > to)
+      return false;
+    size_t lit = 0;
+    for (size_t p = 0; p < size_t(w) * h * 4; p += 4)
+      lit += alpha ? bgra[p + 3] > 128 : (std::max)({bgra[p], bgra[p + 1], bgra[p + 2]}) > 60;
+    if (lit > best || keep.empty()) {
+      best = lit;
+      keep.assign(bgra, bgra + size_t(w) * h * 4);
+      kw = w;
+      kh = h;
+    }
+    return true;
+  };
+  char magic[4] = {};
+  std::ifstream(in, std::ios::binary).read(magic, 4);
+  if (!memcmp(magic, "BIK", 3)) {
+    wchar_t why[256] = {};
+    BinkReader *r = bink_open(in.c_str(), why, 256);
+    if (!r) {
+      if (err)
+        *err = why;
+      return false;
+    }
+    alpha = bink_has_alpha(r) != 0;
+    from = bink_frames(r) * 3 / 10;
+    to = bink_frames(r) * 8 / 10;
+    std::vector<uint8_t> frame(size_t(bink_width(r)) * bink_height(r) * 4);
+    for (int i = 0; i <= to && i < bink_frames(r); ++i) {
+      if (!bink_next(r))
+        continue;
+      bink_bgra(r, frame.data());
+      if (!put(frame.data(), bink_width(r), bink_height(r)))
+        break;
+    }
+    bink_close(r);
+  } else {
+    Info info;
+    if (!ReadInfo(in, info) || !info.width || !info.height) {
+      if (err)
+        *err = L"not a Bink movie";
+      return false;
+    }
+    from = int(info.frames) * 3 / 10;
+    to = int(info.frames) * 8 / 10;
+    Decode(tool, in, int(info.frames), int(info.width + 1) / 2 * 2, int(info.height + 1) / 2 * 2, put, err);
+  }
+  if (keep.empty())
+    return false;
+  out.w = kw;
+  out.h = kh;
+  out.rgba.resize(keep.size());
+  for (size_t i = 0; i < keep.size(); i += 4) {  // BGRA -> RGBA
+    out.rgba[i] = keep[i + 2];
+    out.rgba[i + 1] = keep[i + 1];
+    out.rgba[i + 2] = keep[i];
+    out.rgba[i + 3] = alpha ? keep[i + 3] : 255;
+  }
+  return true;
+}
+
 // in (Bink 2) -> out (Bink 1, WWE '12's titantron layout when the source is 320 x 320), with the tool; progress
 // 0-100. The temporary files are removed. fade > 0: with an alpha plane, opaque but over the first and last `fade`
 // frames (an arena's transition movie: the 2K games' have alpha, but neither tool gives it back: RAD Video Tools
@@ -401,66 +540,9 @@ inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, s
       *progress = 10 + 90 * done / (std::max)(1, frames);
     return true;
   };
-  bool ok = false;
-  if (tool.kind == Kind::kRad) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    const fs::path avi = fs::path(tmp) / (L"wwe12_bink2_" + std::to_wstring(GetTickCount()) + L".avi");
-    if (progress)
-      *progress = 2;
-    const int code = RunOnOwnDesktop(Quote(tool.exe) + L" BinkConv " + Quote(fs::absolute(in)) + L" " + Quote(avi),
-                                     120000 + DWORD(frames) * 200, err);
-    std::error_code ec;
-    if (fs::exists(avi, ec) && fs::file_size(avi, ec) > 0) {
-      if (progress)
-        *progress = 10;
-      ok = ReadAvi(avi, put, err) && done > 0;
-    } else if (err && err->empty()) {
-      *err = L"RAD Video Tools couldn't decode it (code " + std::to_wstring(code) + L")";
-    }
-    fs::remove(avi, ec);
-  } else {
-    // raw BGRA frames on the pipe
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    HANDLE rd = nullptr, wr = nullptr;
-    if (CreatePipe(&rd, &wr, &sa, 1 << 20)) {
-      SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
-      STARTUPINFOW si{sizeof(si)};
-      si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-      si.wShowWindow = SW_HIDE;
-      si.hStdOutput = wr;
-      si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-      PROCESS_INFORMATION pi{};
-      std::wstring line = Quote(tool.exe) + L" -v error -nostdin -i " + Quote(fs::absolute(in)) + L" -vf scale=" +
-                          std::to_wstring(W) + L":" + std::to_wstring(H) + L" -f rawvideo -pix_fmt bgra -";
-      const BOOL started = CreateProcessW(nullptr, line.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
-                                          nullptr, &si, &pi);
-      CloseHandle(wr);
-      if (started) {
-        std::vector<uint8_t> frame(size_t(W) * H * 4);
-        size_t have = 0;
-        DWORD n = 0;
-        bool go = true;
-        while (go && ReadFile(rd, frame.data() + have, DWORD(frame.size() - have), &n, nullptr) && n) {
-          have += n;
-          if (have == frame.size()) {
-            go = put(frame.data(), W, H);
-            have = 0;
-          }
-        }
-        if (WaitForSingleObject(pi.hProcess, 5000) == WAIT_TIMEOUT)
-          TerminateProcess(pi.hProcess, 1);
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        ok = done > 0;
-        if (!ok && err)
-          *err = L"Librempeg couldn't decode it";
-      } else if (err) {
-        *err = L"Librempeg didn't start";
-      }
-      CloseHandle(rd);
-    }
-  }
+  if (progress)
+    *progress = 2;
+  bool ok = Decode(tool, in, frames, W, H, put, err) && done > 0;
   // (fewer frames than the header said: the last one again)
   while (ok && done < frames && !(cancel && *cancel)) {
     if (bink_writer_repeat(bw) != 1)

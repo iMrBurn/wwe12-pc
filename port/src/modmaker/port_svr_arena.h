@@ -917,14 +917,100 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
   return mb.size() >= 4 && memcmp(mb.data(), "PACH", 4) == 0;
 }
 
+// A WWE 2K entrance plate cut from a picture of its movie (bink2::Still): the plate on black, the arena's lights around
+// it. Its rows: the ones where something lit runs across a fifth of the picture without a break (the plate's edges; the
+// lights are dots), a third of their height more above and below; its columns: the lit ones in those rows. Black made
+// clear (the Bink 2 movies' alpha is lost). A picture with its alpha (WWE 2K14's Bink 1 plates) is only cut to its
+// opaque part. Empty if no plate is found.
+inline svrfmt::Image PlateCut(const svrfmt::Image &f) {
+  svrfmt::Image out;
+  if (f.w <= 0 || f.h <= 0 || f.rgba.size() < size_t(f.w) * f.h * 4)
+    return out;
+  bool alpha = false;
+  for (size_t i = 3; i < f.rgba.size() && !alpha; i += 4)
+    alpha = f.rgba[i] < 255;
+  if (alpha) {
+    int x0 = f.w, y0 = f.h, x1 = -1, y1 = -1;
+    for (int y = 0; y < f.h; ++y)
+      for (int x = 0; x < f.w; ++x)
+        if (f.rgba[(size_t(y) * f.w + x) * 4 + 3] > 16) {
+          x0 = std::min(x0, x);
+          x1 = std::max(x1, x);
+          y0 = std::min(y0, y);
+          y1 = std::max(y1, y);
+        }
+    if (x1 < x0)
+      return out;
+    out.w = x1 - x0 + 1;
+    out.h = y1 - y0 + 1;
+    out.rgba.resize(size_t(out.w) * out.h * 4);
+    for (int y = 0; y < out.h; ++y)
+      memcpy(&out.rgba[size_t(y) * out.w * 4], &f.rgba[(size_t(y0 + y) * f.w + x0) * 4], size_t(out.w) * 4);
+    return out;
+  }
+  const auto lum = [&](int x, int y) {
+    const uint8_t *p = &f.rgba[(size_t(y) * f.w + x) * 4];
+    return std::max({p[0], p[1], p[2]});
+  };
+  int y0 = -1, y1 = -1;
+  for (int y = 0; y < f.h; ++y) {
+    int run = 0, best = 0, gap = 0;
+    for (int x = 0; x < f.w; ++x) {
+      if (lum(x, y) > 60) {
+        run += gap + 1;
+        gap = 0;
+      } else if (run && ++gap > 2) {
+        run = gap = 0;
+      }
+      best = std::max(best, run);
+    }
+    if (best >= f.w / 5) {
+      y0 = y0 < 0 ? y : y0;
+      y1 = y;
+    }
+  }
+  if (y0 < 0)
+    return out;
+  const int m = (y1 - y0) / 3 + 4;
+  y0 = std::max(0, y0 - m);
+  y1 = std::min(f.h - 1, y1 + m);
+  int x0 = f.w, x1 = -1;
+  for (int y = y0; y <= y1; ++y)
+    for (int x = 0; x < f.w; ++x)
+      if (lum(x, y) > 60) {
+        x0 = std::min(x0, x);
+        x1 = std::max(x1, x);
+      }
+  if (x1 < x0)
+    return out;
+  x0 = std::max(0, x0 - 4);
+  x1 = std::min(f.w - 1, x1 + 4);
+  out.w = x1 - x0 + 1;
+  out.h = y1 - y0 + 1;
+  out.rgba.resize(size_t(out.w) * out.h * 4);
+  for (int y = 0; y < out.h; ++y)
+    for (int x = 0; x < out.w; ++x) {
+      const uint8_t *s = &f.rgba[(size_t(y0 + y) * f.w + x0 + x) * 4];
+      uint8_t *d = &out.rgba[(size_t(y) * out.w + x) * 4];
+      d[0] = s[0];
+      d[1] = s[1];
+      d[2] = s[2];
+      d[3] = uint8_t(std::clamp((int(std::max({s[0], s[1], s[2]})) - 8) * 5, 0, 255));
+    }
+  return out;
+}
+
 // The entrance graphics (location plate, name plates: pac/evt/evtgdhd.pac ETEX/00NN) of a game whose own lack them:
 // the WWE 2K games' ETEX hold only the copyright plate (20) and fonts WWE '12 can't read (their plates are movies,
 // pac/mov/bg_name, bg_locator), so WrestleMania 31 of 2K16 had none (2026-10-26). WWE '12's WrestleMania XXVII's
 // (ETEX/0015: blue lights, chevrons and its logo, the logo's pictures 0 and 6-20 of entries 0 and 10, the steps of
 // its animation) wears the arena's logo (made `logo_wide` times as wide as high, fitted whole) and its copyright
 // plate (`plate`, entry 20). Its animations and fonts are WWE '12's.
+// With the arena's own plates (`location`, `name`: PlateCut of its movies), entry 0 (location) or 10 (name) shows only
+// that plate, in its bar (picture 21, where the text is written): its other pictures (logo, chevrons, light lines) are
+// made clear, the plate having its logo.
 inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double logo_wide, const svrfmt::Image &plate,
-                        Bytes &out) {
+                        Bytes &out, const svrfmt::Image &location = {}, const svrfmt::Image &name = {}) {
   using namespace detail;
   out.clear();
   svrfmt::Archive w;
@@ -945,11 +1031,17 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
   for (auto &e : tpl->kids) {
     if ((e.id != 0 && e.id != 10 && e.id != 20) || !svrfmt::ArchiveExpand(e))
       continue;
+    const svrfmt::Image &own = e.id == 0 ? location : e.id == 10 ? name : svrfmt::Image();
     for (auto &pic : e.kids) {
-      if (e.id == 20 && !plate.rgba.empty())
+      if (e.id == 20 && !plate.rgba.empty()) {
         wear(pic, plate);
-      else if (e.id != 20 && (pic.id == 0 || (pic.id >= 6 && pic.id <= 20)))
+      } else if (!own.rgba.empty()) {
+        const Bytes d = svrfmt::ArchiveData(pic);
+        if (d.size() > 128 && memcmp(d.data(), "DDS ", 4) == 0)
+          svrfmt::ArchiveReplace(pic, pic.id == 21 ? LikePicture(d, own, false) : Clear(d));
+      } else if (e.id != 20 && (pic.id == 0 || (pic.id >= 6 && pic.id <= 20))) {
         wear(pic, wide);
+      }
     }
     svrfmt::ArchiveTouch(e);
   }

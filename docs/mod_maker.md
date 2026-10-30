@@ -651,6 +651,19 @@ places ×10, d'après le code de Kaiko).
 - **Aperçu 3D** corrigé : les modèles de WWE '13 écrivent le type de bande `0x06000000` (`Strip::IsStrip`).
 - Reste : marches blanches (objets de `bgEtc.pac`, ni les jeux de lumières 300-306 ni l'entrée 30001) ; locator des
   arènes de WWE '13 un peu bas (WWE '12 écrit la ville à une hauteur fixe).
+- **Plaques d'entrée des arènes 2K14 à 2K17 (2026-10-30, vérifié hors du jeu, pas encore en jeu)** : leur `ETEX` n'a que la
+  plaque copyright (20), une animation (10020) et des polices ; le **locator et la plaque de nom sont des vidéos**, une
+  par arène : 2K16 / 2K17 `pac/mov/bg_locator|bg_name/NNNNNN.pac`, 2K15 `pac/evt/evtmov_bg_locate|evtmov_bg_name.pac`
+  `MOVL|MOVN/MNNNNNN` (Bink 2, 1280 × 280-400, plaque + projecteurs sur fond noir : l'alpha n'est pas rendu par les outils),
+  2K14 `pac/evt/evtmov3|evtmov2.pac` `MOVL|MOVN/MNNN` (**Bink 1 avec un plan alpha**, lu par notre décodeur : plan alpha
+  ajouté à `video/bink_decode.c` comme FFmpeg, avant Y/V/U et suivi de 32 bits). `port13::PlateMovie2K` les trouve,
+  `bink2::Still` prend l'image la plus remplie entre 30 et 80 % de la vidéo, `port_svr_arena::PlateCut` découpe la plaque
+  (lignes où un trait lumineux court sur 1/5 de la largeur, + 1/3 de leur hauteur ; noir rendu transparent, ou la vraie
+  transparence en 2K14). `EtexWearing` (modèle WrestleMania XXVII) la met dans la **barre (image 21)** des entrées 0
+  (locator) et 10 (plaque de nom) et rend transparentes leurs autres images (logo, chevrons, traits). Le texte reste écrit
+  par WWE '12 à la place prévue pour la barre de WM XXVII : **position du texte sur la plaque 2K à vérifier en jeu**.
+  L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
+  l'ancien habillage (logo de l'arène).
 
 ### Mes disques de jeu et assistant « Nouvelle arène » (2026-10-25, `docs/plan_page_arenes.md`)
 

@@ -34,3 +34,5 @@ void bink_bgra(const BinkReader *r, uint8_t *bgra);
 void bink_rewind(BinkReader *r);
 /* Frames decoded since opening (or since it started over). */
 int bink_position(const BinkReader *r);
+/* 1 if the movie has an alpha plane (then bink_bgra's A is it, else 255). */
+int bink_has_alpha(const BinkReader *r);
