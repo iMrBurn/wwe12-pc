@@ -1181,3 +1181,18 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
 - **Taille des vidéos d'entrée (piste n° 15)** : page VIDÉOS, « Taille de la vidéo » 320 (comme le jeu) / 640 (HD) /
   1024 (HD+) : le fabricant de Kaiko les savait faire (même disposition), le choix manquait dans la page. **Vu en jeu le
   2026-10-30** : une vidéo 640×640 à la place de celle d'Orton (161) s'affiche sur le titantron de son entrée.
+- **Pistes restantes : comment Kaiko les a faites dans SvR 2011** (lu dans `work/kaiko-svr2011`, résumé, pas de code
+  repris ; à vérifier pour WWE '12 avant d'écrire quoi que ce soit) :
+  - *Panoplies (Superstar Threads)* : liste `edit\edit.pac` EDIT/SSTL (fiches de 484 o : id, 48 noms de parties,
+    caméra, couleur par défaut) ; partie p = canal (p-1)%4 du Mask((p-1)/4+1) (enfants 0x0D-0x0F de l'EMD) ; il sert
+    un SSTL agrandi d'une fiche par mod (`threads.pac`, recherche `/EDIT/SSTL` redirigée). Testé chez lui, « expérimental ».
+  - *Tenue d'entrée* : entrées EMD `NNNNNNA4` (tenue A, sorte 4) ; dans WWE '12 aussi (`00013904`, `00010304`...).
+    Un mod qui fournit une `...04` marche tel quel chez lui. → pour nous : porter aussi la tenue d'entrée d'un catcheur
+    de WWE '13 (même nom), le pack renomme déjà toutes les entrées.
+  - *Matériaux* : paramètres de shader par maillage (`g_fSpecularLev`, `g_iSpecularPow`, `g_f4MatDifCol`), drapeaux de
+    rendu u32 à maillage+0x88 (0x110 découpe alpha, 0x2 face cachée).
+  - *Ajouter une tenue* : crochets du nombre de tenues et de leurs noms (`sub_828C4140`, `sub_828C4060` chez lui),
+    fichier `ch<id>_x<N>.pac` en plus ; 4 au plus ; échoue chez lui pour les catcheurs à tenue d'entrée.
+  - *CAW* : `.cas` de SvR 1 347 532 o (rendus DXT5 par tenue, sommes de contrôle), fiche par case dans `SaveData.dat`
+    liée par la somme. Notre `.cas` WWE '12 fait 1 357 028 o : format à refaire.
+  - *Ceintures / armes* : chez lui seulement des retextures ; *types de match* : pas lus par son jeu non plus.
