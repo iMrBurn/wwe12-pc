@@ -1,12 +1,13 @@
 diff --git a/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp b/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp
-index 8b862fc..b172fc0 100644
+index 8b862fc..22f7b82 100644
 --- a/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp
 +++ b/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp
-@@ -13,7 +13,12 @@
+@@ -13,7 +13,13 @@
  #pragma GCC diagnostic ignored "-Wunused-parameter"
  
  #include <algorithm>
 +#include <map>
++#include <memory>
 +#include <mutex>
  #include <string>
 +#if defined(__ANDROID__)
@@ -15,7 +16,7 @@ index 8b862fc..b172fc0 100644
  
  #include <rex/chrono/chrono_steady_cast.h>
  #include <rex/kernel/xboxkrnl/private.h>
-@@ -376,8 +381,24 @@ u32 RtlInitializeCriticalSectionAndSpinCount_entry(ppc_ptr_t<X_RTL_CRITICAL_SECT
+@@ -376,8 +382,32 @@ u32 RtlInitializeCriticalSectionAndSpinCount_entry(ppc_ptr_t<X_RTL_CRITICAL_SECT
    return xeRtlInitializeCriticalSectionAndSpinCount(cs, cs.guest_address(), spin_count);
  }
  
@@ -23,6 +24,14 @@ index 8b862fc..b172fc0 100644
 +// WWE '12 Android: guest thread object -> Android thread id, to name a critical section's owner.
 +static std::mutex g_cswait_mutex;
 +static std::map<uint32_t, int> g_cswait_tids;
++static std::map<uint32_t, std::unique_ptr<std::mutex>> g_cswait_gates;
++static std::mutex* CswaitGate(uint32_t cs_address) {
++  std::lock_guard<std::mutex> lock(g_cswait_mutex);
++  auto& gate = g_cswait_gates[cs_address];
++  if (!gate)
++    gate = std::make_unique<std::mutex>();
++  return gate.get();
++}
 +#endif
 +
  void RtlEnterCriticalSection_entry(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs) {
@@ -40,7 +49,7 @@ index 8b862fc..b172fc0 100644
    uint32_t spin_count = cs->header.absolute * 256;
  
    if (cs->owning_thread == cur_thread) {
-@@ -399,7 +420,38 @@ void RtlEnterCriticalSection_entry(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs) {
+@@ -399,7 +429,43 @@ void RtlEnterCriticalSection_entry(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs) {
  
    if (rex::thread::atomic_inc(&cs->lock_count) != 0) {
      // Create a full waiter.
@@ -48,6 +57,11 @@ index 8b862fc..b172fc0 100644
 +    // WWE '12 Android: match loadings that never end have a loader thread waiting here forever.
 +    // Wait in 5 s steps and say who holds the lock, to tell a deadlock (an owner that waits for
 +    // something else) from a lost wakeup (no owner).
++    // Fair hand-off: the event is auto-reset, so a thread that releases and re-enters at once
++    // (the render thread, hundreds of times a second) took the wake-up meant for the thread that
++    // had waited for seconds, and the match loader starved. Waiters line up on a per-section gate,
++    // so only the first of them waits on the event.
++    std::unique_lock<std::mutex> gate_lock(*CswaitGate(cs.guest_address()));
 +    for (int waited = 5;; waited += 5) {
 +      uint64_t timeout = static_cast<uint64_t>(-50000000ll);  // 5 s, relative
 +      if (xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0, &timeout) !=
