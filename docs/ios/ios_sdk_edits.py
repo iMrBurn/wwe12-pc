@@ -160,6 +160,14 @@ replace_once(v, "  const fs::path executable_dir = rex::filesystem::GetExecutabl
              "vulkan_moltenvk: bundle folder")
 prepend(v, TARGET_COND, "vulkan_moltenvk: include")
 
+# REXGLUE_ROOT only exists in the SDK's own scope: used from the game's target it is empty and the
+# post-build copy of MoltenVK_icd.json looks for /cmake/MoltenVK_icd.json. The file sits next to
+# rexglue_helpers.cmake.
+replace_once(sdk / "cmake/rexglue_helpers.cmake",
+             'set(_rexglue_moltenvk_icd "${REXGLUE_ROOT}/cmake/MoltenVK_icd.json")',
+             'set(_rexglue_moltenvk_icd "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/MoltenVK_icd.json")',
+             "rexglue_helpers: MoltenVK_icd.json next to the helpers")
+
 # plume: no Metal backend on iOS (Vulkan only), UIKit window wrapper instead of AppKit's.
 pc = plume / "CMakeLists.txt"
 s = read(pc)
