@@ -1,9 +1,10 @@
 // BELTS & WEAPONS page: the pictures of the title belts and of the other objects (pac\evt\evtobj.pac SOBJ/NNNN, named
-// by SOBJ/LIST: 64-byte records {u16 object, name}), and of the weapons (pac\bg\bgEtc.pac STG3/WPON, STG3/WPO2,
-// STGR/WPON), replaced from any picture into a texture pack (type=textures: textures/<name>_<hash>.dds, read by the
-// game's texture packs, src/native/wwe12_texture_packs.cpp). Kaiko's Mod Maker retextures belts and weapons the same
-// way (credit in docs/mod_maker.md). A texture is known by XXH3 of its top level as svrfmt's DDS holds it (untiled,
-// tightly packed blocks): the game's own hash (checked on the menu's dumps, 2026-10-30), so a pack needs no dump.
+// by SOBJ/LIST: 64-byte records {u16 object, name}), of the weapons (pac/bg/bgEtc.pac STG3/WPON, STG3/WPO2,
+// STGR/WPON) and of the loading screens (pac\menu\LoadHD.pac LOAD/NNNN), replaced from any picture into a texture
+// pack (type=textures: textures/<name>_<hash>.dds, read by the game's texture packs, src/native/wwe12_texture_packs.cpp).
+// Kaiko's Mod Maker retextures belts and weapons the same way (credit in docs/mod_maker.md). A texture is known by XXH3
+// of its top level as svrfmt's DDS holds it (untiled, tightly packed blocks): the game's own hash (checked on the
+// menu's dumps, 2026-10-30), so a pack needs no dump.
 #pragma once
 
 #include <algorithm>
@@ -55,10 +56,10 @@ class Page {
  public:
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &game, mods::Manager &mods) {
     const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
-    ImGui::TextWrapped("%s", fr ? "Les images des ceintures, des armes et des autres objets du jeu. Remplacez-les par "
+    ImGui::TextWrapped("%s", fr ? "Les images des ceintures, des armes, des autres objets et des écrans de chargement. Remplacez-les par "
                                   "les vôtres : le pack de textures fait est installé tout de suite (page TEXTURES du "
                                   "launcher pour le couper)."
-                                : "The pictures of the game's title belts, weapons and other objects. Replace them with "
+                                : "The pictures of the game's title belts, weapons, other objects and loading screens. Replace them with "
                                   "yours: the texture pack made is installed at once (launcher's TEXTURES page to turn "
                                   "it off).");
     if (objects_.empty()) {
@@ -70,8 +71,9 @@ class Page {
         ImGui::TextColored(message_ok_ ? green : red, "%s", message_.c_str());
       return;
     }
-    const char *kinds_fr[] = {"Ceintures", "Armes", "Autres objets"}, *kinds_en[] = {"Title belts", "Weapons", "Other objects"};
-    for (int k = 0; k < 3; ++k) {
+    const char *kinds_fr[] = {"Ceintures", "Armes", "Autres objets", "Écrans de chargement"},
+               *kinds_en[] = {"Title belts", "Weapons", "Other objects", "Loading screens"};
+    for (int k = 0; k < 4; ++k) {
       if (k)
         ImGui::SameLine();
       if (ImGui::RadioButton(fr ? kinds_fr[k] : kinds_en[k], kind_ == k))
@@ -152,8 +154,8 @@ class Page {
   };
   struct Object {
     std::string label;
-    int kind = 2;            // 0 belts, 1 weapons, 2 others
-    int file = 0;            // 0 evtobj.pac, 1 bgEtc.pac
+    int kind = 2;            // 0 belts, 1 weapons, 2 others, 3 loading screens
+    int file = 0;            // 0 evtobj.pac, 1 bgEtc.pac, 2 menu\LoadHD.pac
     size_t node = 0;         // its entry (root child)
     bool opened = false;
     std::vector<Pic> pics;
@@ -209,6 +211,21 @@ class Page {
       o.label = (fr ? "Armes " : "Weapons ") + std::to_string(++w) + " (" + Trim(k.group) + "/" + n + ")";
       objects_.push_back(std::move(o));
     }
+    // The loading screens (menu\LoadHD.pac LOAD/NNNN: the general ones GN00-GN49, in-game IG, Universe UN, others),
+    // HD only: the game shows the HD ones from 720p up.
+    if (game.Read("pac/menu/LoadHD.pac", files_[2]) && svrfmt::ArchiveOpen(files_[2], archives_[2], nullptr))
+      for (size_t i = 0; i < archives_[2].root.kids.size(); ++i) {
+        const auto &k = archives_[2].root.kids[i];
+        if (Trim(k.group) != "LOAD")
+          continue;
+        Object o;
+        o.file = 2;
+        o.node = i;
+        o.kind = 3;
+        const std::string n = Trim(k.name);
+        o.label = (n.rfind("GN", 0) == 0 ? (fr ? "Général " : "General ") : n.rfind("UN", 0) == 0 ? "Universe " : "") + n;
+        objects_.push_back(std::move(o));
+      }
     std::stable_sort(objects_.begin(), objects_.end(), [](const Object &a, const Object &b) { return a.kind < b.kind; });
     message_.clear();
   }
@@ -311,8 +328,8 @@ class Page {
     message_ = (fr ? "Pack créé et installé : " : "Pack made and installed: ") + media::Utf8(save.wstring());
   }
 
-  Bytes files_[2];
-  svrfmt::Archive archives_[2];
+  Bytes files_[3];
+  svrfmt::Archive archives_[3];
   std::vector<Object> objects_;
   int kind_ = 0, selected_ = -1;
   char name_[64] = {}, author_[64] = {}, version_[16] = {};

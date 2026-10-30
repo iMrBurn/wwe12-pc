@@ -504,6 +504,25 @@ const Guide kGuides[] = {
       "sien).",
       "CATCHEURS (Retoucher) et NOUVEAU (Une tenue de...) : un mod de tenue ne contient que sa tenue ; plusieurs vont "
       "ensemble."}},
+    {"CAWs, belts, weapons, 3D objects, materials",
+     "CAW, ceintures, armes, objets 3D, matières",
+     {"CAW: your created superstars. Change the picture the game shows in its lists, export one to a .wwe12caw file to "
+      "share it, import someone else's. Your save is copied first (SaveBackups); close the game before.",
+      "BELTS & WEAPONS: the pictures of the title belts (stretched, folded and rolled: three objects), weapons and "
+      "other objects. Replace some: a texture pack is made and installed (launcher's TEXTURES page).",
+      "ARENAS, 3D editor: Add a 3D object (OBJ in metres, or FBX) put where the picked object is, then move it; Export "
+      "as OBJ writes an object out (OBJ, MTL, PNG).",
+      "SUPERSTARS, Materials: the shine and tint of the skin and of each attire part. Tick several parts to change "
+      "them together."},
+     {"CAW : vos catcheurs créés. Changer l'image que le jeu montre dans ses listes, en exporter un dans un fichier "
+      ".wwe12caw pour le partager, importer celui d'un autre. Votre sauvegarde est copiée avant (SaveBackups) ; fermez "
+      "le jeu avant.",
+      "CEINTURES : les images des ceintures (dépliée, pliée et roulée : trois objets), des armes et des autres objets. "
+      "Remplacez-en : un pack de textures est créé et installé (page TEXTURES du launcher).",
+      "ARÈNES, éditeur 3D : Ajouter un objet 3D (OBJ en mètres, ou FBX), posé à la place de l'objet choisi, puis "
+      "déplacez-le ; Exporter en OBJ écrit un objet (OBJ, MTL, PNG).",
+      "CATCHEURS, Matières : la brillance et la teinte de la peau et de chaque partie de la tenue. Cochez plusieurs "
+      "parties pour les changer ensemble."}},
     {"When something goes wrong",
      "Quand quelque chose ne va pas",
      {"CHECK MODS reads your installed mods and says what will go wrong in the game, with a button when it can fix it.",
@@ -516,12 +535,15 @@ const Guide kGuides[] = {
       "Toujours bloqué : désactivez le dernier mod dans le launcher (page MODS) et relancez."}},
     {"Not yet",
      "Pas encore",
-     {"Moves and entrances of other games' superstars (they take their base's).",
-      "Adding a fifth attire (or a third to a superstar who has two): replacing one works.",
+     {"Entrances of other games' superstars (they take their base's), and the moves of SvR 2011 and 2K ones (WWE '13's "
+      "come with them).",
+      "Adding a fifth attire to a superstar of the game: replacing one works (a WWE '13 port brings up to 4 of its own).",
       "WWE '13 and WWE 2K14 entrance videos (an early Bink 2 that RAD Video Tools doesn't read).",
       "Moving hair and cloth on imported models (they follow the head and body)."},
-     {"Les prises et les entrées des catcheurs des autres jeux (ils prennent celles de leur base).",
-      "Ajouter une tenue (une 3e à un catcheur qui en a deux) : en remplacer une marche.",
+     {"Les entrées des catcheurs des autres jeux (ils prennent celle de leur base), et les prises de ceux de SvR 2011 et "
+      "des 2K (celles de WWE '13 viennent avec eux).",
+      "Ajouter une 5e tenue à un catcheur du jeu : en remplacer une marche (un catcheur porté de WWE '13 garde jusqu'à 4 "
+      "tenues à lui).",
       "Les vidéos d'entrée de WWE '13 et de WWE 2K14 (un Bink 2 ancien que RAD Video Tools ne lit pas).",
       "Les cheveux et vêtements qui bougent sur les modèles importés (ils suivent la tête et le corps)."}},
 };
