@@ -94,6 +94,7 @@ class Discs {
     }
   }
 
+  size_t Count() const { return list_.size(); }  // (the discs added)
   // The disc of a game (its title id), else an empty path.
   fs::path PathOf(uint32_t title) const {
     for (const auto &d : list_)

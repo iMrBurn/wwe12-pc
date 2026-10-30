@@ -216,6 +216,80 @@ int g_orton_w = 0, g_orton_h = 0;
 // ---------------------------------------------------------------------------------------------
 // Pages
 
+// Simple mode (Kaiko's has one): the home page's FIRST STEPS, three things a beginner makes first, one numbered
+// step per line with the button that opens its page and a tick when the Mod Maker can see it's done.
+int g_first_goal = 0;
+
+void FirstSteps() {
+  const ImVec4 green(0.55f, 0.85f, 0.45f, 1.0f);
+  if (!ImGui::CollapsingHeader(g_fr ? "PREMIERS PAS (mode simple)" : "FIRST STEPS (simple mode)",
+                               ImGuiTreeNodeFlags_DefaultOpen))
+    return;
+  const char *goals_fr[] = {"Ajouter un catcheur d'un autre jeu", "Changer la tenue d'un catcheur",
+                            "Une vidéo d'entrée à moi"};
+  const char *goals_en[] = {"Add a superstar from another game", "Change a superstar's attire",
+                            "My own entrance video"};
+  for (int i = 0; i < 3; ++i) {
+    if (i)
+      ImGui::SameLine();
+    if (ImGui::RadioButton(g_fr ? goals_fr[i] : goals_en[i], g_first_goal == i))
+      g_first_goal = i;
+  }
+  struct Step {
+    const char *fr, *en;
+    Page page;   // kHome: no button
+    int done;    // 1 done, 0 not, -1 can't tell
+  };
+  const int discs = int(g_discs.Count()), mods = int(g_mods.List().size());
+  std::vector<Step> steps;
+  steps.push_back({"Le Mod Maker est à côté de wwe12.exe et trouve le jeu.",
+                   "The Mod Maker sits next to wwe12.exe and finds the game.", kHome, g_disc.Found() ? 1 : 0});
+  if (g_first_goal == 0) {
+    steps.push_back({"Ajoutez votre autre jeu (SvR 2011, WWE '13, 2K14 à 2K17 : ISO ou dossier) dans MES DISQUES.",
+                     "Add your other game (SvR 2011, WWE '13, 2K14 to 2K17: ISO or folder) in MY GAME DISCS.", kDiscs,
+                     discs > 0 ? 1 : 0});
+    steps.push_back({"NOUVEAU CATCHEUR, étape 1 : choisissez son jeu, puis le catcheur dans la liste.",
+                     "NEW SUPERSTAR, step 1: choose its game, then the superstar in the list.", kNewStar, -1});
+    steps.push_back({"Étape 2 : un catcheur de base (il donne prises, entrée, portraits) ; étape 3 : son nom.",
+                     "Step 2: a base superstar (it gives moves, entrance, portraits); step 3: its name.",
+                     kNewStar, -1});
+    steps.push_back({"Étape 6 : « Créer le mod » ; il est installé tout de suite.",
+                     "Step 6: \"Make the mod\"; it is installed at once.", kNewStar, mods > 0 ? 1 : -1});
+  } else if (g_first_goal == 1) {
+    steps.push_back({"CATCHEURS : cherchez le catcheur, choisissez la tenue.",
+                     "SUPERSTARS: find the superstar, choose the attire.", kStars, -1});
+    steps.push_back({"Exportez l'image « color » en PNG, retouchez-la dans votre logiciel de dessin.",
+                     "Export the \"color\" picture as PNG, edit it in your drawing program.", kStars, -1});
+    steps.push_back({"« Remplacer » avec votre PNG, regardez en 3D, puis « Créer le mod ».",
+                     "\"Replace\" with your PNG, look in 3D, then \"Make the mod\".", kStars, mods > 0 ? 1 : -1});
+  } else {
+    steps.push_back({"VIDÉOS : choisissez le catcheur, puis votre vidéo ou une image (MP4, AVI, PNG...).",
+                     "VIDEOS: choose the superstar, then your video or a picture (MP4, AVI, PNG...).", kVideos, -1});
+    steps.push_back({"Regardez l'aperçu (titantron et minitron), puis créez le mod : il est installé tout de suite.",
+                     "Look at the preview (titantron and minitron), then make the mod: it is installed at once.", kVideos,
+                     mods > 0 ? 1 : -1});
+  }
+  steps.push_back({"Lancez le jeu par le launcher : le mod est déjà actif (page MODS pour le couper).",
+                   "Start the game from the launcher: the mod is on already (MODS page to turn it off).", kHome, -1});
+  for (size_t i = 0; i < steps.size(); ++i) {
+    const Step &s = steps[i];
+    ImGui::PushID(int(i));
+    if (s.done == 1)
+      ImGui::TextColored(green, "%zu. [OK]", i + 1);
+    else
+      ImGui::Text("%zu.", i + 1);
+    ImGui::SameLine(70);
+    if (s.page != kHome) {
+      if (ImGui::SmallButton(g_fr ? "Ouvrir" : "Open"))
+        g_page = s.page;
+      ImGui::SameLine();
+    }
+    ImGui::TextWrapped("%s", g_fr ? s.fr : s.en);
+    ImGui::PopID();
+  }
+  ImGui::Dummy(ImVec2(0, 6));
+}
+
 void PageHome() {
   Title("MOD MAKER");
   ImGui::TextWrapped("%s", g_fr ? "Créez vos mods pour WWE '12 PC. Chaque page fabrique un mod (.svrmod) que vous pouvez "
@@ -232,6 +306,7 @@ void PageHome() {
                        g_fr ? "Fichiers du jeu introuvables : mettez le Mod Maker à côté de wwe12.exe."
                             : "Game files not found: put the Mod Maker next to wwe12.exe.");
   ImGui::Dummy(ImVec2(0, 10));
+  FirstSteps();
   struct Item {
     Page page;
     const char *en, *fr, *what_en, *what_fr;
@@ -274,8 +349,8 @@ void PageHome() {
     ImGui::TextDisabled("%s", g_fr ? it.what_fr : it.what_en);
   }
   ImGui::Dummy(ImVec2(0, 10));
-  ImGui::TextDisabled("%s", g_fr ? "Bientôt : prises et entrées des catcheurs portés, sons du jeu, une tenue de plus."
-                                 : "Coming: ported superstars' moves and entrances, the game's sounds, one more attire.");
+  ImGui::TextDisabled("%s", g_fr ? "Bientôt : entrées des catcheurs portés, sons du jeu, une tenue de plus."
+                                 : "Coming: ported superstars' entrances, the game's sounds, one more attire.");
   if (ImGui::Button(g_fr ? "Ouvrir le dossier mods" : "Open the mods folder"))
     OpenFolder(ExeDir() / "mods");
 }

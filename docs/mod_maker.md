@@ -1170,3 +1170,6 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
     pas trouvée dans la fiche : laissée.
   - Mod Maker, NOUVEAU CATCHEUR, étape 3 : « Taille et capacités » (curseur + catcheur de même taille ; 10 cases, 5 au
     plus), gardés dans le projet (`own_size`, `size`, `own_abilities`, `abilities`).
+- **Mode simple (piste n° 1)** : page ACCUEIL du Mod Maker, « PREMIERS PAS (mode simple) » ouvert par défaut : trois buts
+  (catcheur d'un autre jeu, tenue retouchée, vidéo d'entrée), une étape numérotée par ligne avec « Ouvrir » (la page de
+  l'étape) et [OK] quand le Mod Maker le voit (jeu trouvé, disque ajouté, au moins un mod installé). Vu dans le Mod Maker.
