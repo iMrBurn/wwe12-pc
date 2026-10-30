@@ -946,6 +946,9 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f) {
     out.rgba.resize(size_t(out.w) * out.h * 4);
     for (int y = 0; y < out.h; ++y)
       memcpy(&out.rgba[size_t(y) * out.w * 4], &f.rgba[(size_t(y0 + y) * f.w + x0) * 4], size_t(out.w) * 4);
+    // (their faint haze over the whole picture showed as a dark box in the game: cleared)
+    for (size_t i = 3; i < out.rgba.size(); i += 4)
+      out.rgba[i] = out.rgba[i] < 24 ? 0 : uint8_t((out.rgba[i] - 24) * 255 / 231);
     return out;
   }
   const auto lum = [&](int x, int y) {
@@ -1006,7 +1009,7 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f) {
 // (ETEX/0015: blue lights, chevrons and its logo, the logo's pictures 0 and 6-20 of entries 0 and 10, the steps of
 // its animation) wears the arena's logo (made `logo_wide` times as wide as high, fitted whole) and its copyright
 // plate (`plate`, entry 20). Its animations and fonts are WWE '12's.
-// With the arena's own plates (`location`, `name`: PlateCut of its movies), entry 0 (location) or 10 (name) shows only
+// With the arena's own plates (`location`, `name`: PlateCut of its movies), entry 10 (location) or 0 (name) shows only
 // that plate, in its bar (picture 21, where the text is written): its other pictures (logo, chevrons, light lines) are
 // made clear, the plate having its logo.
 inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double logo_wide, const svrfmt::Image &plate,
@@ -1031,7 +1034,8 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
   for (auto &e : tpl->kids) {
     if ((e.id != 0 && e.id != 10 && e.id != 20) || !svrfmt::ArchiveExpand(e))
       continue;
-    const svrfmt::Image &own = e.id == 0 ? location : e.id == 10 ? name : svrfmt::Image();
+    // (seen in the game, 2026-10-30: entry 10's bar goes with the city, entry 0's with the superstar's name)
+    const svrfmt::Image &own = e.id == 10 ? location : e.id == 0 ? name : svrfmt::Image();
     for (auto &pic : e.kids) {
       if (e.id == 20 && !plate.rgba.empty()) {
         wear(pic, plate);

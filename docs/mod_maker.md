@@ -659,9 +659,11 @@ places ×10, d'après le code de Kaiko).
   ajouté à `video/bink_decode.c` comme FFmpeg, avant Y/V/U et suivi de 32 bits). `port13::PlateMovie2K` les trouve,
   `bink2::Still` prend l'image la plus remplie entre 30 et 80 % de la vidéo, `port_svr_arena::PlateCut` découpe la plaque
   (lignes où un trait lumineux court sur 1/5 de la largeur, + 1/3 de leur hauteur ; noir rendu transparent, ou la vraie
-  transparence en 2K14). `EtexWearing` (modèle WrestleMania XXVII) la met dans la **barre (image 21)** des entrées 0
-  (locator) et 10 (plaque de nom) et rend transparentes leurs autres images (logo, chevrons, traits). Le texte reste écrit
-  par WWE '12 à la place prévue pour la barre de WM XXVII : **position du texte sur la plaque 2K à vérifier en jeu**.
+  transparence en 2K14). `EtexWearing` (modèle WrestleMania XXVII) la met dans la **barre (image 21)** des entrées 10
+  (locator) et 0 (plaque de nom ; vu en jeu le 2026-10-30, d'abord inversées) et rend transparentes leurs autres images
+  (logo, chevrons, traits). Le voile de l'alpha de 2K14 (< 24) est effacé (il faisait un rectangle sombre). Le texte reste
+  écrit par WWE '12 à la place prévue pour la barre de WM XXVII : 1er essai en jeu (RAW de 2K14), nom du catcheur sur la
+  plaque, ville au-dessus à gauche : **à revoir après l'inversion**.
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 
