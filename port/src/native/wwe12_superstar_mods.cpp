@@ -785,6 +785,97 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   REXLOG_INFO("[superstar mods] pack {} written ({} files), game cache emptied", kPackName, files.size());
 }
 
+// PLAY WITHOUT MODS (--wwe12_no_mods): the pack goes too, but a save that uses its superstars may be refused or
+// rewritten without them, so this game's saving doesn't count. Before the game lists its packs, the save (and the
+// achievements) is copied and the pack moved into Documents\wwe12\NoModsSession; the next start puts both back
+// (before anything else reads them), whatever this game wrote. A step that fails leaves the session as it is, to be
+// tried again at the next start.
+namespace {
+
+fs::path NoModsDir(const fs::path &user_root) { return user_root / "NoModsSession"; }
+
+void EmptyGameCache(const fs::path &user_root) {
+  std::error_code ec;
+  for (fs::directory_iterator it(user_root / "xbox_cache", ec), end; !ec && it != end; it.increment(ec))
+    fs::remove_all(it->path(), ec);
+}
+
+}  // namespace
+
+void Wwe12NoModsRestore(const fs::path &user_root) {
+  const fs::path session = NoModsDir(user_root);
+  std::error_code ec;
+  if (user_root.empty() || !fs::exists(session / "session.txt", ec))
+    return;
+  const fs::path content = user_root / "0000000000000000" / "54510890" / "00000002",
+                 headers = user_root / "0000000000000000" / "54510890" / "Headers" / "00000002",
+                 save = user_root / "B13EBABEBABEBABE" / "54510890",
+                 ach = user_root / "achievements" / "54510890.toml";
+  bool ok = true;
+  auto put_back = [&](const fs::path &from, const fs::path &to) {
+    std::error_code e;
+    if (!fs::exists(from, e))
+      return;
+    fs::remove_all(to, e);
+    fs::create_directories(to.parent_path(), e);
+    fs::rename(from, to, e);
+    if (e) {
+      REXLOG_WARN("[no mods] could not put {} back: {}", rex::path_to_utf8(to), e.message());
+      ok = false;
+    }
+  };
+  put_back(session / "pack", content / kPackName);
+  put_back(session / (std::string(kPackName) + ".header"), headers / (std::string(kPackName) + ".header"));
+  if (fs::exists(session / "no_save", ec))
+    fs::remove_all(save, ec);  // (there was none: the one this game made goes)
+  put_back(session / "save", save);
+  if (fs::exists(session / "no_achievements", ec))
+    fs::remove(ach, ec);
+  put_back(session / "achievements.toml", ach);
+  if (!ok)
+    return;
+  EmptyGameCache(user_root);
+  fs::remove_all(session, ec);
+  REXLOG_INFO("[no mods] back from a game without mods: save and pack {} as before it", kPackName);
+}
+
+void Wwe12NoModsHide(const fs::path &user_root) {
+  const fs::path session = NoModsDir(user_root);
+  const fs::path content = user_root / "0000000000000000" / "54510890" / "00000002",
+                 headers = user_root / "0000000000000000" / "54510890" / "Headers" / "00000002",
+                 save = user_root / "B13EBABEBABEBABE" / "54510890",
+                 ach = user_root / "achievements" / "54510890.toml";
+  std::error_code ec;
+  if (user_root.empty() || fs::exists(session, ec) || !fs::exists(content / kPackName, ec))
+    return;  // (no pack: nothing to hide, saving stays as usual)
+  fs::create_directories(session, ec);
+  if (fs::exists(save, ec))
+    fs::copy(save, session / "save", fs::copy_options::recursive, ec);
+  else
+    std::ofstream(session / "no_save") << "1\n";
+  if (!ec && fs::exists(ach))
+    fs::copy_file(ach, session / "achievements.toml", ec);
+  else if (!ec)
+    std::ofstream(session / "no_achievements") << "1\n";
+  if (ec) {
+    REXLOG_WARN("[no mods] the save could not be copied ({}): pack {} left in", ec.message(), kPackName);
+    std::error_code ignore;
+    fs::remove_all(session, ignore);
+    return;
+  }
+  std::ofstream(session / "session.txt") << "a game without mods: its saving is undone at the next start\n";
+  fs::rename(content / kPackName, session / "pack", ec);
+  if (ec) {
+    REXLOG_WARN("[no mods] pack {} could not be moved ({}): left in", kPackName, ec.message());
+    Wwe12NoModsRestore(user_root);
+    return;
+  }
+  fs::rename(headers / (std::string(kPackName) + ".header"), session / (std::string(kPackName) + ".header"), ec);
+  EmptyGameCache(user_root);
+  REXLOG_INFO("[no mods] pack {} put aside and the save copied: this game's saving is undone at the next start",
+              kPackName);
+}
+
 REX_EXTERN(__imp__sub_82A316A0);  // the entrance video's path (n): movies\titantron\%03d.bik
 REX_EXTERN(__imp__sub_828C21A8);  // entrance: the current event
 REX_EXTERN(__imp__sub_828CEF58);  // ... its entrant {+8 set, +16 place}

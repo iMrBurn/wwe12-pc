@@ -240,7 +240,14 @@ void FirstSteps() {
     Page page;   // kHome: no button
     int done;    // 1 done, 0 not, -1 can't tell
   };
-  const int discs = int(g_discs.Count()), mods = int(g_mods.List().size());
+  // A made mod ticks its goal's last step only when it is that goal's kind (an arena mod doesn't make a superstar).
+  int mods = 0;
+  for (const auto &m : g_mods.List())
+    if (g_first_goal == 0 ? m.type == "superstar"
+        : g_first_goal == 1 ? m.type == "attire"
+                            : m.type == "media" && m.id.rfind("entrance_video_", 0) == 0)
+      ++mods;
+  const int discs = int(g_discs.Count());
   std::vector<Step> steps;
   steps.push_back({"Le Mod Maker est à côté de wwe12.exe et trouve le jeu.",
                    "The Mod Maker sits next to wwe12.exe and finds the game.", kHome, g_disc.Found() ? 1 : 0});

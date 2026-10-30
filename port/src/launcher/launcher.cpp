@@ -636,12 +636,13 @@ void PagePlay() {
       g_launch_no_mods = true;
     }
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("%s", fr ? "Une partie sans le dossier mods, les arènes ajoutées ni les packs de textures, pour "
-                                   "savoir si un problème vient d'un mod. Rien n'est supprimé. Les catcheurs ajoutés "
-                                   "restent (le jeu les garde comme un DLC)."
-                                 : "One game without the mods folder, added arenas or texture packs, to find out "
-                                   "whether a problem comes from a mod. Nothing is deleted. Added superstars stay (the "
-                                   "game keeps them like a DLC).");
+      ImGui::SetTooltip("%s", fr ? "Une partie sans aucun mod (dossier mods, arènes, packs de textures, catcheurs "
+                                   "ajoutés), pour savoir si un problème vient d'un mod. Rien n'est supprimé. Ce que "
+                                   "cette partie sauvegarde ne compte pas : votre sauvegarde est remise comme avant au "
+                                   "lancement suivant."
+                                 : "One game without any mod (mods folder, arenas, texture packs, added superstars), to "
+                                   "find out whether a problem comes from a mod. Nothing is deleted. What this game "
+                                   "saves doesn't count: your save is put back as it was at the next start.");
   }
   if (g_play_note)
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", g_play_note == 1 ? t.already_running : t.wait_busy);

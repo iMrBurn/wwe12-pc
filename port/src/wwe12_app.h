@@ -40,7 +40,12 @@ void Wwe12MountMenuBackground(rex::filesystem::VirtualFileSystem* fs, const std:
 // Catcheurs ajoutés (native/wwe12_superstar_mods.cpp) : un pack DLC fait des mods au démarrage.
 void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem* fs, const std::filesystem::path& user_root,
                              const std::filesystem::path& mods);
+// Jouer sans mods (même fichier) : le pack mis de côté le temps de la partie, sauvegarde remise au démarrage suivant.
+void Wwe12NoModsRestore(const std::filesystem::path& user_root);
+void Wwe12NoModsHide(const std::filesystem::path& user_root);
 #else
+inline void Wwe12NoModsRestore(const std::filesystem::path&) {}
+inline void Wwe12NoModsHide(const std::filesystem::path&) {}
 inline void Wwe12MountMenuBackground(rex::filesystem::VirtualFileSystem*, const std::string&) {}
 inline void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem*, const std::filesystem::path&,
                                     const std::filesystem::path&) {}
@@ -189,6 +194,8 @@ class Wwe12App : public rex::ReXApp {
     fs->RegisterSymbolicLink("cache0:", "\\CACHE");
     fs->RegisterSymbolicLink("cache1:", "\\CACHE");
     REXLOG_INFO("Cache Xbox monté sur {}", rex::path_to_utf8(dir));
+    // Retour d'une partie sans mods : sauvegarde et pack des catcheurs ajoutés remis comme avant elle.
+    Wwe12NoModsRestore(user_data_root_);
     MountModsOverlay(fs);
     // DLC : extraits une fois pour toutes dans Documents\wwe12\0000000000000000\, où le jeu
     // les trouve comme sur le disque dur de la console.
@@ -202,6 +209,9 @@ class Wwe12App : public rex::ReXApp {
     }
     // Sauvegardes Xbox 360 choisies dans le launcher (saves_import.txt).
     Wwe12ImportSaves(user_data_root_);
+    // Jouer sans mods : les catcheurs ajoutés partent aussi, et ce que cette partie sauvegarde ne compte pas.
+    if (REXCVAR_GET(wwe12_no_mods))
+      Wwe12NoModsHide(user_data_root_);
   }
 
   // Dossier « mods » à côté de l'exe : un fichier posé là au même chemin que sur le disque le
