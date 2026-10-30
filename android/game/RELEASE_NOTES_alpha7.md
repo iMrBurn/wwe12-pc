@@ -66,5 +66,5 @@ log** in the DEBUG panel first: the log then shows where the game stopped.
 ## SHA256
 
 ```
-(filled in when the APK is built)
+1c8338cbaef0cfa1c5b09be6b9151655adb7b811f8f55c3aa43ee89fa669e788  WWE12-PC-Android-alpha7.apk
 ```
