@@ -1179,4 +1179,5 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   transparence gardée), à sa taille et son format ; « Remettre » rend celle du jeu. **Vu en jeu le 2026-10-30** :
   SummerSlam avec cordes rouges et coins noirs (cordes blanches d'origine). Pas les cartes de normales (`_n`).
 - **Taille des vidéos d'entrée (piste n° 15)** : page VIDÉOS, « Taille de la vidéo » 320 (comme le jeu) / 640 (HD) /
-  1024 (HD+) : le fabricant de Kaiko les savait faire (même disposition), le choix manquait dans la page.
+  1024 (HD+) : le fabricant de Kaiko les savait faire (même disposition), le choix manquait dans la page. **Vu en jeu le
+  2026-10-30** : une vidéo 640×640 à la place de celle d'Orton (161) s'affiche sur le titantron de son entrée.
