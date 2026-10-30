@@ -376,11 +376,25 @@ class Page {
                                    : "A 3D model (OBJ in metres, or FBX) becomes a new object of the arena, put where this "
                                      "object is (its material, its light) with the file's picture: then move it.");
       ImGui::SameLine();
-      ImGui::SetNextItemWidth(90);
-      ImGui::DragFloat(fr ? "taille x" : "size x", &ed_scale_, 0.01f, 0.01f, 100.0f, "%.2f");
-      ImGui::SameLine();
       if (ImGui::Button(fr ? "Exporter en OBJ..." : "Export as OBJ..."))
         ExportObject(fr);
+      ImGui::SameLine();
+      if (ImGui::Button(fr ? "Voir cet objet" : "Look at it"))
+        FocusOn(uint32_t(ed_pick_));
+      // Where a 3D file's object goes, set before it is added (then it moves as any object).
+      ImGui::TextDisabled("%s", fr ? "Objet 3D à ajouter :" : "3D object to add:");
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(80);
+      ImGui::DragFloat(fr ? "taille x" : "size x", &ed_scale_, 0.01f, 0.01f, 100.0f, "%.2f");
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(220);
+      ImGui::DragFloat3(fr ? "décalage (cm)" : "offset (cm)", ed_import_.d, 1.0f, -5000.0f, 5000.0f, "%.0f");
+      ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::CalcTextSize(fr ? "Objet 3D à ajouter :" : "3D object to add:").x +
+                           ImGui::GetStyle().ItemSpacing.x);
+      ImGui::SetNextItemWidth(80);
+      ImGui::DragFloat(fr ? "rotation" : "turn", &ed_import_.turn, 1.0f, -180.0f, 180.0f, "%.0f");
+      if (!ed_note_.empty())
+        ImGui::TextColored(ed_note_ok_ ? kGreen : kRed, "%s", ed_note_.c_str());
       if (arena_.IsCopy(uint32_t(ed_pick_))) {
         ImGui::SameLine();
         if (ImGui::Button(fr ? "Supprimer la copie" : "Remove the copy")) {
@@ -405,8 +419,9 @@ class Page {
       return;
     mesh_import::TriMesh tm;
     std::string why;
+    ed_note_ok_ = false;
     if (!mesh_import::Load(f, tm, why)) {
-      message_ = (fr ? "Modèle illisible : " : "Model unreadable: ") + why;
+      ed_note_ = (fr ? "Modèle illisible : " : "Model unreadable: ") + why;
       return;
     }
     for (auto &p : tm.pos)
@@ -428,7 +443,29 @@ class Page {
     }
     const uint32_t id = arena_.AddMeshObject(uint32_t(ed_pick_), tm.pos, tm.normal, tm.uv, tm.tris, dds, picture);
     if (!id) {
-      message_ = fr ? "L'objet n'a pas pu être ajouté (plus de place libre ?)." : "The object couldn't be added (no free slot?).";
+      ed_note_ = fr ? "L'objet n'a pas pu être ajouté (plus de numéro d'objet libre)." : "The object couldn't be added (no free object number).";
+      return;
+    }
+    if (!ed_import_.None())
+      arena_.SetMove(id, ed_import_);
+    // Room: the arena must keep its slot's size, its pictures halved if need be (as Make does): else the object goes.
+    Bytes fitted;
+    arena_.Fit(Room(), fitted);
+    const size_t total = fitted.size();
+    arena_.Unreduce();
+    if (total > Room()) {
+      arena_.RemoveMeshObject(id);
+      arena_.Build();
+      ed_models_.clear();
+      view_stale_ = true;
+      char note[320];
+      snprintf(note, sizeof(note),
+               fr ? "Trop gros : avec cet objet (%zu triangles), l'arène ferait %s pour une place de %s, même en réduisant "
+                    "ses images. Il n'est pas ajouté : allégez le modèle (moins de triangles) ou son image."
+                  : "Too big: with this object (%zu triangles) the arena would take %s for a room of %s, even with its "
+                    "pictures reduced. It isn't added: make the model lighter (fewer triangles) or its picture smaller.",
+               tm.tris.size() / 3, Human(total).c_str(), Human(Room()).c_str());
+      ed_note_ = note;
       return;
     }
     arena_.Build();
@@ -437,9 +474,34 @@ class Page {
       thumbs_.push_back(MakeThumb(device_, arena_.Get(arena_.Textures()[i]).data));
     ed_pick_ = int(id);
     ed_move_ = arena_.MoveOf(id);
+    FocusOn(id);
+    char note[256];
+    snprintf(note, sizeof(note), fr ? "Objet ajouté : %zu triangles, arène %s sur %s de place%s."
+                                    : "Object added: %zu triangles, arena %s of a %s room%s.",
+             tm.tris.size() / 3, Human(total).c_str(), Human(Room()).c_str(),
+             dds.empty() ? (fr ? " (sans image : celle de l'objet de départ)" : " (no picture: the host's)") : "");
+    ed_note_ = note;
+    ed_note_ok_ = true;
+  }
+
+  // The 3D view kept on one object (its middle, far enough to see it whole) until Reset view.
+  void FocusOn(uint32_t id) {
+    svrfmt::Model m;
+    if (!arena_.ModelOf(id, m))
+      return;
+    float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+    for (const auto &me : m.meshes)
+      for (const auto &v : me.verts)
+        for (int q = 0; q < 3; ++q)
+          lo[q] = std::min(lo[q], v.pos[q]), hi[q] = std::max(hi[q], v.pos[q]);
+    if (lo[0] > hi[0])
+      return;
+    const float extent = std::max({hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]});
+    for (int q = 0; q < 3; ++q)
+      ed_focus_[q] = (lo[q] + hi[q]) / 2;
+    ed_focus_[3] = std::max(150.0f, extent * 2.2f);
+    ed_focus_on_ = true;
     view_stale_ = true;
-    message_ = (fr ? "Objet ajouté : " : "Object added: ") + std::to_string(tm.tris.size() / 3) +
-               (fr ? " triangles" : " triangles") + (dds.empty() ? (fr ? " (sans image : celle de l'objet de départ)" : " (no picture: the host's)") : "");
   }
 
   void ExportObject(bool fr) {
@@ -694,6 +756,10 @@ class Page {
       Bytes now = view_port_ && port_ok_ ? other_.Build() : arena_.Build();
       if (!view_.Load(device_, now, &view_error_))
         view_error_ = (fr ? "Vue 3D impossible : " : "No 3D view: ") + view_error_;
+      else if (ed_focus_on_ && mode_ == 5) {  // (the 3D editor: its object kept in view)
+        view_.SetTarget(ed_focus_);
+        view_.SetAngles(0.0f, 0.35f, ed_focus_[3]);
+      }
     }
     if (!view_error_.empty()) {
       ImGui::TextColored(kRed, "%s", view_error_.c_str());
@@ -703,8 +769,10 @@ class Page {
                         &view_.show_entrance))
       ;
     ImGui::SameLine();
-    if (ImGui::Button(fr ? "Recentrer" : "Reset view"))
+    if (ImGui::Button(fr ? "Recentrer" : "Reset view")) {
       view_.ResetCamera();
+      ed_focus_on_ = false;
+    }
     ImGui::SameLine();
     ImGui::TextDisabled(fr ? "%zu objets, %zu triangles  -  clic gauche : tourner, clic droit : déplacer, molette : zoom"
                            : "%zu objects, %zu triangles  -  left drag: turn, right drag: move, wheel: zoom",
@@ -1793,7 +1861,12 @@ class Page {
   std::vector<std::pair<uint32_t, std::string>> ed_models_;  // the 3D editor's list (the arena opened)
   int ed_pick_ = -1;
   arena_edit::Move ed_move_;
-  float ed_scale_ = 1.0f;  // a 3D file added: its size
+  float ed_scale_ = 1.0f;     // a 3D file added: its size
+  arena_edit::Move ed_import_;  // ... its offset and turn
+  std::string ed_note_;
+  bool ed_note_ok_ = false;
+  float ed_focus_[4] = {};      // the object the 3D view is kept on (x, y, z, distance)
+  bool ed_focus_on_ = false;
   char ed_filter_[64] = {};
   float card_w_ = 250;
   Thumb wiz_apron_;  // the source arena's apron (step 1)  // (the start step's three choices share the width)

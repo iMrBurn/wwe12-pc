@@ -1253,3 +1253,9 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   de l'arène (puissance de 2, 1024 au plus, DXT5). « Exporter en OBJ... » écrit l'objet (OBJ + MTL + PNG). Vérifié
   hors jeu (un cube ajouté à bg01, relu : 12 triangles, son image) ; **pas encore vu en jeu**. Le volume des musiques,
   autre nouveauté de Kaiko, existait déjà chez nous (`xmp_music_level_db`).
+- **Objet 3D ajouté, suite (2026-10-30)** : réglages avant l'import (taille, décalage X/Y/Z, rotation : `SetMove` dès
+  l'ajout) ; contrôle de place juste après (le même `Fit` que « Créer le mod », images réduites si besoin, puis
+  `Unreduce`) : si l'arène dépasse sa place, l'objet et son image sont retirés (`RemoveMeshObject`) avec un message
+  (triangles, taille obtenue / place) ; sinon un message avec la taille. Vérifié hors jeu : 720 000 triangles refusés
+  sur bg01 (17,8 Mo pour 10,2 Mo), images de l'arène identiques après retrait, 200 triangles acceptés. La vue 3D reste
+  sur l'objet ajouté (et sur l'objet choisi avec « Voir cet objet ») jusqu'à « Recentrer ».

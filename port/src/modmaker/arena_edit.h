@@ -106,6 +106,7 @@ class Arena {
     originals_.clear();
     moves_.clear();
     copies_.clear();
+    added_pictures_.clear();
     flags_text_.clear();
     moves_changed_ = false;
     materials_.clear();
@@ -396,7 +397,26 @@ class Arena {
     originals_[id] = svrfmt::JboyWrite(m);
     moves_[id] = Move();
     moves_changed_ = true;
+    if (slot >= 0)
+      added_pictures_[id] = textures_.back();
     return id;
+  }
+  // An object made by AddMeshObject taken away again, its picture too (when it is still the package's last one).
+  void RemoveMeshObject(uint32_t id) {
+    RemoveCopy(id);
+    const auto it = added_pictures_.find(id);
+    if (it == added_pictures_.end())
+      return;
+    const Texture t = it->second;
+    added_pictures_.erase(it);
+    Package &p = packages_[t.package];
+    if (t.index + 1 != p.textures.size() || textures_.empty() || textures_.back().package != t.package ||
+        textures_.back().index != t.index)
+      return;
+    p.textures.pop_back();
+    p.original.pop_back();
+    textures_.pop_back();
+    p.changed = true;
   }
 
   // An object of the section as the game draws it now (moved, copied...), for an export.
@@ -669,6 +689,7 @@ class Arena {
           p.node = &k;
   }
   std::map<uint32_t, uint32_t> copies_;  // copy's id -> its source's
+  std::map<uint32_t, Texture> added_pictures_;  // an object made from a file -> the picture added for it
   Bytes flags_text_;                     // the flag table (50001) as shipped
   std::map<uint32_t, Bytes> originals_;  // the moved models as shipped
   std::map<uint32_t, Move> moves_;
