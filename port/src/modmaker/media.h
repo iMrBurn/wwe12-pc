@@ -270,6 +270,19 @@ class MovieEditor {
     ImGui::SetNextItemWidth(260);
     ImGui::SliderInt(fr ? "Durée max." : "Max. length", &max_seconds_, 0, 180,
                      max_seconds_ ? "%d s" : (fr ? "toute la vidéo" : "whole video"));
+    {
+      // HD (Kaiko's movie maker takes 640 and 1024: the same layout, sharper); 320 = the game's own size.
+      static const int sizes[] = {320, 640, 1024};
+      const char *labels_fr[] = {"320 (comme le jeu)", "640 (HD)", "1024 (HD+)"};
+      const char *labels_en[] = {"320 (as the game's)", "640 (HD)", "1024 (HD+)"};
+      int at = 0;
+      for (int i = 0; i < 3; ++i)
+        if (sizes[i] == size_)
+          at = i;
+      ImGui::SetNextItemWidth(260);
+      if (ImGui::Combo(fr ? "Taille de la vidéo" : "Movie size", &at, fr ? labels_fr : labels_en, 3))
+        size_ = sizes[at];
+    }
     ImGui::SetNextItemWidth(260);
     ImGui::SliderFloat(fr ? "Aperçu à" : "Preview at", &preview_at_, 0.0f, 60.0f, "%.0f s");
     if (ImGui::IsItemDeactivatedAfterEdit())
@@ -320,6 +333,7 @@ class MovieEditor {
     wcsncpy_s(job_.bottom, BottomSource().c_str(), _TRUNCATE);
     job_.fit = top_ == kOwn ? fit_ : MOVIE_FILL;  // (the game's titantron is already 16:9)
     job_.max_seconds = max_seconds_;
+    job_.size = size_;
     wcsncpy_s(job_.out, out.c_str(), _TRUNCATE);
     job_.notify = notify_;
     job_.msg = WM_APP + 0x31;
@@ -455,6 +469,7 @@ class MovieEditor {
   int top_ = kOwn, bottom_ = kGame;
   int fit_ = MOVIE_FILL;
   int max_seconds_ = 60;
+  int size_ = 320;  // the movie's size (320, 640, 1024)
   float preview_at_ = 3.0f;
   Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> game_tex_, new_tex_;
   std::string preview_err_;

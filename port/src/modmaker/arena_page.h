@@ -416,6 +416,7 @@ class Page {
     ImGui::SameLine();
     ImGui::TextDisabled("%zu %s, %d %s", texs.size(), fr ? "images" : "pictures", Changed(),
                         fr ? "remplacée(s)" : "replaced");
+    RingColours(fr);
     const float h = std::max(260.0f, ImGui::GetContentRegionAvail().y - 110);
     ImGui::BeginChild("arena_grid", ImVec2(ImGui::GetContentRegionAvail().x * 0.58f, h), ImGuiChildFlags_Borders);
     const float box = 96, cell = box + 16;
@@ -481,6 +482,82 @@ class Page {
         ImGui::TextColored(kRed, "%s", pick_note_.c_str());
     }
     ImGui::EndChild();
+  }
+
+  // Ring colours (the "ring kit" of Kaiko's Mod Maker): the ropes, turnbuckle pads or posts in one colour. Their
+  // pictures have the same names in every arena (ar_rop01; rin_tb00, rin_tb20; rin_pos00, rin_pos01): each is
+  // tinted from the game's own picture (its brightness times the colour, transparency kept), at its size and format.
+  struct RingPart {
+    const char *fr, *en;
+    std::vector<const char *> names;
+  };
+  static const std::vector<RingPart> &RingParts() {
+    static const std::vector<RingPart> parts = {{"Cordes", "Ropes", {"ar_rop01"}},
+                                                {"Coins (protections)", "Turnbuckle pads", {"rin_tb00", "rin_tb20"}},
+                                                {"Poteaux", "Ring posts", {"rin_pos00", "rin_pos01"}}};
+    return parts;
+  }
+
+  void RingColours(bool fr) {
+    if (!ImGui::CollapsingHeader(fr ? "Couleurs du ring" : "Ring colours"))
+      return;
+    ImGui::TextDisabled("%s", fr ? "Une couleur pour les cordes, les coins ou les poteaux : l'image du jeu est teintée "
+                                   "(ses reliefs gardés)."
+                                 : "One colour for the ropes, turnbuckle pads or posts: the game's picture is tinted "
+                                   "(its shading kept).");
+    const auto &parts = RingParts();
+    for (size_t i = 0; i < parts.size(); ++i) {
+      ImGui::PushID(int(i));
+      ImGui::SetNextItemWidth(220);
+      ImGui::ColorEdit3(fr ? parts[i].fr : parts[i].en, ring_colour_[i], ImGuiColorEditFlags_NoInputs);
+      ImGui::SameLine(260);
+      if (ImGui::SmallButton(fr ? "Appliquer" : "Apply"))
+        TintRingPart(i);
+      ImGui::SameLine();
+      if (ImGui::SmallButton(fr ? "Remettre" : "Back to the game's"))
+        TintRingPart(i, true);
+      ImGui::PopID();
+    }
+    if (!ring_note_.empty())
+      ImGui::TextDisabled("%s", ring_note_.c_str());
+  }
+
+  void TintRingPart(size_t part, bool restore = false) {
+    const float *c = ring_colour_[part];
+    int done = 0;
+    auto &texs = arena_.Textures();
+    for (size_t i = 0; i < texs.size(); ++i) {
+      auto &t = texs[i];
+      const auto &orig = arena_.Original(t);
+      if (std::none_of(RingParts()[part].names.begin(), RingParts()[part].names.end(),
+                       [&](const char *n) { return orig.name == n; }))
+        continue;
+      if (restore) {
+        arena_.Restore(t);
+      } else {
+        svrfmt::DdsInfo info;
+        svrfmt::Image img;
+        if (!svrfmt::DdsInfoOf(orig.data, info) || info.format == svrfmt::DxtFormat::kUnknown ||
+            !svrfmt::DdsDecode(orig.data, img))
+          continue;
+        for (size_t p = 0; p + 3 < img.rgba.size(); p += 4) {
+          // Brightness, lifted a little so a dark rope still takes the colour; then the colour times it.
+          const float l = (0.299f * img.rgba[p] + 0.587f * img.rgba[p + 1] + 0.114f * img.rgba[p + 2]) / 255.0f;
+          const float k = std::min(1.0f, 0.25f + l * 1.1f);
+          for (int ch = 0; ch < 3; ++ch)
+            img.rgba[p + size_t(ch)] = uint8_t(std::clamp(c[ch] * k * 255.0f, 0.0f, 255.0f));
+        }
+        arena_.Unreduce();
+        arena_.Replace(t, svrfmt::DdsEncode(img, info.format, info.mips > 1));
+      }
+      if (i < thumbs_.size())
+        thumbs_[i] = MakeThumb(device_, arena_.Get(t).data);
+      ++done;
+    }
+    view_stale_ = true;
+    message_.clear();
+    reduced_note_.clear();
+    ring_note_ = done ? std::to_string(done) + " image(s)" : "(-)";
   }
 
   void ReplaceSelected(bool fr) {
@@ -1574,6 +1651,8 @@ class Page {
   arena_edit::Arena arena_;
   std::vector<Thumb> thumbs_;
   char filter_[64] = {}, name_[64] = {}, author_[64] = {}, version_[16] = {};
+  float ring_colour_[3][3] = {{0.8f, 0.1f, 0.1f}, {0.1f, 0.1f, 0.1f}, {0.6f, 0.6f, 0.6f}};  // ropes, pads, posts
+  std::string ring_note_;
   std::string error_, message_, reduced_note_, pick_note_;
   bool message_ok_ = false;
 

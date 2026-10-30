@@ -1173,3 +1173,10 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
 - **Mode simple (piste n° 1)** : page ACCUEIL du Mod Maker, « PREMIERS PAS (mode simple) » ouvert par défaut : trois buts
   (catcheur d'un autre jeu, tenue retouchée, vidéo d'entrée), une étape numérotée par ligne avec « Ouvrir » (la page de
   l'étape) et [OK] quand le Mod Maker le voit (jeu trouvé, disque ajouté, au moins un mod installé). Vu dans le Mod Maker.
+- **Couleurs du ring (piste n° 9, « kit du ring »)** : page ARÈNES, « Retoucher une arène », section « Couleurs du ring » :
+  une couleur pour les cordes (`ar_rop01`), les protections des coins (`rin_tb00`, `rin_tb20`) ou les poteaux
+  (`rin_pos00`, `rin_pos01`), mêmes noms dans toutes les arènes ; l'image du jeu est teintée (luminosité × couleur,
+  transparence gardée), à sa taille et son format ; « Remettre » rend celle du jeu. **Vu en jeu le 2026-10-30** :
+  SummerSlam avec cordes rouges et coins noirs (cordes blanches d'origine). Pas les cartes de normales (`_n`).
+- **Taille des vidéos d'entrée (piste n° 15)** : page VIDÉOS, « Taille de la vidéo » 320 (comme le jeu) / 640 (HD) /
+  1024 (HD+) : le fabricant de Kaiko les savait faire (même disposition), le choix manquait dans la page.
