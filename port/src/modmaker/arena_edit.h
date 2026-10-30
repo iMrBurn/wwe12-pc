@@ -265,6 +265,158 @@ class Arena {
   }
   bool IsCopy(uint32_t id) const { return copies_.count(id) > 0; }
 
+  // An object made from a file's triangles (game space, cm; mesh_import.h), after Kaiko's arena objects
+  // (model_objects.cpp): a copy of `host` (AddCopy: its flags, its nodes) whose meshes become the file's, with the
+  // host's first mesh's material, one static bone, and as its picture `dds` (put into the arena's first texture
+  // package as `picture`; empty: the host's). It is placed centred on the host, standing on the host's floor, so the
+  // game's culling keeps it; then it moves as any object. Its id, 0 if it can't be made.
+  uint32_t AddMeshObject(uint32_t host, const std::vector<std::array<float, 3>> &pos,
+                         const std::vector<std::array<float, 3>> &normal, const std::vector<std::array<float, 2>> &uv,
+                         const std::vector<uint32_t> &tris, const Bytes &dds, const std::string &picture) {
+    svrfmt::Model m;
+    if (pos.empty() || tris.size() < 3)
+      return 0;
+    const uint32_t id = AddCopy(host);
+    if (!id || !svrfmt::JboyRead(originals_[id], m, nullptr) || m.meshes.empty()) {
+      if (id)
+        RemoveCopy(id);
+      return 0;
+    }
+    const svrfmt::Mesh tmpl = m.meshes[0];
+    // Where: the host's centre (x, z) and its lowest point (y down: its largest y).
+    float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f}, flo[3] = {1e30f, 1e30f, 1e30f},
+          fhi[3] = {-1e30f, -1e30f, -1e30f};
+    for (const auto &s : m.meshes)
+      for (const auto &v : s.verts)
+        for (int q = 0; q < 3; ++q)
+          lo[q] = std::min(lo[q], v.pos[q]), hi[q] = std::max(hi[q], v.pos[q]);
+    for (const auto &p : pos)
+      for (int q = 0; q < 3; ++q)
+        flo[q] = std::min(flo[q], p[q]), fhi[q] = std::max(fhi[q], p[q]);
+    const float off[3] = {(lo[0] + hi[0]) / 2 - (flo[0] + fhi[0]) / 2, hi[1] - fhi[1], (lo[2] + hi[2]) / 2 - (flo[2] + fhi[2]) / 2};
+    // Its picture: one more texture in the first package, the model's list naming it.
+    int32_t slot = -1;
+    if (!dds.empty() && !packages_.empty()) {
+      Package &pk = packages_[0];
+      pk.textures.push_back({picture, "dds", dds});
+      pk.original.push_back(pk.textures.back());
+      pk.changed = true;
+      textures_.push_back({0, pk.textures.size() - 1});
+      slot = int32_t(m.textures.size());
+      m.textures.push_back(picture);
+    }
+    // The template's average vertex colour (an arena's light is in its vertices).
+    uint64_t argb[4] = {};
+    for (const auto &v : tmpl.verts)
+      for (int c = 0; c < 4; ++c)
+        argb[c] += (v.color >> (24 - 8 * c)) & 0xFF;
+    uint32_t colour = 0xFFFFFFFFu;
+    if (!tmpl.verts.empty()) {
+      colour = 0;
+      for (int c = 0; c < 4; ++c)
+        colour |= uint32_t(argb[c] / tmpl.verts.size()) << (24 - 8 * c);
+    }
+    m.meshes.clear();
+    // One mesh per 65,535 vertices (16-bit indices): the triangles in order, their vertices renumbered.
+    float sphere_lo[3] = {1e30f, 1e30f, 1e30f}, sphere_hi[3] = {-1e30f, -1e30f, -1e30f};
+    for (size_t t0 = 0; t0 + 2 < tris.size();) {
+      svrfmt::Mesh me = tmpl;
+      me.verts.clear(), me.uvs.clear(), me.tangents.clear(), me.strips.clear();
+      for (auto &w : me.weights)
+        w.clear();
+      std::map<uint32_t, uint16_t> local;
+      svrfmt::Strip strip;
+      strip.prim = tmpl.strips.empty() ? 6 : tmpl.strips[0].prim;
+      for (; t0 + 2 < tris.size() && local.size() + 3 <= 65535; t0 += 3) {
+        uint16_t ix[3];
+        for (int c = 0; c < 3; ++c) {
+          const uint32_t src = tris[t0 + size_t(c)];
+          auto it = local.find(src);
+          if (it == local.end()) {
+            svrfmt::Vertex v{};
+            for (int q = 0; q < 3; ++q) {
+              v.pos[q] = pos[src][q] + off[q];
+              v.normal[q] = src < normal.size() ? normal[src][q] : 0.0f;
+              sphere_lo[q] = std::min(sphere_lo[q], v.pos[q]), sphere_hi[q] = std::max(sphere_hi[q], v.pos[q]);
+            }
+            v.color = colour;
+            me.verts.push_back(v);
+            me.uvs.push_back(src < uv.size() ? uv[src] : std::array<float, 2>{0, 0});
+            if (!tmpl.tangents.empty()) {  // (any direction across the normal)
+              const float *n = v.normal;
+              std::array<float, 3> t = std::fabs(n[1]) < 0.9f ? std::array<float, 3>{n[2], 0, -n[0]}
+                                                              : std::array<float, 3>{1, 0, 0};
+              const float l = std::sqrt(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
+              me.tangents.push_back({t[0] / l, t[1] / l, t[2] / l});
+            }
+            for (size_t j = 0; j < me.weights.size(); ++j)
+              me.weights[j].push_back(j == 0 ? svrfmt::Weight{{0, 255, 255, 255}, 1.0f}
+                                             : svrfmt::Weight{{255, 255, 255, 255}, 0.0f});
+            it = local.emplace(src, uint16_t(me.verts.size() - 1)).first;
+          }
+          ix[c] = it->second;
+        }
+        if (!strip.IsStrip()) {
+          strip.indices.insert(strip.indices.end(), {ix[0], ix[1], ix[2]});
+          continue;
+        }
+        // Joined into one strip: the last index and the next triangle's first repeated (empty triangles), the
+        // triangle starting at an even place so it keeps its turn.
+        if (!strip.indices.empty()) {
+          strip.indices.push_back(strip.indices.back());
+          strip.indices.push_back(ix[0]);
+          if (strip.indices.size() % 2)
+            strip.indices.push_back(ix[0]);
+        }
+        strip.indices.insert(strip.indices.end(), {ix[0], ix[1], ix[2]});
+      }
+      me.strips.push_back(std::move(strip));
+      if (slot >= 0)
+        for (auto &p : me.params)
+          if ((p.name == "sampDiffusePrm" || p.name == "texDiffuse" || p.name == "g_mDiffusePrm") && p.value.size() >= 4)
+            svrfmt::PutBe32(p.value.data(), uint32_t(slot));
+      m.meshes.push_back(std::move(me));
+    }
+    float centre[3], r = 0;
+    for (int q = 0; q < 3; ++q)
+      centre[q] = (sphere_lo[q] + sphere_hi[q]) / 2, r = std::max(r, (sphere_hi[q] - sphere_lo[q]) / 2);
+    r *= 1.7321f;  // (the box's half diagonal at most)
+    for (auto &me : m.meshes)
+      me.sphere = {centre[0], centre[1], centre[2], r};
+    for (auto &n : m.nodes)
+      if (n.sphere[3] > 0)
+        n.sphere[0] = centre[0], n.sphere[1] = centre[1], n.sphere[2] = centre[2], n.sphere[3] = r;
+    if (m.parts.size() > 1) {  // (one part now: the header's part count +0x34 too)
+      m.parts.resize(1);
+      if (m.header.size() >= 0x30)
+        svrfmt::PutBe32(&m.header[0x2C], 1);
+    }
+    if (!m.parts.empty())
+      m.parts[0].meshes = uint32_t(m.meshes.size());
+    originals_[id] = svrfmt::JboyWrite(m);
+    moves_[id] = Move();
+    moves_changed_ = true;
+    return id;
+  }
+
+  // An object of the section as the game draws it now (moved, copied...), for an export.
+  bool ModelOf(uint32_t id, svrfmt::Model &m) {
+    if (archive_.root.kids.size() <= section_)
+      return false;
+    for (auto &k : archive_.root.kids[section_].kids)
+      if (k.id == id)
+        return svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr);
+    return false;
+  }
+  // A texture of the arena by name (its packages), for an export.
+  const svrfmt::BundleTexture *TextureNamed(const std::string &name) const {
+    for (const auto &p : packages_)
+      for (const auto &t : p.textures)
+        if (t.name == name)
+          return &t;
+    return nullptr;
+  }
+
   // The material groups of the section's body model (child 0), in the order met: "skin", "gear:body"...
   std::vector<std::string> MaterialGroups() {
     std::vector<std::string> out;

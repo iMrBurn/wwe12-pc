@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "arena_edit.h"
+#include "mesh_import.h"
 #include "arena_view.h"
 #include "port13.h"
 #include "port_svr_arena.h"
@@ -364,6 +365,22 @@ class Page {
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", fr ? "Ajoute une copie de cet objet dans l'arène, 3 m à côté : déplacez-la ensuite."
                                    : "Adds a copy of this object to the arena, 3 m beside it: then move it.");
+      // An object of one's own from a 3D file (OBJ / FBX), made on this one (its material, its place), and this one
+      // written out as OBJ (Kaiko's arena objects).
+      ImGui::SameLine();
+      if (ImGui::Button(fr ? "Ajouter un objet 3D (OBJ, FBX)..." : "Add a 3D object (OBJ, FBX)..."))
+        AddObjectFromFile(fr);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", fr ? "Un modèle 3D (OBJ en mètres, ou FBX) devient un nouvel objet de l'arène, posé à la place "
+                                     "de cet objet-ci (sa matière, sa lumière) avec l'image du fichier : déplacez-le ensuite."
+                                   : "A 3D model (OBJ in metres, or FBX) becomes a new object of the arena, put where this "
+                                     "object is (its material, its light) with the file's picture: then move it.");
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(90);
+      ImGui::DragFloat(fr ? "taille x" : "size x", &ed_scale_, 0.01f, 0.01f, 100.0f, "%.2f");
+      ImGui::SameLine();
+      if (ImGui::Button(fr ? "Exporter en OBJ..." : "Export as OBJ..."))
+        ExportObject(fr);
       if (arena_.IsCopy(uint32_t(ed_pick_))) {
         ImGui::SameLine();
         if (ImGui::Button(fr ? "Supprimer la copie" : "Remove the copy")) {
@@ -380,6 +397,79 @@ class Page {
     }
     Draw3D(fr);
     ImGui::EndChild();
+  }
+
+  void AddObjectFromFile(bool fr) {
+    const fs::path f = PickOpen(fr, false, fr ? L"Modèles 3D (*.obj, *.fbx)" : L"3D models (*.obj, *.fbx)", L"*.obj;*.fbx");
+    if (f.empty())
+      return;
+    mesh_import::TriMesh tm;
+    std::string why;
+    if (!mesh_import::Load(f, tm, why)) {
+      message_ = (fr ? "Modèle illisible : " : "Model unreadable: ") + why;
+      return;
+    }
+    for (auto &p : tm.pos)
+      for (float &x : p)
+        x *= ed_scale_;
+    Bytes dds;
+    std::string picture;
+    svrfmt::Image img;
+    if (!tm.texture.empty() && wic_image::Load(tm.texture, img) && img.w > 0) {
+      int w = 1, h = 1;  // (powers of two, 1024 at most, as the game's)
+      while (w < img.w && w < 1024)
+        w *= 2;
+      while (h < img.h && h < 1024)
+        h *= 2;
+      if (w != img.w || h != img.h)
+        img = svrfmt::Resize(img, w, h);
+      dds = svrfmt::DdsEncode(img, svrfmt::DxtFormat::kDxt5, true);
+      picture = "mm_obj_" + std::to_string(arena_.Models().size());
+    }
+    const uint32_t id = arena_.AddMeshObject(uint32_t(ed_pick_), tm.pos, tm.normal, tm.uv, tm.tris, dds, picture);
+    if (!id) {
+      message_ = fr ? "L'objet n'a pas pu être ajouté (plus de place libre ?)." : "The object couldn't be added (no free slot?).";
+      return;
+    }
+    arena_.Build();
+    ed_models_.clear();
+    for (size_t i = thumbs_.size(); i < arena_.Textures().size(); ++i)  // (its picture, one more)
+      thumbs_.push_back(MakeThumb(device_, arena_.Get(arena_.Textures()[i]).data));
+    ed_pick_ = int(id);
+    ed_move_ = arena_.MoveOf(id);
+    view_stale_ = true;
+    message_ = (fr ? "Objet ajouté : " : "Object added: ") + std::to_string(tm.tris.size() / 3) +
+               (fr ? " triangles" : " triangles") + (dds.empty() ? (fr ? " (sans image : celle de l'objet de départ)" : " (no picture: the host's)") : "");
+  }
+
+  void ExportObject(bool fr) {
+    svrfmt::Model m;
+    if (!arena_.ModelOf(uint32_t(ed_pick_), m))
+      return;
+    std::wstring name;
+    for (unsigned char c : m.name)
+      name += std::isalnum(c) ? wchar_t(c) : L'_';
+    const fs::path out = media::PickSave(fr, (name.empty() ? L"object" : name) + L".obj");
+    if (out.empty())
+      return;
+    auto picture = [&](const svrfmt::Mesh &me) -> std::string {
+      for (const auto &p : me.params)
+        if ((p.name == "sampDiffusePrm" || p.name == "texDiffuse" || p.name == "g_mDiffusePrm") && p.value.size() >= 4) {
+          const uint32_t slot = svrfmt::Be32(p.value.data());
+          if (slot >= m.textures.size())
+            return "";
+          const svrfmt::BundleTexture *t = arena_.TextureNamed(m.textures[slot]);
+          svrfmt::Image img;
+          if (!t || !svrfmt::DdsDecode(t->data, img))
+            return "";
+          const std::string file = m.textures[slot] + ".png";
+          wic_image::SavePng(out.parent_path() / file, img);
+          return file;
+        }
+      return "";
+    };
+    message_ = mesh_import::SaveObj(out, m, picture) ? (fr ? "Exporté : " : "Exported: ") + media::Utf8(out.wstring())
+                                                     : (fr ? "Export impossible." : "Export failed.");
   }
 
   void OpenSlot(bool fr, const disc::GameDisc &disc) {
@@ -1703,6 +1793,7 @@ class Page {
   std::vector<std::pair<uint32_t, std::string>> ed_models_;  // the 3D editor's list (the arena opened)
   int ed_pick_ = -1;
   arena_edit::Move ed_move_;
+  float ed_scale_ = 1.0f;  // a 3D file added: its size
   char ed_filter_[64] = {};
   float card_w_ = 250;
   Thumb wiz_apron_;  // the source arena's apron (step 1)  // (the start step's three choices share the width)

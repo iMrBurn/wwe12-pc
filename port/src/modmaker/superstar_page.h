@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -397,11 +398,28 @@ class Page {
   void Materials(bool fr) {
     if (!ImGui::CollapsingHeader(fr ? "Matières (brillance, teinte)" : "Materials (shine, tint)"))
       return;
-    for (const auto &g : edit_.MaterialGroups()) {
+    // Several parts picked (the boxes, as Kaiko's Materials tab): a change to one of them goes to all of them.
+    const std::vector<std::string> groups = edit_.MaterialGroups();
+    if (ImGui::SmallButton(fr ? "Tout cocher" : "Pick all"))
+      picked_.insert(groups.begin(), groups.end());
+    ImGui::SameLine();
+    if (ImGui::SmallButton(fr ? "Tout décocher" : "Pick none"))
+      picked_.clear();
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", fr ? "(les parties cochées changent ensemble)" : "(the picked parts change together)");
+    for (const auto &g : groups) {
       ImGui::PushID(g.c_str());
       arena_edit::Material m = edit_.MaterialOf(g);
       std::string label = g == "skin" ? (fr ? "Peau" : "Skin") : (fr ? "Tenue : " : "Attire: ") + g.substr(5);
       bool changed = false;
+      bool pick = picked_.count(g) != 0;
+      if (ImGui::Checkbox("##pick", &pick)) {
+        if (pick)
+          picked_.insert(g);
+        else
+          picked_.erase(g);
+      }
+      ImGui::SameLine();
       ImGui::SetNextItemWidth(160);
       changed |= ImGui::SliderFloat("##shine", &m.shine, 0.0f, 3.0f, fr ? "brillance x%.2f" : "shine x%.2f");
       ImGui::SameLine();
@@ -417,6 +435,10 @@ class Page {
       }
       if (changed) {
         edit_.SetMaterial(g, m);
+        if (picked_.count(g))
+          for (const auto &p : picked_)
+            if (p != g && std::find(groups.begin(), groups.end(), p) != groups.end())
+              edit_.SetMaterial(p, m);
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
           view_stale_ = true;
       }
@@ -522,6 +544,7 @@ class Page {
   std::vector<Thumb> thumbs_;
   arena_view::View view_;
   bool view_stale_ = true;
+  std::set<std::string> picked_;  // Materials: the parts changed together
   std::string error_, note_, view_error_, message_, reduced_note_;
   // Porting from SvR 2011.
   fs::path svr_path_;

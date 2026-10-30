@@ -1242,3 +1242,14 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   STG3/WPO2, STGR/WPON). Une image remplacée devient un pack de textures (`textures/<nom>_<empreinte>.dds`) : l'empreinte
   du jeu (XXH3 du niveau 0 tel que le DDS de svrfmt le tient) est **la même** que celle des captures du jeu (vérifié sur
   les 26 captures du menu), donc pas besoin de capturer en jeu. Pas encore vu en jeu sur une ceinture.
+- **Matières en lot** (2026-10-30, d'après Kaiko) : page CATCHEURS, section Matières, cases à cocher par partie,
+  « Tout cocher » / « Tout décocher » : un réglage changé sur une partie cochée va à toutes les parties cochées.
+- **Objets d'arène depuis un fichier 3D** (2026-10-30, d'après `model_objects.cpp` de Kaiko) : éditeur 3D des
+  arènes, « Ajouter un objet 3D (OBJ, FBX)... » (`mesh_import.h` : OBJ en mètres, FBX par ufbx, y vers le haut tourné
+  d'un demi-tour autour de x = l'espace du jeu en cm, y vers le bas) : une copie de l'objet choisi (`AddCopy` : sa ligne
+  de drapeaux, ses nœuds) dont les maillages deviennent ceux du fichier (matière du 1er maillage de l'objet, un os
+  fixe, couleur de sommet moyenne de l'objet, bandes jointes par triangles vides, 65 535 sommets par maillage), posée
+  au centre de l'objet, sur son sol ; l'image du fichier (MTL map_Kd / matériau FBX) ajoutée au 1er paquet d'images
+  de l'arène (puissance de 2, 1024 au plus, DXT5). « Exporter en OBJ... » écrit l'objet (OBJ + MTL + PNG). Vérifié
+  hors jeu (un cube ajouté à bg01, relu : 12 triangles, son image) ; **pas encore vu en jeu**. Le volume des musiques,
+  autre nouveauté de Kaiko, existait déjà chez nous (`xmp_music_level_db`).
