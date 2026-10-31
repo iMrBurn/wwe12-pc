@@ -45,6 +45,11 @@ wwe12_crowd = true
 # the screen; the picture is stretched, about 11 % on a 16:10 screen, more on wider screens).
 bd_aspect_ratio = 5
 
+# 16:10 and ultrawide screens: true = matches and entrances fill the window (16:10: more picture above
+# and below; 21:9 to 32:9: wider), the HUD stays in the 16:9 middle; menus stay 16:9 with black bars.
+# false = the 16:9 picture with black bars everywhere. No effect with bd_aspect_ratio = 6 (stretch).
+wwe12_widescreen = true
+
 # Vertical sync: true avoids tearing (horizontal cuts in the picture).
 bd_vsync = true
 

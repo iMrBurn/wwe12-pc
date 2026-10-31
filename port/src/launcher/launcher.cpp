@@ -239,6 +239,7 @@ struct Texts {
   const char *aspect, *aspect_auto, *aspect_stretch, *aspect_hint;
   const char *lowend, *lowend_hint, *lowend_undo, *lowend_undo_hint;
   const char *api_d3d11, *api_d3d11_missing;
+  const char *widescreen, *widescreen_hint, *widescreen_stretch;
 };
 
 const Texts kEnglish = {
@@ -326,13 +327,16 @@ const Texts kEnglish = {
     "Unlocks in the Match Creator: time limit everywhere, KO and Last Man Standing in Cage/Hell in a Cell, "
     "Over the Top Rope and Elimination with 3+ Superstars.",
     "Picture format", "Automatic (black bars)", "Stretch (fills the screen)",
-    "Automatic keeps the game's 16:9 shape, with black bars on other screens (16:10, 21:9...). Stretch fills the whole screen, but the picture is stretched: about 11 % on a 16:10 screen, more on wider screens.",
+    "Automatic keeps the game's 16:9 shape, with black bars on other screens (16:10, 21:9...), except in matches and entrances if the option below is on. Stretch fills the whole screen, but the picture is stretched: about 11 % on a 16:10 screen, more on wider screens.",
     "Low-end PC",
     "480p, no crowd, no shadows, no depth of field: for weak PCs. Nothing else changes.",
     "Undo the preset",
     "Puts back the resolution, crowd, shadows and depth of field you had before the preset.",
     "DirectX 11",
-    "The DirectX 11 version of the game (wwe12_d3d11.exe) was not found: the game starts with Vulkan instead."};
+    "The DirectX 11 version of the game (wwe12_d3d11.exe) was not found: the game starts with Vulkan instead.",
+    "16:10 and ultrawide screens",
+    "Fills 16:10 and ultrawide windows in matches and entrances; menus stay 16:9. Turn off for the old black bars.",
+    "Not used with the Stretch picture format."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -425,13 +429,17 @@ const Texts kFrench = {
     "Débloque dans le Match Creator : limite de temps partout, K.O. et Last Man Standing en cage/Hell in a Cell, "
     "Over the Top Rope et Élimination à 3 catcheurs ou plus.",
     "Format de l'image", "Automatique (bandes noires)", "Étirer (remplit l'écran)",
-    "Automatique garde la forme 16:9 du jeu, avec des bandes noires sur les autres écrans (16:10, 21:9...). Étirer remplit tout l'écran, mais l'image est étirée : d'environ 11 % sur un écran 16:10, davantage sur un écran plus large.",
+    "Automatique garde la forme 16:9 du jeu, avec des bandes noires sur les autres écrans (16:10, 21:9...), sauf pendant les matchs et les entrées si l'option ci-dessous est cochée. Étirer remplit tout l'écran, mais l'image est étirée : d'environ 11 % sur un écran 16:10, davantage sur un écran plus large.",
     "PC modeste",
     "480p, sans foule, sans ombres, sans profondeur de champ : pour les PC peu puissants. Rien d'autre ne change.",
     "Annuler le préréglage",
     "Remet la résolution, la foule, les ombres et la profondeur de champ que vous aviez avant le préréglage.",
     "DirectX 11",
-    "La version DirectX 11 du jeu (wwe12_d3d11.exe) est introuvable : le jeu démarre avec Vulkan à la place."};
+    "La version DirectX 11 du jeu (wwe12_d3d11.exe) est introuvable : le jeu démarre avec Vulkan à la place.",
+    "Écrans 16:10 et ultralarges",
+    "Remplit les fenêtres 16:10 et ultralarges pendant les matchs et les entrées ; les menus restent en 16:9. "
+    "Décochez pour retrouver les anciennes bandes noires.",
+    "Sans effet avec le format d'image Étirer."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -481,6 +489,7 @@ struct Settings {
   int aniso = 16;
   int title_defenses = 0;    // wwe12_universe_title_defenses, percent 0..100 (0 = the original game)
   bool qualifiers = false;   // wwe12_universe_qualifiers
+  bool widescreen = true;    // wwe12_widescreen: matches and entrances fill 16:10 / ultrawide
   int aspect = 5;            // bd_aspect_ratio: 5 automatic (black bars), 6 stretch
   bool mc_unlock = true;     // wwe12_mc_unlock (extended Match Creator), on by default
   int api = 0;  // gpu_backend: 0 automatic ("any"), 1 vulkan, 2 d3d12 (wwe12_d3d12.exe), 3 d3d11 (wwe12_d3d11.exe)
@@ -522,6 +531,7 @@ void LoadSettings() {
   g_s.qualifiers = g_toml.GetBool("wwe12_universe_qualifiers", false);
   g_s.mc_unlock = g_toml.GetBool("wwe12_mc_unlock", true);
   g_s.aspect = g_toml.GetInt("bd_aspect_ratio", 5);
+  g_s.widescreen = g_toml.GetBool("wwe12_widescreen", true);
   g_s.crowd = g_toml.GetBool("wwe12_crowd", true);
   g_s.shadows = g_toml.GetBool("wwe12_shadows", true);
   g_s.dof = g_toml.GetBool("wwe12_dof", true);
@@ -557,6 +567,7 @@ void SaveSettings() {
   g_toml.SetBool("wwe12_universe_qualifiers", g_s.qualifiers);
   g_toml.SetBool("wwe12_mc_unlock", g_s.mc_unlock);
   g_toml.SetInt("bd_aspect_ratio", g_s.aspect);
+  g_toml.SetBool("wwe12_widescreen", g_s.widescreen);
   g_toml.SetBool("wwe12_crowd", g_s.crowd);
   g_toml.SetBool("wwe12_shadows", g_s.shadows);
   g_toml.SetBool("wwe12_dof", g_s.dof);
@@ -834,6 +845,18 @@ void PageSettings() {
         }
         ImGui::PushTextWrapPos(0);
         ImGui::TextDisabled("%s", t.aspect_hint);
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy(ImVec2(0, 4));
+
+        // Matches and entrances take the shape of a 16:10 / ultrawide window (wwe12_widescreen). Not with
+        // the Stretch format, which already fills the screen: grayed out then.
+        ImGui::BeginDisabled(g_s.aspect == 6);
+        changed |= ImGui::Checkbox(t.widescreen, &g_s.widescreen);
+        ImGui::EndDisabled();
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("%s", t.widescreen_hint);
+        if (g_s.aspect == 6)
+          ImGui::TextDisabled("%s", t.widescreen_stretch);
         ImGui::PopTextWrapPos();
         ImGui::Dummy(ImVec2(0, 4));
       }
