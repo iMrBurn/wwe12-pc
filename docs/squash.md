@@ -1,5 +1,8 @@
 # Squash matchs : étude (Limit breaking, 2026-10-28, lecture seule)
 
+**Décision de l'utilisateur (2026-10-31) : les matchs squash et les finishers prêts au départ passent en 1.1.**
+Pas de sonde avant. Ce document reste l'étude de référence.
+
 ## Cahier des charges corrigé (demande du joueur, transmise par Main le 2026-10-28)
 
 Le joueur ne demande pas un multiplicateur de dégâts. Il demande :
