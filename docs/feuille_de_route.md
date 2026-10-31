@@ -13,10 +13,14 @@ Liste écrite par l'utilisateur (iMrBurn), rangée par la conversation Main. Les
 
 Fait depuis la liste précédente : défenses de titre en weekly et qualifications MITB / Elimination Chamber (Univers, testé) ;
 Match Creator étendu (testé, activé par défaut) ; résolutions 360p / 480p (testées) ; format d'écran AUTO / ÉTIRER
-(le vrai 16:10 est un gros chantier, 1.1) ; DX11 (testé sur RTX 11_1 / 11_0 et Intel intégré, reste la décision sur
+(le vrai 16:10 : **remis dans la 1.0 par l'utilisateur, 2026-10-31**, voir ci-dessous) ; DX11 (testé sur RTX 11_1 / 11_0 et Intel intégré, reste la décision sur
 la taille du zip) ; préréglage PC modeste ; scan de textes allégé. Les icônes de touches de clavier dans les menus
 ne sont pas faites (le clavier lui-même marche, Shift / Ctrl / Alt aussi).
 Aussi demandé : travailler sur le Mod Maker (voir `docs/mod_maker.md`).
+- **Support 16:10 (décision de l'utilisateur, 2026-10-31)** : à étudier par Rendu d'après le port SvR 2011 de Kaiko 
+  (`work/kaiko-svr2011/port/src/native/native_renderer.cpp` l. 869-915 : cvar `native_widescreen`, constante de rapport de la 
+  caméra patchée, cibles plein écran élargies/agrandies en hauteur `g_wide`/`g_tall`, HUD 2D au milieu en 16:9, menus restent 16:9). 
+  Kaiko a déjà traité le 16:10 (« tall »). À tester en jeu avant de promettre.
 
 (Décision du 2026-10-27 : le jeu en full natif et les slots CAW / logos 100/200 passent en 1.1.)
 
@@ -57,3 +61,8 @@ Aussi demandé : travailler sur le Mod Maker (voir `docs/mod_maker.md`).
 ## Règles rappelées
 - On peut porter des fonctions de WWE '13 / 2K14, mais **rien de dérivé du jeu ne se publie**.
 - Rien n'est promis aux joueurs tant que ce n'est pas testé en jeu.
+
+## Ajouts 1.1 (décision de l'utilisateur, 2026-10-31, suggestions de joueurs, voir `docs/suggestions_joueurs.md`)
+- Univers : interférence « embuscade en coulisses » (cinématiques Create a Story), deux mallettes MITB (RAW / SmackDown).
+- Mod Maker : vrais noms des catcheurs pour les entrées et mouvements prédéfinis.
+- Launcher : touches de clavier comme le port SvR 2011 (à préciser). À étudier : chronomètre de match, interférence forcée sur un bouton, types de match du port SvR 2011.
