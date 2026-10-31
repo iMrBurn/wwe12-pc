@@ -175,8 +175,13 @@ inline void ScreensTo12(svrfmt::ArcNode &ga) {
   // the stage: v 0.88-1), "ss" (802, 809) and "main" (803, 804, 807: main&banner, the main part v 0-0.7, the banner
   // v 0.7-1), plus 800 (the stage screen: titantron_movie, whole; WrestleMania 29: main&banner) and 805 (the minitron:
   // mini_tron). Kept as WWE '12 is told by number, the minitron and 804 showed the live camera (a mirror) and the
-  // stage screen the whole movie, minitron strip too (RAW, seen in the game). The "ppv" look kept, as 2K16's: 801 ->
-  // 808, 808 -> 807 (the arena's movie), 805 -> 803 showing the minitron strip; 802-804, 807, 809 left out.
+  // stage screen the whole movie, minitron strip too (RAW, seen in the game). The "ppv" look kept, as WWE '12's RAW
+  // has them: the stage screen 800 -> 808 (the titantron; left 800, it stayed black in the game, 2026-10-31: WWE '12's
+  // own 800 shows its movie otherwise, u and v 0.19-0.81), the minitron 805 -> 806 (the minitron strip, as WWE '12's
+  // RAW), the ribbons 806 -> 803 (the side panels' strip), 801 (the "wall": the LED columns either side of the stage
+  // screen, one picture across them all; the titantron there showed a giant face) and 808 -> 809 the arena's movie;
+  // 802-804, 807, 809 left out, and their "screen off" covers (titan_off: RAW's 303 over the minitron, 304 over the
+  // ribbons, as 2K16's).
   const auto pic2k14 = [](const std::string &t) { return t.find('&') != std::string::npos || t == "mini_tron"; };
   {
     bool twok14 = false;
@@ -190,7 +195,14 @@ inline void ScreensTo12(svrfmt::ArcNode &ga) {
       for (auto &k : ga.kids) {
         if (k.id == 802 || k.id == 803 || k.id == 804 || k.id == 807 || k.id == 809)
           continue;
-        k.id = k.id == 801 ? 808 : k.id == 808 ? 807 : k.id == 805 ? 803 : k.id;
+        svrfmt::Model m;
+        if (svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr) && !m.textures.empty() &&
+            std::all_of(m.textures.begin(), m.textures.end(), [](std::string t) {
+              std::transform(t.begin(), t.end(), t.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+              return t == "titan_off";
+            }))
+          continue;
+        k.id = k.id == 800 ? 808 : k.id == 808 ? 809 : k.id == 805 ? 806 : k.id == 806 ? 803 : k.id;
         kept.push_back(std::move(k));
       }
       ga.kids = std::move(kept);
@@ -231,7 +243,7 @@ inline void ScreensTo12(svrfmt::ArcNode &ga) {
             else if (v0 >= 0.87f)
               f0 = 0.88f, t1 = 1;  // the strip above the stage: the arena's movie
             else
-              f0 = 0.35f, f1 = 0.87f;  // the wall
+              f0 = 0.35f, f1 = 0.87f, t1 = 1;  // the wall: the arena's movie
           } else if (t.find("&banner") != std::string::npos) {
             if (v0 >= 0.69f)
               f0 = 0.7f, t1 = 1;

@@ -675,9 +675,13 @@ places ×10, d'après le code de Kaiko).
   `ppv_header&wall` (801 mur v 0,35-0,87, 806 rubans v 0-0,34, 808 bandeau v 0,88-1), `ss_header&wall` (802, 809),
   `main&banner` (803, 804, 807 : v 0-0,7 / 0,7-1), 800 `titantron_movie` (écran de la scène, image entière) et 805
   `mini_tron`. Avant : rien renuméroté → 804/805 = caméra en direct (miroir sur le minitron), 800 montrait aussi la
-  bande minitron (RAW, vu en jeu par l'utilisateur). Maintenant (`ScreensTo12`, branche 2K14) : habillage « ppv »
-  gardé, 801 → 808, 808 → 807 (vidéo de l'arène), 805 → 803 (bande minitron 0,691-0,998), 800 recadré sur le titantron
-  (0-0,684) ; 802-804, 807, 809 retirés. Même organisation vue dans bg00, bg01, bg05, bg15, bg28.
+  bande minitron (RAW, vu en jeu par l'utilisateur). 1er essai (801 → 808 titantron, 800 gardé) : **visage géant sur
+  les colonnes LED** (le « mur » 801 = les colonnes de chaque côté de l'écran, une seule image sur toutes) et **centre
+  noir** (le 800 n'a rien montré ; le 800 de WWE '12 lit sa vidéo autrement, u et v 0,19-0,81). Maintenant
+  (`ScreensTo12`, branche 2K14, comme le RAW de WWE '12 : minitron = 806 bande 0,69-1, murs titantron = 803 / 808) :
+  800 → 808 (titantron 0-0,684), 805 → 806 (bande minitron), 806 rubans → 803 (bande), 801 colonnes et 808 → 809
+  bandeau = vidéo de l'arène ; 802-804, 807, 809 et les caches `titan_off` (303 sur le minitron, 304 sur les rubans)
+  retirés. Même organisation vue dans bg00, bg01, bg05, bg15, bg28.
 - **Bannières 2K14 (2026-10-31, vérifié hors du jeu sur 13 arènes)** : la photo de scène de l'Univers (`arena_raw`)
   ne plaisait pas à l'utilisateur ; on prend maintenant l'image de l'écran de choix d'arène de 2K14 (`MnLayHD.pac`
   MLYE/OLFF, 256 × 128 : `RAW`, `Smack`, `MainEvent`, `Superstars`, `NXT`, `Summer`, `Survivor`, `RoyalRumble`,
