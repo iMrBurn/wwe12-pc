@@ -903,11 +903,12 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     return fail("the SvR model is already in WWE '12's layout");
   if (!ConvertModel(ms, mb, mo, rep))
     return fail("the model can't be converted");
-  // SvR 2008 / 2009's 20000 isn't 2011's eye pieces but any small piece of the body (2008 Rey Mysterio's eyebrows,
-  // Torrie Wilson's wristbands): on WWE '12's 20000 (the eyelashes: the head's bones only) a wristband stayed by the
-  // hip. Merged into the body instead (on its bones and skin), as Kaiko merges 2008's costume pieces; then neither
-  // SvR's nor the base's 20000 below. Likewise the hair model's pieces on none of the head's bones (2009 ch127: one on
-  // the left hand, hips and thighs, left floating by the hip).
+  // SvR 2008 / 2009's 20000 isn't 2011's eye pieces but any small piece (2008 Rey Mysterio's eyebrows, Torrie
+  // Wilson's wristbands, Orton's eyelashes): on WWE '12's 20000 (the eyelashes: the head's bones only) a wristband
+  // stayed by the hip. Its pieces off the head are merged into the body (on its bones and skin), as Kaiko merges 2008's
+  // costume pieces; those on the head stay in 20000, see-through (merged, 2008 Orton's eyelashes were opaque black rings
+  // round his eyes, 2026-10-31). Likewise the hair model's pieces on none of the head's bones (2009 ch127: one on the
+  // left hand, hips and thighs, left floating by the hip).
   if (old_svr) {
     auto merge = [&](const svrfmt::Model &xs, const std::string &what) {
       svrfmt::Model xo;
@@ -939,55 +940,62 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
       rep->meshes = int(mo.meshes.size());
       rep->notes.push_back("SvR 2008 / 2009 " + what + " merged into the body");
     };
-    for (size_t i = 0; i < svr.kids.size(); ++i)
-      if (svr.kids[i].id == 20000) {
-        svrfmt::Model xs;
-        if (svrfmt::JboyRead(svrfmt::ArchiveData(svr.kids[i]), xs, &e) && !xs.w12)
-          merge(xs, "piece 20000 (" + xs.name + ")");
-        svrfmt::ArchiveRemove(svr, i);
-        break;
-      }
-    if (svrfmt::ArcNode *s10k = child(svr, 10000)) {
+    // A model's meshes on the head (its bones, hair chains, neck) kept in it, the others merged into the body; none
+    // on the head: the whole piece merged and removed (whole_off), else left as it is.
+    auto split = [&](uint32_t id, const std::string &what, bool whole_off) {
+      size_t at = svr.kids.size();
+      for (size_t i = 0; i < svr.kids.size(); ++i)
+        if (svr.kids[i].id == id)
+          at = i;
       svrfmt::Model xs;
-      if (svrfmt::JboyRead(svrfmt::ArchiveData(*s10k), xs, &e) && !xs.w12) {
-        auto head = [&](int node) {  // (the head, its hair chains, the neck)
-          for (int q = node; q >= 0 && size_t(q) < xs.nodes.size(); q = xs.nodes[size_t(q)].parent) {
-            const std::string &n = xs.nodes[size_t(q)].name;
-            if (n == "atama" || n.rfind("kubi", 0) == 0 || n.rfind("kami", 0) == 0)
-              return true;
-          }
-          return false;
-        };
-        svrfmt::Model keep = xs, body = xs;
-        keep.meshes.clear();
-        keep.parts.clear();
-        body.meshes.clear();
-        body.parts.clear();
-        size_t mi = 0;
-        for (const auto &part : xs.parts)
-          for (uint32_t k = 0; k < part.meshes && mi < xs.meshes.size(); ++k, ++mi) {
-            bool on_head = false;
-            for (int slot : xs.meshes[mi].palette)
-              on_head = on_head || (slot > 0 && head(slot - 1));
-            svrfmt::Model &to = on_head ? keep : body;
-            if (to.parts.empty() || to.parts.back().name != part.name) {
-              to.parts.push_back(part);
-              to.parts.back().meshes = 0;
-            }
-            ++to.parts.back().meshes;
-            to.meshes.push_back(xs.meshes[mi]);
-          }
-        if (!body.meshes.empty() && !keep.meshes.empty() && mi == xs.meshes.size()) {
-          merge(body, std::to_string(body.meshes.size()) + " hair-model piece(s) off the head");
-          if (keep.parts.size() == 1 && keep.header.size() >= 0x30) {  // (one part: written as the model's own name)
-            keep.name = keep.parts[0].name;
-            keep.group = keep.parts[0].info;
-            svrfmt::PutBe32(&keep.header[0x2C], 1);  // (the file's +0x34: the parts' count)
-          }
-          svrfmt::ArchiveReplace(*s10k, svrfmt::JboyWrite(keep));
+      if (at == svr.kids.size() || !svrfmt::JboyRead(svrfmt::ArchiveData(svr.kids[at]), xs, &e) || xs.w12)
+        return;
+      auto head = [&](int node) {  // (the head, its hair chains, the neck)
+        for (int q = node; q >= 0 && size_t(q) < xs.nodes.size(); q = xs.nodes[size_t(q)].parent) {
+          const std::string &n = xs.nodes[size_t(q)].name;
+          if (n == "atama" || n.rfind("kubi", 0) == 0 || n.rfind("kami", 0) == 0)
+            return true;
         }
+        return false;
+      };
+      svrfmt::Model keep = xs, body = xs;
+      keep.meshes.clear();
+      keep.parts.clear();
+      body.meshes.clear();
+      body.parts.clear();
+      size_t mi = 0;
+      for (const auto &part : xs.parts)
+        for (uint32_t k = 0; k < part.meshes && mi < xs.meshes.size(); ++k, ++mi) {
+          bool on_head = false;
+          for (int slot : xs.meshes[mi].palette)
+            on_head = on_head || (slot > 0 && head(slot - 1));
+          svrfmt::Model &to = on_head ? keep : body;
+          if (to.parts.empty() || to.parts.back().name != part.name) {
+            to.parts.push_back(part);
+            to.parts.back().meshes = 0;
+          }
+          ++to.parts.back().meshes;
+          to.meshes.push_back(xs.meshes[mi]);
+        }
+      if (body.meshes.empty() || mi != xs.meshes.size())
+        return;
+      if (keep.meshes.empty()) {
+        if (whole_off) {
+          merge(xs, what + " (" + xs.name + ")");
+          svrfmt::ArchiveRemove(svr, at);
+        }
+        return;
       }
-    }
+      merge(body, std::to_string(body.meshes.size()) + " " + what + " piece(s) off the head");
+      if (keep.parts.size() == 1 && keep.header.size() >= 0x30) {  // (one part: written as the model's own name)
+        keep.name = keep.parts[0].name;
+        keep.group = keep.parts[0].info;
+        svrfmt::PutBe32(&keep.header[0x2C], 1);  // (the file's +0x34: the parts' count)
+      }
+      svrfmt::ArchiveReplace(svr.kids[at], svrfmt::JboyWrite(keep));
+    };
+    split(20000, "piece 20000", true);
+    split(10000, "hair-model", false);
   }
   svrfmt::ArchiveReplace(*bm, svrfmt::JboyWrite(mo));
   // The hair (10000) and the pieces round the eyes (20000: SvR's eyelids and the skin round the eyeballs, four

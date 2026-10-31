@@ -707,17 +707,17 @@ class Page {
     ImGui::BeginDisabled(movie_.Busy());
     if (ImGui::RadioButton(fr ? "Celle de la base" : "The base's", !own_movie_ && !svr_movie_))
       own_movie_ = svr_movie_ = twok_movie_ = false;
-    // (SvR 2011's entrance movies are WWE '12's kind, Bink 1 at 320 x 320: taken as they are; the 2K games' are
+    // (SvR 2008-2011's entrance movies are WWE '12's kind, Bink 1 at 320 x 320: taken as they are; the 2K games' are
     // Bink 2, made into its own movie with the player's tool, bink2.h; WWE '13's and 2K14's can't be read)
     if (look_ != 2)
-      svr_movie_ = false;  // (only with a look from SvR 2011)
+      svr_movie_ = false;  // (only with a look from SvR 2008-2011)
     if (look_ == 2 && !svr_movie_file_.empty()) {
       ImGui::SameLine();
       std::string file = media::Utf8(svr_movie_file_.filename().wstring());
       if (file.rfind("svr_", 0) == 0)  // (a copy out of the disc)
         file.erase(0, 4);
       char label[64];
-      snprintf(label, sizeof(label), fr ? "La sienne dans SvR 2011 (%s)" : "Its own in SvR 2011 (%s)", file.c_str());
+      snprintf(label, sizeof(label), fr ? "La sienne dans %s (%s)" : "Its own in %s (%s)", GameName(svr_game_), file.c_str());
       if (ImGui::RadioButton(label, svr_movie_)) {
         svr_movie_ = true;
         own_movie_ = false;
@@ -771,12 +771,13 @@ class Page {
       ImGui::TextDisabled("%s", fr ? "(pour reprendre sa vidéo : installez RAD Video Tools, gratuit ; voir MES DISQUES)"
                                    : "(to bring its movie: install RAD Video Tools, free; see MY GAME DISCS)");
     if (look_ == 2 && svr_movie_file_.empty() && !svr_attires_.empty())
-      ImGui::TextDisabled("%s", fr ? "(ce catcheur n'a pas de vidéo à lui dans SvR 2011)"
-                                   : "(this superstar has no movie of its own in SvR 2011)");
+      ImGui::TextDisabled(fr ? "(ce catcheur n'a pas de vidéo à lui dans %s)" : "(this superstar has no movie of its own in %s)",
+                          GameName(svr_game_));
     if (svr_movie_) {
       ImGui::Dummy(ImVec2(0, 6));
-      ImGui::TextDisabled("%s", fr ? "Sa vidéo de SvR 2011, titantron et minitron, reprise telle quelle :"
-                                   : "Its SvR 2011 movie, titantron and minitron, taken as it is:");
+      ImGui::TextDisabled(fr ? "Sa vidéo de %s, titantron et minitron, reprise telle quelle :"
+                             : "Its %s movie, titantron and minitron, taken as it is:",
+                          GameName(svr_game_));
       svr_view_.DrawGame(200);
     }
     if (own_movie_)
@@ -1768,7 +1769,7 @@ class Page {
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     manifest += "description=" + std::string(name_) + ", an attire of " + b.name +
-                (look_ == 4 ? " from a 3D model (FBX)" : look_ == 3 ? " ported from WWE '13 or 2K" : look_ == 2 ? " ported from SvR 2011" : "") +
+                (look_ == 4 ? " from a 3D model (FBX)" : look_ == 3 ? " ported from WWE '13 or 2K" : look_ == 2 ? " ported from " + std::string(GameName(svr_game_)) : std::string()) +
                 ", made with the WWE '12 Mod Maker.\n";
     if (!mods::Manager::WriteZip(save_, {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
                                          {"attire/attire.pac", std::move(one)}})) {
@@ -1820,11 +1821,11 @@ class Page {
                 (chosen_ ? b.name : "an average superstar (" + b.name + ")") +
                 (look_ == 4   ? ", its look from a 3D model (FBX)"
                  : look_ == 3 ? ", its look ported from WWE '13 (the player's own copy)"
-                 : look_ == 2 ? ", its look ported from SvR 2011 (the player's own file)"
+                 : look_ == 2 ? ", its look ported from " + std::string(GameName(svr_game_)) + " (the player's own file)"
                  : look_ == 1 ? ", with its own look"
                               : "") +
                 (movie.empty()  ? ""
-                 : svr_movie_ ? ", its SvR 2011 entrance video"
+                 : svr_movie_ ? ", its " + std::string(GameName(svr_game_)) + " entrance video"
                  : twok_movie_ ? ", its entrance video from " + std::string(GameName(game_title_))
                               : ", its own entrance video (" + movie_.Parts() + ")") +
                 ", made with the WWE '12 Mod Maker.\n";
