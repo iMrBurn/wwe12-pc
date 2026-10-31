@@ -101,6 +101,37 @@ extern "C" REX_FUNC(sub_824750C0) {
   });
 }
 
+// A third job object with the same kind of race (frozen entrances with Rey Mysterio, hang traces of
+// 0.9.0 from two players, 2026-10-30): the one at [0x83174240], served by sub_822B2FA8 (waits +104
+// "work", runs sub_822B2CA0, then sets +108 "done"). The game thread posts it with sub_822B2920:
+// flag +100 = 1, SetEvent(+104), THEN ClearEvent(+108); sub_821D5628 then waits +108 with no
+// timeout (sub_822B2B20). If the worker finishes before the poster's ClearEvent (fewer cores), the
+// "done" signal is erased and the game thread waits forever. Same steps, done cleared first.
+REXCVAR_DEFINE_BOOL(wwe12_job_pool_fix, true, "WWE12",
+                    "Fix a race in another of the game's job threads that can freeze entrances "
+                    "(seen with Rey Mysterio on 2- and 4-thread processors).");
+REX_EXTERN(__imp__sub_822B2920);
+REX_EXTERN(sub_82A89BE0);  // NtClearEvent
+
+extern "C" REX_FUNC(sub_822B2920) {
+  if (!REXCVAR_GET(wwe12_job_pool_fix)) {
+    __imp__sub_822B2920(ctx, base);
+    return;
+  }
+  const u32 obj = bd::mem::load<u32>(0x83174240);
+  if (!obj)
+    return;
+  const u32 work = bd::mem::load<u32>(obj + 104);
+  if (!work)
+    return;
+  bd::mem::store<u32>(obj + 100, 1);
+  ctx.r3.u64 = bd::mem::load<u32>(obj + 108);
+  sub_82A89BE0(ctx, base);
+  std::atomic_thread_fence(std::memory_order_seq_cst);
+  ctx.r3.u64 = work;
+  sub_821AEC28(ctx, base);
+}
+
 extern "C" REX_FUNC(sub_821E0AD0) {
   if (!REXCVAR_GET(wwe12_actor_jobs_fix)) {
     __imp__sub_821E0AD0(ctx, base);
