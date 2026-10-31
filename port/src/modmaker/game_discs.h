@@ -32,6 +32,11 @@ struct Known {
 };
 
 inline constexpr Known kKnown[] = {
+    // (SvR 2007-2010: through SvR 2011's format, after Kaiko's tools; docs/plan_svr_anciens.md)
+    {0x545107E0, "WWE SmackDown vs. Raw 2007", Can::kSoon, Can::kSoon},
+    {0x5451080B, "WWE SmackDown vs. Raw 2008", Can::kSoon, Can::kSoon},
+    {0x54510826, "WWE SmackDown vs. Raw 2009", Can::kSoon, Can::kSoon},
+    {0x54510844, "WWE SmackDown vs. Raw 2010", Can::kSoon, Can::kYes},
     {0x5451085D, "WWE SmackDown vs. Raw 2011", Can::kYes, Can::kYes},
     {0x54510890, "WWE '12", Can::kNo, Can::kNo},  // (this game)
     {0x545108B4, "WWE '13", Can::kYes, Can::kYes},

@@ -57,7 +57,12 @@ redemander ou s'en tenir aux idées).
 
 Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
 
-## Questions pour l'utilisateur
+## Décision et avancement
 
-- D'accord pour reprendre en C++ la méthode des outils de Kaiko (avec crédit) ? Faut-il lui redemander ?
-- Par quoi commencer : catcheurs ou arènes ?
+- **2026-10-31 : l'utilisateur accepte** de reprendre en C++ la méthode des outils de Kaiko, avec crédit.
+- **Étape 1 faite** : « Mes disques » reconnaît SvR 2007 à 2010 (`game_discs.h`, « bientôt » sauf ce qui marche).
+- **Étape 2 faite (vérifiée hors du jeu, pas encore en jeu)** : les catcheurs de SvR 2010 passent **tels quels** par
+  le portage SvR 2011 (`port_svr::PortAttire` : ch104 Jericho, ch100, ch125, ch139 Cena et ses 4 tenues) ; leurs noms
+  (chEtc.pac, 334 fiches), portraits (DLC_HD.pac SSFA/SSFB/SSFC) et vidéos (movies/titantron/NNN.bik) sont rangés
+  comme dans 2011. Page NOUVEAU CATCHEUR : apparence « SvR » puis SvR 2011 ou SvR 2010 (`svr_game_`, gardé dans les
+  projets). Prises de 2010 pas encore lues (ses cases ne sont pas celles de 2011 : table de `svr10_moves.py`).
