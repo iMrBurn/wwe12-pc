@@ -774,11 +774,12 @@ inline Bytes Clear(const Bytes &like) {
   return svrfmt::DdsEncode(img, info.format, info.mips > 1);
 }
 
-// The pictures of a VS screen (its entry 7001, at any depth).
+// The pictures of a VS screen (its entry 7001, at any depth; WWE 2K17's in SHDC lists).
 inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n) {
   if (n.id == 7001 && svrfmt::ArchiveKindOf(n) == "textures")
     return &n;
-  if (svrfmt::ArchiveKindOf(n) == "PACH" && svrfmt::ArchiveExpand(n))
+  const std::string kind = svrfmt::ArchiveKindOf(n);
+  if ((kind == "PACH" || kind == "SHDC") && svrfmt::ArchiveExpand(n))
     for (auto &c : n.kids)
       if (auto *p = Pictures(c))
         return p;
@@ -1116,7 +1117,9 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
   using namespace detail;
   out.clear();
   svrfmt::Archive w;
-  if (logo.rgba.empty() || !svrfmt::ArchiveOpen(evtgd12, w, nullptr))
+  // (no logo needed with both of its own plates: WWE 2K15's SmackDown had none, and its plates were left out)
+  const bool both = !location.img.rgba.empty() && !name.img.rgba.empty();
+  if ((logo.rgba.empty() && !both) || !svrfmt::ArchiveOpen(evtgd12, w, nullptr))
     return false;
   svrfmt::ArcNode *tpl = nullptr;
   for (auto &k : w.root.kids)
@@ -1124,7 +1127,8 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
       tpl = &k;
   if (!tpl || !svrfmt::ArchiveExpand(*tpl))
     return false;
-  const svrfmt::Image wide = svrfmt::Resize(logo, std::max(1, int(logo.h * logo_wide)), logo.h);
+  const svrfmt::Image wide =
+      logo.rgba.empty() ? svrfmt::Image() : svrfmt::Resize(logo, std::max(1, int(logo.h * logo_wide)), logo.h);
   const auto wear = [](svrfmt::ArcNode &pic, const svrfmt::Image &img) {
     const Bytes d = svrfmt::ArchiveData(pic);
     if (d.size() > 128 && memcmp(d.data(), "DDS ", 4) == 0)
@@ -1155,7 +1159,7 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
           svrfmt::ArchiveReplace(pic, pic.id == 21 ? svrfmt::DdsEncode(svrfmt::Resize(own.img, info.w, info.h),
                                                                        info.format, info.mips > 1)
                                                    : Clear(d));
-      } else if (e.id != 20 && (pic.id == 0 || (pic.id >= 6 && pic.id <= 20))) {
+      } else if (e.id != 20 && !wide.rgba.empty() && (pic.id == 0 || (pic.id >= 6 && pic.id <= 20))) {
         wear(pic, wide);
       }
     }

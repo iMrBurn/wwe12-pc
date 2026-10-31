@@ -1528,6 +1528,24 @@ class Page {
           if (k.group == "MLYE" && k.name == nb)
             if (auto *p = port_svr_arena::detail::Pictures(k))
               svrfmt::BundleRead(svrfmt::ArchiveData(*p), pictures2k);
+      // WWE 2K17: its entries go by a hash of their name (unknown), the base's VS screen was shown (SmackDown,
+      // 2026-10-31). Its VS screens (the entries with a "matchup_BG" picture) are stored in the order of the arenas:
+      // 45 of them for its 46 arenas, their logos match arenas 0-17 (SmackDown, RAW, NXT... Main Event), one is missing
+      // after that: the arena's rank among the disc's arenas, for those only.
+      const auto rank = std::find(w13_list_.begin(), w13_list_.end(), w13_pick_);
+      if (pictures2k.empty() && m.root.kind == svrfmt::ArcKind::Hspc && w13_pick_ <= 17 && rank != w13_list_.end()) {
+        std::vector<std::pair<uint64_t, std::vector<svrfmt::BundleTexture>>> cards;
+        for (auto &k : m.root.kids)
+          if (auto *p = port_svr_arena::detail::Pictures(k)) {
+            std::vector<svrfmt::BundleTexture> pics;
+            if (svrfmt::BundleRead(svrfmt::ArchiveData(*p), pics) && port_svr_arena::detail::Named(pics, "matchup_BG"))
+              cards.emplace_back(k.order, std::move(pics));
+          }
+        std::sort(cards.begin(), cards.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+        const size_t i = size_t(rank - w13_list_.begin());
+        if (i < cards.size())
+          pictures2k = std::move(cards[i].second);
+      }
     }
     if (y_title_ != kWwe13 ? port_svr_arena::CardWearing(pictures2k, matchhd12, svrfmt::Image(), card_mb_, card_mf_, nullptr, true)
                            : !matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))
@@ -1553,6 +1571,9 @@ class Page {
         etex_.clear();
         if (const auto *l = port_svr_arena::detail::Named(pictures2k, "logo"))
           svrfmt::DdsDecode(l->data, logo);
+        for (const auto &t : pictures2k)  // (2K15's: smack_logo, raw_logo, nxt_fr_logo...)
+          if (logo.rgba.empty() && t.name.size() > 5 && t.name.compare(t.name.size() - 5, 5, "_logo") == 0)
+            svrfmt::DdsDecode(t.data, logo);
         if (logo.rgba.empty())
           logo = banner_;
         // ... and its own plates, a picture of each of its plate movies (2K15-2K17: Bink 2, when a decoder is

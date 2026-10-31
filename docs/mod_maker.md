@@ -700,6 +700,14 @@ places ×10, d'après le code de Kaiko).
   sur sa propre plage de v). (3) **Régression corrigée** : la branche 2K14 (e0cfffa) se déclenchait aussi pour
   WrestleMania 31 de 2K16 (son 807 est `main&banner`) : elle ne s'applique plus qu'aux arènes sans image `layout_*`.
   Vérifié hors du jeu : SmackDown 2K15 / 2K17, WM 31, RAW 2K14.
+- **2e essai en jeu (2026-10-31)** : écrans corrigés sur les deux SmackDown ; plaques 2K17 OK (ville sur le bas de
+  la plaque) ; **aucune plaque pour 2K15** : `EtexWearing` exigeait un logo, pris dans l'écran VS sous le nom `logo`,
+  or 2K15 l'appelle `smack_logo`, `raw_logo`… → plus de logo exigé quand les deux plaques 2K sont là, et les noms
+  `*_logo` acceptés. **Écran VS de 2K17 = celui de la base** : ses entrées vont par empreinte d'un nom inconnu (essayé :
+  MurmurHash64A de MBnn, MLYE/MBnn… graine 0x12345678 ou 0 : rien). Ses écrans VS (entrées avec une image
+  `matchup_BG`) sont rangés dans l'ordre des arènes : 45 pour 46 arènes, logos conformes pour les arènes 0-17 ;
+  l'arène prend l'écran de son rang parmi les arènes du disque, pour 0-17 seulement (`detail::Pictures` descend aussi
+  dans les SHDC). Vérifié hors du jeu : SmackDown 2K17 → carte 0 (logo SmackDown), habillée sur MB09.
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 
