@@ -1532,19 +1532,89 @@ class Page {
       // 2026-10-31). Its VS screens (the entries with a "matchup_BG" picture) are stored in the order of the arenas:
       // 45 of them for its 46 arenas, their logos match arenas 0-17 (SmackDown, RAW, NXT... Main Event), one is missing
       // after that: the arena's rank among the disc's arenas, for those only.
+      // Better, by name: its plates' layouts (pac/evt/evtlayout.pac, one "00NN_<name>" per arena, its 2D animation's
+      // first name the theme: 0044_wwelive -> wwelive91) and its VS screens' animations ("HDXbox_" + the theme's first
+      // 8 letters) give 39 of its arenas their VS screen; themes alike (two Royal Rumbles, two Halloween Havocs...)
+      // taken in the arenas' order.
       const auto rank = std::find(w13_list_.begin(), w13_list_.end(), w13_pick_);
-      if (pictures2k.empty() && m.root.kind == svrfmt::ArcKind::Hspc && w13_pick_ <= 17 && rank != w13_list_.end()) {
-        std::vector<std::pair<uint64_t, std::vector<svrfmt::BundleTexture>>> cards;
+      if (pictures2k.empty() && m.root.kind == svrfmt::ArcKind::Hspc) {
+        struct Card {
+          uint64_t order;
+          std::string theme;
+          std::vector<svrfmt::BundleTexture> pics;
+        };
+        std::vector<Card> cards;
+        const auto find_id = [](auto &self, svrfmt::ArcNode &n, uint32_t id, int depth) -> svrfmt::ArcNode * {
+          if (n.id == id && depth)
+            return &n;
+          if (depth < 4 && svrfmt::ArchiveExpand(n))
+            for (auto &c : n.kids)
+              if (auto *f = self(self, c, id, depth + 1))
+                return f;
+          return nullptr;
+        };
+        const auto text_after = [](const Bytes &d, const char *key) {
+          const size_t n = strlen(key);
+          for (size_t i = 0; i + n < d.size(); ++i)
+            if (memcmp(&d[i], key, n) == 0) {
+              std::string s;
+              for (size_t j = i + n; j < d.size() && (isalnum(d[j]) || d[j] == '_'); ++j)
+                s += char(d[j]);
+              return s;
+            }
+          return std::string();
+        };
         for (auto &k : m.root.kids)
           if (auto *p = port_svr_arena::detail::Pictures(k)) {
             std::vector<svrfmt::BundleTexture> pics;
-            if (svrfmt::BundleRead(svrfmt::ArchiveData(*p), pics) && port_svr_arena::detail::Named(pics, "matchup_BG"))
-              cards.emplace_back(k.order, std::move(pics));
+            if (!svrfmt::BundleRead(svrfmt::ArchiveData(*p), pics) || !port_svr_arena::detail::Named(pics, "matchup_BG"))
+              continue;
+            const auto *anim = find_id(find_id, k, 7002, 0);
+            cards.push_back({k.order, anim ? text_after(svrfmt::ArchiveData(*anim), "HDXbox_") : "", std::move(pics)});
           }
-        std::sort(cards.begin(), cards.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
-        const size_t i = size_t(rank - w13_list_.begin());
-        if (i < cards.size())
-          pictures2k = std::move(cards[i].second);
+        std::sort(cards.begin(), cards.end(), [](const Card &a, const Card &b) { return a.order < b.order; });
+        // arena -> theme, from its plates' layouts
+        std::map<int, std::string> themes;
+        svrfmt::Archive el;
+        if (svrfmt::ArchiveOpen(Read13("pac/evt/evtlayout.pac"), el, nullptr))
+          for (auto &k : el.root.kids) {
+            auto *anim = find_id(find_id, k, 7002, 0);
+            const Bytes d = anim ? svrfmt::ArchiveData(*anim) : Bytes();
+            const size_t a = d.size() > 0x30 ? size_t(std::search(d.begin(), d.end(), "ATB0", "ATB0" + 4) - d.begin()) : 0;
+            if (a == 0 || a + 0x20 > d.size() || d.size() < 0x20)
+              continue;
+            const std::string own(reinterpret_cast<const char *>(&d[0x10]), strnlen(reinterpret_cast<const char *>(&d[0x10]), 16));
+            if (own.size() < 6 || !isdigit(own[0]) || !isdigit(own[3]) || own[4] != '_' ||
+                own.compare(own.size() - 2, 2, "_l") == 0 || !isdigit(own[1]) || !isdigit(own[2]))
+              continue;
+            const uint32_t noff = uint32_t(d[a + 0x1C] | d[a + 0x1D] << 8 | d[a + 0x1E] << 16 | d[a + 0x1F] << 24);
+            if (a + noff + 16 > d.size())
+              continue;
+            std::string theme(reinterpret_cast<const char *>(&d[a + noff]), strnlen(reinterpret_cast<const char *>(&d[a + noff]), 16));
+            if (theme.rfind("HDPS3_", 0) == 0 || theme.rfind("HDXbox_", 0) == 0)
+              theme = theme.substr(theme.find('_') + 1);
+            themes[atoi(own.substr(0, 4).c_str())] = theme;
+          }
+        const auto alike = [](const std::string &a, const std::string &b) {
+          return !a.empty() && !b.empty() && (a.rfind(b, 0) == 0 || b.rfind(a, 0) == 0);
+        };
+        if (const auto it = themes.find(w13_pick_); it != themes.end()) {
+          std::vector<size_t> mine;  // the cards of its theme, in order
+          for (size_t i = 0; i < cards.size(); ++i)
+            if (alike(cards[i].theme, it->second))
+              mine.push_back(i);
+          size_t before = 0;  // the arenas before it whose theme takes the same cards
+          for (const auto &[file, theme] : themes)
+            if (file < w13_pick_ && !mine.empty() && alike(cards[mine[0]].theme, theme))
+              ++before;
+          if (!mine.empty())
+            pictures2k = std::move(cards[mine[std::min(before, mine.size() - 1)]].pics);
+        }
+        if (pictures2k.empty() && w13_pick_ <= 17 && rank != w13_list_.end()) {
+          const size_t i = size_t(rank - w13_list_.begin());
+          if (i < cards.size())
+            pictures2k = std::move(cards[i].pics);
+        }
       }
     }
     if (y_title_ != kWwe13 ? port_svr_arena::CardWearing(pictures2k, matchhd12, svrfmt::Image(), card_mb_, card_mf_, nullptr, true)

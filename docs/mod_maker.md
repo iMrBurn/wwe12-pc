@@ -717,6 +717,16 @@ places ×10, d'après le code de Kaiko).
   plaque complète sur son dernier calque (1024), tous les calques du flip-book placés comme la barre (`Ag2dFlipBook`,
   `Ag2dPlaceLayer`), la barre vidée. Hauteurs en puissance de deux inférieure : plaques de 0,9 à 1,3 Mo (WM XXVII :
   1,1 Mo ; 2 Mo avec l'arrondi au-dessus).
+- **Écrans VS de 2K17 par nom (2026-10-31, vérifié hors du jeu en Python, pas en jeu)** : `pac/evt/evtlayout.pac`
+  (113 entrées SHDC : 7000 YXML « Nameplate », 7002 animation `ATB0`) a une plaque par arène nommée `00NN_<nom>`
+  (+0x10 de la 7002 ; `_l` = locator) dont l'ATB0 (en-tête petit-boutiste : +0x10 calques (nombre, position ; 0x20 :
+  w, h, image, piste, nom), +0x18 noms (nombre, position ; 16 octets), +0x20 pistes…) a pour premier nom le thème
+  (`0044_wwelive` → `wwelive91`, `HDPS3_` retiré). Les écrans VS de `MatchHD.pac` ont dans leur 7002 `HDXbox_` + les 8
+  premières lettres du thème. 39 arènes sur 46 retrouvent ainsi leur écran (Nitro, Halloween Havoc, Fully Loaded,
+  WWF Live 91…) ; thèmes pareils (deux Royal Rumble, deux Halloween Havoc, deux Saturday Night's Main Event) pris dans
+  l'ordre des arènes. L'ordre seul reste en secours pour 0-17. Les calques de texte des plaques 2K17 sont aussi dans
+  ces ATB0 (`Name1` 220 × 40, `SNS`, `Belt`, `Manager` ; 11 canaux par piste, clés de 16 octets) : coordonnées pas
+  encore comprises.
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 
