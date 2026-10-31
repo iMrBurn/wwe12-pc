@@ -1546,6 +1546,323 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
   return out.size() >= 4 && memcmp(out.data(), "PACH", 4) == 0;
 }
 
+// ---- SvR 2008 / 2009 entrance graphics. Their plates are 2D animations WWE '12 can't play (ATB0 version 1, as WWE
+// 2K17's layouts, little-endian: +0x10 layers (count, offset; 0x20 each: w, h, picture, track, name[16]), +0x18 names,
+// +0x20 tracks (count) at +0x28, +0x2C the length in frames (60 a second); a track 0x10 {channels, parent, offset of
+// its channels}, a channel 0x10 {first key, end, id, keys}, a key 16 bytes {x, y, frame, 0}: channel 0 the place (of
+// the layer's centre, on 640 x 448, its parents' added), 1 the scale, 2 the colour (R, G, B, A bytes: the layers
+// flash on and off by it), 5 and 6 the corners of the picture shown (u, v: flipped ones 1 to 0), 8 the screen
+// (640, 448)). So they are drawn here, frame by frame, from their pictures:
+// SvR 2009's pac/evt/_EvtGdHD.pac ETEX/00NN (pictures entry 0, the name plate's animation 10000; 10010 the WWE
+// logo crossed by streaks that opens its entrances, the same in every arena), SvR 2008's ET2D/00NN (0 and 10000).
+// The name plate comes in by its flip book (as the 2K games' plates, EtexWearing); the logo animation is made the
+// arena's transition movie. Seen on SvR 2009's RAW (2026-10-31): its plate slides in from the left at the bottom,
+// the logo's streaks sweep the screen in 60 frames.
+namespace detail {
+
+struct Atb1Key {
+  float x = 0, y = 0;
+  uint8_t c[4] = {255, 255, 255, 255};
+  uint32_t frame = 0;
+};
+struct Atb1 {
+  struct Layer {
+    int w, h, pic, track;
+  };
+  struct Track {
+    int parent = -1;
+    std::map<uint32_t, std::vector<Atb1Key>> ch;
+  };
+  std::vector<Layer> layers;
+  std::vector<Track> tracks;
+  int length = 0;
+};
+
+inline bool Atb1Read(const Bytes &d, Atb1 &a) {
+  const auto u = [&](size_t o) { return o + 4 <= d.size() ? svrfmt::Le32(&d[o]) : 0u; };
+  if (d.size() < 0x30 || memcmp(d.data(), "ATB0", 4) != 0)
+    return false;
+  const uint32_t nl = u(0x10), lo = u(0x14), nt = u(0x20), to = u(0x28);
+  a = {};
+  a.length = int(u(0x2C));
+  if (nl > 512 || nt > 512 || lo + 0x20 * size_t(nl) > d.size() || to + 0x10 * size_t(nt) > d.size())
+    return false;
+  for (uint32_t i = 0; i < nl; ++i)
+    a.layers.push_back({int(u(lo + 0x20 * i)), int(u(lo + 0x20 * i + 4)), int(u(lo + 0x20 * i + 8)),
+                        int(u(lo + 0x20 * i + 12))});
+  for (uint32_t t = 0; t < nt; ++t) {
+    Atb1::Track tr;
+    const uint32_t nc = u(to + 16 * t), off = u(to + 16 * t + 8);
+    tr.parent = int(u(to + 16 * t + 4));
+    for (uint32_t c = 0; c < nc && c < 32; ++c) {
+      const uint32_t s = u(off + 16 * c), e = u(off + 16 * c + 4), id = u(off + 16 * c + 8), keys = u(off + 16 * c + 12);
+      if (!keys || e <= s || (e - s) / keys != 16 || e > d.size())
+        continue;
+      auto &out = tr.ch[id];
+      for (uint32_t k = 0; k < keys; ++k) {
+        const size_t at = s + 16 * size_t(k);
+        Atb1Key key;
+        key.x = svrfmt::LeF(&d[at]);
+        key.y = svrfmt::LeF(&d[at + 4]);
+        memcpy(key.c, &d[at], 4);
+        key.frame = u(at + 8);
+        out.push_back(key);
+      }
+    }
+    a.tracks.push_back(std::move(tr));
+  }
+  return !a.layers.empty();
+}
+
+// A channel at frame t: its keys in between, straight (x, y and the colour's bytes).
+inline Atb1Key Atb1At(const std::vector<Atb1Key> &k, float t) {
+  if (k.empty())
+    return {};
+  if (t <= float(k[0].frame))
+    return k[0];
+  for (size_t i = 1; i < k.size(); ++i)
+    if (t <= float(k[i].frame)) {
+      const float f = (t - float(k[i - 1].frame)) / std::max(1.0f, float(k[i].frame) - float(k[i - 1].frame));
+      Atb1Key r;
+      r.x = k[i - 1].x + (k[i].x - k[i - 1].x) * f;
+      r.y = k[i - 1].y + (k[i].y - k[i - 1].y) * f;
+      for (int c = 0; c < 4; ++c)
+        r.c[c] = uint8_t(k[i - 1].c[c] + (int(k[i].c[c]) - int(k[i - 1].c[c])) * f + 0.5f);
+      return r;
+    }
+  return k.back();
+}
+
+// One layer's place, size (640 x 448 units), colour and picture corners (uv: u0, v0, u1, v1) at frame t; false when it
+// doesn't show.
+inline bool Atb1Place(const Atb1 &a, const Atb1::Layer &l, float t, float &x, float &y, float &w, float &h, float c[4],
+                      float *uv = nullptr) {
+  std::vector<int> chain;
+  for (int k = l.track; k >= 0 && size_t(k) < a.tracks.size() && chain.size() < 16; k = a.tracks[size_t(k)].parent)
+    chain.push_back(k);
+  x = y = 0;
+  float sx = 1, sy = 1;
+  c[0] = c[1] = c[2] = c[3] = 1;
+  for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+    const auto &ch = a.tracks[size_t(*it)].ch;
+    if (const auto p = ch.find(0); p != ch.end()) {
+      const Atb1Key k = Atb1At(p->second, t);
+      x += sx * k.x;
+      y += sy * k.y;
+    }
+    if (const auto p = ch.find(1); p != ch.end()) {
+      const Atb1Key k = Atb1At(p->second, t);
+      sx *= k.x;
+      sy *= k.y;
+    }
+    if (const auto p = ch.find(2); p != ch.end()) {
+      const Atb1Key k = Atb1At(p->second, t);
+      for (int q = 0; q < 4; ++q)
+        c[q] *= k.c[q] / 255.0f;
+    }
+  }
+  w = l.w * sx;
+  h = l.h * sy;
+  if (uv && l.track >= 0 && size_t(l.track) < a.tracks.size()) {
+    const auto &ch = a.tracks[size_t(l.track)].ch;
+    uv[0] = uv[1] = 0;
+    uv[2] = uv[3] = 1;
+    if (const auto p = ch.find(5); p != ch.end()) {
+      const Atb1Key k = Atb1At(p->second, t);
+      uv[0] = k.x;
+      uv[1] = k.y;
+    }
+    if (const auto p = ch.find(6); p != ch.end()) {
+      const Atb1Key k = Atb1At(p->second, t);
+      uv[2] = k.x;
+      uv[3] = k.y;
+    }
+  }
+  return c[3] > 0.004f && std::isfinite(x) && std::isfinite(y) && std::abs(w) >= 0.5f && std::abs(h) >= 0.5f;
+}
+
+// The animation at frame t drawn over `canvas` (straight alpha), 640 x 448 units times sx, sy, moved by ox, oy.
+inline void Atb1Draw(const Atb1 &a, const std::map<uint32_t, svrfmt::Image> &pics, float t, svrfmt::Image &canvas,
+                     float sx, float sy, float ox, float oy) {
+  for (const auto &l : a.layers) {
+    const auto pic = pics.find(uint32_t(l.pic));
+    float x, y, w, h, c[4], uv[4] = {0, 0, 1, 1};
+    if (l.pic < 0 || pic == pics.end() || pic->second.w <= 0 || !Atb1Place(a, l, t, x, y, w, h, c, uv))
+      continue;
+    const svrfmt::Image &p = pic->second;
+    const float dw = w * sx, dh = h * sy, x0 = ox + x * sx - dw / 2, y0 = oy + y * sy - dh / 2;
+    const int ax = std::max(0, int(std::floor(std::min(x0, x0 + dw)))),
+              bx = std::min(canvas.w, int(std::ceil(std::max(x0, x0 + dw))));
+    const int ay = std::max(0, int(std::floor(std::min(y0, y0 + dh)))),
+              by = std::min(canvas.h, int(std::ceil(std::max(y0, y0 + dh))));
+    for (int py = ay; py < by; ++py)
+      for (int px = ax; px < bx; ++px) {
+        // (bilinear in the picture)
+        const float su = ((px + 0.5f) - x0) / dw, sv = ((py + 0.5f) - y0) / dh;
+        const float fu = (uv[0] + (uv[2] - uv[0]) * su) * p.w - 0.5f, fv = (uv[1] + (uv[3] - uv[1]) * sv) * p.h - 0.5f;
+        if (fu < -0.5f || fv < -0.5f || fu > p.w - 0.5f || fv > p.h - 0.5f)
+          continue;
+        const int u0 = std::clamp(int(std::floor(fu)), 0, p.w - 1), v0 = std::clamp(int(std::floor(fv)), 0, p.h - 1);
+        const int u1 = std::min(u0 + 1, p.w - 1), v1 = std::min(v0 + 1, p.h - 1);
+        const float du = std::clamp(fu - u0, 0.0f, 1.0f), dv = std::clamp(fv - v0, 0.0f, 1.0f);
+        float s[4];
+        for (int q = 0; q < 4; ++q) {
+          const auto at = [&](int uu, int vv) { return float(p.rgba[(size_t(vv) * p.w + uu) * 4 + q]); };
+          s[q] = (at(u0, v0) * (1 - du) + at(u1, v0) * du) * (1 - dv) + (at(u0, v1) * (1 - du) + at(u1, v1) * du) * dv;
+        }
+        const float sa = s[3] / 255 * c[3];
+        if (sa <= 0)
+          continue;
+        uint8_t *d = &canvas.rgba[(size_t(py) * canvas.w + px) * 4];
+        const float da = d[3] / 255.0f, oa = sa + da * (1 - sa);
+        for (int q = 0; q < 3; ++q)
+          d[q] = uint8_t(std::clamp((s[q] * c[q] * sa + d[q] * da * (1 - sa)) / oa, 0.0f, 255.0f));
+        d[3] = uint8_t(std::clamp(oa * 255, 0.0f, 255.0f));
+      }
+  }
+}
+
+inline svrfmt::Image Blank(int w, int h) {
+  svrfmt::Image i;
+  i.w = w;
+  i.h = h;
+  i.rgba.assign(size_t(w) * h * 4, 0);
+  return i;
+}
+
+inline svrfmt::Image Crop(const svrfmt::Image &f, int x, int y, int w, int h) {
+  svrfmt::Image c = Blank(std::max(1, w), std::max(1, h));
+  for (int r = 0; r < c.h; ++r)
+    for (int q = 0; q < c.w; ++q)
+      if (x + q >= 0 && y + r >= 0 && x + q < f.w && y + r < f.h)
+        memcpy(&c.rgba[(size_t(r) * c.w + q) * 4], &f.rgba[(size_t(y + r) * f.w + x + q) * 4], 4);
+  return c;
+}
+
+}  // namespace detail
+
+// SvR 2008 / 2009's entrance graphics for arena `file` (`year` 2008 or 2009) from their _EvtGdHD.pac: `name` its name
+// plate as the 2K ones (Plate2K: its picture held, its flip book coming in, placed so its middle bar, where the game
+// writes the name, falls on WWE '12's text for `base`: PlateTextFor), `transition` (2009) the logo animation's
+// frames, 30 a second, at 320 x 320 (WWE '12's transition movies are square, shown over the whole screen).
+inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate2K &name,
+                         std::vector<svrfmt::Image> *transition = nullptr) {
+  using namespace detail;
+  name = {};
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(evtgd, a, nullptr))
+    return false;
+  char want[8];
+  snprintf(want, sizeof(want), "%04d", file);
+  svrfmt::ArcNode *e = nullptr;
+  for (auto &k : a.root.kids)
+    if (k.group == (year == 2008 ? "ET2D" : "ETEX") && k.name == want)
+      e = &k;
+  if (!e || !svrfmt::ArchiveExpand(*e))
+    return false;
+  std::map<uint32_t, std::map<uint32_t, svrfmt::Image>> pics;  // entry -> picture number -> picture
+  std::map<uint32_t, Atb1> anims;
+  for (auto &k : e->kids) {
+    if ((k.id != 0 && k.id != 10 && k.id != 10000 && k.id != 10010) || !svrfmt::ArchiveExpand(k))
+      continue;
+    for (const auto &p : k.kids) {
+      const Bytes d = svrfmt::ArchiveData(p);
+      svrfmt::Image img;
+      if (k.id < 10000 && svrfmt::DdsDecode(d, img))
+        pics[k.id][p.id] = std::move(img);
+      else if (k.id >= 10000 && p.id == 0)
+        Atb1Read(d, anims[k.id]);
+    }
+  }
+  // The name plate, on 1280 x 720 (640 x 448 stretched to it, as the game showed it) with room round it: its frames'
+  // light (the layers' alpha times their area) for where it comes in and where it holds.
+  if (const auto an = anims.find(10000); an != anims.end() && !an->second.layers.empty() && an->second.length > 4) {
+    const Atb1 &anim = an->second;
+    const float sx = 2.0f, sy = 720.0f / 448;
+    const int W = 1920, H = 1080, ox = 320, oy = 180;
+    const auto light = [&](float t) {
+      double sum = 0;
+      for (const auto &l : anim.layers) {
+        float x, y, w, h, c[4];
+        if (l.pic >= 0 && pics[0].count(uint32_t(l.pic)) && Atb1Place(anim, l, t, x, y, w, h, c))
+          sum += double(c[3]) * std::abs(w * h);
+      }
+      return sum;
+    };
+    int start = 0;
+    while (start < anim.length && light(float(start)) <= 0)
+      ++start;
+    // where it holds: of the sets of layers showing that last (a tenth of the time at least, not counting the coming
+    // in and going out: the first and last fifths), the one showing the most (its middle frame); some plates spend
+    // most of their time half shown (SvR 2009's Vengeance: a post alone)
+    std::map<std::vector<bool>, std::vector<int>> states;
+    for (int t = start + anim.length / 5; t < anim.length - anim.length / 5; ++t) {
+      std::vector<bool> on;
+      for (const auto &l : anim.layers) {
+        float x, y, w, h, c[4];
+        on.push_back(l.pic >= 0 && Atb1Place(anim, l, float(t), x, y, w, h, c) && c[3] > 0.5f);
+      }
+      states[on].push_back(t);
+    }
+    int hold = anim.length / 2;
+    size_t total = 0;
+    for (const auto &[on, ts] : states)
+      total += ts.size();
+    double best = 0;
+    for (const auto &[on, ts] : states)
+      if (ts.size() >= std::max<size_t>(6, total / 10) && light(float(ts[ts.size() / 2])) > best) {
+        best = light(float(ts[ts.size() / 2]));
+        hold = ts[ts.size() / 2];
+      }
+    if (light(float(hold)) <= 0)
+      for (int t = start; t < anim.length; ++t)
+        if (light(float(t)) > light(float(hold)))
+          hold = t;
+    svrfmt::Image still = Blank(W, H);
+    Atb1Draw(anim, pics[0], float(hold), still, sx, sy, float(ox), float(oy));
+    int x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (int y = 0; y < H; ++y)
+      for (int x = 0; x < W; ++x)
+        if (still.rgba[(size_t(y) * W + x) * 4 + 3] > 16) {
+          x0 = std::min(x0, x);
+          x1 = std::max(x1, x);
+          y0 = std::min(y0, y);
+          y1 = std::max(y1, y);
+        }
+    if (x1 > x0 && y1 > y0) {
+      x0 &= ~1;
+      y0 &= ~1;
+      const int w = (x1 - x0 + 2) & ~1, h = (y1 - y0 + 2) & ~1;
+      name.img = Crop(still, x0, y0, w, h);
+      name.w = 1.5f * w;
+      name.h = 1.5f * h;
+      // (the name on the bar: the plate's middle, a little right of it past the show's logo on its left)
+      const PlateText t = PlateTextFor(base);
+      name.x = t.name_x - 1.5f * 0.6f * w;
+      name.y = t.name_y - 1.5f * 0.5f * h;
+      // its coming in: 20 pictures from the first frame it shows, every other frame (the flip book shows each 2
+      // frames at 60 a second), at half size, cut as the plate
+      for (int k = 0; k < 20 && start + 2 * k < hold; ++k) {
+        svrfmt::Image half = Blank(W / 2, H / 2);
+        Atb1Draw(anim, pics[0], float(start + 2 * k), half, sx / 2, sy / 2, ox / 2.0f, oy / 2.0f);
+        name.intro.push_back(Crop(half, x0 / 2, y0 / 2, w / 2, h / 2));
+      }
+    }
+  }
+  // The logo animation (SvR 2009): 640 x 448 on the whole screen (its centre at 256, 224: drawn as on a 512-wide
+  // screen), then squeezed square.
+  if (transition)
+    if (const auto an = anims.find(10010); an != anims.end() && an->second.length > 4 && pics.count(10)) {
+      transition->clear();
+      for (int t = 0; t < an->second.length; t += 2) {
+        svrfmt::Image f = Blank(1280, 720);
+        Atb1Draw(an->second, pics[10], float(t), f, 2.5f, 720.0f / 448, 0, 0);
+        transition->push_back(svrfmt::Resize(f, 320, 320));
+      }
+    }
+  return !name.img.rgba.empty() || (transition && !transition->empty());
+}
+
 // The arena's own SvR 2011 entrance graphics (pac/evt/evtgdhd.pac ETEX/00NN: the same entries as WWE '12's, pictures
 // 0-90, 2D animations 10000-10040, fonts 20000-20011). Their 2D animations (AG2D: {"AG2D", size, 0x10001, frames,
 // names (count, offset), layers (0x20: w, h, parent, track, name), tracks (0x18: ?, rows << 16 | columns, frames << 16

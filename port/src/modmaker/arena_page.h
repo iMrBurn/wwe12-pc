@@ -1437,16 +1437,66 @@ class Page {
     dressed_mf_ = card_mf_;
     real_mb_.clear();
     real_mf_.clear();
-    // (SvR 2008 / 2009: their own VS screens, plates and transitions are older kinds: not taken)
+    // (SvR 2008 / 2009: their own VS screens are an older kind: not taken)
     const bool old_svr = svr_pick_ >= 0 && svr_year_ < 2010;
     if (!matchhd12.empty() && svr_pick_ >= 0 && !old_svr)
       port_svr_arena::SvrCard(matchhd, matchhd12, svr_pick_, real_mb_, real_mf_);
     UseRealVs();
-    // Its entrance plates and locator (evtgdhd.pac ETEX/00NN, keys of its 2D animations made WWE '12's).
+    // Its entrance plates and locator (evtgdhd.pac ETEX/00NN, keys of its 2D animations made WWE '12's; SvR 2010's
+    // the same in _EvtGdHD.pac).
     Bytes evtgd;
-    if (svr_pick_ >= 0 && !old_svr && svr_disc_.Read("pac/evt/evtgdhd.pac", evtgd) &&
+    if (svr_pick_ >= 0 && !old_svr &&
+        (svr_disc_.Read("pac/evt/evtgdhd.pac", evtgd) || svr_disc_.Read("pac/evt/_EvtGdHD.pac", evtgd)) &&
         port_svr_arena::SvrEtex(evtgd, svr_pick_, etex_))
       port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
+    // SvR 2008 / 2009: their name plate drawn from its 2D animation (port_svr_arena::OldSvrPlates), coming in as in
+    // the game, on WWE '12's plates (EtexWearing; the city's the same plate, these games had none), and SvR 2009's
+    // logo animation as the transition (Bink 1 with its alpha, 320 x 320 as the 2K ones).
+    Bytes evtgd12;
+    port_svr_arena::Plate2K plate;
+    std::vector<svrfmt::Image> transition;
+    if (old_svr && svr_disc_.Read("pac/evt/_EvtGdHD.pac", evtgd) &&
+        port_svr_arena::OldSvrPlates(evtgd, svr_pick_, svr_year_, slot_ >= 0 ? kSlots[slot_].number : 2, plate,
+                                     &transition)) {
+      if (!plate.img.rgba.empty() && disc_ && disc_->Read("pac/evt/evtgdhd.pac", evtgd12)) {
+        port_svr_arena::Plate2K city = plate;
+        const port_svr_arena::PlateText t = port_svr_arena::PlateTextFor(slot_ >= 0 ? kSlots[slot_].number : 2);
+        city.x += t.city_x - t.name_x;
+        city.y += t.city_y - t.name_y;
+        if (port_svr_arena::EtexWearing(evtgd12, svrfmt::Image(), 3.4, svrfmt::Image(), etex_, city, plate))
+          port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
+      }
+      if (!transition.empty()) {
+        wchar_t tmp[MAX_PATH];
+        GetTempPathW(MAX_PATH, tmp);
+        const fs::path out = fs::path(tmp) / L"wwe12_transition.bik";
+        bool ok = false;
+        if (FILE *f = _wfopen(out.c_str(), L"wb")) {
+          if (BinkWriter *bw = bink_writer_open_alpha(f, int(transition.size()), 320, 320)) {
+            ok = true;
+            std::vector<uint8_t> bgra;
+            for (const auto &img : transition) {
+              bgra = img.rgba;
+              for (size_t i = 0; i < bgra.size(); i += 4)
+                std::swap(bgra[i], bgra[i + 2]);
+              ok = ok && bink_writer_frame(bw, bgra.data()) == 1;
+            }
+            if (ok)
+              ok = bink_writer_close(bw) && !ferror(f);
+            else
+              bink_writer_free(bw);
+          }
+          fclose(f);
+        }
+        if (ok) {
+          std::ifstream in(out, std::ios::binary);
+          movie_.assign(std::istreambuf_iterator<char>(in), {});
+          port_note_ += fr ? " Avec sa transition (le logo WWE de SvR 2009)." : " With its transition (SvR 2009's WWE logo).";
+        }
+        std::error_code ec;
+        fs::remove(out, ec);
+      }
+    }
     // Its transition video (evtmov.pac MOVT/M0NN: Bink 1 at 640 x 640, as WWE '12's).
     Bytes evtmov;
     if (svr_pick_ >= 0 && !old_svr && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&

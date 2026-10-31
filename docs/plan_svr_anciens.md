@@ -93,3 +93,16 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
     2008 et les 19 de 2009 passent ; bannière = la plus grande image de leur écran VS (MENU/MnnI). Leur propre écran
     VS, leurs plaques et leur transition ne sont pas repris (formats plus anciens) : écran VS de WWE '12 habillé.
   - À voir en jeu : tout (catcheurs, sourcils / cils fusionnés en peau opaque, arènes, lumières).
+- **Plaques d'entrée et transitions (2026-10-31, demande de l'utilisateur, vérifié hors du jeu)** :
+  - Fichiers : 2008-2010 `pac/evt/_EvtGdHD.pac` / `_EvtMov.pac` (2011 : `evtgdhd.pac`, `evtmov.pac`). Les `MOV` de
+    2009/2010 sont les boucles du logo pour les écrans de l'arène (256 × 256), **pas** des transitions : la vidéo de
+    transition (MOVT) n'existe qu'à partir de 2011.
+  - **2010** : ETEX/00NN comme 2011 (AG2D) : `SvrEtex` les prend telles quelles. Pas de transition propre.
+  - **2009** : ETEX/00NN = images (entrée 0) + animation ATB0 version 1 (10000, la plaque de nom) ; 10010 = le logo WWE
+    traversé de traînées (60 images, le même partout) = **sa transition**. **2008** : ET2D/00NN, plaque de nom seule.
+  - ATB0 v1 lu et dessiné image par image (`port_svr_arena::OldSvrPlates`) : clé 16 octets {x, y, image, 0}, canal 0
+    place (centre du calque, sur 640 × 448, parents ajoutés), 1 échelle, 2 couleur RGBA (les calques s'allument une
+    image : arrivée en flip-book), longueur à +0x2C (60 images/s). La plaque tenue + 20 images d'arrivée vont sur les
+    plaques de WWE '12 (`EtexWearing`, comme les 2K ; la ville reçoit la même plaque), barre du nom à 60 % de la
+    largeur sur le texte de WWE '12 (`PlateTextFor`). Transition 2009 : 30 images (une sur deux), 320 × 320, Bink 1
+    avec alpha.
