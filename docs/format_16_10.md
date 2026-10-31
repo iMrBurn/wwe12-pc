@@ -103,7 +103,19 @@ Risques, du plus probable au moins probable :
 Si le résultat déçoit, le repli est simple : la cvar coupée = exactement le comportement
 d'aujourd'hui (AUTO avec bandes, ÉTIRER).
 
-## Prochaine étape
+## État (2026-10-31)
 
-Il faut le **go de l'utilisateur** avant d'écrire du code, puis son go pour chaque compilation et
-chaque lancement du jeu.
+Go de l'utilisateur pour le code ; tests faits par Main (fenêtre 1280x800, données isolées).
+- **Étape 1** (commit 1ec0082) : `native/wwe12_widescreen.cpp` (constante caméra, FOV vertical
+  élargi dans les 3 fonctions ; la page de la constante est en lecture seule, elle est rendue
+  inscriptible une fois, sinon plantage), cibles de scène en échelles X/Y (`svr_resources.cpp`),
+  présentation à la forme de la cible (`present.cpp`). Entrée et match remplissent la fenêtre.
+- **Étape 2** (commit a11e428) : sprites du HUD dans la bande 16:9 du milieu (`hooks/draw.cpp`,
+  `SvrHudSprite`, d'après une capture F9 : quads UP en pixels 1280x720, viewport actif, sans
+  profondeur). Signal « scène » : surface par tuiles OU dessins 3D plein écran (certains plans de
+  caméra n'utilisent pas les tuiles ; sans ça l'image passait en 16:9 à chaque plan).
+- **Reste à vérifier** : menu pause en match, retour aux menus (doivent repasser en 16:9), 21:9 avec
+  HUD, `--wwe12_widescreen=false`, barres de vie / noms / invites, D3D11 et D3D12, 360p/480p,
+  ligne FORMAT (AUTO = vrai 16:10, à confirmer par l'utilisateur), readmes et launcher (nouvelle cvar).
+
+Règle : le go de l'utilisateur pour chaque compilation et chaque lancement du jeu.
