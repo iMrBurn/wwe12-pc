@@ -90,6 +90,8 @@ class Discs {
     std::string line;
     fs::path dlc_root;
     while (std::getline(f, line)) {
+      while (!line.empty() && (line.back() == '\r' || line.back() == ' '))  // (a file saved with Windows line ends)
+        line.pop_back();
       const size_t bar = line.find('|');
       if (bar == std::string::npos)
         continue;

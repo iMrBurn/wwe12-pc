@@ -63,6 +63,11 @@ inline bool Reskeleton(svrfmt::Model &m, const svrfmt::Model &base, Report *rep,
     int k = find(base.nodes, extra != ExtraBones().end() ? extra->second : m.nodes[i].name);
     for (int p = m.nodes[i].parent; k < 0 && p >= 0; p = m.nodes[size_t(p)].parent)
       k = find(base.nodes, m.nodes[size_t(p)].name);
+    // (a model's root, named after the model: WWE 2K17 Sasha Banks's "transB_eyeshado" -> the base's
+    // "transB_eyelash")
+    for (size_t j = 0; k < 0 && m.nodes[i].parent < 0 && j < base.nodes.size(); ++j)
+      if (base.nodes[j].parent < 0)
+        k = int(j);
     map[i] = k;
   }
   for (auto &me : m.meshes)

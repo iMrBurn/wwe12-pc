@@ -1370,3 +1370,16 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   Testé avec l'archive de l'utilisateur (42 paquets) : catcheurs DLC SvR 2009 10, SvR 2011 12, WWE '13 16, 2K14 20,
   2K15 51, 2K16 38, 2K17 27 (presque tous nommés, portraits sauf 2K17 : noms en empreinte inconnue), arènes DLC
   SvR 2011 2, 2K15 14, 2K16 6, 2K17 5, toutes passées par le portage.
+- **Planches de visages SvR 2008 → 2K17 (2026-10-31, hors jeu)** : les 1 204 catcheurs des disques + DLC portés et
+  rendus de face (outil `face2k` du dossier temporaire). Corrigé :
+  - aperçu 3D (`arena_view.h`) : cils et cheveux (`yCh_trans`, `yCh_Aniso_trans`) découpés par l'alpha de la couleur
+    × l'alpha de la carte de normales, comme le jeu (les cils de WWE '12 et de 2K16 sont opaques dans la couleur,
+    dessinés dans l'alpha des normales) : Paige 2K16 n'a plus de taches noires ; le portage 2K, lui, était juste ;
+  - portage SvR (`port_svr.h`) : les autres modèles (cheveux, 20000) prennent le mouvement complet du corps par nom
+    d'os, même pour un os rangé avant son parent (`Turns`) : Big Show 2011 (pièces des yeux 35 cm trop haut, bouc aux
+    pieds) ; tête tournée par un sourcil limitée à ~20° (Stephanie 2011 : 55°) ; la découpe des pièces 20000 aussi
+    recopiée dans l'alpha des normales (`HairCut` sur `see_through` : le bouc de Big Show) ;
+  - portage 2K (`port13_star.h`) : la racine d'une pièce nommée autrement (2K17 Sasha Banks « transB_eyeshado »)
+    va à la racine de la pièce de la base ;
+  - `modmaker_discs.txt` lu même avec des fins de ligne Windows.
+  Restent : Mojo Rawley et Tye Dillinger (DLC 2K17) verts dans leurs propres fichiers (modèles provisoires du pack).

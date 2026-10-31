@@ -269,11 +269,12 @@ inline void KeepChains(const svrfmt::Model &svr, const std::vector<M4> &ws, cons
 // keep_chains (the hair, 10000): SvR's hair bones (kami_bNN chains under the head, moved by the game's hair physics in
 // both games, same names and layout) are kept, placed under WWE '12's head as the head moved, the strands weighted to
 // them as in SvR (the base's own chains, if any, left out: they'd hold none of SvR's strands).
-// turns_in / turns_out: the bones' turns by name, taken from / given to another model's conversion (the hair and the
-// eyes' pieces turn as the body does: each model's own children gave the head another turn).
+// turns_in / turns_out: the bones' turns and moves by name, taken from / given to another model's conversion (the hair
+// and the eyes' pieces move as the body does: each model's own children gave the head another turn, and its own
+// skeleton another place: SvR 2011 Big Show's eye pieces 35 cm over his head, his body taller than their skeleton).
+using Turns = std::map<std::string, std::array<M4, 2>>;  // name -> {turn, move}
 inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, svrfmt::Model &out, Report *rep,
-                         bool keep_chains = false, const std::map<std::string, M4> *turns_in = nullptr,
-                         std::map<std::string, M4> *turns_out = nullptr) {
+                         bool keep_chains = false, const Turns *turns_in = nullptr, Turns *turns_out = nullptr) {
   if (!base.w12 || base.meshes.empty() || svr.meshes.empty())
     return false;
   const auto ws = World(svr), wb = World(base);
@@ -361,6 +362,11 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
         if (base.nodes[j].name == MapBone(svr.nodes[size_t(farthest)].name))
           tf = int(j);
       rot[i] = turn(sub(pos(ws[size_t(farthest)], 10), si), sub(pos(wb[size_t(tf)], 1), wi));
+      // (the head turned by a face bone, an eyebrow: past ~20 degrees the two faces differ, not the poses: the
+      // neck's turn. SvR 2011 Stephanie McMahon's head tipped back 55 degrees by her r_mayu_03, 2026-10-31)
+      const double c = (rot[i].m[0] + rot[i].m[5] + rot[i].m[10] - 1) / 2;
+      if (svr.nodes[i].name == "atama" && c < 0.94 && p >= 0 && size_t(p) < i)
+        rot[i] = rot[size_t(p)];
     } else if (p >= 0 && size_t(p) < i) {
       rot[i] = rot[size_t(p)];
     }
@@ -368,7 +374,7 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
     // and Maria's hair turned ~27 degrees off the head and hung over their eyes, 2026-10-31)
     if (turns_in)
       if (const auto it = turns_in->find(svr.nodes[i].name); it != turns_in->end())
-        rot[i] = it->second;
+        rot[i] = it->second[0];
     // The face's bones move with the head, keeping SvR's face as it is: placed by their own joints (the two games'
     // face joints aren't in the same places), the eyelids, teeth and lips moved off the face (CM Punk of SvR: eyes
     // shut, teeth out of the mouth, 2026-10-26).
@@ -383,8 +389,6 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
       move[i] = move[size_t(p)];
       continue;
     }
-    if (turns_out)
-      (*turns_out)[svr.nodes[i].name] = rot[i];
     M4 to, from, x10;
     x10.m[0] = x10.m[5] = x10.m[10] = 10;
     for (int q = 0; q < 3; ++q) {
@@ -392,6 +396,20 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
       from.m[q * 4 + 3] = -si[q] / 10;
     }
     move[i] = Mul(to, Mul(rot[i], Mul(x10, from)));
+    if (turns_in)
+      if (const auto it = turns_in->find(svr.nodes[i].name); it != turns_in->end())
+        move[i] = it->second[1];
+  }
+  // Every bone the body has, whatever its path above (a face bone, one listed before its parent: SvR 2011 Big Show's
+  // beard model "hige", its mouth bones got no move and the goatee stayed by his feet, 2026-10-31).
+  for (size_t i = 0; i < svr.nodes.size(); ++i) {
+    if (turns_in)
+      if (const auto it = turns_in->find(svr.nodes[i].name); it != turns_in->end()) {
+        rot[i] = it->second[0];
+        move[i] = it->second[1];
+      }
+    if (turns_out)
+      (*turns_out)[svr.nodes[i].name] = {rot[i], move[i]};
   }
   out = base;
   out.meshes.clear();
@@ -925,7 +943,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     return fail("unreadable model: " + e);
   if (ms.w12)
     return fail("the SvR model is already in WWE '12's layout");
-  std::map<std::string, M4> turns;  // (the body's, for its other models)
+  Turns turns;  // (the body's, for its other models)
   if (!ConvertModel(ms, mb, mo, rep, false, nullptr, &turns))
     return fail("the model can't be converted");
   // SvR 2008 / 2009's 20000 isn't 2011's eye pieces but any small piece (2008 Rey Mysterio's eyebrows, Torrie
@@ -1039,7 +1057,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
             svrfmt::ArchiveRemove(base, i);
             break;
           }
-  std::vector<UvTri> see_through, hair_uv;  // UV triangles of the hair and the eyes' pieces; of the hair alone
+  std::vector<UvTri> see_through;  // UV triangles of the hair and the eyes' pieces
   Bytes hair_settings;    // the hair's physics (entry 60) when its chains are kept
   bool hair_done = false;
   for (uint32_t id : {10000u, 20000u}) {
@@ -1066,11 +1084,8 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
       for (const auto &st : m.strips) {
         const auto &ix = st.indices;
         for (size_t q = 0; q + 2 < ix.size(); q += st.IsStrip() ? 1 : 3)
-          if (ix[q] < m.uvs.size() && ix[q + 1] < m.uvs.size() && ix[q + 2] < m.uvs.size()) {
+          if (ix[q] < m.uvs.size() && ix[q + 1] < m.uvs.size() && ix[q + 2] < m.uvs.size())
             see_through.push_back({m.uvs[ix[q]], m.uvs[ix[q + 1]], m.uvs[ix[q + 2]]});
-            if (id == 10000)
-              hair_uv.push_back(see_through.back());
-          }
       }
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(xo));
     b = nullptr;  // (adding or removing entries below moves the others)
@@ -1146,7 +1161,9 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
           if (t.name == "normal" && u.name == "normal") {
             t.data = Shine(u.data, t.data);
             if (colour)
-              t.data = HairCut(t.data, sc[0].data, hair_uv);
+              // (the eyes' pieces too: WWE '12 cuts them out by the normal map's alpha as well - its own eyelashes are
+              // opaque in the colour - SvR 2011 Big Show's goatee was cut away, 2026-10-31)
+              t.data = HairCut(t.data, sc[0].data, see_through);
           }
       // The pictures of its own the model now names (the hands').
       for (const auto &name : rep->textures)

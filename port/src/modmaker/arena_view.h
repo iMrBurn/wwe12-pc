@@ -515,15 +515,26 @@ class View {
       a[0] /= l, a[1] /= l, a[2] /= l;
   }
 
-  ID3D11ShaderResourceView *Texture(const std::string &name, const std::map<std::string, Bytes> &dds) {
-    const std::string key = tex_prefix_ + name;  // (two superstars both have a "color" picture)
+  // `cut`: a picture whose alpha multiplies this one's (the superstars' eyelashes and hair: see AddMesh).
+  ID3D11ShaderResourceView *Texture(const std::string &name, const std::map<std::string, Bytes> &dds,
+                                    const std::string &cut = {}) {
+    const std::string key = tex_prefix_ + name + (cut.empty() ? "" : "|" + cut);  // (two superstars: two "color")
     auto it = textures_.find(key);
     if (it != textures_.end())
       return it->second.Get();
     ComPtr<ID3D11ShaderResourceView> srv;
-    svrfmt::Image img;
+    svrfmt::Image img, ci;
     const auto d = dds.find(Lower(name));
-    if (d != dds.end() && svrfmt::DdsDecode(d->second, img) && img.w > 0) {
+    const auto c = cut.empty() ? dds.end() : dds.find(Lower(cut));
+    if (d != dds.end() && svrfmt::DdsDecode(d->second, img) && img.w > 0 && c != dds.end() &&
+        svrfmt::DdsDecode(c->second, ci) && ci.w > 0)
+      for (int y = 0; y < img.h; ++y)
+        for (int x = 0; x < img.w; ++x) {
+          uint8_t &a = img.rgba[(size_t(y) * img.w + x) * 4 + 3];
+          const uint8_t b = ci.rgba[(size_t(y * ci.h / img.h) * ci.w + size_t(x * ci.w / img.w)) * 4 + 3];
+          a = uint8_t(a * b / 255);
+        }
+    if (d != dds.end() && img.w > 0) {
       D3D11_TEXTURE2D_DESC td{};
       td.Width = UINT(img.w);
       td.Height = UINT(img.h);
@@ -576,13 +587,23 @@ class View {
     }
     if (idx.empty())
       return;
-    std::string tex;
+    std::string tex, cut;
     for (const auto &p : s.params)
       if ((p.name == "sampDiffusePrm" || p.name == "texDiffuse" || p.name == "g_mDiffusePrm") && p.value.size() >= 4) {
         const int32_t slot = int32_t(svrfmt::Be32(p.value.data()));
         if (slot >= 0 && size_t(slot) < m.textures.size())
           tex = m.textures[size_t(slot)];
       }
+    // The eyelashes and hair (yCh_trans, yCh_Aniso_trans) are cut out by their normal map's alpha too: WWE '12's
+    // colour is opaque there and the strands are in the normal map's alpha (as WWE 2K16's: Paige's eyelashes showed
+    // as black patches, 2026-10-31; the game's hair shader, RenderDoc 2026-10-26).
+    if (s.shader.find("trans") != std::string::npos)
+      for (const auto &p : s.params)
+        if (p.name == "g_mNormalFxPrm" && p.value.size() >= 4) {
+          const int32_t slot = int32_t(svrfmt::Be32(p.value.data()));
+          if (slot >= 0 && size_t(slot) < m.textures.size())
+            cut = m.textures[size_t(slot)];
+        }
     Draw d;
     d.flags = f;
     // Superstars' shaders (yCh_*) light them in the game: their vertex colours aren't baked light.
@@ -594,7 +615,7 @@ class View {
       d.opaque = it != dds.end() && svrfmt::DdsInfoOf(it->second, info) && info.format != svrfmt::DxtFormat::kDxt1;
     }
     d.count = UINT(idx.size());
-    d.tex = tex.empty() ? nullptr : Texture(tex, dds);
+    d.tex = tex.empty() ? nullptr : Texture(tex, dds, cut);
     if (skel >= 0) {  // the vertices' bones: node = palette[slot] - 1
       d.skel = skel;
       d.vb_dynamic = true;
