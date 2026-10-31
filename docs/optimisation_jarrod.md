@@ -69,4 +69,21 @@ chiffres comparables.
 3. **Plus tard (1.1) :** les points 6, 7, 8 et 10. Ils demandent de lire ses patchs (accord de
    l'utilisateur pour le téléchargement, et de Jarrod pour la reprise).
 
-Rien n'est codé : on attend le choix de l'utilisateur.
+## Fait le 2026-10-31 (choix de l'utilisateur : points 1 à 4)
+
+- **Point 1 : fait** (commit f936b75). `svr_readback_streak` = 32 (au lieu de 6). Testé en match
+  par l'utilisateur : aucun bug.
+- **Point 2 : fait** (même commit). `wwe12_gpu_wait_sleep_us` = 200 : après 8 tours d'attente,
+  sommeil sur un minuteur haute résolution. Mesuré sur 4 fils (affinité 0xF), même match, 60 i/s
+  dans les deux cas : **1,05 cœur contre 1,19** (environ −12 % de processeur).
+- **Points 3 et 4 : mesurés, pas codés.** Test sur la puce Intel du PC (RaptorLake, 720p, 4 fils,
+  journal `work/test_igpu_a.log`) :
+  - match à 60 i/s, **0 image de plus de 25 ms** ; images au plus de 18 à 19 ms ;
+  - entrée à 30 i/s (le mode du jeu) ;
+  - 76 pipelines compilés pendant le jeu (tous déjà connus du cache disque), 44 ms en tout, au pire
+    25 ms dans une seconde au début de l'entrée.
+  Sur ce matériel, il n'y a donc presque rien à gagner. On reprendra ces points seulement si des
+  joueurs de petits PC signalent des à-coups au début des entrées. Le journal `[load] … pipelines`
+  permettra alors de le vérifier chez eux.
+  Piste notée : ces pipelines « connus » sont compilés à chaque session parce qu'ils ne peuvent être
+  préparés qu'une fois les shaders du jeu chargés, juste avant leur premier dessin.
