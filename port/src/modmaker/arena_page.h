@@ -838,9 +838,7 @@ class Page {
     port_note_.clear();
     ramp_note_.clear();
     if (wiz_src_ == 1) {
-      char rel[32];
-      snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", w13_pick_);
-      const Bytes w13 = Read13(rel);
+      const Bytes w13 = Read13(Rel13(w13_pick_));
       wiz_src_size_ = w13.size();
       wiz_src_ramp_ = SourceRamp(w13, 1);
       wiz_apron_ = MakeThumb(device_, Apron(w13));
@@ -1118,7 +1116,7 @@ class Page {
         std::string label;
         if (wiz_src_ == 0) {
           char b[96];
-          snprintf(b, sizeof(b), "%s  (bg%02d)", port_svr_arena::FindSvr(n, svr_year_)->name, n);
+          snprintf(b, sizeof(b), "%s  (bg%02d)", SvrName(n).c_str(), n);
           label = b;
         } else {
           label = Label13(n);
@@ -1138,9 +1136,7 @@ class Page {
         ImGui::EndGroup();
       }
       if (clicked >= 0 && wiz_src_ == 0) {
-        char rel[32];
-        snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", clicked);
-        if (svr_disc_.Read(rel, svr_file_)) {
+        if (svr_disc_.Read(RelSvr(clicked), svr_file_)) {
           svr_pick_ = clicked;
           WizardSourceChosen(fr);
         }
@@ -1336,6 +1332,7 @@ class Page {
   // match structures).
   void Open13(const fs::path &p) {
     w13_list_.clear();
+    w13_files_.clear();
     w13_pick_ = -1;
     w13_game_ = p;
     names2k_.clear();
@@ -1346,13 +1343,41 @@ class Page {
         names2k_[a.file] = a.name;
     else if (y_title_ != kWwe13)
       names2k_ = strings2k::ArenaNames(w13_disc_);
+    // (bgNN.pac; a DLC's: bgNN.pac, 2K16 / 2K17 bgNN_dlcMM.pac; the disc's listed first, kept)
     for (const auto &n : w13_disc_.List("pac/bg"))
-      if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
+      if (ArenaFile(n) &&
           (y_title_ != kWwe13 ? atoi(n.c_str() + 2) < 66
-                              : port13::Find13(atoi(n.c_str() + 2)) != nullptr))  // (WWE '13: arenas only)
+                              : port13::Find13(atoi(n.c_str() + 2)) != nullptr) &&  // (WWE '13: arenas only)
+          w13_files_.emplace(atoi(n.c_str() + 2), n).second)
         w13_list_.push_back(atoi(n.c_str() + 2));
     std::sort(w13_list_.begin(), w13_list_.end());
   }
+  // An arena file's name: bgNN.pac, a DLC's bgNN_dlcMM.pac.
+  static bool ArenaFile(const std::string &n) {
+    return n.size() >= 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
+           _stricmp(n.c_str() + n.size() - 4, ".pac") == 0 &&
+           (n.size() == 8 || _strnicmp(n.c_str() + 4, "_dlc", 4) == 0);
+  }
+  std::string Rel13(int n) const {
+    const auto it = w13_files_.find(n);
+    char b[32];
+    snprintf(b, sizeof(b), "bg%02d.pac", n);
+    return "pac/bg/" + (it != w13_files_.end() ? it->second : std::string(b));
+  }
+  std::string RelSvr(int n) const {
+    const auto it = svr_files_.find(n);
+    char b[32];
+    snprintf(b, sizeof(b), "bg%02d.pac", n);
+    return "pac/bg/" + (it != svr_files_.end() ? it->second : std::string(b));
+  }
+  // A SvR arena's name: its table's, else its DLC's.
+  std::string SvrName(int n) const {
+    if (const auto *a = port_svr_arena::FindSvr(n, svr_year_))
+      return a->name;
+    const auto it = svr_dlc_names_.find(n);
+    return it != svr_dlc_names_.end() ? it->second : "SvR arena";
+  }
+
   Bytes Read13(const std::string &rel) const {
     Bytes b;
     w13_disc_.Read(rel, b);
@@ -1362,13 +1387,22 @@ class Page {
   // SvR 2011's ISO (or folder): its arenas listed by name.
   void OpenSvr(bool fr, const fs::path &p) {
     svr_list_.clear();
+    svr_files_.clear();
+    svr_dlc_names_.clear();
     svr_pick_ = -1;
     if (svr_disc_.OpenPath(p)) {
       svr_game_ = p;
-      for (const auto &n : svr_disc_.List("pac/bg"))
-        if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
-            port_svr_arena::FindSvr(atoi(n.c_str() + 2), svr_year_))
-          svr_list_.push_back(atoi(n.c_str() + 2));
+      // (SvR 2011's DLC arenas, bg50 on: named from its string table, the arena names' run, below)
+      const auto dlc_names = svr_year_ == 2011 ? port_svr_arena::DlcArenaNames(svr_disc_) : std::map<int, std::string>();
+      for (const auto &n : svr_disc_.List("pac/bg")) {
+        const int k = atoi(n.c_str() + 2);
+        if (!ArenaFile(n) || (!port_svr_arena::FindSvr(k, svr_year_) && !(k >= 50 && dlc_names.count(k))) ||
+            !svr_files_.emplace(k, n).second)
+          continue;
+        if (!port_svr_arena::FindSvr(k, svr_year_))
+          svr_dlc_names_[k] = dlc_names.at(k);
+        svr_list_.push_back(k);
+      }
       std::sort(svr_list_.begin(), svr_list_.end());
     }
     port_note_ = svr_list_.empty() ? (fr ? "Pas d'arènes de SvR ici." : "No SvR arenas here.") : "";
@@ -1502,8 +1536,7 @@ class Page {
     if (svr_pick_ >= 0 && !old_svr && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&
         port13::TransitionVideo(evtmov, svr_pick_, movie_))
       port_note_ += fr ? " Avec sa transition." : " With its transition.";
-    const std::string stem = svr_pick_ >= 0 ? port_svr_arena::FindSvr(svr_pick_, svr_year_)->name
-                                            : media::Utf8(svr_path_.stem().wstring());
+    const std::string stem = svr_pick_ >= 0 ? SvrName(svr_pick_) : media::Utf8(svr_path_.stem().wstring());
     snprintf(name_, sizeof(name_), "%s (SvR %d)", stem.c_str(), svr_pick_ >= 0 ? svr_year_ : 2011);
     as_new_ = true;
   }
@@ -1551,9 +1584,7 @@ class Page {
   // The recipe (port13.h) on the chosen arena, its base the slot chosen above.
   void Port13(bool fr) {
     port_ok_ = false;
-    char rel[32];
-    snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", w13_pick_);
-    const Bytes w13 = Read13(rel);
+    const Bytes w13 = Read13(Rel13(w13_pick_));
     Bytes out;
     std::string why;
     port13::PortInfo info;
@@ -2057,6 +2088,7 @@ class Page {
   static constexpr uint32_t kWwe13 = 0x545108B4;
   uint32_t y_title_ = kWwe13;  // the WWE '13-kind game read through w13_disc_ (WWE '13, 2K14, 2K15, 2K16)
   std::vector<int> w13_list_;
+  std::map<int, std::string> w13_files_;  // its arena files by number (a DLC's own name: "bg60_dlc40.pac")
   int w13_pick_ = -1;
   bool port_ok_ = false, view_port_ = false;
   std::string port_note_, ramp_note_;
@@ -2079,6 +2111,7 @@ class Page {
   fs::path svr_game_;
   int svr_year_ = 2011;  // (SvR 2011, 2010, 2009 or 2008: its arena list)
   std::vector<int> svr_list_;
+  std::map<int, std::string> svr_files_, svr_dlc_names_;  // its arena files by number; its DLC arenas' names
   int svr_pick_ = -1;
 
   // New arena (added, not replacing) and its banner.

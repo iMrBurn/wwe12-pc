@@ -989,6 +989,7 @@ class Page {
   }
 
   void LoadSvr(bool fr, const fs::path &p) {
+    from_disc_ = false;
     const std::string stem = p.stem().string();
     const int number = stem.size() > 2 && _strnicmp(stem.c_str(), "ch", 2) == 0 && isdigit(stem[2]) ? atoi(stem.c_str() + 2)
                                                                                                     : -1;
@@ -1006,8 +1007,10 @@ class Page {
   // A superstar of the game chosen (SvR 2011 or WWE '13) from My game discs.
   void LoadFromDisc(bool fr, int number) {
     const bool svr08 = look_ == 2 && game_title_ == 0x5451080B;  // (SvR 2008: chNN.pac, movies NN.bik)
-    char rel[32];
+    char rel[64];
     snprintf(rel, sizeof(rel), svr08 ? "pac/ch/ch%02d.pac" : "pac/ch/ch%03d.pac", number);
+    if (const auto f = disc_files_.find(number); f != disc_files_.end())  // (its file as listed: a DLC's own name)
+      snprintf(rel, sizeof(rel), "pac/ch/%s", f->second.c_str());
     Bytes file;
     if (!game_disc_.Read(rel, file)) {
       note_ok_ = false;
@@ -1015,6 +1018,7 @@ class Page {
       return;
     }
     disc_pick_ = number;
+    from_disc_ = true;
     LoadSvrBytes(fr, game_path_ / rel, std::move(file), number, [&](const char *in_pac) {
       Bytes b;
       game_disc_.Read(std::string("pac/") + in_pac, b);
@@ -1067,6 +1071,7 @@ class Page {
   // +58), else "chNNN".
   void ListDisc(uint32_t title) {
     disc_list_.clear();
+    disc_files_.clear();
     disc_pick_ = -1;
     game_title_ = title;
     game_path_ = discs_ ? discs_->PathOf(title) : fs::path();
@@ -1083,22 +1088,41 @@ class Page {
         for (const auto &[n, nm] : NamesOf(*disc12_))
           guess.emplace(n, nm);
     }
-    for (const auto &f : game_disc_.List("pac/ch"))
-      if ((f.size() == 9 || (f.size() == 8 && title == 0x5451080B)) && _strnicmp(f.c_str(), "ch", 2) == 0 &&
-          _stricmp(f.c_str() + f.size() - 4, ".pac") == 0 && isdigit(f[2]) && isdigit(f[3]) &&
-          (f.size() == 8 || isdigit(f[4]))) {  // (chNNN.pac; SvR 2008: chNN.pac)
+    // (chNNN.pac; SvR 2008: chNN.pac; a DLC's: chNN.pac, chNN_dlcMM.pac; the disc's listed first, kept)
+    for (const auto &f : game_disc_.List("pac/ch")) {
+      size_t k = 2;
+      while (k < f.size() && isdigit(static_cast<unsigned char>(f[k])))
+        ++k;
+      if (k == 2 || k > 5 || _strnicmp(f.c_str(), "ch", 2) != 0 || f.size() < 4 ||
+          _stricmp(f.c_str() + f.size() - 4, ".pac") != 0 ||
+          (k != f.size() - 4 && _strnicmp(f.c_str() + k, "_dlc", 4) != 0))
+        continue;
+      {
         const int n = atoi(f.c_str() + 2);
+        if (!disc_files_.emplace(n, f).second)
+          continue;
         const auto it = names.find(n), g = guess.find(n);
         const bool named = it != names.end() && it->second.size() > 1;  // (some records hold "0": no name)
         disc_list_.push_back({n, named ? it->second
                                  : g != guess.end() && g->second.size() > 1 ? g->second + " ?"
                                                                             : f.substr(0, f.size() - 4)});
       }
+    }
     std::sort(disc_list_.begin(), disc_list_.end(), [](const auto &x, const auto &y) { return x.second < y.second; });
   }
 
   // A game's superstar names by number (strings2k::SuperstarNames).
   static std::map<int, std::string> NamesOf(const disc::GameDisc &g) { return strings2k::SuperstarNames(g); }
+
+  // A pac of the superstar's game, every copy: the disc's, then its DLC's (a newer one, its own "<name>_dlcNN.pac":
+  // SvR 2011 / WWE '13 / 2K14 DLC_HD_dlc02.pac, 2K15-2K17 dlc_hd_dlc20.pac). From a file: that game folder's one.
+  std::vector<Bytes> PacCopies(const char *in_pac, const std::function<Bytes(const char *)> &read_pac) const {
+    if (from_disc_)
+      return strings2k::WithDlc(game_disc_, std::string("pac/") + in_pac);
+    std::vector<Bytes> one;
+    one.push_back(read_pac(in_pac));
+    return one;
+  }
 
   void LoadSvrBytes(bool fr, const fs::path &p, Bytes file, int number,
                     const std::function<Bytes(const char *)> &read_pac) {  // (a file of its game's pac folder)
@@ -1131,17 +1155,20 @@ class Page {
       char name[8];
       snprintf(name, sizeof(name), "%04d", number);
       int found = 0;
-      for (int hd = 0; hd < 2; ++hd) {
-        svrfmt::Archive m;
-        if (!svrfmt::ArchiveOpen(read_pac(hd ? "menu/menuHD.pac" : "menu/menuSD.pac"), m, nullptr))
-          continue;
-        for (const auto &k : m.root.kids)
-          if (k.name == name && k.group.size() == 4 && k.group.compare(0, 3, "SSF") == 0 && k.group[3] >= 'A' &&
-              k.group[3] <= 'C') {
-            portraits_[hd][k.group[3] - 'A'] = svrfmt::ArchiveData(k);
-            ++found;
+      // (a DLC superstar's: DLC_HD.pac / DLC_HD_dlcNN.pac, the same pictures)
+      for (int hd = 0; hd < 2; ++hd)
+        for (const char *pac : {hd ? "menu/menuHD.pac" : "menu/menuSD.pac", hd ? "DLC_HD.pac" : "DLC_SD.pac"})
+          for (auto &copy : PacCopies(pac, read_pac)) {
+            svrfmt::Archive m;
+            if (!svrfmt::ArchiveOpen(copy, m, nullptr))
+              continue;
+            for (const auto &k : m.root.kids)
+              if (k.name == name && k.group.size() == 4 && k.group.compare(0, 3, "SSF") == 0 && k.group[3] >= 'A' &&
+                  k.group[3] <= 'C' && portraits_[hd][k.group[3] - 'A'].empty()) {
+                portraits_[hd][k.group[3] - 'A'] = svrfmt::ArchiveData(k);
+                ++found;
+              }
           }
-      }
       if (!found)
         found = Portraits2K(number, read_pac);
       if (found) {
@@ -1276,10 +1303,9 @@ class Page {
       const auto all = faces2k::Portraits2K17(menu2_);
       const size_t half = all.size() / 2;
       svrfmt::Image a, b;
-      if (it == faces17_.end() || it->second + half >= all.size() ||
-          !faces2k::Tga(svrfmt::ArchiveData(*all[it->second]), a) ||
-          !faces2k::Tga(svrfmt::ArchiveData(*all[it->second + half]), b))
-        return 0;
+      if (it != faces17_.end() && it->second + half < all.size() &&
+          faces2k::Tga(svrfmt::ArchiveData(*all[it->second]), a) &&
+          faces2k::Tga(svrfmt::ArchiveData(*all[it->second + half]), b)) {
       const svrfmt::Image *pic[3] = {&a, &b, &a};
       const int size[2][3][2] = {{{512, 256}, {512, 256}, {256, 256}}, {{512, 512}, {512, 512}, {256, 256}}};
       for (int hd = 0; hd < 2; ++hd)
@@ -1287,14 +1313,24 @@ class Page {
           portraits_[hd][k] = svrfmt::DdsEncode(svrfmt::Resize(*pic[k], size[hd][k][0], size[hd][k][1]),
                                                 svrfmt::DxtFormat::kDxt5, false);
       return 6;
+      }  // (else a DLC superstar's, below)
     }
     char name[8];
     snprintf(name, sizeof(name), "%04d", number);
     svrfmt::Image pic[3];
-    for (const auto &k : menu2_.root.kids)
-      if (k.name == name && k.group.size() == 4 && k.group[0] == 'S' && k.group[1] == 'F' && k.group[3] == 'G' &&
-          k.group[2] >= 'A' && k.group[2] <= 'C')
-        faces2k::Tga(svrfmt::ArchiveData(k), pic[k.group[2] - 'A']);
+    const auto look = [&](const svrfmt::Archive &a) {
+      for (const auto &k : a.root.kids)
+        if (k.name == name && k.group.size() == 4 && k.group[0] == 'S' && k.group[1] == 'F' && k.group[3] == 'G' &&
+            k.group[2] >= 'A' && k.group[2] <= 'C' && pic[k.group[2] - 'A'].w == 0)
+          faces2k::Tga(svrfmt::ArchiveData(k), pic[k.group[2] - 'A']);
+    };
+    look(menu2_);
+    if (pic[0].w == 0)  // (a DLC superstar's: dlc_hd_dlcNN.pac, the same SFAG / SFCG pictures)
+      for (auto &copy : PacCopies("dlc_hd.pac", read_pac)) {
+        svrfmt::Archive a;
+        if (svrfmt::ArchiveOpen(copy, a, nullptr))
+          look(a);
+      }
     if (pic[1].w == 0)
       pic[1] = pic[0];
     if (pic[0].w == 0 || pic[2].w == 0)
@@ -1357,42 +1393,42 @@ class Page {
   void SvrPortraits(bool fr, int number, const std::function<Bytes(const char *)> &read_pac) {
     char name[8];
     snprintf(name, sizeof(name), "%04d", number);
-    for (int hd = 0; hd < 2; ++hd) {
-      svrfmt::Archive m;
-      if (!svrfmt::ArchiveOpen(read_pac(hd ? "DLC_HD.pac" : "DLC_SD.pac"), m, nullptr))
-        continue;
-      for (const auto &k : m.root.kids)
-        if (k.name == name && k.group.size() == 4 && k.group.compare(0, 3, "SSF") == 0 && k.group[3] >= 'A' &&
-            k.group[3] <= 'C')
-          portraits_[hd][k.group[3] - 'A'] = svrfmt::ArchiveData(k);
-    }
+    for (int hd = 0; hd < 2; ++hd)
+      for (auto &copy : PacCopies(hd ? "DLC_HD.pac" : "DLC_SD.pac", read_pac)) {  // (its DLC's: DLC_HD_dlc02.pac)
+        svrfmt::Archive m;
+        if (!svrfmt::ArchiveOpen(copy, m, nullptr))
+          continue;
+        for (const auto &k : m.root.kids)
+          if (k.name == name && k.group.size() == 4 && k.group.compare(0, 3, "SSF") == 0 && k.group[3] >= 'A' &&
+              k.group[3] <= 'C')
+            portraits_[hd][k.group[3] - 'A'] = svrfmt::ArchiveData(k);
+      }
     // SvR 2009 (DLC_HD.pac) and SvR 2008 (menu\menuHD.pac): MENU / SSFA-SSFC = PACH { 0: PACH { number: DDS } } (after
     // Kaiko's superstar_port.py), HD only, 2009's 256 x 512 / 256 x 512 / 256, 2008's 512 / 512 x 256 / 256: made to
     // WWE '12's HD sizes (SD's from them below; SD's SSFC is the HD one's size).
     if (portraits_[1][0].empty())
-      for (const char *pac : {"DLC_HD.pac", "menu/menuHD.pac"}) {
-        svrfmt::Archive m;
-        if (!svrfmt::ArchiveOpen(read_pac(pac), m, nullptr))
-          continue;
-        for (auto &k : m.root.kids)
-          if (k.group == "MENU" && k.name.size() == 4 && k.name.compare(0, 3, "SSF") == 0 && k.name[3] >= 'A' &&
-              k.name[3] <= 'C' && svrfmt::ArchiveExpand(k))
-            for (auto &c : k.kids)
-              if (c.id == 0 && svrfmt::ArchiveExpand(c))
-                for (const auto &x : c.kids)
-                  if (x.id == uint32_t(number)) {
-                    svrfmt::Image img;
-                    if (!svrfmt::DdsDecode(svrfmt::ArchiveData(x), img))
-                      continue;
-                    const int side = k.name[3] == 'C' ? 256 : 512;
-                    const Bytes dds = svrfmt::DdsEncode(svrfmt::Resize(img, side, side), svrfmt::DxtFormat::kDxt5, false);
-                    portraits_[1][k.name[3] - 'A'] = dds;
-                    if (k.name[3] == 'C')
-                      portraits_[0][2] = dds;
-                  }
-        if (!portraits_[1][0].empty())
-          break;
-      }
+      for (const char *pac : {"DLC_HD.pac", "menu/menuHD.pac"})
+        for (auto &copy : portraits_[1][0].empty() ? PacCopies(pac, read_pac) : std::vector<Bytes>()) {  // (SvR 2009's DLC: a newer DLC_HD.pac)
+          svrfmt::Archive m;
+          if (!svrfmt::ArchiveOpen(copy, m, nullptr))
+            continue;
+          for (auto &k : m.root.kids)
+            if (k.group == "MENU" && k.name.size() == 4 && k.name.compare(0, 3, "SSF") == 0 && k.name[3] >= 'A' &&
+                k.name[3] <= 'C' && svrfmt::ArchiveExpand(k))
+              for (auto &c : k.kids)
+                if (c.id == 0 && svrfmt::ArchiveExpand(c))
+                  for (const auto &x : c.kids)
+                    if (x.id == uint32_t(number)) {
+                      svrfmt::Image img;
+                      if (!svrfmt::DdsDecode(svrfmt::ArchiveData(x), img))
+                        continue;
+                      const int side = k.name[3] == 'C' ? 256 : 512;
+                      const Bytes dds = svrfmt::DdsEncode(svrfmt::Resize(img, side, side), svrfmt::DxtFormat::kDxt5, false);
+                      portraits_[1][k.name[3] - 'A'] = dds;
+                      if (k.name[3] == 'C')
+                        portraits_[0][2] = dds;
+                    }
+        }
     for (int k = 0; k < 2; ++k) {
       portraits_[0][k].clear();
       svrfmt::Image img;
@@ -1884,6 +1920,8 @@ class Page {
   fs::path game_path_;
   uint32_t game_title_ = 0;
   std::vector<std::pair<int, std::string>> disc_list_;
+  std::map<int, std::string> disc_files_;
+  bool from_disc_ = false;  // the superstar read from My game discs (its DLC's pacs too), not from a file  // the game's superstar files by number (pac/ch: "ch065.pac", "ch65_dlc02.pac")
   int disc_pick_ = -1;
   uint32_t star_game_ = 0x545108B4;
   uint32_t svr_game_ = 0x5451085D;  // (look 2: SvR 2011 or SvR 2010)

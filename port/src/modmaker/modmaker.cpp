@@ -726,6 +726,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   g_disc.Open(ExeDir());
   g_mods.Init(ExeDir() / "mods");
   g_discs.Load(ExeDir() / "modmaker_discs.txt");
+  // (each other game opened from My game discs gets its DLC over its disc)
+  disc::GameDisc::on_open = [](disc::GameDisc &g, const fs::path &p) { g_discs.Attach(g, p); };
   g_arenas.discs_ = &g_discs;
   g_videos.discs_ = &g_discs;
   g_new_star.discs_ = &g_discs;

@@ -2,7 +2,8 @@
 // image or a game folder each) and kept in modmaker_discs.txt next to the Mod Maker ("title id|path" lines). The
 // ports read them from there; nothing is copied. A game is told by its default.xex's title id (execution info,
 // optional header 0x40006): SvR 2011 5451085D, WWE '12 54510890, WWE '13 545108B4, 2K14 545408B2, 2K15 545408B6,
-// 2K16 315A07D2, 2K17 545408BA (read from the user's own discs).
+// 2K16 315A07D2, 2K17 545408BA (read from the user's own discs). Also one DLC folder for all the games ("DLC|path"
+// line, dlc.h): each game's packages are read over its disc.
 #pragma once
 
 #include <windows.h>
@@ -15,6 +16,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "dlc.h"
 #include "game_disc.h"
 #include "imgui.h"
 
@@ -86,10 +88,16 @@ class Discs {
     list_.clear();
     std::ifstream f(file);
     std::string line;
+    fs::path dlc_root;
     while (std::getline(f, line)) {
       const size_t bar = line.find('|');
       if (bar == std::string::npos)
         continue;
+      if (line.compare(0, bar, "DLC") == 0) {
+        const std::string u = line.substr(bar + 1);
+        dlc_root = fs::path(std::u8string(u.begin(), u.end()));
+        continue;
+      }
       Disc d;
       d.title = uint32_t(strtoul(line.substr(0, bar).c_str(), nullptr, 16));
       const std::string u = line.substr(bar + 1);
@@ -97,7 +105,18 @@ class Discs {
       if (d.title)
         list_.push_back(d);
     }
+    dlc_.Scan(dlc_root);
   }
+
+  // A game's DLC put over its disc (GameDisc::on_open, set by the Mod Maker): the game told by its disc's path.
+  void Attach(disc::GameDisc &g, const fs::path &p) const {
+    std::error_code ec;
+    for (const auto &d : list_)
+      if (d.path == p || fs::equivalent(d.path, p, ec))
+        if (auto l = dlc_.For(d.title))
+          g.AddLayer(l);
+  }
+  const dlc::Library &Dlc() const { return dlc_; }
 
   size_t Count() const { return list_.size(); }  // (the discs added)
   // The disc of a game (its title id), else an empty path.
@@ -181,14 +200,38 @@ class Discs {
         note_ok_ = n > 0;
       }
     }
+    // The DLC folder, for all the games.
+    ImGui::Dummy(ImVec2(0, 4));
+    if (ImGui::Button(fr ? "Dossier des DLC..." : "DLC folder...")) {
+      const fs::path p = Pick(fr, true);
+      if (!p.empty()) {
+        dlc_.Scan(p);
+        Save();
+        int packs = 0;
+        for (const auto &k : kKnown)
+          if (auto g = dlc_.For(k.title))
+            packs += int(g->Packs().size());
+        char b[160];
+        snprintf(b, sizeof(b), fr ? "%d paquet(s) de DLC trouvé(s)." : "%d DLC package(s) found.", packs);
+        note_ = b;
+        note_ok_ = packs > 0;
+      }
+    }
+    ImGui::SameLine();
+    if (dlc_.Root().empty())
+      ImGui::TextDisabled("%s", fr ? "(aucun : les DLC de vos jeux, paquets de la console ou déjà extraits)"
+                                   : "(none: your games' DLC, the console's packages or extracted ones)");
+    else
+      ImGui::TextUnformatted(U8(dlc_.Root()).c_str());
     if (!note_.empty())
       ImGui::TextColored(note_ok_ ? ImVec4(0.55f, 0.85f, 0.45f, 1.0f) : ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
                          note_.c_str());
     ImGui::Dummy(ImVec2(0, 8));
-    if (ImGui::BeginTable("discs", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH)) {
+    if (ImGui::BeginTable("discs", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH)) {
       ImGui::TableSetupColumn(fr ? "Jeu" : "Game", ImGuiTableColumnFlags_WidthFixed, 230);
       ImGui::TableSetupColumn(fr ? "Arènes" : "Arenas", ImGuiTableColumnFlags_WidthFixed, 90);
       ImGui::TableSetupColumn(fr ? "Catcheurs" : "Superstars", ImGuiTableColumnFlags_WidthFixed, 90);
+      ImGui::TableSetupColumn("DLC", ImGuiTableColumnFlags_WidthFixed, 170);
       ImGui::TableSetupColumn(fr ? "Où" : "Where");
       ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 80);
       ImGui::TableHeadersRow();
@@ -206,6 +249,18 @@ class Discs {
             ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", fr ? "oui" : "yes");
           else
             ImGui::TextDisabled("%s", c == Can::kSoon ? (fr ? "bientôt" : "coming") : "-");
+        }
+        ImGui::TableNextColumn();
+        if (const auto g = dlc_.For(k.title)) {
+          ImGui::Text(fr ? "%d catcheur(s), %d arène(s)" : "%d superstar(s), %d arena(s)", g->Superstars(), g->Arenas());
+          if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            for (const auto &pk : g->Packs())
+              ImGui::Text("%s : %d / %d", pk.name.c_str(), pk.superstars, pk.arenas);
+            ImGui::EndTooltip();
+          }
+        } else {
+          ImGui::TextDisabled("-");
         }
         ImGui::TableNextColumn();
         std::error_code ec;
@@ -249,6 +304,8 @@ class Discs {
       snprintf(t, sizeof(t), "%08X", d.title);
       f << t << '|' << U8(d.path) << '\n';
     }
+    if (!dlc_.Root().empty())
+      f << "DLC|" << U8(dlc_.Root()) << '\n';
   }
 
   static fs::path Pick(bool fr, bool folder) {
@@ -283,6 +340,7 @@ class Discs {
 
   fs::path file_;
   std::vector<Disc> list_;
+  dlc::Library dlc_;
   std::string note_;
   bool note_ok_ = false;
 };

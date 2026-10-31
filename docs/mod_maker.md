@@ -1356,3 +1356,17 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   (triangles, taille obtenue / place) ; sinon un message avec la taille. Vérifié hors jeu : 720 000 triangles refusés
   sur bg01 (17,8 Mo pour 10,2 Mo), images de l'arène identiques après retrait, 200 triangles acceptés. La vue 3D reste
   sur l'objet ajouté (et sur l'objet choisi avec « Voir cet objet ») jusqu'à « Recentrer ».
+- **DLC des autres jeux (2026-10-31, demande de l'utilisateur, vérifié hors jeu, pas encore vu en jeu)** : MES DISQUES
+  a un « Dossier des DLC... » unique (ligne `DLC|chemin` de `modmaker_discs.txt`) ; `dlc.h` y trouve chaque paquet de
+  la console (`stfs.h` : « LIVE » / « CON », lecture seule d'après le lecteur STFS du SDK ; vérifié : un DLC de WWE '12
+  relu = les 32 fichiers installés par le jeu, octet pour octet) et chaque paquet déjà extrait (`info\catalog.dlc`), les
+  range par jeu (numéro du jeu dans l'en-tête, ou le dossier `<titre>\00000002\<paquet>`). `disc::GameDisc` reçoit des
+  couches (`Layer`, `on_open`) : chaque jeu ouvert depuis MES DISQUES lit ses DLC comme son disque (`Read` : le disque
+  d'abord ; `ReadAll` : toutes les copies, un DLC pouvant porter un `chEtc.pac` / `string.pac` plus récent, le plus
+  petit d'abord). Noms des fichiers des DLC : `ch65_dlc02.pac` (WWE '13, SvR 2011, 2K14), `ch124.pac` (2K15-2K17),
+  `chEtc_dlcNN.pac`, `string_dlcNN(_360).pac`, `DLC_HD_dlcNN.pac` / `dlc_hd_dlcNN.pac` (portraits), `bg60_dlc40.pac`,
+  `WUniData_dlc40.pac`. Les textes lisent aussi les fiches de 16 octets (SvR 2011, WWE '12 / '13). Arènes DLC de
+  SvR 2011 nommées par la suite des noms d'arènes (id 40002 + numéro : bg50 NXT Arena, bg51 WCW Nitro Arena).
+  Testé avec l'archive de l'utilisateur (42 paquets) : catcheurs DLC SvR 2009 10, SvR 2011 12, WWE '13 16, 2K14 20,
+  2K15 51, 2K16 38, 2K17 27 (presque tous nommés, portraits sauf 2K17 : noms en empreinte inconnue), arènes DLC
+  SvR 2011 2, 2K15 14, 2K16 6, 2K17 5, toutes passées par le portage.

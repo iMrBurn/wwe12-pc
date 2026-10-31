@@ -19,42 +19,81 @@ namespace strings2k {
 
 using Bytes = std::vector<uint8_t>;
 
-// Every string of the game's English tables with an id of at least `min_id` ("" if the game has none).
+// The copies of a game's file and of its DLC's own ones: "pac/ch/chEtc.pac" -> every chEtc.pac (the disc's, a DLC's
+// newer one: SvR 2009 / 2011) and every pac/ch/chEtc_dlcNN.pac (WWE '13, the 2K games), the disc's first.
+inline std::vector<Bytes> WithDlc(const disc::GameDisc &g, const std::string &path, bool copies = true) {
+  auto all = copies ? g.ReadAll(path) : std::vector<Bytes>();
+  const size_t slash = path.rfind('/'), dot = path.rfind('.');
+  const std::string dir = path.substr(0, slash), stem = path.substr(slash + 1, dot - slash - 1) + "_dlc";
+  auto files = g.List(dir);
+  std::sort(files.begin(), files.end());
+  for (const auto &f : files)
+    if (f.size() > stem.size() && _strnicmp(f.c_str(), stem.c_str(), stem.size()) == 0 &&
+        _stricmp(f.c_str() + f.size() - 4, ".pac") == 0)
+      for (auto &b : g.ReadAll(dir + "/" + f))
+        all.push_back(std::move(b));
+  return all;
+}
+
+// Every string of the game's English tables with an id of at least `min_id` ("" if the game has none), its DLC's too
+// (string_dlcNN.pac, 2K17 string_dlcNN_360.pac; a DLC's newer string.pac over the disc's: SvR 2011's DLC arenas).
 inline std::map<uint32_t, std::string> Strings(const disc::GameDisc &g, uint32_t min_id = 0) {
   std::map<uint32_t, std::string> strings;
-  Bytes str;
-  svrfmt::Archive s;
-  if ((!g.Read("pac/string.pac", str) && !g.Read("pac/string_360.pac", str)) || !svrfmt::ArchiveOpen(str, s, nullptr))
-    return strings;
-  const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
-    if (depth == 1 && n.group == "SDB " && n.name.size() == 4 && n.name.compare(2, 2, "00") != 0)
-      return;  // (another language)
-    const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
-    uint32_t zero = 1, count = 0;
-    if (d.size() >= 8) {
-      memcpy(&zero, d.data(), 4);
-      memcpy(&count, d.data() + 4, 4);
-    }
-    if (depth && zero == 0 && count && 8 + size_t(count) * 12 <= d.size()) {
-      for (uint32_t i = 0; i < count; ++i) {
-        uint32_t e[3];
-        memcpy(e, d.data() + 8 + i * 12, 12);
-        if (e[0] < d.size() && e[1] <= d.size() - e[0] && e[2] >= min_id) {
-          std::string t(reinterpret_cast<const char *>(d.data() + e[0]),
-                        strnlen(reinterpret_cast<const char *>(d.data() + e[0]), e[1]));
-          for (const char *q : {"\xE2\x80\x9C", "\xE2\x80\x9D"})  // (curly quotes: plain ones for the font)
-            for (size_t at; (at = t.find(q)) != std::string::npos;)
-              t.replace(at, 3, "\"");
-          strings.emplace(e[2], std::move(t));
-        }
+  auto all = g.ReadAll("pac/string.pac");
+  for (auto *more : {"pac/string_360.pac", ""})
+    for (auto &b : *more ? g.ReadAll(more) : WithDlc(g, "pac/string.pac", false))
+      all.push_back(std::move(b));
+  for (auto &str : all) {
+    svrfmt::Archive s;
+    if (!svrfmt::ArchiveOpen(str, s, nullptr))
+      continue;
+    std::map<uint32_t, std::string> one;  // (this file's: the first id seen kept; the later files' over the others)
+    const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+      if (depth == 1 && n.group == "SDB " && n.name.size() == 4 && n.name.compare(2, 2, "00") != 0)
+        return;  // (another language)
+      const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
+      uint32_t zero = 1, count = 0;
+      if (d.size() >= 8) {
+        memcpy(&zero, d.data(), 4);
+        memcpy(&count, d.data() + 4, 4);
       }
-      return;
-    }
-    if (depth < 3 && svrfmt::ArchiveExpand(n))
-      for (auto &c : n.kids)
-        self(self, c, depth + 1);
-  };
-  walk(walk, s.root, 0);
+      // (records of 12 bytes {offset, length, id}, or of 16 with a 0 after: SvR 2011, WWE '12 / '13; the size whose
+      // every record fits, 16 tried first, as Kaiko's arena_names.py)
+      size_t rec = 0;
+      for (size_t r : {size_t(16), size_t(12)})
+        if (!rec && depth && zero == 0 && count && 8 + size_t(count) * r <= d.size()) {
+          bool fits = true;
+          for (uint32_t i = 0; i < count && fits; ++i) {
+            uint32_t e[2];
+            memcpy(e, d.data() + 8 + i * r, 8);
+            fits = e[0] <= d.size() && e[1] <= d.size() - e[0];
+          }
+          rec = fits ? r : 0;
+        }
+      if (rec) {
+        for (uint32_t i = 0; i < count; ++i) {
+          uint32_t e[3];
+          memcpy(e, d.data() + 8 + i * rec, 12);
+          if (e[0] < d.size() && e[1] <= d.size() - e[0] && e[2] >= min_id) {
+            std::string t(reinterpret_cast<const char *>(d.data() + e[0]),
+                          strnlen(reinterpret_cast<const char *>(d.data() + e[0]), e[1]));
+            for (const char *q : {"\xE2\x80\x9C", "\xE2\x80\x9D"})  // (curly quotes: plain ones for the font)
+              for (size_t at; (at = t.find(q)) != std::string::npos;)
+                t.replace(at, 3, "\"");
+            one.emplace(e[2], std::move(t));
+          }
+        }
+        return;
+      }
+      if (depth < 3 && svrfmt::ArchiveExpand(n))
+        for (auto &c : n.kids)
+          self(self, c, depth + 1);
+    };
+    walk(walk, s.root, 0);
+    for (auto &[id, t] : one)
+      if (!t.empty() || !strings.count(id))
+        strings[id] = std::move(t);
+  }
   return strings;
 }
 
@@ -78,37 +117,38 @@ inline constexpr NamedArena kArenas2K14[] = {
     {56, "WrestleMania XXX"},
 };
 
-// The arenas' names by arena number (bgNN), for the 2K games that have them.
+// The arenas' names by arena number (bgNN), for the 2K games that have them (their DLC's too: WUniData_dlc40.pac).
 inline std::map<int, std::string> ArenaNames(const disc::GameDisc &g) {
   std::map<int, uint32_t> ids;
-  Bytes u;
-  svrfmt::Archive a;
-  if (!g.Read("pac/wuniData.pac", u) || !svrfmt::ArchiveOpen(u, a, nullptr))
-    return {};
-  const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
-    if (depth < 4 && svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
-      for (auto &c : n.kids)
-        self(self, c, depth + 1);
-      return;
-    }
-    const Bytes b = svrfmt::ArchiveData(n);
-    uint32_t count = 0, size = 0;
-    if (b.size() < 32 || memcmp(b.data(), "udt", 3) != 0)
-      return;
-    memcpy(&count, b.data() + 4, 4);
-    memcpy(&size, b.data() + 8, 4);
-    if (size != 52)
-      return;
-    count = std::min<uint32_t>(count, uint32_t((b.size() - 32) / 52));
-    for (uint32_t i = 0; i < count; ++i) {
-      uint32_t sid, bg;
-      memcpy(&sid, b.data() + 32 + i * 52 + 40, 4);
-      memcpy(&bg, b.data() + 32 + i * 52 + 44, 4);
-      if (sid >= 1000 && bg < 1000)  // (smaller ids: the created arenas' slots)
-        ids.emplace(int(bg), sid);
-    }
-  };
-  walk(walk, a.root, 0);
+  for (auto &u : WithDlc(g, "pac/wuniData.pac")) {
+    svrfmt::Archive a;
+    if (!svrfmt::ArchiveOpen(u, a, nullptr))
+      continue;
+    const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+      if (depth < 4 && svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
+        for (auto &c : n.kids)
+          self(self, c, depth + 1);
+        return;
+      }
+      const Bytes b = svrfmt::ArchiveData(n);
+      uint32_t count = 0, size = 0;
+      if (b.size() < 32 || memcmp(b.data(), "udt", 3) != 0)
+        return;
+      memcpy(&count, b.data() + 4, 4);
+      memcpy(&size, b.data() + 8, 4);
+      if (size != 52)
+        return;
+      count = std::min<uint32_t>(count, uint32_t((b.size() - 32) / 52));
+      for (uint32_t i = 0; i < count; ++i) {
+        uint32_t sid, bg;
+        memcpy(&sid, b.data() + 32 + i * 52 + 40, 4);
+        memcpy(&bg, b.data() + 32 + i * 52 + 44, 4);
+        if (sid >= 1000 && bg < 1000)  // (smaller ids: the created arenas' slots)
+          ids.emplace(int(bg), sid);
+      }
+    };
+    walk(walk, a.root, 0);
+  }
   std::map<int, std::string> names;
   if (ids.empty())
     return names;
@@ -139,11 +179,15 @@ inline void Names2K(const disc::GameDisc &g, const std::map<int, std::vector<int
 inline std::map<int, std::string> SuperstarNames(const disc::GameDisc &g) {
   std::map<int, std::string> names;
   std::map<int, std::vector<int>> ids;  // the 2K games: number -> its "number + k" string ids' k
-  Bytes etc;
-  svrfmt::Archive a;
   // (SvR 2008 keeps its records in pac/misc.pac: 232 bytes, id at +30; SvR 2009 in chEtc.pac, 252 bytes, id at +36;
-  // after Kaiko's superstar_port.py)
-  if ((g.Read("pac/ch/chEtc.pac", etc) || g.Read("pac/misc.pac", etc)) && svrfmt::ArchiveOpen(etc, a, nullptr)) {
+  // after Kaiko's superstar_port.py. A DLC's: a newer chEtc.pac, or its chEtc_dlcNN.pac)
+  auto all = WithDlc(g, "pac/ch/chEtc.pac");
+  if (all.empty())
+    all = g.ReadAll("pac/misc.pac");
+  for (auto &etc : all) {
+    svrfmt::Archive a;
+    if (!svrfmt::ArchiveOpen(etc, a, nullptr))
+      continue;
     const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
       const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
       const size_t id_at = d.size() == 264 || d.size() == 252 ? 36 : d.size() == 290 ? 44 : d.size() == 324 ? 56

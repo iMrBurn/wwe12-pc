@@ -34,6 +34,7 @@
 
 #include "bpe_like.h"
 #include "port13.h"
+#include "strings2k.h"
 #include "svrfmt/archive.h"
 #include "svrfmt/jboy.h"
 #include "svrfmt/texture.h"
@@ -730,6 +731,31 @@ inline const ArenaSvr *FindSvr(int file, int year = 2011) {
     if (a.file == file)
       return &a;
   return nullptr;
+}
+
+// SvR 2011's DLC arenas (bg50 NXT Arena, bg51 WCW Nitro Arena) by file number, from 50 on: their names in its string
+// table's arena run (id 40002 + number, as Kaiko's arena_names.py; a DLC's newer string.pac names them, the disc's
+// says "ARENA 50").
+inline std::map<int, std::string> DlcArenaNames(const disc::GameDisc &g) {
+  std::map<int, std::string> names;
+  const auto strings = strings2k::Strings(g, 40052);
+  for (int n = 50; n < 70; ++n)
+    if (const auto it = strings.find(uint32_t(40002 + n)); it != strings.end() && !it->second.empty() &&
+                                                           it->second.rfind("ARENA ", 0) != 0) {
+      std::string t;  // ("WCW NITRO ARENA" -> "WCW Nitro Arena": words of 3 letters or less kept)
+      size_t w = 0;
+      const std::string &u = it->second;
+      for (size_t i = 0; i <= u.size(); ++i)
+        if (i == u.size() || u[i] == ' ') {
+          for (size_t k = w; k < i; ++k)
+            t += i - w <= 3 || k == w ? u[k] : char(tolower(static_cast<unsigned char>(u[k])));
+          if (i < u.size())
+            t += ' ';
+          w = i + 1;
+        }
+      names[n] = t;
+    }
+  return names;
 }
 
 // The arena's banner in SvR 2011's menu/MatchHD.pac.

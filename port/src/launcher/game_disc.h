@@ -17,7 +17,9 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,22 @@ namespace fs = std::filesystem;
 
 class GameDisc {
  public:
+  // Files over the game's own (the Mod Maker's DLC, modmaker/dlc.h): read when the disc hasn't the file, listed with
+  // its folders' files.
+  struct Layer {
+    virtual ~Layer() = default;
+    virtual bool Read(const std::string &path, std::vector<uint8_t> &out) const = 0;
+    // Every copy of that file (a DLC can hold a newer chEtc.pac or string.pac, one per package).
+    virtual void ReadAll(const std::string &path, std::vector<std::vector<uint8_t>> &out) const = 0;
+    virtual std::vector<std::string> List(const std::string &dir, bool dirs) const = 0;
+  };
+  // Called after every OpenPath that found a game (the Mod Maker adds that game's DLC); none in the launcher.
+  static inline std::function<void(GameDisc &, const fs::path &)> on_open;
+  void AddLayer(std::shared_ptr<const Layer> l) {
+    if (l)
+      layers_.push_back(std::move(l));
+  }
+
   // Finds the game files next to the launcher (same places as the game looks).
   void Open(const fs::path &exe_dir) {
     folder_.clear();
@@ -50,22 +68,93 @@ class GameDisc {
   bool OpenPath(const fs::path &p) {
     folder_.clear();
     iso_.clear();
+    layers_.clear();
     std::error_code ec;
+    bool ok = false;
     if (fs::is_directory(p, ec)) {
       for (const auto &d : {p, p.parent_path()})
         if (fs::exists(d / "default.xex", ec) || fs::exists(d / "pac", ec)) {
           folder_ = d;
-          return true;
+          ok = true;
+          break;
         }
-      return false;
+    } else {
+      ok = OpenIso(p);
     }
-    return OpenIso(p);
+    if (ok && on_open)
+      on_open(*this, p);
+    return ok;
   }
 
   bool Found() const { return !folder_.empty() || !iso_.empty(); }
 
   // A file by its disc path ("pac/ch/chEtc.pac").
   bool Read(const std::string &path, std::vector<uint8_t> &out) const {
+    if (ReadOwn(path, out))
+      return true;
+    for (const auto &l : layers_)
+      if (l->Read(path, out))
+        return true;
+    out.clear();
+    return false;
+  }
+
+  // Every copy of a file: the disc's, then the DLC's (each a newer roster's chEtc.pac, string.pac...).
+  std::vector<std::vector<uint8_t>> ReadAll(const std::string &path) const {
+    std::vector<std::vector<uint8_t>> all;
+    std::vector<uint8_t> b;
+    if (ReadOwn(path, b))
+      all.push_back(std::move(b));
+    for (const auto &l : layers_)
+      l->ReadAll(path, all);
+    return all;
+  }
+
+  // `size` bytes of a file from `at` (a part of a big .pac, m.pac's 270 MB).
+  bool ReadPart(const std::string &path, uint64_t at, uint32_t size, std::vector<uint8_t> &out) const {
+    out.clear();
+    if (!folder_.empty()) {
+      std::ifstream f(folder_ / path, std::ios::binary);
+      if (f) {
+        f.seekg(std::streamoff(at));
+        out.resize(size);
+        f.read(reinterpret_cast<char *>(out.data()), size);
+        return bool(f);
+      }
+    } else {
+      Item it;
+      if (!iso_.empty() && Find(path, it) && !it.dir)
+        return at + size <= it.size && ReadAt(uint64_t(it.sector) * 2048 + at, size, out);
+    }
+    std::vector<uint8_t> whole;  // (a DLC's file: read whole)
+    if (layers_.empty() || !Read(path, whole) || at + size > whole.size())
+      return false;
+    out.assign(whole.begin() + std::ptrdiff_t(at), whole.begin() + std::ptrdiff_t(at + size));
+    return true;
+  }
+  uint64_t SizeOf(const std::string &path) const {
+    if (!folder_.empty()) {
+      std::error_code ec;
+      const auto n = fs::file_size(folder_ / path, ec);
+      if (!ec)
+        return n;
+    } else {
+      Item it;
+      if (!iso_.empty() && Find(path, it) && !it.dir)
+        return it.size;
+    }
+    std::vector<uint8_t> whole;
+    return !layers_.empty() && Read(path, whole) ? whole.size() : 0;
+  }
+
+  // The file names in a disc folder ("movies/titantron").
+  std::vector<std::string> List(const std::string &dir) const { return WithLayers(dir, ListOwn(dir), false); }
+
+  // The sub folders of a disc folder ("" = the root).
+  std::vector<std::string> ListDirs(const std::string &dir) const { return WithLayers(dir, ListDirsOwn(dir), true); }
+
+ private:
+  bool ReadOwn(const std::string &path, std::vector<uint8_t> &out) const {
     out.clear();
     if (!folder_.empty()) {
       std::ifstream f(folder_ / path, std::ios::binary);
@@ -80,35 +169,16 @@ class GameDisc {
     return ReadAt(uint64_t(it.sector) * 2048, it.size, out);
   }
 
-  // `size` bytes of a file from `at` (a part of a big .pac, m.pac's 270 MB).
-  bool ReadPart(const std::string &path, uint64_t at, uint32_t size, std::vector<uint8_t> &out) const {
-    out.clear();
-    if (!folder_.empty()) {
-      std::ifstream f(folder_ / path, std::ios::binary);
-      if (!f)
-        return false;
-      f.seekg(std::streamoff(at));
-      out.resize(size);
-      f.read(reinterpret_cast<char *>(out.data()), size);
-      return bool(f);
-    }
-    Item it;
-    if (iso_.empty() || !Find(path, it) || it.dir || at + size > it.size)
-      return false;
-    return ReadAt(uint64_t(it.sector) * 2048 + at, size, out);
-  }
-  uint64_t SizeOf(const std::string &path) const {
-    if (!folder_.empty()) {
-      std::error_code ec;
-      const auto n = fs::file_size(folder_ / path, ec);
-      return ec ? 0 : n;
-    }
-    Item it;
-    return !iso_.empty() && Find(path, it) && !it.dir ? it.size : 0;
+  // The disc's names, then the layers' that it hasn't (any case).
+  std::vector<std::string> WithLayers(const std::string &dir, std::vector<std::string> names, bool dirs) const {
+    for (const auto &l : layers_)
+      for (auto &n : l->List(dir, dirs))
+        if (std::none_of(names.begin(), names.end(), [&](const std::string &x) { return SameName(x, n); }))
+          names.push_back(std::move(n));
+    return names;
   }
 
-  // The file names in a disc folder ("movies/titantron").
-  std::vector<std::string> List(const std::string &dir) const {
+  std::vector<std::string> ListOwn(const std::string &dir) const {
     std::vector<std::string> names;
     if (!folder_.empty()) {
       std::error_code ec;
@@ -126,8 +196,7 @@ class GameDisc {
     return names;
   }
 
-  // The sub folders of a disc folder ("" = the root).
-  std::vector<std::string> ListDirs(const std::string &dir) const {
+  std::vector<std::string> ListDirsOwn(const std::string &dir) const {
     std::vector<std::string> names;
     if (!folder_.empty()) {
       std::error_code ec;
@@ -145,7 +214,6 @@ class GameDisc {
     return names;
   }
 
- private:
   struct Item {
     std::string name;
     uint32_t sector = 0, size = 0;
@@ -237,6 +305,7 @@ class GameDisc {
   }
 
   fs::path folder_, iso_;
+  std::vector<std::shared_ptr<const Layer>> layers_;
   uint64_t partition_ = 0;
   Item root_;
 };
