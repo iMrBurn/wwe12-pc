@@ -1306,13 +1306,29 @@ inline bool Ag2dPlaceLayer(Bytes &d, uint32_t layer, float x, float y, float w, 
 
 }  // namespace detail
 
+// Where WWE '12 writes the plates' text, on 1920 x 1080: it depends on the arena whose number the added one plays on
+// (its base; not in the plates' files: their fonts' data are the same in every arena), measured in the game
+// (2026-10-31): the name centred, the city from x = 440 (taken as centred 170 further) or centred. Others: base 2's.
+struct PlateText {
+  float name_x, name_y, city_x, city_y;
+};
+inline PlateText PlateTextFor(int base) {
+  switch (base) {
+    case 3:  // Superstars (SmackDown of 2K15: Brock Lesnar, Pensacola)
+      return {1105, 802, 957, 162};
+    case 5:  // Fatal 4-Way (RAW of 2K14: Randy Orton, The Miz, Providence)
+      return {1115, 925, 610, 195};
+    default:  // 2, NXT (SmackDown of 2K17: Vladimir Kozlov, Rio Rancho, Indianapolis)
+      return {918, 857, 610, 215};
+  }
+}
+
 // `intro`: the movie's pictures before `still` at half size (bink2::Still), cut as the plate is. `text_x/y`: where the
 // 2K game writes its text on the plate as it shows it (WWE 2K17's layouts: port13::TextCentre2K17), else theirs on
-// average (2K17's SmackDown, RAW, WWF Live 91...); the plate is moved so that place falls on WWE '12's text (seen in the
-// game, 2026-10-31, SmackDown of 2K17: the name centred at 918, 857 without a title line, the city from x = 440 at
-// y = 215; the text was on the plate's edges).
+// average (2K17's SmackDown, RAW, WWF Live 91...); the plate is moved so that place falls on WWE '12's text for the
+// added arena's `base` (PlateTextFor; before, the text was on the plates' edges).
 inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name, const std::vector<svrfmt::Image> &intro = {},
-                             float text_x = -1, float text_y = -1) {
+                             float text_x = -1, float text_y = -1, int base = 2) {
   Plate2K p;
   int r[4] = {};
   p.img = PlateCut(still, r);
@@ -1327,8 +1343,9 @@ inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name, const std::v
     text_x = 960;
   if (name ? text_y < 700 || text_y > 1080 : text_y < 0 || text_y > 400)
     text_y = name ? 920.f : 150.f;
-  p.x += (name ? 918.f : 615.f) - text_x;
-  p.y += (name ? 857.f : 215.f) - text_y;
+  const PlateText t = PlateTextFor(base);
+  p.x += (name ? t.name_x : t.city_x) - text_x;
+  p.y += (name ? t.name_y : t.city_y) - text_y;
   bool alpha = false;
   for (size_t i = 3; i < still.rgba.size() && !alpha; i += 4)
     alpha = still.rgba[i] < 255;

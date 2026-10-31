@@ -1695,7 +1695,8 @@ class Page {
           svrfmt::Image still;
           std::vector<svrfmt::Image> intro;
           if (bink2::Still(bink2::Found(), in, still, nullptr, &intro))
-            own[n] = port_svr_arena::PlateOnScreen(still, n == 1, intro, text[n][0], text[n][1]);
+            own[n] = port_svr_arena::PlateOnScreen(still, n == 1, intro, text[n][0], text[n][1],
+                                                    slot_ >= 0 ? kSlots[slot_].number : 2);
           std::error_code ec;
           fs::remove(in, ec);
         }

@@ -732,7 +732,11 @@ places ×10, d'après le code de Kaiko).
   ignorés). **WWE '12 n'écrit pas au même endroit selon le cas** : Orton (RAW 2K14) nom centré 1115, 937 ; Otunga /
   Kozlov (SmackDown 2K17) 918, 857 ; ville toujours à partir de x = 440, y ≈ 215. `PlateOnScreen` déplace la plaque
   pour que le texte 2K tombe sur 918, 857 (nom) / 615, 215 (ville) ; sans mise en page (2K14-2K16) : texte 2K supposé
-  en 960, 920 / 960, 150. À revoir si une autre arène de base place le texte ailleurs.
+  en 960, 920 / 960, 150. **Confirmé ensuite : la place et le style du texte dépendent de l'arène de base** (pas
+  dans l'ETEX : les données de police 20001 / 20011 sont les mêmes partout) : table `PlateTextFor` (1080p) mesurée en
+  jeu : base 2 (NXT) nom 918, 857, ville dès x = 440 (prise centrée en 610), y 215 ; base 3 (Superstars) nom 1105, 802,
+  ville centrée 957, 162 ; base 5 (Fatal 4-Way) nom 1115, 925, ville dès 440, y 195 ; autres = base 2. À compléter
+  base par base.
 - **Vrais écrans VS 2K (2026-10-31, vérifié hors du jeu, pas encore en jeu)** : `Card2KOwn`. 2K14-2K16 : même cadre que
   WWE '12 (36 nœuds, groupes 1, 8, 9, 5, 6, 1, 6) mais 14 ressources : un seul fond 3000 (les deux côtés) et `dummy`
   3001, contre 3000 / 3001 / `dummy` 3002 dans WWE '12, qui les prend par rang (d'où noms absents et rectangle noir sur
