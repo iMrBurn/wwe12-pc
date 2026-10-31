@@ -210,3 +210,20 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   bases partagées (le jeu ne recharge pas l'écran VS si le numéro d'arène ne change pas) : ne plus compter sur le
   rechargement, réécrire les textures en mémoire au choix de l'arène (nous avons déjà des crochets de textures,
   `wwe12_buttons.cpp`, et le choix d'arène). À essayer en jeu.
+
+## Vidéos d'entrée des autres jeux : décodeur Bink 2 (2026-10-28, hors jeu)
+
+- `port/src/modmaker/video/bink2_decode.c/.h` + `video/bink2/` : décodeur Bink 2 du patch FFmpeg-devel de Paul B Mahol
+  (2020-03-20, LGPL 2.1+, d'après les recherches de Konstantin Shishkov), fichiers d'origine inchangés, notre lecture de
+  fichier autour (modèle : `bink_decode.c`). **Vérifié hors jeu** : 2K14 (KB2f) 4 vidéos et 2K15 (KB2i) 2 vidéos, toutes
+  les images décodées, image correcte (titantron 156 « Latino Heat » de 2K14). → RAD Video Tools ne serait plus
+  nécessaire pour 2K14-2K17. Pas encore branché dans le Mod Maker, pas commité.
+- **WWE '13 (KB2d) : pas encore.** Le décodeur décroche dès le premier bloc de la première image. Faits relevés :
+  en-tête du film identique (11 mots, index d'images juste après) ; drapeaux d'image `0xC000` sur la plupart des images
+  (KB2f : `0x20` partout), `0x20` sur les petites images presque vides ; le bloc noir en haut à gauche du 156 (même vidéo
+  que celle de 2K14, donc image attendue connue) se lit avec des AC non nuls : la syntaxe du bloc diffère. Essayés sans
+  succès : lire les tables lignes/colonnes selon `0x8000`/`0x4000`, lire le type de bloc (2 bits) aussi sur les images clés.
+  Aucune description publique de KB2d (Kostya n'avait pas d'échantillon ; Librempeg traite a-f comme f, sans
+  correction de lecture). Pistes : bits lus dans un autre ordre (mots de 32 bits), codage CBP/DC de la 2.0 ; le décodeur
+  de WWE '13 lui-même (dans son xex) ; une vieille version de RAD Video Tools (2012-2013).
+- Repli possible : 91 des 271 titantrons de WWE '13 existent dans 2K14 sous le même numéro (KB2f, lisibles).

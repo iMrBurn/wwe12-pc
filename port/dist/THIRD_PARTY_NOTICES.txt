@@ -40,6 +40,9 @@ In WWE12 Launcher.exe and WWE12 Mod Maker.exe
 - Bink video reader (Mod Maker): Kaiko's port of FFmpeg's libavcodec/bink.c (Konstantin Shishkov,
   Peter Ross): LGPL 2.1 or later - licenses\FFmpeg-LGPL-2.1.txt. Its source is in this port's
   source code (port/src/modmaker/video).
+- Bink 2 video decoder (Mod Maker): the decoder proposed to FFmpeg-devel on 2020-03-20 by Paul B Mahol
+  (Copyright (c) 2014 Konstantin Shishkov, (c) 2019 Paul B Mahol), taken unchanged: LGPL 2.1 or later -
+  licenses\FFmpeg-LGPL-2.1.txt. Its source is in this port's source code (port/src/modmaker/video/bink2).
 
 
 In rexruntime.dll and rexgpu-xenos.dll (ReXGlue SDK)
