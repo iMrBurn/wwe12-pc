@@ -156,7 +156,8 @@ text in their `licenses` folder.
 
 Thanks to nefariousjosiah (native renderer of the SmackDown vs. Raw ports), Banshee
 ([@itsbybanshee](https://github.com/itsbybanshee): DLC support and build fixes), the ReXGlue and
-re:Blue authors, and [wwe-svr2011-pc](https://github.com/KaikoClanworth1/wwe-svr2011-pc) for showing the
+re:Blue authors, [Jarrodfeng](https://github.com/Jarrodfeng/wwe2k14-recomp) (WWE 2K14 recomp: his
+optimisation and fixes inspire much of ours), and [wwe-svr2011-pc](https://github.com/KaikoClanworth1/wwe-svr2011-pc) for showing the
 way (no code taken from it).
 
 This is a fan project, not affiliated with WWE, THQ or Yuke's.

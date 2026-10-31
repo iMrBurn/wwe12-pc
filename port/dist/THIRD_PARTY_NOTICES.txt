@@ -24,6 +24,10 @@ In wwe12.exe
 - Texture dumps and texture packs: adapted from Kaiko's WWE SmackDown vs. Raw 2011 PC port
   (KaikoClanworth1/wwe-svr2011-pc, texture_packs.cpp), used with his permission
 - stb_image (nothings/stb): public domain or MIT, at your choice (licence at the end of stb_image.h)
+- Ideas and methods: Jarrodfeng/wwe2k14-recomp (WWE 2K14 recomp, BSD-3-Clause) - performance and
+  stability work (frame pacing, pipeline preparation, entrance fixes, read-back limits, screen
+  fitting) studied and credited, with the author's agreement; any code taken from it is listed in
+  THIRD_PARTY.md with its file
 
 
 In WWE12 Launcher.exe and WWE12 Mod Maker.exe
