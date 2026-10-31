@@ -23,6 +23,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -690,14 +691,41 @@ inline constexpr ArenaSvr kArenasSvr10[] = {
     {15, "The Great American Bash", "arena_GAB"}, {18, "Cyber Sunday", "arena_CS"}, {24, "Extreme Rules", ""},
 };
 
-// `year`: 2011 or 2010.
+// SvR 2009's and 2008's (Kaiko's arena_port.py SVR2009 / SVR2008, with his permission): made SvR 2011's by
+// OldSvrArena. Their banners aren't named: the biggest picture of their VS screen's (Banner).
+inline constexpr ArenaSvr kArenasSvr09[] = {
+    {0, "SmackDown", ""},          {1, "RAW", ""},          {2, "ECW", ""},
+    {3, "Tribute to the Troops", ""}, {4, "SummerSlam", ""}, {5, "Unforgiven", ""},
+    {6, "No Mercy", ""},           {7, "Survivor Series", ""}, {8, "Armageddon", ""},
+    {9, "Royal Rumble", ""},       {10, "No Way Out", ""},  {11, "WrestleMania XXIV", ""},
+    {12, "Backlash", ""},          {13, "Judgment Day", ""}, {14, "Night of Champions", ""},
+    {15, "The Great American Bash", ""}, {16, "One Night Stand", ""}, {17, "Cyber Sunday", ""},
+    {18, "Vengeance", ""},
+};
+inline constexpr ArenaSvr kArenasSvr08[] = {
+    {0, "SmackDown", ""},          {1, "RAW", ""},          {2, "ECW", ""},
+    {3, "Sunday Night Heat", ""},  {4, "SummerSlam", ""},   {5, "Unforgiven", ""},
+    {6, "No Mercy", ""},           {7, "Survivor Series", ""}, {8, "Armageddon", ""},
+    {9, "Royal Rumble", ""},       {10, "No Way Out", ""},  {11, "WrestleMania 23", ""},
+    {12, "Backlash", ""},          {13, "Judgment Day", ""}, {14, "Vengeance", ""},
+    {15, "The Great American Bash", ""}, {16, "New Year's Revolution", ""}, {17, "One Night Stand", ""},
+    {18, "December to Dismember", ""}, {19, "Cyber Sunday", ""},
+};
+
+// `year`: 2011, 2010, 2009 or 2008.
 inline const ArenaSvr *FindSvr(int file, int year = 2011) {
-  if (year == 2010) {
-    for (const auto &a : kArenasSvr10)
+  auto in = [&](const auto &table) -> const ArenaSvr * {
+    for (const auto &a : table)
       if (a.file == file)
         return &a;
     return nullptr;
-  }
+  };
+  if (year == 2010)
+    return in(kArenasSvr10);
+  if (year == 2009)
+    return in(kArenasSvr09);
+  if (year == 2008)
+    return in(kArenasSvr08);
   for (const auto &a : kArenasSvr)
     if (a.file == file)
       return &a;
@@ -705,10 +733,35 @@ inline const ArenaSvr *FindSvr(int file, int year = 2011) {
 }
 
 // The arena's banner in SvR 2011's menu/MatchHD.pac.
+namespace detail {
+inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n);
+}
 inline bool Banner(const Bytes &matchhd, int file, svrfmt::Image &out, int year = 2011) {
   const ArenaSvr *arena = FindSvr(file, year);
   svrfmt::Archive a;
-  if (!arena || !*arena->banner || !svrfmt::ArchiveOpen(matchhd, a, nullptr))
+  if (!arena || !svrfmt::ArchiveOpen(matchhd, a, nullptr))
+    return false;
+  // SvR 2008 / 2009: the biggest picture at least 256 wide of its VS screen (MENU/MnnI), as Kaiko's svr2008_convert.
+  if (year < 2010) {
+    char ni[8];
+    snprintf(ni, sizeof(ni), "M%02dI", file);
+    int best = 0;
+    for (auto &k : a.root.kids)
+      if (k.group == "MENU" && k.name == ni)
+        if (auto *p = detail::Pictures(k)) {
+          std::vector<svrfmt::BundleTexture> texs;
+          svrfmt::BundleRead(svrfmt::ArchiveData(*p), texs);
+          for (const auto &t : texs) {
+            svrfmt::Image img;
+            if (svrfmt::DdsDecode(t.data, img) && img.w >= 256 && img.w * img.h > best) {
+              best = img.w * img.h;
+              out = std::move(img);
+            }
+          }
+        }
+    return best > 0;
+  }
+  if (!*arena->banner)
     return false;
   for (auto &k : a.root.kids) {
     if (k.group != "MENU" || k.name != "MASI" || !svrfmt::ArchiveExpand(k))
@@ -1788,6 +1841,157 @@ inline bool SvrCard(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, 
   return true;
 }
 
+// SvR 2008 / 2009 arenas as SvR 2011 has them (after Kaiko's arena_port.py svr2008_convert, with his permission and
+// credit). Their pictures are 200 / 201 (2011: 400 / 401); their crowd (20000-20010, 2009's) and their light motions
+// (31010) are an older format: left out (the base's crowd comes in); their light bank (30000) has no "YMKs" header;
+// they have no visibility tree (50020: the game then culls every arena model, a black floor and no barricades in
+// SvR 2011): one is made, a node per model boxed by its vertices; the crowd's pictures (402) and 61000 are the
+// base's. The light sets the game looks up itself that the bank lacks come from the base's bank, and the models' flags
+// naming a set the bank hasn't are moved to the nearest one of the same hundred. False: not such an arena.
+inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<std::string> *notes = nullptr) {
+  using namespace detail;
+  auto kid = [](svrfmt::ArcNode &n, uint32_t id) -> svrfmt::ArcNode * {
+    for (auto &k : n.kids)
+      if (k.id == id)
+        return &k;
+    return nullptr;
+  };
+  if (kid(ga, 400) || !kid(ga, 200))
+    return false;
+  std::string e;
+  for (auto &k : ga.kids)
+    if (k.id == 200 || k.id == 201)
+      k.id += 200;
+  const std::set<uint32_t> old = {20000, 20001, 20002, 20003, 20010, 31010};
+  ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(), [&](const svrfmt::ArcNode &k) { return old.count(k.id) != 0; }),
+                ga.kids.end());
+  for (uint32_t id : {402u, 61000u})
+    if (!kid(ga, id))
+      if (svrfmt::ArcNode *b = kid(gb, id))
+        ga.kids.push_back(*b);
+  // The light bank, with its header, and the sets the game looks up itself.
+  std::set<int> have;
+  if (svrfmt::ArcNode *l = kid(ga, 30000)) {
+    Bytes d = svrfmt::ArchiveData(*l);
+    if (d.size() >= 4 && memcmp(d.data(), "YMKs", 4) != 0) {
+      Bytes h = {'Y', 'M', 'K', 's', 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+      d.insert(d.begin(), h.begin(), h.end());
+    }
+    std::vector<Track> ours, theirs;
+    if (ReadTracks(d, ours)) {
+      for (const auto &t : ours)
+        have.insert(t.id);
+      std::vector<int> added;
+      if (svrfmt::ArcNode *bl = kid(gb, 30000); bl && ReadTracks(svrfmt::ArchiveData(*bl), theirs))
+        for (int id : {10, 11, 12, 13, 14, 20, 30, 31, 100, 110, 115, 500}) {
+          if (have.count(id))
+            continue;
+          bool any = false;
+          for (const auto &t : theirs)
+            if (t.id == id) {
+              ours.push_back(t);
+              any = true;
+            }
+          if (any) {
+            have.insert(id);
+            added.push_back(id);
+          }
+        }
+      d = WriteTracks(d, ours);
+      if (notes && !added.empty())
+        notes->push_back(std::to_string(added.size()) + " light sets the game needs, from the base");
+    }
+    ReplaceLike(*l, d);
+  }
+  // The flags' light sets the bank hasn't: l(n), le(n), lg(n).
+  if (svrfmt::ArcNode *f = kid(ga, 50001); f && !have.empty()) {
+    auto lines = Lines(svrfmt::ArchiveData(*f));
+    bool changed = false;
+    for (auto &line : lines)
+      for (size_t at = 0; (at = line.find("(", at)) != std::string::npos; ++at) {
+        size_t s = at;
+        while (s > 0 && std::isalpha((unsigned char)line[s - 1]))
+          --s;
+        const std::string tag = line.substr(s, at - s);
+        if ((tag != "l" && tag != "le" && tag != "lg") || (s > 0 && std::isalnum((unsigned char)line[s - 1])))
+          continue;
+        const size_t close = line.find(')', at);
+        if (close == std::string::npos || close == at + 1 ||
+            !std::all_of(line.begin() + long(at + 1), line.begin() + long(close), ::isdigit))
+          continue;
+        const int n = atoi(line.c_str() + at + 1);
+        if (have.count(n))
+          continue;
+        int to = -1;
+        for (int pass = 0; pass < 2 && to < 0; ++pass)
+          for (int h : have)
+            if ((pass || h / 100 == n / 100) && (to < 0 || std::abs(h - n) < std::abs(to - n)))
+              to = h;
+        line.replace(at + 1, close - at - 1, std::to_string(to));
+        changed = true;
+      }
+    if (changed)
+      ReplaceLike(*f, Join(lines));
+  }
+  // The visibility tree: the base's head (comments), the root boxing all, a node per model (3ds Max axes: x, z, -y,
+  // a tenth of the model's units, as SvR 2011's own trees).
+  if (!kid(ga, 50020)) {
+    std::vector<std::pair<std::string, std::array<double, 6>>> boxes;
+    for (auto &k : ga.kids) {
+      svrfmt::Model m;
+      if (k.id >= 400 || !svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr))
+        continue;
+      std::array<double, 6> b = {1e30, 1e30, 1e30, -1e30, -1e30, -1e30};
+      for (const auto &s : m.meshes)
+        for (const auto &v : s.verts) {
+          const double p[3] = {v.pos[0] * 0.1, v.pos[2] * 0.1, -v.pos[1] * 0.1};
+          for (int c = 0; c < 3; ++c) {
+            b[size_t(c)] = std::min(b[size_t(c)], p[c]);
+            b[size_t(c) + 3] = std::max(b[size_t(c) + 3], p[c]);
+          }
+        }
+      if (b[0] <= b[3])
+        boxes.push_back({m.name, b});
+    }
+    if (!boxes.empty()) {
+      std::vector<std::string> head, out;
+      std::vector<VisNode> unused;
+      if (svrfmt::ArcNode *bv = kid(gb, 50020))
+        ReadVis(svrfmt::ArchiveData(*bv), head, unused);
+      std::array<double, 6> root = boxes[0].second;
+      for (const auto &[n, b] : boxes)
+        for (int c = 0; c < 3; ++c) {
+          root[size_t(c)] = std::min(root[size_t(c)], b[size_t(c)]);
+          root[size_t(c) + 3] = std::max(root[size_t(c) + 3], b[size_t(c) + 3]);
+        }
+      auto box = [](const std::array<double, 6> &b) {
+        std::string s = "\t";
+        for (int c = 0; c < 6; ++c)
+          s += (c ? " " : "") + Num(b[size_t(c)]);
+        return s;
+      };
+      out = head;
+      for (const auto &l : std::vector<std::string>{"NODE MY_NAME = VT_ROOT", "{", box(root), "}",
+                                                    std::to_string(boxes.size()), ""})
+        out.push_back(l);
+      for (const auto &[n, b] : boxes)
+        for (const auto &l : std::vector<std::string>{"NODE MY_NAME = " + n + " PARENT_NAME = VT_ROOT", "{", box(b), "}", "0", ""})
+          out.push_back(l);
+      out.push_back("");
+      if (svrfmt::ArcNode *bv = kid(gb, 50020)) {  // (wrapped as the base's)
+        svrfmt::ArcNode n = *bv;
+        ReplaceLike(n, Join(out));
+        ga.kids.push_back(n);
+      }
+      if (notes)
+        notes->push_back("visibility tree made (" + std::to_string(boxes.size()) + " models)");
+    }
+  }
+  std::sort(ga.kids.begin(), ga.kids.end(), [](const svrfmt::ArcNode &a, const svrfmt::ArcNode &b) { return a.id < b.id; });
+  svrfmt::ArchiveTouch(ga);
+  return true;
+}
+
 struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
   int pictures_added = 0;           // ring and crowd pictures copied from the base
@@ -1795,6 +1999,7 @@ struct PortInfo {
   int pictures_missing = 0;         // ... that found no free record in the package
   int fences = 0;                   // barricade pieces taken from the base
   float ramp_svr = 0, ramp12 = 0;   // the ramps' heights (cm)
+  std::vector<std::string> notes;   // what else was done (SvR 2008 / 2009 arenas)
   bool RampsMatch() const { return (ramp_svr < 60) == (ramp12 < 60); }
 };
 
@@ -1818,12 +2023,14 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
   if (!svrfmt::ArchiveExpand(ga) || !svrfmt::ArchiveExpand(gb))
     return fail("unreadable arena list");
   PortInfo pi;
+  if (OldSvrArena(ga, gb, &pi.notes))
+    pi.notes.insert(pi.notes.begin(), "SvR 2008 / 2009 arena made as SvR 2011's");
   const std::set<uint32_t> ring = {951, 952, 953, 956, 960, 964, 973, 974, 980};
   std::set<uint32_t> from_base = {30002, 995, 996, 997, 999};
   from_base.insert(ring.begin(), ring.end());
   // Its own crowd: the people converted (not scaled), their places scaled; else the base's.
   const std::set<uint32_t> crowd = {20000, 20001, 20002, 20003, 20010};
-  pi.own_crowd = true;
+  pi.own_crowd = std::any_of(ga.kids.begin(), ga.kids.end(), [](const svrfmt::ArcNode &k) { return k.id == 20000; });
   for (auto &k : ga.kids) {
     if (k.id != 20000 && k.id != 20010)
       continue;

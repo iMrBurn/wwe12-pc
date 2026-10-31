@@ -1072,15 +1072,24 @@ class Page {
         wiz_apron_ = {};
       }
     }
-    // SvR 2010: its arena files are SvR 2011's kind (port_svr_arena::kArenasSvr10, after Kaiko's arena_port.py).
-    {
-      const fs::path p10 = discs_ ? discs_->PathOf(0x54510844) : fs::path();
-      ImGui::SameLine();
-      if (ChoiceCard(7, wiz_src_ == 0 && svr_year_ == 2010, !p10.empty(), "SvR 2010", p10.empty() ? not_added : yours)) {
+    // SvR 2010: its arena files are SvR 2011's kind (port_svr_arena::kArenasSvr10, after Kaiko's arena_port.py);
+    // SvR 2009 and 2008: made SvR 2011's first (port_svr_arena::OldSvrArena).
+    static constexpr struct {
+      uint32_t title;
+      int year;
+      const char *name;
+    } kOldSvr[] = {{0x54510844, 2010, "SvR 2010"}, {0x54510826, 2009, "SvR 2009"}, {0x5451080B, 2008, "SvR 2008"}};
+    for (int i = 0; i < 3; ++i) {
+      const fs::path p10 = discs_ ? discs_->PathOf(kOldSvr[i].title) : fs::path();
+      const int year = kOldSvr[i].year;
+      if (i != 2)  // (three cards a row: 2K17, 2010, 2009; then 2008)
+        ImGui::SameLine();
+      if (ChoiceCard(7 + i, wiz_src_ == 0 && svr_year_ == year, !p10.empty(), kOldSvr[i].name,
+                     p10.empty() ? not_added : yours)) {
         wiz_src_ = 0;
         svr_path_.clear();
-        if (svr_year_ != 2010 || svr_game_ != p10 || svr_list_.empty()) {
-          svr_year_ = 2010;
+        if (svr_year_ != year || svr_game_ != p10 || svr_list_.empty()) {
+          svr_year_ = year;
           OpenSvr(fr, p10);
         }
         svr_file_.clear();
@@ -1428,16 +1437,19 @@ class Page {
     dressed_mf_ = card_mf_;
     real_mb_.clear();
     real_mf_.clear();
-    if (!matchhd12.empty() && svr_pick_ >= 0)
+    // (SvR 2008 / 2009: their own VS screens, plates and transitions are older kinds: not taken)
+    const bool old_svr = svr_pick_ >= 0 && svr_year_ < 2010;
+    if (!matchhd12.empty() && svr_pick_ >= 0 && !old_svr)
       port_svr_arena::SvrCard(matchhd, matchhd12, svr_pick_, real_mb_, real_mf_);
     UseRealVs();
     // Its entrance plates and locator (evtgdhd.pac ETEX/00NN, keys of its 2D animations made WWE '12's).
     Bytes evtgd;
-    if (svr_pick_ >= 0 && svr_disc_.Read("pac/evt/evtgdhd.pac", evtgd) && port_svr_arena::SvrEtex(evtgd, svr_pick_, etex_))
+    if (svr_pick_ >= 0 && !old_svr && svr_disc_.Read("pac/evt/evtgdhd.pac", evtgd) &&
+        port_svr_arena::SvrEtex(evtgd, svr_pick_, etex_))
       port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
     // Its transition video (evtmov.pac MOVT/M0NN: Bink 1 at 640 x 640, as WWE '12's).
     Bytes evtmov;
-    if (svr_pick_ >= 0 && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&
+    if (svr_pick_ >= 0 && !old_svr && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&
         port13::TransitionVideo(evtmov, svr_pick_, movie_))
       port_note_ += fr ? " Avec sa transition." : " With its transition.";
     const std::string stem = svr_pick_ >= 0 ? port_svr_arena::FindSvr(svr_pick_, svr_year_)->name
@@ -2015,7 +2027,7 @@ class Page {
   fs::path svr_path_;         // ... a file chosen alone
   disc::GameDisc svr_disc_;   // ... or the game's ISO / folder, and its arena chosen
   fs::path svr_game_;
-  int svr_year_ = 2011;  // (SvR 2011 or 2010: its arena list)
+  int svr_year_ = 2011;  // (SvR 2011, 2010, 2009 or 2008: its arena list)
   std::vector<int> svr_list_;
   int svr_pick_ = -1;
 

@@ -73,3 +73,23 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   « SvR 2010 » (`svr_year_`). Repris : bannière (MASI ; Extreme Rules n'en a pas) et écran VS de WWE '12 habillé
   (`Card`). Pas repris : son propre écran VS (`SvrCard`), ses plaques (`SvrEtex`), sa transition (rangés autrement) :
   ceux de la base.
+- **Étapes 4 et 5 (2008 / 2009) faites (2026-10-31, vérifiées hors du jeu, pas encore en jeu)**, méthode de Kaiko
+  (`svr08_char.py`, `arena_port.py` `svr2008_convert`) reprise en C++ avec crédit :
+  - **Catcheurs** (`port_svr::OldSvrPictures` puis le portage 2011) : la couleur (`<id>color`, rangée avec les normales
+    dans l'entrée 10) passe dans une entrée 12 « color », la carte de normales devient « normal », les modèles les
+    nomment ainsi ; une image que l'attire n'a pas (2009 Jericho : « 6102color ») = sa couleur. Le 20000 de 2008/2009
+    n'est pas celui de 2011 (sourcils de Rey, bracelets de Torrie, cils + yeux de 2009) : **fusionné dans le corps**
+    (sur ses os), comme les morceaux du modèle des cheveux qui ne tiennent à aucun os de la tête (ch127 2009 : une
+    pièce sur la main et les hanches). Squelette : les os d'aide k_* suivent leur parent. Testé : les 74 fichiers de
+    2008 et les 85 de 2009 passent (1re tenue), images de face propres (Jeff Hardy, Torrie, Jericho, ch127).
+    Noms : 2008 dans `pac/misc.pac` (fiches de 232 octets, numéro à +30), 2009 dans `chEtc.pac` (252 octets, +36).
+    Portraits : 2009 `DLC_HD.pac`, 2008 `menu/menuHD.pac`, MENU/SSFA-SSFC = PACH { 0 : PACH { numéro : DDS } },
+    remis aux tailles de WWE '12. 2008 : fichiers `chNN.pac`, vidéos `NN.bik`. Pas repris : les pièces de tenue
+    0x20+ (3 tenues seulement : ch23 2304, ch70 7004, ch137 8904), les prises.
+  - **Arènes** (`port_svr_arena::OldSvrArena` avant `Port`) : images 200/201 → 400/401 ; foule (20000-20010) et
+    mouvements de lumières 31010 d'ancien format retirés (foule de la base) ; banque de lumières 30000 sans en-tête
+    « YMKs » (ajouté), jeux de lumières que le jeu cherche lui-même pris dans la base, drapeaux l(n) vers un jeu
+    existant ; arbre de visibilité 50020 fabriqué (une boîte par modèle) ; 402 et 61000 de la base. Les 20 arènes de
+    2008 et les 19 de 2009 passent ; bannière = la plus grande image de leur écran VS (MENU/MnnI). Leur propre écran
+    VS, leurs plaques et leur transition ne sont pas repris (formats plus anciens) : écran VS de WWE '12 habillé.
+  - À voir en jeu : tout (catcheurs, sourcils / cils fusionnés en peau opaque, arènes, lumières).

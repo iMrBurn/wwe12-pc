@@ -771,6 +771,104 @@ inline Bytes HairSettings(const Bytes &svr60) {
   return Bytes(o.begin(), o.end());
 }
 
+// SvR 2008 / 2009 attires as SvR 2011 has them (after Kaiko's svr08_char.py, with his permission and credit): one
+// picture set in entry 10 ("<id>color", "<id>normal", "<id>ao"; 2009 Maria's "12702nomal", 2008 Carlito's
+// "1802color_01") where 2011 has the colour alone in 12 and "normal" in 10. The colour goes to a new 12 named "color",
+// the normal map is named "normal", and the models (0, 10000, 20000) name them so. False: not such an attire (2010 /
+// 2011: has its 12).
+inline bool OldSvrPictures(svrfmt::ArcNode &svr) {
+  auto child = [&](uint32_t id) -> svrfmt::ArcNode * {
+    for (auto &k : svr.kids)
+      if (k.id == id)
+        return &k;
+    return nullptr;
+  };
+  svrfmt::ArcNode *s10 = child(10);
+  std::vector<svrfmt::BundleTexture> st;
+  if (child(12) || !s10 || !svrfmt::BundleRead(svrfmt::ArchiveData(*s10), st))
+    return false;
+  auto lower = [](std::string s) {
+    for (auto &c : s)
+      c = char(std::tolower((unsigned char)c));
+    return s;
+  };
+  // Its role by name: by the end, else anywhere in it (as Kaiko's pick), never a blood picture.
+  auto role = [&](const std::string &name) -> std::string {
+    const std::string n = lower(name);
+    if (n.find("blood") != std::string::npos)
+      return "";
+    for (const char *r : {"color", "normal", "nomal"})
+      if (n.find(r) != std::string::npos)
+        return r[0] == 'c' ? "color" : "normal";
+    return "";
+  };
+  int colour = -1, normal = -1;
+  for (size_t i = 0; i < st.size(); ++i) {
+    const std::string r = role(st[i].name);
+    if (r == "color" && (colour < 0 || lower(st[i].name).ends_with("color")))
+      colour = int(i);
+    if (r == "normal" && normal < 0)
+      normal = int(i);
+  }
+  if (colour < 0)
+    return false;
+  std::vector<svrfmt::BundleTexture> rest;
+  for (size_t i = 0; i < st.size(); ++i)
+    if (int(i) != colour) {
+      rest.push_back(st[i]);
+      if (int(i) == normal)
+        rest.back().name = "normal";
+    }
+  const std::string colour_name = st[size_t(colour)].name, normal_name = normal >= 0 ? st[size_t(normal)].name : "";
+  svrfmt::BundleTexture c = st[size_t(colour)];
+  c.name = "color";
+  svrfmt::ArchiveReplace(*s10, svrfmt::BundleWrite(rest));
+  std::string e;
+  if (!svrfmt::ArchiveAdd(svr, "", "", 12, svrfmt::BundleWrite({c}), &e))
+    return false;
+  // The models' picture names (16-byte names at the header's +0x2C, after the 8-byte file head), in place. A name the
+  // attire hasn't (2009 Jericho's eyebrows name "6102color", another superstar's sheet) is its colour, as Kaiko's
+  // converter binds every piece to the attire's own colour.
+  std::vector<std::string> have;
+  for (const auto &t : rest)
+    have.push_back(t.name);
+  if (svrfmt::ArcNode *s11 = child(11)) {
+    std::vector<svrfmt::BundleTexture> cube;
+    if (svrfmt::BundleRead(svrfmt::ArchiveData(*s11), cube))
+      for (const auto &t : cube)
+        have.push_back(t.name);
+  }
+  for (uint32_t id : {0u, 10000u, 20000u}) {
+    svrfmt::ArcNode *m = child(id);
+    if (!m)
+      continue;
+    Bytes d = svrfmt::ArchiveData(*m);
+    if (d.size() < 0x48 || std::memcmp(d.data(), "JBOY", 4))
+      continue;
+    const uint32_t ntex = svrfmt::Be32(&d[0x24]), tptr = svrfmt::Be32(&d[0x2C]);
+    bool changed = false;
+    for (uint32_t t = 0; t < ntex && 8 + tptr + 16 * size_t(t + 1) <= d.size(); ++t) {
+      char *p = reinterpret_cast<char *>(&d[8 + tptr + 16 * t]);
+      const std::string n(p, strnlen(p, 16));
+      const char *to = SameName(n, colour_name) ? "color" : !normal_name.empty() && SameName(n, normal_name) ? "normal" : nullptr;
+      bool known = n.empty();
+      for (const auto &h : have)
+        known = known || SameName(n, h);
+      if (!to && !known)
+        to = "color";
+      if (!to)
+        continue;
+      std::memset(p, 0, 16);
+      std::memcpy(p, to, std::strlen(to));
+      changed = true;
+    }
+    if (changed)
+      svrfmt::ArchiveReplace(*m, d);
+  }
+  svrfmt::ArchiveTouch(svr);
+  return true;
+}
+
 // collision: the hair's collision capsules (entry 61, WWE '12's) for a base that has none (a long-haired superstar's,
 // read from the player's disc); null: none.
 inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep, std::string *why,
@@ -785,6 +883,9 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
   };
   if (!svrfmt::ArchiveExpand(svr) || !svrfmt::ArchiveExpand(base))
     return fail("an attire can't be read");
+  const bool old_svr = OldSvrPictures(svr);
+  if (old_svr)
+    rep->notes.push_back("SvR 2008 / 2009 pictures sorted as SvR 2011's");
   auto child = [](svrfmt::ArcNode &n, uint32_t id) -> svrfmt::ArcNode * {
     for (auto &k : n.kids)
       if (k.id == id)
@@ -802,6 +903,92 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     return fail("the SvR model is already in WWE '12's layout");
   if (!ConvertModel(ms, mb, mo, rep))
     return fail("the model can't be converted");
+  // SvR 2008 / 2009's 20000 isn't 2011's eye pieces but any small piece of the body (2008 Rey Mysterio's eyebrows,
+  // Torrie Wilson's wristbands): on WWE '12's 20000 (the eyelashes: the head's bones only) a wristband stayed by the
+  // hip. Merged into the body instead (on its bones and skin), as Kaiko merges 2008's costume pieces; then neither
+  // SvR's nor the base's 20000 below. Likewise the hair model's pieces on none of the head's bones (2009 ch127: one on
+  // the left hand, hips and thighs, left floating by the hip).
+  if (old_svr) {
+    auto merge = [&](const svrfmt::Model &xs, const std::string &what) {
+      svrfmt::Model xo;
+      Report extra;
+      if (!ConvertModel(xs, mb, xo, &extra))
+        return;
+      const uint32_t first_part = uint32_t(mo.parts.size());
+      for (auto &m : xo.meshes) {
+        for (auto &p : m.params)  // (its own pictures, by name, in the body's list)
+          if ((p.name == "g_mDiffusePrm" || p.name == "g_mNormalFxPrm") && p.value.size() >= 4) {
+            const uint32_t v = svrfmt::Be32(p.value.data());
+            if (v >= xo.textures.size())
+              continue;
+            size_t idx = mo.textures.size();
+            for (size_t t = 0; t < mo.textures.size(); ++t)
+              if (SameName(mo.textures[t], xo.textures[v]))
+                idx = t;
+            if (idx == mo.textures.size()) {
+              mo.textures.push_back(xo.textures[v]);
+              rep->textures.push_back(xo.textures[v]);
+            }
+            svrfmt::PutBe32(p.value.data(), uint32_t(idx));
+          }
+        if (m.raw.size() >= 0x64)
+          svrfmt::PutBe32(&m.raw[0x60], svrfmt::Be32(&m.raw[0x60]) + first_part);
+        mo.meshes.push_back(std::move(m));
+      }
+      mo.parts.insert(mo.parts.end(), xo.parts.begin(), xo.parts.end());
+      rep->meshes = int(mo.meshes.size());
+      rep->notes.push_back("SvR 2008 / 2009 " + what + " merged into the body");
+    };
+    for (size_t i = 0; i < svr.kids.size(); ++i)
+      if (svr.kids[i].id == 20000) {
+        svrfmt::Model xs;
+        if (svrfmt::JboyRead(svrfmt::ArchiveData(svr.kids[i]), xs, &e) && !xs.w12)
+          merge(xs, "piece 20000 (" + xs.name + ")");
+        svrfmt::ArchiveRemove(svr, i);
+        break;
+      }
+    if (svrfmt::ArcNode *s10k = child(svr, 10000)) {
+      svrfmt::Model xs;
+      if (svrfmt::JboyRead(svrfmt::ArchiveData(*s10k), xs, &e) && !xs.w12) {
+        auto head = [&](int node) {  // (the head, its hair chains, the neck)
+          for (int q = node; q >= 0 && size_t(q) < xs.nodes.size(); q = xs.nodes[size_t(q)].parent) {
+            const std::string &n = xs.nodes[size_t(q)].name;
+            if (n == "atama" || n.rfind("kubi", 0) == 0 || n.rfind("kami", 0) == 0)
+              return true;
+          }
+          return false;
+        };
+        svrfmt::Model keep = xs, body = xs;
+        keep.meshes.clear();
+        keep.parts.clear();
+        body.meshes.clear();
+        body.parts.clear();
+        size_t mi = 0;
+        for (const auto &part : xs.parts)
+          for (uint32_t k = 0; k < part.meshes && mi < xs.meshes.size(); ++k, ++mi) {
+            bool on_head = false;
+            for (int slot : xs.meshes[mi].palette)
+              on_head = on_head || (slot > 0 && head(slot - 1));
+            svrfmt::Model &to = on_head ? keep : body;
+            if (to.parts.empty() || to.parts.back().name != part.name) {
+              to.parts.push_back(part);
+              to.parts.back().meshes = 0;
+            }
+            ++to.parts.back().meshes;
+            to.meshes.push_back(xs.meshes[mi]);
+          }
+        if (!body.meshes.empty() && !keep.meshes.empty() && mi == xs.meshes.size()) {
+          merge(body, std::to_string(body.meshes.size()) + " hair-model piece(s) off the head");
+          if (keep.parts.size() == 1 && keep.header.size() >= 0x30) {  // (one part: written as the model's own name)
+            keep.name = keep.parts[0].name;
+            keep.group = keep.parts[0].info;
+            svrfmt::PutBe32(&keep.header[0x2C], 1);  // (the file's +0x34: the parts' count)
+          }
+          svrfmt::ArchiveReplace(*s10k, svrfmt::JboyWrite(keep));
+        }
+      }
+    }
+  }
   svrfmt::ArchiveReplace(*bm, svrfmt::JboyWrite(mo));
   // The hair (10000) and the pieces round the eyes (20000: SvR's eyelids and the skin round the eyeballs, four
   // meshes; WWE '12's: eyelashes) as SvR has them too: the base's take their colours from the colour picture, which is

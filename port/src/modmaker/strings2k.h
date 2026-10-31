@@ -141,10 +141,14 @@ inline std::map<int, std::string> SuperstarNames(const disc::GameDisc &g) {
   std::map<int, std::vector<int>> ids;  // the 2K games: number -> its "number + k" string ids' k
   Bytes etc;
   svrfmt::Archive a;
-  if (g.Read("pac/ch/chEtc.pac", etc) && svrfmt::ArchiveOpen(etc, a, nullptr)) {
+  // (SvR 2008 keeps its records in pac/misc.pac: 232 bytes, id at +30; SvR 2009 in chEtc.pac, 252 bytes, id at +36;
+  // after Kaiko's superstar_port.py)
+  if ((g.Read("pac/ch/chEtc.pac", etc) || g.Read("pac/misc.pac", etc)) && svrfmt::ArchiveOpen(etc, a, nullptr)) {
     const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
       const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
-      const size_t id_at = d.size() == 264 ? 36 : d.size() == 290 ? 44 : d.size() == 324 ? 56 : 0;
+      const size_t id_at = d.size() == 264 || d.size() == 252 ? 36 : d.size() == 290 ? 44 : d.size() == 324 ? 56
+                           : d.size() == 232                   ? 30
+                                                               : 0;
       if (d.size() == 208 || d.size() == 216 || d.size() == 220) {  // (the 2K games: names in their strings)
         const int number = d[4] | d[5] << 8;
         for (size_t k = 6; k + 1 < 32; k += 2)
