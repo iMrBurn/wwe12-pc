@@ -273,13 +273,16 @@ void SvrApplyScissor(VideoState &s, u32 device_guest) {
     return;  // never programmed yet
   // The bound host target is this many times the guest's size.
   const auto *dev = bd::mem::at<const D3DDevice>(device_guest);
-  const float k = dev ? SvrSurfaceScale(u32(dev->renderTargetShadow[0])) : SvrRenderScale();
-  const auto sc = [k](i32 v) { return i32(float(v) * k + 0.5f); };
+  float kx = SvrRenderScale(), ky = kx;
+  if (dev)
+    SvrSurfaceScaleXY(u32(dev->renderTargetShadow[0]), kx, ky);
+  const auto sc = [kx](i32 v) { return i32(float(v) * kx + 0.5f); };
+  const auto sc_y = [ky](i32 v) { return i32(float(v) * ky + 0.5f); };
   const i32 left = i32(tl & 0x7FFFu);
   const i32 top = i32((tl >> 16) & 0x7FFFu);
   const i32 right = std::max(left, i32(br & 0x7FFFu));
   const i32 bottom = std::max(top, i32((br >> 16) & 0x7FFFu));
-  const plume::RenderRect rc{sc(left), sc(top), sc(right), sc(bottom)};
+  const plume::RenderRect rc{sc(left), sc_y(top), sc(right), sc_y(bottom)};
   s.command_list->setScissors(&rc, 1);
 }
 #else

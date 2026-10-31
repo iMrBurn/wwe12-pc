@@ -28,6 +28,7 @@
 #include "gpu/native_texture_mirror.h"
 #include "gpu/output.h"
 #include "gpu/resources.h"
+#include "gpu/settings.h"
 #include "gpu/vertex_declaration.h"
 #include "wwe12_display.h"  // FPS counter, frame limit (global function)
 
@@ -64,6 +65,10 @@ REXCVAR_DEFINE_BOOL(svr_scale_square_surfaces, false, "SvR",
                     "Render square work surfaces (shadow maps, reflections) at the internal "
                     "resolution too; off keeps them at the Xbox size, as the 16:9 screen ones are "
                     "the only ones that need it.");
+REXCVAR_DEFINE_BOOL(wwe12_widescreen, true, "WWE12",
+                    "Matches and entrances fill screens that aren't 16:9 (16:10: more picture above "
+                    "and below; 21:9 to 32:9: wider), the HUD in the 16:9 middle. Not with the "
+                    "STRETCH picture format; false keeps the 16:9 picture with black bars.");
 REXCVAR_DEFINE_INT32(svr_render_scale, 0, "SvR",
                      "Internal resolution: 360, 480 or 540 (below the Xbox, for weak GPUs), 720, 1080, 1440, 2160 (4K) or 2880 (also 1 = 720p, "
                      "2 = 1440p, 3 = 4K, 4 = 2880p). 0 = auto: from the display (1440p on "
@@ -99,9 +104,25 @@ struct HostTarget {
   GuestTexture *host = nullptr;
   u32 desc[2] = {};  // surface: size bits, format; texture: fetch dwords 1 (format, base), 2 (size)
   u32 extent = 0;    // surface: the tiled-rendering extent it was sized to (see below), w << 16 | h
+  u32 shape = 0;     // host pixels per guest pixel across and down (PackScale), 0 = none made
   u64 last_used = 0; // frame it was last drawn to, resolved into or sampled
   bool in_memory = false;  // texture: its last resolve was read back into the game's memory
 };
+
+// Host pixels per guest pixel, across and down. They differ only for the full-screen targets of a
+// 3D scene on a screen that isn't 16:9 (wwe12_widescreen): wider, or taller on 16:10.
+struct Scale2 {
+  float x = 1.0f, y = 1.0f;
+};
+u32 PackScale(Scale2 s) { return u32(s.x * 256.0f + 0.5f) << 16 | u32(s.y * 256.0f + 0.5f); }
+Scale2 UnpackScale(u32 packed) {
+  return {float(packed >> 16) / 256.0f, float(packed & 0xFFFFu) / 256.0f};
+}
+// Above the Xbox's size, or reshaped: a screen image the CPU never reads.
+bool ScaledUp(u32 packed) {
+  const Scale2 s = UnpackScale(packed);
+  return s.x > 1.001f || s.y != s.x;
+}
 std::unordered_map<u32, HostTarget> g_surfaces;  // D3DSurface VA -> host render target
 std::unordered_map<u32, HostTarget> g_targets;   // texture VA -> GPU-written host texture
 
@@ -117,7 +138,7 @@ std::unordered_map<u32, u32> g_tiled_extent;  // D3DSurface VA -> w << 16 | h (g
 // to 1280 wide while its depth buffer did not, and the depth clear wrote past the depth image: GPU
 // lost, picture frozen while the game ran on (0.6.0 and 0.7.0, RTX 4060, 2026-10-17).
 std::unordered_map<u32, u64> g_tiled_desc;
-std::unordered_map<u32, float> g_surface_scale;  // D3DSurface VA -> host pixels per guest pixel
+std::unordered_map<u32, Scale2> g_surface_scale;  // D3DSurface VA -> host pixels per guest pixel
 // Full extent the tiled surfaces of a given description grew to, keyed by size bits << 32 | format.
 // Each scene allocates new surface objects; without this they started one tile wide and grew during
 // their first frame, whose tile resolves past the first tile copied an empty target: a flash of black
@@ -125,6 +146,13 @@ std::unordered_map<u32, float> g_surface_scale;  // D3DSurface VA -> host pixels
 std::unordered_map<u64, u32> g_learned_extent;
 std::atomic<u64> g_surface_frame{0};  // presented frames, for HostTarget::last_used
 std::atomic<u32> g_surface_scale_gen{1};  // bumped on each g_surface_scale change
+
+// wwe12_widescreen: the screen's shape (from SvrOnFrame), and the last frame a tiled 3D scene
+// surface was bound (+1, 0 = none yet). Full-screen targets are reshaped only while a tiled scene
+// is drawn (matches, entrances); menus and loading screens stay 16:9.
+std::atomic<float> g_screen_wide{1.0f}, g_screen_tall{1.0f};
+std::atomic<u64> g_scene_frame{0};
+constexpr u64 kSceneFrames = 30;  // half a second without the scene: back to 16:9
 
 // The texture's GPUTEXTURE_FETCH_CONSTANT (D3DTexture+0x1C), as host-order dwords.
 bool ReadFetch(u32 texture_va, rex::graphics::xenos::xe_gpu_texture_fetch_t &fetch) {
@@ -182,6 +210,53 @@ bool TargetCurrent(u32 texture_va, std::unordered_map<u32, HostTarget>::iterator
 // Scaled guest size in host pixels. The scales are 1, 1.5, 2, 3 or 4 and the game's surface sizes
 // are even, so the product is exact; rounding only guards odd sizes.
 static u32 Scaled(u32 v, float scale) { return u32(float(v) * scale + 0.5f); }
+
+void SvrSceneShape(float &wide, float &tall) {
+  const u64 seen = g_scene_frame.load(std::memory_order_relaxed);
+  if (!seen || g_surface_frame.load(std::memory_order_relaxed) + 1 > seen + kSceneFrames) {
+    wide = tall = 1.0f;
+    return;
+  }
+  wide = g_screen_wide.load(std::memory_order_relaxed);
+  tall = g_screen_tall.load(std::memory_order_relaxed);
+}
+
+// The screen's shape against the game's 16:9, once per frame: wider (up to 32:9) or taller (up to
+// 8:9), 1 for 16:9, STRETCH or wwe12_widescreen off.
+static void UpdateScreenShape() {
+  float wide = 1.0f, tall = 1.0f;
+  if (REXCVAR_GET(wwe12_widescreen)) {
+    const auto mode = static_cast<AspectMode>(Settings::Get().AspectRatio());
+    double aspect = kDesignCanvasAspect;
+    if (mode == AspectMode::Auto) {
+      const u32 w = Video::OutputWidth(), h = Video::OutputHeight();
+      if (w && h)
+        aspect = double(w) / double(h);
+    } else if (mode != AspectMode::Stretch) {
+      aspect = Output::ConfiguredAspect();
+    }
+    const float r = float(aspect / kDesignCanvasAspect);
+    wide = r > 1.01f ? std::min(r, 2.0f) : 1.0f;
+    tall = r < 0.99f ? std::min(1.0f / r, 2.0f) : 1.0f;
+  }
+  if (wide != g_screen_wide.load(std::memory_order_relaxed) ||
+      tall != g_screen_tall.load(std::memory_order_relaxed)) {
+    BD_INFO("SvR native: screen shape wide {:.3f} tall {:.3f} (3D scenes at aspect {:.3f})", wide,
+            tall, kDesignCanvasAspect * wide / tall);
+    g_screen_wide.store(wide, std::memory_order_relaxed);
+    g_screen_tall.store(tall, std::memory_order_relaxed);
+  }
+}
+
+// A surface or texture of this guest size, drawn at the render scale: the full-screen ones of a 3D
+// scene take the scene's shape too.
+static Scale2 ScreenScale(u32 width, u32 height) {
+  const float scale = SvrRenderScale();
+  float wide = 1.0f, tall = 1.0f;
+  if (width >= 1152 && height >= 640)
+    SvrSceneShape(wide, tall);
+  return {scale * wide, scale * tall};
+}
 
 float SvrRenderScale() {
   static std::atomic<float> s_scale{0.0f};
@@ -250,17 +325,29 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
     g_tiled_extent.erase(surface_va);  // left by another surface at this address
     g_tiled_desc.erase(t);
   }
+  u32 width = (bits >> 18) + 1;
+  u32 height = ((bits >> 3) & 0x7FFF) + 1;
+  // Host pixels per guest pixel for a surface of this size and tiled extent. Square surfaces
+  // (shadow maps, reflections) follow svr_scale_square_surfaces.
+  const auto surface_scale = [&](u32 extent) {
+    const u32 w = std::max(width, extent >> 16), h = std::max(height, extent & 0xFFFFu);
+    const bool screen_like = extent || w * 9u == h * 16u ||
+                             (w == h && REXCVAR_GET(svr_scale_square_surfaces));
+    if (extent)  // a 3D scene is drawn: its full-screen targets take the screen's shape
+      g_scene_frame.store(g_surface_frame.load(std::memory_order_relaxed) + 1,
+                          std::memory_order_relaxed);
+    return screen_like ? ScreenScale(w, h) : Scale2{};
+  };
   if (auto it = g_surfaces.find(surface_va); it != g_surfaces.end()) {
     if (it->second.desc[0] == bits && it->second.desc[1] == format &&
-        it->second.extent == (g_tiled_extent.count(surface_va) ? g_tiled_extent[surface_va] : 0u)) {
+        it->second.extent == (g_tiled_extent.count(surface_va) ? g_tiled_extent[surface_va] : 0u) &&
+        it->second.shape == PackScale(surface_scale(it->second.extent))) {
       it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
       return it->second.host;
     }
     RetireHost(it->second.host);
     g_surfaces.erase(it);
   }
-  u32 width = (bits >> 18) + 1;
-  u32 height = ((bits >> 3) & 0x7FFF) + 1;
   u32 extent = 0;
   if (!g_tiled_extent.count(surface_va)) {
     // A new surface object shaped like a known tiled one starts at the extent that one reached.
@@ -280,20 +367,20 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
     width = std::max(width, extent >> 16);
     height = std::max(height, extent & 0xFFFFu);
   }
-  // Square surfaces (shadow maps, reflections) follow svr_scale_square_surfaces.
-  const bool screen_like = extent || width * 9u == height * 16u ||
-                           (width == height && REXCVAR_GET(svr_scale_square_surfaces));
-  const float scale = screen_like ? SvrRenderScale() : 1.0f;
+  const Scale2 scale = surface_scale(extent);
   g_surface_scale[surface_va] = scale;
   g_surface_scale_gen.fetch_add(1, std::memory_order_release);
-  GuestTexture *host = SvrCreateHostSurface(Scaled(width, scale), Scaled(height, scale), format);
+  GuestTexture *host =
+      SvrCreateHostSurface(Scaled(width, scale.x), Scaled(height, scale.y), format);
   if (host && REXCVAR_GET(svr_debug_magenta))
     Video::ClearTexture(host, 0xFFFF00FFu);
   else if (host && REXCVAR_GET(svr_clear_new_surfaces))
     Video::ClearTexture(host, 0u);
-  BD_INFO("SvR surface 0x{:08X}: {}x{} format 0x{:08X} -> host {}", surface_va, width, height,
-          format, host ? "ok" : "FAILED");
-  g_surfaces.emplace(surface_va, HostTarget{host, {bits, format}, extent,
+  BD_INFO("SvR surface 0x{:08X}: {}x{} format 0x{:08X} -> host {}{}", surface_va, width, height,
+          format, host ? "ok" : "FAILED",
+          scale.x != scale.y ? fmt::format(" ({}x{})", Scaled(width, scale.x), Scaled(height, scale.y))
+                             : std::string());
+  g_surfaces.emplace(surface_va, HostTarget{host, {bits, format}, extent, PackScale(scale),
                                             g_surface_frame.load(std::memory_order_relaxed)});
   return host;
 }
@@ -328,7 +415,7 @@ static void ReleaseIdleSurfaces(u64 frame) {
     return;
   for (auto it = g_targets.begin(); it != g_targets.end();) {
     const GuestTexture *host = it->second.host;
-    const bool rebuildable = !host || it->second.in_memory || it->second.extent > 4 ||
+    const bool rebuildable = !host || it->second.in_memory || ScaledUp(it->second.shape) ||
                              u64(host->width) * 9 == u64(host->height) * 16;
     if (rebuildable && frame - it->second.last_used > kTargetIdleFrames) {
       RetireHost(it->second.host);
@@ -410,41 +497,64 @@ void SvrNoteTiledResolve(u32 color_va, u32 depth_va, u32 right, u32 bottom) {
   }
 }
 
-float SvrSurfaceScale(u32 surface_va) {
+// The picture's aspect for a reshaped host target (the front buffer of a 3D scene drawn in the
+// screen's shape), 0 for any other. Once per present.
+float SvrHostAspect(const GuestTexture *host) {
+  if (!host)
+    return 0.0f;
+  std::lock_guard lock(g_mutex);
+  for (const auto *map : {&g_targets, &g_surfaces})
+    for (const auto &[va, target] : *map)
+      if (target.host == host) {
+        const Scale2 s = UnpackScale(target.shape);
+        return target.shape && s.x != s.y ? float(kDesignCanvasAspect) * s.x / s.y : 0.0f;
+      }
+  return 0.0f;
+}
+
+void SvrSurfaceScaleXY(u32 surface_va, float &scale_x, float &scale_y) {
   // Asked several times per draw, nearly always for the bound target: the last answer is kept per
   // thread until g_surface_scale changes (the lock alone cost ~3% of the render thread).
   struct Last {
     u32 va = 0, gen = 0;
-    float scale = 0.0f;
+    Scale2 scale;
   };
   thread_local Last last;
   const u32 gen = g_surface_scale_gen.load(std::memory_order_acquire);
-  if (last.gen == gen && last.va == surface_va)
-    return last.scale;
-  float scale = 0.0f;
-  {
-    std::lock_guard lock(g_mutex);
-    if (auto it = g_surface_scale.find(surface_va); it != g_surface_scale.end())
-      scale = it->second;
+  if (last.gen != gen || last.va != surface_va) {
+    Scale2 scale{0.0f, 0.0f};
+    {
+      std::lock_guard lock(g_mutex);
+      if (auto it = g_surface_scale.find(surface_va); it != g_surface_scale.end())
+        scale = it->second;
+    }
+    if (scale.x <= 0.0f)
+      scale.x = scale.y = SvrRenderScale();
+    last = {surface_va, gen, scale};
   }
-  if (scale <= 0.0f)
-    scale = SvrRenderScale();
-  last = {surface_va, gen, scale};
-  return scale;
+  scale_x = last.scale.x;
+  scale_y = last.scale.y;
 }
 
-GuestTexture *SvrResolveTarget(u32 texture_va, float scale) {
+float SvrSurfaceScale(u32 surface_va) {
+  float x, y;
+  SvrSurfaceScaleXY(surface_va, x, y);
+  return std::min(x, y);
+}
+
+GuestTexture *SvrResolveTarget(u32 texture_va, float scale_x, float scale_y) {
   if (!texture_va)
     return nullptr;
   if (auto *host = HostResourceHeap::FromGuest<GuestTexture>(texture_va))
     return host;
-  if (scale <= 0.0f)
-    scale = SvrRenderScale();
-  // A target's extent holds its scale in quarters (4 = 1x), 0 for one never made.
-  const u32 quarters = u32(scale * 4.0f + 0.5f);
+  // No scale asked (the front buffer at present, EndTiling): whatever the resolves made.
+  const bool any = scale_x <= 0.0f;
+  const Scale2 scale = any ? Scale2{SvrRenderScale(), SvrRenderScale()}
+                           : Scale2{scale_x, scale_y > 0.0f ? scale_y : scale_x};
+  const u32 packed = PackScale(scale);
   std::lock_guard lock(g_mutex);
   if (auto it = g_targets.find(texture_va); it != g_targets.end() && TargetCurrent(texture_va, it)) {
-    if (it->second.extent == 0 || it->second.extent == quarters) {
+    if (it->second.shape == 0 || any || it->second.shape == packed) {
       it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
       return it->second.host;
     }
@@ -473,7 +583,7 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale) {
   // resolved face by face) need host cubes: as 2D textures the faces were lost and skin and eyes
   // reflected black.
   const bool cube = fetch.dimension == rex::graphics::xenos::DataDimension::kCube;
-  GuestTexture *host = SvrCreateHostTexture(Scaled(width, scale), Scaled(height, scale),
+  GuestTexture *host = SvrCreateHostTexture(Scaled(width, scale.x), Scaled(height, scale.y),
                                             cube ? 6 : 1, levels,
                                             0, host_format, cube ? 18u : 0u);
   BD_INFO("SvR target 0x{:08X}: {}x{}{} fmt {} levels {} -> host {}", texture_va, width, height,
@@ -483,7 +593,7 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale) {
   // teeth included, and resolves only patches into the base level. Start the host texture from
   // that memory, else the unpatched parts of its base level stay black.
   bool seeded = false;
-  if (host && !cube && quarters == 4 && levels > 1 && REXCVAR_GET(svr_seed_gpu_textures)) {
+  if (host && !cube && packed == PackScale({}) && levels > 1 && REXCVAR_GET(svr_seed_gpu_textures)) {
     const auto *mem = bd::mem::try_at<const u8>(fetch.base_address << 12);
     size_t nonzero = 0;
     for (u32 i = 0; mem && i < 65536; i += 64)
@@ -498,7 +608,7 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale) {
   // in the crowd during entrances. Start them transparent black.
   if (host && !cube && !seeded)
     Video::ClearTexture(host, REXCVAR_GET(svr_debug_magenta) ? 0xFFFF00FFu : 0u);
-  g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, quarters,
+  g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, 0, packed,
                                            g_surface_frame.load(std::memory_order_relaxed)});
   return host;
 }
@@ -542,7 +652,7 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
   {
     std::lock_guard lock(g_mutex);
     const auto it = g_targets.find(texture_va);
-    if (it == g_targets.end() || it->second.host != dst || it->second.extent > 4)
+    if (it == g_targets.end() || it->second.host != dst || ScaledUp(it->second.shape))
       return;
     const u64 frame = g_frame_index.load(std::memory_order_relaxed);
     if (dst->mipLevels > 1) {
@@ -1036,6 +1146,7 @@ void SvrOnFrame() {
   g_frame_index.store(frame, std::memory_order_relaxed);
   SvrProcessDeferredReadbacks(frame);
   g_surface_frame.store(frame, std::memory_order_relaxed);
+  UpdateScreenShape();
   ReleaseIdleSurfaces(frame);
   {
     std::lock_guard lock(g_mutex);

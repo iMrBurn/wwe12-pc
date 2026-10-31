@@ -232,14 +232,16 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
   // the device (floats at +0x3160; SetRenderTarget/SetDepthStencilSurface reset it to the surface).
   if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest)) {
     const auto &vp = dev->viewport;
-    // The bound host target is this many times the guest's size.
-    const float k = bd::gpu::SvrSurfaceScale(u32(dev->renderTargetShadow[0]));
-    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.x, float(vp.X) * k);
-    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.y, float(vp.Y) * k);
+    // The bound host target is this many times the guest's size (across and down: a 3D scene's
+    // targets on a screen that isn't 16:9).
+    float kx = 1.0f, ky = 1.0f;
+    bd::gpu::SvrSurfaceScaleXY(u32(dev->renderTargetShadow[0]), kx, ky);
+    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.x, float(vp.X) * kx);
+    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.y, float(vp.Y) * ky);
     bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.width,
-                                         float(vp.Width) * k);
+                                         float(vp.Width) * kx);
     bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.height,
-                                         float(vp.Height) * k);
+                                         float(vp.Height) * ky);
     bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.minDepth,
                                          float(vp.MinZ));
     bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.maxDepth,
@@ -691,9 +693,9 @@ u32 D3DDevice_Resolve_hook(u32 device_guest, u32 Flags, u32 pSourceRect,
                            u32 /*ClearStencil*/, u32 /*pParameters*/) {
 #if defined(SVR_NATIVE_RENDERER)
   bd::gpu::SvrDrawLogResolve(device_guest, Flags, pSourceRect, pDestTexture, pDestPoint);
-  float source_scale = 0.0f;
+  float source_scale = 0.0f, source_scale_y = 0.0f;
   if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest))
-    source_scale = bd::gpu::SvrSurfaceScale(u32(dev->renderTargetShadow[0]));
+    bd::gpu::SvrSurfaceScaleXY(u32(dev->renderTargetShadow[0]), source_scale, source_scale_y);
   if (Flags & 0x300u) {
     u32 argb = 0;
     if (const auto *c = bd::mem::try_at<const be_f32>(pClearColor)) {
@@ -710,7 +712,7 @@ u32 D3DDevice_Resolve_hook(u32 device_guest, u32 Flags, u32 pSourceRect,
       bd::gpu::SvrNoteTiledResolve(u32(dev->renderTargetShadow[0]), u32(dev->depthStencilShadow),
                                    u32(r->right), u32(r->bottom));
   }
-  auto *dst = bd::gpu::SvrResolveTarget(pDestTexture, source_scale);
+  auto *dst = bd::gpu::SvrResolveTarget(pDestTexture, source_scale, source_scale_y);
 #else
   auto *dst =
       bd::gpu::HostResourceHeap::FromGuest<bd::gpu::GuestTexture>(pDestTexture);
@@ -749,13 +751,15 @@ u32 D3DDevice_Resolve_hook(u32 device_guest, u32 Flags, u32 pSourceRect,
   // padded source (the 1280x736 scene surface into a 1280x720 texture) must not be squeezed.
   {
     const float scale = source_scale > 0.0f ? source_scale : bd::gpu::SvrRenderScale();
+    const float scale_y = source_scale_y > 0.0f ? source_scale_y : scale;
     const auto sc = [scale](i32 v) { return i32(float(v) * scale + 0.5f); };
+    const auto sc_y = [scale_y](i32 v) { return i32(float(v) * scale_y + 0.5f); };
     i32 left = 0, top = 0, right = 0, bottom = 0;
     if (const auto *r = bd::mem::try_at<const bd::gpu::D3DRect>(pSourceRect)) {
       left = sc(i32(r->left));
-      top = sc(i32(r->top));
+      top = sc_y(i32(r->top));
       right = sc(i32(r->right));
-      bottom = sc(i32(r->bottom));
+      bottom = sc_y(i32(r->bottom));
     } else {
       right = i32(std::max(1u, dst->width >> DestLevel));
       bottom = i32(std::max(1u, dst->height >> DestLevel));
@@ -763,7 +767,7 @@ u32 D3DDevice_Resolve_hook(u32 device_guest, u32 Flags, u32 pSourceRect,
     i32 dx = 0, dy = 0;
     if (const auto *p = bd::mem::try_at<const be_i32>(pDestPoint)) {
       dx = sc(i32(p[0]));
-      dy = sc(i32(p[1]));
+      dy = sc_y(i32(p[1]));
     }
     if (bd::gpu::Video::ResolveRegion(Flags, dst, DestLevel, DestSliceOrFace, left, top, right,
                                       bottom, dx, dy)) {

@@ -27,7 +27,10 @@ Projets dont ce portage s'inspire :
   KaikoClanworth1) : pas de licence publiée ; **avec son accord écrit du 2026-10-26**, son backend
   Direct3D 11 pour plume (`plume_d3d11.h/.cpp`, de son `plume-svr2011.patch`, dépôt au commit b2521fe)
   est repris et adapté dans `port/patches/plume-d3d11.patch` (version DirectX 11, en cours), crédité
-  « SvR 2011 PC port (KaikoClanworth1) ». Le reste : méthode uniquement.
+  « SvR 2011 PC port (KaikoClanworth1) ». Son « native_widescreen » (constante de rapport de la
+  caméra patchée, champ de vision vertical élargi en 16:10, cibles plein écran élargies ou plus
+  hautes) est adapté, avec le même accord, dans `port/src/native/wwe12_widescreen.cpp` et
+  `svr_resources.cpp` (cvar `wwe12_widescreen`). Le reste : méthode uniquement.
 - Portages SvR 2008/2009/2010 de [nefariousjosiah](https://github.com/nefariousjosiah)
   (GPL-3.0) : leur rendu natif (src/native, adaptations de src/reblue) est la base du rendu
   natif de WWE '12.

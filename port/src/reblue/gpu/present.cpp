@@ -37,6 +37,9 @@
 bool Wwe12LoadTurboSkipPresent();  // native/wwe12_load_turbo.cpp
 
 namespace bd::gpu {
+#if defined(SVR_NATIVE_RENDERER)
+float SvrHostAspect(const GuestTexture *host);  // native/svr_resources.cpp
+#endif
 
 namespace {
 
@@ -233,10 +236,16 @@ void RecordPresentPass(VideoState &s, GuestTexture *rt,
 
   // Stretch fills the swap chain whatever the render size: SvR renders at its own 16:9 size
   // (1280x720 on Android), so its render aspect alone kept the bars (Android #32, #35, #39).
-  const double present_aspect =
+  double present_aspect =
       Output::StretchToFill()                  ? 0.0
       : bd::engine::SofdecPlayer::Playing()    ? kDesignCanvasAspect
                                                : Output::RenderAspect();
+#if defined(SVR_NATIVE_RENDERER)
+  // A 3D scene drawn in the screen's shape (wwe12_widescreen): shown in that shape.
+  if (present_aspect > 0.0 && !bd::engine::SofdecPlayer::Playing())
+    if (const float aspect = SvrHostAspect(rt); aspect > 0.0f)
+      present_aspect = aspect;
+#endif
   u32 fit_w = swap_w, fit_h = swap_h;
   i32 off_x = 0, off_y = 0;
   Output::ComputeFit(swap_w, swap_h, present_aspect, fit_w, fit_h, off_x,

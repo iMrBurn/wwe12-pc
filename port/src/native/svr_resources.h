@@ -20,11 +20,19 @@ GuestTexture *SvrResolveSurface(u32 surface_va);
 // Host pixels per guest pixel of a surface's host target: the render scale for screen surfaces
 // (16:9, square, tiled), 1 for the game's work surfaces (wrestler skin composites), whose content
 // is UV-mapped: upscaled, their patch seams showed as cracks on the skin.
+// The smaller of the two below.
 float SvrSurfaceScale(u32 surface_va);
+// Across and down: they differ for the full-screen targets of a 3D scene on a screen that isn't
+// 16:9 (wwe12_widescreen).
+void SvrSurfaceScaleXY(u32 surface_va, float &scale_x, float &scale_y);
 // Guest texture that the GPU writes (Resolve destination, front buffer) -> host texture.
-// scale: host pixels per guest pixel for a target made now (0 = the render scale). A resolve
-// passes its source surface's, so copies stay 1:1.
-GuestTexture *SvrResolveTarget(u32 texture_va, float scale = 0.0f);
+// scale_x / scale_y: host pixels per guest pixel for a target made now (0 = whatever an earlier
+// resolve made, else the render scale; scale_y 0 = scale_x). A resolve passes its source
+// surface's, so copies stay 1:1.
+GuestTexture *SvrResolveTarget(u32 texture_va, float scale_x = 0.0f, float scale_y = 0.0f);
+// wwe12_widescreen: the screen's shape against 16:9 while a 3D scene is drawn (matches,
+// entrances), else 1 and 1. wide > 1: wider (up to 2, 32:9); tall > 1: taller (16:10: 1.111).
+void SvrSceneShape(float &wide, float &tall);
 // After a resolve into texture_va: also write the result into the texture's guest memory, as the
 // Xbox resolve does, for the first resolves of a 1x target (the game reads custom attire
 // composites back with the CPU to compress them). Per-frame targets stop after a few.
