@@ -170,6 +170,91 @@ inline void ScreensTo12(svrfmt::ArcNode &ga) {
   // (the high screens) -> 807 (the arena's movie) when 808 takes 800; their repeats with another layout (a show's
   // look: 802 = 801, 803/804 = 800, 807 = 806, 809 = 808) left out. Their "screen off" covers (titan_off, hidden by
   // the 2K games during the entrances) left out too: WrestleMania 31's hid its central circle.
+  // WWE 2K14 names its screens' pictures otherwise (2026-10-31, RAW, SmackDown, WrestleMania 29, nWo...), same numbers:
+  // three looks, "ppv" (801 the wall: ppv_header&wall v 0.35-0.87, 806 the ribbons: v 0-0.34, 808 the strip above
+  // the stage: v 0.88-1), "ss" (802, 809) and "main" (803, 804, 807: main&banner, the main part v 0-0.7, the banner
+  // v 0.7-1), plus 800 (the stage screen: titantron_movie, whole; WrestleMania 29: main&banner) and 805 (the minitron:
+  // mini_tron). Kept as WWE '12 is told by number, the minitron and 804 showed the live camera (a mirror) and the
+  // stage screen the whole movie, minitron strip too (RAW, seen in the game). The "ppv" look kept, as 2K16's: 801 ->
+  // 808, 808 -> 807 (the arena's movie), 805 -> 803 showing the minitron strip; 802-804, 807, 809 left out.
+  const auto pic2k14 = [](const std::string &t) { return t.find('&') != std::string::npos || t == "mini_tron"; };
+  {
+    bool twok14 = false;
+    for (const auto &k : ga.kids) {
+      svrfmt::Model m;
+      if (k.id >= 800 && k.id <= 899 && svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr))
+        twok14 = twok14 || std::any_of(m.textures.begin(), m.textures.end(), pic2k14);
+    }
+    if (twok14) {
+      std::vector<svrfmt::ArcNode> kept;
+      for (auto &k : ga.kids) {
+        if (k.id == 802 || k.id == 803 || k.id == 804 || k.id == 807 || k.id == 809)
+          continue;
+        k.id = k.id == 801 ? 808 : k.id == 808 ? 807 : k.id == 805 ? 803 : k.id;
+        kept.push_back(std::move(k));
+      }
+      ga.kids = std::move(kept);
+      std::sort(ga.kids.begin(), ga.kids.end(),
+                [](const svrfmt::ArcNode &x, const svrfmt::ArcNode &y) { return x.id < y.id; });
+      for (auto &k : ga.kids) {
+        if (k.id < 800 || k.id > 899)
+          continue;
+        Bytes d = svrfmt::ArchiveData(k);
+        svrfmt::Model m;
+        if (!svrfmt::IsJboy(d) || !svrfmt::JboyRead(d, m, nullptr))
+          continue;
+        const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
+        bool changed = false;
+        for (auto &me : m.meshes) {
+          int slot = -1;
+          for (const auto &p : me.params)
+            if (p.type == 0x0f && p.value.size() >= 4 && svrfmt::Be32(p.value.data()) < m.textures.size())
+              slot = int(svrfmt::Be32(p.value.data()));
+          if (slot < 0 || me.uvs.empty())
+            continue;
+          const std::string &t = m.textures[size_t(slot)];
+          if (!pic2k14(t) && t != "titantron_movie")
+            continue;
+          float v0 = 1e9f, v1 = -1e9f;
+          for (const auto &uv : me.uvs) {
+            v0 = std::min(v0, uv[1]);
+            v1 = std::max(v1, uv[1]);
+          }
+          // from (the 2K14 picture's part) to (WWE '12's movie: titantron 0-0.684, minitron strip 0.691-0.998, the
+          // arena's movie whole)
+          float f0 = 0, f1 = 1, t0 = 0, t1 = 0.684f;
+          if (t == "mini_tron") {
+            t0 = 0.691f, t1 = 0.998f;
+          } else if (t.find("header&wall") != std::string::npos) {
+            if (v1 <= 0.345f)
+              f1 = 0.34f, t0 = 0.691f, t1 = 0.998f;  // the ribbons: the side panels' strip, as 2K16's
+            else if (v0 >= 0.87f)
+              f0 = 0.88f, t1 = 1;  // the strip above the stage: the arena's movie
+            else
+              f0 = 0.35f, f1 = 0.87f;  // the wall
+          } else if (t.find("&banner") != std::string::npos) {
+            if (v0 >= 0.69f)
+              f0 = 0.7f, t1 = 1;
+            else
+              f1 = 0.7f;
+          }
+          const char *name = k.id == 801 || k.id == 807 || k.id == 809 ? "arena_movie" : "titantron_movie";
+          const size_t uvs = B + svrfmt::Be32(&me.raw[0x70]);
+          if (uvs + 8 * me.uvs.size() > d.size() || B + tptr + 16 * (size_t(slot) + 1) > d.size())
+            continue;
+          for (size_t q = 0; q < me.uvs.size(); ++q)
+            svrfmt::PutBeF(&d[uvs + 8 * q + 4], t0 + (std::clamp(me.uvs[q][1], f0, f1) - f0) / (f1 - f0) * (t1 - t0));
+          uint8_t *tn = &d[B + tptr + 16 * size_t(slot)];
+          std::memset(tn, 0, 16);
+          std::memcpy(tn, name, std::strlen(name));
+          changed = true;
+        }
+        if (changed)
+          svrfmt::ArchiveReplace(k, d);
+      }
+      return;
+    }
+  }
   {
     const auto layout = [](const svrfmt::ArcNode &k) {
       const Bytes d = svrfmt::ArchiveData(k);

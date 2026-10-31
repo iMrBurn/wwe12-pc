@@ -671,6 +671,13 @@ places ×10, d'après le code de Kaiko).
   + 29 en y (mesuré). La plaque garde la taille et la place qu'elle a dans 2K (vidéo × 1,5, locator en haut, nom en
   bas) : la case du nom tombe sous le texte de WWE '12 ; le locator est recentré sur x = 605 (ville de WWE '12). Dans
   les 2K la case du texte change d'une arène à l'autre (2K17 : `evt/evtlayout.pac`, YXML par plaque, non lu).
+- **Écrans vidéo des arènes 2K14 (2026-10-31, vérifié hors du jeu)** : 2K14 n'a pas d'images `layout_*` mais
+  `ppv_header&wall` (801 mur v 0,35-0,87, 806 rubans v 0-0,34, 808 bandeau v 0,88-1), `ss_header&wall` (802, 809),
+  `main&banner` (803, 804, 807 : v 0-0,7 / 0,7-1), 800 `titantron_movie` (écran de la scène, image entière) et 805
+  `mini_tron`. Avant : rien renuméroté → 804/805 = caméra en direct (miroir sur le minitron), 800 montrait aussi la
+  bande minitron (RAW, vu en jeu par l'utilisateur). Maintenant (`ScreensTo12`, branche 2K14) : habillage « ppv »
+  gardé, 801 → 808, 808 → 807 (vidéo de l'arène), 805 → 803 (bande minitron 0,691-0,998), 800 recadré sur le titantron
+  (0-0,684) ; 802-804, 807, 809 retirés. Même organisation vue dans bg00, bg01, bg05, bg15, bg28.
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 
