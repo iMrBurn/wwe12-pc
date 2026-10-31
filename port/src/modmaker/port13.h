@@ -584,7 +584,9 @@ inline bool Banner(const Bytes &matchhd13, int file, svrfmt::Image &out) {
 // The arena's banner in a WWE 2K game's menus (its select screen shows none we can use: these are the Universe's):
 //  - 2K16, 2K17: "Pbg_NN_<short name>" (512 x 256, NN = the arena file), in menu/MnLayHD.pac (2K16, MLYE/UMTX) or
 //    menu/MnLayHD_WWEUnivese.pac (2K17);
-//  - 2K15: "arena_<name>" (256 x 128, MnLayHD.pac MLYE/USCH), named after the arena's "PPV_<name>" record in
+//  - 2K15: "PPVbg_<name>" (512 x 256, MnLayHD.pac MLYE/UMTX: the show's logo on its picture, as 2K16's Pbg_; the
+//    user found the stage photos below not as good, 2026-10-31), <name> as its "PPV_<name>" record (PPV_raw'02 ->
+//    PPVbg_raw'02); else "arena_<name>" (256 x 128, MnLayHD.pac MLYE/USCH), named after the arena's "PPV_<name>" record in
 //    pac/wuniData.pac's 52-byte udt tables {name[40], string id, arena number, index}: PPV_raw'02 -> arena_raw02, but
 //    shortened: PPV_main -> arena_maineve, PPV_armage'02 -> arena_arm02, PPV_survivor'02 -> arena_surviv02 (one of
 //    the names starts with the other, same number), PPV_ER -> arena_ex;
@@ -625,7 +627,8 @@ inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t ti
     std::vector<svrfmt::BundleTexture> texs;
     if (svrfmt::BundleRead(d, texs)) {
       for (auto &t : texs)
-        if (t.name.rfind("Pbg_", 0) == 0 || t.name.rfind("arena_", 0) == 0 || (!select.empty() && t.name == select))
+        if (t.name.rfind("Pbg_", 0) == 0 || t.name.rfind("arena_", 0) == 0 || t.name.rfind("PPVbg_", 0) == 0 ||
+            (!select.empty() && t.name == select))
           pics.emplace(t.name, std::move(t.data));
       return;
     }
@@ -648,7 +651,7 @@ inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t ti
     if (name.rfind(pbg, 0) == 0 && take(dds))
       return true;
   // The arena_ picture's name: 2K14's table, else the PPV_ record.
-  std::string stem;
+  std::string stem, record;
   if (title == 0x545408B2) {
     for (const auto &b : kBanners2K14)
       if (b.file == file)
@@ -678,10 +681,12 @@ inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t ti
           uint32_t bg;
           memcpy(&bg, r + 44, 4);
           const std::string name(reinterpret_cast<const char *>(r), strnlen(reinterpret_cast<const char *>(r), 40));
-          if (bg == uint32_t(file) && name.rfind("PPV_", 0) == 0)
-            for (char c : name.substr(4))
+          if (bg == uint32_t(file) && name.rfind("PPV_", 0) == 0) {
+            record = name.substr(4);
+            for (char c : record)
               if (c != '\'')
                 stem += c;
+          }
         }
       };
       for (auto &k : u.root.kids)
@@ -690,6 +695,8 @@ inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t ti
   }
   if (stem.empty())
     return false;
+  if (const auto it = pics.find("PPVbg_" + record); !record.empty() && it != pics.end() && take(it->second))
+    return true;
   const auto lower = [](std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return char(std::tolower(c)); });
     return s;

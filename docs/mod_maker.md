@@ -687,6 +687,9 @@ places ×10, d'après le code de Kaiko).
   MLYE/OLFF, 256 × 128 : `RAW`, `Smack`, `MainEvent`, `Superstars`, `NXT`, `Summer`, `Survivor`, `RoyalRumble`,
   `Over`, `NoWayOut`, `MinB`, `NofC`, `HinC`, `TLC`, `Chamber`, `EXT`, `WM01`-`WM29`, `WM30_M` ; colonne `select` de
   `kBanners2K14`). En plus grand : `MLYE/SKYL` `raw` 1024 × 256 (RAW seulement).
+- **Bannières 2K15 (2026-10-31, vérifié hors du jeu sur 29 arènes)** : `PPVbg_<fiche>` (512 × 256, MLYE/UMTX, logo sur
+  fond, comme les `Pbg_` de 2K16 / 2K17 déjà pris) d'après la fiche `PPV_<nom>` de `wuniData.pac` avec son apostrophe
+  (`PPV_raw'02` → `PPVbg_raw'02`), avant les photos `arena_*`. bg30 et bg32 n'en ont pas : photo gardée.
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 
