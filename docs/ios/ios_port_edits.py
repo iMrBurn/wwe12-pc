@@ -54,6 +54,14 @@ s = s.replace('set(WWE12_DXC "${WWE12_XENOS_DIR}/thirdparty/dxc-bin/bin/x64/dxc.
               'endif()', 1)
 write(nr, s)
 print("ok: native_renderer.cmake: prebuilt SPIR-V host shaders")
+# The PC/Android builds link the installed SDK, where the export names the library rex::o1heap; here
+# the SDK is built from source and the target is plain `o1heap`.
+replace(nr, "    target_link_libraries(${target} PRIVATE plume wwe12_native_thirdparty rex::o1heap)",
+        "    if(NOT TARGET rex::o1heap AND TARGET o1heap)\n"
+        "        add_library(rex::o1heap ALIAS o1heap)\n"
+        "    endif()\n"
+        "    target_link_libraries(${target} PRIVATE plume wwe12_native_thirdparty rex::o1heap)",
+        "native_renderer.cmake: rex::o1heap alias for the in-tree SDK")
 # Apple's linker has no -Map=.
 replace(nr, '    else()\n        target_link_options(${target} PRIVATE "-Wl,-Map=${CMAKE_BINARY_DIR}/${target}.map")',
         '    elseif(NOT APPLE)\n        target_link_options(${target} PRIVATE "-Wl,-Map=${CMAKE_BINARY_DIR}/${target}.map")',
@@ -92,6 +100,29 @@ replace(nw, '  out.window = SDL_GetPointerProperty(\n      props, SDL_PROP_WINDO
         '  out.window = SDL_GetPointerProperty(\n      props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);\n'
         '#endif\n',
         "native_window.cpp: UIWindow instead of NSWindow")
+
+# iOS has no mach/mach_vm.h: vm_region_64 does the same job (same stand-in as the SDK's).
+hr = port / "src/reblue/platform/host_resources.cpp"
+replace(hr, "#include <mach/mach_vm.h>\n",
+        "#if defined(WWE12_IOS)\n"
+        "#include <mach/vm_map.h>\n"
+        "static inline kern_return_t mach_vm_region(vm_map_t task, mach_vm_address_t* address,\n"
+        "                                           mach_vm_size_t* size, vm_region_flavor_t flavor,\n"
+        "                                           vm_region_info_t info, mach_msg_type_number_t* count,\n"
+        "                                           mach_port_t* object_name) {\n"
+        "  vm_address_t a = static_cast<vm_address_t>(*address);\n"
+        "  vm_size_t s = 0;\n"
+        "  kern_return_t kr = vm_region_64(task, &a, &s, flavor, info, count, object_name);\n"
+        "  *address = a;\n"
+        "  *size = s;\n"
+        "  return kr;\n"
+        "}\n"
+        "#else\n#include <mach/mach_vm.h>\n#endif\n",
+        "host_resources.cpp: no mach_vm.h on iOS")
+
+# Apple's plume::RenderWindow is a struct, not a pointer: nullptr does not convert.
+replace(port / "src/reblue/gpu/present.cpp", "plume::RenderWindow new_window = nullptr)",
+        "plume::RenderWindow new_window = {})", "present.cpp: RenderWindow default value")
 
 # ---- Generated code: the translation of the game runs on the PC, never here ---------------------
 # generated/rexglue.cmake re-runs `rexglue codegen` when an input changed; the macOS runner has
