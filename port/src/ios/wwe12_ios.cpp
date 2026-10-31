@@ -82,6 +82,26 @@ __attribute__((constructor(101))) void IosBootLog() {
   // root, where iOS refuses to create folders (filesystem_error "Operation not permitted"). Saves
   // go to Documents, with the rest.
   setenv("XDG_DATA_HOME", dir.c_str(), 0);
+
+  // MoltenVK turns the shaders into Metal with "fast math" (no NaN / Infinity), but the Xbox 360
+  // shaders count on them (the Intel iGPU black eyes were Inf x 0). The HUD (nameplates, locators,
+  // counter buttons, logos) drew wrong on the iPhone only: try exact maths first.
+  setenv("MVK_CONFIG_FAST_MATH_ENABLED", "0", 0);
+
+  // Documents/env.txt: one KEY=VALUE per line (# = comment), set before anything starts. Lets a
+  // player try MoltenVK / game settings (MVK_CONFIG_..., REX cvars) without a new build.
+  if (FILE* f = std::fopen((dir + "/env.txt").c_str(), "r")) {
+    char line[512];
+    while (std::fgets(line, sizeof(line), f)) {
+      std::string s(line);
+      while (!s.empty() && (s.back() == '\n' || s.back() == '\r' || s.back() == ' ')) s.pop_back();
+      const size_t eq = s.find('=');
+      if (s.empty() || s[0] == '#' || eq == std::string::npos || eq == 0) continue;
+      setenv(s.substr(0, eq).c_str(), s.substr(eq + 1).c_str(), 1);
+      std::fprintf(stderr, "[boot] env.txt: %s\n", s.c_str());
+    }
+    std::fclose(f);
+  }
 }
 
 // The app bundle is read-only and the game reads wwe12.toml from "the exe folder", which is
