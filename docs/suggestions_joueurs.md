@@ -50,3 +50,15 @@ revue de sa licence et l'accord de l'utilisateur.
 1. 0.9 : SAVE sur match modifié (si faisable), le reste ci-dessus.
 2. 1.0 : saignement des catcheuses, listes de challengers, classements manuels, défenses spontanées.
 3. Après 1.0 : calendrier, tournois et qualifications, statistiques, capacités de CAW.
+
+## Suggestions du 2026-10-31 (Discord ; rien promis)
+- **Interférence = embuscade en coulisses (Jay)** : dans l'Univers, le choix INTERFERE propose RINGSIDE RUN-IN (existant) ou
+  BACKSTAGE AMBUSH, puis RUN DOWN ou CAR WINDOW (cinématiques de Create a Story jouées à la place de l'interférence ; même résultat :
+  l'attaqué perd, la rivalité grandit ; news « Backstage Chaos: [ATTAQUANT] ambushed [VICTIME]… »). Dépend du chantier « cinématiques
+  Create a Story dans l'Univers » (1.1). Conversation : Univers.
+- **Noms des entrées et mouvements prédéfinis (Mod Maker)** : « Superstar 1, 2… » remplacés par le nom du catcheur (liste du Smackdown
+  Hotel). Conversation : Mods ; les noms sont des textes, pas de la donnée à publier sans vérification.
+- **MITB RAW et SmackDown (2 mallettes)** : une mallette par marque à l'époque. À voir côté Univers (2 matchs MITB, 2 détenteurs).
+- **Touches de clavier comme le SvR 2011 de Kaiko** (ajouter / copier ses réglages) : Launcher (`keybinds.h`).
+- **Chronomètre de match** et **interférence forcée sur un bouton** : Gameplay, à étudier.
+- **Types de match comme le port SvR 2011** : à préciser avec le joueur (lesquels ?) ; stipulations = 1.1.
