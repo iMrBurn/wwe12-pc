@@ -96,6 +96,32 @@ public class WWE12Activity extends SDLActivity {
         return null;
     }
 
+    static File childIgnoreCase(File dir, String name) {
+        File[] files = dir.listFiles();
+        if (files != null)
+            for (File f : files)
+                if (f.getName().equalsIgnoreCase(name)) return f;
+        return null;
+    }
+
+    // Issue #41: a game folder with default.xex but without pac/_startup.pac (an incomplete copy) used
+    // to end in a black screen. Null when the folder is fine or the game comes from an ISO.
+    static String localGameProblem(File dir) {
+        String local = findLocalGame(dir);
+        if (local == null || local.toLowerCase().endsWith(".iso")) return null;
+        File pac = childIgnoreCase(new File(local), "pac");
+        if (pac != null && pac.isDirectory() && childIgnoreCase(pac, "_startup.pac") != null) return null;
+        boolean hasIso = false;
+        File[] files = new File(local).listFiles();
+        if (files != null)
+            for (File f : files)
+                if (f.isFile() && f.getName().toLowerCase().endsWith(".iso")) hasIso = true;
+        return "The game folder has default.xex but not the pac folder (pac/_startup.pac): the game would stay "
+                + "on a black screen.\n\nCopy the whole extracted disc into\n" + local + "\nor empty that folder"
+                + (hasIso ? " (it also holds an ISO, which is ignored while default.xex is there)" : "")
+                + " and choose your ISO with CHOOSE MY ISO.";
+    }
+
     // Opens the ISO picked with Android's file picker and returns a path the game can open.
     static String openPickedIso(Context context, Uri uri) {
         try {

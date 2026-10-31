@@ -23,6 +23,7 @@ target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_andr
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_temp.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_driver.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_perf_hint.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_gamecheck.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_replay.cpp")
 
 # Pilotes Vulkan personnalisés (Turnip…, choisis dans le launcher) : libadrenotools

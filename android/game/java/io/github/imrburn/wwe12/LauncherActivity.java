@@ -121,6 +121,24 @@ public class LauncherActivity extends Activity {
         controllerStatus.setText(pad != null
                 ? "Controller detected: " + pad + " (the on-screen buttons hide while it is connected)"
                 : "No controller detected: the on-screen buttons will show.");
+        showGameError();
+    }
+
+    // The game stops with a reason it wrote to last_error.txt (files/): say it once, then forget it.
+    void showGameError() {
+        File f = new File(getExternalFilesDir(null), "last_error.txt");
+        if (!f.isFile()) return;
+        String text = "The game stopped.";
+        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[1024];
+            for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            if (out.size() > 0) text = out.toString("UTF-8");
+        } catch (Exception ignored) {
+        }
+        f.delete();
+        new android.app.AlertDialog.Builder(this).setTitle("The game stopped")
+                .setMessage(text).setPositiveButton("OK", null).show();
     }
 
     // ---- UI ----------------------------------------------------------------------------------
@@ -776,6 +794,13 @@ public class LauncherActivity extends Activity {
         } else if (WWE12Activity.findLocalGame(getExternalFilesDir(null)) == null) {
             Toast.makeText(this, "Choose your WWE '12 ISO first.", Toast.LENGTH_LONG).show();
             return;
+        } else {
+            String problem = WWE12Activity.localGameProblem(getExternalFilesDir(null));
+            if (problem != null) {
+                new android.app.AlertDialog.Builder(this).setTitle("Game files incomplete")
+                        .setMessage(problem).setPositiveButton("OK", null).show();
+                return;
+            }
         }
         startActivity(i);
     }

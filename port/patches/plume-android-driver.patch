@@ -15,7 +15,7 @@ index ecc274f..aa6c499 100644
  // TODO:
  // - Fix resource pools.
  
-@@ -4007,6 +4013,16 @@ namespace plume {
+@@ -4007,6 +4013,29 @@ namespace plume {
          }
  
          const bool bufferDeviceAddressSupported = bufferDeviceAddressFeatures.bufferDeviceAddress;
@@ -28,6 +28,19 @@ index ecc274f..aa6c499 100644
 +                physicalDeviceProperties.driverVersion, int(descriptorIndexingFound), int(indexingFeatures.descriptorBindingPartiallyBound),
 +                int(indexingFeatures.descriptorBindingVariableDescriptorCount), int(indexingFeatures.runtimeDescriptorArray),
 +                int(bufferDeviceAddressFound), int(bufferDeviceAddressFeatures.bufferDeviceAddress));
++        {
++            // The renderer binds 5 descriptor sets and 3 arrays of 65536 textures; Adreno 6xx drivers
++            // are said to stop at 4 sets (#41).
++            VkPhysicalDeviceDescriptorIndexingProperties idxProps = {};
++            idxProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES;
++            VkPhysicalDeviceProperties2 props2 = {};
++            props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
++            props2.pNext = &idxProps;
++            if (descriptorIndexingFound) vkGetPhysicalDeviceProperties2(physicalDevice, &props2);
++            fprintf(stderr, "plume: limits: bound descriptor sets %u (the game uses 5), sampled images per stage %u, update-after-bind sampled images per stage %u (the game uses 196608)\n",
++                    physicalDeviceProperties.limits.maxBoundDescriptorSets, physicalDeviceProperties.limits.maxPerStageDescriptorSampledImages,
++                    idxProps.maxPerStageDescriptorUpdateAfterBindSampledImages);
++        }
 +#endif
          if (bufferDeviceAddressSupported) {
              bufferDeviceAddressFeatures.pNext = createDeviceChain;

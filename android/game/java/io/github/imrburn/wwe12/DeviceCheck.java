@@ -53,7 +53,8 @@ public class DeviceCheck {
             blockers.add("No Vulkan graphics driver: the game cannot draw anything on this phone.");
         else if (!hasVulkan(context, 0x402000))
             // Some phones with an old driver declare less and still work with a custom driver.
-            warnings.add("This phone does not declare Vulkan 1.2 (the game needs it): the picture may stay black. "
+            warnings.add("Android announces less than Vulkan 1.2 for this phone. That is only what it announces: "
+                    + "the game checks the real driver itself when it starts, and tells you if it cannot run. "
                     + "On a Snapdragon, a custom GPU driver (GPU DRIVER panel) can help.");
         if (ramGb > 0 && ramGb < MIN_RAM_GB)
             warnings.add(ramGb + " GB of memory: Android may close the game during matches (6 GB or more recommended).");

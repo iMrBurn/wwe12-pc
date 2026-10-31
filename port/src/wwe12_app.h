@@ -29,6 +29,12 @@
 #include <rex/input/input_system.h>
 #endif
 
+#if defined(__ANDROID__)
+// android/wwe12_gamecheck.cpp : fichiers du jeu lisibles ? Sinon message pour le launcher et arrêt.
+void Wwe12AndroidCheckGameFiles(rex::filesystem::VirtualFileSystem* fs);
+void Wwe12AndroidWriteError(const std::string& message);
+#endif
+
 #if defined(SVR_NATIVE_RENDERER)
 void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem* fs, const std::string& game_device,
                          const std::filesystem::path& user_root);
@@ -221,6 +227,9 @@ class Wwe12App : public rex::ReXApp {
     std::string game_device;
     if (!fs->FindSymbolicLink("game:", game_device))
       return;
+#if defined(__ANDROID__)
+    Wwe12AndroidCheckGameFiles(fs);
+#endif
     const std::filesystem::path mods = rex::filesystem::GetExecutableFolder() / "mods";
     std::error_code ec;
     std::filesystem::create_directories(mods, ec);
@@ -256,6 +265,14 @@ class Wwe12App : public rex::ReXApp {
         REXLOG_ERROR("Rendu natif : API indisponible, AUTO passe à l'exe suivant");
       } else {
         Wwe12ShowVulkanError();
+#if defined(__ANDROID__)
+        Wwe12AndroidWriteError(
+            "The game could not start the graphics.\n\nMost often the graphics driver lacks Vulkan "
+            "features the game needs (bufferDeviceAddress and descriptorIndexing): the phone's own "
+            "driver on many Snapdragon 845/855/870 phones does. Try a recent Turnip driver made for "
+            "Adreno 6xx/7xx (Driver used by the game, in the launcher). Then tap SHARE LAST LOG and "
+            "send the log with your phone model.");
+#endif
         REXLOG_ERROR("Rendu natif : aucune API graphique disponible, arrêt");
       }
       std::_Exit(1);
