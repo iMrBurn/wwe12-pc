@@ -209,14 +209,19 @@ extern "C" REX_FUNC(sub_821AEAE0) {
   g_read_wait_us.fetch_add(NowUs() - start, std::memory_order_relaxed);
 }
 
+// After a stream ends, the DLC sound tables are put back in order (wwe12_sound_tables.cpp).
+void Wwe12FixSoundTableAfterInflate(u32 stream, u32 result);
 REX_EXTERN(__imp__sub_827F57A8);
 extern "C" REX_FUNC(sub_827F57A8) {
+  const u32 stream = ctx.r3.u32;
   if (!REXCVAR_GET(wwe12_load_probe)) {
     __imp__sub_827F57A8(ctx, base);
+    Wwe12FixSoundTableAfterInflate(stream, ctx.r3.u32);
     return;
   }
   const u64 start = NowUs();
   __imp__sub_827F57A8(ctx, base);
   g_inflate_us.fetch_add(NowUs() - start, std::memory_order_relaxed);
   g_inflates.fetch_add(1, std::memory_order_relaxed);
+  Wwe12FixSoundTableAfterInflate(stream, ctx.r3.u32);
 }
