@@ -947,6 +947,67 @@ inline bool PlateMovie2K(const std::function<Bytes(const char *)> &read, int fil
   return !bk2.empty();
 }
 
+// A WWE 2K17 plate layout's 2D animation (pac/evt/evtlayout.pac, entry 7002: "00NN_<name>" at +0x10, "_l" the
+// location's, then an ATB0, little-endian: +0x10 layers (count, offset; 0x20 each: w, h, picture, track, name[16]),
+// +0x18 names (count, offset; 16 bytes, the theme first), +0x20 tracks (count) at +0x28 (0x10 each: channels, parent,
+// offset of its channels), a channel 0x10 {first key, end, id, keys}, a key {value x, y, 2 more}: channel 0 the
+// centre (on 640 x 360: channel 8), 1 the scale) -> the centre of its first "Name1" layer, the text, on 1920 x 1080
+// (SmackDown's name 984, 936, its city 942, 147: found 2026-10-31).
+inline bool TextCentre2K17(const Bytes &d, float &x, float &y) {
+  const auto at = std::search(d.begin(), d.end(), "ATB0", "ATB0" + 4);
+  if (at == d.end())
+    return false;
+  const size_t a = size_t(at - d.begin());
+  const auto u = [&](size_t o) {
+    return a + o + 4 <= d.size() ? uint32_t(d[a + o] | d[a + o + 1] << 8 | d[a + o + 2] << 16 | uint32_t(d[a + o + 3]) << 24)
+                                 : 0u;
+  };
+  const auto f = [&](size_t o) {
+    const uint32_t v = u(o);
+    float r;
+    memcpy(&r, &v, 4);
+    return r;
+  };
+  const uint32_t nl = u(0x10), lo = u(0x14), nt = u(0x20), to = u(0x28);
+  // a channel's last key
+  const auto chan = [&](uint32_t t, uint32_t id, float &vx, float &vy) {
+    const uint32_t n = u(to + 16 * size_t(t)), off = u(to + 16 * size_t(t) + 8);
+    for (uint32_t c = 0; c < n && c < 32; ++c) {
+      const uint32_t s = u(off + 16 * size_t(c)), e = u(off + 16 * size_t(c) + 4), cid = u(off + 16 * size_t(c) + 8),
+                     keys = u(off + 16 * size_t(c) + 12);
+      if (cid != id || !keys || e <= s)
+        continue;
+      const uint32_t last = s + (keys - 1) * ((e - s) / keys);
+      vx = f(last);
+      vy = f(last + 4);
+      return true;
+    }
+    return false;
+  };
+  for (uint32_t i = 0; i < nl && i < 64; ++i) {
+    const size_t r = lo + 0x20 * size_t(i);
+    if (a + r + 0x20 > d.size() || strncmp(reinterpret_cast<const char *>(&d[a + r + 16]), "Name1", 16) != 0)
+      continue;
+    std::vector<uint32_t> chain;
+    for (int32_t t = int32_t(u(r + 12)); t >= 0 && uint32_t(t) < nt && chain.size() < 16;
+         t = int32_t(u(to + 16 * size_t(t) + 4)))
+      chain.push_back(uint32_t(t));
+    float px = 0, py = 0, ps = 1;
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+      float cx = 0, cy = 0, sx = 1, sy = 1;
+      chan(*it, 0, cx, cy);
+      chan(*it, 1, sx, sy);
+      px += ps * cx;
+      py += ps * cy;
+      ps *= sx;
+    }
+    x = px * 3;
+    y = py * 3;
+    return std::isfinite(x) && std::isfinite(y);
+  }
+  return false;
+}
+
 // The arena's VS screen ("match card") in WWE '13's menu/MatchHD.pac, as stored: MLYE/MBnn (its layout, YXMLBIN, and
 // pictures, as WWE '12's) and MENU/MnnF (its font, "font_venge" for Vengeance: the layout names it), nn = the arena's
 // file number. The game serves them for the added arena (wwe12_arena_pages.cpp).

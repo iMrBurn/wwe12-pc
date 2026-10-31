@@ -1018,7 +1018,7 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f, int *rect = nullptr) {
 // A WWE 2K plate and where it goes on a 1920 x 1080 screen. The WWE 2K games show their plate movies 1.5 times as
 // big, the location's at the top of the screen, the name's at the bottom (seen in WWE 2K14, 2026-10-30); WWE '12 writes
 // its text at fixed places of its own, which fall about where theirs are: the name in the plate's box as it stands,
-// the city further left (WWE '12's around x = 605: the plate's middle put there).
+// the city further left (both moved on WWE '12's text by PlateOnScreen).
 struct Plate2K {
   svrfmt::Image img;
   float x = 0, y = 0, w = 0, h = 0;
@@ -1131,8 +1131,13 @@ inline bool Ag2dPlaceLayer(Bytes &d, uint32_t layer, float x, float y, float w, 
 
 }  // namespace detail
 
-// `intro`: the movie's pictures before `still` at half size (bink2::Still), cut as the plate is.
-inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name, const std::vector<svrfmt::Image> &intro = {}) {
+// `intro`: the movie's pictures before `still` at half size (bink2::Still), cut as the plate is. `text_x/y`: where the
+// 2K game writes its text on the plate as it shows it (WWE 2K17's layouts: port13::TextCentre2K17), else theirs on
+// average (2K17's SmackDown, RAW, WWF Live 91...); the plate is moved so that place falls on WWE '12's text (seen in the
+// game, 2026-10-31, SmackDown of 2K17: the name centred at 918, 857 without a title line, the city from x = 440 at
+// y = 215; the text was on the plate's edges).
+inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name, const std::vector<svrfmt::Image> &intro = {},
+                             float text_x = -1, float text_y = -1) {
   Plate2K p;
   int r[4] = {};
   p.img = PlateCut(still, r);
@@ -1140,8 +1145,15 @@ inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name, const std::v
     return p;
   p.w = 1.5f * r[2];
   p.h = 1.5f * r[3];
-  p.x = name ? 1.5f * r[0] : 605.f - p.w / 2;
+  p.x = 1.5f * r[0];
   p.y = name ? 1080.f - 1.5f * still.h + 1.5f * r[1] : 1.5f * r[1];
+  // (each kept if likely: a few 2K17 layouts give x 0 or -480, their text sliding in from the edge)
+  if (text_x < 200 || text_x > 1720)
+    text_x = 960;
+  if (name ? text_y < 700 || text_y > 1080 : text_y < 0 || text_y > 400)
+    text_y = name ? 920.f : 150.f;
+  p.x += (name ? 918.f : 615.f) - text_x;
+  p.y += (name ? 857.f : 215.f) - text_y;
   bool alpha = false;
   for (size_t i = 3; i < still.rgba.size() && !alpha; i += 4)
     alpha = still.rgba[i] < 255;

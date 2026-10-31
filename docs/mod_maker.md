@@ -725,8 +725,14 @@ places ×10, d'après le code de Kaiko).
   premières lettres du thème. 39 arènes sur 46 retrouvent ainsi leur écran (Nitro, Halloween Havoc, Fully Loaded,
   WWF Live 91…) ; thèmes pareils (deux Royal Rumble, deux Halloween Havoc, deux Saturday Night's Main Event) pris dans
   l'ordre des arènes. L'ordre seul reste en secours pour 0-17. Les calques de texte des plaques 2K17 sont aussi dans
-  ces ATB0 (`Name1` 220 × 40, `SNS`, `Belt`, `Manager` ; 11 canaux par piste, clés de 16 octets) : coordonnées pas
-  encore comprises.
+  ces ATB0 (`Name1` 220 × 40, `SNS`, `Belt`, `Manager` ; 11 canaux par piste, clés de 16 octets).
+- **Texte dans la case (2026-10-31)** : ATB0 compris : piste 0x10 {canaux, parent, position}, canal 0x10 {1re clé, fin,
+  id, nombre}, clé {x, y, …} ; canal 0 = centre (écran 640 × 360, canal 8), canal 1 = échelle ; `port13::TextCentre2K17`
+  rend le centre du premier calque `Name1` en 1080p (SmackDown : nom 984, 936, ville 942, 147 ; quelques x à 0 / −480 :
+  ignorés). **WWE '12 n'écrit pas au même endroit selon le cas** : Orton (RAW 2K14) nom centré 1115, 937 ; Otunga /
+  Kozlov (SmackDown 2K17) 918, 857 ; ville toujours à partir de x = 440, y ≈ 215. `PlateOnScreen` déplace la plaque
+  pour que le texte 2K tombe sur 918, 857 (nom) / 615, 215 (ville) ; sans mise en page (2K14-2K16) : texte 2K supposé
+  en 960, 920 / 960, 150. À revoir si une autre arène de base place le texte ailleurs.
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 

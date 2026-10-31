@@ -1649,6 +1649,29 @@ class Page {
         // ... and its own plates, a picture of each of its plate movies (2K15-2K17: Bink 2, when a decoder is
         // installed; 2K14: Bink 1 with alpha, read by ours)
         port_svr_arena::Plate2K own[2];
+        // where the game writes its text on them (WWE 2K17: its plate layouts, "00NN_<name>" and "..._l")
+        float text[2][2] = {{-1, -1}, {-1, -1}};
+        svrfmt::Archive el;
+        if (svrfmt::ArchiveOpen(Read13("pac/evt/evtlayout.pac"), el, nullptr)) {
+          char pre[8];
+          snprintf(pre, sizeof(pre), "%04d_", w13_pick_);
+          const auto walk = [&](auto &self, svrfmt::ArcNode &k, int depth) -> void {
+            if (depth < 4 && svrfmt::ArchiveExpand(k) && !k.kids.empty()) {
+              for (auto &c : k.kids)
+                self(self, c, depth + 1);
+              return;
+            }
+            const Bytes d = svrfmt::ArchiveData(k);
+            if (k.id != 7002 || d.size() < 0x30 || memcmp(&d[0x10], pre, 5) != 0)
+              return;
+            const std::string own_name(reinterpret_cast<const char *>(&d[0x10]), strnlen(reinterpret_cast<const char *>(&d[0x10]), 16));
+            const int n = own_name.size() > 2 && own_name.compare(own_name.size() - 2, 2, "_l") == 0 ? 0 : 1;
+            if (text[n][0] < 0)
+              port13::TextCentre2K17(d, text[n][0], text[n][1]);
+          };
+          for (auto &k : el.root.kids)
+            walk(walk, k, 0);
+        }
         for (int n = 0; n < 2; ++n) {
           Bytes bk2;
           if (!port13::PlateMovie2K([&](const char *p) { return Read13(p); }, w13_pick_, n == 1, bk2))
@@ -1660,7 +1683,7 @@ class Page {
           svrfmt::Image still;
           std::vector<svrfmt::Image> intro;
           if (bink2::Still(bink2::Found(), in, still, nullptr, &intro))
-            own[n] = port_svr_arena::PlateOnScreen(still, n == 1, intro);
+            own[n] = port_svr_arena::PlateOnScreen(still, n == 1, intro, text[n][0], text[n][1]);
           std::error_code ec;
           fs::remove(in, ec);
         }
