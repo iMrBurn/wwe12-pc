@@ -789,6 +789,181 @@ inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n) {
 
 }  // namespace detail
 
+// A WWE 2K game's own VS screen made WWE '12's (2026-10-31): its layout (7000, YXMLBIN VER0003) has WWE '12's frame
+// (36 nodes in groups 1, 8, 9, 5, 6, 1, 6) but 14 resources against 15: one background picture for both sides (3000)
+// and "dummy" 3001 where WWE '12 has 3000 / 3001 the two sides and "dummy" 3002, and WWE '12 takes them by rank (its
+// names went missing and a black box showed, WrestleMania 31 of 2K16, 2026-10-26). 3000 is given twice (3000, 3001),
+// "dummy" becomes 3002, its nodes renumbered (the second background node 3001); its font (font_sd2015m..., a version
+// WWE '12 can't read) renamed font000, WWE '12 RAW's (MENU/M01F, `mf`). Its pictures (7001) and animations (7002,
+// ATB0 version 3 where WWE '12's are 2) as they are, all packed again as BPE (the 2K games' ZLIB crashed WWE '12, and
+// 2K17's are SHDC lists). `card`: the VS screen's node (a PACH or SHDC holding 7000-7002).
+inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, Bytes &mf) {
+  using namespace detail;
+  mb.clear();
+  mf.clear();
+  const auto Rd32 = [](const Bytes &b, size_t at) {
+    return at + 4 <= b.size() ? uint32_t(b[at] | b[at + 1] << 8 | b[at + 2] << 16 | uint32_t(b[at + 3]) << 24) : 0u;
+  };
+  const auto find_id = [](auto &self, svrfmt::ArcNode &n, uint32_t id, int depth) -> svrfmt::ArcNode * {
+    if (n.id == id && depth)
+      return &n;
+    if (depth < 4 && svrfmt::ArchiveExpand(n))
+      for (auto &c : n.kids)
+        if (auto *f = self(self, c, id, depth + 1))
+          return f;
+    return nullptr;
+  };
+  svrfmt::ArcNode *lay = find_id(find_id, card, 7000, 0), *pics = find_id(find_id, card, 7001, 0),
+                  *anim = find_id(find_id, card, 7002, 0);
+  if (!lay || !pics || !anim)
+    return false;
+  // (their animations: ATB0 version 3 in 2K14-2K16, 8 in 2K17, WWE '12's 2: 2K17's left to the wearing VS screen
+  // until a version 3 one is seen in the game)
+  {
+    const Bytes a = svrfmt::ArchiveData(*anim);
+    const auto at = std::search(a.begin(), a.end(), "ATB0", "ATB0" + 4);
+    if (at == a.end() || size_t(at - a.begin()) + 12 > a.size() || Rd32(a, size_t(at - a.begin()) + 8) > 3)
+      return false;
+  }
+  Bytes y = svrfmt::ArchiveData(*lay);
+  if (y.size() < 0x20 || memcmp(y.data(), "YXMLBIN VER0003", 15) != 0)
+    return false;
+  const uint32_t nres = Rd32(y, 16), nnodes = Rd32(y, 20), ngroups = Rd32(y, 24);
+  if (0x20 + size_t(nres) * 0x4C > y.size())
+    return false;
+  // a resource's name (+12) by its id
+  const auto res_name = [&](const Bytes &b, uint32_t id) {
+    for (uint32_t i = 0; i < Rd32(b, 16); ++i)
+      if (0x20 + 0x4C * size_t(i + 1) <= b.size() && Rd32(b, 0x20 + 0x4C * i) == id)
+        return std::string(reinterpret_cast<const char *>(&b[0x20 + 0x4C * i + 12]),
+                           strnlen(reinterpret_cast<const char *>(&b[0x20 + 0x4C * i + 12]), 0x40));
+    return std::string();
+  };
+  // every `from` (whole, NUL-ended) made `to`, where there's room (the bytes after it zero)
+  const auto rename = [](Bytes &b, const std::string &from, const std::string &to) {
+    for (size_t i = 0; i + from.size() < b.size(); ++i)
+      if ((i == 0 || b[i - 1] == 0) && memcmp(&b[i], from.data(), from.size()) == 0 && b[i + from.size()] == 0) {
+        size_t room = from.size();
+        while (i + room < b.size() && b[i + room] == 0 && room < to.size() + 1)
+          ++room;
+        if (room < to.size() + 1)
+          continue;
+        memset(&b[i], 0, from.size());
+        memcpy(&b[i], to.data(), to.size());
+      }
+  };
+  // WWE 2K17's: 8 resources, 8 nodes (its frame, background and pictures, no text: it writes the names otherwise).
+  // WWE '12 RAW's layout kept, wearing its frame and background (their animations, 5000 / 5001 here, 5001 / 5000
+  // there) and its background picture's name, as SvR 2011's (SvrCard).
+  Bytes out;
+  if (nres != 14 || nnodes != 36 || ngroups != 7) {
+    std::string fr, bg;
+    for (uint32_t i = 0; i < nres; ++i) {
+      const uint32_t id = Rd32(y, 0x20 + 0x4C * i);
+      const std::string n = res_name(y, id);
+      if ((id == 5000 || id == 5001) && n.size() > 3 && n.compare(n.size() - 3, 3, "_fr") == 0)
+        fr = n;
+      if ((id == 5000 || id == 5001) && n.size() > 3 && n.compare(n.size() - 3, 3, "_bg") == 0)
+        bg = n;
+    }
+    const std::string back = res_name(y, 3000);
+    svrfmt::Archive w12;
+    svrfmt::ArcNode *raw12 = nullptr;
+    if (fr.empty() || bg.empty() || back.empty() || !svrfmt::ArchiveOpen(matchhd12, w12, nullptr))
+      return false;
+    for (auto &k : w12.root.kids)
+      if (k.group == "MLYE" && k.name == "MB01")
+        raw12 = &k;
+    svrfmt::ArcNode *lay12 = raw12 ? find_id(find_id, *raw12, 7000, 0) : nullptr;
+    if (!lay12)
+      return false;
+    out = svrfmt::ArchiveData(*lay12);
+    rename(out, "RAW_fr", fr);
+    rename(out, "RAW_bg", bg);
+    rename(out, "matchup_BG01", back);
+    rename(out, "matchup_BG02", back);
+  }
+  if (out.empty() && (nres != 14 || nnodes != 36 || ngroups != 7))
+    return false;
+  if (out.empty()) {
+  // its resources, 3000 twice and "dummy" 3002
+  Bytes res;
+  std::string font;
+  for (uint32_t i = 0; i < nres; ++i) {
+    Bytes r(y.begin() + long(0x20 + 0x4C * i), y.begin() + long(0x20 + 0x4C * (i + 1)));
+    const uint32_t id = Rd32(r, 0);
+    if (id == 1000)
+      font.assign(reinterpret_cast<const char *>(&r[12]), strnlen(reinterpret_cast<const char *>(&r[12]), 0x40));
+    if (id == 3001) {
+      r[0] = 0xBA;  // (3002)
+    }
+    res.insert(res.end(), r.begin(), r.end());
+    if (id == 3000) {
+      r[0] = 0xB9;  // (3001: the same picture)
+      res.insert(res.end(), r.begin(), r.end());
+    }
+  }
+  if (res.size() != 15 * 0x4C || font.empty())
+    return false;
+  out.assign(y.begin(), y.begin() + 0x20);
+  out[16] = 15;
+  out.insert(out.end(), res.begin(), res.end());
+  // its nodes (0x84 each, the resource's id first): "dummy" 3001 -> 3002, the second 3000 -> 3001
+  size_t p = 0x20 + size_t(nres) * 0x4C;
+  int backgrounds = 0;
+  for (uint32_t g = 0; g < ngroups; ++g) {
+    if (p + 4 > y.size())
+      return false;
+    const uint32_t n = Rd32(y, p);
+    out.insert(out.end(), y.begin() + long(p), y.begin() + long(p + 4));
+    p += 4;
+    for (uint32_t i = 0; i < n; ++i, p += 0x84) {
+      if (p + 0x84 > y.size())
+        return false;
+      Bytes node(y.begin() + long(p), y.begin() + long(p + 0x84));
+      const uint32_t id = Rd32(node, 0);
+      if (id == 3001)
+        node[0] = 0xBA, node[1] = 0x0B;
+      else if (id == 3000 && backgrounds++ == 1)
+        node[0] = 0xB9, node[1] = 0x0B;
+      out.insert(out.end(), node.begin(), node.end());
+    }
+  }
+  out.insert(out.end(), y.begin() + long(p), y.end());
+  // its font's name -> font000 (in place, the rest zeroed)
+  for (size_t i = 0; i + font.size() <= out.size(); ++i)
+    if (memcmp(&out[i], font.data(), font.size()) == 0 && (i + font.size() == out.size() || out[i + font.size()] == 0)) {
+      memset(&out[i], 0, font.size());
+      memcpy(&out[i], "font000", std::min<size_t>(7, font.size()));
+    }
+  }
+  // WWE '12 RAW's VS screen (MLYE/MB01) wearing them, its packing and alignment kept; its font
+  svrfmt::Archive w;
+  if (!svrfmt::ArchiveOpen(matchhd12, w, nullptr))
+    return false;
+  svrfmt::ArcNode *raw = nullptr;
+  for (auto &k : w.root.kids)
+    if (k.group == "MENU" && k.name == "M01F")
+      mf = k.stored;
+    else if (k.group == "MLYE" && k.name == "MB01")
+      raw = &k;
+  if (mf.empty() || !raw || !svrfmt::ArchiveExpand(*raw))
+    return false;
+  int replaced = 0;
+  for (auto &c : raw->kids)
+    if (c.id == 7000 || c.id == 7001 || c.id == 7002) {
+      svrfmt::ArchiveReplace(c, c.id == 7000 ? out : svrfmt::ArchiveData(c.id == 7001 ? *pics : *anim));
+      ++replaced;
+    }
+  if (replaced != 3)
+    return false;
+  svrfmt::ArchiveTouch(*raw);
+  svrfmt::Archive one;
+  one.root = *raw;
+  mb = svrfmt::ArchiveSave(one);
+  return mb.size() >= 4 && memcmp(mb.data(), "PACH", 4) == 0;
+}
+
 // A WWE '12 VS screen wearing another game's VS screen pictures (`theirs`): SvR 2011's, and the WWE 2K games' (their
 // own layout has a number of elements less than WWE '12's, 14 against 15: WrestleMania 31 of 2K16 showed no names
 // and a black box, 2026-10-26).

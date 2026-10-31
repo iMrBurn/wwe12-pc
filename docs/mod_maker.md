@@ -733,6 +733,15 @@ places ×10, d'après le code de Kaiko).
   Kozlov (SmackDown 2K17) 918, 857 ; ville toujours à partir de x = 440, y ≈ 215. `PlateOnScreen` déplace la plaque
   pour que le texte 2K tombe sur 918, 857 (nom) / 615, 215 (ville) ; sans mise en page (2K14-2K16) : texte 2K supposé
   en 960, 920 / 960, 150. À revoir si une autre arène de base place le texte ailleurs.
+- **Vrais écrans VS 2K (2026-10-31, vérifié hors du jeu, pas encore en jeu)** : `Card2KOwn`. 2K14-2K16 : même cadre que
+  WWE '12 (36 nœuds, groupes 1, 8, 9, 5, 6, 1, 6) mais 14 ressources : un seul fond 3000 (les deux côtés) et `dummy`
+  3001, contre 3000 / 3001 / `dummy` 3002 dans WWE '12, qui les prend par rang (d'où noms absents et rectangle noir sur
+  WM 31). 3000 doublé, `dummy` → 3002, nœuds renumérotés, police (`font_sd2015m`…) renommée `font000` avec la police
+  de RAW (`MENU/M01F`) ; images et animations gardées, mises dans le MB01 de WWE '12 (son emballage BPE et son
+  alignement). 2K17 : mise en page de 8 nœuds sans texte (il écrit les noms autrement) → mise en page de RAW habillée
+  de son cadre / fond (`stars_fr` / `stars_bg`) et de son image de fond ; **mais ses animations sont des ATB0 version 8**
+  (2K14-2K16 : 3, WWE '12 : 2) : 2K17 reste à l'écran habillé tant qu'une version 3 n'a pas été vue en jeu.
+  Référence 2K17 envoyée par l'utilisateur : cadre bleu à rayures, logo au centre, « TONIGHT », noms dans une barre.
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 

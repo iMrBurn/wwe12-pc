@@ -1519,6 +1519,7 @@ class Page {
     // wears its pictures, as SvR 2011's)
     Bytes matchhd12;
     std::vector<svrfmt::BundleTexture> pictures2k;
+    svrfmt::ArcNode card2k;  // (its own VS screen's node)
     if (y_title_ != kWwe13 && !matchhd.empty() && disc_ && disc_->Read("pac/menu/MatchHD.pac", matchhd12)) {
       svrfmt::Archive m;
       char nb[8];
@@ -1526,8 +1527,10 @@ class Page {
       if (svrfmt::ArchiveOpen(matchhd, m, nullptr))
         for (auto &k : m.root.kids)
           if (k.group == "MLYE" && k.name == nb)
-            if (auto *p = port_svr_arena::detail::Pictures(k))
+            if (auto *p = port_svr_arena::detail::Pictures(k)) {
               svrfmt::BundleRead(svrfmt::ArchiveData(*p), pictures2k);
+              card2k = k;
+            }
       // WWE 2K17: its entries go by a hash of their name (unknown), the base's VS screen was shown (SmackDown,
       // 2026-10-31). Its VS screens (the entries with a "matchup_BG" picture) are stored in the order of the arenas:
       // 45 of them for its 46 arenas, their logos match arenas 0-17 (SmackDown, RAW, NXT... Main Event), one is missing
@@ -1542,6 +1545,7 @@ class Page {
           uint64_t order;
           std::string theme;
           std::vector<svrfmt::BundleTexture> pics;
+          svrfmt::ArcNode node;
         };
         std::vector<Card> cards;
         const auto find_id = [](auto &self, svrfmt::ArcNode &n, uint32_t id, int depth) -> svrfmt::ArcNode * {
@@ -1570,7 +1574,7 @@ class Page {
             if (!svrfmt::BundleRead(svrfmt::ArchiveData(*p), pics) || !port_svr_arena::detail::Named(pics, "matchup_BG"))
               continue;
             const auto *anim = find_id(find_id, k, 7002, 0);
-            cards.push_back({k.order, anim ? text_after(svrfmt::ArchiveData(*anim), "HDXbox_") : "", std::move(pics)});
+            cards.push_back({k.order, anim ? text_after(svrfmt::ArchiveData(*anim), "HDXbox_") : "", std::move(pics), k});
           }
         std::sort(cards.begin(), cards.end(), [](const Card &a, const Card &b) { return a.order < b.order; });
         // arena -> theme, from its plates' layouts
@@ -1607,18 +1611,26 @@ class Page {
           for (const auto &[file, theme] : themes)
             if (file < w13_pick_ && !mine.empty() && alike(cards[mine[0]].theme, theme))
               ++before;
-          if (!mine.empty())
-            pictures2k = std::move(cards[mine[std::min(before, mine.size() - 1)]].pics);
+          if (!mine.empty()) {
+            auto &c = cards[mine[std::min(before, mine.size() - 1)]];
+            pictures2k = std::move(c.pics);
+            card2k = std::move(c.node);
+          }
         }
         if (pictures2k.empty() && w13_pick_ <= 17 && rank != w13_list_.end()) {
           const size_t i = size_t(rank - w13_list_.begin());
-          if (i < cards.size())
+          if (i < cards.size()) {
             pictures2k = std::move(cards[i].pics);
+            card2k = std::move(cards[i].node);
+          }
         }
       }
     }
-    if (y_title_ != kWwe13 ? port_svr_arena::CardWearing(pictures2k, matchhd12, svrfmt::Image(), card_mb_, card_mf_, nullptr, true)
-                           : !matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))
+    // (a 2K game's: its own, made WWE '12's, else a WWE '12 one wearing its pictures)
+    if (y_title_ != kWwe13 && !card2k.kids.empty() && port_svr_arena::Card2KOwn(card2k, matchhd12, card_mb_, card_mf_))
+      port_note_ += fr ? " Avec son propre écran VS." : " With its own VS screen.";
+    else if (y_title_ != kWwe13 ? port_svr_arena::CardWearing(pictures2k, matchhd12, svrfmt::Image(), card_mb_, card_mf_, nullptr, true)
+                                : !matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // Its entrance graphics (location plate, name plates).
     const Bytes evtgd = Read13("pac/evt/evtgdhd.pac");
