@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <tuple>
 #include <set>
 #include <string>
 #include <vector>
@@ -1021,6 +1022,7 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f, int *rect = nullptr) {
 struct Plate2K {
   svrfmt::Image img;
   float x = 0, y = 0, w = 0, h = 0;
+  std::vector<svrfmt::Image> intro;  // the plate coming in (its movie's pictures before `img`, cut as `img`)
 };
 
 namespace detail {
@@ -1031,10 +1033,49 @@ namespace detail {
 // with its layer `name` moved and sized so it covers screen rectangle (x, y, w, h) of 1920 x 1080 at the end. Screen =
 // 3 x the animation's place, 29 lower (measured in the game: WrestleMania XXVII's plates, 2026-10-30). Its keys are moved
 // with it (they slide it in).
+inline bool Ag2dPlaceLayer(Bytes &d, uint32_t layer, float x, float y, float w, float h);
 inline Bytes Ag2dPlace(const Bytes &in, const char *name, float x, float y, float w, float h) {
   Bytes d = in;
   if (d.size() < 0x30 || memcmp(d.data(), "AG2D", 4) != 0)
     return d;
+  const uint32_t nl = U32(d, 0x18), lo = U32(d, 0x1C);
+  for (uint32_t i = 0; i < nl; ++i) {
+    const size_t r = lo + 0x20 * size_t(i);
+    if (r + 0x20 <= d.size() && strncmp(reinterpret_cast<const char *>(&d[r + 16]), name, 16) == 0)
+      return Ag2dPlaceLayer(d, i, x, y, w, h) ? d : in;
+  }
+  return d;
+}
+
+// The layers of its logo's flip book (WrestleMania XXVII's plates: 21 layers showing pictures "logo_01" to "logo_21"
+// 2 frames each, the last one staying): (layer, picture) in the order they show.
+inline std::vector<std::pair<uint32_t, uint32_t>> Ag2dFlipBook(const Bytes &d) {
+  std::vector<std::tuple<uint32_t, uint32_t, uint32_t>> found;  // (first frame shown, layer, picture)
+  if (d.size() < 0x30 || memcmp(d.data(), "AG2D", 4) != 0)
+    return {};
+  const uint32_t nn = U32(d, 0x10), no = U32(d, 0x14), nl = U32(d, 0x18), lo = U32(d, 0x1C), nt = U32(d, 0x20),
+                 to = U32(d, 0x24);
+  for (uint32_t i = 0; i < nl; ++i) {
+    const size_t r = lo + 0x20 * size_t(i);
+    const uint32_t pic = U32(d, r + 8), t = U32(d, r + 12);
+    if (r + 0x20 > d.size() || pic >= nn || t >= nt || no + 16 * size_t(pic + 1) > d.size() ||
+        strncmp(reinterpret_cast<const char *>(&d[no + 16 * size_t(pic)]), "logo_", 5) != 0)
+      continue;
+    const size_t tr = to + 0x18 * size_t(t);
+    const uint32_t keys = U32(d, tr + 4) & 0xFFFF, table = U32(d, tr + 12);
+    found.emplace_back(keys > 1 ? U32(d, table + 4 * (U32(d, tr + 4) >> 16)) : 0, i, pic);
+  }
+  std::sort(found.begin(), found.end());
+  std::vector<std::pair<uint32_t, uint32_t>> out;
+  for (const auto &[f, l, p] : found)
+    out.emplace_back(l, p);
+  return out;
+}
+
+// Layer `layer` (its index) moved and sized as Ag2dPlace's.
+inline bool Ag2dPlaceLayer(Bytes &d, uint32_t layer, float x, float y, float w, float h) {
+  if (d.size() < 0x30 || memcmp(d.data(), "AG2D", 4) != 0)
+    return false;
   const auto f = [&](size_t o) {
     const uint32_t u = U32(d, o);
     float v;
@@ -1047,13 +1088,13 @@ inline Bytes Ag2dPlace(const Bytes &in, const char *name, float x, float y, floa
     Put32(d, o, u);
   };
   const uint32_t nl = U32(d, 0x18), lo = U32(d, 0x1C), nt = U32(d, 0x20), to = U32(d, 0x24);
-  for (uint32_t i = 0; i < nl; ++i) {
+  for (uint32_t i = layer; i < nl && i == layer; ++i) {
     const size_t r = lo + 0x20 * size_t(i);
-    if (r + 0x20 > d.size() || strncmp(reinterpret_cast<const char *>(&d[r + 16]), name, 16) != 0)
-      continue;
+    if (r + 0x20 > d.size())
+      return false;
     const uint32_t t = U32(d, r + 12);
     if (t >= nt)
-      return in;
+      return false;
     // the parents' place and scale (their rest: they don't move)
     float px = 0, py = 0, ps = 1;
     std::vector<uint32_t> chain;
@@ -1067,7 +1108,7 @@ inline Bytes Ag2dPlace(const Bytes &in, const char *name, float x, float y, floa
       ps *= f(rest + 16);
     }
     if (ps <= 0)
-      return in;
+      return false;
     const size_t tr = to + 0x18 * size_t(t), rest = U32(d, tr + 20), table = U32(d, tr + 12);
     const float nx = ((x + w / 2) / 3 - px) / ps, ny = ((y + h / 2 - 29) / 3 - py) / ps;
     const float dx = nx - f(rest + 4), dy = ny - f(rest + 8);
@@ -1083,14 +1124,15 @@ inline Bytes Ag2dPlace(const Bytes &in, const char *name, float x, float y, floa
     }
     Put32(d, r, uint32_t(int32_t(w / 3 / ps + 0.5f)));
     Put32(d, r + 4, uint32_t(int32_t(h / 3 / ps + 0.5f)));
-    return d;
+    return true;
   }
-  return d;
+  return false;
 }
 
 }  // namespace detail
 
-inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name) {
+// `intro`: the movie's pictures before `still` at half size (bink2::Still), cut as the plate is.
+inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name, const std::vector<svrfmt::Image> &intro = {}) {
   Plate2K p;
   int r[4] = {};
   p.img = PlateCut(still, r);
@@ -1100,6 +1142,30 @@ inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name) {
   p.h = 1.5f * r[3];
   p.x = name ? 1.5f * r[0] : 605.f - p.w / 2;
   p.y = name ? 1080.f - 1.5f * still.h + 1.5f * r[1] : 1.5f * r[1];
+  bool alpha = false;
+  for (size_t i = 3; i < still.rgba.size() && !alpha; i += 4)
+    alpha = still.rgba[i] < 255;
+  for (const auto &f : intro) {
+    svrfmt::Image c;
+    c.w = std::max(1, r[2] / 2);
+    c.h = std::max(1, r[3] / 2);
+    c.rgba.assign(size_t(c.w) * c.h * 4, 0);
+    for (int y = 0; y < c.h; ++y)
+      for (int x = 0; x < c.w; ++x) {
+        const int sx = r[0] / 2 + x, sy = r[1] / 2 + y;
+        if (sx >= f.w || sy >= f.h)
+          continue;
+        const uint8_t *s = &f.rgba[(size_t(sy) * f.w + sx) * 4];
+        uint8_t *d = &c.rgba[(size_t(y) * c.w + x) * 4];
+        d[0] = s[0];
+        d[1] = s[1];
+        d[2] = s[2];
+        // (as PlateCut: the real alpha with its haze cleared, else black made clear)
+        d[3] = alpha ? (s[3] < 24 ? 0 : uint8_t((s[3] - 24) * 255 / 231))
+                     : uint8_t(std::clamp((int(std::max({s[0], s[1], s[2]})) - 8) * 5, 0, 255));
+      }
+    p.intro.push_back(std::move(c));
+  }
   return p;
 }
 
@@ -1112,6 +1178,9 @@ inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name) {
 // With the arena's own plates (`location`, `name`: PlateOnScreen of its movies), entry 10 (location) or 0 (name) shows
 // only that plate, in its bar (picture 21, layer "base" of animations 10010 / 10000, moved and sized to the plate's
 // place): its other pictures (logo, chevrons, light lines) are made clear, the plate having its logo.
+// With their `intro` too (2026-10-31: "make them play, not old 2D pictures"), the plates come in as in their movies:
+// the logo's flip book (21 layers, 2 frames each: Ag2dFlipBook) shows the intro's pictures (512 wide) and, on its
+// last layer, which stays, the plate (1024 wide); all moved to the plate's place, the bar made clear.
 inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double logo_wide, const svrfmt::Image &plate,
                         Bytes &out, const Plate2K &location = {}, const Plate2K &name = {}) {
   using namespace detail;
@@ -1134,6 +1203,20 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
     if (d.size() > 128 && memcmp(d.data(), "DDS ", 4) == 0)
       svrfmt::ArchiveReplace(pic, LikePicture(d, img, false));
   };
+  // the flip books' pictures in the order they show (entry 10's from animation 10010, entry 0's from 10000)
+  std::map<uint32_t, std::vector<uint32_t>> flips;
+  for (auto &e : tpl->kids)
+    if ((e.id == 10000 || e.id == 10010) && svrfmt::ArchiveExpand(e) && !e.kids.empty())
+      for (const auto &[layer, pic] : Ag2dFlipBook(svrfmt::ArchiveData(e.kids[0])))
+        flips[e.id == 10010 ? 10 : 0].push_back(pic);
+  // (heights a power of two, the one under the picture's: the 2K14 name plate's intro at 512 x 128 made 2 MB of plates
+  // against WrestleMania XXVII's 1.1)
+  const auto sized = [](const svrfmt::Image &img, int w, const svrfmt::DdsInfo &info) {
+    int h = 16;
+    while (h < 256 && h * 2 <= w * img.h / std::max(1, img.w))
+      h *= 2;
+    return svrfmt::DdsEncode(svrfmt::Resize(img, w, h), info.format, info.mips > 1);
+  };
   for (auto &e : tpl->kids) {
     if (e.id != 0 && e.id != 10 && e.id != 20 && e.id != 10000 && e.id != 10010)
       continue;
@@ -1142,11 +1225,17 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
     if (e.id >= 10000) {  // its animation: the bar where the plate goes
       if (own.img.rgba.empty() || !svrfmt::ArchiveExpand(e))
         continue;
-      for (auto &a : e.kids)
-        svrfmt::ArchiveReplace(a, Ag2dPlace(svrfmt::ArchiveData(a), "base", own.x, own.y, own.w, own.h));
+      for (auto &a : e.kids) {
+        Bytes d = Ag2dPlace(svrfmt::ArchiveData(a), "base", own.x, own.y, own.w, own.h);
+        if (!own.intro.empty())
+          for (const auto &[layer, pic] : Ag2dFlipBook(d))
+            Ag2dPlaceLayer(d, layer, own.x, own.y, own.w, own.h);
+        svrfmt::ArchiveReplace(a, d);
+      }
       svrfmt::ArchiveTouch(e);
       continue;
     }
+    const std::vector<uint32_t> &flip = flips[e.id];
     if (!svrfmt::ArchiveExpand(e))
       continue;
     for (auto &pic : e.kids) {
@@ -1155,10 +1244,20 @@ inline bool EtexWearing(const Bytes &evtgd12, const svrfmt::Image &logo, double 
       } else if (e.id != 20 && !own.img.rgba.empty()) {
         const Bytes d = svrfmt::ArchiveData(pic);
         svrfmt::DdsInfo info;
-        if (d.size() > 128 && memcmp(d.data(), "DDS ", 4) == 0 && svrfmt::DdsInfoOf(d, info))
-          svrfmt::ArchiveReplace(pic, pic.id == 21 ? svrfmt::DdsEncode(svrfmt::Resize(own.img, info.w, info.h),
-                                                                       info.format, info.mips > 1)
-                                                   : Clear(d));
+        if (d.size() <= 128 || memcmp(d.data(), "DDS ", 4) != 0 || !svrfmt::DdsInfoOf(d, info))
+          continue;
+        const auto at = std::find(flip.begin(), flip.end(), pic.id);
+        if (!own.intro.empty() && flip.size() > 1 && at != flip.end()) {  // (the plate coming in, then the plate)
+          const size_t k = size_t(at - flip.begin());
+          svrfmt::ArchiveReplace(pic, k + 1 == flip.size()
+                                          ? sized(own.img, 1024, info)
+                                          : sized(own.intro[k * own.intro.size() / (flip.size() - 1)], 512, info));
+        } else {
+          svrfmt::ArchiveReplace(pic, pic.id == 21 && own.intro.empty()
+                                          ? svrfmt::DdsEncode(svrfmt::Resize(own.img, info.w, info.h), info.format,
+                                                              info.mips > 1)
+                                          : Clear(d));
+        }
       } else if (e.id != 20 && !wide.rgba.empty() && (pic.id == 0 || (pic.id >= 6 && pic.id <= 20))) {
         wear(pic, wide);
       }

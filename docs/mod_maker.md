@@ -708,6 +708,15 @@ places ×10, d'après le code de Kaiko).
   `matchup_BG`) sont rangés dans l'ordre des arènes : 45 pour 46 arènes, logos conformes pour les arènes 0-17 ;
   l'arène prend l'écran de son rang parmi les arènes du disque, pour 0-17 seulement (`detail::Pictures` descend aussi
   dans les SHDC). Vérifié hors du jeu : SmackDown 2K17 → carte 0 (logo SmackDown), habillée sur MB09.
+- **Plaques 2K animées (2026-10-31, vérifié hors du jeu, pas encore en jeu)** : les animations 10000 (nom) et 10010
+  (ville) de WrestleMania XXVII ont un **flip-book** : 21 calques montrant les images `logo_01`…`logo_21` 2 images de
+  jeu chacune (10010 : images 1-20 puis 0, de l'image 2 à 44 ; 10000 : 1-9, 0, 11-20 puis 10, de 5 à 47), le dernier
+  restant affiché (10000 : jusqu'à 285-295, avec la barre). `bink2::Still` rend aussi 20 images consécutives (demi
+  taille) depuis la première ayant un dixième des pixels allumés de la plaque complète : à 30 images/s, la vitesse de
+  la vidéo. `PlateOnScreen` les découpe comme la plaque ; `EtexWearing` les met dans le flip-book (512 de large), la
+  plaque complète sur son dernier calque (1024), tous les calques du flip-book placés comme la barre (`Ag2dFlipBook`,
+  `Ag2dPlaceLayer`), la barre vidée. Hauteurs en puissance de deux inférieure : plaques de 0,9 à 1,3 Mo (WM XXVII :
+  1,1 Mo ; 2 Mo avec l'arrondi au-dessus).
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 

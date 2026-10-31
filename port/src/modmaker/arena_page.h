@@ -1588,8 +1588,9 @@ class Page {
           const fs::path in = fs::path(tmp) / L"wwe12_plate.bk2";
           std::ofstream(in, std::ios::binary).write(reinterpret_cast<const char *>(bk2.data()), std::streamsize(bk2.size()));
           svrfmt::Image still;
-          if (bink2::Still(bink2::Found(), in, still, nullptr))
-            own[n] = port_svr_arena::PlateOnScreen(still, n == 1);
+          std::vector<svrfmt::Image> intro;
+          if (bink2::Still(bink2::Found(), in, still, nullptr, &intro))
+            own[n] = port_svr_arena::PlateOnScreen(still, n == 1, intro);
           std::error_code ec;
           fs::remove(in, ec);
         }

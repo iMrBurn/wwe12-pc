@@ -397,23 +397,46 @@ inline bool Decode(const Tool &tool, const fs::path &in, int frames, int W, int 
 // One picture of a movie (Bink 2 with the tool, or Bink 1 with our reader): among the frames between 30 % and 80 % of
 // it, the one with the most lit (or, with an alpha plane, opaque) pixels (the WWE 2K games' entrance plates: the plate
 // built, before it goes away). RGBA; alpha 255 but for a Bink 1 movie with an alpha plane (WWE 2K14's plates).
-inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std::wstring *err) {
-  int from = 0, to = 0, at = 0;
+// `intro`: also up to `intro_count` pictures at half size, one after the other from the first one with a tenth of its
+// lit pixels, before it (the plate coming in, for the plates' 2D animation).
+inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std::wstring *err,
+                  std::vector<svrfmt::Image> *intro = nullptr, int intro_count = 20) {
+  int from = 0, to = 0, at = 0, best_at = -1;
   size_t best = 0;
   std::vector<uint8_t> keep;
   int kw = 0, kh = 0;
   bool alpha = false;
+  std::vector<size_t> lits;
+  std::vector<svrfmt::Image> halves;  // (every frame up to `to`, at half size, for the intro)
   const auto put = [&](const uint8_t *bgra, int w, int h) {
     const int i = at++;
-    if (i < from)
-      return true;
     if (i > to)
       return false;
     size_t lit = 0;
     for (size_t p = 0; p < size_t(w) * h * 4; p += 4)
       lit += alpha ? bgra[p + 3] > 128 : (std::max)({bgra[p], bgra[p + 1], bgra[p + 2]}) > 60;
+    if (intro) {
+      lits.push_back(lit);
+      svrfmt::Image half;
+      half.w = (std::max)(1, w / 2);
+      half.h = (std::max)(1, h / 2);
+      half.rgba.resize(size_t(half.w) * half.h * 4);
+      for (int y = 0; y < half.h; ++y)
+        for (int x = 0; x < half.w; ++x) {
+          const uint8_t *s = bgra + (size_t(y * 2) * w + x * 2) * 4;
+          uint8_t *d = &half.rgba[(size_t(y) * half.w + x) * 4];
+          d[0] = s[2];
+          d[1] = s[1];
+          d[2] = s[0];
+          d[3] = alpha ? s[3] : 255;
+        }
+      halves.push_back(std::move(half));
+    }
+    if (i < from)
+      return true;
     if (lit > best || keep.empty()) {
       best = lit;
+      best_at = i;
       keep.assign(bgra, bgra + size_t(w) * h * 4);
       kw = w;
       kh = h;
@@ -463,6 +486,15 @@ inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std:
     out.rgba[i + 1] = keep[i + 1];
     out.rgba[i + 2] = keep[i];
     out.rgba[i + 3] = alpha ? keep[i + 3] : 255;
+  }
+  if (intro) {
+    intro->clear();
+    int start = 0;
+    while (start < best_at && lits[size_t(start)] * 10 < best)
+      ++start;
+    // (one after the other: the flip book shows each 2 frames at 60 per second, the movies run at 30: their speed)
+    for (int k = 0; k < intro_count && start + k < best_at; ++k)
+      intro->push_back(halves[size_t(start + k)]);
   }
   return true;
 }
