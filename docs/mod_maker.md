@@ -678,6 +678,11 @@ places ×10, d'après le code de Kaiko).
   bande minitron (RAW, vu en jeu par l'utilisateur). Maintenant (`ScreensTo12`, branche 2K14) : habillage « ppv »
   gardé, 801 → 808, 808 → 807 (vidéo de l'arène), 805 → 803 (bande minitron 0,691-0,998), 800 recadré sur le titantron
   (0-0,684) ; 802-804, 807, 809 retirés. Même organisation vue dans bg00, bg01, bg05, bg15, bg28.
+- **Bannières 2K14 (2026-10-31, vérifié hors du jeu sur 13 arènes)** : la photo de scène de l'Univers (`arena_raw`)
+  ne plaisait pas à l'utilisateur ; on prend maintenant l'image de l'écran de choix d'arène de 2K14 (`MnLayHD.pac`
+  MLYE/OLFF, 256 × 128 : `RAW`, `Smack`, `MainEvent`, `Superstars`, `NXT`, `Summer`, `Survivor`, `RoyalRumble`,
+  `Over`, `NoWayOut`, `MinB`, `NofC`, `HinC`, `TLC`, `Chamber`, `EXT`, `WM01`-`WM29`, `WM30_M` ; colonne `select` de
+  `kBanners2K14`). En plus grand : `MLYE/SKYL` `raw` 1024 × 256 (RAW seulement).
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 

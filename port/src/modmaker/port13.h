@@ -576,18 +576,36 @@ inline bool Banner(const Bytes &matchhd13, int file, svrfmt::Image &out) {
 //    pac/wuniData.pac's 52-byte udt tables {name[40], string id, arena number, index}: PPV_raw'02 -> arena_raw02, but
 //    shortened: PPV_main -> arena_maineve, PPV_armage'02 -> arena_arm02, PPV_survivor'02 -> arena_surviv02 (one of
 //    the names starts with the other, same number), PPV_ER -> arena_ex;
-//  - 2K14: the same pictures, no such records: by the arena's number (kBanners2K14, from its names kArenas2K14).
+//  - 2K14: its arena select screen's own (256 x 128, the show's logo: MnLayHD.pac MLYE/OLFF "RAW", "Smack", "WM01"
+//    to "WM29", "WM30_M"..., `select`: the user found the Universe's stage photos not as good, 2026-10-31), else the
+//    same pictures as 2K15, no such records: by the arena's number (kBanners2K14, from its names kArenas2K14).
 // (2026-10-26: WWE 2K16's WrestleMania 31 came with the base's banner.)
 struct Banner2K14 {
   int file;
   const char *name;
+  const char *select;
 };
 inline constexpr Banner2K14 kBanners2K14[] = {
-    {0, "smack"},  {1, "raw"},       {2, "NXT"},    {3, "super"},   {4, "over"},     {5, "out"},     {6, "money"},
-    {7, "summer"}, {8, "NofC"},      {9, "hell"},   {11, "survivor"}, {12, "TLC"},   {13, "royal"},  {14, "chamber"},
-    {15, "WM29"},  {16, "ex"},       {17, "maineve"}, {21, "chamber"}, {22, "royal"}, {23, "raw"},   {56, "WM30"}};
+    {0, "smack", "Smack"},        {1, "raw", "RAW"},           {2, "NXT", "NXT"},           {3, "super", "Superstars"},
+    {4, "over", "Over"},          {5, "out", "NoWayOut"},      {6, "money", "MinB"},        {7, "summer", "Summer"},
+    {8, "NofC", "NofC"},          {9, "hell", "HinC"},         {11, "survivor", "Survivor"}, {12, "TLC", "TLC"},
+    {13, "royal", "RoyalRumble"}, {14, "chamber", "Chamber"},  {15, "WM29", "WM29"},        {16, "ex", "EXT"},
+    {17, "maineve", "MainEvent"}, {21, "chamber", "Chamber"},  {22, "royal", "RoyalRumble"}, {23, "raw", "RAW"},
+    {56, "WM30", "WM30_M"}};
 
 inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t title, int file, svrfmt::Image &out) {
+  // 2K14's select screen picture
+  std::string select;
+  if (title == 0x545408B2) {
+    for (const auto &b : kBanners2K14)
+      if (b.file == file)
+        select = b.select;
+    if (file >= 28 && file <= 55) {
+      char wm[8];
+      snprintf(wm, sizeof(wm), "WM%02d", file - 27);
+      select = wm;
+    }
+  }
   // Every picture of the menu packs that may hold them, by name.
   std::map<std::string, Bytes> pics;
   const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
@@ -595,7 +613,7 @@ inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t ti
     std::vector<svrfmt::BundleTexture> texs;
     if (svrfmt::BundleRead(d, texs)) {
       for (auto &t : texs)
-        if (t.name.rfind("Pbg_", 0) == 0 || t.name.rfind("arena_", 0) == 0)
+        if (t.name.rfind("Pbg_", 0) == 0 || t.name.rfind("arena_", 0) == 0 || (!select.empty() && t.name == select))
           pics.emplace(t.name, std::move(t.data));
       return;
     }
@@ -610,6 +628,8 @@ inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t ti
         walk(walk, k, 0);
   }
   const auto take = [&](const Bytes &dds) { return svrfmt::DdsDecode(dds, out); };
+  if (const auto it = pics.find(select); !select.empty() && it != pics.end() && take(it->second))
+    return true;
   char pbg[16];
   snprintf(pbg, sizeof(pbg), "Pbg_%02d_", file);
   for (const auto &[name, dds] : pics)
