@@ -1027,16 +1027,18 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
   // meshes; WWE '12's: eyelashes) as SvR has them too: the base's take their colours from the colour picture, which is
   // SvR's now (CM Punk of SvR: hair in the wrong place, dark rings round the eyes), and without SvR's 20000 the eye
   // sockets are holes (the background seen through his eyes, RenderDoc 2026-10-26). Converted on the base's piece of
-  // the same number (its materials); the base's 20000 left out when SvR has none to put there.
-  {
-    svrfmt::ArcNode *s20 = child(svr, 20000);
-    if (!s20)
-      for (size_t i = 0; i < base.kids.size(); ++i)
-        if (base.kids[i].id == 20000) {
-          svrfmt::ArchiveRemove(base, i);
-          break;
-        }
-  }
+  // the same number (its materials); the base's 20000 left out when SvR has none to put there. Likewise the base's
+  // hair (10000) and its physics (60, 61) when SvR has no hair model (short hair painted on the head: 2008 Chris
+  // Masters, MVP, Finlay, Kane; the base's hair took SvR's colour picture at its own places, blue and purple patches on
+  // their heads, 2026-10-31); WWE '12 has superstars without one (Cena, Orton).
+  for (uint32_t id : {20000u, 10000u})
+    if (!child(svr, id))
+      for (uint32_t gone : id == 10000 ? std::vector<uint32_t>{10000, 60, 61} : std::vector<uint32_t>{20000})
+        for (size_t i = 0; i < base.kids.size(); ++i)
+          if (base.kids[i].id == gone) {
+            svrfmt::ArchiveRemove(base, i);
+            break;
+          }
   std::vector<UvTri> see_through, hair_uv;  // UV triangles of the hair and the eyes' pieces; of the hair alone
   Bytes hair_settings;    // the hair's physics (entry 60) when its chains are kept
   bool hair_done = false;

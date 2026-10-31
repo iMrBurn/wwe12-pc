@@ -114,4 +114,7 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   - commentateurs (Lawler, Tazz, JR, Joey Styles, JBL 2008) au visage noir : images nommées « 5306all » / « 5306allN »
     ou « 5506 » / « 5506_N », reconnues par leur fin (`OldSvrPictures`) ;
   - cils d'Orton 2008 en anneaux noirs : les pièces 20000 sur la tête restent dans 20000 (transparentes).
-  Reste vu sur la planche : points noirs près des yeux (Cena 2010, Justin Roberts), peut-être un défaut de l'outil.
+  - cheveux courts en taches (Chris Masters, MVP, Finlay, Kane...) : ces catcheurs n'ont pas de modèle de cheveux (peints
+    sur la tête), les cheveux de la base restaient et prenaient l'image de SvR à leurs places : la base perd alors son
+    10000 et sa physique (60, 61), comme WWE '12 pour Cena ou Orton. Les points noirs près des yeux (Cena 2010) partent
+    avec.
