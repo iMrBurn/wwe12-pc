@@ -260,7 +260,8 @@ const Texts kEnglish = {
     "WWE '12 PC is an unofficial native port of WWE '12 (Xbox 360), made by fans.\n"
     "Native renderer adapted from nefariousjosiah's SmackDown vs. Raw ports, on the ReXGlue SDK\n"
     "and re:Blue. DLC support by Banshee. Mod Maker and texture packs based on Kaiko's\n"
-    "SmackDown vs. Raw 2011 port (Bink reader ported from FFmpeg, LGPL). Free software under the GPL-3.0 licence.\n"
+    "SmackDown vs. Raw 2011 port (Bink reader ported from FFmpeg, LGPL). Performance and stability ideas studied from\n"
+    "Jarrodfeng's WWE 2K14 recomp (BSD-3-Clause), credited with the author's agreement. Free software under the GPL-3.0 licence.\n"
     "No game data is included.\n\n"
     "Not affiliated with WWE, THQ or Yuke's.",
     "Project page on GitHub",
@@ -358,7 +359,8 @@ const Texts kFrench = {
     "WWE '12 PC est un portage natif non officiel de WWE '12 (Xbox 360), fait par des fans.\n"
     "Rendu natif adapté des portages SmackDown vs. Raw de nefariousjosiah, sur le SDK ReXGlue\n"
     "et re:Blue. Support des DLC par Banshee. Mod Maker et packs de textures basés sur le\n"
-    "portage SmackDown vs. Raw 2011 de Kaiko (lecteur Bink porté de FFmpeg, LGPL). Logiciel libre sous licence GPL-3.0.\n"
+    "portage SmackDown vs. Raw 2011 de Kaiko (lecteur Bink porté de FFmpeg, LGPL). Idées de performance et de stabilité\n"
+    "étudiées dans le recomp de WWE 2K14 de Jarrodfeng (BSD-3-Clause), citées avec l'accord de l'auteur. Logiciel libre sous licence GPL-3.0.\n"
     "Aucune donnée du jeu n'est fournie.\n\n"
     "Sans lien avec WWE, THQ ou Yuke's.",
     "Page du projet sur GitHub",
