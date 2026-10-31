@@ -83,10 +83,10 @@ __attribute__((constructor(101))) void IosBootLog() {
   // go to Documents, with the rest.
   setenv("XDG_DATA_HOME", dir.c_str(), 0);
 
-  // MoltenVK turns the shaders into Metal with "fast math" (no NaN / Infinity), but the Xbox 360
-  // shaders count on them (the Intel iGPU black eyes were Inf x 0). The HUD (nameplates, locators,
-  // counter buttons, logos) drew wrong on the iPhone only: try exact maths first.
-  setenv("MVK_CONFIG_FAST_MATH_ENABLED", "0", 0);
+  // Tried and dropped: MVK_CONFIG_FAST_MATH_ENABLED=0 (exact maths, for the HUD bugs of the
+  // iPhone) made the GPU fault ("kIOGPUCommandBufferCallbackErrorPageFault", VK_ERROR_DEVICE_LOST)
+  // on the same pipeline at every match load (ipa5, 2026-10-31), while the default fast math played.
+  // It can still be tried with env.txt (MVK_CONFIG_FAST_MATH_ENABLED=0).
 
   // Documents/env.txt: one KEY=VALUE per line (# = comment), set before anything starts. Lets a
   // player try MoltenVK / game settings (MVK_CONFIG_..., REX cvars) without a new build.
