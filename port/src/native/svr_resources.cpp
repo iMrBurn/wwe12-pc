@@ -55,6 +55,11 @@ REXCVAR_DEFINE_BOOL(svr_seed_gpu_textures, true, "SvR",
 REXCVAR_DEFINE_BOOL(svr_resolve_readback, true, "SvR",
                     "Copy the first resolves of each work texture back to the game's memory, as "
                     "the Xbox does (custom attires are built from it).");
+REXCVAR_DEFINE_INT32(svr_readback_streak, 32, "SvR",
+                     "Frames in a row a work texture is still copied back to the game's memory "
+                     "(was 6: Superstar Threads attires redrawn over more frames came out with "
+                     "white patches, as in Jarrod's WWE 2K14 recomp, which went from 4 to 32).")
+    .range(1, 1000);
 REXCVAR_DEFINE_BOOL(svr_rebuild_target_mips, true, "SvR",
                     "Rebuild the smaller mip levels of GPU-painted textures (wrestler skins: eyes, "
                     "teeth, blood) from their first level after each update.");
@@ -661,8 +666,9 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
     return;
   // Per-frame targets (shadows, lighting, the scene) are resolved on every frame; the composites
   // the CPU reads are built at load, or now and then in a match. Only those are worth the GPU
-  // wait: a target resolved on more than kMaxStreak frames in a row is skipped until it rests.
-  constexpr u64 kMaxStreak = 6;
+  // wait: a target resolved on more than svr_readback_streak frames in a row (32; per-frame ones
+  // run for hundreds) is skipped until it rests.
+  const u64 max_streak = u64(std::max(1, REXCVAR_GET(svr_readback_streak)));
   constexpr u64 kRestFrames = 30;
   {
     std::lock_guard lock(g_mutex);
@@ -684,7 +690,7 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
     else if (frame != st.last_frame)
       ++st.frames;
     st.last_frame = frame;
-    if (st.frames > kMaxStreak)
+    if (st.frames > max_streak)
       return;
   }
   ReadBackTarget(texture_va, dst);
