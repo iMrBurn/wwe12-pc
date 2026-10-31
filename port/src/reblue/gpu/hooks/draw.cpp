@@ -81,7 +81,39 @@ struct DrawArgs {
   i32 baseVertexIndex = 0;
   u32 startIndex = 0;
   u32 startVertex = 0;
+  u32 up_va = 0;      // DrawVerticesUP / BeginVertices: the game's vertices
+  u32 up_stride = 0;
 };
+
+#if defined(SVR_NATIVE_RENDERER)
+// wwe12_widescreen: whether a draw into a reshaped target is a 2D HUD sprite, to be drawn in the
+// 16:9 middle unstretched. WWE '12's HUD sprites (logos, prompts) are DrawVerticesUP /
+// BeginVertices quads with the viewport transform on and no depth test, positions in the target's
+// guest pixels (1280x720); its full-screen passes and fades cover the whole target and fill it.
+// (After Kaiko's SvR 2011 port, FlatPixels.)
+bool SvrHudSprite(u32 device_guest, const DrawArgs &args, float guest_w, float guest_h) {
+  if (!args.up_va || args.up_stride < 8 || !args.vertexOrIndexCount)
+    return false;
+  const u32 vte = bd::mem::load<u32>(device_guest + 0x294C);  // PA_CL_VTE_CNTL
+  const u32 depth = bd::mem::load<u32>(device_guest + 0x2934);  // RB_DEPTHCONTROL
+  if ((vte & 0x3Fu) != 0x3Fu || (depth & 2u))
+    return false;
+  float mn[2] = {1e30f, 1e30f}, mx[2] = {-1e30f, -1e30f};
+  for (u32 k = 0; k < std::min<u32>(args.vertexOrIndexCount, 64); ++k)
+    for (u32 c = 0; c < 2; ++c) {
+      const float v = bd::mem::load<float>(args.up_va + k * args.up_stride + 4 * c);
+      if (!std::isfinite(v))
+        return false;
+      mn[c] = std::min(mn[c], v);
+      mx[c] = std::max(mx[c], v);
+    }
+  const bool pixels = mn[0] >= -2.0f && mn[1] >= -2.0f && mx[0] <= guest_w + 2.0f &&
+                      mx[1] <= guest_h + 2.0f && (mx[0] - mn[0] > 2.0f || mx[1] - mn[1] > 2.0f);
+  const bool full = mn[0] <= 1.0f && mn[1] <= 1.0f && mx[0] >= guest_w - 1.0f &&
+                    mx[1] >= guest_h - 1.0f;
+  return pixels && !full;
+}
+#endif
 
 plume::RenderPrimitiveTopology MapPrimitiveType(u32 prim) {
   switch (static_cast<xe::PrimitiveType>(prim)) {
@@ -236,12 +268,29 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
     // targets on a screen that isn't 16:9).
     float kx = 1.0f, ky = 1.0f;
     bd::gpu::SvrSurfaceScaleXY(u32(dev->renderTargetShadow[0]), kx, ky);
-    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.x, float(vp.X) * kx);
-    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.y, float(vp.Y) * ky);
-    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.width,
-                                         float(vp.Width) * kx);
-    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.height,
-                                         float(vp.Height) * ky);
+    if (u32(vp.Width) >= 1152 && u32(vp.Height) >= 640 &&
+        (bd::mem::load<u32>(device_guest + 0x2934) & 2u))  // RB_DEPTHCONTROL z enable
+      bd::gpu::SvrNoteSceneDraw();
+    float x = float(vp.X) * kx, y = float(vp.Y) * ky;
+    float w = float(vp.Width) * kx, h = float(vp.Height) * ky;
+    // A HUD sprite on a reshaped target: in the viewport's 16:9 middle, at the plain scale.
+    if (std::fabs(kx - ky) > 0.001f &&
+        SvrHudSprite(device_guest, args, float(vp.Width), float(vp.Height))) {
+      const float k = std::min(kx, ky);
+      x += (w - float(vp.Width) * k) * 0.5f;
+      y += (h - float(vp.Height) * k) * 0.5f;
+      w = float(vp.Width) * k;
+      h = float(vp.Height) * k;
+      static bool logged = false;
+      if (!logged) {
+        logged = true;
+        BD_INFO("[widescreen] HUD sprites drawn in the 16:9 middle");
+      }
+    }
+    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.x, x);
+    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.y, y);
+    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.width, w);
+    bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.height, h);
     bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.minDepth,
                                          float(vp.MinZ));
     bd::gpu::Video::SetDirtyValue<float>(s.dirtyStates.viewport, s.viewport.maxDepth,
@@ -595,6 +644,8 @@ u32 D3DDevice_DrawVerticesUP_hook(u32 device_guest, u32 primitiveType,
   args.is_up = ok;
   args.vertexOrIndexCount = vertexCount;
   args.startVertex = 0;
+  args.up_va = ok ? pVertexData : 0;
+  args.up_stride = vertexStride;
   DispatchDraw(device_guest, primitiveType, "DrawVerticesUP", args);
   return 0;
 }
@@ -663,6 +714,8 @@ u32 D3DDevice_EndVertices_hook(u32 /*device_guest*/) {
   args.is_up = ok;
   args.vertexOrIndexCount = p.vertex_count;
   args.startVertex = 0;
+  args.up_va = ok ? p.data_va : 0;
+  args.up_stride = p.stride;
   DispatchDraw(p.device, p.primitive_type, "BeginVertices", args);
   return 0;
 }

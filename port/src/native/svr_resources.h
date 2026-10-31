@@ -33,6 +33,9 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale_x = 0.0f, float scale
 // wwe12_widescreen: the screen's shape against 16:9 while a 3D scene is drawn (matches,
 // entrances), else 1 and 1. wide > 1: wider (up to 2, 32:9); tall > 1: taller (16:10: 1.111).
 void SvrSceneShape(float &wide, float &tall);
+// A depth-tested draw into a full-screen target (the render thread, per draw): the 3D scene of a
+// camera shot drawn without tiling still counts as the scene.
+void SvrNoteSceneDraw();
 // After a resolve into texture_va: also write the result into the texture's guest memory, as the
 // Xbox resolve does, for the first resolves of a 1x target (the game reads custom attire
 // composites back with the CPU to compress them). Per-frame targets stop after a few.

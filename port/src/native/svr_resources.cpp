@@ -152,7 +152,12 @@ std::atomic<u32> g_surface_scale_gen{1};  // bumped on each g_surface_scale chan
 // is drawn (matches, entrances); menus and loading screens stay 16:9.
 std::atomic<float> g_screen_wide{1.0f}, g_screen_tall{1.0f};
 std::atomic<u64> g_scene_frame{0};
-constexpr u64 kSceneFrames = 30;  // half a second without the scene: back to 16:9
+// The last frame with a depth-tested draw into a full-screen target (+1): some camera shots of a
+// match draw the scene without tiling, for a second or so at a time (16:10 test, 2026-10-31: the
+// picture switched to 16:9 at every such shot). They keep the shape for up to kSceneHold.
+std::atomic<u64> g_scene_draw_frame{0};
+constexpr u64 kSceneFrames = 30;   // half a second without the scene: back to 16:9
+constexpr u64 kSceneHold = 1800;   // a tiled scene within 30 s, and 3D drawn now: still the scene
 
 // The texture's GPUTEXTURE_FETCH_CONSTANT (D3DTexture+0x1C), as host-order dwords.
 bool ReadFetch(u32 texture_va, rex::graphics::xenos::xe_gpu_texture_fetch_t &fetch) {
@@ -211,9 +216,19 @@ bool TargetCurrent(u32 texture_va, std::unordered_map<u32, HostTarget>::iterator
 // are even, so the product is exact; rounding only guards odd sizes.
 static u32 Scaled(u32 v, float scale) { return u32(float(v) * scale + 0.5f); }
 
+void SvrNoteSceneDraw() {
+  const u64 now = g_surface_frame.load(std::memory_order_relaxed) + 1;
+  if (g_scene_draw_frame.load(std::memory_order_relaxed) != now)
+    g_scene_draw_frame.store(now, std::memory_order_relaxed);
+}
+
 void SvrSceneShape(float &wide, float &tall) {
+  const u64 now = g_surface_frame.load(std::memory_order_relaxed) + 1;
   const u64 seen = g_scene_frame.load(std::memory_order_relaxed);
-  if (!seen || g_surface_frame.load(std::memory_order_relaxed) + 1 > seen + kSceneFrames) {
+  const u64 drawn = g_scene_draw_frame.load(std::memory_order_relaxed);
+  const bool scene = seen && (now <= seen + kSceneFrames ||
+                              (now <= seen + kSceneHold && drawn && now <= drawn + kSceneFrames));
+  if (!scene) {
     wide = tall = 1.0f;
     return;
   }
