@@ -31,6 +31,11 @@ Projets dont ce portage s'inspire :
   caméra patchée, champ de vision vertical élargi en 16:10, cibles plein écran élargies ou plus
   hautes) est adapté, avec le même accord, dans `port/src/native/wwe12_widescreen.cpp` et
   `svr_resources.cpp` (cvar `wwe12_widescreen`). Le reste : méthode uniquement.
+- [wwe2k14-recomp](https://github.com/Jarrodfeng/wwe2k14-recomp) (recomp de WWE 2K14, Jarrodfeng) :
+  licence BSD 3 clauses (vérifiée sur le dépôt le 2026-10-31) ; accord oral de l'auteur (Discord, 2026-10-31) pour s'inspirer de ses mises à
+  jour. Idées Android étudiées dans `docs/android_optimisation_jarrod.md` (cadence 90/120 Hz, résolution
+  dynamique, SGSR, cœurs rapides, copies GPU) et correction de la ceinture à 60 fps (méthode). Aucun
+  code repris pour l'instant ; tout code repris plus tard sera ajouté ici avec son fichier.
 - Portages SvR 2008/2009/2010 de [nefariousjosiah](https://github.com/nefariousjosiah)
   (GPL-3.0) : leur rendu natif (src/native, adaptations de src/reblue) est la base du rendu
   natif de WWE '12.
