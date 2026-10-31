@@ -690,6 +690,16 @@ places ×10, d'après le code de Kaiko).
 - **Bannières 2K15 (2026-10-31, vérifié hors du jeu sur 29 arènes)** : `PPVbg_<fiche>` (512 × 256, MLYE/UMTX, logo sur
   fond, comme les `Pbg_` de 2K16 / 2K17 déjà pris) d'après la fiche `PPV_<nom>` de `wuniData.pac` avec son apostrophe
   (`PPV_raw'02` → `PPVbg_raw'02`), avant les photos `arena_*`. bg30 et bg32 n'en ont pas : photo gardée.
+- **SmackDown de 2K15 et 2K17 (2026-10-31, vu en jeu : écran central noir, plaques de la base)** : (1) plaques : la
+  recherche de l'ETEX propre (`port13::Etex`, nom `ETEX/00NN`) échouait (2K17 = empreintes HSPC, noms 2K15 plus longs)
+  et sautait tout l'habillage ; maintenant les jeux 2K passent toujours par les vidéos. (2) écrans : même scène que
+  2K14 (écran plat au centre 800 en 2K15, 803 en 2K17 sans 800 ; 801 colonnes v 0,25-1 ; 806 rubans v 0-0,25 ; 808
+  bandeau ; 805 minitron), mais la règle de WrestleMania 31 envoyait l'écran central sur la vidéo de l'arène (2K15) ou
+  le retirait (2K17). Une arène `layout_*` avec un écran central plat (|x| ≤ 900, y −1500..−400) est maintenant rangée
+  comme 2K14 (écran → 808 titantron, 805 → 806, 806 → 803, 801 et 808 → 809 vidéo de l'arène ; chaque maillage pris
+  sur sa propre plage de v). (3) **Régression corrigée** : la branche 2K14 (e0cfffa) se déclenchait aussi pour
+  WrestleMania 31 de 2K16 (son 807 est `main&banner`) : elle ne s'applique plus qu'aux arènes sans image `layout_*`.
+  Vérifié hors du jeu : SmackDown 2K15 / 2K17, WM 31, RAW 2K14.
   L'animation de la vidéo est perdue (image fixe). Sans outil Bink 2 (RAD Video Tools / Librempeg) : 2K15-2K17 gardent
   l'ancien habillage (logo de l'arène).
 

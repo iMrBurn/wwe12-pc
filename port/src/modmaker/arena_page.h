@@ -1534,7 +1534,10 @@ class Page {
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // Its entrance graphics (location plate, name plates).
     const Bytes evtgd = Read13("pac/evt/evtgdhd.pac");
-    if (!evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_)) {
+    // (a 2K game's own ETEX found or not: 2K17's are HSPC hashes and 2K15's names longer, and their plates were left
+    // out, the base's shown, 2026-10-31: their plates come from their movies anyway)
+    const bool own_etex = !evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_);
+    if (own_etex || y_title_ != kWwe13) {
       // (a 2K game's has no plates of its own: WWE '12's WrestleMania XXVII ones wearing its logo and copyright plate)
       svrfmt::Archive e;
       bool plates = false;
