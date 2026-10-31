@@ -61,8 +61,29 @@ public class LauncherActivity extends Activity {
         if (!prefs.getBoolean("android_defaults", false)) {
             // First start: phone-friendly defaults (the PC file picks the internal resolution from the screen).
             config.set("svr_render_scale", "720");
+            // A phone short of memory or with slow cores starts with lighter settings (the same as the
+            // PERFORMANCE PRESETS buttons), so the first match is playable; everything can be changed.
+            long ramGb = Math.round(DeviceCheck.totalRam(this) / (1024.0 * 1024 * 1024));
+            int mhz = DeviceCheck.fastestCoreMhz();
+            String chosen = null;
+            if ((ramGb > 0 && ramGb <= 4) || (mhz > 0 && mhz < 2000)) {
+                config.set("svr_render_scale", "540");
+                config.set("wwe12_shadows", "false");
+                config.set("wwe12_crowd", "false");
+                config.set("wwe12_dof", "false");
+                config.set("bd_anisotropy", "0");
+                chosen = "LOW-END PHONE";
+            } else if ((ramGb > 0 && ramGb < 8) || (mhz > 0 && mhz < 2300)) {
+                config.set("wwe12_crowd", "false");
+                config.set("wwe12_dof", "false");
+                config.set("bd_anisotropy", "4");
+                chosen = "BALANCED";
+            }
             config.save();
             prefs.edit().putBoolean("android_defaults", true).apply();
+            if (chosen != null)
+                Toast.makeText(this, "Graphics set to " + chosen + " for this phone (see PERFORMANCE PRESETS to change).",
+                        Toast.LENGTH_LONG).show();
         }
         setContentView(buildUi(dir));
         refreshGame();
