@@ -20,7 +20,11 @@ Aussi demandé : travailler sur le Mod Maker (voir `docs/mod_maker.md`).
 - **Support 16:10 (décision de l'utilisateur, 2026-10-31)** : à étudier par Rendu d'après le port SvR 2011 de Kaiko 
   (`work/kaiko-svr2011/port/src/native/native_renderer.cpp` l. 869-915 : cvar `native_widescreen`, constante de rapport de la 
   caméra patchée, cibles plein écran élargies/agrandies en hauteur `g_wide`/`g_tall`, HUD 2D au milieu en 16:9, menus restent 16:9). 
-  Kaiko a déjà traité le 16:10 (« tall »). À tester en jeu avant de promettre.
+  Kaiko a déjà traité le 16:10 (« tall »).
+  **Fait et testé en jeu le 2026-10-31** (fenêtres 1280x800 et ~21:9, Vulkan ; case dans le launcher RÉGLAGES > AFFICHAGE ; cvar `wwe12_widescreen`, défaut true) :
+  entrées et matchs en plein cadre, HUD au milieu, menus 16:9. **Pas encore vérifiés** : menu pause, HUD en 21:9, cvar coupée, barres de vie, D3D11/D3D12,
+  création de catcheur après un match (l'utilisateur : « sinon tickets »). Détails : `docs/format_16_10.md`.
+- Correctif du gel d'entrée de Rey Mysterio (`wwe12_job_pool_fix`) : testé par l'utilisateur sur 4 fils (3 entrées complètes, aucun gel) ; commit local, à publier avec la 1.0.
 
 (Décision du 2026-10-27 : le jeu en full natif et les slots CAW / logos 100/200 passent en 1.1.)
 
