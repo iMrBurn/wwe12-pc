@@ -1013,11 +1013,13 @@ class Page {
     const std::string not_added = fr ? "pas dans MES DISQUES" : "not in MY GAME DISCS",
                       yours = fr ? "depuis vos disques" : "from your discs";
     card_w_ = std::min(250.0f, (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3);
-    if (ChoiceCard(0, wiz_src_ == 0, !svr.empty(), "SvR 2011", svr.empty() ? not_added : yours)) {
+    if (ChoiceCard(0, wiz_src_ == 0 && svr_year_ == 2011, !svr.empty(), "SvR 2011", svr.empty() ? not_added : yours)) {
       wiz_src_ = 0;
       svr_path_.clear();
-      if (svr_game_ != svr || svr_list_.empty())
+      if (svr_year_ != 2011 || svr_game_ != svr || svr_list_.empty()) {
+        svr_year_ = 2011;
         OpenSvr(fr, svr);
+      }
       svr_file_.clear();
       svr_pick_ = -1;
       port_ok_ = false;
@@ -1070,6 +1072,23 @@ class Page {
         wiz_apron_ = {};
       }
     }
+    // SvR 2010: its arena files are SvR 2011's kind (port_svr_arena::kArenasSvr10, after Kaiko's arena_port.py).
+    {
+      const fs::path p10 = discs_ ? discs_->PathOf(0x54510844) : fs::path();
+      ImGui::SameLine();
+      if (ChoiceCard(7, wiz_src_ == 0 && svr_year_ == 2010, !p10.empty(), "SvR 2010", p10.empty() ? not_added : yours)) {
+        wiz_src_ = 0;
+        svr_path_.clear();
+        if (svr_year_ != 2010 || svr_game_ != p10 || svr_list_.empty()) {
+          svr_year_ = 2010;
+          OpenSvr(fr, p10);
+        }
+        svr_file_.clear();
+        svr_pick_ = -1;
+        port_ok_ = false;
+        wiz_apron_ = {};
+      }
+    }
     // The games that can't bring arenas yet.
     if (discs_) {
       std::string soon;
@@ -1090,7 +1109,7 @@ class Page {
         std::string label;
         if (wiz_src_ == 0) {
           char b[96];
-          snprintf(b, sizeof(b), "%s  (bg%02d)", port_svr_arena::FindSvr(n)->name, n);
+          snprintf(b, sizeof(b), "%s  (bg%02d)", port_svr_arena::FindSvr(n, svr_year_)->name, n);
           label = b;
         } else {
           label = Label13(n);
@@ -1339,11 +1358,11 @@ class Page {
       svr_game_ = p;
       for (const auto &n : svr_disc_.List("pac/bg"))
         if (n.size() == 8 && _strnicmp(n.c_str(), "bg", 2) == 0 && isdigit(n[2]) && isdigit(n[3]) &&
-            port_svr_arena::FindSvr(atoi(n.c_str() + 2)))
+            port_svr_arena::FindSvr(atoi(n.c_str() + 2), svr_year_))
           svr_list_.push_back(atoi(n.c_str() + 2));
       std::sort(svr_list_.begin(), svr_list_.end());
     }
-    port_note_ = svr_list_.empty() ? (fr ? "Pas d'arènes de SvR 2011 ici." : "No SvR 2011 arenas here.") : "";
+    port_note_ = svr_list_.empty() ? (fr ? "Pas d'arènes de SvR ici." : "No SvR arenas here.") : "";
     port_ok_ = false;
   }
 
@@ -1392,7 +1411,7 @@ class Page {
     Bytes matchhd;
     svrfmt::Image img;
     if (svr_pick_ >= 0 && svr_disc_.Read("pac/menu/MatchHD.pac", matchhd) &&
-        port_svr_arena::Banner(matchhd, svr_pick_, img)) {
+        port_svr_arena::Banner(matchhd, svr_pick_, img, svr_year_)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
     } else {
@@ -1421,9 +1440,9 @@ class Page {
     if (svr_pick_ >= 0 && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&
         port13::TransitionVideo(evtmov, svr_pick_, movie_))
       port_note_ += fr ? " Avec sa transition." : " With its transition.";
-    const std::string stem = svr_pick_ >= 0 ? port_svr_arena::FindSvr(svr_pick_)->name
+    const std::string stem = svr_pick_ >= 0 ? port_svr_arena::FindSvr(svr_pick_, svr_year_)->name
                                             : media::Utf8(svr_path_.stem().wstring());
-    snprintf(name_, sizeof(name_), "%s (SvR 2011)", stem.c_str());
+    snprintf(name_, sizeof(name_), "%s (SvR %d)", stem.c_str(), svr_pick_ >= 0 ? svr_year_ : 2011);
     as_new_ = true;
   }
 
@@ -1996,6 +2015,7 @@ class Page {
   fs::path svr_path_;         // ... a file chosen alone
   disc::GameDisc svr_disc_;   // ... or the game's ISO / folder, and its arena chosen
   fs::path svr_game_;
+  int svr_year_ = 2011;  // (SvR 2011 or 2010: its arena list)
   std::vector<int> svr_list_;
   int svr_pick_ = -1;
 

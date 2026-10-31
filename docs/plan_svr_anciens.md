@@ -66,3 +66,10 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   (chEtc.pac, 334 fiches), portraits (DLC_HD.pac SSFA/SSFB/SSFC) et vidéos (movies/titantron/NNN.bik) sont rangés
   comme dans 2011. Page NOUVEAU CATCHEUR : apparence « SvR » puis SvR 2011 ou SvR 2010 (`svr_game_`, gardé dans les
   projets). Prises de 2010 pas encore lues (ses cases ne sont pas celles de 2011 : table de `svr10_moves.py`).
+- **Étape 3 faite (vérifiée hors du jeu, pas encore en jeu)** : les 17 arènes de SvR 2010 passent **telles quelles**
+  par `port_svr_arena::Port` (comme Kaiko les joue dans SvR 2011) : SmackDown, RAW, ECW, SummerSlam, Unforgiven, No
+  Mercy, Survivor Series, Armageddon, Royal Rumble, No Way Out, WM 25, Backlash, Judgment Day, Night of Champions, Great
+  American Bash, Cyber Sunday, Extreme Rules (table `kArenasSvr10` d'après `SVR2010` de Kaiko). Assistant : carte
+  « SvR 2010 » (`svr_year_`). Repris : bannière (MASI ; Extreme Rules n'en a pas) et écran VS de WWE '12 habillé
+  (`Card`). Pas repris : son propre écran VS (`SvrCard`), ses plaques (`SvrEtex`), sa transition (rangés autrement) :
+  ceux de la base.

@@ -679,7 +679,25 @@ inline constexpr ArenaSvr kArenasSvr[] = {
     {18, "Bragging Rights", "arena_BR"},   {19, "Druid Arena", "arena_drui"},
 };
 
-inline const ArenaSvr *FindSvr(int file) {
+// SvR 2010's (Kaiko's arena_port.py SVR2010, with his permission: names, banners in MENU/MASI). Its arena files are
+// SvR 2011's kind (he plays them as they are in his SvR 2011 port): Port takes them (all 17 checked, 2026-10-31).
+inline constexpr ArenaSvr kArenasSvr10[] = {
+    {0, "SmackDown", "arena_SD"},         {1, "RAW", "arena_raw"},          {2, "ECW", "arena_ecw"},
+    {4, "SummerSlam", "arena_SS"},        {5, "Unforgiven", "arena_UG"},    {6, "No Mercy", "arena_no"},
+    {7, "Survivor Series", "arena_sur"},  {8, "Armageddon", "arena_arm"},   {9, "Royal Rumble", "arena_RR"},
+    {10, "No Way Out", "arena_out"},      {11, "WrestleMania 25", "arena_WM25"}, {12, "Backlash", "arena_back"},
+    {13, "Judgment Day", "arena_judg"},   {14, "Night of Champions", "arena_NoC"},
+    {15, "The Great American Bash", "arena_GAB"}, {18, "Cyber Sunday", "arena_CS"}, {24, "Extreme Rules", ""},
+};
+
+// `year`: 2011 or 2010.
+inline const ArenaSvr *FindSvr(int file, int year = 2011) {
+  if (year == 2010) {
+    for (const auto &a : kArenasSvr10)
+      if (a.file == file)
+        return &a;
+    return nullptr;
+  }
   for (const auto &a : kArenasSvr)
     if (a.file == file)
       return &a;
@@ -687,10 +705,10 @@ inline const ArenaSvr *FindSvr(int file) {
 }
 
 // The arena's banner in SvR 2011's menu/MatchHD.pac.
-inline bool Banner(const Bytes &matchhd, int file, svrfmt::Image &out) {
-  const ArenaSvr *arena = FindSvr(file);
+inline bool Banner(const Bytes &matchhd, int file, svrfmt::Image &out, int year = 2011) {
+  const ArenaSvr *arena = FindSvr(file, year);
   svrfmt::Archive a;
-  if (!arena || !svrfmt::ArchiveOpen(matchhd, a, nullptr))
+  if (!arena || !*arena->banner || !svrfmt::ArchiveOpen(matchhd, a, nullptr))
     return false;
   for (auto &k : a.root.kids) {
     if (k.group != "MENU" || k.name != "MASI" || !svrfmt::ArchiveExpand(k))
