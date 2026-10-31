@@ -269,8 +269,11 @@ inline void KeepChains(const svrfmt::Model &svr, const std::vector<M4> &ws, cons
 // keep_chains (the hair, 10000): SvR's hair bones (kami_bNN chains under the head, moved by the game's hair physics in
 // both games, same names and layout) are kept, placed under WWE '12's head as the head moved, the strands weighted to
 // them as in SvR (the base's own chains, if any, left out: they'd hold none of SvR's strands).
+// turns_in / turns_out: the bones' turns by name, taken from / given to another model's conversion (the hair and the
+// eyes' pieces turn as the body does: each model's own children gave the head another turn).
 inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, svrfmt::Model &out, Report *rep,
-                         bool keep_chains = false) {
+                         bool keep_chains = false, const std::map<std::string, M4> *turns_in = nullptr,
+                         std::map<std::string, M4> *turns_out = nullptr) {
   if (!base.w12 || base.meshes.empty() || svr.meshes.empty())
     return false;
   const auto ws = World(svr), wb = World(base);
@@ -361,6 +364,11 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
     } else if (p >= 0 && size_t(p) < i) {
       rot[i] = rot[size_t(p)];
     }
+    // (the hair model's head has no face below it, so no turn of its own: the body's, else SvR 2009 William Regal's
+    // and Maria's hair turned ~27 degrees off the head and hung over their eyes, 2026-10-31)
+    if (turns_in)
+      if (const auto it = turns_in->find(svr.nodes[i].name); it != turns_in->end())
+        rot[i] = it->second;
     // The face's bones move with the head, keeping SvR's face as it is: placed by their own joints (the two games'
     // face joints aren't in the same places), the eyelids, teeth and lips moved off the face (CM Punk of SvR: eyes
     // shut, teeth out of the mouth, 2026-10-26).
@@ -375,6 +383,8 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
       move[i] = move[size_t(p)];
       continue;
     }
+    if (turns_out)
+      (*turns_out)[svr.nodes[i].name] = rot[i];
     M4 to, from, x10;
     x10.m[0] = x10.m[5] = x10.m[10] = 10;
     for (int q = 0; q < 3; ++q) {
@@ -810,6 +820,20 @@ inline bool OldSvrPictures(svrfmt::ArcNode &svr) {
     if (r == "normal" && normal < 0)
       normal = int(i);
   }
+  // Else named by their ends (2008 / 2009 commentators: Jerry Lawler "5306all" / "5306allN" / "5306_AO", Tazz "5506" /
+  // "5506_N" / "5506_ao"): "n" the normal map, "ao" the shading, the biggest other one the colour.
+  if (colour < 0)
+    for (size_t i = 0; i < st.size(); ++i) {
+      const std::string n = lower(st[i].name);
+      if (n.find("blood") != std::string::npos || n.ends_with("ao"))
+        continue;
+      if (n.ends_with("n")) {
+        if (normal < 0)
+          normal = int(i);
+      } else if (colour < 0 || st[i].data.size() > st[size_t(colour)].data.size()) {
+        colour = int(i);
+      }
+    }
   if (colour < 0)
     return false;
   std::vector<svrfmt::BundleTexture> rest;
@@ -901,7 +925,8 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     return fail("unreadable model: " + e);
   if (ms.w12)
     return fail("the SvR model is already in WWE '12's layout");
-  if (!ConvertModel(ms, mb, mo, rep))
+  std::map<std::string, M4> turns;  // (the body's, for its other models)
+  if (!ConvertModel(ms, mb, mo, rep, false, nullptr, &turns))
     return fail("the model can't be converted");
   // SvR 2008 / 2009's 20000 isn't 2011's eye pieces but any small piece (2008 Rey Mysterio's eyebrows, Torrie
   // Wilson's wristbands, Orton's eyelashes): on WWE '12's 20000 (the eyelashes: the head's bones only) a wristband
@@ -913,7 +938,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     auto merge = [&](const svrfmt::Model &xs, const std::string &what) {
       svrfmt::Model xo;
       Report extra;
-      if (!ConvertModel(xs, mb, xo, &extra))
+      if (!ConvertModel(xs, mb, xo, &extra, false, &turns))
         return;
       const uint32_t first_part = uint32_t(mo.parts.size());
       for (auto &m : xo.meshes) {
@@ -1024,7 +1049,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
       continue;
     // The hair keeps its chains when SvR has the settings that move them (entry 60), else hangs from head and chest.
     const Bytes settings = id == 10000 && child(svr, 60) ? HairSettings(svrfmt::ArchiveData(*child(svr, 60))) : Bytes();
-    if (!ConvertModel(xs, xb, xo, &extra, !settings.empty()))
+    if (!ConvertModel(xs, xb, xo, &extra, !settings.empty(), &turns))
       continue;
     bool chains = false;
     for (const auto &n : xo.nodes)

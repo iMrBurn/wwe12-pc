@@ -106,3 +106,12 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
     plaques de WWE '12 (`EtexWearing`, comme les 2K ; la ville reçoit la même plaque), barre du nom à 60 % de la
     largeur sur le texte de WWE '12 (`PlateTextFor`). Transition 2009 : 30 images (une sur deux), 320 × 320, Bink 1
     avec alpha.
+- **Planche des visages (2026-10-31, hors du jeu, outil `face08` du dossier temporaire)** : les 74 catcheurs de 2008, 85
+  de 2009 et 85 de 2010 portés puis rendus de face. Corrigé grâce à elle :
+  - cheveux tombés sur les yeux (Regal, Maria, Stephanie, Kelly Kelly, Lilian, Melina...) : le modèle des cheveux n'a
+    pas de visage sous la tête, sa tête prenait un autre angle que celle du corps (~27°) ; les cheveux et les pièces
+    20000 prennent maintenant les angles du corps (`ConvertModel` `turns_in` / `turns_out`). Touche aussi 2010 / 2011 ;
+  - commentateurs (Lawler, Tazz, JR, Joey Styles, JBL 2008) au visage noir : images nommées « 5306all » / « 5306allN »
+    ou « 5506 » / « 5506_N », reconnues par leur fin (`OldSvrPictures`) ;
+  - cils d'Orton 2008 en anneaux noirs : les pièces 20000 sur la tête restent dans 20000 (transparentes).
+  Reste vu sur la planche : points noirs près des yeux (Cena 2010, Justin Roberts), peut-être un défaut de l'outil.
