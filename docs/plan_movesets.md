@@ -246,3 +246,31 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   résout les jambes image par image comme WWE '13 (méthode de Kaiko, `yanm_decode._solve_ik` / `w13_retarget.Pose13`,
   crédité) et écrit cuisse et mollet en clés rot16 (une sur deux images), POF0 réécrit ; appliqué par
   `entrance13::Entrance` à l'import. Hors jeu : pied à moins de 3 mm de sa cible (avant : jusqu'à 50 cm).
+
+## Musique et vidéo des entrées des autres jeux (2026-11-01)
+
+- **Musique de WWE '13 (commit 390c009, PAS ENCORE ESSAYÉE EN JEU).** Les thèmes de WWE '12 et de WWE '13 sont des
+  paquets Wwise (`sound\Music.pck`, AKPK), flux en Wwise Vorbis au **même en-tête « fmt »** (66 octets, vorb dedans) ;
+  banques en version 56 (WWE '12) et 65 (WWE '13). Un thème = l'événement `Play_MUS_<n>_0_0` (victoire `_0_1`) ;
+  `sound.pac` GEMD le demande par le numéro de musique du profil (`Play_MUS_%ENTSSMUSICNO%_0_0`). **Les DLC officiels
+  ajoutent leurs thèmes ainsi** : `sound\DLC_NN.pck` dans le pack (le jeu, `sub_82748120`, cherche
+  `<pack>:\sound\DLC_NN.pck` dans chaque pack de DLC et charge la banque `Music_DLC_NN`), plus `pac\sound_dlc_NN.pac`
+  (copie de `sound.pac` dont YAFH/PCKH, enfant 100 + NN, garde l'en-tête de chaque paquet DLC ; le DLC 4 en a déjà
+  un pour un DLC 5 jamais sorti). Fait : `port/src/modmaker/wwise.h` (lecture d'après `wwise.py` de Kaiko, crédité) ;
+  le Mod Maker prend le flux du thème (`superstar/entrance/MUS_<n>.bin`) ; le jeu (`superstar_pack.h`) fait le paquet
+  `sound\DLC_NN.pck` de notre pack WWE12PCMODS (banque `Music_DLC_NN` faite d'après le thème 139 du disque : action,
+  conteneur, son en flux simple (type 1), mélangeur et son parent, comme la banque du DLC 4), le `sound_dlc_NN.pac`
+  avec son enregistrement PCKH, et met le numéro de musique (+0x1D4 / +0x1E0) au numéro de l'entrée. Vérifié hors jeu :
+  le paquet se relit (outil de Kaiko : `Play_MUS_0246_0_0` → le flux) et le flux se décode (1 min 43, en boucle).
+  À voir en jeu : la musique de Mankind à son entrée et à sa victoire ; sinon, pistes : le préchargement (type 2,
+  DIDX/DATA comme les thèmes du disque), l'ordre des banques chargées, le `sound_dlc_NN.pac`.
+- **Vidéo (titantron) (commit c5752b9, pas encore essayée dans le Mod Maker).** Les vidéos de SvR 2007-2011 (Bink 1)
+  et de 2K15-2K17 étaient déjà reprises. Notre lecteur Bink 2 (`video/bink2_decode.c`, LGPL 2.1+) est maintenant dans
+  le Mod Maker : 2K14 (KB2f) et 2K15-2K17 (KB2i) sans outil à installer (RAD / Librempeg en secours). Le KB2d de
+  WWE '13 reste illisible : un catcheur de WWE '13 prend la vidéo du même numéro dans les jeux 2K du joueur (2K17,
+  2K16, 2K15, 2K14 ; Mankind : `ent_0246_0_0.bk2` de 2K16/2K17, 599 images décodées hors jeu).
+- **Reste (demandé par l'utilisateur : entrées, vidéos et musiques de SvR 2007 à 2K17)** :
+  - musiques des 2K (Wwise, banques plus récentes : à lire, puis voir si leur Vorbis passe tel quel) et des SvR
+    (XACT / YAF en XMA : à décoder puis à réécrire en un format que le Wwise de WWE '12 lit, PCM ou ADPCM) ;
+  - entrées (mouvements) des 2K et des SvR : à convertir et recibler (outils de Kaiko : `entrance_port.py`,
+    `svr08_entrance.py`, `svr10_entrance.py`, `w13_retarget.py` à l'envers ; crédit).
