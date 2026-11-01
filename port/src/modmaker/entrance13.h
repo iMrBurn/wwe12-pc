@@ -6,6 +6,9 @@
 //    EVP2 137.., Nyujyo2 EVP3 179.., Nyujyo3 EVP4 272.., Nyujyo4 EVP5 328.., Nyujyo5 EVPE 480.., Nyujyo6 EVPF 512..,
 //    Nyujyo7 EVPG 532.., Nyujyo8 EVPH 552.., Nyujyo9 EVPI 600..855, NyujyoA EVPK 50..55); the superstar's CHAR / PRO
 //    +0x1D4 names the entrance (16-bit little-endian).
+// Besides its script and tracks, an entrance has a game event script (pac\gm.pac GMEV/NNNN, 1536 bytes, PACH; Cena's
+// the same bytes in both games) and its effects (pac\prtcls.pac PCE6/NNNN, PACH): without them the superstar never
+// showed and no music played (2026-10-28, the game's lookups logged: /GMEV/0246 and /PCE6/0246 missing).
 // Entrance(): an entrance's entries as WWE '13 stores them (unpacked), for the game to serve under WWE '12's names.
 #pragma once
 
@@ -24,8 +27,8 @@ namespace entrance13 {
 using Bytes = std::vector<uint8_t>;
 
 struct Part {
-  int number = 0;  // NNN or a variant 1xNNN
-  bool script = false;  // EVP (else EVZ: the tracks)
+  int number = 0;    // NNN or a variant 1xNNN
+  std::string kind;  // "EVP" (the script), "EVZ" (the tracks), "GMEV" (the game event script), "PCE6" (the effects)
   Bytes data;
 };
 
@@ -71,9 +74,10 @@ inline bool Exists12(const disc::GameDisc &w12, int number) {
   return false;
 }
 
-// The mod's file of a part (superstar/entrance/EVP_246.bin...): the game serves it as /EVP<group>/<number>.
+// The mod's file of a part (superstar/entrance/EVP_246.bin, GMEV_246.bin...): the game serves it as
+// /EVP<group>/<number>, /GMEV/<number, 4 digits>...
 inline std::string ModPath(const Part &p) {
-  return "superstar/entrance/" + std::string(p.script ? "EVP_" : "EVZ_") + std::to_string(p.number) + ".bin";
+  return "superstar/entrance/" + p.kind + "_" + std::to_string(p.number) + ".bin";
 }
 
 // The WWE '13 entrance `number`'s parts (its own and its variants'), from the player's WWE '13 (w13).
@@ -100,9 +104,36 @@ inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &o
         continue;
       if (k.group.rfind("EVP", 0) != 0 && k.group.rfind("EVZ", 0) != 0)
         continue;
-      out.push_back({n, k.group.rfind("EVP", 0) == 0, svrfmt::Unpack(svrfmt::ArchiveData(k))});
+      out.push_back({n, k.group.substr(0, 3), svrfmt::Unpack(svrfmt::ArchiveData(k))});
     }
   }
+  // its game event script and its effects
+  if (!out.empty())
+    for (const auto &[file, group] : {std::pair<const char *, const char *>{"pac/gm.pac", "GMEV"}, {"pac/prtcls.pac", "PCE6"}}) {
+      Bytes b;
+      if (!w13.Read(file, b))
+        continue;
+      if (svrfmt::IsXcompress(b)) {
+        Bytes o;
+        if (!svrfmt::XcompressDecode(b, o))
+          continue;
+        b.swap(o);
+      }
+      svrfmt::Archive a;
+      if (!svrfmt::ArchiveOpen(b, a, nullptr))
+        continue;
+      char name[8];
+      snprintf(name, sizeof(name), "%04d", number % 10000);
+      for (auto &k : a.root.kids) {
+        std::string g = k.group, nm = k.name;
+        while (!g.empty() && (g.back() == ' ' || g.back() == '\0'))
+          g.pop_back();
+        while (!nm.empty() && (nm.back() == ' ' || nm.back() == '\0'))
+          nm.pop_back();
+        if (g == group && nm == name)
+          out.push_back({number, group, svrfmt::Unpack(svrfmt::ArchiveData(k))});
+      }
+    }
   if (out.empty() && why)
     *why = "no such entrance in WWE '13";
   return !out.empty();

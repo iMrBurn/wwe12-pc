@@ -227,3 +227,17 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   correction de lecture). Pistes : bits lus dans un autre ordre (mots de 32 bits), codage CBP/DC de la 2.0 ; le décodeur
   de WWE '13 lui-même (dans son xex) ; une vieille version de RAD Video Tools (2012-2013).
 - Repli possible : 91 des 271 titantrons de WWE '13 existent dans 2K14 sous le même numéro (KB2f, lisibles).
+
+## Entrée de WWE '13 VUE EN JEU (2026-11-01)
+
+- **Mankind (WWE '13, 246) entre avec sa vraie entrée** (marche, passage dans le ring, pose assise), vu par l'utilisateur.
+- La cause de l'échec depuis le 2026-10-28 : **les entrées des `Nyujyo*.pac` de WWE '12 sont rangées compressées en BPE**
+  (le script de Mark Henry, 63 Ko, y fait 3 Ko), nous servions le script et les pistes décompressés : le jeu les
+  chargeait (journal `[entrances]`) et ne jouait rien (seule la musique du profil). Comme Kaiko (`move_packs.cpp`
+  `BuildEntryPac` : « stored as the group's own entries are: evt's EPK8 entries are BPE-packed »), chaque morceau ajouté
+  est rangé comme l'entrée dont il emprunte la place (`MountEntrances`, `wwe12_arena_pages.cpp`) ; GMEV (`gm.pac`) et
+  PCE6 (`prtcls.pac`) restent tels quels. Travail du 2026-10-28 (GMEV, PCE6, nom de l'entrée à +14 de la réponse du
+  répertoire, cvar `wwe12_dir_log`) repris de `work/entrance13-wip.patch`.
+- Restent (demandés par l'utilisateur) : des os qui posent souci par endroits, la musique de WWE '13, les graphismes
+  (vidéo du titantron : celle de la base passait, Ted DiBiase), puis les autres jeux (2K14-2K17, SvR) d'après les
+  convertisseurs de Kaiko (`wwe13_entrance.py`, `entrance_port.py`, avec crédit).

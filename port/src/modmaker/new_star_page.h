@@ -1241,9 +1241,10 @@ class Page {
       return;
     char label[200];
     snprintf(label, sizeof(label),
-             fr ? "Sa propre entrée de WWE '13 (n° %d, %d variantes ; essai : pas encore vue en jeu)"
-                : "Its own WWE '13 entrance (no. %d, %d variants; a test: not seen in the game yet)",
-             own_entrance_number_, int(own_entrance_.size() / 2));
+             fr ? "Sa propre entrée de WWE '13 (n° %d, %d variantes ; essai)"
+                : "Its own WWE '13 entrance (no. %d, %d variants; a test)",
+             own_entrance_number_,
+             int(std::count_if(own_entrance_.begin(), own_entrance_.end(), [](const auto &p) { return p.kind == "EVP"; })));
     ImGui::Checkbox(label, &use_own_entrance_);
   }
 

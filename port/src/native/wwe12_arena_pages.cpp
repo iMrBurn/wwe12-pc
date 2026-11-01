@@ -72,6 +72,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -100,6 +101,8 @@ REXCVAR_DEFINE_BOOL(wwe12_arena_pages, true, "WWE12",
                     "Added arenas (arena mods with slot=new) on more pages of the arena select screen (LB / RB).");
 REXCVAR_DEFINE_BOOL(wwe12_entrance_mods, true, "WWE12",
                     "Added superstars' own entrances (superstar mods with entrance_own=, from WWE '13), served to the game.");
+REXCVAR_DEFINE_BOOL(wwe12_dir_log, false, "WWE12",
+                    "Test: log every entry the game looks up in a pac's directory, and whether it was found ([dir]).");
 REXCVAR_DEFINE_BOOL(wwe12_arena_pages_test, false, "WWE12",
                     "Test: a second page on the arena select screen (the 21 arenas in reverse order).");
 
@@ -414,13 +417,13 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
   if (!REXCVAR_GET(wwe12_entrance_mods))
     return;
   static const char kGroups[] = "12345EFGHIK";
-  // The parts by Nyujyo file: (kind "EVP" / "EVZ", number, data).
+  // The parts by file: the script and tracks (EVP_n / EVZ_n) in their Nyujyo file, the game event script (GMEV_n) in
+  // gm.pac, the effects (PCE6_n) in prtcls.pac; each with its group and entry name.
   struct Part {
-    std::string kind;
-    int number;
+    std::string group, name;
     std::vector<uint8_t> data;
   };
-  std::map<int, std::vector<Part>> parts;
+  std::map<std::string, std::vector<Part>> parts;
   std::vector<fs::path> dirs;
   for (fs::directory_iterator it(mods / ".svrmods" / "Superstars", ec), end; !ec && it != end; it.increment(ec))
     if (it->is_directory(ec))
@@ -433,31 +436,54 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       continue;
     for (fs::directory_iterator it(d / "superstar" / "entrance", ec), end; !ec && it != end; it.increment(ec)) {
       const std::string f = it->path().filename().string();
-      if (f.size() < 9 || (f.compare(0, 4, "EVP_") != 0 && f.compare(0, 4, "EVZ_") != 0))
+      const size_t bar = f.find('_');
+      if (bar == std::string::npos || f.size() < bar + 6)
         continue;
-      Part part{f.substr(0, 3), atoi(f.c_str() + 4), {}};
-      const int file = EntranceFile(part.number);
-      if (file < 0 || !ReadHost(it->path(), part.data) || part.data.empty())
+      const std::string kind = f.substr(0, bar);
+      const int number = atoi(f.c_str() + bar + 1);
+      Part part;
+      std::string rel;
+      if (kind == "EVP" || kind == "EVZ") {
+        const int file = EntranceFile(number);
+        if (file < 0)
+          continue;
+        char r[32];
+        snprintf(r, sizeof(r), "pac/evt/Nyujyo%c.pac", file < 10 ? char('0' + file) : 'A');
+        rel = r;
+        part.group = kind + kGroups[file];
+        part.name = std::to_string(number);
+      } else if (kind == "GMEV" || kind == "PCE6") {
+        char n[8];
+        snprintf(n, sizeof(n), "%04d", number % 10000);
+        rel = kind == "GMEV" ? "pac/gm.pac" : "pac/prtcls.pac";
+        part.group = kind;
+        part.name = n;
+      } else {
         continue;
-      parts[file].push_back(std::move(part));
+      }
+      if (!ReadHost(it->path(), part.data) || part.data.empty())
+        continue;
+      parts[rel].push_back(std::move(part));
     }
   }
-  for (auto &[file, list] : parts) {
-    char rel[32];
-    snprintf(rel, sizeof(rel), "pac/evt/Nyujyo%c.pac", file < 10 ? char('0' + file) : 'A');
+  for (auto &[rel, list] : parts) {
     std::vector<uint8_t> pac;
     svrfmt::Archive a;
     if (!ReadForGame(vfs, mods, rel, pac) || !svrfmt::ArchiveOpen(pac, a, nullptr)) {
       REXLOG_WARN("[entrances] {} can't be read: its added entrances left out", rel);
       continue;
     }
-    // the game's entries of this file, by group and name
+    // the game's entries of this file, by group and name; whether each is stored BPE-packed
     std::map<std::string, std::vector<std::string>> names;
-    for (const auto &k : a.root.kids)
+    std::set<std::string> packed;
+    for (const auto &k : a.root.kids) {
       names[Trimmed(k.group)].push_back(Trimmed(k.name));
+      if (svrfmt::IsBpe(k.stored))
+        packed.insert("/" + Trimmed(k.group) + "/" + Trimmed(k.name));
+    }
     a = {};
     for (auto &part : list) {
-      const std::string group = part.kind + kGroups[file], name = std::to_string(part.number);
+      const std::string &group = part.group, &name = part.name;
       const auto &have = names[group];
       if (std::find(have.begin(), have.end(), name) != have.end()) {
         REXLOG_WARN("[entrances] /{}/{} is the game's already: left out", group, name);
@@ -473,6 +499,11 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         continue;
       AddedEntrance e;
       e.like = like;
+      // Stored as the entry it borrows the place of: WWE '12's Nyujyo entries are BPE-packed (Mark Henry's script, 63
+      // KB, is 3 KB there); a WWE '13 script served unpacked was never played, the superstar never showed
+      // (2026-11-01). gm.pac's GMEV and prtcls.pac's PCE6 are stored as they are.
+      if (packed.count(like) && !svrfmt::IsBpe(part.data))
+        part.data = svrfmt::BpeEncode(part.data);
       Append(pac, part.data.data(), part.data.size(), e.sector, e.units);
       part.data = {};
       g_entrances["/" + group + "/" + name] = e;
@@ -951,6 +982,10 @@ extern "C" REX_FUNC(sub_827F29F0) {
         bd::mem::store<u8>(name + u32(i), u8(spare[i]));
   }
   __imp__sub_827F29F0(ctx, base);
+  if (REXCVAR_GET(wwe12_dir_log) && name)
+    REXLOG_INFO("[dir] {} {} out {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}", bd::mem::str(name), ctx.r3.u32 ? "found" : "MISSING",
+                out ? bd::mem::load<u32>(out) : 0, out ? bd::mem::load<u32>(out + 4) : 0, out ? bd::mem::load<u32>(out + 8) : 0,
+                out ? bd::mem::load<u32>(out + 12) : 0, out ? bd::mem::load<u32>(out + 16) : 0, out ? bd::mem::load<u32>(out + 20) : 0);
   // An added entrance the directory hasn't: asked again as an entry of the same file and name length, then its own
   // place (a string the game built: written for the call, put back after).
   if (name && out && ctx.r3.u32 == 0 && !g_entrances.empty() && (name < 0x82000000 || name >= 0x84000000)) {
@@ -968,7 +1003,13 @@ extern "C" REX_FUNC(sub_827F29F0) {
       if (ctx.r3.u32) {
         bd::mem::store<u32>(out, e->second.sector);
         bd::mem::store<u32>(out + 8, e->second.units);
-        REXLOG_INFO("[entrances] {}: the added entrance (as {})", asked, e->second.like);
+        // The answer keeps the entry's name at +14 (after its file index): the asked one, not the borrowed one, or the
+        // game took it for that other entry and the superstar never showed (2026-10-28).
+        for (size_t i = 0; i <= asked.size(); ++i)
+          bd::mem::store<u8>(out + 14 + u32(i), u8(asked[i]));
+        REXLOG_INFO("[entrances] {}: the added entrance (as {}) out {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}", asked, e->second.like,
+                    bd::mem::load<u32>(out), bd::mem::load<u32>(out + 4), bd::mem::load<u32>(out + 8), bd::mem::load<u32>(out + 12),
+                    bd::mem::load<u32>(out + 16), bd::mem::load<u32>(out + 20));
       }
       return;
     }
