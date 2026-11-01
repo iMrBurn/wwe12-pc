@@ -136,11 +136,13 @@ m = sdk / "src/ui/windowed_app_main_sdl.cpp"
 replace_once(m, "#include <rex/ui/windowed_app_context_sdl.h>\n",
              "#include <rex/ui/windowed_app_context_sdl.h>\n\n#if defined(__APPLE__)\n"
              "#include <TargetConditionals.h>\n#if TARGET_OS_IPHONE\n#include <SDL3/SDL_main.h>\n"
+             'extern "C" void Wwe12IosLauncherShow(void);\n'
              "#endif\n#endif\n", "windowed_app_main_sdl: SDL_main")
 replace_once(m, "  rex::cvar::ApplyEnvironment();\n  rex::InitLoggingEarly();\n",
              "  rex::cvar::ApplyEnvironment();\n#if defined(__APPLE__) && TARGET_OS_IPHONE\n"
              '  rex::cvar::SetFlagByName("vulkan_require_geometry_shader", "false");\n'
-             '  rex::cvar::SetFlagByName("vulkan_require_fill_mode_non_solid", "false");\n#endif\n'
+             '  rex::cvar::SetFlagByName("vulkan_require_fill_mode_non_solid", "false");\n'
+             "  Wwe12IosLauncherShow();  // Play / DLC / Install screen, returns on Play\n#endif\n"
              "  rex::InitLoggingEarly();\n", "windowed_app_main_sdl: MoltenVK features")
 
 # SDL's video driver is "uikit" on iOS ("cocoa" does not exist there).
