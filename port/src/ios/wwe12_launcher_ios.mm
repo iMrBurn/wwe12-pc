@@ -537,7 +537,7 @@ static std::string DlcInstalledDir(const std::string& file) {
       if (err.empty()) {
         const std::string dest = (dlc ? DlcDir() : GameDir()) + "/" + (dlc || EndsWith(name, ".iso") ? name : name + ".iso");
         if (!dlc && size + (64ULL << 20) > FreeBytes(Docs())) {
-          err = "not enough free space (" + std::string([Human(size).UTF8String]) + " needed)";
+          err = "not enough free space (" + std::string([[Human(size) description] UTF8String]) + " needed)";
         } else {
           if (!dlc) {
             MakeDir(GameDir());
