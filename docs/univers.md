@@ -1000,3 +1000,18 @@ EDIT UNIVERSE > UNIVERSE OPTIONS : TITLE DEFENSES (OFF / 10 / 25 / 50 / 100 %) e
 textes en 5 langues, message de confirmation. Le choix change le réglage tout de suite (`SetFlagByName`) et l'écrit
 dans `wwe12.toml` à côté de l'exe (même fichier que le launcher, RÉGLAGES > AVANCÉ). Vu : « Title defenses on weekly
 shows: 25 %. », et `wwe12_universe_title_defenses = 25` / `wwe12_universe_qualifiers = true` écrits dans le toml.
+
+## 38. Plan 1.1 : deux mallettes Money in the Bank (demande de l'utilisateur, 2026-11-01)
+
+Comme en 2010/2011 : un match MITB par marque au PPV (show 16) et **deux détenteurs** en même temps.
+- Carte du PPV : deux matchs MITB (RAW / SmackDown), placés comme les deux Chambers (§36 bis) ; qualifs par marque.
+- Le jeu n'a qu'un détenteur (U + 51004, u16, `sub_826CCA90` pose / `sub_826CC718` lit / `sub_826CCAB8` efface). La
+  1re mallette reste celle du jeu (son cash-in d'origine) ; la 2e est à nous : détenteur noté dans `universe_stats.txt`
+  (« mitb2 <id> <jour> »), gardé au reset/rechargement comme les autres lignes.
+- Le cash-in de la 2e mallette est à faire nous-mêmes : étudier d'abord comment le jeu décide et ajoute le sien (match
+  ajouté à la fin de la carte du PPV, chemin de `sub_826C95E0`), puis le rejouer pour notre détenteur (match de titre
+  contre le champion de sa marque, changement de champion `sub_826D4030`, effacement + news).
+- Affichage : fiche du Superstar, STATISTICS (page MITB), news de la victoire et du cash-in.
+- Ordre : 1) étude du cash-in du jeu (sans rien modifier) ; 2) deux matchs au PPV ; 3) 2e détenteur ; 4) cash-in ;
+  5) affichage. Réglage prévu dans UNIVERSE OPTIONS, validé par l'utilisateur : MONEY IN THE BANK = 1 ou 2
+  (1 = un match et une mallette, le jeu d'origine, défaut ; 2 = deux matchs au PPV et deux mallettes).
