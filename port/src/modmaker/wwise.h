@@ -200,6 +200,72 @@ inline Bytes ThemeStream(const Package &pk, int number, int victory = 0) {
   return out;
 }
 
+// The prefetch of a Wwise Vorbis stream: the bytes up to the first packet boundary at least `audio` bytes into its
+// audio packets (u16 size + data, from the "fmt " chunk's vorb: setup offset +0x10, first audio packet +0x14, from the
+// data chunk). The game's themes are all prefetched so (measured on Music.pck: each prefetch ends on a packet, ~10 KB
+// of packets in). 0 if it can't be read.
+inline uint32_t Prefetch(const Bytes &wem, uint32_t audio = 10240) {
+  if (wem.size() < 12 || memcmp(wem.data(), "RIFX", 4))
+    return 0;
+  size_t fmt = 0, data = 0;
+  for (size_t q = 12; q + 8 <= wem.size();) {
+    const uint32_t len = Be32(wem, q + 4);
+    if (!memcmp(&wem[q], "fmt ", 4))
+      fmt = q + 8;
+    if (!memcmp(&wem[q], "data", 4)) {
+      data = q + 8;
+      break;
+    }
+    q += 8 + len + (len & 1);
+  }
+  if (!fmt || !data || Be16(wem, fmt) != 0xFFFF)
+    return 0;
+  size_t pos = data + Be32(wem, fmt + 0x18 + 0x14);
+  const size_t first = pos;
+  while (pos + 2 <= wem.size() && pos < first + audio)
+    pos += 2 + Be16(wem, pos);
+  return pos <= wem.size() && pos > first ? uint32_t(pos) : 0;
+}
+
+// Whether a stream is PCM ("fmt " tag 1 or 0xFFFE): a theme WWE '12's Wwise can't decode as it is (WWE '13's Wwise
+// Vorbis: WWE '12's decoder crashed on it, 2026-11-01) is turned into PCM by the Mod Maker (PcmStream).
+inline bool IsPcm(const Bytes &wem) {
+  for (size_t q = 12; q + 10 <= wem.size();) {
+    const uint32_t len = Be32(wem, q + 4);
+    if (!memcmp(&wem[q], "fmt ", 4))
+      return Be16(wem, q + 8) == 1 || Be16(wem, q + 8) == 0xFFFE;
+    q += 8 + len + (len & 1);
+  }
+  return false;
+}
+
+// A Wwise PCM stream (RIFX, big-endian 16-bit samples, "fmt " WAVE_FORMAT_EXTENSIBLE) from little-endian 16-bit
+// samples: what WWE '12's Wwise plays whatever made the theme (checked with vgmstream: "16-bit Big Endian PCM").
+inline Bytes PcmStream(const int16_t *samples, size_t frames, int channels, int rate) {
+  Bytes fmt;
+  auto a16 = [&](Bytes &b, uint16_t v) { b.push_back(uint8_t(v >> 8)), b.push_back(uint8_t(v)); };
+  a16(fmt, 0xFFFE);
+  a16(fmt, uint16_t(channels));
+  App32(fmt, uint32_t(rate));
+  App32(fmt, uint32_t(rate * channels * 2));
+  a16(fmt, uint16_t(channels * 2));
+  a16(fmt, 16);
+  a16(fmt, 6);
+  a16(fmt, 16);
+  App32(fmt, channels == 1 ? 4u : 3u);
+  const size_t n = frames * size_t(channels);
+  Bytes out = {'R', 'I', 'F', 'X'};
+  App32(out, uint32_t(4 + 8 + fmt.size() + 8 + 2 * n));
+  out.insert(out.end(), {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
+  App32(out, uint32_t(fmt.size()));
+  out.insert(out.end(), fmt.begin(), fmt.end());
+  out.insert(out.end(), {'d', 'a', 't', 'a'});
+  App32(out, uint32_t(2 * n));
+  for (size_t i = 0; i < n; ++i)
+    a16(out, uint16_t(samples[i]));
+  return out;
+}
+
 // ---- the mods pack's package
 
 struct Theme {
@@ -282,9 +348,10 @@ inline bool MusicPackage(const Package &game, int pack, const std::vector<Theme>
   std::vector<Obj> list, tail;
   std::vector<uint32_t> containers;
   std::vector<std::pair<uint32_t, const Bytes *>> streams;
+  std::vector<std::pair<uint32_t, Bytes>> media;  // the prefetches (DIDX / DATA)
   for (const auto &t : themes) {
-    if (t.stream.empty() || t.number <= 0 || t.number > 9999)
-      continue;
+    if (t.stream.empty() || t.number <= 0 || t.number > 9999 || !IsPcm(t.stream))
+      continue;  // (PCM only: another game's Wwise Vorbis may crash WWE '12's decoder, theme_convert.h)
     char s[48];
     snprintf(s, sizeof(s), "wwe12pc_mus_%04d", t.number);
     const uint32_t sid = Fnv(s);
@@ -293,12 +360,22 @@ inline bool MusicPackage(const Package &game, int pack, const std::vector<Theme>
     snprintf(s, sizeof(s), "wwe12pc_mus_%04d_container", t.number);
     const uint32_t new_rs = Fnv(s);
     streams.push_back({sid, &t.stream});
-    // the sound: streamed (type 1: no file offset nor in-memory size), its source the stream, its parent the container
-    Bytes sb(snd->body.begin(), snd->body.begin() + 16);
-    Put32(sb, 4, 1);
+    // the sound: its source the stream, prefetched as the game's themes (type 2: its first bytes in the bank, DIDX /
+    // DATA; streamed alone, type 1, the menus' jukebox couldn't load it, 2026-11-01), its parent the container
+    const uint32_t pre = Prefetch(t.stream);
+    Bytes sb = snd->body;
     Put32(sb, 8, sid);
     Put32(sb, 12, sid);
-    sb.insert(sb.end(), snd->body.begin() + 24, snd->body.end());
+    Put32(sb, 16, 0);
+    Put32(sb, 20, pre);
+    if (pre)
+      media.push_back({sid, Bytes(t.stream.begin(), t.stream.begin() + pre)});
+    else {  // (not Wwise Vorbis: PCM, streamed alone)
+      sb.erase(sb.begin() + 16, sb.begin() + 24);
+      Put32(sb, 4, 1);
+      if (IsPcm(t.stream))
+        Put32(sb, 0, 0x00010001);  // (the PCM source: codec 1)
+    }
     list.push_back({2, new_snd, replace(sb, rs_id, new_rs)});
     list.push_back({5, new_rs, replace(rs->body, snd_id, new_snd)});
     containers.push_back(new_rs);
@@ -327,14 +404,34 @@ inline bool MusicPackage(const Package &game, int pack, const std::vector<Theme>
     list.push_back({19, parent_id, parent->body});
   list.insert(list.end(), tail.begin(), tail.end());
 
-  // the bank
+  // the bank: BKHD padded so DATA's bytes start at 2 KB (as the game's banks), DIDX {id, offset, size} (16-byte steps)
+  std::sort(media.begin(), media.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+  Bytes didx, data;
+  for (const auto &[id, m] : media) {
+    data.resize((data.size() + 15) / 16 * 16, 0);
+    App32(didx, id);
+    App32(didx, uint32_t(data.size()));
+    App32(didx, uint32_t(m.size()));
+    data.insert(data.end(), m.begin(), m.end());
+  }
+  size_t bk = 20;
+  if (!media.empty()) {
+    const size_t before = 8 + 20 + 8 + didx.size() + 8;
+    bk += (0x800 - before % 0x800) % 0x800;
+  }
   Bytes bank = {'B', 'K', 'H', 'D'};
-  App32(bank, 20);
+  App32(bank, uint32_t(bk));
   App32(bank, 56);
   App32(bank, bank_id);
-  App32(bank, 0);
-  App32(bank, 0);
-  App32(bank, 0);
+  bank.resize(bank.size() + bk - 8, 0);
+  if (!media.empty()) {
+    bank.insert(bank.end(), {'D', 'I', 'D', 'X'});
+    App32(bank, uint32_t(didx.size()));
+    bank.insert(bank.end(), didx.begin(), didx.end());
+    bank.insert(bank.end(), {'D', 'A', 'T', 'A'});
+    App32(bank, uint32_t(data.size()));
+    bank.insert(bank.end(), data.begin(), data.end());
+  }
   Bytes hirc;
   App32(hirc, uint32_t(list.size()));
   for (const auto &o : list) {

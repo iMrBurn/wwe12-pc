@@ -274,3 +274,16 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
     (XACT / YAF en XMA : à décoder puis à réécrire en un format que le Wwise de WWE '12 lit, PCM ou ADPCM) ;
   - entrées (mouvements) des 2K et des SvR : à convertir et recibler (outils de Kaiko : `entrance_port.py`,
     `svr08_entrance.py`, `svr10_entrance.py`, `w13_retarget.py` à l'envers ; crédit).
+
+- **Musique de WWE '13 ENTENDUE EN JEU (2026-11-01, JUKEBOX : MANKIND)**, après trois corrections :
+  1. l'enregistrement PCKH de notre paquet dans `sound_dlc_NN.pac` doit être un vrai flux zlib (`ZlibRecord`,
+     `superstar_pack.h`) : rangé « stocké » (taille compressée = taille), le jeu ne le lisait pas, ne connaissait pas
+     `DLC_05.pck` (liste de l'IO du son, `sub_82DF44F0`) et la banque `Music_DLC_05` échouait (rappel du chargement
+     `sub_82DEFFF0` : résultat 2) ;
+  2. le Wwise Vorbis de WWE '13 (Wwise plus récent, même « fmt ») fait planter le décodeur de WWE '12 (écriture en 0
+     dans la construction des codebooks) : le Mod Maker décode le thème avec vgmstream (`theme_convert.h`, l'outil du
+     joueur : celui des Mod Maker Tools de Kaiko, à côté du Mod Maker ou dans le PATH ; rien n'est livré) et l'écrit en
+     Wwise PCM (`wwise::PcmStream`, 16 bits gros-boutiste, ~13 Mo pour 1 min 43) ; le jeu n'accepte que du PCM ;
+  3. son PCM en flux simple (type 1, codec 0x00010001), sans préchargement.
+  Les DLC officiels se chargent pareil (banques `Music_DLC_NN` chargées puis rechargées à la connexion du profil).
+  Reste à voir : la musique pendant l'entrée elle-même et à la victoire (même événement `Play_MUS_0246_0_x`).

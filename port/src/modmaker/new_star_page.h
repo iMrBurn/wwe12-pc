@@ -29,6 +29,7 @@
 #include "imgui.h"
 #include "mod_version.h"
 #include "entrance13.h"
+#include "theme_convert.h"
 #include "moveset_port.h"
 #include "newmoves13.h"
 #include "media.h"
@@ -1251,8 +1252,22 @@ class Page {
     own_entrance_.clear();
     own_entrance_number_ = 0;
     if (own_moves_game_ == 0x545108B4 && !entrance13::Exists12(*disc12_, number) &&
-        entrance13::Entrance(src, number, own_entrance_, nullptr))
+        entrance13::Entrance(src, number, own_entrance_, nullptr)) {
       own_entrance_number_ = number;
+      // its theme, made PCM (theme_convert.h); without vgmstream it is left out (the base's music plays)
+      const fs::path vg = theme_convert::FindVgmstream(discs_ ? discs_->PathOf(0x5451085D) : fs::path());
+      own_theme_ = false;
+      for (auto it = own_entrance_.begin(); it != own_entrance_.end();)
+        if (it->kind == "MUS") {
+          it->data = theme_convert::ToPcm(vg, it->data);
+          if (it->data.empty())
+            it = own_entrance_.erase(it);
+          else
+            own_theme_ = true, ++it;
+        } else {
+          ++it;
+        }
+    }
   }
 
   // Step 2's part: its own WWE '13 entrance.
@@ -1261,8 +1276,10 @@ class Page {
       return;
     char label[200];
     snprintf(label, sizeof(label),
-             fr ? "Sa propre entrée de WWE '13 (n° %d, %d variantes ; essai)"
-                : "Its own WWE '13 entrance (no. %d, %d variants; a test)",
+             fr ? (own_theme_ ? "Sa propre entrée de WWE '13, avec sa musique (n° %d, %d variantes ; essai)"
+                              : "Sa propre entrée de WWE '13 (n° %d, %d variantes ; essai ; musique : il faut vgmstream)")
+                : (own_theme_ ? "Its own WWE '13 entrance, with its theme (no. %d, %d variants; a test)"
+                              : "Its own WWE '13 entrance (no. %d, %d variants; a test; theme: needs vgmstream)"),
              own_entrance_number_,
              int(std::count_if(own_entrance_.begin(), own_entrance_.end(), [](const auto &p) { return p.kind == "EVP"; })));
     ImGui::Checkbox(label, &use_own_entrance_);
@@ -1984,6 +2001,7 @@ class Page {
   int entrance_ = -1;
   std::vector<newmoves13::Move> own_new_moves_;  // its WWE '13 moves WWE '12 hasn't (newmoves13.h)
   std::vector<entrance13::Part> own_entrance_;  // its WWE '13 entrance (entrance13.h), else empty
+  bool own_theme_ = false;                      // ... with its theme (made PCM: theme_convert.h)
   int own_entrance_number_ = 0;
   bool use_own_entrance_ = true;  // its entrance: another superstar's (index in stars_), else -1: the base's
   char entrance_filter_[64] = {};

@@ -202,6 +202,33 @@ inline uint32_t Rd32(const Bytes &b, size_t o) {
   return o + 4 <= b.size() ? uint32_t(b[o]) | uint32_t(b[o + 1]) << 8 | uint32_t(b[o + 2]) << 16 | uint32_t(b[o + 3]) << 24
                            : 0;
 }
+// A PCKH record as the game's: "ZLIB", 0x1230, packed size, size, then a real zlib stream (here stored deflate blocks):
+// the game inflates it, and a record "stored" with packed == size (svrfmt::ZlibStore) wasn't read: the package of our
+// mods pack stayed unknown, its themes silent (2026-11-01).
+inline Bytes ZlibRecord(const Bytes &raw) {
+  Bytes z = {0x78, 0x01};
+  size_t at = 0;
+  do {
+    const size_t n = std::min<size_t>(raw.size() - at, 65535);
+    z.push_back(at + n >= raw.size() ? 1 : 0);
+    z.push_back(uint8_t(n)), z.push_back(uint8_t(n >> 8));
+    z.push_back(uint8_t(~n)), z.push_back(uint8_t(~n >> 8));
+    z.insert(z.end(), raw.begin() + long(at), raw.begin() + long(at + n));
+    at += n;
+  } while (at < raw.size());
+  uint32_t a = 1, b = 0;
+  for (uint8_t c : raw)
+    a = (a + c) % 65521, b = (b + a) % 65521;
+  const uint32_t adler = b << 16 | a;
+  for (int i = 3; i >= 0; --i)
+    z.push_back(uint8_t(adler >> (8 * i)));
+  Bytes out = {'Z', 'L', 'I', 'B', 0x30, 0x12, 0, 0};
+  for (uint32_t v : {uint32_t(z.size()), uint32_t(raw.size())})
+    for (int i = 0; i < 4; ++i)
+      out.push_back(uint8_t(v >> (8 * i)));
+  out.insert(out.end(), z.begin(), z.end());
+  return out;
+}
 inline ArcNode *Find(ArcNode &r, const std::string &g, const std::string &n) {
   for (auto &k : r.kids)
     if (k.group == g && k.name == n)
@@ -933,8 +960,11 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         bool done = false;
         for (auto &k : group->kids)
           if (k.id == id)
-            svrfmt::ArchiveReplace(k, pckh), done = true;
-        if (done || svrfmt::ArchiveAdd(*group, "", "", id, pckh, nullptr)) {
+            svrfmt::ArchiveReplace(k, pckh), k.stored = ZlibRecord(pckh), done = true;
+        if (!done)
+          if (ArcNode *k = svrfmt::ArchiveAdd(*group, "", "", id, pckh, nullptr))
+            k->stored = ZlibRecord(pckh), done = true;
+        if (done) {
           svrfmt::ArchiveTouch(*group);
           svrfmt::ArchiveTouch(sp.root);
           sound_out = svrfmt::ArchiveSave(sp);
