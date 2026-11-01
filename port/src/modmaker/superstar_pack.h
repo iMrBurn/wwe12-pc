@@ -75,8 +75,9 @@ struct Star {
   // Its own entrance (a WWE '13 one the game serves under that number: wwe12_arena_pages.cpp), else 0: CHAR / PRO
   // +0x1D8 and +0x1E4, the entrance number of both blocks (music, video, entrance).
   int own_entrance = 0;
-  // Its own entrance theme (a WWE '13 one: superstar/entrance/MUS_<n>.bin, a Wwise Vorbis stream), else empty: played
-  // as music number own_entrance (CHAR / PRO +0x1D4 and +0x1E0) from the pack's sound\DLC_NN.pck (wwise.h).
+  // Its own entrance theme (superstar/theme.wem, or superstar/entrance/MUS_<n>.bin: Wwise PCM made by the Mod Maker
+  // from its game's theme, theme_source.h), else empty: played as its music number (MusicNumber: CHAR / PRO +0x1D4
+  // and +0x1E0) from the pack's sound\DLC_NN.pck (wwise.h).
   Bytes theme;
   // Its moves WWE '12 hasn't (added to the pack: misc.pac records, m_dlcNN.pac motions), else empty.
   std::vector<NewMove> new_moves;
@@ -229,6 +230,9 @@ inline Bytes ZlibRecord(const Bytes &raw) {
   out.insert(out.end(), z.begin(), z.end());
   return out;
 }
+// The music number of an added superstar's own theme: its own entrance's number (WWE '13's do so: Mankind 246), else
+// 900 + its slot (no theme of the game's has one: they are 50-99 and 100-343, 272 is the user playlist).
+inline int MusicNumber(const Star &st) { return st.own_entrance > 0 ? st.own_entrance : 900 + st.slot; }
 inline ArcNode *Find(ArcNode &r, const std::string &g, const std::string &n) {
   for (auto &k : r.kids)
     if (k.group == g && k.name == n)
@@ -560,11 +564,11 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           moves[at] = uint8_t(st.own_entrance);
           moves[at + 1] = uint8_t(st.own_entrance >> 8);
         }
-    if (st.own_entrance > 0 && !st.theme.empty())  // its music number (the theme in our package)
+    if (!st.theme.empty())  // its music number (the theme in our package)
       for (const size_t at : {size_t(0x1D4), size_t(0x1E0)})
         if (moves.size() >= at + 2) {
-          moves[at] = uint8_t(st.own_entrance);
-          moves[at + 1] = uint8_t(st.own_entrance >> 8);
+          moves[at] = uint8_t(MusicNumber(st));
+          moves[at + 1] = uint8_t(MusicNumber(st) >> 8);
         }
     svrfmt::ArchiveReplace(*sp, moves);
   }
@@ -939,8 +943,8 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   {
     std::vector<wwise::Theme> themes;
     for (const auto &st : stars)
-      if (st.own_entrance > 0 && !st.theme.empty())
-        themes.push_back({st.own_entrance, st.theme});
+      if (!st.theme.empty())
+        themes.push_back({MusicNumber(st), st.theme});
     Bytes pckh;
     std::string w;
     if (!themes.empty() && !wwise::MusicPackage(in.music, pack, themes, music_pck, pckh, &w)) {

@@ -39,14 +39,15 @@ inline fs::path FindVgmstream(const fs::path &svr2011 = {}) {
   return {};
 }
 
-// A Wwise stream decoded by vgmstream (once through, no loop) and written as Wwise PCM. Empty if it can't.
-inline Bytes ToPcm(const fs::path &vgmstream, const Bytes &wem) {
+// A stream decoded by vgmstream (once through, no loop; `ext` tells it what the bytes are: ".wem" Wwise, ".xma" a
+// RIFF XMA) and written as Wwise PCM. Empty if it can't.
+inline Bytes ToPcm(const fs::path &vgmstream, const Bytes &wem, const std::wstring &ext = L".wem") {
   if (vgmstream.empty() || wem.empty())
     return {};
   wchar_t tmp[MAX_PATH];
   GetTempPathW(MAX_PATH, tmp);
   const std::wstring stamp = std::to_wstring(GetCurrentProcessId()) + L"_" + std::to_wstring(GetTickCount());
-  const fs::path in = fs::path(tmp) / (L"wwe12_theme_" + stamp + L".wem"), out = fs::path(tmp) / (L"wwe12_theme_" + stamp + L".wav");
+  const fs::path in = fs::path(tmp) / (L"wwe12_theme_" + stamp + ext), out = fs::path(tmp) / (L"wwe12_theme_" + stamp + L".wav");
   std::ofstream(in, std::ios::binary).write(reinterpret_cast<const char *>(wem.data()), std::streamsize(wem.size()));
   std::wstring line = L"\"" + vgmstream.wstring() + L"\" -i -o \"" + out.wstring() + L"\" \"" + in.wstring() + L"\"";
   STARTUPINFOW si{sizeof(si)};

@@ -305,3 +305,15 @@ le format de WWE '12 est celui de WWE '13 : script EVP en cm, pistes EVZ en YANM
 Ordre proposé : 1) musiques de tous les jeux (même chemin que WWE '13, vgmstream → PCM → notre paquet) ; 2) victoires de
 WWE '13 ; 3) 2K14 ; 4) 2K15-2K17 ; 5) SvR 2010/2011 (le reciblage) ; 6) SvR 2007-2009. Tout est crédité à Kaiko.
 Rappel 1.0 (Main) : rien de non testé dans l'arbre au jeudi 6 novembre au soir.
+
+### Musiques de tous les jeux (2026-11-01, commit suivant)
+
+`port/src/modmaker/theme_source.h` (d'après `superstar_port.py` de Kaiko) trouve le thème d'un catcheur importé :
+WWE '13 (`Music.pck`, PRO +576), 2K14 (`Game_Sound_E_S.pck` + `Game_Sound_M.pck`), 2K15 (+576 u32 = id × 100 +
+variante), 2K16 / 2K17 (+588 u32 = id × 1000 + variante, PRO par index, numéro à DAT +4), SvR 2008-2010
+(`music*.yaf`, record = musique × 100 ; 2009 PRO +0xE4, 2010 +0x178 ; 2008 : le numéro du catcheur, petit). Vérifié
+hors jeu (trouvé et converti) : WWE '13 Mankind, 2K14 Cena, 2K15 Cena, 2K16 Mankind, 2K17 Cena, SvR 2008 n° 11,
+SvR 2009 n° 111, SvR 2010 n° 101. Le Mod Maker (NEW SUPERSTAR, étape 2 : « Sa propre musique d'entrée de <jeu> »)
+l'écrit en PCM dans `superstar/theme.wem` ; le jeu lui donne le numéro de musique de son entrée propre, sinon
+900 + sa place. **Entendu en jeu** : SvR 2010 n° 101 (Stone Cold) sur Edge 07 (JUKEBOX, thème 1004), avec Mankind
+dans le même paquet. Pas encore : SvR 2007 (XACT), SvR 2011 (Wwise v46). Taille : ~13-36 Mo par thème (PCM).

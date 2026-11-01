@@ -293,6 +293,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     if (mod.own_entrance > 0 &&
         fs::exists(d / "superstar" / "entrance" / ("MUS_" + std::to_string(mod.own_entrance) + ".bin"), ec))
       mod.theme = d / "superstar" / "entrance" / ("MUS_" + std::to_string(mod.own_entrance) + ".bin");
+    if (fs::exists(d / "superstar" / "theme.wem", ec))  // (its game's theme, made PCM by the Mod Maker)
+      mod.theme = d / "superstar" / "theme.wem";
     for (fs::directory_iterator it(d / "superstar" / "moves", ec), end; !ec && it != end; it.increment(ec)) {
       const fs::path w = it->path();
       if (w.extension() != ".waze")
@@ -657,8 +659,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   for (const auto &st : stars) {
     if (st.movie_number)
       g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
-    if (st.own_entrance > 0 && !st.theme.empty())
-      g_themes.push_back({uint32_t(st.own_entrance), st.name});
+    if (!st.theme.empty())
+      g_themes.push_back({uint32_t(superstar_pack::detail::MusicNumber(st)), st.name});
   }
   // A superstar of the pack whose mod is gone: the pack stays as it is (a save may use him), with a warning.
   {

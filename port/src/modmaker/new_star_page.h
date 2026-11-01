@@ -30,6 +30,7 @@
 #include "mod_version.h"
 #include "entrance13.h"
 #include "theme_convert.h"
+#include "theme_source.h"
 #include "moveset_port.h"
 #include "newmoves13.h"
 #include "media.h"
@@ -523,6 +524,7 @@ class Page {
     }
     DrawOwnMoves(fr);
     DrawOwnEntrance(fr);
+    DrawOwnTheme(fr);
   }
 
   // The superstar of the same name in WWE '12, if there is one and the player chose no base: the base, so the new
@@ -1009,6 +1011,8 @@ class Page {
 
   // A superstar of the game chosen (SvR 2011 or WWE '13) from My game discs.
   void LoadFromDisc(bool fr, int number) {
+    theme_ = {};
+    theme_source::Find(game_disc_, game_title_, number, theme_);  // (its theme, if its game is one read)
     // (SvR 2008 and 2007: chNN.pac, movies NN.bik)
     const bool svr08 = look_ == 2 && (game_title_ == 0x5451080B || game_title_ == 0x545107E0);
     char rel[64];
@@ -1252,22 +1256,8 @@ class Page {
     own_entrance_.clear();
     own_entrance_number_ = 0;
     if (own_moves_game_ == 0x545108B4 && !entrance13::Exists12(*disc12_, number) &&
-        entrance13::Entrance(src, number, own_entrance_, nullptr)) {
+        entrance13::Entrance(src, number, own_entrance_, nullptr))
       own_entrance_number_ = number;
-      // its theme, made PCM (theme_convert.h); without vgmstream it is left out (the base's music plays)
-      const fs::path vg = theme_convert::FindVgmstream(discs_ ? discs_->PathOf(0x5451085D) : fs::path());
-      own_theme_ = false;
-      for (auto it = own_entrance_.begin(); it != own_entrance_.end();)
-        if (it->kind == "MUS") {
-          it->data = theme_convert::ToPcm(vg, it->data);
-          if (it->data.empty())
-            it = own_entrance_.erase(it);
-          else
-            own_theme_ = true, ++it;
-        } else {
-          ++it;
-        }
-    }
   }
 
   // Step 2's part: its own WWE '13 entrance.
@@ -1276,14 +1266,33 @@ class Page {
       return;
     char label[200];
     snprintf(label, sizeof(label),
-             fr ? (own_theme_ ? "Sa propre entrée de WWE '13, avec sa musique (n° %d, %d variantes ; essai)"
-                              : "Sa propre entrée de WWE '13 (n° %d, %d variantes ; essai ; musique : il faut vgmstream)")
-                : (own_theme_ ? "Its own WWE '13 entrance, with its theme (no. %d, %d variants; a test)"
-                              : "Its own WWE '13 entrance (no. %d, %d variants; a test; theme: needs vgmstream)"),
+             fr ? "Sa propre entrée de WWE '13 (n° %d, %d variantes ; essai)"
+                : "Its own WWE '13 entrance (no. %d, %d variants; a test)",
              own_entrance_number_,
              int(std::count_if(own_entrance_.begin(), own_entrance_.end(), [](const auto &p) { return p.kind == "EVP"; })));
     ImGui::Checkbox(label, &use_own_entrance_);
   }
+
+  // Step 2's part: its own theme from its game (theme_source.h), made PCM with the player's vgmstream.
+  void DrawOwnTheme(bool fr) {
+    if (theme_.stream.empty())
+      return;
+    const bool tool = !Vgmstream().empty();
+    char label[200];
+    snprintf(label, sizeof(label), fr ? "Sa propre musique d'entrée de %s (%s)" : "Its own entrance theme from %s (%s)",
+             GameName(look_ == 2 ? svr_game_ : game_title_), theme_.what.c_str());
+    ImGui::BeginDisabled(!tool);
+    bool on = use_theme_ && tool;
+    if (ImGui::Checkbox(label, &on))
+      use_theme_ = on;
+    ImGui::EndDisabled();
+    if (!tool)
+      ImGui::TextDisabled("%s", fr ? "(il faut vgmstream : les Mod Maker Tools de Kaiko, ou vgmstream-cli.exe dans un dossier "
+                                     "vgmstream à côté du Mod Maker)"
+                                   : "(needs vgmstream: Kaiko's Mod Maker Tools, or vgmstream-cli.exe in a vgmstream folder "
+                                     "beside the Mod Maker)");
+  }
+  fs::path Vgmstream() const { return theme_convert::FindVgmstream(discs_ ? discs_->PathOf(0x5451085D) : fs::path()); }
 
   // Step 2's part: its own moves, slot by slot.
   void DrawOwnMoves(bool fr) {
@@ -1932,6 +1941,11 @@ class Page {
     if (own_entrance)
       for (const auto &part : own_entrance_)
         entries.push_back({entrance13::ModPath(part), part.data});
+    if (use_theme_ && !theme_.stream.empty() && (look_ == 2 || look_ == 3)) {  // (its theme, Wwise PCM)
+      Bytes pcm = theme_convert::ToPcm(Vgmstream(), theme_.stream, std::wstring(theme_.ext.begin(), theme_.ext.end()));
+      if (!pcm.empty())
+        entries.push_back({"superstar/theme.wem", std::move(pcm)});
+    }
     if (use_own_moves_)  // (its moves WWE '12 hasn't: the game adds them to its pack)
       for (const auto &m : own_new_moves_) {
         const std::string n = "superstar/moves/" + std::to_string(m.number);
@@ -2001,7 +2015,8 @@ class Page {
   int entrance_ = -1;
   std::vector<newmoves13::Move> own_new_moves_;  // its WWE '13 moves WWE '12 hasn't (newmoves13.h)
   std::vector<entrance13::Part> own_entrance_;  // its WWE '13 entrance (entrance13.h), else empty
-  bool own_theme_ = false;                      // ... with its theme (made PCM: theme_convert.h)
+  theme_source::Theme theme_;  // its theme in its game (theme_source.h), stream empty if none
+  bool use_theme_ = true;      // ... made PCM and put into the mod (superstar/theme.wem)
   int own_entrance_number_ = 0;
   bool use_own_entrance_ = true;  // its entrance: another superstar's (index in stars_), else -1: the base's
   char entrance_filter_[64] = {};
