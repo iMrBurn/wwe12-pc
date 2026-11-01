@@ -550,6 +550,21 @@ bool Video::FlushRenderStateLocked(u32 device_guest) {
     }
   }
 
+#if defined(WWE12_IOS)
+  // MoltenVK makes the textures of a bound descriptor set resident when the set is bound: one written
+  // after that (a nameplate, a video frame, a render target read back) reads as black or faults the GPU
+  // until the next bind. Bind the sets again when the table changed since the last bind.
+  {
+    const u64 writes = s.texture_set_writes.load(std::memory_order_relaxed);
+    if (writes != s.texture_set_bound) {
+      s.command_list->setGraphicsDescriptorSet(s.texture_descriptor_set.get(), 0);
+      s.command_list->setGraphicsDescriptorSet(s.texture_descriptor_set.get(), 1);
+      s.command_list->setGraphicsDescriptorSet(s.texture_descriptor_set.get(), 2);
+      s.texture_set_bound = writes;
+    }
+  }
+#endif
+
   // Clean state is first=255, last=0, so 'first <= last' skips the call when
   // nothing changed. BeginCommandList force-dirties the full range every
   // command list reset: D3D12 IA bindings do not survive begin().

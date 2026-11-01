@@ -48,6 +48,7 @@ void DrainDescriptorSlotsLocked(VideoState &s, u32 slot) {
           d.slot, s.null_textures[d.null_index].get(),
           plume::RenderTextureLayout::SHADER_READ,
           s.null_texture_views[d.null_index].get());
+  s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
     }
     BindlessFreeSlot(s.descriptor_slot_used, d.slot,
                      kNullTextureDescriptorCount);
@@ -111,6 +112,7 @@ u32 BindTextureSRVLocked(VideoState &s, GuestTexture *tex) {
   s.texture_descriptor_set->setTexture(slot, tex->texture,
                                        plume::RenderTextureLayout::SHADER_READ,
                                        tex->textureView.get());
+  s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
   tex->descriptorIndex = slot;
   return slot;
 }

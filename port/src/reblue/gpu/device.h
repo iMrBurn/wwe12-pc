@@ -428,6 +428,10 @@ struct VideoState {
   // Lets Present() begin on demand if no Clear/draw opened it yet (the first
   // few boot frames).
   bool command_list_open = false;
+  // Count of writes to the bindless texture set, and the count when the command list last bound it: a
+  // texture written after the bind is not made resident by MoltenVK until the set is bound again (iOS).
+  std::atomic<u64> texture_set_writes{0};
+  u64 texture_set_bound = 0;
   bool command_list_submitted[kNumFrames] =
       {}; // per-slot: submitted, fence not yet awaited at reuse
 
