@@ -1806,7 +1806,8 @@ inline svrfmt::Image Crop(const svrfmt::Image &f, int x, int y, int w, int h) {
 
 }  // namespace detail
 
-// SvR 2008 / 2009's entrance graphics for arena `file` (`year` 2008 or 2009) from their _EvtGdHD.pac: `name` its name
+// SvR 2007 / 2008 / 2009's entrance graphics for arena `file` (`year` 2007, 2008 or 2009) from their _EvtGdHD.pac
+// (2007: evt2dHD.pac, ET2D/00NN as 2008's, seen 2026-11-01: RAW's plate, its sparks and gears): `name` its name
 // plate as the 2K ones (Plate2K: its picture held, its flip book coming in, placed so its middle bar, where the game
 // writes the name, falls on WWE '12's text for `base`: PlateTextFor), `transition` (2009) the logo animation's
 // frames, 30 a second, at 320 x 320 (WWE '12's transition movies are square, shown over the whole screen).
@@ -1821,7 +1822,7 @@ inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate
   snprintf(want, sizeof(want), "%04d", file);
   svrfmt::ArcNode *e = nullptr;
   for (auto &k : a.root.kids)
-    if (k.group == (year == 2008 ? "ET2D" : "ETEX") && k.name == want)
+    if (k.group == (year <= 2008 ? "ET2D" : "ETEX") && k.name == want)
       e = &k;
   if (!e || !svrfmt::ArchiveExpand(*e))
     return false;
@@ -1833,8 +1834,16 @@ inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate
     for (const auto &p : k.kids) {
       const Bytes d = svrfmt::ArchiveData(p);
       svrfmt::Image img;
-      if (k.id < 10000 && svrfmt::DdsDecode(d, img))
+      if (k.id < 10000 && svrfmt::DdsDecode(d, img)) {
+        // (a plain red picture is a place the old game filled itself, 2007 SmackDown's plate: left clear)
+        bool red = !img.rgba.empty();
+        for (size_t q = 0; red && q < img.rgba.size(); q += 4)
+          red = img.rgba[q] > 240 && img.rgba[q + 1] < 16 && img.rgba[q + 2] < 16;
+        if (red)
+          for (size_t q = 3; q < img.rgba.size(); q += 4)
+            img.rgba[q] = 0;
         pics[k.id][p.id] = std::move(img);
+      }
       else if (k.id >= 10000 && p.id == 0)
         Atb1Read(d, anims[k.id]);
     }
@@ -2529,6 +2538,11 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
     if (!movies.empty())
       ReplaceLike(k, d);
   }
+  // WWE '12 gives 800 no movie (its own 800 is a small screen; a 2K stage screen left on 800 stayed black, 2026-10-31;
+  // 2007 RAW's big screen, 800 and 803 on one quad, stayed dark in the match, 2026-11-01): 800 made 808, a titantron
+  // screen, when the arena has none.
+  if (kid(ga, 800) && !kid(ga, 808))
+    kid(ga, 800)->id = 808;
   std::sort(ga.kids.begin(), ga.kids.end(), [](const svrfmt::ArcNode &a, const svrfmt::ArcNode &b) { return a.id < b.id; });
   svrfmt::ArchiveTouch(ga);
   return true;

@@ -173,3 +173,13 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
     arène de base telles quelles (`port13::Etex` sur l'evtgdhd.pac de WWE '12) quand le jeu n'en a pas (2007 ; celles
     de WrestleMania XXVII au logo de l'émission, premier essai, n'ont pas plu à l'utilisateur), transition de
     l'arène de base quand il n'en a pas (2007, 2008).
+- **Deuxième et troisième essais en jeu (2026-11-01)** : la scène de 2007 est bien chargée (journal : « /STG/0001: the
+  added arena »), les petits écrans (801) passent la vidéo de l'arène, mais le grand écran restait sombre en match :
+  WWE '12 ne donne aucune vidéo au numéro 800 (déjà vu sur une scène 2K) ; 800 devient 808 quand l'arène n'en a pas.
+  **SvR 2007 a bien ses plaques** : `pac/evt/evt2dHD.pac` ET2D/00NN (ET2D/0000 = la plaque bleue de SmackDown, et
+  chaque arène la sienne : RAW mécanique avec étincelles, ville de WrestleMania 22, « A » d'Armageddon), animations ATB0
+  v1 comme 2008 : `OldSvrPlates` les lit (année ≤ 2008 → ET2D) ; une image rouge unie (place que le jeu remplissait,
+  2007 SmackDown) est laissée transparente. Les 20 plaques dessinées hors du jeu. CSFT/00NN du même fichier = polices ;
+  `pac/movie.pac` MOV/M000-M019 = boucles d'arène 256 × 256 (Bink 1, ~7 s ; pas repris : celle de la base passe). Les
+  plaques de la base ne servent plus que si l'arène n'en a pas. Transition : l'utilisateur en a vu une au lancement d'un
+  match de SvR 2007 ; pas encore trouvée (celle de la base en attendant).

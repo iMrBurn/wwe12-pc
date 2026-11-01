@@ -1525,7 +1525,7 @@ class Page {
     Bytes evtgd12;
     port_svr_arena::Plate2K plate;
     std::vector<svrfmt::Image> transition;
-    if (old_svr && svr_disc_.Read("pac/evt/_EvtGdHD.pac", evtgd) &&
+    if (old_svr && svr_disc_.Read(svr_year_ == 2007 ? "pac/evt/evt2dHD.pac" : "pac/evt/_EvtGdHD.pac", evtgd) &&
         port_svr_arena::OldSvrPlates(evtgd, svr_pick_, svr_year_, slot_ >= 0 ? kSlots[slot_].number : 2, plate,
                                      &transition)) {
       if (!plate.img.rgba.empty() && disc_ && disc_->Read("pac/evt/evtgdhd.pac", evtgd12)) {
