@@ -162,7 +162,11 @@ inline void StraightenLegChains(svrfmt::Model &m, const std::vector<bool> &on_le
 }
 
 // The WWE '13 model `m` on the base model's skeleton: base's node order, WWE '13's bind pose.
-inline bool Reskeleton(svrfmt::Model &m, const svrfmt::Model &base, Report *rep, std::string *why) {
+// skeleton: the base's body nodes, for a model other than the body (the hair): a bone of the body its own skeleton
+// hasn't is added to it (2K14 Ultimate Warrior's boot fringes are in his hair model, on the calves and feet; the base's
+// hair skeleton is the head's 7 nodes: they went to "Bip", following the hips, never the legs - 2026-11-01).
+inline bool Reskeleton(svrfmt::Model &m, const svrfmt::Model &base, Report *rep, std::string *why,
+                       const std::vector<svrfmt::Node> *skeleton = nullptr) {
   auto find = [](const std::vector<svrfmt::Node> &nodes, const std::string &name) {
     for (size_t i = 0; i < nodes.size(); ++i)
       if (port_svr::SameName(nodes[i].name, name))
@@ -184,7 +188,7 @@ inline bool Reskeleton(svrfmt::Model &m, const svrfmt::Model &base, Report *rep,
     if (rep)
       ++rep->bones_mapped;
   }
-  // Its spring chains on the legs (2K14 Ultimate Warrior's boot fringes, kami_b10 / b11 on the calves): WWE '12's
+  // Its spring chains on the legs (2K14 Ultimate Warrior's knee strings, kami_b10 / b11 on the calves): WWE '12's
   // springs neither follow a leg (they hung straight, beside his bent legs) nor does the game move a node it added
   // without a spring (left at its rest place). They go to the leg bone itself, their vertices first turned about the
   // chain's root so that the chain lies along the leg (at rest it leans out, hanging from a spread leg).
@@ -197,8 +201,16 @@ inline bool Reskeleton(svrfmt::Model &m, const svrfmt::Model &base, Report *rep,
   std::vector<int> map(m.nodes.size(), -1);
   for (size_t i = 0; i < m.nodes.size(); ++i) {
     const auto extra = ExtraBones().find(m.nodes[i].name);
-    int k = find(base.nodes, extra != ExtraBones().end() ? extra->second : m.nodes[i].name);
+    const std::string &want = extra != ExtraBones().end() ? extra->second : m.nodes[i].name;
+    int k = find(nodes, want);
     const int parent = m.nodes[i].parent;
+    if (k < 0 && skeleton && find(*skeleton, want) >= 0 && parent >= 0 && size_t(parent) < i && map[size_t(parent)] >= 0) {
+      svrfmt::Node n = m.nodes[i];
+      n.name = want;
+      n.parent = map[size_t(parent)];
+      nodes.push_back(n);
+      k = int(nodes.size()) - 1;
+    }
     if (k < 0 && !on_leg[i] && m.nodes[i].name.rfind("kami", 0) == 0 && parent >= 0 && size_t(parent) < i &&
         map[size_t(parent)] >= 0) {
       svrfmt::Node n = m.nodes[i];
@@ -303,7 +315,10 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
     for (size_t i = 0; i < ms.nodes.size(); ++i)
       if (on_leg[i])
         leg_chains.insert(ms.nodes[i].name);
-    if (!Reskeleton(ms, mb, from == 0 ? rep : nullptr, why))
+    svrfmt::Model body;  // (the base's body skeleton, for the hair's bones on the body: Warrior's boot fringes)
+    if (from != 0 && child(base, 0))
+      svrfmt::JboyRead(svrfmt::ArchiveData(*child(base, 0)), body, &e);
+    if (!Reskeleton(ms, mb, from == 0 ? rep : nullptr, why, from != 0 && !body.nodes.empty() ? &body.nodes : nullptr))
       return false;
     if (from == 0 && rep)
       rep->meshes = int(ms.meshes.size());

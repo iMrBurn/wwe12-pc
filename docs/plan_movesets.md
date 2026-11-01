@@ -363,8 +363,11 @@ Entrées 2K14 sans accessoire inconnu de WWE '12 (le meilleur choix pour l'insta
   WWE '12, '13 et 2K14 ; colonnes (d'après `w13_char.py` de Kaiko) : rayon, viscosité, gravité, ressort, amortissement,
   A, longueur, bend, mouvement. Le portage garde maintenant les os `kami_*` que la base n'a pas (ajoutés sous leur
   parent) et reprend 60 / 61. **Vu en jeu** : cheveux et rubans des bras de Warrior balancent.
-- **Franges des bottes de Warrior (kami_b10 / b11 sur les mollets) : pas résolu.** Avec ressorts : elles pendent droit
-  à côté des jambes pliées (WWE '12 n'a de ressorts que sur la tête et le haut des bras, ch283) ; gravité 0, sans
-  collision du mollet : pareil ; os ajoutés sans ressort : immobiles. Soudées au mollet après avoir été tournées et
-  recentrées sur l'axe du tibia (fichier vérifié : 122 sommets par jambe sur l'axe) : elles flottent encore à côté du
-  tibia en jeu, donc le jeu ne place pas ces sommets comme le modèle l'indique. Prochaine étape : capture RenderDoc.
+- **Jupettes des bottes de Warrior : résolu (vu en jeu, 2026-11-01).** Trouvé avec RenderDoc (`work/rdc/skirt_*.py` :
+  le jeu applique au sommet la même transformation que la botte, au 1/10 000 près ; image du dessin) : `kami_b10` / `b11`
+  sont les **ficelles des genoux** (pièce 29 du corps), et les **jupettes orange sont dans le modèle des cheveux**
+  (10000, pièce 0 `yCh_trans`, sur les mollets et les pieds). Le squelette des cheveux de la base n'a que les 7 os de la
+  tête : les jupettes allaient à « Bip » (les hanches). Le portage ajoute maintenant au squelette d'un autre modèle que
+  le corps les os du corps qui lui manquent (bassin, cuisses, mollets, pieds : `Reskeleton(..., skeleton)`). Les
+  ficelles des genoux (chaînes de ressorts sur la jambe : WWE '12 ne les suit pas) sont soudées au mollet après avoir
+  été tournées et recentrées sur l'axe du tibia ; leurs lignes de ressorts sont retirées.
