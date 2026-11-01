@@ -58,7 +58,7 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
 - Release : changer `VERSION`, compiler en release, `tools/package.ps1` → `dist/WWE12-PC-v<ver>.zip`,
   écrire `dist/RELEASE_NOTES_v<ver>.md`. `dist/symbols-v<ver>/` garde `wwe12.map` + `wwe12.exe` de la version (pour traduire les
   hang_trace/crash_trace des joueurs ; la 0.7.0 n'a pas sa carte). Coller à la fin des notes le contenu de `dist/SHA256-v<ver>.txt` (empreintes du zip
-  et des deux exe, non signés : Windows Defender les a déjà signalés à tort en 0.6.0 ; faux positif à
+  et des exe, non signés : Windows Defender les a déjà signalés à tort en 0.6.0 ; faux positif à
   soumettre à Microsoft par l'utilisateur ; signature de code à envisager pour la 1.0). Le tag GitHub doit être `v<VERSION>` : le launcher s'en sert
   pour les mises à jour automatiques. Mise à jour automatique vérifiée en vrai par l'utilisateur (0.5.0 → 0.5.1,
   2026-10-12) : elle garde `wwe12.toml`, `game/` et `mods/`.
@@ -131,24 +131,23 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   `wwe12_saves.cpp` (appelé après les DLC dans `wwe12_app.h`) extrait chaque paquet (même nom = remplacé),
   supprime la liste et écrit `saves_import_result.txt`. Signatures non vérifiées (pas de re-signature).
   Testé en vrai avec « A Promoter's Dream » de Petchy (95 paquets, CAW visibles dans le jeu).
-- **Choix du rendu (2026-10-26, pour la 1.0)** : DEUX exe, `wwe12.exe` (Vulkan, défaut) et `wwe12_d3d12.exe`
-  (cible CMake `WWE12_D3D12_EXE`, ON par défaut sur Windows ; réutilise `wwe12_recomp`, carte `.map` à part).
-  `build.ps1` produit les deux + `dxcompiler.dll` et `dxil.dll`. Le launcher lance l'un ou l'autre selon
-  `gpu_backend` de `wwe12.toml` (`any`/`vulkan` = wwe12.exe, `d3d12` = wwe12_d3d12.exe) ; OPTIONS > GRAPHICS >
-  ADVANCED a la ligne « GRAPHICS API » (même valeurs, appliquée au prochain lancement). Fusion en un seul exe
-  avec choix à l'exécution (comme Kaiko : `gpu.h` + `backend_*.cpp`) = plus tard : `g_vulkan` est constexpr à
-  ~50 endroits dans 16 fichiers. **Pièges D3D12** : 1) garder la profondeur inversée (MinZ > MaxZ), sinon
-  catcheurs et foule disparaissent ; 2) `dxil.dll` est OBLIGATOIRE (il signe le DXIL lié, sans lui toutes les
-  pipelines échouent) ; 3) le choix de carte se fait par fabricant (noms DXGI ≠ noms Vulkan) ; 4) correctifs
-  plume dans `port/patches/plume-d3d12.patch` (read-backs, choix de carte), appliqué par `setup.ps1` ; 5) les
-  4 fichiers de re:Blue (`shader_linker`, `dxc_link`, BSD-3, commit 85aae68) sont crédités dans `THIRD_PARTY.md`.
-  Liaison DXC au 1er passage : ~113 liaisons, ~9 ms chacune (≈ 1,5 s étalées), puis le cache de pipelines rejoue
-  en arrière-plan ; cache pré-lié possible avec `reblue_prelink` (non téléchargé, plus tard si besoin).
-  **Licence DXC** (v1.8.2407, textes dans `port/third_party/dxc/`) : `LICENSE-MS.txt` autorise de redistribuer
-  `dxil.dll` avec une appli MAIS exige que les utilisateurs acceptent des conditions qui protègent Microsoft et
-  que le distributeur **indemnise Microsoft** : décision de l'utilisateur avant de livrer. Le D3D12 n'est pas
-  prouvé utile pour les pavés Intel Gen9 (#7/#11/#13) : seul un joueur Gen9 peut le dire. Kaiko autorise de
-  lire et d'adapter son D3D11 avec crédit (voir la mémoire `kaiko-permission-2026-10-26`).
+- **Choix du rendu (1.0, mis à jour le 2026-11-01)** : TROIS exe : `wwe12.exe` (Vulkan, défaut), `wwe12_d3d12.exe`
+  (cible CMake `WWE12_D3D12_EXE`) et `wwe12_d3d11.exe` (cible `WWE12_D3D11_EXE`, ON pour la release ; backend D3D11 de
+  plume repris de Kaiko avec sa permission et crédit « SvR 2011 PC port (KaikoClanworth1) », voir `docs/dx11.md`) ;
+  ils réutilisent `wwe12_recomp`, une carte `.map` chacun. Le launcher lance l'un ou l'autre selon `gpu_backend` de
+  `wwe12.toml` (`any` = wwe12.exe qui enchaîne Vulkan → D3D12 → D3D11 si le device échoue, `vulkan`, `d3d12`,
+  `d3d11`) ; OPTIONS > GRAPHICS > ADVANCED a la ligne « GRAPHICS API » à 4 valeurs (« (NOT INSTALLED) » si l'exe
+  manque). **Aucune DLL Microsoft n'est livrée** : depuis le 26/10 (commit 71bd3f3) l'outil `wwe12_prelink` lie
+  à la compilation les 1 996 variantes de shaders et les intègre à `wwe12_d3d12.exe` (`linked_shader_cache`, miniz) ;
+  `dxcompiler.dll` n'est chargé en différé que s'il est présent (dossier de dev) ; le D3D11 embarque ses shaders
+  DXBC. À EXCLURE du zip : `dxcompiler.dll`, `dxil.dll`, `wwe12_prelink.exe` (outil de compilation), fxc,
+  d3dcompiler. **Pièges D3D12** : 1) garder la profondeur inversée (MinZ > MaxZ), sinon catcheurs et foule
+  disparaissent ; 2) le choix de carte se fait par fabricant (noms DXGI ≠ noms Vulkan) ; 3) correctifs plume dans
+  `port/patches/plume-d3d12.patch` (read-backs, choix de carte) et `plume-d3d11.patch`, appliqués par `setup.ps1` ;
+  4) les fichiers de re:Blue (`shader_linker`, `dxc_link`, BSD-3, commit 85aae68) sont crédités dans
+  `THIRD_PARTY.md`. D3D11 : reflets du soleil non dessinés. La chaîne AUTO sur un vrai échec de Vulkan a été vue
+  (Vulkan → D3D12) ; le dernier pas (D3D12 → D3D11) n'est pas testé. Idée plus tard : fusion en un seul exe avec
+  choix à l'exécution (comme Kaiko : `gpu.h` + `backend_*.cpp`) ; `g_vulkan` est constexpr à ~50 endroits.
 - Clavier (2026-10-16) : le jeu n'accepte que des noms de touches exacts et sensibles à la casse (table de
   `rexglue-sdk/src/ui/keybinds.cpp`, recopiée dans `launcher/keybinds.h`) ; un nom inconnu ou un modificateur
   seul (`Shift`) est ignoré sans message. Le launcher corrige/valide les noms et propose « Définir ».
