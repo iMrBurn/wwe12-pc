@@ -55,6 +55,7 @@ using Bytes = std::vector<uint8_t>;
 constexpr const char *kPackName = "WWE12PCMODS";
 
 std::map<uint32_t, uint32_t> g_movies;  // added superstar -> the number of its own entrance video
+std::vector<std::pair<uint32_t, std::string>> g_themes;  // added superstars' own themes: music number, name
 fs::path g_menu_dir;                    // the dressed menu files of this start, "" = the game's
 std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the save keeps it (286 bytes)
 std::map<uint32_t, Bytes> g_moves;      // ... its moves and entrance (CHAR / PRO) as the save keeps them (1068 bytes)
@@ -652,9 +653,13 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   stars.erase(std::remove_if(stars.begin(), stars.end(), [](const auto &s) { return !s.slot || s.model.empty(); }),
               stars.end());
   g_movies.clear();
-  for (const auto &st : stars)
+  g_themes.clear();
+  for (const auto &st : stars) {
     if (st.movie_number)
       g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
+    if (st.own_entrance > 0 && !st.theme.empty())
+      g_themes.push_back({uint32_t(st.own_entrance), st.name});
+  }
   // A superstar of the pack whose mod is gone: the pack stays as it is (a save may use him), with a warning.
   {
     std::vector<std::string> gone;
@@ -955,6 +960,9 @@ uint32_t Entering(const PPCContext &ctx, uint8_t *base) {
 }
 
 }  // namespace
+
+// The added superstars' own themes (music number, name), for the jukebox (wwe12_jukebox.cpp).
+std::vector<std::pair<uint32_t, std::string>> Wwe12AddedThemes() { return g_themes; }
 
 extern "C" REX_FUNC(sub_82A316A0) {
   if (!g_movies.empty()) {

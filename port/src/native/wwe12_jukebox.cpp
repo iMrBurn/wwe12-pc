@@ -75,6 +75,8 @@ REX_EXTERN(__imp__sub_8271BEE0);
 
 #include "wwe12_jukebox_page.inc"
 
+std::vector<std::pair<uint32_t, std::string>> Wwe12AddedThemes();  // wwe12_superstar_mods.cpp
+
 namespace {
 
 constexpr u32 kDescVtable = 0x82002EC4u;  // the sound description the callers build on the stack
@@ -182,6 +184,13 @@ void LoadThemes() {
     const std::string name = SuperstarName(n);
     if (!name.empty() && name != "0" && OwnedState(n) == 2)
       g_themes.push_back({n, name});
+  }
+  // the added superstars' own themes (a WWE '13 one, in the mods pack's sound package)
+  for (const auto &[n, name] : Wwe12AddedThemes()) {
+    std::string up;
+    for (char c : name)
+      up += char(std::toupper(static_cast<unsigned char>(c)));
+    g_themes.push_back({n, up});
   }
   BD_INFO("[jukebox] {} themes (first {} {}, last {} {})", g_themes.size(),
           g_themes.empty() ? 0 : g_themes.front().number, g_themes.empty() ? "" : g_themes.front().name,
