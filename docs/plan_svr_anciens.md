@@ -193,3 +193,9 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   moitié de l'écran en haut à gauche (WWE '12 écrit la ville près du coin ; la grande plaque de 2007 y est posée pour que
   sa barre tombe sur le texte) : réduite autour du texte quand elle sortirait de l'écran (marge 16 px). Page Home, guide
   et NOUVEAU CATCHEUR du Mod Maker mis à jour : SvR 2007 à 2011, DLC, écran VS / plaques / transition des arènes.
+- **Texte dans la fenêtre des plaques (2026-11-01, demande de l'utilisateur)** : le texte de WWE '12 (nom, ville) tombait
+  sur la barre du bas de la plaque RAW 2007 (point fixe à 60 % × 50 %). `OldSvrPlates` cherche maintenant la fenêtre
+  sombre de la plaque (plus longue suite de lignes aux 2/5 sombres et opaques, puis de colonnes, loin des bords) et y
+  centre le texte ; sinon l'ancien point. Vérifié hors du jeu sur les plaques 2007-2009 : la fenêtre trouvée pour RAW
+  2007, Taboo Tuesday, HEAT, No Mercy 2008 / 2009, No Way Out 2009, Unforgiven 2009, Tribute to the Troops ; les autres
+  gardent l'ancien point (No Mercy 2007, sans fenêtre : sous les lames).

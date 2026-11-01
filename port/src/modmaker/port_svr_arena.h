@@ -1910,10 +1910,57 @@ inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate
       name.img = Crop(still, x0, y0, w, h);
       name.w = 1.5f * w;
       name.h = 1.5f * h;
-      // (the name on the bar: the plate's middle, a little right of it past the show's logo on its left)
+      // The text in the plate's dark window when it has one (2007 RAW's black screen: on its lower bar, the text was
+      // under it, 2026-11-01): the longest run of rows two-fifths dark (dark and opaque), then of columns in them, away
+      // from the edges; else
+      // on the bar, the plate's middle, a little right of it past the show's logo on its left.
+      float ax = 0.6f, ay = 0.5f;
+      {
+        const auto dark = [&](int x, int y) {
+          const uint8_t *p = &name.img.rgba[(size_t(y) * w + x) * 4];
+          return p[3] > 200 && p[0] * 3 + p[1] * 6 + p[2] < 10 * 50;
+        };
+        const auto longest = [](const std::vector<bool> &on, int &a, int &b) {
+          a = b = -1;
+          for (int i = 0, s = -1; i <= int(on.size()); ++i) {
+            if (i < int(on.size()) && on[size_t(i)]) {
+              if (s < 0)
+                s = i;
+              continue;
+            }
+            if (s >= 0 && i - s > b - a)
+              a = s, b = i;
+            s = -1;
+          }
+        };
+        std::vector<bool> rows(static_cast<size_t>(h));
+        for (int y = 0; y < h; ++y) {
+          int n = 0;
+          for (int x = 0; x < w; ++x)
+            n += dark(x, y);
+          rows[size_t(y)] = n * 5 >= w * 2;
+        }
+        int r0, r1, c0, c1;
+        longest(rows, r0, r1);
+        if (r0 >= 0 && (r1 - r0) * 10 >= h) {
+          std::vector<bool> cols(static_cast<size_t>(w));
+          for (int x = 0; x < w; ++x) {
+            int n = 0;
+            for (int y = r0; y < r1; ++y)
+              n += dark(x, y);
+            cols[size_t(x)] = n * 5 >= (r1 - r0) * 4;
+          }
+          longest(cols, c0, c1);
+          // (a window, inside the plate: not a dark corner of its background, 2008 WrestleMania 23's)
+          if (c0 >= 0 && (c1 - c0) * 5 >= w && c0 > w / 50 && c1 < w - w / 50 && r0 > h / 50 && r1 < h - h / 50) {
+            ax = (c0 + c1) / 2.0f / w;
+            ay = (r0 + r1) / 2.0f / h;
+          }
+        }
+      }
       const PlateText t = PlateTextFor(base);
-      name.x = t.name_x - 1.5f * 0.6f * w;
-      name.y = t.name_y - 1.5f * 0.5f * h;
+      name.x = t.name_x - 1.5f * ax * w;
+      name.y = t.name_y - 1.5f * ay * h;
       // its coming in: 20 pictures from the first frame it shows, every other frame (the flip book shows each 2
       // frames at 60 a second), at half size, cut as the plate
       for (int k = 0; k < 20 && start + 2 * k < hold; ++k) {
