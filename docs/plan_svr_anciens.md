@@ -135,6 +135,9 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
     STG<k>/00NN de `pac/bg/bg<k>.pac` (k = NN / 10 ; bg0.pac a aussi les armes, la cage, les échelles) : l'arène est
     sortie seule dans un EPAC « STG » comme ceux de 2008, sa foule (modèles et fichiers de places 20000-21247,
     40000-40191) laissée (foule de la base). Table `kArenasSvr07` (19 arènes ; 3 et 20+ sont des copies du mode
-    histoire). Les 19 passent (4 jeux de lumières pris dans la base, arbre de visibilité fabriqué). Pas de bannière (pas
-    d'écran VS par arène dans 2007 : celle de la base) ni de plaques d'entrée (pas de `_EvtGdHD.pac`).
+    histoire). Les 19 passent (4 jeux de lumières pris dans la base, arbre de visibilité fabriqué). Bannière : pas
+    d'écran VS par arène dans 2007 (ses images MACH sont des animations d'intro, pas des logos), donc son tablier
+    (rin_ep00, 1024 × 256, le nom de l'émission en grand) au milieu d'un gros plan assombri de lui-même. Pas de
+    plaques d'entrée (pas de `_EvtGdHD.pac`). Ring blanc et tache blanche sur le tablier dans la vue 3D : pareil avec
+    SvR 2008 (vu par l'utilisateur), c'est l'aperçu.
   - À voir en jeu : tout.

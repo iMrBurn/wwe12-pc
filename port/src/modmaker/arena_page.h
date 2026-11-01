@@ -812,14 +812,15 @@ class Page {
       return 0;
     return port13::RampHeight(a.root.kids[0]) * to_cm;
   }
-  // An arena's apron picture (rin_ep00 in its texture package, 400), as stored (DDS); empty if none.
+  // An arena's apron picture (rin_ep00 in its texture package, 400; SvR 2007-2009 before the port: 200), as stored
+  // (DDS); empty if none.
   static Bytes Apron(const Bytes &file) {
     svrfmt::Archive a;
     if (!svrfmt::ArchiveOpen(file, a, nullptr) || a.root.kids.empty() || !svrfmt::ArchiveExpand(a.root.kids[0]))
       return {};
     for (const auto &k : a.root.kids[0].kids) {
       std::vector<svrfmt::BundleTexture> t;
-      if (k.id != 400 || !svrfmt::BundleRead(svrfmt::ArchiveData(k), t))
+      if ((k.id != 400 && k.id != 200) || !svrfmt::BundleRead(svrfmt::ArchiveData(k), t))
         continue;
       for (const auto &x : t)
         if (_stricmp(x.name.c_str(), "rin_ep00") == 0)
@@ -1480,6 +1481,18 @@ class Page {
     if (svr_pick_ >= 0 && svr_disc_.Read("pac/menu/MatchHD.pac", matchhd) &&
         port_svr_arena::Banner(matchhd, svr_pick_, img, svr_year_)) {
       SetBanner(Fill(img, 256, 128));
+      banner_custom_ = true;
+    } else if (svr_pick_ >= 0 && svr_year_ == 2007 && svrfmt::DdsDecode(Apron(svr_file_), img) && img.w > 0) {
+      // SvR 2007 has no VS screen per arena: its apron (the show's name across it, 1024 x 256) made the banner, whole
+      // in the middle on a darkened close-up of itself.
+      svrfmt::Image tile = Fill(img, 256, 128);
+      for (size_t i = 0; i < tile.rgba.size(); i += 4)
+        for (int c = 0; c < 3; ++c)
+          tile.rgba[i + c] = uint8_t(tile.rgba[i + c] * 2 / 5);
+      const svrfmt::Image strip = svrfmt::Resize(img, 256, 64);
+      for (int y = 0; y < 64; ++y)
+        memcpy(&tile.rgba[size_t(y + 32) * 256 * 4], &strip.rgba[size_t(y) * 256 * 4], 256 * 4);
+      SetBanner(tile);
       banner_custom_ = true;
     } else {
       banner_custom_ = false;
