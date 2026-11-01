@@ -5,6 +5,7 @@
 #include <mach/mach.h>
 #include <mach/vm_map.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -17,8 +18,14 @@
 #include "compat/windows.h"
 
 // crash_trace.cpp (crash traces and the freeze watchdog, dbghelp): not on iOS. The renderer
-// calls this once per presented frame.
-void SvrWatchdogHeartbeat() {}
+// calls this once per presented frame. Here it also holds the render thread while the app is not
+// in the foreground (a notification, the Control Center, another app): iOS refuses GPU work then
+// ("Insufficient Permission (to submit GPU work from background)") and the game closed itself.
+// Wwe12IosInactive is kept by wwe12_launcher_ios.mm from the UIApplication notifications.
+extern "C" volatile int Wwe12IosInactive;
+void SvrWatchdogHeartbeat() {
+  while (Wwe12IosInactive) usleep(20000);
+}
 
 // compat/windows.h: VirtualQuery from the Mach VM regions. wwe12_quit.cpp walks the guest memory
 // with it (readable and writable regions) to rename texts.
@@ -125,3 +132,6 @@ __attribute__((constructor(102))) void IosInstallDefaultSettings() {
 }
 
 }  // namespace
+
+// Set by a three-finger tap (wwe12_touch_ios.mm), read as F9 through GetAsyncKeyState (compat/windows.h).
+extern "C" volatile int Wwe12IosKeyF9 = 0;

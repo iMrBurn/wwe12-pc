@@ -77,6 +77,16 @@ struct ConsolePhrase {
   const char *after;   // text right after it
   const char *pc;      // replacement for before + "Xbox 360" + after
 };
+#if defined(WWE12_IOS)
+constexpr ConsolePhrase kConsolePhrases[] = {
+    {"votre Console ", "", "votre iPhone"},   // French
+    {"your ", " console", "your iPhone"},     // English
+    {"la console ", "", "l'iPhone"},          // Italian
+    {"la Consola ", "", "el iPhone"},         // Spanish
+    {"tu Consola ", "", "tu iPhone"},         // Spanish
+    {"deine ", " Konsole", "dein iPhone"},    // German
+};
+#else
 constexpr ConsolePhrase kConsolePhrases[] = {
     {"votre Console ", "", "votre PC"},   // French
     {"your ", " console", "your PC"},     // English
@@ -85,6 +95,7 @@ constexpr ConsolePhrase kConsolePhrases[] = {
     {"tu Consola ", "", "tu PC"},         // Spanish
     {"deine ", " Konsole", "deinen PC"},  // German
 };
+#endif
 
 u32 RewriteConsolePhrase(u8 *hit, u8 *region_start, u8 *region_end) {
   for (const ConsolePhrase &ph : kConsolePhrases) {

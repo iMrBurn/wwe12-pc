@@ -380,6 +380,55 @@ static std::string DlcInstalledDir(const std::string& file) {
   return Docs() + "/wwe12/0000000000000000/54510890/00000002/" + DlcInstallName(file);
 }
 
+// ---- saves: Documents/wwe12/<profile>/54510890 and the achievements file; a backup mirrors both
+// under wwe12/SaveBackups/<date>/ (the same layout as the PC and Android versions) ----
+
+static std::string SaveDir() { return Docs() + "/wwe12/B13EBABEBABEBABE/54510890"; }
+static std::string AchFile() { return Docs() + "/wwe12/achievements/54510890.toml"; }
+static std::string BackupsDir() { return Docs() + "/wwe12/SaveBackups"; }
+
+static bool PathExists(const std::string& p) { return [[NSFileManager defaultManager] fileExistsAtPath:NS(p)]; }
+
+static void CopyReplace(const std::string& from, const std::string& to) {
+  NSFileManager* fm = [NSFileManager defaultManager];
+  [fm removeItemAtPath:NS(to) error:nil];
+  MakeDir(to.substr(0, to.rfind('/')));
+  [fm copyItemAtPath:NS(from) toPath:NS(to) error:nil];
+}
+
+// Backup names, newest first.
+static std::vector<std::string> BackupNames() {
+  std::vector<std::string> out;
+  NSArray* names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:NS(BackupsDir()) error:nil];
+  for (NSString* n in names) {
+    if (![n hasPrefix:@"."]) out.push_back(std::string([n UTF8String]));
+  }
+  std::sort(out.begin(), out.end(), [](const std::string& a, const std::string& b) { return a > b; });
+  return out;
+}
+
+// Copies the save and the achievements. Returns the backup's name, or "" when there is nothing yet.
+static std::string MakeBackup(const std::string& label, bool automatic) {
+  if (!PathExists(SaveDir()) && !PathExists(AchFile())) return "";
+  NSDateFormatter* fmt = [[NSDateFormatter alloc] init];
+  fmt.dateFormat = @"yyyy-MM-dd_HHmmss";
+  fmt.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+  std::string name = std::string([[fmt stringFromDate:[NSDate date]] UTF8String]);
+  if (automatic) name += "_auto";
+  else if (!label.empty()) name += "_" + SafeName(label);
+  const std::string dest = BackupsDir() + "/" + name;
+  if (PathExists(SaveDir())) CopyReplace(SaveDir(), dest + "/B13EBABEBABEBABE/54510890");
+  if (PathExists(AchFile())) CopyReplace(AchFile(), dest + "/achievements/54510890.toml");
+  if (automatic) {  // only the latest 10 automatic ones are kept
+    int seen = 0;
+    for (const std::string& n : BackupNames()) {
+      if (!EndsWith(n, "_auto")) continue;
+      if (++seen > 10) [[NSFileManager defaultManager] removeItemAtPath:NS(BackupsDir() + "/" + n) error:nil];
+    }
+  }
+  return name;
+}
+
 @interface Wwe12LauncherViewController : UIViewController <UIDocumentPickerDelegate>
 @property(nonatomic, copy) void (^onPlay)(void);
 @end
@@ -392,6 +441,7 @@ static std::string DlcInstalledDir(const std::string& file) {
   NSString* _message;        // result of the last action, shown on the Install and DLC tabs
   UILabel* _progressLabel;   // live text while copying
   UIProgressView* _bar;
+  UITextField* _backupName;
 }
 
 - (UIScrollView*)scrollPage:(UIStackView**)outStack {
@@ -840,6 +890,83 @@ static std::string NewestLog(const char* prefix) {
   return page;
 }
 
+// ---- Saves ----
+
+- (void)confirm:(NSString*)message action:(void (^)(void))action {
+  UIAlertController* a = [UIAlertController alertControllerWithTitle:nil message:message preferredStyle:UIAlertControllerStyleAlert];
+  [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+  [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDestructive handler:^(UIAlertAction*) { action(); }]];
+  [self presentViewController:a animated:YES completion:nil];
+}
+
+- (UIView*)buildSavesPage {
+  UIStackView* stack = nil;
+  UIScrollView* page = [self scrollPage:&stack];
+  __weak Wwe12LauncherViewController* weakSelf = self;
+
+  UIStackView* mk = Card(stack, @"Back up");
+  [mk addArrangedSubview:Label(@"A backup copies your save and your achievements (not the DLC). Restoring or deleting always backs up your current save first.", 13.0, W12_DIM, NO)];
+  _backupName = [[UITextField alloc] init];
+  _backupName.placeholder = @"Backup name (optional)";
+  _backupName.borderStyle = UITextBorderStyleRoundedRect;
+  _backupName.autocorrectionType = UITextAutocorrectionTypeNo;
+  [mk addArrangedSubview:_backupName];
+  [mk addArrangedSubview:Button(@"Back up now", YES, ^{
+    Wwe12LauncherViewController* s = weakSelf;
+    if (!s) return;
+    const std::string label = s->_backupName.text ? std::string([s->_backupName.text UTF8String]) : std::string();
+    const std::string made = MakeBackup(label, false);
+    [s setMessage:made.empty() ? @"Nothing to back up yet: play and save once first."
+                               : [NSString stringWithFormat:@"Backup created: %@", NS(made)]];
+  })];
+  if (_message) [mk addArrangedSubview:Label(_message, 13.0, [UIColor colorWithRed:0.94 green:0.75 blue:0.24 alpha:1.0], NO)];
+
+  UIStackView* list = Card(stack, @"Backups");
+  const std::vector<std::string> names = BackupNames();
+  if (names.empty()) [list addArrangedSubview:Label(@"No backup yet.", 14.0, W12_DIM, NO)];
+  for (const std::string& n : names) {
+    NSString* ns = NS(n);
+    UIStackView* row = [[UIStackView alloc] init];
+    row.spacing = 8.0;
+    row.alignment = UIStackViewAlignmentCenter;
+    UILabel* l = Label(ns, 12.0, W12_TEXT, NO);
+    [l setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    [row addArrangedSubview:l];
+    [row addArrangedSubview:Button(@"Restore", NO, ^{
+      [weakSelf confirm:@"Replace your current save with this backup? Your current save is backed up first." action:^{
+        const std::string name = std::string([ns UTF8String]);
+        const std::string from = BackupsDir() + "/" + name;
+        MakeBackup("", true);
+        [[NSFileManager defaultManager] removeItemAtPath:NS(SaveDir()) error:nil];
+        [[NSFileManager defaultManager] removeItemAtPath:NS(AchFile()) error:nil];
+        if (PathExists(from + "/B13EBABEBABEBABE/54510890")) CopyReplace(from + "/B13EBABEBABEBABE/54510890", SaveDir());
+        if (PathExists(from + "/achievements/54510890.toml")) CopyReplace(from + "/achievements/54510890.toml", AchFile());
+        [weakSelf setMessage:@"Save restored. It is used the next time you press PLAY."];
+      }];
+    })];
+    [row addArrangedSubview:Button(@"Delete", NO, ^{
+      [weakSelf confirm:@"Delete this backup?" action:^{
+        [[NSFileManager defaultManager] removeItemAtPath:NS(BackupsDir() + "/" + std::string([ns UTF8String])) error:nil];
+        [weakSelf setMessage:@"Backup deleted."];
+      }];
+    })];
+    [list addArrangedSubview:row];
+  }
+  [list addArrangedSubview:Label(@"The backups are in Documents/wwe12/SaveBackups: copy a folder out with the Files app to keep it, or copy one in to restore it here.", 12.0, W12_DIM, NO)];
+
+  UIStackView* del = Card(stack, @"Your save");
+  [del addArrangedSubview:Label(@"Starts over with an empty save. It is backed up first.", 13.0, W12_DIM, NO)];
+  [del addArrangedSubview:Button(@"Delete my save", NO, ^{
+    [weakSelf confirm:@"Delete your save? A backup is made first." action:^{
+      MakeBackup("", true);
+      [[NSFileManager defaultManager] removeItemAtPath:NS(SaveDir()) error:nil];
+      [[NSFileManager defaultManager] removeItemAtPath:NS(AchFile()) error:nil];
+      [weakSelf setMessage:@"Save deleted (a backup was made)."];
+    }];
+  })];
+  return page;
+}
+
 // ---- the screen ----
 
 - (void)showPage:(NSInteger)index {
@@ -851,6 +978,7 @@ static std::string NewestLog(const char* prefix) {
                  : index == 3 ? [self buildSettingsPage]
                  : index == 4 ? [self buildControlsPage]
                  : index == 5 ? [self buildSupportPage]
+                 : index == 6 ? [self buildSavesPage]
                               : [self buildPlayPage];
   page.translatesAutoresizingMaskIntoConstraints = NO;
   [_content addSubview:page];
@@ -865,8 +993,8 @@ static std::string NewestLog(const char* prefix) {
 - (void)viewDidLoad {
   [super viewDidLoad];
   self.view.backgroundColor = W12_BG;
-  // Tab order: Play, Install, DLC, Settings, Controls, Support.
-  UISegmentedControl* tabs = [[UISegmentedControl alloc] initWithItems:@[ @"Play", @"Install", @"DLC", @"Settings", @"Controls", @"Support" ]];
+  // Tab order: Play, Install, DLC, Settings, Controls, Support, Saves.
+  UISegmentedControl* tabs = [[UISegmentedControl alloc] initWithItems:@[ @"Play", @"Install", @"DLC", @"Settings", @"Controls", @"Support", @"Saves" ]];
   tabs.selectedSegmentIndex = 0;
   tabs.selectedSegmentTintColor = W12_RED;
   [tabs setTitleTextAttributes:@{NSForegroundColorAttributeName : W12_TEXT} forState:UIControlStateNormal];
@@ -945,4 +1073,19 @@ extern "C" void Wwe12IosLauncherShow(void) {
     window.rootViewController = nil;
     Wwe12IosLauncherActive = 0;
   }
+}
+
+// ---- foreground / background ----
+// iOS stops a game that submits GPU work while it is not the active app. These notifications keep
+// Wwe12IosInactive, which wwe12_ios.cpp's per-frame hook waits on.
+extern "C" volatile int Wwe12IosInactive = 0;
+
+__attribute__((constructor(104))) static void Wwe12IosWatchActivity() {
+  NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
+  void (^inactive)(NSNotification*) = ^(NSNotification*) { Wwe12IosInactive = 1; };
+  void (^active)(NSNotification*) = ^(NSNotification*) { Wwe12IosInactive = 0; };
+  [center addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil usingBlock:inactive];
+  [center addObserverForName:UIApplicationDidEnterBackgroundNotification object:nil queue:nil usingBlock:inactive];
+  [center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:active];
+  [center addObserverForName:UIApplicationWillEnterForegroundNotification object:nil queue:nil usingBlock:active];
 }

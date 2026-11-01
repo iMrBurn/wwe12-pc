@@ -322,6 +322,19 @@ UIColor* Rgb(int r, int g, int b) { return [UIColor colorWithRed:r / 255.0 green
 
 @end
 
+// A three-finger tap in the game asks for the detailed log of the next frame (F9 on the PC): the draw
+// calls, textures and shaders of one picture, to find what a broken HUD element is drawn with.
+extern "C" volatile int Wwe12IosKeyF9;
+
+@interface WWE12DiagTap : NSObject
+- (void)tapped:(UITapGestureRecognizer*)gesture;
+@end
+@implementation WWE12DiagTap
+- (void)tapped:(UITapGestureRecognizer*)gesture {
+  Wwe12IosKeyF9 = 1;
+}
+@end
+
 extern "C" volatile int Wwe12IosLauncherActive;  // wwe12_launcher_ios.mm
 
 namespace {
@@ -358,6 +371,18 @@ void Tick() {
   }
   UIWindow* w = FindGameWindow();
   if (!w) return;  // the game has not made its window yet
+  static UIWindow* diag_window = nil;
+  static WWE12DiagTap* diag_target = nil;
+  if (diag_window != w) {
+    diag_window = w;
+    if (!diag_target) diag_target = [[WWE12DiagTap alloc] init];
+    UITapGestureRecognizer* tap = [[UITapGestureRecognizer alloc] initWithTarget:diag_target action:@selector(tapped:)];
+    tap.numberOfTouchesRequired = 3;
+    tap.cancelsTouchesInView = NO;
+    tap.delaysTouchesBegan = NO;
+    tap.delaysTouchesEnded = NO;
+    [w addGestureRecognizer:tap];
+  }
   if (!g_view || g_view.superview != w) {
     g_view = [[WWE12TouchView alloc] initWithFrame:w.bounds];
     [w addSubview:g_view];

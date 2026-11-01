@@ -85,7 +85,19 @@ inline DWORD WaitForSingleObject(HANDLE, DWORD) { return 0; }
 
 // ---- Keyboard ------------------------------------------------------------------------------
 #define VK_F9 0x78
+#if defined(WWE12_IOS)
+// iPhone: a three-finger tap in the game stands for F9 (the detailed one-frame log, svr_draw_log.cpp).
+extern "C" volatile int Wwe12IosKeyF9;
+inline short GetAsyncKeyState(int key) {
+  if (key == VK_F9 && Wwe12IosKeyF9) {
+    Wwe12IosKeyF9 = 0;
+    return 1;
+  }
+  return 0;
+}
+#else
 inline short GetAsyncKeyState(int) { return 0; }
+#endif
 
 // ---- Memory --------------------------------------------------------------------------------
 #define PAGE_NOACCESS 0x01u
