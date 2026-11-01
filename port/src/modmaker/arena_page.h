@@ -1536,6 +1536,12 @@ class Page {
         if (port_svr_arena::EtexWearing(evtgd12, svrfmt::Image(), 3.4, svrfmt::Image(), etex_, city, plate))
           port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
       }
+      // (SvR 2007: none of its own, one made from its VS screen's background and logo)
+      bool made = false;
+      if (transition.empty() && svr_year_ == 2007) {
+        transition = port_svr_arena::Svr07Transition(vs07, banner_);
+        made = !transition.empty();
+      }
       if (!transition.empty()) {
         wchar_t tmp[MAX_PATH];
         GetTempPathW(MAX_PATH, tmp);
@@ -1561,7 +1567,8 @@ class Page {
         if (ok) {
           std::ifstream in(out, std::ios::binary);
           movie_.assign(std::istreambuf_iterator<char>(in), {});
-          port_note_ += fr ? " Avec sa transition (le logo WWE de SvR 2009)." : " With its transition (SvR 2009's WWE logo).";
+          port_note_ += made ? (fr ? " Avec une transition faite de son écran VS." : " With a transition made from its VS screen.")
+                             : (fr ? " Avec sa transition (le logo WWE de SvR 2009)." : " With its transition (SvR 2009's WWE logo).");
         }
         std::error_code ec;
         fs::remove(out, ec);

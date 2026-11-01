@@ -2096,6 +2096,74 @@ inline bool Svr07CardPictures(const Bytes &menuhd, int n, std::vector<svrfmt::Bu
   return !out.empty();
 }
 
+// A transition for a SvR 2007 arena. SvR 2007 has no transition movie: leaving its VS screen it throws a burst of fire
+// round the show's logo, then black (the user's recording of the game, 2026-11-01), an effect the game draws itself
+// (the VS screen's ATB0 entries 10000 are still layouts, length 0). Made alike from its VS pictures (Svr07CardPictures):
+// its background, its logo growing, a white flash a third of the way, fading in and out; 36 frames (30 a second) at
+// 320 x 320, with alpha, as WWE '12's transitions. Empty without a background.
+inline std::vector<svrfmt::Image> Svr07Transition(const std::vector<svrfmt::BundleTexture> &vs, const svrfmt::Image &banner) {
+  std::vector<svrfmt::Image> frames;
+  svrfmt::Image bg, logo;
+  for (const auto &t : vs)
+    svrfmt::DdsDecode(t.data, t.name == "logo" ? logo : bg);
+  if (bg.w <= 0 || bg.h <= 0)
+    return frames;
+  if (logo.w <= 0)
+    logo = banner;
+  // (the logo cut to its visible part: RAW's sits small in a wide clear picture)
+  int lx0 = logo.w, ly0 = logo.h, lx1 = -1, ly1 = -1;
+  for (int y = 0; y < logo.h; ++y)
+    for (int x = 0; x < logo.w; ++x)
+      if (logo.rgba[(size_t(y) * logo.w + x) * 4 + 3] > 24) {
+        lx0 = std::min(lx0, x), lx1 = std::max(lx1, x);
+        ly0 = std::min(ly0, y), ly1 = std::max(ly1, y);
+      }
+  if (lx1 >= lx0 && ly1 >= ly0 && (lx1 - lx0 + 1 < logo.w || ly1 - ly0 + 1 < logo.h)) {
+    svrfmt::Image cut{lx1 - lx0 + 1, ly1 - ly0 + 1, {}};
+    cut.rgba.resize(size_t(cut.w) * cut.h * 4);
+    for (int y = 0; y < cut.h; ++y)
+      memcpy(&cut.rgba[size_t(y) * cut.w * 4], &logo.rgba[(size_t(y + ly0) * logo.w + lx0) * 4], size_t(cut.w) * 4);
+    logo = std::move(cut);
+  }
+  constexpr int S = 320, N = 36;
+  // (the background's middle square)
+  const int side = std::min(bg.w, bg.h);
+  svrfmt::Image sq{side, side, std::vector<uint8_t>(size_t(side) * side * 4)};
+  for (int y = 0; y < side; ++y)
+    memcpy(&sq.rgba[size_t(y) * side * 4], &bg.rgba[(size_t(y + (bg.h - side) / 2) * bg.w + (bg.w - side) / 2) * 4],
+           size_t(side) * 4);
+  const svrfmt::Image back = svrfmt::Resize(sq, S, S);
+  for (int f = 0; f < N; ++f) {
+    const float t = float(f) / (N - 1);
+    const float fade = std::min({1.0f, t / 0.15f, (1 - t) / 0.25f});
+    const float flash = std::exp(-((t - 0.35f) * (t - 0.35f)) / (2 * 0.06f * 0.06f));
+    svrfmt::Image img = back;
+    if (logo.w > 0 && logo.h > 0) {
+      const float scale = 0.7f + 0.5f * t;
+      const int lw = std::max(1, int(S * 0.8f * scale)), lh = std::max(1, lw * logo.h / logo.w);
+      const svrfmt::Image l = svrfmt::Resize(logo, lw, lh);
+      const int x0 = (S - lw) / 2, y0 = (S - lh) / 2;
+      for (int y = 0; y < lh; ++y)
+        for (int x = 0; x < lw; ++x) {
+          const int X = x0 + x, Y = y0 + y;
+          if (X < 0 || Y < 0 || X >= S || Y >= S)
+            continue;
+          const uint8_t *s = &l.rgba[(size_t(y) * lw + x) * 4];
+          uint8_t *dd = &img.rgba[(size_t(Y) * S + X) * 4];
+          for (int c = 0; c < 3; ++c)
+            dd[c] = uint8_t((s[c] * s[3] + dd[c] * (255 - s[3])) / 255);
+        }
+    }
+    for (size_t q = 0; q < img.rgba.size(); q += 4) {
+      for (int c = 0; c < 3; ++c)
+        img.rgba[q + c] = uint8_t(std::min(255.0f, img.rgba[q + c] + 255 * flash));
+      img.rgba[q + 3] = uint8_t(255 * fade);
+    }
+    frames.push_back(std::move(img));
+  }
+  return frames;
+}
+
 // The arena's own SvR 2011 VS screen, after Kaiko's notes (VS_STYLES.md and vs_port.py, sent to the user 2026-10-28;
 // his SvR 2011 port takes SvR 2008-2010's themes the same way). The same system as WWE '12's, one version older:
 // SvR 2011's theme is MENU/MnnL (PACH: the layout, YXMLBIN VER0002), MENU/MnnI (7001 pictures, 7002 animations, ATB0

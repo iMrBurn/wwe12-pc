@@ -181,5 +181,10 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   v1 comme 2008 : `OldSvrPlates` les lit (année ≤ 2008 → ET2D) ; une image rouge unie (place que le jeu remplissait,
   2007 SmackDown) est laissée transparente. Les 20 plaques dessinées hors du jeu. CSFT/00NN du même fichier = polices ;
   `pac/movie.pac` MOV/M000-M019 = boucles d'arène 256 × 256 (Bink 1, ~7 s ; pas repris : celle de la base passe). Les
-  plaques de la base ne servent plus que si l'arène n'en a pas. Transition : l'utilisateur en a vu une au lancement d'un
-  match de SvR 2007 ; pas encore trouvée (celle de la base en attendant).
+  plaques de la base ne servent plus que si l'arène n'en a pas. Transition : sur l'enregistrement de l'utilisateur, en
+  quittant l'écran VS, SvR 2007 lance une gerbe de feu autour du logo de l'émission, puis du noir : un effet que le jeu
+  dessine lui-même (les entrées ATB0 10000 de MACH sont des mises en page fixes, longueur 0). Une transition est faite
+  pareille (`Svr07Transition`) : fond de l'écran VS (carré du milieu), logo recadré sur sa partie visible qui grandit,
+  éclair blanc au tiers, fondus ; 36 images à 30/s, 320 × 320 avec alpha (Bink 1, comme celle de 2009). La plaque de
+  SmackDown 2007 avait la vidéo d'entrée du catcheur dans son carré rouge : une plaque de WWE '12 est une image fixe,
+  le cadre reste vide.
