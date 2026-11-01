@@ -28,6 +28,7 @@
 #include "svrfmt/texture.h"
 
 extern "C" {
+#include "video/bink2_decode.h"
 #include "video/bink_decode.h"
 #include "video/bink_encode.h"
 }
@@ -331,9 +332,34 @@ inline bool ReadAvi(const fs::path &p, const std::function<bool(const uint8_t *b
 
 // The frames of `in` (Bink 2), decoded by the tool, each as BGRA top row first (RAD Video Tools: at the movie's size;
 // Librempeg: scaled to W x H). `put` returns false to stop. False if the tool couldn't decode it.
+// Our own reader (video/bink2_decode.h) knows WWE 2K14's KB2f and the 2K games' KB2i (checked 2026-10-28: every
+// frame of 2K14's and 2K15's titantrons), not WWE '13's KB2d: those revisions need no tool.
+inline bool OwnReads(char revision) { return revision == 'f' || revision == 'i'; }
+
 inline bool Decode(const Tool &tool, const fs::path &in, int frames, int W, int H,
                    const std::function<bool(const uint8_t *bgra, int w, int h)> &put, std::wstring *err) {
   bool ok = false;
+  Info info;
+  if (ReadInfo(in, info) && OwnReads(info.revision)) {
+    wchar_t why[256] = {};
+    if (Bink2Reader *r = bink2_open(in.c_str(), why, 256)) {
+      const int w = bink2_width(r), h = bink2_height(r);
+      std::vector<uint8_t> frame(size_t(w) * h * 4);
+      int got = 0;
+      for (int i = 0; i < bink2_frames(r) && i < frames; ++i) {
+        if (!bink2_next(r))
+          continue;
+        bink2_bgra(r, frame.data());
+        ++got;
+        if (!put(frame.data(), w, h))
+          break;
+      }
+      bink2_close(r);
+      if (got > 0)
+        return true;
+    }
+    (void)W, (void)H;
+  }
   if (tool.kind == Kind::kRad) {
     wchar_t tmp[MAX_PATH];
     GetTempPathW(MAX_PATH, tmp);
@@ -511,7 +537,7 @@ inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, s
       *err = L"not a Bink 2 movie";
     return false;
   }
-  if (tool.kind == Kind::kNone) {
+  if (tool.kind == Kind::kNone && !OwnReads(info.revision)) {
     if (err)
       *err = L"no Bink 2 decoder installed";
     return false;
@@ -652,12 +678,12 @@ inline std::string Narrow(const std::wstring &w) {
 inline void DrawSetting(bool fr) {
   ImGui::SeparatorText(fr ? "Vidéos Bink 2 (WWE 2K15 à 2K17)" : "Bink 2 movies (WWE 2K15 to 2K17)");
   ImGui::PushTextWrapPos(0);
-  ImGui::TextDisabled("%s", fr ? "Les vidéos d'entrée des jeux 2K sont en Bink 2. Pour les reprendre, le Mod Maker utilise un "
-                                 "outil que vous installez vous-même : RAD Video Tools (gratuit, de RAD Game Tools) ou "
-                                 "le ffmpeg de Librempeg. Rien de RAD n'est fourni avec le portage."
-                               : "The 2K games' entrance movies are Bink 2. To bring them, the Mod Maker uses a tool you "
-                                 "install yourself: RAD Video Tools (free, from RAD Game Tools) or Librempeg's ffmpeg. "
-                                 "Nothing of RAD's ships with the port.");
+  ImGui::TextDisabled("%s", fr ? "Les vidéos d'entrée des jeux 2K sont en Bink 2. Le Mod Maker lit lui-même celles de 2K14 "
+                                 "à 2K17. Un outil que vous installez vous-même (RAD Video Tools, gratuit, ou le ffmpeg de "
+                                 "Librempeg) ne sert qu'en secours. Rien de RAD n'est fourni avec le portage."
+                               : "The 2K games' entrance movies are Bink 2. The Mod Maker reads 2K14's to 2K17's itself. A "
+                                 "tool you install yourself (RAD Video Tools, free, or Librempeg's ffmpeg) is only a "
+                                 "fallback. Nothing of RAD's ships with the port.");
   ImGui::PopTextWrapPos();
   const Tool &t = Found();
   if (t.kind == Kind::kNone)

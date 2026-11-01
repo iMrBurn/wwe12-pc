@@ -175,11 +175,12 @@ class Page {
   void UseTwoKMovie(const std::string &file, const std::string &mini) {
     Bytes b;
     const fs::path tmp = media::TempDir() / fs::path(file).filename();
-    if (!game_disc_.Read("movies/titantron/" + file, b))
+    const disc::GameDisc &from = twok_movie_game_ == game_title_ ? game_disc_ : twok_disc_;
+    if (!from.Read("movies/titantron/" + file, b))
       return;
     std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char *>(b.data()), std::streamsize(b.size()));
     fs::path mini_tmp = media::TempDir() / (L"mini_" + fs::path(mini).stem().wstring() + L".bk2");
-    if (mini.empty() || !game_disc_.Read("pac/mov/ss_mini/" + mini, b) || !bink2::PacMovie(b, mini_tmp))
+    if (mini.empty() || !from.Read("pac/mov/ss_mini/" + mini, b) || !bink2::PacMovie(b, mini_tmp))
       mini_tmp.clear();
     twok_movie_file_ = file;
     twok_mini_file_ = mini_tmp.empty() ? std::string() : mini;
@@ -735,9 +736,9 @@ class Page {
       char label[96];
       if (twok_movies_.size() > 1)
         snprintf(label, sizeof(label), fr ? "La sienne dans %s (%zu versions)" : "Its own in %s (%zu versions)",
-                 GameName(game_title_), twok_movies_.size());
+                 GameName(twok_movie_game_), twok_movies_.size());
       else
-        snprintf(label, sizeof(label), fr ? "La sienne dans %s (%s)" : "Its own in %s (%s)", GameName(game_title_),
+        snprintf(label, sizeof(label), fr ? "La sienne dans %s (%s)" : "Its own in %s (%s)", GameName(twok_movie_game_),
                  twok_movie_file_.c_str());
       if (ImGui::RadioButton(label, twok_movie_) && !twok_movie_)
         UseTwoKMovie(twok_movie_file_, twok_minis_.empty() ? std::string() : twok_minis_[0]);
@@ -771,9 +772,6 @@ class Page {
       }
     }
     ImGui::EndDisabled();
-    if (look_ == 3 && !twok_movie_file_.empty() && bink2::Found().kind == bink2::Kind::kNone)
-      ImGui::TextDisabled("%s", fr ? "(pour reprendre sa vidéo : installez RAD Video Tools, gratuit ; voir MES DISQUES)"
-                                   : "(to bring its movie: install RAD Video Tools, free; see MY GAME DISCS)");
     if (look_ == 2 && svr_movie_file_.empty() && !svr_attires_.empty())
       ImGui::TextDisabled(fr ? "(ce catcheur n'a pas de vidéo à lui dans %s)" : "(this superstar has no movie of its own in %s)",
                           GameName(svr_game_));
@@ -1042,28 +1040,50 @@ class Page {
       }
       SetSvrMovie(copy);
     }
-    // its 2K movie (2K15-2K17, KB2i; 2K14's and WWE '13's Bink 2 can't be read): ent_NNNN_<attire>_<n>.bk2, the
-    // first
+    // its 2K movie: 2K15-2K17's ent_NNNN_<attire>_<n>.bk2 (KB2i), 2K14's NNN.bik2 (KB2f), both read by our own Bink 2
+    // reader (bink2.h). WWE '13's NNN.bik2 is KB2d, which nothing reads: a WWE '13 superstar takes the same number's
+    // movie from the player's 2K games (2K16 and 2K17 have Mankind's, ent_0246_0_0.bk2), newest first.
     twok_movie_file_.clear();
     twok_mini_file_.clear();
     twok_movies_.clear();
     twok_minis_.clear();
     twok_movie_ = false;
-    if (look_ == 3 && (game_title_ == 0x545408B6 || game_title_ == 0x315A07D2 || game_title_ == 0x545408BA)) {
+    twok_movie_game_ = 0;
+    const auto movies_of = [&](const disc::GameDisc &g, uint32_t title) {
+      std::vector<std::string> out;
       char prefix[16];
-      snprintf(prefix, sizeof(prefix), "ent_%04d_", number);
-      auto files = game_disc_.List("movies/titantron");
+      snprintf(prefix, sizeof(prefix), title == 0x545408B2 ? "%03d." : "ent_%04d_", number);
+      auto files = g.List("movies/titantron");
       std::sort(files.begin(), files.end());
       for (const auto &f : files)
-        if (_strnicmp(f.c_str(), prefix, strlen(prefix)) == 0 && f.size() > 4 &&
-            _stricmp(f.c_str() + f.size() - 4, ".bk2") == 0)
-          twok_movies_.push_back(f);
-      if (!twok_movies_.empty())
-        twok_movie_file_ = twok_movies_[0];
+        if (_strnicmp(f.c_str(), prefix, strlen(prefix)) == 0 && f.size() > 5 &&
+            (_stricmp(f.c_str() + f.size() - 4, ".bk2") == 0 || _stricmp(f.c_str() + f.size() - 5, ".bik2") == 0))
+          out.push_back(f);
+      return out;
+    };
+    const bool twok = game_title_ == 0x545408B2 || game_title_ == 0x545408B6 || game_title_ == 0x315A07D2 ||
+                      game_title_ == 0x545408BA;
+    if (look_ == 3 && twok) {
+      twok_movies_ = movies_of(game_disc_, game_title_);
+      twok_movie_game_ = game_title_;
+    } else if (look_ == 3 && game_title_ == 0x545108B4 && discs_) {
+      for (uint32_t t : {0x545408BAu, 0x315A07D2u, 0x545408B6u, 0x545408B2u})
+        if (!discs_->PathOf(t).empty() && twok_disc_.OpenPath(discs_->PathOf(t))) {
+          twok_movies_ = movies_of(twok_disc_, t);
+          if (!twok_movies_.empty()) {
+            twok_movie_game_ = t;
+            break;
+          }
+        }
+    }
+    if (!twok_movies_.empty())
+      twok_movie_file_ = twok_movies_[0];
+    if (twok_movie_game_ && twok_movie_game_ != 0x545408B2) {
+      const disc::GameDisc &from = twok_movie_game_ == game_title_ ? game_disc_ : twok_disc_;
       // its minitrons: pac\mov\ss_mini\NNNNvv.pac
       char mini[8];
       snprintf(mini, sizeof(mini), "%04d", number);
-      auto minis = game_disc_.List("pac/mov/ss_mini");
+      auto minis = from.List("pac/mov/ss_mini");
       std::sort(minis.begin(), minis.end());
       for (const auto &f : minis)
         if (f.size() == 10 && f.compare(0, 4, mini) == 0 && _stricmp(f.c_str() + 6, ".pac") == 0)
@@ -1937,6 +1957,8 @@ class Page {
 
  private:
   disc::GameDisc game_disc_;  // the other game's disc (My game discs), its superstars
+  disc::GameDisc twok_disc_;  // a 2K game's disc for a WWE '13 superstar's movie (twok_movie_game_ != game_title_)
+  uint32_t twok_movie_game_ = 0;  // the game its 2K movie comes from, 0 if none
   fs::path game_path_;
   uint32_t game_title_ = 0;
   std::vector<std::pair<int, std::string>> disc_list_;

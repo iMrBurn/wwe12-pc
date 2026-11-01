@@ -97,6 +97,7 @@ if(WIN32)
         src/modmaker/svrfmt/xcompress.cpp
         "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/libmspack/cabextract/mspack/lzxd.c"
         src/modmaker/video/bink_decode.c
+        src/modmaker/video/bink2_decode.c
         src/modmaker/video/bink_encode.c
         src/modmaker/video/movie_maker.c
         "${CMAKE_CURRENT_BINARY_DIR}/modmaker.rc"
@@ -108,6 +109,7 @@ if(WIN32)
         "${WWE12_IMGUI_DIR}/backends/imgui_impl_dx11.cpp")
     # (ufbx.c: the FBX reader of the FBX import, MIT / public domain; rig_map.cpp: Kaiko's bone names.)
     # (lzxd.c: libmspack's LZX reader, LGPL 2.1, the SDK's copy: WWE '13 files are XMemCompress'd.)
+    # (bink2_decode.c: Bink 2 frames, Paul B Mahol's FFmpeg-devel decoder, LGPL 2.1+, video/bink2/.)
     target_include_directories(wwe12_modmaker PRIVATE src/modmaker src/launcher "${WWE12_IMGUI_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/libmspack/cabextract/mspack"
         "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/xxHash"

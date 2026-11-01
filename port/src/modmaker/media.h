@@ -694,9 +694,6 @@ class EntranceVideos {
           UseOther(others_[i]);
         ImGui::PopID();
       }
-      if (bink2::Found().kind == bink2::Kind::kNone)
-        ImGui::TextDisabled("%s", fr ? "(les vidéos des 2K demandent RAD Video Tools, gratuit : voir MES DISQUES)"
-                                     : "(the 2K games' movies need RAD Video Tools, free: see MY GAME DISCS)");
     }
     ImGui::EndDisabled();
     ImGui::Dummy(ImVec2(0, 4));
