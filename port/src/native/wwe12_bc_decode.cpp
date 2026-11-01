@@ -11,7 +11,13 @@
 
 #include "wwe12_bc_decode.h"
 
-REXCVAR_DEFINE_BOOL(wwe12_bc_decode, false, "WWE12",
+// iPhone: forced on (HUD textures came out black / scrambled with the GPU's own BC path, 2026-11-01).
+#if defined(WWE12_IOS)
+#define WWE12_BC_DECODE_DEFAULT true
+#else
+#define WWE12_BC_DECODE_DEFAULT false
+#endif
+REXCVAR_DEFINE_BOOL(wwe12_bc_decode, WWE12_BC_DECODE_DEFAULT, "WWE12",
                     "Decode BC (DXT) textures to RGBA8 on the CPU even when the GPU supports them "
                     "(for tests; GPUs without BC, like Mali, get it on their own).");
 
