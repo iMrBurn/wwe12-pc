@@ -19,6 +19,7 @@
 #include <functional>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -361,13 +362,25 @@ std::vector<Setting> BuildSettings() {
     g.label = &Texts::api;
     g.tab = 2;
     g.next_start = true;
-    // DIRECTX 11 (wwe12_d3d11.exe): for GPUs without Vulkan 1.2 or Direct3D 12.
+    // DIRECTX 11 (wwe12_d3d11.exe): for GPUs without Vulkan 1.2 or Direct3D 12. The page script
+    // has 4 values for this row: an API whose exe isn't next to this one (a package without
+    // wwe12_d3d12.exe) says so, and choosing it keeps AUTO.
     static constexpr const char *kBackends[] = {"any", "vulkan", "d3d12", "d3d11"};
-    g.values = {t.automatic, "VULKAN", "DIRECTX 12", "DIRECTX 11"};
+    static bool present[4] = {true, true, true, true};
+    const auto folder = rex::filesystem::GetExecutableFolder();
+    std::error_code ec;
+    present[2] = std::filesystem::exists(folder / "wwe12_d3d12.exe", ec);
+    present[3] = std::filesystem::exists(folder / "wwe12_d3d11.exe", ec);
+    g.values = {t.automatic, "VULKAN", present[2] ? "DIRECTX 12" : "DIRECTX 12 (NOT INSTALLED)",
+                present[3] ? "DIRECTX 11" : "DIRECTX 11 (NOT INSTALLED)"};
     const std::string &backend = REXCVAR_GET(gpu_backend);
     g.index = backend == "d3d11" ? 3 : backend == "d3d12" ? 2 : backend == "vulkan" ? 1 : 0;
-    g.apply = [](int i) { rex::cvar::SetFlagByName("gpu_backend", kBackends[i]); };
-    g.save = [](TomlFile &f, int i) { f.SetString("gpu_backend", kBackends[i]); };
+    if (!present[g.index])
+      g.index = 0;
+    g.apply = [](int i) {
+      rex::cvar::SetFlagByName("gpu_backend", kBackends[present[i] ? i : 0]);
+    };
+    g.save = [](TomlFile &f, int i) { f.SetString("gpu_backend", kBackends[present[i] ? i : 0]); };
     s.push_back(std::move(g));
   }
   // Same order as the launcher's tabs.

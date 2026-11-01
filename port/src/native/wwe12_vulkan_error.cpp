@@ -33,14 +33,21 @@ bool Wwe12TryNextBackend() {
     return false;
   const std::filesystem::path exe(self);
   const std::wstring name = exe.filename().wstring();
-  const wchar_t *next = _wcsicmp(name.c_str(), L"wwe12.exe") == 0         ? L"wwe12_d3d12.exe"
-                        : _wcsicmp(name.c_str(), L"wwe12_d3d12.exe") == 0 ? L"wwe12_d3d11.exe"
-                                                                          : nullptr;
-  if (!next)
+  // The next exe of the chain that is there: a package may come without wwe12_d3d12.exe.
+  const bool vulkan = _wcsicmp(name.c_str(), L"wwe12.exe") == 0;
+  if (!vulkan && _wcsicmp(name.c_str(), L"wwe12_d3d12.exe") != 0)
     return false;
-  const std::filesystem::path target = exe.parent_path() / next;
+  std::filesystem::path target;
   std::error_code ec;
-  if (!std::filesystem::exists(target, ec))
+  for (const wchar_t *next : {L"wwe12_d3d12.exe", L"wwe12_d3d11.exe"}) {
+    if (!vulkan && _wcsicmp(next, L"wwe12_d3d12.exe") == 0)
+      continue;  // (D3D12 failed: D3D11 only)
+    if (std::filesystem::exists(exe.parent_path() / next, ec)) {
+      target = exe.parent_path() / next;
+      break;
+    }
+  }
+  if (target.empty())
     return false;
   // Same arguments: the program name is replaced, the rest of the command line kept.
   std::wstring args;
