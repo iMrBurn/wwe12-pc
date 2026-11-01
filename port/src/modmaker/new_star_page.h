@@ -524,6 +524,7 @@ class Page {
     }
     DrawOwnMoves(fr);
     DrawOwnEntrance(fr);
+    DrawOwnVictory(fr);
     DrawOwnTheme(fr);
   }
 
@@ -1258,6 +1259,10 @@ class Page {
     if (own_moves_game_ == 0x545108B4 && !entrance13::Exists12(*disc12_, number) &&
         entrance13::Entrance(src, number, own_entrance_, nullptr))
       own_entrance_number_ = number;
+    // its WWE '13 victory scene (served under 6000 + its slot)
+    own_victory_.clear();
+    if (own_moves_game_ == 0x545108B4)
+      entrance13::Victory(src, number, own_victory_);
   }
 
   // Step 2's part: its own WWE '13 entrance.
@@ -1271,6 +1276,16 @@ class Page {
              own_entrance_number_,
              int(std::count_if(own_entrance_.begin(), own_entrance_.end(), [](const auto &p) { return p.kind == "EVP"; })));
     ImGui::Checkbox(label, &use_own_entrance_);
+  }
+
+  // Step 2's part: its own WWE '13 victory scene.
+  void DrawOwnVictory(bool fr) {
+    if (own_victory_.empty())
+      return;
+    char label[160];
+    snprintf(label, sizeof(label), fr ? "Sa propre scène de victoire de WWE '13 (n° %d ; essai)" : "Its own WWE '13 victory scene (no. %d; a test)",
+             own_victory_[0].number);
+    ImGui::Checkbox(label, &use_own_victory_);
   }
 
   // Step 2's part: its own theme from its game (theme_source.h), made PCM with the player's vgmstream.
@@ -1941,6 +1956,9 @@ class Page {
     if (own_entrance)
       for (const auto &part : own_entrance_)
         entries.push_back({entrance13::ModPath(part), part.data});
+    if (use_own_victory_)  // (its WWE '13 victory scene: the game serves it under 6000 + its slot)
+      for (const auto &part : own_victory_)
+        entries.push_back({"superstar/victory/" + part.kind + ".bin", part.data});
     if (use_theme_ && !theme_.stream.empty() && (look_ == 2 || look_ == 3)) {  // (its theme, Wwise PCM)
       Bytes pcm = theme_convert::ToPcm(Vgmstream(), theme_.stream, std::wstring(theme_.ext.begin(), theme_.ext.end()));
       if (!pcm.empty())
@@ -2015,6 +2033,8 @@ class Page {
   int entrance_ = -1;
   std::vector<newmoves13::Move> own_new_moves_;  // its WWE '13 moves WWE '12 hasn't (newmoves13.h)
   std::vector<entrance13::Part> own_entrance_;  // its WWE '13 entrance (entrance13.h), else empty
+  std::vector<entrance13::Part> own_victory_;  // its WWE '13 victory scene (entrance13::Victory), else empty
+  bool use_own_victory_ = true;
   theme_source::Theme theme_;  // its theme in its game (theme_source.h), stream empty if none
   bool use_theme_ = true;      // ... made PCM and put into the mod (superstar/theme.wem)
   int own_entrance_number_ = 0;

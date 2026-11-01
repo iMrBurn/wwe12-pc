@@ -144,4 +144,37 @@ inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &o
   return !out.empty();
 }
 
+// A superstar's victory scene in WWE '13 (pac\evt\Winning00-03.pac, xcompressed EPK8, groups "EVP " / "EVZ ", entries
+// 6000 + its number: Mankind 6246), its tracks' IK legs baked as an entrance's. WWE '12 looks for 6000 + the superstar's
+// own number (sub_82407DC8: participant +16 + 6000, every group letter tried by sub_828CCC10 "/%s%c/%d"), so an added
+// superstar's is served under 6000 + its slot (wwe12_arena_pages.cpp). Parts "EVP" and "EVZ", number 6000 + `number`.
+inline bool Victory(const disc::GameDisc &w13, int number, std::vector<Part> &out) {
+  out.clear();
+  const int want = 6000 + number % 1000;
+  for (int i = 0; i <= 3; ++i) {
+    char f[32];
+    snprintf(f, sizeof(f), "pac/evt/Winning%02d.pac", i);
+    Bytes b;
+    if (!w13.Read(f, b))
+      continue;
+    if (svrfmt::IsXcompress(b)) {
+      Bytes o;
+      if (!svrfmt::XcompressDecode(b, o))
+        continue;
+      b.swap(o);
+    }
+    svrfmt::Archive a;
+    if (!svrfmt::ArchiveOpen(b, a, nullptr))
+      continue;
+    for (auto &k : a.root.kids) {
+      if (atoi(k.name.c_str()) != want || (k.group.rfind("EVP", 0) != 0 && k.group.rfind("EVZ", 0) != 0))
+        continue;
+      out.push_back({want, k.group.substr(0, 3), svrfmt::Unpack(svrfmt::ArchiveData(k))});
+      if (out.back().kind == "EVZ")
+        yanm::ik::BakeEntranceTracks(out.back().data);
+    }
+  }
+  return out.size() == 2;
+}
+
 }  // namespace entrance13

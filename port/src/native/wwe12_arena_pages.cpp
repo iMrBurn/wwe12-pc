@@ -424,6 +424,27 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     std::vector<uint8_t> data;
   };
   std::map<std::string, std::vector<Part>> parts;
+  // The added superstars' slots (wwe12_superstar_mods.cpp, which runs before: "<mod>=<number>"): a victory scene of
+  // theirs (superstar/victory/EVP.bin, EVZ.bin: WWE '13's, entrance13::Victory) is served as Winning0.pac's
+  // /EVPA/<6000 + slot>, the name the game asks for (6000 + the superstar's number, every group letter tried).
+  std::map<std::string, int> slots;
+  {
+    std::vector<uint8_t> t;
+    if (ReadHost(user_root / "superstar_slots.txt", t)) {
+      std::string text(t.begin(), t.end()), line;
+      for (size_t at = 0; at <= text.size(); ++at)
+        if (at == text.size() || text[at] == '\n') {
+          if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+          const size_t eq = line.rfind('=');
+          if (eq != std::string::npos)
+            slots[line.substr(0, eq)] = atoi(line.c_str() + eq + 1);
+          line.clear();
+        } else {
+          line += text[at];
+        }
+    }
+  }
   std::vector<fs::path> dirs;
   for (fs::directory_iterator it(mods / ".svrmods" / "Superstars", ec), end; !ec && it != end; it.increment(ec))
     if (it->is_directory(ec))
@@ -431,8 +452,19 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
   std::sort(dirs.begin(), dirs.end());
   for (const auto &d : dirs) {
     std::vector<uint8_t> m;
-    if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m) ||
-        atoi(Value(std::string(m.begin(), m.end()), "entrance_own").c_str()) <= 0)
+    if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m))
+      continue;
+    const auto slot = slots.find(d.filename().string());
+    if (slot != slots.end() && slot->second > 0)
+      for (const char *kind : {"EVP", "EVZ"}) {
+        Part part;
+        if (!ReadHost(d / "superstar" / "victory" / (std::string(kind) + ".bin"), part.data) || part.data.empty())
+          continue;
+        part.group = std::string(kind) + "A";
+        part.name = std::to_string(6000 + slot->second);
+        parts["pac/evt/Winning0.pac"].push_back(std::move(part));
+      }
+    if (atoi(Value(std::string(m.begin(), m.end()), "entrance_own").c_str()) <= 0)
       continue;
     for (fs::directory_iterator it(d / "superstar" / "entrance", ec), end; !ec && it != end; it.increment(ec)) {
       const std::string f = it->path().filename().string();

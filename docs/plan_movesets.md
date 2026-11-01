@@ -318,3 +318,14 @@ l'écrit en PCM dans `superstar/theme.wem` ; le jeu lui donne le numéro de musi
 900 + sa place. **Entendu en jeu** : SvR 2010 n° 101 (Stone Cold) sur Edge 07 (JUKEBOX, thème 1004), avec Mankind
 dans le même paquet. Ajoutés ensuite : SvR 2011 (Wwise v46, `Music.pck`, Play_MUS_<n>_0_0 ; vérifié hors jeu n° 101) et SvR 2007 (XACT : `sound.pac` XACT/MUSI + `music/DVD_Music.xwb`, d'après `xact.py` de Kaiko ; vérifié hors jeu n° 2 ; un catcheur sans cue MUSIC_<n> n'a pas de thème). Taille : ~13-36 Mo par thème (PCM).
 - **Import complet vérifié en jeu (2026-11-01)** : MVP de SvR 2010 importé par le Mod Maker (case musique cochée, `superstar/theme.wem` 36 Mo) : sa musique et son titantron de SvR 2010 en jeu, « nickel » pour l'utilisateur.
+
+### Scènes de victoire de WWE '13 (2026-11-01)
+
+`entrance13::Victory` lit `Winning00-03.pac` de WWE '13 (xcompress), entrées `/EVP /`, `/EVZ /` n° 6000 + numéro (Mankind
+6246) ; les mouvements EVZ passent par le même calcul des jambes (yanm_ik.h). Le Mod Maker (NEW SUPERSTAR, étape 2 :
+« Sa propre scène de victoire de WWE '13 ») les écrit dans `superstar/victory/EVP.bin` et `EVZ.bin`. En jeu,
+`MountEntrances` (wwe12_arena_pages.cpp) les ajoute à `pac/evt/Winning0.pac` sous `/EVPA/` et `/EVZA/` n° 6000 + la
+place du catcheur (`superstar_slots.txt`) : le jeu demande 6000 + le numéro du catcheur (sub_82407DC8) en essayant
+chaque lettre de groupe ; réponse par le même emprunt d'entrée (ici /EVPA/6100). **Vue en jeu (2026-11-01)** : Mankind
+(place 108) a gagné, le jeu a demandé /EVPA/6108 et /EVZA/6108, servis, sa scène de WWE '13 s'est jouée. Sa musique
+pendant la victoire : pas encore vérifiée (entendue à l'entrée).
