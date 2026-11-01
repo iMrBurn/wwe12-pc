@@ -1337,9 +1337,7 @@ std::string BuildDiagnostics() {
     r += std::string(", gpu_backend=") +
          (g_s.api == 3 ? "d3d11" : g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
     r += std::string(", wwe12_d3d12.exe ") + (d3d12_present ? "present" : "missing");
-    r += std::string(", wwe12_d3d11.exe ") + (d3d11_present ? "present" : "missing");
-    r += std::string(", dxcompiler.dll ") + (fs::exists(ExeDir() / L"dxcompiler.dll", e2) ? "present" : "missing");
-    r += std::string(", dxil.dll ") + (fs::exists(ExeDir() / L"dxil.dll", e2) ? "present" : "missing") + "\n";
+    r += std::string(", wwe12_d3d11.exe ") + (d3d11_present ? "present" : "missing") + "\n";
   }
   r += std::string("Game files: ") + (GameFilesFound(ExeDir()) ? "found" : "missing") + "\n";
   r += "Mod files: " + std::to_string(mods) + ", DLC installed: " + std::to_string(dlc) + "\n";
