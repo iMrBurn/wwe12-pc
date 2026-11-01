@@ -93,3 +93,19 @@ probable d'après le disque). Rien sur GitHub en données : le code ne contient 
 les numéros de textes, pas de texte du jeu.
 
 Planification : prévu pour la 1.1. L'utilisateur dira s'il le veut dans la 1.0.
+
+## Fait (2026-11-01, vu en jeu)
+
+- **Sonde** (`wwe12_preset_names_probe`, ids montrés « #id », appelants au journal) : toutes les entrées prédéfinies
+  de CRÉER UNE ENTRÉE (liste « MOTION », 13 pages) passent par le gestionnaire de textes (`sub_821A4400`) depuis un seul
+  appelant (829FA020). Les move-sets prédéfinis **ne partagent pas** les « SUPERSTAR NN » : ils ont leurs textes,
+  « MOVES-SET 01-30 », ids 10350-10379 (30, comme la liste du site). Le piège redouté (même texte, deux catcheurs)
+  n'existe pas : le renommage par numéro suffit.
+- **Module** `port/src/native/wwe12_preset_names.cpp`, appelé par le crochet du gestionnaire de textes
+  (`wwe12_universe.cpp`) : noms intégrés d'après les listes de The SmackDown Hotel (crédité dans le code ; numéro du
+  site = numéro du libellé), en majuscules, les mêmes dans toutes les langues ; entrées génériques au libellé de ce
+  qu'elles montrent (GENERIC, BOXER, ZOMBIE...) ; libellés que le site ne liste pas (SUPERSTAR 46-55, DIVA 12-20...)
+  laissés. `preset_names.txt` à côté de l'exe (« 8215=NOM » ou « 8215@829FA020=NOM ») pour corriger sans recompiler.
+  Cvar d'arrêt `wwe12_preset_names` (défaut true).
+- **Vu en jeu** : la liste PRESET MOVE-SET (Chris Masters, JTG, Primo... page 1/2) et la liste MOTION des entrées
+  (Kurt Angle, King Booker... Boxer, Cell Phone, Ladies' Man, Clumsy). Pas vérifié une à une avec l'aperçu (X).
