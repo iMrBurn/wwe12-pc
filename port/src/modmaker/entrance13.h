@@ -9,7 +9,8 @@
 // Besides its script and tracks, an entrance has a game event script (pac\gm.pac GMEV/NNNN, 1536 bytes, PACH; Cena's
 // the same bytes in both games) and its effects (pac\prtcls.pac PCE6/NNNN, PACH): without them the superstar never
 // showed and no music played (2026-10-28, the game's lookups logged: /GMEV/0246 and /PCE6/0246 missing).
-// Entrance(): an entrance's entries as WWE '13 stores them (unpacked), for the game to serve under WWE '12's names.
+// Entrance(): an entrance's entries as WWE '13 stores them (unpacked), for the game to serve under WWE '12's names; the
+// tracks' IK legs baked to FK (yanm_ik.h: WWE '12 ignores IK, the feet walked on their heels).
 #pragma once
 
 #include <cstdio>
@@ -21,6 +22,7 @@
 #include "svrfmt/archive.h"
 #include "svrfmt/pac.h"
 #include "svrfmt/xcompress.h"
+#include "yanm_ik.h"
 
 namespace entrance13 {
 
@@ -105,6 +107,8 @@ inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &o
       if (k.group.rfind("EVP", 0) != 0 && k.group.rfind("EVZ", 0) != 0)
         continue;
       out.push_back({n, k.group.substr(0, 3), svrfmt::Unpack(svrfmt::ArchiveData(k))});
+      if (out.back().kind == "EVZ")  // the body's IK legs as FK, for WWE '12 (yanm_ik.h)
+        yanm::ik::BakeEntranceTracks(out.back().data);
     }
   }
   // its game event script and its effects
