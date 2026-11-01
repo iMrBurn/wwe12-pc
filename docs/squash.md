@@ -166,3 +166,8 @@ je n'ai ni lancé le jeu ni compilé.
   qu'une nouvelle ligne de menu.
 - **1.1** : la ligne SQUASH dans le menu, en même temps que les autres stipulations (même crochet `sub_82449898`), la
   case squash de l'Univers, et l'attaque après le tombé.
+
+## Idée à revoir en 1.1 (2026-11-01)
+Un modder a porté la mécanique des matchs squash de WWE 2K19 vers WWE 2K26 avec un réglage de fréquence dans les
+options de jeu (post public, sans détail technique ; pas de reprise de code). À regarder en 1.1 : un curseur de
+fréquence (jamais / parfois / souvent) pour l'option « prochain match : squash » de notre étude.
