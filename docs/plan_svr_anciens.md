@@ -150,3 +150,11 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
     `_EvtGdHD.pac`). Ring blanc et tache blanche sur le tablier dans la vue 3D : pareil avec SvR 2008 (vu par
     l'utilisateur), c'est l'aperçu.
   - À voir en jeu : tout.
+- **Hauteur des rampes (2026-11-01, remarque de l'utilisateur : « les arènes proposées sont souvent fausses »)** :
+  `port13::RampHeight` ne regardait que les modèles 200-299 nommés « slo » (WWE '12, SvR 2010-2011, 2K). SvR 2007-2009
+  numérotent leurs rampes autrement (2007 / 2008 « raw_ent_slope_0 » 11-16, « wm23_slo01 », « sd_slo0 » ; 2009
+  « slo_body » 60-65) : toutes mesurées à 0, le Mod Maker leur proposait Royal Rumble ou Bragging Rights comme base. Un
+  modèle nommé « slo… » ou « …_slo… » compte maintenant à tout numéro. Mesures : WWE '12 inchangé (seuls bg10 Bragging
+  Rights et bg13 Royal Rumble au sol, Elimination Chamber 2,73 m, les autres 1,80 m) ; SvR 2007 au sol : SmackDown,
+  Velocity, SummerSlam, No Mercy, Survivor Series, Armageddon, Royal Rumble, ECW One Night Stand, Taboo Tuesday (sol à 0,
+  allée de 18 cm ; vérifié modèle par modèle), les 11 autres à 1,80 m ; SvR 2008 au sol : 00, 02, 05-10, 15, 17, 19.

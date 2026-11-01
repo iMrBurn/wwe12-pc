@@ -127,14 +127,18 @@ inline void MoveModel(Bytes &d, float dx, float dz) {
 }
 
 // The height of the entrance ramp in cm (0 = at floor level; WWE '12's usual ramp: 180): its models are "*slo*"
-// (200-299), y pointing down.
+// (200-299), y pointing down. SvR 2007-2009 number them otherwise (2007 / 2008 "raw_ent_slope_0" 11-16, "wm23_slo01";
+// 2009 "slo_body" 60-65: measured flat, the Mod Maker advised Royal Rumble as their base, 2026-11-01): any model named
+// "slo..." or "..._slo..." too.
 inline float RampHeight(const svrfmt::ArcNode &group) {
   float top = 0;
   for (const auto &k : group.kids) {
-    if (k.id < 200 || k.id > 299)
-      continue;
     svrfmt::Model m;
-    if (!svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr) || m.name.find("slo") == std::string::npos)
+    if (!svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr))
+      continue;
+    const bool ramp = (k.id >= 200 && k.id <= 299 && m.name.find("slo") != std::string::npos) ||
+                      m.name.rfind("slo", 0) == 0 || m.name.find("_slo") != std::string::npos;
+    if (!ramp)
       continue;
     for (const auto &me : m.meshes)
       for (const auto &v : me.verts)
