@@ -622,6 +622,9 @@ static std::string DlcInstalledDir(const std::string& file) {
 
 // Called at the start of main(), before the game makes its window: shows the launcher and returns when
 // Play is pressed (SDL already owns UIApplicationMain, so a nested run loop keeps UIKit alive).
+// While it is up, the on-screen controller (wwe12_touch_ios.mm) stays away so the buttons get the touches.
+extern "C" volatile int Wwe12IosLauncherActive = 0;
+
 extern "C" void Wwe12IosLauncherShow(void) {
   @autoreleasepool {
     if (IsFile(Docs() + "/skip_launcher")) {
@@ -642,6 +645,7 @@ extern "C" void Wwe12IosLauncherShow(void) {
     __block BOOL play = NO;
     Wwe12LauncherViewController* controller = [[Wwe12LauncherViewController alloc] init];
     controller.onPlay = ^{ play = YES; };
+    Wwe12IosLauncherActive = 1;
     UIWindow* window = [[UIWindow alloc] initWithWindowScene:scene];
     window.rootViewController = controller;
     [window makeKeyAndVisible];
@@ -658,5 +662,6 @@ extern "C" void Wwe12IosLauncherShow(void) {
       [loop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
     }
     window.rootViewController = nil;
+    Wwe12IosLauncherActive = 0;
   }
 }

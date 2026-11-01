@@ -322,6 +322,8 @@ UIColor* Rgb(int r, int g, int b) { return [UIColor colorWithRed:r / 255.0 green
 
 @end
 
+extern "C" volatile int Wwe12IosLauncherActive;  // wwe12_launcher_ios.mm
+
 namespace {
 
 WWE12TouchView* g_view = nil;
@@ -329,13 +331,22 @@ WWE12TouchView* g_view = nil;
 UIWindow* FindGameWindow() {
   for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
     if (![scene isKindOfClass:UIWindowScene.class]) continue;
-    UIWindow* w = ((UIWindowScene*)scene).windows.firstObject;
-    if (w) return w;
+    for (UIWindow* w in ((UIWindowScene*)scene).windows) {
+      if (!w.hidden) return w;  // the launcher's window is hidden once Play is pressed
+    }
   }
   return nil;
 }
 
 void Tick() {
+  // The launcher (wwe12_launcher_ios.mm) runs before the game: its buttons must get the touches.
+  if (Wwe12IosLauncherActive) {
+    if (g_view) {
+      [g_view removeFromSuperview];
+      g_view = nil;
+    }
+    return;
+  }
   UIWindow* w = FindGameWindow();
   if (!w) return;  // the game has not made its window yet
   if (!g_view || g_view.superview != w) {
