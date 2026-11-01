@@ -179,8 +179,9 @@ inline void Names2K(const disc::GameDisc &g, const std::map<int, std::vector<int
 inline std::map<int, std::string> SuperstarNames(const disc::GameDisc &g) {
   std::map<int, std::string> names;
   std::map<int, std::vector<int>> ids;  // the 2K games: number -> its "number + k" string ids' k
-  // (SvR 2008 keeps its records in pac/misc.pac: 232 bytes, id at +30; SvR 2009 in chEtc.pac, 252 bytes, id at +36;
-  // after Kaiko's superstar_port.py. A DLC's: a newer chEtc.pac, or its chEtc_dlcNN.pac)
+  // (SvR 2008 keeps its records in pac/misc.pac: 232 bytes, id at +30; SvR 2007 there too, CHAR/DAT, 176 bytes, id at
+  // +26; SvR 2009 in chEtc.pac, 252 bytes, id at +36; after Kaiko's superstar_port.py. A DLC's: a newer chEtc.pac, or
+  // its chEtc_dlcNN.pac)
   auto all = WithDlc(g, "pac/ch/chEtc.pac");
   if (all.empty())
     all = g.ReadAll("pac/misc.pac");
@@ -192,6 +193,7 @@ inline std::map<int, std::string> SuperstarNames(const disc::GameDisc &g) {
       const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
       const size_t id_at = d.size() == 264 || d.size() == 252 ? 36 : d.size() == 290 ? 44 : d.size() == 324 ? 56
                            : d.size() == 232                   ? 30
+                           : d.size() == 176                   ? 26
                                                                : 0;
       if (d.size() == 208 || d.size() == 216 || d.size() == 220) {  // (the 2K games: names in their strings)
         const int number = d[4] | d[5] << 8;

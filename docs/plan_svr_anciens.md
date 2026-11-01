@@ -118,3 +118,23 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
     sur la tête), les cheveux de la base restaient et prenaient l'image de SvR à leurs places : la base perd alors son
     10000 et sa physique (60, 61), comme WWE '12 pour Cena ou Orton. Les points noirs près des yeux (Cena 2010) partent
     avec.
+- **Étapes 5 et 6 pour SvR 2007 (2026-11-01, vérifiées hors du jeu, pas encore en jeu)**, méthode de Kaiko
+  (`svr07_char.py`, `arena_port.py` `SVR2007`) reprise en C++ avec crédit :
+  - **Catcheurs** (`port_svr::Svr07Sheets`, avant `OldSvrPictures`) : 2007 texture chaque partie du corps à part (Steve
+    Austin : 40 images dans l'entrée 10, « 0402Body », « 0402Body_N », « 0402Hand »… ; chaque maillage a son texDiffuse
+    / texNormal, `g_texDiffuse` pour les cils de Kane). Chaque image de couleur reçoit une case d'une planche couleur de
+    2048 × 1024 (rangement par rectangles libres, la plus grande d'abord, même échelle pour toutes, la plus grande qui
+    tient : ~79 % le plus souvent ; les étagères de Kaiko laissaient la moitié de la planche de Kane vide), sa carte de
+    normales la même case d'une planche de 1024 × 1024 (aucune ou « dummy_N » : plate), les UV de chaque maillage
+    passent dans sa case. L'entrée 10 garde alors « color » et « normal » (plus le sang…), puis le chemin 2008. Fichiers
+    `chNN.pac`, noms dans `pac/misc.pac` CHAR/DAT (176 octets, numéro à +26, nom à +28), portraits `menu/menuHD.pac`
+    MENU/SF2B (512, le corps : SSFA et SSFB) et SF2A (256, le buste : SSFC), vidéos `movies/titantron/NN.bik` (Bink 1,
+    320 × 320). Planche des visages : les 82 fichiers passent, visages propres ; ch92 est vert sur le disque même (modèle
+    de remplacement, sans nom). Rendu en pied propre (Austin, Kane, Trish, Hogan). Pas repris : les prises.
+  - **Arènes** (`port_svr_arena::Svr07Stage`, puis le chemin 2008) : 2007 range jusqu'à dix arènes par fichier, entrée
+    STG<k>/00NN de `pac/bg/bg<k>.pac` (k = NN / 10 ; bg0.pac a aussi les armes, la cage, les échelles) : l'arène est
+    sortie seule dans un EPAC « STG » comme ceux de 2008, sa foule (modèles et fichiers de places 20000-21247,
+    40000-40191) laissée (foule de la base). Table `kArenasSvr07` (19 arènes ; 3 et 20+ sont des copies du mode
+    histoire). Les 19 passent (4 jeux de lumières pris dans la base, arbre de visibilité fabriqué). Pas de bannière (pas
+    d'écran VS par arène dans 2007 : celle de la base) ni de plaques d'entrée (pas de `_EvtGdHD.pac`).
+  - À voir en jeu : tout.

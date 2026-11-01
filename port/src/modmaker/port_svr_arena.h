@@ -713,7 +713,19 @@ inline constexpr ArenaSvr kArenasSvr08[] = {
     {18, "December to Dismember", ""}, {19, "Cyber Sunday", ""},
 };
 
-// `year`: 2011, 2010, 2009 or 2008.
+// SvR 2007's (Kaiko's arena_port.py SVR2007): arena n is entry STG<k>/00NN of bg<k>.pac (Svr07Stage); 3 and 20 on are
+// story copies.
+inline constexpr ArenaSvr kArenasSvr07[] = {
+    {0, "SmackDown", ""},          {1, "RAW", ""},          {2, "ECW", ""},
+    {4, "SummerSlam", ""},         {5, "Unforgiven", ""},   {6, "No Mercy", ""},
+    {7, "Survivor Series", ""},    {8, "Armageddon", ""},   {9, "Royal Rumble", ""},
+    {10, "No Way Out", ""},        {11, "WrestleMania 22", ""}, {12, "Backlash", ""},
+    {13, "Judgment Day", ""},      {14, "Vengeance", ""},   {15, "The Great American Bash", ""},
+    {16, "New Year's Revolution", ""}, {17, "One Night Stand", ""}, {18, "Cyber Sunday", ""},
+    {19, "Saturday Night's Main Event", ""},
+};
+
+// `year`: 2011, 2010, 2009, 2008 or 2007.
 inline const ArenaSvr *FindSvr(int file, int year = 2011) {
   auto in = [&](const auto &table) -> const ArenaSvr * {
     for (const auto &a : table)
@@ -727,6 +739,8 @@ inline const ArenaSvr *FindSvr(int file, int year = 2011) {
     return in(kArenasSvr09);
   if (year == 2008)
     return in(kArenasSvr08);
+  if (year == 2007)
+    return in(kArenasSvr07);
   for (const auto &a : kArenasSvr)
     if (a.file == file)
       return &a;
@@ -2184,6 +2198,42 @@ inline bool SvrCard(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, 
   return true;
 }
 
+// SvR 2007's arena `n` as SvR 2008 has its bgNN.pac (after Kaiko's arena_port.py svr2008_convert, with his permission
+// and credit): 2007 keeps up to ten arenas a file, entry STG<k>/00NN of pac/bg/bg<k>.pac (k = n / 10; bg0.pac also
+// holds the weapons, cage and ladders: left out). Its crowd is loose models and seat files (20000-21247, 40000-40191):
+// left out, the base's comes in. `bgk`: that file. False: no such arena.
+inline bool Svr07Stage(const Bytes &bgk, int n, Bytes &out) {
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(bgk, a, nullptr))
+    return false;
+  char name[8], group[8];
+  snprintf(name, sizeof(name), "%04d", n);
+  snprintf(group, sizeof(group), "STG%d", n / 10);
+  size_t at = a.root.kids.size();
+  for (size_t i = 0; i < a.root.kids.size(); ++i)
+    if (a.root.kids[i].group == group && a.root.kids[i].name == name)
+      at = i;
+  if (at == a.root.kids.size())
+    return false;
+  for (size_t i = a.root.kids.size(); i-- > 0;)
+    if (i != at)
+      svrfmt::ArchiveRemove(a.root, i);
+  svrfmt::ArcNode &stage = a.root.kids[0];
+  if (!svrfmt::ArchiveExpand(stage))
+    return false;
+  for (size_t i = stage.kids.size(); i-- > 0;)
+    if ((stage.kids[i].id >= 20000 && stage.kids[i].id <= 21247) || (stage.kids[i].id >= 40000 && stage.kids[i].id <= 40191))
+      svrfmt::ArchiveRemove(stage, i);
+  svrfmt::ArchiveTouch(stage);
+  svrfmt::ArchiveTouch(a.root);
+  out = svrfmt::ArchiveSave(a);
+  // Its group renamed in place (the EPAC's one group record at 0x800: "STG1" -> "STG ", as 2008's).
+  if (out.size() < 0x804 || memcmp(&out[0x800], "STG", 3) != 0)
+    return false;
+  out[0x803] = ' ';
+  return true;
+}
+
 // SvR 2008 / 2009 arenas as SvR 2011 has them (after Kaiko's arena_port.py svr2008_convert, with his permission and
 // credit). Their pictures are 200 / 201 (2011: 400 / 401); their crowd (20000-20010, 2009's) and their light motions
 // (31010) are an older format: left out (the base's crowd comes in); their light bank (30000) has no "YMKs" header;
@@ -2367,7 +2417,7 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
     return fail("unreadable arena list");
   PortInfo pi;
   if (OldSvrArena(ga, gb, &pi.notes))
-    pi.notes.insert(pi.notes.begin(), "SvR 2008 / 2009 arena made as SvR 2011's");
+    pi.notes.insert(pi.notes.begin(), "SvR 2007 / 2008 / 2009 arena made as SvR 2011's");
   const std::set<uint32_t> ring = {951, 952, 953, 956, 960, 964, 973, 974, 980};
   std::set<uint32_t> from_base = {30002, 995, 996, 997, 999};
   from_base.insert(ring.begin(), ring.end());

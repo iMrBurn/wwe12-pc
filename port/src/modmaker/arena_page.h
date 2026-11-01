@@ -1071,16 +1071,18 @@ class Page {
       }
     }
     // SvR 2010: its arena files are SvR 2011's kind (port_svr_arena::kArenasSvr10, after Kaiko's arena_port.py);
-    // SvR 2009 and 2008: made SvR 2011's first (port_svr_arena::OldSvrArena).
+    // SvR 2009, 2008 and 2007: made SvR 2011's first (port_svr_arena::OldSvrArena; 2007's taken out of its many-arena
+    // files first, Svr07Stage).
     static constexpr struct {
       uint32_t title;
       int year;
       const char *name;
-    } kOldSvr[] = {{0x54510844, 2010, "SvR 2010"}, {0x54510826, 2009, "SvR 2009"}, {0x5451080B, 2008, "SvR 2008"}};
-    for (int i = 0; i < 3; ++i) {
+    } kOldSvr[] = {{0x54510844, 2010, "SvR 2010"}, {0x54510826, 2009, "SvR 2009"}, {0x5451080B, 2008, "SvR 2008"},
+                   {0x545107E0, 2007, "SvR 2007"}};
+    for (int i = 0; i < 4; ++i) {
       const fs::path p10 = discs_ ? discs_->PathOf(kOldSvr[i].title) : fs::path();
       const int year = kOldSvr[i].year;
-      if (i != 2)  // (three cards a row: 2K17, 2010, 2009; then 2008)
+      if (i != 2)  // (three cards a row: 2K17, 2010, 2009; then 2008, 2007)
         ImGui::SameLine();
       if (ChoiceCard(7 + i, wiz_src_ == 0 && svr_year_ == year, !p10.empty(), kOldSvr[i].name,
                      p10.empty() ? not_added : yours)) {
@@ -1136,7 +1138,7 @@ class Page {
         ImGui::EndGroup();
       }
       if (clicked >= 0 && wiz_src_ == 0) {
-        if (svr_disc_.Read(RelSvr(clicked), svr_file_)) {
+        if (ReadSvrArena(clicked, svr_file_)) {
           svr_pick_ = clicked;
           WizardSourceChosen(fr);
         }
@@ -1370,6 +1372,15 @@ class Page {
     snprintf(b, sizeof(b), "bg%02d.pac", n);
     return "pac/bg/" + (it != svr_files_.end() ? it->second : std::string(b));
   }
+  // A SvR arena's file (SvR 2007: its arena out of bg<k>.pac, as SvR 2008's bgNN.pac).
+  bool ReadSvrArena(int n, Bytes &out) {
+    if (svr_year_ != 2007)
+      return svr_disc_.Read(RelSvr(n), out);
+    Bytes bgk;
+    char b[32];
+    snprintf(b, sizeof(b), "pac/bg/bg%d.pac", n / 10);
+    return svr_disc_.Read(b, bgk) && port_svr_arena::Svr07Stage(bgk, n, out);
+  }
   // A SvR arena's name: its table's, else its DLC's.
   std::string SvrName(int n) const {
     if (const auto *a = port_svr_arena::FindSvr(n, svr_year_))
@@ -1402,6 +1413,19 @@ class Page {
         if (!port_svr_arena::FindSvr(k, svr_year_))
           svr_dlc_names_[k] = dlc_names.at(k);
         svr_list_.push_back(k);
+      }
+      // (SvR 2007: up to ten arenas a file, bg<k>.pac holding arenas 10k-10k+9: its table's whose file is there)
+      if (svr_year_ == 2007) {
+        std::set<std::string> files;
+        for (const auto &n : svr_disc_.List("pac/bg")) {
+          std::string l = n;
+          for (auto &c : l)
+            c = char(tolower(static_cast<unsigned char>(c)));
+          files.insert(l);
+        }
+        for (const auto &a : port_svr_arena::kArenasSvr07)
+          if (files.count("bg" + std::to_string(a.file / 10) + ".pac"))
+            svr_list_.push_back(a.file);
       }
       std::sort(svr_list_.begin(), svr_list_.end());
     }
@@ -2109,7 +2133,7 @@ class Page {
   fs::path svr_path_;         // ... a file chosen alone
   disc::GameDisc svr_disc_;   // ... or the game's ISO / folder, and its arena chosen
   fs::path svr_game_;
-  int svr_year_ = 2011;  // (SvR 2011, 2010, 2009 or 2008: its arena list)
+  int svr_year_ = 2011;  // (SvR 2011, 2010, 2009, 2008 or 2007: its arena list)
   std::vector<int> svr_list_;
   std::map<int, std::string> svr_files_, svr_dlc_names_;  // its arena files by number; its DLC arenas' names
   int svr_pick_ = -1;

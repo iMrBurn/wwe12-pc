@@ -78,12 +78,13 @@ class Page {
         // (its look from another game when My game discs has one: WWE '13 and 2K first, else SvR 2011)
         look_ = discs_ && !discs_->PathOf(0x545108B4).empty()   ? 3
                 : discs_ && (!discs_->PathOf(0x5451085D).empty() || !discs_->PathOf(0x54510844).empty() ||
-                             !discs_->PathOf(0x54510826).empty() || !discs_->PathOf(0x5451080B).empty())
+                             !discs_->PathOf(0x54510826).empty() || !discs_->PathOf(0x5451080B).empty() ||
+                             !discs_->PathOf(0x545107E0).empty())
                     ? 2
                     : 1;
         // (the newest SvR game there)
         if (discs_ && discs_->PathOf(0x5451085D).empty())
-          for (uint32_t t : {0x54510844u, 0x54510826u, 0x5451080Bu})
+          for (uint32_t t : {0x54510844u, 0x54510826u, 0x5451080Bu, 0x545107E0u})
             if (!discs_->PathOf(t).empty()) {
               svr_game_ = t;
               break;
@@ -196,6 +197,7 @@ class Page {
            : title == 0x54510844 ? "SvR 2010"
            : title == 0x54510826 ? "SvR 2009"
            : title == 0x5451080B ? "SvR 2008"
+           : title == 0x545107E0 ? "SvR 2007"
                                  : "WWE '13";
   }
 
@@ -272,11 +274,13 @@ class Page {
       // SvR 2011 and SvR 2010 (the same superstar files: port_svr.h takes 2010's as they are, seen 2026-10-31 with
       // Jericho ch104, Cena ch139...; its names, portraits SSFA-SSFC and movies are where 2011 has them), SvR 2009 and
       // SvR 2008 (their pictures sorted as 2011's first, port_svr::OldSvrPictures; 2008's files chNN.pac, its names in
-      // misc.pac, its portraits in menu\menuHD.pac): which one.
+      // misc.pac, its portraits in menu\menuHD.pac), SvR 2007 (as 2008, its part pictures baked into one sheet first,
+      // port_svr::Svr07Sheets; portraits MENU/SF2A-SF2B): which one.
       if (!w13) {
         static constexpr std::pair<uint32_t, const char *> kSvr[] = {
-            {0x5451085D, "SvR 2011"}, {0x54510844, "SvR 2010"}, {0x54510826, "SvR 2009"}, {0x5451080B, "SvR 2008"}};
-        for (int i = 0; i < 4; ++i) {
+            {0x5451085D, "SvR 2011"}, {0x54510844, "SvR 2010"}, {0x54510826, "SvR 2009"}, {0x5451080B, "SvR 2008"},
+            {0x545107E0, "SvR 2007"}};
+        for (int i = 0; i < 5; ++i) {
           const bool have = discs_ && !discs_->PathOf(kSvr[i].first).empty();
           if (i)
             ImGui::SameLine();
@@ -332,7 +336,7 @@ class Page {
             if (unnamed)
               snprintf(label, sizeof(label), "%s", nm.c_str());
             else
-              snprintf(label, sizeof(label), game_title_ == 0x5451080B ? "%s  (ch%02d)" : "%s  (ch%03d)", nm.c_str(), n);
+              snprintf(label, sizeof(label), game_title_ == 0x5451080B || game_title_ == 0x545107E0 ? "%s  (ch%02d)" : "%s  (ch%03d)", nm.c_str(), n);
             if (ImGui::Selectable(label, n == disc_pick_)) {
               LoadFromDisc(fr, n);
               const bool guessed = nm.size() > 2 && nm.compare(nm.size() - 2, 2, " ?") == 0;
@@ -1006,7 +1010,8 @@ class Page {
 
   // A superstar of the game chosen (SvR 2011 or WWE '13) from My game discs.
   void LoadFromDisc(bool fr, int number) {
-    const bool svr08 = look_ == 2 && game_title_ == 0x5451080B;  // (SvR 2008: chNN.pac, movies NN.bik)
+    // (SvR 2008 and 2007: chNN.pac, movies NN.bik)
+    const bool svr08 = look_ == 2 && (game_title_ == 0x5451080B || game_title_ == 0x545107E0);
     char rel[64];
     snprintf(rel, sizeof(rel), svr08 ? "pac/ch/ch%02d.pac" : "pac/ch/ch%03d.pac", number);
     if (const auto f = disc_files_.find(number); f != disc_files_.end())  // (its file as listed: a DLC's own name)
@@ -1189,7 +1194,8 @@ class Page {
     own_moves_game_ = look_ == 2 ? svr_game_ : star_game_;
     if ((look_ != 2 && look_ != 3) || number < 0 || !disc12_ || !discs_)
       return;
-    if (own_moves_game_ == 0x54510844 || own_moves_game_ == 0x54510826 || own_moves_game_ == 0x5451080B) {
+    if (own_moves_game_ == 0x54510844 || own_moves_game_ == 0x54510826 || own_moves_game_ == 0x5451080B ||
+        own_moves_game_ == 0x545107E0) {
       // (their move slots aren't 2011's: Kaiko's svr10_moves.py map, later)
       own_moves_why_ = std::string(GameName(own_moves_game_)) + "'s moves aren't read yet";
       return;
@@ -1405,29 +1411,42 @@ class Page {
       }
     // SvR 2009 (DLC_HD.pac) and SvR 2008 (menu\menuHD.pac): MENU / SSFA-SSFC = PACH { 0: PACH { number: DDS } } (after
     // Kaiko's superstar_port.py), HD only, 2009's 256 x 512 / 256 x 512 / 256, 2008's 512 / 512 x 256 / 256: made to
-    // WWE '12's HD sizes (SD's from them below; SD's SSFC is the HD one's size).
+    // WWE '12's HD sizes (SD's from them below; SD's SSFC is the HD one's size). SvR 2007 (menu\menuHD.pac): MENU /
+    // SF2B (512, the body: SSFA and SSFB) and SF2A (256, the bust: SSFC), the same nesting.
     if (portraits_[1][0].empty())
       for (const char *pac : {"DLC_HD.pac", "menu/menuHD.pac"})
         for (auto &copy : portraits_[1][0].empty() ? PacCopies(pac, read_pac) : std::vector<Bytes>()) {  // (SvR 2009's DLC: a newer DLC_HD.pac)
           svrfmt::Archive m;
           if (!svrfmt::ArchiveOpen(copy, m, nullptr))
             continue;
-          for (auto &k : m.root.kids)
-            if (k.group == "MENU" && k.name.size() == 4 && k.name.compare(0, 3, "SSF") == 0 && k.name[3] >= 'A' &&
-                k.name[3] <= 'C' && svrfmt::ArchiveExpand(k))
-              for (auto &c : k.kids)
-                if (c.id == 0 && svrfmt::ArchiveExpand(c))
-                  for (const auto &x : c.kids)
-                    if (x.id == uint32_t(number)) {
-                      svrfmt::Image img;
-                      if (!svrfmt::DdsDecode(svrfmt::ArchiveData(x), img))
-                        continue;
-                      const int side = k.name[3] == 'C' ? 256 : 512;
+          for (auto &k : m.root.kids) {
+            if (k.group != "MENU" || k.name.size() != 4)
+              continue;
+            std::vector<int> to;  // (SSFA, SSFB, SSFC: 0, 1, 2)
+            if (k.name.compare(0, 3, "SSF") == 0 && k.name[3] >= 'A' && k.name[3] <= 'C')
+              to = {k.name[3] - 'A'};
+            else if (k.name == "SF2B")
+              to = {0, 1};
+            else if (k.name == "SF2A")
+              to = {2};
+            if (to.empty() || !svrfmt::ArchiveExpand(k))
+              continue;
+            for (auto &c : k.kids)
+              if (c.id == 0 && svrfmt::ArchiveExpand(c))
+                for (const auto &x : c.kids)
+                  if (x.id == uint32_t(number)) {
+                    svrfmt::Image img;
+                    if (!svrfmt::DdsDecode(svrfmt::ArchiveData(x), img))
+                      continue;
+                    for (const int t : to) {
+                      const int side = t == 2 ? 256 : 512;
                       const Bytes dds = svrfmt::DdsEncode(svrfmt::Resize(img, side, side), svrfmt::DxtFormat::kDxt5, false);
-                      portraits_[1][k.name[3] - 'A'] = dds;
-                      if (k.name[3] == 'C')
+                      portraits_[1][t] = dds;
+                      if (t == 2)
                         portraits_[0][2] = dds;
                     }
+                  }
+          }
         }
     for (int k = 0; k < 2; ++k) {
       portraits_[0][k].clear();

@@ -15,6 +15,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -799,6 +800,208 @@ inline Bytes HairSettings(const Bytes &svr60) {
   return Bytes(o.begin(), o.end());
 }
 
+// SvR 2007 attires as SvR 2008 has them (after Kaiko's svr07_char.py, with his permission and credit): 2007 textures
+// each part of the body apart (Steve Austin: 40 pictures in entry 10, "0402Body", "0402Body_N", "0402Hand"...; each mesh
+// its own texDiffuse / texNormal), 2008-2011 draw a model from one colour sheet and one normal sheet. So every colour
+// picture the models use gets a box of a 2048 x 1024 colour sheet (shelf packing, all at one scale until they fit, 4
+// pixels apart), its normal map the same box of a 1024 x 1024 normal sheet (none or "dummy_N": flat), and every mesh's
+// UVs are moved into its box. Entry 10 then holds "color" and "normal" (and its blood and other pictures), the models
+// name them so: OldSvrPictures takes it from there. False: not such an attire (fewer than 3 colour pictures: 2008-2011).
+inline bool Svr07Sheets(svrfmt::ArcNode &svr, std::string *note = nullptr) {
+  auto child = [&](uint32_t id) -> svrfmt::ArcNode * {
+    for (auto &k : svr.kids)
+      if (k.id == id)
+        return &k;
+    return nullptr;
+  };
+  auto lower = [](std::string s) {
+    for (auto &c : s)
+      c = char(std::tolower((unsigned char)c));
+    return s;
+  };
+  svrfmt::ArcNode *s10 = child(10);
+  std::vector<svrfmt::BundleTexture> st;
+  if (child(12) || !s10 || !svrfmt::BundleRead(svrfmt::ArchiveData(*s10), st))
+    return false;
+  std::map<std::string, size_t> pic;  // lower-case name -> st index
+  for (size_t i = 0; i < st.size(); ++i) {
+    if (lower(st[i].name).find("color") != std::string::npos)
+      return false;  // (2008 / 2009: already a sheet)
+    pic[lower(st[i].name)] = i;
+  }
+  // The models and, per mesh, its colour and normal pictures (texture slots, an index in the model's names).
+  struct Use {
+    svrfmt::Model m;
+    uint32_t id;
+    std::vector<std::string> diffuse;  // per mesh, "" none
+  };
+  std::vector<Use> uses;
+  std::map<std::string, std::string> normal_of;  // colour picture -> its (first) normal map
+  std::set<std::string> colours;
+  for (uint32_t id : {0u, 10000u, 20000u}) {
+    svrfmt::ArcNode *n = child(id);
+    Use u;
+    u.id = id;
+    std::string e;
+    if (!n || !svrfmt::JboyRead(svrfmt::ArchiveData(*n), u.m, &e) || u.m.w12)
+      continue;
+    for (const auto &me : u.m.meshes) {
+      std::string d, nm;
+      for (const auto &p : me.params) {
+        if (p.type != 0x0f || p.value.size() < 4)
+          continue;
+        const int32_t k = int32_t(svrfmt::Be32(p.value.data()));
+        if (k < 0 || size_t(k) >= u.m.textures.size())
+          continue;
+        const std::string t = lower(u.m.textures[size_t(k)]);
+        // ("g_texDiffuse": 2007 Kane's eyelashes, yDefault)
+        if ((p.name == "texDiffuse" || p.name == "g_texDiffuse") && pic.count(t))
+          d = t;
+        if ((p.name == "texNormal" || p.name == "g_texNormal") && pic.count(t) && t.rfind("dummy", 0) != 0)
+          nm = t;
+      }
+      u.diffuse.push_back(d);
+      if (!d.empty()) {
+        colours.insert(d);
+        if (!nm.empty())
+          normal_of.emplace(d, nm);
+      }
+    }
+    uses.push_back(std::move(u));
+  }
+  if (colours.size() < 3)
+    return false;
+  std::map<std::string, svrfmt::Image> img;
+  for (const auto &c : colours)
+    if (!svrfmt::DdsDecode(st[pic[c]].data, img[c]) || img[c].w <= 0)
+      img.erase(c);
+  // Packing at one scale, the biggest that fits (Kaiko's shelves left half of 2007 Kane's sheet empty: free rectangles
+  // here, biggest picture first, each in the free rectangle it fits best, the rest cut in two).
+  constexpr int W = 2048, H = 1024, NW = 1024, NH = 1024, kPad = 4;
+  std::vector<std::string> order;
+  for (const auto &[c, im] : img)
+    order.push_back(c);
+  std::stable_sort(order.begin(), order.end(), [&](const std::string &a, const std::string &b) {
+    return img[a].w * img[a].h > img[b].w * img[b].h;
+  });
+  struct Box {
+    int x, y, w, h;
+  };
+  auto pack = [&](double s, std::map<std::string, Box> &out) {
+    out.clear();
+    std::vector<Box> free{{0, 0, W, H}};
+    for (const auto &c : order) {
+      const int w = std::max(4, int(img[c].w * s)), h = std::max(4, int(img[c].h * s));
+      int best = -1;
+      long long fit = 0;
+      for (size_t i = 0; i < free.size(); ++i)
+        if (free[i].w >= w && free[i].h >= h) {
+          const long long left = std::min(free[i].w - w, free[i].h - h);
+          if (best < 0 || left < fit)
+            best = int(i), fit = left;
+        }
+      if (best < 0)
+        return false;
+      const Box f = free[size_t(best)];
+      free.erase(free.begin() + best);
+      out[c] = {f.x, f.y, w, h};
+      // The rest cut along the shorter leftover, so the bigger piece stays whole.
+      const int rw = f.w - w - kPad, rh = f.h - h - kPad;
+      if (rw >= f.h - h) {
+        if (rw > 0)
+          free.push_back({f.x + w + kPad, f.y, rw, f.h});
+        if (rh > 0)
+          free.push_back({f.x, f.y + h + kPad, w, rh});
+      } else {
+        if (rh > 0)
+          free.push_back({f.x, f.y + h + kPad, f.w, rh});
+        if (rw > 0)
+          free.push_back({f.x + w + kPad, f.y, rw, h});
+      }
+    }
+    return true;
+  };
+  std::map<std::string, Box> boxes;
+  double scale = 1.0;
+  if (!pack(scale, boxes)) {
+    double lo = 0.05, hi = 1.0;
+    if (!pack(lo, boxes))
+      return false;
+    for (int i = 0; i < 12; ++i) {
+      const double mid = (lo + hi) / 2;
+      std::map<std::string, Box> b;
+      if (pack(mid, b))
+        lo = mid, boxes = std::move(b);
+      else
+        hi = mid;
+    }
+    scale = lo;
+  }
+  svrfmt::Image colour{W, H, std::vector<uint8_t>(size_t(W) * H * 4)}, normal{NW, NH, std::vector<uint8_t>(size_t(NW) * NH * 4)};
+  for (size_t i = 0; i < colour.rgba.size(); i += 4)
+    colour.rgba[i] = colour.rgba[i + 1] = colour.rgba[i + 2] = 128, colour.rgba[i + 3] = 255;
+  for (size_t i = 0; i < normal.rgba.size(); i += 4)
+    normal.rgba[i] = normal.rgba[i + 1] = 128, normal.rgba[i + 2] = normal.rgba[i + 3] = 255;
+  auto paste = [](svrfmt::Image &to, const svrfmt::Image &from, int x0, int y0, bool opaque) {
+    for (int y = 0; y < from.h && y0 + y < to.h; ++y)
+      for (int x = 0; x < from.w && x0 + x < to.w; ++x) {
+        uint8_t *d = &to.rgba[(size_t(y0 + y) * to.w + x0 + x) * 4];
+        std::memcpy(d, &from.rgba[(size_t(y) * from.w + x) * 4], 4);
+        if (opaque)
+          d[3] = 255;
+      }
+  };
+  for (const auto &[c, b] : boxes) {
+    paste(colour, svrfmt::Resize(img[c], b.w, b.h), b.x, b.y, false);
+    svrfmt::Image n;
+    if (auto it = normal_of.find(c); it != normal_of.end() && svrfmt::DdsDecode(st[pic[it->second]].data, n) && n.w > 0) {
+      const int nx = b.x * NW / W, ny = b.y * NH / H, nw = std::max(1, b.w * NW / W), nh = std::max(1, b.h * NH / H);
+      paste(normal, svrfmt::Resize(n, nw, nh), nx, ny, true);
+    }
+  }
+  // Every mesh's UVs into its box (clamped to the picture, as Kaiko's), its pictures named "color" / "normal".
+  for (auto &u : uses) {
+    for (size_t i = 0; i < u.m.meshes.size(); ++i) {
+      auto it = boxes.find(u.diffuse[i]);
+      if (it == boxes.end())
+        continue;
+      const Box &b = it->second;
+      for (auto &uv : u.m.meshes[i].uvs) {
+        uv[0] = float((b.x + std::clamp(uv[0], 0.0f, 1.0f) * b.w) / W);
+        uv[1] = float((b.y + std::clamp(uv[1], 0.0f, 1.0f) * b.h) / H);
+      }
+    }
+    for (auto &t : u.m.textures) {
+      const std::string l = lower(t);
+      if (boxes.count(l))
+        t = "color";
+      else if (l.rfind("dummy", 0) == 0 || (pic.count(l) && l.ends_with("_n")))
+        t = "normal";
+    }
+    svrfmt::ArchiveReplace(*child(u.id), svrfmt::JboyWrite(u.m));
+  }
+  // Entry 10: the sheets, and the pictures not baked into them (blood, the eyes' reflection...).
+  std::vector<svrfmt::BundleTexture> rest;
+  rest.push_back({"color", "dds", svrfmt::DdsEncode(colour, svrfmt::DxtFormat::kDxt5)});
+  rest.push_back({"normal", "dds", svrfmt::DdsEncode(normal, svrfmt::DxtFormat::kDxt5)});
+  for (const auto &t : st) {
+    const std::string l = lower(t.name);
+    if (!boxes.count(l) && !l.ends_with("_n") && l.rfind("dummy", 0) != 0)
+      rest.push_back(t);
+  }
+  for (auto &t : rest)
+    if (t.ext.empty())
+      t.ext = "dds";
+  svrfmt::ArchiveReplace(*s10, svrfmt::BundleWrite(rest));
+  svrfmt::ArchiveTouch(svr);
+  if (note) {
+    char b[96];
+    snprintf(b, sizeof(b), "SvR 2007: %zu part pictures baked into one sheet at %.0f%%", boxes.size(), scale * 100);
+    *note = b;
+  }
+  return true;
+}
+
 // SvR 2008 / 2009 attires as SvR 2011 has them (after Kaiko's svr08_char.py, with his permission and credit): one
 // picture set in entry 10 ("<id>color", "<id>normal", "<id>ao"; 2009 Maria's "12702nomal", 2008 Carlito's
 // "1802color_01") where 2011 has the colour alone in 12 and "normal" in 10. The colour goes to a new 12 named "color",
@@ -925,6 +1128,9 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
   };
   if (!svrfmt::ArchiveExpand(svr) || !svrfmt::ArchiveExpand(base))
     return fail("an attire can't be read");
+  std::string baked;
+  if (Svr07Sheets(svr, &baked))
+    rep->notes.push_back(baked);
   const bool old_svr = OldSvrPictures(svr);
   if (old_svr)
     rep->notes.push_back("SvR 2008 / 2009 pictures sorted as SvR 2011's");
