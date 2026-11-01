@@ -1922,18 +1922,30 @@ inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate
           const uint8_t *p = &name.img.rgba[(size_t(y) * w + x) * 4];
           return p[3] > 200 && p[0] * 3 + p[1] * 6 + p[2] < 10 * 50;
         };
+        // (its runs a twentieth long at least, those a tenth apart or less made one: 2007 RAW's window has a light
+        // reflection in its middle, the run found was its right part alone and the text sat right of the window's
+        // middle, 2026-11-01)
         const auto longest = [](const std::vector<bool> &on, int &a, int &b) {
-          a = b = -1;
-          for (int i = 0, s = -1; i <= int(on.size()); ++i) {
-            if (i < int(on.size()) && on[size_t(i)]) {
-              if (s < 0)
-                s = i;
+          const int n = int(on.size()), least = std::max(1, n / 20), gap = std::max(1, n / 10);
+          std::vector<std::pair<int, int>> runs;
+          for (int i = 0, st = -1; i <= n; ++i) {
+            if (i < n && on[size_t(i)]) {
+              if (st < 0)
+                st = i;
               continue;
             }
-            if (s >= 0 && i - s > b - a)
-              a = s, b = i;
-            s = -1;
+            if (st >= 0 && i - st >= least) {
+              if (!runs.empty() && st - runs.back().second <= gap)
+                runs.back().second = i;
+              else
+                runs.push_back({st, i});
+            }
+            st = -1;
           }
+          a = b = -1;
+          for (const auto &[x0, x1] : runs)
+            if (x1 - x0 > b - a)
+              a = x0, b = x1;
         };
         std::vector<bool> rows(static_cast<size_t>(h));
         for (int y = 0; y < h; ++y) {
@@ -1950,7 +1962,7 @@ inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate
             int n = 0;
             for (int y = r0; y < r1; ++y)
               n += dark(x, y);
-            cols[size_t(x)] = n * 5 >= (r1 - r0) * 4;
+            cols[size_t(x)] = n * 5 >= (r1 - r0) * 3;
           }
           longest(cols, c0, c1);
           // (a window, inside the plate: not a dark corner of its background, 2008 WrestleMania 23's)

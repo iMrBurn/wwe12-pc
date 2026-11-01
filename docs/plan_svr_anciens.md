@@ -203,3 +203,7 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   croyait pour la base RAW (valeurs mesurées sur 2K17 / SmackDown) : mesuré sur les captures de l'utilisateur, nom et
   titre centrés vers (1100, 915), ville vers (505, 222) sur 1920 × 1080 : ajouté pour la base 1. Les deux plaques
   (ville et nom) sont réduites autour de leur texte quand elles sortiraient de l'écran, jusqu'à 70 % au plus.
+  Essai suivant (Tyson Kidd) : texte à droite de la fenêtre de RAW 2007 : son reflet clair au milieu coupait la suite de
+  colonnes sombres, seule sa partie droite était prise. Les suites d'au moins 1/20 de la plaque séparées de 1/10 ou
+  moins sont maintenant réunies (et le seuil des colonnes abaissé à 3/5) : RAW 2007 0,51 × 0,33 (au milieu de la
+  fenêtre), les autres plaques inchangées ou mieux.
