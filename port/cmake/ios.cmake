@@ -33,3 +33,8 @@ target_compile_options(wwe12 PRIVATE
 
 # encoding.cpp converts texts with iconv (libiconv ships with the iOS SDK, not linked by default).
 target_link_libraries(wwe12 PRIVATE iconv)
+
+# After a match the instant replay can freeze the game, the victory scene never comes (the same
+# bug as on Android, seen on the iPhone 2026-11-01): the replay is off by default there, so it is
+# here (android/wwe12_replay.cpp: the game's own switch set to 0 at startup).
+target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_replay.cpp")
