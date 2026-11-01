@@ -88,6 +88,7 @@
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
 #include "wwe12_graphics_menu.h"
+#include "wwe12_preset_names.h"
 
 REXCVAR_DECLARE(uint32_t, user_language);
 
@@ -1126,6 +1127,8 @@ extern "C" REX_FUNC(sub_821A4400) {
       ctx.r3.u64 = text;
   } else if (const u32 text = Wwe12NativeGraphicsGuestText(id)) {
     ctx.r3.u64 = text;  // OPTIONS > GRAPHICS in the game's menus (wwe12_graphics_menu.cpp)
+  } else if (const u32 text = Wwe12PresetNameText(id, u32(ctx.lr))) {
+    ctx.r3.u64 = text;  // preset entrances / move-sets named (wwe12_preset_names.cpp)
   }
 }
 
