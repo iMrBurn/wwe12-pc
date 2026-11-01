@@ -317,3 +317,4 @@ SvR 2009 n° 111, SvR 2010 n° 101. Le Mod Maker (NEW SUPERSTAR, étape 2 : « S
 l'écrit en PCM dans `superstar/theme.wem` ; le jeu lui donne le numéro de musique de son entrée propre, sinon
 900 + sa place. **Entendu en jeu** : SvR 2010 n° 101 (Stone Cold) sur Edge 07 (JUKEBOX, thème 1004), avec Mankind
 dans le même paquet. Ajoutés ensuite : SvR 2011 (Wwise v46, `Music.pck`, Play_MUS_<n>_0_0 ; vérifié hors jeu n° 101) et SvR 2007 (XACT : `sound.pac` XACT/MUSI + `music/DVD_Music.xwb`, d'après `xact.py` de Kaiko ; vérifié hors jeu n° 2 ; un catcheur sans cue MUSIC_<n> n'a pas de thème). Taille : ~13-36 Mo par thème (PCM).
+- **Import complet vérifié en jeu (2026-11-01)** : MVP de SvR 2010 importé par le Mod Maker (case musique cochée, `superstar/theme.wem` 36 Mo) : sa musique et son titantron de SvR 2010 en jeu, « nickel » pour l'utilisateur.
