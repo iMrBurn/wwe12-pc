@@ -286,4 +286,4 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
      Wwise PCM (`wwise::PcmStream`, 16 bits gros-boutiste, ~13 Mo pour 1 min 43) ; le jeu n'accepte que du PCM ;
   3. son PCM en flux simple (type 1, codec 0x00010001), sans préchargement.
   Les DLC officiels se chargent pareil (banques `Music_DLC_NN` chargées puis rechargées à la connexion du profil).
-  Reste à voir : la musique pendant l'entrée elle-même et à la victoire (même événement `Play_MUS_0246_0_x`).
+  Entendue aussi pendant l'entrée de Mankind en match (2026-11-01). Victoire : pas encore vérifiée.
