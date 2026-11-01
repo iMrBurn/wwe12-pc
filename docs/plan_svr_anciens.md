@@ -158,3 +158,17 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   Rights et bg13 Royal Rumble au sol, Elimination Chamber 2,73 m, les autres 1,80 m) ; SvR 2007 au sol : SmackDown,
   Velocity, SummerSlam, No Mercy, Survivor Series, Armageddon, Royal Rumble, ECW One Night Stand, Taboo Tuesday (sol à 0,
   allée de 18 cm ; vérifié modèle par modèle), les 11 autres à 1,80 m ; SvR 2008 au sol : 00, 02, 05-10, 15, 17, 19.
+- **Premier essai en jeu (2026-11-01, RAW de SvR 2007 + Edge de SvR 2007, par l'utilisateur)** : Edge bon (visage,
+  cheveux, tenue), écran VS de 2007 bon, arène, rampe, public, éclairage bons, petits écrans avec la vidéo. Corrigé
+  ensuite (pas encore revu en jeu) :
+  - **titantron muet** : les images que l'ancien jeu posait sur le grand écran hors vidéo (« titan_logo_01 », le
+    défilant « titan_logo_02 », « titan_kari_01 » : ciel étoilé, art « ENTER ») sont sur son plan et WWE '12 les
+    dessine toujours, par-dessus : retirées (avant l'arbre de visibilité). 800 et 803 (souvent le même quad) prennent la
+    partie titantron de la vidéo, UV pris sur tout l'écran ; les textures de la scène qui clignotaient en venaient
+    sans doute (plans confondus) ;
+  - **escaliers du ring blancs** : objets du jeu qui cherchent leur reflet dans l'entrée 401 de l'arène sous les noms
+    « cube_00 » / « cube_01 » (WWE '12) ; les arènes de SvR 2007-2011 ont « cube00 », « ar_ref » : ceux de la base
+    ajoutés (`Port`, toutes les arènes SvR) ;
+  - **pas de plaques de nom ni de locator, pas de transition** (une arène ajoutée n'a rien sinon) : plaques de WWE '12
+    au logo de l'émission (`EtexWearing`, comme les 2K sans plaques) quand le jeu n'en a pas (2007), transition de
+    l'arène de base quand il n'en a pas (2007, 2008).

@@ -2330,6 +2330,21 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
   const std::set<uint32_t> old = {20000, 20001, 20002, 20003, 20010, 31010};
   ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(), [&](const svrfmt::ArcNode &k) { return old.count(k.id) != 0; }),
                 ga.kids.end());
+  // The pictures the old games put on the big screen when no movie plays ("titan_logo_01", the scrolling
+  // "titan_logo_02", "titan_kari_01": 2007 RAW's starfield and "ENTER" art), on its plane, before the visibility tree is made: the game hid them during the
+  // movies; WWE '12 draws them always, over the titantron (seen in the game, 2026-11-01): left out.
+  const auto cover = [](const std::string &t) {
+    return t.rfind("titan_logo", 0) == 0 || t.rfind("titan_kari", 0) == 0;
+  };
+  const size_t before = ga.kids.size();
+  ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(), [&](const svrfmt::ArcNode &k) {
+                  svrfmt::Model m;
+                  return k.id < 800 && svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr) && !m.textures.empty() &&
+                         std::all_of(m.textures.begin(), m.textures.end(), cover);
+                }),
+                ga.kids.end());
+  if (notes && ga.kids.size() < before)
+    notes->push_back(std::to_string(before - ga.kids.size()) + " screen cover(s) left out (shown over the titantron)");
   for (uint32_t id : {402u, 61000u})
     if (!kid(ga, id))
       if (svrfmt::ArcNode *b = kid(gb, id))
@@ -2454,10 +2469,11 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
   }
   // The video screens (2007 / 2008; 2009 has pictures of its own there): their pictures are placeholders ("titan_mov"
   // 64 x 32 on 801 and 803, "titan" 64 x 16 on 800; 2007 SmackDown's "sd_titan", a name with no picture at all) the
-  // old games filled with the movie; WWE '12 plays its movies in
-  // pictures named "titantron_movie" (the titantron, by number: 800, 803, 806, 808) and "arena_movie" (801, 807, 809),
-  // else they stayed red. 800 drew a part of the movie: made the titantron's part of WWE '12's (v 0-0.684, its strip
-  // under it); 801 and 803 the whole of it, as SvR 2011's. Changed in the model's bytes, as port13::ScreensTo12.
+  // old games filled with the movie; WWE '12 plays its movies in pictures named "titantron_movie" (the titantron, by
+  // number: 800, 803, 806, 808) and "arena_movie" (801, 807, 809), else they stayed red. 800 and 803 (the stage's big
+  // screen, the two often the same quad: 2007 RAW) show the titantron's part of WWE '12's movie (v 0-0.684, its strip
+  // under it), the screen's UVs taken as a whole (all its movie meshes); 801 the arena's movie, whole. Changed in the
+  // model's bytes, as port13::ScreensTo12.
   std::set<std::string> pictures;
   if (svrfmt::ArcNode *p = kid(ga, 400)) {
     std::vector<svrfmt::BundleTexture> t;
@@ -2474,8 +2490,11 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
       continue;
     constexpr size_t B = 8;
     const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
-    bool changed = false;
-    for (const auto &me : m.meshes) {
+    // Its movie meshes and their picture slot.
+    std::vector<std::pair<size_t, int>> movies;
+    float u0 = 1e9f, u1 = -1e9f, v0 = 1e9f, v1 = -1e9f;
+    for (size_t i = 0; i < m.meshes.size(); ++i) {
+      const auto &me = m.meshes[i];
       int slot = -1;
       for (const auto &p : me.params)
         if (p.type == 0x0f && p.value.size() >= 4 && svrfmt::Be32(p.value.data()) < m.textures.size())
@@ -2483,30 +2502,31 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
       if (slot < 0 || me.raw.size() < 0x74 || B + tptr + 16 * (size_t(slot) + 1) > d.size())
         continue;
       const std::string &t = m.textures[size_t(slot)];  // (as read: a slot two meshes share is renamed twice alike)
-      const bool movie = t == "titan_mov" || t == "titan" || (!pictures.empty() && !pictures.count(t));
-      if (!movie)
+      if (t != "titan_mov" && t != "titan" && (pictures.empty() || pictures.count(t)))
         continue;
-      const char *name = k.id == 801 ? "arena_movie" : "titantron_movie";
-      if (k.id == 800 && !me.uvs.empty()) {
-        float u0 = 1e9f, u1 = -1e9f, v0 = 1e9f, v1 = -1e9f;
-        for (const auto &uv : me.uvs) {
-          u0 = std::min(u0, uv[0]), u1 = std::max(u1, uv[0]);
-          v0 = std::min(v0, uv[1]), v1 = std::max(v1, uv[1]);
-        }
+      movies.push_back({i, slot});
+      for (const auto &uv : me.uvs) {
+        u0 = std::min(u0, uv[0]), u1 = std::max(u1, uv[0]);
+        v0 = std::min(v0, uv[1]), v1 = std::max(v1, uv[1]);
+      }
+    }
+    for (const auto &[i, slot] : movies) {
+      const auto &me = m.meshes[i];
+      if (k.id != 801 && u1 > u0 && v1 > v0) {
         const size_t uvs = B + svrfmt::Be32(&me.raw[0x70]);
-        if (u1 <= u0 || v1 <= v0 || uvs + 8 * me.uvs.size() > d.size())
+        if (uvs + 8 * me.uvs.size() > d.size())
           continue;
         for (size_t q = 0; q < me.uvs.size(); ++q) {
           svrfmt::PutBeF(&d[uvs + 8 * q], (me.uvs[q][0] - u0) / (u1 - u0));
           svrfmt::PutBeF(&d[uvs + 8 * q + 4], (me.uvs[q][1] - v0) / (v1 - v0) * 0.684f);
         }
       }
+      const char *name = k.id == 801 ? "arena_movie" : "titantron_movie";
       uint8_t *tn = &d[B + tptr + 16 * size_t(slot)];
       std::memset(tn, 0, 16);
       std::memcpy(tn, name, std::strlen(name));
-      changed = true;
     }
-    if (changed)
+    if (!movies.empty())
       ReplaceLike(k, d);
   }
   std::sort(ga.kids.begin(), ga.kids.end(), [](const svrfmt::ArcNode &a, const svrfmt::ArcNode &b) { return a.id < b.id; });
@@ -2547,6 +2567,31 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
   PortInfo pi;
   if (OldSvrArena(ga, gb, &pi.notes))
     pi.notes.insert(pi.notes.begin(), "SvR 2007 / 2008 / 2009 arena made as SvR 2011's");
+  // The reflections (401): WWE '12's items look theirs up by name, "cube_00" / "cube_01" (the ring steps: drawn white
+  // in a SvR 2007 arena, 2026-11-01); SvR's arenas name theirs "cube00", "ar_ref": the base's added.
+  {
+    svrfmt::ArcNode *ours = nullptr, *theirs = nullptr;
+    for (auto &k : ga.kids)
+      if (k.id == 401)
+        ours = &k;
+    for (auto &k : gb.kids)
+      if (k.id == 401)
+        theirs = &k;
+    std::vector<svrfmt::BundleTexture> o, t;
+    if (ours && theirs && svrfmt::BundleRead(svrfmt::ArchiveData(*ours), o) &&
+        svrfmt::BundleRead(svrfmt::ArchiveData(*theirs), t)) {
+      size_t added = 0;
+      for (const auto &x : t)
+        if (std::none_of(o.begin(), o.end(), [&](const svrfmt::BundleTexture &y) { return y.name == x.name; })) {
+          o.push_back(x);
+          ++added;
+        }
+      if (added) {
+        ReplaceLike(*ours, svrfmt::BundleWrite(o));
+        pi.notes.push_back(std::to_string(added) + " reflection picture(s) from the base (the ring steps')");
+      }
+    }
+  }
   const std::set<uint32_t> ring = {951, 952, 953, 956, 960, 964, 973, 974, 980};
   std::set<uint32_t> from_base = {30002, 995, 996, 997, 999};
   from_base.insert(ring.begin(), ring.end());

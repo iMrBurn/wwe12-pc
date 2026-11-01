@@ -1567,11 +1567,27 @@ class Page {
         fs::remove(out, ec);
       }
     }
+    // SvR 2007 has no plates of its own (no _EvtGdHD.pac): WWE '12's wearing its show's logo (its VS screen's, else
+    // its banner), as the 2K games' without theirs; added arenas had none at all (seen in the game, 2026-11-01).
+    if (old_svr && etex_.empty() && disc_ && (!evtgd12.empty() || disc_->Read("pac/evt/evtgdhd.pac", evtgd12))) {
+      svrfmt::Image logo;
+      if (const auto *l = port_svr_arena::detail::Named(vs07, "logo"))
+        svrfmt::DdsDecode(l->data, logo);
+      if (logo.rgba.empty())
+        logo = banner_;
+      if (port_svr_arena::EtexWearing(evtgd12, logo, 3.4, svrfmt::Image(), etex_, port_svr_arena::Plate2K(),
+                                      port_svr_arena::Plate2K()))
+        port_note_ += fr ? " Avec des plaques d'entrée à son logo." : " With entrance plates wearing its logo.";
+    }
     // Its transition video (evtmov.pac MOVT/M0NN: Bink 1 at 640 x 640, as WWE '12's).
     Bytes evtmov;
     if (svr_pick_ >= 0 && !old_svr && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&
         port13::TransitionVideo(evtmov, svr_pick_, movie_))
       port_note_ += fr ? " Avec sa transition." : " With its transition.";
+    // None of its own (SvR 2007 / 2008): its base's, else an added arena has none (seen in the game, 2026-11-01).
+    if (movie_.empty() && slot_ >= 0 && disc_ && disc_->Read("pac/evt/evtmov.pac", evtmov) &&
+        port13::TransitionVideo(evtmov, kSlots[slot_].number, movie_))
+      port_note_ += fr ? " Avec la transition de son arène de base." : " With its base arena's transition.";
     const std::string stem = svr_pick_ >= 0 ? SvrName(svr_pick_) : media::Utf8(svr_path_.stem().wstring());
     snprintf(name_, sizeof(name_), "%s (SvR %d)", stem.c_str(), svr_pick_ >= 0 ? svr_year_ : 2011);
     as_new_ = true;
