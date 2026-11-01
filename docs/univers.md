@@ -993,3 +993,10 @@ le match MITB du PPV (le 5e était déjà sur la carte). Elimination Chamber : m
   du fichier d'un jour plus tard que le jour courant sont ignorées (sauvegarde plus ancienne rechargée).
 Vu : « Elimination Chamber qualifying matches begin this week… » au RAW de février semaine 1, puis « ELIMINATION CHAMBER
 PLACE SECURED! — Kofi Kingston has qualified… » avec une seule photo.
+
+## 37. UNIVERSE OPTIONS dans EDIT UNIVERSE (1.0, 2026-11-01, vu par l'utilisateur)
+
+EDIT UNIVERSE > UNIVERSE OPTIONS : TITLE DEFENSES (OFF / 10 / 25 / 50 / 100 %) et QUALIFYING MATCHES (OFF / ON),
+textes en 5 langues, message de confirmation. Le choix change le réglage tout de suite (`SetFlagByName`) et l'écrit
+dans `wwe12.toml` à côté de l'exe (même fichier que le launcher, RÉGLAGES > AVANCÉ). Vu : « Title defenses on weekly
+shows: 25 %. », et `wwe12_universe_title_defenses = 25` / `wwe12_universe_qualifiers = true` écrits dans le toml.
