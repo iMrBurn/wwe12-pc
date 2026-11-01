@@ -241,7 +241,7 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
 - Restent (demandés par l'utilisateur) : des os qui posent souci par endroits, la musique de WWE '13, les graphismes
   (vidéo du titantron : celle de la base passait, Ted DiBiase), puis les autres jeux (2K14-2K17, SvR) d'après les
   convertisseurs de Kaiko (`wwe13_entrance.py`, `entrance_port.py`, avec crédit).
-- **Jambes (2026-11-01, commit 5dd7f0f, pas encore vu en jeu)** : les mollets de WWE '13 n'ont pas de rotation, seulement
+- **Jambes (2026-11-01, commit 5dd7f0f, vu en jeu par l'utilisateur : « nickel »)** : les mollets de WWE '13 n'ont pas de rotation, seulement
   une cible IK (cheville + angle du genou) que WWE '12 ignore (pieds sur les talons). `port/src/modmaker/yanm_ik.h`
   résout les jambes image par image comme WWE '13 (méthode de Kaiko, `yanm_decode._solve_ik` / `w13_retarget.Pose13`,
   crédité) et écrit cuisse et mollet en clés rot16 (une sur deux images), POF0 réécrit ; appliqué par
