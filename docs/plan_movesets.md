@@ -287,3 +287,21 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   3. son PCM en flux simple (type 1, codec 0x00010001), sans préchargement.
   Les DLC officiels se chargent pareil (banques `Music_DLC_NN` chargées puis rechargées à la connexion du profil).
   Entendue aussi pendant l'entrée de Mankind en match (2026-11-01). Victoire : pas encore vérifiée.
+
+## Plan : entrées, scènes de victoire, musiques, titantrons et effets de SvR 2007 à 2K17 (2026-11-01)
+
+Demande de l'utilisateur : porter n'importe quelle entrée et scène de victoire de SvR 2007 à 2K17, avec titantrons,
+musiques et effets (pyro). D'après les notes de Kaiko (`OTHER_GAMES_ENTRANCES.md`, ses convertisseurs visent SvR 2011 ;
+le format de WWE '12 est celui de WWE '13 : script EVP en cm, pistes EVZ en YANM à 60 Hz) :
+
+| Jeu | Entrées / victoires | Musique | Titantron | Pyro | Effort |
+|---|---|---|---|---|---|
+| WWE '13 | fait (entrées) ; victoires = `Winning00-03.pac`, même format (EVPA/EVZA 6000+n) | fait (PCM) | via 2K16/2K17 du même numéro ; KB2d sinon (vieux RAD Video Tools à essayer) | fait (PCE6) | victoires : ½ séance |
+| 2K14 | presque une copie : EPAC, chaînes d'id dans les feuilles, queue EVP, extra générique 25500, accessoires | `Game_Sound_M.pck` (carte à trouver), vgmstream → PCM | lu (KB2f) | PCE6 (pas de LPE6) | 1 séance |
+| 2K15-2K17 | EVP à cases de 788 o → 212 (`evp_788_to_212` de Kaiko), YANM v4/v5, blocs mode 4 à sauter, HSPC (2K17), entrées « une prise » de 2K15 | Wwise, vgmstream → PCM | lu (KB2i, déjà dans le Mod Maker) | 2K15 `prtcls.pac`, 2K16-17 `pac/particle/pce6NNNN.pac` | 1-2 séances |
+| SvR 2010 / 2011 | mouvements YMKs : recibler vers le squelette Biped de WWE '12 et écrire des YANM (l'inverse de `w13_retarget` de Kaiko) ; script 2011 → positions × 10 | YAF (XMA2) / Wwise, vgmstream → PCM | Bink 1 (déjà) | 2010 = format 2011 (PCE6) | 2-3 séances |
+| SvR 2007-2009 | idem + leurs scripts 2008 (objets de 28 o, ops propres à 2007) | XACT / YAF (XMA), vgmstream → PCM | Bink 1 (déjà) | ancien format (non portable) | +1 séance |
+
+Ordre proposé : 1) musiques de tous les jeux (même chemin que WWE '13, vgmstream → PCM → notre paquet) ; 2) victoires de
+WWE '13 ; 3) 2K14 ; 4) 2K15-2K17 ; 5) SvR 2010/2011 (le reciblage) ; 6) SvR 2007-2009. Tout est crédité à Kaiko.
+Rappel 1.0 (Main) : rien de non testé dans l'arbre au jeudi 6 novembre au soir.
