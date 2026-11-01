@@ -1567,18 +1567,12 @@ class Page {
         fs::remove(out, ec);
       }
     }
-    // SvR 2007 has no plates of its own (no _EvtGdHD.pac): WWE '12's wearing its show's logo (its VS screen's, else
-    // its banner), as the 2K games' without theirs; added arenas had none at all (seen in the game, 2026-11-01).
-    if (old_svr && etex_.empty() && disc_ && (!evtgd12.empty() || disc_->Read("pac/evt/evtgdhd.pac", evtgd12))) {
-      svrfmt::Image logo;
-      if (const auto *l = port_svr_arena::detail::Named(vs07, "logo"))
-        svrfmt::DdsDecode(l->data, logo);
-      if (logo.rgba.empty())
-        logo = banner_;
-      if (port_svr_arena::EtexWearing(evtgd12, logo, 3.4, svrfmt::Image(), etex_, port_svr_arena::Plate2K(),
-                                      port_svr_arena::Plate2K()))
-        port_note_ += fr ? " Avec des plaques d'entrée à son logo." : " With entrance plates wearing its logo.";
-    }
+    // SvR 2007 has no plates of its own (no _EvtGdHD.pac): its base's, as they are (an added arena had none at all;
+    // WWE '12's WrestleMania ones wearing its logo didn't please the user, 2026-11-01).
+    if (old_svr && etex_.empty() && slot_ >= 0 && disc_ &&
+        (!evtgd12.empty() || disc_->Read("pac/evt/evtgdhd.pac", evtgd12)) &&
+        port13::Etex(evtgd12, kSlots[slot_].number, etex_))
+      port_note_ += fr ? " Avec les plaques d'entrée de son arène de base." : " With its base arena's entrance plates.";
     // Its transition video (evtmov.pac MOVT/M0NN: Bink 1 at 640 x 640, as WWE '12's).
     Bytes evtmov;
     if (svr_pick_ >= 0 && !old_svr && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&

@@ -169,6 +169,7 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   - **escaliers du ring blancs** : objets du jeu qui cherchent leur reflet dans l'entrée 401 de l'arène sous les noms
     « cube_00 » / « cube_01 » (WWE '12) ; les arènes de SvR 2007-2011 ont « cube00 », « ar_ref » : ceux de la base
     ajoutés (`Port`, toutes les arènes SvR) ;
-  - **pas de plaques de nom ni de locator, pas de transition** (une arène ajoutée n'a rien sinon) : plaques de WWE '12
-    au logo de l'émission (`EtexWearing`, comme les 2K sans plaques) quand le jeu n'en a pas (2007), transition de
+  - **pas de plaques de nom ni de locator, pas de transition** (une arène ajoutée n'a rien sinon) : plaques de son
+    arène de base telles quelles (`port13::Etex` sur l'evtgdhd.pac de WWE '12) quand le jeu n'en a pas (2007 ; celles
+    de WrestleMania XXVII au logo de l'émission, premier essai, n'ont pas plu à l'utilisateur), transition de
     l'arène de base quand il n'en a pas (2007, 2008).
