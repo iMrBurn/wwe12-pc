@@ -1246,7 +1246,7 @@ class Page {
             : (fr ? "Son écran VS (un écran de WWE '12 avec ses images)" : "Its VS screen (a WWE '12 one with its pictures)"),
         none);
     row(!etex_.empty(), wiz_keep_etex_, fr ? "Ses plaques d'entrée et son locator" : "Its entrance plates and locator",
-        w13 ? none : (fr ? "(SvR 2011 : pas encore, ceux de la base)" : "(SvR 2011: not yet, the base's)"));
+        none);
     row(!load_.empty(), wiz_keep_load_, fr ? "Son écran d'avant-match" : "Its pre-match screen",
         w13 ? none : (fr ? "(SvR 2011 : celui de la base)" : "(SvR 2011: the base's)"));
     if (!w13 && !real_mb_.empty()) {  // (SvR 2011's own VS screen, a test)
@@ -1533,6 +1533,24 @@ class Page {
         const port_svr_arena::PlateText t = port_svr_arena::PlateTextFor(slot_ >= 0 ? kSlots[slot_].number : 2);
         city.x += t.city_x - t.name_x;
         city.y += t.city_y - t.name_y;
+        // (made smaller round the city's text when it would leave the screen: WWE '12 writes the city near the top
+        // left, SvR 2007 RAW's big plate went half off it, 2026-11-01)
+        float k = 1;
+        const float m = 16;
+        if (city.x < m)
+          k = std::min(k, (t.city_x - m) / std::max(1.0f, t.city_x - city.x));
+        if (city.y < m)
+          k = std::min(k, (t.city_y - m) / std::max(1.0f, t.city_y - city.y));
+        if (city.x + city.w > 1920 - m)
+          k = std::min(k, (1920 - m - t.city_x) / std::max(1.0f, city.x + city.w - t.city_x));
+        if (city.y + city.h > 1080 - m)
+          k = std::min(k, (1080 - m - t.city_y) / std::max(1.0f, city.y + city.h - t.city_y));
+        if (k > 0.1f && k < 1) {
+          city.x = t.city_x - (t.city_x - city.x) * k;
+          city.y = t.city_y - (t.city_y - city.y) * k;
+          city.w *= k;
+          city.h *= k;
+        }
         if (port_svr_arena::EtexWearing(evtgd12, svrfmt::Image(), 3.4, svrfmt::Image(), etex_, city, plate))
           port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
       }

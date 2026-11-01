@@ -188,3 +188,8 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   éclair blanc au tiers, fondus ; 36 images à 30/s, 320 × 320 avec alpha (Bink 1, comme celle de 2009). La plaque de
   SmackDown 2007 avait la vidéo d'entrée du catcheur dans son carré rouge : une plaque de WWE '12 est une image fixe,
   le cadre reste vide.
+- **Quatrième essai en jeu (2026-11-01, Randy Orton sur RAW 2007)** : titantron bon (la vidéo d'Orton sur le grand
+  écran, 808), plaques de 2007 bonnes (plaque mécanique RAW, titre et nom écrits dedans). La plaque du locator sortait à
+  moitié de l'écran en haut à gauche (WWE '12 écrit la ville près du coin ; la grande plaque de 2007 y est posée pour que
+  sa barre tombe sur le texte) : réduite autour du texte quand elle sortirait de l'écran (marge 16 px). Page Home, guide
+  et NOUVEAU CATCHEUR du Mod Maker mis à jour : SvR 2007 à 2011, DLC, écran VS / plaques / transition des arènes.

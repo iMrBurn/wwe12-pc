@@ -256,8 +256,10 @@ void FirstSteps() {
   steps.push_back({"Le Mod Maker est à côté de wwe12.exe et trouve le jeu.",
                    "The Mod Maker sits next to wwe12.exe and finds the game.", kHome, g_disc.Found() ? 1 : 0});
   if (g_first_goal == 0) {
-    steps.push_back({"Ajoutez votre autre jeu (SvR 2011, WWE '13, 2K14 à 2K17 : ISO ou dossier) dans MES DISQUES.",
-                     "Add your other game (SvR 2011, WWE '13, 2K14 to 2K17: ISO or folder) in MY GAME DISCS.", kDiscs,
+    steps.push_back({"Ajoutez votre autre jeu (SvR 2007 à 2011, WWE '13, 2K14 à 2K17 : ISO ou dossier, et ses DLC) "
+                     "dans MES DISQUES.",
+                     "Add your other game (SvR 2007 to 2011, WWE '13, 2K14 to 2K17: ISO or folder, and its DLC) in MY "
+                     "GAME DISCS.", kDiscs,
                      discs > 0 ? 1 : 0});
     steps.push_back({"NOUVEAU CATCHEUR, étape 1 : choisissez son jeu, puis le catcheur dans la liste.",
                      "NEW SUPERSTAR, step 1: choose its game, then the superstar in the list.", kNewStar, -1});
@@ -327,12 +329,18 @@ void PageHome() {
        "La vidéo de titantron d'un catcheur, à partir de n'importe quelle vidéo ou image."},
       {kTextures, "Textures", "Textures", "Change any picture of the game: menus, renders, logos, arenas...",
        "Changer n'importe quelle image du jeu : menus, renders, logos, arènes..."},
-      {kArenas, "Arenas", "Arènes", "A new arena from your other games (SvR 2011, WWE '13, 2K14-2K17), step by step; or the game's own retextured.",
-       "Une nouvelle arène depuis vos autres jeux (SvR 2011, WWE '13, 2K14-2K17), étape par étape ; ou celles du jeu retouchées."},
+      {kArenas, "Arenas", "Arènes",
+       "A new arena from your other games (SvR 2007-2011, WWE '13, 2K14-2K17, their DLC too), step by step, with its VS "
+       "screen, plates and transition; or the game's own retextured.",
+       "Une nouvelle arène depuis vos autres jeux (SvR 2007-2011, WWE '13, 2K14-2K17, leurs DLC aussi), étape par "
+       "étape, avec son écran VS, ses plaques et sa transition ; ou celles du jeu retouchées."},
       {kStars, "Superstars", "Catcheurs", "Change an attire's pictures and see the superstar in 3D.",
        "Changer les images d'une tenue et voir le catcheur en 3D."},
-      {kNewStar, "New superstar", "Nouveau catcheur", "Add a superstar to the game, next to the others (also from SvR 2011, WWE '13 or 2K14-2K17).",
-       "Ajouter un catcheur au jeu, à côté des autres (aussi depuis SvR 2011, WWE '13 ou 2K14-2K17)."},
+      {kNewStar, "New superstar", "Nouveau catcheur",
+       "Add a superstar to the game, next to the others (also from SvR 2007-2011, WWE '13 or 2K14-2K17, their DLC "
+       "too), with portraits and titantron video.",
+       "Ajouter un catcheur au jeu, à côté des autres (aussi depuis SvR 2007-2011, WWE '13 ou 2K14-2K17, leurs DLC "
+       "aussi), avec ses portraits et sa vidéo de titantron."},
       {kCaw, "CAW", "CAW", "Your created superstars: their picture in the game's lists, export and import (share them).",
        "Vos catcheurs créés : leur image dans les listes du jeu, export et import (pour les partager)."},
       {kObjects, "Belts & weapons", "Ceintures et armes", "The pictures of the title belts, weapons and other objects.",
@@ -350,8 +358,10 @@ void PageHome() {
        "jouées par un catcheur."},
       {kFiles, "Game files", "Fichiers du jeu", "Look inside the game's archives (.pac) and export what's in them.",
        "Regarder dans les archives du jeu (.pac) et exporter ce qu'elles contiennent."},
-      {kDiscs, "My game discs", "Mes disques de jeu", "Your other WWE games (ISO or folder), added once: the ports read them.",
-       "Vos autres jeux WWE (ISO ou dossier), ajoutés une fois : les portages les lisent."},
+      {kDiscs, "My game discs", "Mes disques de jeu",
+       "Your other WWE games (ISO or folder) and their DLC (Xbox 360 packages), added once: the ports read them.",
+       "Vos autres jeux WWE (ISO ou dossier) et leurs DLC (paquets Xbox 360), ajoutés une fois : les portages les "
+       "lisent."},
       {kDoctor, "Check mods", "Vérifier les mods", "The mod doctor: what will go wrong in the game with your mods, and a fix.",
        "Le docteur des mods : ce qui ira mal dans le jeu avec vos mods, et de quoi le réparer."},
       {kAbout, "Help", "Aide", "How to make each kind of mod, step by step; what isn't possible yet.",
@@ -421,12 +431,13 @@ const Guide kGuides[] = {
     {"Before anything: add your other games",
      "Avant tout : ajouter vos autres jeux",
      {"Go to MY GAME DISCS.",
-      "Add each WWE game you own (SvR 2011, WWE '13, 2K14 to 2K17): its disc image (.iso) or its folder.",
+      "Add each WWE game you own (SvR 2007 to 2011, WWE '13, 2K14 to 2K17): its disc image (.iso) or its folder; "
+      "their DLC with \"DLC folder...\".",
       "The Mod Maker reads them where they are: nothing is copied, nothing is shared.",
       "Added once, they are offered in every assistant."},
      {"Allez dans MES DISQUES.",
-      "Ajoutez chaque jeu WWE que vous possédez (SvR 2011, WWE '13, 2K14 à 2K17) : son image disque (.iso) ou son "
-      "dossier.",
+      "Ajoutez chaque jeu WWE que vous possédez (SvR 2007 à 2011, WWE '13, 2K14 à 2K17) : son image disque (.iso) ou "
+      "son dossier ; leurs DLC avec « Dossier des DLC... ».",
       "Le Mod Maker les lit là où ils sont : rien n'est copié, rien n'est partagé.",
       "Ajoutés une fois, ils sont proposés dans tous les assistants."}},
     {"A new arena (from another game)",

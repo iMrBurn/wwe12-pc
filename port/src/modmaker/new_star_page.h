@@ -60,11 +60,11 @@ class Page {
     ImGui::TextWrapped("%s", fr ? "Ajoutez un catcheur au jeu, à côté des autres (il apparaît dans la case DLC de "
                                   "l'écran de choix). Il peut partir d'un catcheur de base (ses prises, ses stats, ses "
                                   "portraits), sinon d'un catcheur moyen ; son apparence peut être celle de la base, un "
-                                  "autre fichier de catcheur, ou une tenue portée de SvR 2011, de WWE '13 ou d'un 2K."
+                                  "autre fichier de catcheur, ou une tenue portée de SvR (2007 à 2011), de WWE '13 ou d'un 2K."
                                 : "Add a superstar to the game, next to the others (shown in the select screen's DLC "
                                   "tile). It can start from a base superstar (moves, ratings and portraits), else from an "
                                   "average one; its look can be the base's, another superstar file, or an attire ported "
-                                  "from SvR 2011, WWE '13 or a 2K game.");
+                                  "from SvR (2007 to 2011), WWE '13 or a 2K game.");
     if (movie_.Finished())
       Finished(fr, mods);
     if (!disc.Found()) {
