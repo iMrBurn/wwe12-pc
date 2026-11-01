@@ -37,6 +37,7 @@
 #include "svrfmt/archive.h"
 #include "svrfmt/pac.h"
 #include "svrfmt/texture.h"
+#include "wwise.h"
 
 namespace superstar_pack {
 
@@ -74,6 +75,9 @@ struct Star {
   // Its own entrance (a WWE '13 one the game serves under that number: wwe12_arena_pages.cpp), else 0: CHAR / PRO
   // +0x1D8 and +0x1E4, the entrance number of both blocks (music, video, entrance).
   int own_entrance = 0;
+  // Its own entrance theme (a WWE '13 one: superstar/entrance/MUS_<n>.bin, a Wwise Vorbis stream), else empty: played
+  // as music number own_entrance (CHAR / PRO +0x1D4 and +0x1E0) from the pack's sound\DLC_NN.pck (wwise.h).
+  Bytes theme;
   // Its moves WWE '12 hasn't (added to the pack: misc.pac records, m_dlcNN.pac motions), else empty.
   std::vector<NewMove> new_moves;
   // Its own portraits, else empty (the base's): [0 SD / 1 HD][SSFA, SSFB, SSFC], DDS as the game's (DXT5; HD 512 x 512,
@@ -172,6 +176,11 @@ struct Inputs {
   Bytes edit;  // ... the Superstar Threads table: the latest pack's pac\edit\edit_dlcNN.pac, else the disc's edit.pac
   std::vector<Bytes> portraits_hd, portraits_sd;   // pacs that may hold the bases' SSFA/SSFB/SSFC "%04d"
   std::vector<std::pair<int, Bytes>> catalogs;     // the installed packs (number, info/catalog.dlc), not ours
+  // For added themes: the game's sound\Music.pck (its theme 139 copied, wwise::MusicPackage) and the latest sound pac
+  // (an installed pack's pac\sound_dlc_NN.pac: its YAFH/PCKH holds the DLC packages' headers; empty: the disc's
+  // sound.pac, which has none, so none is brought).
+  wwise::Package music;
+  Bytes sound_pac;
 };
 
 struct File {
@@ -520,6 +529,12 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     }
     if (st.own_entrance > 0)
       for (const size_t at : {size_t(0x1D8), size_t(0x1E4)})
+        if (moves.size() >= at + 2) {
+          moves[at] = uint8_t(st.own_entrance);
+          moves[at + 1] = uint8_t(st.own_entrance >> 8);
+        }
+    if (st.own_entrance > 0 && !st.theme.empty())  // its music number (the theme in our package)
+      for (const size_t at : {size_t(0x1D4), size_t(0x1E0)})
         if (moves.size() >= at + 2) {
           moves[at] = uint8_t(st.own_entrance);
           moves[at + 1] = uint8_t(st.own_entrance >> 8);
@@ -892,6 +907,41 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       }
     }
   }
+  // 4c. Themes: our package sound\DLC_NN.pck (its bank Music_DLC_NN), and the latest sound pac with its header record.
+  Bytes music_pck, sound_out;
+  {
+    std::vector<wwise::Theme> themes;
+    for (const auto &st : stars)
+      if (st.own_entrance > 0 && !st.theme.empty())
+        themes.push_back({st.own_entrance, st.theme});
+    Bytes pckh;
+    std::string w;
+    if (!themes.empty() && !wwise::MusicPackage(in.music, pack, themes, music_pck, pckh, &w)) {
+      music_pck.clear();
+      if (why)
+        *why = "themes left out: " + w;  // (not a failure: the pack is made without them)
+    }
+    if (!music_pck.empty() && !in.sound_pac.empty()) {
+      svrfmt::Archive sp;
+      ArcNode *group = nullptr;
+      if (svrfmt::ArchiveOpen(in.sound_pac, sp, nullptr))
+        for (auto &k : sp.root.kids)
+          if (k.name == "PCKH" && svrfmt::ArchiveExpand(k))
+            group = &k;
+      if (group) {
+        const uint32_t id = uint32_t(100 + pack);
+        bool done = false;
+        for (auto &k : group->kids)
+          if (k.id == id)
+            svrfmt::ArchiveReplace(k, pckh), done = true;
+        if (done || svrfmt::ArchiveAdd(*group, "", "", id, pckh, nullptr)) {
+          svrfmt::ArchiveTouch(*group);
+          svrfmt::ArchiveTouch(sp.root);
+          sound_out = svrfmt::ArchiveSave(sp);
+        }
+      }
+    }
+  }
   // 5. The files, their directories and the catalog.
   struct Entry {
     std::string path;
@@ -934,8 +984,14 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   }
   entries.push_back({"pac/ch/chEtc.pac", next, next, &etc_out});
   ++next;
-  if (!edit_out.empty())
+  if (!edit_out.empty()) {
     entries.push_back({"pac/edit/edit_dlc" + std::string(tag) + ".pac", next, next, &edit_out});
+    ++next;
+  }
+  if (!sound_out.empty())
+    entries.push_back({"pac/sound_dlc_" + std::string(tag) + ".pac", next, next, &sound_out});
+  if (!music_pck.empty())  // (last and with no directory, as the game's packs list theirs)
+    entries.push_back({"sound/DLC_" + std::string(tag) + ".pck", -1, -1, &music_pck});
   for (int hd = 0; hd < 2; ++hd) {
     Bytes arc;
     for (const auto &en : entries) {

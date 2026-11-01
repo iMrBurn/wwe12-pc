@@ -6,6 +6,7 @@
 //    EVP2 137.., Nyujyo2 EVP3 179.., Nyujyo3 EVP4 272.., Nyujyo4 EVP5 328.., Nyujyo5 EVPE 480.., Nyujyo6 EVPF 512..,
 //    Nyujyo7 EVPG 532.., Nyujyo8 EVPH 552.., Nyujyo9 EVPI 600..855, NyujyoA EVPK 50..55); the superstar's CHAR / PRO
 //    +0x1D4 names the entrance (16-bit little-endian).
+// Its theme: WWE '13's sound\Music.pck stream (wwise.h), part "MUS", played from our mods pack's sound\DLC_NN.pck.
 // Besides its script and tracks, an entrance has a game event script (pac\gm.pac GMEV/NNNN, 1536 bytes, PACH; Cena's
 // the same bytes in both games) and its effects (pac\prtcls.pac PCE6/NNNN, PACH): without them the superstar never
 // showed and no music played (2026-10-28, the game's lookups logged: /GMEV/0246 and /PCE6/0246 missing).
@@ -22,6 +23,7 @@
 #include "svrfmt/archive.h"
 #include "svrfmt/pac.h"
 #include "svrfmt/xcompress.h"
+#include "wwise.h"
 #include "yanm_ik.h"
 
 namespace entrance13 {
@@ -138,6 +140,15 @@ inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &o
           out.push_back({number, group, svrfmt::Unpack(svrfmt::ArchiveData(k))});
       }
     }
+  // its theme (music number = the entrance's, as the game's own: Mankind 246): sound\Music.pck's Play_MUS_NNNN_0_0
+  if (!out.empty()) {
+    wwise::Package music;
+    if (music.Open([&w13](uint64_t at, uint32_t size, Bytes &o) { return w13.ReadPart("sound/Music.pck", at, size, o); })) {
+      Bytes theme = wwise::ThemeStream(music, number % 1000);
+      if (!theme.empty())
+        out.push_back({number % 1000, "MUS", std::move(theme)});
+    }
+  }
   if (out.empty() && why)
     *why = "no such entrance in WWE '13";
   return !out.empty();

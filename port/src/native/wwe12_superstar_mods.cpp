@@ -126,6 +126,23 @@ uint64_t Fnv(const Bytes &b, uint64_t h) {
   return h;
 }
 
+// A part of a file as the game sees it on its disc (sound\Music.pck is 216 MB: its header and banks are read).
+bool ReadGamePart(rex::filesystem::VirtualFileSystem *vfs, const std::string &rel, uint64_t at, uint32_t size, Bytes &out) {
+  std::string path = "game:\\" + rel;
+  for (auto &c : path)
+    if (c == '/')
+      c = '\\';
+  rex::filesystem::Entry *entry = vfs ? vfs->ResolvePath(path) : nullptr;
+  rex::filesystem::File *file = nullptr;
+  if (!entry || at + size > entry->size() || entry->Open(rex::filesystem::FileAccess::kFileReadData, &file) != 0 || !file)
+    return false;
+  out.resize(size);
+  size_t read = 0;
+  const bool ok = file->ReadSync(std::span<uint8_t>(out.data(), out.size()), at, &read) == 0 && read == out.size();
+  file->Destroy();
+  return ok;
+}
+
 // The save copied as the launcher's automatic backups do (SaveBackups\<date>\: the save package and the achievements,
 // backup.txt "auto" + why; the latest 10 automatic ones kept): before the pack changes.
 void BackupSave(const fs::path &user_root, const std::string &why) {
@@ -215,6 +232,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     int own_entrance = 0;                     // entrance_own=NUMBER: its own (superstar/entrance/), else 0
     std::vector<superstar_pack::NewMove> new_moves;  // superstar/moves/<number>.waze, _low.yanm, _high.yanm
     fs::path model, movie;
+    fs::path theme;  // superstar/entrance/MUS_<own entrance>.bin: its own theme (a WWE '13 one), else empty
   };
   std::vector<Mod> list;
   std::vector<fs::path> dirs;
@@ -271,6 +289,9 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     }
     mod.entrance = std::clamp(atoi(Value(text, "entrance").c_str()), 0, 372);
     mod.own_entrance = std::clamp(atoi(Value(text, "entrance_own").c_str()), 0, 999);
+    if (mod.own_entrance > 0 &&
+        fs::exists(d / "superstar" / "entrance" / ("MUS_" + std::to_string(mod.own_entrance) + ".bin"), ec))
+      mod.theme = d / "superstar" / "entrance" / ("MUS_" + std::to_string(mod.own_entrance) + ".bin");
     for (fs::directory_iterator it(d / "superstar" / "moves", ec), end; !ec && it != end; it.increment(ec)) {
       const fs::path w = it->path();
       if (w.extension() != ".waze")
@@ -548,6 +569,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     st.entrance = mod.entrance;
     st.own_entrance = mod.own_entrance;
     st.new_moves = mod.new_moves;
+    if (!mod.theme.empty())
+      ReadHost(mod.theme, st.theme);
     const auto k = kept.find(mod.key);
     if (k != kept.end() && std::find(free_slots.begin(), free_slots.end(), k->second) != free_slots.end() &&
         std::find(taken.begin(), taken.end(), k->second) == taken.end())
@@ -673,11 +696,27 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     }
     if (in.edit.empty())
       ReadGame(vfs, "pac/edit/edit.pac", in.edit);
+    // Themes: the game's sound\Music.pck (read in parts) and the newest pack's pac\sound_dlc_NN.pac.
+    if (std::any_of(stars.begin(), stars.end(), [](const auto &s) { return !s.theme.empty(); })) {
+      in.music.Open([vfs](uint64_t at, uint32_t size, Bytes &out) { return ReadGamePart(vfs, "sound/Music.pck", at, size, out); });
+      for (const auto &[n, dir] : packs) {
+        for (fs::directory_iterator it(dir / "pac", ec), end; !ec && it != end; it.increment(ec))
+          if (it->path().filename().string().rfind("sound_dlc_", 0) == 0 && ReadHost(it->path(), in.sound_pac))
+            break;
+        if (!in.sound_pac.empty())
+          break;
+      }
+    }
   }
   if (!superstar_pack::Build(in, stars, files, &why, attires, media, signs)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;
   }
+  if (!why.empty())
+    REXLOG_WARN("[superstar mods] {}", why);
+  for (const auto &f : files)
+    if (f.path.rfind("sound/", 0) == 0 || f.path.rfind("pac/sound_dlc_", 0) == 0)
+      REXLOG_INFO("[superstar mods] themes: {} ({} bytes)", f.path, f.data.size());
   // Their records as the save keeps them (the select screen's roster, below): the pack's CHAR / DAT record without
   // its first 4 bytes, its 16-bit numbers big-endian (13 of them, found on 254 records of a save, 2026-10-26).
   g_records.clear();
