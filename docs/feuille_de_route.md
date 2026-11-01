@@ -68,5 +68,6 @@ Aussi demandé : travailler sur le Mod Maker (voir `docs/mod_maker.md`).
 
 ## Ajouts 1.1 (décision de l'utilisateur, 2026-10-31, suggestions de joueurs, voir `docs/suggestions_joueurs.md`)
 - Univers : interférence « embuscade en coulisses » (cinématiques Create a Story), deux mallettes MITB (RAW / SmackDown).
-- Mod Maker : vrais noms des catcheurs pour les entrées et mouvements prédéfinis.
+- Mod Maker : porter n'importe quelle scène de victoire (même format que les entrées : Winning*.pac) ; musique de victoire et vidéo WWE '13 si pas finies pour la 1.0 ; entrées des autres jeux.
+- ~~Mod Maker : vrais noms des catcheurs pour les entrées et mouvements prédéfinis.~~ **Fait en 1.0** (2026-10-31).
 - Launcher : touches de clavier comme le port SvR 2011 (à préciser). À étudier : chronomètre de match, interférence forcée sur un bouton, types de match du port SvR 2011.
