@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <memory>
 #include <span>
 #include <string>
@@ -55,6 +56,8 @@ using Bytes = std::vector<uint8_t>;
 constexpr const char *kPackName = "WWE12PCMODS";
 
 std::map<uint32_t, uint32_t> g_movies;  // added superstar -> the number of its own entrance video
+std::map<std::string, uint32_t> g_mod_movies;          // ... by its mod's folder name (wwe12_arena_pages.cpp)
+std::set<std::pair<uint32_t, uint32_t>> g_own_screens;  // (kind: 1 ribbon, 2 wall; its video number) its mod has
 std::vector<std::pair<uint32_t, std::string>> g_themes;  // added superstars' own themes: music number, name
 fs::path g_menu_dir;                    // the dressed menu files of this start, "" = the game's
 std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the save keeps it (286 bytes)
@@ -655,10 +658,21 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   stars.erase(std::remove_if(stars.begin(), stars.end(), [](const auto &s) { return !s.slot || s.model.empty(); }),
               stars.end());
   g_movies.clear();
+  g_mod_movies.clear();
+  g_own_screens.clear();
   g_themes.clear();
+  std::map<std::string, fs::path> star_dirs;  // (its superstar\ folder)
+  for (const auto &m : list)
+    star_dirs[m.key] = m.movie.parent_path();
   for (const auto &st : stars) {
-    if (st.movie_number)
+    if (st.movie_number) {
       g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
+      g_mod_movies[st.key] = uint32_t(st.movie_number);
+      std::error_code e1;
+      for (const auto &[kind, file] : {std::pair<uint32_t, const char *>{1, "ribbon.bik"}, {2, "wall.bik"}})
+        if (fs::exists(star_dirs[st.key] / file, e1))
+          g_own_screens.insert({kind, uint32_t(st.movie_number)});
+    }
     if (!st.theme.empty())
       g_themes.push_back({uint32_t(superstar_pack::detail::MusicNumber(st)), st.name});
   }
@@ -770,6 +784,12 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     for (const auto &st : stars)
       text += st.key + "=" + std::to_string(st.slot) + "\n";
     WriteHost(user_root / "superstar_slots.txt", Bytes(text.begin(), text.end()));
+    // and their own video numbers (their ribbon and wall are served under it; wwe12_arena_pages.cpp mounts the
+    // entrances before this runs, so it reads them from here, as the slots)
+    std::string movies;
+    for (const auto &[key, n] : g_mod_movies)
+      movies += key + "=" + std::to_string(n) + "\n";
+    WriteHost(user_root / "superstar_movies.txt", Bytes(movies.begin(), movies.end()));
   }
   // Written again only when it changed (the videos too: their numbers and contents are in the files).
   uint64_t h = 0xCBF29CE484222325ull;
@@ -963,8 +983,25 @@ uint32_t Entering(const PPCContext &ctx, uint8_t *base) {
 
 }  // namespace
 
+// (wwe12_arena_pages.cpp: whether a media mod has a ribbon / wall for that video number)
+bool Wwe12ModScreen(uint32_t kind, uint32_t n);
+
 // The added superstars' own themes (music number, name), for the jukebox (wwe12_jukebox.cpp).
 std::vector<std::pair<uint32_t, std::string>> Wwe12AddedThemes() { return g_themes; }
+
+// A lookup of "MVSB/M%03d" / "MVSW/M%03d" (an entrant's ribbon / wall) while an added superstar with its own is
+// entering: the name it is served under ("MVSB/M<its video number>"), else "".
+std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint8_t *base) {
+  if (g_own_screens.empty() || asked.size() < 7 || asked.compare(0, 3, "MVS") || (asked[3] != 'B' && asked[3] != 'W') ||
+      asked.compare(4, 2, "/M"))
+    return {};
+  const auto movie = g_movies.find(Entering(ctx, base));
+  if (movie == g_movies.end() || !g_own_screens.count({asked[3] == 'B' ? 1u : 2u, movie->second}))
+    return {};
+  char name[16];
+  snprintf(name, sizeof(name), "MVS%c/M%03u", asked[3], movie->second);
+  return name;
+}
 
 extern "C" REX_FUNC(sub_82A316A0) {
   if (!g_movies.empty()) {
@@ -982,19 +1019,29 @@ extern "C" REX_FUNC(sub_82A316A0) {
 // kind) says whether it has a movie of that kind in pac\evt\evtmov.pac: 2 its wall (MVSW/M%03d, 256 x 256), 1 its
 // ribbon (MVSB/M%03d, 1024 x 32, its name around the arena); without them the arena's are shown (its wall, its ribbon
 // MVAB, kind 3). An added superstar has its base's video number: it showed the base's ribbon and wall (Ultimate
-// Warrior on Ted DiBiase's 261, 2026-11-01); it is told it has none, so it gets the arena's.
+// Warrior on Ted DiBiase's 261, 2026-11-01). It has the arena's, unless its mod has its own (superstar\ribbon.bik,
+// wall.bik, made by the Mod Maker): served in evtmov.pac under its own video number (wwe12_arena_pages.cpp), the
+// game's lookup of its base's name sent there (Wwe12OwnScreen).
 REX_EXTERN(__imp__sub_82A31578);
 extern "C" REX_FUNC(sub_82A31578) {
   const uint32_t n = ctx.r3.u32, kind = ctx.r4.u32;
   __imp__sub_82A31578(ctx, base);
-  if (ctx.r3.u32 && (kind == 1 || kind == 2) && !g_records.empty()) {
+  if (kind != 1 && kind != 2)
+    return;
+  if (!g_records.empty()) {
     const uint32_t id = Entering(ctx, base);
     if (g_records.count(id)) {
-      REXLOG_INFO("[superstar mods] superstar {} entering: no {} of its base's ({}), the arena's", id,
-                  kind == 1 ? "ribbon" : "wall", n);
-      ctx.r3.u64 = 0;
+      const auto movie = g_movies.find(id);
+      const bool own = movie != g_movies.end() && g_own_screens.count({kind, movie->second});
+      REXLOG_INFO("[superstar mods] superstar {} entering: {} {}{}", id, own ? "its own" : "the arena's",
+                  kind == 1 ? "ribbon" : "wall", own ? " (" + std::to_string(movie->second) + ")" : std::string());
+      ctx.r3.u64 = own ? 1 : 0;
+      return;
     }
   }
+  // a game superstar's ribbon / wall from a media mod (VIDEOS page; one it hadn't: added)
+  if (Wwe12ModScreen(kind, n))
+    ctx.r3.u64 = 1;
 }
 
 // The select screen's candidates (sub_828ADFB8: numbers 50..372 that the save says are unlocked). The save keeps its

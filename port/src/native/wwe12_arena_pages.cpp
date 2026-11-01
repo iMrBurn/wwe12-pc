@@ -106,6 +106,9 @@ REXCVAR_DEFINE_BOOL(wwe12_dir_log, false, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_arena_pages_test, false, "WWE12",
                     "Test: a second page on the arena select screen (the 21 arenas in reverse order).");
 
+// (wwe12_superstar_mods.cpp: the name an entrant's ribbon / wall lookup is served under, "" if none)
+std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint8_t *base);
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -158,6 +161,11 @@ struct AddedEntrance {
   std::string like;
 };
 std::map<std::string, AddedEntrance> g_entrances;
+// The game's entries a media mod puts its own in place of (evtmov.pac MVSB / MVSW M<n>: a superstar's ribbon and
+// wall, made on the Mod Maker's VIDEOS page), by name as asked ("MVSB/M139"); and every (kind 1 ribbon / 2 wall,
+// video number) a media mod has, replaced or added.
+std::map<std::string, AddedEntrance> g_replaced;
+std::set<std::pair<uint32_t, uint32_t>> g_mod_screens;
 
 struct Tile {
   u32 stage, banner;  // banner: guest address of the texture name (0: the game's table is kept)
@@ -414,6 +422,8 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
   std::error_code ec;
   fs::remove_all(out, ec);
   g_entrances.clear();
+  g_replaced.clear();
+  g_mod_screens.clear();
   if (!REXCVAR_GET(wwe12_entrance_mods))
     return;
   static const char kGroups[] = "12345EFGHIK";
@@ -422,6 +432,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
   struct Part {
     std::string group, name;
     std::vector<uint8_t> data;
+    bool replace = false;  // (the game's own entry of that name, if it has one, replaced)
   };
   std::map<std::string, std::vector<Part>> parts;
   // The added superstars' slots (wwe12_superstar_mods.cpp, which runs before: "<mod>=<number>"): a victory scene of
@@ -439,6 +450,25 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
           const size_t eq = line.rfind('=');
           if (eq != std::string::npos)
             slots[line.substr(0, eq)] = atoi(line.c_str() + eq + 1);
+          line.clear();
+        } else {
+          line += text[at];
+        }
+    }
+  }
+  // ... and their own video numbers (superstar_movies.txt, "<mod>=<number>": the same, written there last time)
+  std::map<std::string, uint32_t> movies;
+  {
+    std::vector<uint8_t> t;
+    if (ReadHost(user_root / "superstar_movies.txt", t)) {
+      std::string text(t.begin(), t.end()), line;
+      for (size_t at = 0; at <= text.size(); ++at)
+        if (at == text.size() || text[at] == '\n') {
+          if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+          const size_t eq = line.rfind('=');
+          if (eq != std::string::npos)
+            movies[line.substr(0, eq)] = uint32_t(atoi(line.c_str() + eq + 1));
           line.clear();
         } else {
           line += text[at];
@@ -463,6 +493,20 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         part.group = std::string(kind) + "A";
         part.name = std::to_string(6000 + slot->second);
         parts["pac/evt/Winning0.pac"].push_back(std::move(part));
+      }
+    // its own ribbon and wall (superstar\ribbon.bik, wall.bik: Bink 1, 1024 x 32 and 256 x 256, made by the Mod
+    // Maker) as evtmov.pac's MVSB / MVSW M<its own video number> (wwe12_superstar_mods.cpp, Wwe12OwnScreen: asked
+    // without a leading slash)
+    if (const auto movie = movies.find(d.filename().string()); movie != movies.end())
+      for (const auto &[group, file] : {std::pair<const char *, const char *>{"MVSB", "ribbon.bik"}, {"MVSW", "wall.bik"}}) {
+        Part part;
+        if (!ReadHost(d / "superstar" / file, part.data) || part.data.empty())
+          continue;
+        char name[8];
+        snprintf(name, sizeof(name), "M%03u", movie->second);
+        part.group = group;
+        part.name = name;
+        parts["pac/evt/evtmov.pac"].push_back(std::move(part));
       }
     if (atoi(Value(std::string(m.begin(), m.end()), "entrance_own").c_str()) <= 0)
       continue;
@@ -498,6 +542,36 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       parts[rel].push_back(std::move(part));
     }
   }
+  // The media mods' ribbons and walls of the game's superstars (media/screens/ribbon_NNN.bik, wall_NNN.bik: NNN its
+  // video number), in place of the superstar's own, or added (then sub_82A31578 says it has one:
+  // wwe12_superstar_mods.cpp).
+  {
+    std::vector<fs::path> media;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Media", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec) && !fs::exists(it->path() / "disabled", ec))
+        media.push_back(it->path());
+    ec.clear();
+    std::sort(media.begin(), media.end());
+    for (const auto &d : media)
+      for (fs::directory_iterator it(d / "media" / "screens", ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string f = it->path().filename().string();
+        const bool ribbon = f.rfind("ribbon_", 0) == 0, wall = f.rfind("wall_", 0) == 0;
+        const int n = atoi(f.c_str() + (ribbon ? 7 : 5));
+        if ((!ribbon && !wall) || n <= 0 || n > 999)
+          continue;
+        Part part;
+        if (!ReadHost(it->path(), part.data) || part.data.empty())
+          continue;
+        char name[8];
+        snprintf(name, sizeof(name), "M%03d", n);
+        part.group = ribbon ? "MVSB" : "MVSW";
+        part.name = name;
+        part.replace = true;
+        parts["pac/evt/evtmov.pac"].push_back(std::move(part));
+        g_mod_screens.insert({ribbon ? 1u : 2u, uint32_t(n)});
+      }
+    ec.clear();
+  }
   for (auto &[rel, list] : parts) {
     std::vector<uint8_t> pac;
     svrfmt::Archive a;
@@ -514,17 +588,25 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         packed.insert("/" + Trimmed(k.group) + "/" + Trimmed(k.name));
     }
     a = {};
+    const std::string lead = rel == "pac/evt/evtmov.pac" ? "" : "/";  // (its names are asked "MVSB/M261")
     for (auto &part : list) {
       const std::string &group = part.group, &name = part.name;
       const auto &have = names[group];
       if (std::find(have.begin(), have.end(), name) != have.end()) {
-        REXLOG_WARN("[entrances] /{}/{} is the game's already: left out", group, name);
+        if (part.replace) {  // (in its place: the directory's answer gets this one's place and size)
+          AddedEntrance e;
+          Append(pac, part.data.data(), part.data.size(), e.sector, e.units);
+          part.data = {};
+          g_replaced[lead + group + "/" + name] = e;
+        } else {
+          REXLOG_WARN("[entrances] /{}/{} is the game's already: left out", group, name);
+        }
         continue;
       }
       std::string like;
       for (const auto &h : have)
         if (h.size() == name.size()) {
-          like = "/" + group + "/" + h;
+          like = lead + group + "/" + h;
           break;
         }
       if (like.empty())
@@ -538,22 +620,28 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         part.data = svrfmt::BpeEncode(part.data);
       Append(pac, part.data.data(), part.data.size(), e.sector, e.units);
       part.data = {};
-      g_entrances["/" + group + "/" + name] = e;
+      g_entrances[lead + group + "/" + name] = e;
     }
     WriteHost(out / fs::path(rel), pac);
   }
-  if (g_entrances.empty())
+  if (g_entrances.empty() && g_replaced.empty())
     return;
   auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, out, true);
   if (!overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(overlay))) {
     REXLOG_WARN("[entrances] could not serve {}", rex::path_to_utf8(out));
     g_entrances.clear();
+    g_replaced.clear();
+    g_mod_screens.clear();
     return;
   }
-  REXLOG_INFO("[entrances] {} added entrance entries, served from {}", g_entrances.size(), rex::path_to_utf8(out));
+  REXLOG_INFO("[entrances] {} added entrance entries, {} replaced, served from {}", g_entrances.size(), g_replaced.size(),
+              rex::path_to_utf8(out));
 }
 
 }  // namespace
+
+// Whether a media mod has a ribbon (kind 1) / wall (kind 2) for video number n (wwe12_superstar_mods.cpp).
+bool Wwe12ModScreen(uint32_t kind, uint32_t n) { return g_mod_screens.count({kind, n}) != 0; }
 
 void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device,
                           const fs::path &user_root, const fs::path &mods) {
@@ -1013,11 +1101,28 @@ extern "C" REX_FUNC(sub_827F29F0) {
       for (size_t i = 0; i <= strlen(spare); ++i)
         bd::mem::store<u8>(name + u32(i), u8(spare[i]));
   }
+  // An added superstar's own ribbon / wall: the lookup of its base's (a string the game built) renamed for good to
+  // its own, which the added entries below answer.
+  if (name && (name < 0x82000000 || name >= 0x84000000) && !g_entrances.empty()) {
+    const std::string asked = bd::mem::str(name), own = Wwe12OwnScreen(asked, ctx, base);
+    if (!own.empty() && own.size() == asked.size())
+      for (size_t i = 0; i <= own.size(); ++i)
+        bd::mem::store<u8>(name + u32(i), u8(own[i]));
+  }
   __imp__sub_827F29F0(ctx, base);
   if (REXCVAR_GET(wwe12_dir_log) && name)
     REXLOG_INFO("[dir] {} {} out {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}", bd::mem::str(name), ctx.r3.u32 ? "found" : "MISSING",
                 out ? bd::mem::load<u32>(out) : 0, out ? bd::mem::load<u32>(out + 4) : 0, out ? bd::mem::load<u32>(out + 8) : 0,
                 out ? bd::mem::load<u32>(out + 12) : 0, out ? bd::mem::load<u32>(out + 16) : 0, out ? bd::mem::load<u32>(out + 20) : 0);
+  // A replaced entry (a media mod's ribbon / wall): the answer gets its place and size.
+  if (name && out && ctx.r3.u32 && !g_replaced.empty() && (name < 0x82000000 || name >= 0x84000000)) {
+    const auto r = g_replaced.find(bd::mem::str(name));
+    if (r != g_replaced.end()) {
+      bd::mem::store<u32>(out, r->second.sector);
+      bd::mem::store<u32>(out + 8, r->second.units);
+      REXLOG_INFO("[entrances] {}: a media mod's own", r->first);
+    }
+  }
   // An added entrance the directory hasn't: asked again as an entry of the same file and name length, then its own
   // place (a string the game built: written for the call, put back after).
   if (name && out && ctx.r3.u32 == 0 && !g_entrances.empty() && (name < 0x82000000 || name >= 0x84000000)) {

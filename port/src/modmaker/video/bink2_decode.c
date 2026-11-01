@@ -2,7 +2,8 @@
  *
  * The decoder proper is video/bink2/ (bink2_core.inc, bink2f.inc, bink2g.inc): the patch "avcodec: add bink2 video
  * decoder" posted to FFmpeg-devel on 2020-03-20 by Paul B Mahol (Copyright (c) 2014 Konstantin Shishkov, (c) 2019
- * Paul B Mahol), https://ffmpeg.org/pipermail/ffmpeg-devel/2020-March/258764.html, taken unchanged. Below: the few
+ * Paul B Mahol), https://ffmpeg.org/pipermail/ffmpeg-devel/2020-March/258764.html, taken unchanged (KB2f-KB2i), plus
+ * our bink2d.inc for WWE '13's KB2d (decoded slices, then post-processed: bink2d_postprocess). Below: the few
  * FFmpeg helpers it uses (bit reader, VLC tables, clipping, block copies), written again here, and the file reading
  * (header, frame index, packets) on the model of bink_decode.c.
  *
@@ -159,6 +160,7 @@ static void free_all(Bink2Reader *r)
     free(r->c.current_q); free(r->c.prev_q); free(r->c.current_dc); free(r->c.prev_dc);
     free(r->c.current_idc); free(r->c.prev_idc); free(r->c.current_mv); free(r->c.prev_mv);
     free(r->c.col_cbp); free(r->c.row_cbp);
+    bink2d_free(r->c.kb2d);
     free(r);
 }
 
@@ -223,8 +225,10 @@ static int setup(Bink2Reader *r, WCHAR *err, size_t errn)
         c->prev_mv = (MVPredict *)calloc(mbs, sizeof(*c->prev_mv));
         c->col_cbp = (uint8_t *)calloc((((r->w + 31) >> 3) + 7) >> 3, 1);
         c->row_cbp = (uint8_t *)calloc((((r->h + 31) >> 3) + 7) >> 3, 1);
+        if (c->version == 'd')
+            c->kb2d = bink2d_alloc(r->w, r->h);
         if (!c->current_q || !c->prev_q || !c->current_dc || !c->prev_dc || !c->current_idc || !c->prev_idc ||
-            !c->current_mv || !c->prev_mv || !c->col_cbp || !c->row_cbp)
+            !c->current_mv || !c->prev_mv || !c->col_cbp || !c->row_cbp || (c->version == 'd' && !c->kb2d))
             goto nomem;
     }
     {
@@ -379,7 +383,10 @@ static int decode_frame(Bink2Reader *r, const uint8_t *pkt, int size, int is_kf)
     }
     for (int i = 0; i < c->num_slices; i++) {
         off = i == c->num_slices - 1 ? (uint32_t)size : rl32(pkt + 4 + i * 4);
-        if (c->version <= 'f')
+        if (c->version == 'd')
+            ret = bink2d_decode_slice(c, dst, stride, src, sstride, is_kf, i ? c->slice_height[i - 1] : 0,
+                                      c->slice_height[i]);
+        else if (c->version <= 'f')
             ret = bink2f_decode_slice(c, dst, stride, src, sstride, is_kf, i ? c->slice_height[i - 1] : 0,
                                       c->slice_height[i]);
         else
@@ -391,6 +398,11 @@ static int decode_frame(Bink2Reader *r, const uint8_t *pkt, int size, int is_kf)
         dst[0] = r->data[now][0] + c->slice_height[i] * stride[0];
         dst[1] = r->data[now][1] + c->slice_height[i] / 2 * stride[1];
         dst[2] = r->data[now][2] + c->slice_height[i] / 2 * stride[2];
+    }
+    if (c->version == 'd') {
+        uint8_t *plane[3] = { r->data[now][0], r->data[now][2], r->data[now][1] };
+        int pstride[3] = { r->linesize[0], r->linesize[2], r->linesize[1] };
+        bink2d_postprocess(c, plane, pstride);
     }
     r->cur = now;
     return 0;

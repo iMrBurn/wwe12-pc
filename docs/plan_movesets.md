@@ -218,14 +218,14 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   fichier autour (modèle : `bink_decode.c`). **Vérifié hors jeu** : 2K14 (KB2f) 4 vidéos et 2K15 (KB2i) 2 vidéos, toutes
   les images décodées, image correcte (titantron 156 « Latino Heat » de 2K14). → RAD Video Tools ne serait plus
   nécessaire pour 2K14-2K17. Pas encore branché dans le Mod Maker, pas commité.
-- **WWE '13 (KB2d) : pas encore.** Le décodeur décroche dès le premier bloc de la première image. Faits relevés :
-  en-tête du film identique (11 mots, index d'images juste après) ; drapeaux d'image `0xC000` sur la plupart des images
-  (KB2f : `0x20` partout), `0x20` sur les petites images presque vides ; le bloc noir en haut à gauche du 156 (même vidéo
-  que celle de 2K14, donc image attendue connue) se lit avec des AC non nuls : la syntaxe du bloc diffère. Essayés sans
-  succès : lire les tables lignes/colonnes selon `0x8000`/`0x4000`, lire le type de bloc (2 bits) aussi sur les images clés.
-  Aucune description publique de KB2d (Kostya n'avait pas d'échantillon ; Librempeg traite a-f comme f, sans
-  correction de lecture). Pistes : bits lus dans un autre ordre (mots de 32 bits), codage CBP/DC de la 2.0 ; le décodeur
-  de WWE '13 lui-même (dans son xex) ; une vieille version de RAD Video Tools (2012-2013).
+- **WWE '13 (KB2d) : fait (2026-11-01)**, `video/bink2/bink2d.inc` (notre propre C, écrit d'après le décodeur
+  de WWE '13 lu dans son code recompilé ; aucun code du jeu copié). Différences avec KB2f : quantiseur sur 4 bits par
+  composante, pas de CBP ; AC de 4 blocs ensemble, bande par bande (bit « reste nul », largeur 3 bits, 7 → +2 bits, puis
+  les 4 valeurs et un signe par valeur non nulle) ; DC du résidu bornés 0..2047 ; filtre diagonal de la compensation de
+  mouvement sur le résultat horizontal non arrondi ; post-traitement dans la boucle (lissage des blocs DC seuls, filtre
+  des bords sauf drapeaux 0x4000/0x8000). Vérifié contre le décodeur du jeu exécuté hors ligne (outil de travail hors
+  dépôt) : 31 titantrons, pire image 50,9 dB (écart max 6 niveaux), la plupart > 55 dB. Pas essayé : film avec alpha.
+  Branché : titantrons NNN.bik2 de WWE '13 (NEW SUPERSTAR, page VIDÉOS), ruban et mur de son evtmov.pac.
 - Repli possible : 91 des 271 titantrons de WWE '13 existent dans 2K14 sous le même numéro (KB2f, lisibles).
 
 ## Entrée de WWE '13 VUE EN JEU (2026-11-01)

@@ -29,6 +29,7 @@
 #include "imgui.h"
 #include "mod_version.h"
 #include "entrance13.h"
+#include "screens_ui.h"
 #include "theme_convert.h"
 #include "theme_source.h"
 #include "moveset_port.h"
@@ -788,7 +789,11 @@ class Page {
     }
     if (own_movie_)
       movie_.Draw(fr, "ns_movie");
-
+    ribbon_.Draw(fr, device_, fr ? "Celui de l'arène" : "The arena's");
+    wall_.Draw(fr, device_, fr ? "Celui de l'arène" : "The arena's");
+    if ((ribbon_.Changed() || wall_.Changed()) && !own_movie_ && !svr_movie_)
+      ImGui::TextDisabled("%s", fr ? "(son ruban et son mur demandent aussi sa propre vidéo d'entrée, ci-dessus : sinon ceux de l'arène)"
+                                   : "(its ribbon and wall need its own entrance video too, above: else the arena's)");
   }
 
   // Step 6: the mod.
@@ -1047,8 +1052,8 @@ class Page {
       SetSvrMovie(copy);
     }
     // its 2K movie: 2K15-2K17's ent_NNNN_<attire>_<n>.bk2 (KB2i), 2K14's NNN.bik2 (KB2f), both read by our own Bink 2
-    // reader (bink2.h). WWE '13's NNN.bik2 is KB2d, which nothing reads: a WWE '13 superstar takes the same number's
-    // movie from the player's 2K games (2K16 and 2K17 have Mankind's, ent_0246_0_0.bk2), newest first.
+    // reader (bink2.h), and WWE '13's NNN.bik2 (KB2d, read since 2026-11-01). A WWE '13 superstar without one takes the
+    // same number's movie from the player's 2K games (2K16 and 2K17 have Mankind's, ent_0246_0_0.bk2), newest first.
     twok_movie_file_.clear();
     twok_mini_file_.clear();
     twok_movies_.clear();
@@ -1058,7 +1063,7 @@ class Page {
     const auto movies_of = [&](const disc::GameDisc &g, uint32_t title) {
       std::vector<std::string> out;
       char prefix[16];
-      snprintf(prefix, sizeof(prefix), title == 0x545408B2 ? "%03d." : "ent_%04d_", number);
+      snprintf(prefix, sizeof(prefix), title == 0x545408B2 || title == 0x545108B4 ? "%03d." : "ent_%04d_", number);
       auto files = g.List("movies/titantron");
       std::sort(files.begin(), files.end());
       for (const auto &f : files)
@@ -1072,9 +1077,12 @@ class Page {
     if (look_ == 3 && twok) {
       twok_movies_ = movies_of(game_disc_, game_title_);
       twok_movie_game_ = game_title_;
-    } else if (look_ == 3 && game_title_ == 0x545108B4 && discs_) {
+    } else if (look_ == 3 && game_title_ == 0x545108B4) {
+      twok_movies_ = movies_of(game_disc_, game_title_);
+      if (!twok_movies_.empty())
+        twok_movie_game_ = game_title_;
       for (uint32_t t : {0x545408BAu, 0x315A07D2u, 0x545408B6u, 0x545408B2u})
-        if (!discs_->PathOf(t).empty() && twok_disc_.OpenPath(discs_->PathOf(t))) {
+        if (twok_movies_.empty() && discs_ && !discs_->PathOf(t).empty() && twok_disc_.OpenPath(discs_->PathOf(t))) {
           twok_movies_ = movies_of(twok_disc_, t);
           if (!twok_movies_.empty()) {
             twok_movie_game_ = t;
@@ -1084,7 +1092,7 @@ class Page {
     }
     if (!twok_movies_.empty())
       twok_movie_file_ = twok_movies_[0];
-    if (twok_movie_game_ && twok_movie_game_ != 0x545408B2) {
+    if (twok_movie_game_ && twok_movie_game_ != 0x545408B2 && twok_movie_game_ != 0x545108B4) {
       const disc::GameDisc &from = twok_movie_game_ == game_title_ ? game_disc_ : twok_disc_;
       // its minitrons: pac\mov\ss_mini\NNNNvv.pac
       char mini[8];
@@ -1095,7 +1103,31 @@ class Page {
         if (f.size() == 10 && f.compare(0, 4, mini) == 0 && _stricmp(f.c_str() + 6, ".pac") == 0)
           twok_minis_.push_back(f);
     }
+    FindScreens(number);
   }
+
+  // Its ribbon and wall in its game and the same number's in the player's 2K games (2K14
+  // Ultimate Warrior has none, 2K15 has his), all in one list, its own game's first; picked when found.
+  void FindScreens(int number) {
+    ribbon_.Reset();
+    wall_.Reset();
+    if (look_ != 3)
+      return;
+    std::set<uint32_t> seen;
+    for (uint32_t t : {game_title_, 0x545408BAu, 0x315A07D2u, 0x545408B6u, 0x545408B2u}) {
+      if (!seen.insert(t).second)
+        continue;  // (its own game, already)
+      disc::GameDisc other;
+      const disc::GameDisc *g = t == game_title_ ? &game_disc_ : nullptr;
+      if (!g && discs_ && !discs_->PathOf(t).empty() && other.OpenPath(discs_->PathOf(t)))
+        g = &other;
+      if (!g)
+        continue;
+      ribbon_.Offer(entrance_screens::Versions(*g, t, true, number), GameName(t), true);
+      wall_.Offer(entrance_screens::Versions(*g, t, false, number), GameName(t), true);
+    }
+  }
+
 
   // The superstars of the game chosen: its pac/ch/chNNN.pac files, named from its pac/ch/chEtc.pac (the CHAR / DAT
   // records: SvR 2011 264 bytes, id at +36 and name at +38; WWE '12 290 bytes, +44 / +46; WWE '13 324 bytes, +56 /
@@ -1953,6 +1985,10 @@ class Page {
       entries.push_back({"superstar/look.txt", Bytes{'b', 'a', 's', 'e', '\n'}});  // (a mod needs a superstar/ file)
     if (!movie.empty())
       entries.push_back({"superstar/titantron.bik", movie});
+    for (const auto &[sc, file] : {std::pair<const screens_ui::ScreenChoice *, const char *>{&ribbon_, "superstar/ribbon.bik"},
+                                   {&wall_, "superstar/wall.bik"}})
+      if (Bytes b = sc->Movie(); !b.empty())  // (its own ribbon / wall: served by the game)
+        entries.push_back({file, std::move(b)});
     if (own_entrance)
       for (const auto &part : own_entrance_)
         entries.push_back({entrance13::ModPath(part), part.data});
@@ -2035,6 +2071,7 @@ class Page {
   std::vector<entrance13::Part> own_entrance_;  // its WWE '13 entrance (entrance13.h), else empty
   std::vector<entrance13::Part> own_victory_;  // its WWE '13 victory scene (entrance13::Victory), else empty
   bool use_own_victory_ = true;
+  screens_ui::ScreenChoice ribbon_{true}, wall_{false};  // its ribbon around the arena and its stage wall
   theme_source::Theme theme_;  // its theme in its game (theme_source.h), stream empty if none
   bool use_theme_ = true;      // ... made PCM and put into the mod (superstar/theme.wem)
   int own_entrance_number_ = 0;

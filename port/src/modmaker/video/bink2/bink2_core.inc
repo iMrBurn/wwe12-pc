@@ -20,8 +20,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 /* WWE12-PC: lines 38-620 of libavcodec/bink2.c from the patch "avcodec: add bink2 video decoder" (Paul B Mahol,
- * FFmpeg-devel, 2020-03-20, https://ffmpeg.org/pipermail/ffmpeg-devel/2020-March/258764.html), unchanged: the
- * tables, the decoder context and the block flags; the FFmpeg glue around them is in bink2_decode.c. */
+ * FFmpeg-devel, 2020-03-20, https://ffmpeg.org/pipermail/ffmpeg-devel/2020-March/258764.html): the tables, the
+ * decoder context and the block flags, unchanged but for two lines marked WWE12-PC (the context's kb2d pointer and
+ * the include of our bink2d.inc); the FFmpeg glue around them is in bink2_decode.c. */
 #define BINK_FLAG_ALPHA 0x00100000
 #define DC_MPRED(A, B, C) FFMIN(FFMAX((C) + (B) - (A), FFMIN3(A, B, C)), FFMAX3(A, B, C))
 #define DC_MPRED2(A, B) FFMIN(FFMAX((A), (B)), FFMAX(FFMIN((A), (B)), 2 * (A) - (B)))
@@ -505,6 +506,7 @@ typedef struct Bink2Context {
     int             mb_pos;
     unsigned        flags;
     unsigned        frame_flags;
+    struct Bink2DFrame *kb2d;             ///< WWE12-PC: KB2d's per-block side information (bink2d.inc)
 } Bink2Context;
 
 /**
@@ -523,6 +525,7 @@ static const uint8_t ones_count[16] = {
 
 #include "bink2f.inc"
 #include "bink2g.inc"
+#include "bink2d.inc" /* WWE12-PC: our KB2d revision, not in the patch */
 
 static void bink2_get_block_flags(GetBitContext *gb, int offset, int size, uint8_t *dst)
 {

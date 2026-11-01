@@ -333,8 +333,9 @@ inline bool ReadAvi(const fs::path &p, const std::function<bool(const uint8_t *b
 // The frames of `in` (Bink 2), decoded by the tool, each as BGRA top row first (RAD Video Tools: at the movie's size;
 // Librempeg: scaled to W x H). `put` returns false to stop. False if the tool couldn't decode it.
 // Our own reader (video/bink2_decode.h) knows WWE 2K14's KB2f and the 2K games' KB2i (checked 2026-10-28: every
-// frame of 2K14's and 2K15's titantrons), not WWE '13's KB2d: those revisions need no tool.
-inline bool OwnReads(char revision) { return revision == 'f' || revision == 'i'; }
+// frame of 2K14's and 2K15's titantrons) and WWE '13's KB2d (2026-11-01, video/bink2/bink2d.inc): those revisions need
+// no tool.
+inline bool OwnReads(char revision) { return revision == 'd' || revision == 'f' || revision == 'i'; }
 
 inline bool Decode(const Tool &tool, const fs::path &in, int frames, int W, int H,
                    const std::function<bool(const uint8_t *bgra, int w, int h)> &put, std::wstring *err) {

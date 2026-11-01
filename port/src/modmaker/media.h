@@ -28,6 +28,7 @@
 #include "bink2.h"
 #include "game_discs.h"
 #include "mods.h"
+#include "screens_ui.h"
 #include "strings2k.h"
 
 extern "C" {
@@ -513,7 +514,9 @@ inline fs::path CopyGameMovie(const disc::GameDisc &disc, const std::string &fil
 }
 
 // VIDEOS page: a superstar's entrance movie (titantron and minitron) from any video or picture, installed as a
-// .svrmod (type=media, files/movies/titantron/<id>.bik; the file number is the superstar's id, see game_disc.h).
+// .svrmod (type=media, files/movies/titantron/<id>.bik; the file number is the superstar's id, see game_disc.h); and
+// its ribbon around the arena and stage wall (screens_ui.h: media/screens/ribbon_<id>.bik, wall_<id>.bik, which the
+// game puts in place of its own in pac\evt\evtmov.pac, or adds: wwe12_arena_pages.cpp).
 class EntranceVideos {
  public:
   void Draw(bool fr, ID3D11Device *device, const fs::path &exe_dir, mods::Manager &mods) {
@@ -554,6 +557,7 @@ class EntranceVideos {
         if (ImGui::Selectable(l.c_str(), i == star_)) {
           star_ = i;
           editor_.SetGame(device_, CopyGameMovie(disc_, stars_[star_].file));
+          ResetScreens();
           others_.clear();
           searched_ = false;
         }
@@ -565,6 +569,9 @@ class EntranceVideos {
       return;
     DrawOthers(fr);
     editor_.Draw(fr, "videos");
+    ribbon_.Draw(fr, device_, fr ? "Celui du jeu" : "The game's");
+    wall_.Draw(fr, device_, fr ? "Celui du jeu" : "The game's");
+    ImGui::Dummy(ImVec2(0, 6));
     ImGui::BeginDisabled(editor_.Busy());
     ImGui::SetNextItemWidth(260);
     ImGui::InputText(fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
@@ -573,9 +580,9 @@ class EntranceVideos {
 
     // Make it.
     const bool running = game::IsRunning();
-    ImGui::BeginDisabled(editor_.Busy() || running || !editor_.Ready());
+    ImGui::BeginDisabled(editor_.Busy() || running || !(editor_.Ready() || ribbon_.Changed() || wall_.Changed()));
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
-      Start(fr);
+      Start(fr, mods);
     ImGui::EndDisabled();
     editor_.DrawProgress(fr);
     if (running)
@@ -621,8 +628,8 @@ class EntranceVideos {
       uint32_t title;
       const char *name;
     };
-    for (const G g : {G{0x5451085D, "SvR 2011"}, G{0x545408B6, "WWE 2K15"}, G{0x315A07D2, "WWE 2K16"},
-                      G{0x545408BA, "WWE 2K17"}}) {
+    for (const G g : {G{0x5451085D, "SvR 2011"}, G{0x545108B4, "WWE '13"}, G{0x545408B2, "WWE 2K14"}, G{0x545408B6, "WWE 2K15"},
+                      G{0x315A07D2, "WWE 2K16"}, G{0x545408BA, "WWE 2K17"}}) {
       const fs::path at = discs_->PathOf(g.title);
       disc::GameDisc d;
       if (at.empty() || !d.OpenPath(at))
@@ -636,9 +643,13 @@ class EntranceVideos {
       for (const auto &[n, nm] : names) {
         if (Key(nm) != want)
           continue;
+        // its ribbon and wall there (every game's, in one list)
+        ribbon_.Offer(entrance_screens::Versions(d, g.title, true, n), g.name, false);
+        wall_.Offer(entrance_screens::Versions(d, g.title, false, n), g.name, false);
         char f[32];
-        if (g.title == 0x5451085D) {
-          snprintf(f, sizeof(f), "%03d.bik", n);
+        // (SvR 2011: NNN.bik; WWE '13 (KB2d) and 2K14 (KB2f): NNN.bik2, laid out like WWE '12's)
+        if (g.title == 0x5451085D || g.title == 0x545108B4 || g.title == 0x545408B2) {
+          snprintf(f, sizeof(f), g.title == 0x5451085D ? "%03d.bik" : "%03d.bik2", n);
           if (std::find(movies.begin(), movies.end(), f) != movies.end())
             others_.push_back({g.title, std::string(g.name) + " : " + nm + "  (" + f + ")",
                                std::string("movies/titantron/") + f, {}});
@@ -685,8 +696,8 @@ class EntranceVideos {
       if (ImGui::Button(fr ? "Chercher sa vidéo dans mes autres jeux" : "Look for its movie in my other games"))
         Search();
       ImGui::SameLine();
-      ImGui::TextDisabled("%s", fr ? "(SvR 2011, WWE 2K15 à 2K17 de MES DISQUES)"
-                                   : "(SvR 2011, WWE 2K15 to 2K17 of MY GAME DISCS)");
+      ImGui::TextDisabled("%s", fr ? "(SvR 2011, WWE '13, WWE 2K14 à 2K17 de MES DISQUES : vidéo, ruban, mur)"
+                                   : "(SvR 2011, WWE '13, WWE 2K14 to 2K17 of MY GAME DISCS: movie, ribbon, wall)");
     } else if (others_.empty()) {
       ImGui::TextDisabled("%s", fr ? "Pas de vidéo de ce catcheur dans vos autres jeux."
                                    : "No movie of this superstar in your other games.");
@@ -739,7 +750,20 @@ class EntranceVideos {
     });
   }
 
-  void Start(bool fr) {
+  // Its ribbon and wall as the game has them (pac\evt\evtmov.pac MVSB / MVSW M<id>: Bink 1), for the previews.
+  void ResetScreens() {
+    std::vector<uint8_t> b, ribbon, wall;
+    char want[8];
+    snprintf(want, sizeof(want), "M%03d", stars_[star_].id % 1000);
+    if (disc_.Read("pac/evt/evtmov.pac", b))
+      for (auto &e : entrance_screens::Entries(std::move(b)))
+        if (e.name == want && (e.group == "MVSB" || e.group == "MVSW"))
+          (e.group == "MVSB" ? ribbon : wall) = std::move(e.data);
+    ribbon_.Reset(std::move(ribbon));
+    wall_.Reset(std::move(wall));
+  }
+
+  void Start(bool fr, mods::Manager &mods) {
     const Star &s = stars_[star_];
     std::wstring name;
     for (char c : Label(s))
@@ -749,38 +773,53 @@ class EntranceVideos {
       return;
     made_ = TempDir() / ("made_" + s.file);
     message_.clear();
-    editor_.Start(made_);
+    if (editor_.Ready())
+      editor_.Start(made_);
+    else
+      Finish(fr, mods, false);  // (only its ribbon / wall)
   }
 
   // On the UI thread once the movie is made: the .svrmod, then its install.
-  void Finish(bool fr, mods::Manager &mods) {
+  void Finish(bool fr, mods::Manager &mods, bool movie = true) {
     message_ok_ = false;
-    if (!editor_.Ok()) {
+    if (movie && !editor_.Ok()) {
       message_ = (fr ? "La vidéo n'a pas pu être faite : " : "The movie could not be made: ") + editor_.Error();
       return;
     }
     const Star &s = stars_[star_];
-    std::ifstream f(made_, std::ios::binary);
-    std::vector<uint8_t> bik((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    f.close();
-    std::error_code ec;
-    fs::remove(made_, ec);
+    std::vector<uint8_t> bik;
+    if (movie) {
+      std::ifstream f(made_, std::ios::binary);
+      bik.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+      f.close();
+      std::error_code ec;
+      fs::remove(made_, ec);
+    }
     const std::string number = s.file.substr(0, 3);
     std::string manifest = "game=wwe12\ntype=media\nid=entrance_video_" + number + "\nname=" +
                            (fr ? "Vidéo d'entrée : " : "Entrance video: ") + Label(s) + "\nversion=" + mod_version::Of(version_) + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
-    manifest += "description=" + Label(s) + "'s entrance movie (movies/titantron/" + s.file + ": " +
-                editor_.Parts() + "), made with the WWE '12 Mod Maker.\n";
-    if (!mods::Manager::WriteZip(out_, {{"manifest.txt", std::vector<uint8_t>(manifest.begin(), manifest.end())},
-                                        {"files/movies/titantron/" + s.file, std::move(bik)}})) {
+    std::vector<uint8_t> ribbon = ribbon_.Movie(), wall = wall_.Movie();
+    manifest += "description=" + Label(s) + "'s entrance " +
+                (movie ? "movie (movies/titantron/" + s.file + ": " + editor_.Parts() + ")" : std::string("screens")) +
+                (ribbon.empty() ? "" : ", its ribbon") + (wall.empty() ? "" : ", its wall") + ", made with the WWE '12 Mod Maker.\n";
+    std::vector<std::pair<std::string, std::vector<uint8_t>>> entries = {
+        {"manifest.txt", std::vector<uint8_t>(manifest.begin(), manifest.end())}};
+    if (movie)
+      entries.push_back({"files/movies/titantron/" + s.file, std::move(bik)});
+    if (!ribbon.empty())
+      entries.push_back({"media/screens/ribbon_" + number + ".bik", std::move(ribbon)});
+    if (!wall.empty())
+      entries.push_back({"media/screens/wall_" + number + ".bik", std::move(wall)});
+    if (!mods::Manager::WriteZip(out_, entries)) {
       message_ = (fr ? "Impossible d'écrire " : "Could not write ") + Utf8(out_.wstring());
       return;
     }
     mods.InstallFile(fr, out_);
     message_ok_ = true;
-    message_ = (fr ? "Mod créé et installé (" : "Mod made and installed (") + std::to_string(editor_.Seconds()) +
-               " s) : " + Utf8(out_.wstring());
+    message_ = (fr ? "Mod créé et installé" : "Mod made and installed") +
+               (movie ? " (" + std::to_string(editor_.Seconds()) + " s)" : std::string()) + " : " + Utf8(out_.wstring());
   }
 
   ID3D11Device *device_ = nullptr;
@@ -792,6 +831,7 @@ class EntranceVideos {
   fs::path out_, made_;
   char author_[64] = {}, version_[16] = {};
   MovieEditor editor_;
+  screens_ui::ScreenChoice ribbon_{true}, wall_{false};  // its ribbon around the arena and stage wall
   std::string message_;
   bool message_ok_ = false;
 };
