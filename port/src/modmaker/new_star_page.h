@@ -1253,38 +1253,38 @@ class Page {
           ++own_moves_.exact;
         }
     }
-    // Its WWE '13 entrance (entrance13.h: the same format as WWE '12's), when WWE '12 has none with that number.
+    // Its WWE '13 or 2K14 entrance (entrance13.h: the same format as WWE '12's), when WWE '12 has none with that number.
     own_entrance_.clear();
     own_entrance_number_ = 0;
-    if (own_moves_game_ == 0x545108B4 && !entrance13::Exists12(*disc12_, number) &&
-        entrance13::Entrance(src, number, own_entrance_, nullptr))
+    const bool scenes = own_moves_game_ == 0x545108B4 || own_moves_game_ == 0x545408B2;
+    if (scenes && !entrance13::Exists12(*disc12_, number) && entrance13::Entrance(src, number, own_entrance_, nullptr))
       own_entrance_number_ = number;
-    // its WWE '13 victory scene (served under 6000 + its slot)
+    // its victory scene (served under 6000 + its slot)
     own_victory_.clear();
-    if (own_moves_game_ == 0x545108B4)
+    if (scenes)
       entrance13::Victory(src, number, own_victory_);
   }
 
-  // Step 2's part: its own WWE '13 entrance.
+  // Step 2's part: its own WWE '13 / 2K14 entrance.
   void DrawOwnEntrance(bool fr) {
     if (own_entrance_.empty())
       return;
     char label[200];
     snprintf(label, sizeof(label),
-             fr ? "Sa propre entrée de WWE '13 (n° %d, %d variantes ; essai)"
-                : "Its own WWE '13 entrance (no. %d, %d variants; a test)",
-             own_entrance_number_,
+             fr ? "Sa propre entrée de %s (n° %d, %d variantes ; essai)"
+                : "Its own %s entrance (no. %d, %d variants; a test)",
+             GameName(own_moves_game_), own_entrance_number_,
              int(std::count_if(own_entrance_.begin(), own_entrance_.end(), [](const auto &p) { return p.kind == "EVP"; })));
     ImGui::Checkbox(label, &use_own_entrance_);
   }
 
-  // Step 2's part: its own WWE '13 victory scene.
+  // Step 2's part: its own WWE '13 / 2K14 victory scene.
   void DrawOwnVictory(bool fr) {
     if (own_victory_.empty())
       return;
     char label[160];
-    snprintf(label, sizeof(label), fr ? "Sa propre scène de victoire de WWE '13 (n° %d ; essai)" : "Its own WWE '13 victory scene (no. %d; a test)",
-             own_victory_[0].number);
+    snprintf(label, sizeof(label), fr ? "Sa propre scène de victoire de %s (n° %d ; essai)" : "Its own %s victory scene (no. %d; a test)",
+             GameName(own_moves_game_), own_victory_[0].number);
     ImGui::Checkbox(label, &use_own_victory_);
   }
 

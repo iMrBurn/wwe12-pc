@@ -329,3 +329,20 @@ place du catcheur (`superstar_slots.txt`) : le jeu demande 6000 + le numéro du 
 chaque lettre de groupe ; réponse par le même emprunt d'entrée (ici /EVPA/6100). **Vue en jeu (2026-11-01)** : Mankind
 (place 108) a gagné, le jeu a demandé /EVPA/6108 et /EVZA/6108, servis, sa scène de WWE '13 s'est jouée. Sa musique
 pendant la victoire : pas encore vérifiée (entendue à l'entrée).
+
+### Entrées et victoires de WWE 2K14 (2026-11-01)
+
+2K14 range ses entrées (`Entrance00-08.pac`) et ses victoires (`Winning00-03.pac`) comme WWE '13 (EPAC xcompressé, lu
+par notre lecteur d'archives) : le Mod Maker les propose pour un catcheur 2K14 (NEW SUPERSTAR, étape 2). Deux
+corrections, trouvées sur Ultimate Warrior (254) :
+- les pistes de 2K14 nomment leur objet « 25000254_A00_def » (WWE '12 / '13 : « 25000 ») : le catcheur n'apparaissait
+  pas ; le texte est coupé après ses 5 chiffres (`entrance13::NameTracks12`) ;
+- les scripts d'entrée de WWE '12 (numéro de base, pas les variantes) finissent par une queue (après `svr08_entrance.py`
+  de Kaiko) : type 1 musique 999 (celle du catcheur) et type 8 vidéo 999 (son titantron). WWE '13 et 2K14 n'en ont pas :
+  entrée sans musique, sans foule et sans titantron (Mankind l'avait reçue à la main). `entrance13::AddTail12` l'ajoute.
+  Trouvé par élimination en jeu (script d'événement, effets, vidéo, caméra, lumières, catcheur, cordes : aucun).
+**Vu en jeu (2026-11-01)** : l'entrée 2K14 de Warrior avec sa musique, la foule et son titantron. Restent : les franges
+de sa tenue qui flottent pendant l'entrée (os de la tenue 2K14 calculés par 2K14 ?), sa scène de victoire (les victoires
+de WWE '12 ont une queue avec la vidéo seule), et ses graphismes d'entrée (bannière, mur : ceux du catcheur de base).
+Entrées 2K14 sans accessoire inconnu de WWE '12 (le meilleur choix pour l'instant) : 109, 119, 130, 136, 144, 160, 197,
+210, 254, 298, 353, 357, 359, 360, 366, 371.
