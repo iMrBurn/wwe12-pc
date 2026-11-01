@@ -11,6 +11,7 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -228,6 +229,140 @@ static UIButton* Button(NSString* title, BOOL filled, void (^onTap)(void)) {
   return b;
 }
 
+// ---- settings: Documents/wwe12.toml (flat "key = value" lines, the file the game reads; same keys as PC) ----
+
+static std::string TomlPath() { return Docs() + "/wwe12.toml"; }
+
+static std::string Trim(const std::string& s) {
+  size_t a = 0, b = s.size();
+  while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+  while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+  return s.substr(a, b - a);
+}
+
+static std::vector<std::string> TomlLines() {
+  std::vector<std::string> out;
+  if (FILE* f = std::fopen(TomlPath().c_str(), "r")) {
+    char line[1024];
+    while (std::fgets(line, sizeof(line), f)) {
+      std::string s(line);
+      while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
+      out.push_back(s);
+    }
+    std::fclose(f);
+  }
+  return out;
+}
+
+// True and the key's text of a line "key = value" (comments and sections do not count).
+static bool TomlSplit(const std::string& line, std::string* key, std::string* value) {
+  const std::string t = Trim(line);
+  if (t.empty() || t[0] == '#' || t[0] == '[') return false;
+  const size_t eq = t.find('=');
+  if (eq == std::string::npos) return false;
+  *key = Trim(t.substr(0, eq));
+  *value = Trim(t.substr(eq + 1));
+  return true;
+}
+
+static std::string TomlGet(const char* key, const char* fallback) {
+  for (const std::string& l : TomlLines()) {
+    std::string k, v;
+    if (TomlSplit(l, &k, &v) && k == key) {
+      if (v.size() >= 2 && v.front() == '"' && v.back() == '"') v = v.substr(1, v.size() - 2);
+      return v;
+    }
+  }
+  return fallback;
+}
+
+static void TomlSet(const char* key, const std::string& value) {
+  std::vector<std::string> lines = TomlLines();
+  bool done = false;
+  for (std::string& l : lines) {
+    std::string k, v;
+    if (TomlSplit(l, &k, &v) && k == key) {
+      l = std::string(key) + " = " + value;
+      done = true;
+    }
+  }
+  if (!done) lines.push_back(std::string(key) + " = " + value);
+  if (FILE* f = std::fopen(TomlPath().c_str(), "w")) {
+    for (const std::string& l : lines) std::fprintf(f, "%s\n", l.c_str());
+    std::fclose(f);
+  }
+}
+
+// App-only settings (the on-screen controller): read by wwe12_touch_ios.mm.
+static NSInteger PrefInt(NSString* key, NSInteger fallback) {
+  NSNumber* n = [[NSUserDefaults standardUserDefaults] objectForKey:key];
+  return n ? [n integerValue] : fallback;
+}
+
+// ---- cards, rows and controls ----
+
+static UIStackView* Card(UIStackView* page, NSString* title) {
+  UIStackView* inner = [[UIStackView alloc] init];
+  inner.axis = UILayoutConstraintAxisVertical;
+  inner.spacing = 12.0;
+  inner.layoutMargins = UIEdgeInsetsMake(14, 16, 16, 16);
+  inner.layoutMarginsRelativeArrangement = YES;
+  inner.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.07];
+  inner.layer.cornerRadius = 14.0;
+  inner.clipsToBounds = YES;
+  [inner addArrangedSubview:Label([title uppercaseString], 13.0, W12_RED, YES)];
+  [page addArrangedSubview:inner];
+  return inner;
+}
+
+static UIView* Row(NSString* title, UIView* control) {
+  UILabel* l = Label(title, 15.0, W12_TEXT, NO);
+  [l setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+  [control setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+  UIStackView* row = [[UIStackView alloc] initWithArrangedSubviews:@[ l, control ]];
+  row.spacing = 12.0;
+  row.alignment = UIStackViewAlignmentCenter;
+  return row;
+}
+
+static UISegmentedControl* Segment(NSArray<NSString*>* items, NSInteger selected, void (^onChange)(NSInteger)) {
+  UISegmentedControl* s = [[UISegmentedControl alloc] initWithItems:items];
+  s.selectedSegmentIndex = selected;
+  s.selectedSegmentTintColor = W12_RED;
+  [s setTitleTextAttributes:@{NSForegroundColorAttributeName : W12_TEXT} forState:UIControlStateNormal];
+  [s setTitleTextAttributes:@{NSForegroundColorAttributeName : W12_TEXT} forState:UIControlStateSelected];
+  [s addAction:[UIAction actionWithHandler:^(__kindof UIAction* a) { onChange(((UISegmentedControl*)a.sender).selectedSegmentIndex); }]
+      forControlEvents:UIControlEventValueChanged];
+  return s;
+}
+
+static UISwitch* Toggle(BOOL on, void (^onChange)(BOOL)) {
+  UISwitch* s = [[UISwitch alloc] init];
+  s.on = on;
+  s.onTintColor = W12_RED;
+  [s addAction:[UIAction actionWithHandler:^(__kindof UIAction* a) { onChange(((UISwitch*)a.sender).isOn); }]
+      forControlEvents:UIControlEventValueChanged];
+  return s;
+}
+
+// A row with a choice stored in wwe12.toml: `values` are the toml texts, in the order of `names`.
+static UIView* TomlChoice(NSString* title, const char* key, NSArray<NSString*>* names, NSArray<NSString*>* values,
+                          const char* fallback) {
+  const std::string now = TomlGet(key, fallback);
+  NSInteger sel = -1;
+  for (NSUInteger i = 0; i < values.count; ++i) {
+    if (now == [values[i] UTF8String]) sel = static_cast<NSInteger>(i);
+  }
+  const std::string k = key;
+  return Row(title, Segment(names, sel, ^(NSInteger i) { TomlSet(k.c_str(), [values[i] UTF8String]); }));
+}
+
+static UIView* TomlSwitch(NSString* title, const char* key, bool fallback) {
+  const std::string now = TomlGet(key, fallback ? "true" : "false");
+  const std::string k = key;
+  return Row(title, Toggle(now == "true", ^(BOOL on) { TomlSet(k.c_str(), on ? "true" : "false"); }));
+}
+
 // What the game will find: an .iso in game/ (or next to the saves), or an extracted game folder.
 static std::string FindGame() {
   for (const std::string& dir : {GameDir(), Docs()}) {
@@ -289,7 +424,15 @@ static std::string DlcInstalledDir(const std::string& file) {
 
 - (UIView*)buildPlayPage {
   const std::string game = FindGame();
-  UILabel* title = Label(@"WWE '12", 32.0, W12_TEXT, YES);
+  UIFontDescriptor* heavy = [[UIFont systemFontOfSize:64.0 weight:UIFontWeightHeavy].fontDescriptor
+      fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitItalic];
+  UIFont* logoFont = [UIFont fontWithDescriptor:heavy size:64.0];
+  NSMutableAttributedString* logo = [[NSMutableAttributedString alloc]
+      initWithString:@"WWE" attributes:@{NSFontAttributeName : logoFont, NSForegroundColorAttributeName : W12_TEXT}];
+  [logo appendAttributedString:[[NSAttributedString alloc]
+                                   initWithString:@" '12" attributes:@{NSFontAttributeName : logoFont, NSForegroundColorAttributeName : W12_RED}]];
+  UILabel* title = [[UILabel alloc] init];
+  title.attributedText = logo;
   title.textAlignment = NSTextAlignmentCenter;
   NSString* version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
   UILabel* sub = Label([NSString stringWithFormat:@"iPhone port  %@", version ? version : @""], 14.0, W12_DIM, NO);
@@ -567,13 +710,148 @@ static std::string DlcInstalledDir(const std::string& file) {
   });
 }
 
+// ---- Settings (the same keys as the PC version's wwe12.toml) ----
+
+- (UIView*)buildSettingsPage {
+  UIStackView* stack = nil;
+  UIScrollView* page = [self scrollPage:&stack];
+  __weak Wwe12LauncherViewController* weakSelf = self;
+
+  // One tap sets resolution, shadows, crowd, blur and texture sharpness.
+  UIStackView* presets = Card(stack, @"Quick presets");
+  [presets addArrangedSubview:Label(@"Sets resolution, shadows, crowd, blur and texture sharpness in one tap.", 12.0, W12_DIM, NO)];
+  struct Preset { const char* name; const char* res; const char* shadows; const char* crowd; const char* dof; const char* aniso; };
+  static const Preset kPresets[] = {
+      {"Fastest", "540", "false", "false", "false", "0"},
+      {"Balanced", "720", "true", "false", "false", "4"},
+      {"Quality", "1080", "true", "true", "true", "16"},
+  };
+  UIStackView* presetRow = [[UIStackView alloc] init];
+  presetRow.spacing = 10.0;
+  presetRow.distribution = UIStackViewDistributionFillEqually;
+  for (const Preset& p : kPresets) {
+    const Preset* pp = &p;
+    [presetRow addArrangedSubview:Button([NSString stringWithUTF8String:p.name], NO, ^{
+      TomlSet("svr_render_scale", pp->res);
+      TomlSet("wwe12_shadows", pp->shadows);
+      TomlSet("wwe12_crowd", pp->crowd);
+      TomlSet("wwe12_dof", pp->dof);
+      TomlSet("bd_anisotropy", pp->aniso);
+      [weakSelf setMessage:@"Preset applied."];
+    })];
+  }
+  [presets addArrangedSubview:presetRow];
+  if (_message) [presets addArrangedSubview:Label(_message, 13.0, [UIColor colorWithRed:0.94 green:0.75 blue:0.24 alpha:1.0], NO)];
+
+  UIStackView* game = Card(stack, @"Game");
+  [game addArrangedSubview:TomlChoice(@"Language", "user_language", @[ @"EN", @"DE", @"FR", @"ES", @"IT" ],
+                                      @[ @"1", @"3", @"4", @"5", @"6" ], "1")];
+  [game addArrangedSubview:TomlChoice(@"Loading screens", "wwe12_load_slice_ms", @[ @"Original", @"2x faster" ], @[ @"0", @"12" ], "12")];
+
+  UIStackView* gfx = Card(stack, @"Graphics");
+  [gfx addArrangedSubview:TomlChoice(@"Resolution (lower = faster)", "svr_render_scale", @[ @"540p", @"720p", @"1080p", @"Auto" ],
+                                     @[ @"540", @"720", @"1080", @"0" ], "0")];
+  [gfx addArrangedSubview:TomlChoice(@"Picture", "bd_aspect_ratio", @[ @"16:9 + bars", @"Stretch" ], @[ @"5", @"6" ], "5")];
+  [gfx addArrangedSubview:TomlChoice(@"Texture sharpness at an angle", "bd_anisotropy", @[ @"Off", @"2x", @"4x", @"8x", @"16x" ],
+                                     @[ @"0", @"2", @"4", @"8", @"16" ], "16")];
+  [gfx addArrangedSubview:TomlSwitch(@"Shadows", "wwe12_shadows", true)];
+  [gfx addArrangedSubview:TomlSwitch(@"Crowd", "wwe12_crowd", true)];
+  [gfx addArrangedSubview:TomlSwitch(@"Depth of field (blur, heavier)", "wwe12_dof", true)];
+  [gfx addArrangedSubview:TomlSwitch(@"60 fps in entrances (heavier)", "wwe12_60fps", false)];
+  [gfx addArrangedSubview:TomlSwitch(@"V-sync", "bd_vsync", true)];
+  [gfx addArrangedSubview:TomlSwitch(@"FPS counter", "wwe12_show_fps", false)];
+  [stack addArrangedSubview:Label(@"Changes apply the next time you press PLAY.", 12.0, W12_DIM, NO)];
+  return page;
+}
+
+// ---- Controls (the on-screen buttons) ----
+
+- (UIView*)buildControlsPage {
+  UIStackView* stack = nil;
+  UIScrollView* page = [self scrollPage:&stack];
+  UIStackView* card = Card(stack, @"On-screen buttons");
+  [card addArrangedSubview:Row(@"Show the buttons", Toggle(PrefInt(@"touch_controls", 1) != 0, ^(BOOL on) {
+                                 [[NSUserDefaults standardUserDefaults] setInteger:on ? 1 : 0 forKey:@"touch_controls"];
+                               }))];
+  static const NSInteger kOpacity[] = {30, 50, 70, 90};
+  NSInteger now = PrefInt(@"touch_opacity", 50), sel = 1;
+  for (int i = 0; i < 4; ++i) {
+    if (kOpacity[i] == now) sel = i;
+  }
+  [card addArrangedSubview:Row(@"Opacity", Segment(@[ @"30%", @"50%", @"70%", @"90%" ], sel, ^(NSInteger i) {
+                                 [[NSUserDefaults standardUserDefaults] setInteger:kOpacity[i] forKey:@"touch_opacity"];
+                               }))];
+  [stack addArrangedSubview:Label(@"A Bluetooth controller (Xbox, PlayStation...) works too: connect it in the iPhone's Settings before pressing PLAY.", 12.0, W12_DIM, NO)];
+  return page;
+}
+
+// ---- Support: the logs, to send with a bug report ----
+
+// The newest file named like `prefix*.log` in Documents and its wwe12 / logs sub-folders.
+static std::string NewestLog(const char* prefix) {
+  std::string best;
+  time_t bestTime = 0;
+  for (const std::string& dir : {Docs(), Docs() + "/logs", Docs() + "/wwe12", Docs() + "/wwe12/logs"}) {
+    for (const std::string& n : ListFiles(dir)) {
+      if (n.compare(0, std::strlen(prefix), prefix) != 0 || !EndsWith(n, ".log")) continue;
+      struct stat st;
+      if (stat((dir + "/" + n).c_str(), &st) == 0 && st.st_mtime >= bestTime) {
+        bestTime = st.st_mtime;
+        best = dir + "/" + n;
+      }
+    }
+  }
+  return best;
+}
+
+- (UIView*)buildSupportPage {
+  UIStackView* stack = nil;
+  UIScrollView* page = [self scrollPage:&stack];
+  __weak Wwe12LauncherViewController* weakSelf = self;
+  UIStackView* logs = Card(stack, @"Bug report");
+  [logs addArrangedSubview:Label(@"After a problem, send the last game log and the start-up log.", 13.0, W12_DIM, NO)];
+  [logs addArrangedSubview:Button(@"Share the last logs", YES, ^{
+    NSMutableArray* items = [NSMutableArray array];
+    for (const char* prefix : {"wwe12_", "boot"}) {
+      const std::string f = NewestLog(prefix);
+      if (!f.empty()) [items addObject:[NSURL fileURLWithPath:NS(f)]];
+    }
+    Wwe12LauncherViewController* s = weakSelf;
+    if (!s) return;
+    if (items.count == 0) {
+      [s setMessage:@"No log yet: play once first."];
+      return;
+    }
+    UIActivityViewController* share = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
+    share.popoverPresentationController.sourceView = s.view;
+    [s presentViewController:share animated:YES completion:nil];
+  })];
+  if (_message) [logs addArrangedSubview:Label(_message, 13.0, [UIColor colorWithRed:0.94 green:0.75 blue:0.24 alpha:1.0], NO)];
+
+  UIStackView* reset = Card(stack, @"Reset");
+  [reset addArrangedSubview:Label(@"Puts every setting back to its default (your saves and DLC are not touched).", 13.0, W12_DIM, NO)];
+  [reset addArrangedSubview:Button(@"Reset the settings", NO, ^{
+    unlink(TomlPath().c_str());
+    NSUserDefaults* d = [NSUserDefaults standardUserDefaults];
+    [d removeObjectForKey:@"touch_controls"];
+    [d removeObjectForKey:@"touch_opacity"];
+    [weakSelf setMessage:@"Settings reset. The defaults are back the next time the game starts."];
+  })];
+  return page;
+}
+
 // ---- the screen ----
 
 - (void)showPage:(NSInteger)index {
   _page = index;
   [self.view endEditing:YES];
   for (UIView* v in [_content.subviews copy]) [v removeFromSuperview];
-  UIView* page = index == 1 ? [self buildInstallPage] : index == 2 ? [self buildDlcPage] : [self buildPlayPage];
+  UIView* page = index == 1   ? [self buildInstallPage]
+                 : index == 2 ? [self buildDlcPage]
+                 : index == 3 ? [self buildSettingsPage]
+                 : index == 4 ? [self buildControlsPage]
+                 : index == 5 ? [self buildSupportPage]
+                              : [self buildPlayPage];
   page.translatesAutoresizingMaskIntoConstraints = NO;
   [_content addSubview:page];
   [NSLayoutConstraint activateConstraints:@[
@@ -587,9 +865,12 @@ static std::string DlcInstalledDir(const std::string& file) {
 - (void)viewDidLoad {
   [super viewDidLoad];
   self.view.backgroundColor = W12_BG;
-  // Tab order: Play, Install, DLC.
-  UISegmentedControl* tabs = [[UISegmentedControl alloc] initWithItems:@[ @"Play", @"Install", @"DLC" ]];
+  // Tab order: Play, Install, DLC, Settings, Controls, Support.
+  UISegmentedControl* tabs = [[UISegmentedControl alloc] initWithItems:@[ @"Play", @"Install", @"DLC", @"Settings", @"Controls", @"Support" ]];
   tabs.selectedSegmentIndex = 0;
+  tabs.selectedSegmentTintColor = W12_RED;
+  [tabs setTitleTextAttributes:@{NSForegroundColorAttributeName : W12_TEXT} forState:UIControlStateNormal];
+  [tabs setTitleTextAttributes:@{NSForegroundColorAttributeName : W12_TEXT} forState:UIControlStateSelected];
   tabs.translatesAutoresizingMaskIntoConstraints = NO;
   [self.view addSubview:tabs];
   _content = [[UIView alloc] init];

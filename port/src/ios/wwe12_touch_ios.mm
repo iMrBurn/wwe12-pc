@@ -347,6 +347,15 @@ void Tick() {
     }
     return;
   }
+  // Launcher > Controls: the buttons can be hidden, and their opacity set (50 % = as drawn).
+  NSNumber* shown = [NSUserDefaults.standardUserDefaults objectForKey:@"touch_controls"];
+  if (shown && ![shown boolValue]) {
+    if (g_view) {
+      [g_view removeFromSuperview];
+      g_view = nil;
+    }
+    return;
+  }
   UIWindow* w = FindGameWindow();
   if (!w) return;  // the game has not made its window yet
   if (!g_view || g_view.superview != w) {
@@ -354,6 +363,8 @@ void Tick() {
     [w addSubview:g_view];
   }
   [w bringSubviewToFront:g_view];
+  NSNumber* opacity = [NSUserDefaults.standardUserDefaults objectForKey:@"touch_opacity"];
+  g_view.alpha = opacity ? MIN(1.0, [opacity doubleValue] / 50.0) : 1.0;
   [g_view tick];
 }
 
