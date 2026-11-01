@@ -713,15 +713,17 @@ inline constexpr ArenaSvr kArenasSvr08[] = {
     {18, "December to Dismember", ""}, {19, "Cyber Sunday", ""},
 };
 
-// SvR 2007's (Kaiko's arena_port.py SVR2007): arena n is entry STG<k>/00NN of bg<k>.pac (Svr07Stage); 3 and 20 on are
-// story copies.
+// SvR 2007's (after Kaiko's arena_port.py SVR2007, its names as its arena select screen has them: its pictures, menuHD.pac
+// MENU/STTX, are in this order, seen 2026-11-01): arena n is entry STG<k>/00NN of bg<k>.pac (Svr07Stage); 20 on are
+// story places (backstage, parking, bar) and copies.
 inline constexpr ArenaSvr kArenasSvr07[] = {
-    {0, "SmackDown", ""},          {1, "RAW", ""},          {2, "ECW", ""},
+    {0, "SmackDown", ""},          {1, "RAW", ""},          {2, "Velocity", ""},
+    {3, "HEAT", ""},
     {4, "SummerSlam", ""},         {5, "Unforgiven", ""},   {6, "No Mercy", ""},
     {7, "Survivor Series", ""},    {8, "Armageddon", ""},   {9, "Royal Rumble", ""},
     {10, "No Way Out", ""},        {11, "WrestleMania 22", ""}, {12, "Backlash", ""},
     {13, "Judgment Day", ""},      {14, "Vengeance", ""},   {15, "The Great American Bash", ""},
-    {16, "New Year's Revolution", ""}, {17, "One Night Stand", ""}, {18, "Cyber Sunday", ""},
+    {16, "New Year's Revolution", ""}, {17, "ECW One Night Stand", ""}, {18, "Taboo Tuesday", ""},
     {19, "Saturday Night's Main Event", ""},
 };
 
@@ -770,6 +772,29 @@ inline std::map<int, std::string> DlcArenaNames(const disc::GameDisc &g) {
       names[n] = t;
     }
   return names;
+}
+
+// SvR 2007's arena `n` banner: its picture on the arena select screen (menu/menuHD.pac MENU/STTX, PACH { 0: PACH { n:
+// DDS 512 x 512 } }), a band of it (the stage, its show's name) cut to 2:1 a little above the middle.
+inline bool Svr07Banner(const Bytes &menuhd, int n, svrfmt::Image &out) {
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(menuhd, a, nullptr))
+    return false;
+  for (auto &k : a.root.kids)
+    if (k.group == "MENU" && k.name == "STTX" && svrfmt::ArchiveExpand(k))
+      for (auto &c : k.kids)
+        if (c.id == 0 && svrfmt::ArchiveExpand(c))
+          for (const auto &x : c.kids) {
+            svrfmt::Image img;
+            if (x.id != uint32_t(n) || !svrfmt::DdsDecode(svrfmt::ArchiveData(x), img) || img.w < 64 || img.h < 32)
+              continue;
+            const int ch = std::min(img.h, img.w / 2), y0 = (img.h - ch) / 3;
+            svrfmt::Image band{img.w, ch, std::vector<uint8_t>(size_t(img.w) * ch * 4)};
+            memcpy(band.rgba.data(), &img.rgba[size_t(y0) * img.w * 4], band.rgba.size());
+            out = svrfmt::Resize(band, 256, 128);
+            return true;
+          }
+  return false;
 }
 
 // The arena's banner in SvR 2011's menu/MatchHD.pac.

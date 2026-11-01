@@ -1482,17 +1482,10 @@ class Page {
         port_svr_arena::Banner(matchhd, svr_pick_, img, svr_year_)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
-    } else if (svr_pick_ >= 0 && svr_year_ == 2007 && svrfmt::DdsDecode(Apron(svr_file_), img) && img.w > 0) {
-      // SvR 2007 has no VS screen per arena: its apron (the show's name across it, 1024 x 256) made the banner, whole
-      // in the middle on a darkened close-up of itself.
-      svrfmt::Image tile = Fill(img, 256, 128);
-      for (size_t i = 0; i < tile.rgba.size(); i += 4)
-        for (int c = 0; c < 3; ++c)
-          tile.rgba[i + c] = uint8_t(tile.rgba[i + c] * 2 / 5);
-      const svrfmt::Image strip = svrfmt::Resize(img, 256, 64);
-      for (int y = 0; y < 64; ++y)
-        memcpy(&tile.rgba[size_t(y + 32) * 256 * 4], &strip.rgba[size_t(y) * 256 * 4], 256 * 4);
-      SetBanner(tile);
+    } else if (Bytes menuhd; svr_pick_ >= 0 && svr_year_ == 2007 && svr_disc_.Read("pac/menu/menuHD.pac", menuhd) &&
+                              port_svr_arena::Svr07Banner(menuhd, svr_pick_, img)) {
+      // (SvR 2007 has no VS screen per arena: its picture on its arena select screen)
+      SetBanner(img);
       banner_custom_ = true;
     } else {
       banner_custom_ = false;
