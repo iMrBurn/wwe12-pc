@@ -1533,24 +1533,29 @@ class Page {
         const port_svr_arena::PlateText t = port_svr_arena::PlateTextFor(slot_ >= 0 ? kSlots[slot_].number : 2);
         city.x += t.city_x - t.name_x;
         city.y += t.city_y - t.name_y;
-        // (made smaller round the city's text when it would leave the screen: WWE '12 writes the city near the top
-        // left, SvR 2007 RAW's big plate went half off it, 2026-11-01)
-        float k = 1;
-        const float m = 16;
-        if (city.x < m)
-          k = std::min(k, (t.city_x - m) / std::max(1.0f, t.city_x - city.x));
-        if (city.y < m)
-          k = std::min(k, (t.city_y - m) / std::max(1.0f, t.city_y - city.y));
-        if (city.x + city.w > 1920 - m)
-          k = std::min(k, (1920 - m - t.city_x) / std::max(1.0f, city.x + city.w - t.city_x));
-        if (city.y + city.h > 1080 - m)
-          k = std::min(k, (1080 - m - t.city_y) / std::max(1.0f, city.y + city.h - t.city_y));
-        if (k > 0.1f && k < 1) {
-          city.x = t.city_x - (t.city_x - city.x) * k;
-          city.y = t.city_y - (t.city_y - city.y) * k;
-          city.w *= k;
-          city.h *= k;
-        }
+        // (made smaller round their text when they would leave the screen, to 70 % at most: WWE '12 writes the city
+        // near the top left, the name near the bottom, SvR 2007 RAW's big plates went off it, 2026-11-01)
+        const auto fit = [](port_svr_arena::Plate2K &p, float ax, float ay) {
+          float k = 1;
+          const float m = 16;
+          if (p.x < m)
+            k = std::min(k, (ax - m) / std::max(1.0f, ax - p.x));
+          if (p.y < m)
+            k = std::min(k, (ay - m) / std::max(1.0f, ay - p.y));
+          if (p.x + p.w > 1920 - m)
+            k = std::min(k, (1920 - m - ax) / std::max(1.0f, p.x + p.w - ax));
+          if (p.y + p.h > 1080 - m)
+            k = std::min(k, (1080 - m - ay) / std::max(1.0f, p.y + p.h - ay));
+          k = std::max(k, 0.7f);
+          if (k < 1) {
+            p.x = ax - (ax - p.x) * k;
+            p.y = ay - (ay - p.y) * k;
+            p.w *= k;
+            p.h *= k;
+          }
+        };
+        fit(city, t.city_x, t.city_y);
+        fit(plate, t.name_x, t.name_y);
         if (port_svr_arena::EtexWearing(evtgd12, svrfmt::Image(), 3.4, svrfmt::Image(), etex_, city, plate))
           port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
       }

@@ -1450,6 +1450,8 @@ struct PlateText {
 };
 inline PlateText PlateTextFor(int base) {
   switch (base) {
+    case 1:  // RAW (SvR 2007's RAW over it: Randy Orton, Louisville, Auckland; 2026-11-01)
+      return {1100, 915, 505, 222};
     case 3:  // Superstars (SmackDown of 2K15: Brock Lesnar, Pensacola)
       return {1105, 802, 957, 162};
     case 5:  // Fatal 4-Way (RAW of 2K14: Randy Orton, The Miz, Providence)

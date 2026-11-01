@@ -199,3 +199,7 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
   centre le texte ; sinon l'ancien point. Vérifié hors du jeu sur les plaques 2007-2009 : la fenêtre trouvée pour RAW
   2007, Taboo Tuesday, HEAT, No Mercy 2008 / 2009, No Way Out 2009, Unforgiven 2009, Tribute to the Troops ; les autres
   gardent l'ancien point (No Mercy 2007, sans fenêtre : sous les lames).
+  Essai en jeu (2026-11-01) : la plaque bougeait bien, mais le texte de WWE '12 n'est pas là où `PlateTextFor` le
+  croyait pour la base RAW (valeurs mesurées sur 2K17 / SmackDown) : mesuré sur les captures de l'utilisateur, nom et
+  titre centrés vers (1100, 915), ville vers (505, 222) sur 1920 × 1080 : ajouté pour la base 1. Les deux plaques
+  (ville et nom) sont réduites autour de leur texte quand elles sortiraient de l'écran, jusqu'à 70 % au plus.
