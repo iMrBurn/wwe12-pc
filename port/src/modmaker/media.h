@@ -135,8 +135,13 @@ class MovieEditor {
     conv_ = std::thread([this, top, bottom] {
       std::wstring err;
       bool ok = true;
+      // (a 16:9 movie at 512 x 288; one laid out like WWE '12's, 320 x 320 - 2K14's: the video on top, the
+      // superstar's banner strips below - kept as it is, its two parts used as they are)
+      bink2::Info info;
+      const bool laid_out = bink2::ReadInfo(top, info) && info.width == 320 && info.height == 320;
       if (!top.empty())
-        ok = bink2::ToBink1(bink2::Found(), top, conv_top_out_, &conv_progress_, &conv_cancel_, &err, 512, 288);
+        ok = bink2::ToBink1(bink2::Found(), top, conv_top_out_, &conv_progress_, &conv_cancel_, &err, laid_out ? 0 : 512,
+                            laid_out ? 0 : 288);
       if (ok && !bottom.empty())
         ok = bink2::ToBink1(bink2::Found(), bottom, conv_bottom_out_, &conv_progress_, &conv_cancel_, &err);
       conv_err_ = ok ? std::wstring() : (err.empty() ? L"?" : err);

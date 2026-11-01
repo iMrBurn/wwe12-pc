@@ -11,7 +11,10 @@
 //    40000-40040): the model, its pictures (10) and colour and masks (12-14) are WWE '13's.
 #pragma once
 
+#include <array>
+#include <cmath>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -31,6 +34,131 @@ struct Report {
 inline const std::map<std::string, std::string> &ExtraBones() {
   static const std::map<std::string, std::string> m = {{"L_Thigh_u", "Bip L Thigh"}, {"R_Thigh_u", "Bip R Thigh"}};
   return m;
+}
+
+// The nodes of the spring chains that hang from a leg: kami_* nodes whose nearest other ancestor is a thigh, calf or
+// foot.
+inline std::vector<bool> LegChains(const svrfmt::Model &m) {
+  std::vector<bool> out(m.nodes.size(), false);
+  for (size_t i = 0; i < m.nodes.size(); ++i) {
+    if (m.nodes[i].name.rfind("kami", 0) != 0)
+      continue;
+    int p = m.nodes[i].parent;
+    while (p >= 0 && m.nodes[size_t(p)].name.rfind("kami", 0) == 0)
+      p = m.nodes[size_t(p)].parent;
+    if (p < 0)
+      continue;
+    const std::string &n = m.nodes[size_t(p)].name;
+    out[i] = n.find("Calf") != std::string::npos || n.find("Thigh") != std::string::npos || n.find("Foot") != std::string::npos;
+  }
+  return out;
+}
+
+// The leg chains' vertices (their first influence on a chain node) turned about the chain's root (its first node)
+// from the chain's direction (root -> its farthest node) to the leg's (the leg bone -> its child bone), in the bind
+// pose (R = Rz Ry Rx, as the nodes' Euler angles).
+inline void StraightenLegChains(svrfmt::Model &m, const std::vector<bool> &on_leg) {
+  using M = std::array<float, 12>;  // 3x4, row-major
+  auto local = [](const svrfmt::Node &n) {
+    const float cx = std::cos(n.r[0]), sx = std::sin(n.r[0]), cy = std::cos(n.r[1]), sy = std::sin(n.r[1]),
+                cz = std::cos(n.r[2]), sz = std::sin(n.r[2]);
+    return M{cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx, n.t[0],
+             sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx, n.t[1],
+             -sy,     cy * sx,                cy * cx,                n.t[2]};
+  };
+  auto mul = [](const M &a, const M &b) {
+    M o{};
+    for (int r = 0; r < 3; ++r) {
+      for (int c = 0; c < 3; ++c)
+        o[size_t(r * 4 + c)] = a[size_t(r * 4)] * b[size_t(c)] + a[size_t(r * 4 + 1)] * b[size_t(4 + c)] +
+                               a[size_t(r * 4 + 2)] * b[size_t(8 + c)];
+      o[size_t(r * 4 + 3)] = a[size_t(r * 4)] * b[3] + a[size_t(r * 4 + 1)] * b[7] + a[size_t(r * 4 + 2)] * b[11] +
+                             a[size_t(r * 4 + 3)];
+    }
+    return o;
+  };
+  std::vector<M> w(m.nodes.size());
+  for (size_t i = 0; i < m.nodes.size(); ++i) {
+    const int p = m.nodes[i].parent;
+    w[i] = p >= 0 && size_t(p) < i ? mul(w[size_t(p)], local(m.nodes[i])) : local(m.nodes[i]);
+  }
+  auto pos = [&](size_t i) { return std::array<float, 3>{w[i][3], w[i][7], w[i][11]}; };
+  auto unit = [](std::array<float, 3> v) {
+    const float l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    return l > 0 ? std::array<float, 3>{v[0] / l, v[1] / l, v[2] / l} : v;
+  };
+  for (size_t r = 0; r < m.nodes.size(); ++r) {
+    const int leg = m.nodes[r].parent;
+    if (!on_leg[r] || leg < 0 || on_leg[size_t(leg)])
+      continue;  // (a chain's root: on the leg bone itself)
+    // its nodes, its farthest one, the leg's child bone
+    std::vector<bool> in(m.nodes.size(), false);
+    in[r] = true;
+    size_t tip = r, below = r;
+    float tip_d = 0;
+    for (size_t i = r + 1; i < m.nodes.size(); ++i)
+      if (m.nodes[i].parent >= 0 && in[size_t(m.nodes[i].parent)]) {
+        in[i] = true;
+        const auto a = pos(i), b = pos(r);
+        const float d = (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]);
+        if (d > tip_d)
+          tip_d = d, tip = i;
+      }
+    for (size_t i = 0; i < m.nodes.size(); ++i)
+      if (m.nodes[i].parent == leg && m.nodes[i].name.rfind("kami", 0) != 0)
+        below = i;
+    if (tip == r || below == r)
+      continue;
+    const auto root = pos(r), lp = pos(size_t(leg)), bp = pos(below), fp = pos(tip);
+    const auto a = unit({fp[0] - root[0], fp[1] - root[1], fp[2] - root[2]});
+    const auto b = unit({bp[0] - lp[0], bp[1] - lp[1], bp[2] - lp[2]});
+    // the rotation taking a onto b (Rodrigues)
+    const std::array<float, 3> v = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+    const float c = a[0] * b[0] + a[1] * b[1] + a[2] * b[2], k = c > -0.999f ? 1.0f / (1.0f + c) : 0.0f;
+    const float R[9] = {1 - k * (v[1] * v[1] + v[2] * v[2]), k * v[0] * v[1] - v[2], k * v[0] * v[2] + v[1],
+                        k * v[0] * v[1] + v[2], 1 - k * (v[0] * v[0] + v[2] * v[2]), k * v[1] * v[2] - v[0],
+                        k * v[0] * v[2] - v[1], k * v[1] * v[2] + v[0], 1 - k * (v[0] * v[0] + v[1] * v[1])};
+    auto chain_vert = [&](const svrfmt::Mesh &me, size_t vi) {
+      const uint8_t s = me.weights[0][vi].bones[0];
+      return s != 255 && s < me.palette.size() && me.palette[s] >= 1 && size_t(me.palette[s]) <= in.size() &&
+             in[size_t(me.palette[s]) - 1];
+    };
+    auto turned = [&](const float *p) {
+      const float d[3] = {p[0] - root[0], p[1] - root[1], p[2] - root[2]};
+      std::array<float, 3> o;
+      for (int j = 0; j < 3; ++j)
+        o[size_t(j)] = root[size_t(j)] + R[j * 3] * d[0] + R[j * 3 + 1] * d[1] + R[j * 3 + 2] * d[2];
+      return o;
+    };
+    // then moved so that its vertices' middle is on the leg's line (at rest it hangs ~17 cm out: Warrior's skirts,
+    // which 2K14's gravity and calf collision bring around the boot)
+    double sum[3] = {0, 0, 0};
+    size_t count = 0;
+    for (const auto &me : m.meshes)
+      for (size_t vi = 0; !me.weights.empty() && vi < me.verts.size() && vi < me.weights[0].size(); ++vi)
+        if (chain_vert(me, vi)) {
+          const auto t = turned(me.verts[vi].pos);
+          for (int j = 0; j < 3; ++j)
+            sum[j] += t[size_t(j)];
+          ++count;
+        }
+    if (!count)
+      continue;
+    const float mid[3] = {float(sum[0] / count), float(sum[1] / count), float(sum[2] / count)};
+    const float along = (mid[0] - lp[0]) * b[0] + (mid[1] - lp[1]) * b[1] + (mid[2] - lp[2]) * b[2];
+    const float shift[3] = {lp[0] + b[0] * along - mid[0], lp[1] + b[1] * along - mid[1], lp[2] + b[2] * along - mid[2]};
+    for (auto &me : m.meshes)
+      for (size_t vi = 0; !me.weights.empty() && vi < me.verts.size() && vi < me.weights[0].size(); ++vi)
+        if (chain_vert(me, vi)) {
+          float *p = me.verts[vi].pos, *n = me.verts[vi].normal;
+          const auto t = turned(p);
+          const float nn[3] = {n[0], n[1], n[2]};
+          for (int j = 0; j < 3; ++j) {
+            p[j] = t[size_t(j)] + shift[j];
+            n[j] = R[j * 3] * nn[0] + R[j * 3 + 1] * nn[1] + R[j * 3 + 2] * nn[2];
+          }
+        }
+  }
 }
 
 // The WWE '13 model `m` on the base model's skeleton: base's node order, WWE '13's bind pose.
@@ -56,11 +184,28 @@ inline bool Reskeleton(svrfmt::Model &m, const svrfmt::Model &base, Report *rep,
     if (rep)
       ++rep->bones_mapped;
   }
-  // WWE '13 node index -> base index (its extra bones: their stand-in's; else the nearest ancestor found).
+  // Its spring chains on the legs (2K14 Ultimate Warrior's boot fringes, kami_b10 / b11 on the calves): WWE '12's
+  // springs neither follow a leg (they hung straight, beside his bent legs) nor does the game move a node it added
+  // without a spring (left at its rest place). They go to the leg bone itself, their vertices first turned about the
+  // chain's root so that the chain lies along the leg (at rest it leans out, hanging from a spread leg).
+  const std::vector<bool> on_leg = LegChains(m);
+  StraightenLegChains(m, on_leg);
+  // WWE '13 node index -> base index (its extra bones: their stand-in's; else the nearest ancestor found). Its other
+  // spring bones (kami_*: hair, the arms' streamers b08 / b09; WWE '12's ch283 has springs on the upper arms) the base
+  // hasn't are added after the base's nodes, under their parent's place: the springs (entries 60, 61, taken with the
+  // attire) swing them (2026-11-01).
   std::vector<int> map(m.nodes.size(), -1);
   for (size_t i = 0; i < m.nodes.size(); ++i) {
     const auto extra = ExtraBones().find(m.nodes[i].name);
     int k = find(base.nodes, extra != ExtraBones().end() ? extra->second : m.nodes[i].name);
+    const int parent = m.nodes[i].parent;
+    if (k < 0 && !on_leg[i] && m.nodes[i].name.rfind("kami", 0) == 0 && parent >= 0 && size_t(parent) < i &&
+        map[size_t(parent)] >= 0) {
+      svrfmt::Node n = m.nodes[i];
+      n.parent = map[size_t(parent)];
+      nodes.push_back(n);
+      k = int(nodes.size()) - 1;
+    }
     for (int p = m.nodes[i].parent; k < 0 && p >= 0; p = m.nodes[size_t(p)].parent)
       k = find(base.nodes, m.nodes[size_t(p)].name);
     // (a model's root, named after the model: WWE 2K17 Sasha Banks's "transB_eyeshado" -> the base's
@@ -84,6 +229,31 @@ inline bool Reskeleton(svrfmt::Model &m, const svrfmt::Model &base, Report *rep,
   return true;
 }
 
+// A SpringHairSetting text without the lines of `chains` (and their ReferenceHair lines).
+inline Bytes DropChains(const Bytes &text, const std::set<std::string> &chains) {
+  std::string in(text.begin(), text.end()), out;
+  size_t at = 0;
+  while (at < in.size()) {
+    size_t end = in.find('\n', at);
+    end = end == std::string::npos ? in.size() : end + 1;
+    std::string line = in.substr(at, end - at);
+    at = end;
+    std::vector<std::string> tok;
+    for (size_t p = 0; p < line.size();) {
+      const size_t q = line.find_first_not_of(" \t\r\n", p);
+      if (q == std::string::npos)
+        break;
+      const size_t r = line.find_first_of(" \t\r\n", q);
+      tok.push_back(line.substr(q, (r == std::string::npos ? line.size() : r) - q));
+      p = r == std::string::npos ? line.size() : r;
+    }
+    if (!tok.empty() && chains.count(tok[0]))
+      continue;
+    out += line;
+  }
+  return Bytes(out.begin(), out.end());
+}
+
 // The WWE '13 attire (an "EMD " entry of its chNNN.pac) over the base's (WWE '12): the base attire node changed in
 // place. False (and why) when it can't.
 inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep, std::string *why) {
@@ -100,6 +270,7 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
         return &k;
     return nullptr;
   };
+  std::set<std::string> leg_chains;  // its spring chains hanging from a leg (kami_b10 on Bip L Calf...)
   // The body (0), the hair (10000) and the eyelashes (WWE '13: 20002, WWE '12: 20000).
   for (const auto &[from, to] : std::vector<std::pair<uint32_t, uint32_t>>{{0, 0}, {10000, 10000}, {20002, 20000}}) {
     svrfmt::ArcNode *s = child(w13, from), *b = child(base, to);
@@ -128,11 +299,32 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
       return fail("unreadable model: " + e);
     if (!ms.w12)
       return fail("not a WWE '13 model (old layout)");
+    const std::vector<bool> on_leg = LegChains(ms);
+    for (size_t i = 0; i < ms.nodes.size(); ++i)
+      if (on_leg[i])
+        leg_chains.insert(ms.nodes[i].name);
     if (!Reskeleton(ms, mb, from == 0 ? rep : nullptr, why))
       return false;
     if (from == 0 && rep)
       rep->meshes = int(ms.meshes.size());
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(ms));
+  }
+  // Its springs (60 the settings, 61 the collisions: text, the same "Version2" in WWE '12, '13 and 2K14), for its spring
+  // bones kept above, in place of the base's. A setting line: chain, radius, viscosity, gravity, spring, damping, A,
+  // length correction, bend, move correction (Kaiko's w13_char.py). The chains on the legs are not kept (Reskeleton): their
+  // lines go.
+  for (uint32_t id : {60u, 61u}) {
+    svrfmt::ArcNode *s = child(w13, id), *b = child(base, id);
+    if (!s)
+      continue;
+    Bytes text = svrfmt::Unpack(svrfmt::ArchiveData(*s));
+    if (id == 60 && !leg_chains.empty())
+      text = DropChains(text, leg_chains);
+    std::string e;
+    if (b)
+      svrfmt::ArchiveReplace(*b, text);
+    else if (!svrfmt::ArchiveAdd(base, "", "", id, text, &e))
+      return fail("can't add its springs: " + e);
   }
   // Its pictures, colour and masks (all three: the base's Mask3 fits the base's colour picture).
   for (uint32_t id : {10u, 12u, 13u, 14u, 15u}) {

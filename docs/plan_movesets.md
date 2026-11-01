@@ -346,3 +346,25 @@ de sa tenue qui flottent pendant l'entrée (os de la tenue 2K14 calculés par 2K
 de WWE '12 ont une queue avec la vidéo seule), et ses graphismes d'entrée (bannière, mur : ceux du catcheur de base).
 Entrées 2K14 sans accessoire inconnu de WWE '12 (le meilleur choix pour l'instant) : 109, 119, 130, 136, 144, 160, 197,
 210, 254, 298, 353, 357, 359, 360, 366, 371.
+
+### Graphismes d'entrée, ressorts des tenues (2026-11-01)
+
+- **Graphismes par catcheur dans WWE '12** : `movies\titantron\NNN.bik` (haut 320 × 220 = titantron, bas 320 × 100 =
+  bannière / minitron), et dans `pac\evt\evtmov.pac` `MVSB/M%03d` (ruban autour de l'arène, Bink 1 1024 × 32) et
+  `MVSW/M%03d` (mur, 256 × 256), pour 85 catcheurs. Le jeu (fonction des écrans d'entrée, sub_828D7xxx) demande
+  `sub_82A31578(numéro vidéo, sorte)` : 2 mur, 1 ruban ; sinon ceux de l'arène (mur de l'arène, ruban `MVAB`, sorte 3).
+  Un catcheur ajouté a le numéro vidéo de sa base : il montrait le ruban « TED DIBIASE » ; le crochet de sub_82A31578
+  (wwe12_superstar_mods.cpp) lui répond « non » : ceux de l'arène. **Vu en jeu.** 2K14 : `MVSB` 256 × 128 (KB2f),
+  `MVSW` 256 × 256, pour ~50 catcheurs (pas Warrior). À faire : les proposer dans le Mod Maker (arène / base / son jeu /
+  le vôtre).
+- **Vidéo 2K14** : même disposition que WWE '12 (vidéo en haut, bandes en bas) : convertie à sa taille (320 × 320) au
+  lieu de 512 × 288 (media.h). **Vu en jeu.**
+- **Ressorts des tenues portées** : réglages `60` (SpringHairSetting) et `61` (collisions), texte « Version2 » dans
+  WWE '12, '13 et 2K14 ; colonnes (d'après `w13_char.py` de Kaiko) : rayon, viscosité, gravité, ressort, amortissement,
+  A, longueur, bend, mouvement. Le portage garde maintenant les os `kami_*` que la base n'a pas (ajoutés sous leur
+  parent) et reprend 60 / 61. **Vu en jeu** : cheveux et rubans des bras de Warrior balancent.
+- **Franges des bottes de Warrior (kami_b10 / b11 sur les mollets) : pas résolu.** Avec ressorts : elles pendent droit
+  à côté des jambes pliées (WWE '12 n'a de ressorts que sur la tête et le haut des bras, ch283) ; gravité 0, sans
+  collision du mollet : pareil ; os ajoutés sans ressort : immobiles. Soudées au mollet après avoir été tournées et
+  recentrées sur l'axe du tibia (fichier vérifié : 122 sommets par jambe sur l'axe) : elles flottent encore à côté du
+  tibia en jeu, donc le jeu ne place pas ces sommets comme le modèle l'indique. Prochaine étape : capture RenderDoc.

@@ -978,6 +978,25 @@ extern "C" REX_FUNC(sub_82A316A0) {
   __imp__sub_82A316A0(ctx, base);
 }
 
+// The arena's entrance screens (sub_828D7xxx, once per entrance): with the entrant's video number n, sub_82A31578(n,
+// kind) says whether it has a movie of that kind in pac\evt\evtmov.pac: 2 its wall (MVSW/M%03d, 256 x 256), 1 its
+// ribbon (MVSB/M%03d, 1024 x 32, its name around the arena); without them the arena's are shown (its wall, its ribbon
+// MVAB, kind 3). An added superstar has its base's video number: it showed the base's ribbon and wall (Ultimate
+// Warrior on Ted DiBiase's 261, 2026-11-01); it is told it has none, so it gets the arena's.
+REX_EXTERN(__imp__sub_82A31578);
+extern "C" REX_FUNC(sub_82A31578) {
+  const uint32_t n = ctx.r3.u32, kind = ctx.r4.u32;
+  __imp__sub_82A31578(ctx, base);
+  if (ctx.r3.u32 && (kind == 1 || kind == 2) && !g_records.empty()) {
+    const uint32_t id = Entering(ctx, base);
+    if (g_records.count(id)) {
+      REXLOG_INFO("[superstar mods] superstar {} entering: no {} of its base's ({}), the arena's", id,
+                  kind == 1 ? "ribbon" : "wall", n);
+      ctx.r3.u64 = 0;
+    }
+  }
+}
+
 // The select screen's candidates (sub_828ADFB8: numbers 50..372 that the save says are unlocked). The save keeps its
 // own copy of every superstar's record (the roster: [0x8317FA08] + index * 286, index = u16 table 0x8307B5E0[number];
 // sub_82684BF8 / sub_82684910 read it), made when it first saw the superstar: its name, ratings and "unlocked" (byte
