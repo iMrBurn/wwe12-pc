@@ -31,9 +31,17 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Dist "game") | Out-Null
 
 # Exécutable et bibliothèques. Le client du profileur (Tracy) ne sert qu'au développement.
 Copy-Item (Join-Path $Build "wwe12.exe") $Dist
+# 1.0 : trois rendus (Vulkan, Direct3D 12, Direct3D 11) ; le launcher choisit selon gpu_backend.
+foreach ($exe in "wwe12_d3d12.exe", "wwe12_d3d11.exe") {
+    $src = Join-Path $Build $exe
+    if (-not (Test-Path $src)) { throw "$exe introuvable dans $Build : compiler d'abord (build.ps1 -Config $Config, WWE12_D3D11_EXE=ON)." }
+    Copy-Item $src $Dist
+}
 Copy-Item (Join-Path $Build "WWE12 Launcher.exe") $Dist
 Copy-Item (Join-Path $Build "WWE12 Mod Maker.exe") $Dist
-Get-ChildItem $Build -Filter *.dll | Where-Object { $_.Name -notlike "Tracy*" } |
+# Jamais de DLL Microsoft : dxcompiler.dll / dxil.dll restent dans le dossier de compilation (outil de dev).
+$NoShip = "Tracy*", "dxcompiler*", "dxil*", "d3dcompiler*", "fxc*"
+Get-ChildItem $Build -Filter *.dll | Where-Object { $n = $_.Name; -not ($NoShip | Where-Object { $n -like $_ }) } |
     ForEach-Object { Copy-Item $_.FullName $Dist }
 
 # Pipelines déjà rencontrées sur la machine du développeur (Documents\wwe12\cache\pipelines.bin,
@@ -177,6 +185,10 @@ $forbidden = Get-ChildItem $Dist -Recurse -File |
 # Les paquets DLC n'ont pas d'extension : rien d'autre que la note dans dlc\.
 $forbidden = @($forbidden) + @(Get-ChildItem (Join-Path $Dist "dlc") -Recurse -File |
     Where-Object { $_.Name -ne "HOW_TO_INSTALL_DLC.txt" }) | Where-Object { $_ }
+# Fichiers de développement ou de Microsoft qui ne doivent jamais partir dans le zip.
+$devOnly = Get-ChildItem $Dist -Recurse -File | Where-Object { $_.FullName -notlike "$Dist\game\*" -and $_.FullName -notlike "$Dist\music\*" -and ($_.Name -like "dxil*" -or $_.Name -like "dxcompiler*" -or
+    $_.Name -like "d3dcompiler*" -or $_.Name -like "fxc*" -or $_.Name -like "wwe12_prelink*" -or $_.Extension -in ".pdb", ".map", ".log", ".rdc") }
+if ($devOnly) { throw "Fichiers de développement ou de Microsoft dans la distribution : $($devOnly.FullName -join ', ')" }
 if ($forbidden) {
     throw "Données du jeu trouvées dans la distribution : $($forbidden.FullName -join ', ')"
 }
@@ -209,7 +221,8 @@ try {
 # Empreintes SHA-256 à coller dans les notes de la release : un joueur vérifie ainsi que ses fichiers
 # sont bien ceux publiés (utile quand un antivirus signale l'exe, non signé, à tort).
 $Sums = Join-Path $Root "dist\SHA256-v$Version.txt"
-@($Zip, (Join-Path $Dist "wwe12.exe"), (Join-Path $Dist "WWE12 Launcher.exe"),
+@($Zip, (Join-Path $Dist "wwe12.exe"), (Join-Path $Dist "wwe12_d3d12.exe"), (Join-Path $Dist "wwe12_d3d11.exe"),
+  (Join-Path $Dist "WWE12 Launcher.exe"),
   (Join-Path $Dist "WWE12 Mod Maker.exe")) | ForEach-Object {
     "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), (Split-Path $_ -Leaf)
 } | Set-Content -Path $Sums -Encoding ascii
@@ -219,7 +232,7 @@ $Sums = Join-Path $Root "dist\SHA256-v$Version.txt"
 # crash_trace.txt envoyé par un joueur ne se traduisent plus en fonctions dès la compilation suivante.
 $Symbols = Join-Path $Root "dist\symbols-v$Version"
 New-Item -ItemType Directory -Force -Path $Symbols | Out-Null
-foreach ($f in "wwe12.map", "wwe12.exe") {
+foreach ($f in "wwe12.map", "wwe12.exe", "wwe12_d3d12.map", "wwe12_d3d12.exe", "wwe12_d3d11.map", "wwe12_d3d11.exe") {
     $src = Join-Path $Build $f
     if (Test-Path $src) { Copy-Item $src $Symbols -Force }
 }
