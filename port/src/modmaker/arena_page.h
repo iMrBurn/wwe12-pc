@@ -1476,14 +1476,14 @@ class Page {
       ramp_note_ = b;
     }
     // Its own banner from SvR 2011's menus (from the ISO), else the base's.
-    Bytes matchhd;
+    Bytes matchhd, menuhd07;
     svrfmt::Image img;
     if (svr_pick_ >= 0 && svr_disc_.Read("pac/menu/MatchHD.pac", matchhd) &&
         port_svr_arena::Banner(matchhd, svr_pick_, img, svr_year_)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
-    } else if (Bytes menuhd; svr_pick_ >= 0 && svr_year_ == 2007 && svr_disc_.Read("pac/menu/menuHD.pac", menuhd) &&
-                              port_svr_arena::Svr07Banner(menuhd, svr_pick_, img)) {
+    } else if (svr_pick_ >= 0 && svr_year_ == 2007 && svr_disc_.Read("pac/menu/menuHD.pac", menuhd07) &&
+               port_svr_arena::Svr07Banner(menuhd07, svr_pick_, img)) {
       // (SvR 2007 has no VS screen per arena: its picture on its arena select screen)
       SetBanner(img);
       banner_custom_ = true;
@@ -1495,6 +1495,12 @@ class Page {
     Bytes matchhd12;
     if (!matchhd.empty() && disc_ && disc_->Read("pac/menu/MatchHD.pac", matchhd12) &&
         port_svr_arena::Card(matchhd, matchhd12, svr_pick_, img, card_mb_, card_mf_))
+      port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
+    // (SvR 2007: its background and logo from menuHD.pac, port_svr_arena::Svr07CardPictures)
+    std::vector<svrfmt::BundleTexture> vs07;
+    if (!menuhd07.empty() && disc_ && (!matchhd12.empty() || disc_->Read("pac/menu/MatchHD.pac", matchhd12)) &&
+        port_svr_arena::Svr07CardPictures(menuhd07, svr_pick_, vs07) &&
+        port_svr_arena::CardWearing(vs07, matchhd12, banner_, card_mb_, card_mf_))
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // ... or its own SvR 2011 VS screen (port_svr_arena::SvrCard, after Kaiko's notes; Breaking Point seen in the game)
     dressed_mb_ = card_mb_;

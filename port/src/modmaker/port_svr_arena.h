@@ -2040,6 +2040,53 @@ inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, con
   return CardWearing(theirs, matchhd12, banner, mb, mf, template_name);
 }
 
+// SvR 2007's VS screen of arena `n` as pictures for CardWearing: menu/menuHD.pac MACH/<show> (its frame and logo) and
+// MACH/<bg> (its background, 1024 x 512), each PACH { 0: PACH { i: DDS } } (seen 2026-11-01 on the user's captures of
+// the game: RAW's red fire, frame and logo; Armageddon's flames and "A"). Named "background" and "logo" (its show
+// group's smallest picture at least 100 on both sides: RAW's 512 x 128 logo, not its 1024 x 512 frame; none where that
+// is a strip of decoration, HEAT, Royal Rumble, Judgment Day, The Great American Bash, New Year's Revolution, seen
+// 2026-11-01: CardWearing then takes the banner).
+inline bool Svr07CardPictures(const Bytes &menuhd, int n, std::vector<svrfmt::BundleTexture> &out) {
+  static constexpr const char *kGroups[][2] = {
+      {"SMCK", "SMBG"}, {"RAWA", "RABG"}, {"VELO", "VCBG"}, {"HEAT", "HTBG"}, {"SUMM", "SSBG"},
+      {"UNFO", "UFBG"}, {"NOME", "NMBG"}, {"SURV", "SVBG"}, {"ARMG", "ARBG"}, {"RYRB", "RRBG"},
+      {"NWAY", "NWBG"}, {"WM22", "22BG"}, {"BALA", "BLBG"}, {"JUDG", "JMBG"}, {"VENG", "VGBG"},
+      {"GRAM", "GABG"}, {"NYRV", "NYBG"}, {"ECWA", "ECBG"}, {"TABO", "TTBG"}, {"STDN", "STBG"}};
+  out.clear();
+  svrfmt::Archive a;
+  if (n < 0 || n >= int(std::size(kGroups)) || !svrfmt::ArchiveOpen(menuhd, a, nullptr))
+    return false;
+  // A group's pictures (PACH 0's DDS children).
+  auto pictures = [&](const char *name) {
+    std::vector<Bytes> p;
+    for (auto &k : a.root.kids)
+      if (k.group == "MACH" && k.name == name && svrfmt::ArchiveExpand(k))
+        for (auto &c : k.kids)
+          if (c.id == 0 && svrfmt::ArchiveExpand(c))
+            for (const auto &x : c.kids) {
+              Bytes d = svrfmt::ArchiveData(x);
+              if (d.size() > 4 && memcmp(d.data(), "DDS ", 4) == 0)
+                p.push_back(std::move(d));
+            }
+    return p;
+  };
+  svrfmt::DdsInfo info;
+  for (const auto &d : pictures(kGroups[n][1]))
+    if (out.empty() && svrfmt::DdsInfoOf(d, info))
+      out.push_back({"background", "dds", d});
+  const Bytes *logo = nullptr;
+  int area = 0;
+  const auto show = pictures(kGroups[n][0]);
+  for (const auto &d : show)
+    if (svrfmt::DdsInfoOf(d, info) && info.w >= 100 && info.h >= 100 && (!logo || info.w * info.h < area)) {
+      logo = &d;
+      area = info.w * info.h;
+    }
+  if (logo && n != 3 && n != 9 && n != 13 && n != 15 && n != 16)
+    out.push_back({"logo", "dds", *logo});
+  return !out.empty();
+}
+
 // The arena's own SvR 2011 VS screen, after Kaiko's notes (VS_STYLES.md and vs_port.py, sent to the user 2026-10-28;
 // his SvR 2011 port takes SvR 2008-2010's themes the same way). The same system as WWE '12's, one version older:
 // SvR 2011's theme is MENU/MnnL (PACH: the layout, YXMLBIN VER0002), MENU/MnnI (7001 pictures, 7002 animations, ATB0
@@ -2404,6 +2451,63 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
       if (notes)
         notes->push_back("visibility tree made (" + std::to_string(boxes.size()) + " models)");
     }
+  }
+  // The video screens (2007 / 2008; 2009 has pictures of its own there): their pictures are placeholders ("titan_mov"
+  // 64 x 32 on 801 and 803, "titan" 64 x 16 on 800; 2007 SmackDown's "sd_titan", a name with no picture at all) the
+  // old games filled with the movie; WWE '12 plays its movies in
+  // pictures named "titantron_movie" (the titantron, by number: 800, 803, 806, 808) and "arena_movie" (801, 807, 809),
+  // else they stayed red. 800 drew a part of the movie: made the titantron's part of WWE '12's (v 0-0.684, its strip
+  // under it); 801 and 803 the whole of it, as SvR 2011's. Changed in the model's bytes, as port13::ScreensTo12.
+  std::set<std::string> pictures;
+  if (svrfmt::ArcNode *p = kid(ga, 400)) {
+    std::vector<svrfmt::BundleTexture> t;
+    if (svrfmt::BundleRead(svrfmt::ArchiveData(*p), t))
+      for (const auto &x : t)
+        pictures.insert(x.name);
+  }
+  for (auto &k : ga.kids) {
+    if (k.id != 800 && k.id != 801 && k.id != 803)
+      continue;
+    Bytes d = svrfmt::ArchiveData(k);
+    svrfmt::Model m;
+    if (!svrfmt::IsJboy(d) || !svrfmt::JboyRead(d, m, nullptr))
+      continue;
+    constexpr size_t B = 8;
+    const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
+    bool changed = false;
+    for (const auto &me : m.meshes) {
+      int slot = -1;
+      for (const auto &p : me.params)
+        if (p.type == 0x0f && p.value.size() >= 4 && svrfmt::Be32(p.value.data()) < m.textures.size())
+          slot = int(svrfmt::Be32(p.value.data()));
+      if (slot < 0 || me.raw.size() < 0x74 || B + tptr + 16 * (size_t(slot) + 1) > d.size())
+        continue;
+      const std::string &t = m.textures[size_t(slot)];  // (as read: a slot two meshes share is renamed twice alike)
+      const bool movie = t == "titan_mov" || t == "titan" || (!pictures.empty() && !pictures.count(t));
+      if (!movie)
+        continue;
+      const char *name = k.id == 801 ? "arena_movie" : "titantron_movie";
+      if (k.id == 800 && !me.uvs.empty()) {
+        float u0 = 1e9f, u1 = -1e9f, v0 = 1e9f, v1 = -1e9f;
+        for (const auto &uv : me.uvs) {
+          u0 = std::min(u0, uv[0]), u1 = std::max(u1, uv[0]);
+          v0 = std::min(v0, uv[1]), v1 = std::max(v1, uv[1]);
+        }
+        const size_t uvs = B + svrfmt::Be32(&me.raw[0x70]);
+        if (u1 <= u0 || v1 <= v0 || uvs + 8 * me.uvs.size() > d.size())
+          continue;
+        for (size_t q = 0; q < me.uvs.size(); ++q) {
+          svrfmt::PutBeF(&d[uvs + 8 * q], (me.uvs[q][0] - u0) / (u1 - u0));
+          svrfmt::PutBeF(&d[uvs + 8 * q + 4], (me.uvs[q][1] - v0) / (v1 - v0) * 0.684f);
+        }
+      }
+      uint8_t *tn = &d[B + tptr + 16 * size_t(slot)];
+      std::memset(tn, 0, 16);
+      std::memcpy(tn, name, std::strlen(name));
+      changed = true;
+    }
+    if (changed)
+      ReplaceLike(k, d);
   }
   std::sort(ga.kids.begin(), ga.kids.end(), [](const svrfmt::ArcNode &a, const svrfmt::ArcNode &b) { return a.id < b.id; });
   svrfmt::ArchiveTouch(ga);

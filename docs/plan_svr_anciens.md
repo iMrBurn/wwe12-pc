@@ -138,8 +138,15 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
     2026-11-01 : 2 = Velocity et 3 = HEAT, pas ECW / copie comme chez Kaiko ; 17 = ECW One Night Stand, 18 = Taboo
     Tuesday ; 20+ = coulisses, parking, bar du mode histoire). Les 20 passent (4 jeux de lumières pris dans la base,
     arbre de visibilité fabriqué). Bannière (`Svr07Banner`) : son image de l'écran de choix d'arène, `menu/menuHD.pac`
-    MENU/STTX / 0 / n (512 × 512, dans l'ordre des arènes), une bande 2:1 un peu au-dessus du milieu (pas d'écran VS
-    par arène dans 2007 ; ses images MACH sont des fonds d'intro de match). Pas de plaques d'entrée (pas de
+    MENU/STTX / 0 / n (512 × 512, dans l'ordre des arènes), une bande 2:1 un peu au-dessus du milieu. **Écran VS**
+    (`Svr07CardPictures`, vu sur les captures du jeu de l'utilisateur) : `menuHD.pac` MACH/<émission> (cadre et logo)
+    et MACH/<fond> (1024 × 512), PACH { 0 : PACH { i : DDS } } ; fond + logo (la plus petite image d'au moins 100 de
+    côté de l'émission ; HEAT, Royal Rumble, Judgment Day, GAB et NYR n'ont qu'une bande décorative : la bannière)
+    sur l'écran VS de WWE '12 habillé (`CardWearing`, modèle MB09). **Écrans vidéo** (2007 et 2008, `OldSvrArena`) :
+    leurs images étaient des bouche-trous que l'ancien jeu remplissait (« titan_mov » sur 801/803, « titan » ou un nom
+    sans image, « sd_titan », sur 800), restés rouges : renommées « titantron_movie » (800, 803) et « arena_movie »
+    (801) comme WWE '12 les attend, 800 ramené sur la partie titantron de la vidéo de WWE '12 (v 0-0,684). Pas de
+    plaques d'entrée (pas de
     `_EvtGdHD.pac`). Ring blanc et tache blanche sur le tablier dans la vue 3D : pareil avec SvR 2008 (vu par
     l'utilisateur), c'est l'aperçu.
   - À voir en jeu : tout.
