@@ -1615,6 +1615,12 @@ class Page {
       std::vector<entrance13::Part> both = own_entrance_;
       both.insert(both.end(), own_victory_.begin(), own_victory_.end());
       own_objects_ = entrance13::Objects(src, *disc12_, both);
+      // (an entrance 2K16 re-cut has 2K16's props too: Rusev's flag, 6012 and 6013 there, 2755 alone in 2K15)
+      disc::GameDisc g16;
+      if (own_entrance_recut_ && g16.OpenPath(discs_->PathOf(0x315A07D2)))
+        for (auto &o : entrance13::Objects(g16, *disc12_, own_entrance_))
+          if (std::none_of(own_objects_.begin(), own_objects_.end(), [&](const auto &h) { return h.number == o.number; }))
+            own_objects_.push_back(std::move(o));
       // (the props neither WWE '12 nor the mod has: an existing one, hidden)
       entrance13::HideMissing(own_entrance_, *disc12_, own_objects_);
       entrance13::HideMissing(own_victory_, *disc12_, own_objects_);
