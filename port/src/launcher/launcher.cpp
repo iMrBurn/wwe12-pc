@@ -661,7 +661,10 @@ void PagePlay() {
   }
   if (g_play_note)
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", g_play_note == 1 ? t.already_running : t.wait_busy);
-  ImGui::Dummy(ImVec2(0, 30));
+  // Copies DLC packages into the dlc folder (installed at the next game start); no other text on purpose.
+  ImGui::Dummy(ImVec2(0, 6));
+  g_dlc_add.Draw(g_s.language == 4, ExeDir());
+  ImGui::Dummy(ImVec2(0, 20));
   ImGui::Separator();
   ImGui::Text("%s", t.updates);
   g_updater.Draw({t.checking, t.up_to_date, t.update_available, t.install_update, t.check_failed,
@@ -1162,7 +1165,6 @@ void PageMods() {
                                                                                    "textures...");
   if (!g_modmaker_error.empty())
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", g_modmaker_error.c_str());
-  g_dlc_add.Draw(fr, ExeDir());
   if (!ImGui::BeginTabBar("modtabs"))
     return;
   if (ImGui::BeginTabItem(fr ? "Mods installés" : "Installed mods")) {
