@@ -454,6 +454,47 @@ inline bool OneTake(const std::vector<Part> &parts, int number) {
   return false;
 }
 
+// 2K16 / 2K17: the entrance (a pac\evt\00NNN.pac) whose script's name (+0x22, "0105_AJ_Styles") is the superstar's
+// (letters and digits compared, case ignored; a script named exactly so first, else one starting so), 0 if none.
+// 2K17's profiles can't be read here (an HSPC chEtc): its AJ Styles is number 610 but enters with 105 (610 is a
+// generic champion's entrance, 2026-11-02).
+inline int EntranceByName(const disc::GameDisc &g, const std::string &superstar) {
+  auto key = [](const std::string &s) {
+    std::string k;
+    for (unsigned char c : s)
+      if (isalnum(c))
+        k += char(tolower(c));
+    return k;
+  };
+  const std::string want = key(superstar);
+  if (want.empty())
+    return 0;
+  int starts = 0;
+  for (const auto &f : g.List("pac/evt")) {
+    if (f.size() != 9 || f.compare(0, 2, "00") != 0 || _stricmp(f.c_str() + 5, ".pac") != 0)
+      continue;
+    const int n = atoi(f.c_str());
+    svrfmt::Archive a;
+    if (n <= 0 || n >= 1000 || !detail::OpenPac(g, "pac/evt/" + f, a))
+      continue;
+    for (auto &k : a.root.kids) {
+      const Bytes u = svrfmt::Unpack(svrfmt::ArchiveData(k));
+      if (u.size() < 0x40 || memcmp(u.data(), "0FOP", 4))
+        continue;
+      std::string name(reinterpret_cast<const char *>(&u[0x22]), 30);
+      name = name.c_str();
+      if (const size_t us = name.find('_'); us != std::string::npos)
+        name = name.substr(us + 1);  // ("0105_")
+      const std::string k2 = key(name);
+      if (k2 == want)
+        return n;
+      if (!starts && k2.rfind(want, 0) == 0)
+        starts = n;
+    }
+  }
+  return starts;
+}
+
 // A game's effects (pac\prtcls.pac PCE6/NNNN, a PACH) of entrance `number`, empty if none.
 inline Bytes Pce6Of(const disc::GameDisc &g, int number) {
   svrfmt::Archive a;
@@ -666,6 +707,99 @@ inline int HideMissing(std::vector<Part> &parts, const disc::GameDisc &w12, cons
     }
   }
   return hidden;
+}
+
+// The ring announcer (model 5009): WWE '12 and 2K15 only pose him (a 2-track chunk per block); 2K16 / 2K17 move every
+// bone of their own skeleton, and on WWE '12's he lay upside down in the ring (2K16 Kevin Owens, 2K17 AJ Styles,
+// 2026-11-02). In their place, WWE '12's own record of him with the same blocks (from its entrances / victory scenes).
+// Returns how many were replaced.
+inline int Announcer12(std::vector<Part> &parts, const disc::GameDisc &w12) {
+  using detail::Be32;
+  constexpr uint32_t kAnnouncer = 5009;
+  // a record's blocks (their names), and whether one of its chunks moves more than 2 tracks
+  auto blocks = [](const Bytes &l, bool *moves) {
+    std::string names;
+    if (l.size() < 0x70)
+      return names;
+    const uint32_t first = Be32(l, 0x0C), count = Be32(l, 0x48);
+    for (uint32_t i = 0; i < count && 0x70 + 0x28 * size_t(i + 1) <= l.size(); ++i) {
+      const size_t ent = 0x70 + 0x28 * size_t(i), y = size_t(first) + Be32(l, ent + 0x24);
+      names.append(reinterpret_cast<const char *>(&l[ent + 4]), 8);
+      if (moves && y + 12 <= l.size() && !memcmp(&l[y], "YANM", 4) && ((l[y + 10] << 8) | l[y + 11]) > 2)
+        *moves = true;
+    }
+    return names;
+  };
+  // the announcer's object index in a script, -1 if none
+  auto index = [](const Bytes &evp) {
+    if (evp.size() < 0x50)
+      return -1;
+    const uint32_t n = Be32(evp, 0x40) & 0xFFFF, t = Be32(evp, 0x48) + 8;
+    for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= evp.size(); ++i)
+      if (Be32(evp, t + 32 * size_t(i) + 4) == kAnnouncer)
+        return int(i);
+    return -1;
+  };
+  std::vector<std::pair<std::string, Bytes>> own;  // WWE '12's records of him, by blocks (read once, when needed)
+  bool read = false;
+  auto load = [&] {
+    read = true;
+    for (const char *f : {"Nyujyo0", "Nyujyo1", "Winning0", "Winning1"}) {
+      svrfmt::Archive a;
+      if (!detail::OpenPac(w12, std::string("pac/evt/") + f + ".pac", a))
+        continue;
+      for (auto &k : a.root.kids) {
+        if (k.group.rfind("EVP", 0) != 0)
+          continue;
+        const int i = index(svrfmt::Unpack(svrfmt::ArchiveData(k)));
+        if (i < 0)
+          continue;
+        for (auto &z : a.root.kids) {
+          std::vector<svrfmt::PachEntry> leaves;
+          if (z.group.rfind("EVZ", 0) != 0 || z.name != k.name ||
+              !svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(z)), leaves))
+            continue;
+          for (auto &e : leaves)
+            if (e.id == uint32_t(i)) {
+              Bytes l = svrfmt::Unpack(e.data);
+              const std::string b = blocks(l, nullptr);
+              if (!b.empty() && std::none_of(own.begin(), own.end(), [&](const auto &o) { return o.first == b; }))
+                own.push_back({b, std::move(l)});
+            }
+        }
+      }
+    }
+  };
+  int replaced = 0;
+  for (const auto &evp : parts) {
+    const int i = evp.kind == "EVP" ? index(evp.data) : -1;
+    if (i < 0)
+      continue;
+    for (auto &evz : parts) {
+      std::vector<svrfmt::PachEntry> leaves;
+      if (evz.kind != "EVZ" || evz.number != evp.number || !svrfmt::PachRead(evz.data, leaves))
+        continue;
+      bool changed = false;
+      for (auto &e : leaves) {
+        bool moves = false;
+        const std::string b = e.id == uint32_t(i) ? blocks(svrfmt::Unpack(e.data), &moves) : std::string();
+        if (!moves)
+          continue;
+        if (!read)
+          load();
+        for (const auto &o : own)
+          if (o.first == b) {
+            e.data = o.second;
+            changed = true;
+            ++replaced;
+            break;
+          }
+      }
+      if (changed)
+        evz.data = svrfmt::PachWrite(leaves);
+    }
+  }
+  return replaced;
 }
 
 // A superstar's victory scene in WWE '13 (pac\evt\Winning00-03.pac, xcompressed EPK8, groups "EVP " / "EVZ ", entries

@@ -1475,6 +1475,18 @@ class Page {
             entrance = e;
         }
     }
+    // (2K16 / 2K17 without a profile entrance, or none of that number: the script named as the superstar)
+    if ((own_moves_game_ == 0x315A07D2 || own_moves_game_ == 0x545408BA) && entrance == number) {
+      char f[32];
+      snprintf(f, sizeof(f), "%05d.pac", number);
+      const auto files = src.List("pac/evt");
+      const bool has = std::find(files.begin(), files.end(), std::string(f)) != files.end();
+      if (own_moves_game_ == 0x545408BA || !has)
+        for (const auto &[n, nm] : disc_list_)  // (its name in its game)
+          if (n == number)
+            if (const int e = entrance13::EntranceByName(src, nm); e > 0)
+              entrance = e;
+    }
     if (own_moves_game_ == 0x545408B2 || own_moves_game_ == 0x545408B6) {
       const auto pro = theme_source::detail::Records(src, "PRO");
       const size_t at = own_moves_game_ == 0x545408B2 ? 580 : 584;
@@ -1537,6 +1549,9 @@ class Page {
       // (the props neither WWE '12 nor the mod has: an existing one, hidden)
       entrance13::HideMissing(own_entrance_, *disc12_, own_objects_);
       entrance13::HideMissing(own_victory_, *disc12_, own_objects_);
+      // (2K16 / 2K17's ring announcer, upside down on WWE '12's skeleton: WWE '12's pose of him)
+      entrance13::Announcer12(own_entrance_, *disc12_);
+      entrance13::Announcer12(own_victory_, *disc12_);
     }
   }
 

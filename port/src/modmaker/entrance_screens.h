@@ -134,24 +134,36 @@ inline void Place(const uint8_t *src, int sw, int sh, uint8_t *dst, int W, int H
     }
 }
 
-// frames (each W x H BGRA, from `next`, which returns false at the end) as a Bink 1 movie (30 fps) in `out`.
-template <class Next>
-inline bool Encode(int frames, int W, int H, Next next, Bytes &out) {
+// The game's own ribbons and walls are 180 frames in about 1.8 MB (10 KB a frame); ours came out 3.5 to 13.5 MB (40-75
+// KB a frame), and the game read them slowly before the entrance: ~20 s of loading (2026-11-02). Above this, a new
+// picture only every Nth frame (the others repeated, all skip blocks: next to nothing).
+constexpr size_t kScreenBytes = 1800 * 1024;
+
+// `pics` (each W x H BGRA) as a Bink 1 movie (30 fps) in `out`, a new picture every `stride` frames (and only when it
+// changed), the others repeats.
+inline bool EncodeFrames(const std::vector<std::vector<uint8_t>> &pics, int W, int H, int stride, Bytes &out) {
   wchar_t tmp[MAX_PATH];
   GetTempPathW(MAX_PATH, tmp);
   const fs::path file = fs::path(tmp) / L"wwe12_screen.bik";
   FILE *f = _wfopen(file.c_str(), L"wb");
   if (!f)
     return false;
-  BinkWriter *w = bink_writer_open_size(f, frames, W, H);
+  BinkWriter *w = bink_writer_open_size(f, int(pics.size()), W, H);
   if (!w) {
     fclose(f);
     return false;
   }
-  std::vector<uint8_t> px(size_t(W) * H * 4);
   bool ok = true;
-  for (int i = 0; i < frames && ok; ++i)
-    ok = next(px.data()) && bink_writer_frame(w, px.data()) == 1;
+  size_t last = 0;
+  for (size_t i = 0; i < pics.size() && ok; ++i) {
+    const bool repeat = i > 0 && (i % size_t(stride) != 0 || pics[i] == pics[last]);
+    if (repeat) {
+      ok = bink_writer_repeat(w) == 1;
+    } else {
+      ok = bink_writer_frame(w, pics[i].data()) == 1;
+      last = i;
+    }
+  }
   ok = bink_writer_close(w) && ok;
   fclose(f);
   out.clear();
@@ -162,6 +174,31 @@ inline bool Encode(int frames, int W, int H, Next next, Bytes &out) {
   std::error_code ec;
   fs::remove(file, ec);
   return ok && !out.empty();
+}
+
+// Pictures as a ribbon / wall movie of about the game's size (kScreenBytes): every frame first, then fewer new ones.
+inline bool EncodeScreen(const std::vector<std::vector<uint8_t>> &pics, int W, int H, Bytes &out) {
+  if (!EncodeFrames(pics, W, H, 1, out))
+    return false;
+  for (int stride = 1; out.size() > kScreenBytes && stride < 30;) {
+    stride = std::min(30, int((out.size() * size_t(stride) + kScreenBytes - 1) / kScreenBytes));
+    if (!EncodeFrames(pics, W, H, stride, out))
+      return false;
+  }
+  return true;
+}
+
+// frames (each W x H BGRA, from `next`, which returns false at the end) as a Bink 1 movie (30 fps) in `out`.
+template <class Next>
+inline bool Encode(int frames, int W, int H, Next next, Bytes &out) {
+  std::vector<std::vector<uint8_t>> pics;
+  for (int i = 0; i < frames; ++i) {
+    std::vector<uint8_t> px(size_t(W) * H * 4);
+    if (!next(px.data()))
+      return false;
+    pics.push_back(std::move(px));
+  }
+  return EncodeScreen(pics, W, H, out);
 }
 
 }  // namespace detail
@@ -259,6 +296,37 @@ inline bool FromPicture(const fs::path &picture, bool ribbon, Bytes &out) {
     memcpy(dst, frame.data(), frame.size());
     return true;
   }, out);
+}
+
+// A ribbon / wall movie (Bink 1) made again at about the game's size (detail::kScreenBytes), when it is larger: the mods made
+// before 2026-11-02. False if it couldn't be read (left as it is).
+inline bool Shrink(Bytes &bik) {
+  if (bik.size() <= detail::kScreenBytes + detail::kScreenBytes / 20)
+    return false;
+  wchar_t tmp[MAX_PATH];
+  GetTempPathW(MAX_PATH, tmp);
+  const fs::path file = fs::path(tmp) / L"wwe12_shrink.bik";
+  std::ofstream(file, std::ios::binary).write(reinterpret_cast<const char *>(bik.data()), std::streamsize(bik.size()));
+  WCHAR err[256] = L"";
+  BinkReader *r = bink_open(file.c_str(), err, 256);
+  std::vector<std::vector<uint8_t>> pics;
+  int W = 0, H = 0;
+  if (r) {
+    W = bink_width(r), H = bink_height(r);
+    for (int i = 0, n = bink_frames(r); i < n && bink_next(r); ++i) {  // (bink_next starts over after the last one)
+      std::vector<uint8_t> px(size_t(W) * H * 4);
+      bink_bgra(r, px.data());
+      pics.push_back(std::move(px));
+    }
+    bink_close(r);
+  }
+  std::error_code ec;
+  fs::remove(file, ec);
+  Bytes out;
+  if (pics.empty() || !detail::EncodeScreen(pics, W, H, out) || out.size() >= bik.size())
+    return false;
+  bik.swap(out);
+  return true;
 }
 
 }  // namespace entrance_screens
