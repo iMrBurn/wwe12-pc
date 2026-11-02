@@ -827,14 +827,16 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
     }
     return out;
   };
-  // a record's first chunk (its YANM), empty if none
+  // a record's block: its YANM and what follows it (its event tags, read by sub_8246E1D0: left at 0, the game crashed
+  // on them, 2026-11-02), NN x 32 bytes (NN the low 24 bits of the block's entry), empty if none
   auto chunk = [](const Bytes &l, uint32_t block) {
     if (l.size() < 0x70 || block >= Be32(l, 0x48))
       return Bytes();
-    const size_t y = size_t(Be32(l, 0x0C)) + Be32(l, 0x70 + 0x28 * size_t(block) + 0x24);
-    if (y + 8 > l.size() || memcmp(&l[y], "YANM", 4) || y + Be32(l, y + 4) > l.size())
+    const size_t ent = 0x70 + 0x28 * size_t(block), y = size_t(Be32(l, 0x0C)) + Be32(l, ent + 0x24);
+    const size_t end = std::min(l.size(), y + 32 * size_t(Be32(l, ent) & 0xFFFFFF));
+    if (y + 8 > l.size() || memcmp(&l[y], "YANM", 4) || y + Be32(l, y + 4) > end)
       return Bytes();
-    return Bytes(l.begin() + long(y), l.begin() + long(y + Be32(l, y + 4)));
+    return Bytes(l.begin() + long(y), l.begin() + long(end));
   };
   // the first shown slot of an object (its offset), 0 if none
   auto shown = [](const Bytes &evp, uint32_t i) {
@@ -937,7 +939,7 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
           // the record again: its header and block table, then the chunk once per block (each block NN x 32 bytes,
           // NN at the entry's +0 low byte, its offset from the first at +0x24; the size from the first at +4)
           const uint32_t first = Be32(l, 0x0C), count = Be32(l, 0x48);
-          const uint32_t nn = uint32_t((with.size() + 0x60 + 31) / 32);
+          const uint32_t nn = uint32_t((with.size() + 31) / 32);
           Bytes out(l.begin(), l.begin() + long(first));
           for (uint32_t b = 0; b < count; ++b) {
             const size_t ent = 0x70 + 0x28 * size_t(b);
