@@ -1549,9 +1549,11 @@ class Page {
       // (the props neither WWE '12 nor the mod has: an existing one, hidden)
       entrance13::HideMissing(own_entrance_, *disc12_, own_objects_);
       entrance13::HideMissing(own_victory_, *disc12_, own_objects_);
-      // (2K16 / 2K17's ring announcer, upside down on WWE '12's skeleton: WWE '12's pose of him)
-      entrance13::Announcer12(own_entrance_, *disc12_);
-      entrance13::Announcer12(own_victory_, *disc12_);
+      // (2K16 / 2K17's object 5009 and superstars waiting in the ring, made for their skeleton and placement: WWE '12's)
+      for (auto *parts : {&own_entrance_, &own_victory_}) {
+        entrance13::Announcer12(*parts, *disc12_);
+        entrance13::Waiting12(*parts, *disc12_);
+      }
     }
   }
 

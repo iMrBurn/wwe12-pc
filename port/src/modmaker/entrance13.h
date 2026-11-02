@@ -709,9 +709,9 @@ inline int HideMissing(std::vector<Part> &parts, const disc::GameDisc &w12, cons
   return hidden;
 }
 
-// The ring announcer (model 5009): WWE '12 and 2K15 only pose him (a 2-track chunk per block); 2K16 / 2K17 move every
-// bone of their own skeleton, and on WWE '12's he lay upside down in the ring (2K16 Kevin Owens, 2K17 AJ Styles,
-// 2026-11-02). In their place, WWE '12's own record of him with the same blocks (from its entrances / victory scenes).
+// Object 5009 (a prop with a skeleton, type 0x100, track object 25007): WWE '12 and 2K15 only pose it (a 2-track chunk
+// per block); 2K16 / 2K17 move every bone of their own skeleton (2K16 Kevin Owens, 2K17 AJ Styles, 2026-11-02). In their
+// place, WWE '12's own record of it with the same blocks (from its entrances / victory scenes).
 // Returns how many were replaced.
 inline int Announcer12(std::vector<Part> &parts, const disc::GameDisc &w12) {
   using detail::Be32;
@@ -800,6 +800,120 @@ inline int Announcer12(std::vector<Part> &parts, const disc::GameDisc &w12) {
     }
   }
   return replaced;
+}
+
+// The superstars waiting in the ring (objects of type 1, models 1 and 2): WWE '12 and 2K15 place them with their root
+// track (0c5879e5, its base the spot: -76 / -285); 2K16 / 2K17 move another node (5b391f2a / 5b391f26) at 0, which
+// WWE '12 hasn't, and the one waiting stood at the origin under the mat (2K16 Kevin Owens / 2K17 AJ Styles,
+// 2026-11-02). In each of their blocks, WWE '12's own chunk of the waiting superstar of the same model and rank (the
+// k-th model-1 object takes WWE '12's k-th, from its entrances). Returns how many records were rebuilt.
+inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
+  using detail::Be32;
+  using yanm::ik::detail::Put32;
+  constexpr uint32_t kRoot = 0x0C5879E5;
+  // the waiting objects of a script: (index, model) in order
+  auto waiting = [](const Bytes &evp) {
+    std::vector<std::pair<uint32_t, uint32_t>> out;
+    if (evp.size() < 0x50)
+      return out;
+    const uint32_t n = Be32(evp, 0x40) & 0xFFFF, t = Be32(evp, 0x48) + 8;
+    for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= evp.size(); ++i) {
+      const uint32_t model = Be32(evp, t + 32 * size_t(i) + 4);
+      if (Be32(evp, t + 32 * size_t(i) + 8) == 1 && (model == 1 || model == 2))
+        out.push_back({i, model});
+    }
+    return out;
+  };
+  // a record's first chunk (its YANM), empty if none
+  auto chunk = [](const Bytes &l, uint32_t block) {
+    if (l.size() < 0x70 || block >= Be32(l, 0x48))
+      return Bytes();
+    const size_t y = size_t(Be32(l, 0x0C)) + Be32(l, 0x70 + 0x28 * size_t(block) + 0x24);
+    if (y + 8 > l.size() || memcmp(&l[y], "YANM", 4) || y + Be32(l, y + 4) > l.size())
+      return Bytes();
+    return Bytes(l.begin() + long(y), l.begin() + long(y + Be32(l, y + 4)));
+  };
+  // WWE '12's waiting chunks, by model, in order (read once, when needed)
+  std::vector<Bytes> own[3];
+  bool read = false;
+  auto load = [&] {
+    read = true;
+    svrfmt::Archive a;
+    if (!detail::OpenPac(w12, "pac/evt/Nyujyo0.pac", a))
+      return;
+    for (auto &k : a.root.kids) {
+      if (k.group.rfind("EVP", 0) != 0)
+        continue;
+      const auto objs = waiting(svrfmt::Unpack(svrfmt::ArchiveData(k)));
+      if (objs.empty())
+        continue;
+      for (auto &z : a.root.kids) {
+        std::vector<svrfmt::PachEntry> leaves;
+        if (z.group.rfind("EVZ", 0) != 0 || z.name != k.name ||
+            !svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(z)), leaves))
+          continue;
+        for (const auto &[i, model] : objs)
+          for (auto &e : leaves)
+            if (e.id == i) {
+              Bytes y = chunk(svrfmt::Unpack(e.data), 0);
+              if (y.size() >= 0x18 && Be32(y, 0x14) == kRoot)
+                own[model].push_back(std::move(y));
+            }
+      }
+      if (!own[1].empty() && !own[2].empty())
+        return;
+      own[1].clear(), own[2].clear();
+    }
+  };
+  int rebuilt = 0;
+  for (const auto &evp : parts) {
+    const auto objs = evp.kind == "EVP" ? waiting(evp.data) : decltype(waiting(evp.data))();
+    if (objs.empty())
+      continue;
+    for (auto &evz : parts) {
+      std::vector<svrfmt::PachEntry> leaves;
+      if (evz.kind != "EVZ" || evz.number != evp.number || !svrfmt::PachRead(evz.data, leaves))
+        continue;
+      bool changed = false;
+      size_t rank[3] = {};
+      for (const auto &[i, model] : objs) {
+        const size_t k = rank[model]++;
+        for (auto &e : leaves) {
+          if (e.id != i)
+            continue;
+          Bytes l = svrfmt::Unpack(e.data);
+          const Bytes y0 = chunk(l, 0);
+          if (y0.size() < 0x18 || Be32(y0, 0x14) == kRoot)
+            continue;
+          if (!read)
+            load();
+          if (own[model].empty())
+            continue;
+          const Bytes &with = own[model][k % own[model].size()];
+          // the record again: its header and block table, then the chunk once per block (each block NN x 32 bytes,
+          // NN at the entry's +0 low byte, its offset from the first at +0x24; the size from the first at +4)
+          const uint32_t first = Be32(l, 0x0C), count = Be32(l, 0x48);
+          const uint32_t nn = uint32_t((with.size() + 0x60 + 31) / 32);
+          Bytes out(l.begin(), l.begin() + long(first));
+          for (uint32_t b = 0; b < count; ++b) {
+            const size_t ent = 0x70 + 0x28 * size_t(b);
+            out[ent + 3] = uint8_t(nn);
+            Put32(out, ent + 0x24, b * nn * 32);
+            Bytes block(size_t(nn) * 32, 0);
+            std::copy(with.begin(), with.end(), block.begin());
+            out.insert(out.end(), block.begin(), block.end());
+          }
+          Put32(out, 4, count * nn * 32);
+          e.data = std::move(out);
+          changed = true;
+          ++rebuilt;
+        }
+      }
+      if (changed)
+        evz.data = svrfmt::PachWrite(leaves);
+    }
+  }
+  return rebuilt;
 }
 
 // A superstar's victory scene in WWE '13 (pac\evt\Winning00-03.pac, xcompressed EPK8, groups "EVP " / "EVZ ", entries
