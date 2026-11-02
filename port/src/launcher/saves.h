@@ -79,7 +79,7 @@ const Texts kEnglish = {
     "an archive (zip, rar or 7z): unpack it first",
     "a whole console storage image, not one save package: take the WWE '12 save out of it first "
     "(with Horizon, for example)",
-    "not an Xbox 360 package (STFS), so it cannot be read",
+    "unknown or encrypted format: not an Xbox 360 save package (STFS), so it cannot be read",
     "too small to be a package",
     "an Xbox 360 package of another kind (type %08X), not a saved game",
     "a package of another game (title %08X)",
@@ -119,7 +119,7 @@ const Texts kFrench = {
     "une archive (zip, rar ou 7z) : décompressez-la d'abord",
     "une image complète d'un support de console, pas un paquet de sauvegarde : sortez-en d'abord la "
     "sauvegarde de WWE '12 (avec Horizon, par exemple)",
-    "pas un paquet Xbox 360 (STFS), illisible tel quel",
+    "format inconnu ou chiffré : pas un paquet de sauvegarde Xbox 360 (STFS), illisible tel quel",
     "trop petit pour être un paquet",
     "un paquet Xbox 360 d'un autre genre (type %08X), pas une sauvegarde",
     "un paquet d'un autre jeu (titre %08X)",
