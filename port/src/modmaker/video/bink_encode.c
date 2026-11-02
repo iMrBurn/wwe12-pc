@@ -55,11 +55,127 @@ static int ilog2(unsigned v) { int r = -1; while (v) { v >>= 1; r++; } return r;
 
 /* ── one plane of a Bink frame ── */
 
-enum { BLK_SKIP = 0, BLK_FILL = 6, BLK_RAW = 9 };
+enum { BLK_SKIP = 0, BLK_MOTION = 2, BLK_FILL = 6, BLK_PATTERN = 8, BLK_RAW = 9 };
+
+/* WWE12-PC: the 8 x 8 block at `c` (row stride w) as two colours (col[0], col[1]) and 8 pattern rows (bit x of row y:
+ * pixel (x, y) takes col[1]), when no pixel is further than thr from its colour: 1, else 0. */
+static int pattern_fit(const uint8_t *c, int w, int thr, uint8_t *col, uint8_t *pat)
+{
+    int x, y, it, lo = 255, hi = 0, mid;
+    for (y = 0; y < 8; y++)
+        for (x = 0; x < 8; x++) {
+            const int v = c[(size_t)y * w + x];
+            if (v < lo) lo = v;
+            if (v > hi) hi = v;
+        }
+    for (it = 0; it < 3; it++) {  /* two-means */
+        int s0 = 0, n0 = 0, s1 = 0, n1 = 0;
+        mid = (lo + hi + 1) / 2;
+        for (y = 0; y < 8; y++)
+            for (x = 0; x < 8; x++) {
+                const int v = c[(size_t)y * w + x];
+                if (v >= mid) { s1 += v; n1++; } else { s0 += v; n0++; }
+            }
+        if (n0) lo = (s0 + n0 / 2) / n0;
+        if (n1) hi = (s1 + n1 / 2) / n1;
+    }
+    mid = (lo + hi + 1) / 2;
+    for (y = 0; y < 8; y++) {
+        int row = 0;
+        for (x = 0; x < 8; x++) {
+            const int v = c[(size_t)y * w + x], one = v >= mid, d = v - (one ? hi : lo);
+            if (d > thr || d < -thr) return 0;
+            row |= one << x;
+        }
+        pat[y] = (uint8_t)row;
+    }
+    col[0] = (uint8_t)lo;
+    col[1] = (uint8_t)hi;
+    return 1;
+}
 
 /* Encodes plane `cur` (w x h, w and h multiples of 8) against `ref` (the
  * picture the decoder has; updated to what it will have after this frame). */
-static int encode_plane(Bits *b, const uint8_t *cur, uint8_t *ref, int w, int h, int key, int skip_thr, int fill_thr)
+/* WWE12-PC: whether the 8 x 8 block at (x, y) of cur matches prev's at (x + dx, y + dy) within thr (both w wide). */
+static int block_fits(const uint8_t *cur, const uint8_t *prev, int w, int x, int y, int dx, int dy, int thr)
+{
+    int i, j;
+    for (j = 0; j < 8; j++) {
+        const uint8_t *c = cur + (size_t)(y + j) * w + x, *r = prev + (size_t)(y + j + dy) * w + x + dx;
+        for (i = 0; i < 8; i++) {
+            const int d = c[i] - r[i];
+            if (d > thr || d < -thr) return 0;
+        }
+    }
+    return 1;
+}
+
+/* WWE12-PC: the motion vectors (each axis -15..15, not 0 0) that fit the most of a sample of the plane's blocks, best
+ * first, at most `max` of them in vx / vy: how many. */
+static int motion_candidates(const uint8_t *cur, const uint8_t *prev, int w, int h, int thr, int *vx, int *vy, int max)
+{
+    const int bw = w >> 3, bh = h >> 3, blocks = bw * bh, step = blocks > 192 ? blocks / 192 : 1;
+    int counts[31 * 31] = {0}, dx, dy, k, n = 0, i;
+    for (k = 0; k < blocks; k += step) {
+        const int x = (k % bw) * 8, y = (k / bw) * 8;
+        if (block_fits(cur, prev, w, x, y, 0, 0, thr)) continue;  /* (a skip block) */
+        for (dy = -15; dy <= 15; dy++)
+            for (dx = -15; dx <= 15; dx++)
+                if ((dx || dy) && x + dx >= 0 && y + dy >= 0 && x + dx + 8 <= w && y + dy + 8 <= h &&
+                    block_fits(cur, prev, w, x, y, dx, dy, thr))
+                    counts[(dy + 15) * 31 + dx + 15]++;
+    }
+    while (n < max) {
+        int best = -1;
+        for (i = 0; i < 31 * 31; i++)
+            if (counts[i] > 0 && (best < 0 || counts[i] > counts[best])) best = i;
+        if (best < 0) break;
+        vx[n] = best % 31 - 15; vy[n] = best / 31 - 15; n++;
+        counts[best] = 0;
+    }
+    return n;
+}
+
+/* WWE12-PC: a bundle's values sent in per-row batches, as the decoder reads them (a batch only once it has used the
+ * last; 0: no more). kind 0: 4-bit nibbles of a byte, low first (patterns); 1: signed motion values (4 bits, sign). */
+typedef struct { size_t supplied, consumed; int next_row, done; } Batches;
+
+static void batch_put(Bits *b, Batches *s, const int *vals, const size_t *row_start, int by, int bh, int len, int kind)
+{
+    int r;
+    if (s->done || s->supplied != s->consumed) return;
+    r = s->next_row > by ? s->next_row : by;
+    while (r < bh && row_start[r + 1] == row_start[r]) r++;
+    if (r == bh) {
+        bits_put(b, 0, len);
+        s->done = 1;
+        return;
+    }
+    {
+        size_t k, n = row_start[r + 1] - row_start[r];
+        bits_put(b, (uint32_t)n, len);
+        if (kind == 1) bits_put(b, 0, 1);  /* (not all the same) */
+        for (k = row_start[r]; k < row_start[r + 1]; k++) {
+            const int v = vals[k];
+            if (kind == 0) {
+                bits_put(b, (uint32_t)v & 15, 4);
+                bits_put(b, (uint32_t)v >> 4, 4);
+            } else {
+                bits_put(b, (uint32_t)(v < 0 ? -v : v), 4);
+                if (v) bits_put(b, v < 0, 1);
+            }
+        }
+        s->supplied += n;
+        s->next_row = r + 1;
+    }
+}
+
+/* WWE12-PC (2026-11-02): with pat_thr > 0, a block two colours fit (no pixel further than pat_thr from its colour)
+ * is a pattern block (2 colours + 64 bits, the pattern bundle in batches as the colours) instead of raw (64 colours):
+ * the arena ribbons and walls at the game's size with all their frames; and a block the previous frame has, moved by
+ * one of the plane's likeliest vectors (within skip_thr), is a motion block (its two offsets only). */
+static int encode_plane(Bits *b, const uint8_t *cur, uint8_t *ref, int w, int h, int key, int skip_thr, int fill_thr,
+                        int pat_thr)
 {
     const int bw = w >> 3, bh = h >> 3;
     const int width = w < 8 ? 8 : w;
@@ -72,12 +188,26 @@ static int encode_plane(Bits *b, const uint8_t *cur, uint8_t *ref, int w, int h,
     uint8_t *types = (uint8_t *)malloc((size_t)bw * bh);
     uint8_t *vals = (uint8_t *)malloc((size_t)w * h);           /* colour values, block order */
     size_t *row_start = (size_t *)malloc(sizeof(size_t) * ((size_t)bh + 1));
-    size_t nv = 0, supplied = 0, consumed = 0;
-    int by, bx, x, y, i, next_row = 0, colors_null = 0, first = 1;
-    if (!types || !vals || !row_start) { free(types); free(vals); free(row_start); return 0; }
+    uint8_t *pats = (uint8_t *)malloc((size_t)bw * bh * 8);     /* pattern rows, block order */
+    int *patv = (int *)malloc(sizeof(int) * (size_t)bw * bh * 8);
+    size_t *prow_start = (size_t *)malloc(sizeof(size_t) * ((size_t)bh + 1));
+    int *mx_ = (int *)malloc(sizeof(int) * (size_t)bw * bh), *my_ = (int *)malloc(sizeof(int) * (size_t)bw * bh);
+    size_t *mrow_start = (size_t *)malloc(sizeof(size_t) * ((size_t)bh + 1));
+    uint8_t *prev = (uint8_t *)malloc((size_t)w * h);           /* the previous frame, as the decoder keeps it */
+    size_t nv = 0, supplied = 0, consumed = 0, np = 0, nm = 0;
+    int by, bx, x, y, i, next_row = 0, colors_null = 0, first = 1, nvec = 0, vx[8], vy[8];
+    Batches pb = {0, 0, 0, 0}, xb = {0, 0, 0, 0}, yb = {0, 0, 0, 0};
+    if (!types || !vals || !row_start || !pats || !patv || !prow_start || !mx_ || !my_ || !mrow_start || !prev) {
+        free(types); free(vals); free(row_start); free(pats); free(patv); free(prow_start);
+        free(mx_); free(my_); free(mrow_start); free(prev); return 0;
+    }
+    memcpy(prev, ref, (size_t)w * h);
+    if (!key && pat_thr > 0) nvec = motion_candidates(cur, prev, w, h, skip_thr, vx, vy, 8);
 
     for (by = 0; by < bh; by++) {
         row_start[by] = nv;
+        prow_start[by] = np;
+        mrow_start[by] = nm;
         for (bx = 0; bx < bw; bx++) {
             int mn = 255, mx = 0, diff = 0, sum = 0, t;
             for (y = 0; y < 8; y++) {
@@ -92,13 +222,36 @@ static int encode_plane(Bits *b, const uint8_t *cur, uint8_t *ref, int w, int h,
                     sum += c[x];
                 }
             }
-            if (!key && diff <= skip_thr) {
+            t = -1;
+            if (!key && diff <= skip_thr)
                 t = BLK_SKIP;
+            if (t < 0 && !key && nvec) {
+                int k;
+                for (k = 0; k < nvec && t < 0; k++) {
+                    const int dx = vx[k], dy = vy[k];
+                    if (bx * 8 + dx >= 0 && by * 8 + dy >= 0 && bx * 8 + dx + 8 <= w && by * 8 + dy + 8 <= h &&
+                        block_fits(cur, prev, w, bx * 8, by * 8, dx, dy, skip_thr)) {
+                        t = BLK_MOTION;
+                        mx_[nm] = dx; my_[nm] = dy; nm++;
+                        for (y = 0; y < 8; y++)
+                            memcpy(ref + (size_t)(by * 8 + y) * w + bx * 8, prev + (size_t)(by * 8 + y + dy) * w + bx * 8 + dx, 8);
+                    }
+                }
+            }
+            if (t >= 0) {
+                /* (skip or motion: done) */
             } else if (mx - mn <= fill_thr) {
                 uint8_t v = (uint8_t)((sum + 32) >> 6);
                 t = BLK_FILL;
                 vals[nv++] = v;
                 for (y = 0; y < 8; y++) memset(ref + (size_t)(by * 8 + y) * w + bx * 8, v, 8);
+            } else if (pat_thr > 0 && pattern_fit(cur + (size_t)(by * 8) * w + bx * 8, w, pat_thr, vals + nv, pats + np)) {
+                t = BLK_PATTERN;
+                for (y = 0; y < 8; y++)
+                    for (x = 0; x < 8; x++)
+                        ref[(size_t)(by * 8 + y) * w + bx * 8 + x] = vals[nv + ((pats[np + y] >> x) & 1)];
+                nv += 2;
+                np += 8;
             } else {
                 t = BLK_RAW;
                 for (y = 0; y < 8; y++) {
@@ -112,6 +265,9 @@ static int encode_plane(Bits *b, const uint8_t *cur, uint8_t *ref, int w, int h,
         }
     }
     row_start[bh] = nv;
+    prow_start[bh] = np;
+    mrow_start[bh] = nm;
+    for (i = 0; i < (int)np; i++) patv[i] = pats[i];
 
     /* bundle trees: all "tree 0" (4-bit codes); colours have 16 more */
     bits_put(b, 0, 4);                                  /* block types */
@@ -155,19 +311,24 @@ static int encode_plane(Bits *b, const uint8_t *cur, uint8_t *ref, int w, int h,
                 next_row = r + 1;
             }
         }
+        /* patterns (each a byte, low nibble first), then the motion offsets: batches as the colours */
+        batch_put(b, &pb, patv, prow_start, by, bh, len_pattern, 0);
+        batch_put(b, &xb, mx_, mrow_start, by, bh, len_small, 1);
+        batch_put(b, &yb, my_, mrow_start, by, bh, len_small, 1);
         if (first) {
-            bits_put(b, 0, len_pattern);
-            bits_put(b, 0, len_small);   /* x */
-            bits_put(b, 0, len_small);   /* y */
             bits_put(b, 0, len_small);   /* intra dc */
             bits_put(b, 0, len_small);   /* inter dc */
             bits_put(b, 0, len_run);
             first = 0;
         }
         consumed += row_start[by + 1] - row_start[by];
+        pb.consumed += prow_start[by + 1] - prow_start[by];
+        xb.consumed += mrow_start[by + 1] - mrow_start[by];
+        yb.consumed += mrow_start[by + 1] - mrow_start[by];
     }
     bits_align32(b);
-    free(types); free(vals); free(row_start);
+    free(types); free(vals); free(row_start); free(pats); free(patv); free(prow_start);
+    free(mx_); free(my_); free(mrow_start); free(prev);
     return 1;
 }
 
@@ -201,6 +362,7 @@ struct BinkWriter {
     uint8_t *Y, *U, *V, *rY, *rU, *rV, *A, *rA;
     uint32_t *offs, largest;
     Bits b;
+    int skip_thr, fill_thr, pat_thr;  /* WWE12-PC: bink_writer_quality (default 2, 2, 0) */
 };
 
 static int bink_writer_frame_yuv(BinkWriter *w);
@@ -226,6 +388,7 @@ BinkWriter *bink_writer_open_size(FILE *f, int frames, int MOVIE_W, int MOVIE_H)
     if (!w) return NULL;
     w->f = f;
     w->frames = frames;
+    w->skip_thr = 2; w->fill_thr = 2; w->pat_thr = 0;
     w->w = MOVIE_W;
     w->h = MOVIE_H;
     w->Y = (uint8_t *)malloc(MOVIE_W * MOVIE_H); w->rY = (uint8_t *)calloc(MOVIE_W * MOVIE_H, 1);
@@ -263,12 +426,23 @@ int bink_writer_frame(BinkWriter *w, const uint8_t *bgra)
     return bink_writer_frame_yuv(w);
 }
 
+void bink_writer_quality(BinkWriter *w, int skip_thr, int fill_thr, int pat_thr)
+{
+    w->skip_thr = skip_thr; w->fill_thr = fill_thr; w->pat_thr = pat_thr;
+}
+
 int bink_writer_repeat(BinkWriter *w)
 {
     size_t pos;
     if (w->done == 0) return 0;
     if (!w->same) {  /* (the first repeat: encoded - every block skips - and kept) */
-        const int r = bink_writer_frame_yuv(w);
+        /* WWE12-PC: every block made to skip (a lossy last frame isn't the picture: its blocks off by more than
+         * skip_thr were encoded again, and those bytes replayed later broke the picture) */
+        const int skip = w->skip_thr;
+        int r;
+        w->skip_thr = 255;
+        r = bink_writer_frame_yuv(w);
+        w->skip_thr = skip;
         if (r != 1) return r;
         w->same = (uint8_t *)malloc(w->b.n);
         if (!w->same) return 0;
@@ -295,16 +469,16 @@ static int bink_writer_frame_yuv(BinkWriter *w)
     if (w->alpha) {
         size_t asize;
         bits_put(b, 0, 32);
-        if (!encode_plane(b, w->A, w->rA, MOVIE_W, MOVIE_H, key, 2, 2)) return 0;
+        if (!encode_plane(b, w->A, w->rA, MOVIE_W, MOVIE_H, key, 2, 2, 0)) return 0;
         asize = b->n;
         b->p[0] = (uint8_t)asize; b->p[1] = (uint8_t)(asize >> 8); b->p[2] = (uint8_t)(asize >> 16); b->p[3] = (uint8_t)(asize >> 24);
         at = b->n;
     }
     bits_put(b, 0, 32);                                          /* size of the Y plane, below */
-    if (!encode_plane(b, w->Y, w->rY, MOVIE_W, MOVIE_H, key, 2, 2)) return 0;
+    if (!encode_plane(b, w->Y, w->rY, MOVIE_W, MOVIE_H, key, w->skip_thr, w->fill_thr, w->pat_thr)) return 0;
     ysize = b->n - at;
-    if (!encode_plane(b, w->V, w->rV, MOVIE_W / 2, MOVIE_H / 2, key, 2, 2)) return 0;   /* Bink 'i': V before U */
-    if (!encode_plane(b, w->U, w->rU, MOVIE_W / 2, MOVIE_H / 2, key, 2, 2)) return 0;
+    if (!encode_plane(b, w->V, w->rV, MOVIE_W / 2, MOVIE_H / 2, key, w->skip_thr, w->fill_thr, w->pat_thr)) return 0;   /* Bink 'i': V before U */
+    if (!encode_plane(b, w->U, w->rU, MOVIE_W / 2, MOVIE_H / 2, key, w->skip_thr, w->fill_thr, w->pat_thr)) return 0;
     b->p[at] = (uint8_t)ysize; b->p[at + 1] = (uint8_t)(ysize >> 8); b->p[at + 2] = (uint8_t)(ysize >> 16); b->p[at + 3] = (uint8_t)(ysize >> 24);
     pos = (size_t)bink_tell(w->f);
     w->offs[w->done] = (uint32_t)pos | (key ? 1u : 0u);

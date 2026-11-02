@@ -182,16 +182,34 @@ WWE12_LOAD_SCREEN_HOOK(sub_826B3060, 3, false)
 // Probe: the game's file read loop (sub_827EA330: reads 256 KB chunks asynchronously, then waits
 // in an alertable sleep, sub_821AEAE0(-1, 1), for each completion), and zlib's inflate
 // (sub_827F57A8, the function with zlib's error texts).
+// While the u32 at 0x83248B00 is set (around the entrances), sub_827EA330 reads a file larger than one chunk (256 KB,
+// 0x83079778) chunk by chunk with a 500 ms sleep after each (sub_821AEB18(*0x8307977C)): on the console, to leave
+// the disc to the streams. An added superstar's ribbon or wall (1.7 MB) took 3 s each before his entrance, the
+// game's own sometimes 0.5-1 s (2026-11-02). On a PC drive there is nothing to leave: the flag is down for the read
+// (put back after, unless the game changed it meanwhile).
+REXCVAR_DEFINE_BOOL(wwe12_read_throttle, false, "WWE12",
+                    "Keep the console's slowed file reads around the entrances (256 KB, then 500 ms of sleep)");
 REX_EXTERN(__imp__sub_827EA330);
+namespace {
+void ReadUnthrottled(PPCContext &ctx, u8 *base) {
+  constexpr u32 kStreaming = 0x83248B00;
+  const u32 was = REXCVAR_GET(wwe12_read_throttle) ? 0 : bd::mem::load<u32>(kStreaming);
+  if (was)
+    bd::mem::store<u32>(kStreaming, 0);
+  __imp__sub_827EA330(ctx, base);
+  if (was && bd::mem::load<u32>(kStreaming) == 0)
+    bd::mem::store<u32>(kStreaming, was);
+}
+}  // namespace
 extern "C" REX_FUNC(sub_827EA330) {
   if (!REXCVAR_GET(wwe12_load_probe) || !ctx.r3.u32) {
-    __imp__sub_827EA330(ctx, base);
+    ReadUnthrottled(ctx, base);
     return;
   }
   const u32 bytes = bd::mem::load<u32>(ctx.r3.u32 + 332);
   const u64 start = NowUs();
   t_in_read = true;
-  __imp__sub_827EA330(ctx, base);
+  ReadUnthrottled(ctx, base);
   t_in_read = false;
   g_read_us.fetch_add(NowUs() - start, std::memory_order_relaxed);
   g_read_bytes.fetch_add(bytes, std::memory_order_relaxed);

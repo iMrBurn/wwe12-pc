@@ -135,13 +135,20 @@ inline void Place(const uint8_t *src, int sw, int sh, uint8_t *dst, int W, int H
 }
 
 // The game's own ribbons and walls are 180 frames in about 1.8 MB (10 KB a frame); ours came out 3.5 to 13.5 MB (40-75
-// KB a frame), and the game read them slowly before the entrance: ~20 s of loading (2026-11-02). Above this, a new
-// picture only every Nth frame (the others repeated, all skip blocks: next to nothing).
-constexpr size_t kScreenBytes = 1800 * 1024;
+// KB a frame), and the game read them slowly before the entrance: ~20 s of loading (2026-11-02). Above this, lossier
+// blocks first (kQuality), then a new picture only every Nth frame (the others repeated, all skip blocks: next to
+// nothing); with the frames alone, 2K16 Kevin Owens' wall kept 31 pictures of 186 (~5 fps, "15 fps", the user).
+// That slowness was the game's read throttle (wwe12_load_turbo.cpp: 500 ms after every 256 KB around the entrances,
+// now off); with it off, a bigger file costs next to nothing, so 6 MB (the 6.6 MB ones played), smoother, cleaner.
+constexpr size_t kScreenBytes = 6144 * 1024;
+
+// The encoder's lossy steps (bink_writer_quality: skip, fill, pattern thresholds), the first Kaiko's.
+constexpr int kQuality[][3] = {{2, 2, 0}, {3, 3, 6}, {4, 4, 10}, {6, 6, 14}, {8, 8, 20}, {10, 10, 28}, {12, 12, 36}, {14, 14, 44}, {16, 16, 52}};
 
 // `pics` (each W x H BGRA) as a Bink 1 movie (30 fps) in `out`, a new picture every `stride` frames (and only when it
-// changed), the others repeats.
-inline bool EncodeFrames(const std::vector<std::vector<uint8_t>> &pics, int W, int H, int stride, Bytes &out) {
+// changed), the others repeats; at lossy step `q` (kQuality).
+inline bool EncodeFrames(const std::vector<std::vector<uint8_t>> &pics, int W, int H, int stride, Bytes &out,
+                         int q = 0) {
   wchar_t tmp[MAX_PATH];
   GetTempPathW(MAX_PATH, tmp);
   const fs::path file = fs::path(tmp) / L"wwe12_screen.bik";
@@ -153,6 +160,7 @@ inline bool EncodeFrames(const std::vector<std::vector<uint8_t>> &pics, int W, i
     fclose(f);
     return false;
   }
+  bink_writer_quality(w, kQuality[q][0], kQuality[q][1], kQuality[q][2]);
   bool ok = true;
   size_t last = 0;
   for (size_t i = 0; i < pics.size() && ok; ++i) {
@@ -176,13 +184,19 @@ inline bool EncodeFrames(const std::vector<std::vector<uint8_t>> &pics, int W, i
   return ok && !out.empty();
 }
 
-// Pictures as a ribbon / wall movie of about the game's size (kScreenBytes): every frame first, then fewer new ones.
+// Pictures as a ribbon / wall movie of about the game's size (kScreenBytes): every frame, lossier step by step, then
+// (at the last step) fewer new ones.
 inline bool EncodeScreen(const std::vector<std::vector<uint8_t>> &pics, int W, int H, Bytes &out) {
-  if (!EncodeFrames(pics, W, H, 1, out))
+  constexpr int last = int(std::size(kQuality)) - 1;
+  int q = 0;
+  if (!EncodeFrames(pics, W, H, 1, out, q))
     return false;
+  while (out.size() > kScreenBytes && q < last)
+    if (!EncodeFrames(pics, W, H, 1, out, ++q))
+      return false;
   for (int stride = 1; out.size() > kScreenBytes && stride < 30;) {
     stride = std::min(30, int((out.size() * size_t(stride) + kScreenBytes - 1) / kScreenBytes));
-    if (!EncodeFrames(pics, W, H, stride, out))
+    if (!EncodeFrames(pics, W, H, stride, out, q))
       return false;
   }
   return true;
