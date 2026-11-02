@@ -886,9 +886,9 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
   for (auto &evp : parts) {
     if (evp.kind != "EVP" || evp.data.size() < 0x50)
       continue;
-    // the people around the ring with no spot in any slot: not shown
+    // the people around the ring with no spot in any slot: not shown (object 0, the superstar, has none either: kept)
     const uint32_t n = Be32(evp.data, 0x40) & 0xFFFF, t = Be32(evp.data, 0x48) + 8;
-    for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= evp.data.size(); ++i) {
+    for (uint32_t i = 1; i < n && t + 32 * size_t(i + 1) <= evp.data.size(); ++i) {
       const size_t q = t + 32 * size_t(i);
       const uint32_t ns = Be32(evp.data, q + 24) >> 16, bp = Be32(evp.data, q + 28) + 8;
       if (Be32(evp.data, q + 8) != 0x01000000 || !shown(evp.data, i))
