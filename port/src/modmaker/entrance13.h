@@ -300,9 +300,12 @@ inline bool Evp788To212(Bytes &evp) {
       slots.insert(slots.end(), evp.begin() + long(s + 195 * 4), evp.begin() + long(s + 197 * 4));
     }
     if (ns && ns < pad) {
+      // (each a copy of slot 0, off: the people's spots kept, the game places the announcer from slot 5's; empty ones
+      // put him under the mat, 2K15 Bray Wyatt, 2026-11-02)
       for (uint32_t k = ns; k < pad; ++k) {
-        Bytes s(212, 0);
-        Put32(s, 0, k << 16), Put32(s, 4, 25000 + i), Put32(s, 8, k), Put32(s, 208, 0x270F0000);
+        Bytes s(evp.begin() + long(bp), evp.begin() + long(bp + 51 * 4));
+        s.insert(s.end(), evp.begin() + long(bp + 195 * 4), evp.begin() + long(bp + 197 * 4));
+        Put32(s, 0, k << 16), Put32(s, 8, k);
         slots.insert(slots.end(), s.begin(), s.end());
       }
       Put32(out, o + 24, (pad << 16) | (Be32(out, o + 24) & 0xFFFF));
@@ -423,6 +426,9 @@ inline int IntroToStage12(std::vector<Part> &parts) {
     auto &d = evp.data;
     const uint32_t n = Be32(d, 0x40) & 0xFFFF, t = Be32(d, 0x48) + 8;
     if (!n || t + 32 * size_t(n) > d.size())
+      continue;
+    // (one with its video full screen first, 2K15 Bray Wyatt's: kept in slot 0, the video over it as Drew McIntyre's)
+    if (FullScreenOf(d))
       continue;
     // (object 0: shown in slot 0, in no other one, 6 slots or more)
     const uint32_t ns0 = Be32(d, t + 24) >> 16, bp0 = Be32(d, t + 28) + 8;
