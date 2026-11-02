@@ -7,15 +7,26 @@
 //    (GMEV: 175 of the 223 both games have are the same bytes), taken as they are.
 // The conversion needs one of WWE '12's own entrances for what 2011 data hasn't (record headers, the tracks of the
 // bones 2011 doesn't animate): the Rock's, 100, from the player's WWE '12.
+// SvR 2007-2010's scenes are made SvR 2011's first (svr_old_entrance.h, after Kaiko's tools), then go the same way.
+// Theirs beside the scenes (compared with WWE '12's, 2026-11-02):
+//  - the game event script (gm.pac GMEV): every 2007-2009 one has an empty PACH where all of WWE '12's (and 2011's)
+//    7-part ones have a 417-byte YMKs (part 5); SvR 2010's either that or a part 4 WWE '12 never has (a PACH with one
+//    entry), and none of 2010's 321 is a WWE '12 one: not WWE '12's format. WWE '12's own Cena's (139, the same bytes
+//    as 2011's 139, svr_scenes' fallback) is taken instead, under the entrance's number;
+//  - the effects (prtcls.pac): 2007-2009 have another group (PCEN, an older format): none (no pyro). SvR 2010's PCE6
+//    are 2011's / WWE '12's format (Kaiko's PYRO_GAMES; every PRTC record has WWE '12's version 0x600 and section sizes
+//    288 / 336 / 48 / 48 / 144): taken.
 #pragma once
 
 #include <cstdio>
 #include <cstdlib>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "entrance13.h"
 #include "svr11_entrance.h"
+#include "svr_old_entrance.h"
 
 namespace svr_scenes {
 
@@ -86,39 +97,95 @@ inline bool Convert(const disc::GameDisc &w12, int number, const Bytes &evp11, c
   return true;
 }
 
+// A free number for an older game's entrance (4000-4424 there): WWE '12's has none of it, 499 down to 100.
+inline int Free12(const disc::GameDisc &w12) {
+  std::set<int> have;  // (the Nyujyo files' tables only: entrance13::Exists12 reads a whole pac per number)
+  bool read = false;
+  for (const char *n : {"0", "1", "2", "3", "4"})
+    svr_old_entrance::detail::Entries(w12, std::string("pac/evt/Nyujyo") + n + ".pac",
+                                      [&](const std::string &g, int num, bool, const Bytes & = {}) {
+                                        read = true;
+                                        if (!g.rfind("EVP", 0))
+                                          have.insert(num);
+                                        return false;
+                                      });
+  for (int n = 499; read && n >= 100; --n)
+    if (!entrance13::Group12(n).empty() && !have.count(n))
+      return n;
+  return 0;
+}
+
+// The older game's scene (svr_old_entrance.h) made SvR 2011's, numbered `as`; stock: SvR 2011's stock entrances, if
+// the player has that disc.
+inline bool Old(const disc::GameDisc &svr, uint32_t title, int scene, bool victory, int as, const disc::GameDisc *svr11,
+                Bytes &evp, Bytes &evt, std::string *why) {
+  svr_old_entrance::Stock11 stock;
+  if (svr11 && (title == svr_old_entrance::kSvr09 || title == svr_old_entrance::kSvr10))
+    stock = svr_old_entrance::ReadStock11(*svr11);
+  return svr_old_entrance::Convert(svr, title, scene, victory, as, stock.found ? &stock : nullptr, evp, evt, why);
+}
+
 }  // namespace detail
 
-// SvR 2011 entrance `number`'s parts (script, tracks, game event script, effects), numbered `number`.
+// Entrance `number` of the game `svr` (title: SvR 2011 by default, or SvR 2007-2010 - svr11, the player's SvR 2011 if
+// any, gives 2009 / 2010 its stock rules) as WWE '12's parts (script, tracks, game event script, effects). Numbered
+// `number` (SvR 2011, 2010); SvR 2007-2009's (4000..) as `as`, else a number WWE '12 hasn't (Free12): the parts say it.
 inline bool Entrance(const disc::GameDisc &svr, const disc::GameDisc &w12, int number, std::vector<Part> &out,
-                     std::string *why) {
+                     std::string *why, uint32_t title = svr_old_entrance::kSvr11, const disc::GameDisc *svr11 = nullptr,
+                     int as = 0) {
   out.clear();
   Bytes evp, evt;
-  if (!detail::Find(svr, "Nyujyo", number, evp, evt, "EVT")) {
-    if (why)
-      *why = "no such entrance in its game";
-    return false;
+  const bool old = title != svr_old_entrance::kSvr11;
+  if (!old) {
+    if (!detail::Find(svr, "Nyujyo", number, evp, evt, "EVT")) {
+      if (why)
+        *why = "no such entrance in its game";
+      return false;
+    }
+    as = number;
+  } else {
+    if (!as)
+      as = number >= 100 && number < 1000 ? number : detail::Free12(w12);
+    if (!as) {
+      if (why)
+        *why = "no free entrance number in WWE '12";
+      return false;
+    }
+    if (!detail::Old(svr, title, number, false, as, svr11, evp, evt, why))
+      return false;
   }
-  if (!detail::Convert(w12, number, evp, evt, out, why))
+  if (!detail::Convert(w12, as, evp, evt, out, why))
     return false;
   entrance13::FillTracks(out);
-  // (its game event script; none of its own: Cena's, generic, as for the 2K games)
-  Bytes gm = detail::Entry(svr, "pac/gm.pac", "GMEV", number);
+  // (its game event script; none of its own: Cena's, generic, as for the 2K games - an older game's: WWE '12's Cena's)
+  Bytes gm = old ? Bytes{} : detail::Entry(svr, "pac/gm.pac", "GMEV", number);
   if (gm.empty())
-    gm = detail::Entry(svr, "pac/gm.pac", "GMEV", 139);
+    gm = detail::Entry(old ? w12 : svr, "pac/gm.pac", "GMEV", 139);
   if (!gm.empty())
-    out.push_back({number, "GMEV", std::move(gm)});
-  if (Bytes fx = detail::Entry(svr, "pac/prtcls.pac", "PCE6", number); !fx.empty())
-    out.push_back({number, "PCE6", std::move(fx)});
+    out.push_back({as, "GMEV", std::move(gm)});
+  if (!old || title == svr_old_entrance::kSvr10)
+    if (Bytes fx = detail::Entry(svr, "pac/prtcls.pac", "PCE6", number); !fx.empty())
+      out.push_back({as, "PCE6", std::move(fx)});
   entrance13::CameraTwins12(out);
   return true;
 }
 
-// Its victory scene (6000 + its number), as entrance13::Victory gives a WWE '13 one.
-inline bool Victory(const disc::GameDisc &svr, const disc::GameDisc &w12, int number, std::vector<Part> &out) {
+// Its victory scene (6000 + its number), as entrance13::Victory gives a WWE '13 one. `number`: the superstar's in its
+// game (title); SvR 2008-2010's scene is svr_old_entrance::VictoryOf's, served as 6000 + number % 1000 too.
+inline bool Victory(const disc::GameDisc &svr, const disc::GameDisc &w12, int number, std::vector<Part> &out,
+                    uint32_t title = svr_old_entrance::kSvr11, const disc::GameDisc *svr11 = nullptr) {
   out.clear();
   const int want = 6000 + number % 1000;
   Bytes evp, evt;
-  if (!detail::Find(svr, "Winning", want, evp, evt, "EVT") || !detail::Convert(w12, want, evp, evt, out, nullptr))
+  if (title == svr_old_entrance::kSvr11) {
+    if (!detail::Find(svr, "Winning", want, evp, evt, "EVT"))
+      return false;
+  } else {
+    const int scene = svr_old_entrance::VictoryOf(title, number);
+    if (!scene || !detail::Old(svr, title, scene, true, want, svr11, evp, evt, nullptr))
+      return false;
+  }
+  if (!detail::Convert(w12, want, evp, evt, out, nullptr))
     return false;
   entrance13::FillTracks(out);
   entrance13::CameraTwins12(out);

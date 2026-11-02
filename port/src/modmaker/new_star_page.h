@@ -1471,19 +1471,20 @@ class Page {
     own_moves_game_ = look_ == 2 ? svr_game_ : star_game_;
     if ((look_ != 2 && look_ != 3) || number < 0 || !disc12_ || !discs_)
       return;
-    if (own_moves_game_ == 0x54510844 || own_moves_game_ == 0x54510826 || own_moves_game_ == 0x5451080B ||
-        own_moves_game_ == 0x545107E0) {
-      // (their move slots aren't 2011's: Kaiko's svr10_moves.py map, later)
-      own_moves_why_ = std::string(GameName(own_moves_game_)) + "'s moves aren't read yet";
-      return;
-    }
+    // (SvR 2007-2010: their move slots aren't 2011's, Kaiko's svr10_moves.py map, later; their entrance and victory are
+    // read, svr_old_entrance.h)
+    const bool svr_old = own_moves_game_ == 0x54510844 || own_moves_game_ == 0x54510826 ||
+                         own_moves_game_ == 0x5451080B || own_moves_game_ == 0x545107E0;
     disc::GameDisc src;
     const fs::path p = discs_->PathOf(own_moves_game_);
     if (p.empty() || !src.OpenPath(p)) {
       own_moves_why_ = "its game isn't in My game discs";
       return;
     }
-    moveset_port::FromGame(*disc12_, src, number, own_moves_, &own_moves_why_);
+    if (svr_old)
+      own_moves_why_ = std::string(GameName(own_moves_game_)) + "'s moves aren't read yet";
+    else
+      moveset_port::FromGame(*disc12_, src, number, own_moves_, &own_moves_why_);
     // Its WWE '13 moves WWE '12 hasn't: added (newmoves13.h; the game puts them in the added superstars' pack).
     own_new_moves_.clear();
     if (own_moves_game_ == 0x545108B4) {
@@ -1544,10 +1545,20 @@ class Page {
           entrance = e;
       }
     }
-    // (SvR 2011: its own entrance and victory converted, svr_scenes.h; its number the superstar's)
-    const bool svr11 = own_moves_game_ == 0x5451085D;
+    // (SvR 2007-2011: its own entrance and victory converted, svr_scenes.h: 2011's numbered as the superstar, the older
+    // games' through 2011's format, svr_old_entrance.h, the number the profile names; then WWE '12's number it's served
+    // as, a free one if the game or a mod has it)
+    const bool svr11 = own_moves_game_ == 0x5451085D, svr = svr11 || svr_old;
+    disc::GameDisc disc11;
+    const disc::GameDisc *with11 =
+        svr_old && !discs_->PathOf(0x5451085D).empty() && disc11.OpenPath(discs_->PathOf(0x5451085D)) ? &disc11 : nullptr;
+    if (svr)
+      entrance = svr_old_entrance::EntranceOf(src, own_moves_game_, number);
     if ((scenes && entrance13::Entrance(src, entrance, own_entrance_, nullptr)) ||
-        (svr11 && svr_scenes::Entrance(src, *disc12_, entrance, own_entrance_, nullptr))) {
+        (svr && entrance > 0 &&
+         svr_scenes::Entrance(src, *disc12_, entrance, own_entrance_, nullptr, own_moves_game_, with11))) {
+      if (svr_old)
+        entrance = own_entrance_.front().number;
       own_entrance_number_ = entrance;
       // (a 2K15 "one-take", the whole entrance in segment 0: said at step 2; WWE '12 plays it without the crowd)
       own_entrance_one_take_ = entrance13::OneTake(own_entrance_, entrance);
@@ -1591,14 +1602,14 @@ class Page {
     own_victory_.clear();
     if (scenes)
       entrance13::Victory(src, number, own_victory_);
-    else if (svr11)
-      svr_scenes::Victory(src, *disc12_, number, own_victory_);
+    else if (svr)
+      svr_scenes::Victory(src, *disc12_, number, own_victory_, own_moves_game_, with11);
     // the objects of both that WWE '12 hasn't (Cena's chain, Kane's mask...): from its game's evtobj.pac
     own_objects_.clear();
-    if (scenes || svr11) {
+    if (scenes || svr) {
       std::vector<entrance13::Part> both = own_entrance_;
       both.insert(both.end(), own_victory_.begin(), own_victory_.end());
-      // (SvR 2011's props are another format: none brought, the ones WWE '12 hasn't hidden)
+      // (SvR 2007-2011's props are another format: none brought, the ones WWE '12 hasn't hidden)
       if (scenes)
         own_objects_ = entrance13::Objects(src, *disc12_, both);
       // (the props neither WWE '12 nor the mod has: an existing one, hidden)
