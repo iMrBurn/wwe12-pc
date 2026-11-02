@@ -1383,3 +1383,22 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
     va à la racine de la pièce de la base ;
   - `modmaker_discs.txt` lu même avec des fins de ligne Windows.
   Restent : Mojo Rawley et Tye Dillinger (DLC 2K17) verts dans leurs propres fichiers (modèles provisoires du pack).
+
+## Tenues en plus, nom et render (2026-11-02, vu en jeu)
+
+- **Ajouter une tenue à un catcheur du jeu (4 au plus)** : page CATCHEURS, case « En nouvelle tenue (tenue N, garde
+  l'originale) » (première place libre, mods installés compris). Le mod de tenue (`attire=000NNNA2` nouvelle) est mis
+  dans notre pack ; le jeu relève le nombre de tenues de sa ligne de la table **COS** de `misc.pac` (`superstar_pack.h`
+  4c). Catcheurs des DLC officiels listés aussi (leur `chNN_dlcMM.pac` dans le paquet du DLC, « (DLC) »).
+- **Porter une tenue de n'importe quel jeu** de MES DISQUES (SvR 2007-2011 : `port_svr.h` ; WWE '13, 2K14-2K17 :
+  `port13_star.h`). SvR 2010 nomme sa couche de sang des mains `bloodhand` (2011 : `blood_hand`) : retirée, sinon le
+  dessus des mains est rouge.
+- **Render** : `attire/SSFA|SSFB|SSFC_SD|HD.dds` du mod, servis sous le nom « ANNN » (A = indice de la tenue, NNN =
+  catcheur) dans `DLC_HD/SD_dlcNN.pac` : SSFB = écran CHANGE ATTIRE, SSFA = écran VS (vus en jeu). Image à soi, ou le
+  portrait d'un catcheur d'un autre jeu (`new_star_page::Page::PortraitsFor`).
+- **Nom** (`attire_name=`) : numéro de texte 60000+ (aucune table de `string.pac` n'en a au-dessus de 53114) mis dans
+  la ligne COS ; la recherche de texte du jeu `sub_827DB6D0(textes, table, n°)` (recherche dichotomique dans les tables
+  {position, longueur, n°, 0} ; `sub_827DB610` pareil, renvoie un octet de la table, 255 si absent) est crochetée et
+  répond avec le nom. **Piège** : un `string.pac` modifié servi par-dessus celui du disque fait planter le jeu juste
+  après sa lecture (« call to guest 0 »), quel que soit l'emballage des tables (ZLIB stocké, BPE, deflate) ; celui du
+  pack DLC n'est jamais lu. Les noms des tenues existent dans plusieurs sections (00, 05, 07, 09, 63).

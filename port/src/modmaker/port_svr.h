@@ -448,8 +448,10 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
     const svrfmt::Mesh &src = svr.meshes[mi];
     // SvR's blood layer on the hands (a part named "blood_hand": yDefault meshes over the hands, painted plain red,
     // shown in SvR only when the superstar bleeds; WWE '12 has its own blood): left out, else red hands with pointed
-    // fingers (CM Punk of SvR, 2026-10-26). (Other superstars' real hands use BloodHand pictures too: Orton's.)
-    if (size_t(svr_part_of[mi]) < svr.parts.size() && svr.parts[size_t(svr_part_of[mi])].name == "blood_hand") {
+    // fingers (CM Punk of SvR, 2026-10-26; SvR 2010 names it "bloodhand", 2026-11-02). (Other superstars' real hands
+    // use BloodHand pictures too: Orton's.)
+    if (size_t(svr_part_of[mi]) < svr.parts.size() && (svr.parts[size_t(svr_part_of[mi])].name == "blood_hand" ||
+                                                        svr.parts[size_t(svr_part_of[mi])].name == "bloodhand")) {
       if (size_t(part_of[mi]) < out.parts.size() && out.parts[size_t(part_of[mi])].meshes)
         --out.parts[size_t(part_of[mi])].meshes;
       continue;

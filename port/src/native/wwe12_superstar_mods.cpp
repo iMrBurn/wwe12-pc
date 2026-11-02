@@ -38,6 +38,7 @@
 #include <rex/filesystem/entry.h>
 #include <rex/filesystem/file.h>
 #include <rex/filesystem/vfs.h>
+#include <rex/runtime.h>
 
 #include "core/logging.h"
 #include "core/memory_helpers.h"
@@ -218,6 +219,13 @@ void RemovePack(const fs::path &content, const fs::path &headers) {
 
 }  // namespace
 
+// The attire mods' own names (attire_name=): text numbers from kAttireText, which no string.pac table has (theirs end at
+// 53114), answered by the game's text lookup hooked below. (Served as new texts in a string.pac over the game's, the
+// game crashed right after reading it, whatever its tables' packing: 2026-11-02.)
+constexpr uint32_t kAttireText = 60000;
+std::map<uint32_t, std::string> g_attire_texts;  // number -> text
+std::map<uint32_t, uint32_t> g_attire_text_at;   // number -> its copy in guest memory
+
 void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root,
                              const fs::path &mods) {
   if (!REXCVAR_GET(wwe12_superstar_mods) || user_root.empty())
@@ -344,16 +352,35 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         REXLOG_WARN("[superstar mods] {}: superstar={} attire={} don't go together", at.key, at.superstar, at.entry);
         continue;
       }
-      // A new attire: one his file (the game's, the latest pack's or the disc's) hasn't.
+      // A new attire: one his file (the game's, the latest pack's or the disc's) hasn't. An official DLC superstar's
+      // file is in its package (content\<package>\pac\ch\chNN_dlcMM.pac; not ours, WWE12PCMODS).
       {
         Bytes game;
+        bool read = ReadGame(vfs, "pac/ch/ch" + std::to_string(at.superstar) + ".pac", game);
+        const std::string prefix = "ch" + std::to_string(at.superstar) + "_dlc";
+        for (fs::directory_iterator it(content, ec), end; !read && !ec && it != end; it.increment(ec)) {
+          if (it->path().filename() == "WWE12PCMODS")
+            continue;
+          std::error_code e2;
+          for (fs::directory_iterator f(it->path() / "pac" / "ch", e2), fend; !read && !e2 && f != fend; f.increment(e2)) {
+            const std::string name = f->path().filename().string();
+            if (_strnicmp(name.c_str(), prefix.c_str(), prefix.size()) == 0)
+              read = ReadHost(f->path(), game);
+          }
+        }
+        ec.clear();
         svrfmt::Archive g;
-        at.added = ReadGame(vfs, "pac/ch/ch" + std::to_string(at.superstar) + ".pac", game) &&
-                   svrfmt::ArchiveOpen(game, g, nullptr) &&
+        at.added = read && svrfmt::ArchiveOpen(game, g, nullptr) &&
                    std::none_of(g.root.kids.begin(), g.root.kids.end(), [&](const auto &k) { return k.name == at.entry; });
       }
-      REXLOG_INFO("[superstar mods] attire mod {}: superstar {}, attire {}{}", at.key, at.superstar, at.entry,
-                  at.added ? " (a new one)" : "");
+      // Its own name and portraits (attire_name=, attire/SSFA_SD.dds ... SSFC_HD.dds), if it gives them.
+      at.label = Value(text, "attire_name");
+      for (int hd = 0; hd < 2; ++hd)
+        for (int k = 0; k < 3; ++k)
+          ReadHost(d / "attire" / (std::string("SSF") + char('A' + k) + (hd ? "_HD.dds" : "_SD.dds")), at.render[hd][k]);
+      REXLOG_INFO("[superstar mods] attire mod {}: superstar {}, attire {}{}{}{}", at.key, at.superstar, at.entry,
+                  at.added ? " (a new one)" : "", at.label.empty() ? "" : ", named \"" + at.label + "\"",
+                  at.render[1][1].empty() ? "" : ", its own render");
       attires.push_back(std::move(at));
     }
   }
@@ -705,8 +732,23 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   std::vector<superstar_pack::File> files;
   std::string why;
   latest("pac/audience.pac", in.audience);
+  // (attire lines of new attires, attires' own names: into copies of misc.pac and string.pac)
+  if (std::any_of(attires.begin(), attires.end(), [](const auto &a) { return a.added || !a.label.empty(); }))
+    latest("pac/misc.pac", in.misc);
+  // (their names: text numbers from 60000, one per name, answered by the text lookup hook below)
+  g_attire_texts.clear();
+  {
+    std::map<std::string, uint32_t> number;
+    for (auto &at : attires)
+      if (!at.label.empty()) {
+        auto [it, fresh] = number.emplace(at.label, kAttireText + uint32_t(number.size()));
+        at.label_id = it->second;
+        g_attire_texts[it->second] = at.label;
+      }
+  }
   if (!stars.empty()) {
-    latest("pac/misc.pac", in.misc);  // (moves to add, attire lines: they go into a copy of it)
+    if (in.misc.empty())
+      latest("pac/misc.pac", in.misc);  // (moves to add, attire lines: they go into a copy of it)
     // Superstar Threads: the newest pack's table (pac\edit\edit_dlcNN.pac, the number is the pack's), else the disc's.
     for (const auto &[n, dir] : packs) {
       for (fs::directory_iterator it(dir / "pac" / "edit", ec), end; !ec && it != end; it.increment(ec))
@@ -735,6 +777,10 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   }
   if (!why.empty())
     REXLOG_WARN("[superstar mods] {}", why);
+  {  // (what the string.pac way left, 2026-11-02)
+    std::error_code e2;
+    fs::remove_all(user_root / "attire_names", e2);
+  }
   for (const auto &f : files)
     if (f.path.rfind("sound/", 0) == 0 || f.path.rfind("pac/sound_dlc_", 0) == 0)
       REXLOG_INFO("[superstar mods] themes: {} ({} bytes)", f.path, f.data.size());
@@ -1042,6 +1088,36 @@ extern "C" REX_FUNC(sub_82A31578) {
   // a game superstar's ribbon / wall from a media mod (VIDEOS page; one it hadn't: added)
   if (Wwe12ModScreen(kind, n))
     ctx.r3.u64 = 1;
+}
+
+// The game's texts by number: sub_827DB6D0(texts, table, number) -> the text (guest address) or 0, by a binary search
+// of each loaded string.pac table ({position, length, number, 0} rows); sub_827DB610, the same search, -> a byte of
+// the table it is in (255: none). The attires' own names (kAttireText...) are answered when no table has them.
+REX_EXTERN(__imp__sub_827DB6D0);
+extern "C" REX_FUNC(sub_827DB6D0) {
+  const uint32_t number = ctx.r5.u32;
+  __imp__sub_827DB6D0(ctx, base);
+  if (ctx.r3.u32 || number < kAttireText)
+    return;
+  const auto it = g_attire_texts.find(number);
+  if (it == g_attire_texts.end())
+    return;
+  uint32_t &at = g_attire_text_at[number];
+  if (!at) {
+    at = REX_KERNEL_MEMORY()->SystemHeapAlloc(uint32_t(it->second.size() + 1), 4);
+    if (at)
+      memcpy(bd::mem::at<char>(at), it->second.c_str(), it->second.size() + 1);
+  }
+  ctx.r3.u64 = at;
+}
+REX_EXTERN(__imp__sub_827DB610);
+extern "C" REX_FUNC(sub_827DB610) {
+  const uint32_t texts = ctx.r3.u32, table = ctx.r4.u32, number = ctx.r5.u32;
+  __imp__sub_827DB610(ctx, base);
+  if (ctx.r3.u32 != 255 || number < kAttireText || !g_attire_texts.count(number))
+    return;
+  ctx.r3.u64 = texts, ctx.r4.u64 = table, ctx.r5.u64 = 9;  // (as "ORIGINAL ATTIRE"'s)
+  __imp__sub_827DB610(ctx, base);
 }
 
 // The select screen's candidates (sub_828ADFB8: numbers 50..372 that the save says are unlocked). The save keeps its

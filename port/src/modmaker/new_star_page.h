@@ -1214,7 +1214,19 @@ class Page {
     if (look_ == 2 && number >= 0)
       SvrPortraits(fr, number, read_pac);
     // WWE '13: its game's pac\menu\menuHD.pac / menuSD.pac (the same pictures as WWE '12's).
-    if (look_ == 3 && number >= 0) {
+    if (look_ == 3 && number >= 0 && Look3Portraits(number, read_pac)) {
+      note_ok_ = true;
+      note_ = fr ? "Ses portraits viendront avec lui." : "Its portraits come with it.";
+    }
+    if (!portraits_[1][0].empty())
+      face_ = arena_page::MakeThumb(device_, portraits_[1][0]);
+    OwnMoves(number);
+  }
+
+  // WWE '13's / a 2K game's portraits of superstar `number` into portraits_: its game's pac\menu\menuHD.pac /
+  // menuSD.pac (the same pictures as WWE '12's), else the 2K games' (Portraits2K). How many found.
+  int Look3Portraits(int number, const std::function<Bytes(const char *)> &read_pac) {
+    {
       char name[8];
       snprintf(name, sizeof(name), "%04d", number);
       int found = 0;
@@ -1234,15 +1246,39 @@ class Page {
           }
       if (!found)
         found = Portraits2K(number, read_pac);
-      if (found) {
-        note_ok_ = true;
-        note_ = fr ? "Ses portraits viendront avec lui." : "Its portraits come with it.";
-      }
+      return found;
     }
-    if (!portraits_[1][0].empty())
-      face_ = arena_page::MakeThumb(device_, portraits_[1][0]);
-    OwnMoves(number);
   }
+
+ public:
+  // Superstar `number`'s portraits in game `title` of My game discs, as this page takes them ([SD / HD][SSFA, SSFB,
+  // SSFC], WWE '12's DDS). False if none (the Superstars page's attire renders).
+  bool PortraitsFor(uint32_t title, int number, Bytes out[2][3]) {
+    ListDisc(title);
+    if (game_path_.empty())
+      return false;
+    from_disc_ = true;
+    look_ = title == 0x5451085D || title == 0x54510844 || title == 0x54510826 || title == 0x5451080B || title == 0x545107E0 ? 2 : 3;
+    svr_path_ = game_path_ / "pac" / "ch" / "x";  // (Portraits2K's key: the game folder)
+    for (auto &hd : portraits_)
+      for (auto &b : hd)
+        b.clear();
+    const auto read_pac = [&](const char *in_pac) {
+      Bytes b;
+      game_disc_.Read(std::string("pac/") + in_pac, b);
+      return b;
+    };
+    if (look_ == 2)
+      SvrPortraits(false, number, read_pac);
+    else
+      Look3Portraits(number, read_pac);
+    for (int hd = 0; hd < 2; ++hd)
+      for (int k = 0; k < 3; ++k)
+        out[hd][k] = portraits_[hd][k];
+    return !out[1][1].empty();
+  }
+
+ private:
 
   // Its moves in its game (SvR 2011, WWE '13; the 2K games' aren't read yet) in WWE '12's slots (moveset_port.h), from
   // that game in My game discs.

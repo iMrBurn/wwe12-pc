@@ -99,6 +99,12 @@ struct Attire {
   // (DLC.pac IGST/VOL, info/catalog.dlc) of the game's DLC attires (The Miz, Hawk, Animal): kind 2, the superstar,
   // the attire's index (0-3).
   bool added = false;
+  // Its own name on the select screen (empty: the game's), under text number label_id (set by the game: a number no
+  // string.pac table has, answered by its text lookup hook) and its own render (SSFA / SSFB / SSFC "ANNN": attire index
+  // A, superstar NNN; [0 SD / 1 HD][SSFA, SSFB, SSFC], DXT5 as the game's; empty: none).
+  std::string label;
+  uint32_t label_id = 0;
+  Bytes render[2][3];
 };
 
 // A media mod's portraits for a superstar the game has (type=media, media/portraits/NNN/SSFA_HD.dds ...): in our pack's
@@ -708,9 +714,20 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         break;
       }
     }
-    // The media mods' portraits of the game's superstars (the first mod giving one wins).
+    // The media mods' portraits of the game's superstars (the first mod giving one wins), and the attires' own renders
+    // (SSFA / SSFB / SSFC "ANNN": the select screen asks SSFB for attire A + 1; the others for the VS screen, to see).
+    std::vector<MediaPortraits> all_media = media;
+    for (const auto &at : attires)
+      if (at.entry.size() == 8 && !at.render[hd][1].empty()) {
+        MediaPortraits mp;
+        mp.key = at.key;
+        mp.superstar = (at.entry[6] - '0') * 1000 + at.superstar;
+        for (int k = 0; k < 3; ++k)
+          mp.dds[hd][k] = at.render[hd][k];
+        all_media.push_back(std::move(mp));
+      }
     std::set<std::string> media_given;
-    for (const auto &mp : media) {
+    for (const auto &mp : all_media) {
       if (!have_template) {
         svrfmt::Archive p;
         if (sources.empty() || !svrfmt::ArchiveOpen(sources.front(), p, nullptr))
@@ -816,12 +833,22 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       }
     }
   }
+  // 4b'. The attires' own names: their text numbers (Attire::label_id) in their slot of the COS lines below.
+  std::map<std::string, uint32_t> label_ids;  // attire entry -> its text's number (the first mod's)
+  for (const auto &at : attires)
+    if (at.label_id && !label_ids.count(at.entry))
+      label_ids[at.entry] = at.label_id;
   // 4c. Superstars with more than one attire in their model ("000NNNA2", A = 0-3): their line in misc.pac's attire
   // table "COS" (BATS/INIT and BATH/INIT, children 5 and 201: "COS\0", u32 count, then 40-byte lines {u32 superstar,
   // u32 attires, 4 x {u32 name string, i32 unlock (-1: unlocked)}}, by superstar number; the game's own superstars
-  // only: an added one had 1 attire).
+  // only: an added one had 1 attire). And the game's superstars given a new attire by an attire mod: their line's count
+  // raised to it (the select screen offers that many, 2026-11-01).
   {
     std::vector<std::pair<int, int>> counts;  // (slot, attires)
+    std::map<int, int> raises;                // (a game's superstar, attires at least)
+    for (const auto &at : attires)
+      if (at.added && at.entry.size() == 8 && at.entry[6] >= '0' && at.entry[6] <= '3')
+        raises[at.superstar] = std::max(raises[at.superstar], at.entry[6] - '0' + 1);
     for (size_t i = 0; i < stars.size(); ++i) {
       svrfmt::Archive ch;
       int n = 0;
@@ -833,7 +860,8 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         counts.push_back({stars[i].slot, n});
     }
     svrfmt::Archive misc;
-    if (!counts.empty() && svrfmt::ArchiveOpen(misc_out.empty() ? in.misc : misc_out, misc, nullptr)) {
+    if ((!counts.empty() || !raises.empty() || !label_ids.empty()) &&
+        svrfmt::ArchiveOpen(misc_out.empty() ? in.misc : misc_out, misc, nullptr)) {
       bool changed = false;
       for (auto &k : misc.root.kids) {
         if ((k.group != "BATS" && k.group != "BATH") || k.name.rfind("INIT", 0) != 0 || !svrfmt::ArchiveExpand(k))
@@ -843,12 +871,43 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           if ((c.id != 5 && c.id != 201) || t.size() < 8 || memcmp(t.data(), "COS", 4))
             continue;
           uint32_t count = svrfmt::Le32(&t[4]);
-          for (const auto &[slot, n] : counts) {
+          // (the game has no "ATTIRE 2" text: ORIGINAL ATTIRE, Wrestling Gear, T-Shirt, Civilian Clothes)
+          static const uint32_t names[4] = {9, 11, 13, 10};
+          auto lines = counts;  // (+ the raised superstars without a line: a whole one)
+          for (const auto &[superstar, n] : raises) {
+            size_t at = 8;
+            bool found = false;
+            for (uint32_t r = 0; r < count && at + 40 <= t.size(); ++r, at += 40) {
+              if (svrfmt::Le32(&t[at]) != uint32_t(superstar))
+                continue;
+              found = true;
+              const uint32_t had = svrfmt::Le32(&t[at + 4]);
+              if (uint32_t(n) > had && had >= 1) {
+                svrfmt::PutLe32(&t[at + 4], uint32_t(n));
+                for (uint32_t a = had; a < uint32_t(n); ++a) {  // (its new ones: a name its others don't use)
+                  uint32_t name = names[a];
+                  for (uint32_t u : names) {
+                    bool used = false;
+                    for (uint32_t b = 0; b < a; ++b)
+                      used |= svrfmt::Le32(&t[at + 8 + b * 8]) == u;
+                    if (!used) {
+                      name = u;
+                      break;
+                    }
+                  }
+                  svrfmt::PutLe32(&t[at + 8 + a * 8], name);
+                  svrfmt::PutLe32(&t[at + 12 + a * 8], 0xFFFFFFFFu);
+                }
+              }
+              break;
+            }
+            if (!found)
+              lines.push_back({superstar, n});
+          }
+          for (const auto &[slot, n] : lines) {
             Bytes line(40, 0);
             svrfmt::PutLe32(&line[0], uint32_t(slot));
             svrfmt::PutLe32(&line[4], uint32_t(n));
-            // (the game has no "ATTIRE 2" text: ORIGINAL ATTIRE, Wrestling Gear, T-Shirt, Civilian Clothes)
-            static const uint32_t names[4] = {9, 11, 13, 10};
             for (int a = 0; a < 4; ++a) {
               svrfmt::PutLe32(&line[8 + size_t(a) * 8], a < n ? names[a] : 0);
               svrfmt::PutLe32(&line[12 + size_t(a) * 8], a < n ? 0xFFFFFFFFu : 0);
@@ -867,6 +926,13 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
               t.insert(t.begin() + long(at), line.begin(), line.end());
               svrfmt::PutLe32(&t[4], ++count);
             }
+          }
+          // (the attires with their own name: that text in their slot)
+          for (const auto &[entry, id] : label_ids) {
+            const uint32_t superstar = uint32_t(atoi(entry.substr(0, 6).c_str())), a = uint32_t(entry[6] - '0');
+            for (uint32_t r = 0, at = 8; r < count && at + 40 <= t.size(); ++r, at += 40)
+              if (svrfmt::Le32(&t[at]) == superstar && a < 4)
+                svrfmt::PutLe32(&t[at + 8 + a * 8], id);
           }
           svrfmt::ArchiveReplace(c, t);
           changed = true;
