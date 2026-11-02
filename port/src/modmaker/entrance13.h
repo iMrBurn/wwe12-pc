@@ -960,6 +960,78 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
   return rebuilt;
 }
 
+// WWE '12 and 2K15 scripts have the superstars waiting in the ring (type 1) from object 12 on, models 1, 2, 1, 2...;
+// 2K16 / 2K17 have a prop at 12 and them after it (1, 1, 2, 2), and the one waiting and the ring announcer (placed by
+// the game) stood under the mat in the middle of the ring (2K16 Kevin Owens, 2K17 AJ Styles; 2K15 Seth Rollins right,
+// 2026-11-02). Objects 12 on put in WWE '12's order: in the script (each object's +0 its index, each slot's +4
+// 25000 + it) and in the track bank (leaf ids, the record's name "250NN" at +0x4C). Returns how many scripts.
+inline int WaitingFirst12(std::vector<Part> &parts) {
+  using detail::Be32;
+  using yanm::ik::detail::Put32;
+  constexpr uint32_t kFrom = 12;
+  int changed = 0;
+  for (auto &evp : parts) {
+    if (evp.kind != "EVP" || evp.data.size() < 0x50)
+      continue;
+    const uint32_t n = Be32(evp.data, 0x40) & 0xFFFF, t = Be32(evp.data, 0x48) + 8;
+    if (n <= kFrom || t + 32 * size_t(n) > evp.data.size())
+      continue;
+    std::vector<uint32_t> ones, twos, rest;
+    for (uint32_t i = kFrom; i < n; ++i) {
+      const uint32_t model = Be32(evp.data, t + 32 * size_t(i) + 4), type = Be32(evp.data, t + 32 * size_t(i) + 8);
+      (type == 1 && model == 1 ? ones : type == 1 && model == 2 ? twos : rest).push_back(i);
+    }
+    std::vector<uint32_t> order;  // order[k]: the object that goes to kFrom + k
+    for (size_t a = 0, b = 0; a < ones.size() || b < twos.size();) {
+      if (a < ones.size())
+        order.push_back(ones[a++]);
+      if (b < twos.size())
+        order.push_back(twos[b++]);
+    }
+    order.insert(order.end(), rest.begin(), rest.end());
+    bool same = true;
+    for (size_t k = 0; k < order.size(); ++k)
+      same = same && order[k] == kFrom + k;
+    if (same)
+      continue;
+    std::vector<uint32_t> to(n);  // to[old]: its new index
+    for (uint32_t i = 0; i < n; ++i)
+      to[i] = i;
+    for (size_t k = 0; k < order.size(); ++k)
+      to[order[k]] = uint32_t(kFrom + k);
+    const Bytes old = evp.data;
+    for (uint32_t i = kFrom; i < n; ++i) {
+      const size_t from = t + 32 * size_t(i), q = t + 32 * size_t(to[i]);
+      std::copy(old.begin() + long(from), old.begin() + long(from + 32), evp.data.begin() + long(q));
+      Put32(evp.data, q, to[i]);
+      const uint32_t ns = Be32(evp.data, q + 24) >> 16, bp = Be32(evp.data, q + 28) + 8;
+      for (uint32_t s = 0; s < ns && bp + 212 * size_t(s + 1) <= evp.data.size(); ++s)
+        Put32(evp.data, bp + 212 * size_t(s) + 4, 25000 + to[i]);
+    }
+    for (auto &evz : parts) {
+      std::vector<svrfmt::PachEntry> leaves;
+      if (evz.kind != "EVZ" || evz.number != evp.number || !svrfmt::PachRead(evz.data, leaves))
+        continue;
+      for (auto &e : leaves) {
+        if (e.id < kFrom || e.id >= n || to[e.id] == e.id)
+          continue;
+        e.id = to[e.id];
+        Bytes l = svrfmt::Unpack(e.data);
+        if (l.size() >= 0x51 && l[0x4C] == '2') {
+          char name[8];
+          snprintf(name, sizeof(name), "%05u", 25000 + e.id);
+          memcpy(&l[0x4C], name, 5);
+        }
+        e.data = std::move(l);
+      }
+      std::sort(leaves.begin(), leaves.end(), [](const auto &x, const auto &y) { return x.id < y.id; });
+      evz.data = svrfmt::PachWrite(leaves);
+    }
+    ++changed;
+  }
+  return changed;
+}
+
 // A superstar's victory scene in WWE '13 (pac\evt\Winning00-03.pac, xcompressed EPK8, groups "EVP " / "EVZ ", entries
 // 6000 + its number: Mankind 6246), its tracks' IK legs baked as an entrance's. WWE '12 looks for 6000 + the superstar's
 // own number (sub_82407DC8: participant +16 + 6000, every group letter tried by sub_828CCC10 "/%s%c/%d"), so an added

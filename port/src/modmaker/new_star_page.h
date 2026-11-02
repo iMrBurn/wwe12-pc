@@ -1553,6 +1553,7 @@ class Page {
       for (auto *parts : {&own_entrance_, &own_victory_}) {
         entrance13::Announcer12(*parts, *disc12_);
         entrance13::Waiting12(*parts, *disc12_);
+        entrance13::WaitingFirst12(*parts);
       }
     }
   }
