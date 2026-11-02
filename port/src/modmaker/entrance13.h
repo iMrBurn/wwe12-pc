@@ -107,13 +107,32 @@ inline bool Exists12(const disc::GameDisc &w12, int number) {
   return false;
 }
 
+// A source script's full-screen video (its tail's record of type 9, {u16 type, u16 0, u32 frame, u16 frames, u16
+// items, offset}: 2K15 Bray Wyatt 398 from frame 0 for 1220 frames, his video full screen while he waits in the dark;
+// WWE '12 Drew McIntyre 278 730): how many frames, 0 if none. Its tail at +0x1C (offsets from +8).
+inline uint32_t FullScreenOf(const Bytes &evp) {
+  auto Be32 = [&](const Bytes &b, size_t o) {
+    return o + 4 <= b.size() ? uint32_t(b[o]) << 24 | uint32_t(b[o + 1]) << 16 | uint32_t(b[o + 2]) << 8 | b[o + 3] : 0u;
+  };
+  if (evp.size() < 0x50 || !Be32(evp, 0x1C))
+    return 0;
+  const size_t h = size_t(Be32(evp, 0x1C)) + 8;
+  if (h + 8 > evp.size())
+    return 0;
+  const uint32_t lists = Be32(evp, h) & 0xFFFF, at = Be32(evp, h + 4) + 8;
+  for (uint32_t l = 0; l < lists && l < 64 && at + 16 * size_t(l + 1) <= evp.size(); ++l)
+    if ((Be32(evp, at + 16 * l) >> 16) == 9 && Be32(evp, at + 16 * l + 4) == 0)
+      return Be32(evp, at + 16 * l + 8) >> 16;
+  return 0;
+}
+
 // WWE '12's entrance scripts (their base number, not the variants) end with a tail (Kaiko's svr08_entrance.py:
 // header +0x18 = 0x10000, +0x1C its offset; {u16 number, u16 2, offset of the records}, records {u16 type, u16 0, u32
 // 100, u32 3, offset of 3 items {u8 kind, u24 0, offset of the value}}): type 1, the music (u32 999: the superstar's
 // own), and type 8, the movie (u16 999: its titantron). WWE '13's and 2K14's have none; without it the game played the
 // entrance with no music, no crowd and no titantron (2K14 Ultimate Warrior, 2026-11-01; WWE '13 Mankind had been given
 // this tail by hand). Offsets are from +8, listed in the POF0 after the data. Returns whether a tail was added.
-inline bool AddTail12(Bytes &evp, int number) {
+inline bool AddTail12(Bytes &evp, int number, uint32_t fullscreen = 0) {
   using yanm::ik::detail::Put16;
   using yanm::ik::detail::Put32;
   auto b32 = [&](size_t o) { return uint32_t(evp[o]) << 24 | uint32_t(evp[o + 1]) << 16 | uint32_t(evp[o + 2]) << 8 | evp[o + 3]; };
@@ -125,22 +144,31 @@ inline bool AddTail12(Bytes &evp, int number) {
   std::vector<uint32_t> pof = yanm::ik::detail::PofRead(evp, 8 + t + 8, b32(8 + t + 4));
   const Bytes rest(evp.begin() + ptrdiff_t(8 + t + 8 + b32(8 + t + 4)), evp.end());
   evp.resize(8 + t);
-  Bytes tail(0x70, 0);
-  Put16(tail, 0, uint16_t(number)), Put16(tail, 2, 2), Put32(tail, 4, t + 8);
-  for (const auto &[at, type, items] : {std::tuple<uint32_t, uint16_t, uint32_t>{8, 1, 0x28}, {0x18, 8, 0x40}})
-    Put16(tail, at, type), Put32(tail, at + 4, 100), Put32(tail, at + 8, 3), Put32(tail, at + 12, t + items);
-  const uint32_t items[6][2] = {{0x02000000, 0x5C}, {0x01000000, 0x58}, {0x01000000, 0x5A},
-                                {0x03000000, 0x60}, {0x03000000, 0x62}, {0x03000000, 0x64}};
-  for (uint32_t i = 0; i < 6; ++i)
-    Put32(tail, 0x28 + 8 * i, items[i][0]), Put32(tail, 0x2C + 8 * i, t + items[i][1]);
-  Put32(tail, 0x5C, 999), Put16(tail, 0x60, 999);
+  // (a third record, type 9, with `fullscreen`: the entrance video full screen from frame 0 for that many frames, as Drew
+  // McIntyre's 278 {u16 9, u32 0, u16 730, u16 1, one item of kind 2: u32 0})
+  const uint32_t lists = fullscreen ? 3 : 2, items = 8 + 16 * lists, nitems = fullscreen ? 7 : 6, v = items + 8 * nitems;
+  const uint32_t m = v + (fullscreen ? 12 : 8);  // (the movie's values after the music's and the full screen's)
+  Bytes tail((m + 6 + 15) / 16 * 16, 0);
+  Put16(tail, 0, uint16_t(number)), Put16(tail, 2, uint16_t(lists)), Put32(tail, 4, t + 8);
+  const uint32_t list[3][4] = {{1, 100, 3, items}, {8, 100, 3, items + 24}, {9, 0, (fullscreen << 16) | 1, items + 48}};
+  for (uint32_t l = 0; l < lists; ++l)
+    Put16(tail, 8 + 16 * l, uint16_t(list[l][0])), Put32(tail, 8 + 16 * l + 4, list[l][1]),
+        Put32(tail, 8 + 16 * l + 8, list[l][2]), Put32(tail, 8 + 16 * l + 12, t + list[l][3]);
+  const uint32_t item[7][2] = {{0x02000000, v + 4}, {0x01000000, v},     {0x01000000, v + 2}, {0x03000000, m},
+                               {0x03000000, m + 2}, {0x03000000, m + 4}, {0x02000000, v + 8}};
+  for (uint32_t i = 0; i < nitems; ++i)
+    Put32(tail, items + 8 * i, item[i][0]), Put32(tail, items + 8 * i + 4, t + item[i][1]);
+  Put32(tail, v + 4, 999), Put16(tail, m, 999);
   evp.insert(evp.end(), tail.begin(), tail.end());
   Put32(evp, 0x18, 0x10000), Put32(evp, 0x1C, t);
-  for (uint32_t o : {0x1Cu - 8, t + 4, t + 0x14, t + 0x24, t + 0x2C, t + 0x34, t + 0x3C, t + 0x44, t + 0x4C, t + 0x54})
-    pof.push_back(o);
+  pof.push_back(0x1C - 8), pof.push_back(t + 4);
+  for (uint32_t l = 0; l < lists; ++l)
+    pof.push_back(t + 8 + 16 * l + 12);
+  for (uint32_t i = 0; i < nitems; ++i)
+    pof.push_back(t + items + 8 * i + 4);
   std::sort(pof.begin(), pof.end());
   pof.erase(std::unique(pof.begin(), pof.end()), pof.end());  // (+0x1C is listed already, even when 0)
-  Put32(evp, 4, t + 0x70), Put32(evp, 0xC, t + 0x70);
+  Put32(evp, 4, t + uint32_t(tail.size())), Put32(evp, 0xC, t + uint32_t(tail.size()));
   const Bytes pb = yanm::ik::detail::PofWrite(pof);
   evp.insert(evp.end(), {'P', 'O', 'F', '0'});
   for (int i = 0; i < 4; ++i)
@@ -517,10 +545,11 @@ inline int CameraTwins12(std::vector<Part> &parts) {
 // A script or track bank of any of these games made WWE '12's: slots, tail (base numbers), track names, IK legs.
 inline void To12(Part &p) {
   if (p.kind == "EVP") {
+    const uint32_t fullscreen = FullScreenOf(p.data);  // (read before Evp788To212, which leaves the source's tail out)
     if (Evp788To212(p.data))
       Mic12(p.data);
     if (p.number < 1000)
-      AddTail12(p.data, p.number);
+      AddTail12(p.data, p.number, fullscreen);
     else if (p.number >= 6000 && p.number < 7000)
       AddVictoryTail12(p.data, p.number);
   } else if (p.kind == "EVZ") {
