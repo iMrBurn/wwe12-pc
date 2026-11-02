@@ -31,6 +31,7 @@
 
 #include "game_process.h"
 #include "imgui.h"
+#include "stfs_check.h"
 
 namespace saves {
 
@@ -43,6 +44,9 @@ struct Texts {
       *nothing, *failed, *working, *auto_label, *empty_backup, *col_date, *col_name, *col_size,
       *restored_plain, *import_title, *import_intro, *import_folder, *import_file, *import_none,
       *import_confirm, *import_ready, *import_pending, *import_cancel, *import_result;
+  // Why a pick was refused (shown under the import buttons).
+  const char *why_folder_head, *why_empty_folder, *why_archive, *why_disk, *why_notstfs, *why_small,
+      *why_type, *why_game, *why_unreadable;
 };
 
 const Texts kEnglish = {
@@ -70,7 +74,16 @@ const Texts kEnglish = {
     "backed up first.",
     "Ready: the save is installed the next time you start the game.",
     "Import waiting for the next game start.", "Cancel the import",
-    "Last import: %d installed, %d failed."};
+    "Last import: %d installed, %d failed.",
+    "No WWE '12 save in this folder (%d file(s) looked at):", "The folder holds no files.",
+    "an archive (zip, rar or 7z): unpack it first",
+    "a whole console storage image, not one save package: take the WWE '12 save out of it first "
+    "(with Horizon, for example)",
+    "not an Xbox 360 package (STFS), so it cannot be read",
+    "too small to be a package",
+    "an Xbox 360 package of another kind (type %08X), not a saved game",
+    "a package of another game (title %08X)",
+    "could not be opened"};
 
 const Texts kFrench = {
     "Votre progression est dans Documents\\wwe12. Une copie contient votre sauvegarde et vos "
@@ -101,7 +114,16 @@ const Texts kFrench = {
     "actuelle est copiée d'abord.",
     "Prêt : la sauvegarde sera installée au prochain lancement du jeu.",
     "Import en attente du prochain lancement du jeu.", "Annuler l'import",
-    "Dernier import : %d installé(s), %d en échec."};
+    "Dernier import : %d installé(s), %d en échec.",
+    "Aucune sauvegarde de WWE '12 dans ce dossier (%d fichier(s) examiné(s)) :", "Le dossier ne contient aucun fichier.",
+    "une archive (zip, rar ou 7z) : décompressez-la d'abord",
+    "une image complète d'un support de console, pas un paquet de sauvegarde : sortez-en d'abord la "
+    "sauvegarde de WWE '12 (avec Horizon, par exemple)",
+    "pas un paquet Xbox 360 (STFS), illisible tel quel",
+    "trop petit pour être un paquet",
+    "un paquet Xbox 360 d'un autre genre (type %08X), pas une sauvegarde",
+    "un paquet d'un autre jeu (titre %08X)",
+    "impossible à ouvrir"};
 
 struct Backup {
   std::string name;   // folder name, "YYYY-MM-DD_HH-MM-SS"
@@ -190,8 +212,10 @@ class Manager {
         import_pending_ = false;
       }
     }
-    if (import_scan_msg_ == 1)
+    if (import_scan_msg_ == 1) {
       ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.import_none);
+      DrawWhy(t);
+    }
     if (!import_result_.empty())
       ImGui::TextDisabled(t.import_result, import_installed_, import_failed_);
 
@@ -325,15 +349,42 @@ class Manager {
     return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3];
   }
 
-  // A WWE '12 save package: an STFS file ("CON ", "LIVE" or "PIRS") of content type 1 (saved
-  // game) for title 54510890 (type at 0x344, title id at 0x360, big-endian).
-  static bool IsWweSavePackage(const fs::path &file) {
-    std::ifstream f(file, std::ios::binary);
-    unsigned char h[0x364] = {};
-    if (!f.read(reinterpret_cast<char *>(h), sizeof(h)))
-      return false;
-    const bool stfs = !memcmp(h, "CON ", 4) || !memcmp(h, "LIVE", 4) || !memcmp(h, "PIRS", 4);
-    return stfs && ReadU32BE(h + 0x344) == 1 && ReadU32BE(h + 0x360) == 0x54510890;
+  // Why the last pick had no WWE '12 save in it: the reason for a file, or a count per reason for a folder.
+  // A WWE '12 save is an STFS package of content type 1 for title 54510890 (stfs_check.h); the extension
+  // does not matter, so a ".bin" works if it is one.
+  std::string WhyText(const Texts &t, stfs::Verdict v) const {
+    char buf[256];
+    switch (v) {
+    case stfs::Verdict::Archive: return t.why_archive;
+    case stfs::Verdict::DiskImage: return t.why_disk;
+    case stfs::Verdict::TooSmall: return t.why_small;
+    case stfs::Verdict::Unreadable: return t.why_unreadable;
+    case stfs::Verdict::WrongType: snprintf(buf, sizeof(buf), t.why_type, why_type_); return buf;
+    case stfs::Verdict::WrongGame: snprintf(buf, sizeof(buf), t.why_game, why_title_); return buf;
+    default: return t.why_notstfs;
+    }
+  }
+
+  void DrawWhy(const Texts &t) const {
+    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f);
+    if (why_single_) {
+      if (why_counts_.empty())
+        return;
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextColored(red, "%s: %s", why_name_.c_str(),
+                         WhyText(t, static_cast<stfs::Verdict>(why_counts_.begin()->first)).c_str());
+      ImGui::PopTextWrapPos();
+      return;
+    }
+    if (why_files_ == 0) {
+      ImGui::TextColored(red, "%s", t.why_empty_folder);
+      return;
+    }
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextColored(red, t.why_folder_head, why_files_);
+    for (const auto &[verdict, count] : why_counts_)
+      ImGui::BulletText("%d: %s", count, WhyText(t, static_cast<stfs::Verdict>(verdict)).c_str());
+    ImGui::PopTextWrapPos();
   }
 
   // Asks for a folder or a file, then counts the WWE '12 save packages in it.
@@ -364,14 +415,24 @@ class Manager {
     import_size_ = 0;
     std::error_code ec;
     size_t looked_at = 0;
+    why_counts_.clear();
+    why_type_ = why_title_ = 0;
+    why_files_ = 0;
+    why_single_ = !fs::is_directory(picked, ec);
+    { const std::u8string u8n = picked.filename().u8string(); why_name_.assign(u8n.begin(), u8n.end()); }
     auto consider = [&](const fs::path &f) {
-      const uintmax_t size = fs::file_size(f, ec);
-      if (ec || size < 0x364)  // too small to be a package: no need to open it
-        return;
-      if (IsWweSavePackage(f)) {
+      ++why_files_;
+      const stfs::Result r = stfs::Check(f, stfs::kTypeSavedGame);
+      if (r.verdict == stfs::Verdict::Ok) {
         ++import_count_;
-        import_size_ += size;
+        import_size_ += fs::file_size(f, ec);
+        return;
       }
+      ++why_counts_[static_cast<int>(r.verdict)];
+      if (r.verdict == stfs::Verdict::WrongType && !why_type_)
+        why_type_ = r.type;
+      if (r.verdict == stfs::Verdict::WrongGame && !why_title_)
+        why_title_ = r.title;
     };
     if (fs::is_directory(picked, ec)) {
       for (auto it = fs::recursive_directory_iterator(picked, ec);
@@ -663,6 +724,11 @@ class Manager {
   uintmax_t import_size_ = 0;
   fs::path import_path_;
   bool ask_import_ = false;
+  std::map<int, int> why_counts_;  // stfs::Verdict -> files refused for that reason in the last pick
+  uint32_t why_type_ = 0, why_title_ = 0;
+  int why_files_ = 0;
+  bool why_single_ = false;
+  std::string why_name_;
 
   bool ask_ = false;
   Op pending_ = Op::Create;

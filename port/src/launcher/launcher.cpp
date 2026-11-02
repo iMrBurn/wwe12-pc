@@ -32,6 +32,7 @@
 #include "game_process.h"
 #include "keybinds.h"
 #include "mods.h"
+#include "dlc_add.h"
 #include "saves.h"
 #include "toml_file.h"
 #include "ui_style.h"
@@ -593,6 +594,7 @@ Page g_page = kPlay;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 saves::Manager g_saves;
+dlcadd::Adder g_dlc_add;
 mods::Manager g_mods;
 bool g_launch = false;
 bool g_launch_no_mods = false;  // PLAY WITHOUT MODS: --wwe12_no_mods=true for this game only
@@ -1160,6 +1162,7 @@ void PageMods() {
                                                                                    "textures...");
   if (!g_modmaker_error.empty())
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", g_modmaker_error.c_str());
+  g_dlc_add.Draw(fr, ExeDir());
   if (!ImGui::BeginTabBar("modtabs"))
     return;
   if (ImGui::BeginTabItem(fr ? "Mods installés" : "Installed mods")) {
@@ -1634,7 +1637,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
       g_play_note = 0;
       if (game::IsRunning())
         g_play_note = 1;  // one game at a time
-      else if (g_saves.Busy() || g_updater.Busy())
+      else if (g_saves.Busy() || g_dlc_add.Busy() || g_updater.Busy())
         g_play_note = 2;  // closing now would cut it short
       else if (LaunchGame(hwnd, no_mods))
         done = true;
@@ -1646,6 +1649,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   }
 
   g_saves.Wait();
+  g_dlc_add.Wait();
   g_updater.Shutdown();
   ImGui_ImplDX11_Shutdown();
   ImGui_ImplWin32_Shutdown();
