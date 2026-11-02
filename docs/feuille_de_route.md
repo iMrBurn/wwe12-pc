@@ -26,7 +26,7 @@ Aussi demandé : travailler sur le Mod Maker (voir `docs/mod_maker.md`).
   création de catcheur après un match (l'utilisateur : « sinon tickets »). Détails : `docs/format_16_10.md`.
 - Correctif du gel d'entrée de Rey Mysterio (`wwe12_job_pool_fix`) : testé par l'utilisateur sur 4 fils (3 entrées complètes, aucun gel) ; commit local, à publier avec la 1.0.
 
-**Ajouts 1.0 (décision de l'utilisateur, 2026-11-02)** : support des fichiers `.bin` pour les sauvegardes (à préciser : quel genre de `.bin`) ; réduire les temps de chargement (piste trouvée le 2026-11-02 : pause de 500 ms après chaque lecture de plus de 256 Ko autour des entrées, `wwe12_read_throttle`, commit 71bcf03 ; chercher d'autres attentes de la console).
+**Ajouts 1.0 (décision de l'utilisateur, 2026-11-02)** : ~~support des fichiers `.bin` pour les sauvegardes~~ (le `.bin` signalé était une sauvegarde **Wii** chiffrée, autre jeu, non importable ; le launcher dit maintenant pourquoi un fichier est refusé, commit 4e1d7d5 de Launcher) ; bouton « Ajouter des DLC... » dans le launcher (fait, à tester) ; réduire les temps de chargement (piste trouvée le 2026-11-02 : pause de 500 ms après chaque lecture de plus de 256 Ko autour des entrées, `wwe12_read_throttle`, commit 71bcf03 ; chercher d'autres attentes de la console).
 
 (Décision du 2026-10-27 : le jeu en full natif et les slots CAW / logos 100/200 passent en 1.1.)
 
