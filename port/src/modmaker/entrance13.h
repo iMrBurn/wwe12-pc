@@ -126,6 +126,26 @@ inline uint32_t FullScreenOf(const Bytes &evp) {
   return 0;
 }
 
+// The frame its tail's music record (type 1) starts at, set: 0 when the theme carries its full-screen video's sound
+// first (theme_convert::ToPcmWithIntro). Returns whether it had one.
+inline bool SetMusicFrame(Bytes &evp, uint32_t frame) {
+  auto be32 = [&](size_t o) {
+    return o + 4 <= evp.size() ? uint32_t(evp[o]) << 24 | uint32_t(evp[o + 1]) << 16 | uint32_t(evp[o + 2]) << 8 | evp[o + 3] : 0u;
+  };
+  if (evp.size() < 0x50 || !be32(0x1C))
+    return false;
+  const size_t h = size_t(be32(0x1C)) + 8;
+  const uint32_t lists = be32(h) & 0xFFFF, at = be32(h + 4) + 8;
+  bool found = false;
+  for (uint32_t l = 0; l < lists && l < 64 && at + 16 * size_t(l + 1) <= evp.size(); ++l)
+    if ((be32(at + 16 * l) >> 16) == 1) {
+      for (int k = 0; k < 4; ++k)
+        evp[at + 16 * l + 4 + size_t(k)] = uint8_t(frame >> (24 - 8 * k));
+      found = true;
+    }
+  return found;
+}
+
 // WWE '12's entrance scripts (their base number, not the variants) end with a tail (Kaiko's svr08_entrance.py:
 // header +0x18 = 0x10000, +0x1C its offset; {u16 number, u16 2, offset of the records}, records {u16 type, u16 0, u32
 // 100, u32 3, offset of 3 items {u8 kind, u24 0, offset of the value}}): type 1, the music (u32 999: the superstar's
