@@ -342,10 +342,38 @@ inline int Tracks12(Bytes &evz) {
   return changed;
 }
 
+// 2K16 / 2K17's ring announcer microphone (prop 159, object 9, no parent) as WWE '12 / 2K15's: prop 2038 held by the
+// announcer (object 7, prop 5009 with a skeleton): each slot's word 52 = his index << 16 (9999 << 16: none). Returns
+// whether it was there.
+inline bool Mic12(Bytes &evp) {
+  using detail::Be32;
+  using yanm::ik::detail::Put32;
+  if (evp.size() < 0x50)
+    return false;
+  const uint32_t n = Be32(evp, 0x40) & 0xFFFF, t = Be32(evp, 0x48) + 8;
+  int mic = -1, announcer = -1;
+  for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= evp.size(); ++i) {
+    const uint32_t model = Be32(evp, t + 32 * size_t(i) + 4), type = Be32(evp, t + 32 * size_t(i) + 8);
+    if (type == 0x100 && model == 159 && mic < 0)
+      mic = int(i);
+    if (type == 0x100 && model == 5009 && announcer < 0)
+      announcer = int(i);
+  }
+  if (mic < 0 || announcer < 0)
+    return false;
+  const size_t q = t + 32 * size_t(mic);
+  Put32(evp, q + 4, 2038);
+  const uint32_t ns = Be32(evp, q + 24) >> 16, bp = Be32(evp, q + 28) + 8;
+  for (uint32_t s = 0; s < ns && bp + 212 * size_t(s + 1) <= evp.size(); ++s)
+    Put32(evp, bp + 212 * size_t(s) + 208, uint32_t(announcer) << 16);
+  return true;
+}
+
 // A script or track bank of any of these games made WWE '12's: slots, tail (base numbers), track names, IK legs.
 inline void To12(Part &p) {
   if (p.kind == "EVP") {
-    Evp788To212(p.data);
+    if (Evp788To212(p.data))
+      Mic12(p.data);
     if (p.number < 1000)
       AddTail12(p.data, p.number);
     else if (p.number >= 6000 && p.number < 7000)

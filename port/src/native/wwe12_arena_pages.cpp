@@ -1245,3 +1245,29 @@ extern "C" REX_FUNC(sub_827F29F0) {
     REXLOG_INFO("[arena pages] directory {} -> file {} start {:08X} size {:08X}", n, bd::mem::load<u16>(out + 12),
                 bd::mem::load<u32>(out), bd::mem::load<u32>(out + 8));
 }
+
+// Probe (2026-11-02, 2K16 / 2K17 entrances: the ring announcer and the superstar waiting stood under the mat; a crash
+// in sub_8246E1D0 when objects 12+ or object 9 were made as WWE '12's: a "250NN" not found). sub_8246E1D0(r3): r3 +2 a
+// count, +4 entries of 12 bytes (+4 a name 25000 + object, -1 none; +8 a frame written back), +8 a bank whose +12 is
+// its first offset; each name looked up there (sub_827E6BB8) and its event tags (254, 80-95) read. Logged, then run.
+REXCVAR_DEFINE_BOOL(wwe12_entrance_probe, false, "WWE12", "Log the entrance objects' event frame lookups (sub_8246E1D0)");
+REX_EXTERN(__imp__sub_8246E1D0);
+
+extern "C" REX_FUNC(sub_8246E1D0) {
+  if (REXCVAR_GET(wwe12_entrance_probe)) {
+    const u32 me = ctx.r3.u32, n = bd::mem::load<u16>(me + 2), entries = bd::mem::load<u32>(me + 4),
+              bank = bd::mem::load<u32>(me + 8);
+    std::string names, head;
+    char w[16];
+    for (u32 i = 0; i < n && i < 40; ++i) {
+      snprintf(w, sizeof(w), " %X", bd::mem::load<u32>(entries + 12 * i + 4));
+      names += w;
+    }
+    for (u32 o = 0; bank && o < 0x80; o += 4) {
+      snprintf(w, sizeof(w), "%s%08X", o % 32 ? " " : " | ", bd::mem::load<u32>(bank + o));
+      head += w;
+    }
+    REXLOG_INFO("[entrance probe] {:08X}: {} entries at {:08X}:{}; bank {:08X}:{}", me, n, entries, names, bank, head);
+  }
+  __imp__sub_8246E1D0(ctx, base);
+}
