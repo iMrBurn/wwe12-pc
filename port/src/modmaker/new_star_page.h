@@ -1356,6 +1356,53 @@ class Page {
     if (!portraits_[1][0].empty())
       face_ = arena_page::MakeThumb(device_, portraits_[1][0]);
     OwnMoves(number);
+    OwnRatings(number);
+  }
+
+  // Its attributes and size in its game (asked by the user, 2026-11-02), as its own (the sliders stay free). Its record
+  // (pac\ch\chEtc.pac CHAR / DAT, by its number; 2K16's by index, +4 its number): WWE '13, 2K14, 2K15 and 2K16 have 14
+  // attributes, WWE '12's 12 with two more at 5 and 11 (seen on Cena, Orton, Rey, Big Show, Kane, Undertaker, Mark
+  // Henry), at +4 (WWE '13), +36 (2K14, 2K15), +40 (2K16); its size scale (4096 = 1.0, Cena 3988 in all) at +0x34,
+  // +22, +26. SvR 2011 has 7 other ones; 2K17's records aren't read: the base's then.
+  void OwnRatings(int number) {
+    const uint32_t game = look_ == 2 ? svr_game_ : star_game_;
+    int at = -1, size_at = -1;
+    if (game == 0x545108B4)
+      at = 4, size_at = 0x34;
+    else if (game == 0x545408B2 || game == 0x545408B6)
+      at = 36, size_at = 22;
+    else if (game == 0x315A07D2)
+      at = 40, size_at = 26;
+    const int from = int(game % 100000) * 1000 + number;
+    if (at < 0 || number < 0 || !discs_ || ratings_from_ == from)
+      return;
+    disc::GameDisc src;
+    const fs::path p = discs_->PathOf(game);
+    if (p.empty() || !src.OpenPath(p))
+      return;
+    const auto dat = theme_source::detail::Records(src, "DAT");
+    Bytes d;
+    if (game == 0x315A07D2) {
+      for (const auto &[i, x] : dat)
+        if (x.size() > 6 && (x[4] | x[5] << 8) == number)
+          d = x;
+    } else if (const auto it = dat.find(uint32_t(number)); it != dat.end()) {
+      d = it->second;
+    }
+    if (d.size() < size_t(std::max(at + 14, size_at + 2)))
+      return;
+    static const int kFrom14[12] = {0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 12, 13};
+    std::vector<int> attributes;
+    for (int i : kFrom14)
+      attributes.push_back(std::clamp(int(d[size_t(at + i)]), 0, 100));
+    ratings_from_ = from;
+    attributes_ = attributes;
+    own_attributes_ = true;
+    const int size = d[size_t(size_at)] | d[size_t(size_at + 1)] << 8;
+    if (size >= 3200 && size <= 5000) {
+      size_ = size;
+      own_size_ = true;
+    }
   }
 
   // WWE '13's / a 2K game's portraits of superstar `number` into portraits_: its game's pac\menu\menuHD.pac /
@@ -2389,6 +2436,7 @@ class Page {
   bool use_own_entrance_ = true;  // its entrance: another superstar's (index in stars_), else -1: the base's
   char entrance_filter_[64] = {};
   bool own_attributes_ = false;           // its own attributes (else the base's)
+  int ratings_from_ = -1;                 // the superstar (game x 1000 + number) OwnRatings took them from last
   std::vector<int> attributes_, base_attributes_;  // the 12 (0-100), STRIKE POWER .. TAG TEAM
   bool entrance_outfit_ = true;
   bool all_attires_ = true;  // its other WWE '13 attires too (up to 4)  // its WWE '13 entrance outfit too (kind 4), when its attire has one
