@@ -324,6 +324,30 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
       rep->meshes = int(ms.meshes.size());
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(ms));
   }
+  // Its extra models (JBOY children 0x10-0xff: WWE '13 Mankind's Mr. Socko "sockko" 0x1c, his Mandible Claw's; WWE '12
+  // has such too, ch100's elbow pads "elbow_l" / "elbow_r" 0x1a / 0x1b, shown or hidden by the moves), on the body's
+  // bones as the hair (after Kaiko's w13_char.py extra_models). In place of the base's of that number, else added.
+  if (svrfmt::ArcNode *body12 = child(base, 0)) {
+    svrfmt::Model mb;
+    std::string e;
+    if (svrfmt::JboyRead(svrfmt::ArchiveData(*body12), mb, &e))
+      for (auto &k : w13.kids) {
+        if (k.id < 0x10 || k.id > 0xFF)
+          continue;
+        const Bytes data = svrfmt::Unpack(svrfmt::ArchiveData(k));
+        svrfmt::Model ms;
+        if (!svrfmt::IsJboy(data) || !svrfmt::JboyRead(data, ms, &e) || !ms.w12)
+          continue;
+        std::string w;
+        if (!Reskeleton(ms, mb, nullptr, &w, &mb.nodes))
+          continue;
+        const Bytes out = svrfmt::JboyWrite(ms);
+        if (svrfmt::ArcNode *b = child(base, k.id))
+          svrfmt::ArchiveReplace(*b, out);
+        else
+          svrfmt::ArchiveAdd(base, "", "", k.id, out, &e);
+      }
+  }
   // Its springs (60 the settings, 61 the collisions: text, the same "Version2" in WWE '12, '13 and 2K14), for its spring
   // bones kept above, in place of the base's. A setting line: chain, radius, viscosity, gravity, spring, damping, A,
   // length correction, bend, move correction (Kaiko's w13_char.py). The chains on the legs are not kept (Reskeleton): their

@@ -362,7 +362,15 @@ partenaire, manager).
 Victoires : WWE '13 52 OK, 1 autre catcheur ; 2K14 62 OK, 7 autres catcheurs, 2 accessoires (DiBiase 2751-2752).
 Accessoires d'entrée (exemples) : Kane 2713, Cena 2718-2719, Bret Hart 2077 (+3077 en 2K14), Zack Ryder 2670, Big Boss
 Man 2671/3671, Hunico 2693, Godfather 2600-2602, HHH 2517, Cena '04 2715/2720/2721, Austin 2766, Sgt. Slaughter 2769,
-Yokozuna 2763, Big John Studd 2758, Goldberg 2754. Suite : porter ces objets (et la chaussette de Mankind, prise).
+Yokozuna 2763, Big John Studd 2758, Goldberg 2754.
+- **Objets d'entrée / de victoire (2026-11-02, vu en jeu : le Godfather et ses compagnes)** : `pac\evt\evtobj.pac`
+  `SOBJ/<modèle>` = PACH {0 modèle JBOY, 10 images ; WWE '13 : + enfant 200 de 48 o}, même format dans les trois jeux ;
+  `SOBJ/LIST` = noms (64 o : u16 n°, texte). `entrance13::Objects` prend ceux que WWE '12 n'a pas (`superstar/objects/`),
+  le jeu les ajoute à evtobj.pac (MountEntrances) en empruntant la place d'un objet numéroté (emprunter LIST, compressé
+  BPE, faisait planter).
+- **Objets des prises (vu en jeu : Mr. Socko de Mankind pendant la Mandible Claw, caché le reste du match)** : modèles en
+  plus de la tenue (enfants JBOY 0x10-0xFF ; WWE '13 Mankind « sockko » 0x1c ; WWE '12 ch100 coudières 0x1a/0x1b) ;
+  `port13_star::PortAttire` les reprend, sur le squelette du corps.
 - **Queue des victoires** (`entrance13::AddVictoryTail12`) : celles de WWE '12 finissent par un seul enregistrement,
   type 8 (vidéo 999, 3 éléments de sorte 3 : 999, 0, 0 ; 0x3C octets, Cena 6139) ; WWE '13 et 2K14 n'en ont pas : ajoutée
   (pointeurs vérifiés aux mêmes places que chez Cena). **Vu en jeu (2026-11-02)** : victoires de Warrior (2K14) et de
