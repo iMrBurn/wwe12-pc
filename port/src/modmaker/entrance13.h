@@ -439,6 +439,81 @@ inline int IntroToStage12(std::vector<Part> &parts) {
   return changed;
 }
 
+// The cameras (objects of type +8 = 0x10000): WWE '12's have two blocks a segment, "SSSS0000" and "SSSS0001", and play
+// the second (Kaiko's entrance_ring.py: "y1 is the one played"); 2K15's one-slot scripts have the first alone (Bray
+// Wyatt 398: the camera stayed on the stage, the superstar never seen, 2026-11-02). A block alone gets its twin, the
+// same bytes named "...0001". Returns how many records.
+inline int CameraTwins12(std::vector<Part> &parts) {
+  using detail::Be32;
+  using yanm::ik::detail::Put32;
+  int changed = 0;
+  for (const auto &evp : parts) {
+    if (evp.kind != "EVP" || evp.data.size() < 0x50)
+      continue;
+    std::set<uint32_t> cameras;
+    const uint32_t n = Be32(evp.data, 0x40) & 0xFFFF, t = Be32(evp.data, 0x48) + 8;
+    for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= evp.data.size(); ++i)
+      if (Be32(evp.data, t + 32 * size_t(i) + 8) == 0x10000)
+        cameras.insert(i);
+    for (auto &evz : parts) {
+      std::vector<svrfmt::PachEntry> leaves;
+      if (evz.kind != "EVZ" || evz.number != evp.number || cameras.empty() || !svrfmt::PachRead(evz.data, leaves))
+        continue;
+      bool any = false;
+      for (auto &e : leaves) {
+        if (!cameras.count(e.id))
+          continue;
+        const Bytes l = svrfmt::Unpack(e.data);
+        if (l.size() < 0x70)
+          continue;
+        const uint32_t first = Be32(l, 0x0C), count = Be32(l, 0x48);
+        std::vector<std::string> names;
+        for (uint32_t b = 0; b < count && 0x70 + 0x28 * size_t(b + 1) <= l.size(); ++b)
+          names.emplace_back(reinterpret_cast<const char *>(&l[0x70 + 0x28 * size_t(b) + 4]), 8);
+        // the blocks again, each "....0000" with no "....0001" followed by its twin
+        std::vector<std::pair<Bytes, Bytes>> blocks;  // (table entry, bytes)
+        bool twins = false;
+        for (uint32_t b = 0; b < names.size(); ++b) {
+          const size_t ent = 0x70 + 0x28 * size_t(b), y = first + Be32(l, ent + 0x24);
+          const size_t end = std::min(l.size(), y + 32 * size_t(Be32(l, ent) & 0xFFFFFF));
+          if (y >= end)
+            continue;
+          Bytes entry(l.begin() + long(ent), l.begin() + long(ent + 0x28)), data(l.begin() + long(y), l.begin() + long(end));
+          data.resize((data.size() + 31) / 32 * 32, 0);
+          blocks.push_back({entry, data});
+          const std::string &nm = names[b];
+          if (nm.compare(4, 4, "0000") == 0 &&
+              std::find(names.begin(), names.end(), nm.substr(0, 4) + "0001") == names.end()) {
+            memcpy(&entry[4 + 4], "0001", 4);
+            blocks.push_back({entry, data});
+            twins = true;
+          }
+        }
+        if (!twins)
+          continue;
+        const uint32_t k = uint32_t(blocks.size()), nf = (0x70 + 0x28 * k + 31) / 32 * 32;
+        Bytes out(l.begin(), l.begin() + 0x70);
+        out.resize(nf, 0);
+        uint32_t off = 0;
+        for (uint32_t b = 0; b < k; ++b) {
+          Put32(blocks[b].first, 0x24, off);
+          std::copy(blocks[b].first.begin(), blocks[b].first.end(), out.begin() + long(0x70 + 0x28 * size_t(b)));
+          off += uint32_t(blocks[b].second.size());
+        }
+        for (const auto &b : blocks)
+          out.insert(out.end(), b.second.begin(), b.second.end());
+        Put32(out, 0, 0x50 + 0x28 * k), Put32(out, 4, off), Put32(out, 0x0C, nf), Put32(out, 0x48, k);
+        e.data = std::move(out);
+        any = true;
+        ++changed;
+      }
+      if (any)
+        evz.data = svrfmt::PachWrite(leaves);
+    }
+  }
+  return changed;
+}
+
 // A script or track bank of any of these games made WWE '12's: slots, tail (base numbers), track names, IK legs.
 inline void To12(Part &p) {
   if (p.kind == "EVP") {
@@ -703,6 +778,7 @@ inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &o
     }
   }
   IntroToStage12(out);
+  CameraTwins12(out);
   if (out.empty() && why)
     *why = "no such entrance in its game";
   return !out.empty();
@@ -1218,6 +1294,7 @@ inline bool Victory(const disc::GameDisc &w13, int number, std::vector<Part> &ou
   for (auto &p : out)
     To12(p);
   FillTracks(out);
+  CameraTwins12(out);
   return out.size() == 2;
 }
 
