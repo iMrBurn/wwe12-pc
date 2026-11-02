@@ -1761,7 +1761,9 @@ inline bool LightBlock(Span data, Span T, int x, int y, int nframes60, BlockOut 
   L.c[kRot8].on = true, L.c[kRot8].keys = r8, L.c[kScale] = sc, L.c[kPos16] = Q16(pos, last, ctx);
   C.hash = hc, C.flags = 0x0100, C.c[kPos16] = Q16(col, last, ctx);
   out.raw.ver = 4, out.raw.tracks = {L, C};
-  out.events = GlobalEvents(fe, false);
+  // (with its effects' op 137 -> 208: WWE '12's Jeff Hardy 535 fires its pyro so, from the light track 50; left out
+  // at first, SvR 2010 Jeff Hardy had no pyro, 2026-11-02)
+  out.events = GlobalEvents(fe, true);
   return true;
 }
 

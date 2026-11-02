@@ -1582,12 +1582,14 @@ class Page {
               own_entrance_[i].data = older;
           }
       }
-      // (a number WWE '12 or another installed mod has already: a free one, 499 down to 100; 854 crashed AJ Styles)
+      // (a number WWE '12 or another installed mod has already: a free one, 499 down to 100; 854 crashed AJ Styles. The
+      // number is its theme's too, MusicNumber: one the game has a theme of played that one, none heard: SvR 2010 Jeff
+      // Hardy as 111, 2026-11-02)
       const std::set<int> taken = TakenEntrances();
-      if (entrance13::Exists12(*disc12_, entrance) || taken.count(entrance)) {
+      if (entrance13::Exists12(*disc12_, entrance) || taken.count(entrance) || Music12(entrance)) {
         int to = 0;
         for (int n = 499; n >= 100 && !to; --n)
-          if (!taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(*disc12_, n))
+          if (!taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(*disc12_, n) && !Music12(n))
             to = n;
         if (to) {
           entrance13::Renumber(own_entrance_, entrance, to);
@@ -1623,6 +1625,21 @@ class Page {
         entrance13::People12(*parts, *disc12_);
       }
     }
+  }
+
+  // Whether WWE '12 has a theme numbered `n` (sound\Music.pck's event Play_MUS_<n>_0_0; read once).
+  bool Music12(int n) {
+    if (!music12_read_ && disc12_) {
+      music12_read_ = true;
+      wwise::Package pk;
+      const disc::GameDisc *g = disc12_;
+      if (pk.Open([g](uint64_t at, uint32_t size, Bytes &o) { return g->ReadPart("sound/Music.pck", at, size, o); }))
+        for (const auto &[id, o] : wwise::AllObjects(pk))
+          music12_.insert(id);
+    }
+    char e[32];
+    snprintf(e, sizeof(e), "Play_MUS_%04d_0_0", n);
+    return music12_.count(wwise::Fnv(e)) != 0;
   }
 
   // The entrances the installed superstar mods have (their manifest's entrance_own=), beside the Mod Maker.
@@ -2452,6 +2469,8 @@ class Page {
   bool own_movie_ = false;
   moveset_port::Result own_moves_;  // its SvR 2011 moves in WWE '12's slots (moveset_port.h)
   std::string own_moves_why_;
+  bool music12_read_ = false;
+  std::set<uint32_t> music12_;  // (WWE '12's theme events, Music12)
   uint32_t own_moves_game_ = 0;  // the game its own moves come from
   bool use_own_moves_ = true;
   int entrance_ = -1;
