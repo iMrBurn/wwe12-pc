@@ -85,6 +85,19 @@ inline bool Decode(const fs::path &vgmstream, const Bytes &in_bytes, const std::
       samples.resize(size / 2 / ch * ch);
       memcpy(samples.data(), &wav[data], samples.size() * 2);
       channels = ch, rate = int(hz);
+    } else if (data && bits == 16 && ch == 6 && hz) {
+      // 5.1 (FL FR FC LFE BL BR: SvR 2007's themes, the music in the centre, LFE and rear) made stereo as a player does:
+      // L = FL + 0.707 FC + 0.5 LFE + BL, R the same on the right
+      const size_t n = size / 2 / 6;
+      samples.resize(n * 2);
+      const int16_t *in = reinterpret_cast<const int16_t *>(&wav[data]);
+      for (size_t i = 0; i < n; ++i) {
+        const int16_t *x = in + i * 6;
+        const double mid = 0.707 * x[2] + 0.5 * x[3];
+        samples[2 * i] = int16_t(std::clamp(x[0] + mid + x[4], -32768.0, 32767.0));
+        samples[2 * i + 1] = int16_t(std::clamp(x[1] + mid + x[5], -32768.0, 32767.0));
+      }
+      channels = 2, rate = int(hz);
     }
   }
   std::error_code ec;

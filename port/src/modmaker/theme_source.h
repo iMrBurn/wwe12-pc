@@ -231,7 +231,10 @@ inline bool Xact(const disc::GameDisc &g, int number, Theme &out) {
   Bytes f;
   PutLe(f, 0x166, 2), PutLe(f, ch, 2), PutLe(f, rate, 4), PutLe(f, rate * ch * 2, 4), PutLe(f, 4, 2), PutLe(f, 16, 2);
   PutLe(f, 34, 2);
-  PutLe(f, (ch + 1) / 2, 2), PutLe(f, ch == 2 ? 3 : 4, 4), PutLe(f, best_samples, 4), PutLe(f, block, 4), PutLe(f, 0, 4);
+  // (its speakers: mono, stereo, else every channel of the first ones, 5.1 = 0x3F: some themes are 5.1, the music in
+  // the centre, LFE and rear channels, SvR 2007 Bobby Lashley's; with xact.py's mono mask vgmstream refused it)
+  PutLe(f, (ch + 1) / 2, 2), PutLe(f, ch == 1 ? 4 : ch == 2 ? 3 : (1u << ch) - 1, 4), PutLe(f, best_samples, 4);
+  PutLe(f, block, 4), PutLe(f, 0, 4);
   PutLe(f, best_samples, 4), PutLe(f, 0, 4), PutLe(f, 0, 4), PutLe(f, 0, 1), PutLe(f, 4, 1);
   PutLe(f, uint32_t((data.size() + block - 1) / block), 2);
   Bytes r = {'R', 'I', 'F', 'F'};
@@ -295,15 +298,20 @@ inline bool Find(const disc::GameDisc &g, uint32_t title, int number, Theme &out
     case 0x5451080B:    // SvR 2008
     case 0x54510826:    // SvR 2009
     case 0x54510844: {  // SvR 2010
+      // (a theme's records: music x 100 and its variants + 10, + 20; SvR 2008 Johnny Nitro, 75, has only 7520)
       std::vector<int> ids;
+      auto with_variants = [&ids](int music) {
+        for (int v : {0, 10, 20})
+          ids.push_back(music * 100 + v);
+      };
       if (title != 0x5451080B) {
         const auto pro = Records(g, "PRO");
         const auto it = pro.find(uint32_t(number));
         const int music = it != pro.end() ? Le16(it->second, title == 0x54510826 ? 0xE4 : 0x178) : 0;
         if (music)
-          ids.push_back(music * 100);
+          with_variants(music);
       }
-      ids.push_back(number * 100);
+      with_variants(number);
       return Yaf(g, ids, out);
     }
     case 0x5451085D:  // SvR 2011
