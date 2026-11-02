@@ -71,3 +71,9 @@ Aussi demandé : travailler sur le Mod Maker (voir `docs/mod_maker.md`).
 - Mod Maker : porter n'importe quelle scène de victoire (même format que les entrées : Winning*.pac) ; musique de victoire et vidéo WWE '13 si pas finies pour la 1.0 ; entrées des autres jeux.
 - ~~Mod Maker : vrais noms des catcheurs pour les entrées et mouvements prédéfinis.~~ **Fait en 1.0** (2026-10-31).
 - Launcher : touches de clavier comme le port SvR 2011 (à préciser). À étudier : chronomètre de match, interférence forcée sur un bouton, types de match du port SvR 2011.
+
+## Après le Mod Maker : chargements et jeu le plus natif possible (demande de l'utilisateur, 2026-11-02)
+- Objectif : des temps de chargement courts comme le port SvR 2011 de Kaiko, et un jeu le plus natif possible (cf. « full natif » en 1.1).
+- Réponse de Kaiko (Discord, 2026-11-02) : rien de magique ; compiler les shaders au démarrage (on a `pipelines_seed.w12p` + `bd_pso_precache`), avertir si le jeu est sur un disque dur (HDD), et surtout **la vitesse dépend de la façon dont le jeu lit ses données**, pas seulement du disque.
+- Déjà mesuré chez nous (voir CLAUDE.md, « Chargements, suite ») : lectures et zlib rapides (32 Mo lus en 12 ms), le chargeur avance au rythme des images ; `wwe12_loading` (x2) livré, `wwe12_load_turbo` coupé par défaut (interblocage à 4 fils). Pistes : lecture d'1 s pour 750 Ko après les voix du speaker ; avertissement HDD dans le launcher ; comparer avec la façon de lire de Kaiko.
+
