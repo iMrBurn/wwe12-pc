@@ -16,6 +16,7 @@
 #include <wincodec.h>
 #include <wrl/client.h>
 
+#include <cctype>
 #include <filesystem>
 #include <string>
 
@@ -366,8 +367,11 @@ void PageHome() {
        "lisent."},
       {kDoctor, "Check mods", "Vérifier les mods", "The mod doctor: what will go wrong in the game with your mods, and a fix.",
        "Le docteur des mods : ce qui ira mal dans le jeu avec vos mods, et de quoi le réparer."},
-      {kAbout, "Help", "Aide", "How to make each kind of mod, step by step; what isn't possible yet.",
-       "Comment faire chaque sorte de mod, pas à pas ; ce qui n'est pas encore possible."},
+      {kAbout, "Help", "Aide",
+       "Start here: what can't go wrong, your first mod, each kind of mod step by step, what to do if something goes "
+       "wrong.",
+       "Commencez ici : ce qu'on ne peut pas casser, votre premier mod, chaque sorte de mod pas à pas, quoi faire si ça "
+       "ne va pas."},
   };
   for (const auto &it : items) {
     if (ImGui::Button(g_fr ? it.fr : it.en, ImVec2(220, 0)))
@@ -429,24 +433,71 @@ void PageFiles() {
   g_files.Draw(g_fr, g_device.Get(), g_disc, g_mods);
 }
 
-// The help: short step-by-step guides (like the manual in Kaiko's Mod Maker), then the credits.
+// The help: first what can't go wrong (for players new to modding), then short step-by-step guides (like the manual in
+// Kaiko's Mod Maker), the words of modding, what to do when something goes wrong, then the credits. A search box shows
+// the guides that have the words typed.
 struct Guide {
   const char *title_en, *title_fr;
-  const char *steps_en[7], *steps_fr[7];
+  const char *steps_en[9], *steps_fr[9];
 };
 const Guide kGuides[] = {
-    {"Before anything: add your other games",
-     "Avant tout : ajouter vos autres jeux",
+    {"Your first mod in 5 minutes",
+     "Votre premier mod en 5 minutes",
+     {"Close the game first (the Mod Maker writes files it uses).",
+      "If you own another WWE game (SvR 2007 to 2011, WWE '13, 2K14 to 2K17), add it in MY GAME DISCS. No other "
+      "game? Every page still works with WWE '12's own content.",
+      "Go to NEW SUPERSTAR and pick a superstar of that game. Keep the proposed choices: click Next until Finish.",
+      "Finish makes the mod and installs it: nothing else to do.",
+      "Start the game: your superstar is on the superstar select screen, in the DLC tile, with his look, entrance, "
+      "music and victory scene when his game has them.",
+      "Not happy with it? In the launcher, MODS page, untick it: the game is as before."},
+     {"Fermez d'abord le jeu (le Mod Maker écrit des fichiers qu'il utilise).",
+      "Si vous avez un autre jeu WWE (SvR 2007 à 2011, WWE '13, 2K14 à 2K17), ajoutez-le dans MES DISQUES. Pas d'autre "
+      "jeu ? Toutes les pages marchent aussi avec ce qu'il y a dans WWE '12.",
+      "Allez dans NOUVEAU et choisissez un catcheur de ce jeu. Gardez les choix proposés : Suivant jusqu'à Terminer.",
+      "Terminer crée le mod et l'installe : rien d'autre à faire.",
+      "Lancez le jeu : votre catcheur est sur l'écran de choix, dans la case DLC, avec son apparence, son entrée, sa "
+      "musique et sa scène de victoire quand son jeu en a.",
+      "Pas content ? Dans le launcher, page MODS, décochez-le : le jeu redevient comme avant."}},
+    {"Add your other games",
+     "Ajouter vos autres jeux",
      {"Go to MY GAME DISCS.",
       "Add each WWE game you own (SvR 2007 to 2011, WWE '13, 2K14 to 2K17): its disc image (.iso) or its folder; "
       "their DLC with \"DLC folder...\".",
-      "The Mod Maker reads them where they are: nothing is copied, nothing is shared.",
+      "The Mod Maker reads them where they are: nothing is copied, nothing is sent anywhere.",
       "Added once, they are offered in every assistant."},
      {"Allez dans MES DISQUES.",
       "Ajoutez chaque jeu WWE que vous possédez (SvR 2007 à 2011, WWE '13, 2K14 à 2K17) : son image disque (.iso) ou "
       "son dossier ; leurs DLC avec « Dossier des DLC... ».",
-      "Le Mod Maker les lit là où ils sont : rien n'est copié, rien n'est partagé.",
+      "Le Mod Maker les lit là où ils sont : rien n'est copié, rien n'est envoyé nulle part.",
       "Ajoutés une fois, ils sont proposés dans tous les assistants."}},
+    {"A new superstar",
+     "Un nouveau catcheur",
+     {"NEW SUPERSTAR.",
+      "1. Look: a superstar of your other games (with his portraits when the game has them), a file, a 3D model "
+      "(.fbx: Mixamo, VRChat, Blender...), or the base. His portrait: his game's, a picture of yours, or the base's.",
+      "2. Base: a WWE '12 superstar who lends what the new one lacks. A superstar WWE '12 also has is his own base.",
+      "What comes from his own game, when it has it: his entrance (SvR 2007 to 2011, WWE '13, 2K14 to 2K17), his "
+      "victory scene, his music, his ratings and height, his moves (SvR 2011, WWE '13). Step 2 says what he brings.",
+      "3. Name, 4. Entrance video: the base's, his own (SvR 2008 to 2011, WWE 2K15 to 2K17 with RAD Video Tools, see "
+      "MY GAME DISCS), or one of yours (any video or picture).",
+      "5. Look at him in 3D, then 6. Finish: a new superstar, or An attire of <base> (in place of one of his attires); "
+      "the mod is made and installed.",
+      "In the game: superstar select screen, DLC tile. Added superstars are everywhere (Universe, Create a Story)."},
+     {"NOUVEAU.",
+      "1. Apparence : un catcheur de vos autres jeux (avec ses portraits quand le jeu en a), un fichier, un modèle 3D "
+      "(.fbx : Mixamo, VRChat, Blender...), ou la base. Son portrait : celui de son jeu, une image à vous, ou celui de la "
+      "base.",
+      "2. Base : un catcheur de WWE '12 qui prête ce qui manque au nouveau. Un catcheur qui existe aussi dans WWE '12 "
+      "est sa propre base.",
+      "Ce qui vient de son jeu, quand il l'a : son entrée (SvR 2007 à 2011, WWE '13, 2K14 à 2K17), sa scène de "
+      "victoire, sa musique, ses notes et sa taille, ses prises (SvR 2011, WWE '13). L'étape 2 dit ce qu'il apporte.",
+      "3. Nom, 4. Vidéo d'entrée : celle de la base, la sienne (SvR 2008 à 2011, WWE 2K15 à 2K17 avec RAD Video Tools, "
+      "voir MES DISQUES), ou une à vous (vidéo ou image).",
+      "5. Regardez-le en 3D, puis 6. Terminer : un nouveau catcheur, ou Une tenue de <base> (à la place d'une de ses "
+      "tenues) ; le mod est créé et installé.",
+      "Dans le jeu : écran de choix des catcheurs, case DLC. Les catcheurs ajoutés sont partout (Univers, Créer un "
+      "scénario)."}},
     {"A new arena (from another game)",
      "Une nouvelle arène (d'un autre jeu)",
      {"ARENAS, tab New arena.",
@@ -454,7 +505,7 @@ const Guide kGuides[] = {
       "2. Base arena: one of WWE '12's, used for what the other game lacks. One proposed; one base per arena is best.",
       "3. Name and banner: the name and the picture on the arena select screen.",
       "4. What comes with it: VS screen, plates, crowd, transition video (untick one if the game has trouble with it).",
-      "5. Look at it in 3D, then 6. Finish: the mod is made and installed; Test in game.",
+      "5. Look at it in 3D, then 6. Finish: the mod is made and installed.",
       "In the game: arena select, then LB / RB for the next pages (also in Universe)."},
      {"ARÈNES, onglet Nouvelle arène.",
       "1. Départ : le jeu, puis l'arène (son tablier est montré).",
@@ -462,50 +513,18 @@ const Guide kGuides[] = {
       "une base par arène.",
       "3. Nom et bannière : le nom et l'image sur l'écran de choix des arènes.",
       "4. Ce qui vient avec : écran VS, plaques, public, vidéo de transition (décochez-en un si le jeu a du mal).",
-      "5. Regardez-la en 3D, puis 6. Terminer : le mod est créé et installé ; Tester en jeu.",
+      "5. Regardez-la en 3D, puis 6. Terminer : le mod est créé et installé.",
       "Dans le jeu : choix de l'arène, puis LB / RB pour les pages suivantes (aussi dans l'Univers)."}},
-    {"A new superstar",
-     "Un nouveau catcheur",
-     {"NEW SUPERSTAR.",
-      "1. Look: a superstar of your other games (with its portraits when the game has them), a file, a 3D model "
-      "(.fbx: Mixamo, VRChat, Blender...), or the base. Its portrait: its game's, a picture of yours, or the base's.",
-      "2. Base: gives the moves, ratings and entrance. A superstar WWE '12 also has is its own base at once.",
-      "3. Name, 4. Entrance video: the base's, its own from SvR 2011 or WWE 2K15-2K17 (with RAD Video Tools, see "
-      "MY GAME DISCS), or one of yours (any video or picture).",
-      "5. Look at it in 3D, then 6. Finish: a new superstar, or An attire of <base> (in place of one of his attires); "
-      "the mod is made and installed; Test in game.",
-      "In the game: superstar select screen, DLC tile. Added superstars are everywhere (Universe, Create a Story)."},
-     {"NOUVEAU.",
-      "1. Apparence : un catcheur de vos autres jeux (avec ses portraits quand le jeu en a), un fichier, un modèle 3D "
-      "(.fbx : Mixamo, VRChat, Blender...), ou la base. Son portrait : celui de son jeu, une image à vous, ou celui de la "
-      "base.",
-      "2. Base : donne les prises, les stats et l'entrée. Un catcheur qui existe aussi dans WWE '12 est sa propre "
-      "base d'office.",
-      "3. Nom, 4. Vidéo d'entrée : celle de la base, la sienne de SvR 2011 ou de WWE 2K15-2K17 (avec RAD Video "
-      "Tools, voir MES DISQUES), ou une à vous (vidéo ou image).",
-      "5. Regardez-le en 3D, puis 6. Terminer : un nouveau catcheur, ou Une tenue de <base> (à la place d'une de ses "
-      "tenues) ; le mod est créé et installé ; Tester en jeu.",
-      "Dans le jeu : écran de choix des catcheurs, case DLC. Les catcheurs ajoutés sont partout (Univers, Créer un "
-      "scénario)."}},
     {"An entrance video, pictures, textures",
      "Une vidéo d'entrée, des images, des textures",
      {"VIDEOS: a superstar's titantron (big screen) and minitron (stage screen) from any video or picture, or from "
-      "its own in your other games (Look for its movie in my other games: SvR 2011, WWE 2K15 to 2K17).",
+      "his own in your other games (Look for his movie in my other games).",
       "TEXTURES: change any picture of the game (menus, renders, logos) from the texture dumps.",
       "SUPERSTARS / ARENAS (Retexture): change an attire's or an arena's pictures and see them in 3D."},
      {"VIDÉOS : le titantron (grand écran) et le minitron (écran de la scène) d'un catcheur, depuis n'importe quelle "
-      "vidéo ou image, ou depuis les siens dans vos autres jeux (Chercher sa vidéo dans mes autres jeux : SvR 2011, "
-      "WWE 2K15 à 2K17).",
+      "vidéo ou image, ou depuis les siens dans vos autres jeux (Chercher sa vidéo dans mes autres jeux).",
       "TEXTURES : changer n'importe quelle image du jeu (menus, renders, logos) depuis les dumps de textures.",
       "CATCHEURS / ARÈNES (Retoucher) : changer les images d'une tenue ou d'une arène et les voir en 3D."}},
-    {"Your mods: turn on, off, share",
-     "Vos mods : activer, désactiver, partager",
-     {"Every mod is a .svrmod file, saved where you chose: share that file.",
-      "The launcher (MODS page) turns mods on and off and removes them; a .svrmod received is installed there.",
-      "Close the game before making or installing a mod (its files are in use)."},
-     {"Chaque mod est un fichier .svrmod, enregistré où vous l'avez choisi : c'est ce fichier qu'on partage.",
-      "Le launcher (page MODS) active, désactive et supprime les mods ; un .svrmod reçu s'y installe.",
-      "Fermez le jeu avant de créer ou d'installer un mod (ses fichiers sont utilisés)."}},
     {"Portraits, songs, crowd signs, menu backgrounds",
      "Portraits, musiques, pancartes, fonds du menu",
      {"MEDIA: the game's superstars' portraits (a picture each) and entrance songs, in one pack. The songs go to your "
@@ -541,57 +560,158 @@ const Guide kGuides[] = {
       "déplacez-le ; Exporter en OBJ écrit un objet (OBJ, MTL, PNG).",
       "CATCHEURS, Matières : la brillance et la teinte de la peau et de chaque partie de la tenue. Cochez plusieurs "
       "parties pour les changer ensemble."}},
+    {"Your mods: turn on, off, share",
+     "Vos mods : activer, désactiver, partager",
+     {"Every mod is a .svrmod file, saved where you chose: share that file.",
+      "The launcher (MODS page) turns mods on and off and removes them; a .svrmod received is installed there.",
+      "A mod someone sends you holds what they made from their own games: install only mods you trust.",
+      "Close the game before making or installing a mod (its files are in use)."},
+     {"Chaque mod est un fichier .svrmod, enregistré où vous l'avez choisi : c'est ce fichier qu'on partage.",
+      "Le launcher (page MODS) active, désactive et supprime les mods ; un .svrmod reçu s'y installe.",
+      "Un mod reçu contient ce que son auteur a fait depuis ses jeux : n'installez que des mods de confiance.",
+      "Fermez le jeu avant de créer ou d'installer un mod (ses fichiers sont utilisés)."}},
     {"When something goes wrong",
      "Quand quelque chose ne va pas",
-     {"CHECK MODS reads your installed mods and says what will go wrong in the game, with a button when it can fix it.",
-      "A black screen at a match with an added superstar: check its mod there; an old number kept for a mod you removed "
-      "can be forgotten (Forget them).",
-      "Still stuck: turn the last mod off in the launcher (MODS page) and start again."},
-     {"VÉRIFIER lit vos mods installés et dit ce qui ira mal dans le jeu, avec un bouton quand il peut le réparer.",
-      "Un écran noir au match avec un catcheur ajouté : vérifiez son mod là ; un ancien numéro gardé pour un mod retiré "
-      "peut être oublié (Les oublier).",
-      "Toujours bloqué : désactivez le dernier mod dans le launcher (page MODS) et relancez."}},
+     {"Don't worry: your game files are never changed, so everything can be undone.",
+      "First: CHECK MODS. It reads your installed mods and says what will go wrong in the game, with a button when it "
+      "can fix it.",
+      "The game crashes or shows a black screen with a mod: in the launcher (MODS page), untick the last mod you "
+      "added and start again. Then make that mod again, or with other choices (step 4 of NEW SUPERSTAR has boxes to "
+      "untick).",
+      "A black screen at a match with an added superstar: check his mod in CHECK MODS; an old number kept for a mod "
+      "you removed can be forgotten (Forget them).",
+      "Your save: a copy is made before every change the mods make (Documents\\wwe12\\SaveBackups); the launcher's "
+      "SAVES page keeps its own copies and puts one back.",
+      "To ask for help (Discord or GitHub): say what you did, and join the game's log (logs folder beside the game, "
+      "the newest wwe12_NNN.log). A screenshot helps a lot."},
+     {"Pas d'inquiétude : les fichiers de votre jeu ne sont jamais modifiés, tout peut donc être défait.",
+      "D'abord : VÉRIFIER. Il lit vos mods installés et dit ce qui ira mal dans le jeu, avec un bouton quand il peut le "
+      "réparer.",
+      "Le jeu plante ou reste sur un écran noir avec un mod : dans le launcher (page MODS), décochez le dernier mod "
+      "ajouté et relancez. Puis refaites ce mod, ou avec d'autres choix (l'étape 4 de NOUVEAU a des cases à décocher).",
+      "Un écran noir au match avec un catcheur ajouté : vérifiez son mod dans VÉRIFIER ; un ancien numéro gardé pour un "
+      "mod retiré peut être oublié (Les oublier).",
+      "Votre sauvegarde : une copie est faite avant chaque changement des mods (Documents\\wwe12\\SaveBackups) ; la "
+      "page SAUVEGARDES du launcher garde ses propres copies et en remet une.",
+      "Pour demander de l'aide (Discord ou GitHub) : dites ce que vous avez fait, et joignez le journal du jeu (dossier "
+      "logs à côté du jeu, le wwe12_NNN.log le plus récent). Une capture d'écran aide beaucoup."}},
+    {"The words of modding",
+     "Les mots du modding",
+     {"Mod: what you add to the game (a superstar, an arena, pictures...), kept apart from its files, on or off at will.",
+      "Base: a WWE '12 superstar or arena that lends what the added one lacks (moves, sounds, places).",
+      "Port: taking a superstar or an arena from another WWE game and making it WWE '12's.",
+      "Disc image (.iso): a copy of a game's disc in one file, made from your own disc.",
+      "Launcher: WWE12 Launcher.exe, the window that starts the game, with its MODS, TEXTURES and SAVES pages.",
+      "Titantron / minitron: the big screen and the stage screen during an entrance.",
+      "Texture: a picture the game puts on a 3D model (a face, an attire, a ring apron)."},
+     {"Mod : ce que vous ajoutez au jeu (un catcheur, une arène, des images...), rangé à part de ses fichiers, activé "
+      "ou non à volonté.",
+      "Base : un catcheur ou une arène de WWE '12 qui prête ce qui manque à celui qu'on ajoute (prises, sons, places).",
+      "Portage : prendre un catcheur ou une arène d'un autre jeu WWE et en faire celui de WWE '12.",
+      "Image disque (.iso) : la copie du disque d'un jeu en un seul fichier, faite depuis votre propre disque.",
+      "Launcher : WWE12 Launcher.exe, la fenêtre qui lance le jeu, avec ses pages MODS, TEXTURES et SAUVEGARDES.",
+      "Titantron / minitron : le grand écran et l'écran de la scène pendant une entrée.",
+      "Texture : une image que le jeu pose sur un modèle 3D (un visage, une tenue, un tablier de ring)."}},
     {"Not yet",
      "Pas encore",
-     {"Entrances of other games' superstars (they take their base's), and the moves of SvR 2011 and 2K ones (WWE '13's "
-      "come with them).",
+     {"The moves of SvR 2007 to 2010 and of the 2K games' superstars (they take their base's).",
+      "The props of SvR entrances WWE '12 hasn't (hidden), and SvR 2007's victory scenes.",
       "Adding a fifth attire to a superstar of the game: replacing one works (a WWE '13 port brings up to 4 of its own).",
-      "WWE '13 and WWE 2K14 entrance videos (an early Bink 2 that RAD Video Tools doesn't read).",
       "Moving hair and cloth on imported models (they follow the head and body)."},
-     {"Les entrées des catcheurs des autres jeux (ils prennent celle de leur base), et les prises de ceux de SvR 2011 et "
-      "des 2K (celles de WWE '13 viennent avec eux).",
+     {"Les prises des catcheurs de SvR 2007 à 2010 et des 2K (ils prennent celles de leur base).",
+      "Les accessoires des entrées SvR que WWE '12 n'a pas (cachés), et les scènes de victoire de SvR 2007.",
       "Ajouter une 5e tenue à un catcheur du jeu : en remplacer une marche (un catcheur porté de WWE '13 garde jusqu'à 4 "
       "tenues à lui).",
-      "Les vidéos d'entrée de WWE '13 et de WWE 2K14 (un Bink 2 ancien que RAD Video Tools ne lit pas).",
       "Les cheveux et vêtements qui bougent sur les modèles importés (ils suivent la tête et le corps)."}},
 };
 
+// Letters compared without case or accents (é = e), for the search box.
+std::string HelpKey(const char *s) {
+  std::string out;
+  for (const unsigned char *p = reinterpret_cast<const unsigned char *>(s); *p; ++p) {
+    if (p[0] == 0xC3 && p[1]) {  // (UTF-8 Latin-1 letters: their plain letter)
+      static const char kPlain[] = "aaaaaaaceeeeiiiidnooooo/ouuuuyty";
+      out += kPlain[(p[1] - 0x80) & 0x1F];  // (upper and lower case alike)
+      ++p;
+    } else {
+      out += char(tolower(*p));
+    }
+  }
+  return out;
+}
+
 void PageAbout() {
   Title(g_fr ? "AIDE" : "HELP");
+  // First what can't go wrong: modding for the first time is less scary so.
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.16f, 0.30f, 0.20f, 0.55f));
+  ImGui::BeginChild("##reassure", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
+  ImGui::TextColored(ImVec4(0.6f, 1.0f, 0.65f, 1.0f), "%s",
+                     g_fr ? "Pas de panique : vous ne pouvez rien casser." : "No worries: you can't break anything.");
+  const char *calm_fr[] = {
+      "Le Mod Maker ne modifie jamais les fichiers de votre jeu : chaque mod est rangé à part.",
+      "Un mod s'éteint d'un clic dans le launcher (page MODS) : le jeu redevient comme avant.",
+      "Votre sauvegarde est copiée avant chaque changement des mods.",
+      "Chaque assistant vous guide étape par étape et propose des choix qui marchent : en cas de doute, gardez-les."};
+  const char *calm_en[] = {
+      "The Mod Maker never changes your game's files: every mod is kept apart.",
+      "One click in the launcher (MODS page) turns a mod off: the game is as before.",
+      "Your save is copied before every change the mods make.",
+      "Each assistant guides you step by step and proposes choices that work: when in doubt, keep them."};
+  for (const char *t : g_fr ? calm_fr : calm_en) {
+    ImGui::Bullet();
+    ImGui::TextWrapped("%s", t);
+  }
+  ImGui::EndChild();
+  ImGui::PopStyleColor();
+  ImGui::Dummy(ImVec2(0, 6));
+  static char find[64] = {};
+  ImGui::SetNextItemWidth(320);
+  ImGui::InputTextWithHint("##help_find", g_fr ? "Rechercher dans l'aide (ex. : musique, arène, écran noir)"
+                                               : "Search the help (e.g. music, arena, black screen)",
+                           find, sizeof(find));
+  const std::string want = HelpKey(find);
+  ImGui::Dummy(ImVec2(0, 4));
+  int shown = 0;
   for (const auto &g : kGuides) {
+    const char *const *steps = g_fr ? g.steps_fr : g.steps_en;
+    if (!want.empty()) {  // (only the guides with the words: opened)
+      bool has = HelpKey(g_fr ? g.title_fr : g.title_en).find(want) != std::string::npos;
+      for (int i = 0; i < 9 && !has; ++i)
+        has = steps[i] && HelpKey(steps[i]).find(want) != std::string::npos;
+      if (!has)
+        continue;
+      ImGui::SetNextItemOpen(true);
+    }
+    ++shown;
     if (!ImGui::CollapsingHeader(g_fr ? g.title_fr : g.title_en, &g == kGuides ? ImGuiTreeNodeFlags_DefaultOpen : 0))
       continue;
     ImGui::Indent(12);
-    for (int i = 0; i < 7; ++i)
-      if (const char *t = g_fr ? g.steps_fr[i] : g.steps_en[i]) {
+    for (int i = 0; i < 9; ++i)
+      if (const char *t = steps[i]) {
         ImGui::Bullet();
         ImGui::TextWrapped("%s", t);
       }
     ImGui::Unindent(12);
     ImGui::Dummy(ImVec2(0, 4));
   }
+  if (!shown)
+    ImGui::TextDisabled("%s", g_fr ? "Rien trouvé : essayez un autre mot." : "Nothing found: try another word.");
   ImGui::Dummy(ImVec2(0, 10));
   ImGui::SeparatorText(g_fr ? "À propos" : "About");
   ImGui::TextWrapped("%s", g_fr ? "Mod Maker de WWE '12 PC, portage natif non officiel fait par des fans.\n\n"
                                   "Basé sur le Mod Maker du portage SmackDown vs. Raw 2011 de Kaiko, avec sa permission : "
                                   "format .svrmod, fabricant de vidéos d'entrée et encodeur Bink, lecteurs d'archives "
-                                  ".pac (svrfmt), packs de textures. Lecteur Bink porté de FFmpeg (LGPL 2.1 ou plus "
+                                  ".pac (svrfmt), packs de textures ; ses outils d'entrées des autres jeux. Entrées de SvR d'après "
+                                  "SVR11_to_WWE12_Tool de LA Max (Monday Night Max). Lecteur Bink porté de FFmpeg "
+                                  "(LGPL 2.1 ou plus "
                                   "récent). Logiciel libre sous licence GPL-3.0. Aucune donnée du jeu n'est fournie : "
                                   "le Mod Maker lit vos propres fichiers.\n\nSans lien avec WWE, THQ ou Yuke's."
                                 : "WWE '12 PC Mod Maker, for the unofficial native port made by fans.\n\n"
                                   "Based on the Mod Maker of Kaiko's SmackDown vs. Raw 2011 port, with his permission: "
                                   "the .svrmod format, the entrance movie maker and Bink encoder, the .pac readers "
-                                  "(svrfmt), texture packs. Bink reader ported from FFmpeg (LGPL 2.1 or later). Free "
+                                  "(svrfmt), texture packs; his other games' entrance tools. SvR entrances after LA Max's "
+                                  "(Monday Night Max) SVR11_to_WWE12_Tool. Bink reader ported from FFmpeg (LGPL 2.1 or "
+                                  "later). Free "
                                   "software under the GPL-3.0 licence. No game data is included: the Mod Maker reads "
                                   "your own files.\n\nNot affiliated with WWE, THQ or Yuke's.");
   ImGui::Dummy(ImVec2(0, 8));
