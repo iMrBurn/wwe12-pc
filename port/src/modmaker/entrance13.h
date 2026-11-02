@@ -806,7 +806,10 @@ inline int Announcer12(std::vector<Part> &parts, const disc::GameDisc &w12) {
 // track (0c5879e5, its base the spot: -76 / -285); 2K16 / 2K17 move another node (5b391f2a / 5b391f26) at 0, which
 // WWE '12 hasn't, and the one waiting stood at the origin under the mat (2K16 Kevin Owens / 2K17 AJ Styles,
 // 2026-11-02). In each of their blocks, WWE '12's own chunk of the waiting superstar of the same model and rank (the
-// k-th model-1 object takes WWE '12's k-th, from its entrances). Returns how many records were rebuilt.
+// k-th model-1 object takes WWE '12's k-th, from its entrances), and in their shown slots its spot (slot words 3-50:
+// the track's base and the slot's spot go together; with 2K16's spot he still stood under the mat).
+// The people around the ring (type 0x01000000, 2K16's ring announcer) have no spot in 2K16 / 2K17's slots (their game
+// places them) and stood at the origin: not shown, as in WWE '12's entrances. Returns how many objects were changed.
 inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
   using detail::Be32;
   using yanm::ik::detail::Put32;
@@ -833,8 +836,20 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
       return Bytes();
     return Bytes(l.begin() + long(y), l.begin() + long(y + Be32(l, y + 4)));
   };
-  // WWE '12's waiting chunks, by model, in order (read once, when needed)
-  std::vector<Bytes> own[3];
+  // the first shown slot of an object (its offset), 0 if none
+  auto shown = [](const Bytes &evp, uint32_t i) {
+    const size_t q = Be32(evp, 0x48) + 8 + 32 * size_t(i);
+    const uint32_t ns = Be32(evp, q + 24) >> 16, bp = Be32(evp, q + 28) + 8;
+    for (uint32_t k = 0; k < ns && bp + 212 * size_t(k + 1) <= evp.size(); ++k)
+      if (evp[bp + 212 * size_t(k) + 2] & 1)
+        return size_t(bp + 212 * size_t(k));
+    return size_t(0);
+  };
+  // WWE '12's waiting chunks and spots (slot words 3-50), by model, in order (read once, when needed)
+  struct Own {
+    Bytes chunk, spot;
+  };
+  std::vector<Own> own[3];
   bool read = false;
   auto load = [&] {
     read = true;
@@ -844,7 +859,8 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
     for (auto &k : a.root.kids) {
       if (k.group.rfind("EVP", 0) != 0)
         continue;
-      const auto objs = waiting(svrfmt::Unpack(svrfmt::ArchiveData(k)));
+      const Bytes script = svrfmt::Unpack(svrfmt::ArchiveData(k));
+      const auto objs = waiting(script);
       if (objs.empty())
         continue;
       for (auto &z : a.root.kids) {
@@ -856,8 +872,9 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
           for (auto &e : leaves)
             if (e.id == i) {
               Bytes y = chunk(svrfmt::Unpack(e.data), 0);
-              if (y.size() >= 0x18 && Be32(y, 0x14) == kRoot)
-                own[model].push_back(std::move(y));
+              const size_t s = shown(script, i);
+              if (y.size() >= 0x18 && Be32(y, 0x14) == kRoot && s)
+                own[model].push_back({std::move(y), Bytes(script.begin() + long(s + 12), script.begin() + long(s + 204))});
             }
       }
       if (!own[1].empty() && !own[2].empty())
@@ -866,8 +883,27 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
     }
   };
   int rebuilt = 0;
-  for (const auto &evp : parts) {
-    const auto objs = evp.kind == "EVP" ? waiting(evp.data) : decltype(waiting(evp.data))();
+  for (auto &evp : parts) {
+    if (evp.kind != "EVP" || evp.data.size() < 0x50)
+      continue;
+    // the people around the ring with no spot in any slot: not shown
+    const uint32_t n = Be32(evp.data, 0x40) & 0xFFFF, t = Be32(evp.data, 0x48) + 8;
+    for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= evp.data.size(); ++i) {
+      const size_t q = t + 32 * size_t(i);
+      const uint32_t ns = Be32(evp.data, q + 24) >> 16, bp = Be32(evp.data, q + 28) + 8;
+      if (Be32(evp.data, q + 8) != 0x01000000 || !shown(evp.data, i))
+        continue;
+      bool spot = false;
+      for (uint32_t k = 0; k < ns && bp + 212 * size_t(k + 1) <= evp.data.size(); ++k)
+        for (int w = 3; w <= 7; ++w)
+          spot = spot || Be32(evp.data, bp + 212 * size_t(k) + 4 * size_t(w));
+      if (spot)
+        continue;
+      for (uint32_t k = 0; k < ns && bp + 212 * size_t(k + 1) <= evp.data.size(); ++k)
+        evp.data[bp + 212 * size_t(k) + 2] = 0;
+      ++rebuilt;
+    }
+    const auto objs = waiting(evp.data);
     if (objs.empty())
       continue;
     for (auto &evz : parts) {
@@ -889,7 +925,15 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
             load();
           if (own[model].empty())
             continue;
-          const Bytes &with = own[model][k % own[model].size()];
+          const Bytes &with = own[model][k % own[model].size()].chunk;
+          const Bytes &spot = own[model][k % own[model].size()].spot;
+          {
+            const size_t q = t + 32 * size_t(i);
+            const uint32_t ns = Be32(evp.data, q + 24) >> 16, bp = Be32(evp.data, q + 28) + 8;
+            for (uint32_t s = 0; s < ns && bp + 212 * size_t(s + 1) <= evp.data.size(); ++s)
+              if (evp.data[bp + 212 * size_t(s) + 2] & 1)
+                std::copy(spot.begin(), spot.end(), evp.data.begin() + long(bp + 212 * size_t(s) + 12));
+          }
           // the record again: its header and block table, then the chunk once per block (each block NN x 32 bytes,
           // NN at the entry's +0 low byte, its offset from the first at +0x24; the size from the first at +4)
           const uint32_t first = Be32(l, 0x0C), count = Be32(l, 0x48);
