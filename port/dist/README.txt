@@ -23,7 +23,8 @@ Requirements
 ------------
 
 - Windows 10 or 11, 64-bit.
-- A graphics card with Vulkan 1.2 support (up-to-date drivers).
+- A graphics card with Vulkan 1.2 support (up-to-date drivers), or DirectX 11 for older cards
+  (choose it in the launcher: SETTINGS > ADVANCED).
 - An Xbox or PlayStation controller (DualShock 4, DualSense), or the keyboard.
 
 Laptop with two graphics cards: in Settings > System > Display > Graphics, set wwe12.exe to
@@ -38,6 +39,18 @@ Settings (wwe12.toml file)
 - svr_render_scale: internal resolution (0 = automatic, 1 = 720p, 2 = 1440p, 3 = 4K).
   In automatic mode, the game stays at 720p on Steam Deck and on graphics built into the
   processor (Intel, AMD). If the game runs slowly on your PC, set it to 1.
+- gpu_backend: "any" (default: Vulkan, then DirectX 12, then DirectX 11 if a graphics card can't
+  start one), "vulkan", "d3d12" or "d3d11" (wwe12_d3d12.exe / wwe12_d3d11.exe).
+- svr_render_scale also accepts 360, 480 and 540 (360p, 480p, 540p) for small PCs.
+- bd_aspect_ratio: 5 = AUTO (the picture fills the window, 16:10 and ultrawide included),
+  6 = STRETCH. wwe12_widescreen = false keeps the 16:9 picture with black bars.
+- wwe12_preset_names: real wrestler names for the preset entrances and move-sets
+  (preset_names.txt, lines like "8215=NAME", changes them).
+- wwe12_jukebox_menu: OPTIONS > JUKEBOX (entrance themes in the menus); wwe12_jukebox turns on
+  the game's menu music replacement.
+- wwe12_mc_unlock: extended Match Creator rules. WWE Universe: wwe12_universe_edit,
+  wwe12_universe_title_defenses, wwe12_universe_qualifiers, wwe12_universe_min_roster (15).
+  RESET UNIVERSE saves right away and can't be undone: copy your save first.
 - wwe12_60fps: 60 fps in entrances and cutscenes (experimental, off by default: title belts
   carried on a shoulder can move oddly).
 - bd_anisotropy: sharpness of textures seen at an angle (0, 2, 4, 8 or 16).

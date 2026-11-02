@@ -20,7 +20,8 @@ Requisitos
 ----------
 
 - Windows 10 u 11, 64 bits.
-- Una tarjeta gráfica compatible con Vulkan 1.2 (controladores actualizados).
+- Una tarjeta gráfica compatible con Vulkan 1.2 (controladores actualizados), o DirectX 11 para
+  tarjetas más antiguas (se elige en el launcher: SETTINGS > ADVANCED).
 - Un mando de Xbox o PlayStation (DualShock 4, DualSense), o el teclado.
 
 Portátil con dos tarjetas gráficas: en Configuración > Sistema > Pantalla > Gráficos, pon
@@ -35,6 +36,18 @@ Ajustes (archivo wwe12.toml)
 - svr_render_scale: resolución interna (0 = automática, 1 = 720p, 2 = 1440p, 3 = 4K).
   En modo automático, el juego se queda en 720p en Steam Deck y con gráficos integrados en el
   procesador (Intel, AMD). Si el juego va lento en tu PC, pon 1.
+- gpu_backend: "any" (por defecto: Vulkan, luego DirectX 12, luego DirectX 11 si una tarjeta no
+  puede iniciar uno), "vulkan", "d3d12" o "d3d11" (wwe12_d3d12.exe / wwe12_d3d11.exe).
+- svr_render_scale también acepta 360, 480 y 540 (360p, 480p, 540p) para PC modestos.
+- bd_aspect_ratio: 5 = AUTO (la imagen llena la ventana, incluidos 16:10 y ultrapanorámico),
+  6 = ESTIRAR. wwe12_widescreen = false mantiene la imagen 16:9 con barras negras.
+- wwe12_preset_names: nombres reales de los luchadores en las entradas y movimientos predefinidos
+  (preset_names.txt, líneas como "8215=NOMBRE", para cambiarlos).
+- wwe12_jukebox_menu: OPTIONS > JUKEBOX (temas de entrada en los menús); wwe12_jukebox sustituye
+  también la música de los menús del juego.
+- wwe12_mc_unlock: reglas ampliadas del Match Creator. Modo Universo: wwe12_universe_edit,
+  wwe12_universe_title_defenses, wwe12_universe_qualifiers, wwe12_universe_min_roster (15).
+  RESET UNIVERSE guarda al instante y no se puede deshacer: copia antes tu partida guardada.
 - wwe12_60fps: entradas y cinemáticas a 60 fps (experimental, desactivado por defecto: los
   cinturones llevados al hombro pueden moverse de forma rara).
 - bd_anisotropy: nitidez de las texturas vistas en ángulo (0, 2, 4, 8 o 16).

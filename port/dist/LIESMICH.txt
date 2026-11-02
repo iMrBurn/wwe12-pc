@@ -21,7 +21,8 @@ Systemanforderungen
 -------------------
 
 - Windows 10 oder 11, 64 Bit.
-- Eine Grafikkarte mit Vulkan-1.2-Unterstützung (aktuelle Treiber).
+- Eine Grafikkarte mit Vulkan-1.2-Unterstützung (aktuelle Treiber) oder DirectX 11 für ältere
+  Karten (im Launcher wählen: SETTINGS > ADVANCED).
 - Ein Xbox- oder PlayStation-Controller (DualShock 4, DualSense) oder die Tastatur.
 
 Laptop mit zwei Grafikkarten: Stellen Sie unter Einstellungen > System > Bildschirm > Grafik
@@ -37,6 +38,19 @@ Einstellungen (Datei wwe12.toml)
 - svr_render_scale: interne Auflösung (0 = automatisch, 1 = 720p, 2 = 1440p, 3 = 4K).
   Im automatischen Modus bleibt das Spiel auf dem Steam Deck und mit im Prozessor integrierter
   Grafik (Intel, AMD) bei 720p. Wenn das Spiel auf Ihrem PC ruckelt, stellen Sie 1 ein.
+- gpu_backend: „any“ (Standard: Vulkan, dann DirectX 12, dann DirectX 11, falls eine Karte keines
+  starten kann), „vulkan“, „d3d12“ oder „d3d11“ (wwe12_d3d12.exe / wwe12_d3d11.exe).
+- svr_render_scale akzeptiert auch 360, 480 und 540 (360p, 480p, 540p) für kleine PCs.
+- bd_aspect_ratio: 5 = AUTO (das Bild füllt das Fenster, auch 16:10 und Ultrawide),
+  6 = STRECKEN. wwe12_widescreen = false behält das 16:9-Bild mit schwarzen Balken.
+- wwe12_preset_names: echte Wrestlernamen für die vorgegebenen Einzüge und Move-Sets
+  (preset_names.txt, Zeilen wie „8215=NAME“, zum Ändern).
+- wwe12_jukebox_menu: OPTIONS > JUKEBOX (Einzugsmusik in den Menüs); wwe12_jukebox ersetzt
+  auch die Menümusik des Spiels.
+- wwe12_mc_unlock: erweiterte Match-Creator-Regeln. Universe-Modus: wwe12_universe_edit,
+  wwe12_universe_title_defenses, wwe12_universe_qualifiers, wwe12_universe_min_roster (15).
+  RESET UNIVERSE speichert sofort und lässt sich nicht rückgängig machen: vorher den
+  Spielstand kopieren.
 - wwe12_60fps: Einzüge und Zwischensequenzen mit 60 fps (experimentell, standardmäßig aus:
   auf der Schulter getragene Titelgürtel können sich seltsam bewegen).
 - bd_anisotropy: Schärfe schräg gesehener Texturen (0, 2, 4, 8 oder 16).

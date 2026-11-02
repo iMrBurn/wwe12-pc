@@ -20,7 +20,8 @@ Requisiti
 ---------
 
 - Windows 10 o 11, 64 bit.
-- Una scheda video compatibile con Vulkan 1.2 (driver aggiornati).
+- Una scheda video compatibile con Vulkan 1.2 (driver aggiornati), o DirectX 11 per le schede più
+  vecchie (si sceglie nel launcher: SETTINGS > ADVANCED).
 - Un controller Xbox o PlayStation (DualShock 4, DualSense), oppure la tastiera.
 
 Portatile con due schede video: in Impostazioni > Sistema > Schermo > Grafica, imposta
@@ -35,6 +36,18 @@ Impostazioni (file wwe12.toml)
 - svr_render_scale: risoluzione interna (0 = automatica, 1 = 720p, 2 = 1440p, 3 = 4K).
   In modalità automatica il gioco resta a 720p su Steam Deck e con la grafica integrata nel
   processore (Intel, AMD). Se il gioco è lento sul tuo PC, metti 1.
+- gpu_backend: "any" (predefinito: Vulkan, poi DirectX 12, poi DirectX 11 se una scheda non ne
+  avvia uno), "vulkan", "d3d12" o "d3d11" (wwe12_d3d12.exe / wwe12_d3d11.exe).
+- svr_render_scale accetta anche 360, 480 e 540 (360p, 480p, 540p) per i PC modesti.
+- bd_aspect_ratio: 5 = AUTO (l'immagine riempie la finestra, anche 16:10 e ultrawide),
+  6 = ADATTA. wwe12_widescreen = false mantiene l'immagine 16:9 con bande nere.
+- wwe12_preset_names: nomi reali dei wrestler per gli ingressi e le mosse predefinite
+  (preset_names.txt, righe come "8215=NOME", per cambiarli).
+- wwe12_jukebox_menu: OPTIONS > JUKEBOX (temi d'ingresso nei menu); wwe12_jukebox sostituisce
+  anche la musica dei menu del gioco.
+- wwe12_mc_unlock: regole estese del Match Creator. Modalità Universe: wwe12_universe_edit,
+  wwe12_universe_title_defenses, wwe12_universe_qualifiers, wwe12_universe_min_roster (15).
+  RESET UNIVERSE salva subito e non si può annullare: copia prima il salvataggio.
 - wwe12_60fps: ingressi e filmati a 60 fps (sperimentale, disattivato di default: le cinture
   portate sulla spalla possono muoversi in modo strano).
 - bd_anisotropy: nitidezza delle texture viste di sbieco (0, 2, 4, 8 o 16).
