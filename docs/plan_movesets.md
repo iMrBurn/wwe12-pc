@@ -347,6 +347,26 @@ de WWE '12 ont une queue avec la vidéo seule), et ses graphismes d'entrée (ban
 Entrées 2K14 sans accessoire inconnu de WWE '12 (le meilleur choix pour l'instant) : 109, 119, 130, 136, 144, 160, 197,
 210, 254, 298, 353, 357, 359, 360, 366, 371.
 
+### Vérification de toutes les entrées et victoires de WWE '13 et 2K14 (2026-11-02, hors jeu)
+
+Outil de travail (hors dépôt) : chaque entrée de base (n < 1000) et victoire (6000 + n) : EVP / EVZ / GMEV / PCE6
+présents, et les modèles d'objets du script que WWE '12 ne sait pas charger : **accessoires** (aucune entrée de
+WWE '12 ne les utilise) et **autres catcheurs** (modèles NNNAK d'un catcheur sans fichier `chNNN.pac` dans WWE '12 :
+partenaire, manager).
+
+| Jeu | Entrées OK | Autre catcheur absent | Accessoire inconnu | Échec (entrées spéciales sans nom) |
+|---|---|---|---|---|
+| WWE '13 | 234 | 25 | 14 | 32 |
+| 2K14 | 207 | 90 | 29 | 21 |
+
+Victoires : WWE '13 52 OK, 1 autre catcheur ; 2K14 62 OK, 7 autres catcheurs, 2 accessoires (DiBiase 2751-2752).
+Accessoires d'entrée (exemples) : Kane 2713, Cena 2718-2719, Bret Hart 2077 (+3077 en 2K14), Zack Ryder 2670, Big Boss
+Man 2671/3671, Hunico 2693, Godfather 2600-2602, HHH 2517, Cena '04 2715/2720/2721, Austin 2766, Sgt. Slaughter 2769,
+Yokozuna 2763, Big John Studd 2758, Goldberg 2754. Suite : porter ces objets (et la chaussette de Mankind, prise).
+- **Queue des victoires** (`entrance13::AddVictoryTail12`) : celles de WWE '12 finissent par un seul enregistrement,
+  type 8 (vidéo 999, 3 éléments de sorte 3 : 999, 0, 0 ; 0x3C octets, Cena 6139) ; WWE '13 et 2K14 n'en ont pas : ajoutée
+  (pointeurs vérifiés aux mêmes places que chez Cena). Pas encore vu en jeu, ni la musique de victoire.
+
 ### Graphismes d'entrée, ressorts des tenues (2026-11-01)
 
 - **Graphismes par catcheur dans WWE '12** : `movies\titantron\NNN.bik` (haut 320 × 220 = titantron, bas 320 × 100 =

@@ -149,6 +149,42 @@ inline bool AddTail12(Bytes &evp, int number) {
   return true;
 }
 
+// WWE '12's victory scripts end with a shorter tail: one record, type 8, the movie (u16 999), 3 items of kind 3 (u16
+// 999, 0, 0), 0x3C bytes (Cena's 6139). WWE '13's and 2K14's have none: given this one. Returns whether it was added.
+inline bool AddVictoryTail12(Bytes &evp, int number) {
+  using yanm::ik::detail::Put16;
+  using yanm::ik::detail::Put32;
+  auto b32 = [&](size_t o) { return uint32_t(evp[o]) << 24 | uint32_t(evp[o + 1]) << 16 | uint32_t(evp[o + 2]) << 8 | evp[o + 3]; };
+  if (evp.size() < 0x50 || memcmp(evp.data(), "0FOP", 4) || b32(0x1C) != 0)
+    return false;
+  const uint32_t t = b32(4);
+  if (t % 4 || 8 + size_t(t) + 8 > evp.size() || memcmp(&evp[8 + t], "POF0", 4))
+    return false;
+  std::vector<uint32_t> pof = yanm::ik::detail::PofRead(evp, 8 + t + 8, b32(8 + t + 4));
+  const Bytes rest(evp.begin() + ptrdiff_t(8 + t + 8 + b32(8 + t + 4)), evp.end());
+  evp.resize(8 + t);
+  Bytes tail(0x3C, 0);
+  Put16(tail, 0, uint16_t(number)), Put16(tail, 2, 1), Put32(tail, 4, t + 8);
+  Put16(tail, 8, 8), Put32(tail, 0xC, 100), Put32(tail, 0x10, 3), Put32(tail, 0x14, t + 0x18);
+  for (uint32_t i = 0; i < 3; ++i)
+    Put32(tail, 0x18 + 8 * i, 0x03000000), Put32(tail, 0x1C + 8 * i, t + 0x30 + 2 * i);
+  Put16(tail, 0x30, 999);
+  evp.insert(evp.end(), tail.begin(), tail.end());
+  Put32(evp, 0x18, 0x10000), Put32(evp, 0x1C, t);
+  for (uint32_t o : {0x1Cu - 8, t + 4, t + 0x14, t + 0x1C, t + 0x24, t + 0x2C})
+    pof.push_back(o);
+  std::sort(pof.begin(), pof.end());
+  pof.erase(std::unique(pof.begin(), pof.end()), pof.end());
+  Put32(evp, 4, t + 0x3C), Put32(evp, 0xC, t + 0x3C);
+  const Bytes pb = yanm::ik::detail::PofWrite(pof);
+  evp.insert(evp.end(), {'P', 'O', 'F', '0'});
+  for (int i = 0; i < 4; ++i)
+    evp.push_back(uint8_t(uint32_t(pb.size()) >> (24 - 8 * i)));
+  evp.insert(evp.end(), pb.begin(), pb.end());
+  evp.insert(evp.end(), rest.begin(), rest.end());
+  return true;
+}
+
 // The mod's file of a part (superstar/entrance/EVP_246.bin, GMEV_246.bin...): the game serves it as
 // /EVP<group>/<number>, /GMEV/<number, 4 digits>...
 inline std::string ModPath(const Part &p) {
@@ -246,6 +282,8 @@ inline bool Victory(const disc::GameDisc &w13, int number, std::vector<Part> &ou
       if (atoi(k.name.c_str()) != want || (k.group.rfind("EVP", 0) != 0 && k.group.rfind("EVZ", 0) != 0))
         continue;
       out.push_back({want, k.group.substr(0, 3), svrfmt::Unpack(svrfmt::ArchiveData(k))});
+      if (out.back().kind == "EVP")  // (its titantron: WWE '12's victory tail)
+        AddVictoryTail12(out.back().data, want);
       if (out.back().kind == "EVZ") {
         NameTracks12(out.back().data);
         yanm::ik::BakeEntranceTracks(out.back().data);
