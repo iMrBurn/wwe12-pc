@@ -526,7 +526,9 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     for (fs::directory_iterator it(d / "superstar" / "entrance", ec), end; !ec && it != end; it.increment(ec)) {
       const std::string f = it->path().filename().string();
       const size_t bar = f.find('_');
-      if (bar == std::string::npos || f.size() < bar + 6)
+      // (only "<KIND>_<number>.bin": a copy beside it, "EVZ_497.bin.bak", was served too, and in its place, 2026-11-02)
+      if (bar == std::string::npos || f.size() < bar + 6 || f.compare(f.size() - 4, 4, ".bin") != 0 ||
+          f.find_first_not_of("0123456789", bar + 1) != f.size() - 4)
         continue;
       const std::string kind = f.substr(0, bar);
       const int number = atoi(f.c_str() + bar + 1);
