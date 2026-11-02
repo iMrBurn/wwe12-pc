@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -188,6 +189,8 @@ inline bool AddVictoryTail12(Bytes &evp, int number) {
 // The mod's file of a part (superstar/entrance/EVP_246.bin, GMEV_246.bin...): the game serves it as
 // /EVP<group>/<number>, /GMEV/<number, 4 digits>...
 inline std::string ModPath(const Part &p) {
+  if (p.kind == "SOBJ")  // (its objects: served in evtobj.pac with the entrance or the victory scene)
+    return "superstar/objects/SOBJ_" + std::to_string(p.number) + ".bin";
   return "superstar/entrance/" + p.kind + "_" + std::to_string(p.number) + ".bin";
 }
 
@@ -254,6 +257,66 @@ inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &o
   if (out.empty() && why)
     *why = "no such entrance in WWE '13";
   return !out.empty();
+}
+
+// The entrance / victory objects (props: Cena's chain 2718, Kane's mask 2713...) WWE '12 hasn't: the scripts' object
+// tables (EVP: u16 count at +0x42, table at +0x48 + 8, 32-byte objects, model at +4) name models; those under 10000
+// are pac\evt\evtobj.pac's SOBJ/<model> (PACH {0 the JBOY model, 10 its pictures}; WWE '13's add a 48-byte child
+// 200), the same format in WWE '12, '13 and 2K14. Those of `parts` that the player's WWE '12 (w12) has no SOBJ of,
+// taken from the game `src`'s evtobj.pac (then its DLC's evtobj_dlcNN.pac), as parts "SOBJ" numbered by model.
+inline std::vector<Part> Objects(const disc::GameDisc &src, const disc::GameDisc &w12, const std::vector<Part> &parts) {
+  auto be = [](const Bytes &b, size_t o) {
+    return o + 4 <= b.size() ? uint32_t(b[o]) << 24 | uint32_t(b[o + 1]) << 16 | uint32_t(b[o + 2]) << 8 | b[o + 3] : 0u;
+  };
+  std::set<uint32_t> want;
+  for (const auto &p : parts)
+    if (p.kind == "EVP" && p.data.size() >= 0x50 && !memcmp(p.data.data(), "0FOP", 4)) {
+      const uint32_t n = be(p.data, 0x40) & 0xFFFF, t = be(p.data, 0x48) + 8;
+      for (uint32_t i = 0; i < n; ++i)
+        if (const uint32_t m = be(p.data, t + 32 * size_t(i) + 4); m >= 1000 && m < 10000)
+          want.insert(m);
+    }
+  auto open = [](const disc::GameDisc &g, const std::string &f, svrfmt::Archive &a) {
+    Bytes b;
+    if (!g.Read(f, b))
+      return false;
+    if (svrfmt::IsXcompress(b)) {
+      Bytes o;
+      if (!svrfmt::XcompressDecode(b, o))
+        return false;
+      b.swap(o);
+    }
+    return svrfmt::ArchiveOpen(b, a, nullptr);
+  };
+  auto trimmed = [](std::string s) {
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\0'))
+      s.pop_back();
+    return s;
+  };
+  std::vector<Part> out;
+  svrfmt::Archive a12;
+  if (want.empty() || !open(w12, "pac/evt/evtobj.pac", a12))
+    return out;
+  for (const auto &k : a12.root.kids)
+    if (k.group.rfind("SOBJ", 0) == 0)
+      want.erase(uint32_t(atoi(trimmed(k.name).c_str())));
+  std::vector<std::string> files = {"pac/evt/evtobj.pac"};
+  for (const auto &f : src.List("pac/evt"))
+    if (f.rfind("evtobj_dlc", 0) == 0)
+      files.push_back("pac/evt/" + f);
+  for (const auto &f : files) {
+    svrfmt::Archive a;
+    if (want.empty() || !open(src, f, a))
+      continue;
+    for (auto &k : a.root.kids) {
+      const uint32_t m = uint32_t(atoi(trimmed(k.name).c_str()));
+      if (k.group.rfind("SOBJ", 0) == 0 && want.count(m)) {
+        out.push_back({int(m), "SOBJ", svrfmt::Unpack(svrfmt::ArchiveData(k))});
+        want.erase(m);
+      }
+    }
+  }
+  return out;
 }
 
 // A superstar's victory scene in WWE '13 (pac\evt\Winning00-03.pac, xcompressed EPK8, groups "EVP " / "EVZ ", entries

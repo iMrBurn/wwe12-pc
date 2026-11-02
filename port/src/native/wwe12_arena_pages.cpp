@@ -508,6 +508,19 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         part.name = name;
         parts["pac/evt/evtmov.pac"].push_back(std::move(part));
       }
+    // the objects of its entrance and victory scene that WWE '12 hasn't (superstar\objects\SOBJ_<model>.bin: Cena's
+    // chain, Kane's mask..., entrance13::Objects) as evtobj.pac's SOBJ/<model>
+    for (fs::directory_iterator it(d / "superstar" / "objects", ec), end; !ec && it != end; it.increment(ec)) {
+      const std::string f = it->path().filename().string();
+      const int model = f.rfind("SOBJ_", 0) == 0 ? atoi(f.c_str() + 5) : 0;
+      Part part;
+      if (model < 1000 || model > 9999 || !ReadHost(it->path(), part.data) || part.data.empty())
+        continue;
+      part.group = "SOBJ";
+      part.name = std::to_string(model);
+      parts["pac/evt/evtobj.pac"].push_back(std::move(part));
+    }
+    ec.clear();
     if (atoi(Value(std::string(m.begin(), m.end()), "entrance_own").c_str()) <= 0)
       continue;
     for (fs::directory_iterator it(d / "superstar" / "entrance", ec), end; !ec && it != end; it.increment(ec)) {
@@ -603,9 +616,14 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         }
         continue;
       }
+      // (one of its kind: a numbered name for a numbered one; evtobj.pac's SOBJ/LIST, BPE-packed, lent its packing to
+      // added objects and the game crashed reading them, 2026-11-02)
+      const auto digits = [](const std::string &t) {
+        return !t.empty() && std::all_of(t.begin(), t.end(), [](char c) { return c >= '0' && c <= '9'; });
+      };
       std::string like;
       for (const auto &h : have)
-        if (h.size() == name.size()) {
+        if (h.size() == name.size() && digits(h) == digits(name)) {
           like = lead + group + "/" + h;
           break;
         }
@@ -621,6 +639,8 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       Append(pac, part.data.data(), part.data.size(), e.sector, e.units);
       part.data = {};
       g_entrances[lead + group + "/" + name] = e;
+      if (rel == "pac/evt/evtobj.pac")  // (how the game asks its objects' names isn't known yet: both ways)
+        g_entrances[group + "/" + name] = e;
     }
     WriteHost(out / fs::path(rel), pac);
   }

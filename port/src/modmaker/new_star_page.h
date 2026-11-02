@@ -1333,6 +1333,13 @@ class Page {
     own_victory_.clear();
     if (scenes)
       entrance13::Victory(src, number, own_victory_);
+    // the objects of both that WWE '12 hasn't (Cena's chain, Kane's mask...): from its game's evtobj.pac
+    own_objects_.clear();
+    if (scenes) {
+      std::vector<entrance13::Part> both = own_entrance_;
+      both.insert(both.end(), own_victory_.begin(), own_victory_.end());
+      own_objects_ = entrance13::Objects(src, *disc12_, both);
+    }
   }
 
   // Step 2's part: its own WWE '13 / 2K14 entrance.
@@ -2049,6 +2056,9 @@ class Page {
     if (use_own_victory_)  // (its WWE '13 victory scene: the game serves it under 6000 + its slot)
       for (const auto &part : own_victory_)
         entries.push_back({"superstar/victory/" + part.kind + ".bin", part.data});
+    if (own_entrance || use_own_victory_)  // (their objects WWE '12 hasn't: the game adds them to evtobj.pac)
+      for (const auto &part : own_objects_)
+        entries.push_back({entrance13::ModPath(part), part.data});
     if (use_theme_ && !theme_.stream.empty() && (look_ == 2 || look_ == 3)) {  // (its theme, Wwise PCM)
       Bytes pcm = theme_convert::ToPcm(Vgmstream(), theme_.stream, std::wstring(theme_.ext.begin(), theme_.ext.end()));
       if (!pcm.empty())
@@ -2124,6 +2134,7 @@ class Page {
   std::vector<newmoves13::Move> own_new_moves_;  // its WWE '13 moves WWE '12 hasn't (newmoves13.h)
   std::vector<entrance13::Part> own_entrance_;  // its WWE '13 entrance (entrance13.h), else empty
   std::vector<entrance13::Part> own_victory_;  // its WWE '13 victory scene (entrance13::Victory), else empty
+  std::vector<entrance13::Part> own_objects_;  // ... their objects WWE '12 hasn't (entrance13::Objects)
   bool use_own_victory_ = true;
   screens_ui::ScreenChoice ribbon_{true}, wall_{false};  // its ribbon around the arena and its stage wall
   theme_source::Theme theme_;  // its theme in its game (theme_source.h), stream empty if none
