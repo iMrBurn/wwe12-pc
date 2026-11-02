@@ -1602,7 +1602,6 @@ class Page {
         entrance13::Waiting12(*parts, *disc12_);
         entrance13::WaitingFirst12(*parts);
         entrance13::People12(*parts, *disc12_);
-        entrance13::Intro12(*parts, *disc12_);
       }
     }
   }
