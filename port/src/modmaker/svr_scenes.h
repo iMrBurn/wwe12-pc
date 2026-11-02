@@ -11,8 +11,10 @@
 // Theirs beside the scenes (compared with WWE '12's, 2026-11-02):
 //  - the game event script (gm.pac GMEV): every 2007-2009 one has an empty PACH where all of WWE '12's (and 2011's)
 //    7-part ones have a 417-byte YMKs (part 5); SvR 2010's either that or a part 4 WWE '12 never has (a PACH with one
-//    entry), and none of 2010's 321 is a WWE '12 one: not WWE '12's format. WWE '12's own Cena's (139, the same bytes
-//    as 2011's 139, svr_scenes' fallback) is taken instead, under the entrance's number;
+//    entry), and none of 2010's 321 is a WWE '12 one. But the other parts are WWE '12's layout (2010 Jeff Hardy 111
+//    against WWE '12's 535: parts 0-3 the same records, 6 the same bytes), and every WWE '12 one has the same parts 4
+//    (an empty PACH) and 5: GmevTo12 keeps its own 0-3 and 6 with WWE '12's 4 and 5 (Cena's, 139). It's what fires
+//    the pyro: with Cena's whole script none showed, with this one it did (2026-11-02);
 //  - the effects (prtcls.pac): 2007-2009 have another group (PCEN, an older format): none (no pyro). SvR 2010's PCE6
 //    are 2011's / WWE '12's format (Kaiko's PYRO_GAMES; every PRTC record has WWE '12's version 0x600 and section sizes
 //    288 / 336 / 48 / 48 / 144): taken.
@@ -79,6 +81,20 @@ inline Bytes Entry(const disc::GameDisc &g, const char *file, const char *group,
     if (k.group.rfind(group, 0) == 0 && atoi(k.name.c_str()) == name)
       return svrfmt::Unpack(svrfmt::ArchiveData(k));
   return {};
+}
+
+// An older game's game event script (7 parts, see above) as WWE '12's: its parts 0-3 and 6 with WWE '12's 4 and 5
+// (from `w12gm`, one of its own); empty if either isn't one.
+inline Bytes GmevTo12(const Bytes &old, const Bytes &w12gm) {
+  std::vector<svrfmt::PachEntry> a, b;
+  if (!svrfmt::PachRead(old, a) || !svrfmt::PachRead(w12gm, b) || a.size() != 7 || b.size() != 7)
+    return {};
+  for (size_t i = 0; i < 7; ++i)
+    if (a[i].id != i || b[i].id != i)
+      return {};
+  a[4].data = b[4].data;
+  a[5].data = b[5].data;
+  return svrfmt::PachWrite(a);
 }
 
 inline bool Convert(const disc::GameDisc &w12, int number, const Bytes &evp11, const Bytes &evt11,
@@ -157,8 +173,10 @@ inline bool Entrance(const disc::GameDisc &svr, const disc::GameDisc &w12, int n
   if (!detail::Convert(w12, as, evp, evt, out, why))
     return false;
   entrance13::FillTracks(out);
-  // (its game event script; none of its own: Cena's, generic, as for the 2K games - an older game's: WWE '12's Cena's)
-  Bytes gm = old ? Bytes{} : detail::Entry(svr, "pac/gm.pac", "GMEV", number);
+  // (its game event script; an older game's made WWE '12's; none of its own: Cena's, generic, as for the 2K games)
+  Bytes gm = detail::Entry(svr, "pac/gm.pac", "GMEV", number);
+  if (old && !gm.empty())
+    gm = detail::GmevTo12(gm, detail::Entry(w12, "pac/gm.pac", "GMEV", 139));
   if (gm.empty())
     gm = detail::Entry(old ? w12 : svr, "pac/gm.pac", "GMEV", 139);
   if (!gm.empty())
