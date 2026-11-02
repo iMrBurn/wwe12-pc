@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -88,15 +89,23 @@ inline bool Decode(const fs::path &vgmstream, const Bytes &in_bytes, const std::
     } else if (data && bits == 16 && ch == 6 && hz) {
       // 5.1 (FL FR FC LFE BL BR: SvR 2007's themes, the music in the centre, LFE and rear) made stereo as a player does:
       // L = FL + 0.707 FC + 0.5 LFE + BL, R the same on the right
+      // (then raised to the other themes' level, its peak at 32000, at most x 4: Lashley's came out at -27 dBFS where
+      // the others are at -18, unheard under the crowd, 2026-11-02)
       const size_t n = size / 2 / 6;
-      samples.resize(n * 2);
+      std::vector<double> mix(n * 2);
       const int16_t *in = reinterpret_cast<const int16_t *>(&wav[data]);
+      double peak = 1;
       for (size_t i = 0; i < n; ++i) {
         const int16_t *x = in + i * 6;
         const double mid = 0.707 * x[2] + 0.5 * x[3];
-        samples[2 * i] = int16_t(std::clamp(x[0] + mid + x[4], -32768.0, 32767.0));
-        samples[2 * i + 1] = int16_t(std::clamp(x[1] + mid + x[5], -32768.0, 32767.0));
+        mix[2 * i] = x[0] + mid + x[4];
+        mix[2 * i + 1] = x[1] + mid + x[5];
+        peak = std::max({peak, std::abs(mix[2 * i]), std::abs(mix[2 * i + 1])});
       }
+      const double gain = std::clamp(32000.0 / peak, 1.0, 4.0);
+      samples.resize(n * 2);
+      for (size_t i = 0; i < mix.size(); ++i)
+        samples[i] = int16_t(std::clamp(mix[i] * gain, -32768.0, 32767.0));
       channels = 2, rate = int(hz);
     }
   }
