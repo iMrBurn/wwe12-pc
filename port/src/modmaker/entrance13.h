@@ -468,16 +468,16 @@ inline void ScenePac(const disc::GameDisc &g, int number, std::vector<Part> &out
   }
 }
 
-// Whether an entrance's base script is a "one-take" (2K15: ~61 put the whole entrance in segment 0, one slot per object;
-// WWE '12 played 2K15 Sami Zayn's 478 without the crowd: Kaiko's note, take 2K16's re-cut).
+// Whether an entrance's base script has fewer than WWE '12's 5 segments (21 slots: segments at 0, 5, 10, 15, 20; 0 the
+// hidden intro, 20 the ring part, Kaiko's entrance_ring.py). WWE '12's superstars' all have 21; 2K15's 75 of 138
+// don't: 18 have one slot, 35 six (segments 0 and 5, the superstar only in 0: Rusev 475, Sami Zayn 478), others 11
+// or 16. WWE '12 played those with the music alone, no crowd and no ring announcer (2026-11-02). 2K16 has the same
+// entrances re-cut in 5 segments (Kaiko: take 2K16's re-cut; Rusev 475 and Zayn 478 have 21 slots there).
 inline bool OneTake(const std::vector<Part> &parts, int number) {
   for (const auto &p : parts)
-    if (p.kind == "EVP" && p.number == number) {
+    if (p.kind == "EVP" && p.number == number && p.data.size() >= 0x50) {
       const uint32_t n = detail::Be32(p.data, 0x40) & 0xFFFF, t = detail::Be32(p.data, 0x48) + 8;
-      for (uint32_t i = 0; i < n; ++i)
-        if ((detail::Be32(p.data, t + 32 * size_t(i) + 24) >> 16) > 1)
-          return false;
-      return n > 0;
+      return n > 0 && t + 32 <= p.data.size() && (detail::Be32(p.data, t + 24) >> 16) < 21;
     }
   return false;
 }

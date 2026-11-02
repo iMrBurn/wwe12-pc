@@ -1507,6 +1507,7 @@ class Page {
     // that number.
     own_entrance_.clear();
     own_entrance_one_take_ = false;
+    own_entrance_recut_ = false;
     own_entrance_number_ = 0;
     const bool scenes = own_moves_game_ == 0x545108B4 || own_moves_game_ == 0x545408B2 || own_moves_game_ == 0x545408B6 ||
                         own_moves_game_ == 0x315A07D2 || own_moves_game_ == 0x545408BA;
@@ -1547,6 +1548,27 @@ class Page {
       own_entrance_number_ = entrance;
       // (a 2K15 "one-take", the whole entrance in segment 0: said at step 2; WWE '12 plays it without the crowd)
       own_entrance_one_take_ = entrance13::OneTake(own_entrance_, entrance);
+      // (2K15's with fewer than 5 segments: the same entrance re-cut in 2K16, when the player has it; its effects kept
+      // 2K15's, 2K16's crash the game, below)
+      own_entrance_recut_ = false;
+      if (own_entrance_one_take_ && own_moves_game_ == 0x545408B6 && !discs_->PathOf(0x315A07D2).empty()) {
+        disc::GameDisc g16;
+        std::vector<entrance13::Part> recut;
+        if (g16.OpenPath(discs_->PathOf(0x315A07D2)) && entrance13::Entrance(g16, entrance, recut, nullptr) &&
+            !entrance13::OneTake(recut, entrance)) {
+          Bytes pce6;
+          for (const auto &p : own_entrance_)
+            if (p.kind == "PCE6")
+              pce6 = p.data;
+          recut.erase(std::remove_if(recut.begin(), recut.end(), [](const auto &p) { return p.kind == "PCE6"; }),
+                      recut.end());
+          if (!pce6.empty())
+            recut.push_back({entrance, "PCE6", pce6});
+          own_entrance_ = std::move(recut);
+          own_entrance_one_take_ = false;
+          own_entrance_recut_ = true;
+        }
+      }
       // (2K16 / 2K17 effects are a newer PCE6, each emitter 2340 bytes where 2K15's are 2020 and WWE '13's 1780: the
       // game crashed on them, 2K16 Kevin Owens, 2026-11-02. The same entrance's from an older game of the player's,
       // else its base's in WWE '12, else none)
@@ -1634,9 +1656,12 @@ class Page {
              GameName(own_moves_game_), own_entrance_number_,
              int(std::count_if(own_entrance_.begin(), own_entrance_.end(), [](const auto &p) { return p.kind == "EVP"; })));
     ImGui::Checkbox(label, &use_own_entrance_);
-    if (own_entrance_one_take_)
-      ImGui::TextDisabled("%s", fr ? "(entrée « d'une seule prise » de 2K15 : WWE '12 la joue sans la foule pour l'instant)"
-                                   : "(a 2K15 \"one-take\" entrance: WWE '12 plays it without the crowd for now)");
+    if (own_entrance_recut_)
+      ImGui::TextDisabled("%s", fr ? "(2K15 la joue d'un seul tenant : prise découpée de WWE 2K16, avec la foule et l'annonceur)"
+                                   : "(2K15 plays it in one piece: taken as WWE 2K16 cut it, with the crowd and the ring announcer)");
+    else if (own_entrance_one_take_)
+      ImGui::TextDisabled("%s", fr ? "(entrée de 2K15 d'un seul tenant : WWE '12 la joue sans la foule ni l'annonceur ; avec WWE 2K16 dans Mes jeux, elle serait prise découpée)"
+                                   : "(a 2K15 entrance in one piece: WWE '12 plays it without the crowd or the ring announcer; with WWE 2K16 in My game discs, it would be taken cut)");
   }
 
   // Step 2's part: its own WWE '13 / 2K14 victory scene.
@@ -2427,6 +2452,7 @@ class Page {
   bool use_theme_ = true;      // ... made PCM and put into the mod (superstar/theme.wem)
   int own_entrance_number_ = 0;
   bool own_entrance_one_take_ = false;
+  bool own_entrance_recut_ = false;  // its 2K15 entrance taken as 2K16 re-cut it (OneTake)
   float render_scale_ = 1.0f, render_shift_ = 0.0f;  // its portrait's framing (Framed)
   bool face_dirty_ = false;  // the preview to make again before it is drawn
   uint32_t face_game_ = 0;  // its portrait from another game: that game, its superstars (number, name), the one picked
