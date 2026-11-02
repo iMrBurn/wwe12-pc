@@ -150,7 +150,9 @@ inline bool AddTail12(Bytes &evp, int number, uint32_t fullscreen = 0) {
   const uint32_t m = v + (fullscreen ? 12 : 8);  // (the movie's values after the music's and the full screen's)
   Bytes tail((m + 6 + 15) / 16 * 16, 0);
   Put16(tail, 0, uint16_t(number)), Put16(tail, 2, uint16_t(lists)), Put32(tail, 4, t + 8);
-  const uint32_t list[3][4] = {{1, 100, 3, items}, {8, 100, 3, items + 24}, {9, 0, (fullscreen << 16) | 1, items + 48}};
+  // (the music from frame 100, or after the full-screen video: 2K15 Bray Wyatt's started over his video, the user)
+  const uint32_t music = fullscreen > 100 ? fullscreen : 100;
+  const uint32_t list[3][4] = {{1, music, 3, items}, {8, 100, 3, items + 24}, {9, 0, (fullscreen << 16) | 1, items + 48}};
   for (uint32_t l = 0; l < lists; ++l)
     Put16(tail, 8 + 16 * l, uint16_t(list[l][0])), Put32(tail, 8 + 16 * l + 4, list[l][1]),
         Put32(tail, 8 + 16 * l + 8, list[l][2]), Put32(tail, 8 + 16 * l + 12, t + list[l][3]);
