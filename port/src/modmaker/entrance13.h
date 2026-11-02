@@ -990,6 +990,69 @@ inline int Waiting12(std::vector<Part> &parts, const disc::GameDisc &w12) {
   return rebuilt;
 }
 
+// The people of a script (objects 1-8 of type 0x01000000: the places the game puts the ring announcer and the others
+// at) have a spot in every slot in WWE '12 and 2K15 (words 4-7: x, y, z, turn); 2K16 / 2K17 have none (their game
+// places them), and the announcer and the superstar waiting stood at the origin, under the mat (2K16 Kevin Owens, 2K17
+// AJ Styles, right with these, 2026-11-02). Those with no spot take WWE '12's (its first entrance with them: each
+// slot's flags and words 3-52, slot by slot). Returns how many objects.
+inline int People12(std::vector<Part> &parts, const disc::GameDisc &w12) {
+  using detail::Be32;
+  auto people = [](const Bytes &evp, uint32_t i, size_t *bp, uint32_t *ns) {
+    const uint32_t n = Be32(evp, 0x40) & 0xFFFF, t = Be32(evp, 0x48) + 8;
+    const size_t q = t + 32 * size_t(i);
+    if (i >= n || q + 32 > evp.size() || Be32(evp, q + 8) != 0x01000000)
+      return false;
+    *ns = Be32(evp, q + 24) >> 16, *bp = Be32(evp, q + 28) + 8;
+    return *ns > 0 && *bp + 212 * size_t(*ns) <= evp.size();
+  };
+  Bytes own;  // WWE '12's script with them (read once, when needed)
+  bool read = false;
+  int changed = 0;
+  for (auto &evp : parts) {
+    if (evp.kind != "EVP" || evp.data.size() < 0x50)
+      continue;
+    for (uint32_t i = 1; i <= 8; ++i) {
+      size_t bp = 0;
+      uint32_t ns = 0;
+      if (!people(evp.data, i, &bp, &ns))
+        continue;
+      bool spot = false;
+      for (uint32_t s = 0; s < ns && !spot; ++s)
+        for (int w = 4; w <= 7; ++w)
+          spot = spot || Be32(evp.data, bp + 212 * size_t(s) + 4 * size_t(w));
+      if (spot)
+        continue;
+      if (!read) {
+        read = true;
+        svrfmt::Archive a;
+        if (detail::OpenPac(w12, "pac/evt/Nyujyo0.pac", a))
+          for (auto &k : a.root.kids) {
+            if (k.group.rfind("EVP", 0) != 0)
+              continue;
+            Bytes d = svrfmt::Unpack(svrfmt::ArchiveData(k));
+            size_t b = 0;
+            uint32_t m = 0;
+            if (d.size() >= 0x50 && people(d, 1, &b, &m)) {
+              own = std::move(d);
+              break;
+            }
+          }
+      }
+      size_t wbp = 0;
+      uint32_t wns = 0;
+      if (own.empty() || !people(own, i, &wbp, &wns))
+        continue;
+      for (uint32_t s = 0; s < ns; ++s) {
+        const size_t from = wbp + 212 * size_t(std::min(s, wns - 1)), to = bp + 212 * size_t(s);
+        std::copy(own.begin() + long(from + 2), own.begin() + long(from + 4), evp.data.begin() + long(to + 2));
+        std::copy(own.begin() + long(from + 12), own.begin() + long(from + 212), evp.data.begin() + long(to + 12));
+      }
+      ++changed;
+    }
+  }
+  return changed;
+}
+
 // WWE '12 and 2K15 scripts have the superstars waiting in the ring (type 1) from object 12 on, models 1, 2, 1, 2...;
 // 2K16 / 2K17 have a prop at 12 and them after it (1, 1, 2, 2), and the one waiting and the ring announcer (placed by
 // the game) stood under the mat in the middle of the ring (2K16 Kevin Owens, 2K17 AJ Styles; 2K15 Seth Rollins right,
