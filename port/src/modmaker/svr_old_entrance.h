@@ -1011,6 +1011,47 @@ inline bool Convert(const disc::GameDisc &src, uint32_t title, int scene, bool v
     for (auto &o : e.objs)
       if (o.Char())
         o.model = kGeneric11;
+  // (ours, not Kaiko's) victory scenes laid out as 2011's and WWE '12's: theirs all have 7 characters, 3 props, the
+  // camera at 10 and the global object at 11; every SvR 2008-2010 one 6 characters, 2 props, the camera at 8. WWE '12
+  // looks for them in their places: SvR 2010 Jeff Hardy's showed the crowd and no superstar (2026-11-02). An unused
+  // character (6, as 5) and prop (9, model 0, as WWE '12's) put in, the objects after them and their tracks moved.
+  if (victory && e.objs.size() >= 10) {
+    bool six = true;
+    for (size_t i = 0; i < 10; ++i)
+      six = six && (i < 6 ? e.objs[i].Char() : i < 8 ? e.objs[i].Prop() : i == 8 ? e.objs[i].Is(0x10000, 0)
+                                                                                : e.objs[i].Global());
+    Bank b;
+    if (six && ReadBank(evt11, b)) {
+      auto to = [](uint32_t n) { return n <= 5 ? n : n <= 7 ? n + 1 : n + 2; };
+      for (auto &o : e.objs)
+        for (auto &s : o.slots)
+          if (s.size() >= 212) {
+            if (const uint32_t id = Be32(s, 4); id >= 25000 && id < 25000 + e.objs.size())
+              svrfmt::PutBe32(&s[4], 25000 + to(id - 25000));
+            if (const uint16_t p = Be16(s, 208); p != 9999 && p < e.objs.size())
+              svrfmt::PutBe16(&s[208], uint16_t(to(p)));
+          }
+      auto unused = [](Obj o, uint32_t n) {  // (its slots off, no tracks)
+        for (auto &s : o.slots)
+          if (s.size() >= 212) {
+            s[2] = 0;
+            svrfmt::PutBe32(&s[4], 25000 + n);
+          }
+        return o;
+      };
+      Obj extra = unused(e.objs[5], 6), prop = unused(e.objs[7], 9);
+      prop.model = 0;
+      e.objs.insert(e.objs.begin() + 8, prop);
+      e.objs.insert(e.objs.begin() + 6, extra);
+      for (size_t i = 0; i < e.objs.size(); ++i)
+        e.objs[i].idx = uint32_t(i);
+      for (auto &en : b.entries)
+        if (en.id >= 25000 && en.id < 25000 + 1000)
+          en.id = 25000 + to(en.id - 25000);
+      if (!WriteBank(b, evt11))
+        return fail("its tracks can't be written");
+    }
+  }
   evp11 = BuildEvp(e);
   if (!Check(evp11, evt11, why))
     return false;
