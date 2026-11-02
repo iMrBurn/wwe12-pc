@@ -1018,7 +1018,9 @@ class Page {
   // A superstar of the game chosen (SvR 2011 or WWE '13) from My game discs.
   void LoadFromDisc(bool fr, int number) {
     theme_ = {};
-    theme_source::Find(game_disc_, game_title_, number, theme_);  // (its theme, if its game is one read)
+    themes_.clear();
+    theme_pick_ = 0;
+    theme_source::Find(game_disc_, game_title_, number, theme_, &themes_);  // (its theme, if its game is one read)
     // (SvR 2008 and 2007: chNN.pac, movies NN.bik)
     const bool svr08 = look_ == 2 && (game_title_ == 0x5451080B || game_title_ == 0x545107E0);
     char rel[64];
@@ -1368,6 +1370,22 @@ class Page {
     bool on = use_theme_ && tool;
     if (ImGui::Checkbox(label, &on))
       use_theme_ = on;
+    // (more than one: its profile's and its number's, which may differ: WWE '13 Mankind's profile plays Mick Foley's)
+    if (themes_.size() > 1) {
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(320);
+      if (ImGui::BeginCombo("##theme_pick", themes_[size_t(theme_pick_)].what.c_str())) {
+        for (int i = 0; i < int(themes_.size()); ++i) {
+          const std::string item = themes_[size_t(i)].what + (i == 0 ? (fr ? "  (celle de sa fiche)" : "  (its profile's)")
+                                                                     : (fr ? "  (une autre trouvée pour lui)" : "  (another one found for it)"));
+          if (ImGui::Selectable(item.c_str(), i == theme_pick_)) {
+            theme_pick_ = i;
+            theme_ = themes_[size_t(i)];
+          }
+        }
+        ImGui::EndCombo();
+      }
+    }
     ImGui::EndDisabled();
     if (!tool)
       ImGui::TextDisabled("%s", fr ? "(il faut vgmstream : les Mod Maker Tools de Kaiko, ou vgmstream-cli.exe dans un dossier "
@@ -2109,6 +2127,8 @@ class Page {
   bool use_own_victory_ = true;
   screens_ui::ScreenChoice ribbon_{true}, wall_{false};  // its ribbon around the arena and its stage wall
   theme_source::Theme theme_;  // its theme in its game (theme_source.h), stream empty if none
+  std::vector<theme_source::Theme> themes_;  // every theme found for it (its profile's first), theme_ the one picked
+  int theme_pick_ = 0;
   bool use_theme_ = true;      // ... made PCM and put into the mod (superstar/theme.wem)
   int own_entrance_number_ = 0;
   bool use_own_entrance_ = true;  // its entrance: another superstar's (index in stars_), else -1: the base's

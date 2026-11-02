@@ -365,7 +365,14 @@ Man 2671/3671, Hunico 2693, Godfather 2600-2602, HHH 2517, Cena '04 2715/2720/27
 Yokozuna 2763, Big John Studd 2758, Goldberg 2754. Suite : porter ces objets (et la chaussette de Mankind, prise).
 - **Queue des victoires** (`entrance13::AddVictoryTail12`) : celles de WWE '12 finissent par un seul enregistrement,
   type 8 (vidéo 999, 3 éléments de sorte 3 : 999, 0, 0 ; 0x3C octets, Cena 6139) ; WWE '13 et 2K14 n'en ont pas : ajoutée
-  (pointeurs vérifiés aux mêmes places que chez Cena). Pas encore vu en jeu, ni la musique de victoire.
+  (pointeurs vérifiés aux mêmes places que chez Cena). **Vu en jeu (2026-11-02)** : victoires de Warrior (2K14) et de
+  Mankind (WWE '13) avec leur musique et la foule.
+- **Thème** : la fiche WWE '13 de Mankind nomme le thème 805 (celui de Mick Foley) ; son numéro 246 a le sien. Le Mod Maker
+  propose tous les thèmes trouvés (`theme_source::Find(..., all)`, liste à côté de « Sa propre musique d'entrée »).
+- **Vidéo d'entrée introuvable** : le jeu cherchait celle de Mankind (108.bik) dans aucun pack, puis `GAME:`, alors que
+  le pack la liste (celle de Warrior, 104, listée après, passait ; cause non trouvée) : image « miroir » (caméra en
+  direct). Les vidéos des catcheurs ajoutés sont aussi servies par-dessus le disque (`Documents\wwe12\pack_movies`).
+  **Vu en jeu** : titantron et musique de Mankind.
 
 ### Graphismes d'entrée, ressorts des tenues (2026-11-01)
 

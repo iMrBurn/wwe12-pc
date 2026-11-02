@@ -18,6 +18,7 @@
 //    the longest of the superstar's cues, made a RIFF XMA2 for vgmstream.
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -89,7 +90,7 @@ inline std::map<uint32_t, Bytes> Records(const disc::GameDisc &g, const char *na
 
 // A Wwise theme: the first of `events` the package plays (2K14-2K17: events in one package, streams in another).
 inline bool Wwise(const disc::GameDisc &g, const std::string &events_pck, const std::string &streams_pck,
-                  const std::vector<std::string> &events, Theme &out) {
+                  const std::vector<std::string> &events, Theme &out, std::vector<Theme> *all = nullptr) {
   wwise::Package ev, st;
   if (!ev.Open([&g, events_pck](uint64_t at, uint32_t size, Bytes &o) { return g.ReadPart(events_pck, at, size, o); }))
     return false;
@@ -98,15 +99,22 @@ inline bool Wwise(const disc::GameDisc &g, const std::string &events_pck, const 
     return false;
   const wwise::Package &streams = two ? st : ev;
   const auto objs = wwise::AllObjects(ev);
+  std::vector<uint32_t> seen;
   for (const auto &e : events) {
     const uint32_t sid = wwise::EventStream(objs, streams, e);
     Bytes b;
-    if (sid && streams.Data(streams.streams.at(sid), b) && b.size() > 12) {
+    if (!sid || std::find(seen.begin(), seen.end(), sid) != seen.end() || !streams.Data(streams.streams.at(sid), b) ||
+        b.size() <= 12)
+      continue;
+    seen.push_back(sid);
+    if (all)  // (every one found: the first is the answer)
+      all->push_back({b, ".wem", e});
+    if (seen.size() == 1)
       out = {std::move(b), ".wem", e};
-      return true;
-    }
+    if (!all)
+      break;
   }
-  return false;
+  return !seen.empty();
 }
 
 // A SvR 2008-2010 theme: sound\music*.yaf record `id`.
@@ -240,8 +248,9 @@ inline bool Xact(const disc::GameDisc &g, int number, Theme &out) {
 
 }  // namespace detail
 
-// The theme of superstar `number` in game `title` (its disc `g`). False if not found (or a game not read yet).
-inline bool Find(const disc::GameDisc &g, uint32_t title, int number, Theme &out) {
+// The theme of superstar `number` in game `title` (its disc `g`). False if not found (or a game not read yet). `all`:
+// every theme found for it, its profile's first (WWE '13 Mankind's profile names 805, Mick Foley's; 246 is his own).
+inline bool Find(const disc::GameDisc &g, uint32_t title, int number, Theme &out, std::vector<Theme> *all = nullptr) {
   using namespace detail;
   char e[48];
   std::vector<std::string> events;
@@ -258,8 +267,8 @@ inline bool Find(const disc::GameDisc &g, uint32_t title, int number, Theme &out
       if (music)
         add("Play_MUS_%04d_0_0", music);
       add("Play_MUS_%04d_0_0", number);
-      return title == 0x545108B4 ? Wwise(g, "sound/Music.pck", "", events, out)
-                                 : Wwise(g, "sound/Game_Sound_E_S.pck", "sound/Game_Sound_M.pck", events, out);
+      return title == 0x545108B4 ? Wwise(g, "sound/Music.pck", "", events, out, all)
+                                 : Wwise(g, "sound/Game_Sound_E_S.pck", "sound/Game_Sound_M.pck", events, out, all);
     }
     case 0x545408B6: {  // WWE 2K15
       const auto pro = Records(g, "PRO");
@@ -268,7 +277,7 @@ inline bool Find(const disc::GameDisc &g, uint32_t title, int number, Theme &out
       if (music >= 100 && music < 100000)
         add("Play_MUS_%04d_%d_0", int(music / 100), int(music % 100));
       add("Play_MUS_%04d_0_0", number);
-      return Wwise(g, "sound/Game_Sound_E_S.pck", "sound/Game_Sound_M.pck", events, out);
+      return Wwise(g, "sound/Game_Sound_E_S.pck", "sound/Game_Sound_M.pck", events, out, all);
     }
     case 0x315A07D2:    // WWE 2K16
     case 0x545408BA: {  // WWE 2K17
@@ -281,7 +290,7 @@ inline bool Find(const disc::GameDisc &g, uint32_t title, int number, Theme &out
       if (music >= 1000 && music < 1000000)
         add("Play_MUS_%04d_%02d_0_0", int(music / 1000), int(music % 1000));
       add("Play_MUS_%04d_00_0_0", number);
-      return Wwise(g, "sound/game_sound_e_s.pck", "sound/game_sound_m.pck", events, out);
+      return Wwise(g, "sound/game_sound_e_s.pck", "sound/game_sound_m.pck", events, out, all);
     }
     case 0x5451080B:    // SvR 2008
     case 0x54510826:    // SvR 2009

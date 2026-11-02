@@ -781,6 +781,33 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     std::error_code e2;
     fs::remove_all(user_root / "attire_names", e2);
   }
+  // The added superstars' entrance videos served over the game's files too (Documents\wwe12\pack_movies\movies\
+  // titantron\NNN.bik): the game looked for Mankind's 108 in no pack, only GAME:, though the pack lists it (Warrior's 104,
+  // listed after it, played; 2026-11-02, cause not found). Written when missing or another size; others removed.
+  {
+    const fs::path dir = user_root / "pack_movies", mdir = dir / "movies" / "titantron";
+    std::error_code e2;
+    std::set<std::string> keep;
+    for (const auto &st : stars) {
+      if (st.movie.empty() || st.movie_number <= 0 || st.movie_number >= 1000)
+        continue;
+      char name[16];
+      snprintf(name, sizeof(name), "%03d.bik", st.movie_number);
+      keep.insert(name);
+      const fs::path to = mdir / name;
+      if (!fs::exists(to, e2) || fs::file_size(to, e2) != st.movie.size())
+        WriteHost(to, st.movie);
+    }
+    for (fs::directory_iterator it(mdir, e2), end; !e2 && it != end; it.increment(e2))
+      if (!keep.count(it->path().filename().string()))
+        fs::remove(it->path(), e2);
+    std::string game_device;
+    if (!keep.empty() && vfs && vfs->FindSymbolicLink("game:", game_device)) {
+      auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, dir, true);
+      if (overlay->Initialize() && vfs->RegisterOverlay(game_device, std::move(overlay)))
+        REXLOG_INFO("[superstar mods] {} entrance video(s) served from {}", keep.size(), rex::path_to_utf8(dir));
+    }
+  }
   for (const auto &f : files)
     if (f.path.rfind("sound/", 0) == 0 || f.path.rfind("pac/sound_dlc_", 0) == 0)
       REXLOG_INFO("[superstar mods] themes: {} ({} bytes)", f.path, f.data.size());
