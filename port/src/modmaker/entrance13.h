@@ -255,6 +255,9 @@ inline bool Evp788To212(Bytes &evp) {
   Put32(out, 0x14, 0x18), Put32(out, 0x18, 0), Put32(out, 0x1C, 0), Put32(out, 0x48, 0x44);
   std::vector<uint32_t> pof = {0x14 - 8, 0x1C - 8, 0x48 - 8};
   Bytes slots;
+  // (a script whose superstar has fewer than 6 slots, 2K15's one-slot one-takes: every object padded to 6, the new
+  // ones off, for IntroToStage12 to move slot 0 to slot 5)
+  const uint32_t pad = (Be32(evp, t + 24) >> 16) < 6 ? 6 : 0;
   for (uint32_t i = 0; i < n; ++i) {
     const size_t q = t + 32 * size_t(i), o = 0x4C + 32 * size_t(i);
     std::copy(evp.begin() + long(q), evp.begin() + long(q + 32), out.begin() + long(o));
@@ -267,6 +270,14 @@ inline bool Evp788To212(Bytes &evp) {
         return false;
       slots.insert(slots.end(), evp.begin() + long(s), evp.begin() + long(s + 51 * 4));
       slots.insert(slots.end(), evp.begin() + long(s + 195 * 4), evp.begin() + long(s + 197 * 4));
+    }
+    if (ns && ns < pad) {
+      for (uint32_t k = ns; k < pad; ++k) {
+        Bytes s(212, 0);
+        Put32(s, 0, k << 16), Put32(s, 4, 25000 + i), Put32(s, 8, k), Put32(s, 208, 0x270F0000);
+        slots.insert(slots.end(), s.begin(), s.end());
+      }
+      Put32(out, o + 24, (pad << 16) | (Be32(out, o + 24) & 0xFFFF));
     }
   }
   out.insert(out.end(), slots.begin(), slots.end());
@@ -367,6 +378,65 @@ inline bool Mic12(Bytes &evp) {
   for (uint32_t s = 0; s < ns && bp + 212 * size_t(s + 1) <= evp.size(); ++s)
     Put32(evp, bp + 212 * size_t(s) + 208, uint32_t(announcer) << 16);
   return true;
+}
+
+// A script whose superstar (object 0) is in slot 0 alone: WWE '12 plays slot 0 as the hidden intro (Kaiko's
+// entrance_ring.py: segments at slots 0, 5, 10, 15, 20), with the music only, no crowd and no ring announcer (2K15
+// Rusev 475, Sami Zayn 478: their whole entrance in slot 0). Every object in slot 0 but the lights (type +12 =
+// 0x10000) moved to slot 5 (its flags and words 3-52), slot 0 off, and its blocks "0000xxxx" named "0005xxxx": with
+// it, Rusev's 2K15 entrance played with the crowd and the announcer (2026-11-02). Its script needs 6 slots or more
+// (Evp788To212 pads 2K15's one-slot ones). Returns how many scripts.
+inline int IntroToStage12(std::vector<Part> &parts) {
+  using detail::Be32;
+  int changed = 0;
+  for (auto &evp : parts) {
+    if (evp.kind != "EVP" || evp.data.size() < 0x50)
+      continue;
+    auto &d = evp.data;
+    const uint32_t n = Be32(d, 0x40) & 0xFFFF, t = Be32(d, 0x48) + 8;
+    if (!n || t + 32 * size_t(n) > d.size())
+      continue;
+    // (object 0: shown in slot 0, in no other one, 6 slots or more)
+    const uint32_t ns0 = Be32(d, t + 24) >> 16, bp0 = Be32(d, t + 28) + 8;
+    if (ns0 < 6 || bp0 + 212 * size_t(ns0) > d.size() || !(d[bp0 + 2] & 1))
+      continue;
+    bool later = false;
+    for (uint32_t k = 1; k < ns0; ++k)
+      later = later || (d[bp0 + 212 * size_t(k) + 2] & 1);
+    if (later)
+      continue;
+    std::set<uint32_t> moved;
+    for (uint32_t i = 0; i < n; ++i) {
+      const size_t q = t + 32 * size_t(i);
+      const uint32_t ns = Be32(d, q + 24) >> 16, bp = Be32(d, q + 28) + 8;
+      if (Be32(d, q + 12) == 0x10000 || ns < 6 || bp + 212 * size_t(ns) > d.size() || !(d[bp + 2] & 1))
+        continue;
+      const size_t s0 = bp, s5 = bp + 212 * 5;
+      d[s5 + 2] = d[s0 + 2], d[s5 + 3] = d[s0 + 3];
+      std::copy(d.begin() + long(s0 + 12), d.begin() + long(s0 + 212), d.begin() + long(s5 + 12));
+      d[s0 + 2] = 0;
+      moved.insert(i);
+    }
+    for (auto &evz : parts) {
+      std::vector<svrfmt::PachEntry> leaves;
+      if (evz.kind != "EVZ" || evz.number != evp.number || !svrfmt::PachRead(evz.data, leaves))
+        continue;
+      for (auto &e : leaves) {
+        if (!moved.count(e.id))
+          continue;
+        Bytes l = svrfmt::Unpack(e.data);
+        if (l.size() < 0x70)
+          continue;
+        for (uint32_t b = 0, nb = Be32(l, 0x48); b < nb && 0x70 + 0x28 * size_t(b + 1) <= l.size(); ++b)
+          if (!memcmp(&l[0x70 + 0x28 * size_t(b) + 4], "0000", 4))
+            memcpy(&l[0x70 + 0x28 * size_t(b) + 4], "0005", 4);
+        e.data = std::move(l);
+      }
+      evz.data = svrfmt::PachWrite(leaves);
+    }
+    ++changed;
+  }
+  return changed;
 }
 
 // A script or track bank of any of these games made WWE '12's: slots, tail (base numbers), track names, IK legs.
@@ -471,8 +541,8 @@ inline void ScenePac(const disc::GameDisc &g, int number, std::vector<Part> &out
 // Whether an entrance's base script has fewer than WWE '12's 5 segments (21 slots: segments at 0, 5, 10, 15, 20; 0 the
 // hidden intro, 20 the ring part, Kaiko's entrance_ring.py). WWE '12's superstars' all have 21; 2K15's 75 of 138
 // don't: 18 have one slot, 35 six (segments 0 and 5, the superstar only in 0: Rusev 475, Sami Zayn 478), others 11
-// or 16. WWE '12 played those with the music alone, no crowd and no ring announcer (2026-11-02). 2K16 has the same
-// entrances re-cut in 5 segments (Kaiko: take 2K16's re-cut; Rusev 475 and Zayn 478 have 21 slots there).
+// or 16. WWE '12 played those with the music alone, no crowd and no ring announcer (2026-11-02): IntroToStage12 moves
+// them out of the hidden intro (2K16's re-cuts of them aren't always the same entrance: Rusev's, the user).
 inline bool OneTake(const std::vector<Part> &parts, int number) {
   for (const auto &p : parts)
     if (p.kind == "EVP" && p.number == number && p.data.size() >= 0x50) {
@@ -632,6 +702,7 @@ inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &o
         }
     }
   }
+  IntroToStage12(out);
   if (out.empty() && why)
     *why = "no such entrance in its game";
   return !out.empty();
