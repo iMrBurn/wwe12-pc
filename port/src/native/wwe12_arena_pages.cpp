@@ -663,10 +663,17 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
 // Whether a media mod has a ribbon (kind 1) / wall (kind 2) for video number n (wwe12_superstar_mods.cpp).
 bool Wwe12ModScreen(uint32_t kind, uint32_t n) { return g_mod_screens.count({kind, n}) != 0; }
 
-void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device,
-                          const fs::path &user_root, const fs::path &mods) {
+// (after the superstar mods: their slots and video numbers, superstar_slots.txt / superstar_movies.txt, are this
+// start's; mounted with the arena slots, before them, an added superstar had his entrance, victory, ribbon and wall
+// only from the next start, 2026-11-02)
+void Wwe12MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device,
+                         const fs::path &user_root, const fs::path &mods) {
   if (!user_root.empty())
     MountEntrances(vfs, game_device, user_root, mods);
+}
+
+void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device,
+                          const fs::path &user_root, const fs::path &mods) {
   if (!REXCVAR_GET(wwe12_arena_pages) || user_root.empty())
     return;
   const fs::path out = user_root / "arena_slots";

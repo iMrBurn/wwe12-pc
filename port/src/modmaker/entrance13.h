@@ -186,6 +186,302 @@ inline bool AddVictoryTail12(Bytes &evp, int number) {
   return true;
 }
 
+// ---- WWE 2K15 / 2K16 / 2K17 (after Kaiko's wwe13_entrance.py, docs/OTHER_GAMES_ENTRANCES.md: 2K15
+// pac\evt\Entrance00-10.pac, groups EVP2 / EVZ; 2K16 / 2K17 one pac per scene, pac\evt\NNNNN.pac (victories 06NNN,
+// variants 1xNNN), EPAC with 4-character names or 2K17's HSPC with the tracks in an SHDC; their game event scripts in
+// pac\gimmick\gmevNNNN.pac, effects in pac\particle\pce6NNNN.pac, props in pac\prop\NNNN.pac.)
+namespace detail {
+
+inline uint32_t Be32(const Bytes &b, size_t o) {
+  return o + 4 <= b.size() ? uint32_t(b[o]) << 24 | uint32_t(b[o + 1]) << 16 | uint32_t(b[o + 2]) << 8 | b[o + 3] : 0u;
+}
+
+inline bool OpenPac(const disc::GameDisc &g, const std::string &f, svrfmt::Archive &a) {
+  Bytes b;
+  if (!g.Read(f, b))
+    return false;
+  if (svrfmt::IsXcompress(b)) {
+    Bytes o;
+    if (!svrfmt::XcompressDecode(b, o))
+      return false;
+    b.swap(o);
+  }
+  return svrfmt::ArchiveOpen(b, a, nullptr);
+}
+
+// An entry's data, as a track bank: a PACH as is, an SHDC (2K17) made a PACH of the same leaves.
+inline Bytes AsPach(svrfmt::ArcNode &k) {
+  Bytes u = svrfmt::Unpack(svrfmt::ArchiveData(k));
+  if (svrfmt::IsPach(u))
+    return u;
+  if (u.size() < 4 || memcmp(u.data(), "SHDC", 4) || !svrfmt::ArchiveExpand(k))
+    return {};
+  std::vector<svrfmt::PachEntry> leaves;
+  for (auto &c : k.kids)
+    leaves.push_back({c.id, svrfmt::Unpack(svrfmt::ArchiveData(c))});
+  return svrfmt::PachWrite(leaves);
+}
+
+}  // namespace detail
+
+// 2K15-2K17 scripts' 788-byte object slots as WWE '12's 212 (words 0-50 and 195-196: 2K14's slot; the rest, longer
+// rope / turnbuckle key lists, dropped: Kaiko's evp_788_to_212). The script is written again (header, objects, slots,
+// POF0; its tail left out: AddTail12 writes WWE '12's). False when its slots aren't 788 bytes (left as it is).
+inline bool Evp788To212(Bytes &evp) {
+  using detail::Be32;
+  using yanm::ik::detail::Put32;
+  if (evp.size() < 0x50 || memcmp(evp.data(), "0FOP", 4))
+    return false;
+  const uint32_t n = Be32(evp, 0x40) & 0xFFFF, t = Be32(evp, 0x48) + 8, end = Be32(evp, 4) + 8;
+  if (!n || t + 32 * size_t(n) > evp.size() || end > evp.size())
+    return false;
+  // the slot size: from one object's slots to the next one's
+  int slot = 0;
+  for (uint32_t i = 0; i < n && !slot; ++i) {
+    const uint32_t ns = Be32(evp, t + 32 * i + 24) >> 16, bp = Be32(evp, t + 32 * i + 28) + 8;
+    uint32_t next = end;
+    for (uint32_t j = 0; j < n; ++j) {
+      const uint32_t b = Be32(evp, t + 32 * j + 28) + 8;
+      if (b > bp && b < next)
+        next = b;
+    }
+    if (ns && next > bp && (next - bp) % ns == 0 && (next - bp) / ns <= 1000)
+      slot = int((next - bp) / ns);
+  }
+  if (slot != 788)
+    return false;
+  Bytes out(0x4C + 32 * size_t(n), 0);
+  std::copy(evp.begin() + 0x10, evp.begin() + 0x4C, out.begin() + 0x10);
+  Put32(out, 0x14, 0x18), Put32(out, 0x18, 0), Put32(out, 0x1C, 0), Put32(out, 0x48, 0x44);
+  std::vector<uint32_t> pof = {0x14 - 8, 0x1C - 8, 0x48 - 8};
+  Bytes slots;
+  for (uint32_t i = 0; i < n; ++i) {
+    const size_t q = t + 32 * size_t(i), o = 0x4C + 32 * size_t(i);
+    std::copy(evp.begin() + long(q), evp.begin() + long(q + 32), out.begin() + long(o));
+    const uint32_t ns = Be32(evp, q + 24) >> 16, bp = Be32(evp, q + 28) + 8;
+    Put32(out, o + 28, uint32_t(0x4C + 32 * size_t(n) + slots.size() - 8));
+    pof.push_back(uint32_t(o + 28 - 8));
+    for (uint32_t k = 0; k < ns; ++k) {
+      const size_t s = bp + 788 * size_t(k);
+      if (s + 788 > evp.size())
+        return false;
+      slots.insert(slots.end(), evp.begin() + long(s), evp.begin() + long(s + 51 * 4));
+      slots.insert(slots.end(), evp.begin() + long(s + 195 * 4), evp.begin() + long(s + 197 * 4));
+    }
+  }
+  out.insert(out.end(), slots.begin(), slots.end());
+  out.resize(out.size() + (16 - (out.size() - 8) % 16) % 16, 0);
+  const uint32_t size = uint32_t(out.size() - 8);
+  memcpy(out.data(), "0FOP", 4);
+  Put32(out, 4, size);
+  out[8] = 'E', out[9] = 'V', out[10] = 0, out[11] = 0;
+  Put32(out, 0xC, size);
+  std::sort(pof.begin(), pof.end());
+  const Bytes pb = yanm::ik::detail::PofWrite(pof);
+  out.insert(out.end(), {'P', 'O', 'F', '0'});
+  for (int i = 0; i < 4; ++i)
+    out.push_back(uint8_t(uint32_t(pb.size()) >> (24 - 8 * i)));
+  out.insert(out.end(), pb.begin(), pb.end());
+  // (what follows the source's POF0, if anything)
+  if (end + 8 <= evp.size() && !memcmp(&evp[end], "POF0", 4)) {
+    const size_t after = end + 8 + Be32(evp, end + 4);
+    if (after < evp.size())
+      out.insert(out.end(), evp.begin() + long(after), evp.end());
+  }
+  evp.swap(out);
+  return true;
+}
+
+// 2K16 / 2K17 track banks (PACH of motion records) for WWE '12: YANM version 5 chunks marked 4 (read the same,
+// Kaiko), mode-4 chunks (boned props) made empty (mode 0, no track; the block table code below is for taking them out) (header +0x0C first block, +0x48 block
+// count, table at 0x70: 0x28 bytes each, +0x24 the block's offset from the first). Returns how many were changed.
+inline int Tracks12(Bytes &evz) {
+  using detail::Be32;
+  using yanm::ik::detail::Put32;
+  std::vector<svrfmt::PachEntry> leaves;
+  if (!svrfmt::PachRead(evz, leaves))
+    return 0;
+  int changed = 0;
+  for (auto &e : leaves) {
+    Bytes l = svrfmt::Unpack(e.data);
+    if (l.size() < 0x70)
+      continue;
+    const uint32_t first = Be32(l, 0x0C), count = Be32(l, 0x48);
+    std::vector<Bytes> keep;
+    bool touched = false;
+    for (uint32_t i = 0; i < count && 0x70 + 0x28 * size_t(i + 1) <= l.size(); ++i) {
+      const size_t ent = 0x70 + 0x28 * size_t(i), y = size_t(first) + Be32(l, ent + 0x24);
+      if (y + 10 <= l.size() && !memcmp(&l[y], "YANM", 4)) {
+        if (l[y + 8] == 5)
+          l[y + 8] = 4, touched = true;
+        if (l[y + 9] == 4) {  // (kept, made an empty chunk: mode 0, no track; taken out, a prop left with no block
+          l[y + 9] = 0;        //  crashed the game, 2K16 Kevin Owens / 2K17 AJ Styles, 2026-11-02)
+          l[y + 10] = l[y + 11] = 0;
+          touched = true;
+        }
+      }
+      keep.push_back(Bytes(l.begin() + long(ent), l.begin() + long(ent + 0x28)));
+    }
+    if (keep.size() != count && count) {
+      for (uint32_t i = 0; i < count; ++i) {
+        const size_t ent = 0x70 + 0x28 * size_t(i);
+        if (i < keep.size())
+          std::copy(keep[i].begin(), keep[i].end(), l.begin() + long(ent));
+        else
+          std::fill(l.begin() + long(ent), l.begin() + long(ent + 0x28), uint8_t(0));
+      }
+      Put32(l, 0x48, uint32_t(keep.size()));
+    }
+    if (touched) {
+      e.data = std::move(l);
+      ++changed;
+    }
+  }
+  if (changed)
+    evz = svrfmt::PachWrite(leaves);
+  return changed;
+}
+
+// A script or track bank of any of these games made WWE '12's: slots, tail (base numbers), track names, IK legs.
+inline void To12(Part &p) {
+  if (p.kind == "EVP") {
+    Evp788To212(p.data);
+    if (p.number < 1000)
+      AddTail12(p.data, p.number);
+    else if (p.number >= 6000 && p.number < 7000)
+      AddVictoryTail12(p.data, p.number);
+  } else if (p.kind == "EVZ") {
+    Tracks12(p.data);
+    NameTracks12(p.data);
+    yanm::ik::BakeEntranceTracks(p.data);
+  }
+}
+
+// Every object of the script gets a motion record in the track bank: WWE '12's (and 2K15's) banks have one per
+// object, an empty one (96 bytes, no block) for those that don't move; 2K16's have only the moving ones, and the game
+// crashed looking for the others (2K16 Kevin Owens, read of 0x9C in sub_824DE430, 2026-11-02).
+inline int FillTracks(std::vector<Part> &parts) {
+  static const uint8_t kEmpty[96] = {
+      0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x60,
+      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x85, 0x00, 0x00, 'r',  'o',  'o',  't',  0x00, 0x00, 0x00, 0x00, 0x83, 0x47, 0x83, 0x89,
+      0x81, 0x5B, 0x00, 0x00, '%',  's',  0x00, 0x00, 'o',  'p',  'e',  'n',  ':',  '%',  's',  '\n',
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  int added = 0;
+  for (const auto &evp : parts) {
+    if (evp.kind != "EVP" || evp.data.size() < 0x50)
+      continue;
+    const uint32_t n = detail::Be32(evp.data, 0x40) & 0xFFFF;
+    for (auto &evz : parts) {
+      std::vector<svrfmt::PachEntry> leaves;
+      if (evz.kind != "EVZ" || evz.number != evp.number || !svrfmt::PachRead(evz.data, leaves))
+        continue;
+      bool changed = false;
+      for (uint32_t i = 0; i < n; ++i)
+        if (std::none_of(leaves.begin(), leaves.end(), [&](const auto &e) { return e.id == i; })) {
+          leaves.push_back({i, Bytes(kEmpty, kEmpty + sizeof(kEmpty))});
+          changed = true;
+          ++added;
+        }
+      if (changed) {
+        std::sort(leaves.begin(), leaves.end(), [](const auto &x, const auto &y) { return x.id < y.id; });
+        evz.data = svrfmt::PachWrite(leaves);
+      }
+    }
+  }
+  return added;
+}
+
+// A 2K16 / 2K17 scene pac (pac\evt\NNNNN.pac): its script and track bank as parts numbered `number`.
+inline void ScenePac(const disc::GameDisc &g, int number, std::vector<Part> &out) {
+  char f[32];
+  snprintf(f, sizeof(f), "pac/evt/%05d.pac", number);
+  svrfmt::Archive a;
+  if (!detail::OpenPac(g, f, a))
+    return;
+  for (auto &k : a.root.kids) {
+    const Bytes u = svrfmt::Unpack(svrfmt::ArchiveData(k));
+    if (u.size() >= 4 && !memcmp(u.data(), "0FOP", 4)) {
+      out.push_back({number, "EVP", u});
+    } else {
+      Bytes z = detail::AsPach(k);
+      if (!z.empty())
+        out.push_back({number, "EVZ", std::move(z)});
+    }
+  }
+  // Its lights: the global object's tracks are in pac\evt\light\elNNNNN.pac (EVL, a PACH: 2K16 Kevin Owens' 458 has
+  // object 11's there, the EVZ hasn't it; WWE '12 keeps them in the EVZ and crashed without them, 2026-11-02): put in.
+  snprintf(f, sizeof(f), "pac/evt/light/el%05d.pac", number);
+  svrfmt::Archive l;
+  if (!detail::OpenPac(g, f, l))
+    return;
+  for (auto &p : out) {
+    if (p.kind != "EVZ" || p.number != number)
+      continue;
+    std::vector<svrfmt::PachEntry> leaves, more;
+    if (!svrfmt::PachRead(p.data, leaves))
+      continue;
+    for (auto &k : l.root.kids) {
+      const Bytes z = detail::AsPach(k);
+      if (!z.empty())
+        svrfmt::PachRead(z, more);
+    }
+    bool added = false;
+    for (auto &m : more)
+      if (std::none_of(leaves.begin(), leaves.end(), [&](const auto &e) { return e.id == m.id; })) {
+        leaves.push_back({m.id, svrfmt::Unpack(m.data)});
+        added = true;
+      }
+    if (added) {
+      std::sort(leaves.begin(), leaves.end(), [](const auto &x, const auto &y) { return x.id < y.id; });
+      p.data = svrfmt::PachWrite(leaves);
+    }
+  }
+}
+
+// Whether an entrance's base script is a "one-take" (2K15: ~61 put the whole entrance in segment 0, one slot per object;
+// WWE '12 played 2K15 Sami Zayn's 478 without the crowd: Kaiko's note, take 2K16's re-cut).
+inline bool OneTake(const std::vector<Part> &parts, int number) {
+  for (const auto &p : parts)
+    if (p.kind == "EVP" && p.number == number) {
+      const uint32_t n = detail::Be32(p.data, 0x40) & 0xFFFF, t = detail::Be32(p.data, 0x48) + 8;
+      for (uint32_t i = 0; i < n; ++i)
+        if ((detail::Be32(p.data, t + 32 * size_t(i) + 24) >> 16) > 1)
+          return false;
+      return n > 0;
+    }
+  return false;
+}
+
+// A game's effects (pac\prtcls.pac PCE6/NNNN, a PACH) of entrance `number`, empty if none.
+inline Bytes Pce6Of(const disc::GameDisc &g, int number) {
+  svrfmt::Archive a;
+  if (!detail::OpenPac(g, "pac/prtcls.pac", a))
+    return {};
+  for (auto &k : a.root.kids)
+    if (k.group.rfind("PCE6", 0) == 0 && atoi(k.name.c_str()) == number)
+      return svrfmt::Unpack(svrfmt::ArchiveData(k));
+  return {};
+}
+
+// An entrance's parts numbered `to` (base number) instead of `from`: when WWE '12 has an entrance of that number already
+// (2K16 Kevin Owens 458, 2K17 AJ Styles 610: WWE '12's own), the added one gets a free number. Its variants follow
+// (1xNNN), the scripts' own number (+0x20) and their tail's (u16 at the tail).
+inline void Renumber(std::vector<Part> &parts, int from, int to) {
+  using yanm::ik::detail::Put16;
+  for (auto &p : parts) {
+    if (p.number % 1000 != from % 1000)
+      continue;
+    p.number = p.number / 1000 * 1000 + to % 1000;
+    if (p.kind == "EVP" && p.data.size() >= 0x50) {
+      Put16(p.data, 0x20, uint16_t(p.number));
+      if (const uint32_t t = detail::Be32(p.data, 0x1C); t && 8 + size_t(t) + 2 <= p.data.size())
+        Put16(p.data, 8 + t, uint16_t(p.number));
+    }
+  }
+}
+
 // The mod's file of a part (superstar/entrance/EVP_246.bin, GMEV_246.bin...): the game serves it as
 // /EVP<group>/<number>, /GMEV/<number, 4 digits>...
 inline std::string ModPath(const Part &p) {
@@ -197,20 +493,19 @@ inline std::string ModPath(const Part &p) {
 // The WWE '13 entrance `number`'s parts (its own and its variants'), from the player's WWE '13 (w13).
 inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &out, std::string *why) {
   out.clear();
-  for (int i = 0; i <= 8; ++i) {
+  // WWE '13, 2K14, 2K15: pac\evt\Entrance00..10.pac (and their DLC's)
+  std::vector<std::string> files;
+  for (int i = 0; i <= 10; ++i) {
     char f[32];
     snprintf(f, sizeof(f), "pac/evt/Entrance%02d.pac", i);
-    Bytes b;
-    if (!w13.Read(f, b))
-      continue;
-    if (svrfmt::IsXcompress(b)) {
-      Bytes o;
-      if (!svrfmt::XcompressDecode(b, o))
-        continue;
-      b.swap(o);
-    }
+    files.push_back(f);
+  }
+  for (const auto &f : w13.List("pac/evt"))
+    if (f.size() > 12 && _strnicmp(f.c_str(), "Entrance_dlc", 12) == 0)
+      files.push_back("pac/evt/" + f);
+  for (const auto &f : files) {
     svrfmt::Archive a;
-    if (!svrfmt::ArchiveOpen(b, a, nullptr))
+    if (!detail::OpenPac(w13, f, a))
       continue;
     for (auto &k : a.root.kids) {
       const int n = atoi(k.name.c_str());
@@ -219,43 +514,57 @@ inline bool Entrance(const disc::GameDisc &w13, int number, std::vector<Part> &o
       if (k.group.rfind("EVP", 0) != 0 && k.group.rfind("EVZ", 0) != 0)
         continue;
       out.push_back({n, k.group.substr(0, 3), svrfmt::Unpack(svrfmt::ArchiveData(k))});
-      if (out.back().kind == "EVP" && n < 1000)  // (its music and movie: WWE '12's tail)
-        AddTail12(out.back().data, n);
-      if (out.back().kind == "EVZ") {  // the body's IK legs as FK, for WWE '12 (yanm_ik.h); 2K14's names as WWE '12's
-        NameTracks12(out.back().data);
-        yanm::ik::BakeEntranceTracks(out.back().data);
-      }
     }
   }
-  // its game event script and its effects
-  if (!out.empty())
-    for (const auto &[file, group] : {std::pair<const char *, const char *>{"pac/gm.pac", "GMEV"}, {"pac/prtcls.pac", "PCE6"}}) {
-      Bytes b;
-      if (!w13.Read(file, b))
-        continue;
-      if (svrfmt::IsXcompress(b)) {
-        Bytes o;
-        if (!svrfmt::XcompressDecode(b, o))
+  // 2K16 / 2K17: one pac per scene, and its variants 1xNNN
+  if (out.empty())
+    for (int v : {number, 10000 + number % 1000, 11000 + number % 1000, 12000 + number % 1000, 13000 + number % 1000,
+                  14000 + number % 1000})
+      ScenePac(w13, v, out);
+  for (auto &p : out)
+    To12(p);
+  FillTracks(out);
+  // its game event script and its effects (2K16 / 2K17: pac\gimmick\gmevNNNN.pac, pac\particle\pce6NNNN.pac)
+  if (!out.empty()) {
+    char name[8];
+    snprintf(name, sizeof(name), "%04d", number % 10000);
+    const std::tuple<const char *, const char *, const char *> kinds[] = {{"pac/gm.pac", "pac/gimmick/gmev", "GMEV"},
+                                                                          {"pac/prtcls.pac", "pac/particle/pce6", "PCE6"}};
+    for (const auto &[file, own, group] : kinds) {
+      bool found = false;
+      for (const std::string &f : {std::string(file), std::string(own) + name + ".pac"}) {
+        svrfmt::Archive a;
+        if (found || !detail::OpenPac(w13, f, a))
           continue;
-        b.swap(o);
+        for (auto &k : a.root.kids) {
+          std::string g = k.group, nm = k.name;
+          while (!g.empty() && (g.back() == ' ' || g.back() == '\0'))
+            g.pop_back();
+          while (!nm.empty() && (nm.back() == ' ' || nm.back() == '\0'))
+            nm.pop_back();
+          if (g == group && nm == name && !found) {
+            out.push_back({number, group, svrfmt::Unpack(svrfmt::ArchiveData(k))});
+            found = true;
+          }
+        }
       }
-      svrfmt::Archive a;
-      if (!svrfmt::ArchiveOpen(b, a, nullptr))
-        continue;
-      char name[8];
-      snprintf(name, sizeof(name), "%04d", number % 10000);
-      for (auto &k : a.root.kids) {
-        std::string g = k.group, nm = k.name;
-        while (!g.empty() && (g.back() == ' ' || g.back() == '\0'))
-          g.pop_back();
-        while (!nm.empty() && (nm.back() == ' ' || nm.back() == '\0'))
-          nm.pop_back();
-        if (g == group && nm == name)
-          out.push_back({number, group, svrfmt::Unpack(svrfmt::ArchiveData(k))});
-      }
+      // (no game event script of its own: WWE '12 then never showed the superstar; Cena's, generic, under its number:
+      // 2K15 Sami Zayn's entrance 478 has none)
+      if (!found && std::string(group) == "GMEV")
+        for (const std::string &f : {std::string(file), std::string(own) + "0139.pac"}) {
+          svrfmt::Archive a;
+          if (found || !detail::OpenPac(w13, f, a))
+            continue;
+          for (auto &k : a.root.kids)
+            if (!found && k.group.rfind("GMEV", 0) == 0 && atoi(k.name.c_str()) == 139) {
+              out.push_back({number, group, svrfmt::Unpack(svrfmt::ArchiveData(k))});
+              found = true;
+            }
+        }
     }
+  }
   if (out.empty() && why)
-    *why = "no such entrance in WWE '13";
+    *why = "no such entrance in its game";
   return !out.empty();
 }
 
@@ -304,6 +613,11 @@ inline std::vector<Part> Objects(const disc::GameDisc &src, const disc::GameDisc
   for (const auto &f : src.List("pac/evt"))
     if (f.rfind("evtobj_dlc", 0) == 0)
       files.push_back("pac/evt/" + f);
+  for (uint32_t m : want) {  // (2K16 / 2K17: one pac per prop, pac\prop\NNNN.pac; its SOBJ only, not BOBJ)
+    char f[32];
+    snprintf(f, sizeof(f), "pac/prop/%04u.pac", m);
+    files.push_back(f);
+  }
   for (const auto &f : files) {
     svrfmt::Archive a;
     if (want.empty() || !open(src, f, a))
@@ -319,6 +633,41 @@ inline std::vector<Part> Objects(const disc::GameDisc &src, const disc::GameDisc
   return out;
 }
 
+// The props of `parts`' scripts that WWE '12 can't load (no SOBJ in its evtobj.pac, none brought by the mod: 2K17
+// AJ Styles' 159, a 2K weapon "WOBJ", and the game crashed in his entrance, 2026-11-02): an existing prop (2001) in
+// their place, every slot off (slot word 0, bits 8-15). Props: object type +8 = 0x100. Returns how many.
+inline int HideMissing(std::vector<Part> &parts, const disc::GameDisc &w12, const std::vector<Part> &brought) {
+  using detail::Be32;
+  using yanm::ik::detail::Put32;
+  std::set<uint32_t> have;
+  svrfmt::Archive a;
+  if (!detail::OpenPac(w12, "pac/evt/evtobj.pac", a))
+    return 0;
+  for (const auto &k : a.root.kids)
+    if (k.group.rfind("SOBJ", 0) == 0)
+      have.insert(uint32_t(atoi(k.name.c_str())));
+  for (const auto &b : brought)
+    have.insert(uint32_t(b.number));
+  int hidden = 0;
+  for (auto &p : parts) {
+    if (p.kind != "EVP" || p.data.size() < 0x50)
+      continue;
+    const uint32_t n = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
+    for (uint32_t i = 0; i < n; ++i) {
+      const size_t q = t + 32 * size_t(i);
+      const uint32_t model = Be32(p.data, q + 4);
+      if (Be32(p.data, q + 8) != 0x100 || have.count(model) || model >= 10000)
+        continue;
+      Put32(p.data, q + 4, 2001);
+      const uint32_t ns = Be32(p.data, q + 24) >> 16, bp = Be32(p.data, q + 28) + 8;
+      for (uint32_t k = 0; k < ns && bp + 212 * size_t(k) + 4 <= p.data.size(); ++k)
+        p.data[bp + 212 * size_t(k) + 2] = 0;
+      ++hidden;
+    }
+  }
+  return hidden;
+}
+
 // A superstar's victory scene in WWE '13 (pac\evt\Winning00-03.pac, xcompressed EPK8, groups "EVP " / "EVZ ", entries
 // 6000 + its number: Mankind 6246), its tracks' IK legs baked as an entrance's. WWE '12 looks for 6000 + the superstar's
 // own number (sub_82407DC8: participant +16 + 6000, every group letter tried by sub_828CCC10 "/%s%c/%d"), so an added
@@ -326,33 +675,21 @@ inline std::vector<Part> Objects(const disc::GameDisc &src, const disc::GameDisc
 inline bool Victory(const disc::GameDisc &w13, int number, std::vector<Part> &out) {
   out.clear();
   const int want = 6000 + number % 1000;
-  for (int i = 0; i <= 3; ++i) {
+  for (int i = 0; i <= 9; ++i) {
     char f[32];
     snprintf(f, sizeof(f), "pac/evt/Winning%02d.pac", i);
-    Bytes b;
-    if (!w13.Read(f, b))
-      continue;
-    if (svrfmt::IsXcompress(b)) {
-      Bytes o;
-      if (!svrfmt::XcompressDecode(b, o))
-        continue;
-      b.swap(o);
-    }
     svrfmt::Archive a;
-    if (!svrfmt::ArchiveOpen(b, a, nullptr))
+    if (!detail::OpenPac(w13, f, a))
       continue;
-    for (auto &k : a.root.kids) {
-      if (atoi(k.name.c_str()) != want || (k.group.rfind("EVP", 0) != 0 && k.group.rfind("EVZ", 0) != 0))
-        continue;
-      out.push_back({want, k.group.substr(0, 3), svrfmt::Unpack(svrfmt::ArchiveData(k))});
-      if (out.back().kind == "EVP")  // (its titantron: WWE '12's victory tail)
-        AddVictoryTail12(out.back().data, want);
-      if (out.back().kind == "EVZ") {
-        NameTracks12(out.back().data);
-        yanm::ik::BakeEntranceTracks(out.back().data);
-      }
-    }
+    for (auto &k : a.root.kids)
+      if (atoi(k.name.c_str()) == want && (k.group.rfind("EVP", 0) == 0 || k.group.rfind("EVZ", 0) == 0))
+        out.push_back({want, k.group.substr(0, 3), svrfmt::Unpack(svrfmt::ArchiveData(k))});
   }
+  if (out.empty())  // (2K16 / 2K17: pac\evt\06NNN.pac)
+    ScenePac(w13, want, out);
+  for (auto &p : out)
+    To12(p);
+  FillTracks(out);
   return out.size() == 2;
 }
 

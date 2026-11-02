@@ -7,6 +7,8 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+
+#include <new>
 #include <d3d11.h>
 #include <dxgi.h>
 #include <shellapi.h>
@@ -415,6 +417,11 @@ void PageStars() {
 void PageNewStar() {
   Title(g_fr ? "NOUVEAU CATCHEUR" : "NEW SUPERSTAR");
   g_new_star.Draw(g_fr, g_device.Get(), g_disc, g_mods);
+  if (g_new_star.want_reset_) {  // ("Make another superstar": a clean page, its game discs kept)
+    g_new_star.~Page();
+    new (&g_new_star) new_star_page::Page();
+    g_new_star.discs_ = &g_discs;
+  }
 }
 
 void PageFiles() {

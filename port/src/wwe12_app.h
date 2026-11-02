@@ -41,6 +41,10 @@ void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem* fs, const std::stri
 // Arènes ajoutées (native/wwe12_arena_pages.cpp) : fichiers servis avant le dossier mods.
 void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem* fs, const std::string& game_device,
                           const std::filesystem::path& user_root, const std::filesystem::path& mods);
+// Entrées, victoires, rubans, murs et objets des catcheurs ajoutés (même fichier) : après Wwe12MountSuperstarMods, qui
+// leur donne leurs numéros (sinon un catcheur ajouté ne les avait qu'au lancement suivant).
+void Wwe12MountEntrances(rex::filesystem::VirtualFileSystem* fs, const std::string& game_device,
+                         const std::filesystem::path& user_root, const std::filesystem::path& mods);
 // Fond du menu principal tiré au sort (native/wwe12_superstar_mods.cpp), servi devant le dossier mods.
 void Wwe12MountMenuBackground(rex::filesystem::VirtualFileSystem* fs, const std::string& game_device);
 // Catcheurs ajoutés (native/wwe12_superstar_mods.cpp) : un pack DLC fait des mods au démarrage.
@@ -59,6 +63,8 @@ inline void Wwe12MountMenuPatch(rex::filesystem::VirtualFileSystem*, const std::
                                 const std::filesystem::path&) {}
 inline void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem*, const std::string&,
                                  const std::filesystem::path&, const std::filesystem::path&) {}
+inline void Wwe12MountEntrances(rex::filesystem::VirtualFileSystem*, const std::string&,
+                                const std::filesystem::path&, const std::filesystem::path&) {}
 #endif
 
 // Défini dans main.cpp. ReXApp charge toujours le plugin GPU avec le backend « any »
@@ -210,8 +216,11 @@ class Wwe12App : public rex::ReXApp {
     Wwe12MountSuperstarMods(fs, user_data_root_, rex::filesystem::GetExecutableFolder() / "mods");
     {
       std::string game_device;
-      if (fs->FindSymbolicLink("game:", game_device))
+      if (fs->FindSymbolicLink("game:", game_device)) {
+        if (!REXCVAR_GET(wwe12_no_mods))
+          Wwe12MountEntrances(fs, game_device, user_data_root_, rex::filesystem::GetExecutableFolder() / "mods");
         Wwe12MountMenuBackground(fs, game_device);
+      }
     }
     // Sauvegardes Xbox 360 choisies dans le launcher (saves_import.txt).
     Wwe12ImportSaves(user_data_root_);

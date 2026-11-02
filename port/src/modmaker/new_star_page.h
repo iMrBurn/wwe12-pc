@@ -16,6 +16,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <memory>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -55,6 +56,7 @@ constexpr int kDefaultBases[] = {261 /* Ted DiBiase */, 327 /* Justin Gabriel */
 
 class Page {
  public:
+  bool want_reset_ = false;  // asked for a clean page (another superstar): the Mod Maker makes it again
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &disc, mods::Manager &mods) {
     disc_ = &disc;
     disc12_ = &disc;
@@ -400,6 +402,12 @@ class Page {
     // player's, else the base's.
     ImGui::Dummy(ImVec2(0, 6));
     ImGui::SeparatorText(fr ? "Son portrait (menus, écran de choix)" : "Its portrait (menus, select screen)");
+    // (the preview made again here, before it is drawn: made while the sliders moved, after drawing it, the picture
+    // being drawn was freed and the Mod Maker crashed, 2026-11-02)
+    if (face_dirty_ && !portraits_[1][0].empty()) {
+      face_ = arena_page::MakeThumb(device_, Framed(portraits_[1][0]));
+      face_dirty_ = false;
+    }
     if (face_.srv) {
       arena_page::DrawPicture(face_, 140);
       ImGui::SameLine();
@@ -416,6 +424,81 @@ class Page {
     } else {
       ImGui::TextDisabled("%s", fr ? "Celui de la base." : "The base's.");
     }
+    // Its framing (the 2K games' renders are closer than WWE '12's: Kevin Owens, Seth Rollins larger than the others):
+    // its size and height in the square, applied to SSFA / SSFB (the select and VS screens) when the mod is made.
+    if (face_.srv) {
+      ImGui::SetNextItemWidth(180);
+      bool moved = ImGui::SliderFloat(fr ? "Taille##render" : "Size##render", &render_scale_, 0.5f, 1.3f, "%.2f");
+      ImGui::SetNextItemWidth(180);
+      moved |= ImGui::SliderFloat(fr ? "Hauteur##render" : "Height##render", &render_shift_, -0.3f, 0.3f, "%.2f");
+      ImGui::SameLine();
+      if (ImGui::SmallButton(fr ? "Remettre##render" : "Reset##render"))
+        render_scale_ = 1, render_shift_ = 0, moved = true;
+      if (moved)
+        face_dirty_ = true;
+    }
+    // ... or another game's render of a superstar (2K17's are renders of its 3D models: a photo from 2K15 / 2K16...)
+    if (discs_) {
+      static constexpr std::pair<uint32_t, const char *> kGames[] = {
+          {0x5451085D, "SvR 2011"}, {0x54510844, "SvR 2010"}, {0x54510826, "SvR 2009"}, {0x5451080B, "SvR 2008"},
+          {0x545107E0, "SvR 2007"}, {0x545108B4, "WWE '13"},  {0x545408B2, "WWE 2K14"}, {0x545408B6, "WWE 2K15"},
+          {0x315A07D2, "WWE 2K16"}, {0x545408BA, "WWE 2K17"}};
+      ImGui::TextDisabled("%s", fr ? "Ou celui d'un jeu :" : "Or a game's:");
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(130);
+      const char *shown = fr ? "Jeu..." : "Game...";
+      for (const auto &[t, n] : kGames)
+        if (t == face_game_)
+          shown = n;
+      if (ImGui::BeginCombo("##face_game", shown)) {
+        for (const auto &[t, n] : kGames)
+          if (!discs_->PathOf(t).empty() && ImGui::Selectable(n, t == face_game_) && t != face_game_) {
+            face_game_ = t;
+            face_list_.clear();
+            face_pick_ = -1;
+            disc::GameDisc g;
+            if (g.OpenPath(discs_->PathOf(t)))
+              for (const auto &[num, nm] : strings2k::SuperstarNames(g))
+                if (nm.size() > 1) {
+                  face_list_.push_back({num, nm});
+                  if (nm == name_)
+                    face_pick_ = int(face_list_.size()) - 1;
+                }
+          }
+        ImGui::EndCombo();
+      }
+      if (face_game_) {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(200);
+        if (ImGui::BeginCombo("##face_star", face_pick_ >= 0 ? face_list_[size_t(face_pick_)].second.c_str() : "",
+                              ImGuiComboFlags_HeightLarge)) {
+          for (int i = 0; i < int(face_list_.size()); ++i)
+            if (ImGui::Selectable(face_list_[size_t(i)].second.c_str(), i == face_pick_))
+              face_pick_ = i;
+          ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(face_pick_ < 0);
+        if (ImGui::Button(fr ? "Prendre##face" : "Take##face")) {
+          if (!face_helper_)
+            face_helper_ = std::make_unique<Page>();
+          face_helper_->discs_ = discs_;
+          face_helper_->disc12_ = disc12_;
+          face_helper_->device_ = device_;
+          Bytes got[2][3];
+          if (face_helper_->PortraitsFor(face_game_, face_list_[size_t(face_pick_)].first, got)) {
+            for (int hd = 0; hd < 2; ++hd)
+              for (int k = 0; k < 3; ++k)
+                portraits_[hd][k] = got[hd][k];
+            custom_portrait_.clear();
+            keep_portraits_ = true;
+            render_scale_ = 1, render_shift_ = 0;
+            face_dirty_ = true;
+          }
+        }
+        ImGui::EndDisabled();
+      }
+    }
     if (ImGui::Button(fr ? "Une image à vous..." : "A picture of yours...")) {
       const fs::path pick = arena_page::PickOpen(fr, false);
       svrfmt::Image img;
@@ -425,6 +508,27 @@ class Page {
     ImGui::TextDisabled("%s", fr ? "(de préférence le catcheur détouré, fond transparent, en PNG)"
                                  : "(best: the superstar cut out, transparent background, as a PNG)");
     ImGui::EndGroup();
+  }
+
+  // A portrait (DDS) framed as set (render_scale_ about the top centre, render_shift_ down by that part of its height),
+  // as it was when not moved.
+  Bytes Framed(const Bytes &dds) const {
+    svrfmt::Image img;
+    if ((render_scale_ == 1.0f && render_shift_ == 0.0f) || !svrfmt::DdsDecode(dds, img) || img.w <= 0 || img.h <= 0)
+      return dds;
+    const int w = (std::max)(1, int(img.w * render_scale_ + 0.5f)), h = (std::max)(1, int(img.h * render_scale_ + 0.5f));
+    const svrfmt::Image big = svrfmt::Resize(img, w, h);
+    svrfmt::Image out;
+    out.w = img.w, out.h = img.h;
+    out.rgba.assign(size_t(img.w) * img.h * 4, 0);
+    const int dx = (img.w - w) / 2, dy = int(render_shift_ * img.h);
+    for (int y = 0; y < h; ++y)
+      for (int x = 0; x < w; ++x) {
+        const int ox = x + dx, oy = y + dy;
+        if (ox >= 0 && oy >= 0 && ox < out.w && oy < out.h)
+          memcpy(&out.rgba[(size_t(oy) * out.w + ox) * 4], &big.rgba[(size_t(y) * w + x) * 4], 4);
+      }
+    return svrfmt::DdsEncode(out, svrfmt::DxtFormat::kDxt5, false);
   }
 
   // A picture of the player's as its portraits: fitted whole into the square (transparent around it, standing on
@@ -447,7 +551,8 @@ class Page {
                                               svrfmt::DxtFormat::kDxt5, false);
     custom_portrait_ = from;
     keep_portraits_ = true;
-    face_ = arena_page::MakeThumb(device_, portraits_[1][0]);
+    render_scale_ = 1, render_shift_ = 0;
+    face_dirty_ = true;  // (made before it is drawn next: this runs from a button drawn after it)
   }
 
   // Step 2: the base superstar (the look ported again over the new base).
@@ -876,9 +981,13 @@ class Page {
                                        : "The game is running: close it to install the mod.");
     if (!message_.empty())
       ImGui::TextColored(message_ok_ ? green : red, "%s", message_.c_str());
-    if (message_ok_)
+    if (message_ok_) {
       ImGui::TextDisabled("%s", fr ? "Dans le jeu : écran de choix des catcheurs, case DLC."
                                    : "In the game: superstar select screen, DLC tile.");
+      // (another one from a clean page: the Mod Maker makes this page again, modmaker.cpp)
+      if (ImGui::Button(fr ? "Créer une autre superstar" : "Make another superstar"))
+        want_reset_ = true;
+    }
     if (!reduced_.empty())
       ImGui::TextColored(yellow, "%s", reduced_.c_str());
   }
@@ -1076,15 +1185,39 @@ class Page {
     };
     const bool twok = game_title_ == 0x545408B2 || game_title_ == 0x545408B6 || game_title_ == 0x315A07D2 ||
                       game_title_ == 0x545408BA;
-    if (look_ == 3 && twok) {
+    if (look_ == 3 && (twok || game_title_ == 0x545108B4)) {
       twok_movies_ = movies_of(game_disc_, game_title_);
-      twok_movie_game_ = game_title_;
-    } else if (look_ == 3 && game_title_ == 0x545108B4) {
-      twok_movies_ = movies_of(game_disc_, game_title_);
+      // (2K15-2K17: its profile names its video, CHAR / PRO u32 at +580 (2K15) / +592 (2K16, 2K17, PRO by index) =
+      // (kind x 1000 + number) x 100 + variant, kind 1 a team's: 2K15 Seth Rollins 100700 = tag_0007_0_0.bk2, The
+      // Shield's; its own first)
+      if (game_title_ == 0x545408B6 || game_title_ == 0x315A07D2 || game_title_ == 0x545408BA) {
+        const auto pro = theme_source::detail::Records(game_disc_, "PRO");
+        Bytes rec;
+        if (game_title_ == 0x545408B6) {
+          if (const auto it = pro.find(uint32_t(number)); it != pro.end())
+            rec = it->second;
+        } else {
+          for (const auto &[i, d] : theme_source::detail::Records(game_disc_, "DAT"))
+            if (d.size() > 5 && (d[4] | d[5] << 8) == number && pro.count(i))
+              rec = pro.at(i);
+        }
+        const size_t at = game_title_ == 0x545408B6 ? 580 : 592;
+        if (rec.size() >= at + 4) {
+          const uint32_t v = rec[at] | rec[at + 1] << 8 | rec[at + 2] << 16 | uint32_t(rec[at + 3]) << 24;
+          const uint32_t id = v / 100, kind = id / 1000;
+          char f[40];
+          snprintf(f, sizeof(f), "%s_%04u_%u_0.bk2", kind == 1 ? "tag" : "ent", id % 1000, v % 100);
+          for (const auto &x : game_disc_.List("movies/titantron"))
+            if (v && _stricmp(x.c_str(), f) == 0 && std::find(twok_movies_.begin(), twok_movies_.end(), x) == twok_movies_.end())
+              twok_movies_.insert(twok_movies_.begin(), x);
+        }
+      }
       if (!twok_movies_.empty())
         twok_movie_game_ = game_title_;
+      // (none in its game: the same number's in the player's other games, newest first; 2K15 Seth Rollins has none)
       for (uint32_t t : {0x545408BAu, 0x315A07D2u, 0x545408B6u, 0x545408B2u})
-        if (twok_movies_.empty() && discs_ && !discs_->PathOf(t).empty() && twok_disc_.OpenPath(discs_->PathOf(t))) {
+        if (t != game_title_ && twok_movies_.empty() && discs_ && !discs_->PathOf(t).empty() &&
+            twok_disc_.OpenPath(discs_->PathOf(t))) {
           twok_movies_ = movies_of(twok_disc_, t);
           if (!twok_movies_.empty()) {
             twok_movie_game_ = t;
@@ -1323,12 +1456,74 @@ class Page {
           ++own_moves_.exact;
         }
     }
-    // Its WWE '13 or 2K14 entrance (entrance13.h: the same format as WWE '12's), when WWE '12 has none with that number.
+    // Its WWE '13 / 2K14-2K17 entrance (entrance13.h: WWE '12's format; 2K15-2K17's made so), when WWE '12 has none with
+    // that number.
     own_entrance_.clear();
+    own_entrance_one_take_ = false;
     own_entrance_number_ = 0;
-    const bool scenes = own_moves_game_ == 0x545108B4 || own_moves_game_ == 0x545408B2;
-    if (scenes && !entrance13::Exists12(*disc12_, number) && entrance13::Entrance(src, number, own_entrance_, nullptr))
-      own_entrance_number_ = number;
+    const bool scenes = own_moves_game_ == 0x545108B4 || own_moves_game_ == 0x545408B2 || own_moves_game_ == 0x545408B6 ||
+                        own_moves_game_ == 0x315A07D2 || own_moves_game_ == 0x545408BA;
+    // (its entrance's number: 2K14 and 2K15 name it in its profile, CHAR / PRO u16 little-endian at +580 / +584, and
+    // one superstar's may be another's: 2K15 Sami Zayn 429 enters with 478; elsewhere its own number)
+    int entrance = number;
+    if (own_moves_game_ == 0x315A07D2 || own_moves_game_ == 0x545408BA) {  // (2K16 / 2K17: PRO by index, +596)
+      const auto dat = theme_source::detail::Records(src, "DAT"), pro = theme_source::detail::Records(src, "PRO");
+      for (const auto &[i, d] : dat)
+        if (d.size() > 5 && (d[4] | d[5] << 8) == number && pro.count(i) && pro.at(i).size() > 597) {
+          const int e = pro.at(i)[596] | pro.at(i)[597] << 8;
+          if (e > 0 && e < 1000)
+            entrance = e;
+        }
+    }
+    if (own_moves_game_ == 0x545408B2 || own_moves_game_ == 0x545408B6) {
+      const auto pro = theme_source::detail::Records(src, "PRO");
+      const size_t at = own_moves_game_ == 0x545408B2 ? 580 : 584;
+      if (const auto it = pro.find(uint32_t(number)); it != pro.end() && it->second.size() > at + 1) {
+        const int e = it->second[at] | it->second[at + 1] << 8;
+        if (e > 0 && e < 1000)
+          entrance = e;
+      }
+    }
+    if (scenes && entrance13::Entrance(src, entrance, own_entrance_, nullptr)) {
+      own_entrance_number_ = entrance;
+      // (a 2K15 "one-take", the whole entrance in segment 0: said at step 2; WWE '12 plays it without the crowd)
+      own_entrance_one_take_ = entrance13::OneTake(own_entrance_, entrance);
+      // (2K16 / 2K17 effects are a newer PCE6, each emitter 2340 bytes where 2K15's are 2020 and WWE '13's 1780: the
+      // game crashed on them, 2K16 Kevin Owens, 2026-11-02. The same entrance's from an older game of the player's,
+      // else its base's in WWE '12, else none)
+      if (own_moves_game_ == 0x315A07D2 || own_moves_game_ == 0x545408BA) {
+        Bytes older;
+        for (uint32_t t : {0x545408B6u, 0x545408B2u, 0x545108B4u}) {
+          disc::GameDisc g;
+          if (older.empty() && !discs_->PathOf(t).empty() && g.OpenPath(discs_->PathOf(t)))
+            older = entrance13::Pce6Of(g, entrance);
+        }
+        if (older.empty() && base_ >= 0)
+          older = entrance13::Pce6Of(*disc12_, stars_[size_t(base_)].id);
+        for (size_t i = own_entrance_.size(); i-- > 0;)
+          if (own_entrance_[i].kind == "PCE6") {
+            if (older.empty())
+              own_entrance_.erase(own_entrance_.begin() + long(i));
+            else
+              own_entrance_[i].data = older;
+          }
+      }
+      // (a number WWE '12 or another installed mod has already: a free one, 499 down to 100; 854 crashed AJ Styles)
+      const std::set<int> taken = TakenEntrances();
+      if (entrance13::Exists12(*disc12_, entrance) || taken.count(entrance)) {
+        int to = 0;
+        for (int n = 499; n >= 100 && !to; --n)
+          if (!taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(*disc12_, n))
+            to = n;
+        if (to) {
+          entrance13::Renumber(own_entrance_, entrance, to);
+          own_entrance_number_ = to;
+        } else {
+          own_entrance_.clear();
+          own_entrance_number_ = 0;
+        }
+      }
+    }
     // its victory scene (served under 6000 + its slot)
     own_victory_.clear();
     if (scenes)
@@ -1339,7 +1534,27 @@ class Page {
       std::vector<entrance13::Part> both = own_entrance_;
       both.insert(both.end(), own_victory_.begin(), own_victory_.end());
       own_objects_ = entrance13::Objects(src, *disc12_, both);
+      // (the props neither WWE '12 nor the mod has: an existing one, hidden)
+      entrance13::HideMissing(own_entrance_, *disc12_, own_objects_);
+      entrance13::HideMissing(own_victory_, *disc12_, own_objects_);
     }
+  }
+
+  // The entrances the installed superstar mods have (their manifest's entrance_own=), beside the Mod Maker.
+  static std::set<int> TakenEntrances() {
+    std::set<int> out;
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::error_code ec;
+    for (fs::directory_iterator it(fs::path(exe).parent_path() / "mods" / ".svrmods" / "Superstars", ec), end;
+         !ec && it != end; it.increment(ec)) {
+      std::ifstream f(it->path() / "manifest.txt");
+      std::string line;
+      while (std::getline(f, line))
+        if (line.rfind("entrance_own=", 0) == 0)
+          out.insert(atoi(line.c_str() + 13));
+    }
+    return out;
   }
 
   // Step 2's part: its own WWE '13 / 2K14 entrance.
@@ -1353,6 +1568,9 @@ class Page {
              GameName(own_moves_game_), own_entrance_number_,
              int(std::count_if(own_entrance_.begin(), own_entrance_.end(), [](const auto &p) { return p.kind == "EVP"; })));
     ImGui::Checkbox(label, &use_own_entrance_);
+    if (own_entrance_one_take_)
+      ImGui::TextDisabled("%s", fr ? "(entrée « d'une seule prise » de 2K15 : WWE '12 la joue sans la foule pour l'instant)"
+                                   : "(a 2K15 \"one-take\" entrance: WWE '12 plays it without the crowd for now)");
   }
 
   // Step 2's part: its own WWE '13 / 2K14 victory scene.
@@ -2078,7 +2296,7 @@ class Page {
         for (int k = 0; k < 3; ++k)
           if (!portraits_[hd][k].empty())
             entries.push_back({std::string("superstar/SSF") + char('A' + k) + (hd ? "_HD.dds" : "_SD.dds"),
-                               portraits_[hd][k]});
+                               k < 2 ? Framed(portraits_[hd][k]) : portraits_[hd][k]});
     if (!mods::Manager::WriteZip(save, entries)) {
       message_ = (fr ? "Impossible d'écrire " : "Could not write ") + media::Utf8(save.wstring());
       return;
@@ -2142,6 +2360,13 @@ class Page {
   int theme_pick_ = 0;
   bool use_theme_ = true;      // ... made PCM and put into the mod (superstar/theme.wem)
   int own_entrance_number_ = 0;
+  bool own_entrance_one_take_ = false;
+  float render_scale_ = 1.0f, render_shift_ = 0.0f;  // its portrait's framing (Framed)
+  bool face_dirty_ = false;  // the preview to make again before it is drawn
+  uint32_t face_game_ = 0;  // its portrait from another game: that game, its superstars (number, name), the one picked
+  std::vector<std::pair<int, std::string>> face_list_;
+  int face_pick_ = -1;
+  std::unique_ptr<Page> face_helper_;  // (finds them, PortraitsFor)  // ... a 2K15 "one-take" (entrance13::OneTake)
   bool use_own_entrance_ = true;  // its entrance: another superstar's (index in stars_), else -1: the base's
   char entrance_filter_[64] = {};
   bool own_attributes_ = false;           // its own attributes (else the base's)

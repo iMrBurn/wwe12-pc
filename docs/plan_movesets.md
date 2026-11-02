@@ -382,6 +382,27 @@ Yokozuna 2763, Big John Studd 2758, Goldberg 2754.
   direct). Les vidéos des catcheurs ajoutés sont aussi servies par-dessus le disque (`Documents\wwe12\pack_movies`).
   **Vu en jeu** : titantron et musique de Mankind.
 
+### Entrées et victoires de 2K15, 2K16, 2K17 (2026-11-02, d'après le code et les notes de Kaiko, crédité)
+
+- **Rangement** : 2K15 `pac\evt\Entrance00-10.pac` (EVP2 / EVZ, pistes au format de WWE '12) ; 2K16 / 2K17 un pac par
+  scène `pac\evt\NNNNN.pac` (victoire 06NNN, variantes 1xNNN ; 2K17 HSPC, pistes en SHDC refaites en PACH), script de
+  jeu `pac\gimmick\gmevNNNN.pac`, effets `pac\particle\pce6NNNN.pac`, accessoires `pac\prop\NNNN.pac`, **lumières**
+  `pac\evt\light\elNNNNN.pac` (EVL : les pistes de l'objet global, fusionnées dans l'EVZ).
+- **Script** : cases de 788 octets → 212 (mots 0-50 et 195-196), queue de WWE '12 (`entrance13::Evp788To212`).
+- **Pistes** : YANM v5 → 4, blocs mode 4 vidés ; un enregistrement vide (96 o) pour chaque objet sans piste (2K16 n'en
+  a pas pour les figurants).
+- **Effets** : les PCE6 de 2K16 / 2K17 (éléments de 2340 o ; 2K15 2020, WWE '13 1780) font planter WWE '12 (lecture de
+  0x9C dans sub_824DE430, vérifié en jeu en échangeant les fichiers) : ceux de la même entrée dans 2K15 / 2K14 / WWE '13,
+  sinon ceux de la base dans WWE '12.
+- **Numéros** : entrée de la fiche (2K14 PRO +580, 2K15 +584, 2K16 PRO par index +596 ; Sami Zayn 429 → 478, Kevin
+  Owens 578 → 458) ; vidéo d'entrée de la fiche (2K15 +580, 2K16 / 2K17 +592 : (sorte × 1000 + n°) × 100 + variante,
+  sorte 1 = équipe : Rollins 100700 = `tag_0007_0_0.bk2`, le Shield). Numéro d'entrée déjà pris dans WWE '12 ou par un
+  mod : renuméroté (499 → 100 ; 854 faisait planter). Accessoire introuvable : un autre à sa place, caché.
+- **Entrées « d'une seule prise » de 2K15** (~61, tout dans le segment 0 : Sami Zayn 478) : jouées sans la foule ; à
+  découper en segments (à faire).
+- **Vu en jeu** : Seth Rollins (2K15), Kevin Owens (2K16), AJ Styles (2K17) entrent sans planter. Restent : chargement
+  très long de leurs pistes (~30 s), renders des 2K à recadrer (réglages Taille / Hauteur, render d'un autre jeu).
+
 ### Graphismes d'entrée, ressorts des tenues (2026-11-01)
 
 - **Graphismes par catcheur dans WWE '12** : `movies\titantron\NNN.bik` (haut 320 × 220 = titantron, bas 320 × 100 =
