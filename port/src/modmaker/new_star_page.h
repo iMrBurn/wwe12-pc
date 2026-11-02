@@ -2346,8 +2346,9 @@ class Page {
     if (use_theme_ && !theme_.stream.empty() && (look_ == 2 || look_ == 3)) {  // (its theme, Wwise PCM)
       const std::wstring ext(theme_.ext.begin(), theme_.ext.end());
       Bytes pcm;
-      // (an entrance whose video plays full screen first, 2K15 Bray Wyatt's: that video's sound before the song, and the
-      // music from the entrance's start; the theme alone has only the song)
+      // (an entrance whose video plays full screen first, 2K15 Bray Wyatt's: that video's sound before the song, the
+      // music from frame 100 as usual and the sound from there; the theme alone has only the song. From frame 0, the
+      // video showed neither full screen nor on the titantron, 2026-11-02)
       uint32_t fullscreen = 0;
       if (own_entrance)
         for (const auto &part : own_entrance_)
@@ -2356,12 +2357,12 @@ class Page {
       Bytes video;
       if (fullscreen && !twok_movie_file_.empty() &&
           game_disc_.Read("movies/titantron/" + twok_movie_file_, video))
-        pcm = theme_convert::ToPcmWithIntro(Vgmstream(), theme_.stream, ext, video, L".bk2", fullscreen / 60.0);
+        pcm = theme_convert::ToPcmWithIntro(Vgmstream(), theme_.stream, ext, video, L".bk2", fullscreen / 60.0, 100 / 60.0);
       if (!pcm.empty()) {
         const std::string evp = entrance13::ModPath({own_entrance_number_, "EVP", {}});
         for (auto &[name, data] : entries)
           if (name == evp)
-            entrance13::SetMusicFrame(data, 0);
+            entrance13::SetMusicFrame(data, 100);
       } else {
         pcm = theme_convert::ToPcm(Vgmstream(), theme_.stream, ext);
       }

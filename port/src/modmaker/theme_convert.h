@@ -102,20 +102,20 @@ inline Bytes ToPcm(const fs::path &vgmstream, const Bytes &wem, const std::wstri
   return wwise::PcmStream(s.data(), s.size() / size_t(channels), channels, rate);
 }
 
-// The same with the sound of a video before it (its first `seconds`, at the theme's rate and channels): a 2K15
+// The same with the sound of a video before it (from `from` to `seconds`, at the theme's rate and channels): a 2K15
 // entrance whose video plays full screen first (Bray Wyatt's, 20 s of its own sound before his song, which the game's
 // theme alone doesn't have, 2026-11-02). Empty if either can't be decoded.
 inline Bytes ToPcmWithIntro(const fs::path &vgmstream, const Bytes &wem, const std::wstring &ext, const Bytes &video,
-                            const std::wstring &video_ext, double seconds) {
+                            const std::wstring &video_ext, double seconds, double from = 0) {
   std::vector<int16_t> s, v;
   int channels = 0, rate = 0, vch = 0, vrate = 0;
   if (!Decode(vgmstream, wem, ext, s, channels, rate) || !Decode(vgmstream, video, video_ext, v, vch, vrate))
     return {};
-  const size_t frames = size_t(seconds * rate), vframes = v.size() / size_t(vch);
+  const size_t frames = size_t(std::max(0.0, seconds - from) * rate), vframes = v.size() / size_t(vch);
   std::vector<int16_t> out;
   out.reserve(frames * size_t(channels) + s.size());
   for (size_t i = 0; i < frames; ++i) {  // (linear resampling; a missing channel copied, two made one by their mean)
-    const double at = double(i) * vrate / rate;
+    const double at = (double(i) / rate + from) * vrate;
     const size_t a = size_t(at), b = std::min(a + 1, vframes ? vframes - 1 : 0);
     const double t = at - double(a);
     for (int c = 0; c < channels; ++c) {
