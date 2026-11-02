@@ -30,6 +30,7 @@
 #include "imgui.h"
 #include "mod_version.h"
 #include "entrance13.h"
+#include "svr_scenes.h"
 #include "screens_ui.h"
 #include "theme_convert.h"
 #include "theme_source.h"
@@ -1543,7 +1544,10 @@ class Page {
           entrance = e;
       }
     }
-    if (scenes && entrance13::Entrance(src, entrance, own_entrance_, nullptr)) {
+    // (SvR 2011: its own entrance and victory converted, svr_scenes.h; its number the superstar's)
+    const bool svr11 = own_moves_game_ == 0x5451085D;
+    if ((scenes && entrance13::Entrance(src, entrance, own_entrance_, nullptr)) ||
+        (svr11 && svr_scenes::Entrance(src, *disc12_, entrance, own_entrance_, nullptr))) {
       own_entrance_number_ = entrance;
       // (a 2K15 "one-take", the whole entrance in segment 0: said at step 2; WWE '12 plays it without the crowd)
       own_entrance_one_take_ = entrance13::OneTake(own_entrance_, entrance);
@@ -1587,12 +1591,16 @@ class Page {
     own_victory_.clear();
     if (scenes)
       entrance13::Victory(src, number, own_victory_);
+    else if (svr11)
+      svr_scenes::Victory(src, *disc12_, number, own_victory_);
     // the objects of both that WWE '12 hasn't (Cena's chain, Kane's mask...): from its game's evtobj.pac
     own_objects_.clear();
-    if (scenes) {
+    if (scenes || svr11) {
       std::vector<entrance13::Part> both = own_entrance_;
       both.insert(both.end(), own_victory_.begin(), own_victory_.end());
-      own_objects_ = entrance13::Objects(src, *disc12_, both);
+      // (SvR 2011's props are another format: none brought, the ones WWE '12 hasn't hidden)
+      if (scenes)
+        own_objects_ = entrance13::Objects(src, *disc12_, both);
       // (the props neither WWE '12 nor the mod has: an existing one, hidden)
       entrance13::HideMissing(own_entrance_, *disc12_, own_objects_);
       entrance13::HideMissing(own_victory_, *disc12_, own_objects_);
