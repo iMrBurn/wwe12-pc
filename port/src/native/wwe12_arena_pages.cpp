@@ -543,7 +543,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         rel = r;
         part.group = kind + kGroups[file];
         part.name = std::to_string(number);
-      } else if (kind == "GMEV" || kind == "PCE6") {
+      } else if (kind == "GMEV" || kind == "PCE6" || kind == "LPE6") {  // (LPE6: the effects' second set, asked too)
         char n[8];
         snprintf(n, sizeof(n), "%04d", number % 10000);
         rel = kind == "GMEV" ? "pac/gm.pac" : "pac/prtcls.pac";

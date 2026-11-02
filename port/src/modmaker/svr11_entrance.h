@@ -2035,6 +2035,36 @@ inline bool Convert(const Bytes &ymks, const Bytes &evp11, const Bytes &base_evz
     std::vector<BlockRef> bblocks;
     if (bl && !Header(*bl, bkind, bblocks))
       bl = nullptr;
+    // (ours) the base record of the same index is an entrance's object: a victory scene's objects are laid out
+    // otherwise (SvR 2010 Jeff Hardy's ropes 10 / 11 got the base's camera and global records, and the scene showed
+    // the crowd, 2026-11-02). One of the kind the object needs instead: ropes / turnbuckles 119, props 130 (not the
+    // entrant's 0), the global object 1 (not the camera's 10); the base entrance's own ones first (12, 7, 11).
+    {
+      int want = -1;
+      uint32_t first = 0, avoid = 0xFFFFFFFF;
+      if (IsType(o, 1, 0) || IsType(o, 0, 0x01000000))
+        want = 119, first = 12;
+      else if (IsType(o, 0x100, 0))
+        want = 130, first = 7, avoid = 0;
+      else if (IsType(o, 0, 0x10000))
+        want = 1, first = 11, avoid = 10;
+      // (a prop on another kind's record kept as Max's tool does: on a rope record it gets its own 2011 motion, Cena's
+      // 17; only one without a record gets a prop's)
+      if (want >= 0 && (!bl || (bkind != want && want != 130))) {
+        auto fits = [&](uint32_t id) {
+          int k = -1;
+          std::vector<BlockRef> bb;
+          if (id == avoid || !base.count(id) || !Header(base[id], k, bb) || k != want)
+            return false;
+          bl = &base[id], bkind = k, bblocks = std::move(bb);
+          return true;
+        };
+        if (!fits(first))
+          for (uint32_t id : base_order)
+            if (fits(id))
+              break;
+      }
+    }
     auto base_block = [&](const std::string &nm) -> size_t {
       for (auto &b : bblocks)
         if (b.name == nm)

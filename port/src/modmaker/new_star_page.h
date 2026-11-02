@@ -1582,6 +1582,16 @@ class Page {
               own_entrance_[i].data = older;
           }
       }
+      // (its effects are asked for twice, pac\prtcls.pac PCE6 and LPE6: a game without LPE6 (2K14...) gives its PCE6 for
+      // both, as Kaiko's entrance_port.py; with PCE6 alone no pyro showed, 2026-11-02)
+      if (std::none_of(own_entrance_.begin(), own_entrance_.end(), [](const auto &q) { return q.kind == "LPE6"; }))
+        for (size_t i = 0, n = own_entrance_.size(); i < n; ++i)
+          if (own_entrance_[i].kind == "PCE6") {
+            entrance13::Part l = own_entrance_[i];
+            l.kind = "LPE6";
+            own_entrance_.push_back(std::move(l));
+            break;
+          }
       // (a number WWE '12 or another installed mod has already: a free one, 499 down to 100; 854 crashed AJ Styles. The
       // number is its theme's too, MusicNumber: one the game has a theme of played that one, none heard: SvR 2010 Jeff
       // Hardy as 111, 2026-11-02)

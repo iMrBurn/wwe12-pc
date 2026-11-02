@@ -163,9 +163,12 @@ inline bool Entrance(const disc::GameDisc &svr, const disc::GameDisc &w12, int n
     gm = detail::Entry(old ? w12 : svr, "pac/gm.pac", "GMEV", 139);
   if (!gm.empty())
     out.push_back({as, "GMEV", std::move(gm)});
+  // (its effects: PCE6 and LPE6, both asked for by the game, WWE '12's Jeff Hardy 535 has both; with PCE6 alone no
+  // pyro showed, SvR 2010 Jeff Hardy, 2026-11-02)
   if (!old || title == svr_old_entrance::kSvr10)
-    if (Bytes fx = detail::Entry(svr, "pac/prtcls.pac", "PCE6", number); !fx.empty())
-      out.push_back({as, "PCE6", std::move(fx)});
+    for (const char *group : {"PCE6", "LPE6"})
+      if (Bytes fx = detail::Entry(svr, "pac/prtcls.pac", group, number); !fx.empty())
+        out.push_back({as, group, std::move(fx)});
   entrance13::CameraTwins12(out);
   return true;
 }
