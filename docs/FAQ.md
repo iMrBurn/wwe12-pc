@@ -43,6 +43,12 @@ cards without Vulkan 1.2 or DirectX 12). AUTO tries Vulkan, then DirectX 12, the
 `gpu_backend = "vulkan"`, `"d3d12"` or `"d3d11"` in `wwe12.toml`. With DirectX 11 the sun's lens flare isn't drawn yet;
 everything else looks the same.
 
+**16:10 / ultrawide screens.** The picture now fills the window (matches and entrances); the HUD stays in the
+middle 16:9 area and the menus stay 16:9 with bars. Launcher > SETTINGS > DISPLAY (16:10 box), or
+`wwe12_widescreen = false` in `wwe12.toml` to get the 16:9 picture with black bars. PICTURE FORMAT STRETCH
+(`bd_aspect_ratio = 6`) stretches everything instead. If something looks wrong (pause menu, HUD in 21:9,
+DirectX 11/12), tell us your screen size and graphics API.
+
 **Low-end PC.** In the launcher, the LOW-END PC button sets 480p, no crowd, no shadows and no depth of field in one
 click (UNDO puts your old values back). Internal resolutions go down to 360p.
 
@@ -118,6 +124,20 @@ options and incoherent combinations (like a pinfall in a Ladder match) stay lock
 Files in the `mods` folder next to the game replace the game's own (same path as in the game). See
 `mods\HOW_TO_USE_MODS.txt`.
 
+**Wrestler names in the preset entrances and move-sets.** The move list and Create an Entrance show the real
+names (`wwe12_preset_names`, on by default). To change one, add a line `8215=NAME` to `preset_names.txt`.
+
+**Jukebox.** OPTIONS > JUKEBOX plays any entrance theme from the menus (order, shuffle, theme). Turn the whole
+feature off with `wwe12_jukebox_menu = false`.
+
+**Entrance music from other WWE games (Mod Maker).** A superstar imported from SvR 2007 to 2K17 can bring his
+own entrance theme (and titantron when the game has one). This needs vgmstream: Kaiko's Mod Maker Tools, or
+`vgmstream-cli.exe` in a `vgmstream` folder next to the Mod Maker. Each theme is stored uncompressed (13-36 MB).
+Back up your save before using mods, and re-import a superstar after updating the Mod Maker. Moves from SvR
+2011 / '13 / 2K14-2K16 are not tested in the game yet.
+
+**Universe: RESET UNIVERSE** saves right away and can't be undone. Copy your save first (launcher > SAVES).
+
 **Removing an added superstar (Mod Maker).** Before you turn off or remove a superstar mod, stop using him in
 your save (Universe, matches, rivalries). A save made with an added superstar needs him: the game keeps his
 pack as it was (the launcher's MODS page says so, and superstar mods added since don't get in) until you take
@@ -145,6 +165,11 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
   Vulkan 1.2 ni DirectX 12). AUTO essaie Vulkan, puis DirectX 12, puis DirectX 11. Ou `gpu_backend = "vulkan"`,
   `"d3d12"` ou `"d3d11"` dans `wwe12.toml`. En DirectX 11, les reflets du soleil (lens flare) ne s'affichent pas encore ;
   tout le reste est identique.
+- **Écrans 16:10 / ultralarges** : l'image remplit la fenêtre (matchs et entrées) ; le HUD reste au milieu en 16:9
+  et les menus restent en 16:9 avec des barres. Launcher > RÉGLAGES > AFFICHAGE (case 16:10), ou
+  `wwe12_widescreen = false` dans `wwe12.toml` pour l'image 16:9 avec barres noires. FORMAT D'IMAGE ÉTIRER
+  (`bd_aspect_ratio = 6`) étire tout. Si quelque chose cloche (menu pause, HUD en 21:9, DirectX 11/12), dites-nous la
+  taille de votre écran et l'API graphique.
 - **PC modeste** : dans le launcher, le bouton PC MODESTE règle 480p, sans foule, sans ombres et sans flou en un clic
   (ANNULER remet vos anciennes valeurs). Les résolutions vont jusqu'à 360p.
 - **Écran noir / message Vulkan** : il faut une carte graphique avec un pilote Vulkan (pas les Intel HD
@@ -177,6 +202,18 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
   3 catcheurs ou plus (types de match 0 à 26). Les options d'entrée/replay et les combinaisons incohérentes (un tombé
   à l'échelle) restent verrouillées volontairement.
 - **Mods** : les fichiers du dossier `mods` remplacent ceux du jeu (même chemin).
+- **Noms des catcheurs dans les entrées et mouvements prédéfinis** : la liste de coups et Créer une entrée montrent
+  les vrais noms (`wwe12_preset_names`, activé par défaut). Pour en changer un : une ligne `8215=NOM` dans
+  `preset_names.txt`.
+- **Jukebox** : OPTIONS > JUKEBOX joue n'importe quel thème d'entrée depuis les menus (ordre, aléatoire, thème).
+  Tout couper : `wwe12_jukebox_menu = false`.
+- **Musiques d'entrée d'autres jeux WWE (Mod Maker)** : un catcheur importé de SvR 2007 à 2K17 peut garder son thème
+  d'entrée (et son titantron si le jeu en a un). Il faut vgmstream : Kaiko's Mod Maker Tools, ou `vgmstream-cli.exe`
+  dans un dossier `vgmstream` à côté du Mod Maker. Chaque thème est stocké sans compression (13 à 36 Mo). Copiez
+  votre sauvegarde avant les mods et réimportez un catcheur après une mise à jour du Mod Maker. Les prises de SvR
+  2011 / '13 / 2K14-2K16 ne sont pas encore testées en jeu.
+- **Univers : RESET UNIVERSE** sauvegarde tout de suite et ne s'annule pas. Copiez d'abord votre sauvegarde
+  (launcher > SAUVEGARDES).
 - **Enlever un catcheur ajouté (Mod Maker)** : avant de désactiver ou d'enlever son mod, ne l'utilisez plus
   dans votre sauvegarde (Univers, matchs, rivalités). Le jeu garde son pack tant que vous ne l'avez pas retiré
   dans le Mod Maker (VÉRIFIER > Retirer du pack) : la page MODS du launcher le signale. La sauvegarde est
