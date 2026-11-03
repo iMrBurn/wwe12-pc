@@ -19,6 +19,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -179,12 +180,19 @@ inline bool Xact(const disc::GameDisc &g, int number, Theme &out) {
   }
   if (xsb.size() < 0x20 || memcmp(xsb.data(), "KBDS", 4) || hdr.empty())
     return false;
-  // the cue numbers of MUSIC_<number>_<part> in the header
+  // the cue numbers of MUSIC_<number>_<part> in the header (the part digits alone: MUSIC_<number>_<part>_R are the
+  // crowd's 5.1 ambience, 124 s, the same for all and the longest: taken, SvR 2007 Bobby Lashley's "theme" was the
+  // crowd, 2026-11-03; his song is 0020_0)
   char want[24];
   snprintf(want, sizeof(want), "_MUSIC_%04d_", number);
   std::vector<uint32_t> cues;
   const std::string text(hdr.begin(), hdr.end());
   for (size_t at = text.find(want); at != std::string::npos; at = text.find(want, at + 1)) {
+    size_t q = at + strlen(want);
+    while (q < text.size() && isdigit(static_cast<unsigned char>(text[q])))
+      ++q;
+    if (q == at + strlen(want) || (q < text.size() && text[q] != ' ' && text[q] != '='))
+      continue;
     const size_t eq = text.find('=', at), nl = text.find('\n', at);
     if (eq != std::string::npos && (nl == std::string::npos || eq < nl))
       cues.push_back(uint32_t(atoi(text.c_str() + eq + 1)));
@@ -215,7 +223,8 @@ inline bool Xact(const disc::GameDisc &g, int number, Theme &out) {
   Bytes best_e;
   for (uint16_t w : waves) {
     Bytes e;
-    if (!g.ReadPart(xwb, seg[1][0] + uint64_t(w) * esize, 16, e) || (Be32(e, 4) & 3) != 1)
+    if (!g.ReadPart(xwb, seg[1][0] + uint64_t(w) * esize, 16, e) || (Be32(e, 4) & 3) != 1 ||
+        ((Be32(e, 4) >> 2) & 7) > 2)  // (songs are mono or stereo: the 6-channel waves are the crowd's)
       continue;
     if ((Be32(e, 0) >> 4) > best_samples)
       best_samples = Be32(e, 0) >> 4, best_e = e;

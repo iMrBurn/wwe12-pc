@@ -1842,7 +1842,19 @@ class Page {
   // (CM Punk next to Drew McIntyre, 2026-10-26). Scaled 1.45 high and 0.92 wide (1.16 wide: his face still ~1.25
   // times Chavo Guerrero's, same height, 2026-10-26), the head's top 12 pixels from the top
   // (at 512), centred on the shoulders (a row a fifth of the way down the figure); the legs go past the bottom edge.
-  static svrfmt::Image Reframe(const svrfmt::Image &img) {
+  // Now the same scale both ways (2026-11-03: the 1.45 / 0.92 stretch made them thin, the user wanted better): SvR's
+  // renders are the superstar's true shape shown square (SvR 2009's 256 x 512 stretched back), only framed down to the
+  // knees. The scale per game makes Cena's head the size of WWE '12's own Cena's: 2011 1.30, 2010 1.40, 2009 1.15,
+  // 2008 1.45, 2007 1.30.
+  static double ReframeScale(uint32_t game) {
+    switch (game) {
+      case 0x54510844: return 1.40;  // SvR 2010
+      case 0x54510826: return 1.15;  // SvR 2009
+      case 0x5451080B: return 1.45;  // SvR 2008
+      default: return 1.30;          // SvR 2011, 2007
+    }
+  }
+  static svrfmt::Image Reframe(const svrfmt::Image &img, double k) {
     if (img.w <= 0 || img.h <= 0)
       return img;
     auto solid = [&](int x, int y) { return img.rgba[(size_t(y) * img.w + x) * 4 + 3] > 128; };
@@ -1864,7 +1876,7 @@ class Page {
         right = x;
       }
     const double cx = left < 0 ? img.w / 2.0 : (left + right) / 2.0;
-    constexpr double ky = 1.45, kx = 0.92;
+    const double ky = k, kx = k;
     const int w = int(img.w * kx + 0.5), h = int(img.h * ky + 0.5);
     const svrfmt::Image big = svrfmt::Resize(img, w, h);
     svrfmt::Image out;
@@ -1943,7 +1955,7 @@ class Page {
       svrfmt::Image img;
       if (portraits_[1][k].empty() || !svrfmt::DdsDecode(portraits_[1][k], img))
         continue;
-      img = Reframe(img);
+      img = Reframe(img, ReframeScale(svr_game_));
       portraits_[1][k] = svrfmt::DdsEncode(img, svrfmt::DxtFormat::kDxt5, false);
       portraits_[0][k] = svrfmt::DdsEncode(svrfmt::Resize(img, 512, 256), svrfmt::DxtFormat::kDxt5, false);
     }
@@ -1980,6 +1992,20 @@ class Page {
       SetModel(ported_);
       return;
     }
+    // (the base's own entrance outfit of that attire, kind 4, "000BBB12" -> "000BBB14", taken out: the game wore it
+    // during the entrance, the ported superstar's only in the match, SvR 2008 Johnny Nitro on base John Morrison
+    // with his coat, 2026-11-03; and a WWE '13 port's own outfit, added under that name, kept the base's. Without
+    // an outfit of its own, a copy of the ported attire is put in its place below: the profile still says it has one)
+    std::string base_outfit;
+    if (const std::string a = w.root.kids[0].name; a.size() == 8) {
+      std::string outfit = a;
+      outfit[7] = '4';
+      for (size_t i = w.root.kids.size(); i-- > 1;)
+        if (w.root.kids[i].name == outfit) {
+          svrfmt::ArchiveRemove(w.root, i);
+          base_outfit = outfit;
+        }
+    }
     const size_t budget = w.root.kids[0].stored.size();  // (before Save: the base's attire as shipped)
     // Its WWE '13 entrance outfit too, if its attire has one (port13_star::AddEntranceOutfit).
     bool has_outfit = false;
@@ -2004,6 +2030,14 @@ class Page {
         port13_star::AddEntranceOutfit(s, i, base_file_, 0, w, &found, &e, to);
         ++attires;
       }
+    }
+    if (!base_outfit.empty() && std::none_of(w.root.kids.begin(), w.root.kids.end(),
+                                             [&](const auto &k) { return k.name == base_outfit; })) {
+      svrfmt::ArchiveTouch(w.root);
+      svrfmt::Archive again;
+      std::string e;
+      if (svrfmt::ArchiveOpen(svrfmt::ArchiveSave(w), again, &e))
+        svrfmt::ArchiveAdd(w.root, "EMD ", base_outfit, 0, svrfmt::ArchiveData(again.root.kids[0]), &e);
     }
     const bool outfit_added = w.root.kids.size() > kids_before;
     svrfmt::ArchiveTouch(w.root);
