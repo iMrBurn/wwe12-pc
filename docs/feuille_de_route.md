@@ -1,4 +1,70 @@
-# Feuille de route (version de l'utilisateur, mise à jour le 2026-10-27)
+# Feuille de route (réorganisée le 2026-11-03, validée par l'utilisateur)
+
+Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/limit_breaking.md`, `docs/mod_maker.md`, `docs/camera.md` et `docs/suggestions_joueurs.md`. L'ancienne feuille de route (textes de l'utilisateur, notes, historique) est gardée en bas, sous « Détails et historique ».
+
+## Règles du jeu des numéros
+- **1.0.x** : corrections seulement, jamais de nouveauté. On part du tag précédent et on ne prend que les corrections choisies.
+- **1.x** : un thème par version, 5 éléments au plus. Ce qui n'est pas testé en jeu passe à la version suivante.
+- **2.0** : seulement si les sauvegardes, le format des mods ou la façon d'installer changent.
+- Rien n'est promis aux joueurs tant que ce n'est pas testé en jeu. Une seule liste officielle (ce fichier) ; les issues GitHub n'y sont que des liens.
+- Rien de dérivé du jeu ne se publie (pas de données de jeu dans un zip ni sur GitHub).
+
+## 1. Maintenant : 1.0.1 (corrections seulement)
+Voir le tableau de `docs/feuille_de_route.md` (section « 1.0.1 »).
+- Univers : plantage avec 5 matchs par show (fait, testé, poussé).
+- D3D12 sur Intel UHD 620 (#7) : fait, à confirmer par le joueur.
+- Bugs de la 1.0 signalés d'ici là.
+- Date : dans 3 à 7 jours, ou tout de suite si un bug empêche de jouer.
+
+## 2. Prochaines versions (un thème chacune)
+
+### 1.1 : « Mod Maker et entrées » (déjà bien avancé)
+- Mod Maker : prises, entrées et musiques de SvR 2007-2011 et WWE '13 (fait en grande partie, en commits locaux).
+- Arènes SvR 2007 : foule au bon endroit (chantier de Mods).
+- Scènes de victoire (Winning*.pac), musique de victoire, vidéos WWE '13.
+- Tenue des catcheurs ajoutés (ceinture à la taille, etc.).
+- À tester avant de promettre : prises de SvR 2011 / '13 / 2K14-2K16 (marquées expérimentales).
+
+### 1.2 : « Les corrections de THQ » (à découvrir)
+- Comparaison des 2 mises à jour officielles (en cours, session Gameplay) : liste des corrections, tri, test en jeu.
+- Bugs du jeu d'origine à tester : finishers qui gèlent, cage / barrières de Hell in a Cell, tables sous le ring, sons après Backstage Brawl, movesets CAW qui se réinitialisent, évasion de tombé en Elimination Chamber.
+- Tenues de The Miz verrouillées (signalé par un joueur : DLC).
+- Chargements plus rapides (autres attentes de la console), avertissement HDD dans le launcher.
+
+### 1.3 : « Modes de match »
+- Stipulations : I Quit (la version légère d'abord), Special Guest Referee.
+- Matchs squash (vie de départ réduite).
+- Stock de finishers de départ (1 / 2 / 3 / infini, comme 2K14).
+- Univers : deux mallettes Money in the Bank (RAW / SmackDown), embuscade en coulisses.
+
+### 1.4 : « Écrans et plateformes » (à décider selon les retours)
+- 16:10 / 21:9 : vérifier D3D11/D3D12, menu pause, HUD en 21:9.
+- Icônes de touches de clavier dans les menus.
+- Android : vrais téléphones, boutons PlayStation, ce que disent les joueurs.
+- Shaders qui font saccader à la première fois (Rendu).
+
+## 3. Plus tard (sans date)
+- Plus de 6 superstars sur le ring (tableaux à 6 cases, mémoire, animations : très long).
+- 100 / 200 slots CAW et logos (touche les sauvegardes : risqué, probablement 2.0).
+- Le jeu en full natif, sans émulation (long terme, par étapes).
+- Univers : backport des cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants.
+- Choix de caméra de match, option 30 fps partout.
+
+## 4. Abandonné / pas prévu
+- Moments OMG de WWE '13 (15 à 30 séances, décision du 2026-10-28).
+- Mise à jour complète du jeu (Title Update) comme version du code : remplacée par « refaire nous-mêmes les corrections » (1.2).
+- GM Mode (n'existe pas dans WWE '12), le DLC dans les textes publics, support des sauvegardes Wii.
+
+## Comment suivre l'avancement (proposition)
+- Chaque élément a un état : **idée → étudié → fait (commit local) → testé en jeu → publié**.
+- À chaque version : on décide les éléments au début, on les teste en jeu au milieu, on publie à la fin ; ce qui n'est pas testé sort de la version.
+- Une ligne de notes de version écrite au fur et à mesure (pas à la fin).
+
+---
+
+# Détails et historique (ancienne feuille de route)
+
+## Feuille de route (version de l'utilisateur, mise à jour le 2026-10-27)
 
 Liste écrite par l'utilisateur (iMrBurn), rangée par la conversation Main. Les détails techniques sont dans
 `CLAUDE.md`, `docs/univers.md`, `docs/limit_breaking.md`, `docs/mod_maker.md`, `docs/camera.md` et
