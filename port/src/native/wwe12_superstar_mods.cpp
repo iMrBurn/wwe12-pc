@@ -1237,6 +1237,9 @@ uint32_t Entering(const PPCContext &ctx, uint8_t *base) {
 
 }  // namespace
 
+// The superstar entering now (his number), 0 if none (wwe12_arena_pages.cpp: his waist belt).
+uint32_t Wwe12EnteringSuperstar(const PPCContext &ctx, uint8_t *base) { return Entering(ctx, base); }
+
 // (wwe12_arena_pages.cpp: whether a media mod has a ribbon / wall for that video number)
 bool Wwe12ModScreen(uint32_t kind, uint32_t n);
 

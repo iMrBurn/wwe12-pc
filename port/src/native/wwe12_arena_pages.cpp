@@ -67,6 +67,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -102,7 +103,17 @@ REXCVAR_DEFINE_BOOL(wwe12_arena_pages, true, "WWE12",
                     "Added arenas (arena mods with slot=new) on more pages of the arena select screen (LB / RB).");
 REXCVAR_DEFINE_BOOL(wwe12_entrance_mods, true, "WWE12",
                     "Added superstars' own entrances (superstar mods with entrance_own=, from WWE '13), served to the game.");
-// (off: no change seen in an entrance, every attire line written, 2026-11-03: the belt there isn't placed from BLTS)
+REXCVAR_DEFINE_DOUBLE(wwe12_belt_scale_test, 0.0, "WWE12",
+                      "Test: an added superstar's waist belt object's three floats at wwe12_belt_scale_at set to this (0: off).");
+REXCVAR_DEFINE_INT32(wwe12_belt_scale_at, 64, "WWE12", "Test: where in the belt object (bytes) the scale tried is.");
+REXCVAR_DEFINE_INT32(wwe12_belt_radius_which, 0, "WWE12", "Test: 0 both fields, 1 only +24, 2 only +272.");
+REXCVAR_DEFINE_DOUBLE(wwe12_belt_radius_test, 0.0, "WWE12",
+                      "Test: an added superstar's waist belt fields +24 / +272 times this while it is bent (0: off).");
+REXCVAR_DEFINE_DOUBLE(wwe12_belt_length_test, 0.0, "WWE12",
+                      "Test: every added superstar's waist belt this much longer (0: measured).");
+REXCVAR_DEFINE_BOOL(wwe12_belt_length, false, "WWE12",
+                    "Added superstars wider at the waist than their base: their waist belt made that much longer.");
+// (off: no change seen in an entrance, every attire line written, 2026-11-03: the game never loads BLTS there)
 REXCVAR_DEFINE_BOOL(wwe12_belt_fit, false, "WWE12",
                     "Added superstars: the title belt fitted to their model (their base's, scaled to their waist).");
 REXCVAR_DEFINE_BOOL(wwe12_entrance_list, true, "WWE12",
@@ -114,8 +125,10 @@ REXCVAR_DEFINE_BOOL(wwe12_dir_log, false, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_arena_pages_test, false, "WWE12",
                     "Test: a second page on the arena select screen (the 21 arenas in reverse order).");
 
-// (wwe12_superstar_mods.cpp: the name an entrant's ribbon / wall lookup is served under, "" if none)
+// (wwe12_superstar_mods.cpp: the name an entrant's ribbon / wall lookup is served under, "" if none; the superstar
+// entering now, 0 if none)
 std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint8_t *base);
+uint32_t Wwe12EnteringSuperstar(const PPCContext &ctx, uint8_t *base);
 
 namespace {
 
@@ -176,6 +189,8 @@ std::map<std::string, AddedEntrance> g_replaced;
 std::set<std::pair<uint32_t, uint32_t>> g_mod_screens;
 // The mods' own entrances (entrance_own=), for CREATE AN ENTRANCE's lists: number, name shown.
 std::vector<std::pair<int, std::string>> g_mod_entrances;
+// Added superstars wider at the waist than their base: number -> how much longer their waist belt is (sub_828C5878).
+std::map<uint32_t, float> g_belt_length;
 
 struct Tile {
   u32 stage, banner;  // banner: guest address of the texture name (0: the game's table is kept)
@@ -565,6 +580,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       dirs.push_back({d, kind[0] == 'M'});
   }
   g_mod_entrances.clear();
+  g_belt_length.clear();
   for (const auto &[d, moves_mod] : dirs) {
     std::vector<uint8_t> m;
     if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m))
@@ -715,7 +731,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
   // at 109: the belt went through his clothes at the waist, 2026-11-03): he gets his base's, its waist's last two
   // scales times how much wider and deeper his model's waist is than the base's (Waist). Documents\wwe12\belts.txt
   // ("<number>=<line 1>|<line 2>") overrides one, to try values without a build.
-  if (REXCVAR_GET(wwe12_belt_fit)) {
+  if (REXCVAR_GET(wwe12_belt_fit) || REXCVAR_GET(wwe12_belt_length)) {
     std::vector<uint8_t> wuni;
     svrfmt::Archive a;
     svrfmt::ArcNode *blts = nullptr;
@@ -775,6 +791,8 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
           // (the three scales, by the larger ratio)
           const float rw = std::clamp(w / bw, 0.85f, 1.5f), rd = std::clamp(dp / bd, 0.85f, 1.5f);
           const float k = std::max(rw, rd);
+          if (k > 1.02f)
+            g_belt_length[uint32_t(slot->second)] = k;
           for (int i = 3; i < 6; ++i) {
             char s[32];
             snprintf(s, sizeof(s), "%g", strtof(v[size_t(i)].c_str(), nullptr) * k);
@@ -806,7 +824,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     }
     REXLOG_INFO("[belts] {} belt texts in the game's table ({}), {} for the added superstars", texts.size(),
                 blts ? "found" : "not found", mine.size());
-    if (!texts.empty() && !mine.empty()) {
+    if (REXCVAR_GET(wwe12_belt_fit) && !texts.empty() && !mine.empty()) {
       // (and its attires' lines, 1000 x attire + number: they come first, 1109 the same as 109 for the slot's old
       // owner, and the belt didn't change while only 109 did, 2026-11-03)
       for (const auto &[id, text] : mine)
@@ -1590,4 +1608,101 @@ extern "C" REX_FUNC(sub_829F9F90) {
     __imp__sub_829FEB48(c, base);
     REXLOG_INFO("[entrance list] kind {}: {} ({}) added", kind, label, number);
   }
+}
+
+// The title belt worn at the waist (study, 2026-11-03): sub_828C5878(this, belt) bends the belt model's bones
+// (L_bone01..12, R_bone01..12, found by name) round the wearer; its length is scaled by 1 + (v - 3.8) * 0.25 when
+// v = |this+24 + this+272| * 0.1 is over 3.8 (with this+1892 set), else 1.0. Probe: those fields, once per value.
+REXCVAR_DEFINE_BOOL(wwe12_waist_belt_probe, false, "WWE12", "Log the waist belt's bending inputs (sub_828C5878)");
+REX_EXTERN(__imp__sub_828C5878);
+
+extern "C" REX_FUNC(sub_828C5878) {
+  if (REXCVAR_GET(wwe12_waist_belt_probe)) {
+    const u32 me = ctx.r3.u32, belt = ctx.r4.u32;
+    const float a = bd::mem::load<float>(me + 24), b = bd::mem::load<float>(me + 272);
+    const u32 flag = bd::mem::load<u32>(me + 1892);
+    static std::set<std::string> seen;
+    char line[256];
+    snprintf(line, sizeof(line), "this %08X belt %08X +24 %.3f +272 %.3f +1892 %08X +1888 %.3f +1444 %.3f lr %08X", me,
+             belt, a, b, flag, bd::mem::load<float>(me + 1888), bd::mem::load<float>(me + 1444), u32(ctx.lr));
+    if (seen.insert(line).second && seen.size() < 200) {
+      // (where a superstar's number sits in it: u16 / u32 equal to an added one's or John Cena's)
+      std::string where;
+      for (u32 o = 0; o < 0x900; o += 2) {
+        const u32 v16 = bd::mem::load<u16>(me + o);
+        if (v16 == 104 || v16 == 108 || v16 == 109 || v16 == 111 || v16 == 139)
+          where += " +" + std::to_string(o) + "=" + std::to_string(v16);
+      }
+      // (and the belt's own object: where it holds three 1.0 in a row, a scale)
+      std::string ones;
+      for (u32 o = 0; o + 12 <= 0x600; o += 4)
+        if (bd::mem::load<float>(belt + o) == 1.0f && bd::mem::load<float>(belt + o + 4) == 1.0f &&
+            bd::mem::load<float>(belt + o + 8) == 1.0f)
+          ones += " +" + std::to_string(o);
+      REXLOG_INFO("[belt probe] {} (v {:.3f}) numbers:{} belt ones:{}", line, std::fabs(-a - b) * 0.1f, where, ones);
+    }
+  }
+  // An added superstar wider at the waist than his base (g_belt_length) entering: the threshold the game reads (3.8,
+  // read-only data at 0x8200EA04) lowered for this call, so its own formula lengthens his belt that much. (The fields
+  // aren't the wearer's build: Chavo Guerrero's v 3.60, Jeff Hardy's 3.46; the belt fits WWE '12's bodies, not a
+  // ported superstar's looser clothes, 2026-11-03.)
+  constexpr u32 kThreshold = 0x8200EA04;
+  float k = 0;
+  if (REXCVAR_GET(wwe12_belt_length) && !g_belt_length.empty() && bd::mem::load<u32>(ctx.r3.u32 + 1892)) {
+    const auto it = g_belt_length.find(Wwe12EnteringSuperstar(ctx, base));
+    if (it != g_belt_length.end())
+      k = it->second;
+    if (it != g_belt_length.end() && REXCVAR_GET(wwe12_belt_length_test) > 0)
+      k = float(REXCVAR_GET(wwe12_belt_length_test));
+  }
+  static bool writable = false, tried = false;
+  if (k > 1.0f && !tried) {
+    tried = true;
+    DWORD old = 0;
+    writable = VirtualProtect(bd::mem::at<u8>(kThreshold & ~0xFFFu), 0x1000, PAGE_READWRITE, &old) != 0;
+    if (!writable)
+      REXLOG_WARN("[belts] the belt length threshold can't be written: added superstars' belts left as they are");
+  }
+  if (REXCVAR_GET(wwe12_belt_scale_test) > 0 && g_belt_length.count(Wwe12EnteringSuperstar(ctx, base))) {
+    const u32 belt = ctx.r4.u32, at = u32(REXCVAR_GET(wwe12_belt_scale_at));
+    const float sc = float(REXCVAR_GET(wwe12_belt_scale_test));
+    __imp__sub_828C5878(ctx, base);
+    for (u32 i = 0; i < 3; ++i)
+      bd::mem::store<float>(belt + at + 4 * i, sc);
+    static bool told = false;
+    if (!told)
+      REXLOG_INFO("[belts] scale test: belt {:08X} +{} = {:.2f}", belt, at, sc);
+    told = true;
+    return;
+  }
+  if (REXCVAR_GET(wwe12_belt_radius_test) > 0 && REXCVAR_GET(wwe12_belt_length) &&
+      g_belt_length.count(Wwe12EnteringSuperstar(ctx, base))) {
+    const u32 me = ctx.r3.u32;
+    const float r = float(REXCVAR_GET(wwe12_belt_radius_test)), a = bd::mem::load<float>(me + 24),
+                b = bd::mem::load<float>(me + 272);
+    const int which = REXCVAR_GET(wwe12_belt_radius_which);
+    bd::mem::store<float>(me + 24, which == 2 ? a : a * r);
+    bd::mem::store<float>(me + 272, which == 1 ? b : b * r);
+    __imp__sub_828C5878(ctx, base);
+    bd::mem::store<float>(me + 24, a);
+    bd::mem::store<float>(me + 272, b);
+    static bool told = false;
+    if (!told)
+      REXLOG_INFO("[belts] radius test x{:.2f}: +24 {:.2f}, +272 {:.2f}", r, a, b);
+    told = true;
+    return;
+  }
+  const float v = std::fabs(-bd::mem::load<float>(ctx.r3.u32 + 24) - bd::mem::load<float>(ctx.r3.u32 + 272)) * 0.1f;
+  const float game = v > 3.8f ? 1.0f + (v - 3.8f) * 0.25f : 1.0f;
+  if (k > game && writable) {
+    const float before = bd::mem::load<float>(kThreshold);
+    bd::mem::store<float>(kThreshold, v - (k - 1.0f) / 0.25f);
+    __imp__sub_828C5878(ctx, base);
+    bd::mem::store<float>(kThreshold, before);
+    static std::set<float> told;
+    if (told.insert(k).second)
+      REXLOG_INFO("[belts] waist belt x{:.2f} (the game's x{:.2f})", k, game);
+    return;
+  }
+  __imp__sub_828C5878(ctx, base);
 }
