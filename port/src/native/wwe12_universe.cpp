@@ -4783,17 +4783,50 @@ REX_EXTERN(__imp__sub_826DC6E8);
 extern "C" REX_FUNC(sub_826DC6E8) {
   const u32 table = ctx.r3.u32, group = ctx.r4.u32 & 0xFFFF, i = ctx.r5.u32 & 0xFFFF;
   const u32 n = t_weekly_matches, d = t_weekly_default;
-  if (n && d >= 2 && ctx.lr == 0x826F1690 && table && group < bd::mem::load<u32>(table + 4)) {
-    // the game's template d - 1 is its main event (the 4th of RAW's 4): only our last match takes
-    // it, the others cycle through the game's other ones (0 .. d - 2)
+  // only the weekly booker's picks (sub_826F15E8), with our number of matches
+  if (n && ctx.lr > 0x826F15E8 && ctx.lr < 0x826F1948 && table &&
+      group < bd::mem::load<u32>(table + 4)) {
     const u32 count = bd::mem::load<u16>(table + 8 + group * 508 + 2);
-    if (count >= d) {
+    if (ctx.lr == 0x826F1690 && d >= 2 && count >= d) {
+      // the game's template d - 1 is its main event (the 4th of RAW's 4): only our last match
+      // takes it, the others cycle through the game's other ones (0 .. d - 2)
       const u32 to = i + 1 == n ? d - 1 : i < d - 1 ? i : (i - (d - 1)) % (d - 1);
       if (to != i)
         ctx.r5.u64 = to;
+    } else if (count && i >= count) {
+      // a group with fewer templates than our number (the booker's other pick, table 15 group 0
+      // on some weeks, sub_826CD010, takes template i as it is) left the slot empty and a card
+      // rule read it (sub_826EF988, a player's crash in 1.0.0 with RAW / SmackDown at 5). Past
+      // the group's templates, the last match takes its last one, the others cycle the rest.
+      const u32 to = i + 1 == n ? count - 1 : count >= 2 ? i % (count - 1) : 0;
+      BD_INFO("[univers] matches: template {} of group {} -> {} (the group has {})", i, group,
+              to, count);
+      ctx.r5.u64 = to;
     }
   }
   __imp__sub_826DC6E8(ctx, base);
+}
+
+// Safety net: a weekly booker's match (sub_826F15E8(booker, entry of 48 bytes, i, …), entry +0 its
+// template) past the game's number still without a template is booked again as one of the game's
+// own matches, which always have one (an empty entry crashes the card rules, sub_826EB510).
+REX_EXTERN(__imp__sub_826F15E8);
+extern "C" REX_FUNC(sub_826F15E8) {
+  const PPCContext in = ctx;
+  __imp__sub_826F15E8(ctx, base);
+  const u32 entry = in.r4.u32, i = in.r5.u32 & 0xFFFF;
+  const u32 n = t_weekly_matches, d = t_weekly_default;
+  if (!n || d < 2 || i < d || !entry || bd::mem::load<u32>(entry))
+    return;
+  for (u32 k = 0; k + 1 < d && !bd::mem::load<u32>(entry); ++k) {
+    PPCContext again = in;
+    again.r5.u64 = (in.r5.u64 & ~0xFFFFull) | ((i + k) % (d - 1));
+    __imp__sub_826F15E8(again, base);
+  }
+  if (bd::mem::load<u32>(entry))
+    bd::mem::store<u32>(entry + 8, i);  // its own place on the card
+  BD_WARN("[univers] matches: match {} had no template, booked again ({})", i,
+          bd::mem::load<u32>(entry) ? "ok" : "still empty");
 }
 
 REX_EXTERN(__imp__sub_826F19E0);

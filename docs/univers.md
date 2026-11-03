@@ -1015,3 +1015,15 @@ Comme en 2010/2011 : un match MITB par marque au PPV (show 16) et **deux détent
 - Ordre : 1) étude du cash-in du jeu (sans rien modifier) ; 2) deux matchs au PPV ; 3) 2e détenteur ; 4) cash-in ;
   5) affichage. Réglage prévu dans UNIVERSE OPTIONS, validé par l'utilisateur : MONEY IN THE BANK = 1 ou 2
   (1 = un match et une mallette, le jeu d'origine, défaut ; 2 = deux matchs au PPV et deux mallettes).
+
+## 39. Plantage 1.0.0 « 5 matchs RAW + 5 SmackDown » corrigé (2026-11-03, testé sur la copie, candidat 1.0.1)
+
+Trace d'un joueur : C0000005 dans la règle de carte `sub_826EF988` (table de règles 0x8203E680, 25 règles, la plupart
+lisent l'entrée +0), appelée par `sub_826EB510`. L'entrée n° 4 (le 5e match, 48 octets, +0 = modèle de match) était
+vide. Le booker hebdo `sub_826F15E8` prend son modèle par `sub_826DC6E8(table, groupe, i)` : notre réécriture ne
+visait que l'appel qui revient à 0x826F1690 ; l'autre choix (table 15 groupe 0, quand `sub_826CD010` répond 1 : les
+shows d'après un PPV) prenait le modèle i tel quel, et ce groupe n'en a que 4, donc NULL. Correctif : tout appel venant
+de `sub_826F15E8` qui dépasse les modèles du groupe prend le dernier (dernier match) ou tourne sur les autres ; filet :
+un match hebdo au-delà du nombre du jeu resté sans modèle est re-booké comme un des matchs du jeu, puis remis à sa
+place (+8). Vu : 2-3 mois simulés à 5/5 avec les qualifs, « template 4 of group 0 -> 3 » sur les RAW / SmackDown
+d'après l'Elimination Chamber, plus de plantage ; le filet ne s'est pas déclenché.
