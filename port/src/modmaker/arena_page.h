@@ -1,5 +1,9 @@
-// Mod Maker, "Arenas" page (docs/mod_maker.md, step 5; docs/plan_page_arenes.md). Its tabs:
-//  - New arena: the assistant, an arena of another game (My game discs: SvR 2011 with port_svr_arena.h, WWE '13 with
+// Mod Maker, "Arenas" page (docs/mod_maker.md, step 5; docs/plan_page_arenes.md), laid out as Kaiko's SvR 2011 Mod
+// Maker (2026-11-03): a "step by step" button on top (the assistant), the tabs Start (the game's arenas with their
+// banners, the added ones installed; what to do with the one picked), Details (name, banner, added or replacing, what
+// comes with it), VS screen (its pictures, each replaceable; another arena's theme), then the tools below; a bar at the
+// bottom saves the mod, installs it, starts the game.
+//  - Step by step (the assistant): an arena of another game (My game discs: SvR 2011 with port_svr_arena.h, WWE '13 with
 //    port13.h; or one SvR 2011 arena file) added as a new arena: its own tile on the arena select screen's next pages,
 //    playing on a base arena's number (manifest slot=new, base=NN; arena/arena.pac, arena/banner.dds 256 x 128 DXT5,
 //    and what comes with it: VS screen, entrance plates, pre-match screen, transition video;
@@ -176,59 +180,134 @@ class Page {
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &disc, mods::Manager &mods) {
     device_ = device;
     disc_ = &disc;  // (the ports read the game's menus as soon as an arena is chosen)
-    ImGui::TextWrapped("%s", fr ? "Changez les images d'une arène (tapis, tabliers, bannières, rampe...) ou mettez un "
-                                  "autre fichier d'arène à la place d'une arène du jeu. Le Mod Maker veille à la taille : "
-                                  "une arène ne doit jamais dépasser celle qu'elle remplace."
-                                : "Change an arena's pictures (mat, aprons, banners, ramp...) or put another arena file "
-                                  "in place of one of the game's. The Mod Maker watches the size: an arena must never "
-                                  "be bigger than the one it replaces.");
+    ImGui::TextWrapped("%s", fr ? "Choisissez une arène du jeu pour la retoucher ou l'éditer en 3D, ou faites-en une "
+                                  "nouvelle à partir d'un autre jeu. Une arène ne doit jamais dépasser la taille de celle "
+                                  "qu'elle remplace : le Mod Maker y veille."
+                                : "Pick one of the game's arenas to retexture it or edit it in 3D, or make a new one from "
+                                  "another game. An arena must never be bigger than the one it replaces: the Mod Maker "
+                                  "watches the size.");
     if (!disc.Found()) {
       ImGui::TextColored(kRed, "%s", fr ? "Fichiers du jeu introuvables." : "Game files not found.");
       return;
     }
-    // The tabs: a new arena from another game (the assistant), the game's arenas retextured, another arena file in
-    // place of one, the 3D view.
-    int tab = tab_;
-    if (ImGui::BeginTabBar("arena_tabs")) {
-      const char *names[] = {fr ? "Nouvelle arène" : "New arena", fr ? "Retoucher une arène du jeu" : "Retexture an arena",
-                             fr ? "Autre fichier d'arène" : "Another arena file", fr ? "Vue 3D" : "3D view",
-                             fr ? "Éditeur 3D" : "3D editor"};
-      for (int i = 0; i < 5; ++i)
-        if (ImGui::BeginTabItem(names[i])) {
-          tab = i;
-          ImGui::EndTabItem();
-        }
-      ImGui::EndTabBar();
+    // Kaiko's layout (SvR 2011 Mod Maker): the step-by-step button on top, then the tabs, then the bar to finish.
+    if (wizard_open_) {
+      if (ImGui::Button(fr ? "< Retour aux arènes" : "< Back to the arenas", ImVec2(0, 34))) {
+        wizard_open_ = false;
+        force_view_ = before_wizard_;
+      }
+      ImGui::SameLine();
+      ImGui::AlignTextToFramePadding();
+      ImGui::TextColored(kYellow, "%s", fr ? "Nouvelle arène, étape par étape" : "New arena, step by step");
+    } else {
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.94f, 0.75f, 0.24f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.84f, 0.36f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.08f, 0.08f, 0.08f, 1.0f));
+      if (ImGui::Button(fr ? "Faire une arène étape par étape (simple)" : "Make an arena step by step (Simple)",
+                        ImVec2(0, 38)))
+        OpenWizard();
+      ImGui::PopStyleColor(3);
+      ImGui::SameLine();
+      ImGui::AlignTextToFramePadding();
+      ImGui::TextDisabled("%s", fr ? "SvR 2007-2011, WWE '13, WWE 2K14-2K17 ou un fichier d'arène"
+                                   : "SvR 2007-2011, WWE '13, WWE 2K14-2K17 or one arena file");
     }
-    if (tab != tab_) {
-      tab_ = tab;
-      view_port_ = tab_ == 0;
+
+    // The view: the wizard (opened above), else a tab (one can be chosen from the Start tab's buttons: force_view_).
+    int view = kViewWizard;
+    if (!wizard_open_) {
+      struct TabName {
+        int view;
+        const char *fr, *en;
+      };
+      static constexpr TabName kTabs[] = {{kViewStart, "Départ###a_start", "Start###a_start"},
+                                          {kViewDetails, "Détails###a_details", "Details###a_details"},
+                                          {kViewVs, "Écran VS###a_vs", "VS screen###a_vs"},
+                                          {kViewRetexture, "Retoucher###a_retex", "Retexture###a_retex"},
+                                          {kViewOther, "Autre fichier d'arène###a_other", "Another arena file###a_other"},
+                                          {kView3D, "Vue 3D###a_3d", "3D view###a_3d"},
+                                          {kViewEditor, "Éditeur 3D###a_editor", "3D editor###a_editor"}};
+      int shown = tab_ == kViewWizard ? kViewStart : tab_;
+      if (ImGui::BeginTabBar("arena_tabs")) {
+        for (const auto &t : kTabs)
+          if (ImGui::BeginTabItem(fr ? t.fr : t.en, nullptr, force_view_ == t.view ? ImGuiTabItemFlags_SetSelected : 0)) {
+            shown = t.view;
+            ImGui::EndTabItem();
+          }
+        ImGui::EndTabBar();
+      }
+      view = shown;
+      if (force_view_ >= 0) {  // (kept until the tab bar shows it: ImGui selects it a frame later)
+        view = force_view_;
+        if (shown == force_view_)
+          force_view_ = -1;
+      }
+    }
+    if (view != tab_) {
+      tab_ = view;
+      view_port_ = tab_ == kViewWizard;
       view_stale_ = true;
       message_.clear();
     }
-    if (tab_ == 0) {
+
+    if (tab_ == kViewWizard) {
       if (wiz_src_ >= 0)
-        mode_ = wiz_src_ == 1 ? 3 : 4;
+        mode_ = project_mode_ = wiz_src_ == 1 ? 3 : 4;
       DrawWizard(fr, disc, mods);
       return;
     }
-    mode_ = tab_ == 1 ? 0 : tab_ == 2 ? 1 : tab_ == 3 ? 2 : 5;
+    // The tools set what the mod is made of (project_mode_); the 3D view only looks; Start, Details and VS screen
+    // work on the mod as it is.
+    if (tab_ == kViewRetexture || tab_ == kViewOther || tab_ == kViewEditor)
+      project_mode_ = tab_ == kViewRetexture ? 0 : tab_ == kViewOther ? 1 : 5;
+    mode_ = tab_ == kView3D ? 2 : project_mode_ >= 0 ? project_mode_ : 0;
 
-    // The slot (and, to retexture, the arena opened from it).
+    // The bar below (to finish the mod) keeps its room; the tab takes the rest.
+    const float line = ImGui::GetTextLineHeightWithSpacing();
+    const int notes = int(game::IsRunning()) + int(!message_.empty()) * 2 + int(!reduced_note_.empty()) * 2;
+    const float bar_h = ImGui::GetFrameHeightWithSpacing() + line * (1 + notes) + 12;
+    ImGui::BeginChild("arena_body", ImVec2(0, -bar_h));
+    if (tab_ == kViewStart)
+      DrawStart(fr, disc, mods);
+    else if (tab_ == kViewDetails)
+      DrawDetails(fr);
+    else if (tab_ == kViewVs)
+      DrawVs(fr);
+    else
+      DrawTool(fr, disc);
+    ImGui::EndChild();
+    DrawBottomBar(fr, mods);
+  }
+
+ private:
+  // The page's views: the old tabs keep their numbers (0 the step-by-step wizard, 1-4 the tools), then Kaiko's.
+  enum View { kViewWizard, kViewRetexture, kViewOther, kView3D, kViewEditor, kViewStart, kViewDetails, kViewVs };
+
+  void OpenWizard() {
+    before_wizard_ = tab_ == kViewWizard ? kViewStart : tab_;
+    wizard_open_ = true;
+  }
+
+  // The arena chosen (and, to retexture, opened); a port is done again on it if the mod is one (as the old combo).
+  void ChooseSlot(bool fr, const disc::GameDisc &disc, int i) {
+    slot_ = i;
+    OpenSlot(fr, disc);
+    view_stale_ = true;
+    if (mode_ == 3 && w13_pick_ >= 0)
+      Port13(fr);  // (the recipe takes files from the base: done again with the new one)
+    else if (mode_ == 4 && !svr_file_.empty())
+      PortSvr(fr);
+  }
+
+  // The tools: retexture, another arena file, 3D view, 3D editor, on the arena chosen in the list.
+  void DrawTool(bool fr, const disc::GameDisc &disc) {
     ImGui::SetNextItemWidth(360);
     if (ImGui::BeginCombo(fr ? "Arène" : "Arena", slot_ < 0 ? (fr ? "Choisir..." : "Choose...")
                                                             : SlotLabel(kSlots[slot_]).c_str(),
                           ImGuiComboFlags_HeightLarge)) {
       for (int i = 0; i < int(std::size(kSlots)); ++i)
-        if (ImGui::Selectable(SlotLabel(kSlots[i]).c_str(), i == slot_)) {
-          slot_ = i;
-          OpenSlot(fr, disc);
-          view_stale_ = true;
-          if (mode_ == 3 && w13_pick_ >= 0)
-            Port13(fr);  // (the recipe takes files from the base: done again with the new one)
-          else if (mode_ == 4 && !svr_file_.empty())
-            PortSvr(fr);
-        }
+        if (ImGui::Selectable(SlotLabel(kSlots[i]).c_str(), i == slot_))
+          ChooseSlot(fr, disc, i);
       ImGui::EndCombo();
     }
     if (slot_ >= 0) {
@@ -239,21 +318,256 @@ class Page {
       ImGui::TextColored(kRed, "%s", error_.c_str());
     if (slot_ < 0 || budget_ == 0)
       return;
-
-    if (mode_ == 2) {
+    if (mode_ == 2)
       Draw3D(fr);
-      return;
-    }
-    if (mode_ == 1)
+    else if (mode_ == 1)
       DrawOtherFile(fr);
     else if (mode_ == 5)
       DrawEditor(fr);
     else
       DrawRetexture(fr);
+  }
 
-    // The mod.
-    ImGui::Separator();
-    disc_ = &disc;
+  // ---- Start: the game's arenas with their banners (menu/MatchHD.pac "arenaNN"), the added ones installed as mods;
+  // the one picked on the right with what can be done with it.
+  void ReadSlotBanners() {
+    if (slot_banners_read_)
+      return;
+    slot_banners_read_ = true;
+    ReadGameBanners();
+    for (const auto &sl : kSlots) {
+      char name[16];
+      snprintf(name, sizeof(name), "arena%02d", sl.number);
+      Thumb t;
+      for (const auto &b : game_banners_) {
+        svrfmt::Image img;
+        if (b.name == name && svrfmt::DdsDecode(b.data, img) && img.w > 0) {
+          img = Fill(img, 256, 128);
+          for (size_t i = 3; i < img.rgba.size(); i += 4)
+            img.rgba[i] = 255;
+          t = MakeThumb(device_, svrfmt::DdsEncode(img, svrfmt::DxtFormat::kDxt5, false));
+          break;
+        }
+      }
+      slot_banners_.push_back(t);
+    }
+  }
+
+  // The added arenas installed (slot=new): name, base and banner (arena/banner.dds), read again when the mods change.
+  void ReadAdded(const mods::Manager &mods) {
+    if (!added_dirty_ && added_count_ == mods.List().size())
+      return;
+    added_dirty_ = false;
+    added_count_ = mods.List().size();
+    added_.clear();
+    for (const auto &m : mods.List()) {
+      if (m.type != "arena")
+        continue;
+      std::ifstream f(m.dir / "manifest.txt");
+      std::string line, slot;
+      Added a;
+      a.name = m.name;
+      a.dir = m.dir;
+      a.on = m.on;
+      while (std::getline(f, line)) {
+        if (!line.empty() && line.back() == '\r')
+          line.pop_back();
+        if (line.rfind("slot=", 0) == 0)
+          slot = line.substr(5);
+        else if (line.rfind("base=", 0) == 0)
+          a.base = atoi(line.c_str() + 5);
+      }
+      if (slot != "new")
+        continue;
+      std::ifstream b(m.dir / "arena" / "banner.dds", std::ios::binary);
+      const Bytes dds((std::istreambuf_iterator<char>(b)), std::istreambuf_iterator<char>());
+      if (!dds.empty())
+        a.banner = MakeThumb(device_, dds);
+      added_.push_back(std::move(a));
+    }
+  }
+
+  static int SlotIndex(int number) {
+    for (int i = 0; i < int(std::size(kSlots)); ++i)
+      if (kSlots[i].number == number)
+        return i;
+    return -1;
+  }
+
+  // A tile: the banner (2:1) and its name under it; true when clicked.
+  bool Tile(int id, const Thumb &banner, const char *name, bool picked, bool current, float w) {
+    const float h = w / 2;
+    ImGui::BeginGroup();
+    ImGui::PushID(id);
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    const bool hit = ImGui::InvisibleButton("##tile", ImVec2(w, h));
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(at, ImVec2(at.x + w, at.y + h), IM_COL32(40, 40, 44, 255));
+    if (banner.srv)
+      dl->AddImage(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(banner.srv.Get()))), at, ImVec2(at.x + w, at.y + h));
+    if (picked)
+      dl->AddRect(at, ImVec2(at.x + w, at.y + h), IM_COL32(240, 190, 60, 255), 0, 0, 3);
+    else if (ImGui::IsItemHovered())
+      dl->AddRect(at, ImVec2(at.x + w, at.y + h), IM_COL32(200, 200, 200, 160), 0, 0, 1);
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + w);
+    if (current)  // (the arena opened by the tools)
+      ImGui::TextColored(kGreen, "%s", name);
+    else
+      ImGui::TextUnformatted(name);
+    ImGui::PopTextWrapPos();
+    ImGui::PopID();
+    ImGui::EndGroup();
+    return hit;
+  }
+
+  void DrawStart(bool fr, const disc::GameDisc &disc, const mods::Manager &mods) {
+    ReadSlotBanners();
+    ReadAdded(mods);
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float side_w = std::clamp(avail.x * 0.36f, 280.0f, 400.0f);
+    const float h = std::max(220.0f, avail.y - 4);
+    ImGui::BeginChild("start_grid", ImVec2(std::max(200.0f, avail.x - side_w - ImGui::GetStyle().ItemSpacing.x), h),
+                      ImGuiChildFlags_Borders);
+    const float tile = 168, cell = tile + ImGui::GetStyle().ItemSpacing.x;
+    const int per_row = std::max(1, int((ImGui::GetContentRegionAvail().x + ImGui::GetStyle().ItemSpacing.x) / cell));
+    ImGui::TextDisabled("%s", fr ? "Les arènes du jeu" : "The game's arenas");
+    for (int i = 0; i < int(std::size(kSlots)); ++i) {
+      if (i % per_row)
+        ImGui::SameLine();
+      if (Tile(i, i < int(slot_banners_.size()) ? slot_banners_[size_t(i)] : Thumb(), kSlots[i].name, start_pick_ == i,
+               slot_ == i, tile))
+        start_pick_ = i;
+    }
+    if (!added_.empty()) {
+      ImGui::Dummy(ImVec2(0, 6));
+      ImGui::TextDisabled("%s", fr ? "Vos arènes ajoutées (mods installés)" : "Your added arenas (installed mods)");
+      for (int j = 0; j < int(added_.size()); ++j) {
+        if (j % per_row)
+          ImGui::SameLine();
+        if (Tile(1000 + j, added_[size_t(j)].banner, added_[size_t(j)].name.c_str(), start_pick_ == 1000 + j, false,
+                 tile))
+          start_pick_ = 1000 + j;
+      }
+    }
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("start_side", ImVec2(0, h), ImGuiChildFlags_Borders);
+    const float bw = std::min(ImGui::GetContentRegionAvail().x, 360.0f);
+    const ImVec2 button(ImGui::GetContentRegionAvail().x, 0);
+    if (start_pick_ >= 0 && start_pick_ < int(std::size(kSlots))) {
+      const int i = start_pick_;
+      if (i < int(slot_banners_.size()) && slot_banners_[size_t(i)].srv)
+        ImGui::Image(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(slot_banners_[size_t(i)].srv.Get()))),
+                     ImVec2(bw, bw / 2));
+      else
+        DrawPicture(Thumb(), bw / 2);
+      ImGui::TextColored(kYellow, "%s", kSlots[i].name);
+      char file[32];
+      snprintf(file, sizeof(file), "pac/bg/bg%02d.pac", kSlots[i].number);
+      ImGui::TextDisabled("%s", file);
+      if (slot_ == i && budget_)
+        ImGui::TextDisabled("%s %s", fr ? "taille d'origine :" : "shipped size:", Human(budget_).c_str());
+      ImGui::Dummy(ImVec2(0, 4));
+      // (a tool opens the arena first, unless it is open already: what was changed on it stays)
+      const auto open_with = [&](int project, int view) {
+        mode_ = project;
+        if (slot_ != i || !budget_)
+          ChooseSlot(fr, disc, i);
+        project_mode_ = project;
+        force_view_ = view;
+      };
+      if (ImGui::Button(fr ? "Ouvrir dans l'éditeur 3D" : "Open in the 3D editor", button))
+        open_with(5, kViewEditor);
+      if (ImGui::Button(fr ? "La retoucher (ses images)" : "Retexture it (its pictures)", button))
+        open_with(0, kViewRetexture);
+      if (ImGui::Button(fr ? "La voir en 3D" : "See it in 3D", button)) {
+        mode_ = 2;
+        if (slot_ != i || !budget_)
+          ChooseSlot(fr, disc, i);
+        force_view_ = kView3D;
+      }
+      if (ImGui::Button(fr ? "Mettre un autre fichier d'arène à sa place" : "Put another arena file in its place", button))
+        open_with(1, kViewOther);
+      ImGui::Dummy(ImVec2(0, 4));
+      if (ImGui::Button(fr ? "Partir d'elle pour une nouvelle arène..." : "Start from it as a new arena...", button)) {
+        // (the step-by-step with this one as its base: a source chosen already is ported on it)
+        if (WizardReach() > 0)
+          WizardChooseBase(fr, disc, i);
+        else if (slot_ != i || !budget_) {
+          slot_ = i;
+          OpenSlot(fr, disc);
+          view_stale_ = true;
+        }
+        OpenWizard();
+      }
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextDisabled("%s", fr ? "Étape par étape : une arène d'un autre jeu jouera à la place de celle-ci (son "
+                                     "numéro, sa rampe), sur sa propre case du choix d'arène."
+                                   : "Step by step: an arena of another game plays in place of this one (its number, "
+                                     "its ramp), on its own tile of the arena select screen.");
+      const std::string other = SameBase(mods, kSlots[i].number);
+      if (!other.empty())
+        ImGui::TextDisabled(fr ? "Déjà la base de « %s »." : "Already the base of \"%s\".", other.c_str());
+      ImGui::PopTextWrapPos();
+    } else if (start_pick_ >= 1000 && start_pick_ - 1000 < int(added_.size())) {
+      const Added &a = added_[size_t(start_pick_ - 1000)];
+      if (a.banner.srv)
+        ImGui::Image(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(a.banner.srv.Get()))), ImVec2(bw, bw / 2));
+      ImGui::TextColored(kYellow, "%s", a.name.c_str());
+      const int base = SlotIndex(a.base);
+      ImGui::TextDisabled(fr ? "Arène ajoutée, jouée comme %s (bg%02d)%s" : "Added arena, playing as %s (bg%02d)%s",
+                          base >= 0 ? kSlots[base].name : "?", a.base, a.on ? "" : (fr ? " - désactivée" : " - turned off"));
+      ImGui::Dummy(ImVec2(0, 4));
+      if (ImGui::Button(fr ? "Ouvrir son dossier" : "Open its folder", button))
+        ShellExecuteW(nullptr, L"explore", a.dir.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+      if (base >= 0 && ImGui::Button(fr ? "Voir son arène de base" : "Show its base arena", button))
+        start_pick_ = base;
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextDisabled("%s", fr ? "Pour la changer : refaites-la étape par étape, ou gérez-la dans VÉRIFIER / REGARDER."
+                                   : "To change it: make it again step by step, or manage it in CHECK MODS / LOOK.");
+      ImGui::PopTextWrapPos();
+    } else {
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextDisabled("%s", fr ? "Choisissez une arène à gauche." : "Pick an arena on the left.");
+      ImGui::PopTextWrapPos();
+    }
+    ImGui::EndChild();
+  }
+
+  // ---- Details: the mod's name, author, version; added or replacing; its banner; what comes with a port.
+  std::string ProjectLabel(bool fr) {
+    if (slot_ < 0 || project_mode_ < 0)
+      return "";
+    const char *base = kSlots[slot_].name;
+    char b[200];
+    if (project_mode_ == 3 || project_mode_ == 4)
+      snprintf(b, sizeof(b), fr ? "« %s », portée sur %s" : "\"%s\", ported onto %s", name_, base);
+    else if (project_mode_ == 1)
+      snprintf(b, sizeof(b), fr ? "Un autre fichier d'arène sur %s" : "Another arena file on %s", base);
+    else
+      snprintf(b, sizeof(b), fr ? "%s retouchée (%d changement(s))" : "%s retextured (%d change(s))", base, Changed());
+    return b;
+  }
+
+  void DrawDetails(bool fr) {
+    const std::string what = ProjectLabel(fr);
+    if (what.empty()) {
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextDisabled("%s", fr ? "Pas encore d'arène : choisissez-en une dans Départ (retoucher, éditeur 3D, autre "
+                                     "fichier) ou faites-en une étape par étape (bouton en haut)."
+                                   : "No arena yet: pick one in Start (retexture, 3D editor, another file) or make one "
+                                     "step by step (button on top).");
+      ImGui::PopTextWrapPos();
+      return;
+    }
+    ImGui::TextColored(kYellow, "%s", what.c_str());
+    ImGui::Dummy(ImVec2(0, 4));
+    ImGui::SetNextItemWidth(320);
+    ImGui::InputText(fr ? "Nom" : "Name", name_, sizeof(name_));
+    ImGui::SetNextItemWidth(320);
+    ImGui::InputTextWithHint(fr ? "Auteur" : "Author", fr ? "(facultatif)" : "(optional)", author_, sizeof(author_));
+    mod_version::Input("Version##arena_version", version_, sizeof(version_));
+    ImGui::Dummy(ImVec2(0, 4));
     if (ImGui::RadioButton(fr ? "Ajouter comme nouvelle arène (garde l'originale)" : "Add as a new arena (keeps the "
                                                                                     "original)",
                            as_new_))
@@ -261,21 +575,268 @@ class Page {
     ImGui::SameLine();
     if (ImGui::RadioButton(fr ? "Remplacer l'arène" : "Replace the arena", !as_new_))
       as_new_ = false;
-    if (as_new_)
+    if (as_new_) {
       DrawBanner(fr);
-    ImGui::SetNextItemWidth(260);
-    ImGui::InputTextWithHint("##arena_name", fr ? "Nom du mod" : "Mod name", name_, sizeof(name_));
+    } else {
+      char file[32];
+      snprintf(file, sizeof(file), "pac/bg/bg%02d.pac", kSlots[slot_].number);
+      ImGui::TextDisabled(fr ? "Remplace %s (%s) tant que le mod est actif." : "Replaces %s (%s) while the mod is on.",
+                          kSlots[slot_].name, file);
+    }
+    if (project_mode_ == 3 || project_mode_ == 4) {
+      ImGui::Separator();
+      if (as_new_)
+        WizardWith(fr);
+      else
+        ImGui::TextDisabled("%s", fr ? "(Ce qui vient avec l'arène, écran VS, plaques..., ne va qu'avec une nouvelle arène.)"
+                                     : "(What comes with the arena, VS screen, plates..., goes with a new arena only.)");
+    }
+  }
+
+  // ---- VS screen: the pictures of the mod's VS screen (its own: card_mb_ for a port, my_mb_ else; none: the base
+  // arena's, WWE '12's MatchHD.pac MLYE/MBnn), each replaceable (fitted to its size and format), or another arena's.
+  Bytes &VsMb() { return project_mode_ == 3 || project_mode_ == 4 ? card_mb_ : my_mb_; }
+  Bytes &VsMf() { return project_mode_ == 3 || project_mode_ == 4 ? card_mf_ : my_mf_; }
+
+  const Bytes &MatchHd12() {
+    if (!matchhd12_read_ && disc_) {
+      matchhd12_read_ = true;
+      disc_->Read("pac/menu/MatchHD.pac", matchhd12_);
+    }
+    return matchhd12_;
+  }
+
+  // The pictures of the VS screen shown (the mod's, else the base's), read again when it changes.
+  void VsRead() {
+    const Bytes &mine = VsMb();
+    if (!vs_stale_ && vs_slot_ == slot_ && vs_key_ == mine)
+      return;
+    vs_stale_ = false;
+    vs_slot_ = slot_;
+    vs_key_ = mine;
+    vs_pics_.clear();
+    vs_thumbs_.clear();
+    Bytes mb = mine, mf;
+    if (mb.empty() && slot_ >= 0)
+      port13::Card(MatchHd12(), kSlots[slot_].number, mb, mf);
+    svrfmt::Archive a;
+    if (mb.empty() || !svrfmt::ArchiveOpen(mb, a, nullptr))
+      return;
+    if (auto *pics = port_svr_arena::detail::Pictures(a.root))
+      svrfmt::BundleRead(svrfmt::ArchiveData(*pics), vs_pics_);
+    for (const auto &t : vs_pics_)
+      vs_thumbs_.push_back(MakeThumb(device_, t.data));
+  }
+
+  // Picture `i` of the mod's VS screen replaced by a picture of the player's (cut to its proportions, at its size and
+  // format), the pac rebuilt as CardWearing does. The base's VS screen is taken first if the mod has none.
+  void VsReplace(bool fr, size_t i) {
+    vs_note_.clear();
+    const fs::path p = PickOpen(fr, false);
+    if (p.empty())
+      return;
+    svrfmt::Image img;
+    if (!wic_image::Load(p, img) || img.w <= 0) {
+      vs_note_ = fr ? "Cette image ne s'ouvre pas." : "This picture can't be opened.";
+      return;
+    }
+    Bytes mb = VsMb(), mf = VsMf();
+    if (mb.empty() && !port13::Card(MatchHd12(), kSlots[slot_].number, mb, mf)) {
+      vs_note_ = fr ? "Écran VS de l'arène de base introuvable." : "The base arena's VS screen wasn't found.";
+      return;
+    }
+    svrfmt::Archive a;
+    svrfmt::ArcNode *pics = svrfmt::ArchiveOpen(mb, a, nullptr) ? port_svr_arena::detail::Pictures(a.root) : nullptr;
+    std::vector<svrfmt::BundleTexture> ours;
+    if (!pics || !svrfmt::BundleRead(svrfmt::ArchiveData(*pics), ours) || i >= ours.size()) {
+      vs_note_ = fr ? "Écran VS illisible." : "Unreadable VS screen.";
+      return;
+    }
+    ours[i].data = port_svr_arena::detail::LikePicture(ours[i].data, img, true);
+    port_svr_arena::detail::ReplaceLike(*pics, svrfmt::BundleWrite(ours));
+    const auto touch = [&](auto &self, svrfmt::ArcNode &n) -> bool {
+      if (&n == pics)
+        return true;
+      for (auto &c : n.kids)
+        if (self(self, c)) {
+          svrfmt::ArchiveTouch(n);
+          return true;
+        }
+      return false;
+    };
+    touch(touch, a.root);
+    const Bytes out = svrfmt::ArchiveSave(a);
+    if (out.size() < 4 || memcmp(out.data(), "PACH", 4) != 0) {
+      vs_note_ = fr ? "L'écran VS n'a pas pu être refait." : "The VS screen couldn't be rebuilt.";
+      return;
+    }
+    VsMb() = out;
+    VsMf() = mf;
+    vs_stale_ = true;
+  }
+
+  void DrawVs(bool fr) {
+    if (slot_ < 0 || project_mode_ < 0) {
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextDisabled("%s", fr ? "Choisissez d'abord une arène (Départ) ou faites-en une étape par étape."
+                                   : "First pick an arena (Start) or make one step by step.");
+      ImGui::PopTextWrapPos();
+      return;
+    }
+    ImGui::PushTextWrapPos(0);
+    if (!as_new_) {
+      ImGui::TextDisabled("%s", fr ? "Un écran VS ne va qu'avec une nouvelle arène (Détails : Ajouter comme nouvelle "
+                                     "arène). En remplaçant une arène, c'est l'écran VS du jeu qui reste."
+                                   : "A VS screen goes with a new arena only (Details: Add as a new arena). Replacing an "
+                                     "arena keeps the game's VS screen.");
+      ImGui::PopTextWrapPos();
+      return;
+    }
+    const bool port = project_mode_ == 3 || project_mode_ == 4;
+    ImGui::TextDisabled("%s", VsMb().empty() ? (fr ? "Écran VS : celui de l'arène de base (rien à ajouter au mod)."
+                                                   : "VS screen: the base arena's (nothing added to the mod).")
+                              : vs_theme_ >= 0 ? (fr ? "Écran VS : le thème d'une autre arène du jeu, avec vos images."
+                                                     : "VS screen: another game arena's theme, with your pictures.")
+                                               : (fr ? "Écran VS : le sien, avec vos images." : "VS screen: its own, with your pictures."));
+    if (port && !wiz_keep_vs_)
+      ImGui::TextColored(kYellow, "%s", fr ? "(Décoché dans Détails : le mod garde celui de la base.)"
+                                           : "(Unticked in Details: the mod keeps the base's.)");
+    ImGui::PopTextWrapPos();
+    if (ImGui::Button(fr ? "Choisir un thème..." : "Pick a theme..."))
+      ImGui::OpenPopup("vs_theme");
+    if (ImGui::BeginPopup("vs_theme")) {
+      ImGui::TextDisabled("%s", fr ? "L'écran VS d'une arène du jeu :" : "A game arena's VS screen:");
+      for (int i = 0; i < int(std::size(kSlots)); ++i)
+        if (ImGui::Selectable(SlotLabel(kSlots[i]).c_str(), vs_theme_ == i)) {
+          Bytes mb, mf;
+          if (port13::Card(MatchHd12(), kSlots[i].number, mb, mf)) {
+            VsMb() = mb;
+            VsMf() = mf;
+            vs_theme_ = i;
+            vs_note_.clear();
+          } else {
+            vs_note_ = fr ? "Pas d'écran VS pour cette arène." : "No VS screen for this arena.";
+          }
+        }
+      ImGui::EndPopup();
+    }
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(200);
-    ImGui::InputTextWithHint("##arena_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_,
-                             sizeof(author_));
-    mod_version::Input("Version##arena_version", version_, sizeof(version_));
-    ImGui::SameLine();
-    const bool ready = mode_ == 1 ? other_ok_ : mode_ >= 3 ? port_ok_ : Changed() > 0;
-    ImGui::BeginDisabled(!ready || game::IsRunning());
-    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
-      Make(fr, mods);
+    ImGui::BeginDisabled(VsMb().empty());
+    if (ImGui::Button(fr ? "Revenir au thème de l'arène de base" : "Back to the slot's theme")) {
+      VsMb().clear();
+      VsMf().clear();
+      vs_theme_ = -1;
+    }
     ImGui::EndDisabled();
+    if (port && (!real_mb_.empty() || !dressed_mb_.empty())) {  // (the port's own, as it came)
+      ImGui::SameLine();
+      if (ImGui::Button(fr ? "Revenir au sien (porté)" : "Back to its own (ported)")) {
+        UseRealVs();
+        vs_theme_ = -1;
+      }
+    }
+    if (!vs_note_.empty())
+      ImGui::TextColored(kRed, "%s", vs_note_.c_str());
+    VsRead();
+    ImGui::BeginChild("vs_grid", ImVec2(0, std::max(200.0f, ImGui::GetContentRegionAvail().y - 4)), ImGuiChildFlags_Borders);
+    if (vs_pics_.empty())
+      ImGui::TextDisabled("%s", fr ? "Pas d'images d'écran VS trouvées." : "No VS screen pictures found.");
+    const float box = 150, cell = box + 2 * ImGui::GetStyle().ItemSpacing.x;
+    const int per_row = std::max(1, int(ImGui::GetContentRegionAvail().x / cell));
+    for (size_t i = 0; i < vs_pics_.size(); ++i) {
+      if (i % size_t(per_row))
+        ImGui::SameLine(0, 2 * ImGui::GetStyle().ItemSpacing.x);
+      ImGui::BeginGroup();
+      ImGui::PushID(int(i));
+      DrawPicture(vs_thumbs_[i], box);
+      svrfmt::DdsInfo info;
+      svrfmt::DdsInfoOf(vs_pics_[i].data, info);
+      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + box);
+      ImGui::TextUnformatted(vs_pics_[i].name.c_str());
+      ImGui::TextDisabled("%d x %d", info.w, info.h);
+      ImGui::PopTextWrapPos();
+      if (ImGui::Button(fr ? "Remplacer..." : "Replace...", ImVec2(box, 0)))
+        VsReplace(fr, i);
+      ImGui::PopID();
+      ImGui::EndGroup();
+    }
+    ImGui::EndChild();
+  }
+
+  // ---- The bar below: the mod saved (.svrmod, to share) and installed, or only installed; then the game started.
+  bool ProjectReady() {
+    if (slot_ < 0 || !budget_)
+      return false;
+    switch (project_mode_) {
+    case 1: return other_ok_;
+    case 3:
+    case 4: return port_ok_;
+    case 0:
+    case 5: return Changed() > 0 || (as_new_ && !my_mb_.empty());
+    default: return false;
+    }
+  }
+
+  // Make on the mod (not on the tab shown); a port leaves out what was unticked in "What comes with it".
+  void MakeProject(bool fr, mods::Manager &mods, const fs::path &to = {}) {
+    const int shown = mode_;
+    mode_ = project_mode_;
+    if (mode_ == 3 || mode_ == 4) {
+      const Bytes vs_b = card_mb_, vs_f = card_mf_, et = etex_, ld = load_, mv = movie_;
+      if (!wiz_keep_vs_) {
+        card_mb_.clear();
+        card_mf_.clear();
+      }
+      if (!wiz_keep_etex_)
+        etex_.clear();
+      if (!wiz_keep_load_)
+        load_.clear();
+      if (!wiz_keep_movie_)
+        movie_.clear();
+      Make(fr, mods, to);
+      card_mb_ = vs_b;
+      card_mf_ = vs_f;
+      etex_ = et;
+      load_ = ld;
+      movie_ = mv;
+    } else {
+      Make(fr, mods, to);
+    }
+    mode_ = shown;
+  }
+
+  void DrawBottomBar(bool fr, mods::Manager &mods) {
+    ImGui::Separator();
+    const bool ready = ProjectReady();
+    ImGui::BeginDisabled(!ready || game::IsRunning());
+    if (ImGui::Button(fr ? "Enregistrer le mod (.svrmod)..." : "Save as mod (.svrmod)..."))
+      MakeProject(fr, mods);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip("%s", fr ? "Enregistré où vous voulez, pour le partager, puis installé."
+                                 : "Saved where you choose, to share it, then installed.");
+    ImGui::SameLine();
+    if (ImGui::Button(fr ? "Installer dans le jeu" : "Install into game")) {
+      wchar_t tmp[MAX_PATH];
+      GetTempPathW(MAX_PATH, tmp);
+      const fs::path file = fs::path(tmp) / L"wwe12_arena_mod.svrmod";
+      MakeProject(fr, mods, file);
+      std::error_code ec;
+      fs::remove(file, ec);
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(game::IsRunning() || !message_ok_);
+    if (ImGui::Button(fr ? "Tester en jeu" : "Test in game"))
+      LaunchGame();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    const std::string what = ProjectLabel(fr);
+    if (what.empty())
+      ImGui::TextDisabled("%s", fr ? "Rien à enregistrer pour l'instant." : "Nothing to save yet.");
+    else
+      ImGui::TextDisabled("%s  -  %s", what.c_str(),
+                          as_new_ ? (fr ? "nouvelle arène" : "new arena") : (fr ? "remplace l'arène" : "replaces the arena"));
+    ImGui::PushTextWrapPos(0);
     if (game::IsRunning())
       ImGui::TextColored(kRed, "%s", fr ? "Le jeu est lancé : fermez-le pour installer le mod."
                                         : "The game is running: close it to install the mod.");
@@ -283,6 +844,7 @@ class Page {
       ImGui::TextColored(message_ok_ ? kGreen : kRed, "%s", message_.c_str());
     if (!reduced_note_.empty())
       ImGui::TextColored(kYellow, "%s", reduced_note_.c_str());
+    ImGui::PopTextWrapPos();
   }
 
  private:
@@ -309,7 +871,7 @@ class Page {
 
   // The 3D editor: an object of the arena moved, turned or hidden (arena_edit.h Move), seen in the 3D view.
   void DrawEditor(bool fr) {
-    const float h = std::max(300.0f, ImGui::GetContentRegionAvail().y - 110);
+    const float h = std::max(300.0f, ImGui::GetContentRegionAvail().y - 4);
     ImGui::BeginChild("ed_list", ImVec2(300, h), ImGuiChildFlags_Borders);
     ImGui::SetNextItemWidth(-1);
     ImGui::InputTextWithHint("##ed_filter", fr ? "Rechercher un objet" : "Search an object", ed_filter_, sizeof(ed_filter_));
@@ -569,7 +1131,7 @@ class Page {
     ImGui::TextDisabled("%zu %s, %d %s", texs.size(), fr ? "images" : "pictures", Changed(),
                         fr ? "remplacée(s)" : "replaced");
     RingColours(fr);
-    const float h = std::max(260.0f, ImGui::GetContentRegionAvail().y - 110);
+    const float h = std::max(260.0f, ImGui::GetContentRegionAvail().y - 4);
     ImGui::BeginChild("arena_grid", ImVec2(ImGui::GetContentRegionAvail().x * 0.58f, h), ImGuiChildFlags_Borders);
     const float box = 96, cell = box + 16;
     const int per_row = std::max(1, int(ImGui::GetContentRegionAvail().x / cell));
@@ -1290,24 +1852,7 @@ class Page {
     ImGui::BeginDisabled(!port_ok_ || game::IsRunning());
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it...", ImVec2(260, 36))) {
       as_new_ = true;
-      // (what was unticked at step 4 stays out of the mod)
-      const Bytes vs_b = card_mb_, vs_f = card_mf_, et = etex_, ld = load_, mv = movie_;
-      if (!wiz_keep_vs_) {
-        card_mb_.clear();
-        card_mf_.clear();
-      }
-      if (!wiz_keep_etex_)
-        etex_.clear();
-      if (!wiz_keep_load_)
-        load_.clear();
-      if (!wiz_keep_movie_)
-        movie_.clear();
-      Make(fr, mods);
-      card_mb_ = vs_b;
-      card_mf_ = vs_f;
-      etex_ = et;
-      load_ = ld;
-      movie_ = mv;
+      MakeProject(fr, mods);  // (what was unticked at step 4 stays out of the mod)
     }
     ImGui::EndDisabled();
     if (game::IsRunning())
@@ -2034,19 +2579,23 @@ class Page {
     banner_thumb_ = MakeThumb(device_, svrfmt::DdsEncode(banner_, svrfmt::DxtFormat::kDxt5, false));
   }
 
-  // The base arena's banner, from the game's menu/MatchHD.pac (read once).
+  // The game's arena banners ("arenaNN" in menu/MatchHD.pac MLYE/MUPA, entry 7001), read once.
+  void ReadGameBanners() {
+    if (banners_read_ || !disc_)
+      return;
+    banners_read_ = true;
+    svrfmt::Archive a;
+    if (svrfmt::ArchiveOpen(MatchHd12(), a, nullptr))
+      for (auto &k : a.root.kids)
+        if (k.group == "MLYE" && k.name == "MUPA" && svrfmt::ArchiveExpand(k))
+          for (auto &e : k.kids)
+            if (e.id == 7001)
+              svrfmt::BundleRead(svrfmt::ArchiveData(e), game_banners_);
+  }
+
+  // The base arena's banner, from the game's menu/MatchHD.pac.
   void LoadBaseBanner() {
-    if (!banners_read_ && disc_) {
-      banners_read_ = true;
-      Bytes matchhd;
-      svrfmt::Archive a;
-      if (disc_->Read("pac/menu/MatchHD.pac", matchhd) && svrfmt::ArchiveOpen(matchhd, a, nullptr))
-        for (auto &k : a.root.kids)
-          if (k.group == "MLYE" && k.name == "MUPA" && svrfmt::ArchiveExpand(k))
-            for (auto &e : k.kids)
-              if (e.id == 7001)
-                svrfmt::BundleRead(svrfmt::ArchiveData(e), game_banners_);
-    }
+    ReadGameBanners();
     char name[16];
     snprintf(name, sizeof(name), "arena%02d", slot_ >= 0 ? kSlots[slot_].number : 0);
     for (const auto &t : game_banners_) {
@@ -2063,7 +2612,9 @@ class Page {
     SetBanner(grey);
   }
 
-  void Make(bool fr, mods::Manager &mods) {
+  // The mod (.svrmod) written where the player chooses (to share it), else to `to` (Install into game: a file of the
+  // temp folder), then installed.
+  void Make(bool fr, mods::Manager &mods, const fs::path &to = {}) {
     message_ok_ = false;
     reduced_note_.clear();
     arena_edit::Arena &a = mode_ == 1 || (mode_ >= 3 && mode_ != 5) ? other_ : arena_;
@@ -2087,7 +2638,7 @@ class Page {
       id += std::isalnum(c) ? char(c) : '_';
       file += std::isalnum(c) ? wchar_t(c) : L'_';
     }
-    const fs::path save = media::PickSave(fr, (file.empty() ? L"arena" : file) + L".svrmod");
+    const fs::path save = !to.empty() ? to : media::PickSave(fr, (file.empty() ? L"arena" : file) + L".svrmod");
     if (save.empty())
       return;
     std::string manifest = "game=wwe12\ntype=arena\nid=" + id + "\nname=" + std::string(name_) + "\nversion=" + mod_version::Of(version_) + "\n";
@@ -2114,6 +2665,10 @@ class Page {
       if ((mode_ == 3 || mode_ == 4) && !card_mb_.empty()) {  // its own VS screen (MatchHD.pac MLYE/MBnn, MENU/MnnF)
         entries.push_back({"arena/card_mb.pac", card_mb_});
         entries.push_back({"arena/card_mf.pac", card_mf_});
+      } else if ((mode_ == 0 || mode_ == 1 || mode_ == 5) && !my_mb_.empty() && !my_mf_.empty()) {
+        // (a VS screen chosen or changed in the VS screen tab: another arena's theme, pictures replaced)
+        entries.push_back({"arena/card_mb.pac", my_mb_});
+        entries.push_back({"arena/card_mf.pac", my_mf_});
       }
       if ((mode_ == 3 || mode_ == 4) && !etex_.empty())  // its entrance graphics (evtgdhd.pac ETEX/00NN)
         entries.push_back({"arena/etex_hd.pac", etex_});
@@ -2130,7 +2685,9 @@ class Page {
     }
     mods.InstallFile(fr, save);
     message_ok_ = true;
-    message_ = (fr ? "Mod créé et installé : " : "Mod made and installed: ") + media::Utf8(save.wstring()) +
+    added_dirty_ = true;
+    message_ = (!to.empty() ? (fr ? "Mod installé : " : "Mod installed: ") + std::string(name_)
+                            : (fr ? "Mod créé et installé : " : "Mod made and installed: ") + media::Utf8(save.wstring())) +
                (as_new_ ? (fr ? " (au prochain lancement du jeu : choix d'arène, LB / RB)"
                               : " (next time the game starts: arena select, LB / RB)")
                         : "");
@@ -2198,8 +2755,35 @@ class Page {
   std::vector<svrfmt::BundleTexture> game_banners_;
   const disc::GameDisc *disc_ = nullptr;
 
+  // The views: the tab shown (or the wizard), one asked by a Start button, the tab before the wizard; what the mod is
+  // made of (project_mode_: 0 retexture, 1 another file, 3 / 4 a port, 5 the 3D editor; -1 nothing yet).
+  int tab_ = kViewStart, force_view_ = -1, before_wizard_ = kViewStart, project_mode_ = -1;
+  bool wizard_open_ = false;
+  // Start: the arena picked (kSlots index; 1000 + i: an added arena installed), the game's banners, the added ones.
+  int start_pick_ = -1;
+  bool slot_banners_read_ = false;
+  std::vector<Thumb> slot_banners_;
+  struct Added {
+    std::string name;
+    int base = 0;
+    fs::path dir;
+    bool on = true;
+    Thumb banner;
+  };
+  std::vector<Added> added_;
+  size_t added_count_ = size_t(-1);
+  bool added_dirty_ = true;
+  // VS screen: the one chosen for a mod that isn't a port (a port's is card_mb_ / card_mf_), WWE '12's MatchHD.pac,
+  // the pictures shown (and what they were read from).
+  Bytes my_mb_, my_mf_, matchhd12_, vs_key_;
+  bool matchhd12_read_ = false, vs_stale_ = true;
+  int vs_slot_ = -2, vs_theme_ = -1;
+  std::vector<svrfmt::BundleTexture> vs_pics_;
+  std::vector<Thumb> vs_thumbs_;
+  std::string vs_note_;
+
   // The assistant.
-  int tab_ = 0, wiz_step_ = 0;
+  int wiz_step_ = 0;
   std::vector<std::pair<uint32_t, std::string>> ed_models_;  // the 3D editor's list (the arena opened)
   int ed_pick_ = -1;
   arena_edit::Move ed_move_;
