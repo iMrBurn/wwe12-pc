@@ -1876,7 +1876,9 @@ class Page {
         right = x;
       }
     const double cx = left < 0 ? img.w / 2.0 : (left + right) / 2.0;
-    const double ky = k, kx = k;
+    // (and 0.8 as wide: WWE '12 keeps its own renders narrower than life and widens them on screen, its Cena's face
+    // ~0.8 the width of SvR's; at the same scale both ways they still looked "a bit stretched", 2026-11-03)
+    const double ky = k, kx = k * 0.8;
     const int w = int(img.w * kx + 0.5), h = int(img.h * ky + 0.5);
     const svrfmt::Image big = svrfmt::Resize(img, w, h);
     svrfmt::Image out;
