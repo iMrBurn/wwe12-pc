@@ -23,7 +23,8 @@
 // 2026-11-03): a superstar the game has gets another superstar's moves (moves=, superstar\moves\ for the moves WWE '12
 // hasn't), entrance (entrance_own=, superstar\entrance\: served by wwe12_arena_pages.cpp) and theme (superstar\theme.wem,
 // played under his entrance's number): his CHAR / PRO record in the pack's chEtc.pac (superstar_pack.h, Moveset), and
-// the save's own copy of it made again at the select screen (below). The pack is made for these mods alone too.
+// the save's own copy of it made again at the select screen when it isn't the mod's yet (below: a moveset edited in the
+// game stays). The pack is made for these mods alone too.
 
 #include <algorithm>
 #include <chrono>
@@ -75,6 +76,25 @@ Bytes g_cena_moves;                     // John Cena's (139), as the save keeps 
 // game's record once (else the save kept the mod's, its entrance a number nothing serves any more), then forgotten.
 fs::path g_moves_file;
 std::set<uint32_t> g_moves_mods, g_moves_restore;
+// The save's copy is made again only when it isn't the mod's yet, so a moveset or entrance edited in the game stays
+// (Discord, 2026-11-03: "the movesets and entrances don't save", undone at each select screen): when the mod's own
+// changed since it was last made (Documents\wwe12\moves_applied.txt, "<number>=<hash>"), when the copy is another
+// superstar's (its bytes past the moves and entrance blocks differ: an added superstar's slot in a save that never had
+// him), or when it is still the game's own record (a moves mod's superstar in a save made before the mod).
+fs::path g_applied_file;
+std::map<uint32_t, uint64_t> g_applied;
+std::map<uint32_t, Bytes> g_originals;  // a moves mod's superstar -> the game's record, as the save keeps it
+
+void WriteAppliedFile() {
+  std::string text;
+  for (const auto &[id, h] : g_applied)
+    text += std::to_string(id) + "=" + std::to_string(h) + "\n";
+  std::error_code ec;
+  if (text.empty())
+    fs::remove(g_applied_file, ec);
+  else
+    std::ofstream(g_applied_file, std::ios::binary | std::ios::trunc) << text;
+}
 
 void WriteMovesFile() {
   std::string text;
@@ -456,6 +476,12 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         g_moves_restore.insert(id);
     f.close();
     WriteMovesFile();
+    g_applied_file = user_root / "moves_applied.txt";
+    g_applied.clear();
+    std::ifstream a(g_applied_file);
+    for (std::string line; std::getline(a, line);)
+      if (const size_t eq = line.find('='); eq != std::string::npos)
+        g_applied[uint32_t(atoi(line.c_str()))] = std::strtoull(line.c_str() + eq + 1, nullptr, 10);
   }
   // The attire mods (type=attire with attire/attire.pac; older ones, a whole file, go through the mods folder).
   std::vector<superstar_pack::Attire> attires;
@@ -956,14 +982,20 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   // its first 4 bytes, its 16-bit numbers big-endian (13 of them, found on 254 records of a save, 2026-10-26).
   g_records.clear();
   g_moves.clear();
+  g_originals.clear();
   {
     svrfmt::Archive etc;
     if (svrfmt::ArchiveOpen(in.chetc, etc, nullptr))
       for (auto &k : etc.root.kids)
         if (k.group == "CHAR" && k.name == "PRO " && svrfmt::ArchiveExpand(k))
-          for (auto &c : k.kids)
-            if (c.id == 139 && svrfmt::ArchiveData(c).size() == 1072)
+          for (auto &c : k.kids) {
+            if (svrfmt::ArchiveData(c).size() != 1072)
+              continue;
+            if (c.id == 139)
               g_cena_moves = SavedMoves(svrfmt::ArchiveData(c));
+            if (std::any_of(movesets.begin(), movesets.end(), [&](const auto &mv) { return uint32_t(mv.superstar) == c.id; }))
+              g_originals[c.id] = SavedMoves(svrfmt::ArchiveData(c));
+          }
   }
   for (const auto &f : files) {
     svrfmt::Archive etc;
@@ -981,8 +1013,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
           if (d.size() == 1072 &&
               std::any_of(movesets.begin(), movesets.end(), [&](const auto &mv) { return uint32_t(mv.superstar) == c.id; })) {
             g_moves[c.id] = SavedMoves(d);
-            REXLOG_INFO("[superstar mods] superstar {}: his moves and entrance from a moves mod (the save's copy is made "
-                        "again at the select screen: his moveset edited in the game is undone while the mod is on)", c.id);
+            REXLOG_INFO("[superstar mods] superstar {}: his moves and entrance from a moves mod", c.id);
           }
         }
     for (auto &k : etc.root.kids)
@@ -1353,9 +1384,29 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       same = bd::mem::load<uint8_t>(at + k) == mv[k];
     if (same)
       continue;
+    const uint64_t h = Fnv(mv, 0xCBF29CE484222325ull);
+    if (!g_moves_restore.count(id)) {
+      const auto applied = g_applied.find(id);
+      bool foreign = false;
+      for (uint32_t k = 0; k < 1068 && !foreign; k = k == 5 ? 486 : k + 1)
+        foreign = bd::mem::load<uint8_t>(at + k) != mv[k];
+      bool original = false;
+      if (const auto o = g_originals.find(id); o != g_originals.end()) {
+        original = true;
+        for (uint32_t k = 0; k < 1068 && original; ++k)
+          original = bd::mem::load<uint8_t>(at + k) == o->second[k];
+      }
+      if (applied != g_applied.end() && applied->second == h && !foreign && !original)
+        continue;  // (the mod's, edited in the game since: kept)
+    }
     for (uint32_t k = 0; k < 1068; ++k)
       bd::mem::store<uint8_t>(at + k, mv[k]);
     REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its moves and entrance made again", id);
+    if (g_moves_restore.count(id))
+      g_applied.erase(id);
+    else
+      g_applied[id] = h;
+    WriteAppliedFile();
   }
   for (uint32_t id : restored) {
     g_moves.erase(id);
