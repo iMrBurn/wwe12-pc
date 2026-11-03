@@ -46,6 +46,8 @@ REXCVAR_DEFINE_INT32(wwe12_load_turbo_frames, 6, "WWE12",
     .range(1, 16);
 REXCVAR_DEFINE_BOOL(wwe12_load_turbo_vblank, true, "WWE12",
                     "Dev: the turbo also turns the SDK's vsync off (guest vblank at 1 kHz).");
+REXCVAR_DEFINE_BOOL(wwe12_load_turbo_scene_end, true, "WWE12",
+                    "Turbo loading: end the turbo when the entrance script is asked for (no fast-forwarded start).");
 REXCVAR_DEFINE_BOOL(wwe12_load_probe, false, "WWE12",
                     "Dev: log loader calls, game frames and presents each second.");
 // The SDK's vsync cvar (guest vblank at 60 Hz when on, 1 kHz when off) lives in its DLL: by name.
@@ -62,6 +64,7 @@ int64_t NowMs() {
 }
 
 std::atomic<bool> g_screen_up{false};
+std::atomic<bool> g_scene_started{false};  // the window ended early: the screen's open calls don't reopen it
 std::atomic<int64_t> g_screen_event_ms{0};  // last open or close of a loading screen
 std::atomic<int64_t> g_screen_since_ms{0};
 std::atomic<u32> g_loader_calls{0}, g_presents{0}, g_skips{0};
@@ -124,6 +127,23 @@ int64_t Wwe12MsSinceLoadScreen() {
   return NowMs() - g_screen_event_ms.load(std::memory_order_relaxed);
 }
 
+// The loading screen closes 0.1-0.4 s after the entrance behind it starts, so the turbo ran the
+// entrance's first frames fast-forwarded (a visible jump). Its last step is the entrance script:
+// sub_825B85B8(kind, number, out) builds a resource's name, kind 0 = "/GMEV/%04d" (the script; kind
+// 11 the same). Asked on a loading screen, it ends the turbo window there (measured 2026-11-03: the
+// entrance's first sound comes 0.1-0.4 s later, the screen closes ~0.15 s after that).
+REX_EXTERN(__imp__sub_825B85B8);
+extern "C" REX_FUNC(sub_825B85B8) {
+  const u32 kind = ctx.r3.u32;
+  if ((kind == 0 || kind == 11) && REXCVAR_GET(wwe12_load_turbo_scene_end) &&
+      g_screen_up.load(std::memory_order_relaxed)) {
+    g_scene_started.store(true, std::memory_order_relaxed);
+    g_screen_up.store(false, std::memory_order_relaxed);
+    BD_INFO("[turbo] entrance script {} asked: turbo window closed", ctx.r4.u32);
+  }
+  __imp__sub_825B85B8(ctx, base);
+}
+
 // Called by the loader hook (wwe12_loading.cpp) each time the game's loader yields.
 void Wwe12LoaderTick() {
   g_loader_calls.fetch_add(1, std::memory_order_relaxed);
@@ -173,7 +193,7 @@ extern "C" REX_FUNC(sub_827DEA20) {
 }
 
 // The loading screens' shared base methods: slot 14 opens the turbo window, the others close it.
-#define WWE12_LOAD_SCREEN_HOOK(subroutine, index, opens)                         REX_EXTERN(__imp__##subroutine);                                              extern "C" REX_FUNC(subroutine) {                                               g_screen_calls[index].fetch_add(1, std::memory_order_relaxed); g_screen_event_ms.store(NowMs(), std::memory_order_relaxed);                if (opens) {                                                                    if (!g_screen_up.exchange(true, std::memory_order_relaxed))                     g_screen_since_ms.store(NowMs(), std::memory_order_relaxed);              } else {                                                                        g_screen_up.store(false, std::memory_order_relaxed);                        }                                                                             __imp__##subroutine(ctx, base);                                             }
+#define WWE12_LOAD_SCREEN_HOOK(subroutine, index, opens)                         REX_EXTERN(__imp__##subroutine);                                              extern "C" REX_FUNC(subroutine) {                                               g_screen_calls[index].fetch_add(1, std::memory_order_relaxed); g_screen_event_ms.store(NowMs(), std::memory_order_relaxed);                if (opens) {                                                                    if (!g_scene_started.load(std::memory_order_relaxed) &&                           !g_screen_up.exchange(true, std::memory_order_relaxed))                     g_screen_since_ms.store(NowMs(), std::memory_order_relaxed);              } else {                                                                        g_screen_up.store(false, std::memory_order_relaxed);                          g_scene_started.store(false, std::memory_order_relaxed);                    }                                                                             __imp__##subroutine(ctx, base);                                             }
 WWE12_LOAD_SCREEN_HOOK(sub_826AF0F0, 0, true)
 WWE12_LOAD_SCREEN_HOOK(sub_826A83B0, 1, false)
 WWE12_LOAD_SCREEN_HOOK(sub_826A6B90, 2, false)
