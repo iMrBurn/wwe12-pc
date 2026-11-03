@@ -45,6 +45,7 @@
 #include "hair_donor.h"
 #include "faces2k.h"
 #include "strings2k.h"
+#include "star_port.h"
 
 namespace new_star_page {
 
@@ -195,18 +196,7 @@ class Page {
     movie_.UseOwnBink2(tmp, mini_tmp);
   }
 
-  static const char *GameName(uint32_t title) {
-    return title == 0x545408B2   ? "WWE 2K14"
-           : title == 0x545408B6 ? "WWE 2K15"
-           : title == 0x315A07D2 ? "WWE 2K16"
-           : title == 0x545408BA ? "WWE 2K17"
-           : title == 0x5451085D ? "SvR 2011"
-           : title == 0x54510844 ? "SvR 2010"
-           : title == 0x54510826 ? "SvR 2009"
-           : title == 0x5451080B ? "SvR 2008"
-           : title == 0x545107E0 ? "SvR 2007"
-                                 : "WWE '13";
-  }
+  static const char *GameName(uint32_t title) { return star_port::GameName(title); }
 
   // Step 1: its look.
   void StepLook(bool fr) {
@@ -1267,51 +1257,12 @@ class Page {
 
   // The superstars of the game chosen: its pac/ch/chNNN.pac files, named from its pac/ch/chEtc.pac (the CHAR / DAT
   // records: SvR 2011 264 bytes, id at +36 and name at +38; WWE '12 290 bytes, +44 / +46; WWE '13 324 bytes, +56 /
-  // +58), else "chNNN".
+  // +58), else "chNNN" (star_port::ListGame).
   void ListDisc(uint32_t title) {
-    disc_list_.clear();
-    disc_files_.clear();
     disc_pick_ = -1;
     game_title_ = title;
-    game_path_ = discs_ ? discs_->PathOf(title) : fs::path();
-    if (game_path_.empty() || !game_disc_.OpenPath(game_path_))
-      return;
-    std::map<int, std::string> names = NamesOf(game_disc_), guess;
-    // The 2K games' numbers without a name in their strings (Names2K): the superstar numbers are the same as in WWE '13
-    // and WWE '12, whose names are shown with a "?" (most of the time right).
-    if (title != 0x5451085D && title != 0x54510844 && title != 0x545108B4) {  // (the 2K games' unnamed numbers)
-      disc::GameDisc w13;
-      if (discs_ && w13.OpenPath(discs_->PathOf(0x545108B4)))
-        guess = NamesOf(w13);
-      if (disc12_)
-        for (const auto &[n, nm] : NamesOf(*disc12_))
-          guess.emplace(n, nm);
-    }
-    // (chNNN.pac; SvR 2008: chNN.pac; a DLC's: chNN.pac, chNN_dlcMM.pac; the disc's listed first, kept)
-    for (const auto &f : game_disc_.List("pac/ch")) {
-      size_t k = 2;
-      while (k < f.size() && isdigit(static_cast<unsigned char>(f[k])))
-        ++k;
-      if (k == 2 || k > 5 || _strnicmp(f.c_str(), "ch", 2) != 0 || f.size() < 4 ||
-          _stricmp(f.c_str() + f.size() - 4, ".pac") != 0 ||
-          (k != f.size() - 4 && _strnicmp(f.c_str() + k, "_dlc", 4) != 0))
-        continue;
-      {
-        const int n = atoi(f.c_str() + 2);
-        if (!disc_files_.emplace(n, f).second)
-          continue;
-        const auto it = names.find(n), g = guess.find(n);
-        const bool named = it != names.end() && it->second.size() > 1;  // (some records hold "0": no name)
-        disc_list_.push_back({n, named ? it->second
-                                 : g != guess.end() && g->second.size() > 1 ? g->second + " ?"
-                                                                            : f.substr(0, f.size() - 4)});
-      }
-    }
-    std::sort(disc_list_.begin(), disc_list_.end(), [](const auto &x, const auto &y) { return x.second < y.second; });
+    star_port::ListGame(discs_, disc12_, title, game_path_, game_disc_, disc_list_, disc_files_);
   }
-
-  // A game's superstar names by number (strings2k::SuperstarNames).
-  static std::map<int, std::string> NamesOf(const disc::GameDisc &g) { return strings2k::SuperstarNames(g); }
 
   // A pac of the superstar's game, every copy: the disc's, then its DLC's (a newer one, its own "<name>_dlcNN.pac":
   // SvR 2011 / WWE '13 / 2K14 DLC_HD_dlc02.pac, 2K15-2K17 dlc_hd_dlc20.pac). From a file: that game folder's one.
@@ -1464,209 +1415,30 @@ class Page {
  private:
 
   // Its moves in its game (SvR 2011, WWE '13; the 2K games' aren't read yet) in WWE '12's slots (moveset_port.h), from
-  // that game in My game discs.
+  // that game in My game discs; its entrance, victory scene and their objects (star_port::Collect).
   void OwnMoves(int number) {
     own_moves_ = {};
     own_moves_why_.clear();
     own_moves_game_ = look_ == 2 ? svr_game_ : star_game_;
     if ((look_ != 2 && look_ != 3) || number < 0 || !disc12_ || !discs_)
       return;
-    // (SvR 2007-2010: their move slots aren't 2011's, Kaiko's svr10_moves.py map, later; their entrance and victory are
-    // read, svr_old_entrance.h)
-    const bool svr_old = own_moves_game_ == 0x54510844 || own_moves_game_ == 0x54510826 ||
-                         own_moves_game_ == 0x5451080B || own_moves_game_ == 0x545107E0;
-    disc::GameDisc src;
-    const fs::path p = discs_->PathOf(own_moves_game_);
-    if (p.empty() || !src.OpenPath(p)) {
-      own_moves_why_ = "its game isn't in My game discs";
+    std::string name;  // (its name in its game: the 2K16 / 2K17 entrance is found by it)
+    for (const auto &[n, nm] : disc_list_)
+      if (n == number)
+        name = nm;
+    star_port::Parts parts;
+    star_port::Collect(*disc12_, *discs_, own_moves_game_, number, name, base_ >= 0 ? stars_[size_t(base_)].id : -1,
+                       music12_, parts);
+    own_moves_ = std::move(parts.moves);
+    own_moves_why_ = std::move(parts.moves_why);
+    if (!parts.opened)
       return;
-    }
-    if (svr_old)
-      own_moves_why_ = std::string(GameName(own_moves_game_)) + "'s moves aren't read yet";
-    else
-      moveset_port::FromGame(*disc12_, src, number, own_moves_, &own_moves_why_);
-    // Its WWE '13 moves WWE '12 hasn't: added (newmoves13.h; the game puts them in the added superstars' pack).
-    own_new_moves_.clear();
-    if (own_moves_game_ == 0x545108B4) {
-      std::set<int> want;
-      for (const auto &r : own_moves_.rows)
-        if (r.new_move)
-          want.insert(r.from_id);
-      own_new_moves_ = newmoves13::Collect(src, want);
-      std::set<int> got;
-      for (const auto &m : own_new_moves_)
-        got.insert(m.number);
-      for (auto &r : own_moves_.rows)
-        if (r.new_move && got.count(r.from_id)) {
-          r.to = r.from;
-          r.added = true;
-          own_moves_.moves.push_back({r.off, r.from_id});
-          --own_moves_.kept;
-          ++own_moves_.exact;
-        }
-    }
-    // Its WWE '13 / 2K14-2K17 entrance (entrance13.h: WWE '12's format; 2K15-2K17's made so), when WWE '12 has none with
-    // that number.
-    own_entrance_.clear();
-    own_entrance_one_take_ = false;
-    own_entrance_number_ = 0;
-    const bool scenes = own_moves_game_ == 0x545108B4 || own_moves_game_ == 0x545408B2 || own_moves_game_ == 0x545408B6 ||
-                        own_moves_game_ == 0x315A07D2 || own_moves_game_ == 0x545408BA;
-    // (its entrance's number: 2K14 and 2K15 name it in its profile, CHAR / PRO u16 little-endian at +580 / +584, and
-    // one superstar's may be another's: 2K15 Sami Zayn 429 enters with 478; elsewhere its own number)
-    int entrance = number;
-    if (own_moves_game_ == 0x315A07D2 || own_moves_game_ == 0x545408BA) {  // (2K16 / 2K17: PRO by index, +596)
-      const auto dat = theme_source::detail::Records(src, "DAT"), pro = theme_source::detail::Records(src, "PRO");
-      for (const auto &[i, d] : dat)
-        if (d.size() > 5 && (d[4] | d[5] << 8) == number && pro.count(i) && pro.at(i).size() > 597) {
-          const int e = pro.at(i)[596] | pro.at(i)[597] << 8;
-          if (e > 0 && e < 1000)
-            entrance = e;
-        }
-    }
-    // (2K16 / 2K17 without a profile entrance, or none of that number: the script named as the superstar)
-    if ((own_moves_game_ == 0x315A07D2 || own_moves_game_ == 0x545408BA) && entrance == number) {
-      char f[32];
-      snprintf(f, sizeof(f), "%05d.pac", number);
-      const auto files = src.List("pac/evt");
-      const bool has = std::find(files.begin(), files.end(), std::string(f)) != files.end();
-      if (own_moves_game_ == 0x545408BA || !has)
-        for (const auto &[n, nm] : disc_list_)  // (its name in its game)
-          if (n == number)
-            if (const int e = entrance13::EntranceByName(src, nm); e > 0)
-              entrance = e;
-    }
-    if (own_moves_game_ == 0x545408B2 || own_moves_game_ == 0x545408B6) {
-      const auto pro = theme_source::detail::Records(src, "PRO");
-      const size_t at = own_moves_game_ == 0x545408B2 ? 580 : 584;
-      if (const auto it = pro.find(uint32_t(number)); it != pro.end() && it->second.size() > at + 1) {
-        const int e = it->second[at] | it->second[at + 1] << 8;
-        if (e > 0 && e < 1000)
-          entrance = e;
-      }
-    }
-    // (SvR 2007-2011: its own entrance and victory converted, svr_scenes.h: 2011's numbered as the superstar, the older
-    // games' through 2011's format, svr_old_entrance.h, the number the profile names; then WWE '12's number it's served
-    // as, a free one if the game or a mod has it)
-    const bool svr11 = own_moves_game_ == 0x5451085D, svr = svr11 || svr_old;
-    disc::GameDisc disc11;
-    const disc::GameDisc *with11 =
-        svr_old && !discs_->PathOf(0x5451085D).empty() && disc11.OpenPath(discs_->PathOf(0x5451085D)) ? &disc11 : nullptr;
-    if (svr)
-      entrance = svr_old_entrance::EntranceOf(src, own_moves_game_, number);
-    if ((scenes && entrance13::Entrance(src, entrance, own_entrance_, nullptr)) ||
-        (svr && entrance > 0 &&
-         svr_scenes::Entrance(src, *disc12_, entrance, own_entrance_, nullptr, own_moves_game_, with11))) {
-      if (svr_old)
-        entrance = own_entrance_.front().number;
-      own_entrance_number_ = entrance;
-      // (a 2K15 "one-take", the whole entrance in segment 0: said at step 2; WWE '12 plays it without the crowd)
-      own_entrance_one_take_ = entrance13::OneTake(own_entrance_, entrance);
-      // (2K16 / 2K17 effects are a newer PCE6, each emitter 2340 bytes where 2K15's are 2020 and WWE '13's 1780: the
-      // game crashed on them, 2K16 Kevin Owens, 2026-11-02. The same entrance's from an older game of the player's,
-      // else its base's in WWE '12, else none)
-      if (own_moves_game_ == 0x315A07D2 || own_moves_game_ == 0x545408BA) {
-        Bytes older;
-        for (uint32_t t : {0x545408B6u, 0x545408B2u, 0x545108B4u}) {
-          disc::GameDisc g;
-          if (older.empty() && !discs_->PathOf(t).empty() && g.OpenPath(discs_->PathOf(t)))
-            older = entrance13::Pce6Of(g, entrance);
-        }
-        if (older.empty() && base_ >= 0)
-          older = entrance13::Pce6Of(*disc12_, stars_[size_t(base_)].id);
-        for (size_t i = own_entrance_.size(); i-- > 0;)
-          if (own_entrance_[i].kind == "PCE6") {
-            if (older.empty())
-              own_entrance_.erase(own_entrance_.begin() + long(i));
-            else
-              own_entrance_[i].data = older;
-          }
-      }
-      // (its effects are asked for twice, pac\prtcls.pac PCE6 and LPE6: a game without LPE6 (2K14...) gives its PCE6 for
-      // both, as Kaiko's entrance_port.py; with PCE6 alone no pyro showed, 2026-11-02)
-      if (std::none_of(own_entrance_.begin(), own_entrance_.end(), [](const auto &q) { return q.kind == "LPE6"; }))
-        for (size_t i = 0, n = own_entrance_.size(); i < n; ++i)
-          if (own_entrance_[i].kind == "PCE6") {
-            entrance13::Part l = own_entrance_[i];
-            l.kind = "LPE6";
-            own_entrance_.push_back(std::move(l));
-            break;
-          }
-      // (a number WWE '12 or another installed mod has already: a free one, 499 down to 100; 854 crashed AJ Styles. The
-      // number is its theme's too, MusicNumber: one the game has a theme of played that one, none heard: SvR 2010 Jeff
-      // Hardy as 111, 2026-11-02)
-      const std::set<int> taken = TakenEntrances();
-      if (entrance13::Exists12(*disc12_, entrance) || taken.count(entrance) || Music12(entrance)) {
-        int to = 0;
-        for (int n = 499; n >= 100 && !to; --n)
-          if (!taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(*disc12_, n) && !Music12(n))
-            to = n;
-        if (to) {
-          entrance13::Renumber(own_entrance_, entrance, to);
-          own_entrance_number_ = to;
-        } else {
-          own_entrance_.clear();
-          own_entrance_number_ = 0;
-        }
-      }
-    }
-    // its victory scene (served under 6000 + its slot)
-    own_victory_.clear();
-    if (scenes)
-      entrance13::Victory(src, number, own_victory_);
-    else if (svr)
-      svr_scenes::Victory(src, *disc12_, number, own_victory_, own_moves_game_, with11);
-    // the objects of both that WWE '12 hasn't (Cena's chain, Kane's mask...): from its game's evtobj.pac
-    own_objects_.clear();
-    if (scenes || svr) {
-      std::vector<entrance13::Part> both = own_entrance_;
-      both.insert(both.end(), own_victory_.begin(), own_victory_.end());
-      // (SvR 2007-2011's props are another format: none brought, the ones WWE '12 hasn't hidden)
-      if (scenes)
-        own_objects_ = entrance13::Objects(src, *disc12_, both);
-      // (the props neither WWE '12 nor the mod has: an existing one, hidden)
-      entrance13::HideMissing(own_entrance_, *disc12_, own_objects_);
-      entrance13::HideMissing(own_victory_, *disc12_, own_objects_);
-      // (2K16 / 2K17's object 5009 and superstars waiting in the ring, made for their skeleton and placement: WWE '12's)
-      for (auto *parts : {&own_entrance_, &own_victory_}) {
-        entrance13::Announcer12(*parts, *disc12_);
-        entrance13::Waiting12(*parts, *disc12_);
-        entrance13::WaitingFirst12(*parts);
-        entrance13::People12(*parts, *disc12_);
-      }
-    }
-  }
-
-  // Whether WWE '12 has a theme numbered `n` (sound\Music.pck's event Play_MUS_<n>_0_0; read once).
-  bool Music12(int n) {
-    if (!music12_read_ && disc12_) {
-      music12_read_ = true;
-      wwise::Package pk;
-      const disc::GameDisc *g = disc12_;
-      if (pk.Open([g](uint64_t at, uint32_t size, Bytes &o) { return g->ReadPart("sound/Music.pck", at, size, o); }))
-        for (const auto &[id, o] : wwise::AllObjects(pk))
-          music12_.insert(id);
-    }
-    char e[32];
-    snprintf(e, sizeof(e), "Play_MUS_%04d_0_0", n);
-    return music12_.count(wwise::Fnv(e)) != 0;
-  }
-
-  // The entrances the installed superstar mods have (their manifest's entrance_own=), beside the Mod Maker.
-  static std::set<int> TakenEntrances() {
-    std::set<int> out;
-    wchar_t exe[MAX_PATH] = {};
-    GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    std::error_code ec;
-    for (fs::directory_iterator it(fs::path(exe).parent_path() / "mods" / ".svrmods" / "Superstars", ec), end;
-         !ec && it != end; it.increment(ec)) {
-      std::ifstream f(it->path() / "manifest.txt");
-      std::string line;
-      while (std::getline(f, line))
-        if (line.rfind("entrance_own=", 0) == 0)
-          out.insert(atoi(line.c_str() + 13));
-    }
-    return out;
+    own_new_moves_ = std::move(parts.new_moves);
+    own_entrance_ = std::move(parts.entrance);
+    own_entrance_number_ = parts.entrance_number;
+    own_entrance_one_take_ = parts.one_take;
+    own_victory_ = std::move(parts.victory);
+    own_objects_ = std::move(parts.objects);
   }
 
   // Step 2's part: its own WWE '13 / 2K14 entrance.
@@ -1730,7 +1502,7 @@ class Page {
                                    : "(needs vgmstream: Kaiko's Mod Maker Tools, or vgmstream-cli.exe in a vgmstream folder "
                                      "beside the Mod Maker)");
   }
-  fs::path Vgmstream() const { return theme_convert::FindVgmstream(discs_ ? discs_->PathOf(0x5451085D) : fs::path()); }
+  fs::path Vgmstream() const { return star_port::Vgmstream(discs_); }
 
   // Step 2's part: its own moves, slot by slot.
   void DrawOwnMoves(bool fr) {
@@ -1745,33 +1517,8 @@ class Page {
              own_moves_game_ == 0x5451085D ? "SvR 2011" : GameName(own_moves_game_), own_moves_.exact + own_moves_.variant,
              n);
     ImGui::Checkbox(label, &use_own_moves_);
-    if (use_own_moves_ && ImGui::TreeNode(fr ? "Détail des prises" : "The moves, slot by slot")) {
-      if (ImGui::BeginTable("own_moves", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
-                            ImVec2(0, 220))) {
-        ImGui::TableSetupColumn(fr ? "Case" : "Slot", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn(own_moves_game_ == 0x5451085D ? "SvR 2011" : GameName(own_moves_game_));
-        ImGui::TableSetupColumn("WWE '12");
-        ImGui::TableHeadersRow();
-        for (const auto &r : own_moves_.rows) {
-          ImGui::TableNextRow();
-          ImGui::TableNextColumn();
-          ImGui::Text("%03X", r.off);
-          ImGui::TableNextColumn();
-          ImGui::TextUnformatted(r.from.empty() ? "?" : r.from.c_str());
-          ImGui::TableNextColumn();
-          if (r.to.empty())
-            ImGui::TextDisabled("%s", fr ? "(celle de la base)" : "(the base's)");
-          else if (r.added)
-            ImGui::Text("%s  %s", r.to.c_str(), fr ? "(ajoutée depuis WWE '13 ; essai)" : "(added from WWE '13; a test)");
-          else if (r.variant)
-            ImGui::Text("%s  %s", r.to.c_str(), fr ? "(autre version)" : "(another version)");
-          else
-            ImGui::TextUnformatted(r.to.c_str());
-        }
-        ImGui::EndTable();
-      }
-      ImGui::TreePop();
-    }
+    if (use_own_moves_)
+      star_port::DrawMovesTable(fr, own_moves_, own_moves_game_, "(the base's)", "(celle de la base)");
   }
 
   // WWE 2K15 / 2K16: pac\menu\menuHD2.pac, SFAG / SFBG / SFCG "NNNN" (2K16: no SFBG, SFAG again), TGA 512 x 512,
@@ -2431,28 +2178,12 @@ class Page {
       for (const auto &part : own_objects_)
         entries.push_back({entrance13::ModPath(part), part.data});
     if (use_theme_ && !theme_.stream.empty() && (look_ == 2 || look_ == 3)) {  // (its theme, Wwise PCM)
-      const std::wstring ext(theme_.ext.begin(), theme_.ext.end());
-      Bytes pcm;
-      // (an entrance whose video plays full screen first, 2K15 Bray Wyatt's: that video's sound before the song, the
-      // music from frame 100 as usual and the sound from there; the theme alone has only the song. From frame 0, the
-      // video showed neither full screen nor on the titantron, 2026-11-02)
-      uint32_t fullscreen = 0;
-      if (own_entrance)
-        for (const auto &part : own_entrance_)
-          if (part.kind == "EVP" && part.number == own_entrance_number_)
-            fullscreen = entrance13::FullScreenOf(part.data);
+      // (with its 2K video's sound first when its entrance plays that video full screen: star_port::ThemeWem)
       Bytes video;
-      if (fullscreen && !twok_movie_file_.empty() &&
-          game_disc_.Read("movies/titantron/" + twok_movie_file_, video))
-        pcm = theme_convert::ToPcmWithIntro(Vgmstream(), theme_.stream, ext, video, L".bk2", fullscreen / 60.0, 100 / 60.0);
-      if (!pcm.empty()) {
-        const std::string evp = entrance13::ModPath({own_entrance_number_, "EVP", {}});
-        for (auto &[name, data] : entries)
-          if (name == evp)
-            entrance13::SetMusicFrame(data, 100);
-      } else {
-        pcm = theme_convert::ToPcm(Vgmstream(), theme_.stream, ext);
-      }
+      if (own_entrance && !twok_movie_file_.empty())
+        game_disc_.Read("movies/titantron/" + twok_movie_file_, video);
+      Bytes pcm = star_port::ThemeWem(Vgmstream(), theme_, own_entrance ? &own_entrance_ : nullptr, own_entrance_number_,
+                                      video, entries);
       if (!pcm.empty())
         entries.push_back({"superstar/theme.wem", std::move(pcm)});
     }
@@ -2520,8 +2251,7 @@ class Page {
   bool own_movie_ = false;
   moveset_port::Result own_moves_;  // its SvR 2011 moves in WWE '12's slots (moveset_port.h)
   std::string own_moves_why_;
-  bool music12_read_ = false;
-  std::set<uint32_t> music12_;  // (WWE '12's theme events, Music12)
+  star_port::Music12 music12_;  // (WWE '12's theme events)
   uint32_t own_moves_game_ = 0;  // the game its own moves come from
   bool use_own_moves_ = true;
   int entrance_ = -1;
