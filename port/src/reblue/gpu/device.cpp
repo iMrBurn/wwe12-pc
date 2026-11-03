@@ -70,6 +70,12 @@ REXCVAR_DEFINE_BOOL(svr_rt_no_compression, false, "SvR",
                     "Graphics and the Steam Deck: create render targets as storage images, so the "
                     "driver doesn't compress them.");
 
+#if defined(REBLUE_D3D12)
+REXCVAR_DEFINE_BOOL(svr_d3d12_depth32, false, "SvR",
+                    "D3D12: 32-bit float depth on NVIDIA and Intel too, as Vulkan (default: 24-bit "
+                    "there). Test for depth faults on old Intel drivers (#7).");
+#endif
+
 namespace bd::gpu {
 
 namespace {
@@ -274,7 +280,8 @@ plume::RenderFormat
 PickDepthStencilFormat([[maybe_unused]] plume::RenderDevice *device) {
 #if defined(REBLUE_D3D12)
   const auto vendor = device->getDescription().vendor;
-  if ((vendor == plume::RenderDeviceVendor::NVIDIA ||
+  if (!REXCVAR_GET(svr_d3d12_depth32) &&
+      (vendor == plume::RenderDeviceVendor::NVIDIA ||
        vendor == plume::RenderDeviceVendor::INTEL) &&
       (device->getSampleCountsSupported(
            plume::RenderFormat::D24_UNORM_S8_UINT) &

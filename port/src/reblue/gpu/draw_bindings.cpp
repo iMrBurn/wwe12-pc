@@ -19,6 +19,11 @@
 
 #include "gpu/shaders/shader_constants.h"
 
+#if defined(SVR_NATIVE_RENDERER) && defined(REBLUE_D3D12)
+#include <rex/cvar.h>
+REXCVAR_DECLARE(bool, svr_d3d12_depth_flip);
+#endif
+
 namespace bd::gpu {
 
 // ALPHAREF mirror for SharedConstants. Set by the bdSetRenderState hook (arg
@@ -233,6 +238,11 @@ void Video::FlushViewport() {
     // D3D11 refuses MinDepth > MaxDepth: swapped here, and the vertex shaders give z' = w - z
     // (SharedConstants::depthFlip), the same depth values.
     if (vp.minDepth > vp.maxDepth)
+      std::swap(vp.minDepth, vp.maxDepth);
+#elif defined(REBLUE_D3D12)
+    // Same on D3D12 (svr_d3d12_depth_flip): old Intel drivers (UHD 620, #7) mishandle the
+    // reversed range, the wrestlers and crowd came out half see-through.
+    if (REXCVAR_GET(svr_d3d12_depth_flip) && vp.minDepth > vp.maxDepth)
       std::swap(vp.minDepth, vp.maxDepth);
 #endif
 #else

@@ -33,6 +33,12 @@
 #include <rex/cvar.h>
 #include "svr_resources.h"
 REXCVAR_DECLARE(bool, svr_match_guest_mips);
+#if defined(REBLUE_D3D12)
+REXCVAR_DEFINE_BOOL(svr_d3d12_depth_flip, true, "SvR",
+                    "D3D12: swap a reversed viewport depth range (MinZ > MaxZ) and give z' = w - z in "
+                    "the vertex shaders, as D3D11 does (old Intel drivers, UHD 620: wrestlers and "
+                    "crowd half see-through, #7). false = pass the reversed range to the driver (1.0).");
+#endif
 #endif
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -587,6 +593,11 @@ ConstantAllocation UploadSharedConstants(u32 device_guest) {
   s.shared.shadowPcfScale = s.shadowPcfScale;
 #if defined(REBLUE_D3D11)
   s.shared.depthFlip = vs.viewport.minDepth > vs.viewport.maxDepth ? 1u : 0u;
+#elif defined(REBLUE_D3D12) && defined(SVR_NATIVE_RENDERER)
+  s.shared.depthFlip = REXCVAR_GET(svr_d3d12_depth_flip) &&
+                               vs.viewport.minDepth > vs.viewport.maxDepth
+                           ? 1u
+                           : 0u;
 #endif
 
   // Viewport extent, not the render target's: the NDC->pixel mapping this

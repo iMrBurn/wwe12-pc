@@ -1,5 +1,19 @@
+diff --git a/XenosRecomp/dxc_compiler.cpp b/XenosRecomp/dxc_compiler.cpp
+index 4a851c2..a8ecc45 100644
+--- a/XenosRecomp/dxc_compiler.cpp
++++ b/XenosRecomp/dxc_compiler.cpp
+@@ -50,6 +50,9 @@ IDxcBlob* DxcCompiler::compile(const std::string& shaderSource, bool compilePixe
+     {
+         args[argCount++] = L"-Wno-ignored-attributes";
+         args[argCount++] = L"-Qstrip_reflect";
++#ifdef REBLUE_RECOMP
++        args[argCount++] = L"-DSVR_DXIL_DEPTH_FLIP";
++#endif
+     }
+ 
+     args[argCount++] = L"-Qstrip_debug";
 diff --git a/XenosRecomp/shader_common.h b/XenosRecomp/shader_common.h
-index 63c37c9..74d9360 100644
+index 63c37c9..116de83 100644
 --- a/XenosRecomp/shader_common.h
 +++ b/XenosRecomp/shader_common.h
 @@ -3,6 +3,8 @@
@@ -64,18 +78,33 @@ index 63c37c9..74d9360 100644
  #else
  #define g_Booleans                 vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + 256)
  #define g_SwappedTexcoords         vk::RawBufferLoad<uint>(g_PushConstants.SharedConstants + 260)
-@@ -80,7 +98,9 @@ struct PushConstants
+@@ -69,6 +87,13 @@ struct PushConstants
+ #else
+ 
+ #ifdef REBLUE_RECOMP
++// WWE '12 D3D12 (DXIL only): old Intel D3D12 drivers (UHD 620) mishandle a reversed viewport depth
++// range (MinZ > MaxZ), so the renderer swaps it and the vertex shader writes z' = w - z.
++#ifdef SVR_DXIL_DEPTH_FLIP
++#define SVR_DEPTH_FLIP_CONSTANT uint g_SvrDepthFlip : packoffset(c21.z);
++#else
++#define SVR_DEPTH_FLIP_CONSTANT
++#endif
+ #define DEFINE_SHARED_CONSTANTS() \
+     uint4 g_BooleansArr[2] : packoffset(c16); \
+     uint g_SwappedTexcoords : packoffset(c18.x); \
+@@ -80,7 +105,10 @@ struct PushConstants
      uint g_SwappedBlendWeights : packoffset(c19.w); \
      uint g_SwappedPositions : packoffset(c20.x); \
      uint g_SintTexcoords : packoffset(c20.y); \
 -    float g_ShadowPcfScale : packoffset(c20.z);
 +    float g_ShadowPcfScale : packoffset(c20.z); \
 +    float g_InvRenderScale : packoffset(c20.w); \
-+    float4 g_ScreenSpace : packoffset(c22);
++    float4 g_ScreenSpace : packoffset(c22); \
++    SVR_DEPTH_FLIP_CONSTANT
  
  #define g_Booleans(i) (g_BooleansArr[(i) / 4][(i) % 4])
  #else
-@@ -100,6 +120,13 @@ uint g_SpecConstants();
+@@ -100,6 +128,13 @@ uint g_SpecConstants();
  #define BOOL_BIT(n) ((g_Booleans((n) / 32u) & (1u << ((n) & 31u))) != 0)
  #endif
  
@@ -89,7 +118,7 @@ index 63c37c9..74d9360 100644
  Texture2D<float4> g_Texture2DDescriptorHeap[] : register(t0, space0);
  Texture3D<float4> g_Texture3DDescriptorHeap[] : register(t0, space1);
  TextureCube<float4> g_TextureCubeDescriptorHeap[] : register(t0, space2);
-@@ -115,7 +142,7 @@ uint2 getTexture2DDimensions(Texture2D<float4> texture)
+@@ -115,7 +150,7 @@ uint2 getTexture2DDimensions(Texture2D<float4> texture)
  float4 tfetch2D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float2 texCoord, float2 offset)
  {
      Texture2D<float4> texture = g_Texture2DDescriptorHeap[resourceDescriptorIndex];
@@ -98,7 +127,7 @@ index 63c37c9..74d9360 100644
  }
  
  float2 getWeights2D(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float2 texCoord, float2 offset)
-@@ -208,17 +235,17 @@ float4 tfetch2DBicubic(uint resourceDescriptorIndex, uint samplerDescriptorIndex
+@@ -208,17 +243,17 @@ float4 tfetch2DBicubic(uint resourceDescriptorIndex, uint samplerDescriptorIndex
      float h1y = h1(fy);
  
      float4 r =
@@ -121,7 +150,7 @@ index 63c37c9..74d9360 100644
  }
  
  struct CubeMapData
-@@ -236,13 +263,22 @@ struct CubeMapData
+@@ -236,13 +271,22 @@ struct CubeMapData
  
  float4 tfetchCube(uint resourceDescriptorIndex, uint samplerDescriptorIndex, float3 texCoord, inout CubeMapData cubeMapData)
  {
@@ -146,7 +175,7 @@ index 63c37c9..74d9360 100644
      {
          uint v = asuint(value.x);
 diff --git a/XenosRecomp/shader_recompiler.cpp b/XenosRecomp/shader_recompiler.cpp
-index feaa90b..15a9324 100644
+index feaa90b..5e872b2 100644
 --- a/XenosRecomp/shader_recompiler.cpp
 +++ b/XenosRecomp/shader_recompiler.cpp
 @@ -130,7 +130,18 @@ static constexpr std::pair<DeclUsage, size_t> INTERPOLATORS[] =
@@ -322,12 +351,15 @@ index feaa90b..15a9324 100644
              }
          #ifdef UNLEASHED_RECOMP
              else if (!isPixelShader && hasIndexCount && i == 0)
-@@ -2322,6 +2360,9 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
+@@ -2322,6 +2360,12 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
                      if (!hasMtxProjection)
                  #endif
                      {
 +                #ifdef REBLUE_RECOMP
 +                        out += "\toPos.xy = oPos.xy * g_ScreenSpace.xy + g_ScreenSpace.zw * oPos.w;\n";
++                        out += "#ifdef SVR_DXIL_DEPTH_FLIP\n";
++                        out += "\tif (g_SvrDepthFlip) oPos.z = oPos.w - oPos.z;\n";
++                        out += "#endif\n";
 +                #endif
                          out += "\toPos.xy += g_HalfPixelOffset * oPos.w;\n";
                      }
