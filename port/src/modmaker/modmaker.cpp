@@ -787,16 +787,39 @@ void DrawUi() {
                  ImVec2(x + ow, o.y + oh), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 46));
   }
 
-  // The rail fits the window's height (17 pages): the buttons get lower first (44 down to 34), then the logo smaller,
-  // then the buttons again (down to 24); a 1080p screen was too short for all of them (HELP cut off, 2026-10-26).
+  // The rail, grouped under small headers as Kaiko's SvR 2011 Mod Maker (2026-11-03); the drawing order only: the
+  // Page numbers stay (WWE12_MM_PAGE). A header (page -1, its English and French names), then its pages.
+  struct RailItem {
+    int page;  // -1: a header
+    const char *en, *fr;
+  };
+  static constexpr RailItem kRail[] = {
+      {kHome, nullptr, nullptr},
+      {-1, "CREATE", "CRÉER"},           {kNewStar, nullptr, nullptr},     {kMoves, nullptr, nullptr},
+      {kArenas, nullptr, nullptr},       {kStars, nullptr, nullptr},       {kVideos, nullptr, nullptr},
+      {kMedia, nullptr, nullptr},        {kSigns, nullptr, nullptr},       {kBackgrounds, nullptr, nullptr},
+      {kObjects, nullptr, nullptr},
+      {-1, "PORTING", "PORTAGE"},        {kDiscs, nullptr, nullptr},
+      {-1, "SAVES", "SAUVEGARDES"},      {kCaw, nullptr, nullptr},
+      {-1, "LOOK", "REGARDER"},          {kLook, nullptr, nullptr},        {kFiles, nullptr, nullptr},
+      {kTextures, nullptr, nullptr},
+      {-1, "MODS", "MODS"},              {kDoctor, nullptr, nullptr},
+      {-1, "HELP", "AIDE"},              {kAbout, nullptr, nullptr}};
+  int headers = 0;
+  for (const auto &r : kRail)
+    headers += r.page < 0;
+  // The rail fits the window's height (17 pages, 6 headers): the buttons get lower first (40 down to 30), then the logo
+  // smaller, then the buttons again (down to 20); a 1080p screen was too short for all of them (HELP cut off,
+  // 2026-10-26). Buttons closer together than the page's items.
   constexpr int kPages = kAbout + 1;
-  const float gap = ImGui::GetStyle().ItemSpacing.y, title_h = 42, room = H - 18 - title_h - 48;
+  constexpr float kHeaderH = 20;
+  const float gap = 5, title_h = 42, room = H - 18 - title_h - 48 - headers * kHeaderH;
   const float logo_full = g_logo ? (kSide - 60) * float(g_logo_h) / float(g_logo_w) : 0;
-  float bh = std::clamp((room - logo_full) / kPages - gap, 34.0f, 44.0f);
+  float bh = std::clamp((room - logo_full) / kPages - gap, 30.0f, 40.0f);
   float logo_h = std::clamp(room - kPages * (bh + gap), 0.0f, logo_full);
   if (logo_h < 70) {  // (a logo that small is no use: none, and the buttons share its room)
     logo_h = 0;
-    bh = std::clamp(room / kPages - gap, 24.0f, 44.0f);
+    bh = std::clamp(room / kPages - gap, 20.0f, 40.0f);
   }
   ImGui::SetCursorPos(ImVec2(20, 18));
   if (g_logo && logo_h > 0) {
@@ -813,13 +836,25 @@ void DrawUi() {
                             "NEW SUPERSTAR", "MOVES & ENTRANCES", "CAW", "BELTS & WEAPONS", "MEDIA", "SIGNS", "BACKGROUNDS", "LOOK", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
   const char *names_fr[] = {"ACCUEIL", "VIDÉOS",   "TEXTURES",   "ARÈNES",  "CATCHEURS",
                             "NOUVEAU", "PRISES & ENTRÉES", "CAW", "CEINTURES", "MÉDIA", "PANCARTES", "FONDS", "REGARDER", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
-  for (int i = 0; i < int(std::size(names_en)); ++i) {
+  static_assert(sizeof(names_en) / sizeof(*names_en) == kPages && sizeof(names_fr) / sizeof(*names_fr) == kPages);
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, gap));
+  for (const auto &r : kRail) {
     ImGui::SetCursorPosX(16);
+    if (r.page < 0) {  // (a small grey header, its line below)
+      const ImVec2 p = ImGui::GetCursorScreenPos();
+      ImGui::PushFont(g_font_body, 13.0f);
+      dl->AddText(ImVec2(p.x + 4, p.y + kHeaderH - gap - 15), IM_COL32(130, 130, 136, 255), g_fr ? r.fr : r.en);
+      ImGui::PopFont();
+      ImGui::Dummy(ImVec2(kSide - 32, kHeaderH - gap));
+      continue;
+    }
+    const int i = r.page;
     const bool sel = g_page == i;
     if (BigButton(g_fr ? names_fr[i] : names_en[i], ImVec2(kSide - 32, bh), sel ? kGold : IM_COL32(28, 28, 32, 255),
                   sel ? IM_COL32(20, 20, 20, 255) : IM_COL32(235, 235, 235, 255)))
       g_page = Page(i);
   }
+  ImGui::PopStyleVar();
 
   ImGui::SetCursorPos(ImVec2(kSide + 36, 26));
   ImGui::BeginChild("page", ImVec2(W - kSide - 60, H - 50));
