@@ -342,7 +342,7 @@ class Page {
       for (const auto &b : game_banners_) {
         svrfmt::Image img;
         if (b.name == name && svrfmt::DdsDecode(b.data, img) && img.w > 0) {
-          img = Fill(img, 256, 128);
+          img = Stretch(img);
           for (size_t i = 3; i < img.rgba.size(); i += 4)
             img.rgba[i] = 255;
           t = MakeThumb(device_, svrfmt::DdsEncode(img, svrfmt::DxtFormat::kDxt5, false));
@@ -2556,6 +2556,9 @@ class Page {
   }
 
   // The picture cut to w:h (its middle) and resized.
+  // A game banner shown as the game does: arena00-03 are 256 x 128, arena04-20 128 x 128 squeezed and stretched to 2:1
+  // on screen; cropped to fill (Fill) their middle was cut, Money in the Bank's and Royal Rumble's text (2026-11-03).
+  static svrfmt::Image Stretch(const svrfmt::Image &img) { return svrfmt::Resize(img, 256, 128); }
   static svrfmt::Image Fill(const svrfmt::Image &img, int w, int h) {
     int cw = img.w, ch = img.w * h / w;
     if (ch > img.h) {
@@ -2601,7 +2604,7 @@ class Page {
     for (const auto &t : game_banners_) {
       svrfmt::Image img;
       if (t.name == name && svrfmt::DdsDecode(t.data, img)) {
-        SetBanner(Fill(img, 256, 128));
+        SetBanner(Stretch(img));
         return;
       }
     }
