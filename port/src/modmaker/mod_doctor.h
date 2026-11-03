@@ -13,6 +13,8 @@
 //    transition; at most 35 (the banner pack's free places);
 //  - attire mods (src/native/wwe12_attire_mods.cpp): a superstar the game has, an attire name of his ("000NNNAK"),
 //    an attire file with that one attire; two mods on one attire (the first one wins);
+//  - moves mods (wwe12_superstar_mods.cpp, superstar_pack.h Moveset): a superstar the game has (50-372), something
+//    for him; two mods on one superstar (the last one wins);
 //  - replacing files (mods.h): a file the disc has (else the game never reads it), an arena no bigger than the one it
 //    replaces, Bink 1 videos; two mods giving the same file (the first one wins).
 #pragma once
@@ -113,6 +115,7 @@ class Page {
     std::map<std::string, std::string> owner;  // a file given to the game -> the first mod (by folder) giving it
     std::set<std::string> superstar_ids;
     std::map<std::string, std::string> attire_owner;  // "NNN/entry" -> the first mod giving it
+    std::map<int, std::string> moves_owner;           // a superstar -> the last moves mod for him so far
     int added_arenas = 0;
     std::vector<fs::path> dirs;
     for (fs::directory_iterator k(root, ec), end; !ec && k != end; k.increment(ec))
@@ -166,6 +169,23 @@ class Page {
         else
           attire_owner.emplace(key, label);
         CheckAttire(fr, disc, dir, text, add, off, disable());
+      } else if (type == "moves") {
+        const int superstar = atoi(Value(text, "superstar").c_str());
+        if (superstar < 50 || superstar >= 373) {
+          add(2, fr ? "Son catcheur (superstar=) n'est pas un catcheur du jeu : le jeu ne prend pas ce mod."
+                    : "Its superstar (superstar=) isn't one of the game's: the game doesn't take this mod.",
+              off, disable());
+        } else {
+          if (auto o = moves_owner.find(superstar); o != moves_owner.end())
+            add(1, (fr ? "Même catcheur que le mod " : "The same superstar as the mod ") + o->second +
+                       (fr ? " : celui-ci est utilisé (le dernier), l'autre est laissé de côté."
+                           : ": this one is used (the last one), that one is left out."));
+          moves_owner[superstar] = label;
+        }
+        if (Value(text, "moves").empty() && atoi(Value(text, "entrance_own").c_str()) <= 0 &&
+            !fs::exists(dir / "superstar" / "theme.wem", ec) && !fs::exists(dir / "superstar" / "victory" / "EVP.bin", ec))
+          add(1, fr ? "Il n'apporte rien au jeu (ni prises, ni entrée, ni scène de victoire, ni musique)."
+                    : "It brings nothing to the game (no moves, entrance, victory scene or theme).");
       } else if (type == "arena" && Value(text, "slot") == "new") {
         ++added_arenas;
         CheckAddedArena(fr, dir, text, add, off, disable());

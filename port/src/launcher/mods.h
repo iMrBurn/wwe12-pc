@@ -22,7 +22,9 @@
 // too; the game makes its own DLC pack of them at startup (src/native/wwe12_superstar_mods.cpp).
 // Attire mods (type=attire, superstar=NNN, attire=<entry>) give attire/attire.pac (one attire): the game puts it into
 // the superstar's file at startup (src/native/wwe12_attire_mods.cpp). Signs, backgrounds, media and match types give
-// signs/, backgrounds/, media/, matchtype/: read by the game from their folder too.
+// signs/, backgrounds/, media/, matchtype/: read by the game from their folder too. Moves mods (type=moves,
+// superstar=NNN: a superstar of the game given another one's moves, entrance, victory scene and theme) give superstar/
+// files the same way (wwe12_superstar_mods.cpp, wwe12_arena_pages.cpp).
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN

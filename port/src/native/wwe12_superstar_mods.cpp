@@ -18,6 +18,12 @@
 // A mod's superstar/titantron.bik goes into the pack under a number no other video has, and when an entrance video
 // is opened for that superstar (the one entering: sub_828CEF58(sub_828C21A8()) -> {+8 set, +16 place}, its Superstar
 // sub_8267CD30(sub_823F8270(place)) + 16 = number x 100 + attire), the path is made with that number instead.
+//
+// Moves mods (mods\.svrmods\Moves\<id>, type=moves, superstar=NNN: the Mod Maker's MOVES & ENTRANCES page,
+// 2026-11-03): a superstar the game has gets another superstar's moves (moves=, superstar\moves\ for the moves WWE '12
+// hasn't), entrance (entrance_own=, superstar\entrance\: served by wwe12_arena_pages.cpp) and theme (superstar\theme.wem,
+// played under his entrance's number): his CHAR / PRO record in the pack's chEtc.pac (superstar_pack.h, Moveset), and
+// the save's own copy of it made again at the select screen (below). The pack is made for these mods alone too.
 
 #include <algorithm>
 #include <chrono>
@@ -64,6 +70,24 @@ fs::path g_menu_dir;                    // the dressed menu files of this start,
 std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the save keeps it (286 bytes)
 std::map<uint32_t, Bytes> g_moves;      // ... its moves and entrance (CHAR / PRO) as the save keeps them (1068 bytes)
 Bytes g_cena_moves;                     // John Cena's (139), as the save keeps them: where they are is checked on his
+// The superstars the moves mods are for (Documents\wwe12\moves_mods.txt, one number a line): this start's, and those
+// whose mod is gone since. The save keeps its own copy of their moves and entrance: a gone one's is put back to the
+// game's record once (else the save kept the mod's, its entrance a number nothing serves any more), then forgotten.
+fs::path g_moves_file;
+std::set<uint32_t> g_moves_mods, g_moves_restore;
+
+void WriteMovesFile() {
+  std::string text;
+  std::set<uint32_t> all = g_moves_mods;
+  all.insert(g_moves_restore.begin(), g_moves_restore.end());
+  for (uint32_t id : all)
+    text += std::to_string(id) + "\n";
+  std::error_code ec;
+  if (text.empty())
+    fs::remove(g_moves_file, ec);
+  else
+    std::ofstream(g_moves_file, std::ios::binary | std::ios::trunc) << text;
+}
 
 // A CHAR / PRO record (1072 bytes) as the save keeps it: without its first 4 bytes, its 16-bit numbers big-endian up
 // to byte 486 (exact on 204 of 273 superstars of a save; the others were empty records or edited, 2026-10-26).
@@ -123,6 +147,43 @@ bool ReadGame(rex::filesystem::VirtualFileSystem *vfs, const std::string &rel, B
   const bool ok = file->ReadSync(std::span<uint8_t>(out.data(), out.size()), 0, &read) == 0 && read == out.size();
   file->Destroy();
   return ok;
+}
+
+// A manifest's moves= ("OFF:NUMBER,...": hex offset in CHAR / PRO, move number).
+std::vector<std::pair<int, int>> ParseMoves(const std::string &v) {
+  std::vector<std::pair<int, int>> out;
+  for (size_t at = 0; at < v.size();) {
+    char *end = nullptr;
+    const long off = strtol(v.c_str() + at, &end, 16);
+    if (end && *end == ':') {
+      const long id = strtol(end + 1, nullptr, 10);
+      if (id > 0 && id < 0x10000)
+        out.push_back({int(off), int(id)});
+    }
+    const size_t comma = v.find(',', at);
+    at = comma == std::string::npos ? v.size() : comma + 1;
+  }
+  return out;
+}
+
+// A mod's moves WWE '12 hasn't: superstar\moves\<number>.waze, _low.yanm, _high.yanm (and .magg, optional).
+std::vector<superstar_pack::NewMove> ReadNewMoves(const fs::path &dir) {
+  std::vector<superstar_pack::NewMove> out;
+  std::error_code ec;
+  for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+    const fs::path w = it->path();
+    if (w.extension() != ".waze")
+      continue;
+    superstar_pack::NewMove nm;
+    nm.number = atoi(w.stem().string().c_str());
+    const fs::path d = w.parent_path(), stem = w.stem();
+    if (nm.number > 0 && ReadHost(w, nm.waze) && ReadHost(d / (stem.string() + "_low.yanm"), nm.low) &&
+        ReadHost(d / (stem.string() + "_high.yanm"), nm.high)) {
+      ReadHost(d / (stem.string() + ".magg"), nm.magg);  // (optional: its RGRP/MAGG records)
+      out.push_back(std::move(nm));
+    }
+  }
+  return out;
 }
 
 uint64_t Fnv(const Bytes &b, uint64_t h) {
@@ -207,6 +268,46 @@ std::map<std::string, int> PackStars(const fs::path &pack) {
   return out;
 }
 
+// The game's CHAR / PRO records (a chEtc.pac) of the superstars whose moves mod is gone, as the save keeps them, into
+// g_moves (and John Cena's, where they are checked).
+void AddRestores(const Bytes &chetc) {
+  svrfmt::Archive etc;
+  if (g_moves_restore.empty() || !svrfmt::ArchiveOpen(chetc, etc, nullptr))
+    return;
+  for (auto &k : etc.root.kids)
+    if (k.group == "CHAR" && k.name == "PRO " && svrfmt::ArchiveExpand(k))
+      for (auto &c : k.kids) {
+        const Bytes d = svrfmt::ArchiveData(c);
+        if (d.size() != 1072)
+          continue;
+        if (c.id == 139 && g_cena_moves.empty())
+          g_cena_moves = SavedMoves(d);
+        if (g_moves_restore.count(c.id)) {
+          g_moves[c.id] = SavedMoves(d);
+          REXLOG_INFO("[superstar mods] superstar {}: his moves mod is gone, the save's copy of his moves and entrance "
+                      "goes back to the game's", c.id);
+        }
+      }
+}
+
+// The game's chEtc.pac: the newest installed pack's (not ours), else the disc's.
+Bytes GameChEtc(rex::filesystem::VirtualFileSystem *vfs, const fs::path &content) {
+  std::vector<std::pair<int, fs::path>> packs;
+  std::error_code ec;
+  for (fs::directory_iterator it(content, ec), end; !ec && it != end; it.increment(ec)) {
+    Bytes cat;
+    if (it->path().filename() != kPackName && ReadHost(it->path() / "info" / "catalog.dlc", cat) && cat.size() >= 12)
+      packs.push_back({cat[8] | cat[9] << 8, it->path()});
+  }
+  std::sort(packs.begin(), packs.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+  Bytes out;
+  for (const auto &[n, dir] : packs)
+    if (ReadHost(dir / "pac" / "ch" / "chEtc.pac", out))
+      return out;
+  ReadGame(vfs, "pac/ch/chEtc.pac", out);
+  return out;
+}
+
 // No mods for the pack: it is KEPT. Every build shares Documents\wwe12 (saves and installed DLC); a save made with the
 // added superstars needs their pack, else the game refuses it ("downloadable content missing or damaged"): a test
 // build with an empty mods folder removed it and the player's 0.9 couldn't load his save (2026-10-26).
@@ -285,20 +386,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         at = comma + 1;
       }
     }
-    {
-      const std::string v = Value(text, "moves");
-      for (size_t at = 0; at < v.size();) {
-        char *end = nullptr;
-        const long off = strtol(v.c_str() + at, &end, 16);
-        if (end && *end == ':') {
-          const long id = strtol(end + 1, nullptr, 10);
-          if (id > 0 && id < 0x10000)
-            mod.moves.push_back({int(off), int(id)});
-        }
-        const size_t comma = v.find(',', at);
-        at = comma == std::string::npos ? v.size() : comma + 1;
-      }
-    }
+    mod.moves = ParseMoves(Value(text, "moves"));
     mod.entrance = std::clamp(atoi(Value(text, "entrance").c_str()), 0, 372);
     mod.own_entrance = std::clamp(atoi(Value(text, "entrance_own").c_str()), 0, 999);
     if (mod.own_entrance > 0 &&
@@ -306,20 +394,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       mod.theme = d / "superstar" / "entrance" / ("MUS_" + std::to_string(mod.own_entrance) + ".bin");
     if (fs::exists(d / "superstar" / "theme.wem", ec))  // (its game's theme, made PCM by the Mod Maker)
       mod.theme = d / "superstar" / "theme.wem";
-    for (fs::directory_iterator it(d / "superstar" / "moves", ec), end; !ec && it != end; it.increment(ec)) {
-      const fs::path w = it->path();
-      if (w.extension() != ".waze")
-        continue;
-      superstar_pack::NewMove nm;
-      nm.number = atoi(w.stem().string().c_str());
-      const fs::path dir = w.parent_path(), stem = w.stem();
-      if (nm.number > 0 && ReadHost(w, nm.waze) && ReadHost(dir / (stem.string() + "_low.yanm"), nm.low) &&
-          ReadHost(dir / (stem.string() + "_high.yanm"), nm.high)) {
-        ReadHost(dir / (stem.string() + ".magg"), nm.magg);  // (optional: its RGRP/MAGG records)
-        mod.new_moves.push_back(std::move(nm));
-      }
-    }
-    ec.clear();
+    mod.new_moves = ReadNewMoves(d / "superstar" / "moves");
     mod.model = d / "superstar" / "ch.pac";
     mod.movie = d / "superstar" / "titantron.bik";
     if (mod.base < 50 || mod.base >= 373) {
@@ -327,6 +402,60 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       continue;
     }
     list.push_back(mod);
+  }
+  // The moves mods (type=moves, superstar=NNN), in folder order: several on one superstar, the last one wins (the
+  // others are left out, said in the log).
+  std::vector<superstar_pack::Moveset> movesets;
+  {
+    std::vector<fs::path> mdirs;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Moves", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec))
+        mdirs.push_back(it->path());
+    ec.clear();
+    std::sort(mdirs.begin(), mdirs.end());
+    for (const auto &d : mdirs) {
+      Bytes m;
+      if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m))
+        continue;
+      const std::string text(m.begin(), m.end());
+      superstar_pack::Moveset mv;
+      mv.key = d.filename().string();
+      mv.name = Value(text, "name");
+      mv.superstar = atoi(Value(text, "superstar").c_str());
+      if (mv.superstar < 50 || mv.superstar >= 373) {
+        REXLOG_WARN("[superstar mods] moves mod {}: superstar={} is not a superstar of the game", mv.key,
+                    Value(text, "superstar"));
+        continue;
+      }
+      mv.moves = ParseMoves(Value(text, "moves"));
+      mv.own_entrance = std::clamp(atoi(Value(text, "entrance_own").c_str()), 0, 999);
+      ReadHost(d / "superstar" / "theme.wem", mv.theme);
+      mv.new_moves = ReadNewMoves(d / "superstar" / "moves");
+      for (auto it = movesets.begin(); it != movesets.end(); ++it)
+        if (it->superstar == mv.superstar) {
+          REXLOG_WARN("[superstar mods] moves mods {} and {} are both for superstar {}: {} is used", it->key, mv.key,
+                      mv.superstar, mv.key);
+          movesets.erase(it);
+          break;
+        }
+      REXLOG_INFO("[superstar mods] moves mod {}: superstar {}, {} move(s){}{}{}", mv.key, mv.superstar, mv.moves.size(),
+                  mv.new_moves.empty() ? "" : ", " + std::to_string(mv.new_moves.size()) + " added",
+                  mv.own_entrance ? ", entrance " + std::to_string(mv.own_entrance) : std::string(),
+                  mv.theme.empty() ? "" : ", its own theme");
+      movesets.push_back(std::move(mv));
+    }
+    // (their superstars, and those of the moves mods gone since the last start: moves_mods.txt)
+    g_moves_file = user_root / "moves_mods.txt";
+    g_moves.clear();
+    g_moves_mods.clear();
+    for (const auto &mv : movesets)
+      g_moves_mods.insert(uint32_t(mv.superstar));
+    std::ifstream f(g_moves_file);
+    for (std::string line; std::getline(f, line);)
+      if (const uint32_t id = uint32_t(atoi(line.c_str())); id >= 50 && id < 373 && !g_moves_mods.count(id))
+        g_moves_restore.insert(id);
+    f.close();
+    WriteMovesFile();
   }
   // The attire mods (type=attire with attire/attire.pac; older ones, a whole file, go through the mods folder).
   std::vector<superstar_pack::Attire> attires;
@@ -523,7 +652,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
                   backgrounds[pick - 1].key, dressed);
     }
   }
-  if (list.empty() && attires.empty() && media.empty() && signs.empty()) {
+  if (list.empty() && attires.empty() && media.empty() && signs.empty() && movesets.empty()) {
+    AddRestores(GameChEtc(vfs, content));
     RemovePack(content, headers);
     return;
   }
@@ -703,6 +833,9 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     if (!st.theme.empty())
       g_themes.push_back({uint32_t(superstar_pack::detail::MusicNumber(st)), st.name});
   }
+  for (const auto &mv : movesets)
+    if (!mv.theme.empty())
+      g_themes.push_back({uint32_t(superstar_pack::detail::MusicNumber(mv)), mv.name.empty() ? mv.key : mv.name});
   // A superstar of the pack whose mod is gone: the pack stays as it is (a save may use him), with a warning.
   {
     std::vector<std::string> gone;
@@ -725,7 +858,9 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     }
     fs::remove(user_root / "mods_warning.txt", e2);
   }
-  if (stars.empty() && attires.empty() && media.empty() && signs.empty()) {
+  if (stars.empty() && attires.empty() && media.empty() && signs.empty() && movesets.empty()) {
+    g_moves.clear();
+    AddRestores(in.chetc);
     RemovePack(content, headers);
     return;
   }
@@ -759,19 +894,23 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     }
     if (in.edit.empty())
       ReadGame(vfs, "pac/edit/edit.pac", in.edit);
-    // Themes: the game's sound\Music.pck (read in parts) and the newest pack's pac\sound_dlc_NN.pac.
-    if (std::any_of(stars.begin(), stars.end(), [](const auto &s) { return !s.theme.empty(); })) {
-      in.music.Open([vfs](uint64_t at, uint32_t size, Bytes &out) { return ReadGamePart(vfs, "sound/Music.pck", at, size, out); });
-      for (const auto &[n, dir] : packs) {
-        for (fs::directory_iterator it(dir / "pac", ec), end; !ec && it != end; it.increment(ec))
-          if (it->path().filename().string().rfind("sound_dlc_", 0) == 0 && ReadHost(it->path(), in.sound_pac))
-            break;
-        if (!in.sound_pac.empty())
+  }
+  // (the moves mods' added moves: into a copy of misc.pac too)
+  if (in.misc.empty() && std::any_of(movesets.begin(), movesets.end(), [](const auto &mv) { return !mv.new_moves.empty(); }))
+    latest("pac/misc.pac", in.misc);
+  // Themes: the game's sound\Music.pck (read in parts) and the newest pack's pac\sound_dlc_NN.pac.
+  if (std::any_of(stars.begin(), stars.end(), [](const auto &s) { return !s.theme.empty(); }) ||
+      std::any_of(movesets.begin(), movesets.end(), [](const auto &mv) { return !mv.theme.empty(); })) {
+    in.music.Open([vfs](uint64_t at, uint32_t size, Bytes &out) { return ReadGamePart(vfs, "sound/Music.pck", at, size, out); });
+    for (const auto &[n, dir] : packs) {
+      for (fs::directory_iterator it(dir / "pac", ec), end; !ec && it != end; it.increment(ec))
+        if (it->path().filename().string().rfind("sound_dlc_", 0) == 0 && ReadHost(it->path(), in.sound_pac))
           break;
-      }
+      if (!in.sound_pac.empty())
+        break;
     }
   }
-  if (!superstar_pack::Build(in, stars, files, &why, attires, media, signs)) {
+  if (!superstar_pack::Build(in, stars, files, &why, attires, media, signs, movesets)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;
   }
@@ -835,6 +974,14 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
           if (d.size() == 1072 &&
               std::any_of(stars.begin(), stars.end(), [&](const auto &st) { return uint32_t(st.slot) == c.id; }))
             g_moves[c.id] = SavedMoves(d);
+          // (a moves mod's superstar: the save's copy of his moves and entrance made again too, so a save made before
+          // the mod gets them; it also undoes his moveset edited in the game while the mod is on)
+          if (d.size() == 1072 &&
+              std::any_of(movesets.begin(), movesets.end(), [&](const auto &mv) { return uint32_t(mv.superstar) == c.id; })) {
+            g_moves[c.id] = SavedMoves(d);
+            REXLOG_INFO("[superstar mods] superstar {}: his moves and entrance from a moves mod (the save's copy is made "
+                        "again at the select screen: his moveset edited in the game is undone while the mod is on)", c.id);
+          }
         }
     for (auto &k : etc.root.kids)
       if (k.group == "CHAR" && k.name == "DAT " && svrfmt::ArchiveExpand(k))
@@ -848,6 +995,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
           g_records[c.id] = std::move(r);
         }
   }
+  AddRestores(in.chetc);
   // The numbers kept for next time.
   {
     std::string text;
@@ -1177,11 +1325,13 @@ extern "C" REX_FUNC(sub_828ADFB8) {
   }
   // Its moves and entrance too: the save keeps them after the records (SaveData.Dat: the records at 0x1C, the moves at
   // 324792, 1068 bytes each, same order). A disc's empty record's were empty: no entrance (FBX TEST at 108, 2026-10-26).
-  // Only once that place holds John Cena's as they should be.
+  // Only once that place holds John Cena's as they should be: his bytes past his moves and entrance blocks (from 486;
+  // and before them, 0-5), which neither a moves mod nor a moveset edited in the game changes (2026-11-03; all 1068
+  // before, and a moves mod for Cena made it fail).
   const uint32_t moves = roster ? roster - 0x1C + 324792 : 0;
   const auto index_of = [](uint32_t id) { return id < 373 ? uint32_t(bd::mem::load<uint16_t>(0x8307B5E0 + id * 2)) : 0xFFFFu; };
   bool found = moves && g_cena_moves.size() == 1068 && index_of(139) < 373;
-  for (uint32_t k = 0; found && k < 1068; ++k)
+  for (uint32_t k = 0; found && k < 1068; k = k == 5 ? 486 : k + 1)
     found = bd::mem::load<uint8_t>(moves + index_of(139) * 1068 + k) == g_cena_moves[k];
   if (moves && !found && !g_moves.empty()) {
     static bool told = false;
@@ -1189,9 +1339,12 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       REXLOG_WARN("[superstar mods] the save's moves not found where expected: added superstars' left as they are");
     told = true;
   }
+  std::vector<uint32_t> restored;
   for (const auto &[id, mv] : g_moves) {
     if (!found || index_of(id) >= 373)
       continue;
+    if (g_moves_restore.count(id))
+      restored.push_back(id);  // (put back once: then forgotten)
     const uint32_t at = moves + index_of(id) * 1068;
     bool same = true;
     for (uint32_t k = 0; k < 1068 && same; ++k)
@@ -1202,6 +1355,12 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       bd::mem::store<uint8_t>(at + k, mv[k]);
     REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its moves and entrance made again", id);
   }
+  for (uint32_t id : restored) {
+    g_moves.erase(id);
+    g_moves_restore.erase(id);
+  }
+  if (!restored.empty())
+    WriteMovesFile();
   __imp__sub_828ADFB8(ctx, base);
 }
 

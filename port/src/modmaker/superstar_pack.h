@@ -20,6 +20,10 @@
 //    records, by motion number); moves the latest misc.pac has already (an installed DLC's) are left out;
 //  - a line in the pack's catalog and in its superstar list (DLC.pac IGST/VOL<pack>: codes "lettre + U" that follow
 //    the installed packs', the next serial numbers).
+// A superstar the game has can get another one's moves, entrance and theme (a moves mod, the Mod Maker's MOVES &
+// ENTRANCES page, 2026-11-03): his CHAR / PRO record in the pack's copy of chEtc.pac, the newest one the game reads
+// (Moveset below); his added moves and theme go into the pack as an added superstar's. The pack is made for such mods
+// alone too (no line in the lists then).
 // Nothing of the game's goes into a mod: the pack is made from the player's own files.
 #pragma once
 
@@ -176,6 +180,17 @@ inline bool DressMenu(Bytes &mnlay, const Background &bg) {
   return true;
 }
 
+// A moves mod (type=moves): a superstar of the game (his number) given moves, an entrance and a theme of his own.
+struct Moveset {
+  std::string key;    // the mod's folder name
+  std::string name;   // the mod's name (the jukebox's)
+  int superstar = 0;  // a superstar of the game (50-372)
+  std::vector<std::pair<int, int>> moves;  // (CHAR / PRO byte offset, move number), as Star::moves
+  int own_entrance = 0;                    // his entrance served under that number (as Star::own_entrance), else 0
+  Bytes theme;                             // his own theme (Wwise PCM), else empty: his music number then
+  std::vector<NewMove> new_moves;          // his moves WWE '12 hasn't, as Star::new_moves
+};
+
 struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)
@@ -239,6 +254,32 @@ inline Bytes ZlibRecord(const Bytes &raw) {
 // The music number of an added superstar's own theme: its own entrance's number (WWE '13's do so: Mankind 246), else
 // 900 + its slot (no theme of the game's has one: they are 50-99 and 100-343, 272 is the user playlist).
 inline int MusicNumber(const Star &st) { return st.own_entrance > 0 ? st.own_entrance : 900 + st.slot; }
+// ... a moves mod's: the same, 900 + the superstar's number without an entrance (an added superstar's slot is a free
+// record, never one of the game's superstars: no two the same).
+inline int MusicNumber(const Moveset &mv) { return mv.own_entrance > 0 ? mv.own_entrance : 900 + mv.superstar; }
+// A CHAR / PRO record (1072 bytes) given its moves, own entrance and music number (an added superstar's, a moves mod's).
+// The moves are 16-bit big-endian from +0x00A to +0x1C2; the entrance block is there twice, +0x1D4 and +0x1E0 (equal
+// on the disc's records), and the game plays the second (the first changed alone: the base's entrance, music and
+// video, 2026-10-28): both written.
+inline void PutMoves(Bytes &pro, const std::vector<std::pair<int, int>> &moves, int own_entrance, int music) {
+  for (const auto &[at, id] : moves)
+    if (at >= 0x00A && at < 0x1C2 && (at & 1) == 0 && size_t(at) + 1 < pro.size()) {  // (the moves, not the entrance)
+      pro[size_t(at)] = uint8_t(id >> 8);
+      pro[size_t(at) + 1] = uint8_t(id);
+    }
+  if (own_entrance > 0)
+    for (const size_t at : {size_t(0x1D8), size_t(0x1E4)})
+      if (pro.size() >= at + 2) {
+        pro[at] = uint8_t(own_entrance);
+        pro[at + 1] = uint8_t(own_entrance >> 8);
+      }
+  if (music > 0)  // its music number (the theme in our package)
+    for (const size_t at : {size_t(0x1D4), size_t(0x1E0)})
+      if (pro.size() >= at + 2) {
+        pro[at] = uint8_t(music);
+        pro[at + 1] = uint8_t(music >> 8);
+      }
+}
 inline ArcNode *Find(ArcNode &r, const std::string &g, const std::string &n) {
   for (auto &k : r.kids)
     if (k.group == g && k.name == n)
@@ -366,7 +407,7 @@ inline int PackNumber(const Inputs &in) {
 // The pack's files for `stars` (slots set). False (and why) when it can't be made.
 inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<File> &files, std::string *why,
                   const std::vector<Attire> &attires = {}, const std::vector<MediaPortraits> &media = {},
-                  const std::vector<Sign> &signs = {}) {
+                  const std::vector<Sign> &signs = {}, const std::vector<Moveset> &movesets = {}) {
   using namespace detail;
   auto fail = [&](const std::string &w) {
     if (why)
@@ -374,6 +415,14 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     return false;
   };
   const int pack = PackNumber(in);
+  // The moves to add: the added superstars', then the moves mods' (the first giving a number wins).
+  std::vector<const NewMove *> all_new_moves;
+  for (const auto &st : stars)
+    for (const auto &m : st.new_moves)
+      all_new_moves.push_back(&m);
+  for (const auto &mv : movesets)
+    for (const auto &m : mv.new_moves)
+      all_new_moves.push_back(&m);
   if (pack > 9)
     return fail("no pack number left (the game reads 10)");
   char tag[8];
@@ -477,24 +526,24 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         continue;
       Bytes d = svrfmt::Unpack(kid.data);
       const size_t which = kid.id == 10 ? 0 : 104;
-      for (const auto &st : stars)
-        for (const auto &m : st.new_moves) {
-          if (m.magg.size() != 208)
-            continue;
-          const int motion = m.magg[which] | m.magg[which + 1] << 8;
-          size_t at = 0;
-          bool have = false;
-          for (; at + 104 <= d.size(); at += 104) {
-            const int x = d[at] | d[at + 1] << 8;
-            have = x == motion;
-            if (x >= motion)
-              break;
-          }
-          if (have)
-            continue;
-          d.insert(d.begin() + long(std::min(at, d.size())), m.magg.begin() + long(which), m.magg.begin() + long(which) + 104);
-          changed = true;
+      for (const NewMove *mp : all_new_moves) {
+        const NewMove &m = *mp;
+        if (m.magg.size() != 208)
+          continue;
+        const int motion = m.magg[which] | m.magg[which + 1] << 8;
+        size_t at = 0;
+        bool have = false;
+        for (; at + 104 <= d.size(); at += 104) {
+          const int x = d[at] | d[at + 1] << 8;
+          have = x == motion;
+          if (x >= motion)
+            break;
         }
+        if (have)
+          continue;
+        d.insert(d.begin() + long(std::min(at, d.size())), m.magg.begin() + long(which), m.magg.begin() + long(which) + 104);
+        changed = true;
+      }
       if (changed)
         kid.data = svrfmt::IsBpe(kid.data) ? svrfmt::BpeEncode(d) : d;
     }
@@ -551,32 +600,25 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     Le16(d, 0x100, uint16_t(person));
     svrfmt::ArchiveReplace(*s, d);
     Bytes moves = svrfmt::ArchiveData(*bp);
-    for (const auto &[at, id] : st.moves)
-      if (at >= 0x00A && at < 0x1C2 && (at & 1) == 0 && size_t(at) + 1 < moves.size()) {  // (the moves, not the entrance)
-        moves[size_t(at)] = uint8_t(id >> 8);
-        moves[size_t(at) + 1] = uint8_t(id);
-      }
-    // The entrance block is there twice, +0x1D4 and +0x1E0 (equal on the disc's records); the game plays the second
-    // (the first changed alone: the base's entrance, music and video, 2026-10-28). Both written.
+    // (another superstar's entrance, both blocks: music, video and entrance numbers; then its own, PutMoves)
     if (ArcNode *ep = st.entrance > 0 ? Child(*pro, uint32_t(st.entrance)) : nullptr) {
       const Bytes e = svrfmt::ArchiveData(*ep);
       for (const size_t at : {size_t(0x1D4), size_t(0x1E0)})
         if (e.size() >= at + 10 && moves.size() >= at + 10)
           std::copy(e.begin() + long(at), e.begin() + long(at) + 10, moves.begin() + long(at));
     }
-    if (st.own_entrance > 0)
-      for (const size_t at : {size_t(0x1D8), size_t(0x1E4)})
-        if (moves.size() >= at + 2) {
-          moves[at] = uint8_t(st.own_entrance);
-          moves[at + 1] = uint8_t(st.own_entrance >> 8);
-        }
-    if (!st.theme.empty())  // its music number (the theme in our package)
-      for (const size_t at : {size_t(0x1D4), size_t(0x1E0)})
-        if (moves.size() >= at + 2) {
-          moves[at] = uint8_t(MusicNumber(st));
-          moves[at + 1] = uint8_t(MusicNumber(st) >> 8);
-        }
+    PutMoves(moves, st.moves, st.own_entrance, st.theme.empty() ? 0 : MusicNumber(st));
     svrfmt::ArchiveReplace(*sp, moves);
+  }
+  // The moves mods: the game's superstar's own record. Several on one superstar: the last one in folder order wins
+  // (wwe12_superstar_mods.cpp keeps only that one, and says so in the log).
+  for (const auto &mv : movesets) {
+    ArcNode *p = Child(*pro, uint32_t(mv.superstar));
+    if (!p)
+      return fail(mv.key + ": no record for superstar " + std::to_string(mv.superstar));
+    Bytes moves = svrfmt::ArchiveData(*p);
+    PutMoves(moves, mv.moves, mv.own_entrance, mv.theme.empty() ? 0 : MusicNumber(mv));
+    svrfmt::ArchiveReplace(*p, moves);
   }
   svrfmt::ArchiveTouch(*dat);
   svrfmt::ArchiveTouch(*pro);
@@ -757,10 +799,9 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   {
     std::vector<const NewMove *> adds;
     std::set<int> taken;
-    for (const auto &st : stars)
-      for (const auto &m : st.new_moves)
-        if (m.waze.size() == 160 && !m.low.empty() && !m.high.empty() && taken.insert(m.number).second)
-          adds.push_back(&m);
+    for (const NewMove *m : all_new_moves)
+      if (m->waze.size() == 160 && !m->low.empty() && !m->high.empty() && taken.insert(m->number).second)
+        adds.push_back(m);
     svrfmt::Archive misc;
     ArcNode *waze = nullptr;
     if (!adds.empty() && svrfmt::ArchiveOpen(in.misc, misc, nullptr))
@@ -1011,6 +1052,9 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     for (const auto &st : stars)
       if (!st.theme.empty())
         themes.push_back({MusicNumber(st), st.theme});
+    for (const auto &mv : movesets)
+      if (!mv.theme.empty())
+        themes.push_back({MusicNumber(mv), mv.theme});
     Bytes pckh;
     std::string w;
     if (!themes.empty() && !wwise::MusicPackage(in.music, pack, themes, music_pck, pckh, &w)) {

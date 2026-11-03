@@ -475,16 +475,67 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         }
     }
   }
-  std::vector<fs::path> dirs;
-  for (fs::directory_iterator it(mods / ".svrmods" / "Superstars", ec), end; !ec && it != end; it.increment(ec))
-    if (it->is_directory(ec))
-      dirs.push_back(it->path());
-  std::sort(dirs.begin(), dirs.end());
-  for (const auto &d : dirs) {
+  // The game's victory scenes by (name, "EVP" / "EVZ"): their file and group (Winning0-3, WinningA; read when a moves
+  // mod asks).
+  std::map<std::pair<std::string, std::string>, std::pair<std::string, std::string>> victories;
+  bool victories_read = false;
+  auto game_victory = [&](const std::string &name, const std::string &kind) -> const std::pair<std::string, std::string> * {
+    if (!victories_read) {
+      victories_read = true;
+      for (const char *f : {"pac/evt/Winning0.pac", "pac/evt/Winning1.pac", "pac/evt/Winning2.pac", "pac/evt/Winning3.pac",
+                            "pac/evt/WinningA.pac"}) {
+        std::vector<uint8_t> pac;
+        svrfmt::Archive a;
+        if (!ReadForGame(vfs, mods, f, pac) || !svrfmt::ArchiveOpen(pac, a, nullptr))
+          continue;
+        for (const auto &k : a.root.kids) {
+          const std::string g = Trimmed(k.group);
+          if (g.size() == 4 && (g.rfind("EVP", 0) == 0 || g.rfind("EVZ", 0) == 0))
+            victories.emplace(std::make_pair(Trimmed(k.name), g.substr(0, 3)), std::make_pair(std::string(f), g));
+        }
+      }
+    }
+    const auto it = victories.find({name, kind});
+    return it == victories.end() ? nullptr : &it->second;
+  };
+  // The superstar mods, then the moves mods (type=moves, superstar=NNN: a superstar the game has given another one's
+  // entrance and victory scene, the Mod Maker's MOVES & ENTRANCES page, 2026-11-03).
+  std::vector<std::pair<fs::path, bool>> dirs;  // (its folder, a moves mod)
+  for (const char *kind : {"Superstars", "Moves"}) {
+    std::vector<fs::path> one;
+    for (fs::directory_iterator it(mods / ".svrmods" / kind, ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec))
+        one.push_back(it->path());
+    ec.clear();
+    std::sort(one.begin(), one.end());
+    for (const auto &d : one)
+      dirs.push_back({d, kind[0] == 'M'});
+  }
+  for (const auto &[d, moves_mod] : dirs) {
     std::vector<uint8_t> m;
     if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m))
       continue;
-    const auto slot = slots.find(d.filename().string());
+    // A moves mod's victory scene: the superstar's own, 6000 + his number, in place of the game's wherever it is (its
+    // file and group); a superstar without one gets it added to Winning0.pac as an added superstar's.
+    if (moves_mod) {
+      const int superstar = atoi(Value(std::string(m.begin(), m.end()), "superstar").c_str());
+      for (const char *kind : {"EVP", "EVZ"}) {
+        Part part;
+        if (superstar < 50 || superstar >= 373 ||
+            !ReadHost(d / "superstar" / "victory" / (std::string(kind) + ".bin"), part.data) || part.data.empty())
+          continue;
+        part.name = std::to_string(6000 + superstar);
+        if (const auto *at = game_victory(part.name, kind)) {
+          part.group = at->second;
+          part.replace = true;
+          parts[at->first].push_back(std::move(part));
+        } else {
+          part.group = std::string(kind) + "A";
+          parts["pac/evt/Winning0.pac"].push_back(std::move(part));
+        }
+      }
+    }
+    const auto slot = moves_mod ? slots.end() : slots.find(d.filename().string());
     if (slot != slots.end() && slot->second > 0)
       for (const char *kind : {"EVP", "EVZ"}) {
         Part part;
@@ -497,7 +548,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     // its own ribbon and wall (superstar\ribbon.bik, wall.bik: Bink 1, 1024 x 32 and 256 x 256, made by the Mod
     // Maker) as evtmov.pac's MVSB / MVSW M<its own video number> (wwe12_superstar_mods.cpp, Wwe12OwnScreen: asked
     // without a leading slash)
-    if (const auto movie = movies.find(d.filename().string()); movie != movies.end())
+    if (const auto movie = moves_mod ? movies.end() : movies.find(d.filename().string()); movie != movies.end())
       for (const auto &[group, file] : {std::pair<const char *, const char *>{"MVSB", "ribbon.bik"}, {"MVSW", "wall.bik"}}) {
         Part part;
         if (!ReadHost(d / "superstar" / file, part.data) || part.data.empty())
@@ -609,10 +660,14 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       const auto &have = names[group];
       if (std::find(have.begin(), have.end(), name) != have.end()) {
         if (part.replace) {  // (in its place: the directory's answer gets this one's place and size)
+          // (stored as the entry it replaces: a moves mod's victory scene in place of a BPE-packed Winning entry)
+          if (!lead.empty() && packed.count(lead + group + "/" + name) && !svrfmt::IsBpe(part.data))
+            part.data = svrfmt::BpeEncode(part.data);
           AddedEntrance e;
           Append(pac, part.data.data(), part.data.size(), e.sector, e.units);
           part.data = {};
           g_replaced[lead + group + "/" + name] = e;
+          REXLOG_INFO("[entrances] {}{}/{} replaced by a mod's", lead, group, name);
         } else {
           REXLOG_WARN("[entrances] /{}/{} is the game's already: left out", group, name);
         }
@@ -1143,13 +1198,13 @@ extern "C" REX_FUNC(sub_827F29F0) {
     REXLOG_INFO("[dir] {} {} out {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}", bd::mem::str(name), ctx.r3.u32 ? "found" : "MISSING",
                 out ? bd::mem::load<u32>(out) : 0, out ? bd::mem::load<u32>(out + 4) : 0, out ? bd::mem::load<u32>(out + 8) : 0,
                 out ? bd::mem::load<u32>(out + 12) : 0, out ? bd::mem::load<u32>(out + 16) : 0, out ? bd::mem::load<u32>(out + 20) : 0);
-  // A replaced entry (a media mod's ribbon / wall): the answer gets its place and size.
+  // A replaced entry (a media mod's ribbon / wall, a moves mod's victory scene): the answer gets its place and size.
   if (name && out && ctx.r3.u32 && !g_replaced.empty() && (name < 0x82000000 || name >= 0x84000000)) {
     const auto r = g_replaced.find(bd::mem::str(name));
     if (r != g_replaced.end()) {
       bd::mem::store<u32>(out, r->second.sector);
       bd::mem::store<u32>(out + 8, r->second.units);
-      REXLOG_INFO("[entrances] {}: a media mod's own", r->first);
+      REXLOG_INFO("[entrances] {}: a mod's own", r->first);
     }
   }
   // An added entrance the directory hasn't: asked again as an entry of the same file and name length, then its own
