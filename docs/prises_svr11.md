@@ -73,6 +73,19 @@ long de la prise). Bassin et orteils < 2° ; les plus gros écarts : Bip (racine
 LA Max mesurait 0,5-3,6°. À chercher : la racine (Bip) et le repère des prises, puis bras / cuisses (l'attaquant
 est toujours moins bon que la victime).
 
+### Ce qui fait l'écart (affiné le même jour)
+
+- **La racine de l'attaquant** : dans les prises WWE '12, son Bip est tourné d'un demi-tour autour de l'axe
+  vertical et placé ~155 unités plus loin en z (Pedigree, Tiger Bomb, Arm Wrench Slap : axe (0, -1, 0), 167-180°).
+  Corrigé dans l'outil de mesure : q' = (0, -1, 0, 0) × q, p' = (-x, y, -z - 155) → racine 1,5-3,8° d'écart moyen,
+  position à quelques cm (dérive jusqu'à ~25 cm vers la fin d'Arm Wrench Slap). La victime n'a pas ce décalage.
+- **Jambes, colonne, cou, tête, clavicules** : 0,5-5° (comme les entrées). Avec la racine corrigée, l'attaquant
+  passe de 16-19° à 8-11° en tout.
+- **Avant-bras et mains** : ~20-40° os par os, mais **avant-bras × main ensemble** 3,5-15° (un cas à 32°) : la
+  torsion est répartie autrement. Les gabarits WWE '12 font de l'avant-bras une **charnière à un axe** (0x0800) :
+  toute la torsion va dans la main. À faire : reporter la torsion de l'avant-bras converti sur la main.
+- Back Suplex 2 (30°) : sans doute refaite pour WWE '12.
+
 ## Méthode prévue (celle de Kaiko, à l'envers)
 
 Kaiko (`Mod Maker Tools\moves_port.py`, `svr10_moves.py`) porte des prises vers SvR 2011 : une prise « modèle » du
