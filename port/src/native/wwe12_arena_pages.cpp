@@ -102,8 +102,7 @@ REXCVAR_DEFINE_BOOL(wwe12_arena_pages, true, "WWE12",
                     "Added arenas (arena mods with slot=new) on more pages of the arena select screen (LB / RB).");
 REXCVAR_DEFINE_BOOL(wwe12_entrance_mods, true, "WWE12",
                     "Added superstars' own entrances (superstar mods with entrance_own=, from WWE '13), served to the game.");
-// (off: no change seen in an entrance, x1.15 to x1.61, 2026-11-03; the belt there is the entrance's own object, BLTS
-// may only be read elsewhere)
+// (off: no change seen in an entrance, every attire line written, 2026-11-03: the belt there isn't placed from BLTS)
 REXCVAR_DEFINE_BOOL(wwe12_belt_fit, false, "WWE12",
                     "Added superstars: the title belt fitted to their model (their base's, scaled to their waist).");
 REXCVAR_DEFINE_BOOL(wwe12_entrance_list, true, "WWE12",
@@ -773,11 +772,9 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
             }
         }
         if (v.size() == 6) {
-          // (the three scales, by the larger ratio; a waist bigger than the base's needs much more than its ratio:
-          // Jeff Hardy's loose top, x1.24 deeper, still hid the belt at x1.15-1.35 and was clear at x2, 2026-11-03,
-          // so beyond 5 % more it gets 30 % on top)
+          // (the three scales, by the larger ratio)
           const float rw = std::clamp(w / bw, 0.85f, 1.5f), rd = std::clamp(dp / bd, 0.85f, 1.5f);
-          const float r = std::max(rw, rd), k = std::clamp(r > 1.05f ? r * 1.3f : r, 0.85f, 2.0f);
+          const float k = std::max(rw, rd);
           for (int i = 3; i < 6; ++i) {
             char s[32];
             snprintf(s, sizeof(s), "%g", strtof(v[size_t(i)].c_str(), nullptr) * k);
@@ -810,8 +807,12 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     REXLOG_INFO("[belts] {} belt texts in the game's table ({}), {} for the added superstars", texts.size(),
                 blts ? "found" : "not found", mine.size());
     if (!texts.empty() && !mine.empty()) {
+      // (and its attires' lines, 1000 x attire + number: they come first, 1109 the same as 109 for the slot's old
+      // owner, and the belt didn't change while only 109 did, 2026-11-03)
       for (const auto &[id, text] : mine)
-        texts[id] = text;
+        for (uint32_t a = 0; a <= 5; ++a)
+          if (a == 0 || texts.count(a * 1000 + id))
+            texts[a * 1000 + id] = text;
       std::vector<uint8_t> out = {'P', 'A', 'C', 'H'}, body;
       const auto put = [](std::vector<uint8_t> &b, uint32_t x) {
         for (int i = 0; i < 4; ++i)
