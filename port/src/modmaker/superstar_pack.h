@@ -267,8 +267,11 @@ inline void PutMoves(Bytes &pro, const std::vector<std::pair<int, int>> &moves, 
       pro[size_t(at)] = uint8_t(id >> 8);
       pro[size_t(at) + 1] = uint8_t(id);
     }
+  // (and its champion's entrances, the block's next two numbers: the base's otherwise, Cena's 602 John_Cena_Champ
+  // played in place of his own from a moves mod while he held a title, and an added superstar on base John Morrison
+  // would have entered as his champion, 606; 2026-11-03)
   if (own_entrance > 0)
-    for (const size_t at : {size_t(0x1D8), size_t(0x1E4)})
+    for (const size_t at : {size_t(0x1D8), size_t(0x1DA), size_t(0x1DC), size_t(0x1E4), size_t(0x1E6), size_t(0x1E8)})
       if (pro.size() >= at + 2) {
         pro[at] = uint8_t(own_entrance);
         pro[at + 1] = uint8_t(own_entrance >> 8);
