@@ -186,8 +186,8 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
                     const std::string &name, int base12, Music12 &music, Parts &out) {
   out = {};
   out.game = game;
-  // (SvR 2007-2010: their move slots aren't 2011's, Kaiko's svr10_moves.py map, later; their entrance and victory are
-  // read, svr_old_entrance.h)
+  // (SvR 2007-2010: their move slots through Kaiko's maps, moveset_port.h FromOld; their entrance and victory,
+  // svr_old_entrance.h)
   const bool svr_old = SvrOld(game);
   disc::GameDisc src;
   const fs::path p = discs.PathOf(game);
@@ -196,8 +196,8 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     return;
   }
   out.opened = true;
-  if (svr_old)
-    out.moves_why = std::string(GameName(game)) + "'s moves aren't read yet";
+  if (svr_old)  // (their slots from Kaiko's maps through SvR 2011's)
+    moveset_port::FromOld(w12, src, game, number, out.moves, &out.moves_why);
   else
     moveset_port::FromGame(w12, src, number, out.moves, &out.moves_why);
   // Its WWE '13 moves WWE '12 hasn't: added (newmoves13.h; the game puts them in the added superstars' pack).

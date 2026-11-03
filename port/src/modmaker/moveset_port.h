@@ -27,6 +27,7 @@
 #include "game_disc.h"
 #include "svrfmt/archive.h"
 #include "svrfmt/pac.h"
+#include "svr_old_slots.h"
 
 namespace moveset_port {
 
@@ -71,24 +72,26 @@ struct Game {
   std::map<int, Bytes> pro;          // superstar number -> PRO
 };
 
-inline bool Load(const disc::GameDisc &d, Game &g) {
+// (rec / num: the move records' size and where their number is: 160 / 0x90, SvR 2007-2009 144 / 0x88. A number is read
+// big-endian, as the PRO's moves: SvR 2007-2011 store both little-endian, the same swap on both keeps them matching.)
+inline bool Load(const disc::GameDisc &d, Game &g, size_t rec = 160, size_t num = 0x90) {
   Bytes m[2], c;
   svrfmt::Archive M[2], C;
-  if (!d.Read("pac/ch/chEtc.pac", c) || !svrfmt::ArchiveOpen(c, C, nullptr))
-    return false;
+  const bool etc = d.Read("pac/ch/chEtc.pac", c) && svrfmt::ArchiveOpen(c, C, nullptr);
   // (the 2K games keep their move names in createmode.pac, Kaiko's moves_port.py Game14)
   svrfmt::ArcNode *w = nullptr;
   const char *files[2] = {"pac/misc.pac", "pac/createmode.pac"};
   for (int i = 0; i < 2 && !w; ++i)
     if (d.Read(files[i], m[i]) && svrfmt::ArchiveOpen(m[i], M[i], nullptr))
       w = Find(M[i].root, "MOVS", "WAZE");
-  svrfmt::ArcNode *pro = Find(C.root, "CHAR", "PRO ");
+  // (SvR 2007 / 2008 keep their profiles in misc.pac, Kaiko's superstar_port.py Game08 / Game07: no chEtc.pac)
+  svrfmt::ArcNode *pro = etc ? Find(C.root, "CHAR", "PRO ") : Find(M[0].root, "CHAR", "PRO ");
   if (!w || !pro)
     return false;
-  const Bytes d0 = svrfmt::ArchiveData(*w);
+  const Bytes d0 = svrfmt::Unpack(svrfmt::ArchiveData(*w));  // (SvR 2007 / 2008: BPE-packed)
   // a record that looks like a move: a name of letters, digits and punctuation, a number
   auto looks = [&](size_t o) {
-    if (o + 160 > d0.size() || !isalnum(d0[o + 0x10]) || !(d0[o + 0x90] | d0[o + 0x91]))
+    if (o + rec > d0.size() || !isalnum(d0[o + 0x10]) || !(d0[o + num] | d0[o + num + 1]))
       return false;
     size_t n = 0;
     while (n < 0x40 && d0[o + 0x10 + n] >= 0x20 && d0[o + 0x10 + n] < 0x7F)
@@ -97,18 +100,18 @@ inline bool Load(const disc::GameDisc &d, Game &g) {
   };
   size_t phase = 0;
   int best = -1;
-  for (size_t ph = 0; ph < 160; ph += 2) {
+  for (size_t ph = 0; ph < rec; ph += 2) {
     int score = 0;
-    for (size_t o = ph; o + 160 <= d0.size(); o += 160)
+    for (size_t o = ph; o + rec <= d0.size(); o += rec)
       score += looks(o);
     if (score > best) {
       best = score;
       phase = ph;
     }
   }
-  for (size_t o = phase; o + 160 <= d0.size(); o += 160)
+  for (size_t o = phase; o + rec <= d0.size(); o += rec)
     if (looks(o))
-      g.names[d0[o + 0x90] << 8 | d0[o + 0x91]] = std::string(reinterpret_cast<const char *>(&d0[o + 0x10]));
+      g.names.emplace(d0[o + num] << 8 | d0[o + num + 1], std::string(reinterpret_cast<const char *>(&d0[o + 0x10])));
   if (svrfmt::ArchiveExpand(*pro) && !pro->kids.empty()) {
     for (auto &k : pro->kids)
       g.pro[int(k.id)] = svrfmt::ArchiveData(k);
@@ -151,6 +154,9 @@ inline int SectionOf(int off) {
       return i;
   return -1;
 }
+
+inline void Fill(const Game &w, const Game &s, const Bytes &pro, const std::map<int, int> &slots, bool numbers,
+                 moveset_port::Result &out);
 
 }  // namespace detail
 
@@ -237,6 +243,16 @@ inline bool FromGame(const disc::GameDisc &w12, const disc::GameDisc &src, int n
       *why = "the two games' moves don't match well enough";
     return false;
   }
+  detail::Fill(w, s, sp->second, slots, true, out);
+  return true;
+}
+
+namespace detail {
+
+// The rows of a moveset `pro` of game s put into WWE '12's slots (slots: WWE '12 offset -> s's), by the moves' names
+// (numbers: whether s may share WWE '12's move numbers, WWE '13 and the 2K games).
+inline void Fill(const Game &w, const Game &s, const Bytes &pro, const std::map<int, int> &slots, bool numbers,
+                 moveset_port::Result &out) {
   // WWE '12's roster: how many superstars put each move in each slot and section; the slots all have alike
   std::map<int, std::map<int, int>> in_slot, in_section;
   for (const auto &[id, p] : w.pro) {
@@ -264,7 +280,7 @@ inline bool FromGame(const disc::GameDisc &w12, const disc::GameDisc &src, int n
           same += U16(q->second, size_t(so)) == v;
         }
     }
-    same_numbers = all > 0 && same * 3 > all;
+    same_numbers = numbers && all > 0 && same * 3 > all;
   }
   std::map<std::string, std::vector<int>> exact, base;
   for (const auto &[id, n] : w.names)
@@ -278,7 +294,7 @@ inline bool FromGame(const disc::GameDisc &w12, const disc::GameDisc &src, int n
     const auto at = slots.find(o);
     if (at == slots.end())
       continue;  // (no slot of the other game for it: the base's)
-    const int sv = U16(sp->second, size_t(at->second));
+    const int sv = U16(pro, size_t(at->second));
     if (sv <= 0)
       continue;
     const auto sn = s.names.find(sv);
@@ -315,7 +331,7 @@ inline bool FromGame(const disc::GameDisc &w12, const disc::GameDisc &src, int n
     }
     r.new_move = got < 0 && same_numbers && !w.names.count(sv) && !r.from.empty();
     if (got >= 0) {
-      r.to = w.names[got];
+      r.to = w.names.at(got);
       out.moves.push_back({o, got});
       ++(r.variant ? out.variant : out.exact);
     } else {
@@ -323,6 +339,50 @@ inline bool FromGame(const disc::GameDisc &w12, const disc::GameDisc &src, int n
     }
     out.rows.push_back(std::move(r));
   }
+}
+
+}  // namespace detail
+
+// SvR 2007-2010's (title: its disc's title id) superstar `number`'s moveset in WWE '12's terms: their slots aren't
+// found from shared superstars (their numbers aren't WWE '12's), but from Kaiko's maps through SvR 2011's
+// (svr_old_slots.h).
+inline bool FromOld(const disc::GameDisc &w12, const disc::GameDisc &src, uint32_t title, int number, Result &out,
+                    std::string *why) {
+  using namespace detail;
+  out = {};
+  const bool svr10 = title == 0x54510844;
+  Game w, s;
+  if (!Load(w12, w) || !Load(src, s, svr10 ? 160 : 144, svr10 ? 0x90 : 0x88)) {
+    if (why)
+      *why = "the moves can't be read (misc.pac, chEtc.pac)";
+    return false;
+  }
+  const auto sp = s.pro.find(number);
+  if (sp == s.pro.end()) {
+    if (why)
+      *why = "no moveset for this superstar";
+    return false;
+  }
+  std::map<int, int> to11;  // the old game's offset by SvR 2011's
+  auto put = [&](const auto &table) {
+    for (const auto &[from, t11] : table)
+      to11.emplace(t11, from);
+  };
+  switch (title) {
+    case 0x545107E0: put(svr_old_slots::kSvr2007); break;
+    case 0x5451080B: put(svr_old_slots::kSvr2008); break;
+    case 0x54510826: put(svr_old_slots::kSvr2009); break;
+    case 0x54510844: put(svr_old_slots::kSvr2010); break;
+    default:
+      if (why)
+        *why = "not SvR 2007-2010";
+      return false;
+  }
+  std::map<int, int> slots;
+  for (const auto &[o12, t11] : svr_old_slots::kWwe12)
+    if (const auto it = to11.find(t11); it != to11.end())
+      slots[o12] = it->second;
+  Fill(w, s, sp->second, slots, false, out);
   return true;
 }
 
