@@ -36,6 +36,7 @@
 #include "mod_doctor.h"
 #include "signs_page.h"
 #include "mods.h"
+#include "moves_page.h"
 #include "pac_page.h"
 #include "new_star_page.h"
 #include "superstar_page.h"
@@ -195,7 +196,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kCaw, kObjects, kMedia, kSigns, kBackgrounds, kLook, kFiles, kDiscs, kDoctor, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kMoves, kCaw, kObjects, kMedia, kSigns, kBackgrounds, kLook, kFiles, kDiscs, kDoctor, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -207,6 +208,7 @@ pac_page::Browser g_files;
 arena_page::Page g_arenas;
 superstar_page::Page g_stars;
 new_star_page::Page g_new_star;
+moves_page::Page g_moves_page;
 game_discs::Discs g_discs;
 mod_doctor::Page g_doctor;
 media_page::Page g_media;
@@ -344,6 +346,10 @@ void PageHome() {
        "too), with portraits and titantron video.",
        "Ajouter un catcheur au jeu, à côté des autres (aussi depuis SvR 2007-2011, WWE '13 ou 2K14-2K17, leurs DLC "
        "aussi), avec ses portraits et sa vidéo de titantron."},
+      {kMoves, "Moves & entrances", "Prises et entrées",
+       "Give a superstar of the game the moves, entrance, victory scene and theme of a superstar of your other games.",
+       "Donner à un catcheur du jeu les prises, l'entrée, la scène de victoire et la musique d'un catcheur de vos autres "
+       "jeux."},
       {kCaw, "CAW", "CAW", "Your created superstars: their picture in the game's lists, export and import (share them).",
        "Vos catcheurs créés : leur image dans les listes du jeu, export et import (pour les partager)."},
       {kObjects, "Belts & weapons", "Ceintures et armes", "The pictures of the title belts, weapons and other objects.",
@@ -380,8 +386,8 @@ void PageHome() {
     ImGui::TextDisabled("%s", g_fr ? it.what_fr : it.what_en);
   }
   ImGui::Dummy(ImVec2(0, 10));
-  ImGui::TextDisabled("%s", g_fr ? "Bientôt : entrées des catcheurs portés, sons du jeu, une tenue de plus."
-                                 : "Coming: ported superstars' entrances, the game's sounds, one more attire.");
+  ImGui::TextDisabled("%s", g_fr ? "Bientôt : sons du jeu, une tenue de plus."
+                                 : "Coming: the game's sounds, one more attire.");
   if (ImGui::Button(g_fr ? "Ouvrir le dossier mods" : "Open the mods folder"))
     OpenFolder(ExeDir() / "mods");
 }
@@ -425,6 +431,15 @@ void PageNewStar() {
     g_new_star.~Page();
     new (&g_new_star) new_star_page::Page();
     g_new_star.discs_ = &g_discs;
+  }
+}
+
+void PageMoves() {
+  Title(g_fr ? "PRISES & ENTRÉES" : "MOVES & ENTRANCES");
+  g_moves_page.Draw(g_fr, g_disc, g_mods);
+  if (g_moves_page.want_discs_) {  // ("Add it in MY GAME DISCS")
+    g_moves_page.want_discs_ = false;
+    g_page = kDiscs;
   }
 }
 
@@ -498,6 +513,30 @@ const Guide kGuides[] = {
       "tenues) ; le mod est créé et installé.",
       "Dans le jeu : écran de choix des catcheurs, case DLC. Les catcheurs ajoutés sont partout (Univers, Créer un "
       "scénario)."}},
+    {"Moves & entrances for a superstar of the game",
+     "Prises et entrées pour un catcheur du jeu",
+     {"MOVES & ENTRANCES: a WWE '12 superstar gets what a superstar of your other games has: his moves, entrance, victory "
+      "scene and theme.",
+      "1. Game: the big tiles are your games; one without its disc sends you to MY GAME DISCS to add it.",
+      "2. Superstar: search him in that game's list.",
+      "3. What to take: each thing says whether his game has it (SvR 2007 to 2010: no moves yet). Untick what you don't "
+      "want; the moves table shows each slot.",
+      "4. For whom: the WWE '12 superstar who gets them (the one of the same name is proposed).",
+      "5. Finish: the mod is made and installed. In the game, from the next start; turn it off in the launcher (MODS "
+      "page) and he has his own back.",
+      "While the mod is on, his moveset changed in the game goes back to the mod's at each start. Two mods for the same "
+      "superstar: the last one in the list is used."},
+     {"PRISES & ENTRÉES : un catcheur de WWE '12 reçoit ce qu'a un catcheur de vos autres jeux : ses prises, son entrée, "
+      "sa scène de victoire et sa musique.",
+      "1. Jeu : les grandes cases sont vos jeux ; un jeu sans son disque vous envoie dans MES DISQUES pour l'ajouter.",
+      "2. Catcheur : cherchez-le dans la liste de ce jeu.",
+      "3. Ce qu'on prend : chaque chose dit si son jeu l'a (SvR 2007 à 2010 : pas encore de prises). Décochez ce que vous "
+      "ne voulez pas ; le tableau des prises montre chaque case.",
+      "4. Pour qui : le catcheur de WWE '12 qui les reçoit (celui du même nom est proposé).",
+      "5. Terminer : le mod est créé et installé. Dans le jeu, au lancement suivant ; coupez-le dans le launcher (page "
+      "MODS) et il retrouve les siennes.",
+      "Tant que le mod est actif, ses prises changées dans le jeu reviennent à celles du mod à chaque lancement. Deux mods "
+      "pour le même catcheur : le dernier de la liste est utilisé."}},
     {"A new arena (from another game)",
      "Une nouvelle arène (d'un autre jeu)",
      {"ARENAS, tab New arena.",
@@ -748,7 +787,7 @@ void DrawUi() {
                  ImVec2(x + ow, o.y + oh), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 46));
   }
 
-  // The rail fits the window's height (14 pages): the buttons get lower first (44 down to 34), then the logo smaller,
+  // The rail fits the window's height (17 pages): the buttons get lower first (44 down to 34), then the logo smaller,
   // then the buttons again (down to 24); a 1080p screen was too short for all of them (HELP cut off, 2026-10-26).
   constexpr int kPages = kAbout + 1;
   const float gap = ImGui::GetStyle().ItemSpacing.y, title_h = 42, room = H - 18 - title_h - 48;
@@ -771,9 +810,9 @@ void DrawUi() {
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
   const char *names_en[] = {"HOME",       "VIDEOS",     "TEXTURES",     "ARENAS", "SUPERSTARS",
-                            "NEW SUPERSTAR", "CAW", "BELTS & WEAPONS", "MEDIA", "SIGNS", "BACKGROUNDS", "LOOK", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
+                            "NEW SUPERSTAR", "MOVES & ENTRANCES", "CAW", "BELTS & WEAPONS", "MEDIA", "SIGNS", "BACKGROUNDS", "LOOK", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
   const char *names_fr[] = {"ACCUEIL", "VIDÉOS",   "TEXTURES",   "ARÈNES",  "CATCHEURS",
-                            "NOUVEAU", "CAW", "CEINTURES", "MÉDIA", "PANCARTES", "FONDS", "REGARDER", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
+                            "NOUVEAU", "PRISES & ENTRÉES", "CAW", "CEINTURES", "MÉDIA", "PANCARTES", "FONDS", "REGARDER", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
   for (int i = 0; i < int(std::size(names_en)); ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
@@ -791,6 +830,7 @@ void DrawUi() {
   case kArenas: PageArenas(); break;
   case kStars: PageStars(); break;
   case kNewStar: PageNewStar(); break;
+  case kMoves: PageMoves(); break;
   case kMedia:
     Title(g_fr ? "MÉDIA" : "MEDIA");
     g_media.Draw(g_fr, g_device.Get(), g_disc, g_mods);
@@ -869,6 +909,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   g_arenas.discs_ = &g_discs;
   g_videos.discs_ = &g_discs;
   g_new_star.discs_ = &g_discs;
+  g_moves_page.discs_ = &g_discs;
   g_stars.discs_ = &g_discs;
   g_stars.user_root_ = UserRoot();
   // (test aid: WWE12_MM_PAGE=<page number> opens on that page)

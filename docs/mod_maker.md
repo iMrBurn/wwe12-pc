@@ -1402,3 +1402,23 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
   répond avec le nom. **Piège** : un `string.pac` modifié servi par-dessus celui du disque fait planter le jeu juste
   après sa lecture (« call to guest 0 »), quel que soit l'emballage des tables (ZLIB stocké, BPE, deflate) ; celui du
   pack DLC n'est jamais lu. Les noms des tenues existent dans plusieurs sections (00, 05, 07, 09, 63).
+
+## Prises et entrées pour un catcheur du jeu (2026-11-03, pas encore vu en jeu)
+
+Page **PRISES & ENTRÉES** / MOVES & ENTRANCES (`moves_page.h`) : un catcheur de WWE '12 reçoit les prises, l'entrée,
+la scène de victoire et la musique d'un catcheur d'un autre jeu de MES DISQUES. Assistant en 5 étapes : jeu (grandes
+cases ; sans disque, bouton vers MES DISQUES), catcheur, ce qu'on prend (chaque chose dit si elle est là et pourquoi
+sinon), pour qui (le catcheur du même nom proposé), terminer.
+- Ce qu'on prend d'un catcheur : `star_port.h`, sorti de `new_star_page.h` (son ancien `OwnMoves`) sans changement
+  (vérifié hors jeu : mêmes parties avant / après pour SvR 2010 Jeff Hardy, SvR 2011 Cena, 2K15 Bray Wyatt).
+- Mod `type=moves` (dossier `Moves`) : `superstar=<n° WWE '12>`, `moves=`, `entrance_own=` et les fichiers `superstar/`
+  d'un mod de catcheur (`entrance/`, `victory/`, `objects/`, `theme.wem`, `moves/`, plus `moves.txt` lisible).
+- Jeu : `superstar_pack.h` (`Moveset`) écrit sa fiche CHAR / PRO dans le `chEtc.pac` du pack WWE12PCMODS (prises,
+  entrée +0x1D8/+0x1E4, musique +0x1D4/+0x1E0 = n° de l'entrée, sinon 900 + n° du catcheur) ; le pack est fait même
+  sans catcheur ajouté. La copie de la sauvegarde est refaite à l'écran de choix (prises changées en jeu écrasées tant
+  que le mod est actif) ; un mod retiré : la copie revient une fois à celle du jeu (`Documents\wwe12\moves_mods.txt`).
+  La vérification de place (Cena 139) ne compare plus ses prises et son entrée. Deux mods sur le même catcheur : le
+  dernier dans l'ordre des dossiers gagne.
+- Entrées servies comme celles des mods de catcheurs ; scène de victoire servie à la place de la sienne (6000 + n°,
+  trouvée dans Winning0-3/A, entrée BPE comme l'originale : Cena = `Winning0.pac` EVPA/EVZA 6139), sinon ajoutée dans
+  Winning0.

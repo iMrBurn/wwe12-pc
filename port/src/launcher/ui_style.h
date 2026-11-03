@@ -79,8 +79,15 @@ inline bool BigButton(const char *label, ImVec2 size, ImU32 fill, ImU32 text_col
   const bool hovered = ImGui::IsItemHovered();
   ImDrawList *dl = ImGui::GetWindowDrawList();
   Stroke(dl, p, size.x - 18, size.y, hovered ? kRed : fill);
-  ImGui::PushFont(g_font_title, size.y >= 80 ? 46.0f : std::min(30.0f, size.y * 0.7f));  // (smaller buttons: smaller)
-  const ImVec2 ts = ImGui::CalcTextSize(label);
+  float font = size.y >= 80 ? 46.0f : std::min(30.0f, size.y * 0.7f);  // (smaller buttons: smaller)
+  ImGui::PushFont(g_font_title, font);
+  ImVec2 ts = ImGui::CalcTextSize(label);
+  if (ts.x > size.x - 24) {  // (a long label, MOVES & ENTRANCES: smaller to fit)
+    ImGui::PopFont();
+    font *= (size.x - 24) / ts.x;
+    ImGui::PushFont(g_font_title, font);
+    ts = ImGui::CalcTextSize(label);
+  }
   dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + (size.y - ts.y) * 0.5f),
               hovered ? IM_COL32_WHITE : text_col, label);
   ImGui::PopFont();
