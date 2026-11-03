@@ -101,6 +101,10 @@ REXCVAR_DEFINE_BOOL(wwe12_arena_pages, true, "WWE12",
                     "Added arenas (arena mods with slot=new) on more pages of the arena select screen (LB / RB).");
 REXCVAR_DEFINE_BOOL(wwe12_entrance_mods, true, "WWE12",
                     "Added superstars' own entrances (superstar mods with entrance_own=, from WWE '13), served to the game.");
+REXCVAR_DEFINE_BOOL(wwe12_entrance_list, true, "WWE12",
+                    "CREATE AN ENTRANCE: the mods' own entrances added to the superstars' entrance lists.");
+REXCVAR_DEFINE_BOOL(wwe12_entrance_list_log, false, "WWE12",
+                    "Test: CREATE AN ENTRANCE's lists as the game fills them, to the log ([entrance list]).");
 REXCVAR_DEFINE_BOOL(wwe12_dir_log, false, "WWE12",
                     "Test: log every entry the game looks up in a pac's directory, and whether it was found ([dir]).");
 REXCVAR_DEFINE_BOOL(wwe12_arena_pages_test, false, "WWE12",
@@ -166,6 +170,8 @@ std::map<std::string, AddedEntrance> g_entrances;
 // video number) a media mod has, replaced or added.
 std::map<std::string, AddedEntrance> g_replaced;
 std::set<std::pair<uint32_t, uint32_t>> g_mod_screens;
+// The mods' own entrances (entrance_own=), for CREATE AN ENTRANCE's lists: number, name shown.
+std::vector<std::pair<int, std::string>> g_mod_entrances;
 
 struct Tile {
   u32 stage, banner;  // banner: guest address of the texture name (0: the game's table is kept)
@@ -511,6 +517,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     for (const auto &d : one)
       dirs.push_back({d, kind[0] == 'M'});
   }
+  g_mod_entrances.clear();
   for (const auto &[d, moves_mod] : dirs) {
     std::vector<uint8_t> m;
     if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m))
@@ -572,8 +579,26 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       parts["pac/evt/evtobj.pac"].push_back(std::move(part));
     }
     ec.clear();
-    if (atoi(Value(std::string(m.begin(), m.end()), "entrance_own").c_str()) <= 0)
+    const std::string manifest(m.begin(), m.end());
+    if (const int own = atoi(Value(manifest, "entrance_own").c_str()); own > 0) {
+      // (its name in CREATE AN ENTRANCE: a superstar mod's name; a moves mod's, whose entrance it carries: its
+      // description "X with the ... of <superstar> from <game>")
+      std::string label = moves_mod ? Value(manifest, "description") : Value(manifest, "name");
+      if (const size_t of = label.rfind(" of "); moves_mod && of != std::string::npos)
+        label = label.substr(of + 4);
+      if (const size_t end = label.find_first_of("(,."); moves_mod && end != std::string::npos)
+        label = label.substr(0, end);  // ("John Cena from SvR 2010 (the player's own copy), made with ...")
+      while (!label.empty() && label.back() == ' ')
+        label.pop_back();
+      if (label.empty())
+        label = "MOD " + std::to_string(own);
+      for (char &c : label)
+        c = char(toupper(uint8_t(c)));
+      if (std::none_of(g_mod_entrances.begin(), g_mod_entrances.end(), [&](const auto &e) { return e.first == own; }))
+        g_mod_entrances.push_back({own, label});
+    } else {
       continue;
+    }
     for (fs::directory_iterator it(d / "superstar" / "entrance", ec), end; !ec && it != end; it.increment(ec)) {
       const std::string f = it->path().filename().string();
       const size_t bar = f.find('_');
@@ -1327,4 +1352,63 @@ extern "C" REX_FUNC(sub_8246E1D0) {
     REXLOG_INFO("[entrance probe] {:08X}: {} entries at {:08X}:{}; bank {:08X}:{}", me, n, entries, names, bank, head);
   }
   __imp__sub_8246E1D0(ctx, base);
+}
+
+// CREATE AN ENTRANCE's lists (MOTION, CHAMPION ENTRANCE...): sub_829F9F90(list, ?, table, kind, first) fills one from
+// the table's entries of that kind (u16 count at table + (kind + 100) * 2, the entries at [table + (kind + 31) * 4], 6
+// bytes each: s16 value - the entrance's number, + first -, s16 its text id, s16 the superstar it needs unlocked, < 0
+// none), each added by sub_829FEB48(list, value, text, 0, 0, superstar) (a growing array: [list] count, [list + 8]
+// items of 24 bytes, +0 the value). A mod's own entrance isn't there: the editor showed the list's first item for it
+// (ALBERTO DEL RIO) and SAVE made that his entrance (2026-11-03). The lists that hold John Cena's (139) get the mods'
+// own entrances too, under their names.
+REX_EXTERN(__imp__sub_829F9F90);
+REX_EXTERN(__imp__sub_829FEB48);
+
+extern "C" REX_FUNC(sub_829F9F90) {
+  const u32 list = ctx.r3.u32, table = ctx.r5.u32, kind = ctx.r6.u32, first = ctx.r7.u32;
+  const PPCContext saved = ctx;
+  __imp__sub_829F9F90(ctx, base);
+  if (!table || kind > 64)
+    return;
+  const u32 count = bd::mem::load<u16>(table + (kind + 100) * 2), entries = bd::mem::load<u32>(table + (kind + 31) * 4);
+  bool superstars = false;
+  std::string seen;
+  for (u32 i = 0; entries && i < count; ++i) {
+    const int value = int16_t(bd::mem::load<u16>(entries + i * 6)) + int(first);
+    superstars = superstars || value == 139;
+    if (REXCVAR_GET(wwe12_entrance_list_log) && i < 400)
+      seen += " " + std::to_string(value) + "/" + std::to_string(int16_t(bd::mem::load<u16>(entries + i * 6 + 2))) + "/" +
+              std::to_string(int16_t(bd::mem::load<u16>(entries + i * 6 + 4)));
+  }
+  if (REXCVAR_GET(wwe12_entrance_list_log))
+    REXLOG_INFO("[entrance list] list {:08X} kind {} first {}: {} entries (value/text/superstar):{}", list, kind, first,
+                count, seen);
+  if (!superstars || g_mod_entrances.empty() || !REXCVAR_GET(wwe12_entrance_list))
+    return;
+  static std::map<std::string, u32> texts;
+  for (const auto &[number, label] : g_mod_entrances) {
+    bool there = false;
+    const u32 n = bd::mem::load<u32>(list), items = bd::mem::load<u32>(list + 8);
+    for (u32 i = 0; items && i < n && !there; ++i)
+      there = bd::mem::load<u32>(items + i * 24) == u32(number);
+    if (there)
+      continue;
+    u32 &text = texts[label];
+    if (!text) {
+      text = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(label.size() + 1), 4);
+      if (!text)
+        continue;
+      std::memcpy(bd::mem::at<char>(text), label.c_str(), label.size() + 1);
+    }
+    PPCContext c = saved;
+    c.r1.u64 = (saved.r1.u32 - 1024) & ~15u;
+    c.r3.u64 = list;
+    c.r4.u64 = u32(number);
+    c.r5.u64 = text;
+    c.r6.u64 = 0;
+    c.r7.u64 = 0;
+    c.r8.u64 = 0xFFFFFFFFull;
+    __imp__sub_829FEB48(c, base);
+    REXLOG_INFO("[entrance list] kind {}: {} ({}) added", kind, label, number);
+  }
 }
