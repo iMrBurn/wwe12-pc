@@ -89,6 +89,29 @@ est toujours moins bon que la victime).
   dans la vraie conversion des prises.
 - Back Suplex 2 (30°) : sans doute refaite pour WWE '12.
 
+## Premier essai en jeu (2026-11-03 au soir)
+
+Outil `makemove` (sources d'étude dans `tools_local\moves_study`, hors dépôt) : Side Effect (SvR 2011, n° 5233) sur
+le modèle Swing Neckbreaker 1 de WWE '12 ; numéro 59645 (animation 65000) ; fiches légère / complète du modèle,
+blocs x 0000 y 0000 / 0001 remplacés (YANM + POF0), le reste gardé (YAT2, branches de contre 0090-0092) ; fiche
+WAZE du modèle, nom et numéro changés. Installée par un mod Moves de test pour John Morrison (place 0xAA,
+Front Facelock LS haut + A ; la place 0x7E n'est pas dans les menus de prises enchaînées de WWE '12) : le portage
+l'ajoute (« 1 added ») et elle apparaît dans le jeu. **En match : la prise part, mais les deux catcheurs
+s'éloignent l'un de l'autre et restent figés.** Le mod de test est coupé (`disabled`).
+
+Ce que montre la racine (Bip, position / rotation) à l'image 0, au milieu et à la fin :
+
+| | attaquant f0 | attaquant milieu | attaquant fin | victime fin |
+|---|---|---|---|---|
+| modèle Swing Neckbreaker 1 | (-18, 9, -86) | (-72, 20, -105) | (-84, 9, -101) | (-23, 80, 25) |
+| notre Side Effect | (-5, 12, -135) | (-40, -3, 48) | (19, 9, 162) | (-5, 80, 17) |
+
+→ notre attaquant **part de -135 en z et finit à +162** : la correction de racine (z inversé puis -155) envoie le
+mouvement dans le mauvais sens (il traverse la victime puis s'éloigne). Dans les prises WWE '12, l'attaquant reste
+vers -85 / -105 tout du long. À revoir : le sens du demi-tour pour les positions (faire tourner autour de la
+victime ? ne pas inverser le déplacement ?), puis le gel (sans doute les événements YAT2 du modèle, réglés pour sa
+durée et ses positions, ou la fin de prise jamais atteinte).
+
 ## Méthode prévue (celle de Kaiko, à l'envers)
 
 Kaiko (`Mod Maker Tools\moves_port.py`, `svr10_moves.py`) porte des prises vers SvR 2011 : une prise « modèle » du
