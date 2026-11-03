@@ -322,10 +322,11 @@ void AddRestores(const Bytes &chetc) {
 // Mark Henry's two parts put it outside (a bit big). An added superstar with his own model gets those of the game's
 // superstar whose waist is nearest his (Discord, "grab one off a bigger guy and swap it in").
 
-// A superstar file's first attire's waist: the bounding spheres' radii of Bip and Bip Spine, as the game stores them
-// (the box of the vertices each weighs: its half diagonal, checked on Ted DiBiase's and Mark Henry's) or, from_mesh,
-// made from the vertices (a ported model kept its base's).
-bool WaistOf(const Bytes &ch, bool from_mesh, float &bip, float &spine) {
+// A superstar file's first attire's waist where the belt sits: the width and depth of its pelvis, spine and thigh
+// vertices between 50 % and 54 % of its height (bind pose, y up negative, feet at 0), clothes included. (Bip / Bip
+// Spine sphere radii were tried first: they hold the thighs too, Rey Mysterio came out as Brock Lesnar, and Jerry
+// Lawler's fit left Jeff Hardy's belt a bit big.)
+bool WaistOf(const Bytes &ch, float &width, float &depth) {
   svrfmt::Archive a;
   if (!svrfmt::ArchiveOpen(ch, a, nullptr))
     return false;
@@ -339,34 +340,31 @@ bool WaistOf(const Bytes &ch, bool from_mesh, float &bip, float &spine) {
         read = svrfmt::JboyRead(svrfmt::ArchiveData(x), m, nullptr);
     if (!read)
       return false;
-    std::vector<std::array<float, 6>> box(m.nodes.size(), {1e9f, 1e9f, 1e9f, -1e9f, -1e9f, -1e9f});
-    if (from_mesh)
-      for (const auto &me : m.meshes)
-        for (size_t v = 0; v < me.verts.size(); ++v)
-          for (const auto &wl : me.weights) {
-            const uint8_t s = wl[v].bones[0];
-            if (s == 255 || s >= me.palette.size() || me.palette[s] < 1 || size_t(me.palette[s] - 1) >= m.nodes.size() ||
-                wl[v].weight <= 0)
-              continue;
-            auto &bx = box[size_t(me.palette[s] - 1)];
-            for (int j = 0; j < 3; ++j)
-              bx[size_t(j)] = std::min(bx[size_t(j)], me.verts[v].pos[j]),
-              bx[size_t(3 + j)] = std::max(bx[size_t(3 + j)], me.verts[v].pos[j]);
-          }
-    bip = spine = 0;
-    for (size_t i = 0; i < m.nodes.size(); ++i) {
-      float r = m.nodes[i].sphere[3];
-      if (from_mesh) {
-        const auto &bx = box[i];
-        r = bx[0] > bx[3] ? 0 : 0.5f * std::sqrt((bx[3] - bx[0]) * (bx[3] - bx[0]) + (bx[4] - bx[1]) * (bx[4] - bx[1]) +
-                                                 (bx[5] - bx[2]) * (bx[5] - bx[2]));
+    float top = 0;
+    for (const auto &me : m.meshes)
+      for (const auto &v : me.verts)
+        top = std::min(top, v.pos[1]);
+    const float y0 = top * 0.54f, y1 = top * 0.50f;
+    float lx = 1e9f, hx = -1e9f, lz = 1e9f, hz = -1e9f;
+    int n = 0;
+    for (const auto &me : m.meshes)
+      for (size_t i = 0; i < me.verts.size() && !me.weights.empty(); ++i) {
+        const auto &v = me.verts[i];
+        const uint8_t s = me.weights[0][i].bones[0];
+        if (v.pos[1] < y0 || v.pos[1] > y1 || s == 255 || s >= me.palette.size() || me.palette[s] < 1 ||
+            size_t(me.palette[s] - 1) >= m.nodes.size())
+          continue;
+        const std::string &bone = m.nodes[size_t(me.palette[s] - 1)].name;
+        if (bone != "Bip" && bone != "Bip Spine" && bone != "Bip Spine1" && bone.find("Thigh") == std::string::npos)
+          continue;
+        lx = std::min(lx, v.pos[0]), hx = std::max(hx, v.pos[0]);
+        lz = std::min(lz, v.pos[2]), hz = std::max(hz, v.pos[2]);
+        ++n;
       }
-      if (m.nodes[i].name == "Bip")
-        bip = r;
-      else if (m.nodes[i].name == "Bip Spine")
-        spine = r;
-    }
-    return bip > 0 && spine > 0;
+    if (n < 20)
+      return false;
+    width = hx - lx, depth = hz - lz;
+    return true;
   }
   return false;
 }
@@ -385,11 +383,11 @@ Bytes AttirePart(const Bytes &ch, uint32_t id) {
   return {};
 }
 
-// The game's superstars' waists (Documents\wwe12\belt_sizes.txt, "<number>=<bip>,<spine>", 0 for none: read once from
+// The game's superstars' waists (Documents\wwe12\belt_waists.txt, "<number>=<width>,<depth>", 0 for none: read once from
 // their files, 50-372, then kept).
 std::map<int, std::pair<float, float>> GameWaists(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root) {
   std::map<int, std::pair<float, float>> out;
-  const fs::path file = user_root / "belt_sizes.txt";
+  const fs::path file = user_root / "belt_waists.txt";
   std::ifstream in(file);
   for (std::string line; std::getline(in, line);)
     if (const size_t eq = line.find('='), comma = line.find(','); eq != std::string::npos && comma != std::string::npos)
@@ -403,7 +401,7 @@ std::map<int, std::pair<float, float>> GameWaists(rex::filesystem::VirtualFileSy
     Bytes ch;
     float bip = 0, spine = 0;
     if (ReadGame(vfs, "pac/ch/ch" + std::to_string(n) + ".pac", ch))
-      WaistOf(ch, false, bip, spine);
+      WaistOf(ch, bip, spine);
     out[n] = {bip, spine};
     char line[64];
     snprintf(line, sizeof(line), "%d=%.2f,%.2f\n", n, bip, spine);
@@ -432,13 +430,17 @@ std::set<int> Divas(const Bytes &chetc) {
 void FitBelt(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root, superstar_pack::Star &st,
              const std::set<int> &divas) {
   float bip = 0, spine = 0;
-  if (!WaistOf(st.model, true, bip, spine))
+  if (!WaistOf(st.model, bip, spine))
     return;
   static std::map<int, std::pair<float, float>> waists;
   if (waists.empty())
     waists = GameWaists(vfs, user_root);
   int best = 0;
   float best_d = 1e9f;
+  // (aimed 5 % slimmer: the game's belts sit a little loose on their own superstar, and the one with Jeff Hardy's very
+  // measures, David Otunga, left his belt a bit big)
+  constexpr float kSlimmer = 0.95f;
+  bip *= kSlimmer, spine *= kSlimmer;
   const bool diva = divas.count(st.base) != 0;
   for (const auto &[n, w] : waists)
     if (w.first > 0 && w.second > 0 && (divas.count(n) != 0) == diva) {
