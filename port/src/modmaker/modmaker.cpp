@@ -968,7 +968,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     MessageBoxW(hwnd, L"Direct3D 11 is not available.", L"WWE '12 Mod Maker", MB_ICONERROR);
     return 1;
   }
-  ShowWindow(hwnd, SW_SHOWDEFAULT);
+  ShowWindow(hwnd, SW_SHOWMAXIMIZED);  // (the whole screen at once, as the user asked, 2026-11-03)
   UpdateWindow(hwnd);
 
   IMGUI_CHECKVERSION();
