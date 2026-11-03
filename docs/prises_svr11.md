@@ -22,6 +22,28 @@ garde la prise de la base. Rien n'est encore codé ; ce document note ce qu'on a
   chacun suivi de POF0 et d'un bloc **YAT2** (attributs ou événements, avec un tableau « AABB BFBB BBBB... »).
   YANM = le format que la conversion des entrées SvR produit déjà (`svr11_entrance.h`).
 
+### L'en-tête d'une fiche d'animation WWE '12 (gros-boutiste, vu sur Arm Drag 1, Back Suplex 2, Pedigree 1)
+
+| Offset | Valeur | Sens (probable) |
+|---|---|---|
+| +0x00 | 0xA0 / 0x190 | taille de la table (en-tête sans les 0x20 premiers octets) |
+| +0x04 | taille | taille des données |
+| +0x08 / +0x0C | 0x20 / 0xC0 (0x1C0) | début de la table / du premier YANM |
+| +0x20 | 0x00020001 (Pedigree 0x00990001) | ? |
+| +0x24 | « root » | |
+| +0x48 | 2 (Pedigree 8) | nombre d'entrées |
+| +0x4C | « 51036 » (texte) | numéro de l'animation |
+| puis 0x28 o par entrée | {0xFF, u24 images ; « xxxx » ; « yyyy » ; ...} | une piste : x et y en texte |
+
+Entrées : x « 0000 » y « 0000 » = attaquant, y « 0001 » = victime ; le Pedigree a aussi x « 0090 », « 0091 »,
+« 0092 » (y 0 et 1) : **les mêmes clés que SvR 2011** (x90 / x91 = branches de contre). Durées : Back Suplex 2
+198 / 191 images (SvR 2011 : 107 / 107), Arm Drag 1 197 / 165, Pedigree 1 366 / 364 (SvR 2011 : 226 / 225) :
+WWE '12 compte environ deux fois plus d'images (60 / s contre 30 ?). Un YANM (+ POF0 + YAT2) par entrée, dans
+l'ordre de la table.
+
+782 prises ont le même nom dans les deux jeux avec leurs animations dans SvR 2011 (MOT/BM00, y0 et y1) : de quoi
+valider la conversion (cas d'étude : Back Suplex 2, SvR 5377 / WWE '12 23751 ; Pedigree 1, SvR 5136 / WWE '12 31940).
+
 ## Une prise dans SvR 2011
 
 - Fiche : `misc.pac` MOVS/WAZE, 160 octets, numéro u16 petit-boutiste +0x90 (Arm Drag 1 = 4809).
