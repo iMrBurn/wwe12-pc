@@ -62,3 +62,23 @@ revue de sa licence et l'accord de l'utilisateur.
 - **Touches de clavier comme le SvR 2011 de Kaiko** (ajouter / copier ses réglages) : Launcher (`keybinds.h`).
 - **Chronomètre de match** et **interférence forcée sur un bouton** : Gameplay, à étudier.
 - **Types de match comme le port SvR 2011** : à préciser avec le joueur (lesquels ?) ; stipulations = 1.1.
+
+## Suggestions du 2026-11-03 (un joueur, Discord ; rien promis)
+Liste du joueur, rangée par la Main. Les numéros de version sont ceux de `docs/feuille_de_route.md`.
+
+**Déjà fait ou déjà prévu**
+- Liberté sur les règles d'un match : le Match Creator étendu de la 1.0 va dans ce sens (`docs/match_creator.md`).
+- Touches du clavier affichées comme notifications dans le jeu : icônes de touches, 1.4.
+- Match squash avec finishers chargés : squash, 1.3 (`docs/squash.md`) ; la question « finishers chargés » : à voir avec le stock de finishers de départ.
+- Interférence sur un bouton ; chronomètre de match visible : déjà à étudier (Gameplay).
+- King of the Ring / tournoi : « Plus tard » (il faut un tableau et une planification).
+
+**Simples ou moyens (à étudier)**
+- Option du launcher « configurations de match sans restriction » avec avertissement (peut planter) : pas chère, dans l'esprit de la 1.3.
+- Restreindre les types de match par émission, et les catcheurs de l'Univers depuis le launcher : comme nos réglages Univers (`wwe12_universe_*`), 1.3.
+- Afficher les touches de chaque catcheur à l'écran ; chronomètre pour tous les types de match : de l'affichage, 1.4.
+
+**Gros chantiers (aucune promesse)**
+- Nouveaux types de match : 2 contre 2 contre 2 (SvR 2008), Tornado Tag à 6 (et variantes Elimination, Hardcore Triple Threat, 2 contre 2 Table / Extreme Rules, 2 contre 3), Slobber Knocker, 3 Stages of Hell, Gauntlet (menu pour le nombre d'adversaires), Beat the Clock Sprint, King of the Ring. Vraies règles à écrire ; les Tornado Tag et le 3 équipes demandent plus de 4 catcheurs actifs (lié à « plus de 6 superstars »). Règles du genre « 2 sur 3 Last Man Standing en Hell in a Cell / Inferno » : Match Creator.
+- Changer de catcheur pendant un match ; recommencer un match entre deux : logique des équipes et caméra.
+- Spectateurs qui donnent des armes ; monter sur la table des commentateurs : nouvelles animations et collisions, très long.
