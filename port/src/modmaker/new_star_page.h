@@ -1907,9 +1907,14 @@ class Page {
           for (auto &k : m.root.kids) {
             if (k.group != "MENU" || k.name.size() != 4)
               continue;
-            std::vector<int> to;  // (SSFA, SSFB, SSFC: 0, 1, 2)
-            if (k.name.compare(0, 3, "SSF") == 0 && k.name[3] >= 'A' && k.name[3] <= 'C')
-              to = {k.name[3] - 'A'};
+            // (SSFA, SSFB, SSFC: 0, 1, 2. But their SSFB isn't WWE '12's framing: 2008's a 512 x 256 bust, 2009's a
+            // tall 256 x 512 one, and made square they came out stretched, Johnny Nitro's and Charlie Haas's on the
+            // select screen, 2026-11-03: their body render, SSFA, for both, as SvR 2007's SF2B)
+            std::vector<int> to;
+            if (k.name == "SSFA")
+              to = {0, 1};
+            else if (k.name == "SSFC")
+              to = {2};
             else if (k.name == "SF2B")
               to = {0, 1};
             else if (k.name == "SF2A")
