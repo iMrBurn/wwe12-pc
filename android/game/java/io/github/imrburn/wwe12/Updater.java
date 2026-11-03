@@ -30,6 +30,8 @@ public class Updater {
     // Only files of this project's own releases are ever downloaded.
     static final String DOWNLOADS = "https://github.com/iMrBurn/wwe12-pc/releases/download/";
     static final Pattern TAG = Pattern.compile("^android-([a-z]+)-?(\\d+)$");
+    // Since 1.0 the APK also comes with the PC release (tag v1.0.0, file WWE12-PC-Android-v1.0.0.apk).
+    static final Pattern VERSION_TAG = Pattern.compile("^v(\\d{1,2})\\.(\\d{1,2})\\.(\\d{1,2})(?:-[a-z0-9.]+)?$");
     static final String ACTION_STATUS = "io.github.imrburn.wwe12.INSTALL_STATUS";
 
     public static class Release {
@@ -56,6 +58,20 @@ public class Updater {
         }
     }
 
+    /**
+     * The versionCode a release tag stands for, or -1 if it is not an Android release: android-alpha8 -> 8,
+     * v1.0.0 -> 10000 (major * 10000 + minor * 100 + patch). Only releases with an .apk are ever offered, so
+     * the PC releases (a .zip) are skipped by the caller.
+     */
+    static int releaseNumber(String tag) {
+        Matcher m = TAG.matcher(tag);
+        if (m.matches()) return m.group(1).equals("check") ? -1 : Integer.parseInt(m.group(2));
+        m = VERSION_TAG.matcher(tag);
+        if (m.matches())
+            return Integer.parseInt(m.group(1)) * 10000 + Integer.parseInt(m.group(2)) * 100 + Integer.parseInt(m.group(3));
+        return -1;
+    }
+
     /** Looks for a newer Android release in the background; calls back on the UI thread if one exists. */
     public static void check(final Activity a, final Found found) {
         final int current = versionCode(a);
@@ -67,9 +83,8 @@ public class Updater {
                     for (int i = 0; i < releases.length(); i++) {
                         JSONObject r = releases.getJSONObject(i);
                         if (r.optBoolean("draft")) continue;
-                        Matcher m = TAG.matcher(r.optString("tag_name"));
-                        if (!m.matches() || m.group(1).equals("check")) continue;
-                        int number = Integer.parseInt(m.group(2));
+                        int number = releaseNumber(r.optString("tag_name"));
+                        if (number < 0) continue;
                         if (number <= current || (best != null && number <= best.number)) continue;
                         JSONArray assets = r.optJSONArray("assets");
                         if (assets == null) continue;

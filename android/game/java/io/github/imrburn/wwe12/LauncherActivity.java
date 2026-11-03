@@ -224,11 +224,13 @@ public class LauncherActivity extends Activity {
                 new String[] {"English", "Deutsch", "Français", "Español", "Italiano"},
                 new String[] {"1", "3", "4", "5", "6"}));
         set.addView(choice("Internal resolution (lower = faster)", "svr_render_scale",
-                new String[] {"540p (fastest)", "720p (recommended)", "1080p", "Automatic (screen size)"},
-                new String[] {"540", "720", "1080", "0"}));
+                new String[] {"360p (very low)", "480p (low)", "540p (fastest)", "720p (recommended)", "1080p", "Automatic (screen size)"},
+                new String[] {"360", "480", "540", "720", "1080", "0"}));
         set.addView(choice("Picture shape", "bd_aspect_ratio",
                 new String[] {"16:9 with black bars (original)", "Fill the whole screen (stretched)"},
                 new String[] {"5", "6"}));
+        // 1.0: matches and entrances take the shape of a wide phone screen (20:9...); the HUD stays in the middle.
+        set.addView(toggle("Wide screens: matches and entrances fill the whole screen", "wwe12_widescreen", true));
         set.addView(toggle("FPS counter", "wwe12_show_fps"));
         // From Yexclsv's work: phone temperature after the FPS, and a message when it gets hot.
         set.addView(prefToggle("Show the phone temperature next to the FPS (battery, in C)", "temp_counter", true));
@@ -244,6 +246,12 @@ public class LauncherActivity extends Activity {
                 new String[] {"0", "2", "4", "8", "16"}));
         set.addView(choice("Loading screens", "wwe12_load_slice_ms",
                 new String[] {"Original pace", "About 2x faster"}, new String[] {"0", "12"}));
+
+        // WWE Universe options (off by default; the Universe screens themselves are in the game's menus).
+        LinearLayout uni = panel(root, "WWE UNIVERSE");
+        uni.addView(choice("Title defenses in the weekly shows", "wwe12_universe_title_defenses",
+                new String[] {"Original game", "Sometimes (25 %)", "Often (50 %)"}, new String[] {"0", "25", "50"}));
+        uni.addView(toggle("Qualifying matches before Money in the Bank and Elimination Chamber", "wwe12_universe_qualifiers"));
 
         // Quick presets for phones that drop frames.
         LinearLayout presets = panel(root, "PERFORMANCE PRESETS");
@@ -631,7 +639,7 @@ public class LauncherActivity extends Activity {
         }
         dlcStatus = text("", 12, Color.rgb(240, 191, 61), false);
         dlcBox.addView(dlcStatus);
-        Button add = button("ADD DLC FILES", false);
+        Button add = button("ADD DLC...", false);
         add.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -642,16 +650,13 @@ public class LauncherActivity extends Activity {
             }
         });
         dlcBox.addView(add);
-        Button addFolder = button("ADD A DLC FOLDER", false);
+        Button addFolder = button("ADD DLC FROM A FOLDER...", false);
         addFolder.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_DLC_FOLDER);
             }
         });
         dlcBox.addView(addFolder);
-        dlcBox.addView(text("Pick the DLC packages of your Xbox 360 (files with long names such as 961C4A43...54, "
-                + "from Content\\0000000000000000\\54510890\\00000002), several at once, or a whole folder: "
-                + "only WWE '12 DLC packages are taken from it.", 12, Color.GRAY, false));
     }
 
     void addDlc(Intent data, boolean folder) {
@@ -668,23 +673,57 @@ public class LauncherActivity extends Activity {
             Toast.makeText(this, "Close the game first.", Toast.LENGTH_LONG).show();
             return;
         }
-        dlcStatus.setText(tree != null ? "Looking in the folder..." : "Copying...");
+        dlcStatus.setText(tree != null ? "Looking in the folder..." : "Checking...");
+        final boolean fromFolder = tree != null;
         new Thread(new Runnable() {
             public void run() {
-                if (tree != null) uris.addAll(GameFiles.treeFiles(LauncherActivity.this, tree, 5000));
-                final String report = GameFiles.addDlc(LauncherActivity.this, uris, new GameFiles.Progress() {
-                    public void progress(final String t) {
-                        runOnUiThread(new Runnable() { public void run() { dlcStatus.setText("Copying " + t); } });
-                    }
-                });
+                if (fromFolder) uris.addAll(GameFiles.treeFiles(LauncherActivity.this, tree, 5000));
+                final java.util.List<GameFiles.Pick> picks = GameFiles.checkDlc(LauncherActivity.this, uris);
+                int existing = 0;
+                StringBuilder names = new StringBuilder();
+                for (GameFiles.Pick p : picks)
+                    if (p.exists) { existing++; names.append("\n").append(p.name); }
+                if (existing == 0) { copyDlc(picks, false, fromFolder); return; }
+                final int n = existing;
+                final String list = names.toString();
                 runOnUiThread(new Runnable() {
                     public void run() {
-                        buildDlcPanel();
-                        dlcStatus.setText(report);
+                        new android.app.AlertDialog.Builder(LauncherActivity.this)
+                                .setMessage(n + (n == 1 ? " DLC is" : " DLCs are") + " already in the dlc folder:" + list + "\n\nReplace "
+                                        + (n == 1 ? "it?" : "them?"))
+                                .setPositiveButton("Replace", new android.content.DialogInterface.OnClickListener() {
+                                    public void onClick(android.content.DialogInterface di, int w) { startCopy(picks, true, fromFolder); }
+                                })
+                                .setNegativeButton("Keep", new android.content.DialogInterface.OnClickListener() {
+                                    public void onClick(android.content.DialogInterface di, int w) { startCopy(picks, false, fromFolder); }
+                                })
+                                .setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
+                                    public void onCancel(android.content.DialogInterface di) { dlcStatus.setText(""); }
+                                }).show();
                     }
                 });
             }
         }).start();
+    }
+
+    void startCopy(final java.util.List<GameFiles.Pick> picks, final boolean replace, final boolean fromFolder) {
+        dlcStatus.setText("Copying...");
+        new Thread(new Runnable() { public void run() { copyDlc(picks, replace, fromFolder); } }).start();
+    }
+
+    // Worker thread. A picked folder holds many other files: only the count of refusals is shown for it.
+    void copyDlc(java.util.List<GameFiles.Pick> picks, boolean replace, boolean fromFolder) {
+        final String report = GameFiles.addDlc(this, picks, replace, fromFolder ? 0 : 6, new GameFiles.Progress() {
+            public void progress(final String t) {
+                runOnUiThread(new Runnable() { public void run() { dlcStatus.setText("Copying " + t); } });
+            }
+        });
+        runOnUiThread(new Runnable() {
+            public void run() {
+                buildDlcPanel();
+                dlcStatus.setText(report);
+            }
+        });
     }
 
     // ---- Game --------------------------------------------------------------------------------

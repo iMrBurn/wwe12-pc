@@ -202,28 +202,67 @@ public class GameFiles {
         }
     }
 
-    // Copies the picked packages into dlc/. Returns a short report.
-    static String addDlc(Context c, List<Uri> uris, Progress progress) {
-        int added = 0, refused = 0, failed = 0;
+    // One picked file, checked: `why` is null when it is a WWE '12 DLC package (marketplace content, type 2).
+    static class Pick {
+        Uri uri;
+        String name;
+        String why;          // reason it is refused, or null
+        boolean exists;      // already in the dlc folder
+    }
+
+    static String refusalReason(byte[] h) {
+        if (h.length >= 4) {
+            String m = new String(h, 0, 4, java.nio.charset.StandardCharsets.ISO_8859_1);
+            if (m.startsWith("PK") || m.equals("Rar!") || m.startsWith("7z")) return "an archive (zip, rar or 7z): unpack it first";
+        }
+        if (h.length < 0x364) return h.length == 0 ? "could not be opened" : "too small to be a package";
+        if (!isStfs(h)) return "not an Xbox 360 package (STFS)";
+        if (!forWwe12(h)) return String.format("a package of another game (title %08X)", be32(h, 0x360));
+        if (contentType(h) != 2) return String.format("not a DLC (content type %08X)", contentType(h));
+        return null;
+    }
+
+    // Checks every picked file (reads only its first bytes).
+    static List<Pick> checkDlc(Context c, List<Uri> uris) {
+        List<Pick> out = new ArrayList<>();
         for (Uri u : uris) {
-            String name = safeName(displayName(c, u));
+            Pick p = new Pick();
+            p.uri = u;
+            p.name = safeName(displayName(c, u));
             try {
-                byte[] h = head(c, u, 0x364);
-                // Content type 2 = marketplace content (DLC); a save (type 1) is refused here.
-                if (!isStfs(h) || !forWwe12(h) || contentType(h) == 1) {
-                    if (h.length >= 4) refused++;  // empty / tiny files of a picked folder: not worth a mention
-                    continue;
-                }
-                copy(c, u, new File(dlcDir(c), name), progress, name);
+                p.why = refusalReason(head(c, u, 0x364));
+            } catch (IOException e) {
+                p.why = "could not be opened";
+            }
+            p.exists = p.why == null && new File(dlcDir(c), p.name).exists();
+            out.add(p);
+        }
+        return out;
+    }
+
+    // Copies the accepted packages into dlc/ (a file already there only if `replace`). Returns the report
+    // (first line: the counts; then each refusal with its reason, up to `listMax`).
+    static String addDlc(Context c, List<Pick> picks, boolean replace, int listMax, Progress progress) {
+        int added = 0, refused = 0, failed = 0;
+        StringBuilder lines = new StringBuilder();
+        int listed = 0;
+        for (Pick p : picks) {
+            if (p.why != null) {
+                refused++;
+                if (listed++ < listMax) lines.append("\n").append(p.name).append(": ").append(p.why);
+                continue;
+            }
+            if (p.exists && !replace) continue;
+            try {
+                copy(c, p.uri, new File(dlcDir(c), p.name), progress, p.name);
                 added++;
             } catch (IOException e) {
                 failed++;
+                lines.append("\n").append(p.name).append(": copy failed");
             }
         }
-        String r = added + " DLC added";
-        if (refused > 0) r += ", " + refused + " file(s) skipped (not a WWE '12 DLC package)";
-        if (failed > 0) r += ", " + failed + " failed (storage full?)";
-        return r + (added > 0 ? ". They are installed the next time you start the game." : ".");
+        if (added == 0) return "No DLC added." + lines;
+        return added + " added, " + refused + " refused. They are installed the next time you start the game." + lines;
     }
 
     // Removes the package and what the game installed from it.
