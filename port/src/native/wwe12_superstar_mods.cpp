@@ -499,7 +499,9 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         }
         ec.clear();
         svrfmt::Archive g;
-        at.added = read && svrfmt::ArchiveOpen(game, g, nullptr) &&
+        // (an entrance outfit, kind 4 "000NNNA4", worn only during the entrance, is never a new attire to offer: put in
+        // his file alone, as the game's own, Cena's 00013904)
+        at.added = at.entry[7] == '2' && read && svrfmt::ArchiveOpen(game, g, nullptr) &&
                    std::none_of(g.root.kids.begin(), g.root.kids.end(), [&](const auto &k) { return k.name == at.entry; });
       }
       // Its own name and portraits (attire_name=, attire/SSFA_SD.dds ... SSFC_HD.dds), if it gives them.

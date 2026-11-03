@@ -922,21 +922,36 @@ class Page {
           for (const auto &k : b.root.kids)
             if (k.name == attire_mod::EntryName(id, n))
               choices.push_back({k.name, (fr ? "Remplacer la tenue " : "Replace attire ") + std::to_string(n)});
+      // ... or worn only during the entrance, over one of them: its entrance outfit (kind 4, "000NNNA4": a jacket, a
+      // vest... the game's own: Cena's 00013904), his own replaced, or one he hasn't (a player's request, CM Punk with a
+      // vest, 2026-11-03)
+      for (int n = 1; n <= 4; ++n)
+        for (const auto &k : b.root.kids)
+          if (k.name == attire_mod::EntryName(id, n)) {
+            const std::string outfit = attire_mod::EntryName(id, n, 4);
+            const bool has = std::any_of(b.root.kids.begin(), b.root.kids.end(), [&](const auto &o) { return o.name == outfit; });
+            choices.push_back({outfit, (fr ? (has ? "Sa tenue d'entrée " : "Une tenue d'entrée ") : (has ? "His entrance outfit " : "An entrance outfit ")) +
+                                           std::string(fr ? "(tenue " : "(attire ") + std::to_string(n) + ")"});
+          }
       // (Adding one more: the game reads it from our pack but its attire select screen doesn't offer it yet, 2026-10-26:
       // the list comes from somewhere not found yet; docs/mod_maker.md "Tenues".)
       if (std::none_of(choices.begin(), choices.end(), [&](const auto &c) { return c.first == attire_entry_; }))
-        attire_entry_ = choices.empty() ? "" : choices.back().first;
-      for (const auto &[entry, label] : choices) {
+        attire_entry_ = choices.empty() ? "" : choices.front().first;
+      for (const auto &[entry, label] : choices)  // (one per line: the entrance outfits' labels are long)
         if (ImGui::RadioButton((label + "##" + entry).c_str(), attire_entry_ == entry))
           attire_entry_ = entry;
-        ImGui::SameLine();
-      }
-      ImGui::NewLine();
-      ImGui::TextWrapped(fr ? "La tenue de « %s » sera une tenue de %s, à choisir à l'écran de choix des tenues. Le mod ne "
-                              "contient que cette tenue : le jeu la met dans le fichier du catcheur au démarrage."
-                            : "\"%s\"'s look will be an attire of %s, picked on the attire select screen. The mod holds only "
-                              "that attire: the game puts it into the superstar's file at startup.",
-                         name_, base_name.c_str());
+      if (attire_entry_.size() == 8 && attire_entry_[7] == '4')
+        ImGui::TextWrapped(fr ? "La tenue de « %s » sera portée par %s pendant son entrée seulement (veste, casquette...), "
+                                "puis il combat dans sa tenue. Le mod ne contient que cette tenue."
+                              : "\"%s\"'s look will be worn by %s during his entrance only (a jacket, a cap...), then he "
+                                "wrestles in his attire. The mod holds only that outfit.",
+                           name_, base_name.c_str());
+      else
+        ImGui::TextWrapped(fr ? "La tenue de « %s » sera une tenue de %s, à choisir à l'écran de choix des tenues. Le mod ne "
+                                "contient que cette tenue : le jeu la met dans le fichier du catcheur au démarrage."
+                              : "\"%s\"'s look will be an attire of %s, picked on the attire select screen. The mod holds only "
+                                "that attire: the game puts it into the superstar's file at startup.",
+                           name_, base_name.c_str());
     } else {
       ImGui::TextWrapped(fr ? "« %s » apparaîtra dans la case DLC de l'écran de choix. Le mod (.svrmod) est enregistré "
                               "où vous voulez, pour le partager, puis installé."
