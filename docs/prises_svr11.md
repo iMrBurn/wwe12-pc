@@ -83,7 +83,10 @@ est toujours moins bon que la victime).
   passe de 16-19° à 8-11° en tout.
 - **Avant-bras et mains** : ~20-40° os par os, mais **avant-bras × main ensemble** 3,5-15° (un cas à 32°) : la
   torsion est répartie autrement. Les gabarits WWE '12 font de l'avant-bras une **charnière à un axe** (0x0800) :
-  toute la torsion va dans la main. À faire : reporter la torsion de l'avant-bras converti sur la main.
+  toute la torsion va dans la main. **Essayé** : l'avant-bras converti réduit à sa rotation autour de l'axe de la
+  charnière WWE '12 (axe 1 ; « twist » de la décomposition swing-twist), le reste multiplié dans la main
+  (main' = reste × main) : avant-bras 1,6-16° (au lieu de 22-39°), main 2,4-26° (au lieu de 19-45°). À reprendre
+  dans la vraie conversion des prises.
 - Back Suplex 2 (30°) : sans doute refaite pour WWE '12.
 
 ## Méthode prévue (celle de Kaiko, à l'envers)
