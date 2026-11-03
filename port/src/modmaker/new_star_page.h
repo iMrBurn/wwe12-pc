@@ -1733,7 +1733,8 @@ class Page {
           return;
         }
     note_ok_ = true;
-    note_ = fr ? "Ses portraits de SvR 2011 viendront avec lui." : "Its SvR 2011 portraits come with it.";
+    note_ = fr ? std::string("Ses portraits de ") + GameName(svr_game_) + " viendront avec lui."
+               : std::string("Its ") + GameName(svr_game_) + " portraits come with it.";
   }
 
   // The SvR 2011 or WWE '13 attire over the base's first attire (port_svr.h, port13_star.h), made to fit that
@@ -1842,7 +1843,8 @@ class Page {
     else if (has_outfit && !outfit_why.empty())
       note_ += (fr ? " Tenue d'entrée non portée : " : " Entrance outfit not ported: ") + outfit_why;
     if (!portraits_[1][0].empty())
-      note_ += look_ == 2 ? (fr ? " Ses portraits de SvR 2011 viendront avec lui." : " Its SvR 2011 portraits come with it.")
+      note_ += look_ == 2 ? (fr ? std::string(" Ses portraits de ") + GameName(svr_game_) + " viendront avec lui."
+                                : std::string(" Its ") + GameName(svr_game_) + " portraits come with it.")
                           : (fr ? " Ses portraits viendront avec lui." : " Its portraits come with it.");
     SetModel(ported_);
   }
