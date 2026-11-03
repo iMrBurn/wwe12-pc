@@ -27,7 +27,9 @@
 // game stays). The pack is made for these mods alone too.
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
@@ -52,9 +54,12 @@
 #include "svr_hook.h"
 
 #include "../modmaker/superstar_pack.h"
+#include "../modmaker/svrfmt/jboy.h"
 
 REXCVAR_DEFINE_BOOL(wwe12_superstar_mods, true, "WWE12",
                     "Added superstars (superstar mods) as a DLC pack made at startup.");
+REXCVAR_DEFINE_BOOL(wwe12_belt_donor, true, "WWE12",
+                    "Added superstars with their own model: the waist belt's fit of the game's superstar nearest in build.");
 
 namespace {
 
@@ -308,6 +313,163 @@ void AddRestores(const Bytes &chetc) {
                       "goes back to the game's", c.id);
         }
       }
+}
+
+// Title belts at the waist (2026-11-03). A superstar file's attire keeps the belt's fit in two parts: 40, a text of
+// attachment points whose last number is a build (Chavo Guerrero 2, Ted DiBiase 3, Mark Henry 8; the bending,
+// sub_828C5878, reads it at +1888) and 80 (2816 bytes, the body's volumes: what sets how far out the belt goes, +24 and
+// +272 there). A ported model kept its base's, so a belt sized for the base went through Jeff Hardy's loose top;
+// Mark Henry's two parts put it outside (a bit big). An added superstar with his own model gets those of the game's
+// superstar whose waist is nearest his (Discord, "grab one off a bigger guy and swap it in").
+
+// A superstar file's first attire's waist: the bounding spheres' radii of Bip and Bip Spine, as the game stores them
+// (the box of the vertices each weighs: its half diagonal, checked on Ted DiBiase's and Mark Henry's) or, from_mesh,
+// made from the vertices (a ported model kept its base's).
+bool WaistOf(const Bytes &ch, bool from_mesh, float &bip, float &spine) {
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(ch, a, nullptr))
+    return false;
+  for (auto &k : a.root.kids) {
+    if (k.group != "EMD " || !svrfmt::ArchiveExpand(k))
+      continue;
+    svrfmt::Model m;
+    bool read = false;
+    for (auto &x : k.kids)
+      if (x.id == 0)
+        read = svrfmt::JboyRead(svrfmt::ArchiveData(x), m, nullptr);
+    if (!read)
+      return false;
+    std::vector<std::array<float, 6>> box(m.nodes.size(), {1e9f, 1e9f, 1e9f, -1e9f, -1e9f, -1e9f});
+    if (from_mesh)
+      for (const auto &me : m.meshes)
+        for (size_t v = 0; v < me.verts.size(); ++v)
+          for (const auto &wl : me.weights) {
+            const uint8_t s = wl[v].bones[0];
+            if (s == 255 || s >= me.palette.size() || me.palette[s] < 1 || size_t(me.palette[s] - 1) >= m.nodes.size() ||
+                wl[v].weight <= 0)
+              continue;
+            auto &bx = box[size_t(me.palette[s] - 1)];
+            for (int j = 0; j < 3; ++j)
+              bx[size_t(j)] = std::min(bx[size_t(j)], me.verts[v].pos[j]),
+              bx[size_t(3 + j)] = std::max(bx[size_t(3 + j)], me.verts[v].pos[j]);
+          }
+    bip = spine = 0;
+    for (size_t i = 0; i < m.nodes.size(); ++i) {
+      float r = m.nodes[i].sphere[3];
+      if (from_mesh) {
+        const auto &bx = box[i];
+        r = bx[0] > bx[3] ? 0 : 0.5f * std::sqrt((bx[3] - bx[0]) * (bx[3] - bx[0]) + (bx[4] - bx[1]) * (bx[4] - bx[1]) +
+                                                 (bx[5] - bx[2]) * (bx[5] - bx[2]));
+      }
+      if (m.nodes[i].name == "Bip")
+        bip = r;
+      else if (m.nodes[i].name == "Bip Spine")
+        spine = r;
+    }
+    return bip > 0 && spine > 0;
+  }
+  return false;
+}
+
+// A superstar file's first attire's part `id` (40, 80), empty if none.
+Bytes AttirePart(const Bytes &ch, uint32_t id) {
+  svrfmt::Archive a;
+  if (svrfmt::ArchiveOpen(ch, a, nullptr))
+    for (auto &k : a.root.kids)
+      if (k.group == "EMD " && svrfmt::ArchiveExpand(k)) {
+        for (auto &x : k.kids)
+          if (x.id == id)
+            return svrfmt::ArchiveData(x);
+        break;
+      }
+  return {};
+}
+
+// The game's superstars' waists (Documents\wwe12\belt_sizes.txt, "<number>=<bip>,<spine>", 0 for none: read once from
+// their files, 50-372, then kept).
+std::map<int, std::pair<float, float>> GameWaists(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root) {
+  std::map<int, std::pair<float, float>> out;
+  const fs::path file = user_root / "belt_sizes.txt";
+  std::ifstream in(file);
+  for (std::string line; std::getline(in, line);)
+    if (const size_t eq = line.find('='), comma = line.find(','); eq != std::string::npos && comma != std::string::npos)
+      out[atoi(line.c_str())] = {strtof(line.c_str() + eq + 1, nullptr), strtof(line.c_str() + comma + 1, nullptr)};
+  in.close();
+  if (out.size() >= 323)
+    return out;
+  out.clear();
+  std::string text;
+  for (int n = 50; n <= 372; ++n) {
+    Bytes ch;
+    float bip = 0, spine = 0;
+    if (ReadGame(vfs, "pac/ch/ch" + std::to_string(n) + ".pac", ch))
+      WaistOf(ch, false, bip, spine);
+    out[n] = {bip, spine};
+    char line[64];
+    snprintf(line, sizeof(line), "%d=%.2f,%.2f\n", n, bip, spine);
+    text += line;
+  }
+  WriteHost(file, Bytes(text.begin(), text.end()));
+  REXLOG_INFO("[belts] the game's superstars' waists measured ({})", rex::path_to_utf8(file));
+  return out;
+}
+
+// The game's divas (CHAR / DAT byte 0xEE bit 0, set on all of 11 divas and none of 12 men, 2026-11-03).
+std::set<int> Divas(const Bytes &chetc) {
+  std::set<int> out;
+  svrfmt::Archive etc;
+  if (svrfmt::ArchiveOpen(chetc, etc, nullptr))
+    for (auto &k : etc.root.kids)
+      if (k.group == "CHAR" && k.name == "DAT " && svrfmt::ArchiveExpand(k))
+        for (auto &c : k.kids)
+          if (const Bytes d = svrfmt::ArchiveData(c); d.size() > 0xEE && (d[0xEE] & 1))
+            out.insert(int(c.id));
+  return out;
+}
+
+// An added superstar's own model given the belt parts (40, 80) of the game's superstar with the nearest waist, among
+// the men or among the divas as his base (Johnny Nitro got Kelly Kelly's first).
+void FitBelt(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root, superstar_pack::Star &st,
+             const std::set<int> &divas) {
+  float bip = 0, spine = 0;
+  if (!WaistOf(st.model, true, bip, spine))
+    return;
+  static std::map<int, std::pair<float, float>> waists;
+  if (waists.empty())
+    waists = GameWaists(vfs, user_root);
+  int best = 0;
+  float best_d = 1e9f;
+  const bool diva = divas.count(st.base) != 0;
+  for (const auto &[n, w] : waists)
+    if (w.first > 0 && w.second > 0 && (divas.count(n) != 0) == diva) {
+      const float d = (w.first - bip) * (w.first - bip) + (w.second - spine) * (w.second - spine);
+      if (d < best_d)
+        best = n, best_d = d;
+    }
+  Bytes donor;
+  if (!best || !ReadGame(vfs, "pac/ch/ch" + std::to_string(best) + ".pac", donor))
+    return;
+  const Bytes p40 = AttirePart(donor, 40), p80 = AttirePart(donor, 80);
+  svrfmt::Archive a;
+  if (p40.empty() || p80.empty() || !svrfmt::ArchiveOpen(st.model, a, nullptr))
+    return;
+  int done = 0;
+  for (auto &k : a.root.kids) {
+    if (k.group != "EMD " || !svrfmt::ArchiveExpand(k))
+      continue;
+    for (auto &x : k.kids)
+      if (x.id == 40 || x.id == 80) {
+        svrfmt::ArchiveReplace(x, x.id == 40 ? p40 : p80);
+        ++done;
+      }
+    svrfmt::ArchiveTouch(k);
+  }
+  if (!done)
+    return;
+  svrfmt::ArchiveTouch(a.root);
+  st.model = svrfmt::ArchiveSave(a);
+  REXLOG_INFO("[belts] {}: waist {:.1f} / {:.1f}, the belt fitted as superstar {}'s ({:.1f} / {:.1f})", st.key, bip,
+              spine, best, waists[best].first, waists[best].second);
 }
 
 // The game's chEtc.pac: the newest installed pack's (not ours), else the disc's.
@@ -792,8 +954,13 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       for (int k = 0; k < 3; ++k)
         ReadHost(list[i].model.parent_path() / (std::string("SSF") + char('A' + k) + (hd ? "_HD.dds" : "_SD.dds")),
                  st.portraits[hd][k]);
-    if (ReadHost(list[i].model, st.model))
+    if (ReadHost(list[i].model, st.model)) {
+      if (REXCVAR_GET(wwe12_belt_donor)) {
+        static const std::set<int> divas = Divas(in.chetc);
+        FitBelt(vfs, user_root, st, divas);
+      }
       continue;
+    }
     if (!ReadGame(vfs, "pac/ch/ch" + std::to_string(st.base) + ".pac", st.model))
       for (const auto &[n, dir] : packs)
         for (fs::directory_iterator it(dir / "pac" / "ch", ec), end; !ec && it != end && st.model.empty(); it.increment(ec))
