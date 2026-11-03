@@ -24,7 +24,7 @@ option(WWE12_D3D12_EXE "Also build wwe12_d3d12.exe (D3D12 renderer)" ${WIN32})
 # wwe12_d3d11.exe (Direct3D 11, plume-d3d11.patch): OFF until the release decides; ON builds it with
 # the others (build.ps1). Its game shaders are converted at build time from the HLSL that
 # tools/gen_shaders.ps1 leaves in work/shaders/d3d11/hlsl.
-option(WWE12_D3D11_EXE "Also build wwe12_d3d11.exe (Direct3D 11 renderer)" OFF)
+option(WWE12_D3D11_EXE "Also build wwe12_d3d11.exe (Direct3D 11 renderer)" ON)
 if(WIN32 AND WWE12_D3D12_EXE)
     set(PLUME_D3D12_ENABLED ON CACHE BOOL "" FORCE)
 else()
