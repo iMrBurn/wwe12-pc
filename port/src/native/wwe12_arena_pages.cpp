@@ -95,12 +95,15 @@
 
 #include "../modmaker/bpe_like.h"
 #include "../modmaker/svrfmt/archive.h"
+#include "../modmaker/svrfmt/jboy.h"
 #include "../modmaker/svrfmt/texture.h"
 
 REXCVAR_DEFINE_BOOL(wwe12_arena_pages, true, "WWE12",
                     "Added arenas (arena mods with slot=new) on more pages of the arena select screen (LB / RB).");
 REXCVAR_DEFINE_BOOL(wwe12_entrance_mods, true, "WWE12",
                     "Added superstars' own entrances (superstar mods with entrance_own=, from WWE '13), served to the game.");
+REXCVAR_DEFINE_BOOL(wwe12_belt_fit, true, "WWE12",
+                    "Added superstars: the title belt fitted to their model (their base's, scaled to their waist).");
 REXCVAR_DEFINE_BOOL(wwe12_entrance_list, true, "WWE12",
                     "CREATE AN ENTRANCE: the mods' own entrances added to the superstars' entrance lists.");
 REXCVAR_DEFINE_BOOL(wwe12_entrance_list_log, false, "WWE12",
@@ -422,6 +425,49 @@ std::string Trimmed(std::string s) {
   return s;
 }
 
+// A superstar file's (chNNN.pac) first attire: its waist's width and depth where a title belt is worn, from the
+// vertices of the pelvis, spine and thighs between 50 % and 54 % of its height (bind pose: y up is negative, the feet
+// at 0). False if it can't be read.
+bool Waist(const std::vector<uint8_t> &ch, float &width, float &depth) {
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(ch, a, nullptr))
+    return false;
+  for (auto &k : a.root.kids) {
+    if (k.group != "EMD " || !svrfmt::ArchiveExpand(k))
+      continue;
+    svrfmt::Model m;
+    for (auto &x : k.kids)
+      if (x.id == 0 && !svrfmt::JboyRead(svrfmt::ArchiveData(x), m, nullptr))
+        return false;
+    float top = 0;
+    for (const auto &me : m.meshes)
+      for (const auto &v : me.verts)
+        top = std::min(top, v.pos[1]);
+    const float y0 = top * 0.54f, y1 = top * 0.50f;
+    float lx = 1e9f, hx = -1e9f, lz = 1e9f, hz = -1e9f;
+    int n = 0;
+    for (const auto &me : m.meshes)
+      for (size_t i = 0; i < me.verts.size() && !me.weights.empty(); ++i) {
+        const auto &v = me.verts[i];
+        const uint8_t s = me.weights[0][i].bones[0];
+        if (v.pos[1] < y0 || v.pos[1] > y1 || s == 255 || s >= me.palette.size() || me.palette[s] < 1 ||
+            size_t(me.palette[s] - 1) >= m.nodes.size())
+          continue;
+        const std::string &bone = m.nodes[size_t(me.palette[s] - 1)].name;
+        if (bone != "Bip" && bone != "Bip Spine" && bone != "Bip Spine1" && bone.find("Thigh") == std::string::npos)
+          continue;
+        lx = std::min(lx, v.pos[0]), hx = std::max(hx, v.pos[0]);
+        lz = std::min(lz, v.pos[2]), hz = std::max(hz, v.pos[2]);
+        ++n;
+      }
+    if (n < 20)
+      return false;
+    width = hx - lx, depth = hz - lz;
+    return true;
+  }
+  return false;
+}
+
 void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device, const fs::path &user_root,
                     const fs::path &mods) {
   const fs::path out = user_root / "entrance_slots";
@@ -662,6 +708,131 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         g_mod_screens.insert({ribbon ? 1u : 2u, uint32_t(n)});
       }
     ec.clear();
+  }
+  // Title belts (pac/wuniData.pac /WWEU/BLTS: a PACH of texts by superstar number, two lines "x,y,z,sx,sy,sz": the belt
+  // on the shoulder, then at the waist). An added superstar had the text of whoever had his number before (Jeff Hardy
+  // at 109: the belt went through his clothes at the waist, 2026-11-03): he gets his base's, its waist's last two
+  // scales times how much wider and deeper his model's waist is than the base's (Waist). Documents\wwe12\belts.txt
+  // ("<number>=<line 1>|<line 2>") overrides one, to try values without a build.
+  if (REXCVAR_GET(wwe12_belt_fit)) {
+    std::vector<uint8_t> wuni;
+    svrfmt::Archive a;
+    svrfmt::ArcNode *blts = nullptr;
+    if (ReadForGame(vfs, mods, "pac/wuniData.pac", wuni) && svrfmt::ArchiveOpen(wuni, a, nullptr))
+      for (auto &k : a.root.kids)
+        if (Trimmed(k.group) == "WWEU" && Trimmed(k.name) == "BLTS")
+          blts = &k;
+    // (a PACH of one child, id 0, the PACH of the texts)
+    std::vector<uint8_t> t = blts ? svrfmt::ArchiveData(*blts) : std::vector<uint8_t>();
+    std::map<uint32_t, std::string> texts;
+    const auto u32le = [&](size_t o) { return uint32_t(t[o]) | uint32_t(t[o + 1]) << 8 | uint32_t(t[o + 2]) << 16 | uint32_t(t[o + 3]) << 24; };
+    if (t.size() >= 28 && !memcmp(t.data(), "PACH", 4) && u32le(4) == 1 && !memcmp(t.data() + 20 + u32le(12), "PACH", 4)) {
+      const size_t at = 20 + u32le(12), size = u32le(16);
+      t = at + size <= t.size() ? std::vector<uint8_t>(t.begin() + long(at), t.begin() + long(at + size)) : std::vector<uint8_t>();
+    }
+    if (t.size() >= 8 && !memcmp(t.data(), "PACH", 4)) {
+      const uint32_t n = u32le(4);
+      const size_t data = 8 + size_t(n) * 12;
+      for (uint32_t i = 0; i < n && data <= t.size() && 8 + size_t(i + 1) * 12 <= t.size(); ++i) {
+        const uint32_t id = u32le(8 + i * 12), off = u32le(12 + i * 12), size = u32le(16 + i * 12);
+        if (data + off + size <= t.size())
+          texts[id] = std::string(t.begin() + long(data + off), t.begin() + long(data + off + size));
+      }
+    }
+    std::map<uint32_t, std::string> mine;
+    for (const auto &[d, moves_mod] : dirs) {
+      std::vector<uint8_t> m;
+      const auto slot = slots.find(d.filename().string());
+      if (moves_mod || slot == slots.end() || fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m))
+        continue;
+      const int base = atoi(Value(std::string(m.begin(), m.end()), "base").c_str());
+      const auto from = texts.find(uint32_t(base));
+      if (from == texts.end()) {
+        REXLOG_INFO("[belts] superstar {}: no belt text for its base {}", slot->second, base);
+        continue;
+      }
+      std::string text = from->second;
+      std::vector<uint8_t> own, theirs;
+      float w = 0, dp = 0, bw = 0, bd = 0;
+      if (ReadHost(d / "superstar" / "ch.pac", own) && Waist(own, w, dp) &&
+          ReadForGame(vfs, mods, "pac/ch/ch" + std::to_string(base) + ".pac", theirs) && Waist(theirs, bw, bd) && bw > 0 &&
+          bd > 0) {
+        // (the waist line's last two numbers, scaled: the ratios kept within 0.85-1.5)
+        const size_t nl = text.find('\n');
+        std::vector<std::string> v;
+        if (nl != std::string::npos) {
+          std::string line = text.substr(nl + 1), cell;
+          for (char c : line + ",")
+            if (c == ',') {
+              v.push_back(cell);
+              cell.clear();
+            } else if (c != '\r' && c != '\n') {
+              cell += c;
+            }
+        }
+        if (v.size() == 6) {
+          const float rw = std::clamp(w / bw, 0.85f, 1.5f), rd = std::clamp(dp / bd, 0.85f, 1.5f);
+          char sy[32], sz[32];
+          snprintf(sy, sizeof(sy), "%g", strtof(v[4].c_str(), nullptr) * rw);
+          snprintf(sz, sizeof(sz), "%g", strtof(v[5].c_str(), nullptr) * rd);
+          v[4] = sy, v[5] = sz;
+          text = text.substr(0, nl + 1) + v[0] + "," + v[1] + "," + v[2] + "," + v[3] + "," + v[4] + "," + v[5];
+          REXLOG_INFO("[belts] superstar {}: base {}'s belt, waist {:.0f} x {:.0f} against {:.0f} x {:.0f} (x{:.2f}, x{:.2f})",
+                      slot->second, base, w, dp, bw, bd, rw, rd);
+        }
+      }
+      mine[uint32_t(slot->second)] = text;
+    }
+    {
+      std::vector<uint8_t> o;
+      if (ReadHost(user_root / "belts.txt", o)) {
+        std::string all(o.begin(), o.end()), line;
+        for (char c : all + "\n")
+          if (c == '\n') {
+            const size_t eq = line.find('='), bar = line.find('|');
+            if (eq != std::string::npos && bar != std::string::npos && bar > eq) {
+              mine[uint32_t(atoi(line.c_str()))] = line.substr(eq + 1, bar - eq - 1) + "\r\n" + line.substr(bar + 1);
+              REXLOG_INFO("[belts] superstar {}: belts.txt's", atoi(line.c_str()));
+            }
+            line.clear();
+          } else if (c != '\r') {
+            line += c;
+          }
+      }
+    }
+    REXLOG_INFO("[belts] {} belt texts in the game's table ({}), {} for the added superstars", texts.size(),
+                blts ? "found" : "not found", mine.size());
+    if (!texts.empty() && !mine.empty()) {
+      for (const auto &[id, text] : mine)
+        texts[id] = text;
+      std::vector<uint8_t> out = {'P', 'A', 'C', 'H'}, body;
+      const auto put = [](std::vector<uint8_t> &b, uint32_t x) {
+        for (int i = 0; i < 4; ++i)
+          b.push_back(uint8_t(x >> (8 * i)));
+      };
+      put(out, uint32_t(texts.size()));
+      for (const auto &[id, text] : texts) {
+        while (body.size() % 4)
+          body.push_back(0);
+        put(out, id);
+        put(out, uint32_t(body.size()));
+        put(out, uint32_t(text.size()));
+        body.insert(body.end(), text.begin(), text.end());
+      }
+      out.insert(out.end(), body.begin(), body.end());
+      std::vector<uint8_t> outer = {'P', 'A', 'C', 'H'};
+      put(outer, 1);
+      put(outer, 0);
+      put(outer, 0);
+      put(outer, uint32_t(out.size()));
+      outer.insert(outer.end(), out.begin(), out.end());
+      Part part;
+      part.group = "WWEU";
+      part.name = "BLTS";
+      part.data = std::move(outer);
+      part.replace = true;
+      parts["pac/wuniData.pac"].push_back(std::move(part));
+    }
   }
   for (auto &[rel, list] : parts) {
     std::vector<uint8_t> pac;

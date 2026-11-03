@@ -144,7 +144,7 @@ endif()
 
 # Arènes ajoutées (src/native/wwe12_arena_pages.cpp) : les lecteurs de pac du Mod Maker (de Kaiko).
 target_sources(wwe12 PRIVATE src/modmaker/svrfmt/archive.cpp src/modmaker/svrfmt/pac.cpp
-    src/modmaker/svrfmt/texture.cpp)
+    src/modmaker/svrfmt/texture.cpp src/modmaker/svrfmt/jboy.cpp)
 target_include_directories(wwe12 PRIVATE src/modmaker)
 target_compile_definitions(wwe12 PRIVATE SVRFMT_NO_XCOMPRESS)
 
@@ -171,7 +171,7 @@ if(WIN32 AND WWE12_NATIVE_RENDERER AND WWE12_D3D12_EXE AND TARGET wwe12_recomp)
         target_compile_definitions(wwe12_d3d12 PRIVATE WWE12_DEV_PROBES)
     endif()
     target_sources(wwe12_d3d12 PRIVATE src/modmaker/svrfmt/archive.cpp src/modmaker/svrfmt/pac.cpp
-        src/modmaker/svrfmt/texture.cpp)
+        src/modmaker/svrfmt/texture.cpp src/modmaker/svrfmt/jboy.cpp)
     target_include_directories(wwe12_d3d12 PRIVATE src/modmaker)
     target_compile_definitions(wwe12_d3d12 PRIVATE SVRFMT_NO_XCOMPRESS)
     # Ce que rexglue_setup_target fait, sans recompiler le code du jeu.
@@ -207,7 +207,7 @@ if(WIN32 AND WWE12_NATIVE_RENDERER AND TARGET wwe12_recomp AND
     endif()
     wwe12_add_native_renderer(wwe12_d3d11 D3D11)
     target_sources(wwe12_d3d11 PRIVATE src/modmaker/svrfmt/archive.cpp src/modmaker/svrfmt/pac.cpp
-        src/modmaker/svrfmt/texture.cpp)
+        src/modmaker/svrfmt/texture.cpp src/modmaker/svrfmt/jboy.cpp)
     target_include_directories(wwe12_d3d11 PRIVATE src/modmaker)
     target_compile_definitions(wwe12_d3d11 PRIVATE SVRFMT_NO_XCOMPRESS)
     target_link_libraries(wwe12_d3d11 PRIVATE wwe12_recomp)
