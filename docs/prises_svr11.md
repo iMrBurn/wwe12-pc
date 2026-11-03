@@ -54,6 +54,25 @@ valider la conversion (cas d'étude : Back Suplex 2, SvR 5377 / WWE '12 23751 ; 
 - **Arm Drag 1 (4809) n'a pas d'animation dans SvR 2011** : le jeu garde des fiches de prises supprimées, catégories
   effacées (noté par Kaiko). Pour comparer, prendre une prise présente dans les deux jeux avec ses animations.
 
+## Premier essai de conversion (2026-11-03, outil d'étude hors dépôt)
+
+SvR 2011 (MOT/BM00, y0 / y1) converti par la conversion des corps des entrées (`BodyKeys` + `BodyBlock`, modèle de
+pistes = les blocs de la prise WWE '12, lus par `yanm::Read` : les YANM des prises sont « à gabarit », refusés par
+`ParseRaw`), comparé os par os à la prise WWE '12 (angle entre rotations locales, 22 os « Bip ») :
+
+| Prise | Images (SvR → WWE '12) | Attaquant | Victime |
+|---|---|---|---|
+| Back Suplex 2 | 107 → 200 (200) | 30,0° | 30,6° (sans doute refaite) |
+| Pedigree 1 | 226 → 448 (448) | 17,8° | 9,1° |
+| Tiger Bomb 3 | 148 → 292 (292) | 16,2° | 9,8° |
+| Arm Wrench Slap | 117 → 302 (302) | 19,2° | 8,6° |
+| Throat Thrust 3 | 51 → 169 (169) | 19,0° | 10,2° |
+
+La durée tombe pile (2 × images SvR, comme pour les entrées). L'écart n'est pas un décalage constant (il change le
+long de la prise). Bassin et orteils < 2° ; les plus gros écarts : Bip (racine), bras, cuisses. Pour les entrées,
+LA Max mesurait 0,5-3,6°. À chercher : la racine (Bip) et le repère des prises, puis bras / cuisses (l'attaquant
+est toujours moins bon que la victime).
+
 ## Méthode prévue (celle de Kaiko, à l'envers)
 
 Kaiko (`Mod Maker Tools\moves_port.py`, `svr10_moves.py`) porte des prises vers SvR 2011 : une prise « modèle » du
