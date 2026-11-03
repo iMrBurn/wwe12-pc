@@ -314,10 +314,10 @@ class Page {
     snprintf(label, sizeof(label), fr ? "Sa musique d'entrée (%s)" : "His entrance theme (%s)", theme_.what.c_str());
     Choice(HasTheme(), use_theme_, HasTheme() ? label : (fr ? "Sa musique d'entrée" : "His entrance theme"),
            theme_.stream.empty() ? (fr ? "pas de musique à lui trouvée dans son jeu" : "no theme of his found in his game")
-                                 : (fr ? "il faut vgmstream : les Mod Maker Tools de Kaiko, ou vgmstream-cli.exe dans un "
-                                         "dossier vgmstream à côté du Mod Maker"
-                                       : "needs vgmstream: Kaiko's Mod Maker Tools, or vgmstream-cli.exe in a vgmstream "
-                                         "folder beside the Mod Maker"));
+                                 : (fr ? "vgmstream manque : il est livré avec le Mod Maker, dans le dossier vgmstream à côté de lui "
+                                         "(le remettre depuis le zip de la version)"
+                                       : "vgmstream is missing: it comes with the Mod Maker, in the vgmstream folder beside it "
+                                         "(put it back from the release zip)"));
     // (more than one: its profile's and its number's, which may differ: WWE '13 Mankind's profile plays Mick Foley's)
     if (tool && themes_.size() > 1 && use_theme_) {
       ImGui::Indent(24);

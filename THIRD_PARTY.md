@@ -12,6 +12,7 @@ shaders extraits, code généré) n'est incluse dans ce dépôt ni dans ses vers
 | [plume](https://github.com/zolaware/plume) | couche Vulkan / D3D12 du rendu natif | MIT |
 | [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler) | compilation HLSL → DXIL / SPIR-V ; `dxcompiler.dll` et `dxil.dll` livrés à côté de `wwe12_d3d12.exe` (liaison des shaders à l'exécution) | MIT (LLVM : Apache 2.0 avec exception LLVM) |
 | [miniz](https://github.com/richgel999/miniz) | `wwe12_d3d12.exe` : décompression du cache de shaders préliés de re:Blue | domaine public (unlicense) |
+| [vgmstream](https://github.com/vgmstream/vgmstream) | Mod Maker : lecture des musiques des autres jeux ; `vgmstream-cli.exe` et ses DLL, release Windows officielle r2168 non modifiée, livrées dans `vgmstream\` avec son `COPYING` (pas dans le dépôt) | ISC (vgmstream) ; DLL des codecs : FFmpeg et mpg123 LGPL 2.1, Vorbis et Speex BSD, CELT BSD |
 | [libadrenotools](https://github.com/bylaws/libadrenotools) + [liblinkernsbypass](https://github.com/bylaws/liblinkernsbypass) | version Android : chargement d'un pilote Vulkan personnalisé (Turnip) | BSD 2 clauses (Billy Laws) |
 
 Modifications locales appliquées par `setup.ps1` :

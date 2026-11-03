@@ -1512,10 +1512,10 @@ class Page {
     }
     ImGui::EndDisabled();
     if (!tool)
-      ImGui::TextDisabled("%s", fr ? "(il faut vgmstream : les Mod Maker Tools de Kaiko, ou vgmstream-cli.exe dans un dossier "
-                                     "vgmstream à côté du Mod Maker)"
-                                   : "(needs vgmstream: Kaiko's Mod Maker Tools, or vgmstream-cli.exe in a vgmstream folder "
-                                     "beside the Mod Maker)");
+      ImGui::TextDisabled("%s", fr ? "(vgmstream manque : il est livré avec le Mod Maker, dans le dossier vgmstream à côté de lui ; "
+                                     "le remettre depuis le zip de la version)"
+                                   : "(vgmstream is missing: it comes with the Mod Maker, in the vgmstream folder beside it; "
+                                     "put it back from the release zip)");
   }
   fs::path Vgmstream() const { return star_port::Vgmstream(discs_); }
 

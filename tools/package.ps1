@@ -39,6 +39,15 @@ foreach ($exe in "wwe12_d3d12.exe", "wwe12_d3d11.exe") {
 }
 Copy-Item (Join-Path $Build "WWE12 Launcher.exe") $Dist
 Copy-Item (Join-Path $Build "WWE12 Mod Maker.exe") $Dist
+# vgmstream (themes of the other games, ISC licence + its codecs' DLLs, with their notices): the official Windows
+# release, unpacked in tools_local\vgmstream_r* next to the repository (never in git), shipped as vgmstream\ beside
+# the Mod Maker, where it looks (theme_convert.h).
+$Vgm = Get-ChildItem (Join-Path $PSScriptRoot "..\..\tools_local") -Directory -Filter "vgmstream_r*" -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending | Select-Object -First 1
+if (-not $Vgm -or -not (Test-Path (Join-Path $Vgm.FullName "vgmstream-cli.exe"))) {
+    throw "vgmstream introuvable (tools_local\vgmstream_rNNNN, la release officielle Windows 64 bits dézippée)."
+}
+Copy-Item $Vgm.FullName (Join-Path $Dist "vgmstream") -Recurse
 # Jamais de DLL Microsoft : dxcompiler.dll / dxil.dll restent dans le dossier de compilation (outil de dev).
 $NoShip = "Tracy*", "dxcompiler*", "dxil*", "d3dcompiler*", "fxc*"
 Get-ChildItem $Build -Filter *.dll | Where-Object { $n = $_.Name; -not ($NoShip | Where-Object { $n -like $_ }) } |
