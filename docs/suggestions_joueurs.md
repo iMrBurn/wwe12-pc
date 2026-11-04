@@ -84,7 +84,7 @@ Liste du joueur, rangée par la Main. Les numéros de version sont ceux de `docs
 - Spectateurs qui donnent des armes ; monter sur la table des commentateurs : nouvelles animations et collisions, très long.
 
 ## Suggestions du 2026-11-04 (Discord ; rien promis)
-- **Déplacer les matchs de la carte d'une émission** (le jeu l'avait dans des images anciennes) : Univers, à voir avec SCHEDULE (SHOW EDIT > MATCHES). 1.3.
+- ~~Déplacer les matchs de la carte d'une émission~~ : **retiré (correction de l'utilisateur, 2026-11-04)** : le joueur ne demandait pas ça. Il voulait, comme dans SvR 2011, des **catcheurs animés dans l'écran de sélection et dans l'écran VS** : à voir (l'utilisateur n'en a pas trop envie), plutôt Mod Maker / Rendu, avec les conseils de Kaiko sur les écrans VS.
 - **Choisir quelles émissions reçoivent certains PPV** (PPV propres à une marque) : Univers, « HOST SHOW » du calendrier fait peut-être déjà une partie. 1.3.
 - **Importeur de logos** (comme le SvR 2011 recomp : textures importées en logos custom, arènes aussi) : Mod Maker. 1.1 à étudier.
 - **Remplacer Create a Titantron** (utiliser les emplacements pour stocker nos titantrons) : Mod Maker. 1.1 à étudier.
