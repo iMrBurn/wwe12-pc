@@ -1422,3 +1422,29 @@ sinon), pour qui (le catcheur du même nom proposé), terminer.
 - Entrées servies comme celles des mods de catcheurs ; scène de victoire servie à la place de la sienne (6000 + n°,
   trouvée dans Winning0-3/A, entrée BPE comme l'originale : Cena = `Winning0.pac` EVPA/EVZA 6139), sinon ajoutée dans
   Winning0.
+
+## Correctifs du 2026-11-04 (retours de Jay, LA Max, Discord ; commits locaux, pour la 1.1)
+
+- **2e tenue au format WWE '12** (Jay n°3) : un `.pac` de WWE '12 (un DLC, un mod) choisi comme « autre jeu » dans
+  SUPERSTARS est pris tel quel (`port_svr::PortAttire`), au lieu de « already in WWE '12's layout ». Pas vu en jeu.
+- **Tenue d'entrée 2K16 / 2K17** (Jay n°7) : leurs tenues portent toutes le même nom (« 0003 ») ; NEW SUPERSTAR propose
+  « Sa tenue d'entrée (de son fichier) » : le joueur choisit laquelle (Rollins 2K16 : tenue 1, entrée tenue 2). Vu en
+  jeu. Aide : section « Tenues d'entrée » de la page HELP.
+- **Visage de loin** (Jay n°1) : les images 2K16 (couleur, relief) n'avaient que 3-4 niveaux de mip ; le portage
+  WWE '13 / 2K refait les niveaux manquants (`port13_star::FullMipChains`). Vu en jeu (Rollins).
+- **Vidéos d'entrée** : encodeur Bink au débit des vidéos du jeu (≤ ~24 Ko par image en moyenne, ≤ 100 Ko par image) ;
+  ruban et mur ≥ 180 images et ≤ 1,8 Mo ; musiques converties en 48 kHz. Le jeu laisse de côté une vidéo hors normes.
+- **Gel avant l'entrée avec une arène ajoutée** (LA Max, Jay n°5) : la copie de `evtmov.pac` de l'arène ajoutée
+  masquait les rubans / murs des catcheurs ajoutés (lus après sa fin : attente sans fin). Ils sont maintenant ajoutés à
+  cette copie. Vu en jeu (Rollins 2K16 dans NXT 2K14 sur Fatal 4-Way).
+- **Entrée sautée** après un gel ou une fermeture sans sauvegarde : `moves_applied.txt` garde aussi ce que la copie
+  de la sauvegarde contenait avant (« n°=empreinte:avant ») ; retrouvée inchangée, elle est refaite. Vu en jeu.
+- **Beaucoup de catcheurs ajoutés** (LA Max) : les tas 12 et 15 du jeu agrandis au démarrage (`wwe12_heap_grow`,
+  défaut « 12:16384,15:4096 », `wwe12_heap_probe.cpp`, qui note aussi tout manque de place). 50 TEST STAR : match joué ;
+  55 (dont 5 vrais modèles) : démarrage OK, match pas encore testé.
+- **Écran des arènes** : « LB PAGE 1 / 2 RB » (L1 / R1 avec une manette PlayStation), le rappel des arènes ajoutées sur
+  la page du jeu, et le nom de l'arène ajoutée sous le curseur (d'après Kaiko, MIT). Vu en jeu.
+- **Goldberg 2K17** : son script s'appelle « 0361_Golberg » ; la recherche d'entrée par nom accepte une lettre d'écart.
+  Ses 7 agents de sécurité (personne 19202) ne peuvent pas être placés par WWE '12 : NEW SUPERSTAR le dit. Pas vu en jeu.
+- Pour plus tard (1.2) : personnes des entrées 2K visibles, écrans VS et plaques exacts des arènes portées, vidéos de
+  l'arène NXT 2K14 sur les bons écrans, au-delà de 55 catcheurs.
