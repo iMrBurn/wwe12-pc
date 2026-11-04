@@ -112,6 +112,22 @@ vers -85 / -105 tout du long. À revoir : le sens du demi-tour pour les position
 victime ? ne pas inverser le déplacement ?), puis le gel (sans doute les événements YAT2 du modèle, réglés pour sa
 durée et ses positions, ou la fin de prise jamais atteinte).
 
+### Ce qu'on a vu ensuite (2026-11-04, hors jeu)
+
+- **Notre correction de racine est la même que celle de Kaiko** (`moves_port.py` FACING_GAP / `w13_retarget.facing_frame` :
+  l'attaquant de WWE '12 est rangé tourné d'un demi-tour et 1 500 unités (150 cm) plus loin en -z ; la victime telle
+  quelle). Le sens n'est donc pas en cause.
+- **Les grands déplacements sont normaux** : Attitude Adjustment 1 de WWE '12, attaquant -150 → +221 en z (3,7 m),
+  victime 0 → 214. Le modèle Swing Neckbreaker 1 bouge peu, mais ce n'est pas une règle.
+- **Le vrai souci de Side Effect** : dans SvR 2011, l'attaquant (5233 y0) va de z -20 à -317 cm et la victime reste
+  vers 0 / +17 : avec la même mise en place, ils finissent ~1,3 m l'un de l'autre au sol. Sur d'autres prises SvR, les
+  sens de déplacement de l'attaquant et de la victime varient d'une prise à l'autre (Mule Kick 2 : les deux en +z
+  dans leurs repères ; Attitude Adjustment 1 : opposés). Kaiko, pour aller vers SvR 2011, tourne les deux catcheurs
+  vers « le cap du modèle » (`heading_turn`, `template_travel`) : la direction du déplacement dépend sans doute de la
+  prise (fiche WAZE ou événements), pas d'une règle fixe. Piste suivante : chercher ce qui oriente la paire dans SvR
+  2011 (Kaiko, `SVR2011_TEST_POS_LOG`), et choisir un modèle WWE '12 dont le déplacement ressemble à la prise.
+- Outils : `travel` (déplacement des racines des 782 prises communes), `svrroot` (racines d'une prise SvR).
+
 ## Méthode prévue (celle de Kaiko, à l'envers)
 
 Kaiko (`Mod Maker Tools\moves_port.py`, `svr10_moves.py`) porte des prises vers SvR 2011 : une prise « modèle » du
