@@ -11,6 +11,7 @@
 //    40000-40040): the model, its pictures (10) and colour and masks (12-14) are WWE '13's.
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <map>
@@ -21,6 +22,7 @@
 #include "port_svr.h"
 #include "svrfmt/archive.h"
 #include "svrfmt/jboy.h"
+#include "svrfmt/texture.h"
 
 namespace port13_star {
 
@@ -266,6 +268,47 @@ inline Bytes DropChains(const Bytes &text, const std::set<std::string> &chains) 
   return Bytes(out.begin(), out.end());
 }
 
+// A texture bundle's pictures with a short mip chain given the rest of it, down to 1 x 1 (the levels it has kept as they
+// are; the missing ones made from its top picture). WWE 2K16's colour and normal pictures have 4 levels (3 once
+// halved); the game's have them all (Ted DiBiase's colour 2048 x 1024: 12): seen from afar, a ported superstar's face
+// was pixelated and not his own (Jay's report, Seth Rollins from 2K16, 2026-11-04). Empty when nothing changed.
+inline Bytes FullMipChains(const Bytes &bundle) {
+  std::vector<svrfmt::BundleTexture> tex;
+  if (!svrfmt::BundleRead(bundle, tex))
+    return {};
+  bool changed = false;
+  for (auto &x : tex) {
+    svrfmt::DdsInfo info;
+    if (!svrfmt::DdsInfoOf(x.data, info) || info.mips <= 1 || info.w < 8 || info.h < 8 ||
+        (info.format != svrfmt::DxtFormat::kDxt1 && info.format != svrfmt::DxtFormat::kDxt3 &&
+         info.format != svrfmt::DxtFormat::kDxt5))
+      continue;
+    int full = 1;
+    for (int m = std::max(info.w, info.h); m > 1; m >>= 1)
+      ++full;
+    if (info.mips >= full)
+      continue;
+    const size_t block = info.format == svrfmt::DxtFormat::kDxt1 ? 8 : 16;
+    size_t at = 128;
+    for (int l = 0; l < info.mips; ++l)
+      at += size_t(std::max(1, ((info.w >> l) + 3) / 4)) * size_t(std::max(1, ((info.h >> l) + 3) / 4)) * block;
+    svrfmt::Image top;
+    if (at > x.data.size() || !svrfmt::DdsDecode(x.data, top))
+      continue;
+    const int nw = std::max(1, info.w >> info.mips), nh = std::max(1, info.h >> info.mips);
+    const Bytes rest = svrfmt::DdsEncode(svrfmt::Resize(top, std::max(4, nw), std::max(4, nh)), info.format, true);
+    svrfmt::DdsInfo ri;
+    if (rest.size() <= 128 || !svrfmt::DdsInfoOf(rest, ri))
+      continue;
+    Bytes out(x.data.begin(), x.data.begin() + ptrdiff_t(at));
+    out.insert(out.end(), rest.begin() + 128, rest.end());
+    svrfmt::PutLe32(&out[28], uint32_t(info.mips + ri.mips));
+    x.data = std::move(out);
+    changed = true;
+  }
+  return changed ? svrfmt::BundleWrite(tex) : Bytes();
+}
+
 // The WWE '13 attire (an "EMD " entry of its chNNN.pac) over the base's (WWE '12): the base attire node changed in
 // place. False (and why) when it can't.
 inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep, std::string *why) {
@@ -368,8 +411,10 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
   // Its pictures, colour and masks (all three: the base's Mask3 fits the base's colour picture).
   for (uint32_t id : {10u, 12u, 13u, 14u, 15u}) {
     svrfmt::ArcNode *s = child(w13, id), *b = child(base, id);
-    if (s && b)
-      svrfmt::ArchiveReplace(*b, svrfmt::ArchiveData(*s));
+    if (!s || !b)
+      continue;
+    const Bytes pics = svrfmt::Unpack(svrfmt::ArchiveData(*s)), full = FullMipChains(pics);
+    svrfmt::ArchiveReplace(*b, full.empty() ? svrfmt::ArchiveData(*s) : full);
   }
   // A Mask3 (15) the other game hasn't: the base's would be on the wrong picture: left out (WWE 2K17's AJ Styles has
   // none and looks right).
