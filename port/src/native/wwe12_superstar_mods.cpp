@@ -1042,8 +1042,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       g_mod_movies[st.key] = uint32_t(st.movie_number);
       std::error_code e1;
       for (const auto &[kind, file] : {std::pair<uint32_t, const char *>{1, "ribbon.bik"}, {2, "wall.bik"}})
-        if (fs::exists(star_dirs[st.key] / file, e1))
-          g_own_screens.insert({kind, uint32_t(st.movie_number)});
+        if (fs::exists(star_dirs[st.key] / file, e1) && fs::file_size(star_dirs[st.key] / file, e1) <= 1810000)
+          g_own_screens.insert({kind, uint32_t(st.movie_number)});  // (over 1.8 MB: left out, wwe12_arena_pages.cpp)
     }
     if (!st.theme.empty())
       g_themes.push_back({uint32_t(superstar_pack::detail::MusicNumber(st)), st.name});

@@ -115,12 +115,32 @@ inline bool Decode(const fs::path &vgmstream, const Bytes &in_bytes, const std::
   return !samples.empty();
 }
 
+// WWE '12's themes are all 48 kHz; a 2K16 one at 32 kHz (Seth Rollins', Play_MUS_0369) froze the loading before
+// his entrance (2026-11-04). Any other rate made 48 kHz (linear resampling).
+inline void To48k(std::vector<int16_t> &s, int channels, int &rate) {
+  if (rate == 48000 || rate <= 0 || channels <= 0 || s.empty())
+    return;
+  const size_t n = s.size() / size_t(channels), m = size_t(double(n) * 48000.0 / rate);
+  std::vector<int16_t> out(m * size_t(channels));
+  for (size_t i = 0; i < m; ++i) {
+    const double at = double(i) * rate / 48000.0;
+    const size_t a = std::min(size_t(at), n - 1), b = std::min(a + 1, n - 1);
+    const double f = at - double(a);
+    for (int c = 0; c < channels; ++c)
+      out[i * size_t(channels) + size_t(c)] =
+          int16_t(std::lround(s[a * size_t(channels) + size_t(c)] * (1 - f) + s[b * size_t(channels) + size_t(c)] * f));
+  }
+  s.swap(out);
+  rate = 48000;
+}
+
 // A stream decoded by vgmstream and written as Wwise PCM. Empty if it can't.
 inline Bytes ToPcm(const fs::path &vgmstream, const Bytes &wem, const std::wstring &ext = L".wem") {
   std::vector<int16_t> s;
   int channels = 0, rate = 0;
   if (!Decode(vgmstream, wem, ext, s, channels, rate))
     return {};
+  To48k(s, channels, rate);
   return wwise::PcmStream(s.data(), s.size() / size_t(channels), channels, rate);
 }
 
@@ -154,6 +174,7 @@ inline Bytes ToPcmWithIntro(const fs::path &vgmstream, const Bytes &wem, const s
     }
   }
   out.insert(out.end(), s.begin(), s.end());
+  To48k(out, channels, rate);
   return wwise::PcmStream(out.data(), out.size() / size_t(channels), channels, rate);
 }
 
