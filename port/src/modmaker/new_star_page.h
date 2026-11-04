@@ -377,6 +377,34 @@ class Page {
                                       : "With its entrance outfit (jacket, hat...), if it has one",
                                    &entrance_outfit_))
           PortSvr(fr);
+        // (names that don't tell an attire from an entrance outfit: 2K16's "0003", 2K17's "2K17")
+        if (w13 && entrance_outfit_ && svr_attires_.size() > 1 && svr_attires_[0].size() != 8) {
+          if (entrance_pick_ >= int(svr_attires_.size()) || entrance_pick_ == svr_attire_)
+            entrance_pick_ = -1;
+          std::string none = fr ? "Aucune" : "None", cur = none;
+          if (entrance_pick_ >= 0)
+            cur = (fr ? "Tenue " : "Attire ") + std::to_string(entrance_pick_ + 1);
+          ImGui::SetNextItemWidth(260);
+          if (ImGui::BeginCombo(fr ? "Sa tenue d'entrée (de son fichier)" : "Its entrance outfit (from its file)",
+                                cur.c_str())) {
+            if (ImGui::Selectable(none.c_str(), entrance_pick_ < 0) && entrance_pick_ >= 0) {
+              entrance_pick_ = -1;
+              PortSvr(fr);
+            }
+            for (int i = 0; i < int(svr_attires_.size()); ++i) {
+              if (i == svr_attire_)
+                continue;
+              const std::string l = (fr ? "Tenue " : "Attire ") + std::to_string(i + 1);
+              if (ImGui::Selectable(l.c_str(), i == entrance_pick_) && i != entrance_pick_) {
+                entrance_pick_ = i;
+                PortSvr(fr);
+              }
+            }
+            ImGui::EndCombo();
+          }
+          ImGui::TextDisabled(fr ? "(son jeu ne dit pas laquelle : regardez-les en 3D ; elle sera portée pendant l'entrée seulement)"
+                                 : "(its game doesn't tell which: look at them in 3D; worn during the entrance only)");
+        }
         if (w13 && svr_attires_.size() > 1 &&
             ImGui::Checkbox(fr ? "Toutes ses tenues (4 au plus, à choisir en jeu : ADVANCED à l'écran de choix)"
                                : "All its attires (4 at most, chosen in the game: ADVANCED on the select screen)",
@@ -1296,6 +1324,7 @@ class Page {
     SetSvrMovie({});
     svr_attires_.clear();
     svr_attire_ = 0;
+    entrance_pick_ = -1;
     std::string why;
     if (!IsSuperstarFile(svr_file_, &svr_attires_, &why, true)) {
       svr_attires_.clear();
@@ -1779,6 +1808,15 @@ class Page {
     if (look_ == 3 && entrance_outfit_ &&
         !port13_star::AddEntranceOutfit(s, size_t(svr_attire_), base_file_, 0, w, &has_outfit, &outfit_why))
       has_outfit = false;
+    // (2K16 / 2K17: the one the player picked)
+    if (look_ == 3 && entrance_outfit_ && !has_outfit && entrance_pick_ >= 0 && entrance_pick_ != svr_attire_ &&
+        size_t(entrance_pick_) < s.root.kids.size() && w.root.kids[0].name.size() == 8) {
+      std::string to = w.root.kids[0].name;
+      to[7] = '4';
+      has_outfit = true;
+      if (!port13_star::AddPortedAttire(s.root.kids[size_t(entrance_pick_)], base_file_, 0, w, to, &outfit_why))
+        outfit_why = outfit_why.empty() ? "can't be ported" : outfit_why;
+    }
     // Its other WWE '13 attires (up to 4 in all), each with its entrance outfit: "000BBB12", "000BBB22"...
     int attires = 1;
     if (look_ == 3 && all_attires_) {
@@ -2296,6 +2334,9 @@ class Page {
   int ratings_from_ = -1;                 // the superstar (game x 1000 + number) OwnRatings took them from last
   std::vector<int> attributes_, base_attributes_;  // the 12 (0-100), STRIKE POWER .. TAG TEAM
   bool entrance_outfit_ = true;
+  // (2K16 / 2K17: its file's attires are all named alike, "0003": which one is its entrance outfit, if any, chosen by
+  // the player; Jay's report 2026-11-03, Rollins / Ambrose's listed as one more attire) -1: none
+  int entrance_pick_ = -1;
   bool all_attires_ = true;  // its other WWE '13 attires too (up to 4)  // its WWE '13 entrance outfit too (kind 4), when its attire has one
   bool own_size_ = false, own_abilities_ = false;  // its own size / abilities (else the base's)
   int size_ = 4096, base_size_[2] = {0, 0};          // record +0x28 (+0x2A: the base's ratio kept), 4096 = 1.0

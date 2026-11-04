@@ -1149,8 +1149,19 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
   std::string e;
   if (!svrfmt::JboyRead(svrfmt::ArchiveData(*sm), ms, &e) || !svrfmt::JboyRead(svrfmt::ArchiveData(*bm), mb, &e))
     return fail("unreadable model: " + e);
-  if (ms.w12)
-    return fail("the SvR model is already in WWE '12's layout");
+  // a WWE '12 superstar's attire (another mod's, a modded pac): nothing to convert, taken as it is in the base's
+  // place (it was refused, Jay's report 2026-11-03)
+  if (ms.w12) {
+    const std::string name = base.name, group = base.group;
+    const uint32_t id = base.id;
+    const int gi = base.gi;
+    base = svr;
+    base.name = name, base.group = group, base.id = id, base.gi = gi;
+    svrfmt::ArchiveTouchAll(base);
+    rep->meshes = int(ms.meshes.size());
+    rep->notes.push_back("already a WWE '12 attire: taken as it is");
+    return true;
+  }
   Turns turns;  // (the body's, for its other models)
   if (!ConvertModel(ms, mb, mo, rep, false, nullptr, &turns))
     return fail("the model can't be converted");
