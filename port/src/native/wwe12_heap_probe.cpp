@@ -83,7 +83,8 @@ extern "C" REX_FUNC(sub_827D2548) {
 extern "C" REX_FUNC(sub_827D3600) {
   const uint32_t size = ctx.r3.u32, arg = ctx.r4.u32, caller = uint32_t(ctx.lr);
   __imp__sub_827D3600(ctx, base);
-  if (ctx.r3.u32 == 0 && size && REXCVAR_GET(wwe12_heap_probe))
+  // (its own inner tries, from 827D37DC inside it, fail in every match, the game's too, and are taken care of by it)
+  if (ctx.r3.u32 == 0 && size && REXCVAR_GET(wwe12_heap_probe) && !(caller >= 0x827D3600 && caller < 0x827D3900))
     LogFailure(ctx, base, 2, size, arg, caller);
 }
 
