@@ -82,3 +82,17 @@ Liste du joueur, rangée par la Main. Les numéros de version sont ceux de `docs
 - Nouveaux types de match : 2 contre 2 contre 2 (SvR 2008), Tornado Tag à 6 (et variantes Elimination, Hardcore Triple Threat, 2 contre 2 Table / Extreme Rules, 2 contre 3), Slobber Knocker, 3 Stages of Hell, Gauntlet (menu pour le nombre d'adversaires), Beat the Clock Sprint, King of the Ring. Vraies règles à écrire ; les Tornado Tag et le 3 équipes demandent plus de 4 catcheurs actifs (lié à « plus de 6 superstars »). Règles du genre « 2 sur 3 Last Man Standing en Hell in a Cell / Inferno » : Match Creator.
 - Changer de catcheur pendant un match ; recommencer un match entre deux : logique des équipes et caméra.
 - Spectateurs qui donnent des armes ; monter sur la table des commentateurs : nouvelles animations et collisions, très long.
+
+## Suggestions du 2026-11-04 (Discord ; rien promis)
+- **Déplacer les matchs de la carte d'une émission** (le jeu l'avait dans des images anciennes) : Univers, à voir avec SCHEDULE (SHOW EDIT > MATCHES). 1.3.
+- **Choisir quelles émissions reçoivent certains PPV** (PPV propres à une marque) : Univers, « HOST SHOW » du calendrier fait peut-être déjà une partie. 1.3.
+- **Importeur de logos** (comme le SvR 2011 recomp : textures importées en logos custom, arènes aussi) : Mod Maker. 1.1 à étudier.
+- **Remplacer Create a Titantron** (utiliser les emplacements pour stocker nos titantrons) : Mod Maker. 1.1 à étudier.
+- **Choisir la musique de victoire d'un catcheur** (Cena, Ryder, Triple H ont une musique de victoire séparée, plus courte ; page « VICTORY MUSIC : DEFAULT » dans Create an Entrance) : déjà dans la liste 1.1 (musique de victoire du Mod Maker).
+
+## Bugs remontés le 2026-11-04 (Discord / GitHub, après la 1.0)
+- **Mod Maker** (Jay, 8 bugs + Shawn Michaels DLC absent de SUPERSTARS ; Max Matus : image de mur à la place du minitron) : session Mods. Captures de Jay : `Downloads\Jay screens`.
+- **Tenues custom toutes blanches après la 1.0** (Nothing) : Rendu, possible régression, candidat 1.0.1 si reproductible.
+- **Intel HD 4000, D3D11 à 25 images/s** (Fac7) ; **GT 430, peaux cassées en D3D11** (#55, correction de Kaiko pour SvR 2011 à regarder) ; **chutes d'images aux changements de caméra** (#53) : Rendu.
+- **Ceinture qui traverse les CAW** (Wes Smoove) : bug d'origine, Mods / Gameplay (le « belt fit » des catcheurs ajoutés peut aider).
+- **Android** : #54 (Moto G100, DEVICE_LOST avec Turnip), #41 (Poco X3 Pro, nouveaux journaux) : session Android.
