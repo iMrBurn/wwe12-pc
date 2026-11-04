@@ -1157,7 +1157,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     const int gi = base.gi;
     base = svr;
     base.name = name, base.group = group, base.id = id, base.gi = gi;
-    svrfmt::ArchiveTouchAll(base);
+    svrfmt::ArchiveTouch(base);  // (its children keep their bytes: marking them all, unparsed ones too, crashed the save)
     rep->meshes = int(ms.meshes.size());
     rep->notes.push_back("already a WWE '12 attire: taken as it is");
     return true;
