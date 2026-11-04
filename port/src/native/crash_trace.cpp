@@ -319,8 +319,17 @@ DWORD WINAPI SamplerThread(LPVOID param) {
 std::atomic<ULONGLONG> g_heartbeat_ms{0};  // last presented frame, 0 = none yet
 
 DWORD WINAPI WatchdogThread(LPVOID) {
+  char trigger[MAX_PATH * 2];
+  LogPath(trigger, sizeof(trigger), "dump_stacks_now.txt");
   for (;;) {
     Sleep(1000);
+    // (a load that hangs while frames are still presented: logs\dump_stacks_now.txt created by hand -> the stacks of
+    // all threads now, in hang_trace.txt, and the file removed)
+    if (GetFileAttributesA(trigger) != INVALID_FILE_ATTRIBUTES) {
+      DeleteFileA(trigger);
+      DumpAllThreads();
+      continue;
+    }
     const ULONGLONG last = g_heartbeat_ms.load(std::memory_order_relaxed);
     if (last && GetTickCount64() - last > 10000) {
       DumpAllThreads();

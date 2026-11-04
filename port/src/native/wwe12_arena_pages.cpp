@@ -280,8 +280,12 @@ bool ServeMovies(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, 
     fs::remove_all(movies_root, ec);
     return false;
   }
-  // The game's evtmov.pac: the mods folder's, else the disc's.
-  const fs::path host_base = mods / "pac" / "evt" / "evtmov.pac";
+  // The game's evtmov.pac as served before us: the added superstars' (their own ribbons and walls appended,
+  // MountEntrances, which runs first: this copy is served over it, so it must hold them too; built from the disc's
+  // alone, it answered their place past its end and the loading before such a superstar's entrance waited forever,
+  // Seth Rollins with the RAW (SvR 2007) arena added, 2026-11-04), else the mods folder's, else the disc's.
+  const fs::path entrance_base = movies_root.parent_path() / "entrance_slots" / "pac" / "evt" / "evtmov.pac";
+  const fs::path host_base = fs::exists(entrance_base, ec) ? entrance_base : mods / "pac" / "evt" / "evtmov.pac";
   rex::filesystem::File *file = nullptr;
   uint64_t base_size = 0;
   if (fs::exists(host_base, ec)) {
@@ -295,6 +299,17 @@ bool ServeMovies(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, 
   // Where each video goes, and the key.
   uint64_t end = (base_size + 0x7FF) & ~uint64_t(0x7FF);
   std::string key = std::to_string(base_size);
+  if (!file) {  // (a host copy: its last 16 MB in the key too, where the added superstars' ribbons and walls are)
+    std::ifstream in(host_base, std::ios::binary);
+    const uint64_t from = base_size > (16u << 20) ? base_size - (16u << 20) : 0;
+    in.seekg(std::streamoff(from));
+    std::vector<char> tail(size_t(base_size - from));
+    in.read(tail.data(), std::streamsize(tail.size()));
+    uint64_t h = 1469598103934665603ull;
+    for (char c : tail)
+      h = (h ^ uint8_t(c)) * 1099511628211ull;
+    key += "/" + std::to_string(h) + (host_base == entrance_base ? "e" : "m");
+  }
   for (auto &a : g_added) {
     if (a.movie.empty())
       continue;
