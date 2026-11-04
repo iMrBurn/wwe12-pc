@@ -142,6 +142,11 @@ keybind_back = "Tab,Backspace"
 # Advanced (leave as is)
 # ---------------------------------------------------------------------------------------------
 
+# Extra memory for the game's internal heaps, "heap:KB,heap:KB" (the default adds 16 MB to heap 12 and 4 MB
+# to heap 15). It leaves room for many added superstars (Mod Maker); without it a match with about 50 of them
+# can run out of memory while loading. Empty = the game's own sizes. Leave as is unless you know why.
+wwe12_heap_grow = "12:16384,15:4096"
+
 # Milliseconds of loading per loading-screen frame (the original game: 0 to 1, paced for the DVD
 # drive). 12 loads matches about twice as fast; 0 keeps the original pace.
 wwe12_load_slice_ms = 12
