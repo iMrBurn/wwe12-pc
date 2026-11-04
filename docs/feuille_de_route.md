@@ -153,6 +153,10 @@ Règle : **aucune nouveauté**. On part de la 1.0.0 (tag v1.0.0 = 5d42801) et on
 |---|---|---|
 | Univers : plantage avec 5 matchs RAW/SmackDown (+ qualifications) | fait, testé en jeu, poussé (52cbdeb) | cause : modèle de match absent pour le 5e match après certains PPV ; docs/univers.md §39 |
 | D3D12 : catcheurs transparents sur Intel UHD 620 (#7) : profondeur remise dans l'ordre | fait (fe20ea4, local), vérifié sur RTX 5070 ; **à confirmer par le joueur de #7** (build de test envoyée) | réglages `svr_d3d12_depth_flip` (true) et `svr_d3d12_depth32` (false, 2e piste) ; les shaders changent : refaire `tools/gen_shaders.ps1` |
+| Tenues Superstar Threads abîmées / toutes blanches sur petits PC (Discord, Nothing) : correctif de Kaiko adapté (commit d8de438 de son SvR 2011) | go de l'utilisateur 2026-11-04, Rendu à reproduire puis corriger | **à créditer Kaiko dans le code, la doc et les notes** ; le jeu cuit la tenue couche par couche, notre cache ne relit la texture qu'une fois par image |
+| GT 430, peaux cassées en D3D11 (#55) : correctif de Kaiko « old NVIDIA cards » | go 2026-11-04 : récupérer son dépôt à jour et vérifier | 1.0.1 si petit et clair, sinon 1.1 ; crédit Kaiko |
+| Mod Maker : un .pac de WWE '12 en 2e tenue refusé (« Can't port it », Jay n°3) | prêt à faire (Mods, correctif court et sûr), attend le go | aussi à vérifier hors jeu : visages pixélisés de loin (n°1), tenues d'entrée 2K16 (n°7), base « Fatal 4 Way » pour les arènes 2K14 (n°5) ; le tron sans minitron (Max Matus) si c'est un mauvais nom servi |
+| Mesure « temps CPU par image » sur Windows (diagnostic seul) | proposé par Rendu, attend le go | aucun effet sur le rendu |
 | Bugs de la 1.0 signalés d'ici là | à venir | GitHub / Discord |
 
 Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 2007, squash, finishers, I Quit / Special Referee, scènes de victoire, vidéos WWE '13, deux mallettes MITB, icônes de touches, chargements / jeu plus natif, bugs du jeu d'origine à tester (tenues de The Miz verrouillées, etc.).
