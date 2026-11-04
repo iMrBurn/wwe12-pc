@@ -247,7 +247,12 @@ void D3DDevice_SetVertexDeclaration_hook(u32 /*device*/, u32 decl_guest) {
 
 void D3DDevice_SetTexture_hook(u32 /*device*/, u32 sampler, u32 texture_guest) {
 #if defined(SVR_NATIVE_RENDERER)
-  auto *tex = bd::gpu::SvrResolveTexture(texture_guest);
+  // A 2:1 work target of 1024 or more (attire composites: 1024x512, 2080x1024 in SvR 2011) is
+  // where custom attires are baked: its textures are checked at every bind.
+  const auto *rt = bd::gpu::state().render_target;
+  const bool attire_bake = rt && rt->width >= 1024 && rt->height * 2 <= rt->width + 64 &&
+                           rt->height * 2 + 64 >= rt->width;
+  auto *tex = bd::gpu::SvrResolveTexture(texture_guest, attire_bake);
 #else
   auto *tex = bd::gpu::ResolveGuestTexture(texture_guest);
 #endif

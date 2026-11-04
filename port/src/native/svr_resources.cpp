@@ -60,6 +60,9 @@ REXCVAR_DEFINE_INT32(svr_readback_streak, 32, "SvR",
                      "(was 6: Superstar Threads attires redrawn over more frames came out with "
                      "white patches, as in Jarrod's WWE 2K14 recomp, which went from 4 to 32).")
     .range(1, 1000);
+REXCVAR_DEFINE_BOOL(svr_attire_bake_check, true, "SvR",
+                    "Draws into an attire composite check their textures at every use, not once "
+                    "a frame (Superstar Threads attires damaged / white on slow PCs; Kaiko's fix).");
 REXCVAR_DEFINE_BOOL(svr_rebuild_target_mips, true, "SvR",
                     "Rebuild the smaller mip levels of GPU-painted textures (wrestler skins: eyes, "
                     "teeth, blood) from their first level after each update.");
@@ -1198,7 +1201,13 @@ u64 SvrFrameIndex() { return g_frame.load(std::memory_order_relaxed); }
 // reloading into reused memory), so a mirror is checked against its source once per frame it's
 // used and rebuilt when the fetch constant or the bytes changed. A texture that can't be mirrored
 // is remembered the same way, so it isn't retried (or logged) until it changes.
-GuestTexture *SvrResolveTexture(u32 texture_va) {
+//
+// Custom attires (Superstar Threads): the game bakes one part after the other into a 2:1 work
+// target, each part's paint layer written by the CPU at the same address. On a slow PC several
+// parts land in one frame, and a once-a-frame check drew every one with the first one's layer
+// (damaged / white attires on a GeForce 940MX with few cores). Draws into such a target check
+// their textures in full at every bind. Kaiko's fix for his SvR 2011 port (commit d8de438), adapted.
+GuestTexture *SvrResolveTexture(u32 texture_va, bool check_every_use) {
   WWE12_CPU_ZONE(kTextures);
   if (!texture_va)
     return nullptr;
@@ -1209,13 +1218,35 @@ GuestTexture *SvrResolveTexture(u32 texture_va) {
     it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
     return it->second.host;
   }
+  check_every_use = check_every_use && REXCVAR_GET(svr_attire_bake_check);
   MirrorCheck &check = g_mirror_checks[texture_va];
-  if (check.frame == frame)
+  const bool same_frame = check.frame == frame;
+  if (same_frame && !check_every_use)
     return check.host;
   NativeMirrorSource src;
   if (!GetNativeMirrorSource(texture_va, src)) {
     check.frame = frame;
     return check.host = nullptr;
+  }
+  if (check_every_use) {
+    const u64 hash = HashSource(src);
+    const bool changed = check.frame == 0 || check.hash != hash;
+    static u32 s_logged = 0;
+    if (s_logged < 64) {
+      ++s_logged;
+      BD_INFO("[svr] attire bake: texture 0x{:08X} {} bytes {} (frame {}{})", texture_va,
+              src.base_size + src.mips_size, changed ? "changed" : "same", frame,
+              same_frame ? ", checked again in it" : "");
+    }
+    if (changed) {
+      check.host = GetOrCreateNativeMirror(texture_va, 0);
+      g_mirror_builds.fetch_add(1, std::memory_order_relaxed);
+    }
+    check.hash = hash;
+    check.frame = frame;
+    check.sample = src.base_size + src.mips_size >= kSampledHashMin ? SampleHash(src) : 0;
+    check.full_frame = frame;
+    return check.host;
   }
   u64 sample = 0;
   if (src.base_size + src.mips_size >= kSampledHashMin) {

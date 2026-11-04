@@ -41,7 +41,9 @@ void SvrNoteSceneDraw();
 // composites back with the CPU to compress them). Per-frame targets stop after a few.
 void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face);
 // Guest texture bound for sampling -> host texture (a resolve target, else a mirror).
-GuestTexture *SvrResolveTexture(u32 texture_va);
+// check_every_use: bound for a draw into an attire composite (2:1 work target), where the game
+// rewrites a paint layer at the same address several times in one frame: checked in full each time.
+GuestTexture *SvrResolveTexture(u32 texture_va, bool check_every_use = false);
 // Called once per presented frame (mirror checks are per frame).
 void SvrOnFrame();
 
