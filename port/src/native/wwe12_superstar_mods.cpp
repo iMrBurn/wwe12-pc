@@ -91,6 +91,10 @@ std::set<uint32_t> g_moves_mods, g_moves_restore;
 // him), or when it is still the game's own record (a moves mod's superstar in a save made before the mod).
 fs::path g_applied_file;
 std::map<uint32_t, uint64_t> g_applied;
+// (and what the save's copy held before it was made: "<number>=<hash>:<before>". Found again unchanged, the game
+// wasn't saved since (closed or frozen before): made again. Taken for an edit made in the game, Seth Rollins' stale
+// copy had no entrance, and the game skipped it, 2026-11-04)
+std::map<uint32_t, uint64_t> g_applied_before;
 std::map<uint32_t, Bytes> g_originals;  // a moves mod's superstar -> the game's record, as the save keeps it
 
 void WriteAppliedFile() {
@@ -645,10 +649,15 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     WriteMovesFile();
     g_applied_file = user_root / "moves_applied.txt";
     g_applied.clear();
+    g_applied_before.clear();
     std::ifstream a(g_applied_file);
     for (std::string line; std::getline(a, line);)
-      if (const size_t eq = line.find('='); eq != std::string::npos)
-        g_applied[uint32_t(atoi(line.c_str()))] = std::strtoull(line.c_str() + eq + 1, nullptr, 10);
+      if (const size_t eq = line.find('='); eq != std::string::npos) {
+        const uint32_t id = uint32_t(atoi(line.c_str()));
+        g_applied[id] = std::strtoull(line.c_str() + eq + 1, nullptr, 10);
+        if (const size_t colon = line.find(':', eq); colon != std::string::npos)
+          g_applied_before[id] = std::strtoull(line.c_str() + colon + 1, nullptr, 10);
+      }
   }
   // The attire mods (type=attire with attire/attire.pac; older ones, a whole file, go through the mods folder).
   std::vector<superstar_pack::Attire> attires;
@@ -1578,6 +1587,10 @@ extern "C" REX_FUNC(sub_828ADFB8) {
     if (same)
       continue;
     const uint64_t h = Fnv(mv, 0xCBF29CE484222325ull);
+    Bytes now(1068);
+    for (uint32_t k = 0; k < 1068; ++k)
+      now[k] = bd::mem::load<uint8_t>(at + k);
+    const uint64_t now_h = Fnv(now, 0xCBF29CE484222325ull);
     if (!g_moves_restore.count(id)) {
       const auto applied = g_applied.find(id);
       bool foreign = false;
@@ -1589,16 +1602,23 @@ extern "C" REX_FUNC(sub_828ADFB8) {
         for (uint32_t k = 0; k < 1068 && original; ++k)
           original = bd::mem::load<uint8_t>(at + k) == o->second[k];
       }
-      if (applied != g_applied.end() && applied->second == h && !foreign && !original)
+      const auto before = g_applied_before.find(id);
+      const bool unsaved = before != g_applied_before.end() && before->second == now_h;
+      if (applied != g_applied.end() && applied->second == h && !foreign && !original && !unsaved)
         continue;  // (the mod's, edited in the game since: kept)
     }
     for (uint32_t k = 0; k < 1068; ++k)
       bd::mem::store<uint8_t>(at + k, mv[k]);
     REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its moves and entrance made again", id);
-    if (g_moves_restore.count(id))
+    if (g_moves_restore.count(id)) {
       g_applied.erase(id);
-    else
+      g_applied_before.erase(id);
+    } else {
+      // (what it held before: kept from the first time while the game hasn't saved since)
+      if (!(g_applied_before.count(id) && g_applied_before[id] == now_h))
+        g_applied_before[id] = now_h;
       g_applied[id] = h;
+    }
     WriteAppliedFile();
   }
   for (uint32_t id : restored) {
