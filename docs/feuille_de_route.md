@@ -20,12 +20,25 @@ Voir le tableau de `docs/feuille_de_route.md` (section « 1.0.1 »).
 
 ## 2. Prochaines versions (un thème chacune)
 
-### 1.1 : « Mod Maker et entrées » (déjà bien avancé)
-- Mod Maker : prises, entrées et musiques de SvR 2007-2011 et WWE '13 (fait en grande partie, en commits locaux).
+### 1.1 : « Mod Maker et entrées » (liste de l'utilisateur, 2026-11-04 : tout son écran est pour la 1.1, une seule version, sans date)
+Déjà fait et coché par l'utilisateur :
+- Univers : plantage avec 5 matchs par show (poussé).
+- D3D12 sur Intel UHD 620 (#7).
+- Tenues Threads blanches + peau GT 430 (corrections de Kaiko, crédit).
+- Mod Maker : gel arènes + catcheurs ajoutés, mémoire pour 50 catcheurs, pages d'arènes.
+- Mod Maker : prises, entrées et musiques SvR 2007-2011 / WWE '13 (prises SvR 2011 = expérimental).
+À finir / tester :
+- Android : vieux noyaux + journal GPU (fait en local, à confirmer sur un vrai noyau 4.14 : joueur de #41).
+- Mod Maker : .pac en 2e tenue, visages de loin, tenues d'entrée 2K16, Fatal 4 Way (faits en local, à tester en jeu).
+- Ceinture à la taille (fait), tenues de The Miz (abandonné), CAW dans l'effectif Univers (en attente d'un signalement).
+- Mesure CPU par image (Windows) (fait, ff941e5).
+Aussi dans la 1.1 (liste de l'utilisateur) :
 - Arènes SvR 2007 : foule au bon endroit (chantier de Mods).
 - Scènes de victoire (Winning*.pac), musique de victoire, vidéos WWE '13.
 - Tenue des catcheurs ajoutés (ceinture à la taille, etc.).
 - À tester avant de promettre : prises de SvR 2011 / '13 / 2K14-2K16 (marquées expérimentales).
+- Changer les renders des CAW (à préciser avec l'utilisateur : portraits des CAW dans les menus ?).
+Note : les notes publiques de la 1.0 annoncent « squash, finishers de départ, I Quit, Special Referee, scènes de victoire, vidéos WWE '13, deux mallettes MITB, icônes de touches » pour la 1.1 : la 1.1 ne contient que la partie « Mod Maker et entrées » ; les notes de la 1.1 doivent dire ce qui est repoussé.
 
 ### 1.2 : « Les corrections de THQ » (à découvrir)
 - Comparaison des 2 mises à jour officielles (en cours, session Gameplay) : liste des corrections, tri, test en jeu.
