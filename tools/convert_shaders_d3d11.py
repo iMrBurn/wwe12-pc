@@ -64,10 +64,13 @@ float4 SvrSwizzle(float4 v, uint code)
 '''
 
 # fxc keeps clamp(x, FLT_MIN, FLT_MAX) out as it takes floats as finite: rsqrt(0) stayed
-# infinite and 0 * inf gave NaN (white ringside floor in Kaiko's D3D11). The clamp goes through
-# a function whose result is precise.
-FINITE_HELPER = ("float SvrFinite(float x) { precise float y = clamp(x, asfloat(0xff7fffff), asfloat(0x7f7fffff)); "
-                 "return y; }\n")
+# infinite and 0 * inf gave NaN (white ringside floor in Kaiko's D3D11). The clamp works on the
+# float's bits with integer operations (nothing fxc or a driver can fold away): the magnitude is
+# capped at FLT_MAX and the sign kept, so +-inf (and NaN) become +-FLT_MAX and finite values pass
+# bit for bit. The first version, a `precise` float clamp, broke the wrestlers' skin on NVIDIA
+# Fermi GPUs (GeForce GT 430, #55): Kaiko's fix for his SvR 2011 port (commit d387f29), adapted.
+FINITE_HELPER = ("float SvrFinite(float x) { uint u = asuint(x); "
+                 "return asfloat((u & 0x80000000u) | min(u & 0x7fffffffu, 0x7f7fffffu)); }\n")
 FINITE_TAIL = ", FLT_MIN, FLT_MAX)"
 
 
