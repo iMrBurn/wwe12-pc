@@ -168,3 +168,8 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 
 ## 1.1 : limite du nombre de catcheurs ajoutés (LA Max, 2026-11-04)
 - Plantage vers 44-50 catcheurs ajoutés (écran de choix ou chargement du match) : limite de **mémoire** du jeu (512 Mo Xbox), pas un nombre fixe ; le pack fabriqué fait 250 Mo, portraits de menu (DLC_HD) 3 fois plus gros que ceux des vrais DLC. Suite : bissection 10 / 20 / 30, alléger ce qui est chargé en entier, avertissement dans le Mod Maker au-delà du seuil. Les 190 / 222 sont des places libres, pas une capacité testée (nombre sûr connu : 10 ; 20-25 conseillés en attendant).
+
+## Décisions de l'utilisateur du 2026-11-04 (soir)
+- **Ceinture à la taille : fait** (confirmé par l'utilisateur). **Tenues de The Miz verrouillées : on laisse tomber.** **CAW dans l'effectif Univers : en attente** (voir la note ci-dessous).
+- **Go** : cas Jay n°5 (arène NXT de 2K14 sur « Fatal 4 Way », probablement le même gel que celui corrigé cette nuit) ; ligne « cpu per frame » sur Windows (diagnostic seul).
+- Note CAW dans l'effectif : la mise à jour TU2 retire un test qui écartait les CAW (numéros < 50) du comptage des catcheurs d'une émission ; notre recomptage les écarte encore. Effet attendu faible, à faire seulement si un joueur signale des émissions sans assez de catcheurs avec des CAW.
