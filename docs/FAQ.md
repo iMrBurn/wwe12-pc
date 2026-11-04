@@ -89,7 +89,7 @@ then): the launcher warns about it.
 
 ## Saves
 
-**Can I use my Xbox 360 saves?** Yes: launcher → SAVES → import your WWE '12 save packages.
+**Can I use my Xbox 360 saves?** Yes: launcher → SAVES → import your WWE '12 save packages. The launcher says why a file is refused: only Xbox 360 save packages (STFS) for WWE '12 are read, and a `.bin` is not always one (an encrypted or unknown `.bin`, or a save from another console such as the Wii, cannot be read). A folder of `.bin` files is scanned.
 
 **Where are my saves? Are they backed up?** In `Documents\wwe12`. The SAVES page makes backups, and one
 is made automatically before anything is replaced or deleted.
@@ -187,7 +187,7 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
 - **Noms des touches du clavier** : launcher → CONTRÔLES → Définir, puis appuyez sur la touche (liste des
   noms exacts dans la partie anglaise). Depuis la 1.0, `Shift`, `Ctrl` ou `Alt` peut être un bouton à lui
   seul (issue #18) ; il ne marche plus alors dans les combinaisons (`Shift+Up`), le launcher le signale.
-- **Sauvegardes Xbox 360** : launcher → SAUVEGARDES → importer. Copies de sauvegarde automatiques.
+- **Sauvegardes Xbox 360** : launcher → SAUVEGARDES → importer. Copies de sauvegarde automatiques. Le launcher dit pourquoi un fichier est refusé : seules les sauvegardes Xbox 360 (STFS) de WWE '12 sont lues, et un `.bin` n'en est pas toujours une (un `.bin` chiffré ou inconnu, ou une sauvegarde d'une autre console comme la Wii, n'est pas lisible). Un dossier de `.bin` est parcouru.
 - **« Not signed in with a gamer profile »** : corrigé en 0.9.
 - **Mode Univers, défenses de titre en weekly** : désactivé par défaut (le jeu d'origine n'en fait jamais).
   Launcher (options de l'Univers) ou en jeu : MODIFIER L'UNIVERS > OPTIONS DE L'UNIVERS > DÉFENSES DE TITRE
