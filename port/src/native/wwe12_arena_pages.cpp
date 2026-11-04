@@ -130,7 +130,24 @@ REXCVAR_DEFINE_BOOL(wwe12_arena_pages_test, false, "WWE12",
 std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint8_t *base);
 uint32_t Wwe12EnteringSuperstar(const PPCContext &ctx, uint8_t *base);
 
-constexpr size_t kOwnScreenMax = 1810000;  // (a ribbon / wall movie: the game's own are 1.8 MB at most)
+// A ribbon / wall movie the game can play: Bink, 180 frames or more, 1.8 MB at most (the game's own: all 180 frames,
+// all under 1.81 MB). Fewer frames or a bigger file froze the loading before the entrance (2026-11-04).
+bool OwnScreenFits(const std::vector<uint8_t> &d) {
+  if (d.size() < 12 || d.size() > 1810000 || d[0] != 'B' || d[1] != 'I' || d[2] != 'K')
+    return false;
+  const uint32_t frames = uint32_t(d[8]) | uint32_t(d[9]) << 8 | uint32_t(d[10]) << 16 | uint32_t(d[11]) << 24;
+  return frames >= 180;
+}
+bool OwnScreenFits(const std::filesystem::path &p) {
+  std::vector<uint8_t> d;
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(p, ec))
+    return false;
+  std::ifstream f(p, std::ios::binary);
+  d.assign(std::istreambuf_iterator<char>(f), {});
+  return OwnScreenFits(d);
+}
+
 
 namespace {
 
@@ -625,11 +642,11 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         Part part;
         if (!ReadHost(d / "superstar" / file, part.data) || part.data.empty())
           continue;
-        // (the game's own are all 1.8 MB at most: a 4.6 MB wall froze the loading before the entrance, Seth Rollins'
-        // from 2K16, 2026-11-04; Wwe12OwnScreenFits leaves it to the arena's)
-        if (part.data.size() > kOwnScreenMax) {
-          REXLOG_WARN("[arena pages] {}: its own {} left out ({} bytes, the game's are 1.8 MB at most); make it again"
-                      " with the Mod Maker", d.filename().string(), file, part.data.size());
+        // (the game's own are all 180 frames in 1.8 MB at most: Seth Rollins' 2K16 ribbon of 122 frames froze the
+        // loading before his entrance, every time, 2026-11-04; left to the arena's, as OwnScreenFits)
+        if (!OwnScreenFits(part.data)) {
+          REXLOG_WARN("[arena pages] {}: its own {} left out ({} bytes; the game's are 180 frames, 1.8 MB at most);"
+                      " make it again with the Mod Maker", d.filename().string(), file, part.data.size());
           continue;
         }
         char name[8];

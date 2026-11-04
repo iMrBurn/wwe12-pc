@@ -143,6 +143,7 @@ inline void Place(const uint8_t *src, int sw, int sh, uint8_t *dst, int W, int H
 // 2026-11-04: Seth Rollins' 2K16 wall (4.6 MB) froze the loading before his entrance, every time; the game's own 85
 // ribbons and walls are all 1.8 MB at most (a buffer of that size, it seems): kept under it.
 constexpr size_t kScreenBytes = 1780000;
+constexpr size_t kScreenFrames = 180;  // (the game's ribbons and walls: all 180 frames)
 
 // The encoder's lossy steps (bink_writer_quality: skip, fill, pattern thresholds), the first Kaiko's.
 constexpr int kQuality[][3] = {{2, 2, 0}, {3, 3, 6}, {4, 4, 10}, {6, 6, 14}, {8, 8, 20}, {10, 10, 28}, {12, 12, 36}, {14, 14, 44}, {16, 16, 52}};
@@ -188,8 +189,13 @@ inline bool EncodeFrames(const std::vector<std::vector<uint8_t>> &pics, int W, i
 
 // Pictures as a ribbon / wall movie of about the game's size (kScreenBytes): every frame, lossier step by step, then
 // (at the last step) fewer new ones.
-inline bool EncodeScreen(const std::vector<std::vector<uint8_t>> &pics, int W, int H, Bytes &out) {
+inline bool EncodeScreen(const std::vector<std::vector<uint8_t>> &pics_in, int W, int H, Bytes &out) {
   constexpr int last = int(std::size(kQuality)) - 1;
+  // At least 180 frames, as the game's own (all 180): Seth Rollins' 2K16 ribbon of 122 froze the loading before his
+  // entrance, every time (2026-11-04; Kevin Owens' 186 had played). A shorter one is looped.
+  std::vector<std::vector<uint8_t>> pics = pics_in;
+  for (size_t i = 0; !pics_in.empty() && pics.size() < kScreenFrames; ++i)
+    pics.push_back(pics_in[i % pics_in.size()]);
   int q = 0;
   if (!EncodeFrames(pics, W, H, 1, out, q))
     return false;
@@ -317,7 +323,10 @@ inline bool FromPicture(const fs::path &picture, bool ribbon, Bytes &out) {
 // A ribbon / wall movie (Bink 1) made again at about the game's size (detail::kScreenBytes), when it is larger: the mods made
 // before 2026-11-02. False if it couldn't be read (left as it is).
 inline bool Shrink(Bytes &bik) {
-  if (bik.size() <= detail::kScreenBytes)
+  const uint32_t frames = bik.size() >= 12 ? uint32_t(bik[8]) | uint32_t(bik[9]) << 8 | uint32_t(bik[10]) << 16 |
+                                                 uint32_t(bik[11]) << 24
+                                           : 0;
+  if (bik.size() <= detail::kScreenBytes && frames >= detail::kScreenFrames)
     return false;
   wchar_t tmp[MAX_PATH];
   GetTempPathW(MAX_PATH, tmp);

@@ -61,6 +61,9 @@ REXCVAR_DEFINE_BOOL(wwe12_superstar_mods, true, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_belt_donor, true, "WWE12",
                     "Added superstars with their own model: the waist belt's fit of the game's superstar nearest in build.");
 
+// (wwe12_arena_pages.cpp) a ribbon / wall movie the game can play: 180 frames or more, 1.8 MB at most
+bool OwnScreenFits(const std::filesystem::path &p);
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -1042,8 +1045,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       g_mod_movies[st.key] = uint32_t(st.movie_number);
       std::error_code e1;
       for (const auto &[kind, file] : {std::pair<uint32_t, const char *>{1, "ribbon.bik"}, {2, "wall.bik"}})
-        if (fs::exists(star_dirs[st.key] / file, e1) && fs::file_size(star_dirs[st.key] / file, e1) <= 1810000)
-          g_own_screens.insert({kind, uint32_t(st.movie_number)});  // (over 1.8 MB: left out, wwe12_arena_pages.cpp)
+        if (OwnScreenFits(star_dirs[st.key] / file))
+          g_own_screens.insert({kind, uint32_t(st.movie_number)});  // (else left out, wwe12_arena_pages.cpp)
     }
     if (!st.theme.empty())
       g_themes.push_back({uint32_t(superstar_pack::detail::MusicNumber(st)), st.name});
