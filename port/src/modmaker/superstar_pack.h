@@ -472,7 +472,8 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   {
     std::set<std::string> listed;
     for (const auto &at : attires)
-      if (at.added && listed.insert(at.entry).second)
+      if (at.added && std::none_of(stars.begin(), stars.end(), [&](const auto &st) { return st.slot == at.superstar; }) &&
+          listed.insert(at.entry).second)  // (an added superstar's: in his own file, counted from it)
         rows.push_back({2, at.superstar, at.entry[6] - '0', "ATTIRE " + at.entry});
   }
   if (free_codes.size() < 2 * rows.size()) {
@@ -629,6 +630,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   const Bytes etc_out = svrfmt::ArchiveSave(etc);
   // 3. The models, their attires renamed to the slot.
   std::vector<Bytes> models;
+  std::set<std::string> given_to_added;  // (attire mods' attires put in an added superstar's own file)
   for (const auto &st : stars) {
     svrfmt::Archive ch;
     if (!svrfmt::ArchiveOpen(st.model, ch, &e))
@@ -643,6 +645,22 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       if (!svrfmt::ArchiveRename(ch.root, i, n, &e))
         return fail(st.key + ": " + e);
     }
+    // (attire mods for this added superstar, superstar=<its slot>: in his own file, the pack can't hold two
+    // chNNN_dlc files for one number; one of his attires replaced, or one more. Jay's report n°6, 2026-11-04)
+    for (const auto &at : attires) {
+      if (at.superstar != st.slot || at.entry.size() != 8 || !given_to_added.insert(at.entry).second)
+        continue;
+      svrfmt::Archive one;
+      if (!svrfmt::ArchiveOpen(at.file, one, &e) || one.root.kids.empty())
+        return fail(at.key + ": attire unreadable: " + e);
+      size_t i = 0;
+      while (i < ch.root.kids.size() && ch.root.kids[i].name != at.entry)
+        ++i;
+      if (i < ch.root.kids.size())
+        svrfmt::ArchiveRemove(ch.root, i);
+      if (!svrfmt::ArchiveAdd(ch.root, "EMD ", at.entry, 0, svrfmt::ArchiveData(one.root.kids[0]), &e))
+        return fail(at.key + ": " + e);
+    }
     svrfmt::ArchiveTouch(ch.root);
     models.push_back(svrfmt::ArchiveSave(ch));
   }
@@ -650,7 +668,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   std::map<int, Bytes> attire_files;
   {
     std::map<int, svrfmt::Archive> by_star;
-    std::set<std::string> given;
+    std::set<std::string> given = given_to_added;
     for (const auto &at : attires) {
       if (!given.insert(at.entry).second)
         continue;
@@ -891,7 +909,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     std::vector<std::pair<int, int>> counts;  // (slot, attires)
     std::map<int, int> raises;                // (a game's superstar, attires at least)
     for (const auto &at : attires)
-      if (at.added && at.entry.size() == 8 && at.entry[6] >= '0' && at.entry[6] <= '3')
+      if (at.added && at.entry.size() == 8 && at.entry[6] >= '0' && at.entry[6] <= '3' && !given_to_added.count(at.entry))
         raises[at.superstar] = std::max(raises[at.superstar], at.entry[6] - '0' + 1);
     for (size_t i = 0; i < stars.size(); ++i) {
       svrfmt::Archive ch;

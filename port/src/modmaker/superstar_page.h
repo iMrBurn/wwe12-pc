@@ -248,6 +248,7 @@ class Page {
     int id = 0;
     std::string name, file;  // "pac/ch/ch139.pac"
     fs::path dlc;            // an official DLC superstar's file (its package's pac\ch\chNN_dlcMM.pac), else empty
+    bool added = false;      // an added superstar (a NEW SUPERSTAR mod installed: dlc = its superstar\ch.pac, id = its slot)
   };
 
   void List(const disc::GameDisc &disc) {
@@ -298,6 +299,43 @@ class Page {
         stars_.push_back(s);
       }
     }
+    // The added superstars installed (NEW SUPERSTAR mods, mods\.svrmods\Superstars\<id>, with their own model): their
+    // number in the game is their slot (Documents\wwe12\superstar_slots.txt "<id>=<slot>"); an attire mod for that
+    // number goes into their file (superstar_pack.h). Jay's reports n°4 / n°6, 2026-11-04: they weren't listed, so no
+    // attire could be added to one after it was made.
+    {
+      wchar_t me[MAX_PATH];
+      GetModuleFileNameW(nullptr, me, MAX_PATH);
+      const fs::path mods_dir = fs::path(me).parent_path() / "mods" / ".svrmods" / "Superstars";
+      std::ifstream slots(user_root_ / "superstar_slots.txt");
+      for (std::string line; !user_root_.empty() && std::getline(slots, line);) {
+        if (!line.empty() && line.back() == 0x0D)
+          line.pop_back();
+        const size_t eq = line.rfind('=');
+        if (eq == std::string::npos)
+          continue;
+        const std::string key = line.substr(0, eq);
+        const int slot = atoi(line.c_str() + eq + 1);
+        const fs::path dir = mods_dir / key;
+        if (slot < 50 || slot >= 373 || !fs::is_regular_file(dir / "superstar" / "ch.pac", ec) || fs::exists(dir / "disabled", ec))
+          continue;
+        Star s;
+        s.id = slot;
+        s.added = true;
+        s.dlc = dir / "superstar" / "ch.pac";
+        s.file = media::Utf8(s.dlc.wstring());
+        s.name = key;
+        std::ifstream m(dir / "manifest.txt");
+        for (std::string l; std::getline(m, l);) {
+          if (!l.empty() && l.back() == 0x0D)
+            l.pop_back();
+          if (l.rfind("name=", 0) == 0 && l.size() > 5)
+            s.name = l.substr(5);
+        }
+        s.name += " (mod)";
+        stars_.push_back(s);
+      }
+    }
     std::sort(stars_.begin(), stars_.end(), [](const Star &a, const Star &b) { return a.name < b.name; });
   }
 
@@ -315,8 +353,26 @@ class Page {
       error_ = (fr ? "Lecture impossible : " : "Could not read: ") + stars_[star_].file;
       return;
     }
-    arena_edit::Arena probe;
     std::string why;
+    // (an added superstar's file has its base's attire names, "00026102": named as in the game, his slot's)
+    if (stars_[star_].added) {
+      svrfmt::Archive a;
+      char num[8];
+      snprintf(num, sizeof(num), "%03d", stars_[star_].id);
+      if (svrfmt::ArchiveOpen(file_, a, &why)) {
+        bool ok = true;
+        for (size_t i = 0; i < a.root.kids.size() && ok; ++i) {
+          std::string n = a.root.kids[i].name;
+          if (n.size() == 8)
+            ok = svrfmt::ArchiveRename(a.root, i, n.replace(3, 3, num), &why);
+        }
+        if (ok) {
+          svrfmt::ArchiveTouch(a.root);
+          file_ = svrfmt::ArchiveSave(a);
+        }
+      }
+    }
+    arena_edit::Arena probe;
     if (!probe.Load(file_, &why, 0)) {
       error_ = (fr ? "Fichier illisible : " : "Unreadable file: ") + why;
       return;
