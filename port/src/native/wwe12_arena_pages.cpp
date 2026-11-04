@@ -280,12 +280,9 @@ bool ServeMovies(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, 
     fs::remove_all(movies_root, ec);
     return false;
   }
-  // The game's evtmov.pac as served before us: the added superstars' (their own ribbons and walls appended,
-  // MountEntrances, which runs first: this copy is served over it, so it must hold them too; built from the disc's
-  // alone, it answered their place past its end and the loading before such a superstar's entrance waited forever,
-  // Seth Rollins with the RAW (SvR 2007) arena added, 2026-11-04), else the mods folder's, else the disc's.
-  const fs::path entrance_base = movies_root.parent_path() / "entrance_slots" / "pac" / "evt" / "evtmov.pac";
-  const fs::path host_base = fs::exists(entrance_base, ec) ? entrance_base : mods / "pac" / "evt" / "evtmov.pac";
+  // The game's evtmov.pac: the mods folder's, else the disc's. (The added superstars' ribbons and walls are appended
+  // to this copy afterwards, by MountEntrances, which runs later: this copy is served over theirs.)
+  const fs::path host_base = mods / "pac" / "evt" / "evtmov.pac";
   rex::filesystem::File *file = nullptr;
   uint64_t base_size = 0;
   if (fs::exists(host_base, ec)) {
@@ -308,7 +305,7 @@ bool ServeMovies(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, 
     uint64_t h = 1469598103934665603ull;
     for (char c : tail)
       h = (h ^ uint8_t(c)) * 1099511628211ull;
-    key += "/" + std::to_string(h) + (host_base == entrance_base ? "e" : "m");
+    key += "/" + std::to_string(h);
   }
   for (auto &a : g_added) {
     if (a.movie.empty())
@@ -904,7 +901,13 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
   for (auto &[rel, list] : parts) {
     std::vector<uint8_t> pac;
     svrfmt::Archive a;
-    if (!ReadForGame(vfs, mods, rel, pac) || !svrfmt::ArchiveOpen(pac, a, nullptr)) {
+    // (evtmov.pac with an added arena's transition video: that copy, served over this folder's, Wwe12MountArenaSlots,
+    // which runs first; the ribbons and walls appended to it, in its place. Appended to the disc's here, they were
+    // answered past the end of the arena's copy and the loading before such a superstar's entrance waited forever:
+    // Seth Rollins with the RAW (SvR 2007) arena added, 2026-11-04)
+    const fs::path arena_copy = out.parent_path() / "arena_movies" / fs::path(rel);
+    const bool over_arena = rel == "pac/evt/evtmov.pac" && fs::exists(arena_copy, ec);
+    if (!(over_arena ? ReadHost(arena_copy, pac) : ReadForGame(vfs, mods, rel, pac)) || !svrfmt::ArchiveOpen(pac, a, nullptr)) {
       REXLOG_WARN("[entrances] {} can't be read: its added entrances left out", rel);
       continue;
     }
@@ -962,7 +965,13 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       if (rel == "pac/evt/evtobj.pac")  // (how the game asks its objects' names isn't known yet: both ways)
         g_entrances[group + "/" + name] = e;
     }
-    WriteHost(out / fs::path(rel), pac);
+    if (over_arena) {
+      WriteHost(arena_copy, pac);
+      std::error_code e3;  // (no longer the arena's alone: made again from the disc's next time)
+      fs::remove(out.parent_path() / "arena_movies" / "key.txt", e3);
+    } else {
+      WriteHost(out / fs::path(rel), pac);
+    }
   }
   if (g_entrances.empty() && g_replaced.empty())
     return;
