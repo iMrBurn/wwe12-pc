@@ -5,6 +5,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <cctype>
 #include <cstdlib>
 #include <string>
@@ -53,7 +54,10 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem* fs, const std::
 // Jouer sans mods (même fichier) : le pack mis de côté le temps de la partie, sauvegarde remise au démarrage suivant.
 void Wwe12NoModsRestore(const std::filesystem::path& user_root);
 void Wwe12NoModsHide(const std::filesystem::path& user_root);
+// Écran de choix des arènes (native/wwe12_arena_pages.cpp) : « LB  PAGE 1 / 2  RB » au-dessus de la grille.
+void Wwe12ArenaPagesInstallLabel(rex::ui::ImGuiDrawer* drawer, std::function<void(std::function<void()>)> post);
 #else
+inline void Wwe12ArenaPagesInstallLabel(rex::ui::ImGuiDrawer*, std::function<void(std::function<void()>)>) {}
 inline void Wwe12NoModsRestore(const std::filesystem::path&) {}
 inline void Wwe12NoModsHide(const std::filesystem::path&) {}
 inline void Wwe12MountMenuBackground(rex::filesystem::VirtualFileSystem*, const std::string&) {}
@@ -302,6 +306,7 @@ class Wwe12App : public rex::ReXApp {
     Wwe12GraphicsMenuInit(rex::filesystem::GetExecutableFolder() / "wwe12.toml");
     Wwe12JukeboxInit(rex::filesystem::GetExecutableFolder() / "wwe12.toml");  // OPTIONS > JUKEBOX
     Wwe12DisplayInit(imgui_drawer());  // FPS counter (F2), CPU priority
+    Wwe12ArenaPagesInstallLabel(imgui_drawer(), [this](std::function<void()> f) { app_context().CallInUIThread(std::move(f)); });  // arena select: page label, LB / RB
     Wwe12KbdInit(window());  // physical keyboard in the game's letter grids (Create a Story...)
     if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
       Wwe12ButtonsSetInput(input);

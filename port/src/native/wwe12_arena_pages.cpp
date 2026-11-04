@@ -72,6 +72,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <set>
 #include <span>
@@ -81,6 +82,13 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+
+#include <atomic>
+#include <chrono>
+
+#include <imgui.h>
+#include <rex/ui/imgui_dialog.h>
+#include <rex/ui/imgui_drawer.h>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -219,6 +227,14 @@ std::array<u32, kTiles * 2> g_original_banners{};
 bool g_saved = false;
 std::vector<std::array<Tile, kTiles>> g_pages;  // page 0 = the game's
 int g_page = 0;
+// (for the page label, drawn on the UI thread: wwe12_arena_pages' ArenaPageLabel)
+std::atomic<int> g_label_page{0}, g_label_pages{0};
+std::atomic<int64_t> g_label_seen{0};  // when the arena select was last drawn (ms)
+std::atomic<bool> g_label_open{false};  // the label dialog exists (made on the UI thread while the screen shows)
+void OpenPageLabel();                    // (below)
+int64_t NowMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 // ---- startup: the served files
 
@@ -1211,6 +1227,8 @@ void BuildPages() {
 }
 
 void WritePage(int page) {
+  g_label_page = page;
+  g_label_pages = int(g_pages.size());
   const auto &p = g_pages[size_t(page)];
   const bool game_banners = p[0].banner == 0;
   for (int i = 0; i < kTiles; ++i) {
@@ -1354,6 +1372,11 @@ extern "C" REX_FUNC(sub_825A5C88) {
 extern "C" REX_FUNC(sub_825A6A98) {
   const u32 screen = g_screen;
   const bool ours = screen && (ctx.r3.u32 == screen || ctx.r3.u32 == screen + 28);
+  if (ours && g_pages.size() > 1) {
+    g_label_seen = NowMs();
+    if (!g_label_open.exchange(true))
+      OpenPageLabel();
+  }
   if (ours && g_pages.size() > 1 && !OtherTabs(screen)) {
     if (!g_pad_state)
       g_pad_state = REX_KERNEL_MEMORY()->SystemHeapAlloc(16, 0x10);
@@ -1755,4 +1778,82 @@ extern "C" REX_FUNC(sub_828C5878) {
     return;
   }
   __imp__sub_828C5878(ctx, base);
+}
+
+// ---- the page label (after Kaiko's SvR 2011 port, arena_mods.cpp ArenaPageLabel, MIT, credited in THIRD_PARTY.md)
+// Players thought their added arenas weren't there (2026-11-04): while the arena select is shown with pages, a label
+// above the grid says which page it is and that LB / RB (L1 / R1 with a PlayStation pad) turn them.
+bool Wwe12PlayStationIcons();  // (wwe12_buttons.cpp)
+
+namespace {
+class ArenaPageLabel final : public rex::ui::ImGuiDialog {
+ public:
+  explicit ArenaPageLabel(rex::ui::ImGuiDrawer *drawer) : ImGuiDialog(drawer) {}
+
+ protected:
+  void OnClose() override { g_label_open = false; }
+  void OnDraw(ImGuiIO &io) override {
+    const int pages = g_label_pages.load(), page = g_label_page.load();
+    const int64_t idle = NowMs() - g_label_seen.load();
+    if (idle > 1000) {  // (the screen left: no dialog, the overlay isn't drawn at all without one)
+      Close();
+      return;
+    }
+    if (pages < 2 || idle > 250)
+      return;
+    const float w = io.DisplaySize.x, h = io.DisplaySize.y;
+    const float gw = std::min(w, h * 16.0f / 9.0f), gh = gw * 9.0f / 16.0f;
+    const float x0 = (w - gw) * 0.5f, y0 = (h - gh) * 0.5f, scale = gh / 720.0f;
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    ImFont *font = ImGui::GetFont();
+    const bool ps = Wwe12PlayStationIcons();
+    const char *left = ps ? "L1" : "LB", *right = ps ? "R1" : "RB";
+    char text[48];
+    snprintf(text, sizeof(text), "%s   PAGE %d / %d   %s", left, page + 1, pages, right);
+    const float size = 26.0f * scale;
+    const ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
+    const ImVec2 c(x0 + gw * 0.5f, y0 + gh * 0.085f);
+    const float arrow = 10.0f * scale, gap = 18.0f * scale;
+    const float half = ts.x * 0.5f + gap + arrow;
+    const ImVec2 pad(14.0f * scale, 6.0f * scale);
+    const ImVec2 a(c.x - half - pad.x, c.y - ts.y * 0.5f - pad.y), b(c.x + half + pad.x, c.y + ts.y * 0.5f + pad.y);
+    dl->AddRectFilled(a, b, IM_COL32(10, 12, 18, 215), 6.0f * scale);
+    dl->AddRect(a, b, IM_COL32(220, 220, 225, 255), 6.0f * scale, 0, 2.0f * scale);
+    dl->AddText(font, size, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), IM_COL32(255, 255, 255, 255), text);
+    const ImU32 yellow = IM_COL32(255, 210, 60, 255);
+    const float lx = c.x - half, rx = c.x + half;
+    dl->AddTriangleFilled(ImVec2(lx, c.y), ImVec2(lx + arrow, c.y - arrow), ImVec2(lx + arrow, c.y + arrow), yellow);
+    dl->AddTriangleFilled(ImVec2(rx, c.y), ImVec2(rx - arrow, c.y + arrow), ImVec2(rx - arrow, c.y - arrow), yellow);
+    // on the game's page: where the added arenas are
+    if (page == 0) {
+      char more[64];
+      snprintf(more, sizeof(more), "%s / %s: YOUR ADDED ARENAS", left, right);
+      const float ms = 20.0f * scale;
+      const ImVec2 mt = font->CalcTextSizeA(ms, FLT_MAX, 0.0f, more);
+      const ImVec2 mp(c.x - mt.x * 0.5f, b.y + 6.0f * scale);
+      dl->AddRectFilled(ImVec2(mp.x - pad.x, mp.y - 3.0f * scale), ImVec2(mp.x + mt.x + pad.x, mp.y + mt.y + 3.0f * scale),
+                        IM_COL32(10, 12, 18, 200), 5.0f * scale);
+      dl->AddText(font, ms, mp, yellow, more);
+    }
+  }
+};
+}  // namespace
+
+namespace {
+rex::ui::ImGuiDrawer *g_label_drawer = nullptr;
+std::function<void(std::function<void()>)> g_label_post;  // runs a function on the UI thread
+
+// (made on the UI thread; it closes itself once the screen is gone)
+void OpenPageLabel() {
+  if (!g_label_drawer || !g_label_post) {
+    g_label_open = false;
+    return;
+  }
+  g_label_post([] { new ArenaPageLabel(g_label_drawer); });
+}
+}  // namespace
+
+void Wwe12ArenaPagesInstallLabel(rex::ui::ImGuiDrawer *drawer, std::function<void(std::function<void()>)> post) {
+  g_label_drawer = drawer;
+  g_label_post = std::move(post);
 }

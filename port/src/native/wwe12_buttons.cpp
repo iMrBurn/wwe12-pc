@@ -177,6 +177,9 @@ void MaybeSwapToPlayStation(uint32_t dds, uint32_t size) {
 
 void Wwe12ButtonsSetInput(rex::input::InputSystem *input) { g_input = input; }
 
+// (the arena select's page label, wwe12_arena_pages.cpp: L1 / R1 or LB / RB)
+bool Wwe12PlayStationIcons() { return WantPlayStationIcons(); }
+
 REX_EXTERN(__imp__sub_82AC59C8);
 extern "C" REX_FUNC(sub_82AC59C8) {
   MaybeSwapToPlayStation(ctx.r4.u32, ctx.r5.u32);

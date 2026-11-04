@@ -31,7 +31,10 @@ Projets dont ce portage s'inspire :
   « SvR 2011 PC port (KaikoClanworth1) ». Son « native_widescreen » (constante de rapport de la
   caméra patchée, champ de vision vertical élargi en 16:10, cibles plein écran élargies ou plus
   hautes) est adapté, avec le même accord, dans `port/src/native/wwe12_widescreen.cpp` et
-  `svr_resources.cpp` (cvar `wwe12_widescreen`). Le reste : méthode uniquement.
+  `svr_resources.cpp` (cvar `wwe12_widescreen`). Le dépôt a depuis une licence MIT (vue le 2026-11-04,
+  commit 5fcae1a) : l'étiquette de page de l'écran des arènes (« LB  PAGE 1 / 2  RB », son
+  `arena_mods.cpp` ArenaPageLabel) est adaptée dans `port/src/native/wwe12_arena_pages.cpp`. Le reste :
+  méthode uniquement.
 - [wwe2k14-recomp](https://github.com/Jarrodfeng/wwe2k14-recomp) (recomp de WWE 2K14, Jarrodfeng) :
   licence BSD 3 clauses (vérifiée sur le dépôt le 2026-10-31) ; accord oral de l'auteur (Discord, 2026-10-31) pour s'inspirer de ses mises à
   jour. Idées Android étudiées dans `docs/android_optimisation_jarrod.md` (cadence 90/120 Hz, résolution
