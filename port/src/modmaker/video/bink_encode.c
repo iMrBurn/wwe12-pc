@@ -12,6 +12,11 @@
 #include <string.h>
 
 #include "bink_encode.h"
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 #define FPS BINK_ENC_FPS
 
@@ -457,7 +462,51 @@ int bink_writer_repeat(BinkWriter *w)
     return 1;
 }
 
+static int bink_writer_frame_yuv_once(BinkWriter *w);
+
+/* WWE12-PC: no frame bigger than ~0.9 byte per pixel (92 KB at 320 x 320), nor 100 KB (the game's own titantrons stay
+ * under 108 KB; the limit looks like a size, not a rate: a 42 KB ribbon at 1.3 byte per pixel played): a 2K16 titantron
+ * made with frames up to 140 KB froze the game's loading before the entrance (Seth Rollins, 2026-11-04). A frame over it is encoded again, lossier, from the same reference planes. */
 static int bink_writer_frame_yuv(BinkWriter *w)
+{
+    static const int steps[][3] = {{3, 3, 6}, {4, 4, 10}, {6, 6, 14}, {8, 8, 20}, {10, 10, 28}, {12, 12, 36},
+                                   {16, 16, 52}, {24, 24, 80}};
+    const size_t ny = (size_t)w->w * w->h, nc = ny / 4, cap = ny * 9 / 10 < 100000 ? ny * 9 / 10 : 100000;
+    const int skip = w->skip_thr, fill = w->fill_thr, pat = w->pat_thr;
+    uint8_t *save = NULL;
+    long at;
+    int r, i;
+    if (skip >= 255) {  /* (a repeat: all skips) */
+        r = bink_writer_frame_yuv_once(w);
+        if (r == 1 && w->b.n > w->largest) w->largest = (uint32_t)w->b.n;
+        return r;
+    }
+    at = bink_tell(w->f);
+    save = (uint8_t *)malloc(ny + 2 * nc + (w->alpha ? ny : 0));
+    if (!save) {
+        r = bink_writer_frame_yuv_once(w);
+        if (r == 1 && w->b.n > w->largest) w->largest = (uint32_t)w->b.n;
+        return r;
+    }
+    memcpy(save, w->rY, ny); memcpy(save + ny, w->rU, nc); memcpy(save + ny + nc, w->rV, nc);
+    if (w->alpha) memcpy(save + ny + 2 * nc, w->rA, ny);
+    r = bink_writer_frame_yuv_once(w);
+    for (i = 0; r == 1 && w->b.n > cap && i < (int)(sizeof steps / sizeof steps[0]); i++) {
+        if (steps[i][0] <= skip && steps[i][1] <= fill) continue;
+        memcpy(w->rY, save, ny); memcpy(w->rU, save + ny, nc); memcpy(w->rV, save + ny + nc, nc);
+        if (w->alpha) memcpy(w->rA, save + ny + 2 * nc, ny);
+        w->done--;
+        bink_seek(w->f, at, SEEK_SET);
+        w->skip_thr = steps[i][0]; w->fill_thr = steps[i][1]; w->pat_thr = steps[i][2];
+        r = bink_writer_frame_yuv_once(w);
+    }
+    w->skip_thr = skip; w->fill_thr = fill; w->pat_thr = pat;
+    free(save);
+    if (r == 1 && w->b.n > w->largest) w->largest = (uint32_t)w->b.n;
+    return r;
+}
+
+static int bink_writer_frame_yuv_once(BinkWriter *w)
 {
     const int MOVIE_W = w->w, MOVIE_H = w->h;
     Bits *b = &w->b;
@@ -483,7 +532,6 @@ static int bink_writer_frame_yuv(BinkWriter *w)
     pos = (size_t)bink_tell(w->f);
     w->offs[w->done] = (uint32_t)pos | (key ? 1u : 0u);
     if (fwrite(b->p, 1, b->n, w->f) != b->n) return -1;
-    if (b->n > w->largest) w->largest = (uint32_t)b->n;
     w->done++;
     return 1;
 }
@@ -499,6 +547,15 @@ int bink_writer_close(BinkWriter *w)
     bink_seek(w->f, 0, SEEK_SET);
     fwrite(hdr, 4, 11, w->f);
     fwrite(w->offs, 4, (size_t)n + 1, w->f);
+    {   /* WWE12-PC: a frame encoded again shorter (bink_writer_frame_yuv) left bytes past the end: cut */
+        const uint32_t end = w->offs[n];
+        fflush(w->f);
+#ifdef _WIN32
+        _chsize_s(_fileno(w->f), (__int64)end);
+#else
+        if (ftruncate(fileno(w->f), (off_t)end)) {}
+#endif
+    }
     bink_writer_free(w);
     return 1;
 }
