@@ -9,7 +9,9 @@ Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/limit_br
 - Rien n'est promis aux joueurs tant que ce n'est pas testé en jeu. Une seule liste officielle (ce fichier) ; les issues GitHub n'y sont que des liens.
 - Rien de dérivé du jeu ne se publie (pas de données de jeu dans un zip ni sur GitHub).
 
-## 1. Maintenant : 1.0.1 (corrections seulement)
+> **Décision de l'utilisateur, 2026-11-04 : pas de 1.0.1, on sort directement une 1.1** qui contient les corrections ci-dessous et le travail déjà testé des autres sessions. Une 1.0.1 ne sortira que pour un bug grave (crash au lancement, sauvegarde cassée, mise à jour qui échoue). Règle de la 1.1 : on n'y met que ce qui est **testé en jeu** ; ce qui n'est pas prêt passe à la 1.2. Les tableaux « 1.0.1 » plus bas sont la liste des corrections de la 1.1. Pour Android : versionCode 10100.
+
+## 1. Maintenant : corrections (ex-1.0.1, intégrées à la 1.1)
 Voir le tableau de `docs/feuille_de_route.md` (section « 1.0.1 »).
 - Univers : plantage avec 5 matchs par show (fait, testé, poussé).
 - D3D12 sur Intel UHD 620 (#7) : fait, à confirmer par le joueur.
