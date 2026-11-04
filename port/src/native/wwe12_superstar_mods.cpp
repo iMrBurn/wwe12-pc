@@ -99,8 +99,12 @@ std::map<uint32_t, Bytes> g_originals;  // a moves mod's superstar -> the game's
 
 void WriteAppliedFile() {
   std::string text;
-  for (const auto &[id, h] : g_applied)
-    text += std::to_string(id) + "=" + std::to_string(h) + "\n";
+  for (const auto &[id, h] : g_applied) {
+    text += std::to_string(id) + "=" + std::to_string(h);
+    if (const auto b = g_applied_before.find(id); b != g_applied_before.end())
+      text += ":" + std::to_string(b->second);
+    text += "\n";
+  }
   std::error_code ec;
   if (text.empty())
     fs::remove(g_applied_file, ec);
