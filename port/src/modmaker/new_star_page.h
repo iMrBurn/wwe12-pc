@@ -26,6 +26,7 @@
 #include "arena_view.h"
 #include "game_disc.h"
 #include "game_discs.h"
+#include "dlc_stars.h"
 #include "game_process.h"
 #include "imgui.h"
 #include "mod_version.h"
@@ -810,7 +811,12 @@ class Page {
     base_size_[0] = base_size_[1] = 0;
     Bytes etc;
     svrfmt::Archive a;
-    if (base_ < 0 || !disc.Read("pac/ch/chEtc.pac", etc) || !svrfmt::ArchiveOpen(etc, a, nullptr))
+    // (a DLC base: its record in its package's chEtc.pac)
+    disc::GameDisc pack;
+    const disc::GameDisc &from = base_ >= 0 && !stars_[size_t(base_)].pack.empty() && pack.OpenPath(stars_[size_t(base_)].pack)
+                                     ? pack
+                                     : disc;
+    if (base_ < 0 || !from.Read("pac/ch/chEtc.pac", etc) || !svrfmt::ArchiveOpen(etc, a, nullptr))
       return;
     for (auto &k : a.root.kids)
       if (k.group == "CHAR" && k.name == "DAT " && svrfmt::ArchiveExpand(k))
@@ -1030,6 +1036,7 @@ class Page {
   struct Star {
     int id = 0;
     std::string name, file;
+    fs::path dlc, pack;  // an official DLC superstar's file and package (dlc_stars.h), else empty
   };
 
   void List(const disc::GameDisc &disc) {
@@ -1047,6 +1054,19 @@ class Page {
       s.name = it->second;
       stars_.push_back(s);
     }
+    // the official DLC the player installed (Jay's report n°2: Shawn Michaels missing as a base)
+    std::set<int> have;
+    for (const auto &s : stars_)
+      have.insert(s.id);
+    for (const auto &d : dlc_stars::List(user_root_, have)) {
+      Star s;
+      s.id = d.id;
+      s.name = d.name + " (DLC)";
+      s.file = media::Utf8(d.file.wstring());
+      s.dlc = d.file;
+      s.pack = d.pack;
+      stars_.push_back(s);
+    }
     std::sort(stars_.begin(), stars_.end(), [](const Star &a, const Star &b) { return a.name < b.name; });
     for (int id : kDefaultBases)
       for (int i = 0; i < int(stars_.size()) && default_ < 0; ++i)
@@ -1060,7 +1080,9 @@ class Page {
     reduced_.clear();
     base_file_.clear();
     ported_.clear();
-    if (!disc.Read(stars_[base_].file, base_file_)) {
+    if (!stars_[base_].dlc.empty())
+      base_file_ = ReadAll(stars_[base_].dlc);
+    if (stars_[base_].dlc.empty() ? !disc.Read(stars_[base_].file, base_file_) : base_file_.empty()) {
       error_ = (fr ? "Lecture impossible : " : "Could not read: ") + stars_[base_].file;
       return;
     }
@@ -2287,6 +2309,7 @@ class Page {
 
  public:
   const game_discs::Discs *discs_ = nullptr;  // My game discs (set by the Mod Maker)
+  fs::path user_root_;                         // Documents\wwe12 (set by the Mod Maker): the official DLC installed
 
  private:
   disc::GameDisc game_disc_;  // the other game's disc (My game discs), its superstars

@@ -16,6 +16,7 @@
 
 #include "arena_page.h"
 #include "game_disc.h"
+#include "dlc_stars.h"
 #include "imgui.h"
 #include "mod_version.h"
 #include "media.h"
@@ -49,6 +50,7 @@ inline void MakePortraits(const svrfmt::Image &img, Bytes out[2][3]) {
 
 class Page {
  public:
+  std::filesystem::path user_root_;  // Documents\wwe12 (set by the Mod Maker): the official DLC installed
   void Draw(bool fr, ID3D11Device *device, const disc::GameDisc &disc, mods::Manager &mods) {
     device_ = device;
     const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
@@ -168,6 +170,12 @@ class Page {
       if (auto n = names.find(id); n != names.end())
         stars_.push_back({id, n->second});
     }
+    // the official DLC the player installed (Jay's report n°2)
+    std::set<int> have;
+    for (const auto &s : stars_)
+      have.insert(s.first);
+    for (const auto &d : dlc_stars::List(user_root_, have))
+      stars_.push_back({d.id, d.name + " (DLC)"});
     std::sort(stars_.begin(), stars_.end(), [](const auto &a, const auto &b) { return a.second < b.second; });
   }
 
