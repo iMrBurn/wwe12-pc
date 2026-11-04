@@ -73,6 +73,7 @@ constexpr const char *kPackName = "WWE12PCMODS";
 
 std::map<uint32_t, uint32_t> g_movies;  // added superstar -> the number of its own entrance video
 std::map<std::string, uint32_t> g_mod_movies;          // ... by its mod's folder name (wwe12_arena_pages.cpp)
+std::set<uint32_t> g_mod_minitrons;  // video numbers whose titantron a VIDEOS mod replaced (sub_82A31538 below)
 std::set<std::pair<uint32_t, uint32_t>> g_own_screens;  // (kind: 1 ribbon, 2 wall; its video number) its mod has
 std::vector<std::pair<uint32_t, std::string>> g_themes;  // added superstars' own themes: music number, name
 fs::path g_menu_dir;                    // the dressed menu files of this start, "" = the game's
@@ -524,6 +525,16 @@ std::map<uint32_t, uint32_t> g_attire_text_at;   // number -> its copy in guest 
 
 void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root,
                              const fs::path &mods) {
+  // (the VIDEOS page's titantrons of the game's superstars, mods/movies/titantron/NNN.bik: each has its own minitron)
+  {
+    g_mod_minitrons.clear();
+    std::error_code e0;
+    for (fs::directory_iterator it(mods / "movies" / "titantron", e0), end; !e0 && it != end; it.increment(e0)) {
+      const std::string f = it->path().filename().string();
+      if (f.size() == 7 && isdigit(static_cast<unsigned char>(f[0])) && _stricmp(f.c_str() + 3, ".bik") == 0)
+        g_mod_minitrons.insert(uint32_t(atoi(f.c_str())));
+    }
+  }
   if (!REXCVAR_GET(wwe12_superstar_mods) || user_root.empty())
     return;
   const fs::path content = user_root / "0000000000000000" / "54510890" / "00000002";
@@ -1475,6 +1486,23 @@ extern "C" REX_FUNC(sub_82A316A0) {
   __imp__sub_82A316A0(ctx, base);
 }
 
+// Whether video number n's titantron has a minitron (sub_82A31538(n): a byte per number, 1 = yes; else the stage
+// screen shows the superstar's wall, MVSW, in its place). Slater / Gabriel, Miz / Morrison have none: a VIDEOS mod's
+// titantron for them (made with its own minitron below) showed its wall there, or nothing without one (Max Matus'
+// "Created Trons Glitch", 2026-11-04). A number whose titantron a VIDEOS mod replaced has its minitron.
+REX_EXTERN(__imp__sub_82A31538);
+extern "C" REX_FUNC(sub_82A31538) {
+  const uint32_t n = ctx.r3.u32;
+  __imp__sub_82A31538(ctx, base);
+  if (ctx.r3.u32 != 0 && ctx.r3.u32 != 1 && g_mod_minitrons.count(n)) {
+    static std::set<uint32_t> told;
+    if (told.insert(n).second)
+      REXLOG_INFO("[superstar mods] video {}: the game has no minitron for it ({}); its VIDEOS mod's minitron shown", n,
+                  ctx.r3.u32);
+    ctx.r3.u64 = 1;
+  }
+}
+
 // The arena's entrance screens (sub_828D7xxx, once per entrance): with the entrant's video number n, sub_82A31578(n,
 // kind) says whether it has a movie of that kind in pac\evt\evtmov.pac: 2 its wall (MVSW/M%03d, 256 x 256), 1 its
 // ribbon (MVSB/M%03d, 1024 x 32, its name around the arena); without them the arena's are shown (its wall, its ribbon
@@ -1544,6 +1572,18 @@ REXCVAR_DEFINE_BOOL(wwe12_superstar_roster_fix, true, "WWE12",
                     "Added superstars: the save's copy of their record made again when it differs (unlocked).");
 REX_EXTERN(__imp__sub_828ADFB8);
 extern "C" REX_FUNC(sub_828ADFB8) {
+  {  // (once: the video numbers without a minitron, sub_82A31538's table, for the log)
+    static bool told = false;
+    const uint32_t table = bd::mem::load<uint32_t>(0x8324E254), count = bd::mem::load<uint32_t>(0x8324E264);
+    if (!told && table && count) {
+      told = true;
+      std::string other;
+      for (uint32_t n = 0; n < count && n < 1000; ++n)
+        if (const uint8_t v = bd::mem::load<uint8_t>(table + n); v > 1)
+          other += " " + std::to_string(n) + ":" + std::to_string(v);
+      REXLOG_INFO("[superstar mods] video numbers without a minitron (of {}):{}", count, other);
+    }
+  }
   const uint32_t roster = REXCVAR_GET(wwe12_superstar_roster_fix) ? bd::mem::load<uint32_t>(0x8317FA08) : 0;
   for (const auto &[id, rec] : g_records) {
     const uint32_t index = id < 373 ? bd::mem::load<uint16_t>(0x8307B5E0 + id * 2) : 0xFFFF;
