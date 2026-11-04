@@ -1483,6 +1483,7 @@ class Page {
     own_entrance_one_take_ = parts.one_take;
     own_victory_ = std::move(parts.victory);
     own_objects_ = std::move(parts.objects);
+    own_hidden_people_ = parts.hidden_people;
   }
 
   // Step 2's part: its own WWE '13 / 2K14 entrance.
@@ -1499,6 +1500,11 @@ class Page {
     if (own_entrance_one_take_)
       ImGui::TextDisabled("%s", fr ? "(entrée de 2K15 d'un seul tenant : sortie de l'intro cachée de WWE '12, avec la foule et l'annonceur)"
                                    : "(a 2K15 entrance in one piece: moved out of WWE '12's hidden intro, with the crowd and the ring announcer)");
+    if (own_hidden_people_ > 0)  // (star_port::Parts::hidden_people: 2K17 Goldberg's 7 security men)
+      ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f),
+                         fr ? "(%d personne(s) de cette entrée (sécurité, amis...) ne seront pas montrées : WWE '12 ne sait pas les placer)"
+                            : "(%d person(s) of this entrance (security, friends...) won't be shown: WWE '12 can't place them)",
+                         own_hidden_people_);
   }
 
   // Step 2's part: its own WWE '13 / 2K14 victory scene.
@@ -2321,6 +2327,7 @@ class Page {
   int theme_pick_ = 0;
   bool use_theme_ = true;      // ... made PCM and put into the mod (superstar/theme.wem)
   int own_entrance_number_ = 0;
+  int own_hidden_people_ = 0;  // (its entrance's people WWE '12 can't show)
   bool own_entrance_one_take_ = false;
   float render_scale_ = 1.0f, render_shift_ = 0.0f;  // its portrait's framing (Framed)
   bool face_dirty_ = false;  // the preview to make again before it is drawn

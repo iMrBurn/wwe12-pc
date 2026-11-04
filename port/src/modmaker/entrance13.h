@@ -699,7 +699,7 @@ inline int EntranceByName(const disc::GameDisc &g, const std::string &superstar)
   const std::string want = key(superstar);
   if (want.empty())
     return 0;
-  int starts = 0;
+  int starts = 0, close = 0;
   for (const auto &f : g.List("pac/evt")) {
     if (f.size() != 9 || f.compare(0, 2, "00") != 0 || _stricmp(f.c_str() + 5, ".pac") != 0)
       continue;
@@ -720,9 +720,24 @@ inline int EntranceByName(const disc::GameDisc &g, const std::string &superstar)
         return n;
       if (!starts && k2.rfind(want, 0) == 0)
         starts = n;
+      // (one letter more or less, from 6 letters: 2K17 named Goldberg's script "0361_Golberg", 2026-11-04)
+      if (!close && want.size() >= 6 && k2.size() + 1 == want.size()) {
+        size_t a = 0;
+        while (a < k2.size() && k2[a] == want[a])
+          ++a;
+        if (k2.compare(a, std::string::npos, want, a + 1, std::string::npos) == 0)
+          close = n;
+      }
+      if (!close && want.size() >= 6 && want.size() + 1 == k2.size()) {
+        size_t a = 0;
+        while (a < want.size() && k2[a] == want[a])
+          ++a;
+        if (want.compare(a, std::string::npos, k2, a + 1, std::string::npos) == 0)
+          close = n;
+      }
     }
   }
-  return starts;
+  return starts ? starts : close;
 }
 
 // A game's effects (pac\prtcls.pac PCE6/NNNN, a PACH) of entrance `number`, empty if none.

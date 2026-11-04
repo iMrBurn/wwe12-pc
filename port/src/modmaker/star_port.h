@@ -177,6 +177,7 @@ struct Parts {
   bool one_take = false;                    // ... a 2K15 "one-take" (entrance13::OneTake)
   std::vector<entrance13::Part> victory;    // his victory scene (6000 + his number), else empty
   std::vector<entrance13::Part> objects;    // the objects of both WWE '12 hasn't (entrance13::Objects)
+  int hidden_people = 0;  // people of its entrance other than him (2K17 Goldberg's security: 7) WWE '12 can't show
 };
 
 // Superstar `number` of `game` (in My game discs): his moves, entrance, victory scene and their objects. `name`: his
@@ -332,6 +333,23 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     // (the props neither WWE '12 nor the mod has: an existing one, hidden)
     entrance13::HideMissing(out.entrance, w12, out.objects);
     entrance13::HideMissing(out.victory, w12, out.objects);
+    // (the people of its entrance other than him: objects of type 0x01000000 after object 0 with another model (person
+    // NNNAA = superstar NNN, attire AA, of its own game). 2K16 / 2K17 place them with their game, WWE '12 can't: they
+    // take WWE '12's people's spots and are not shown (2K17 Goldberg's 7 security men, model 19202, a player's report,
+    // 2026-11-04); counted for the page to say so)
+    for (const auto &p : out.entrance) {
+      if (p.kind != "EVP" || p.number != out.entrance_number || p.data.size() < 0x50)
+        continue;
+      using entrance13::detail::Be32;
+      const uint32_t n = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
+      const uint32_t self = t + 32 <= p.data.size() ? Be32(p.data, t + 4) : 0;
+      for (uint32_t i = 1; i < n && t + 32 * size_t(i + 1) <= p.data.size(); ++i) {
+        const size_t q = t + 32 * size_t(i);
+        const uint32_t model = Be32(p.data, q + 4);
+        if (Be32(p.data, q + 8) == 0x01000000 && model && model != self && (game == 0x315A07D2 || game == 0x545408BA))
+          ++out.hidden_people;
+      }
+    }
     // (2K16 / 2K17's object 5009 and superstars waiting in the ring, made for their skeleton and placement: WWE '12's)
     for (auto *parts : {&out.entrance, &out.victory}) {
       entrance13::Announcer12(*parts, w12);
