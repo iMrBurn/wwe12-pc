@@ -230,7 +230,8 @@ int g_page = 0;
 // (for the page label, drawn on the UI thread: wwe12_arena_pages' ArenaPageLabel)
 std::atomic<int> g_label_page{0}, g_label_pages{0};
 std::atomic<int64_t> g_label_seen{0};  // when the arena select was last drawn (ms)
-std::atomic<bool> g_label_open{false};  // the label dialog exists (made on the UI thread while the screen shows)
+std::atomic<bool> g_label_open{false};
+std::atomic<int> g_label_cursor{-1};  // the added arena under the cursor (its index in g_added), -1: none  // the label dialog exists (made on the UI thread while the screen shows)
 void OpenPageLabel();                    // (below)
 int64_t NowMs() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -1374,6 +1375,24 @@ extern "C" REX_FUNC(sub_825A6A98) {
   const bool ours = screen && (ctx.r3.u32 == screen || ctx.r3.u32 == screen + 28);
   if (ours && g_pages.size() > 1) {
     g_label_seen = NowMs();
+    // the tile under the cursor: row at +72, column at +88 (sub_825A3AB8 sets them), the grid's cell (kRecords + 176,
+    // 4 x 6 cells of 8 bytes) -> its tile record -> the record's stage
+    const u32 row = Field(screen, 72), col = Field(screen, 88);
+    int cursor = -1;
+    if (row < 4 && col < 6) {
+      // (the cell's first word is the tile record's address: kRecords + 8 x its index)
+      const u32 at = bd::mem::load<u32>(kRecords + 176 + (row * 6 + col) * 8);
+      const u32 record = at >= kRecords && at < kRecords + kTiles * 8 ? (at - kRecords) / 8 : 0xFFFFFFFFu;
+      const u32 stage = record < u32(kTiles) ? bd::mem::load<u32>(kRecords + record * 8) : 0;
+      if (IsAdded(stage))
+        cursor = int(stage - kFirstAdded);
+      static u32 last = 0xFFFFFFFFu;
+      if (REXCVAR_GET(wwe12_arena_pages_test) && (row << 8 | col) != last) {
+        last = row << 8 | col;
+        REXLOG_INFO("[arena pages] cursor row {} column {}: record {}, stage {}", row, col, record, stage);
+      }
+    }
+    g_label_cursor = cursor;
     if (!g_label_open.exchange(true))
       OpenPageLabel();
   }
@@ -1824,6 +1843,15 @@ class ArenaPageLabel final : public rex::ui::ImGuiDialog {
     const float lx = c.x - half, rx = c.x + half;
     dl->AddTriangleFilled(ImVec2(lx, c.y), ImVec2(lx + arrow, c.y - arrow), ImVec2(lx + arrow, c.y + arrow), yellow);
     dl->AddTriangleFilled(ImVec2(rx, c.y), ImVec2(rx - arrow, c.y + arrow), ImVec2(rx - arrow, c.y - arrow), yellow);
+    // the added arena under the cursor, beside the label (as Kaiko's)
+    if (const int ci = g_label_cursor.load(); ci >= 0 && ci < int(g_added.size()) && !g_added[size_t(ci)].name.empty()) {
+      const std::string &name = g_added[size_t(ci)].name;
+      const float ns = 22.0f * scale;
+      const ImVec2 nt = font->CalcTextSizeA(ns, FLT_MAX, 0.0f, name.c_str());
+      const ImVec2 na(b.x + 12.0f * scale, c.y - nt.y * 0.5f - pad.y), nb(na.x + nt.x + pad.x * 2, c.y + nt.y * 0.5f + pad.y);
+      dl->AddRectFilled(na, nb, IM_COL32(10, 12, 18, 220), 6.0f * scale);
+      dl->AddText(font, ns, ImVec2(na.x + pad.x, c.y - nt.y * 0.5f), yellow, name.c_str());
+    }
     // on the game's page: where the added arenas are
     if (page == 0) {
       char more[64];
