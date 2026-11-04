@@ -16,6 +16,15 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 #if defined(__ANDROID__)
 #include <time.h>
 
@@ -362,19 +371,32 @@ struct FrameStats {
   double sum_interval = 0, max_interval = 0, sum_work = 0, max_work = 0, sum_gpu = 0,
          max_gpu = 0, sum_swap = 0;
   u32 frames = 0, hitches = 0;
-  double window_cpu_ms = -1;  // render thread CPU time at window start (Android), -1 = unknown
+  double window_cpu_ms = -1;  // render thread CPU time at window start, -1 = unknown
   double window_process_ms = -1;
 };
 
-// Android: the render thread's own CPU time. "work" can include time spent waiting for the
-// game's next frame; render CPU near "work" means recording frames is the limit, far below it
-// means the game's logic is.
+// The render thread's own CPU time. "work" can include time spent waiting for the game's next
+// frame; render CPU near "work" means recording frames is the limit, far below it means the
+// game's logic is.
 // The whole process's CPU time, beside it, tells how many cores the game keeps busy.
+// (Windows: kernel + user time, counted in 100 ns units, updated at each scheduler tick.)
 double CpuMs(bool whole_process) {
 #if defined(__ANDROID__)
   timespec ts{};
   if (clock_gettime(whole_process ? CLOCK_PROCESS_CPUTIME_ID : CLOCK_THREAD_CPUTIME_ID, &ts) == 0)
     return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+#elif defined(_WIN32)
+  FILETIME creation, exit, kernel, user;
+  const BOOL ok = whole_process
+                      ? GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user)
+                      : GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user);
+  if (ok) {
+    const auto ticks = [](const FILETIME &t) {
+      return (u64(t.dwHighDateTime) << 32) | t.dwLowDateTime;
+    };
+    return double(ticks(kernel) + ticks(user)) / 1e4;
+  }
+  (void)whole_process;
 #else
   (void)whole_process;
 #endif
