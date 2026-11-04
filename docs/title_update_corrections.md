@@ -51,6 +51,17 @@ Toutes les adresses ci-dessous sont celles du **jeu du disque** (les nôtres), s
   - `sub_829D8148` : les listes `/CAV/*` de Create an Entrance reçoivent aussi CA09 et CA10.
 - **Lecture probable :** sur le jeu du disque, une prise de DLC 3 ou 4 n'a pas de catégorie connue dans ces listes.
   D'où la note de patch « movesets des CAW réinitialisés » (un CAW qui utilise une prise de DLC).
+- **Précision (2026-11-04, hors jeu) :**
+  - 47 est le nombre de banques d'**aperçu** de l'éditeur de moveset : un tableau de 47 pointeurs dans
+    l'objet `[0x8317AD50]+412`, chargé par `sub_82462080`. 47 sert aussi de « pas de banque » :
+    - `sub_8244F218` donne la banque d'une prise ;
+    - `sub_82DD4F00` saute l'aperçu si elle vaut 47.
+  - La TU1 insère CA09/CA10 aux places 23-24 : toutes les banques suivantes sont renumérotées (+2), et
+    `sub_82461128` reçoit une table de numéros d'animations des DLC (pile +224 octets).
+  - Ce qu'on voit dans ce code : sur le disque, une prise de DLC 3-4 (ou de nos CA11+) **n'a pas d'aperçu** dans
+    l'éditeur. **La perte de la prise à la sauvegarde n'est pas prouvée** par ce code : il faut l'essai en jeu.
+  - **Pas de correctif court** : il faudrait renuméroter les banques dans une quinzaine de fonctions et agrandir un
+    tableau sur la pile. Rien n'est préparé.
 - **Chez nous :** non corrigé (nous tournons sur le code du disque).
   - **Cela touche aussi nos mods :** le Mod Maker met ses prises dans les banques CA11 et plus. Le jeu les charge
     (boucle CA00-CA19), mais ces listes de catégories ne les connaissent pas. Cela expliquerait des soucis de
@@ -137,10 +148,27 @@ Toutes les adresses ci-dessous sont celles du **jeu du disque** (les nôtres), s
 
 - `sub_822A3E68`, `822A5470` : textes 45109 « PREVIEW », 45110 « SPEED CHANGE », 45123 « ADD CLIP TO REEL ». C'est
   l'éditeur de ralentis.
-- `sub_8223F878`, `82220020`, `82280DF0`, `821D3F58`, `8223F440` : nouvelles comparaisons à des numéros
-  (33901, 58012, 58204, 37229, 50151, 57006…). Ce sont peut-être des numéros de prises ou d'animations traitées à
-  part, à identifier.
-- **Peut-être le « gel du finisher »** : rien ne le prouve.
+- **Cas spéciaux pour des finishers précis (TU2) : très probablement le « gel de finisher ».** Ajout du
+  2026-11-04, hors jeu.
+  - Les numéros comparés sont des numéros de prises (liste des signatures et finishers de la session Gameplay,
+    `sigfin.txt`) :
+    - 33901 Spear 3 ; 33902 Sweet Chin Music ; 58012 Sleeper Hold 2 ; 58204 Ankle Lock 3 ;
+    - 50151 Edgecution 1 ; 51062 Skull Crushing Finale ;
+    - 37229, 57006 : non nommés.
+  - Champs lus sur le catcheur : +680 → u16 = état / animation en cours, +700 = numéro de la prise,
+    +684 / +688 → octets d'étape. L'adversaire est `[0x8317B770 + 4 × [catcheur + 3032]]`.
+  - `sub_8223F440` (prédicat, renvoie 0/1) : renvoie 0 si état 37229 + prise Edgecution et adversaire à l'état 20.
+  - `sub_821D3F58` : un traitement à part si état 53 + prise Spear 3 et adversaire à l'état 284.
+  - `sub_8223F878` : Spear 3 et Sleeper Hold 2 à certaines étapes (+684 = 0 ou 7, +688 = 0).
+  - `sub_82280DF0` : Ankle Lock 3 à l'étape 7.
+  - `sub_823CCDB8` : prise 57006 (+702 = +703 = 0).
+  - `sub_823F24C8` : en fin de fonction, si l'adversaire (`obj+36`) est en Skull Crushing Finale, les champs +8,
+    +12, +16 sont mis à 0 et le résultat aussi.
+  - `sub_82220020` : un cas 1333 (état ?) avec `sub_8223DCB8`.
+  - **Chez nous :** aucun de ces cas (code du disque). Le jeu n'est pas encore lancé pour voir si ces prises gèlent.
+  - **Difficulté :** chaque cas est petit, mais il est placé au milieu d'une fonction, donc il faut un crochet par
+    fonction qui refait la condition au bon endroit. Le plus simple : Skull Crushing Finale (à la fin de
+    `sub_823F24C8`, après l'appel). Il faut le tester en jeu, prise par prise.
 
 ### 2.8 Autres
 
@@ -166,7 +194,7 @@ Toutes les adresses ci-dessous sont celles du **jeu du disque** (les nôtres), s
 | Univers, au-delà de 50 Superstars / CAW | **Probable** : les CAW (ids < 50) comptent enfin dans les effectifs (TU2, §2.2) |
 | Tables sous le ring | Peut-être : nouveau paramètre dans les fonctions d'objets / armes (TU1, §2.3) |
 | Son qui boucle après un Backstage Brawl | Peut-être : même famille (§2.3) ; rien de net dans le son |
-| Gel pendant un finisher | Pas trouvé (candidats §2.7) |
+| Gel pendant un finisher | **Très probable** : cas spéciaux ajoutés pour Spear, Ankle Lock, Sleeper Hold, Edgecution, Skull Crushing Finale… (TU2, §2.7) |
 | Passer à travers la cage HIAC / les barrières | Pas trouvé : la collision (Havok) ne change que par recompilation ; peut-être un réglage (§2.4) |
 | Évasion d'un tombé en Elimination Chamber | Pas trouvé |
 
