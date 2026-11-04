@@ -599,6 +599,28 @@ const Guide kGuides[] = {
       "déplacez-le ; Exporter en OBJ écrit un objet (OBJ, MTL, PNG).",
       "CATCHEURS, Matières : la brillance et la teinte de la peau et de chaque partie de la tenue. Cochez plusieurs "
       "parties pour les changer ensemble."}},
+    {"Entrance outfits (jacket, hat, armour...)",
+     "Tenues d'entrée (veste, chapeau, armure...)",
+     {"An entrance outfit is worn only during the entrance; then the superstar wrestles in his attire (as Animal's "
+      "armour in WWE '12).",
+      "NEW SUPERSTAR from WWE '13 or 2K14: tick With its entrance outfit (step 1): it is found by itself.",
+      "NEW SUPERSTAR from 2K16 or 2K17: those games don't tell which attire is for the entrance. Look at each in 3D "
+      "(Attire to port), put the wrestling one in Attire to port and the other in Its entrance outfit (from its "
+      "file). Seth Rollins: attire 1, entrance outfit attire 2.",
+      "NEW SUPERSTAR from SvR: no entrance outfit yet; the base's is taken out (no one else's jacket).",
+      "A game superstar: in NEW SUPERSTAR, with him as the base, make An attire of <him> (Finish), then pick His "
+      "entrance outfit (attire N) or An entrance outfit (attire N): the look you made is worn for his entrances in "
+      "attire N (a vest for CM Punk)."},
+     {"Une tenue d'entrée n'est portée que pendant l'entrée ; ensuite le catcheur combat dans sa tenue (comme l'armure "
+      "d'Animal dans WWE '12).",
+      "NOUVEAU depuis WWE '13 ou 2K14 : cochez Avec sa tenue d'entrée (étape 1) : elle est trouvée toute seule.",
+      "NOUVEAU depuis 2K16 ou 2K17 : ces jeux ne disent pas quelle tenue sert à l'entrée. Regardez chacune en 3D "
+      "(Tenue à porter), mettez celle de combat dans Tenue à porter et l'autre dans Sa tenue d'entrée (de son "
+      "fichier). Seth Rollins : tenue 1, tenue d'entrée tenue 2.",
+      "NOUVEAU depuis SvR : pas encore de tenue d'entrée ; celle de la base est retirée (pas la veste d'un autre).",
+      "Un catcheur du jeu : dans NOUVEAU, avec lui comme base, faites Une tenue de <lui> (Terminer), puis choisissez "
+      "Sa tenue d'entrée (tenue N) ou Une tenue d'entrée (tenue N) : l'apparence faite lui sert pour ses entrées en "
+      "tenue N (une veste pour CM Punk)."}},
     {"Your mods: turn on, off, share",
      "Vos mods : activer, désactiver, partager",
      {"Every mod is a .svrmod file, saved where you chose: share that file.",
@@ -653,11 +675,11 @@ const Guide kGuides[] = {
       "Texture : une image que le jeu pose sur un modèle 3D (un visage, une tenue, un tablier de ring)."}},
     {"Not yet",
      "Pas encore",
-     {"The moves of SvR 2007 to 2010 and of the 2K games' superstars (they take their base's).",
+     {"The moves WWE '12 hasn't (a ported superstar's own finishers): those slots keep their base's move.",
       "The props of SvR entrances WWE '12 hasn't (hidden), and SvR 2007's victory scenes.",
       "Adding a fifth attire to a superstar of the game: replacing one works (a WWE '13 port brings up to 4 of its own).",
       "Moving hair and cloth on imported models (they follow the head and body)."},
-     {"Les prises des catcheurs de SvR 2007 à 2010 et des 2K (ils prennent celles de leur base).",
+     {"Les prises que WWE '12 n'a pas (les finishers propres d'un catcheur porté) : ces cases gardent celle de la base.",
       "Les accessoires des entrées SvR que WWE '12 n'a pas (cachés), et les scènes de victoire de SvR 2007.",
       "Ajouter une 5e tenue à un catcheur du jeu : en remplacer une marche (un catcheur porté de WWE '13 garde jusqu'à 4 "
       "tenues à lui).",
