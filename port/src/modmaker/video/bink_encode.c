@@ -366,6 +366,7 @@ struct BinkWriter {
     uint8_t *same; size_t same_n;  /* bink_writer_repeat's frame */
     uint8_t *Y, *U, *V, *rY, *rU, *rV, *A, *rA;
     uint32_t *offs, largest;
+    uint64_t total;  /* WWE12-PC: the frames' bytes so far (bink_writer_frame_yuv's budget) */
     Bits b;
     int skip_thr, fill_thr, pat_thr;  /* WWE12-PC: bink_writer_quality (default 2, 2, 0) */
 };
@@ -458,6 +459,7 @@ int bink_writer_repeat(BinkWriter *w)
     pos = (size_t)bink_tell(w->f);
     w->offs[w->done] = (uint32_t)pos;
     if (fwrite(w->same, 1, w->same_n, w->f) != w->same_n) return -1;
+    w->total += w->same_n;
     w->done++;
     return 1;
 }
@@ -470,8 +472,13 @@ static int bink_writer_frame_yuv_once(BinkWriter *w);
 static int bink_writer_frame_yuv(BinkWriter *w)
 {
     static const int steps[][3] = {{3, 3, 6}, {4, 4, 10}, {6, 6, 14}, {8, 8, 20}, {10, 10, 28}, {12, 12, 36},
-                                   {16, 16, 52}, {24, 24, 80}};
-    const size_t ny = (size_t)w->w * w->h, nc = ny / 4, cap = ny * 9 / 10 < 100000 ? ny * 9 / 10 : 100000;
+                                   {16, 16, 52}, {24, 24, 80}, {32, 32, 110}, {48, 48, 160}};
+    const size_t ny = (size_t)w->w * w->h, nc = ny / 4, peak = ny * 9 / 10 < 100000 ? ny * 9 / 10 : 100000;
+    /* the rate too: the game's titantrons average at most ~26.7 KB a frame (~800 KB/s); Rollins' 2K16 one at 53 KB
+     * froze the loading even with every frame under 100 KB. A budget of 24 KB a frame, with 300 KB saved up to spend */
+    const uint64_t allowed = 24000ull * (uint64_t)(w->done + 1) + 300000ull;
+    const size_t left = allowed > w->total ? (size_t)(allowed - w->total) : 0;
+    const size_t cap = left < peak ? (left > 6000 ? left : 6000) : peak;
     const int skip = w->skip_thr, fill = w->fill_thr, pat = w->pat_thr;
     uint8_t *save = NULL;
     long at;
@@ -479,6 +486,7 @@ static int bink_writer_frame_yuv(BinkWriter *w)
     if (skip >= 255) {  /* (a repeat: all skips) */
         r = bink_writer_frame_yuv_once(w);
         if (r == 1 && w->b.n > w->largest) w->largest = (uint32_t)w->b.n;
+        if (r == 1) w->total += w->b.n;
         return r;
     }
     at = bink_tell(w->f);
@@ -486,6 +494,7 @@ static int bink_writer_frame_yuv(BinkWriter *w)
     if (!save) {
         r = bink_writer_frame_yuv_once(w);
         if (r == 1 && w->b.n > w->largest) w->largest = (uint32_t)w->b.n;
+        if (r == 1) w->total += w->b.n;
         return r;
     }
     memcpy(save, w->rY, ny); memcpy(save + ny, w->rU, nc); memcpy(save + ny + nc, w->rV, nc);
@@ -503,6 +512,7 @@ static int bink_writer_frame_yuv(BinkWriter *w)
     w->skip_thr = skip; w->fill_thr = fill; w->pat_thr = pat;
     free(save);
     if (r == 1 && w->b.n > w->largest) w->largest = (uint32_t)w->b.n;
+    if (r == 1) w->total += w->b.n;
     return r;
 }
 

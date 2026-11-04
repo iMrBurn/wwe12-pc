@@ -993,15 +993,20 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       auto &st = stars[i];
       if (!st.slot || st.model.empty() || !ReadHost(list[i].movie, st.movie))
         continue;
-      // (a movie whose biggest frame is over 120 KB froze the loading before the entrance: Seth Rollins' 2K16
-      // titantron, 140 KB, 2026-11-04; the game's own stay under 108 KB) left out: the base's plays instead
+      // (a movie whose biggest frame is over 120 KB, or whose frames average over 32 KB, froze the loading before the
+      // entrance: Seth Rollins' 2K16 titantron, 2026-11-04; the game's own stay under 108 KB / 26.7 KB) left out
       if (st.movie.size() >= 16 && !memcmp(st.movie.data(), "BIK", 3)) {
         const uint32_t largest = uint32_t(st.movie[12]) | uint32_t(st.movie[13]) << 8 | uint32_t(st.movie[14]) << 16 |
                                  uint32_t(st.movie[15]) << 24;
-        if (largest > 120000) {
-          REXLOG_WARN("[superstar mods] {}: entrance video left out, a frame of {} bytes (the game freezes over ~120 KB);"
-                      " make it again with the Mod Maker",
-                      st.key, largest);
+        const uint32_t frames = uint32_t(st.movie[8]) | uint32_t(st.movie[9]) << 8 | uint32_t(st.movie[10]) << 16 |
+                                uint32_t(st.movie[11]) << 24;
+        const size_t average = frames ? st.movie.size() / frames : 0;
+        // (the rate too: the game's own average at most ~26.7 KB a frame; Rollins' remade one, 53 KB a frame with
+        // every frame under 100 KB, froze the same)
+        if (largest > 120000 || average > 32000) {
+          REXLOG_WARN("[superstar mods] {}: entrance video left out, frames of {} bytes at most, {} on average (the game"
+                      " freezes over ~120 KB / ~32 KB); make it again with the Mod Maker",
+                      st.key, largest, average);
           st.movie.clear();
           continue;
         }
