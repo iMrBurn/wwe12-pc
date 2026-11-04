@@ -1,0 +1,35 @@
+diff --git a/src/core/memory_posix.cpp b/src/core/memory_posix.cpp
+--- a/src/core/memory_posix.cpp
++++ b/src/core/memory_posix.cpp
+@@ -294,13 +294,30 @@ void* AllocFixed(void* base_address, size_t length, AllocationType allocation_ty
+ #endif
+ 
+   void* result = mmap(base_address, length, prot_initial, flags, -1, 0);
++  bool already_mapped = false;
++#if defined(MAP_FIXED_NOREPLACE) && REX_PLATFORM_LINUX
++  if (result != MAP_FAILED && base_address && result != base_address) {
++    // Kernels before 4.17 (e.g. 4.14 phones) do not know MAP_FIXED_NOREPLACE and treat it as a
++    // hint: when the range is already mapped they return another address instead of EEXIST.
++    // Drop that stray mapping and take the same path as EEXIST.
++    static bool logged = false;
++    if (!logged) {
++      logged = true;
++      REXSYS_WARN("mmap ignored MAP_FIXED_NOREPLACE (kernel before 4.17): got {} instead of {}",
++                  result, base_address);
++    }
++    munmap(result, length);
++    result = MAP_FAILED;
++    already_mapped = true;
++  }
++#endif
+   if (result != MAP_FAILED) {
+     return result;
+   }
+ #if defined(MAP_FIXED_NOREPLACE) && REX_PLATFORM_LINUX
+   // Handle EEXIST: address already has a mapping (e.g., from prior Reserve)
+   // This is the "commit on existing reservation" path
+-  if (errno == EEXIST && base_address &&
++  if ((errno == EEXIST || already_mapped) && base_address &&
+       (allocation_type == AllocationType::kCommit ||
+        allocation_type == AllocationType::kReserveCommit)) {
+     // Verify the entire range is mapped before using mprotect

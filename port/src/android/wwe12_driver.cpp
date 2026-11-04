@@ -8,6 +8,8 @@
 #include <mutex>
 #include <string>
 
+#include <sys/utsname.h>
+
 #include <rex/logging/macros.h>
 
 #if defined(WWE12_ADRENOTOOLS)
@@ -20,6 +22,10 @@ extern "C" __attribute__((visibility("default"))) void *wwe12_custom_vulkan_driv
   static std::once_flag once;
   static void *handle = nullptr;
   std::call_once(once, [] {
+    utsname un{};
+    if (uname(&un) == 0) {
+      REXLOG_INFO("Android kernel: {} {} ({})", un.sysname, un.release, un.machine);
+    }
     const char *dir = std::getenv("WWE12_DRIVER_DIR");
     if (!dir || !dir[0]) {
       REXLOG_INFO("GPU driver: the phone's own driver");

@@ -1,0 +1,108 @@
+--- a/plume_vulkan.cpp
++++ b/plume_vulkan.cpp
+@@ -186,6 +186,9 @@
+         VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+         VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME,
+         VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME,
++#if defined(__ANDROID__)
++        VK_EXT_DEVICE_FAULT_EXTENSION_NAME,
++#endif
+         VK_KHR_PRESENT_ID_EXTENSION_NAME,
+         VK_KHR_PRESENT_WAIT_EXTENSION_NAME,
+         VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME,
+@@ -4020,6 +4023,17 @@
+             featuresChain = &bufferDeviceAddressFeatures;
+         }
+ 
++#if defined(__ANDROID__)
++        // WWE '12 Android: ask the driver what it knows when the device is lost (diagnostic only).
++        VkPhysicalDeviceFaultFeaturesEXT deviceFaultFeatures = {};
++        const bool deviceFaultFound = supportedOptionalExtensions.find(VK_EXT_DEVICE_FAULT_EXTENSION_NAME) != supportedOptionalExtensions.end();
++        if (deviceFaultFound) {
++            deviceFaultFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT;
++            deviceFaultFeatures.pNext = featuresChain;
++            featuresChain = &deviceFaultFeatures;
++        }
++#endif
++
+         VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures = {};
+         const bool portabilityFound = supportedOptionalExtensions.find(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME) != supportedOptionalExtensions.end();
+         if (portabilityFound) {
+@@ -4138,6 +4152,14 @@
+             createDeviceChain = &portabilityFeatures;
+         }
+ 
++#if defined(__ANDROID__)
++        if (deviceFaultFound && deviceFaultFeatures.deviceFault) {
++            deviceFaultFeatures.pNext = createDeviceChain;
++            createDeviceChain = &deviceFaultFeatures;
++            deviceFaultEnabled = true;
++        }
++#endif
++
+         // Retrieve the information for the queue families.
+         uint32_t queueFamilyCount = 0;
+         vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+@@ -4324,6 +4346,49 @@
+         }
+     }
+ 
++    std::string VulkanDevice::describeDeviceFault() {
++        if (!deviceFaultEnabled || vk == VK_NULL_HANDLE) {
++            return "VK_EXT_device_fault not available on this driver";
++        }
++
++        auto getInfo = reinterpret_cast<PFN_vkGetDeviceFaultInfoEXT>(vkGetDeviceProcAddr(vk, "vkGetDeviceFaultInfoEXT"));
++        if (getInfo == nullptr) {
++            return "vkGetDeviceFaultInfoEXT not found";
++        }
++
++        VkDeviceFaultCountsEXT counts = {};
++        counts.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT;
++        VkResult res = getInfo(vk, &counts, nullptr);
++        if (res != VK_SUCCESS) {
++            return "vkGetDeviceFaultInfoEXT (counts) failed: " + std::to_string(int(res));
++        }
++
++        std::vector<VkDeviceFaultAddressInfoEXT> addressInfos(counts.addressInfoCount);
++        std::vector<VkDeviceFaultVendorInfoEXT> vendorInfos(counts.vendorInfoCount);
++        VkDeviceFaultInfoEXT info = {};
++        info.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT;
++        info.pAddressInfos = addressInfos.empty() ? nullptr : addressInfos.data();
++        info.pVendorInfos = vendorInfos.empty() ? nullptr : vendorInfos.data();
++        res = getInfo(vk, &counts, &info);
++        if (res != VK_SUCCESS && res != VK_INCOMPLETE) {
++            return "vkGetDeviceFaultInfoEXT failed: " + std::to_string(int(res));
++        }
++
++        char line[256];
++        std::string text = "\"" + std::string(info.description) + "\"";
++        for (const VkDeviceFaultAddressInfoEXT &a : addressInfos) {
++            snprintf(line, sizeof(line), " | address type %d at %#llx (precision %#llx)", int(a.addressType),
++                     (unsigned long long)a.reportedAddress, (unsigned long long)a.addressPrecision);
++            text += line;
++        }
++        for (const VkDeviceFaultVendorInfoEXT &v : vendorInfos) {
++            snprintf(line, sizeof(line), " | vendor \"%.64s\" code %#llx data %#llx", v.description,
++                     (unsigned long long)v.vendorFaultCode, (unsigned long long)v.vendorFaultData);
++            text += line;
++        }
++        return text;
++    }
++
+     VulkanDevice::~VulkanDevice() {
+         release();
+     }
+--- a/plume_vulkan.h
++++ b/plume_vulkan.h
+@@ -417,6 +417,10 @@
+         std::unique_ptr<RenderBuffer> nullBuffer;
+         bool loadStoreOpNoneSupported = false;
+         bool nullDescriptorSupported = false;
++        bool deviceFaultEnabled = false;
++
++        // VK_EXT_device_fault report after a VK_ERROR_DEVICE_LOST (empty-ish text if unsupported).
++        std::string describeDeviceFault();
+ 
+         VulkanDevice(VulkanInterface *renderInterface, const std::string &preferredDeviceName);
+         ~VulkanDevice() override;

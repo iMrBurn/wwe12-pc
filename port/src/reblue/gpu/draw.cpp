@@ -67,6 +67,9 @@ bool IsDepthOfFieldShader(const bd::gpu::GuestShader *ps) {
 
 namespace bd::gpu {
 extern std::atomic<u64> g_render_thread_pso_ns;  // pso_recorder.cpp
+#if defined(__ANDROID__)
+void NoteBoundPipeline(u64 vs_hash, u64 ps_hash, u32 width, u32 height);  // device_lost.cpp
+#endif
 namespace {
 
 // BD g_renderStateCache: DWORD array indexed by D3DRS byte offset, written
@@ -471,6 +474,14 @@ bool Video::FlushRenderStateLocked(u32 device_guest) {
     RecordPipelineState(lookup, CurrentRenderPassId(), built);
     s.command_list->setPipeline(pso);
     s.current_pso = pso;
+#if defined(__ANDROID__)
+    NoteBoundPipeline(lookup.vertexShader && lookup.vertexShader->shaderCacheEntry
+                          ? lookup.vertexShader->shaderCacheEntry->hash : 0,
+                      lookup.pixelShader && lookup.pixelShader->shaderCacheEntry
+                          ? lookup.pixelShader->shaderCacheEntry->hash : 0,
+                      s.render_target ? s.render_target->width : 0,
+                      s.render_target ? s.render_target->height : 0);
+#endif
   } else if (!s.current_pso) {
     // Clean dirty bits but no PSO bound: the first draw after a command list
     // reset that lost the force-dirty.

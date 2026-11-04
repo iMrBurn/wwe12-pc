@@ -10,6 +10,7 @@
  */
 #include "gpu/device.h"
 
+#include <algorithm>
 #include <atomic>
 
 #include <plume_render_interface.h>
@@ -54,6 +55,20 @@ const char *DeviceRemovedReasonName(long hr) {
 // Latched once, process-wide, so only the first detector reports + terminates.
 std::atomic<bool> g_device_lost_reported{false};
 
+#if defined(__ANDROID__)
+// WWE '12 Android (#54): the pipelines bound just before a VK_ERROR_DEVICE_LOST, to find which
+// shader pair a hanging GPU was running. Written by the render thread, read once at the loss.
+struct BoundPipeline {
+  u64 vs_hash = 0;
+  u64 ps_hash = 0;
+  u32 width = 0;
+  u32 height = 0;
+};
+constexpr u32 kRecentPipelines = 12;
+BoundPipeline g_recent_pipelines[kRecentPipelines];
+std::atomic<u32> g_recent_pipeline_count{0};
+#endif
+
 // Shared tail once a backend has confirmed the loss. Always returns true, so a
 // detector can tail-call it.
 bool ReportDeviceLost(const char *context, const char *reason, u32 code) {
@@ -67,6 +82,17 @@ bool ReportDeviceLost(const char *context, const char *reason, u32 code) {
 
   BD_CRITICAL("graphics device removed (at {}): {:#010x} ({})",
               context ? context : "?", code, reason);
+#if defined(__ANDROID__) && !defined(REBLUE_D3D12)
+  if (auto *dev = static_cast<plume::VulkanDevice *>(state().device.get())) {
+    BD_ERROR("device fault: {}", dev->describeDeviceFault());
+  }
+  const u32 bound = g_recent_pipeline_count.load(std::memory_order_relaxed);
+  for (u32 k = std::min(bound, kRecentPipelines); k > 0; k--) {
+    const BoundPipeline &p = g_recent_pipelines[(bound - k) % kRecentPipelines];
+    BD_ERROR("last pipelines bound (oldest first): vs {:#018x} ps {:#018x} target {}x{}", p.vs_hash,
+             p.ps_hash, p.width, p.height);
+  }
+#endif
   // Before the dialog: this is the only window in which the runtime still holds
   // the breadcrumb and page fault data for the dead device.
   LogDredReport(context);
@@ -130,6 +156,13 @@ bool CheckDeviceRemoved(const char *context) {
     }
   }
   return false; // device healthy, caller's failure is out-of-date/OOM/other
+}
+#endif
+
+#if defined(__ANDROID__)
+void NoteBoundPipeline(u64 vs_hash, u64 ps_hash, u32 width, u32 height) {
+  const u32 i = g_recent_pipeline_count.fetch_add(1, std::memory_order_relaxed);
+  g_recent_pipelines[i % kRecentPipelines] = {vs_hash, ps_hash, width, height};
 }
 #endif
 

@@ -95,6 +95,10 @@ if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume"
 $plumeD3d11 = Join-Path $Root "port\patches\plume-d3d11.patch"
 cmd /c "git -C `"$(Join-Path $Root 'recomp\plume')`" apply --reverse --check `"$plumeD3d11`" 2>nul"
 if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume") apply --whitespace=nowarn $plumeD3d11 }
+# Enfin : Android, rapport VK_EXT_device_fault après un VK_ERROR_DEVICE_LOST (diagnostic seul ; rien ne change sur PC).
+$plumeFault = Join-Path $Root "port\patches\plume-zz-android-devicefault.patch"
+cmd /c "git -C `"$(Join-Path $Root 'recomp\plume')`" apply --reverse --check `"$plumeFault`" 2>nul"
+if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume") apply --whitespace=nowarn $plumeFault }
 Get-PinnedRepo "https://github.com/zolaware/reblue-XenosRecomp.git" `
     (Join-Path $Root "recomp\reblue-XenosRecomp") "339af41" `
     (Join-Path $Root "port\patches\xenosrecomp-reblue-wwe12.patch")  # patch reblue + adaptations WWE '12
