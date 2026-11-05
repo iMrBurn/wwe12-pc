@@ -906,6 +906,24 @@ static std::string NewestLog(const char* prefix) {
   })];
   if (_message) [logs addArrangedSubview:Label(_message, 13.0, [UIColor colorWithRed:0.94 green:0.75 blue:0.24 alpha:1.0], NO)];
 
+  UIStackView* upd = Card(stack, @"Updates");
+  [upd addArrangedSubview:Label(@"Looks at the latest public release (PC and Android). Needs internet.", 13.0, W12_DIM, NO)];
+  [upd addArrangedSubview:Button(@"Check for updates", NO, ^{
+    NSURL* url = [NSURL URLWithString:@"https://api.github.com/repos/iMrBurn/wwe12-pc/releases/latest"];
+    NSURLSessionDataTask* task = [[NSURLSession sharedSession]
+        dataTaskWithURL:url
+      completionHandler:^(NSData* data, NSURLResponse*, NSError* error) {
+        NSString* text = @"Couldn't reach the server.";
+        if (!error && data) {
+          NSDictionary* json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+          NSString* tag = [json isKindOfClass:[NSDictionary class]] ? json[@"tag_name"] : nil;
+          if (tag) text = [NSString stringWithFormat:@"Latest public release: %@.", tag];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf setMessage:text]; });
+      }];
+    [task resume];
+  })];
+
   struct utsname un;
   uname(&un);
   NSDictionary* info = [[NSBundle mainBundle] infoDictionary];
@@ -925,6 +943,42 @@ static std::string NewestLog(const char* prefix) {
     [d removeObjectForKey:@"touch_opacity"];
     [weakSelf setMessage:@"Settings reset. The defaults are back the next time the game starts."];
   })];
+  return page;
+}
+
+// ---- Mods (the game reads Documents/mods, the "mods" folder next to the exe on PC) ----
+
+static std::string ModsDir() { return Docs() + "/mods"; }
+
+- (UIView*)buildModsPage {
+  UIStackView* stack = nil;
+  UIScrollView* page = [self scrollPage:&stack];
+  __weak Wwe12LauncherViewController* weakSelf = self;
+  MakeDir(ModsDir());
+  const std::vector<std::string> mods = ListFiles(ModsDir());
+  UIStackView* card = Card(stack, @"Installed mods");
+  if (mods.empty()) {
+    [card addArrangedSubview:Label(@"No mod yet.", 14.0, W12_DIM, NO)];
+  } else {
+    for (const std::string& m : mods) {
+      if (m.empty() || m[0] == '.') continue;
+      [card addArrangedSubview:Label(NS(m), 14.0, W12_TEXT, NO)];
+    }
+  }
+  UIStackView* add = Card(stack, @"Add mods");
+  [add addArrangedSubview:Label(@"Put mod folders in Documents/Import (Files app), then press the button: they are moved to Documents/mods.",
+                                13.0, W12_DIM, NO)];
+  [add addArrangedSubview:Button(@"Move mods from Import", YES, ^{
+    Wwe12LauncherViewController* s = weakSelf;
+    if (!s) return;
+    int moved = 0;
+    for (const std::string& n : ListFiles(ImportDir())) {
+      if (n.empty() || n[0] == '.' || EndsWith(n, ".iso") || EndsWith(n, ".ISO")) continue;  // a disc image is not a mod
+      if (rename((ImportDir() + "/" + n).c_str(), (ModsDir() + "/" + n).c_str()) == 0) ++moved;
+    }
+    [s setMessage:moved ? [NSString stringWithFormat:@"%d moved. Restart the game to load them.", moved] : @"Nothing to move."];
+  })];
+  if (_message) [add addArrangedSubview:Label(_message, 13.0, [UIColor colorWithRed:0.94 green:0.75 blue:0.24 alpha:1.0], NO)];
   return page;
 }
 
@@ -1027,6 +1081,7 @@ static std::string NewestLog(const char* prefix) {
                  : index == 4 ? [self buildControlsPage]
                  : index == 5 ? [self buildSupportPage]
                  : index == 6 ? [self buildSavesPage]
+                 : index == 7 ? [self buildModsPage]
                               : [self buildPlayPage];
   page.translatesAutoresizingMaskIntoConstraints = NO;
   [_content addSubview:page];
@@ -1044,7 +1099,7 @@ static std::string NewestLog(const char* prefix) {
   // Tab order: Play, Install, DLC, Settings, Controls, Support, Saves.
   // A left column: the logo, then one line per page; the open page has a red bar and white text.
   __weak Wwe12LauncherViewController* weakSelf = self;
-  NSArray<NSString*>* names = @[ @"Play", @"Install", @"DLC", @"Settings", @"Controls", @"Support", @"Saves" ];
+  NSArray<NSString*>* names = @[ @"Play", @"Install", @"DLC", @"Settings", @"Controls", @"Support", @"Saves", @"Mods" ];
   NSMutableArray<UIButton*>* nav = [NSMutableArray array];
   UIStackView* side = [[UIStackView alloc] init];
   side.axis = UILayoutConstraintAxisVertical;
