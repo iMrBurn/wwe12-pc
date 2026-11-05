@@ -1477,8 +1477,13 @@ std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint
   return name;
 }
 
+// (not the full-screen videos the same function opens: 500-520, 640 x 640, a title match's title graphic before the
+// entrances, and 900-909 (900: 1024 x 512). The first entrant is already "entering" then: an added superstar going
+// first put his titantron in the title graphic's place, Discord 2026-11-05, Jay. The entrance videos are 320 x 320.)
+static bool EntranceVideoNumber(uint32_t n) { return !(n >= 500 && n < 600) && !(n >= 900 && n < 910); }
+
 extern "C" REX_FUNC(sub_82A316A0) {
-  if (!g_movies.empty()) {
+  if (!g_movies.empty() && EntranceVideoNumber(ctx.r3.u32)) {
     const uint32_t id = Entering(ctx, base);
     const auto it = g_movies.find(id);
     REXLOG_INFO("[superstar mods] entrance video {} (superstar entering: {}){}", ctx.r3.u32, id,
