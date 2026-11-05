@@ -1584,48 +1584,15 @@ extern "C" REX_FUNC(sub_827DB610) {
 void Wwe12UniverseForgetRelations(const PPCContext &in, uint8_t *base, uint32_t id);  // (wwe12_universe.cpp)
 REXCVAR_DEFINE_BOOL(wwe12_added_relations_reset, true, "WWE12",
                     "Added superstars start the Universe with no allies or rivals (once per superstar and mod).");
-REXCVAR_DEFINE_BOOL(wwe12_superstar_roster_fix, true, "WWE12",
-                    "Added superstars: the save's copy of their record made again when it differs (unlocked).");
-REX_EXTERN(__imp__sub_828ADFB8);
-extern "C" REX_FUNC(sub_828ADFB8) {
-  {  // (once: the video numbers without a minitron, sub_82A31538's table, for the log)
-    static bool told = false;
-    const uint32_t table = bd::mem::load<uint32_t>(0x8324E254), count = bd::mem::load<uint32_t>(0x8324E264);
-    if (!told && table && count) {
-      told = true;
-      std::string other;
-      for (uint32_t n = 0; n < count && n < 1000; ++n)
-        if (const uint8_t v = bd::mem::load<uint8_t>(table + n); v > 1)
-          other += " " + std::to_string(n) + ":" + std::to_string(v);
-      REXLOG_INFO("[superstar mods] video numbers without a minitron (of {}):{}", count, other);
-    }
-  }
-  const uint32_t roster = REXCVAR_GET(wwe12_superstar_roster_fix) ? bd::mem::load<uint32_t>(0x8317FA08) : 0;
-  for (const auto &[id, rec] : g_records) {
-    const uint32_t index = id < 373 ? bd::mem::load<uint16_t>(0x8307B5E0 + id * 2) : 0xFFFF;
-    if (!roster || index >= 373)
-      continue;
-    const uint32_t at = roster + index * 286;
-    // (its brand, +24..+27 - the Universe reads +27, sub_826D2B50; EDIT BRAND and the transfers write there - is the
-    // player's: compared, it made the copy again with the pack's brand at the next exhibition, Discord 2026-11-05,
-    // ChrisX's Goldberg always back on SmackDown; found by the Universe conversation)
-    bool same = true;
-    for (uint32_t k = 0; k < 286 && same; ++k)
-      same = k == 247 || (k >= 24 && k < 28) || bd::mem::load<uint8_t>(at + k) == rec[k];
-    if (same && bd::mem::load<uint8_t>(at + 247))
-      continue;
-    for (uint32_t k = 0; k < 286; ++k)
-      if (k != 247)
-        bd::mem::store<uint8_t>(at + k, rec[k]);
-    bd::mem::store<uint8_t>(at + 247, 1);
-    REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its record made again{}", id,
-                same ? " (it was locked)" : "");
-  }
-  // Its Universe allies and rivals: those of the number's former owner (Damien Sandow at 116 had Eve as ally and four
-  // Divas as rivals, 2026-11-05): emptied once per added superstar and mod (relations_cleared.txt: "number=hash" of
-  // its record, its brand and "unlocked" left out), by the Universe's Wwe12UniverseForgetRelations; the ones the
-  // player makes afterwards stay.
-  if (roster && !g_relations_file.empty() && REXCVAR_GET(wwe12_added_relations_reset)) {
+// Its Universe allies and rivals: those of the number's former owner (Damien Sandow at 116 had Eve as ally and four
+// Divas as rivals, 2026-11-05): emptied once per added superstar and mod (relations_cleared.txt: "number=hash" of
+// its record, its brand and "unlocked" left out), by the Universe's Wwe12UniverseForgetRelations; the ones the
+// player makes afterwards stay.
+// Called by the select screen (below) and by the Universe menu (wwe12_universe.cpp, sub_82545A70): a player going
+// straight to the Universe sees them empty too; the second call does nothing.
+void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base) {
+  if (bd::mem::load<uint32_t>(0x8317FA08) && !g_relations_file.empty() &&
+      REXCVAR_GET(wwe12_added_relations_reset)) {
     static std::set<std::string> done;
     static bool read = false;
     if (!read) {
@@ -1663,6 +1630,46 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       WriteHost(g_relations_file, Bytes(s.begin(), s.end()));
     }
   }
+}
+
+REXCVAR_DEFINE_BOOL(wwe12_superstar_roster_fix, true, "WWE12",
+                    "Added superstars: the save's copy of their record made again when it differs (unlocked).");
+REX_EXTERN(__imp__sub_828ADFB8);
+extern "C" REX_FUNC(sub_828ADFB8) {
+  {  // (once: the video numbers without a minitron, sub_82A31538's table, for the log)
+    static bool told = false;
+    const uint32_t table = bd::mem::load<uint32_t>(0x8324E254), count = bd::mem::load<uint32_t>(0x8324E264);
+    if (!told && table && count) {
+      told = true;
+      std::string other;
+      for (uint32_t n = 0; n < count && n < 1000; ++n)
+        if (const uint8_t v = bd::mem::load<uint8_t>(table + n); v > 1)
+          other += " " + std::to_string(n) + ":" + std::to_string(v);
+      REXLOG_INFO("[superstar mods] video numbers without a minitron (of {}):{}", count, other);
+    }
+  }
+  const uint32_t roster = REXCVAR_GET(wwe12_superstar_roster_fix) ? bd::mem::load<uint32_t>(0x8317FA08) : 0;
+  for (const auto &[id, rec] : g_records) {
+    const uint32_t index = id < 373 ? bd::mem::load<uint16_t>(0x8307B5E0 + id * 2) : 0xFFFF;
+    if (!roster || index >= 373)
+      continue;
+    const uint32_t at = roster + index * 286;
+    // (its brand, +24..+27 - the Universe reads +27, sub_826D2B50; EDIT BRAND and the transfers write there - is the
+    // player's: compared, it made the copy again with the pack's brand at the next exhibition, Discord 2026-11-05,
+    // ChrisX's Goldberg always back on SmackDown; found by the Universe conversation)
+    bool same = true;
+    for (uint32_t k = 0; k < 286 && same; ++k)
+      same = k == 247 || (k >= 24 && k < 28) || bd::mem::load<uint8_t>(at + k) == rec[k];
+    if (same && bd::mem::load<uint8_t>(at + 247))
+      continue;
+    for (uint32_t k = 0; k < 286; ++k)
+      if (k != 247)
+        bd::mem::store<uint8_t>(at + k, rec[k]);
+    bd::mem::store<uint8_t>(at + 247, 1);
+    REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its record made again{}", id,
+                same ? " (it was locked)" : "");
+  }
+  Wwe12ForgetAddedRelations(ctx, base);  // (their Universe allies and rivals, once)
   // Its moves and entrance too: the save keeps them after the records (SaveData.Dat: the records at 0x1C, the moves at
   // 324792, 1068 bytes each, same order). A disc's empty record's were empty: no entrance (FBX TEST at 108, 2026-10-26).
   // Only once that place holds John Cena's as they should be: his bytes past his moves and entrance blocks (from 486;
