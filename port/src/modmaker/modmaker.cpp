@@ -677,11 +677,11 @@ const Guide kGuides[] = {
     {"Not yet",
      "Pas encore",
      {"The moves WWE '12 hasn't (a ported superstar's own finishers): those slots keep their base's move.",
-      "The props of SvR entrances WWE '12 hasn't (hidden), and SvR 2007's victory scenes.",
+      "The props of SvR entrances and victory scenes WWE '12 hasn't (hidden).",
       "Adding a fifth attire to a superstar of the game: replacing one works (a WWE '13 port brings up to 4 of its own).",
       "Moving hair and cloth on imported models (they follow the head and body)."},
      {"Les prises que WWE '12 n'a pas (les finishers propres d'un catcheur porté) : ces cases gardent celle de la base.",
-      "Les accessoires des entrées SvR que WWE '12 n'a pas (cachés), et les scènes de victoire de SvR 2007.",
+      "Les accessoires des entrées et des scènes de victoire SvR que WWE '12 n'a pas (cachés).",
       "Ajouter une 5e tenue à un catcheur du jeu : en remplacer une marche (un catcheur porté de WWE '13 garde jusqu'à 4 "
       "tenues à lui).",
       "Les cheveux et vêtements qui bougent sur les modèles importés (ils suivent la tête et le corps)."}},
