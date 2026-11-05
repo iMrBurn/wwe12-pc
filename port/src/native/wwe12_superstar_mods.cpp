@@ -1463,6 +1463,9 @@ bool Wwe12ModScreen(uint32_t kind, uint32_t n);
 // The added superstars' own themes (music number, name), for the jukebox (wwe12_jukebox.cpp).
 std::vector<std::pair<uint32_t, std::string>> Wwe12AddedThemes() { return g_themes; }
 
+// How many added superstars the pack has (wwe12_heap_probe.cpp: the heaps grown only for many).
+size_t Wwe12AddedSuperstarCount() { return g_records.size(); }
+
 // A lookup of "MVSB/M%03d" / "MVSW/M%03d" (an entrant's ribbon / wall) while an added superstar with its own is
 // entering: the name it is served under ("MVSB/M<its video number>"), else "".
 std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint8_t *base) {

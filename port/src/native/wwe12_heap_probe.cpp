@@ -96,6 +96,12 @@ extern "C" REX_FUNC(sub_827D3600) {
 // big blocks there, which the game survives). Empty: the game's sizes.
 REXCVAR_DEFINE_STRING(wwe12_heap_grow, "12:16384,15:4096", "WWE12",
                       "KB added to the game's heaps at start-up, \"heap:KB,heap:KB\" (room for many added superstars).");
+// (2026-11-05: the room is taken from the heap made last in the space left, heap 54 - menus, the Universe, the arena
+// transitions -, 31 MB -> 11 MB: with 8 added superstars the game crashed after a match, 393 KB refused for the
+// transition, and in the Universe, 713 KB refused. Grown only from this many added superstars on.)
+REXCVAR_DEFINE_INT32(wwe12_heap_grow_from, 25, "WWE12",
+                     "wwe12_heap_grow applies from this many added superstars on (fewer: the game's sizes).");
+size_t Wwe12AddedSuperstarCount();
 REX_EXTERN(__imp__sub_8269F680);
 
 namespace {
@@ -117,7 +123,11 @@ namespace {
 void BeforeHeaps(const char *who) {
   REXLOG_INFO("[heaps] {} makes the heaps", who);
   static bool grown = false;  // (the table is the same at every call: grown once)
-  const std::string grow = grown ? std::string() : std::string(REXCVAR_GET(wwe12_heap_grow));
+  const size_t added = Wwe12AddedSuperstarCount();
+  const bool many = int64_t(added) >= int64_t(REXCVAR_GET(wwe12_heap_grow_from));
+  const std::string grow = grown || !many ? std::string() : std::string(REXCVAR_GET(wwe12_heap_grow));
+  if (!grown)
+    REXLOG_INFO("[heaps] {} added superstar(s): the heaps {}", added, many ? "grown" : "as the game has them");
   grown = true;
   std::string table;
   for (uint32_t i = 0; i < 45; ++i) {
