@@ -453,7 +453,10 @@ void FitBelt(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root,
   // measures, David Otunga, left his belt a bit big)
   constexpr float kSlimmer = 0.95f;
   bip *= kSlimmer, spine *= kSlimmer;
-  const bool diva = divas.count(st.base) != 0;
+  bool diva = divas.count(st.base) != 0;
+  for (const auto &[at, bytes] : st.record)  // (its gender chosen in the Mod Maker: record byte 0xEE bit 0)
+    if (at <= 0xEE && size_t(0xEE - at) < bytes.size())
+      diva = bytes[size_t(0xEE - at)] & 1;
   for (const auto &[n, w] : waists)
     if (w.first > 0 && w.second > 0 && (divas.count(n) != 0) == diva) {
       const float d = (w.first - bip) * (w.first - bip) + (w.second - spine) * (w.second - spine);
@@ -1590,9 +1593,12 @@ extern "C" REX_FUNC(sub_828ADFB8) {
     if (!roster || index >= 373)
       continue;
     const uint32_t at = roster + index * 286;
+    // (its brand, +24..+27 - the Universe reads +27, sub_826D2B50; EDIT BRAND and the transfers write there - is the
+    // player's: compared, it made the copy again with the pack's brand at the next exhibition, Discord 2026-11-05,
+    // ChrisX's Goldberg always back on SmackDown; found by the Universe conversation)
     bool same = true;
     for (uint32_t k = 0; k < 286 && same; ++k)
-      same = k == 247 || bd::mem::load<uint8_t>(at + k) == rec[k];
+      same = k == 247 || (k >= 24 && k < 28) || bd::mem::load<uint8_t>(at + k) == rec[k];
     if (same && bd::mem::load<uint8_t>(at + 247))
       continue;
     for (uint32_t k = 0; k < 286; ++k)

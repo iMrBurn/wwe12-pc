@@ -747,6 +747,27 @@ class Page {
     ImGui::SeparatorText(fr ? "Taille et capacités" : "Size and abilities");
     if (base_size_[0] <= 0)
       return;
+    // Man or woman (2026-11-05, Discord: "Women's Mods are set as men in game"): the record's byte 0xEE bit 0 (set on
+    // the game's divas), else the base's - a diva ported on a man's base was a man for the game (the select screen's
+    // divas, her moves, entrance and the rest).
+    if (base_ee_ >= 0) {
+      const bool base_woman = base_ee_ & 1;
+      ImGui::TextUnformatted(fr ? "Genre :" : "Gender:");
+      ImGui::SameLine();
+      char lbl[96];
+      snprintf(lbl, sizeof(lbl), "%s (%s)##g", fr ? "Celui de la base" : "The base's",
+               base_woman ? (fr ? "femme" : "woman") : (fr ? "homme" : "man"));
+      if (ImGui::RadioButton(lbl, gender_ < 0))
+        gender_ = -1;
+      ImGui::SameLine();
+      if (ImGui::RadioButton(fr ? "Homme##g" : "Man##g", gender_ == 0))
+        gender_ = 0;
+      ImGui::SameLine();
+      if (ImGui::RadioButton(fr ? "Femme##g" : "Woman##g", gender_ == 1))
+        gender_ = 1;
+      ImGui::TextDisabled("%s", fr ? "(une catcheuse sur la base d'un homme : choisissez Femme, sinon le jeu la traite en homme)"
+                                   : "(a woman on a man's base: pick Woman, else the game treats her as a man)");
+    }
     ImGui::Checkbox(fr ? "Sa propre taille (sinon celle de la base)" : "Its own size (else the base's)", &own_size_);
     ImGui::BeginDisabled(!own_size_);
     int v = own_size_ ? size_ : base_size_[0];
@@ -802,6 +823,10 @@ class Page {
         r += buf;
       }
     }
+    if (gender_ >= 0 && base_ee_ >= 0 && (base_ee_ & 1) != gender_) {  // (its gender: byte 0xEE bit 0, the rest the base's)
+      snprintf(buf, sizeof(buf), "%sEE:%02X", r.empty() ? "" : ",", (base_ee_ & ~1) | gender_);
+      r += buf;
+    }
     return r;
   }
 
@@ -825,6 +850,7 @@ class Page {
             const Bytes d = svrfmt::ArchiveData(c);
             if (d.size() >= 16)
               base_attributes_.assign(d.begin() + 4, d.begin() + 16);
+            base_ee_ = d.size() > 0xEE ? d[0xEE] : -1;
             if (d.size() >= 0x10C) {
               base_size_[0] = d[0x28] | d[0x29] << 8;
               base_size_[1] = d[0x2A] | d[0x2B] << 8;
@@ -1933,7 +1959,7 @@ class Page {
                     "\ndisc_pick=" + std::to_string(disc_pick_) + "\nsvr_attire=" + std::to_string(svr_attire_) +
                     "\nfbx=" + u8(fbx_path_) + "\nfbx_budget=" + std::to_string(fbx_budget_) + "\nportrait=" +
                     u8(custom_portrait_) + "\nkeep_portraits=" + (keep_portraits_ ? "1" : "0") + "\nas_attire=" +
-                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_moves=" + (use_own_moves_ ? "1" : "0") + "\nadded_moves=" + (use_added_moves_ ? "1" : "0") +"\nentrance=" + std::to_string(entrance_ >= 0 ? stars_[size_t(entrance_)].id : 0) + "\nown_attributes=" +
+                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_moves=" + (use_own_moves_ ? "1" : "0") + "\nadded_moves=" + (use_added_moves_ ? "1" : "0") + "\ngender=" + std::to_string(gender_) + "\nentrance=" + std::to_string(entrance_ >= 0 ? stars_[size_t(entrance_)].id : 0) + "\nown_attributes=" +
                     (own_attributes_ ? "1" : "0") + "\nattributes=";
     for (size_t i = 0; i < attributes_.size(); ++i)
       t += std::to_string(attributes_[i]) + (i + 1 < attributes_.size() ? "," : "");
@@ -2026,6 +2052,7 @@ class Page {
     if (own_size_)
       size_ = std::clamp(atoi(value("size").c_str()), 3200, 5000);
     own_abilities_ = value("own_abilities") == "1";
+    gender_ = value("gender").empty() ? -1 : std::clamp(atoi(value("gender").c_str()), -1, 1);
     if (own_abilities_) {
       abilities_.clear();
       const std::string a = value("abilities");
@@ -2373,6 +2400,7 @@ class Page {
   int entrance_pick_ = -1;
   bool all_attires_ = true;  // its other WWE '13 attires too (up to 4)  // its WWE '13 entrance outfit too (kind 4), when its attire has one
   bool own_size_ = false, own_abilities_ = false;  // its own size / abilities (else the base's)
+  int gender_ = -1, base_ee_ = -1;  // its gender (-1 the base's, 0 man, 1 woman); the base's record byte 0xEE
   int size_ = 4096, base_size_[2] = {0, 0};          // record +0x28 (+0x2A: the base's ratio kept), 4096 = 1.0
   std::vector<int> abilities_, base_abilities_;      // record +0x104.. (kAbilities' numbers)
   bool svr_movie_ = false;     // its SvR 2011 entrance movie, as it is
