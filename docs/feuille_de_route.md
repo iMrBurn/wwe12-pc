@@ -186,3 +186,10 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 - **Ceinture à la taille : fait** (confirmé par l'utilisateur). **Tenues de The Miz verrouillées : on laisse tomber.** **CAW dans l'effectif Univers : en attente** (voir la note ci-dessous).
 - **Go** : cas Jay n°5 (arène NXT de 2K14 sur « Fatal 4 Way », probablement le même gel que celui corrigé cette nuit) ; ligne « cpu per frame » sur Windows (diagnostic seul).
 - Note CAW dans l'effectif : la mise à jour TU2 retire un test qui écartait les CAW (numéros < 50) du comptage des catcheurs d'une émission ; notre recomptage les écarte encore. Effet attendu faible, à faire seulement si un joueur signale des émissions sans assez de catcheurs avec des CAW.
+
+## Chantier performances, Steam Deck et jeu natif (demande de l'utilisateur, 2026-11-05)
+- Objectif : optimiser, régler les soucis Steam Deck, enlever des couches d'émulation et se rapprocher d'un vrai jeu natif PC, comme Jarrod dans ses dernières mises à jour de WWE 2K14. **Après la 1.1** (rien ne retarde la sortie).
+- Point de départ : `docs/optimisation_jarrod.md` (points 1 à 3 faits ; 4 à 10 non faits). Mesure de Rendu : en scène lourde le fil de rendu coûte ~1 ms pour ~6 ms de « work » : le goulot est le **code du jeu recompilé**, pas notre rendu.
+- Pistes : top 10 des fonctions chaudes du fil principal (échantillons de piles), réécriture native des plus chaudes (méthode de Jarrod : sortie identique, contrôle image par image), couches d'émulation restantes (accès mémoire invité avec inversion d'octets, noyau émulé, audio), code généré qui garde plus de registres.
+- Études en cours (lecture seule) : Rendu (Steam Deck et performances) et Gameplay (natif / code du jeu), résultat dans `docs/perf_natif_steam_deck.md`.
+- Jarrod : accord verbal pour s'inspirer de ses mises à jour ; copier du code = demander d'abord ; crédit.
