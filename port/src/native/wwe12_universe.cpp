@@ -2772,7 +2772,11 @@ namespace {
 void SetPromptLabel(u32 set, u32 k, u32 from, u32 to);
 }
 
+void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base);  // wwe12_superstar_mods.cpp
+
 extern "C" REX_FUNC(sub_82545A70) {
+  // added Superstars without allies or rivals from the start, before any select screen (once each)
+  Wwe12ForgetAddedRelations(ctx, base);
   g_universe_menu = ctx.r3.u32;
   g_universe_menu_for_bar = ctx.r3.u32;
   if (Enabled())
