@@ -80,6 +80,7 @@ public class SavesActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(LauncherActivity.BG);
         scroll.setFitsSystemWindows(true);
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(LauncherActivity.BG));
         scroll.addView(root);
         setContentView(scroll);
         rebuild();
@@ -222,44 +223,16 @@ public class SavesActivity extends Activity {
     }
 
     TextView text(String s, int sp, int color, boolean bold) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(sp);
-        t.setTextColor(color);
-        if (bold) t.setTypeface(Typeface.DEFAULT_BOLD, Typeface.ITALIC);
-        return t;
+        return Ui.text(this, s, sp, color, bold);
     }
 
     LinearLayout panel(String name) {
-        float dp = getResources().getDisplayMetrics().density;
-        TextView header = text(name, 16, LauncherActivity.YELLOW, true);
-        header.setPadding(0, (int) (16 * dp), 0, (int) (4 * dp));
-        root.addView(header);
-        LinearLayout p = new LinearLayout(this);
-        p.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int) (12 * dp);
-        p.setPadding(pad, pad, pad, pad);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(LauncherActivity.PANEL);
-        bg.setCornerRadius(8 * dp);
-        p.setBackground(bg);
-        root.addView(p);
-        return p;
+        return Ui.panel(this, root, name);
     }
 
     Button action(String label, boolean disabled, final Runnable r) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setTextColor(Color.WHITE);
-        b.setTextSize(13);
-        b.setTypeface(Typeface.DEFAULT_BOLD, Typeface.ITALIC);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.rgb(60, 60, 60));
-        bg.setCornerRadius(6 * getResources().getDisplayMetrics().density);
-        b.setBackground(bg);
-        b.setGravity(Gravity.CENTER);
+        Button b = Ui.button(this, label, false);
         b.setEnabled(!disabled);
-        b.setAlpha(disabled ? 0.4f : 1f);
         b.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { if (!busy) r.run(); }
         });

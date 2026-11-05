@@ -21,6 +21,9 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -35,9 +38,10 @@ public class LauncherActivity extends Activity {
     static final int PICK_DRIVER = 2;
     static final int PICK_DLC = 3;
     static final int PICK_DLC_FOLDER = 4;
-    static final int YELLOW = Color.rgb(240, 191, 61);   // same accent as the PC launcher
-    static final int BG = Color.rgb(17, 17, 17);
-    static final int PANEL = Color.rgb(32, 32, 32);
+    static final int YELLOW = Ui.YELLOW;   // same accent as the PC launcher
+    static final int BG = Ui.BG;
+    static final int PANEL = Ui.SURFACE;
+    static String lastPage = "PLAY";        // the section shown again after the screen is rebuilt
 
     Config config;
     SharedPreferences prefs;
@@ -50,6 +54,22 @@ public class LauncherActivity extends Activity {
     LinearLayout deviceBox;      // device warning + summary, filled by checkDevice()
     volatile DeviceCheck device;
     Button forget;
+    FrameLayout frame;           // whole screen: the layout, and the loading overlay on top
+    Ui.Loading loading;
+    String[] pageNames;
+    LinearLayout[] pageViews;
+    TextView[] navItems;
+    TextView pageTitle;          // big section title (wide screens)
+    ScrollView scroll;
+    boolean wideLayout;
+    static final String[] TIPS = {
+        "Tip: the phone gets warm during long matches. Lower the resolution, or turn off crowd and shadows, in SETTINGS.",
+        "Tip: in CONTROLS, EDIT BUTTON LAYOUT moves and resizes the on-screen buttons, and adds your own.",
+        "Tip: QUICK PRESETS in SETTINGS set the graphics for your phone in one tap.",
+        "Tip: MANAGE MY SAVES can back up your save before you try something risky.",
+        "Tip: a Bluetooth or USB controller works too: pair it in Android's settings.",
+        "Tip: the first matches can stutter while the game builds its graphics cache."
+    };
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -137,6 +157,7 @@ public class LauncherActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        hideLoading();
         // A controller paired while the launcher was in the background shows up on return.
         String pad = TouchControls.realControllerName();
         controllerStatus.setText(pad != null
@@ -165,30 +186,33 @@ public class LauncherActivity extends Activity {
     // ---- UI ----------------------------------------------------------------------------------
 
     View buildUi(File dir) {
-        float dp = getResources().getDisplayMetrics().density;
-        int pad = (int) (16 * dp);
+        // One page per section; the side menu (or the tabs on a phone held upright) shows one at a time.
+        pageNames = new String[] {"PLAY", "DLC", "SETTINGS", "CONTROLS", "DRIVER", "DEBUG"};
+        pageViews = new LinearLayout[pageNames.length];
+        for (int i = 0; i < pageViews.length; i++) {
+            pageViews[i] = new LinearLayout(this);
+            pageViews[i].setOrientation(LinearLayout.VERTICAL);
+        }
+        LinearLayout playPage = pageViews[0], dlcPage = pageViews[1], settingsPage = pageViews[2],
+                controlsPage = pageViews[3], driverPage = pageViews[4], debugPage = pageViews[5];
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
-        root.setBackgroundColor(BG);
-
-        TextView title = text("WWE '12 PC", 28, YELLOW, true);
-        root.addView(title);
-        root.addView(text("Android " + versionName() + " - early test build", 13, Color.LTGRAY, false));
         // Device warning: what will stop the game, or make it run badly, on this phone. Filled by
-        // checkDevice() (the check needs a background thread).
+        // checkDevice() (the check needs a background thread): a small loading bar until then.
         deviceBox = new LinearLayout(this);
         deviceBox.setOrientation(LinearLayout.VERTICAL);
-        root.addView(deviceBox);
+        deviceBox.addView(text("Checking your phone...", 12, Color.GRAY, false));
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(Ui.dp(this, 160), Ui.dp(this, 8));
+        barLp.topMargin = Ui.dp(this, 6);
+        deviceBox.addView(new Ui.LoadingBar(this), barLp);
+        playPage.addView(deviceBox);
         // Filled by Updater.check when GitHub has a newer Android release.
         updateArea = new LinearLayout(this);
         updateArea.setOrientation(LinearLayout.VERTICAL);
         updateArea.setVisibility(View.GONE);
-        root.addView(updateArea);
+        playPage.addView(updateArea);
 
         // Game
-        LinearLayout game = panel(root, "GAME");
+        LinearLayout game = panel(playPage, "GAME");
         gameStatus = text("", 14, Color.WHITE, false);
         game.addView(gameStatus);
         Button pick = button("CHOOSE MY ISO", false);
@@ -215,11 +239,19 @@ public class LauncherActivity extends Activity {
         game.addView(saves);
 
         // DLC: packages copied into dlc/, installed by the game at its next start (as on PC)
-        dlcBox = panel(root, "DLC");
+        dlcBox = panel(dlcPage, "YOUR DLC");
         buildDlcPanel();
 
+        // Quick presets for phones that drop frames.
+        LinearLayout presets = panel(settingsPage, "QUICK PRESETS");
+        presets.addView(text("Sets resolution, shadows, crowd, blur and texture sharpness in one tap.",
+                12, Color.GRAY, false));
+        presets.addView(presetButton("LOW-END PHONE (fastest)", "540", "false", "false", "false", "0"));
+        presets.addView(presetButton("BALANCED", "720", "true", "false", "false", "4"));
+        presets.addView(presetButton("QUALITY (strong phones)", "1080", "true", "true", "true", "16"));
+
         // Settings
-        LinearLayout set = panel(root, "SETTINGS");
+        LinearLayout set = panel(settingsPage, "GRAPHICS AND GAME");
         set.addView(choice("Language", "user_language",
                 new String[] {"English", "Deutsch", "Français", "Español", "Italiano"},
                 new String[] {"1", "3", "4", "5", "6"}));
@@ -248,33 +280,18 @@ public class LauncherActivity extends Activity {
                 new String[] {"Original pace", "About 2x faster"}, new String[] {"0", "12"}));
 
         // WWE Universe options (off by default; the Universe screens themselves are in the game's menus).
-        LinearLayout uni = panel(root, "WWE UNIVERSE");
+        LinearLayout uni = panel(settingsPage, "WWE UNIVERSE");
         uni.addView(choice("Title defenses in the weekly shows", "wwe12_universe_title_defenses",
                 new String[] {"Original game", "Sometimes (25 %)", "Often (50 %)"}, new String[] {"0", "25", "50"}));
         uni.addView(toggle("Qualifying matches before Money in the Bank and Elimination Chamber", "wwe12_universe_qualifiers"));
 
-        // Quick presets for phones that drop frames.
-        LinearLayout presets = panel(root, "PERFORMANCE PRESETS");
-        presets.addView(text("Sets resolution, shadows, crowd, blur and texture sharpness in one tap.",
-                12, Color.GRAY, false));
-        presets.addView(presetButton("LOW-END PHONE (fastest)", "540", "false", "false", "false", "0"));
-        presets.addView(presetButton("BALANCED", "720", "true", "false", "false", "4"));
-        presets.addView(presetButton("QUALITY (strong phones)", "1080", "true", "true", "true", "16"));
-
         // Controls (app settings, not wwe12.toml)
         // GPU driver: the phone's own, or a custom one (Turnip...) imported from a .zip
-        driverBox = panel(root, "GPU DRIVER");
+        driverBox = panel(driverPage, "GPU DRIVER");
         buildDriverPanel();
 
-        LinearLayout ctl = panel(root, "CONTROLS");
-        final CheckBox touch = new CheckBox(this);
-        touch.setText("On-screen buttons (hidden while a controller is connected)");
-        touch.setTextColor(Color.WHITE);
-        touch.setChecked(prefs.getBoolean("touch_controls", true));
-        touch.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { prefs.edit().putBoolean("touch_controls", touch.isChecked()).apply(); }
-        });
-        ctl.addView(touch);
+        LinearLayout ctl = panel(controlsPage, "ON-SCREEN BUTTONS");
+        ctl.addView(prefToggle("On-screen buttons (hidden while a controller is connected)", "touch_controls", true));
         // #38: on some phones a built-in device passes for a controller and hid the buttons.
         ctl.addView(prefToggle("Always show the on-screen buttons (if they vanish in the game)", "touch_always", false));
         ctl.addView(prefChoice("On-screen buttons opacity", "touch_opacity",
@@ -303,7 +320,7 @@ public class LauncherActivity extends Activity {
 
         // Debug: tests asked of testers, without editing wwe12.toml by hand (Android/data is hard to
         // reach on recent phones). Both keys exist on PC too.
-        LinearLayout dbg = panel(root, "DEBUG (only if asked)");
+        LinearLayout dbg = panel(debugPage, "DEBUG (only if asked)");
         dbg.addView(toggle("Release unused render targets (untick to test a freeze)",
                 "svr_release_stale_targets", true));
         dbg.addView(toggle("Game debug messages in the log (Universe, replays)", "wwe12_game_log", false));
@@ -315,78 +332,211 @@ public class LauncherActivity extends Activity {
         dbg.addView(text("Then play until the problem, and send the log with SHARE LAST LOG.",
                 12, Color.GRAY, false));
 
-        // Play
-        Button play = button("PLAY", true);
-        play.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { play(); }
-        });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, (int) (64 * dp));
-        lp.topMargin = pad;
-        root.addView(play, lp);
-
+        // Support (on the PLAY page)
+        LinearLayout help = panel(playPage, "SUPPORT");
         Button share = button("SHARE LAST LOG (for bug reports)", false);
         share.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { shareLog(); }
         });
-        root.addView(share);
+        help.addView(share);
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(BG);
-        scroll.setFitsSystemWindows(true);  // below the status bar; root keeps its own margins
-        scroll.addView(root);
-        return scroll;
+        return assemble(dir);
     }
 
-    TextView text(String s, int sp, int color, boolean bold) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(sp);
-        t.setTextColor(color);
-        if (bold) t.setTypeface(Typeface.DEFAULT_BOLD, Typeface.ITALIC);
+    // ---- Layout: side menu on wide screens, tabs and a bottom PLAY bar on a phone held upright ----
+
+    View assemble(File dir) {
+        wideLayout = getResources().getConfiguration().screenWidthDp >= 600;
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(BG));
+
+        FrameLayout stack = new FrameLayout(this);
+        for (LinearLayout p : pageViews) {
+            p.setVisibility(View.GONE);
+            stack.addView(p, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT));
+        }
+        scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.addView(stack);
+
+        navItems = new TextView[pageNames.length];
+        for (int i = 0; i < navItems.length; i++) navItems[i] = navItem(pageNames[i]);
+
+        final Button play = button("PLAY", true);
+        play.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { play(); }
+        });
+
+        int m16 = Ui.dp(this, 16);
+        LinearLayout main = new LinearLayout(this);
+        if (wideLayout) {
+            main.setOrientation(LinearLayout.HORIZONTAL);
+            // Side menu
+            LinearLayout side = new LinearLayout(this);
+            side.setOrientation(LinearLayout.VERTICAL);
+            side.setBackgroundColor(Ui.SIDE);
+            side.setPadding(m16, m16, 0, m16);
+            side.addView(text("WWE '12 PC", 30, YELLOW, true));
+            side.addView(text("Android " + versionName() + " - early test build", 12, Color.GRAY, false));
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, Ui.dp(this, 7));
+            sp.topMargin = Ui.dp(this, 10);
+            sp.bottomMargin = Ui.dp(this, 18);
+            sp.rightMargin = m16;
+            side.addView(Ui.stripe(this, 5), sp);
+            for (TextView n : navItems) {
+                LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                np.bottomMargin = Ui.dp(this, 7);
+                side.addView(n, np);
+            }
+            side.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1f));  // pushes PLAY down
+            LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            pp.rightMargin = m16;
+            side.addView(play, pp);
+            main.addView(side, new LinearLayout.LayoutParams(Ui.dp(this, 250), LinearLayout.LayoutParams.MATCH_PARENT));
+            View edge = new View(this);
+            edge.setBackgroundColor(Ui.YELLOW_DIM);
+            main.addView(edge, new LinearLayout.LayoutParams(Ui.dp(this, 2), LinearLayout.LayoutParams.MATCH_PARENT));
+            // Content
+            LinearLayout right = new LinearLayout(this);
+            right.setOrientation(LinearLayout.VERTICAL);
+            right.setPadding(Ui.dp(this, 22), m16, Ui.dp(this, 22), 0);
+            pageTitle = text("", 34, Ui.TEXT, true);
+            right.addView(pageTitle);
+            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(Ui.dp(this, 120), Ui.dp(this, 6));
+            tp.topMargin = Ui.dp(this, 4);
+            right.addView(Ui.stripe(this, 4), tp);
+            right.addView(scroll, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+            main.addView(right, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+        } else {
+            main.setOrientation(LinearLayout.VERTICAL);
+            // Header
+            LinearLayout head = new LinearLayout(this);
+            head.setOrientation(LinearLayout.VERTICAL);
+            head.setPadding(m16, Ui.dp(this, 12), m16, Ui.dp(this, 10));
+            head.addView(text("WWE '12 PC", 28, YELLOW, true));
+            head.addView(text("Android " + versionName() + " - early test build", 12, Color.GRAY, false));
+            main.addView(head);
+            main.addView(Ui.stripe(this, 5), new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, Ui.dp(this, 7)));
+            // Tabs
+            HorizontalScrollView tabs = new HorizontalScrollView(this);
+            tabs.setHorizontalScrollBarEnabled(false);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setPadding(m16, Ui.dp(this, 10), m16, Ui.dp(this, 6));
+            for (TextView n : navItems) {
+                LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                np.rightMargin = Ui.dp(this, 8);
+                row.addView(n, np);
+            }
+            tabs.addView(row);
+            main.addView(tabs);
+            scroll.setPadding(m16, 0, m16, 0);
+            scroll.setClipToPadding(false);
+            main.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+            // Bottom bar with PLAY
+            LinearLayout bar = new LinearLayout(this);
+            bar.setOrientation(LinearLayout.VERTICAL);
+            bar.setBackgroundColor(Ui.SIDE);
+            View line = new View(this);
+            line.setBackgroundColor(Ui.YELLOW_DIM);
+            bar.addView(line, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, Ui.dp(this, 2)));
+            LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            pp.setMargins(m16, Ui.dp(this, 10), m16, Ui.dp(this, 10));
+            bar.addView(play, pp);
+            main.addView(bar);
+        }
+
+        frame = new FrameLayout(this);
+        frame.setBackgroundColor(BG);
+        frame.setFitsSystemWindows(true);  // below the status bar
+        frame.addView(main, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        showPage(lastPage);
+        return frame;
+    }
+
+    TextView navItem(final String name) {
+        TextView t = text(name, wideLayout ? 18 : 15, Ui.TEXT, true);
+        t.setGravity(Gravity.CENTER_VERTICAL);
+        t.setClickable(true);
+        if (wideLayout) {
+            t.setPadding(Ui.dp(this, 18), 0, Ui.dp(this, 28), 0);
+            t.setMinHeight(Ui.dp(this, 50));
+            t.setBackground(new Ui.Slant(Ui.SURFACE2, Ui.LINE, Ui.dp(this, 16)));
+        } else {
+            t.setPadding(Ui.dp(this, 18), Ui.dp(this, 9), Ui.dp(this, 18), Ui.dp(this, 9));
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(Ui.dp(this, 100));
+            g.setColor(Ui.SURFACE2);
+            t.setBackground(g);
+        }
+        t.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showPage(name); }
+        });
         return t;
     }
 
+    void showPage(String name) {
+        lastPage = name;
+        for (int i = 0; i < pageNames.length; i++) {
+            boolean on = pageNames[i].equals(name);
+            LinearLayout page = pageViews[i];
+            if (on && page.getVisibility() != View.VISIBLE) {
+                page.setAlpha(0f);
+                page.setVisibility(View.VISIBLE);
+                page.animate().alpha(1f).setDuration(160).start();
+            } else if (!on) {
+                page.setVisibility(View.GONE);
+            }
+            TextView n = navItems[i];
+            n.setTextColor(on ? Color.BLACK : Ui.TEXT);
+            if (wideLayout) ((Ui.Slant) n.getBackground()).setColor(on ? Ui.YELLOW : Ui.SURFACE2, on ? Ui.YELLOW : Ui.LINE);
+            else ((GradientDrawable) n.getBackground()).setColor(on ? Ui.YELLOW : Ui.SURFACE2);
+        }
+        if (pageTitle != null) pageTitle.setText(name);
+        scroll.scrollTo(0, 0);
+    }
+
+    // ---- Loading overlay (PLAY: the game takes a while to start) ----------------------------------
+
+    void showLoading() {
+        if (loading != null && loading.getParent() != null) return;
+        loading = new Ui.Loading(this, "STARTING THE GAME", TIPS);
+        loading.setAlpha(0f);
+        frame.addView(loading, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        loading.animate().alpha(1f).setDuration(180).start();
+        loading.startTips();
+    }
+
+    void hideLoading() {
+        if (loading != null && loading.getParent() != null) loading.dismiss();
+    }
+
+    TextView text(String s, int sp, int color, boolean bold) {
+        return Ui.text(this, s, sp, color, bold);
+    }
+
     LinearLayout panel(LinearLayout parent, String name) {
-        float dp = getResources().getDisplayMetrics().density;
-        TextView header = text(name, 16, YELLOW, true);
-        header.setPadding(0, (int) (16 * dp), 0, (int) (4 * dp));
-        parent.addView(header);
-        LinearLayout p = new LinearLayout(this);
-        p.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int) (12 * dp);
-        p.setPadding(pad, pad, pad, pad);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(PANEL);
-        bg.setCornerRadius(8 * dp);
-        p.setBackground(bg);
-        parent.addView(p);
-        return p;
+        return Ui.panel(this, parent, name);
     }
 
     Button button(String label, boolean big) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setTextColor(big ? Color.BLACK : Color.WHITE);
-        b.setTextSize(big ? 22 : 14);
-        b.setTypeface(Typeface.DEFAULT_BOLD, Typeface.ITALIC);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(big ? YELLOW : Color.rgb(60, 60, 60));
-        bg.setCornerRadius(6 * getResources().getDisplayMetrics().density);
-        b.setBackground(bg);
-        return b;
+        return Ui.button(this, label, big);
     }
 
-    // App setting (not wwe12.toml): a checkbox stored in the launcher preferences.
+    // App setting (not wwe12.toml): a switch stored in the launcher preferences.
     View prefToggle(String label, final String key, boolean def) {
-        final CheckBox c = new CheckBox(this);
-        c.setText(label);
-        c.setTextColor(Color.WHITE);
-        c.setChecked(prefs.getBoolean(key, def));
-        c.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { prefs.edit().putBoolean(key, c.isChecked()).apply(); }
+        return Ui.switchRow(this, label, prefs.getBoolean(key, def), new CompoundButton.OnCheckedChangeListener() {
+            public void onCheckedChanged(CompoundButton b, boolean on) { prefs.edit().putBoolean(key, on).apply(); }
         });
-        return c;
     }
 
     // One-tap graphics preset: resolution, shadows, crowd, depth of field, texture sharpness.
@@ -414,34 +564,29 @@ public class LauncherActivity extends Activity {
 
     // def = the game's default when wwe12.toml has no line for the key.
     View toggle(String label, final String key, boolean def) {
-        final CheckBox c = new CheckBox(this);
-        c.setText(label);
-        c.setTextColor(Color.WHITE);
-        c.setChecked("true".equals(config.get(key, def ? "true" : "false")));
-        c.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                config.set(key, c.isChecked() ? "true" : "false");
-                config.save();
-            }
-        });
-        return c;
+        return Ui.switchRow(this, label, "true".equals(config.get(key, def ? "true" : "false")),
+                new CompoundButton.OnCheckedChangeListener() {
+                    public void onCheckedChanged(CompoundButton b, boolean on) {
+                        config.set(key, on ? "true" : "false");
+                        config.save();
+                    }
+                });
+    }
+
+    // A labelled drop-down row.
+    LinearLayout dropRow(String label, Spinner s) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.addView(text(label, 12, Color.GRAY, false));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = Ui.dp(this, 4);
+        row.addView(s, lp);
+        return row;
     }
 
     View choice(String label, final String key, String[] names, final String[] values) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.VERTICAL);
-        row.addView(text(label, 13, Color.LTGRAY, false));
-        Spinner s = new Spinner(this);
-        ArrayAdapter<String> a = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, names) {
-            @Override
-            public View getView(int pos, View convert, android.view.ViewGroup parent) {
-                View v = super.getView(pos, convert, parent);
-                ((TextView) v).setTextColor(Color.WHITE);
-                return v;
-            }
-        };
-        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        s.setAdapter(a);
+        Spinner s = Ui.spinner(this, names);
         String current = config.get(key, values[0]);
         for (int i = 0; i < values.length; i++)
             if (values[i].equals(current)) s.setSelection(i);
@@ -454,25 +599,11 @@ public class LauncherActivity extends Activity {
             }
             public void onNothingSelected(AdapterView<?> p) {}
         });
-        row.addView(s);
-        return row;
+        return dropRow(label, s);
     }
 
     View prefChoice(String label, final String key, String[] names, final int[] values, int def) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.VERTICAL);
-        row.addView(text(label, 13, Color.LTGRAY, false));
-        Spinner s = new Spinner(this);
-        ArrayAdapter<String> a = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, names) {
-            @Override
-            public View getView(int pos, View convert, android.view.ViewGroup parent) {
-                View v = super.getView(pos, convert, parent);
-                ((TextView) v).setTextColor(Color.WHITE);
-                return v;
-            }
-        };
-        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        s.setAdapter(a);
+        Spinner s = Ui.spinner(this, names);
         int current = prefs.getInt(key, def);
         for (int i = 0; i < values.length; i++)
             if (values[i] == current) s.setSelection(i);
@@ -482,8 +613,7 @@ public class LauncherActivity extends Activity {
             }
             public void onNothingSelected(AdapterView<?> p) {}
         });
-        row.addView(s);
-        return row;
+        return dropRow(label, s);
     }
 
     String versionName() {
@@ -504,7 +634,7 @@ public class LauncherActivity extends Activity {
         if (gpuLooksUnsupported())
             driverBox.addView(text("This GPU looks like a Mali / Tensor / Exynos chip: the game may show a black screen"
                     + " on it, even with a custom driver (custom drivers only exist for Snapdragon / Adreno).",
-                    12, Color.rgb(255, 140, 90), false));
+                    12, Ui.ORANGE, false));
         driverBox.addView(text("Driver used by the game", 13, Color.LTGRAY, false));
 
         final String[] ids = new String[drivers.size() + 1];
@@ -518,17 +648,7 @@ public class LauncherActivity extends Activity {
             names[i + 1] = drivers.get(i).toString();
             if (drivers.get(i).id.equals(current)) sel = i + 1;
         }
-        Spinner s = new Spinner(this);
-        ArrayAdapter<String> a = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, names) {
-            @Override
-            public View getView(int pos, View convert, android.view.ViewGroup parent) {
-                View v = super.getView(pos, convert, parent);
-                ((TextView) v).setTextColor(Color.WHITE);
-                return v;
-            }
-        };
-        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        s.setAdapter(a);
+        Spinner s = Ui.spinner(this, names);
         s.setSelection(sel);
         s.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
@@ -593,8 +713,9 @@ public class LauncherActivity extends Activity {
                         if (!d.ok()) {
                             LinearLayout warn = panel(deviceBox, d.blockers.isEmpty() ? "THIS PHONE MAY STRUGGLE"
                                     : "THIS PHONE CANNOT RUN THE GAME");
-                            for (String s : d.blockers) warn.addView(text("• " + s, 14, Color.rgb(255, 110, 90), false));
-                            for (String s : d.warnings) warn.addView(text("• " + s, 14, Color.rgb(255, 190, 90), false));
+                            warn.setBackground(Ui.alert(LauncherActivity.this, d.blockers.isEmpty() ? Ui.ORANGE : Ui.RED));
+                            for (String s : d.blockers) warn.addView(text("• " + s, 14, Ui.RED, false));
+                            for (String s : d.warnings) warn.addView(text("• " + s, 14, Ui.ORANGE, false));
                         }
                         deviceBox.addView(text(d.summary, 11, Color.GRAY, false));
                     }
@@ -637,7 +758,7 @@ public class LauncherActivity extends Activity {
             row.addView(del);
             dlcBox.addView(row);
         }
-        dlcStatus = text("", 12, Color.rgb(240, 191, 61), false);
+        dlcStatus = text("", 12, Ui.YELLOW, false);
         dlcBox.addView(dlcStatus);
         Button add = button("ADD DLC...", false);
         add.setOnClickListener(new View.OnClickListener() {
@@ -862,7 +983,13 @@ public class LauncherActivity extends Activity {
                 return;
             }
         }
-        startActivity(i);
+        showLoading();  // taken down again when we come back (onResume)
+        try {
+            startActivity(i);
+        } catch (RuntimeException e) {
+            hideLoading();
+            Toast.makeText(this, "Could not start the game: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     // Last log (logs/wwe12_NNN.log), shared as text: testers paste it in Discord or GitHub.

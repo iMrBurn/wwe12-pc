@@ -49,7 +49,7 @@ public class LayoutEditorActivity extends Activity {
         int opacity = getSharedPreferences("launcher", MODE_PRIVATE).getInt("touch_opacity", 50);
 
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.rgb(24, 24, 24));
+        root.setBackgroundColor(Ui.BG);
         pad = new TouchControls(this, opacity, true);
         root.addView(pad, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -86,7 +86,8 @@ public class LayoutEditorActivity extends Activity {
         int p = (int) (8 * dp);
         panel.setPadding(p, p, p, p);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(215, 20, 20, 20));
+        bg.setColor(Color.argb(232, 12, 12, 13));
+        bg.setStroke((int) (1 * dp), Ui.YELLOW_DIM);
         bg.setCornerRadius(8 * dp);
         panel.setBackground(bg);
 
@@ -386,7 +387,8 @@ public class LayoutEditorActivity extends Activity {
         b.setMinimumHeight((int) (36 * dp));
         b.setPadding((int) (10 * dp), 0, (int) (10 * dp), 0);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(accent ? YELLOW : Color.rgb(70, 70, 70));
+        bg.setColor(accent ? YELLOW : Ui.SURFACE2);
+        if (!accent) bg.setStroke((int) (1 * dp), Ui.LINE);
         bg.setCornerRadius(6 * dp);
         b.setBackground(bg);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,

@@ -45,6 +45,7 @@ public class WWE12Activity extends SDLActivity {
                     new android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         }
+        GameLoading.start(this);  // loading screen until the first frame (added last: it covers the buttons)
         if (prefs.getBoolean("temp_counter", true)) tempMonitor = new TempMonitor(this);
         if (prefs.getBoolean("thermal_warning", true) && android.os.Build.VERSION.SDK_INT >= 29)
             thermalWatch = new ThermalWatch(this);
