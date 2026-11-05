@@ -4,6 +4,7 @@
 // and precaches pipelines from Blue Dragon's recorded pipeline list (pipeline/pso_predictor.cpp,
 // pso_precache.cpp). SvR has neither yet: scales stay 1, pipelines compile when first used.
 
+#include <algorithm>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -23,6 +24,10 @@
 #include "gpu/pipeline/pso_predictor.h"
 
 REXCVAR_DECLARE(bool, bd_pso_precache);
+REXCVAR_DEFINE_INT32(svr_pso_workers, 0, "SvR",
+                     "Background pipeline threads (0 = auto: one per 4 hardware threads, 1 to 4; "
+                     "1 = as in 1.0).")
+    .range(0, 8);
 
 namespace bd::gpu {
 
@@ -78,7 +83,13 @@ void Enqueue(const PipelineState &state, bool front) {
     // render thread compiled the rest itself (5.6 s frozen on a Snapdragon 7s Gen 2).
     constexpr int kWorkers = 3;
 #else
-    constexpr int kWorkers = 1;
+    // With the remembered pipelines all queued at startup (svr_pso_boot_objects), one thread per
+    // 4 hardware threads (1 to 4): a 4-thread PC keeps one for the game.
+    const int auto_workers = std::clamp(int(std::thread::hardware_concurrency()) / 4, 1, 4);
+    const int kWorkers = REXCVAR_GET(svr_pso_workers) > 0
+                             ? (std::min)(REXCVAR_GET(svr_pso_workers), 8)
+                             : auto_workers;
+    BD_INFO("pso_precache: {} background pipeline thread(s)", kWorkers);
 #endif
     for (int i = 0; i < kWorkers; ++i)
       std::thread(CompileWorker).detach();

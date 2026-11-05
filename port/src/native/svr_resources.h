@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include <rex/types.h>
 
 namespace bd::gpu {
@@ -44,6 +46,11 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face);
 // check_every_use: bound for a draw into an attire composite (2:1 work target), where the game
 // rewrites a paint layer at the same address several times in one frame: checked in full each time.
 GuestTexture *SvrResolveTexture(u32 texture_va, bool check_every_use = false);
+// Startup: makes the shaders (by shader cache hash) and vertex declarations (by element hash, from
+// the kept declarations) that the remembered pipelines wait for, so they build in the background.
+void SvrPrecreateReplayObjects(const std::vector<u64> &vertex_shaders,
+                               const std::vector<u64> &pixel_shaders,
+                               const std::vector<u64> &declarations);
 // Called once per presented frame (mirror checks are per frame).
 void SvrOnFrame();
 

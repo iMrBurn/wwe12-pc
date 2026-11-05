@@ -38,6 +38,9 @@
 
 #include "gpu/pipeline/pso_predictor.h"
 #endif
+#if defined(SVR_NATIVE_RENDERER)
+#include "svr_resources.h"
+#endif
 
 #include "core/logging.h"
 #include "gpu/device.h"
@@ -660,6 +663,26 @@ void ReplayBootCache() {
   }
   BD_INFO("pso_recorder: {} pipeline(s) loaded from {}, {} from the shipped seed, {} distinct",
           own, rex::path_to_utf8(DiskCachePath()), disk.size() - own, seen.size());
+#if defined(SVR_NATIVE_RENDERER)
+  // WWE '12's shaders and declarations are only met when a draw binds them: make the ones the
+  // waiting pipelines need now, off this thread (each one made drains the pending list).
+  {
+    std::unordered_set<u64> vs, ps, decls;
+    for (const auto &e : g_replayPending) {
+      if (const u64 h = HashFromPtr(e.vertexShader))
+        vs.insert(h);
+      if (const u64 h = HashFromPtr(e.pixelShader))
+        ps.insert(h);
+      if (const u64 h = HashFromPtr(e.vertexDeclaration))
+        decls.insert(h);
+    }
+    std::thread([vs = std::vector<u64>(vs.begin(), vs.end()),
+                 ps = std::vector<u64>(ps.begin(), ps.end()),
+                 decls = std::vector<u64>(decls.begin(), decls.end())] {
+      SvrPrecreateReplayObjects(vs, ps, decls);
+    }).detach();
+  }
+#endif
 }
 
 void FlushPSOCapture() {

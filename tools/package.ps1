@@ -64,6 +64,17 @@ if (Test-Path $Seed) {
 } else {
     Write-Warning "Pas de cache de pipelines ($Seed) : le zip partira sans pipelines_seed.w12p."
 }
+# Déclarations de sommets rencontrées (Documents\wwe12\cache\declarations.bin, format W12D de
+# svr_resources.cpp : la liste des champs d'un sommet, position, normale, UV…, quelques Ko). Avec
+# elles, le jeu prépare toutes les pipelines de la graine dès le démarrage (1.1, saccades).
+$DeclSeed = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "wwe12\cache\declarations.bin"
+if (Test-Path $DeclSeed) {
+    $magic = [BitConverter]::ToUInt32([IO.File]::ReadAllBytes($DeclSeed), 0)
+    if ($magic -ne 0x44323157) { throw "$DeclSeed n'est pas un fichier de déclarations W12D" }
+    Copy-Item $DeclSeed (Join-Path $Dist "declarations_seed.w12d")
+} else {
+    Write-Warning "Pas de déclarations ($DeclSeed) : le zip partira sans declarations_seed.w12d (préparation au démarrage seulement après une 1re partie)."
+}
 
 # Notes de la version (dist\RELEASE_NOTES_v<ver>.md) : le launcher les affiche dans « What's new ».
 $Notes = Join-Path $Root "dist\RELEASE_NOTES_v$Version.md"

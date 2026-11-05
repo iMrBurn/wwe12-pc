@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
@@ -17,7 +19,9 @@
 #include <xxhash.h>
 
 #include <rex/cvar.h>
+#include <rex/filesystem.h>
 #include <rex/graphics/xenos.h>
+#include <rex/runtime.h>
 
 #include "core/logging.h"
 #include "core/memory_helpers.h"
@@ -1020,6 +1024,166 @@ static void WWE12LogDeclObject(u32 decl_va, size_t element_count) {
 }
 #endif
 
+// --- Pipelines prepared at startup ---------------------------------------------------------------
+// WWE '12 builds its shader and declaration objects itself, so the renderer only meets them when a
+// draw binds them, and the pipelines remembered in pipelines.bin / the shipped seed could only be
+// built in that same draw (a stutter on each new screen; Chanakya's report: 66-82 of each
+// session's 69-83 render-thread compiles were known pipelines). Shaders come whole from the
+// recompiled shader cache by hash; vertex declarations are kept here (hash -> elements, a few KB:
+// Documents\wwe12\cache\declarations.bin, plus declarations_seed.w12d next to the exe), so every
+// known pipeline is built in the background from startup.
+REXCVAR_DEFINE_BOOL(svr_pso_boot_objects, true, "SvR",
+                    "Make the shaders and vertex declarations of the remembered pipelines at "
+                    "startup, so they are built in the background before their first draw "
+                    "(false = built at first use, as in 1.0).");
+
+namespace {
+constexpr u32 kDeclMagic = 0x44323157;  // "W12D"
+constexpr u32 kDeclVersion = 1;
+std::mutex g_decl_store_mutex;
+std::unordered_map<u64, std::vector<GuestVertexElement>> g_decl_store;  // decl hash -> elements
+bool g_decl_store_loaded = false;
+
+std::filesystem::path DeclStorePath() {
+  auto *rt = rex::Runtime::instance();
+  const auto root = rt ? rt->user_data_root() : std::filesystem::path{};
+  return root.empty() ? root : root / "cache" / "declarations.bin";
+}
+std::filesystem::path DeclSeedPath() {
+  return rex::filesystem::GetExecutableFolder() / "declarations_seed.w12d";
+}
+
+// File: magic, version, count, then per declaration its element count (terminator included) and
+// the elements as the game wrote them (big-endian fields, padding zeroed).
+void LoadDeclFileLocked(const std::filesystem::path &path) {
+  if (path.empty())
+    return;
+  std::ifstream f(path, std::ios::binary);
+  if (!f)
+    return;
+  u32 header[3] = {};
+  f.read(reinterpret_cast<char *>(header), sizeof(header));
+  if (!f || header[0] != kDeclMagic || header[1] != kDeclVersion || header[2] > 100000) {
+    BD_WARN("pso boot: {} ignored (old or damaged format)", rex::path_to_utf8(path));
+    return;
+  }
+  for (u32 i = 0; i < header[2]; ++i) {
+    u32 count = 0;
+    f.read(reinterpret_cast<char *>(&count), sizeof(count));
+    if (!f || count < 1 || count > 65)
+      return;
+    std::vector<GuestVertexElement> elements(count);
+    f.read(reinterpret_cast<char *>(elements.data()), std::streamsize(count * sizeof(GuestVertexElement)));
+    if (!f || u16(elements.back().stream) != 0xFFu)
+      return;
+    const u64 hash = XXH3_64bits(elements.data(), (count - 1) * sizeof(GuestVertexElement));
+    g_decl_store.try_emplace(hash, std::move(elements));
+  }
+}
+
+void LoadDeclStoreLocked() {
+  if (g_decl_store_loaded)
+    return;
+  g_decl_store_loaded = true;
+  LoadDeclFileLocked(DeclStorePath());
+  LoadDeclFileLocked(DeclSeedPath());
+}
+
+void SaveDeclStoreLocked() {
+  const auto path = DeclStorePath();
+  if (path.empty())
+    return;
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  auto tmp = path;
+  tmp += ".tmp";
+  {
+    std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+    const u32 header[3] = {kDeclMagic, kDeclVersion, u32(g_decl_store.size())};
+    f.write(reinterpret_cast<const char *>(header), sizeof(header));
+    for (const auto &[hash, elements] : g_decl_store) {
+      const u32 count = u32(elements.size());
+      f.write(reinterpret_cast<const char *>(&count), sizeof(count));
+      f.write(reinterpret_cast<const char *>(elements.data()),
+              std::streamsize(count * sizeof(GuestVertexElement)));
+    }
+    if (!f) {
+      BD_WARN("pso boot: cannot write {}", rex::path_to_utf8(tmp));
+      return;
+    }
+  }
+  std::filesystem::rename(tmp, path, ec);
+  if (ec)
+    std::filesystem::remove(tmp, ec);
+}
+
+// A declaration met in the game: kept for the next sessions (rare: a few dozen in all).
+void RememberDeclaration(const GuestVertexDeclaration *decl) {
+  if (!decl || !decl->vertexElements || decl->vertexElementCount < 1)
+    return;
+  std::lock_guard lock(g_decl_store_mutex);
+  LoadDeclStoreLocked();
+  if (g_decl_store.count(decl->hash))
+    return;
+  g_decl_store.emplace(decl->hash, std::vector<GuestVertexElement>(
+                                       decl->vertexElements.get(),
+                                       decl->vertexElements.get() + decl->vertexElementCount));
+  SaveDeclStoreLocked();
+}
+}  // namespace
+
+// Called by the pipeline replay (pso_recorder.cpp) on a background thread with the shaders and
+// declarations its remembered pipelines wait for. Each object made here is the one the game's
+// own lookups find later (same maps, same keys), so the pipelines built now match its draws.
+void SvrPrecreateReplayObjects(const std::vector<u64> &vertex_shaders,
+                               const std::vector<u64> &pixel_shaders,
+                               const std::vector<u64> &declarations) {
+  if (!REXCVAR_GET(svr_pso_boot_objects))
+    return;
+  const auto start = std::chrono::steady_clock::now();
+  u32 shaders = 0, decls = 0, unknown_decls = 0;
+  const auto make_shader = [&shaders](u64 hash, bool pixel) {
+    std::unique_lock lock(g_object_mutex);
+    GuestShader *&cached = g_shaders_by_hash[hash ^ (pixel ? 0x9E3779B97F4A7C15ull : 0)];
+    if (!cached) {
+      cached = CreateShaderFromHash(hash, pixel ? ResourceType::PixelShader
+                                                : ResourceType::VertexShader);
+      shaders += cached != nullptr;
+    }
+  };
+  for (const u64 hash : vertex_shaders)
+    make_shader(hash, false);
+  for (const u64 hash : pixel_shaders)
+    make_shader(hash, true);
+  for (const u64 hash : declarations) {
+    std::vector<GuestVertexElement> elements;
+    {
+      std::lock_guard lock(g_decl_store_mutex);
+      LoadDeclStoreLocked();
+      if (auto it = g_decl_store.find(hash); it != g_decl_store.end())
+        elements = it->second;
+    }
+    if (elements.empty()) {
+      ++unknown_decls;
+      continue;
+    }
+    // Keyed like the game's lookups: the elements with their terminator.
+    const u64 key = XXH3_64bits(elements.data(), elements.size() * sizeof(GuestVertexElement));
+    std::unique_lock lock(g_object_mutex);
+    GuestVertexDeclaration *&host = g_decls_by_hash[key];
+    if (!host) {
+      host = CreateVertexDeclaration(elements.data());
+      decls += host != nullptr;
+    }
+  }
+  BD_INFO("pso boot: {} shader(s) and {} vertex declaration(s) made at startup for the remembered "
+          "pipelines ({} declaration(s) not known yet), {} ms",
+          shaders, decls, unknown_decls,
+          std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                                start)
+              .count());
+}
+
 GuestVertexDeclaration *SvrLookupVertexDeclaration(u32 decl_va) {
   if (!decl_va)
     return nullptr;
@@ -1041,12 +1205,18 @@ GuestVertexDeclaration *SvrLookupVertexDeclaration(u32 decl_va) {
   for (auto &e : elements)
     e.padding = 0;
   const u64 hash = XXH3_64bits(elements.data(), elements.size() * sizeof(GuestVertexElement));
-  std::unique_lock lock(g_object_mutex);
-  GuestVertexDeclaration *&host = g_decls_by_hash[hash];
-  if (!host)
-    host = CreateVertexDeclaration(elements.data());
-  g_decls[decl_va] = host;
-  return host;
+  GuestVertexDeclaration *made = nullptr;
+  {
+    std::unique_lock lock(g_object_mutex);
+    GuestVertexDeclaration *&host = g_decls_by_hash[hash];
+    if (!host)
+      made = host = CreateVertexDeclaration(elements.data());
+    g_decls[decl_va] = host;
+    if (!made)
+      return host;
+  }
+  RememberDeclaration(made);
+  return made;
 #else
   return nullptr;
 #endif
