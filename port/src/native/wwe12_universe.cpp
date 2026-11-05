@@ -3878,17 +3878,35 @@ extern "C" REX_FUNC(sub_824D20A0) {
 // (2026-11-05). The pack calls this once, when it makes the save's copy of his record again: his
 // lists emptied, and his number taken out of everyone else's.
 REX_EXTERN(__imp__sub_826D4F98);  // a Superstar's relations record (U, id)
+REXCVAR_DEFINE_BOOL(wwe12_universe_added_relations, true, "WWE12",
+                    "Universe: an added Superstar (mods) starts without allies or rivals (false = 1.0: he "
+                    "kept those of his number's former Superstar).");
 
 void Wwe12UniverseForgetRelations(const PPCContext &in, u8 *base, u32 id) {
-  if (id >= 373)
+  if (id >= 373 || !REXCVAR_GET(wwe12_universe_added_relations))
     return;
   PPCContext x = in;
   x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
   const u32 view = x.r1.u32 + 0x800;
   Call(x, base, __imp__sub_826CDC48, view);
   const u32 u = bd::mem::load<u32>(view + 4);
+  // anything to change? (a copy of the save first, once a session, as before RESET UNIVERSE)
+  bool any = false;
+  for (u32 y = 0; u && y < 373 && !any; ++y)
+    if (const u32 rec = Call(x, base, __imp__sub_826D4F98, u, y))
+      for (u32 k = 0; k < 10 && !any; ++k) {
+        const u32 who = bd::mem::load<u32>(rec + k * 4);
+        any = y == id ? who != 512 : who == id;
+      }
+  static bool s_backed_up = false;
+  if (any && !s_backed_up)
+    s_backed_up = BackupSave("Before an added Superstar's relations are cleared");
+  if (any && !s_backed_up) {
+    BD_WARN("[univers] added Superstar {}: no copy of the save, relations left as they are", id);
+    any = false;
+  }
   u32 own = 0, others = 0;
-  for (u32 y = 0; u && y < 373; ++y) {
+  for (u32 y = 0; any && y < 373; ++y) {
     const u32 rec = Call(x, base, __imp__sub_826D4F98, u, y);
     if (!rec)
       continue;
@@ -3901,7 +3919,8 @@ void Wwe12UniverseForgetRelations(const PPCContext &in, u8 *base, u32 id) {
     }
   }
   Call(x, base, __imp__sub_826CE098, view);
-  BD_INFO("[univers] added Superstar {}: relations cleared ({} of his, {} in others' lists)", id,
+  if (any)
+    BD_INFO("[univers] added Superstar {}: relations cleared ({} of his, {} in others' lists)", id,
           own, others);
 }
 
@@ -4313,6 +4332,45 @@ extern "C" REX_FUNC(sub_82559A08) {
   g_news_event = NewsEvent(ctx.r4.u32);
   __imp__sub_82559A08(ctx, base);
   g_news_event = 0;
+}
+
+// A news's picture: sub_82558FC8(screen S, news) names the six news pictures (elements 390-395, S+1040
+// + i * 336 = sub_82550B68(name) of "newsBG_01".."newsBG_06" by sub_828366A8, the element's +204
+// pointing there), hides them, then shows the one of the news's type (table 0x820236A8: type 5 =
+// 392, newsBG_03, the blue globe). For our qualifying news its name becomes the PPV's own
+// background (PPVbg_MinB, PPVbg_EC, as the calendar's), asked by the user (2026-11-05).
+REXCVAR_DEFINE_BOOL(wwe12_universe_news_ppv_picture, true, "WWE12",
+                    "Universe: the qualifying news show their PPV's picture (false = 1.0: the blue globe).");
+REX_EXTERN(__imp__sub_82558FC8);
+REX_EXTERN(__imp__sub_82550B68);  // a picture's reference from its name (out, name)
+REX_EXTERN(__imp__sub_828366A8);  // a picture's reference set (to, reference as 8 bytes in r4)
+extern "C" REX_FUNC(sub_82558FC8) {
+  const PPCContext in = ctx;
+  __imp__sub_82558FC8(ctx, base);
+  const u32 event = NewsEvent(in.r4.u32);
+  if (!event || !REXCVAR_GET(wwe12_universe_news_ppv_picture))
+    return;
+  static u32 s_names[kEvents + 1] = {};
+  u32 &name = s_names[event];
+  if (!name) {
+    const char *text = event == 1 ? "PPVbg_MinB" : "PPVbg_EC";
+    name = REX_KERNEL_MEMORY()->SystemHeapAlloc(32, 0x10);
+    if (!name)
+      return;
+    std::memset(bd::mem::at<char>(name), 0, 32);
+    std::memcpy(bd::mem::at<char>(name), text, std::strlen(text));
+  }
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 out = x.r1.u32 + 0x200;
+  x.r3.u64 = out, x.r4.u64 = name;
+  __imp__sub_82550B68(x, base);
+  const u64 ref = bd::mem::load<u64>(out);
+  x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  x.r3.u64 = in.r3.u32 + 1040 + 2 * 336;  // newsBG_03's, the type 5 picture's
+  x.r4.u64 = ref;
+  __imp__sub_828366A8(x, base);
 }
 
 namespace {
