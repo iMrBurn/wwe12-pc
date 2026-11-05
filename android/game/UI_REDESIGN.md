@@ -1,5 +1,7 @@
 # New look of the Android app (yellow and black)
 
+Design and code by **Yexclsv** (Android co-maintainer), integrated in 1.1. Thank you!
+
 UI only: no game logic, settings, files or native code changed. Not compiled or tested on a device (written without
 a build environment): please build and report errors.
 

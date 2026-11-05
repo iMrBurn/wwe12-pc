@@ -40,6 +40,11 @@ Projets dont ce portage s'inspire :
   jour. Idées Android étudiées dans `docs/android_optimisation_jarrod.md` (cadence 90/120 Hz, résolution
   dynamique, SGSR, cœurs rapides, copies GPU) et correction de la ceinture à 60 fps (méthode). Aucun
   code repris pour l'instant ; tout code repris plus tard sera ajouté ici avec son fichier.
+- **Yexclsv**, co-mainteneur de la version Android (travail donné pour le projet, crédité dans les notes
+  de version) : gestionnaire de pilotes GPU (`DriverManager.java`), vérification du téléphone
+  (`DeviceCheck.java`), température et avertissement de chauffe, import de sauvegardes (idée de
+  `SaveImporter`), réglages et préréglages en un appui, et le **nouveau look du launcher** (jaune et noir,
+  écran de chargement : `Ui.java`, `GameLoading.java`, `android/game/UI_REDESIGN.md`, 1.1).
 - Portages SvR 2008/2009/2010 de [nefariousjosiah](https://github.com/nefariousjosiah)
   (GPL-3.0) : leur rendu natif (src/native, adaptations de src/reblue) est la base du rendu
   natif de WWE '12.
