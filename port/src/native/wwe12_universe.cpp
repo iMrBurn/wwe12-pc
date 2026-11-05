@@ -3868,6 +3868,43 @@ extern "C" REX_FUNC(sub_824D20A0) {
 }
 
 
+// ---- an added Superstar's allies and rivals --------------------------------------------------------
+//
+// A Superstar's relations: sub_826D4F98(U, id) (U = a view's +4) -> his record, +0..+16 five allies,
+// +20..+36 five rivals (Superstar numbers, 512 = none; the place is the level, sub_826CBCE8 reads it,
+// sub_826CD7F0 / sub_826CD600 change it; the game's start ones come from BATL/SAVE "WDR",
+// sub_826BE3C0). An added Superstar (mods pack, wwe12_superstar_mods.cpp) takes a number whose
+// relations the Universe already had: Damien Sandow at 116 had Eve as ally and four Divas as rivals
+// (2026-11-05). The pack calls this once, when it makes the save's copy of his record again: his
+// lists emptied, and his number taken out of everyone else's.
+REX_EXTERN(__imp__sub_826D4F98);  // a Superstar's relations record (U, id)
+
+void Wwe12UniverseForgetRelations(const PPCContext &in, u8 *base, u32 id) {
+  if (id >= 373)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x800;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 u = bd::mem::load<u32>(view + 4);
+  u32 own = 0, others = 0;
+  for (u32 y = 0; u && y < 373; ++y) {
+    const u32 rec = Call(x, base, __imp__sub_826D4F98, u, y);
+    if (!rec)
+      continue;
+    for (u32 k = 0; k < 10; ++k) {
+      const u32 at = rec + k * 4, who = bd::mem::load<u32>(at);
+      if (y == id ? who != 512 : who == id) {
+        bd::mem::store<u32>(at, 512);
+        ++(y == id ? own : others);
+      }
+    }
+  }
+  Call(x, base, __imp__sub_826CE098, view);
+  BD_INFO("[univers] added Superstar {}: relations cleared ({} of his, {} in others' lists)", id,
+          own, others);
+}
+
 // ---- a show's minimum roster (15 in the game) --------------------------------------------------
 //
 // The game wants 15 Superstars per show, tested in three places, each with its own 15:
