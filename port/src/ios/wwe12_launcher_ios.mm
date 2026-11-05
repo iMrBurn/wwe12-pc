@@ -25,7 +25,7 @@
 #include <sys/utsname.h>
 #include <unistd.h>
 
-#define W12_BG [UIColor colorWithRed:0.04 green:0.04 blue:0.06 alpha:1.0]
+#define W12_BG [UIColor colorWithRed:0.055 green:0.055 blue:0.063 alpha:1.0]
 #define W12_RED [UIColor colorWithRed:0.75 green:0.05 blue:0.08 alpha:1.0]
 #define W12_DIM [UIColor colorWithWhite:0.6 alpha:1.0]
 #define W12_TEXT [UIColor whiteColor]
@@ -213,6 +213,14 @@ static std::string CopyFd(int from, uint64_t size, const std::string& to, NSStri
 
 // ---- UI pieces ----
 
+// The app icon, read from the bundle's icon files (nil if the build has none: the layout copes).
+static UIImage* LogoImage() {
+  NSDictionary* icons = [[NSBundle mainBundle] infoDictionary][@"CFBundleIcons"][@"CFBundlePrimaryIcon"];
+  NSString* name = [icons[@"CFBundleIconFiles"] lastObject];
+  UIImage* img = name ? [UIImage imageNamed:name] : nil;
+  return img ? img : [UIImage imageNamed:@"AppIcon60x60"];
+}
+
 static UILabel* Label(NSString* text, CGFloat size, UIColor* color, BOOL bold) {
   UILabel* l = [[UILabel alloc] init];
   l.text = text;
@@ -223,9 +231,17 @@ static UILabel* Label(NSString* text, CGFloat size, UIColor* color, BOOL bold) {
 }
 
 static UIButton* Button(NSString* title, BOOL filled, void (^onTap)(void)) {
-  UIButtonConfiguration* cfg = filled ? [UIButtonConfiguration filledButtonConfiguration] : [UIButtonConfiguration grayButtonConfiguration];
+  UIButtonConfiguration* cfg = [UIButtonConfiguration plainButtonConfiguration];
   cfg.title = title;
-  if (filled) cfg.baseBackgroundColor = W12_RED;
+  cfg.baseForegroundColor = W12_TEXT;
+  cfg.contentInsets = NSDirectionalEdgeInsetsMake(11, 18, 11, 18);
+  cfg.background.backgroundColor = filled ? W12_RED : [UIColor colorWithWhite:1.0 alpha:0.09];
+  cfg.background.cornerRadius = 6.0;
+  cfg.titleTextAttributesTransformer = ^NSDictionary<NSAttributedStringKey, id>*(NSDictionary<NSAttributedStringKey, id>* attrs) {
+    NSMutableDictionary* d = [attrs mutableCopy];
+    d[NSFontAttributeName] = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
+    return d;
+  };
   UIButton* b = [UIButton buttonWithConfiguration:cfg primaryAction:[UIAction actionWithHandler:^(__kindof UIAction* a) { onTap(); }]];
   return b;
 }
@@ -308,10 +324,16 @@ static UIStackView* Card(UIStackView* page, NSString* title) {
   inner.spacing = 12.0;
   inner.layoutMargins = UIEdgeInsetsMake(14, 16, 16, 16);
   inner.layoutMarginsRelativeArrangement = YES;
-  inner.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.07];
-  inner.layer.cornerRadius = 14.0;
+  inner.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
+  inner.layer.cornerRadius = 8.0;
+  inner.layer.borderWidth = 1.0;
+  inner.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.08].CGColor;
   inner.clipsToBounds = YES;
-  [inner addArrangedSubview:Label([title uppercaseString], 13.0, W12_RED, YES)];
+  UILabel* head = [[UILabel alloc] init];
+  head.attributedText = [[NSAttributedString alloc] initWithString:[title uppercaseString]
+      attributes:@{NSFontAttributeName : [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold],
+                   NSForegroundColorAttributeName : W12_DIM, NSKernAttributeName : @1.4}];
+  [inner addArrangedSubview:head];
   [page addArrangedSubview:inner];
   return inner;
 }
@@ -329,7 +351,7 @@ static UIView* Row(NSString* title, UIView* control) {
 static UISegmentedControl* Segment(NSArray<NSString*>* items, NSInteger selected, void (^onChange)(NSInteger)) {
   UISegmentedControl* s = [[UISegmentedControl alloc] initWithItems:items];
   s.selectedSegmentIndex = selected;
-  s.selectedSegmentTintColor = W12_RED;
+  s.selectedSegmentTintColor = [UIColor colorWithWhite:1.0 alpha:0.22];
   [s setTitleTextAttributes:@{NSForegroundColorAttributeName : W12_TEXT} forState:UIControlStateNormal];
   [s setTitleTextAttributes:@{NSForegroundColorAttributeName : W12_TEXT} forState:UIControlStateSelected];
   [s addAction:[UIAction actionWithHandler:^(__kindof UIAction* a) { onChange(((UISegmentedControl*)a.sender).selectedSegmentIndex); }]
@@ -443,6 +465,7 @@ static std::string MakeBackup(const std::string& label, bool automatic) {
   UILabel* _progressLabel;   // live text while copying
   UIProgressView* _bar;
   UITextField* _backupName;
+  NSArray<UIButton*>* _nav;  // the left column, one per page
 }
 
 - (UIScrollView*)scrollPage:(UIStackView**)outStack {
@@ -475,15 +498,15 @@ static std::string MakeBackup(const std::string& label, bool automatic) {
 
 - (UIView*)buildPlayPage {
   const std::string game = FindGame();
-  UIFontDescriptor* heavy = [[UIFont systemFontOfSize:64.0 weight:UIFontWeightHeavy].fontDescriptor
-      fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitItalic];
-  UIFont* logoFont = [UIFont fontWithDescriptor:heavy size:64.0];
-  NSMutableAttributedString* logo = [[NSMutableAttributedString alloc]
-      initWithString:@"WWE" attributes:@{NSFontAttributeName : logoFont, NSForegroundColorAttributeName : W12_TEXT}];
-  [logo appendAttributedString:[[NSAttributedString alloc]
-                                   initWithString:@" '12" attributes:@{NSFontAttributeName : logoFont, NSForegroundColorAttributeName : W12_RED}]];
+  UIImageView* mark = [[UIImageView alloc] initWithImage:LogoImage()];
+  mark.contentMode = UIViewContentModeScaleAspectFit;
+  mark.layer.cornerRadius = 22.0;
+  mark.clipsToBounds = YES;
+  mark.hidden = mark.image == nil;
   UILabel* title = [[UILabel alloc] init];
-  title.attributedText = logo;
+  title.attributedText = [[NSAttributedString alloc] initWithString:@"WWE '12"
+      attributes:@{NSFontAttributeName : [UIFont systemFontOfSize:34.0 weight:UIFontWeightBold],
+                   NSForegroundColorAttributeName : W12_TEXT, NSKernAttributeName : @1.0}];
   title.textAlignment = NSTextAlignmentCenter;
   NSString* version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
   UILabel* sub = Label([NSString stringWithFormat:@"iPhone port  %@", version ? version : @""], 14.0, W12_DIM, NO);
@@ -499,9 +522,11 @@ static std::string MakeBackup(const std::string& label, bool automatic) {
   });
   play.enabled = !game.empty();
 
-  UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[ title, sub, status, play ]];
+  UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[ mark, title, sub, status, play ]];
+  [stack setCustomSpacing:22.0 afterView:sub];
+  [stack setCustomSpacing:6.0 afterView:status];
   stack.axis = UILayoutConstraintAxisVertical;
-  stack.spacing = 16.0;
+  stack.spacing = 8.0;
   stack.alignment = UIStackViewAlignmentCenter;
   stack.translatesAutoresizingMaskIntoConstraints = NO;
   UIView* page = [[UIView alloc] init];
@@ -511,6 +536,8 @@ static std::string MakeBackup(const std::string& label, bool automatic) {
     [stack.centerYAnchor constraintEqualToAnchor:page.centerYAnchor],
     [stack.widthAnchor constraintLessThanOrEqualToAnchor:page.widthAnchor],
     [play.widthAnchor constraintEqualToConstant:260.0],
+    [mark.widthAnchor constraintEqualToConstant:96.0],
+    [mark.heightAnchor constraintEqualToConstant:96.0],
   ]];
   return page;
 }
@@ -982,6 +1009,16 @@ static std::string NewestLog(const char* prefix) {
 
 - (void)showPage:(NSInteger)index {
   _page = index;
+  for (NSUInteger i = 0; i < _nav.count; ++i) {
+    const BOOL on = static_cast<NSInteger>(i) == index;
+    UIButtonConfiguration* cfg = _nav[i].configuration;
+    cfg.baseForegroundColor = on ? W12_TEXT : W12_DIM;
+    cfg.background.backgroundColor = on ? [UIColor colorWithWhite:1.0 alpha:0.08] : [UIColor clearColor];
+    cfg.background.strokeColor = on ? W12_RED : [UIColor clearColor];
+    cfg.background.strokeWidth = on ? 1.0 : 0.0;
+    _nav[i].configuration = cfg;
+    _nav[i].contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+  }
   [self.view endEditing:YES];
   for (UIView* v in [_content.subviews copy]) [v removeFromSuperview];
   UIView* page = index == 1   ? [self buildInstallPage]
@@ -1005,33 +1042,60 @@ static std::string NewestLog(const char* prefix) {
   [super viewDidLoad];
   self.view.backgroundColor = W12_BG;
   // Tab order: Play, Install, DLC, Settings, Controls, Support, Saves.
-  UISegmentedControl* tabs = [[UISegmentedControl alloc] initWithItems:@[ @"Play", @"Install", @"DLC", @"Settings", @"Controls", @"Support", @"Saves" ]];
-  tabs.selectedSegmentIndex = 0;
-  tabs.selectedSegmentTintColor = W12_RED;
-  [tabs setTitleTextAttributes:@{NSForegroundColorAttributeName : W12_TEXT} forState:UIControlStateNormal];
-  [tabs setTitleTextAttributes:@{NSForegroundColorAttributeName : W12_TEXT} forState:UIControlStateSelected];
-  tabs.translatesAutoresizingMaskIntoConstraints = NO;
-  [self.view addSubview:tabs];
+  // A left column: the logo, then one line per page; the open page has a red bar and white text.
+  __weak Wwe12LauncherViewController* weakSelf = self;
+  NSArray<NSString*>* names = @[ @"Play", @"Install", @"DLC", @"Settings", @"Controls", @"Support", @"Saves" ];
+  NSMutableArray<UIButton*>* nav = [NSMutableArray array];
+  UIStackView* side = [[UIStackView alloc] init];
+  side.axis = UILayoutConstraintAxisVertical;
+  side.spacing = 2.0;
+  side.translatesAutoresizingMaskIntoConstraints = NO;
+  UIImageView* mark = [[UIImageView alloc] initWithImage:LogoImage()];
+  mark.contentMode = UIViewContentModeScaleAspectFit;
+  mark.layer.cornerRadius = 10.0;
+  mark.clipsToBounds = YES;
+  mark.hidden = mark.image == nil;
+  [mark.widthAnchor constraintEqualToConstant:44.0].active = YES;
+  [mark.heightAnchor constraintEqualToConstant:44.0].active = YES;
+  UIStackView* brand = [[UIStackView alloc] initWithArrangedSubviews:@[ mark ]];
+  brand.layoutMargins = UIEdgeInsetsMake(0, 12, 14, 0);
+  brand.layoutMarginsRelativeArrangement = YES;
+  brand.alignment = UIStackViewAlignmentLeading;
+  [side addArrangedSubview:brand];
+  for (NSUInteger i = 0; i < names.count; ++i) {
+    NSInteger index = static_cast<NSInteger>(i);
+    UIButton* b = Button(names[i], NO, ^{
+      Wwe12LauncherViewController* s = weakSelf;
+      if (!s) return;
+      s->_message = nil;
+      [s showPage:index];
+    });
+    [nav addObject:b];
+    [side addArrangedSubview:b];
+  }
+  _nav = nav;
+  [self.view addSubview:side];
+  UIView* rule = [[UIView alloc] init];
+  rule.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.08];
+  rule.translatesAutoresizingMaskIntoConstraints = NO;
+  [self.view addSubview:rule];
   _content = [[UIView alloc] init];
   _content.translatesAutoresizingMaskIntoConstraints = NO;
   [self.view addSubview:_content];
   UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
   [NSLayoutConstraint activateConstraints:@[
-    [tabs.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8.0],
-    [tabs.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:40.0],
-    [tabs.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-40.0],
-    [_content.topAnchor constraintEqualToAnchor:tabs.bottomAnchor constant:10.0],
-    [_content.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:40.0],
-    [_content.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-40.0],
-    [_content.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-4.0],
+    [side.topAnchor constraintEqualToAnchor:safe.topAnchor constant:14.0],
+    [side.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:24.0],
+    [side.widthAnchor constraintEqualToConstant:150.0],
+    [rule.leadingAnchor constraintEqualToAnchor:side.trailingAnchor constant:18.0],
+    [rule.widthAnchor constraintEqualToConstant:1.0],
+    [rule.topAnchor constraintEqualToAnchor:safe.topAnchor constant:14.0],
+    [rule.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-14.0],
+    [_content.topAnchor constraintEqualToAnchor:safe.topAnchor constant:10.0],
+    [_content.leadingAnchor constraintEqualToAnchor:rule.trailingAnchor constant:22.0],
+    [_content.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-30.0],
+    [_content.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-6.0],
   ]];
-  __weak Wwe12LauncherViewController* weakSelf = self;
-  [tabs addAction:[UIAction actionWithHandler:^(__kindof UIAction* action) {
-    Wwe12LauncherViewController* s = weakSelf;
-    if (!s) return;
-    s->_message = nil;
-    [s showPage:((UISegmentedControl*)action.sender).selectedSegmentIndex];
-  }] forControlEvents:UIControlEventValueChanged];
   [self showPage:0];
 }
 
