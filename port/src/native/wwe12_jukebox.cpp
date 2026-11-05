@@ -62,7 +62,12 @@ REXCVAR_DEFINE_INT32(wwe12_jukebox_theme, 139, "WWE12",
                      "Jukebox: the chosen theme (its superstar's number; 139 = John Cena; 1 = the game's menu music).");
 REXCVAR_DEFINE_BOOL(wwe12_jukebox_game_music, true, "WWE12",
                     "Jukebox: the game's own menu music also comes up in the random order.");
+REXCVAR_DEFINE_BOOL(wwe12_jukebox_stop_on_load, true, "WWE12",
+                    "Jukebox: its theme stops on every loading screen (false = 1.0: only when the game stops "
+                    "the menu music itself; Universe's NEXT MATCH then kept it over the match).");
 REXCVAR_DECLARE(uint32_t, user_language);
+
+int64_t Wwe12MsSinceLoadScreen();  // wwe12_load_turbo.cpp
 
 REX_EXTERN(__imp__sub_8271BFD0);
 REX_EXTERN(__imp__sub_8271F080);
@@ -467,6 +472,22 @@ extern "C" REX_FUNC(sub_8271BFD0) {
   }
   PPCContext saved = ctx;
   const u32 m = ctx.r3.u32;
+  // A loading screen opened or closed since the last update (its time since then went down): a
+  // match (or a mode) is loading, whatever the way in. Universe's pause > NEXT MATCH loads the next
+  // match without the game stopping the menu music itself, and the theme went on over the match
+  // until the game was closed (Discord, 1.0.0). The menus' next song starts the jukebox again.
+  static int64_t s_since = INT64_MAX;
+  const int64_t since = Wwe12MsSinceLoadScreen();
+  const bool load_screen = since < s_since;
+  s_since = since;
+  if (load_screen && g_menus && REXCVAR_GET(wwe12_jukebox_stop_on_load)) {
+    if (g_step != Step::Idle)
+      StopSlot(saved, base, m, kThemeSlot);
+    BD_INFO("[jukebox] loading screen: theme {} stopped", g_playing);
+    g_menus = false;
+    g_playing = 0;
+    Go(Step::Idle);
+  }
   const u32 before = bd::mem::try_field<u32>(m, 40);
   __imp__sub_8271BFD0(ctx, base);
   if (g_give_back.exchange(false)) {
