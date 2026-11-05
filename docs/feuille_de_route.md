@@ -206,4 +206,4 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 
 ## Décision de l'utilisateur du 2026-11-05 (séance de tests) : tout en 1.1
 - Dans la 1.1 : alliés / rivaux à 0 / 0 des catcheurs ajoutés (Univers : `Wwe12UniverseForgetRelations`, à tester sur une copie de sauvegarde), image des NEWS Elimination Chamber / MITB (logo du PPV au lieu du globe), base neutre automatique de NOUVEAU CATCHEUR (au lieu de Ted DiBiase), entrée 2K14 de Damien Sandow (ni musique ni titantron).
-- À confirmer par l'utilisateur : la page ROSTERS du launcher (marques hors de l'Univers, étude `docs/launcher_rosters.md`, 3 séances, écrit dans la sauvegarde : risque) : 1.1 ou 1.2.
+- **Page ROSTERS du launcher** (marques hors de l'Univers, étude `docs/launcher_rosters.md`, 3 séances, écrit dans la sauvegarde : risque) : **1.3** (décision de l'utilisateur, 2026-11-05).
