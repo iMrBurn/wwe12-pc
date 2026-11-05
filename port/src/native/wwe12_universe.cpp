@@ -3870,7 +3870,8 @@ extern "C" REX_FUNC(sub_824D20A0) {
 
 // ---- an added Superstar's allies and rivals --------------------------------------------------------
 //
-// A Superstar's relations: sub_826D4F98(U, id) (U = a view's +4) -> his record, +0..+16 five allies,
+// A Superstar's relations: sub_826D4F98(U, id) (U = a view's +12: 180 records of 40 bytes, 7200 bytes,
+// as sub_826CBCD0(view + 8, copy) copies them; the relation calls take view + 8) -> his record, +0..+16 five allies,
 // +20..+36 five rivals (Superstar numbers, 512 = none; the place is the level, sub_826CBCE8 reads it,
 // sub_826CD7F0 / sub_826CD600 change it; the game's start ones come from BATL/SAVE "WDR",
 // sub_826BE3C0). An added Superstar (mods pack, wwe12_superstar_mods.cpp) takes a number whose
@@ -3889,7 +3890,7 @@ void Wwe12UniverseForgetRelations(const PPCContext &in, u8 *base, u32 id) {
   x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
   const u32 view = x.r1.u32 + 0x800;
   Call(x, base, __imp__sub_826CDC48, view);
-  const u32 u = bd::mem::load<u32>(view + 4);
+  const u32 u = bd::mem::load<u32>(view + 12);  // (+4 is another table: cleared there by mistake at first)
   // anything to change? (a copy of the save first, once a session, as before RESET UNIVERSE)
   bool any = false;
   for (u32 y = 0; u && y < 373 && !any; ++y)
@@ -3898,6 +3899,12 @@ void Wwe12UniverseForgetRelations(const PPCContext &in, u8 *base, u32 id) {
         const u32 who = bd::mem::load<u32>(rec + k * 4);
         any = y == id ? who != 512 : who == id;
       }
+  if (const u32 rec = u ? Call(x, base, __imp__sub_826D4F98, u, id) : 0) {
+    std::string words;
+    for (u32 k = 0; k < 10; ++k)
+      words += fmt::format(" {:X}", bd::mem::load<u32>(rec + k * 4));
+    BD_INFO("[univers] added Superstar {}: U 0x{:08X} record 0x{:08X}:{}", id, u, rec, words);
+  }
   static bool s_backed_up = false;
   if (any && !s_backed_up)
     s_backed_up = BackupSave("Before an added Superstar's relations are cleared");
