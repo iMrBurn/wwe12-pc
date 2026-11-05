@@ -1027,3 +1027,19 @@ de `sub_826F15E8` qui dépasse les modèles du groupe prend le dernier (dernier 
 un match hebdo au-delà du nombre du jeu resté sans modèle est re-booké comme un des matchs du jeu, puis remis à sa
 place (+8). Vu : 2-3 mois simulés à 5/5 avec les qualifs, « template 4 of group 0 -> 3 » sur les RAW / SmackDown
 d'après l'Elimination Chamber, plus de plantage ; le filet ne s'est pas déclenché.
+
+## 40. 1.1 : jukebox, news des PPV, relations des catcheurs ajoutés (2026-11-05, vus par l'utilisateur)
+
+- **Jukebox + NEXT MATCH** (bug Discord) : le thème ne s'arrêtait que quand le jeu coupait lui-même la musique des
+  menus ; NEXT MATCH (pause de l'Univers) n'y passe pas. Il s'arrête maintenant à chaque écran de chargement (le temps
+  de `Wwe12MsSinceLoadScreen()` redescend), dans le crochet de `sub_8271BFD0`. Réglage `wwe12_jukebox_stop_on_load`.
+- **Image des news de qualification** : `sub_82558FC8(S, news)` nomme les 6 images de news (« newsBG_01..06 »,
+  éléments 390-395, S + 1040 + i × 336 par `sub_82550B68` + `sub_828366A8`) et montre celle du type (table
+  0x820236A8, type 5 = newsBG_03 = globe). Pour nos news, la n° 3 devient PPVbg_MinB / PPVbg_EC (les fonds du
+  calendrier) : vu, fond Elimination Chamber derrière la photo. Réglage `wwe12_universe_news_ppv_picture`.
+- **Alliés / rivaux** : table de la vue +12 (180 fiches de 40 octets, copiée par `sub_826CBCD0(vue + 8)`) ; fiche d'un
+  catcheur `sub_826D4F98(table, id)` : +0 5 alliés, +20 5 rivaux (u32, 512 = personne ; non symétriques). Un catcheur
+  ajouté gardait celles de l'ancien occupant de son numéro (Sandow à 116 : Eve et 4 Divas). `Wwe12UniverseForgetRelations`
+  les vide et le retire des listes des autres, une fois par ajouté et par mod (`relations_cleared.txt` de Mods), à
+  l'écran de sélection et à l'entrée de l'Univers ; copie de la sauvegarde avant. Réglage `wwe12_universe_added_relations`.
+  Piège : la vue +4 est une AUTRE table (première version fausse, vue sur la copie seulement).
