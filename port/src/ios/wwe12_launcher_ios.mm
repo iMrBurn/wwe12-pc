@@ -22,6 +22,7 @@
 #include <strings.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 
 #define W12_BG [UIColor colorWithRed:0.04 green:0.04 blue:0.06 alpha:1.0]
@@ -877,6 +878,16 @@ static std::string NewestLog(const char* prefix) {
     [s presentViewController:share animated:YES completion:nil];
   })];
   if (_message) [logs addArrangedSubview:Label(_message, 13.0, [UIColor colorWithRed:0.94 green:0.75 blue:0.24 alpha:1.0], NO)];
+
+  struct utsname un;
+  uname(&un);
+  NSDictionary* info = [[NSBundle mainBundle] infoDictionary];
+  NSString* version = [NSString stringWithFormat:@"%@ (%@)", info[@"CFBundleShortVersionString"] ?: @"?", info[@"CFBundleVersion"] ?: @"?"];
+  UIStackView* about = Card(stack, @"About");
+  [about addArrangedSubview:Row(@"App version", Label(version, 14.0, W12_DIM, NO))];
+  [about addArrangedSubview:Row(@"Device", Label([NSString stringWithFormat:@"%s, iOS %@", un.machine, [[UIDevice currentDevice] systemVersion]], 14.0, W12_DIM, NO))];
+  [about addArrangedSubview:Row(@"Free space", Label(Human(FreeBytes(Docs())), 14.0, W12_DIM, NO))];
+  [about addArrangedSubview:Label(@"iOS build method and launcher base by Ke619 (MIT). Needs your own legal copy of the game.", 12.0, W12_DIM, NO)];
 
   UIStackView* reset = Card(stack, @"Reset");
   [reset addArrangedSubview:Label(@"Puts every setting back to its default (your saves and DLC are not touched).", 13.0, W12_DIM, NO)];
