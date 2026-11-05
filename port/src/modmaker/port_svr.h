@@ -59,11 +59,16 @@ inline std::string MapBone(const std::string &s) {
   return s;  // the face's bones
 }
 
-// SvR part names -> WWE '12's.
+// SvR part names -> WWE '12's, whatever their case (SvR 2010 names its eyes' part "eye", 2011 "EYE": SvR 2010
+// Melina's, Shelton Benjamin's, Umaga's eyes left their face during the match and followed behind them, Discord, Jay,
+// 2026-11-05 - the game finds the eyes by that name).
 inline std::string MapPart(const std::string &s) {
-  if (s == "eyes")
+  std::string l;
+  for (char c : s)
+    l += char(tolower(static_cast<unsigned char>(c)));
+  if (l == "eye" || l == "eyes")
     return "EYE";
-  if (s == "teeth")
+  if (l == "teeth" || l == "tooth")
     return "tooth";
   return s;
 }
