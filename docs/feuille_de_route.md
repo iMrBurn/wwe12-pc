@@ -193,3 +193,7 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 - Pistes : top 10 des fonctions chaudes du fil principal (échantillons de piles), réécriture native des plus chaudes (méthode de Jarrod : sortie identique, contrôle image par image), couches d'émulation restantes (accès mémoire invité avec inversion d'octets, noyau émulé, audio), code généré qui garde plus de registres.
 - Études en cours (lecture seule) : Rendu (Steam Deck et performances) et Gameplay (natif / code du jeu), résultat dans `docs/perf_natif_steam_deck.md`.
 - Jarrod : accord verbal pour s'inspirer de ses mises à jour ; copier du code = demander d'abord ; crédit.
+
+## Décision de l'utilisateur du 2026-11-05 : performances sans changer tout le code, le reste en 1.2
+- **Maintenant (sans régénérer le code du jeu), Rendu** : télécommande intelligente (état du jeu, captures faites par le jeu, « lancer un match », « jouer N secondes et écrire le résumé »), memcpy / memset natifs (`sub_82A76060` / `sub_82A76590`), image en retard affichée tout de suite si le gain est mesuré.
+- **1.2, tout ensemble (une seule régénération du code, un seul gros test)** : nouveau xex patché avec les 2 vraies mises à jour de THQ (TU1 puis TU2) + options de registres locaux du générateur de code + modèle « volatile » ; remappage des 751 entrées de `wwe12_config.toml` et des ~280 adresses de `port/src`. Gameplay prépare le plan unique.
