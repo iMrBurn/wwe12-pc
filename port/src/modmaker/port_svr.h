@@ -1299,13 +1299,42 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     }
     if (!chains)
       HangHair(xs, xo);
-    for (const auto &m : xo.meshes)  // (their places in the colour picture: its alpha kept there, below)
+    // (their places in the colour picture: its alpha kept there, below. Not a piece whose places are mostly the
+    // body's: SvR 2011 Kelly Kelly's hair model holds a piece on her clothes' places, and with SvR's alpha kept there
+    // her top was cut away - Discord, Jay, 2026-11-05)
+    static constexpr int kMaskSize = 256;
+    std::vector<UvTri> body_tris;
+    for (const auto &m : mo.meshes)
+      for (const auto &st : m.strips)
+        for (size_t q = 0; q + 2 < st.indices.size(); q += st.IsStrip() ? 1 : 3)
+          if (const auto &ix = st.indices; ix[q] < m.uvs.size() && ix[q + 1] < m.uvs.size() && ix[q + 2] < m.uvs.size())
+            body_tris.push_back({m.uvs[ix[q]], m.uvs[ix[q + 1]], m.uvs[ix[q + 2]]});
+    const auto body_mask = UvMask(body_tris, kMaskSize, kMaskSize);
+    int left_out = 0;
+    for (const auto &m : xo.meshes) {
+      std::vector<UvTri> tris;
       for (const auto &st : m.strips) {
         const auto &ix = st.indices;
         for (size_t q = 0; q + 2 < ix.size(); q += st.IsStrip() ? 1 : 3)
           if (ix[q] < m.uvs.size() && ix[q + 1] < m.uvs.size() && ix[q + 2] < m.uvs.size())
-            see_through.push_back({m.uvs[ix[q]], m.uvs[ix[q + 1]], m.uvs[ix[q + 2]]});
+            tris.push_back({m.uvs[ix[q]], m.uvs[ix[q + 1]], m.uvs[ix[q + 2]]});
       }
+      const auto mine = UvMask(tris, kMaskSize, kMaskSize);
+      size_t all = 0, on_body = 0;
+      for (size_t q = 0; q < mine.size(); ++q)
+        if (mine[q]) {
+          ++all;
+          on_body += body_mask[q];
+        }
+      if (id == 10000 && all && on_body * 2 > all) {  // (the hair model only: 20000's goatee lies on the face's places)
+        ++left_out;
+        continue;
+      }
+      see_through.insert(see_through.end(), tris.begin(), tris.end());
+    }
+    if (left_out)
+      rep->notes.push_back(std::to_string(left_out) + " piece(s) of model " + std::to_string(id) +
+                           " on the body's places: drawn as the body (no see-through edges)");
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(xo));
     b = nullptr;  // (adding or removing entries below moves the others)
     if (id == 10000 && hair_done) {
