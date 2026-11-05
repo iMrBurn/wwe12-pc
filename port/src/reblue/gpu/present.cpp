@@ -485,11 +485,25 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
   }
 }
 
+#if defined(WWE12_IOS)
+}  // namespace bd::gpu
+bool Wwe12IosInBackground();  // ios/wwe12_ios.cpp
+namespace bd::gpu {
+#endif
+
 void Video::Present(GuestTexture *frontBuffer) {
   WWE12_CPU_ZONE(kPresent);
   auto &s = state();
   if (s.shutting_down.load(std::memory_order_acquire))
     return;
+#if defined(WWE12_IOS)
+  // iOS kills the app ("BackgroundExecutionNotPermitted", device lost) if it submits GPU work in
+  // the background: no frame is presented while the app is not in the foreground.
+  if (Wwe12IosInBackground()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    return;
+  }
+#endif
   std::unique_lock lock(s.mutex);
   if (!s.ready || s.shutting_down.load(std::memory_order_acquire)) {
     return;

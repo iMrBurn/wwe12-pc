@@ -14,7 +14,10 @@
 #include <cstring>
 #include <string>
 
+#include <chrono>
+
 #include <fmt/format.h>
+#include <rex/cvar.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -27,6 +30,10 @@
 #include "gpu/resources.h"
 #include "gpu/vertex_declaration.h"
 #include "svr_resources.h"
+
+REXCVAR_DEFINE_INT32(svr_draw_log_every_s, 0, "SvR",
+                     "Log one whole frame ([drawlog] lines) every N seconds, without a key press "
+                     "(for the iPhone, which has no F9). 0 = off.");
 
 namespace bd::gpu {
 namespace {
@@ -57,9 +64,21 @@ static bool KeyFrameActive() {
   static std::atomic<u64> s_polled{~0ull};
   static std::atomic<u64> s_target{0};
   const u64 frame = SvrFrameIndex();
-  if (s_polled.exchange(frame) != frame && (GetAsyncKeyState(VK_F9) & 1)) {
-    s_target = frame + 1;
-    BD_INFO("[drawlog] F9: logging frame {}", frame + 1);
+  if (s_polled.exchange(frame) != frame) {
+    if (GetAsyncKeyState(VK_F9) & 1) {
+      s_target = frame + 1;
+      BD_INFO("[drawlog] F9: logging frame {}", frame + 1);
+    }
+    const i32 every = REXCVAR_GET(svr_draw_log_every_s);
+    if (every > 0) {
+      static auto s_last = std::chrono::steady_clock::now();
+      const auto now = std::chrono::steady_clock::now();
+      if (std::chrono::duration<double>(now - s_last).count() >= every) {
+        s_last = now;
+        s_target = frame + 1;
+        BD_INFO("[drawlog] periodic: logging frame {}", frame + 1);
+      }
+    }
   }
   return s_target.load() == frame;
 }

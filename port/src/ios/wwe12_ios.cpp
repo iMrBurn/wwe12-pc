@@ -6,6 +6,7 @@
 #include <mach/vm_map.h>
 #include <sys/stat.h>
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -14,11 +15,39 @@
 #include <system_error>
 #include <vector>
 
+#include <SDL3/SDL.h>
+
 #include "compat/windows.h"
 
 // crash_trace.cpp (crash traces and the freeze watchdog, dbghelp): not on iOS. The renderer
 // calls this once per presented frame.
 void SvrWatchdogHeartbeat() {}
+
+// True while the app is in the background (home button, app switcher, lock): the renderer must
+// not submit GPU work then. The SDL event watch is added at the first call (SDL is up by then).
+static std::atomic<bool> g_background{false};
+bool Wwe12IosInBackground() {
+  static const bool registered = [] {
+    SDL_AddEventWatch(
+        [](void*, SDL_Event* e) -> bool {
+          switch (e->type) {
+            case SDL_EVENT_WILL_ENTER_BACKGROUND:
+            case SDL_EVENT_DID_ENTER_BACKGROUND:
+              if (!g_background.exchange(true)) std::fprintf(stderr, "[boot] background\n");
+              break;
+            case SDL_EVENT_WILL_ENTER_FOREGROUND:
+            case SDL_EVENT_DID_ENTER_FOREGROUND:
+              if (g_background.exchange(false)) std::fprintf(stderr, "[boot] foreground\n");
+              break;
+          }
+          return true;
+        },
+        nullptr);
+    return true;
+  }();
+  (void)registered;
+  return g_background.load(std::memory_order_relaxed);
+}
 
 // compat/windows.h: VirtualQuery from the Mach VM regions. wwe12_quit.cpp walks the guest memory
 // with it (readable and writable regions) to rename texts.

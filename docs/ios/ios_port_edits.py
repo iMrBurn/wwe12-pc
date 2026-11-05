@@ -134,3 +134,12 @@ pat = re.compile(r'add_custom_command\(\s*OUTPUT "\$\{CMAKE_CURRENT_SOURCE_DIR\}
 assert len(pat.findall(s)) == 1, "generated/rexglue.cmake: codegen command anchor"
 write(rg, pat.sub("add_custom_target(wwe12_codegen)", s, count=1))
 print("ok: generated/rexglue.cmake: codegen not re-run")
+
+# ---- iPhone defaults in wwe12.toml (copied to Documents at the first start only) ----------------
+# Metal / MoltenVK page faults and GPU hangs at scene changes: geometry copies stay on the CPU
+# side and render targets are made without Apple's lossless compression (heap aliasing).
+toml = port / "config/wwe12.toml"
+s = read(toml)
+assert "bd_geometry_gpu_upload" not in s, "wwe12.toml: iOS defaults already present"
+write(toml, s.rstrip("\n") + "\n\n# iOS defaults (added by the iOS build)\nbd_geometry_gpu_upload = false\nsvr_rt_no_compression = true\n")
+print("ok: wwe12.toml: iOS defaults")
