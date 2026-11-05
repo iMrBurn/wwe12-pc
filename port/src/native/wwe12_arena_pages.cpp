@@ -1097,6 +1097,17 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       REXLOG_WARN("[arena pages] {}: its transition isn't a Bink video", a.id);
       a.movie.clear();
     }
+    // (the game's own transitions: 870 KB at most, frames of 47 KB at most. The game takes about three times the
+    // largest frame from a small heap: a Mod Maker SvR 2007 transition with 131 KB frames, 1.95 MB, crashed the game
+    // after the match - 393 KB not found in heap 54, 2026-11-05. Bigger ones are left out: the base's plays.)
+    if (a.movie.size() >= 16) {
+      const uint32_t largest = uint32_t(a.movie[12]) | uint32_t(a.movie[13]) << 8 | uint32_t(a.movie[14]) << 16;
+      if (largest > 50000 || a.movie.size() > 1000000) {
+        REXLOG_WARN("[arena pages] {}: its transition is too big for the game ({} bytes, a frame of {}): the base's plays",
+                    a.id, a.movie.size(), largest);
+        a.movie.clear();
+      }
+    }
     g_added.push_back(a);
     if (g_added.size() == 35)  // (the banner pack has 35 free textures)
       break;

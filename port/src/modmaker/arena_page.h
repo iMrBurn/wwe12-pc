@@ -2114,27 +2114,45 @@ class Page {
         wchar_t tmp[MAX_PATH];
         GetTempPathW(MAX_PATH, tmp);
         const fs::path out = fs::path(tmp) / L"wwe12_transition.bik";
+        // (within the game's own transitions' sizes: frames of 40 KB at most, 850 KB in all - theirs 47 KB / 870 KB;
+        // the game takes about three times the largest frame from a small heap: a 1.95 MB one with 131 KB frames
+        // crashed it after the match, 2026-11-05. Lossier and lossier until it fits.)
+        static constexpr int kQuality[][3] = {{2, 2, 0}, {4, 6, 8}, {8, 12, 16}, {12, 20, 24}, {20, 32, 40}, {32, 48, 64}};
         bool ok = false;
-        if (FILE *f = _wfopen(out.c_str(), L"wb")) {
-          if (BinkWriter *bw = bink_writer_open_alpha(f, int(transition.size()), 320, 320)) {
-            ok = true;
-            std::vector<uint8_t> bgra;
-            for (const auto &img : transition) {
-              bgra = img.rgba;
-              for (size_t i = 0; i < bgra.size(); i += 4)
-                std::swap(bgra[i], bgra[i + 2]);
-              ok = ok && bink_writer_frame(bw, bgra.data()) == 1;
+        for (const auto &q : kQuality) {
+          ok = false;
+          if (FILE *f = _wfopen(out.c_str(), L"wb")) {
+            if (BinkWriter *bw = bink_writer_open_alpha(f, int(transition.size()), 320, 320)) {
+              bink_writer_quality(bw, q[0], q[1], q[2]);
+              ok = true;
+              std::vector<uint8_t> bgra;
+              for (const auto &img : transition) {
+                bgra = img.rgba;
+                for (size_t i = 0; i < bgra.size(); i += 4)
+                  std::swap(bgra[i], bgra[i + 2]);
+                ok = ok && bink_writer_frame(bw, bgra.data()) == 1;
+              }
+              if (ok)
+                ok = bink_writer_close(bw) && !ferror(f);
+              else
+                bink_writer_free(bw);
             }
-            if (ok)
-              ok = bink_writer_close(bw) && !ferror(f);
-            else
-              bink_writer_free(bw);
+            fclose(f);
           }
-          fclose(f);
-        }
-        if (ok) {
+          if (!ok)
+            break;
           std::ifstream in(out, std::ios::binary);
           movie_.assign(std::istreambuf_iterator<char>(in), {});
+          const uint32_t largest = movie_.size() >= 16 ? uint32_t(movie_[12]) | uint32_t(movie_[13]) << 8 |
+                                                             uint32_t(movie_[14]) << 16
+                                                       : 0;
+          if (largest <= 40000 && movie_.size() <= 850000)
+            break;
+          ok = false;  // (too big at the last quality: none, the base's plays)
+        }
+        if (!ok)
+          movie_.clear();
+        if (ok) {
           port_note_ += made ? (fr ? " Avec une transition faite de son écran VS." : " With a transition made from its VS screen.")
                              : (fr ? " Avec sa transition (le logo WWE de SvR 2009)." : " With its transition (SvR 2009's WWE logo).");
         }
