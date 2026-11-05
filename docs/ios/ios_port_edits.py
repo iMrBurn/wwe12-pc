@@ -141,5 +141,8 @@ print("ok: generated/rexglue.cmake: codegen not re-run")
 toml = port / "config/wwe12.toml"
 s = read(toml)
 assert "bd_geometry_gpu_upload" not in s, "wwe12.toml: iOS defaults already present"
-write(toml, s.rstrip("\n") + "\n\n# iOS defaults (added by the iOS build)\nbd_geometry_gpu_upload = false\nsvr_rt_no_compression = true\n")
+s = re.sub(r"(?m)^svr_render_scale\s*=.*\n", "", s)  # the PC default (0 = auto) would come first
+write(toml, s.rstrip("\n") + "\n\n# iOS defaults (added by the iOS build)\nbd_geometry_gpu_upload = false\nsvr_rt_no_compression = true\n"
+                   "# The automatic resolution picked 4K on the iPhone (GPU hang / page fault at the entrances): 720p.\n"
+                   "svr_render_scale = 720\n")
 print("ok: wwe12.toml: iOS defaults")
