@@ -192,7 +192,7 @@ inline bool Entrance(const disc::GameDisc &svr, const disc::GameDisc &w12, int n
 }
 
 // Its victory scene (6000 + its number), as entrance13::Victory gives a WWE '13 one. `number`: the superstar's in its
-// game (title); SvR 2008-2010's scene is svr_old_entrance::VictoryOf's, served as 6000 + number % 1000 too.
+// game (title); SvR 2007-2010's scene is svr_old_entrance::VictoryOf's, served as 6000 + number % 1000 too.
 inline bool Victory(const disc::GameDisc &svr, const disc::GameDisc &w12, int number, std::vector<Part> &out,
                     uint32_t title = svr_old_entrance::kSvr11, const disc::GameDisc *svr11 = nullptr) {
   out.clear();

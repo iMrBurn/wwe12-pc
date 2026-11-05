@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -446,8 +447,10 @@ inline Bytes ScaleCrowdText(const Bytes &d, float f) {
     if (first == std::string::npos || line[first] == ';' || line[first] == '{' || line[first] == '}')
       continue;
     if (seats) {
+      // (only a seat's line "A (x, z, y, w); n": a person's "C00(b03)" (its texture kind) is no number - turned into
+      // "(0.0)" before 2026-11-05, SvR 2011's crowds included)
       const size_t a = line.find('('), b = line.find(')');
-      if (a == std::string::npos || b == std::string::npos || b < a)
+      if (a == std::string::npos || b == std::string::npos || b < a || line.find(',', a) > b)
         continue;
       std::string inner = line.substr(a + 1, b - a - 1), r;
       size_t q = 0;
@@ -469,6 +472,77 @@ inline Bytes ScaleCrowdText(const Bytes &d, float f) {
     }
   }
   return Join(lines);
+}
+
+// SvR 2007's own crowd places (its loose entries 21100 seats, 21201 / 21202 areas: WWE '12's crowd pack texts, in
+// SvR 2011's units, its lines ending "\r\r\n") as the texts of WWE '12's crowd packs, scaled 10 times as SvR 2011's
+// (2026-11-05: the base's places put its front rows on the floor of the 2007 arenas and left their stands empty).
+// WWE '12's packs have 21100 (seats, plain), 21101 (the same with the "(c..)" / "(w..)" kinds: 2007's has them, as
+// SvR 2011's 21101, seen in the game on WM 26), 21150 (as 21100), 21201 / 21203 "; NR" areas (the back, facing the ring
+// straight: SvR 2011 RAW's) and 21202 / 21204 "; R" (the others). 2007 splits its areas otherwise (floor / stands):
+// each quad (4 corners x, y, z) goes by where it lies: NR if behind (y < 0) and within a fifth of its distance of
+// the middle line. Empty if a text is missing or has no seat.
+inline std::map<uint32_t, Bytes> Svr07CrowdPlaces(const Bytes &seats07, const Bytes &areas1, const Bytes &areas2) {
+  const auto norm = [](const Bytes &d) {
+    std::string s(d.begin(), d.end()), o;
+    for (size_t i = 0; i < s.size(); ++i)
+      if (!(s[i] == '\r' && i + 1 < s.size() && s[i + 1] == '\r'))
+        o += s[i];
+    return Bytes(o.begin(), o.end());
+  };
+  std::map<uint32_t, Bytes> out;
+  if (seats07.empty() || areas1.empty() || areas2.empty())
+    return out;
+  const Bytes with = ScaleCrowdText(norm(seats07), 10);
+  // (21100: a seat's kind "(cNN)" / "(c)" / "(wNN)" / "(w)" after its name "X00" dropped; "(bNN)" kept)
+  auto lines = Lines(with);
+  int seats = 0;
+  for (auto &l : lines) {
+    if (l.find('(') != std::string::npos && l.find(';') != 0 && l.find(',') != std::string::npos)
+      ++seats;
+    for (size_t a = l.find('('); a != std::string::npos; a = l.find('(', a + 1)) {
+      const size_t b = l.find(')', a);
+      if (a < 3 || b == std::string::npos || !isdigit(uint8_t(l[a - 1])) || !isdigit(uint8_t(l[a - 2])) ||
+          !isalpha(uint8_t(l[a - 3])) || (l[a + 1] != 'c' && l[a + 1] != 'w'))
+        continue;
+      bool kind = true;
+      for (size_t i = a + 2; i < b; ++i)
+        kind = kind && isdigit(uint8_t(l[i]));
+      if (kind) {
+        l.erase(a, b - a + 1);
+        --a;
+      }
+    }
+  }
+  if (!seats)
+    return out;
+  const Bytes plain = Join(lines);
+  std::string nr = "; NR \r\n", r = "; R \r\n";
+  int quads = 0;
+  for (const Bytes *d : {&areas1, &areas2})
+    for (const auto &l : Lines(norm(*d))) {
+      const auto w = Words(l);
+      if (w.size() != 12 || w[0][0] == ';')
+        continue;
+      double v[12];
+      for (int i = 0; i < 12; ++i)
+        v[i] = atof(w[size_t(i)].c_str()) * 10;
+      const double cx = (v[0] + v[3] + v[6] + v[9]) / 4, cy = (v[1] + v[4] + v[7] + v[10]) / 4;
+      std::string line = " ";
+      for (int i = 0; i < 12; ++i)
+        line += Num(v[i]) + (i % 3 == 2 ? "    " : "  ");
+      (cy < 0 && std::fabs(cx) < 0.2 * std::fabs(cy) ? nr : r) += line + "\r\n";
+      ++quads;
+    }
+  if (!quads)
+    return out;
+  nr += "\r\n";
+  r += "\r\n";
+  out[21100] = out[21150] = plain;
+  out[21101] = with;
+  out[21201] = out[21203] = Bytes(nr.begin(), nr.end());
+  out[21202] = out[21204] = Bytes(r.begin(), r.end());
+  return out;
 }
 
 // 50001 (each object's flags): "e" (shown during events only: the entrances) on the given objects.
@@ -2411,7 +2485,8 @@ inline bool SvrCard(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, 
 // SvR 2007's arena `n` as SvR 2008 has its bgNN.pac (after Kaiko's arena_port.py svr2008_convert, with his permission
 // and credit): 2007 keeps up to ten arenas a file, entry STG<k>/00NN of pac/bg/bg<k>.pac (k = n / 10; bg0.pac also
 // holds the weapons, cage and ladders: left out). Its crowd is loose models and seat files (20000-21247, 40000-40191):
-// left out, the base's comes in. `bgk`: that file. False: no such arena.
+// left out, the base's comes in, but its place texts (21100 seats, 21201 / 21202 areas) stay as loose entries: Port
+// puts them in the base's crowd packs (Svr07CrowdPlaces). `bgk`: that file. False: no such arena.
 inline bool Svr07Stage(const Bytes &bgk, int n, Bytes &out) {
   svrfmt::Archive a;
   if (!svrfmt::ArchiveOpen(bgk, a, nullptr))
@@ -2432,7 +2507,8 @@ inline bool Svr07Stage(const Bytes &bgk, int n, Bytes &out) {
   if (!svrfmt::ArchiveExpand(stage))
     return false;
   for (size_t i = stage.kids.size(); i-- > 0;)
-    if ((stage.kids[i].id >= 20000 && stage.kids[i].id <= 21247) || (stage.kids[i].id >= 40000 && stage.kids[i].id <= 40191))
+    if (((stage.kids[i].id >= 20000 && stage.kids[i].id <= 21247) || (stage.kids[i].id >= 40000 && stage.kids[i].id <= 40191)) &&
+        stage.kids[i].id != 21100 && stage.kids[i].id != 21201 && stage.kids[i].id != 21202)
       svrfmt::ArchiveRemove(stage, i);
   svrfmt::ArchiveTouch(stage);
   svrfmt::ArchiveTouch(a.root);
@@ -2832,6 +2908,33 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
   for (const auto &k : gb.kids)
     if (from_base.count(k.id))
       ga.kids.push_back(k);
+  // SvR 2007's own crowd places (loose 21100 / 21201 / 21202, Svr07Stage) in the base's crowd packs: its people on its
+  // own stands.
+  {
+    std::map<uint32_t, Bytes> loose;
+    for (const auto &k : ga.kids)
+      if (k.id == 21100 || k.id == 21201 || k.id == 21202)
+        loose[k.id] = svrfmt::Unpack(svrfmt::ArchiveData(k));
+    if (!loose.empty()) {
+      ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(),
+                                   [](const svrfmt::ArcNode &k) { return k.id == 21100 || k.id == 21201 || k.id == 21202; }),
+                    ga.kids.end());
+      const auto places = pi.own_crowd ? std::map<uint32_t, Bytes>()
+                                       : Svr07CrowdPlaces(loose[21100], loose[21201], loose[21202]);
+      int packs = 0;
+      for (auto &k : ga.kids)
+        if ((k.id == 20000 || k.id == 20010) && !places.empty() && svrfmt::ArchiveExpand(k)) {
+          for (auto &c : k.kids)
+            if (const auto it = places.find(c.id); it != places.end() && svrfmt::ArchiveKindOf(c) == "text")
+              ReplaceLike(c, it->second);
+          svrfmt::ArchiveTouch(k);
+          ++packs;
+        }
+      if (packs)
+        pi.notes.push_back("its own crowd places (SvR 2007) with the base's people, in " + std::to_string(packs) +
+                           " crowd pack(s)");
+    }
+  }
   // The barricades: WWE '12's code finds them by name (ar_fence01_a to _f: the walls the wrestlers stop at, the
   // pieces that break); SvR 2011's are named otherwise (ar_fence01, ar_fen_bone01...: walked through, seen on WM 26).
   // Its own go, the base's come in (they wear the arena's pictures by name: ar_fence, ar_fen_wwe...), lit as its own

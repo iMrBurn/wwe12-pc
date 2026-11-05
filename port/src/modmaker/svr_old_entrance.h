@@ -5,8 +5,9 @@
 // result goes on through svr11_entrance.h (svr_scenes.h does both) like a SvR 2011 entrance.
 //
 // Where the scenes are (pac\evt, EPAC; SvR 2010 EPK8), entries named by number, script group EVP?, tracks EVT?:
-//  - SvR 2007: evt1.pac / evt2.pac, entrances 4000-4362 (evt0 the editor and props, evt3 parts, evt4-8 season / win
-//    scenes: no victory converted, as in Kaiko's tools);
+//  - SvR 2007: evt1.pac / evt2.pac, entrances 4000-4362; evt7.pac victories 6001-6xxx (6000 + id, laid out as 2008's:
+//    6 characters, 2 props, the camera at 8 - ours, 2026-11-05: Kaiko's tools didn't convert them); evt0 the editor and
+//    props, evt3 parts, evt4-6 / evt8 season scenes;
 //  - SvR 2008 / 2009: Nyujyo0-3.pac, entrances 4000-4424; victories Winning0-3.pac 6000-9300 (TNyujyo / TWinning: tests);
 //  - SvR 2010: Nyujyo0-3.pac, entrances 100-840; victories Winning0-3.pac 6100-9400.
 // Formats (Kaiko's svr08_entrance.py notes):
@@ -906,10 +907,11 @@ inline bool Scene(const disc::GameDisc &g, uint32_t title, bool victory, int num
     std::string l = f;
     for (auto &c : l)
       c = char(tolower(uint8_t(c)));
-    // (SvR 2007: evt1 / evt2.pac; else Nyujyo0-3 / Winning0-3.pac, not the tests TNyujyo / TWinning)
+    // (SvR 2007: evt1 / evt2.pac, victories evt7.pac; else Nyujyo0-3 / Winning0-3.pac, not the tests TNyujyo / TWinning)
     const std::string stem = title == kSvr07 ? "evt" : victory ? "winning" : "nyujyo";
     if (l.size() != stem.size() + 5 || l.compare(0, stem.size(), stem) || l.compare(stem.size() + 1, 4, ".pac") ||
-        !isdigit(uint8_t(l[stem.size()])) || (title == kSvr07 && l[3] != '1' && l[3] != '2'))
+        !isdigit(uint8_t(l[stem.size()])) ||
+        (title == kSvr07 && (victory ? l[3] != '7' : l[3] != '1' && l[3] != '2')))
       continue;
     Entries(g, "pac/evt/" + f, [&](const std::string &grp, int n, bool got, const Bytes &data = {}) {
       if (n != number || n >= 9999 || (grp.rfind("EVP", 0) && grp.rfind("EVT", 0)))
@@ -949,7 +951,7 @@ inline Stock11 ReadStock11(const disc::GameDisc &svr11) {
   return st;
 }
 
-// Scene `scene` (an entrance, or a victory scene: SvR 2008-2010) of the game `src` (title id) as SvR 2011's, numbered
+// Scene `scene` (an entrance or a victory scene) of the game `src` (title id) as SvR 2011's, numbered
 // `number` (an entrance 100..999, a victory 6000..7999): its script (evp11) and track bank (evt11). stock11: the stock
 // SvR 2011 entrances (ReadStock11), for 2009 / 2010; null without a SvR 2011 disc (said in notes). False (and why) when
 // the game hasn't it or Kaiko's tools wouldn't convert it.
@@ -966,8 +968,6 @@ inline bool Convert(const disc::GameDisc &src, uint32_t title, int scene, bool v
     why->clear();
   if (title != kSvr07 && title != kSvr08 && title != kSvr09 && title != kSvr10)
     return fail("not SvR 2007-2010");
-  if (victory && title == kSvr07)
-    return fail("SvR 2007's victory scenes aren't converted");
   Bytes evp, evt;
   if (!Scene(src, title, victory, scene, evp, evt))
     return fail("no such scene in its game");
@@ -1103,10 +1103,11 @@ inline int EntranceOf(const disc::GameDisc &g, uint32_t title, int id) {
   }
 }
 
-// Its victory scene (Winning*.pac; many superstars have none: the game then plays a generic one): SvR 2008 6000 + id,
-// SvR 2009 6000 + id - 100, SvR 2010 / 2011 6000 + id (2011: % 1000, svr_scenes.h); SvR 2007's aren't converted (0).
+// Its victory scene (Winning*.pac, SvR 2007 evt7.pac; many superstars have none: the game then plays a generic one):
+// SvR 2007 / 2008 6000 + id, SvR 2009 6000 + id - 100, SvR 2010 / 2011 6000 + id (2011: % 1000, svr_scenes.h).
 inline int VictoryOf(uint32_t title, int id) {
   switch (title) {
+    case kSvr07:
     case kSvr08:
       return 6000 + id;
     case kSvr09:

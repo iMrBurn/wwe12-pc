@@ -150,6 +150,21 @@ Chaque étape : vérifiée hors du jeu, puis un essai en jeu par l'utilisateur.
     `_EvtGdHD.pac`). Ring blanc et tache blanche sur le tablier dans la vue 3D : pareil avec SvR 2008 (vu par
     l'utilisateur), c'est l'aperçu.
   - À voir en jeu : tout.
+- **Foule et victoires de SvR 2007 (2026-11-05, vérifiées hors du jeu, pas encore en jeu)** :
+  - **Foule** : les entrées « à plat » de la foule de 2007 sont rangées comme le paquet de foule 20000 de WWE '12
+    (personnes 20000-20019 / 20040-20059, textures 21000, places 21100, zones 21201 / 21202, 40000 / 40001 / 40100),
+    avec des places aux unités de SvR 2011 (× 10 pour WWE '12). `Svr07Stage` garde maintenant 21100 / 21201 / 21202 ;
+    `Port` les met dans les paquets de foule de la base (`Svr07CrowdPlaces`) : les spectateurs de WWE '12 sur les places
+    de l'arène 2007. 21100 / 21150 sans les types « (c..) » / « (w..) », 21101 avec (comme le 21101 de SvR 2011, vu en
+    jeu) ; les zones de 2007 (sol / tribunes) rangées comme WWE '12 : « ; NR » (21201 / 21203) le fond face au ring
+    (y < 0, à moins d'un cinquième de sa distance de l'axe), « ; R » (21202 / 21204) les autres. Les 20 arènes passent.
+  - **Bug corrigé au passage** (`ScaleCrowdText`, foule de SvR 2011 comprise) : le « (b03) » de chaque spectateur
+    (« C00(b03) » : son type de texture) devenait « (0.0) » ; seules les lignes de sièges « A (x, z, y, w); n » sont
+    maintenant multipliées.
+  - **Victoires** : `evt7.pac` (EVP7 / EVT7) a 116 scènes : 6000 + numéro du catcheur (56), 6200 + numéro (les mêmes,
+    sans doute en champion), 7000-7605 (génériques). Disposition des 2008 (6 personnages, 2 accessoires, caméra en 8),
+    donc le chemin 2008 (`svr_old_entrance::Convert`, `VictoryOf` 6000 + id). Kaiko ne les convertissait pas. Les 56
+    passent hors du jeu.
 - **Hauteur des rampes (2026-11-01, remarque de l'utilisateur : « les arènes proposées sont souvent fausses »)** :
   `port13::RampHeight` ne regardait que les modèles 200-299 nommés « slo » (WWE '12, SvR 2010-2011, 2K). SvR 2007-2009
   numérotent leurs rampes autrement (2007 / 2008 « raw_ent_slope_0 » 11-16, « wm23_slo01 », « sd_slo0 » ; 2009
