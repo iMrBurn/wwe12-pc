@@ -203,3 +203,7 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 - **Optimisation et performances** Android.
 - **Surtout : remettre le replay d'après match** (coupé par défaut depuis l'alpha 6 à cause des gels, #23 / #24 / #29 / #51). Piste : l'attente de l'enregistreur de replay (même cause que le « match gagné qui ne finit jamais » de Kaiko sur Steam Deck ?).
 - La session Android prépare `docs/android_apres_1_1.md` (lecture seule, sans retarder la 1.1).
+
+## Décision de l'utilisateur du 2026-11-05 (séance de tests) : tout en 1.1
+- Dans la 1.1 : alliés / rivaux à 0 / 0 des catcheurs ajoutés (Univers : `Wwe12UniverseForgetRelations`, à tester sur une copie de sauvegarde), image des NEWS Elimination Chamber / MITB (logo du PPV au lieu du globe), base neutre automatique de NOUVEAU CATCHEUR (au lieu de Ted DiBiase), entrée 2K14 de Damien Sandow (ni musique ni titantron).
+- À confirmer par l'utilisateur : la page ROSTERS du launcher (marques hors de l'Univers, étude `docs/launcher_rosters.md`, 3 séances, écrit dans la sauvegarde : risque) : 1.1 ou 1.2.
