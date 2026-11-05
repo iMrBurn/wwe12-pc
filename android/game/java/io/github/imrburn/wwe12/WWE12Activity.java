@@ -59,6 +59,9 @@ public class WWE12Activity extends SDLActivity {
         // Pipelines shipped with this version: replaced at each start, so an update brings its own.
         new File(dir, "pipelines_seed.w12p").delete();
         copyAssetIfMissing(context, "pipelines_seed.w12p", new File(dir, "pipelines_seed.w12p"));
+        // Same for the vertex declarations the remembered pipelines need at startup (1.1).
+        new File(dir, "declarations_seed.w12d").delete();
+        copyAssetIfMissing(context, "declarations_seed.w12d", new File(dir, "declarations_seed.w12d"));
         try {
             Os.setenv("REX_APP_DIR", dir.getAbsolutePath(), true);
             Os.setenv("XDG_DATA_HOME", dir.getAbsolutePath(), true);

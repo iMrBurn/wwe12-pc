@@ -66,6 +66,18 @@ if ((Test-Path $Seed) -and [BitConverter]::ToUInt32([IO.File]::ReadAllBytes($See
 } else {
     Write-Warning "Pas de cache de pipelines ($Seed) : l'APK partira sans pipelines_seed.w12p."
 }
+# Déclarations de sommets rencontrées (format W12D, quelques Ko, comme tools/package.ps1) : avec elles
+# le jeu prépare toutes les pipelines de la graine dès le démarrage (1.1). Même fichier que le PC
+# (Documents\wwe12\cache\declarations.bin, écrit après une partie jouée avec la version 1.1) ; à défaut,
+# celui de l'émulateur (adb pull .../files/wwe12/cache/declarations.bin vers ce dossier).
+$DeclSeed = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "wwe12\cache\declarations.bin"
+Remove-Item "$Out\assets\declarations_seed.w12d" -ErrorAction SilentlyContinue
+if (Test-Path $DeclSeed) {
+    if ([BitConverter]::ToUInt32([IO.File]::ReadAllBytes($DeclSeed), 0) -ne 0x44323157) { throw "$DeclSeed n'est pas un fichier de déclarations W12D" }
+    Copy-Item $DeclSeed "$Out\assets\declarations_seed.w12d"
+} else {
+    Write-Warning "Pas de déclarations ($DeclSeed) : l'APK partira sans declarations_seed.w12d (préparation au démarrage seulement après une 1re partie)."
+}
 
 # 4. Icône de l'appli, tirée de celle de l'exe (port/res/wwe12.png, 512x512 à coins arrondis) :
 #    icône classique (vieux Android et lanceurs qui ne découpent pas) + icône adaptative (Android 8+ :
