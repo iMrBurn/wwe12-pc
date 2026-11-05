@@ -1413,44 +1413,169 @@ class Page {
   // attributes, WWE '12's 12 with two more at 5 and 11 (seen on Cena, Orton, Rey, Big Show, Kane, Undertaker, Mark
   // Henry), at +4 (WWE '13), +36 (2K14, 2K15), +40 (2K16); its size scale (4096 = 1.0, Cena 3988 in all) at +0x34,
   // +22, +26. SvR 2011 has 7 other ones; 2K17's records aren't read: the base's then.
+  // Since 2026-11-05 (asked by the user: "the mods should come with their size and ratings") SvR 2009, 2010 and 2011
+  // too, and every game's gender, and WWE '13's abilities: each WWE '12 value a + b x one byte of the other game's
+  // record, fitted on the superstars both games have by name (the study tool "fit": SvR 2011 185 of them, mean error
+  // 1.1-1.8 points; SvR 2010 161, 1.7-2.6; SvR 2009 94, 2.2-3.3; sizes 2.6-3 / 31 for 2009). SvR 2007 / 2008 rate
+  // otherwise (errors 10-12: the base's); 2007's size fits (u16 +22), 2008's doesn't. Gender: the bit that matched every
+  // shared superstar (SvR 2009-2011 +212, 2008 +206, WWE '13 +256, 2K14 / 2K15 +27, 2K16 +31; SvR 2007: its weight
+  // class +147 is 0 for a diva, Kaiko's superstar_port.py). Abilities: WWE '13's +274..+278 (the same set as WWE
+  // '12's for 23 of 42); the other games number theirs otherwise.
+  struct Lin {
+    int at;
+    double a, b;
+  };
+  struct RatingsOf {
+    uint32_t game;
+    Lin r[12];          // at < 0: none
+    Lin size;           // u16 little-endian; at < 0: none
+    int gender_at, gender_bit;  // gender_bit < 0: the byte is 0 for a woman
+    int abilities_at;
+  };
+  static const RatingsOf *RatingsTable(uint32_t game) {
+    static const RatingsOf kTable[] = {
+        {0x5451085D,
+         {{4, 0.02, 1.008}, {4, -0.06, 1.002}, {5, -0.01, 1.015}, {8, 0.03, 1.010}, {7, 0.10, 1.016}, {6, 0.16, 0.962},
+          {6, 0.18, 0.948}, {6, 0.20, 1.024}, {5, -0.02, 1.083}, {4, -0.04, 0.965}, {9, 0.03, 1.038}, {5, 0.03, 1.086}},
+         {32, -17.35, 1.004}, 212, 0, -1},
+        {0x54510844,
+         {{10, 0.09, 0.934}, {4, 0.22, 0.931}, {10, 0.20, 0.919}, {5, 0.11, 0.979}, {7, 0.05, 0.965}, {6, -0.03, 0.929},
+          {6, -0.02, 0.919}, {6, -0.01, 0.991}, {7, 0.08, 0.970}, {10, 0.09, 0.896}, {9, 0.24, 1.003}, {10, 0.29, 0.978}},
+         {32, -25.96, 1.006}, 212, 0, -1},
+        {0x54510826,
+         {{5, 0.08, 0.971}, {4, 0.38, 0.923}, {5, 0.12, 0.941}, {9, 0.08, 0.902}, {7, -0.06, 0.960}, {6, -0.16, 0.899},
+          {6, -0.11, 0.881}, {6, -0.23, 0.968}, {10, -0.07, 0.958}, {5, 0.02, 0.931}, {9, -0.06, 1.009}, {10, -0.06, 0.989}},
+         {32, 499.11, 0.874}, 212, 0, -1},
+        {0x5451080B, {{-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}}, {-1}, 206, 0, -1},
+        {0x545107E0, {{-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}, {-1}}, {22, -113.96, 1.025}, 147, -1, -1},
+    };
+    for (const auto &t : kTable)
+      if (t.game == game)
+        return &t;
+    return nullptr;
+  }
+  // The record of superstar `number` in the game: chEtc.pac CHAR / DAT, else misc.pac (SvR 2007 / 2008), found by the
+  // number it holds (strings2k's places: 264 / 252 bytes +36, 324 +56, 232 +30, 176 +26, the 2K games' +4).
+  static Bytes RecordOf(const disc::GameDisc &src, int number) {
+    auto all = src.ReadAll("pac/ch/chEtc.pac");
+    if (all.empty())
+      all = src.ReadAll("pac/misc.pac");
+    Bytes found;
+    for (auto &etc : all) {
+      svrfmt::Archive a;
+      if (!svrfmt::ArchiveOpen(etc, a, nullptr))
+        continue;
+      const auto take = [&](const Bytes &d) {
+        const size_t id_at = d.size() == 264 || d.size() == 252 ? 36 : d.size() == 324 ? 56 : d.size() == 232 ? 30
+                             : d.size() == 176 ? 26 : d.size() >= 200 && d.size() <= 240 ? 4 : 0;
+        if (id_at && d.size() > id_at + 1 && (d[id_at] | d[id_at + 1] << 8) == number)
+          found = d;
+      };
+      const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth, bool dat) -> void {
+        if (depth && dat) {
+          take(svrfmt::Unpack(svrfmt::ArchiveData(n)));
+          return;
+        }
+        if (depth < 3 && svrfmt::ArchiveExpand(n))
+          for (auto &c : n.kids) {
+            std::string nm = c.name;
+            while (!nm.empty() && (nm.back() == ' ' || nm.back() == '\0'))
+              nm.pop_back();
+            self(self, c, depth + 1, dat || (c.group == "CHAR" && nm == "DAT"));
+          }
+      };
+      walk(walk, a.root, 0, false);
+      if (found.empty())  // (the 2K games: a PACH the archive doesn't open)
+        for (auto &k : a.root.kids) {
+          std::string nm = k.name;
+          while (!nm.empty() && (nm.back() == ' ' || nm.back() == '\0'))
+            nm.pop_back();
+          std::vector<svrfmt::PachEntry> kids;
+          if (k.group == "CHAR" && nm == "DAT" && svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(k)), kids))
+            for (auto &e : kids)
+              take(svrfmt::Unpack(e.data));
+        }
+    }
+    return found;
+  }
+
   void OwnRatings(int number) {
     const uint32_t game = look_ == 2 ? svr_game_ : star_game_;
-    int at = -1, size_at = -1;
+    int at = -1, size_at = -1, gender_at = -1, abilities_at = -1;
     if (game == 0x545108B4)
-      at = 4, size_at = 0x34;
+      at = 4, size_at = 0x34, gender_at = 256, abilities_at = 274;
     else if (game == 0x545408B2 || game == 0x545408B6)
-      at = 36, size_at = 22;
+      at = 36, size_at = 22, gender_at = 27;
     else if (game == 0x315A07D2)
-      at = 40, size_at = 26;
+      at = 40, size_at = 26, gender_at = 31;
+    const RatingsOf *fitted = RatingsTable(game);
     const int from = int(game % 100000) * 1000 + number;
-    if (at < 0 || number < 0 || !discs_ || ratings_from_ == from)
+    if ((at < 0 && !fitted) || number < 0 || !discs_ || ratings_from_ == from)
       return;
     disc::GameDisc src;
     const fs::path p = discs_->PathOf(game);
     if (p.empty() || !src.OpenPath(p))
       return;
-    const auto dat = theme_source::detail::Records(src, "DAT");
     Bytes d;
-    if (game == 0x315A07D2) {
-      for (const auto &[i, x] : dat)
-        if (x.size() > 6 && (x[4] | x[5] << 8) == number)
-          d = x;
-    } else if (const auto it = dat.find(uint32_t(number)); it != dat.end()) {
-      d = it->second;
+    if (at >= 0) {
+      const auto dat = theme_source::detail::Records(src, "DAT");
+      if (game == 0x315A07D2) {
+        for (const auto &[i, x] : dat)
+          if (x.size() > 6 && (x[4] | x[5] << 8) == number)
+            d = x;
+      } else if (const auto it = dat.find(uint32_t(number)); it != dat.end()) {
+        d = it->second;
+      }
+    } else {
+      d = RecordOf(src, number);
     }
-    if (d.size() < size_t(std::max(at + 14, size_at + 2)))
+    if (d.empty())
       return;
-    static const int kFrom14[12] = {0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 12, 13};
-    std::vector<int> attributes;
-    for (int i : kFrom14)
-      attributes.push_back(std::clamp(int(d[size_t(at + i)]), 0, 100));
     ratings_from_ = from;
-    attributes_ = attributes;
-    own_attributes_ = true;
-    const int size = d[size_t(size_at)] | d[size_t(size_at + 1)] << 8;
+    int size = 0;
+    if (at >= 0 && d.size() >= size_t(std::max(at + 14, size_at + 2))) {
+      static const int kFrom14[12] = {0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 12, 13};
+      std::vector<int> attributes;
+      for (int i : kFrom14)
+        attributes.push_back(std::clamp(int(d[size_t(at + i)]), 0, 100));
+      attributes_ = attributes;
+      own_attributes_ = true;
+      size = d[size_t(size_at)] | d[size_t(size_at + 1)] << 8;
+    } else if (fitted) {
+      bool all = true;
+      std::vector<int> attributes;
+      for (const auto &l : fitted->r) {
+        all = all && l.at >= 0 && size_t(l.at) < d.size();
+        if (all)
+          attributes.push_back(std::clamp(int(std::lround(l.a + l.b * d[size_t(l.at)])), 0, 100));
+      }
+      if (all && attributes.size() == 12 &&
+          std::any_of(attributes.begin(), attributes.end(), [&](int v) { return v != attributes[0]; })) {
+        attributes_ = attributes;
+        own_attributes_ = true;
+      }
+      if (fitted->size.at >= 0 && size_t(fitted->size.at + 1) < d.size())
+        size = int(std::lround(fitted->size.a +
+                               fitted->size.b * (d[size_t(fitted->size.at)] | d[size_t(fitted->size.at) + 1] << 8)));
+      gender_at = fitted->gender_at;
+    }
     if (size >= 3200 && size <= 5000) {
       size_ = size;
       own_size_ = true;
+    }
+    if (gender_at >= 0 && size_t(gender_at) < d.size())
+      gender_ = fitted && fitted->gender_bit < 0 ? (d[size_t(gender_at)] == 0 ? 1 : 0) : (d[size_t(gender_at)] & 1);
+    if (abilities_at >= 0 && size_t(abilities_at + 5) <= d.size()) {
+      std::vector<int> ab;
+      for (int k = 0; k < kMaxAbilities; ++k)
+        for (const auto &x : kAbilities)
+          if (x.id == d[size_t(abilities_at + k)])
+            ab.push_back(x.id);
+      if (!ab.empty()) {
+        std::sort(ab.begin(), ab.end());
+        abilities_ = ab;
+        own_abilities_ = true;
+      }
     }
   }
 
