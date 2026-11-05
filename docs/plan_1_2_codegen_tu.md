@@ -65,7 +65,7 @@ Chaque correctif a son propre réglage pour revenir en arrière.
 **Coût de la voie B :** petit à moyen, par morceaux. Aucun recalage d'adresse, un seul exe, les joueurs n'ont
 rien à fournir. **Limite :** seulement ce qu'on a compris.
 
-**Recommandation :** la voie B. La voie A impose aux joueurs un fichier qu'on ne peut pas leur donner, ou deux exe.
+**Décision de l'utilisateur (2026-11-05) : voie B** (nos propres correctifs sur le code du disque). Recommandation d'origine : la voie B. La voie A impose aux joueurs un fichier qu'on ne peut pas leur donner, ou deux exe.
 À trancher par l'utilisateur.
 
 ## 2. Ordre de travail proposé pour la 1.2 (une seule sortie, mais des étapes internes pour retrouver une panne)
