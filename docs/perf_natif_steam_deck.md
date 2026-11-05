@@ -94,3 +94,124 @@ puis 1 ou 2 réécritures natives choisies sur cette mesure.
      en local.
   3. Le patch du SDK sans `volatile`.
   - Mesures : taille de l'exe, `cpu per frame` de Rendu, temps actif du fil principal (échantillons).
+
+## Steam Deck et performances (Rendu, 2026-11-05, lecture seule)
+
+Rien n'a été lancé pour cette étude. Seul ajout : l'outil `tools/samples_top.py`, qui lit un profil
+sans rien lancer.
+
+### Ce que disent nos mesures récentes
+
+- **Ligne `[perf] cpu per frame`** (1.1, commit ff941e5) : dans une scène chargée, le fil de rendu
+  prend **1,1 ms** sur 6,2 ms de « work ». Le reste est l'attente de l'image du jeu. **Le goulot
+  est le code du jeu recompilé, pas notre rendu.**
+- **#7** (Intel UHD 620, portable 15 W) : entrées à ~27 i/s pour 30 visées, match à ~50 i/s pour
+  60. « gpu wait » vaut ~0 : c'est le CPU.
+- **Shaders préparés en plein match** : réglé en 1.1 (c442aa3). Sur RTX 5070, même match :
+  65 → 0 pipelines compilés sur le fil de rendu.
+- Sur un portable 15 W, le CPU et le GPU partagent la même puissance. Chaque milliseconde de CPU
+  gagnée laisse aussi plus de marge au GPU, et l'inverse.
+
+### Steam Deck : le matériel et le chemin du jeu
+
+- **Puce :** AMD « Van Gogh ». CPU Zen 2, 4 cœurs / 8 fils, 2,4 à 3,5 GHz. GPU RDNA 2, 8 unités.
+  Enveloppe partagée de 4 à 15 W, 16 Go partagés.
+- **Écran :** 1280x800, en **16:10**.
+- **Système :** SteamOS (Linux). Notre exe Windows passe par **Proton** (Wine) :
+  - `wwe12.exe` (Vulkan) parle presque directement au pilote AMD de Linux (RADV) : **c'est le
+    meilleur choix sur Deck** ;
+  - `wwe12_d3d12.exe` passe par vkd3d-proton, une couche de plus ;
+  - `wwe12_d3d11.exe` passe par DXVK, une couche de plus.
+- Sous Windows (Deck réinstallé), c'est un PC AMD normal.
+
+### Steam Deck : ce qu'on sait déjà
+
+- **Aucune issue GitHub ouverte ne parle du Deck** (vérifié dans `work/issues_open.json`). La FAQ
+  le cite seulement pour les pavés de couleur (réglés en 0.9, 2026-10-20).
+- **Anciens retours AMD :**
+  - **#4** : gel pendant une entrée sur RX 560 (0.6) ;
+  - « cel-shading » sur Deck, probablement la fuite de mémoire vidéo réglée en 0.7 : **à faire
+    confirmer** par un joueur Deck en 1.0 ou 1.1.
+- **Les pièges que Kaiko a rencontrés sur Deck avec son SvR 2011** (même famille de rendu), et
+  notre état :
+
+| Chez Kaiko | Chez nous |
+|---|---|
+| Shaders traduits avec des `switch` à cas enchaînés : sous Proton, le pilote du Deck refusait leurs pipelines (1a4d023) | Nos 726 shaders HLSL ne contiennent ni `switch` ni `while (true)` (vérifié dans `work/shaders/d3d11/hlsl`) : sans doute pas concernés. Dans un journal Deck, ce serait des lignes `PSO build failed` ou `draw dropped`. |
+| Zip avec des `\` : le gestionnaire d'archives du Deck (Ark) en faisait des noms de fichiers (cada307) | Notre zip 1.0 utilise des `/` (vérifié : 0 nom avec `\` sur 46) : OK. |
+| Match gagné qui ne finit jamais : l'étape des moments forts attend l'enregistreur de replay (c43d482) | À regarder par Gameplay : notre **#51** (Android, Adreno 720 : bloqué après un match 1 contre 1) ressemble beaucoup à ce cas. |
+| Vidéos du titantron sans le processeur vidéo de Windows sous Proton (1c464b5) | Pour le Mod Maker (Mods) seulement : le jeu lit les Bink lui-même. |
+
+### Steam Deck : ce qu'un joueur a probablement encore
+
+1. **Performances :** 4 cœurs Zen 2 à 15 W, c'est la classe du portable de #7. Il faut donc
+   s'attendre à des entrées un peu sous 30 i/s et des matchs autour de 45 à 55 i/s, limités par le
+   CPU. Voir « Performances » ci-dessous et la section Natif.
+2. **Saccades :** réglées en 1.1 pour les pipelines connus (c442aa3). Avec 8 fils, la préparation
+   utilise 2 fils en arrière-plan. Le cache du pilote (sous Proton, `steamapps/shadercache`) aide
+   encore à partir de la 2e partie.
+3. **Batterie :** notre attente du GPU dort au lieu de tourner en boucle depuis le 2026-10-31
+   (`wwe12_gpu_wait_sleep_us`, −12 % de CPU). Une limite à 30 i/s n'est pas possible : le jeu est
+   cadencé sur sa propre horloge à 60 et ralentirait.
+4. **Image 16:10 :** `wwe12_widescreen` remplit le haut et le bas. Elle n'est pas encore
+   entièrement vérifiée (notes de la 1.1). La résolution interne 720p suffit à 800p.
+5. **Contrôles :** Steam Input présente une manette Xbox : icônes Xbox, A/B/X/Y aux bons endroits.
+   Rien à faire.
+6. **Chargements :** une ISO sur carte microSD se lit plus lentement. Nos lignes `[load] … read`
+   le montreront.
+
+### Steam Deck : un test sans avoir l'appareil
+
+Demander à un joueur Deck (Discord) :
+1. Exe Vulkan (`gpu_backend = "vulkan"`), 720p, réglages par défaut, version de Proton notée.
+2. Un match d'exhibition 1 contre 1 avec entrées, puis le même match une 2e fois.
+3. Renvoyer `Documents\wwe12\logs\wwe12.log` (sous Proton :
+   `steamapps/compatdata/<id>/pfx/drive_c/users/steamuser/Documents/wwe12/logs`).
+
+Ce qu'on y lit :
+- `GPU caps:` : le nom du pilote (RADV VANGOGH attendu) ;
+- `[perf] … work / gpu wait` : CPU ou GPU ;
+- `[perf] cpu per frame` : notre rendu ou le jeu ;
+- `[load] … pipelines N` : saccades restantes ;
+- `pso boot:` : préparation au démarrage ;
+- `PSO build failed` : pipelines refusés par le pilote.
+
+Idée reprise de Jarrod : un **test de performance intégré** (deux entrées et un début de match,
+deux fois) qui écrit un résumé chiffré. Les joueurs auraient alors des chiffres comparables.
+
+### Performances : les points restants de `optimisation_jarrod.md`
+
+Faits : 1 (read-back 32 images), 2 (attente du GPU qui dort), 3 (pipelines au démarrage,
+c442aa3). Classement des autres pour un **portable 15 W limité par le CPU** :
+
+| Rang | Point | Gain sur petit PC | Risque | Séances | Pourquoi ce rang |
+|---|---|---|---|---|---|
+| 1 | **Nouveau : fonctions de copie de mémoire du jeu en natif** (`sub_82A76060` memcpy, `sub_82A76590` memset) | À mesurer, sans doute réel (fonctions appelées partout, code PowerPC traduit instruction par instruction) | **Faible** : même résultat octet pour octet | 1 | C'est le cas le plus simple du point 10. Aujourd'hui, `d3d_census.cpp` ne fait que passer l'appel à l'original. |
+| 2 | **10. Fonctions chaudes du jeu réécrites en natif** (déformation des catcheurs chez Jarrod, −40 % sur ce fil) | Grand si on vise juste | Élevé : chaque fonction doit donner exactement le même résultat | 2+ par fonction | Le goulot est le code du jeu. Voir la section Natif. |
+| 3 | **6. Code recompilé qui garde plus de registres** (Jarrod : fil principal −15 %) | Grand, partout | **Élevé** : touche tout le code du jeu, tout à retester | 3-4 | Le plus gros gain général. Voir la section Natif, partie 4. |
+| 4 | **4. Image en retard affichée tout de suite** | Moyen : une image de 18 ms n'attend plus jusqu'à 33 ms | Moyen (déchirures si mal réglé) | 1-2 | Utile exactement là où le Deck et #7 sont : juste au-dessus de 16,7 ms. |
+| 5 | **8. Shader de post-effets réécrit** | Moyen sur iGPU faible (HD 4000, Deck en 4 W) | Moyen | 2-3 | Seulement quand le GPU limite. À mesurer d'abord avec RenderDoc. |
+| 6 | **7. Foule dessinée par groupes** | **Faible aujourd'hui** | Moyen | 2-3 | Il allège notre fil de rendu, qui ne prend que ~1 ms. |
+| 7 | **5. Copies et redessins inutiles sautés** | Faible (GPU, quelques %) | Moyen | 1-2 | Idem : pas notre goulot. |
+| 8 | **9. Constantes en mémoire GPU sans ReBAR** | Faible, vieilles cartes | Faible | 1 | |
+
+### Outil : `tools/samples_top.py`
+
+Il lit le `samples.txt` de `SVR_SAMPLE_STACKS` (`crash_trace.cpp`, lanceur
+`tools/dev/lancer_profil.bat`) avec la carte de l'exe. Il donne, fil par fil, les fonctions où
+tombent les échantillons (« self ») et celles présentes dans la pile (« total »), avec des fenêtres
+de temps :
+
+    python -I tools/samples_top.py samples.txt dist/symbols-v1.0.0/wwe12.map --top 10
+    python -I tools/samples_top.py samples.txt port/out/build/win-amd64-release/wwe12.map --thread <nom> --from 60000 --to 120000
+
+Les fonctions recompilées gardent leur adresse Xbox 360 dans leur nom (`sub_82AA7040`). Testé sur un
+faux profil ; un vrai profil demande un lancement, donc le go de l'utilisateur.
+
+### Proposition de Rendu (après la 1.1)
+
+1. **Une séance de mesure :** profil 4 fils, entrée et match → tableau des 10 fonctions chaudes.
+   Tout de suite après, memcpy / memset du jeu en natif (petit, sûr, mesurable).
+2. **Avec Gameplay :** les 2 ou 3 premières fonctions chaudes en natif, une par une.
+3. **Point 4** (image en retard) pour les petits PC et le Deck.
+4. **Test Deck :** demander un journal à un joueur Deck (plan ci-dessus) dès la sortie de la 1.1.
