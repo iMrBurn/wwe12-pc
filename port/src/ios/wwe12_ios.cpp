@@ -7,15 +7,19 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 #include "compat/windows.h"
+
+extern "C" void plume_save_pipeline_cache();  // plume-android-cache.patch (built for Apple too)
 
 // crash_trace.cpp (crash traces and the freeze watchdog, dbghelp): not on iOS. The renderer
 // calls this once per presented frame. Here it also holds the render thread while the app is not
@@ -89,6 +93,21 @@ __attribute__((constructor(101))) void IosBootLog() {
   // root, where iOS refuses to create folders (filesystem_error "Operation not permitted"). Saves
   // go to Documents, with the rest.
   setenv("XDG_DATA_HOME", dir.c_str(), 0);
+
+  // Vulkan pipeline cache on disk (plume-android-cache.patch, also built for Apple): MoltenVK keeps
+  // what it compiled between launches, so the shader stutters happen once instead of every start.
+  // In Library/Caches: iOS may clear it, and the game just compiles again.
+  {
+    const std::string caches = std::string(home) + "/Library/Caches";
+    mkdir(caches.c_str(), 0755);
+    setenv("PLUME_PIPELINE_CACHE", (caches + "/vk_pipelines.bin").c_str(), 0);
+    std::thread([] {
+      for (;;) {
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+        plume_save_pipeline_cache();
+      }
+    }).detach();
+  }
 
   // Tried and dropped: MVK_CONFIG_FAST_MATH_ENABLED=0 (exact maths, for the HUD bugs of the
   // iPhone) made the GPU fault ("kIOGPUCommandBufferCallbackErrorPageFault", VK_ERROR_DEVICE_LOST)
