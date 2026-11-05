@@ -197,3 +197,9 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 ## Décision de l'utilisateur du 2026-11-05 : performances sans changer tout le code, le reste en 1.2
 - **Maintenant (sans régénérer le code du jeu), Rendu** : télécommande intelligente (état du jeu, captures faites par le jeu, « lancer un match », « jouer N secondes et écrire le résumé »), memcpy / memset natifs (`sub_82A76060` / `sub_82A76590`), image en retard affichée tout de suite si le gain est mesuré.
 - **1.2, tout ensemble (une seule régénération du code, un seul gros test)** : nouveau xex patché avec les 2 vraies mises à jour de THQ (TU1 puis TU2) + options de registres locaux du générateur de code + modèle « volatile » ; remappage des 751 entrées de `wwe12_config.toml` et des ~280 adresses de `port/src`. Gameplay prépare le plan unique.
+
+## Après la 1.1 PC : version Android (demande de l'utilisateur, 2026-11-05)
+- **Ajouts** : la liste du co-mainteneur Android de l'utilisateur (à transmettre à la session Android).
+- **Optimisation et performances** Android.
+- **Surtout : remettre le replay d'après match** (coupé par défaut depuis l'alpha 6 à cause des gels, #23 / #24 / #29 / #51). Piste : l'attente de l'enregistreur de replay (même cause que le « match gagné qui ne finit jamais » de Kaiko sur Steam Deck ?).
+- La session Android prépare `docs/android_apres_1_1.md` (lecture seule, sans retarder la 1.1).
