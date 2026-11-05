@@ -78,6 +78,7 @@ std::set<std::pair<uint32_t, uint32_t>> g_own_screens;  // (kind: 1 ribbon, 2 wa
 std::vector<std::pair<uint32_t, std::string>> g_themes;  // added superstars' own themes: music number, name
 fs::path g_menu_dir;                    // the dressed menu files of this start, "" = the game's
 std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the save keeps it (286 bytes)
+fs::path g_relations_file;  // Documents/wwe12/relations_cleared.txt: the added superstars whose Universe relations went
 std::map<uint32_t, Bytes> g_moves;      // ... its moves and entrance (CHAR / PRO) as the save keeps them (1068 bytes)
 Bytes g_cena_moves;                     // John Cena's (139), as the save keeps them: where they are is checked on his
 // The superstars the moves mods are for (Documents\wwe12\moves_mods.txt, one number a line): this start's, and those
@@ -528,6 +529,7 @@ std::map<uint32_t, uint32_t> g_attire_text_at;   // number -> its copy in guest 
 
 void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root,
                              const fs::path &mods) {
+  g_relations_file = user_root / "relations_cleared.txt";
   // (the VIDEOS page's titantrons of the game's superstars, mods/movies/titantron/NNN.bik: each has its own minitron)
   {
     g_mod_minitrons.clear();
@@ -1579,6 +1581,7 @@ extern "C" REX_FUNC(sub_827DB610) {
 // 247) are shown from there. A number another mod had before kept that one's copy (FBX TEST at 86, where an old
 // test's superstar was: hidden as locked, then shown as "DLC 37" with OVERALL 0 and a black screen at the match,
 // 2026-10-26, wwe12_roster_probe): an added superstar's copy is made again from its record when it differs, unlocked.
+void Wwe12UniverseForgetRelations(const PPCContext &in, uint8_t *base, uint32_t id);  // (wwe12_universe.cpp)
 REXCVAR_DEFINE_BOOL(wwe12_superstar_roster_fix, true, "WWE12",
                     "Added superstars: the save's copy of their record made again when it differs (unlocked).");
 REX_EXTERN(__imp__sub_828ADFB8);
@@ -1615,6 +1618,48 @@ extern "C" REX_FUNC(sub_828ADFB8) {
     bd::mem::store<uint8_t>(at + 247, 1);
     REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its record made again{}", id,
                 same ? " (it was locked)" : "");
+  }
+  // Its Universe allies and rivals: those of the number's former owner (Damien Sandow at 116 had Eve as ally and four
+  // Divas as rivals, 2026-11-05): emptied once per added superstar and mod (relations_cleared.txt: "number=hash" of
+  // its record, its brand and "unlocked" left out), by the Universe's Wwe12UniverseForgetRelations; the ones the
+  // player makes afterwards stay.
+  if (roster && !g_relations_file.empty()) {
+    static std::set<std::string> done;
+    static bool read = false;
+    if (!read) {
+      read = true;
+      Bytes f;
+      if (ReadHost(g_relations_file, f)) {
+        std::string s(f.begin(), f.end()), line;
+        for (char c : s + "\n")
+          if (c == '\n' || c == '\r') {
+            if (!line.empty())
+              done.insert(line);
+            line.clear();
+          } else {
+            line += c;
+          }
+      }
+    }
+    bool wrote = false;
+    for (const auto &[id, rec] : g_records) {
+      uint32_t h = 2166136261u;
+      for (size_t k = 0; k < rec.size(); ++k)
+        if (k != 247 && (k < 24 || k >= 28))
+          h = (h ^ rec[k]) * 16777619u;
+      const std::string key = std::to_string(id) + "=" + std::to_string(h);
+      if (done.count(key))
+        continue;
+      Wwe12UniverseForgetRelations(ctx, base, id);
+      done.insert(key);
+      wrote = true;
+    }
+    if (wrote) {
+      std::string s;
+      for (const auto &k : done)
+        s += k + "\n";
+      WriteHost(g_relations_file, Bytes(s.begin(), s.end()));
+    }
   }
   // Its moves and entrance too: the save keeps them after the records (SaveData.Dat: the records at 0x1C, the moves at
   // 324792, 1068 bytes each, same order). A disc's empty record's were empty: no entrance (FBX TEST at 108, 2026-10-26).
