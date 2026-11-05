@@ -403,9 +403,70 @@ inline Bytes ThemeWem(const fs::path &vgmstream, const theme_source::Theme &them
   return pcm;
 }
 
-// His moves, slot by slot (a tree node: the other game's move, WWE '12's it became).
+// The moves the mod writes (moves=): the added ones (WWE '13's moves WWE '12 hasn't, newmoves13.h) only when the
+// player ticked "Added moves (experimental)" (2026-11-05: off by default; their slots then keep the base's move).
+inline std::vector<std::pair<int, int>> MovesToWrite(const moveset_port::Result &moves, bool with_added) {
+  std::set<int> added;
+  for (const auto &r : moves.rows)
+    if (r.added)
+      added.insert(r.off);
+  std::vector<std::pair<int, int>> out;
+  for (const auto &m : moves.moves)
+    if (with_added || !added.count(m.first))
+      out.push_back(m);
+  return out;
+}
+
+// The "Added moves (experimental)" box, under the moves when there are some (`count`: how many).
+inline void DrawAddedMovesChoice(bool fr, bool &use, size_t count) {
+  if (!count)
+    return;
+  char label[200];
+  snprintf(label, sizeof(label),
+           fr ? "Prises ajoutées (expérimental) : %zu prise(s) que WWE '12 n'a pas, avec leurs animations"
+              : "Added moves (experimental): %zu move(s) WWE '12 hasn't, with their animations",
+           count);
+  ImGui::Checkbox(label, &use);
+  ImGui::TextDisabled("%s", fr ? "(décochée : ces cases gardent la prise de la base ; si une prise ajoutée bloque le match, "
+                                 "décochez puis refaites le mod)"
+                               : "(unticked: those slots keep the base's move; if an added move stops the match, untick "
+                                 "and make the mod again)");
+}
+
+// His moves, slot by slot (a tree node: the other game's move, WWE '12's it became), under a summary: how many go,
+// how many keep the base's move and why (2026-11-05). with_added: the added moves go (DrawAddedMovesChoice).
 inline void DrawMovesTable(bool fr, const moveset_port::Result &moves, uint32_t game, const char *kept_en,
-                           const char *kept_fr) {
+                           const char *kept_fr, bool with_added = true) {
+  int go = 0, added = 0, why[4] = {};
+  for (const auto &r : moves.rows)
+    if (!r.to.empty() && (!r.added || with_added))
+      ++go;
+    else if (r.added)
+      ++added;
+    else
+      ++why[r.kept_why & 3];
+  const int all = int(moves.rows.size());
+  ImGui::Text(fr ? "%d prises sur %d passent (%d %%)" : "%d moves of %d go (%d %%)", go, all, all ? go * 100 / all : 0);
+  std::string kept;
+  char b[96];
+  auto add = [&](int n, const char *en, const char *f) {
+    if (!n)
+      return;
+    snprintf(b, sizeof(b), "%s%d %s", kept.empty() ? "" : ", ", n, fr ? f : en);
+    kept += b;
+  };
+  add(why[2], "not in WWE '12", "absentes de WWE '12");
+  add(why[3], "of another kind in WWE '12", "d'un autre genre dans WWE '12");
+  add(why[1] + why[0], "without a name", "sans nom");
+  add(added, "added moves left out", "ajoutées laissées de côté");
+  if (!kept.empty()) {
+    ImGui::SameLine();
+    ImGui::TextDisabled(fr ? "; gardent celle de la base : %s" : "; keep the base's: %s", kept.c_str());
+  }
+  if (moves.slots > all)
+    ImGui::TextDisabled(fr ? "(%d autres cases de WWE '12 n'ont pas d'équivalent dans %s : celles de la base)"
+                           : "(%d other WWE '12 slots have no match in %s: the base's)",
+                        moves.slots - all, GameName(game));
   if (!ImGui::TreeNode(fr ? "Détail des prises" : "The moves, slot by slot"))
     return;
   if (ImGui::BeginTable("own_moves", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
@@ -421,9 +482,13 @@ inline void DrawMovesTable(bool fr, const moveset_port::Result &moves, uint32_t 
       ImGui::TableNextColumn();
       ImGui::TextUnformatted(r.from.empty() ? "?" : r.from.c_str());
       ImGui::TableNextColumn();
-      if (r.to.empty())
-        ImGui::TextDisabled("%s", fr ? kept_fr : kept_en);
-      else if (r.added)
+      if (r.to.empty() || (r.added && !with_added)) {
+        const char *w = r.added           ? (fr ? "ajoutée laissée de côté" : "added move left out")
+                        : r.kept_why == 2 ? (fr ? "absente de WWE '12" : "not in WWE '12")
+                        : r.kept_why == 3 ? (fr ? "d'un autre genre dans WWE '12" : "another kind in WWE '12")
+                                          : (fr ? "sans nom" : "no name");
+        ImGui::TextDisabled("%s : %s", fr ? kept_fr : kept_en, w);
+      } else if (r.added)
         ImGui::Text("%s  %s", r.to.c_str(), fr ? "(ajoutée depuis WWE '13 ; essai)" : "(added from WWE '13; a test)");
       else if (r.variant)
         ImGui::Text("%s  %s", r.to.c_str(), fr ? "(autre version)" : "(another version)");

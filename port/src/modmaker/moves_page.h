@@ -279,18 +279,14 @@ class Page {
     ImGui::Dummy(ImVec2(0, 4));
     char label[200];
     // moves
-    snprintf(label, sizeof(label),
-             fr ? "Ses prises (%d cases sur %d trouvées dans WWE '12 ; les autres restent celles du catcheur)"
-                : "His moves (%d slots of %d found in WWE '12; the others stay the superstar's own)",
-             parts_.moves.exact + parts_.moves.variant, int(parts_.moves.rows.size()));
+    snprintf(label, sizeof(label), "%s",
+             fr ? "Ses prises (les cases sans équivalent restent celles du catcheur)"
+                : "His moves (the slots without a match stay the superstar's own)");
     Choice(HasMoves(), use_moves_, HasMoves() ? label : (fr ? "Ses prises" : "His moves"), MovesWhy(fr));
     if (use_moves_ && HasMoves()) {
       ImGui::Indent(24);
-      star_port::DrawMovesTable(fr, parts_.moves, game_, "(stays)", "(inchangée)");
-      if (!parts_.new_moves.empty())
-        ImGui::TextDisabled(fr ? "(%zu prises que WWE '12 n'a pas, ajoutées par le jeu ; essai)"
-                               : "(%zu moves WWE '12 hasn't, added by the game; a test)",
-                            parts_.new_moves.size());
+      star_port::DrawMovesTable(fr, parts_.moves, game_, "stays", "inchangée", use_added_moves_);
+      star_port::DrawAddedMovesChoice(fr, use_added_moves_, parts_.new_moves.size());
       ImGui::Unindent(24);
     }
     // entrance
@@ -481,7 +477,7 @@ class Page {
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     if (moves)  // (the game puts them over his own)
-      manifest += "moves=" + moveset_port::ManifestValue(parts_.moves.moves) + "\n";
+      manifest += "moves=" + moveset_port::ManifestValue(star_port::MovesToWrite(parts_.moves, use_added_moves_)) + "\n";
     if (entrance)  // (superstar/entrance/, served by the game under that number)
       manifest += "entrance_own=" + std::to_string(parts_.entrance_number) + "\n";
     std::string what;
@@ -521,7 +517,7 @@ class Page {
       }
       entries.push_back({"superstar/theme.wem", std::move(pcm)});
     }
-    if (moves)  // (his moves WWE '12 hasn't: the game adds them to its pack)
+    if (moves && use_added_moves_)  // (his moves WWE '12 hasn't: the game adds them to its pack)
       for (const auto &m : parts_.new_moves) {
         const std::string n = "superstar/moves/" + std::to_string(m.number);
         entries.push_back({n + ".waze", m.waze});
@@ -556,6 +552,7 @@ class Page {
   int theme_pick_ = 0;
   bool tool_ = false;          // the player's vgmstream is there (the theme is made PCM with it)
   bool use_moves_ = true, use_entrance_ = true, use_victory_ = true, use_theme_ = true;
+  bool use_added_moves_ = false;  // his moves WWE '12 hasn't, added (experimental, off by default: 2026-11-05)
   int target_ = -1;            // the WWE '12 superstar (index in stars12_), -1: none yet
   bool target_by_player_ = false;  // ... chosen by the player (else the one of the same name, proposed)
   int collected_for_ = -1;     // the target parts_ was collected with (2K16 / 2K17's effects)

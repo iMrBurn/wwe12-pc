@@ -427,3 +427,33 @@ Yokozuna 2763, Big John Studd 2758, Goldberg 2754.
   le corps les os du corps qui lui manquent (bassin, cuisses, mollets, pieds : `Reskeleton(..., skeleton)`). Les
   ficelles des genoux (chaînes de ressorts sur la jambe : WWE '12 ne les suit pas) sont soudées au mollet après avoir
   été tournées et recentrées sur l'axe du tibia ; leurs lignes de ressorts sont retirées.
+
+## Couverture des movesets (2026-11-05, demande de l'utilisateur pour la 1.1 : « un maximum de prises qui passent »)
+
+Mesuré hors jeu sur tous les catcheurs de chaque jeu (outil d'étude `cover`, hors dépôt) : part des 210 cases de WWE '12
+qui changent d'un catcheur à l'autre remplies par la prise du catcheur, avant → après ; entre parenthèses, part des
+prises d'une case reliée qui trouvent leur prise de WWE '12.
+
+| Jeu | Cases remplies | Prises retrouvées |
+|---|---|---|
+| SvR 2007 | 9 → 15 % | 48 → 57 % |
+| SvR 2008 | 12 → 17 % | 47 → 55 % |
+| SvR 2009 | 20 → 24 % | 56 → 66 % |
+| SvR 2010 | 40 → 46 % | 55 → 65 % |
+| SvR 2011 | 73 → 75 % | 93 → 95 % |
+| WWE '13 | 73 → 74 % | 92 → 93 % (+ les prises ajoutées) |
+| 2K14 | 48 → 73 % | 93 → 95 % |
+| 2K15 | 47 → 72 % | 91 → 93 % |
+| 2K16 | 29 → 52 % | 96 → 96 % |
+
+Ce qui a changé (`moveset_port.h`) : cases reliées aussi par les catcheurs de même nom (SvR 2007-2010 : 17 à 46 catcheurs
+communs avec WWE '12), par les mêmes numéros de prise (WWE '13, 2K), puis hors de l'ordre (les jeux 2K ont déplacé des
+sections) ; noms comparés mot à mot (ordre, « -handed », « to / of / the »), nom plus long ou plus court d'une prise de la
+case ; prise de WWE '12 acceptée si ses bits de catégorie vont dans la case. Contrôle : sur les catcheurs communs, la part
+des prises données qui sont celles de WWE '12 dans cette case ne baisse pas (2K14 51,7 → 52,7 %, 2K16 39,1 → 38,1 %,
+SvR 2008 21 → 26 %) : les cases en plus sont aussi justes que les autres. Restent surtout des prises absentes de WWE '12
+(SvR 2007 : School Boy Pin, Wake Up, Double Stomping...) et les cases que les vieux SvR n'ont pas.
+Dans le Mod Maker (NOUVEAU CATCHEUR, PRISES ET ENTRÉES) : « N prises sur M passent », et pour les autres pourquoi
+(absente de WWE '12, d'un autre genre, sans nom), case par case dans le détail. **Prises ajoutées (WWE '13) : case
+« expérimental », décochée par défaut** (décochée, leurs cases gardent la prise de la base). 2K17 : ses prises ne se
+lisent pas encore (`Load` échoue), à voir.

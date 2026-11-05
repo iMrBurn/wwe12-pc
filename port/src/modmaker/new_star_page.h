@@ -1581,16 +1581,18 @@ class Page {
     if (own_moves_.rows.empty())
       return;
     ImGui::Dummy(ImVec2(0, 6));
-    const int n = int(own_moves_.rows.size());
     char label[200];
     snprintf(label, sizeof(label),
-             fr ? "Ses propres prises de %s (%d cases sur %d trouvées dans WWE '12, les autres : celles de la base)"
-                : "Its own moves from %s (%d slots of %d found in WWE '12, the others: the base's)",
-             own_moves_game_ == 0x5451085D ? "SvR 2011" : GameName(own_moves_game_), own_moves_.exact + own_moves_.variant,
-             n);
+             fr ? "Ses propres prises de %s (les cases sans équivalent gardent celle de la base)"
+                : "Its own moves from %s (the slots without a match keep the base's)",
+             own_moves_game_ == 0x5451085D ? "SvR 2011" : GameName(own_moves_game_));
     ImGui::Checkbox(label, &use_own_moves_);
-    if (use_own_moves_)
-      star_port::DrawMovesTable(fr, own_moves_, own_moves_game_, "(the base's)", "(celle de la base)");
+    if (use_own_moves_) {
+      ImGui::Indent(24);
+      star_port::DrawMovesTable(fr, own_moves_, own_moves_game_, "base", "base", use_added_moves_);
+      star_port::DrawAddedMovesChoice(fr, use_added_moves_, own_new_moves_.size());
+      ImGui::Unindent(24);
+    }
   }
 
   // WWE 2K15 / 2K16: pac\menu\menuHD2.pac, SFAG / SFBG / SFCG "NNNN" (2K16: no SFBG, SFAG again), TGA 512 x 512,
@@ -1931,7 +1933,7 @@ class Page {
                     "\ndisc_pick=" + std::to_string(disc_pick_) + "\nsvr_attire=" + std::to_string(svr_attire_) +
                     "\nfbx=" + u8(fbx_path_) + "\nfbx_budget=" + std::to_string(fbx_budget_) + "\nportrait=" +
                     u8(custom_portrait_) + "\nkeep_portraits=" + (keep_portraits_ ? "1" : "0") + "\nas_attire=" +
-                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_moves=" + (use_own_moves_ ? "1" : "0") + "\nentrance=" + std::to_string(entrance_ >= 0 ? stars_[size_t(entrance_)].id : 0) + "\nown_attributes=" +
+                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_moves=" + (use_own_moves_ ? "1" : "0") + "\nadded_moves=" + (use_added_moves_ ? "1" : "0") +"\nentrance=" + std::to_string(entrance_ >= 0 ? stars_[size_t(entrance_)].id : 0) + "\nown_attributes=" +
                     (own_attributes_ ? "1" : "0") + "\nattributes=";
     for (size_t i = 0; i < attributes_.size(); ++i)
       t += std::to_string(attributes_[i]) + (i + 1 < attributes_.size() ? "," : "");
@@ -2005,6 +2007,7 @@ class Page {
     snprintf(version_, sizeof(version_), "%s", value("version").c_str());
     own_attributes_ = value("own_attributes") == "1";
     use_own_moves_ = value("own_moves") != "0";
+    use_added_moves_ = value("added_moves") == "1";
     attributes_.clear();
     for (const std::string a = value("attributes"); const auto &part : [&] {
            std::vector<std::string> v;
@@ -2221,8 +2224,8 @@ class Page {
     }
     if (const std::string r = RecordValue(); !r.empty())  // (its size and abilities: the game puts them in its record)
       manifest += "record=" + r + "\n";
-    if (use_own_moves_ && !own_moves_.moves.empty())  // (the game puts them over the base's)
-      manifest += "moves=" + moveset_port::ManifestValue(own_moves_.moves) + "\n";
+    if (const auto mv = star_port::MovesToWrite(own_moves_, use_added_moves_); use_own_moves_ && !mv.empty())
+      manifest += "moves=" + moveset_port::ManifestValue(mv) + "\n";  // (the game puts them over the base's)
     if (entrance_ >= 0 && entrance_ != base_)  // (another superstar's entrance)
       manifest += "entrance=" + std::to_string(stars_[size_t(entrance_)].id) + "\n";
     const bool own_entrance = use_own_entrance_ && own_entrance_number_ > 0 && !own_entrance_.empty();
@@ -2270,7 +2273,7 @@ class Page {
       if (!pcm.empty())
         entries.push_back({"superstar/theme.wem", std::move(pcm)});
     }
-    if (use_own_moves_)  // (its moves WWE '12 hasn't: the game adds them to its pack)
+    if (use_own_moves_ && use_added_moves_)  // (its moves WWE '12 hasn't: the game adds them to its pack)
       for (const auto &m : own_new_moves_) {
         const std::string n = "superstar/moves/" + std::to_string(m.number);
         entries.push_back({n + ".waze", m.waze});
@@ -2338,6 +2341,7 @@ class Page {
   star_port::Music12 music12_;  // (WWE '12's theme events)
   uint32_t own_moves_game_ = 0;  // the game its own moves come from
   bool use_own_moves_ = true;
+  bool use_added_moves_ = false;  // its moves WWE '12 hasn't, added (experimental, off by default: 2026-11-05)
   int entrance_ = -1;
   std::vector<newmoves13::Move> own_new_moves_;  // its WWE '13 moves WWE '12 hasn't (newmoves13.h)
   std::vector<entrance13::Part> own_entrance_;  // its WWE '13 entrance (entrance13.h), else empty
