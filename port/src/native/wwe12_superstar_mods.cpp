@@ -1582,6 +1582,8 @@ extern "C" REX_FUNC(sub_827DB610) {
 // test's superstar was: hidden as locked, then shown as "DLC 37" with OVERALL 0 and a black screen at the match,
 // 2026-10-26, wwe12_roster_probe): an added superstar's copy is made again from its record when it differs, unlocked.
 void Wwe12UniverseForgetRelations(const PPCContext &in, uint8_t *base, uint32_t id);  // (wwe12_universe.cpp)
+REXCVAR_DEFINE_BOOL(wwe12_added_relations_reset, true, "WWE12",
+                    "Added superstars start the Universe with no allies or rivals (once per superstar and mod).");
 REXCVAR_DEFINE_BOOL(wwe12_superstar_roster_fix, true, "WWE12",
                     "Added superstars: the save's copy of their record made again when it differs (unlocked).");
 REX_EXTERN(__imp__sub_828ADFB8);
@@ -1623,7 +1625,7 @@ extern "C" REX_FUNC(sub_828ADFB8) {
   // Divas as rivals, 2026-11-05): emptied once per added superstar and mod (relations_cleared.txt: "number=hash" of
   // its record, its brand and "unlocked" left out), by the Universe's Wwe12UniverseForgetRelations; the ones the
   // player makes afterwards stay.
-  if (roster && !g_relations_file.empty()) {
+  if (roster && !g_relations_file.empty() && REXCVAR_GET(wwe12_added_relations_reset)) {
     static std::set<std::string> done;
     static bool read = false;
     if (!read) {

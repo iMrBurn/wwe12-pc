@@ -156,13 +156,32 @@ inline bool AddTail12(Bytes &evp, int number, uint32_t fullscreen = 0) {
   using yanm::ik::detail::Put16;
   using yanm::ik::detail::Put32;
   auto b32 = [&](size_t o) { return uint32_t(evp[o]) << 24 | uint32_t(evp[o + 1]) << 16 | uint32_t(evp[o + 2]) << 8 | evp[o + 3]; };
-  if (evp.size() < 0x50 || memcmp(evp.data(), "0FOP", 4) || b32(0x1C) != 0)
+  if (evp.size() < 0x50 || memcmp(evp.data(), "0FOP", 4))
     return false;
-  const uint32_t t = b32(4);  // the data's end (from +8): the POF0 chunk follows
-  if (t % 4 || 8 + size_t(t) + 8 > evp.size() || memcmp(&evp[8 + t], "POF0", 4))
+  const uint32_t end = b32(4);  // the data's end (from +8): the POF0 chunk follows
+  if (end % 4 || 8 + size_t(end) + 8 > evp.size() || memcmp(&evp[8 + end], "POF0", 4))
     return false;
-  std::vector<uint32_t> pof = yanm::ik::detail::PofRead(evp, 8 + t + 8, b32(8 + t + 4));
-  const Bytes rest(evp.begin() + ptrdiff_t(8 + t + 8 + b32(8 + t + 4)), evp.end());
+  // A tail of its own (2K14 Damien Sandow's 360: four records of type 13, which WWE '12 doesn't know - his entrance
+  // had no music and no titantron, 2026-11-05): replaced when it has neither a music (1) nor a movie (8) record (the
+  // data from its start on is dropped: it ends the data, as WWE '12's and 2K14's do); kept otherwise.
+  uint32_t t = end;
+  if (const uint32_t own = b32(0x1C); own != 0) {
+    if (own % 4 || own + 8 > end)
+      return false;
+    const uint32_t n = uint32_t(evp[8 + own + 2]) << 8 | evp[8 + own + 3], first = b32(8 + own + 4);
+    for (uint32_t l = 0; l < n && l < 64; ++l) {
+      const size_t r = 8 + size_t(first) + 16 * l;
+      if (r + 2 > evp.size())
+        return false;
+      const uint32_t type = uint32_t(evp[r]) << 8 | evp[r + 1];
+      if (type == 1 || type == 8)
+        return false;
+    }
+    t = own;
+  }
+  std::vector<uint32_t> pof = yanm::ik::detail::PofRead(evp, 8 + end + 8, b32(8 + end + 4));
+  const Bytes rest(evp.begin() + ptrdiff_t(8 + end + 8 + b32(8 + end + 4)), evp.end());
+  pof.erase(std::remove_if(pof.begin(), pof.end(), [&](uint32_t o) { return o >= t; }), pof.end());
   evp.resize(8 + t);
   // (a third record, type 9, with `fullscreen`: the entrance video full screen from frame 0 for that many frames, as Drew
   // McIntyre's 278 {u16 9, u32 0, u16 730, u16 1, one item of kind 2: u32 0})
