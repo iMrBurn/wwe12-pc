@@ -216,3 +216,29 @@ faux profil ; un vrai profil demande un lancement, donc le go de l'utilisateur.
 2. **Avec Gameplay :** les 2 ou 3 premières fonctions chaudes en natif, une par une.
 3. **Point 4** (image en retard) pour les petits PC et le Deck.
 4. **Test Deck :** demander un journal à un joueur Deck (plan ci-dessus) dès la sortie de la 1.1.
+
+### Test de performance intégré (Rendu, 2026-11-06, écrit, PAS encore compilé ni testé)
+
+Demande de l'utilisateur (go du 2026-11-06), idée de Jarrod : des chiffres comparables des joueurs (Steam Deck, petits
+PC), sans personne à la manette.
+
+- **Lancement :** `tools/dev/lancer_benchmark.bat [exe]`. Il efface puis crée `Documents\wwe12_benchmark` (dossier de
+  données neuf : curseurs des menus par défaut, la sauvegarde du joueur n'est jamais touchée) et lance l'exe avec
+  `--user_data_root … --wwe12_benchmark=true`. Sur Steam Deck : les mêmes options de lancement dans Steam. Un bouton du
+  launcher pourra faire la même chose (à voir avec Launcher).
+- **Déroulé (`wwe12_benchmark.cpp`, étapes de la télécommande `wwe12_remote_pad.cpp`) :** A toutes les 2,5 s depuis
+  l'écran-titre jusqu'au début d'une entrée (le match d'exhibition par défaut), les entrées, puis
+  `wwe12_benchmark_match_s` (30) secondes de match. Passe 1 = caches froids. Le jeu se relance ensuite tout seul
+  (`--wwe12_benchmark_pass=2`, même dossier) : passe 2 = caches chauds.
+- **Résumé :** `logs\benchmark_<date>_<heure>.txt` dans ce dossier, en anglais : version, processeur, nombre de fils,
+  carte, API, Windows ou Proton, sortie, échelle de rendu, réglages ; pour chaque passe, entrées et match : i/s moyen
+  et cible, temps d'image moyen / 1 % pires / pire, « work », « gpu wait », CPU par image (fil de rendu, jeu entier),
+  pipelines compilés en plein dessin, temps de l'écran-titre à l'entrée et des écrans de chargement ; verdict
+  (« OK: 60 fps in matches », « limited by the processor: 45 fps », « limited by the graphics card or the display »).
+  Rien n'est envoyé : le joueur colle le fichier. Aucune donnée du jeu (aucun nom).
+- **Limites connues :** les catcheurs et l'arène sont ceux du match par défaut du jeu (mêmes pour tous les joueurs sans
+  mods, puisque le dossier est neuf) ; des mods qui changent ce choix changent la scène. Imposer catcheurs et arène
+  demande de comprendre la préparation d'un match (Gameplay). Le dossier neuf réinstalle les DLC du dossier `dlc` à
+  chaque test.
+- **À vérifier au premier essai (go de l'utilisateur) :** que « A toutes les 2,5 s » mène bien de l'écran-titre d'un
+  dossier neuf jusqu'à un match (premier démarrage : création de la sauvegarde) ; la relance de la passe 2 ; le résumé.
