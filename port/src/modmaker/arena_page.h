@@ -2468,9 +2468,10 @@ class Page {
           std::ofstream(in, std::ios::binary).write(reinterpret_cast<const char *>(bk2.data()), std::streamsize(bk2.size()));
           svrfmt::Image still;
           std::vector<svrfmt::Image> intro;
-          if (bink2::Still(bink2::Found(), in, still, nullptr, &intro))
+          std::vector<uint8_t> unsteady;
+          if (bink2::Still(bink2::Found(), in, still, nullptr, &intro, 20, true, &unsteady))
             own[n] = port_svr_arena::PlateOnScreen(still, n == 1, intro, text[n][0], text[n][1],
-                                                    slot_ >= 0 ? kSlots[slot_].number : 2);
+                                                    slot_ >= 0 ? kSlots[slot_].number : 2, &unsteady);
           std::error_code ec;
           fs::remove(in, ec);
         }

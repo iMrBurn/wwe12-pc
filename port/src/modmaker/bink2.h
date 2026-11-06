@@ -426,10 +426,18 @@ inline bool Decode(const Tool &tool, const fs::path &in, int frames, int W, int 
 // built, before it goes away). RGBA; alpha 255 but for a Bink 1 movie with an alpha plane (WWE 2K14's plates).
 // `intro`: also up to `intro_count` pictures at half size, one after the other from the first one with a tenth of its
 // lit pixels, before it (the plate coming in, for the plates' 2D animation).
+// `settled`: instead, the stillest one (least change from the picture before it) with at least 60 % of the most lit
+// pixels seen, the later on a tie: the plate built, its sparks gone (2K15's RAW 2002 plates showed their sparks and the
+// unfinished plate, 2026-11-06).
 inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std::wstring *err,
-                  std::vector<svrfmt::Image> *intro = nullptr, int intro_count = 20) {
+                  std::vector<svrfmt::Image> *intro = nullptr, int intro_count = 20, bool settled = false,
+                  std::vector<uint8_t> *unsteady = nullptr) {  // (settled: 1 where it changed in the 8 pictures before)
   int from = 0, to = 0, at = 0, best_at = -1;
-  size_t best = 0;
+  size_t best = 0, most_lit = 0;
+  uint64_t calmest = UINT64_MAX;
+  std::vector<uint8_t> prev;
+  std::vector<std::vector<uint8_t>> ring(8);  // (settled: the 8 pictures before, for `unsteady`)
+  std::vector<uint8_t> moving;
   std::vector<uint8_t> keep;
   int kw = 0, kh = 0;
   bool alpha = false;
@@ -459,6 +467,42 @@ inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std:
         }
       halves.push_back(std::move(half));
     }
+    if (settled) {
+      most_lit = (std::max)(most_lit, lit);
+      uint64_t change = UINT64_MAX;
+      if (prev.size() == size_t(w) * h * 4) {
+        change = 0;
+        for (size_t p = 0; p < prev.size(); p += 4 * 7)
+          for (int c = 0; c < 3; ++c)
+            change += uint64_t(std::abs(int(bgra[p + c]) - int(prev[p + c])));
+      }
+      prev.assign(bgra, bgra + size_t(w) * h * 4);
+      // (a later picture nearly as still wins too: the sparks' dust fades slowly, 2K15's RAW 2002 location plate)
+      if (i >= from && change != UINT64_MAX && lit * 10 >= most_lit * 6 &&
+          (keep.empty() || calmest == UINT64_MAX ||
+           change <= calmest + calmest / 4 + uint64_t(w) * h / 7 * 3 * 2)) {  // (+ the movie's noise, 2 a channel)
+        calmest = (std::min)(calmest, change);
+        best = (std::max)(best, lit);
+        best_at = i;
+        keep = prev;
+        kw = w;
+        kh = h;
+        if (unsteady) {
+          moving.assign(size_t(w) * h, 0);
+          for (const auto &old : ring)
+            if (old.size() == keep.size())
+              for (size_t p = 0; p < moving.size(); ++p)
+                for (int c = 0; c < 3; ++c)
+                  if (std::abs(int(keep[p * 4 + c]) - int(old[p * 4 + c])) > 24)
+                    moving[p] = 1;
+        }
+      }
+      if (unsteady) {
+        ring.erase(ring.begin());
+        ring.push_back(prev);
+      }
+      return true;
+    }
     if (i < from)
       return true;
     if (lit > best || keep.empty()) {
@@ -482,7 +526,7 @@ inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std:
     }
     alpha = bink_has_alpha(r) != 0;
     from = bink_frames(r) * 3 / 10;
-    to = bink_frames(r) * 8 / 10;
+    to = bink_frames(r) * (settled ? 9 : 8) / 10;
     std::vector<uint8_t> frame(size_t(bink_width(r)) * bink_height(r) * 4);
     for (int i = 0; i <= to && i < bink_frames(r); ++i) {
       if (!bink_next(r))
@@ -500,11 +544,13 @@ inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std:
       return false;
     }
     from = int(info.frames) * 3 / 10;
-    to = int(info.frames) * 8 / 10;
+    to = int(info.frames) * (settled ? 9 : 8) / 10;
     Decode(tool, in, int(info.frames), int(info.width + 1) / 2 * 2, int(info.height + 1) / 2 * 2, put, err);
   }
   if (keep.empty())
     return false;
+  if (unsteady)
+    *unsteady = moving;
   out.w = kw;
   out.h = kh;
   out.rgba.resize(keep.size());

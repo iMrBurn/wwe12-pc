@@ -1389,7 +1389,7 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
 // lights are dots), a third of their height more above and below; its columns: the lit ones in those rows. Black made
 // clear (the Bink 2 movies' alpha is lost). A picture with its alpha (WWE 2K14's Bink 1 plates) is only cut to its
 // opaque part. Empty if no plate is found. `rect`: where it was in the picture (x, y, w, h).
-inline svrfmt::Image PlateCut(const svrfmt::Image &f, int *rect = nullptr) {
+inline svrfmt::Image PlateCut(const svrfmt::Image &f, int *rect = nullptr, int *box = nullptr) {  // (box: its dark glass, x, y, w, h in it)
   svrfmt::Image out;
   const auto keep = [&](int x0, int y0) {
     if (rect) {
@@ -1443,7 +1443,7 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f, int *rect = nullptr) {
       }
       best = std::max(best, run);
     }
-    if (best >= f.w / 5) {
+    if (best >= f.w / 8) {  // (an eighth: 2K15's RAW 2002 location box, a fifth lost it)
       y0 = y0 < 0 ? y : y0;
       y1 = y;
     }
@@ -1476,6 +1476,92 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f, int *rect = nullptr) {
       d[2] = s[2];
       d[3] = uint8_t(std::clamp((int(std::max({s[0], s[1], s[2]})) - 8) * 5, 0, 255));
     }
+  // (only the black around the plate made clear: its dark glass, where the game writes, kept - closed in by the plate,
+  // not reached from the picture's edges through dark pixels; 2K15's RAW 2002 plates lost their box, 2026-11-06)
+  {
+    std::vector<uint8_t> outside(size_t(out.w) * out.h, 0);
+    std::vector<int> todo;
+    const auto dark = [&](int i) { return std::max({out.rgba[size_t(i) * 4], out.rgba[size_t(i) * 4 + 1], out.rgba[size_t(i) * 4 + 2]}) <= 40; };
+    const auto push = [&](int x, int y) {
+      const int i = y * out.w + x;
+      if (!outside[size_t(i)] && dark(i)) {
+        outside[size_t(i)] = 1;
+        todo.push_back(i);
+      }
+    };
+    for (int x = 0; x < out.w; ++x)
+      push(x, 0), push(x, out.h - 1);
+    for (int y = 0; y < out.h; ++y)
+      push(0, y), push(out.w - 1, y);
+    while (!todo.empty()) {
+      const int i = todo.back(), x = i % out.w, y = i / out.w;
+      todo.pop_back();
+      if (x > 0) push(x - 1, y);
+      if (x + 1 < out.w) push(x + 1, y);
+      if (y > 0) push(x, y - 1);
+      if (y + 1 < out.h) push(x, y + 1);
+    }
+    // (the glass: the biggest dark patch closed in, in one piece)
+    int bx0 = out.w, by0 = out.h, bx1 = -1, by1 = -1;
+    size_t biggest = 0;
+    std::vector<uint8_t> seen(outside.size(), 0);
+    for (size_t s = 0; s < outside.size(); ++s) {
+      if (outside[s] || seen[s] || !dark(int(s)))
+        continue;
+      int cx0 = out.w, cy0 = out.h, cx1 = -1, cy1 = -1;
+      size_t n = 0;
+      todo.assign(1, int(s));
+      seen[s] = 1;
+      while (!todo.empty()) {
+        const int i = todo.back(), x = i % out.w, y = i / out.w;
+        todo.pop_back();
+        ++n;
+        cx0 = std::min(cx0, x), cx1 = std::max(cx1, x), cy0 = std::min(cy0, y), cy1 = std::max(cy1, y);
+        for (const int j : {x > 0 ? i - 1 : -1, x + 1 < out.w ? i + 1 : -1, y > 0 ? i - out.w : -1,
+                            y + 1 < out.h ? i + out.w : -1})
+          if (j >= 0 && !outside[size_t(j)] && !seen[size_t(j)] && dark(j)) {
+            seen[size_t(j)] = 1;
+            todo.push_back(j);
+          }
+      }
+      if (n > biggest)
+        biggest = n, bx0 = cx0, by0 = cy0, bx1 = cx1, by1 = cy1;
+    }
+    // (the plate: the biggest piece not reached from the edges, made opaque; the other pieces, the sparks' dust
+    // lingering round 2K15's RAW 2002 plates, made clear)
+    std::vector<int> piece(outside.size(), -1);
+    int plate = -1;
+    size_t plate_n = 0;
+    for (size_t s = 0; s < outside.size(); ++s) {
+      if (outside[s] || piece[s] >= 0)
+        continue;
+      const int id = int(s);
+      size_t n = 0;
+      todo.assign(1, int(s));
+      piece[s] = id;
+      while (!todo.empty()) {
+        const int i = todo.back(), x = i % out.w, y = i / out.w;
+        todo.pop_back();
+        ++n;
+        for (const int j : {x > 0 ? i - 1 : -1, x + 1 < out.w ? i + 1 : -1, y > 0 ? i - out.w : -1,
+                            y + 1 < out.h ? i + out.w : -1})
+          if (j >= 0 && !outside[size_t(j)] && piece[size_t(j)] < 0) {
+            piece[size_t(j)] = id;
+            todo.push_back(j);
+          }
+      }
+      if (n > plate_n)
+        plate_n = n, plate = id;
+    }
+    for (size_t i = 0; i < outside.size(); ++i)
+      if (!outside[i])
+        out.rgba[i * 4 + 3] = piece[i] == plate ? 255 : 0;
+    if (box) {
+      box[0] = bx0, box[1] = by0, box[2] = bx1 - bx0 + 1, box[3] = by1 - by0 + 1;
+      if (bx1 < bx0)
+        box[2] = box[3] = 0;
+    }
+  }
   keep(x0, y0);
   return out;
 }
@@ -1620,16 +1706,40 @@ inline PlateText PlateTextFor(int base) {
 // average (2K17's SmackDown, RAW, WWF Live 91...); the plate is moved so that place falls on WWE '12's text for the
 // added arena's `base` (PlateTextFor; before, the text was on the plates' edges).
 inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name, const std::vector<svrfmt::Image> &intro = {},
-                             float text_x = -1, float text_y = -1, int base = 2) {
+                             float text_x = -1, float text_y = -1, int base = 2,
+                             const std::vector<uint8_t> *unsteady = nullptr) {  // (bink2::Still's: made black)
   Plate2K p;
-  int r[4] = {};
-  p.img = PlateCut(still, r);
+  int r[4] = {}, box[4] = {};
+  svrfmt::Image steady = still;
+  // (dim and moving, outside the box of its bright still pixels: the sparks' dust lingering round 2K15's RAW 2002
+  // plates; its glass's sweeping light, inside, kept)
+  if (unsteady && unsteady->size() == size_t(still.w) * still.h) {
+    const auto lum = [&](size_t i) { return std::max({still.rgba[i * 4], still.rgba[i * 4 + 1], still.rgba[i * 4 + 2]}); };
+    int x0 = still.w, y0 = still.h, x1 = -1, y1 = -1;
+    for (size_t i = 0; i < unsteady->size(); ++i)
+      if (!(*unsteady)[i] && lum(i) >= 110) {
+        const int x = int(i % size_t(still.w)), y = int(i / size_t(still.w));
+        x0 = std::min(x0, x), x1 = std::max(x1, x), y0 = std::min(y0, y), y1 = std::max(y1, y);
+      }
+    for (size_t i = 0; i < unsteady->size(); ++i) {
+      const int x = int(i % size_t(still.w)), y = int(i / size_t(still.w));
+      if ((*unsteady)[i] && lum(i) < 110 && (x < x0 || x > x1 || y < y0 || y > y1))
+        steady.rgba[i * 4] = steady.rgba[i * 4 + 1] = steady.rgba[i * 4 + 2] = 0;
+    }
+  }
+  p.img = PlateCut(steady, r, box);
   if (p.img.rgba.empty())
     return p;
   p.w = 1.5f * r[2];
   p.h = 1.5f * r[3];
   p.x = 1.5f * r[0];
   p.y = name ? 1080.f - 1.5f * still.h + 1.5f * r[1] : 1.5f * r[1];
+  // (no layout: the middle of its dark glass, where the game writes - 2K15's RAW 2002 location plate, its text taken
+  // at the screen's middle, went half off the screen, 2026-11-06)
+  if (text_x < 0 && box[2] > 8 && box[3] > 8 && box[2] * 4 > r[2]) {
+    text_x = p.x + 1.5f * (box[0] + box[2] / 2.f);
+    text_y = p.y + 1.5f * (box[1] + box[3] / 2.f);
+  }
   // (each kept if likely: a few 2K17 layouts give x 0 or -480, their text sliding in from the edge)
   if (text_x < 200 || text_x > 1720)
     text_x = 960;
@@ -1638,6 +1748,27 @@ inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name, const std::v
   const PlateText t = PlateTextFor(base);
   p.x += (name ? t.name_x : t.city_x) - text_x;
   p.y += (name ? t.name_y : t.city_y) - text_y;
+  // (kept on the screen: made smaller around the text's place, down to 0.6, when it goes past an edge - 2K15's RAW
+  // 2002 name plate went under the screen's bottom, 2026-11-06)
+  {
+    const float tx = name ? t.name_x : t.city_x, ty = name ? t.name_y : t.city_y, m = 8;
+    float k = 1;
+    if (p.x < m && tx > m)
+      k = std::min(k, (tx - m) / (tx - p.x));
+    if (p.y < m && ty > m)
+      k = std::min(k, (ty - m) / (ty - p.y));
+    if (p.x + p.w > 1920 - m && tx < 1920 - m)
+      k = std::min(k, (1920 - m - tx) / (p.x + p.w - tx));
+    if (p.y + p.h > 1080 - m && ty < 1080 - m)
+      k = std::min(k, (1080 - m - ty) / (p.y + p.h - ty));
+    k = std::max(k, 0.6f);
+    if (k < 1) {
+      p.x = tx - (tx - p.x) * k;
+      p.y = ty - (ty - p.y) * k;
+      p.w *= k;
+      p.h *= k;
+    }
+  }
   bool alpha = false;
   for (size_t i = 3; i < still.rgba.size() && !alpha; i += 4)
     alpha = still.rgba[i] < 255;
