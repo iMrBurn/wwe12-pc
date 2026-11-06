@@ -248,3 +248,72 @@ La Main indique (2026-11-05) que l'utilisateur a envoyé la liste ; dans la conv
 2. ~~Bloc B, graine Android~~ : faite (881234f), à vérifier dans l'APK de release.
 3. Bloc C dès que la liste arrive.
 4. Bloc B pistes 1-3 selon les mesures sur téléphones.
+
+## 6. Mode 30 fps (issue #57, Android, 2026-11-06, étude en lecture seule, pour la 1.2)
+
+Demande : un vrai mode 30 fps pour les téléphones moyens (Redmi Note 13 Pro 5G, Snapdragon 7s Gen 2, « jeu au
+ralenti »). Un simple plafond ne marche pas : le jeu avance sa logique d'un pas par image (`wwe12_display.cpp`, « the
+game's logic advances once per frame »), donc 30 images = jeu au ralenti de moitié. Partie PC et code commun : voir
+`docs/perf_natif_steam_deck.md`, section « Mode 30 fps » (Rendu, ce251b7). **Ma lecture du code arrive à la même
+conclusion que Rendu.**
+
+### 1. Comment le jeu tient son rythme
+
+- Le vblank invité est une minuterie de l'hôte à 60 Hz (`graphics_system.cpp`, fil « vsync worker »). Le jeu attend
+  ses vblanks, avance sa logique d'un pas par image, puis appelle `D3DDevice_Swap` (crochet `hooks/device.cpp`).
+- Le jeu a **son propre mode 30** (struct 0x8324CE28, `SetFrameRate` sub_82827918) : pas de temps de la logique doublé,
+  attente de 2 vblanks par image. Il s'en sert pour les entrées. C'est déjà lui qui tourne quand `wwe12_60fps` est
+  faux : le chemin est donc éprouvé, y compris sur téléphone.
+- `PaceFrame` (présent) plafonne à 60 ; `wwe12_fps_limit` ralentit le jeu en dessous de 60 (confirmé dans le code).
+
+### 2. Où couper
+
+| Voie | Gain sur téléphone | Verdict |
+|---|---|---|
+| **A : mode 30 du jeu partout** (`SetFrameRate` 60→30, « revenir à 60 » neutralisé) | logique, fil de rendu et GPU divisés par ~2 | **à faire** |
+| B1 : ne présenter qu'une image sur deux | quasi rien (le GPU dessine tout, la logique tourne à 60) ; seul effet : l'écran montre 30 images | inutile seule |
+| B2 : ne pas dessiner une image sur deux | GPU et un peu du fil de rendu ; **pas** la logique | déconseillée |
+
+Raison de A : le mur sur téléphone est le processeur. Moto G100 en match : 46 fps, fil de rendu 18,2 ms sur 21,9 ms,
+jeu entier 63,8 ms de CPU par image (plusieurs fils), attente GPU 0. Les 18,2 ms sont surtout du code du jeu
+(recompilé) qui construit la scène, pas des dessins (mesures `draws` : 0,4 à 2,5 ms sur nos autres journaux). B2
+n'enlèverait donc presque rien. En A, le téléphone doit tenir 21,9 ms par image sur un budget de 33,3 ms : le Moto
+tiendrait 30 stables avec de la marge. Pour #57 (Snapdragon 7s Gen 2, cœurs moyens) on peut espérer le même effet,
+**non mesuré**.
+
+### 3. Risques
+
+- **Le jeu n'a probablement jamais tourné en match à 30** (prises, contres et fenêtres d'appui, collisions et objets,
+  chronos, IA, replay, moments forts). Seul vrai risque, à tester en jeu : pas faisable à ma place sur l'émulateur.
+- **Read-backs, tenues cuites, cibles de rendu : pas touchés** en voie A (le rendu dessine toutes les images que le jeu
+  lui donne ; l'image « sautée » n'existe pas côté rendu). C'est l'avantage principal sur B. À noter : les réglages
+  comptés en images (`svr_readback_streak` = 32 images, `svr_attire_bake_check`) durent deux fois plus longtemps en
+  temps réel à 30 : à regarder si des tenues restent blanches un instant.
+- Latence des commandes : +16 ms au plus, un peu plus sensible avec les boutons tactiles. Acceptable, à dire aux joueurs.
+- Écrans 90/120 Hz : 30 divise 60, 90 et 120, donc le rythme reste régulier ; rien à faire de plus.
+
+### 4. Ce qu'il faut changer côté Android (en plus du code commun de Rendu)
+
+- `LauncherActivity.java:272` : la case « 60 fps in entrances (heavier) » devient une liste à 3 choix
+  (`wwe12_frame_mode` = original / 30 / 60_entrances) ; le préréglage LOW-END PHONE (ligne ~553, qui écrit
+  `wwe12_60fps=false`) écrirait `30` **seulement après** les tests en match.
+- `wwe12_perf_hint.cpp` : la cible du conseil de performance est fixée à 60 fps (`kTargetNs` = 16,67 ms). En mode 30 il
+  faut 33,3 ms, sinon le système croit que le jeu est toujours « en retard ». Petit, mais à ne pas oublier.
+- Le compteur de fps du jeu et `GameLoading` (attend la ligne « Android performance hint ») ne changent pas.
+- Idée pour plus tard (hors étude) : `Surface.setFrameRate(30)` en mode 30, pour économiser la batterie.
+
+### 5. Estimation, en heures de travail (hors tests en jeu)
+
+| Tâche | Heures |
+|---|---|
+| Code commun (crochets, clé `wwe12_frame_mode`, ligne FRAME RATE du jeu) : **chez Rendu** | 4,5 - 5,5 |
+| Launcher Android : liste à 3 choix, lecture de l'ancienne clé, textes | 1 |
+| Cible du conseil de performance selon le mode | 0,5 |
+| Préréglage LOW-END PHONE (après les tests) + notes de version | 0,25 |
+| Vérif. émulateur (vitesse juste : durée d'une entrée / d'un compte avec la manette distante ; pas de mesure de perf) | 0,75 |
+| **Total Android** | **~2,5 h** (+ code commun) |
+
+Tests en jeu (avec un testeur sur un vrai téléphone, par ex. #57 ou #54) : match complet, replay, moments forts,
+entrée, Univers. Cible mesurée : « interval » du journal à 33,3 ms stable et « work » sous 25 ms.
+
+Ordre : 1.2, une fois le code commun fait par Rendu. Rien à coder avant son accord sur une seule clé.
