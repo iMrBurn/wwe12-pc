@@ -99,3 +99,10 @@ Liste du joueur, rangée par la Main. Les numéros de version sont ceux de `docs
 
 ## Suggestion du 2026-11-06 (GitHub #57, Android)
 - **Mode 30 fps pour les appareils moyens** (Redmi Note 13 Pro 5G, Snapdragon 7s Gen 2 : « jeu au ralenti ») : le port WWE 2K14 de Jarrodfeng a cette option. Un plafond simple ne suffit pas (le jeu tourne à 60 pas par seconde : il ralentirait) : il faut dessiner une image sur deux en gardant la vitesse. Utile aussi au Steam Deck et aux petits PC. Étude confiée à Android et Rendu (1.2) ; réponse faite sur l'issue (version, journal, préréglage LOW-END PHONE en attendant).
+
+
+## 2026-11-06 : sortie de tombé (kickout) et changement de joueur
+
+- Suggestion d'un joueur (Discord) : « Switch Players / Auto Kickout » pour rendre l'Univers et les autres modes moins pénibles, car le système de sortie de tombé (kickout) agace parfois ; ou bien rendre la jauge de kickout plus grande (toute la barre).
+- Deux idées distinctes : (1) sortie de tombé automatique (option) ou jauge élargie = règle du jeu, crochet sur le code du compteur de tombé (à chercher par Gameplay, cvar à part, désactivé par défaut) ; (2) changer de joueur en match (tag, passer d'un catcheur à un autre) = plus gros, dépend du moteur de match, pas étudié.
+- Rien promis. Classement : idée, candidat 1.3 (modes de match) avec la jauge élargie en premier (le plus simple).
