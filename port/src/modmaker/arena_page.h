@@ -2404,6 +2404,47 @@ class Page {
           if (k.group == "MENU" && k.name == fn)
             font2k = k.stored;
     }
+    // (WWE 2K17: its VS screens' fonts are FTPK packs among the hashed entries, each from its theme's folder
+    // ("...\matchup\raw2016\font_raw16_000.yfb"), the theme its VS screen's animation names: "HDXbox_raw2016")
+    if (y_title_ == 0x545408BA && font2k.empty() && !card2k.kids.empty()) {
+      std::string theme;
+      const auto find7002 = [](auto &self, svrfmt::ArcNode &n, int depth) -> svrfmt::ArcNode * {
+        if (n.id == 7002 && depth)
+          return &n;
+        if (depth < 4 && svrfmt::ArchiveExpand(n))
+          for (auto &c : n.kids)
+            if (auto *f = self(self, c, depth + 1))
+              return f;
+        return nullptr;
+      };
+      svrfmt::ArcNode probe = card2k;
+      if (auto *an = find7002(find7002, probe, 0)) {
+        const Bytes d = svrfmt::ArchiveData(*an);
+        const char *key = "HDXbox_";
+        const auto at = std::search(d.begin(), d.end(), key, key + 7);
+        for (auto it = at == d.end() ? d.end() : at + 7; it != d.end() && (isalnum(*it) || *it == '_'); ++it)
+          theme += char(*it);
+      }
+      svrfmt::Archive m;
+      if (!theme.empty() && svrfmt::ArchiveOpen(matchhd, m, nullptr)) {
+        const std::string folder = "\\" + theme + "\\";
+        const auto scan = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
+          if (!font2k.empty())
+            return;
+          if (depth < 3 && svrfmt::ArchiveExpand(n) && !n.kids.empty()) {
+            for (auto &c : n.kids)
+              self(self, c, depth + 1);
+            return;
+          }
+          const Bytes d = svrfmt::ArchiveData(n);
+          if (d.size() > 12 && memcmp(d.data(), "FTPK", 4) == 0 &&
+              std::search(d.begin(), d.begin() + long(std::min<size_t>(d.size(), 4096)), folder.begin(), folder.end()) !=
+                  d.begin() + long(std::min<size_t>(d.size(), 4096)))
+            port_svr_arena::FtpkFont(d, font2k);
+        };
+        scan(scan, m.root, 0);
+      }
+    }
     if (y_title_ != kWwe13 && !card2k.kids.empty() &&
         port_svr_arena::Card2KOwn(card2k, matchhd12, card_mb_, card_mf_, &font2k))
       port_note_ += fr ? " Avec son propre écran VS." : " With its own VS screen.";

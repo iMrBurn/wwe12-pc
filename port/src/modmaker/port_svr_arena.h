@@ -1026,7 +1026,7 @@ inline float YfbCapsWidth(const Bytes &y) {
 }
 
 inline bool FontInto(const Bytes &theirs, svrfmt::ArcNode &page_node, svrfmt::ArcNode &yfb_node,
-                     float glyph_h = 0) {
+                     float glyph_h = 0, float shrink = 1) {  // (shrink: its letters made that much smaller too)
   // (glyph_h: its letters' height wanted in pixels, 0 as they are; only made smaller - WWE '12 draws them at their
   // pictures' size)
   float scale = 1;
@@ -1072,6 +1072,7 @@ inline bool FontInto(const Bytes &theirs, svrfmt::ArcNode &page_node, svrfmt::Ar
     if (ours > 0 && wide > 0)
       scale = std::min(scale, ours / wide);
   }
+  scale = std::min(scale, shrink);
   for (uint32_t i = 0; i < blocks; ++i) {
     const uint32_t at = rd(0x5C + 4 * size_t(i));
     if (at + 0x60 > y.size() || rd(at) != 100)
@@ -1134,11 +1135,79 @@ inline bool FontInto(const Bytes &theirs, svrfmt::ArcNode &page_node, svrfmt::Ar
   return true;
 }
 
-inline bool Font2K(const Bytes &theirs, const Bytes &mf12, Bytes &out) {
+// A WWE 2K17 VS screen font (MatchHD.pac, an FTPK pack among its hashed entries, 2026-11-06): "FTPK", its file
+// count n, n YFB names and n DDS names, 2n source paths (each a u32 length and its text), then each YFB file and
+// each DDS file as a u32 size, a u32 0 and the file. Its YFB files are WWE '12's blocks as they are (one page each,
+// version 0x82; their tables where WWE '12's are), its DDS the pages. Its "font_*" ones (not the button font) made a
+// font archive as MENU/MnnF (Font2K's `theirs`): a pack of the pages (0) and a WWE '12 YFB holding the blocks (1).
+inline bool FtpkFont(const Bytes &ftpk, Bytes &font) {
+  font.clear();
+  const auto u32 = [&](size_t o) {
+    return o + 4 <= ftpk.size() ? uint32_t(ftpk[o] | ftpk[o + 1] << 8 | ftpk[o + 2] << 16 | uint32_t(ftpk[o + 3]) << 24) : 0u;
+  };
+  if (ftpk.size() < 12 || memcmp(ftpk.data(), "FTPK", 4) != 0)
+    return false;
+  const uint32_t n = u32(4);
+  if (!n || n > 16)
+    return false;
+  size_t p = 8;
+  std::vector<std::string> names;
+  for (uint32_t i = 0; i < 4 * n; ++i) {
+    const uint32_t len = u32(p);
+    if (p + 4 + len > ftpk.size())
+      return false;
+    if (i < 2 * n)
+      names.emplace_back(reinterpret_cast<const char *>(&ftpk[p + 4]), len);
+    p += 4 + len;
+  }
+  std::vector<Bytes> files;
+  for (uint32_t i = 0; i < 2 * n; ++i) {
+    const uint32_t size = u32(p);
+    if (p + 8 + size > ftpk.size())
+      return false;
+    files.emplace_back(ftpk.begin() + long(p + 8), ftpk.begin() + long(p + 8 + size));
+    p += 8 + size;
+  }
+  std::vector<Bytes> blocks;
+  std::vector<svrfmt::PachEntry> pages;
+  for (uint32_t i = 0; i < n; ++i) {
+    if (names[i].rfind("font_", 0) != 0)
+      continue;
+    const Bytes &b = files[i], &dds = files[n + i];
+    if (b.size() < 0x64 || b[0] != 100 || dds.size() < 128 || memcmp(dds.data(), "DDS ", 4) != 0)
+      return false;
+    blocks.push_back(b);
+    pages.push_back({uint32_t(pages.size()), svrfmt::BpeEncode(dds)});
+  }
+  if (blocks.empty())
+    return false;
+  Bytes y(0x5C + 4 * blocks.size(), 0);
+  const auto put = [](Bytes &d, size_t o, uint32_t v) {
+    for (int k = 0; k < 4; ++k)
+      d[o + size_t(k)] = uint8_t(v >> (8 * k));
+  };
+  put(y, 0, 100), put(y, 4, 100), put(y, 8, 0x64);
+  const std::string nm = names[0].substr(0, std::min<size_t>(names[0].size(), 0x47));
+  memcpy(&y[0x10], nm.data(), nm.size());
+  put(y, 0x58, uint32_t(blocks.size()));
+  while (y.size() % 16)
+    y.push_back(0);
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    put(y, 0x5C + 4 * i, uint32_t(y.size()));
+    y.insert(y.end(), blocks[i].begin(), blocks[i].end());
+    put(y, y.size() - blocks[i].size() + 4, 100);  // (WWE '12's block version)
+    while (y.size() % 16)
+      y.push_back(0);
+  }
+  font = svrfmt::PachWrite({{0, svrfmt::BpeEncode(svrfmt::PachWrite(pages))}, {1, svrfmt::BpeEncode(y)}});
+  return true;
+}
+
+inline bool Font2K(const Bytes &theirs, const Bytes &mf12, Bytes &out, float shrink = 1) {
   out.clear();
   svrfmt::Archive w;
   if (!svrfmt::ArchiveOpen(mf12, w, nullptr) || w.root.kids.size() < 2 ||
-      !FontInto(theirs, w.root.kids[0], w.root.kids[1]))
+      !FontInto(theirs, w.root.kids[0], w.root.kids[1], 0, shrink))
     return false;
   svrfmt::ArchiveTouch(w.root);
   out = svrfmt::ArchiveSave(w);
@@ -1178,6 +1247,69 @@ inline bool EtexFont2K(Bytes &etex, const Bytes &theirs, float name_h = 0, float
 // WWE '12 can't read) renamed font000, WWE '12 RAW's (MENU/M01F, `mf`). Its pictures (7001) and animations (7002,
 // ATB0 version 3 where WWE '12's are 2) as they are, all packed again as BPE (the 2K games' ZLIB crashed WWE '12, and
 // 2K17's are SHDC lists). `card`: the VS screen's node (a PACH or SHDC holding 7000-7002).
+// Text written into a picture with a font archive (MENU/MnnF's kind, FtpkFont's: its pages (0), its YFB (1)): its
+// first block's glyphs (chars at +0x3C/+0x40, u16 codes in the glyphs' order; glyphs at +0x5C/+0x60, x, y, w, h u16),
+// white, `height` pixels high, centred on (cx, cy). False: no font or a letter missing.
+inline bool DrawText2K(svrfmt::Image &img, const Bytes &font, const std::string &text, float cx, float cy, float height) {
+  svrfmt::Archive t;
+  if (!svrfmt::ArchiveOpen(font, t, nullptr) || t.root.kids.size() < 2 || !svrfmt::ArchiveExpand(t.root.kids[0]) ||
+      t.root.kids[0].kids.empty())
+    return false;
+  svrfmt::Image page;
+  if (!svrfmt::DdsDecode(svrfmt::ArchiveData(t.root.kids[0].kids[0]), page))
+    return false;
+  const Bytes y = svrfmt::ArchiveData(t.root.kids[1]);
+  const auto rd = [&](size_t o) { return o + 4 <= y.size() ? uint32_t(y[o] | y[o + 1] << 8 | y[o + 2] << 16 | uint32_t(y[o + 3]) << 24) : 0u; };
+  const auto rd16 = [&](size_t o) { return o + 2 <= y.size() ? int(y[o] | y[o + 1] << 8) : 0; };
+  if (y.size() < 0x60 || !rd(0x58))
+    return false;
+  const uint32_t at = rd(0x5C), nc = rd(at + 0x3C), co = rd(at + 0x40), go = rd(at + 0x60);
+  struct G { int x, y, w, h; };
+  std::vector<G> glyphs;
+  int tallest = 0;
+  for (const char c : text) {
+    int found = -1;
+    for (uint32_t i = 0; i < nc && found < 0; ++i)
+      if (rd16(at + co + 2 * i) == uint8_t(c))
+        found = int(i);
+    if (found < 0)
+      return false;
+    const size_t g = at + go + 16 * size_t(found);
+    glyphs.push_back({rd16(g), rd16(g + 2), rd16(g + 4), rd16(g + 6)});
+    tallest = std::max(tallest, rd16(g + 6));
+  }
+  if (tallest <= 0)
+    return false;
+  const float k = height / float(tallest);
+  float width = 0;
+  for (const auto &g : glyphs)
+    width += float(g.w) * k;
+  // (a page with alpha: its alpha the letters; else their brightness)
+  bool alpha = false;
+  for (size_t i = 3; i < page.rgba.size() && !alpha; i += 4)
+    alpha = page.rgba[i] < 250;
+  float x0 = cx - width / 2;
+  const float y0 = cy - height / 2;
+  for (const auto &g : glyphs) {
+    const int w = std::max(1, int(float(g.w) * k)), h = std::max(1, int(float(g.h) * k));
+    for (int yy = 0; yy < h; ++yy)
+      for (int xx = 0; xx < w; ++xx) {
+        const int px = int(x0) + xx, py = int(y0) + yy;
+        if (px < 0 || py < 0 || px >= img.w || py >= img.h)
+          continue;
+        const int sx = std::min(page.w - 1, g.x + xx * g.w / w), sy = std::min(page.h - 1, g.y + yy * g.h / h);
+        const uint8_t *s = &page.rgba[(size_t(sy) * page.w + sx) * 4];
+        const int a = alpha ? s[3] : std::max({s[0], s[1], s[2]});
+        uint8_t *d = &img.rgba[(size_t(py) * img.w + px) * 4];
+        for (int c = 0; c < 3; ++c)
+          d[c] = uint8_t((255 * a + d[c] * (255 - a)) / 255);
+        d[3] = uint8_t(std::max<int>(d[3], a));
+      }
+    x0 += float(g.w) * k;
+  }
+  return true;
+}
+
 inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, Bytes &mf,
                       const Bytes *their_font = nullptr) {  // (its MENU/MnnF as stored, Font2K)
   using namespace detail;
@@ -1305,7 +1437,9 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
   // WWE '12 RAW's layout kept, wearing its frame and background (their animations, 5000 / 5001 here, 5001 / 5000
   // there) and its background picture's name, as SvR 2011's (SvrCard).
   Bytes out;
+  bool wearing12 = false;  // (WWE '12 RAW's layout used: 2K17's)
   if (nres != 14 || nnodes != 36 || ngroups != 7) {
+    wearing12 = true;
     std::string fr, bg;
     for (uint32_t i = 0; i < nres; ++i) {
       const uint32_t id = Rd32(y, 0x20 + 0x4C * i);
@@ -1331,6 +1465,25 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
     rename(out, "RAW_bg", bg);
     rename(out, "matchup_BG01", back);
     rename(out, "matchup_BG02", back);
+    // (the names where 2K17 writes them: in the bar, right of the logo - WWE '12 RAW's above it; its text nodes,
+    // x 320 y 221-249 of its 640 x 360, moved 68 right and 45 down, 2026-11-06)
+    {
+      const uint32_t r12 = Rd32(out, 16), g12 = Rd32(out, 24);
+      size_t q = 0x20 + size_t(r12) * 0x4C;
+      for (uint32_t g = 0; g < g12 && q + 4 <= out.size(); ++g) {
+        const uint32_t n = Rd32(out, q);
+        q += 4;
+        for (uint32_t i = 0; i < n && q + 0x84 <= out.size(); ++i, q += 0x84)
+          if (Rd32(out, q) == 1000) {
+            float x, yv;
+            memcpy(&x, &out[q + 4], 4);
+            memcpy(&yv, &out[q + 8], 4);
+            x += 68, yv += 45;
+            memcpy(&out[q + 4], &x, 4);
+            memcpy(&out[q + 8], &yv, 4);
+          }
+      }
+    }
   }
   if (out.empty() && (nres != 14 || nnodes != 36 || ngroups != 7))
     return false;
@@ -1408,7 +1561,9 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
   if (mf.empty() || !raw || !svrfmt::ArchiveExpand(*raw))
     return false;
   // (its own font when it converts: Font2K, seen in the game with 2K15's RAW 2002, 2026-11-06)
-  if (Bytes own; their_font && !their_font->empty() && Font2K(*their_font, mf, own))
+  // (2K17's, in WWE '12 RAW's layout: 62 %, as high as in 2K17 - whole, its names were squeezed into their box,
+  // letters over each other, and ran onto the menu, 2026-11-06)
+  if (Bytes own; their_font && !their_font->empty() && Font2K(*their_font, mf, own, wearing12 ? 0.62f : 1.f))
     mf = std::move(own);
   // (its "TONIGHT" in five languages, one picture each, all drawn by WWE '12 one over the other where the 2K game shows
   // its own language's - a blur in 2K14's and 2K16's RAW, 2026-11-06: the English one in each)
@@ -1434,6 +1589,18 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
             t.data = english, ++copied;
         }
       }
+      // (no TONIGHT picture - WWE 2K17's VS screens write it with their font, under the logo, in its box: written
+      // there, the logo picture's lower part, with its own font, 2026-11-06)
+      if (!en && their_font && !their_font->empty())
+        for (auto &t : texs)
+          if (t.name == "logo") {
+            svrfmt::Image img;
+            if (svrfmt::DdsDecode(t.data, img) &&
+                DrawText2K(img, *their_font, "TONIGHT", 0.52f * float(img.w), 0.70f * float(img.h), 0.40f * float(img.h))) {
+              t.data = LikePicture(t.data, img, false);
+              ++copied;
+            }
+          }
       if (copied)
         pictures = svrfmt::BundleWrite(texs);
     }
