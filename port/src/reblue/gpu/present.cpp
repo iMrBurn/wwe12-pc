@@ -45,6 +45,14 @@
 
 bool Wwe12LoadTurboSkipPresent();  // native/wwe12_load_turbo.cpp
 
+#if defined(SVR_NATIVE_RENDERER)
+namespace bd::gpu {
+struct GuestTexture;
+}
+void Wwe12RemoteOnPresent(bd::gpu::GuestTexture *front_buffer);  // wwe12_remote_pad.cpp
+void Wwe12BenchmarkFrame(double interval_ms, double work_ms, double gpu_wait_ms);  // wwe12_benchmark.cpp
+#endif
+
 namespace bd::gpu {
 #if defined(SVR_NATIVE_RENDERER)
 float SvrHostAspect(const GuestTexture *host);  // native/svr_resources.cpp
@@ -433,6 +441,9 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
     fs.max_gpu = std::max(fs.max_gpu, gpu_wait_ms);
     fs.sum_swap += swap_ms;
     fs.hitches += interval > 25.0;
+#if defined(SVR_NATIVE_RENDERER)
+    Wwe12BenchmarkFrame(interval, work, gpu_wait_ms);
+#endif
     ++fs.frames;
   } else {
     fs.window_start = now;
@@ -487,6 +498,11 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
 
 void Video::Present(GuestTexture *frontBuffer) {
   WWE12_CPU_ZONE(kPresent);
+#if defined(SVR_NATIVE_RENDERER)
+  // Test scripts (wwe12_remote_pad): the game's state, and a shot of this frame (before the lock:
+  // the shot's read-back takes it).
+  Wwe12RemoteOnPresent(frontBuffer);
+#endif
   auto &s = state();
   if (s.shutting_down.load(std::memory_order_acquire))
     return;

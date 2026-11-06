@@ -127,6 +127,9 @@ int64_t Wwe12MsSinceLoadScreen() {
   return NowMs() - g_screen_event_ms.load(std::memory_order_relaxed);
 }
 
+// A loading screen is up (wwe12_remote_pad.cpp: the test scripts' "loading" state).
+bool Wwe12LoadingScreenUp() { return g_screen_up.load(std::memory_order_relaxed); }
+
 // The loading screen closes 0.1-0.4 s after the entrance behind it starts, so the turbo ran the
 // entrance's first frames fast-forwarded (a visible jump). Its last step is the entrance script:
 // sub_825B85B8(kind, number, out) builds a resource's name, kind 0 = "/GMEV/%04d" (the script; kind
