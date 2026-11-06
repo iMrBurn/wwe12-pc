@@ -1516,7 +1516,15 @@ void DrawProfileOffer() {
     if (fs::exists(ProfileOfferMarker(), ec) || LowEndBackupExists())
       return;
     const auto used = g_vulkan.UsedDevice(g_s.gpu);
-    prof = machine::Choose(machine::Detect(), used.name, used.kind);
+    const machine::Facts facts = machine::Detect();
+    prof = machine::Choose(facts, used.name, used.kind);
+    if (std::getenv("WWE12_LAUNCHER_PROFILE_LOG")) {  // test aid: what the offer saw
+      std::ofstream log(ExeDir() / "profile_offer_log.txt", std::ios::trunc);
+      log << "gpu='" << used.name << "' kind=" << used.kind << " deck_env=" << facts.deck_env << " wine=" << facts.wine
+          << " cores=" << facts.cores << " threads=" << facts.threads << " ram_gb=" << facts.ram_gb
+          << " adapters=" << facts.adapters.size() << "\nprofile kind=" << int(prof.kind) << " scale=" << prof.scale
+          << " crowd=" << prof.crowd << " api=" << prof.api << " score=" << prof.score << "\n";
+    }
     if (prof.kind == machine::Kind::None)
       return;
     state = 2;
