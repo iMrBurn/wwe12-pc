@@ -40,12 +40,14 @@ class Runner {
       Start(fr, exe, exe_dir);
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-      ImGui::SetTooltip("%s", fr ? "Lance le jeu tout seul pendant environ 3 minutes (un match d'exhibition, deux fois) et "
-                                   "affiche le résultat : fluidité, ce qui limite. Votre sauvegarde n'est pas touchée "
-                                   "(dossier de test séparé). Ne touchez pas à la manette."
-                                 : "Runs the game by itself for about 3 minutes (an exhibition match, twice) and shows "
-                                   "the result: smoothness and what limits it. Your save is not touched (separate test "
-                                   "folder). Don't touch the controller.");
+      ImGui::SetTooltip("%s", fr ? "Lance le jeu : vous choisissez un match d'exhibition à la main, puis le test mesure l'entrée et "
+                                   "30 s de match sans que vous touchiez à rien. Le jeu se relance une fois : choisissez "
+                                   "le même match. Le résultat dit si ça tourne bien et ce qui limite. Votre sauvegarde "
+                                   "n'est pas touchée (dossier de test séparé)."
+                                 : "Starts the game: you pick an exhibition match by hand, then the test measures the "
+                                   "entrance and 30 s of match, hands off. The game restarts once: pick the same match. "
+                                   "The result says how well it runs and what limits it. Your save is not touched "
+                                   "(separate test folder).");
     switch (state_) {
     case State::Running:
       ImGui::SameLine();
@@ -73,9 +75,12 @@ class Runner {
       return;
     }
     if (MessageBoxW(GetActiveWindow(),
-                    fr ? L"Cela lance le jeu pendant environ 3 minutes, sans que vous touchiez à rien. Votre "
-                         L"sauvegarde n'est pas touchée. Continuer ?"
-                       : L"This starts the game for about 3 minutes, hands off. Your save is not touched. Continue?",
+                    fr ? L"Cela lance le jeu. Choisissez un match d'exhibition à la main (PLAY, EXHIBITION...) : dès que "
+                         L"l'entrée commence, le test mesure seul. Le jeu se relance ensuite une fois : choisissez le "
+                         L"même match. Votre sauvegarde n'est pas touchée. Continuer ?"
+                       : L"This starts the game. Pick an exhibition match by hand (PLAY, EXHIBITION...): as soon as the "
+                         L"entrance starts, the test measures by itself. The game then restarts once: pick the same "
+                         L"match. Your save is not touched. Continue?",
                     L"WWE '12 PC", MB_YESNO | MB_ICONQUESTION) != IDYES)
       return;
     std::error_code ec;
