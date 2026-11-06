@@ -106,3 +106,24 @@ Liste du joueur, rangée par la Main. Les numéros de version sont ceux de `docs
 - Suggestion d'un joueur (Discord) : « Switch Players / Auto Kickout » pour rendre l'Univers et les autres modes moins pénibles, car le système de sortie de tombé (kickout) agace parfois ; ou bien rendre la jauge de kickout plus grande (toute la barre).
 - Deux idées distinctes : (1) sortie de tombé automatique (option) ou jauge élargie = règle du jeu, crochet sur le code du compteur de tombé (à chercher par Gameplay, cvar à part, désactivé par défaut) ; (2) changer de joueur en match (tag, passer d'un catcheur à un autre) = plus gros, dépend du moteur de match, pas étudié.
 - Rien promis. Classement : idée, candidat 1.3 (modes de match) avec la jauge élargie en premier (le plus simple).
+
+
+## 2026-11-06 : liste d'un joueur (Univers + mods portés), reçue via l'utilisateur
+
+Univers :
+1. Blessés qui apparaissent quand même dans les matchs et cinématiques ; 2 fins de carrière dans sa partie (option pour les couper ?).
+2. Un même catcheur plusieurs fois sur la carte d'un show ; 2 matchs de n°1 contender (préciser pour quel titre ?).
+3. Impossible de changer le classement de la division des titres par équipe.
+4. Parfois 3 matchs de n°1 contender simples hommes à RAW (2 titres simples seulement).
+5. Rivalités du mois qui ne se retrouvent pas au PPV (le n°1 contender à la place), fréquent.
+6. Un catcheur de SmackDown qui attaque un de RAW pendant un mois sans match.
+7. Impossible d'ajouter un nouveau show au calendrier (ex. NXT comme show majeur avec titres, draft, roster).
+8. Résultats du draft absents des news (jugé important).
+9. Réglé à 6 matchs par show : irrégulier (6 à RAW, 2 SmackDown, 3 Superstars...), RAW a le plus de chances.
+10. Plantage après le dernier match de WrestleMania en passant au show suivant ; avec le nombre par défaut ça repart ; en remettant 6, passage de l'écran « press start » puis plantage possible.
+Mods portés :
+11. Impossible d'assigner un moveset à un mod (revient au défaut).
+12. Cena 2007 : arrive avec une casquette moderne.
+13. Tenue Undertaker 2K14 : entrée comique (style Red Dead Redemption).
+14. Mods portés avec alliés et rivaux (déjà réglé pour la 1.1 : réglage wwe12_universe_added_relations).
+15. EDIT SUPERSTAR (R1) : seuls les titres de RAW sont listés, pas ceux de SmackDown.
