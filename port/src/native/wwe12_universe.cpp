@@ -2777,6 +2777,7 @@ void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base);  // wwe12_
 extern "C" REX_FUNC(sub_82545A70) {
   // added Superstars without allies or rivals from the start, before any select screen (once each)
   Wwe12ForgetAddedRelations(ctx, base);
+  FlushNews(ctx, base);  // (a draft after the show's last match: its news)
   g_universe_menu = ctx.r3.u32;
   g_universe_menu_for_bar = ctx.r3.u32;
   if (Enabled())
@@ -4222,12 +4223,21 @@ u32 g_news_event = 0;  // the event of the news being drawn (its texts are ours 
 
 // A news of ours: its event (+14 = 0x51, +15 the event; first version: +4 = 0x51000000 + event).
 bool g_news_begin = false;  // the news being drawn is "qualifying matches begin"
+// A draft news of ours (type 5, +14 = 0x52, +15 the new brand: 0 RAW, 1 SmackDown): the brand + 1 while drawn.
+constexpr u8 kDraftMarker = 0x52;
+constexpr u32 kDraftEvent = 100;  // (queued as event 100 + brand)
+u32 g_news_draft = 0;
 
 u32 NewsEvent(u32 rec) {
   g_news_begin = false;
+  g_news_draft = 0;
   if (!rec)
     return 0;
   const u32 type = bd::mem::load<u8>(rec + 12);
+  if (type == kNewsQualified && bd::mem::load<u8>(rec + 14) == kDraftMarker) {
+    g_news_draft = (bd::mem::load<u8>(rec + 15) & 1) + 1;
+    return 0;
+  }
   if (type != kNewsQualified && type != kNewsQualifying)
     return 0;
   g_news_begin = type == kNewsQualifying ||
@@ -4321,8 +4331,13 @@ void FlushNews(const PPCContext &in, u8 *base) {
     // in the free +14 / +15 (0x51, event)
     bd::mem::store<u16>(record, u16(n.b < 512 ? n.b : 512));
     // the game shows type 5 only (its type 6 is never drawn): both are type 5, +15 bit 7 = "begin"
-    bd::mem::store<u8>(record + 14, 0x51);
-    bd::mem::store<u8>(record + 15, u8(n.event | (n.a == kNewsQualifying ? 0x80 : 0)));
+    if (n.event >= kDraftEvent) {
+      bd::mem::store<u8>(record + 14, kDraftMarker);
+      bd::mem::store<u8>(record + 15, u8(n.event - kDraftEvent));
+    } else {
+      bd::mem::store<u8>(record + 14, 0x51);
+      bd::mem::store<u8>(record + 15, u8(n.event | (n.a == kNewsQualifying ? 0x80 : 0)));
+    }
     bd::mem::store<u8>(record + 12, u8(kNewsQualified));
     Call(x, base, __imp__sub_826D1630, view, record);
     Call(x, base, __imp__sub_826CE098, view);
@@ -4337,12 +4352,14 @@ extern "C" REX_FUNC(sub_82559468) {
   g_news_event = NewsEvent(ctx.r4.u32);
   __imp__sub_82559468(ctx, base);
   g_news_event = 0;
+  g_news_draft = 0;
 }
 REX_EXTERN(__imp__sub_82559A08);
 extern "C" REX_FUNC(sub_82559A08) {
   g_news_event = NewsEvent(ctx.r4.u32);
   __imp__sub_82559A08(ctx, base);
   g_news_event = 0;
+  g_news_draft = 0;
 }
 
 // A news's picture: sub_82558FC8(screen S, news) names the six news pictures (elements 390-395, S+1040
@@ -4386,7 +4403,35 @@ extern "C" REX_FUNC(sub_82558FC8) {
 
 namespace {
 // Our news texts (27068 / 27069 type 5, 27070 / 27071 type 6), for the news being drawn.
+u32 DraftNewsText(u32 id) {
+  static const char *const kTitle[2][5] = {
+      {"DRAFTED TO RAW!", "DRAFTÃ Ã RAW !", "ZU RAW GEDRAFTET!", "Â¡DRAFTEADO A RAW!",
+       "SCELTO DA RAW AL DRAFT!"},
+      {"DRAFTED TO SMACKDOWN!", "DRAFTÃ Ã SMACKDOWN !", "ZU SMACKDOWN GEDRAFTET!",
+       "Â¡DRAFTEADO A SMACKDOWN!", "SCELTO DA SMACKDOWN AL DRAFT!"}};
+  static const char *const kLine[2][5] = {
+      {"%s has been drafted to RAW!", "%s rejoint RAW lors du Draft !", "%s wurde zu RAW gedraftet!",
+       "Â¡%s ha sido elegido para RAW en el Draft!", "%s passa a RAW con il Draft!"},
+      {"%s has been drafted to SmackDown!", "%s rejoint SmackDown lors du Draft !",
+       "%s wurde zu SmackDown gedraftet!", "Â¡%s ha sido elegido para SmackDown en el Draft!",
+       "%s passa a SmackDown con il Draft!"}};
+  const u32 brand = g_news_draft - 1;
+  const bool title = id == 27068 || id == 27070;
+  const char *text = title ? kTitle[brand][CurrentLang()] : kLine[brand][CurrentLang()];
+  static u32 s_at[2][2] = {};
+  u32 &at = s_at[brand][title];
+  if (!at)
+    at = REX_KERNEL_MEMORY()->SystemHeapAlloc(256, 0x10);
+  if (!at)
+    return 0;
+  std::memset(bd::mem::at<char>(at), 0, 256);
+  std::memcpy(bd::mem::at<char>(at), text, std::min<size_t>(std::strlen(text), 255));
+  return at;
+}
+
 u32 QualNewsText(u32 id) {
+  if (g_news_draft && id >= 27068 && id <= 27071)
+    return DraftNewsText(id);
   const u32 e = g_news_event;
   if (!e || id < 27068 || id > 27071)
     return 0;
@@ -5968,4 +6013,51 @@ extern "C" REX_FUNC(sub_826EB510) {
     valid += Call(x, base, __imp__sub_826EAAF8, booker + 20 + j * 1320) == 1;
   BD_INFO("[univers] matches: card of {:08X}: {} of {} valid ({} Superstar(s) resting)", bd::mem::load<u32>(booker),
           valid, n, t_rested.size());
+}
+
+// ---- Draft news (asked by the user, 2026-11-06) ------------------------------------------------------------------
+//
+// The draft (sub_826C0910, after a match: "Draft Event Success") moves Superstars between RAW and SmackDown without a
+// news: simulating the draft show, nobody knew who went where. The brand of every roster place (sub_82A33440(k), its
+// record sub_82684910(id) +27) is read before and after; each Superstar moved to RAW / SmackDown gets a news (type 5,
+// +14 = 0x52, +15 the brand; our texts while drawn). Queued, written after the next match result (sub_826C8690) or
+// when the Universe menu opens.
+REXCVAR_DEFINE_BOOL(wwe12_universe_draft_news, true, "WWE12",
+                    "Universe: a news for each Superstar the draft moves to RAW or SmackDown (false = 1.0: none).");
+REX_EXTERN(__imp__sub_82A33440);  // roster place -> Superstar
+REX_EXTERN(__imp__sub_826C0910);  // after a match: the draft
+
+namespace {
+std::vector<std::pair<u32, u8>> RosterBrands(const PPCContext &in, u8 *base) {
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  std::vector<std::pair<u32, u8>> out;
+  for (u32 k = 0; k < kRosterPlaces; ++k) {
+    const u32 id = Call(x, base, __imp__sub_82A33440, k) & 0xFFFF;
+    if (id >= 512)
+      continue;
+    const u32 rec = Call(x, base, __imp__sub_82684910, id);
+    if (rec)
+      out.push_back({id, bd::mem::load<u8>(rec + 27)});
+  }
+  return out;
+}
+}  // namespace
+
+extern "C" REX_FUNC(sub_826C0910) {
+  const bool on = Enabled() && REXCVAR_GET(wwe12_universe_draft_news) && bd::mem::load<u32>(kInUniverseFlag) == 1;
+  const PPCContext in = ctx;
+  const auto before = on ? RosterBrands(in, base) : std::vector<std::pair<u32, u8>>{};
+  __imp__sub_826C0910(ctx, base);
+  if (!on)
+    return;
+  const auto after = RosterBrands(in, base);
+  std::map<u32, u8> was(before.begin(), before.end());
+  for (const auto &[id, brand] : after) {
+    const auto it = was.find(id);
+    if (it == was.end() || it->second == brand || brand > 1)
+      continue;
+    QueueNews(kDraftEvent + brand, kNewsQualified, id);
+    BD_INFO("[univers] draft: Superstar {} moved from brand {} to {}: news queued", id, it->second, brand);
+  }
 }
