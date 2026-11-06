@@ -1,76 +1,68 @@
-# Feuille de route (réorganisée le 2026-11-03, validée par l'utilisateur)
+# Feuille de route (mise à jour le 2026-11-06, validée par l'utilisateur)
 
-Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/limit_breaking.md`, `docs/mod_maker.md`, `docs/camera.md` et `docs/suggestions_joueurs.md`. L'ancienne feuille de route (textes de l'utilisateur, notes, historique) est gardée en bas, sous « Détails et historique ».
+Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/mod_maker.md`, `docs/title_update_corrections.md`, `docs/plan_1_2_codegen_tu.md`, `docs/perf_natif_steam_deck.md`, `docs/launcher_amelioration.md`, `docs/android_apres_1_1.md` et `docs/suggestions_joueurs.md`. L'ancienne feuille de route (textes de l'utilisateur, notes, décisions jour par jour) est gardée en bas, sous « Détails et historique ».
 
 ## Règles du jeu des numéros
-- **1.0.x** : corrections seulement, jamais de nouveauté. On part du tag précédent et on ne prend que les corrections choisies.
-- **1.x** : un thème par version, 5 éléments au plus. Ce qui n'est pas testé en jeu passe à la version suivante.
+- **1.0.x** : seulement pour un bug grave (plantage au lancement, sauvegarde cassée, mise à jour qui échoue). Pas de 1.0.1 prévue (décision du 2026-11-04).
+- **1.x** : un thème par version. Ce qui n'est pas testé en jeu passe à la version suivante.
 - **2.0** : seulement si les sauvegardes, le format des mods ou la façon d'installer changent.
 - Rien n'est promis aux joueurs tant que ce n'est pas testé en jeu. Une seule liste officielle (ce fichier) ; les issues GitHub n'y sont que des liens.
 - Rien de dérivé du jeu ne se publie (pas de données de jeu dans un zip ni sur GitHub).
+- Estimations en **heures de travail hors tests de l'utilisateur** (pas en « séances »).
 
-> **Décision de l'utilisateur, 2026-11-04 : pas de 1.0.1, on sort directement une 1.1** qui contient les corrections ci-dessous et le travail déjà testé des autres sessions. Une 1.0.1 ne sortira que pour un bug grave (crash au lancement, sauvegarde cassée, mise à jour qui échoue). Règle de la 1.1 : on n'y met que ce qui est **testé en jeu** ; ce qui n'est pas prêt passe à la 1.2. Les tableaux « 1.0.1 » plus bas sont la liste des corrections de la 1.1. Pour Android : versionCode 10100.
+## 1.1 : « Mod Maker et entrées » (en cours, une seule version, sans date)
 
-## 1. Maintenant : corrections (ex-1.0.1, intégrées à la 1.1)
-Voir le tableau de `docs/feuille_de_route.md` (section « 1.0.1 »).
-- Univers : plantage avec 5 matchs par show (fait, testé, poussé).
-- D3D12 sur Intel UHD 620 (#7) : fait, à confirmer par le joueur.
-- Bugs de la 1.0 signalés d'ici là.
-- Date : dans 3 à 7 jours, ou tout de suite si un bug empêche de jouer.
+**Fait et testé en jeu (poussé sur GitHub)**
+- Univers : plantage à 5 matchs par show ; catcheurs ajoutés sans alliés ni rivaux, marque gardée ; image du PPV dans les news de qualification ; jukebox arrêté à chaque chargement.
+- Rendu : D3D12 sur Intel UHD 620 (#7), tenues Threads blanches et peau GT 430 (corrections de Kaiko, crédit), saccades de shaders (shaders préparés au démarrage, `declarations_seed.w12d` validé pour le zip), mesure du CPU par image.
+- Mod Maker : gel arènes + catcheurs ajoutés, mémoire pour 50+ catcheurs (tas 12 / 15), pages d'arènes, genre des catcheuses, titantron d'avant-match, entrées 2K14 (Sandow), Goldberg 2K17, yeux de SvR 2009/2010, DLC comme base, catcheurs installés modifiables, foule et victoires SvR 2007, prises : couverture améliorée (2K14 48 → 73 %), MOVES & ENTRANCES.
+- Launcher : profil « Steam Deck / petit PC » (testé sur ce PC avec un Deck simulé, pas sur un vrai Deck) ; FAQ Steam Deck ; Android : vieux noyaux + journal GPU, nouveau look (Yexclsv), graine `declarations`.
 
-## 2. Prochaines versions (un thème chacune)
+**À tester avant la sortie**
+- Arène RAW de SvR 2007 refaite dans le Mod Maker (transition compressée) : avant / après match sans plantage.
+- Étape 1 des prises WWE '13 (case « Prises ajoutées (expérimental) ») : sinon marquée expérimentale dans les notes.
+- Royal Rumble de Jay avec ses mods (à lui faire retester) ; PPV à une seule marque (Univers) ; réglage « Largeur » du portrait (685c950, local).
+- Android : correctif des vieux noyaux (joueur de #41), look sur vrai téléphone (Yexclsv).
 
-### 1.1 : « Mod Maker et entrées » (liste de l'utilisateur, 2026-11-04 : tout son écran est pour la 1.1, une seule version, sans date)
-Déjà fait et coché par l'utilisateur :
-- Univers : plantage avec 5 matchs par show (poussé).
-- D3D12 sur Intel UHD 620 (#7).
-- Tenues Threads blanches + peau GT 430 (corrections de Kaiko, crédit).
-- Mod Maker : gel arènes + catcheurs ajoutés, mémoire pour 50 catcheurs, pages d'arènes.
-- Mod Maker : prises, entrées et musiques SvR 2007-2011 / WWE '13 (prises SvR 2011 = expérimental).
-À finir / tester :
-- Android : vieux noyaux + journal GPU (fait en local, à confirmer sur un vrai noyau 4.14 : joueur de #41).
-- Mod Maker : .pac en 2e tenue, visages de loin, tenues d'entrée 2K16, Fatal 4 Way (faits en local, à tester en jeu).
-- Ceinture à la taille (fait), tenues de The Miz (abandonné), CAW dans l'effectif Univers (en attente d'un signalement).
-- Mesure CPU par image (Windows) (fait, ff941e5).
-Aussi dans la 1.1 (liste de l'utilisateur) :
-- Arènes SvR 2007 : foule au bon endroit (chantier de Mods).
-- Scènes de victoire (Winning*.pac), musique de victoire, vidéos WWE '13.
-- Tenue des catcheurs ajoutés (ceinture à la taille, etc.).
-- À tester avant de promettre : prises de SvR 2011 / '13 / 2K14-2K16 (marquées expérimentales).
-- Changer les renders des CAW (à préciser avec l'utilisateur : portraits des CAW dans les menus ?).
-Note : les notes publiques de la 1.0 annoncent « squash, finishers de départ, I Quit, Special Referee, scènes de victoire, vidéos WWE '13, deux mallettes MITB, icônes de touches » pour la 1.1 : la 1.1 ne contient que la partie « Mod Maker et entrées » ; les notes de la 1.1 doivent dire ce qui est repoussé.
+**Hors 1.1** : reprise des notes / taille / genre (branche `mods-notes-1-2`), vraies animations de prises SvR 2011 / 2K, personnes cachées des entrées 2K, 2K17, détail des yeux SvR 2010 en courant, tenues de The Miz (abandonné), base neutre de NOUVEAU CATCHEUR (refusée).
 
-### 1.2 : « Les corrections de THQ » (à découvrir)
-- Comparaison des 2 mises à jour officielles (en cours, session Gameplay) : liste des corrections, tri, test en jeu.
-- Bugs du jeu d'origine à tester : finishers qui gèlent, cage / barrières de Hell in a Cell, tables sous le ring, sons après Backstage Brawl, movesets CAW qui se réinitialisent, évasion de tombé en Elimination Chamber.
-- Tenues de The Miz verrouillées (signalé par un joueur : DLC).
-- Chargements plus rapides (autres attentes de la console), avertissement HDD dans le launcher.
+**Notes publiques** : les notes de la 1.0 annonçaient pour la 1.1 « squash, finishers de départ, I Quit, Special Referee, deux mallettes MITB, icônes de touches » : les notes de la 1.1 disent que c'est repoussé (1.3).
 
-### 1.3 : « Modes de match »
+## 1.2 : « Les corrections de THQ, la vitesse et le test de performance »
+
+**THQ (voie B : nos propres crochets sur le code du disque, un par un, chacun avec son réglage)**
+- Comparaison des 2 mises à jour officielles : faite (`docs/title_update_corrections.md`), reste à tester chaque correctif en jeu.
+- Corriger les bugs du jeu d'origine grâce aux 2 title updates : gel de finisher (TU2, 6-7 crochets), CAW comptés dans l'Univers (TU2), aperçu des prises DLC 3-4 dans l'éditeur de CAW (TU1). Cage Hell in a Cell et évasion de tombé en Elimination Chamber : rien trouvé dans le code, à vérifier en jeu.
+
+**Vitesse**
+- 30 fps partout : le mode 30 du jeu imposé aux matchs (clé `wwe12_frame_mode` = original / 30 / 60_entrances), PC + Android (~7-8 h).
+- Chargements plus rapides (autres attentes de la console), avertissement disque dur dans le launcher.
+- Code natif : `memcpy` / `memset` (fait, désactivé par défaut), puis registres locaux du générateur de code et patch « volatile » (une seule régénération du code, un seul gros test).
+
+**Benchmark (test de performance)**
+- Match imposé : Hell in a Cell à 6 sans menu (voie 2 : `sub_82449428`, 9 à 15 h) ; repli = méthode de Kaiko (6 à 9 h).
+- Résumé + verdict (ok / cpu / gpu / failed), condition « faible » (2 cœurs), bouton dans le launcher.
+
+## 1.3 : « Modes de match et rosters »
 - Stipulations : I Quit (la version légère d'abord), Special Guest Referee.
-- Matchs squash (vie de départ réduite).
-- Stock de finishers de départ (1 / 2 / 3 / infini, comme 2K14).
+- Matchs squash (vie de départ réduite) ; stock de finishers de départ (1 / 2 / 3 / infini, comme 2K14).
 - Univers : deux mallettes Money in the Bank (RAW / SmackDown), embuscade en coulisses.
+- Page ROSTERS du launcher (marques hors de l'Univers, `docs/launcher_rosters.md`, 3 séances, écrit dans la sauvegarde).
 
-### 1.4 : « Écrans et plateformes » (à décider selon les retours)
-- 16:10 / 21:9 : vérifier D3D11/D3D12, menu pause, HUD en 21:9.
-- Icônes de touches de clavier dans les menus.
-- Android : vrais téléphones, boutons PlayStation, ce que disent les joueurs.
-- Shaders qui font saccader à la première fois (Rendu).
+## 1.4 et après : plateformes et finitions (à décider selon les retours)
+- Launcher : améliorations (`docs/launcher_amelioration.md`, 20 à 28 h : état du jeu, messages, confort Steam Deck à la manette, bouton « Test de performance », finitions) ; pas de refonte du design.
+- Android après la 1.1 PC : replay d'après match, performances, ajouts de Yexclsv (`docs/android_apres_1_1.md`).
+- Prises avec leurs animations d'autres jeux (SvR 2011, puis 2K) ; yeux de SvR 2010.
+- Version Linux native (étude faite, `docs/linux_natif_etude.md` : 8 à 12 séances).
+- 16:10 / 21:9 (D3D11/D3D12, menu pause, HUD) à confirmer ; icônes de touches de clavier ; test sur un vrai Steam Deck.
 
-## 3. Plus tard (sans date)
-- Plus de 6 superstars sur le ring (tableaux à 6 cases, mémoire, animations : très long).
-- 100 / 200 slots CAW et logos (touche les sauvegardes : risqué, probablement 2.0).
-- Le jeu en full natif, sans émulation (long terme, par étapes).
-- Univers : backport des cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants.
-- Choix de caméra de match, option 30 fps partout.
+## Plus tard (sans date)
+- Plus de 6 superstars sur le ring ; 100 / 200 slots CAW et logos (probablement 2.0) ; le jeu en full natif ; Univers : cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants ; choix de caméra de match.
 
-## 4. Abandonné / pas prévu
-- Moments OMG de WWE '13 (15 à 30 séances, décision du 2026-10-28).
-- Mise à jour complète du jeu (Title Update) comme version du code : remplacée par « refaire nous-mêmes les corrections » (1.2).
-- GM Mode (n'existe pas dans WWE '12), le DLC dans les textes publics, support des sauvegardes Wii.
+## Abandonné / pas prévu
+- Moments OMG de WWE '13 ; Title Update complète comme version du code (remplacée par la voie B) ; GM Mode ; le DLC dans les textes publics ; sauvegardes Wii ; tenues de The Miz verrouillées ; base neutre de NOUVEAU CATCHEUR.
 
-## Comment suivre l'avancement (proposition)
+## Comment suivre l'avancement
 - Chaque élément a un état : **idée → étudié → fait (commit local) → testé en jeu → publié**.
 - À chaque version : on décide les éléments au début, on les teste en jeu au milieu, on publie à la fin ; ce qui n'est pas testé sort de la version.
 - Une ligne de notes de version écrite au fur et à mesure (pas à la fin).
