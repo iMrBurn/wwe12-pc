@@ -1132,10 +1132,19 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
         return false;
       Bytes node(y.begin() + long(p), y.begin() + long(p + 0x84));
       const uint32_t id = Rd32(node, 0);
-      if (id == 3001)
+      // (+64: its resource's rank in the list, one more after the added 3001: left as they were, the frame's nodes
+      // drew "dummy" and the background's the frame, a corner of crowd and half a pillar, 2K15's RAW 2002,
+      // 2026-11-06; +124 1 on a second use of a picture, 0 in WWE '12's)
+      const uint32_t rank = Rd32(node, 64);
+      if (rank >= 4)
+        node[64] = uint8_t(rank + 1);
+      if (id == 3001) {
         node[0] = 0xBA, node[1] = 0x0B;
-      else if (id == 3000 && backgrounds++ == 1)
+      } else if (id == 3000 && backgrounds++ == 1) {
         node[0] = 0xB9, node[1] = 0x0B;
+        node[64] = 4;
+        node[124] = 0;
+      }
       out.insert(out.end(), node.begin(), node.end());
     }
   }
