@@ -76,9 +76,15 @@ inline bool BigButton(const char *label, ImVec2 size, ImU32 fill, ImU32 text_col
   ImGui::PushID(label);
   const ImVec2 p = ImGui::GetCursorScreenPos();
   const bool clicked = ImGui::InvisibleButton("##b", size);
-  const bool hovered = ImGui::IsItemHovered();
+  const bool focused = ImGui::IsItemFocused() && !ImGui::IsItemHovered();  // (chosen with a controller / keys)
+  const bool hovered = ImGui::IsItemHovered() || focused;
   ImDrawList *dl = ImGui::GetWindowDrawList();
   Stroke(dl, p, size.x - 18, size.y, hovered ? kRed : fill);
+  if (focused) {  // a white outline on the slanted shape, so the controller's choice is easy to see
+    const float s = 18.0f, w = size.x - 18;
+    const ImVec2 q[4] = {ImVec2(p.x + s, p.y), ImVec2(p.x + w + s, p.y), ImVec2(p.x + w, p.y + size.y), ImVec2(p.x, p.y + size.y)};
+    dl->AddPolyline(q, 4, IM_COL32_WHITE, ImDrawFlags_Closed, 3.0f);
+  }
   float font = size.y >= 80 ? 46.0f : std::min(30.0f, size.y * 0.7f);  // (smaller buttons: smaller)
   ImGui::PushFont(g_font_title, font);
   ImVec2 ts = ImGui::CalcTextSize(label);

@@ -627,6 +627,7 @@ std::string g_changelog;  // CHANGELOG.md next to the exe (the notes of this ver
 
 std::string BuildDiagnostics();  // (defined with the ABOUT page)
 int g_diag_msg = 0;              // 1 copied, 2 failed
+bool g_deck = false;             // Steam Deck (SteamDeck=1): bigger controls, window kept inside the screen
 
 void PagePlay() {
   const Texts &t = T();
@@ -1654,10 +1655,17 @@ void DrawUi() {
   ImGui::Dummy(ImVec2(0, 14));
   const Texts &t = T();
   const char *names[] = {t.play, t.settings, t.controls, t.mods, t.saves, t.music, t.about};
+  // Controller: LB / RB change page (the sticks and D-pad move between buttons, A presses, B goes back).
+  if (g_capture_idx < 0) {
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false))
+      g_page = Page((g_page + 6) % 7);
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false))
+      g_page = Page((g_page + 1) % 7);
+  }
   for (int i = 0; i < 7; ++i) {
     ImGui::SetCursorPosX(16);
     const bool sel = g_page == i;
-    if (BigButton(names[i], ImVec2(kSide - 32, 52), sel ? kGold : IM_COL32(28, 28, 32, 255),
+    if (BigButton(names[i], ImVec2(kSide - 32, g_deck || H < 800 ? 44 : 52), sel ? kGold : IM_COL32(28, 28, 32, 255),
                   sel ? IM_COL32(20, 20, 20, 255) : IM_COL32(235, 235, 235, 255)))
       g_page = Page(i);
   }
@@ -1758,24 +1766,41 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   wc.lpszClassName = L"WWE12Launcher";
   RegisterClassExW(&wc);
   const float dpi = ImGui_ImplWin32_GetDpiScaleForMonitor(MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY));
-  const int w = int(1120 * dpi), h = int(780 * dpi);
+  {
+    const char *sd = std::getenv("SteamDeck");  // set by Steam, passed on by Proton
+    g_deck = (sd && sd[0] == '1') || std::getenv("WWE12_LAUNCHER_DECK");  // (second one: test aid)
+  }
+  // The window is never bigger than the screen's work area (Steam Deck 1280x800, 1366x768 laptops); when the
+  // usual size does not fit, it starts maximized.
+  RECT work{0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+  const int work_w = work.right - work.left, work_h = work.bottom - work.top;
+  int w = int(1120 * dpi), h = int(780 * dpi);
+  const bool too_big = w > work_w || h > work_h;
+  w = std::min(w, work_w);
+  h = std::min(h, work_h);
   HWND hwnd = CreateWindowW(wc.lpszClassName, L"WWE '12 PC", WS_OVERLAPPEDWINDOW,
-                            (GetSystemMetrics(SM_CXSCREEN) - w) / 2,
-                            (GetSystemMetrics(SM_CYSCREEN) - h) / 2, w, h, nullptr, nullptr, inst,
+                            work.left + (work_w - w) / 2, work.top + (work_h - h) / 2, w, h, nullptr, nullptr, inst,
                             nullptr);
   if (!CreateDevice(hwnd)) {
     MessageBoxW(hwnd, L"Direct3D 11 is not available.", L"WWE '12 PC", MB_ICONERROR);
     return 1;
   }
-  ShowWindow(hwnd, SW_SHOWDEFAULT);
+  ShowWindow(hwnd, (too_big || g_deck) ? SW_SHOWMAXIMIZED : SW_SHOWDEFAULT);
   UpdateWindow(hwnd);
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGui::GetIO().IniFilename = nullptr;
+  // Controller (XInput, also under Proton through Steam Input) and keyboard moving between buttons.
+  ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard;
   SetupStyle();
   ImGui::GetStyle().ScaleAllSizes(dpi);
-  ImGui::GetStyle().FontScaleDpi = dpi;
+  ImGui::GetStyle().FontScaleDpi = dpi * (g_deck ? 1.15f : 1.0f);
+  if (g_deck) {  // finger-sized controls
+    ImGui::GetStyle().FramePadding = ImVec2(14 * dpi, 11 * dpi);
+    ImGui::GetStyle().ItemSpacing = ImVec2(12 * dpi, 12 * dpi);
+  }
   LoadFonts();
   ImGui_ImplWin32_Init(hwnd);
   ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());
@@ -1800,6 +1825,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     }
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
+    // While a key is being captured (CONTROLS), the keyboard must not also move the focus.
+    if (g_capture_idx >= 0)
+      ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
+    else
+      ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ImGui::NewFrame();
     ImGui::PushFont(g_font_body, 0.0f);
     DrawUi();
