@@ -2408,6 +2408,7 @@ class Page {
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // Its entrance graphics (location plate, name plates).
     const Bytes evtgd = Read13("pac/evt/evtgdhd.pac");
+    float glass2k[2] = {0, 0};  // (the 2K plates' glass heights on the screen: location, name)
     // (a 2K game's own ETEX found or not: 2K17's are HSPC hashes and 2K15's names longer, and their plates were left
     // out, the base's shown, 2026-10-31: their plates come from their movies anyway)
     const bool own_etex = !evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_);
@@ -2434,7 +2435,7 @@ class Page {
           logo = banner_;
         // ... and its own plates, a picture of each of its plate movies (2K15-2K17: Bink 2, when a decoder is
         // installed; 2K14: Bink 1 with alpha, read by ours)
-        port_svr_arena::Plate2K own[2];
+        port_svr_arena::Plate2K own[2];  // (their glass heights kept in glass2k, for their font)
         // where the game writes its text on them (WWE 2K17: its plate layouts, "00NN_<name>" and "..._l")
         float text[2][2] = {{-1, -1}, {-1, -1}};
         svrfmt::Archive el;
@@ -2477,6 +2478,7 @@ class Page {
         }
         if (disc_ && disc_->Read("pac/evt/evtgdhd.pac", evtgd12))
           port_svr_arena::EtexWearing(evtgd12, logo, 3.4, plate, etex_, own[0], own[1]);
+        glass2k[0] = own[0].glass_h, glass2k[1] = own[1].glass_h;
         if (!etex_.empty() && (!own[0].img.rgba.empty() || !own[1].img.rgba.empty()))
           port_note_ += fr ? " Avec ses plaques d'entrée (images de ses vidéos)."
                            : " With its entrance plates (pictures of its movies).";
@@ -2484,7 +2486,8 @@ class Page {
       if (!etex_.empty() && port_note_.find(fr ? "plaques d'entrée" : "entrance plates") == std::string::npos)
         port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
       // (their text in its VS screen's font, as the 2K game writes them)
-      if (!etex_.empty() && port_svr_arena::EtexFont2K(etex_, font2k))
+      // (as big as their glass takes: the name half its height, the location's two lines in it)
+      if (!etex_.empty() && port_svr_arena::EtexFont2K(etex_, font2k, glass2k[1] * 0.5f, glass2k[0] * 0.42f))
         port_note_ += fr ? " Leur texte dans sa police." : " Their text in its font.";
     }
     // Its pre-match screen, and its transition video.

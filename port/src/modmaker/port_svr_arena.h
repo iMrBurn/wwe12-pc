@@ -1008,7 +1008,14 @@ inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n) {
 // zero bytes) on that page}, all offsets from the block's start. The same records: only the versions made WWE '12's.
 // False: not such a font.
 // (into a WWE '12 font's two nodes: its pages' PACH and its YFB, their packing kept)
-inline bool FontInto(const Bytes &theirs, svrfmt::ArcNode &page_node, svrfmt::ArcNode &yfb_node) {
+inline bool FontInto(const Bytes &theirs, svrfmt::ArcNode &page_node, svrfmt::ArcNode &yfb_node,
+                     float glyph_h = 0) {
+  // (glyph_h: its letters' height wanted in pixels, 0 as they are; only made smaller - WWE '12 draws them at their
+  // pictures' size)
+  float scale = 1;
+  // (scale: the letters drawn smaller - WWE '12 draws them at their pictures' size, its block scales at +0x14 / +0x18
+  // ignored, seen in the game 2026-11-06: each page's picture shrunk into its top left, the glyphs' rectangles and the
+  // kerning made as much smaller)
   using namespace detail;
   svrfmt::Archive t;
   if (!svrfmt::ArchiveOpen(theirs, t, nullptr) || t.root.kids.size() < 2)
@@ -1035,11 +1042,50 @@ inline bool FontInto(const Bytes &theirs, svrfmt::ArcNode &page_node, svrfmt::Ar
   if (!blocks || blocks != pages.size() || 0x5C + 4 * size_t(blocks) > y.size())
     return false;
   y[8] = 0x64;
+  if (glyph_h > 0) {  // (from its first block's tallest letter)
+    const uint32_t at = rd(0x5C), ng = rd(at + 0x5C), go = rd(at + 0x60);
+    int tallest = 0;
+    for (uint32_t g = 0; g < ng && size_t(at) + go + 16 * g + 8 <= y.size(); ++g)
+      tallest = std::max(tallest, int(y[at + go + 16 * g + 6] | y[at + go + 16 * g + 7] << 8));
+    if (tallest > 0)
+      scale = std::min(1.f, glyph_h / float(tallest));
+  }
   for (uint32_t i = 0; i < blocks; ++i) {
     const uint32_t at = rd(0x5C + 4 * size_t(i));
     if (at + 0x60 > y.size() || rd(at) != 100)
       return false;
     y[at + 4] = 100;
+    if (scale > 0 && scale < 1) {
+      const auto rd16 = [&](size_t o) { return uint16_t(y[o] | y[o + 1] << 8); };
+      const auto put16 = [&](size_t o, int v) {
+        y[o] = uint8_t(v), y[o + 1] = uint8_t(v >> 8);
+      };
+      const uint32_t ng = rd(at + 0x5C), go = rd(at + 0x60), nk = rd(at + 0x4C), ko = rd(at + 0x50);
+      if (size_t(at) + go + 16 * size_t(ng) > y.size() || size_t(at) + ko + 8 * size_t(nk) > y.size())
+        return false;
+      for (uint32_t g = 0; g < ng; ++g)
+        for (int c = 0; c < 4; ++c) {
+          const size_t o = size_t(at) + go + 16 * g + 2 * size_t(c);
+          put16(o, int(std::lround(rd16(o) * scale)));
+        }
+      for (uint32_t k = 0; k < nk; ++k) {
+        const size_t o = size_t(at) + ko + 8 * k + 4;
+        const int32_t v = int32_t(rd(o));
+        const int32_t s = int32_t(std::lround(v * scale));
+        memcpy(&y[o], &s, 4);
+      }
+      svrfmt::Image img;
+      svrfmt::DdsInfo info;
+      if (svrfmt::DdsInfoOf(pages[i], info) && svrfmt::DdsDecode(pages[i], img)) {
+        const svrfmt::Image shrunk = svrfmt::Resize(img, std::max(1, int(img.w * scale)), std::max(1, int(img.h * scale)));
+        svrfmt::Image page;
+        page.w = img.w, page.h = img.h;
+        page.rgba.assign(size_t(page.w) * page.h * 4, 0);
+        for (int yy = 0; yy < shrunk.h; ++yy)
+          memcpy(&page.rgba[size_t(yy) * page.w * 4], &shrunk.rgba[size_t(yy) * shrunk.w * 4], size_t(shrunk.w) * 4);
+        pages[i] = svrfmt::DdsEncode(page, info.format, info.mips > 1);
+      }
+    }
   }
   svrfmt::ArcNode pk = page_node;
   if (!svrfmt::ArchiveExpand(pk) || pk.kids.empty())
@@ -1080,7 +1126,7 @@ inline bool Font2K(const Bytes &theirs, const Bytes &mf12, Bytes &out) {
 // A WWE '12 entrance graphics pack (ETEX, `etex`) writing its plates' text in a WWE 2K VS screen font (Font2K's
 // `theirs`): its two fonts, 20000 / 20001 (the name's pages, YFB) and 20010 / 20011 (the location's), made it (the
 // WWE 2K games write their plates in their VS screen's font: 2K15's RAW 2002, 2026-11-06). False: unchanged.
-inline bool EtexFont2K(Bytes &etex, const Bytes &theirs) {
+inline bool EtexFont2K(Bytes &etex, const Bytes &theirs, float name_h = 0, float city_h = 0) {  // (FontInto's glyph_h)
   svrfmt::Archive e;
   if (theirs.empty() || !svrfmt::ArchiveOpen(etex, e, nullptr))
     return false;
@@ -1092,7 +1138,7 @@ inline bool EtexFont2K(Bytes &etex, const Bytes &theirs) {
         pg = &k;
       else if (k.id == at + 1)
         yf = &k;
-    if (pg && yf && FontInto(theirs, *pg, *yf))
+    if (pg && yf && FontInto(theirs, *pg, *yf, at == 20000 ? name_h : city_h))
       ++done;
   }
   if (!done)
@@ -1609,6 +1655,7 @@ inline svrfmt::Image PlateCut(const svrfmt::Image &f, int *rect = nullptr, int *
 struct Plate2K {
   svrfmt::Image img;
   float x = 0, y = 0, w = 0, h = 0;
+  float glass_h = 0;  // (its dark glass's height on the screen, where the game writes: 0 if none found)
   std::vector<svrfmt::Image> intro;  // the plate coming in (its movie's pictures before `img`, cut as `img`)
 };
 
@@ -1805,6 +1852,8 @@ inline Plate2K PlateOnScreen(const svrfmt::Image &still, bool name, const std::v
       p.h *= k;
     }
   }
+  if (box[3] > 8 && r[3] > 0)
+    p.glass_h = box[3] * p.h / float(r[3]);
   bool alpha = false;
   for (size_t i = 3; i < still.rgba.size() && !alpha; i += 4)
     alpha = still.rgba[i] < 255;
