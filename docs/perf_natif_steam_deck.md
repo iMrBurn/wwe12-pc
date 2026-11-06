@@ -369,3 +369,81 @@ mode 30 fps (quand il existera) et foule réduite ; `gpu` → résolution intern
 | Bloc `[results]` dans le résumé | 0,5 |
 | **Total voie 1** | **5 - 6,5 h** |
 | Voie 2 (Gameplay, préparation du match sans menu) | 8 - 15 h, à part |
+
+### Match imposé du benchmark : préparation du match (Gameplay, 2026-11-06, lecture seule, pour la 1.2)
+
+Rien codé, rien lancé. Faits lus dans `misc.pac`, `string.pac` (textes) et le code généré.
+
+**1. Le HIAC à 6 existe déjà dans le jeu**
+- Table des règles `misc.pac` (`RUL\0`, 119 fiches de 108 octets, voir `limit_breaking.md`). Les fiches 49 à 53 ont
+  le nom 40447 HELL IN A CELL :
+  - 49 = 1 contre 1 ;
+  - 50 = par équipes ;
+  - 51 = Triple Threat ;
+  - 52 = Fatal 4-Way ;
+  - **53 = 6 places, chacun pour soi** (« ARMAGEDDON HELL IN A CELL », textes 130 et 40744 ; « HELL IN A CELL 6-MAN »,
+    21276).
+- C'est un match du jeu, **pas une combinaison du Match Creator**. Les règles de l'écran de préparation
+  (`match_creator.md`, tables `[+12]`/`[+20]`, `wwe12_mc_unlock` limité aux types 0-26) ne s'appliquent donc pas.
+- `sub_82449898` (ligne de menu → numéros de règle) a une page dont les lignes rendent 46, 47, 48, 49, 52, 53 :
+  c'est sans doute la page HELL IN A CELL de l'exhibition. **À confirmer par une capture** : le texte de la ligne et
+  sa place.
+
+**2. Ce que le jeu remplit (connu / à trouver)**
+- **Connu.** Fiche du match en cours : 104 octets à **0x8317C850** (`sub_8267CF38` la rend, la plupart du code de
+  match la lit). `sub_826D4888(fiche, type)` la remet à neuf :
+  - +0 = type (règle) ;
+  - +1 = 255 ;
+  - +2..+14 = réglages remis à 0 ;
+  - **+16 : 6 places de 12 octets** (u16 0x200, octet 14, deux octets 0xFF, le reste à 0) ; le numéro du catcheur
+    est sans doute là, à confirmer.
+  - Pour les types < 119, `sub_82A2FA18` choisit une autre mise à zéro (`sub_826D4838`).
+- **Connu.** Écrivains du type en exhibition : `sub_82449428`, `sub_826F8D08`, `sub_823E3220`.
+  `sub_82783808` / `sub_827829B0` : règles du match d'un autre mode (52 octets par type et sous-type).
+  Le match travaille ensuite sur **une copie** (vu pour BLOOD). Il faut donc écrire **avant** cette copie.
+- **À trouver.**
+  - Le champ de l'arène.
+  - Les champs des 6 catcheurs (numéro, tenue, manette ou ordinateur).
+  - La fonction qui passe de l'écran d'avant-match au chargement.
+  - **Méthode :** une sonde, en une séance, sur données isolées : piège d'écriture sur 0x8317C850..+104 et sur
+    l'objet qui la contient, pendant un HIAC à 6 choisi à la main. On note qui écrit quoi et dans quel ordre, puis la
+    pile au début du chargement (`[remote]` state loading).
+
+**3. Voie la plus sûre : mixte**
+Le trajet fixe de Rendu va jusqu'au HIAC à 6 et valide la grille avec n'importe quels catcheurs. Ensuite, **un
+crochet de notre code réécrit les 6 catcheurs et l'arène** dans la fiche, au moment où le jeu la termine (avant la
+copie et le chargement). Le jeu lance lui-même son chargement.
+- **Avantages :**
+  - pas de dépendance à la grille des catcheurs, donc ni les mods ni les DLC ne gênent ;
+  - pas d'appel direct au chargement.
+- **Simuler seulement les touches** (voie 1 seule) : fragile, à cause de la grille et des arènes.
+- **Appeler nous-mêmes le chargement sans menu** (voie 2 complète) : la plus propre à la fin, mais la plus risquée.
+  Le jeu fait beaucoup de choses entre les menus et le match : manettes (`sub_826E09D8`/`sub_826E0B18`),
+  libération des menus, tenues, sons, sauvegarde du dernier match. À garder pour plus tard, si un « lancer un match
+  de test » sert ailleurs.
+
+**4. Pièges**
+- **Dossier de données neuf.** L'arène Hell in a Cell est à débloquer (texte 41428), et certains catcheurs aussi.
+  Il faut imposer **une arène et 6 catcheurs du jeu de base disponibles dès le départ** (numéros fixes, jamais un
+  CAW ni un DLC). Le crochet doit vérifier qu'ils existent, sinon le test échoue proprement avec
+  `verdict=failed`.
+- **Validité des catcheurs.** Le Match Creator n'est pas en cause, mais l'écran de choix vérifie peut-être les
+  catcheurs (manager, genre : Diva interdite en HIAC ?). Comme on écrit après cet écran, on ne passe pas ses
+  contrôles : il faut prendre 6 hommes « normaux ».
+- **Entrées.** À 6 elles sont longues. Les passer (START), comme le prévoit Rendu.
+- **Plus de 6 catcheurs.** Impossible (tableaux à 6 cases partout). Le HIAC à 6 est déjà le maximum.
+
+**5. Estimation (heures de travail, tests en jeu à part)**
+
+| Tâche | Heures |
+|---|---|
+| Sonde : fiche du match, arène, catcheurs, moment du chargement (code + lecture des journaux) | 2 - 3 |
+| Crochet « match imposé » (6 catcheurs + arène fixes, contrôles, `verdict=failed` si absent) | 2 - 3 |
+| Lien avec le trajet de Rendu (fin du trajet = la page HIAC, plus de grille à parcourir) | 0,5 - 1 |
+| **Total voie mixte (Gameplay)** | **4,5 - 7 h** |
+| Voie 2 complète (lancement sans aucun menu), en plus | 6 - 12 h, incertain |
+
+Tests en jeu nécessaires (avec l'utilisateur) :
+- une séance de sonde ;
+- puis 2 ou 3 benchmarks complets sur un dossier neuf (avec et sans mods installés) ;
+- un match HIAC à 6 normal ensuite, pour vérifier que rien ne reste imposé hors du test.
