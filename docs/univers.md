@@ -97,6 +97,7 @@ tester sur une COPIE de la sauvegarde (`lancer_test_effectif.bat`, ou une copie 
 - 38. Plan 1.1 : deux mallettes Money in the Bank (demande de l'utilisateur, 2026-11-01)
 - 39. Plantage 1.0.0 « 5 matchs RAW + 5 SmackDown » corrigé (2026-11-03, testé sur la copie, candidat 1.0.1)
 - 40. 1.1 : jukebox, news des PPV, relations des catcheurs ajoutés (2026-11-05, vus par l'utilisateur)
+- 41. Arènes ajoutées, logos et matchup screens dans SHOW EDIT (étude, 2026-11-06)
 
 ---
 
@@ -999,3 +1000,36 @@ d'après l'Elimination Chamber, plus de plantage ; le filet ne s'est pas déclen
   les vide et le retire des listes des autres, une fois par ajouté et par mod (`relations_cleared.txt` de Mods), à
   l'écran de sélection et à l'entrée de l'Univers ; copie de la sauvegarde avant. Réglage `wwe12_universe_added_relations`.
   Piège : la vue +4 est une AUTRE table (première version fausse, vue sur la copie seulement).
+
+## 41. Arènes ajoutées, logos et matchup screens dans SHOW EDIT (étude, 2026-11-06)
+
+Demande de l'utilisateur (par Main) : arènes du Mod Maker jouables dans l'Univers, CUSTOM LOGO, matchup screens et
+photo d'arène. Étude en lecture seule du code recompilé (agent + Mods pour les images) ; rien n'est vérifié en jeu.
+
+**Fiche d'un show** (984 octets, U + 27360 + k × 984 ; copiée par `sub_82588EA0`, dessinée par `sub_825871F8`) :
+- +896 u8 logo : 0..39 = table 0x82022CB8 (40 × {PPV_x 256×128, PPV_x2}, dont Add_01..15 = 24..38, 39 = PPV_WWE) ;
+  40 = logo perso, alors +952 u32 = case perso 0..19.
+- +897 u8 matchup screen : < 31, table 0x82022DF8 (PPVbg_*, 512×128 ; onglet 1 = 0..20, onglet 2 = PPVbg_origin01..10).
+- +898 u16 scène (`sub_826CBFB8` lit, `sub_826CBFD0` écrit ; 300 par défaut, `sub_826D5228`).
+- +928 bit 0x40 = « réglé par SHOW EDIT » (`sub_826CBE70` à SAVE, `sub_826CBE50`) ; sans lui le match prend la scène 1.
+- Vérif `sub_826CD8D0` : logo < 41, matchup < 31, scène < 300.
+- Images : `MnLayHD.pac` MLYE/USEI (199 DDS), noms écrits dans l'image.
+
+**Grilles** : SHOW LOGO `sub_82588788` (objet de 14224 octets, 41 cases fixes ; mode +14216 : 1 = 40 logos de show,
+0 = 9 logos de marque 0x82022E74, liste pleine). Onglet CUSTOM (+14212 = 1) = 20 cases, lues par `sub_8254FD88` dans
+l'objet `*(0x8317C5C4)+14204` (`sub_82587388`, chargé par `sub_82586160`, demande 55 au gestionnaire de sauvegarde
+`sub_828955A0`, 20 fiches de 0x50468 octets) : ce sont les logos du Paint Tool / Create-A-Logo (`%02dPaintTool.pt`,
+probable). « EMPTY » = aucun logo créé dans la sauvegarde. MATCH-UP SCREEN : `sub_82588B90`, onglets `sub_82586858`,
+pas d'onglet perso.
+
+**Arène** : choix = l'écran partagé `sub_825A67A0` (une seule page dans l'Univers, `wwe12_arena_pages.cpp`) ; liste du
+jeu = registre des lieux (nombre 0x8324E250, fiches de 36 octets `*0x8324E24C`, scène u8 à +4). Photo de la case
+ARENA : `sub_82586428`, table de 21 {scène, Uni_arena_*} (256×64), 200..249 = Uni_arena_CAR, sinon rien. Match de
+l'Univers : `sub_826BBE30` (depuis `sub_82548818`, `sub_826BE900`) → `sub_828AC150(setup, scène, 1)`, qui n'écrit la
+scène (+88) que si elle est dans le registre (`sub_828A98A8`), sinon garde l'ancienne. Autres tables à 21 :
+`sub_826BB500`, `sub_82742D50`.
+
+**Conclusion** : un numéro de scène fictif (150 + n) ne peut pas aller dans la fiche (pas de photo, refusé au match,
+reste dans la sauvegarde si le mod est retiré). Voie propre : la fiche garde le numéro de la BASE, et un fichier à côté
+de la sauvegarde (`universe_arenas.txt` : show → id du mod) dit quelle arène ajoutée joue ; avant chaque match de
+l'Univers on sert l'arène du show (ou la base). Mod retiré = la base joue, rien de cassé.
