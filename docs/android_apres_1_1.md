@@ -317,3 +317,14 @@ Tests en jeu (avec un testeur sur un vrai téléphone, par ex. #57 ou #54) : mat
 entrée, Univers. Cible mesurée : « interval » du journal à 33,3 ms stable et « work » sous 25 ms.
 
 Ordre : 1.2, une fois le code commun fait par Rendu. Rien à coder avant son accord sur une seule clé.
+
+## 7. Téléphones bloqués en Vulkan 1.1 (note de Main, 2026-11-06, à regarder après la 1.1)
+
+- Source : notes de Jarrod v0.2.19 (WWE 2K14), https://github.com/Jarrodfeng/wwe2k14-recomp/releases/tag/v0.2.19.
+  Pour les GPU limités à Vulkan 1.1 (typique des vieux téléphones), il demande **deux extensions** pour que le jeu accepte la
+  disposition des données de shaders : 12 erreurs avant, 0 après. Mesuré sur un profil Mali-G57 **émulé**, pas sur un vrai appareil.
+- Utilité pour nous : téléphones qui ne démarrent pas (comparer avec l'erreur « descriptorIndexing » des Snapdragon 845-870, #41/#54,
+  qui est peut-être de la même famille). Quelles extensions exactement : **je n'ai pas encore lu le détail** (page non ouverte).
+- À faire après la 1.1 : lire la page, repérer les deux extensions, voir si notre plume/Vulkan les demande déjà, puis les ajouter en
+  option (patch plume, Android seulement) et faire tester sur un téléphone concerné.
+- Licence BSD-3 : méthode seulement (aucun code repris) ; créditer dans THIRD_PARTY.md (ligne Jarrod) si on s'en sert.
