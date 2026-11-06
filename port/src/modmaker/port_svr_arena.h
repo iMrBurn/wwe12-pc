@@ -1219,9 +1219,10 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
         return false;
       found = true;
       const uint32_t ver = le(b + 8);
-      // (2K17's RAW so made crashed the game at its VS screen, 2026-11-06, a write in sub_824CAF60's drawing: version 8
-      // differs more; refused again, the wearing VS screen it had)
-      if (ver == 8 && false) {
+      // (made so only, 2K17's RAW crashed the game at its VS screen, 2026-11-06, a write in sub_824CAF60's drawing:
+      // version 8 also has the animation's length in frames at +0x2C (975; +0x24 something else, 957 / 20944, where
+      // version 3 has its frames), its size at +0x0C (0 in version 3), and its entries typed "ab2" (below), not "atb")
+      if (ver == 8) {
         const uint32_t nt = le(b + 0x20), to = le(b + 0x28);
         for (uint32_t t = 0; t < nt; ++t) {
           const size_t rec = b + to + 16 * size_t(t);
@@ -1232,13 +1233,20 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
             put(rec, n - 1);
         }
         put(b + 8, 3);
+        put(b + 0x24, le(b + 0x2C));
         put(b + 0x2C, 0);
+        put(b + 0x0C, 0);
       } else if (ver > 3) {
         return false;
       }
     }
     if (!found)
       return false;
+    // (its entries' list: count at +0, from +0x10 0x20 each, name[16], type[4] "ab2" in 2K17 where 2K16 / WWE '12
+    // have "atb")
+    for (uint32_t e = 0, n = le(0); e < n && 0x10 + 0x20 * size_t(e + 1) <= a.size(); ++e)
+      if (memcmp(&a[0x10 + 0x20 * size_t(e) + 16], "ab2", 4) == 0)
+        memcpy(&a[0x10 + 0x20 * size_t(e) + 16], "atb", 4);
   }
   Bytes y = svrfmt::ArchiveData(*lay);
   if (y.size() < 0x20 || memcmp(y.data(), "YXMLBIN VER0003", 15) != 0)
@@ -1246,6 +1254,32 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
   const uint32_t nres = Rd32(y, 16), nnodes = Rd32(y, 20), ngroups = Rd32(y, 24);
   if (0x20 + size_t(nres) * 0x4C > y.size())
     return false;
+  // (its animations (resources of type 5) are found by name among the animations' entries: 2K17's RAW names them
+  // "stars_bg" / "stars_fr" in its layout, "raw_bg" / "raw_fr" in its entries - WWE '12 found none and crashed drawing
+  // them, 2026-11-06, sub_824C7180 writing at 0 + 0xCC; 2K16's match. An entry no resource names takes the name of the
+  // type 5 resource ending as it does, "_bg", "_fr".)
+  {
+    std::vector<std::string> anims;
+    for (uint32_t i = 0; i < nres; ++i)
+      if (Rd32(y, 0x20 + 0x4C * i + 4) == 5)
+        anims.emplace_back(reinterpret_cast<const char *>(&y[0x20 + 0x4C * i + 12]),
+                           strnlen(reinterpret_cast<const char *>(&y[0x20 + 0x4C * i + 12]), 0x40));
+    Bytes &a = animation;
+    const auto tail = [](const std::string &s) { const size_t u = s.rfind('_'); return u == std::string::npos ? s : s.substr(u); };
+    const uint32_t n = a.size() >= 4 ? Rd32(a, 0) : 0;
+    for (uint32_t e = 0; e < n && 0x10 + 0x20 * size_t(e + 1) <= a.size(); ++e) {
+      char *nm = reinterpret_cast<char *>(&a[0x10 + 0x20 * size_t(e)]);
+      const std::string name(nm, strnlen(nm, 16));
+      if (std::find(anims.begin(), anims.end(), name) != anims.end())
+        continue;
+      for (const auto &r : anims)
+        if (r.size() < 16 && tail(r) == tail(name)) {
+          memset(nm, 0, 16);
+          memcpy(nm, r.data(), r.size());
+          break;
+        }
+    }
+  }
   // a resource's name (+12) by its id
   const auto res_name = [&](const Bytes &b, uint32_t id) {
     for (uint32_t i = 0; i < Rd32(b, 16); ++i)
