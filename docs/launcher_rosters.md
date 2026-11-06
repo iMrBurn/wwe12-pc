@@ -1,4 +1,8 @@
-# Page « ROSTERS » du launcher : étude (2026-11-05, pour la 1.2)
+# Page « ROSTERS » du launcher : étude (2026-11-05, prévue pour la 1.3)
+
+> **État au 2026-11-06** : étude terminée, **rien n'est codé** ni écrit sur une sauvegarde (tout a été lu sur une copie).
+> Décision de l'utilisateur : page prévue pour la **1.3** (la 1.2 = Title Update / perf). Reste à faire : poser les 4 questions du
+> §6 à la conversation Univers, puis séance 1 (lecture seule). Rien de ce document n'est périmé : rien à archiver.
 
 Idée de l'utilisateur : choisir la marque (RAW / SmackDown / autre) de chaque catcheur **hors de l'Univers**, « comme le
 launcher de Kaiko ». Étude en lecture seule : rien n'est codé, aucune sauvegarde réelle touchée (tout ce qui est lu ci-dessous
