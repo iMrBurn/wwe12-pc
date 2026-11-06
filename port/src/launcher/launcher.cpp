@@ -1533,7 +1533,8 @@ void DrawProfileOffer() {
   if (state != 2)
     return;
   ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-  if (!ImGui::BeginPopupModal("##profile", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove))
+  if (!ImGui::BeginPopupModal("##profile", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
+                                                 ImGuiWindowFlags_NoTitleBar))
     return;
   ImGui::Text("%s", prof.kind == machine::Kind::Deck ? t.prof_title_deck : t.prof_title_small);
   ImGui::Dummy(ImVec2(0, 4));
