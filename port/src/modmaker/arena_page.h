@@ -2389,8 +2389,19 @@ class Page {
         }
       }
     }
-    // (a 2K game's: its own, made WWE '12's, else a WWE '12 one wearing its pictures)
-    if (y_title_ != kWwe13 && !card2k.kids.empty() && port_svr_arena::Card2KOwn(card2k, matchhd12, card_mb_, card_mf_))
+    // (a 2K game's: its own, made WWE '12's, else a WWE '12 one wearing its pictures; its font MENU/MnnF, the VS
+    // screen's MLYE/MBnn number)
+    Bytes font2k;
+    if (y_title_ != kWwe13 && card2k.name.size() == 4 && card2k.name.compare(0, 2, "MB") == 0) {
+      svrfmt::Archive m;
+      const std::string fn = "M" + card2k.name.substr(2) + "F";
+      if (svrfmt::ArchiveOpen(matchhd, m, nullptr))
+        for (const auto &k : m.root.kids)
+          if (k.group == "MENU" && k.name == fn)
+            font2k = k.stored;
+    }
+    if (y_title_ != kWwe13 && !card2k.kids.empty() &&
+        port_svr_arena::Card2KOwn(card2k, matchhd12, card_mb_, card_mf_, &font2k))
       port_note_ += fr ? " Avec son propre écran VS." : " With its own VS screen.";
     else if (y_title_ != kWwe13 ? port_svr_arena::CardWearing(pictures2k, matchhd12, svrfmt::Image(), card_mb_, card_mf_, nullptr, true)
                                 : !matchhd.empty() && port13::Card(matchhd, w13_pick_, card_mb_, card_mf_))

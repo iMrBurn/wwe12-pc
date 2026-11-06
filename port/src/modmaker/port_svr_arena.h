@@ -999,6 +999,73 @@ inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n) {
 
 }  // namespace detail
 
+// A WWE 2K game's VS screen font (MatchHD.pac MENU/MnnF, `theirs`: a PACH of {0: a PACH of DDS pages, 1: the YFB})
+// made WWE '12's, in WWE '12 RAW's (`mf12`, MENU/M01F as stored: its packing kept). The YFB (2026-11-06, 2K15's
+// RAW 2002 against WWE '12's RAW): {u32 100, 100, version (WWE '12 0x64, 2K15 0x68), 0}, "name=..." to 0x58, the
+// blocks (count, their offsets from the file's start), each one page's: {100, version (WWE '12 100, 2K15 110), size,
+// 0, flags, 1.0, 1.0, ..., +0x24 the page's w, h (u16), +0x34 ranges (count, offset), +0x3C its characters (count,
+// offset of u16s), +0x4C kerning (count, offset; {u16, u16, i32}), +0x5C glyphs (count, offset; {x, y, w, h} u16 and 8
+// zero bytes) on that page}, all offsets from the block's start. The same records: only the versions made WWE '12's.
+// False: not such a font.
+inline bool Font2K(const Bytes &theirs, const Bytes &mf12, Bytes &out) {
+  using namespace detail;
+  out.clear();
+  svrfmt::Archive t, w;
+  if (!svrfmt::ArchiveOpen(theirs, t, nullptr) || t.root.kids.size() < 2 || !svrfmt::ArchiveOpen(mf12, w, nullptr) ||
+      w.root.kids.size() < 2)
+    return false;
+  // its pages
+  std::vector<Bytes> pages;
+  if (!svrfmt::ArchiveExpand(t.root.kids[0]))
+    return false;
+  for (auto &k : t.root.kids[0].kids) {
+    Bytes p = svrfmt::ArchiveData(k);
+    svrfmt::DdsInfo info;
+    if (!svrfmt::DdsInfoOf(p, info))
+      return false;
+    pages.push_back(std::move(p));
+  }
+  // its YFB, WWE '12's versions
+  Bytes y = svrfmt::ArchiveData(t.root.kids[1]);
+  const auto rd = [&](size_t at) {
+    return at + 4 <= y.size() ? uint32_t(y[at] | y[at + 1] << 8 | y[at + 2] << 16 | uint32_t(y[at + 3]) << 24) : 0u;
+  };
+  if (y.size() < 0x60 || rd(0) != 100 || rd(4) != 100)
+    return false;
+  const uint32_t blocks = rd(0x58);
+  if (!blocks || blocks != pages.size() || 0x5C + 4 * size_t(blocks) > y.size())
+    return false;
+  y[8] = 0x64;
+  for (uint32_t i = 0; i < blocks; ++i) {
+    const uint32_t at = rd(0x5C + 4 * size_t(i));
+    if (at + 0x60 > y.size() || rd(at) != 100)
+      return false;
+    y[at + 4] = 100;
+  }
+  // WWE '12 RAW's font wearing them
+  svrfmt::ArcNode &pk = w.root.kids[0];
+  if (!svrfmt::ArchiveExpand(pk) || pk.kids.empty())
+    return false;
+  while (pk.kids.size() > pages.size())
+    svrfmt::ArchiveRemove(pk, pk.kids.size() - 1);
+  std::string why;
+  for (size_t i = 0; i < pages.size(); ++i) {
+    if (i < pk.kids.size())
+      svrfmt::ArchiveReplace(pk.kids[i], pages[i]);
+    else if (!svrfmt::ArchiveAdd(pk, pk.kids[0].group, pk.kids[0].name, uint32_t(i), pages[i], &why))
+      return false;
+  }
+  svrfmt::ArchiveTouch(pk);
+  svrfmt::Archive one;
+  one.root = pk;
+  one.root.wrap = svrfmt::ArcWrap::None;  // (packed once, below)
+  ReplaceLike(w.root.kids[0], svrfmt::ArchiveSave(one));
+  ReplaceLike(w.root.kids[1], y);
+  svrfmt::ArchiveTouch(w.root);
+  out = svrfmt::ArchiveSave(w);
+  return out.size() >= 4 && memcmp(out.data(), "PACH", 4) == 0;
+}
+
 // A WWE 2K game's own VS screen made WWE '12's (2026-10-31): its layout (7000, YXMLBIN VER0003) has WWE '12's frame
 // (36 nodes in groups 1, 8, 9, 5, 6, 1, 6) but 14 resources against 15: one background picture for both sides (3000)
 // and "dummy" 3001 where WWE '12 has 3000 / 3001 the two sides and "dummy" 3002, and WWE '12 takes them by rank (its
@@ -1007,7 +1074,8 @@ inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n) {
 // WWE '12 can't read) renamed font000, WWE '12 RAW's (MENU/M01F, `mf`). Its pictures (7001) and animations (7002,
 // ATB0 version 3 where WWE '12's are 2) as they are, all packed again as BPE (the 2K games' ZLIB crashed WWE '12, and
 // 2K17's are SHDC lists). `card`: the VS screen's node (a PACH or SHDC holding 7000-7002).
-inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, Bytes &mf) {
+inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, Bytes &mf,
+                      const Bytes *their_font = nullptr) {  // (its MENU/MnnF as stored, Font2K)
   using namespace detail;
   mb.clear();
   mf.clear();
@@ -1168,6 +1236,9 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
       raw = &k;
   if (mf.empty() || !raw || !svrfmt::ArchiveExpand(*raw))
     return false;
+  // (its own font when it converts: Font2K, seen in the game with 2K15's RAW 2002, 2026-11-06)
+  if (Bytes own; their_font && !their_font->empty() && Font2K(*their_font, mf, own))
+    mf = std::move(own);
   int replaced = 0;
   for (auto &c : raw->kids)
     if (c.id == 7000 || c.id == 7001 || c.id == 7002) {
