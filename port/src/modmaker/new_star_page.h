@@ -451,9 +451,12 @@ class Page {
       bool moved = ImGui::SliderFloat(fr ? "Taille##render" : "Size##render", &render_scale_, 0.5f, 1.3f, "%.2f");
       ImGui::SetNextItemWidth(180);
       moved |= ImGui::SliderFloat(fr ? "Hauteur##render" : "Height##render", &render_shift_, -0.3f, 0.3f, "%.2f");
+      // (its width alone: SvR 2010's renders came out too thin or too wide whatever fixed value, the user, 2026-11-06)
+      ImGui::SetNextItemWidth(180);
+      moved |= ImGui::SliderFloat(fr ? "Largeur##render" : "Width##render", &render_width_, 0.6f, 1.6f, "%.2f");
       ImGui::SameLine();
       if (ImGui::SmallButton(fr ? "Remettre##render" : "Reset##render"))
-        render_scale_ = 1, render_shift_ = 0, moved = true;
+        render_scale_ = 1, render_shift_ = 0, render_width_ = 1, moved = true;
       if (moved)
         face_dirty_ = true;
     }
@@ -512,7 +515,7 @@ class Page {
                 portraits_[hd][k] = got[hd][k];
             custom_portrait_.clear();
             keep_portraits_ = true;
-            render_scale_ = 1, render_shift_ = 0;
+            render_scale_ = 1, render_shift_ = 0, render_width_ = 1;
             face_dirty_ = true;
           }
         }
@@ -534,9 +537,11 @@ class Page {
   // as it was when not moved.
   Bytes Framed(const Bytes &dds) const {
     svrfmt::Image img;
-    if ((render_scale_ == 1.0f && render_shift_ == 0.0f) || !svrfmt::DdsDecode(dds, img) || img.w <= 0 || img.h <= 0)
+    if ((render_scale_ == 1.0f && render_shift_ == 0.0f && render_width_ == 1.0f) || !svrfmt::DdsDecode(dds, img) ||
+        img.w <= 0 || img.h <= 0)
       return dds;
-    const int w = (std::max)(1, int(img.w * render_scale_ + 0.5f)), h = (std::max)(1, int(img.h * render_scale_ + 0.5f));
+    const int w = (std::max)(1, int(img.w * render_scale_ * render_width_ + 0.5f)),
+              h = (std::max)(1, int(img.h * render_scale_ + 0.5f));
     const svrfmt::Image big = svrfmt::Resize(img, w, h);
     svrfmt::Image out;
     out.w = img.w, out.h = img.h;
@@ -571,7 +576,7 @@ class Page {
                                               svrfmt::DxtFormat::kDxt5, false);
     custom_portrait_ = from;
     keep_portraits_ = true;
-    render_scale_ = 1, render_shift_ = 0;
+    render_scale_ = 1, render_shift_ = 0, render_width_ = 1;
     face_dirty_ = true;  // (made before it is drawn next: this runs from a button drawn after it)
   }
 
@@ -2384,6 +2389,7 @@ class Page {
   int own_hidden_people_ = 0;  // (its entrance's people WWE '12 can't show)
   bool own_entrance_one_take_ = false;
   float render_scale_ = 1.0f, render_shift_ = 0.0f;  // its portrait's framing (Framed)
+  float render_width_ = 1.0f;                        // ... and its width alone
   bool face_dirty_ = false;  // the preview to make again before it is drawn
   uint32_t face_game_ = 0;  // its portrait from another game: that game, its superstars (number, name), the one picked
   std::vector<std::pair<int, std::string>> face_list_;
