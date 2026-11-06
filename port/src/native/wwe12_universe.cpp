@@ -4965,6 +4965,18 @@ extern "C" REX_FUNC(sub_826F15E8) {
           bd::mem::load<u32>(entry) ? "ok" : "still empty");
 }
 
+// Rested Superstars. Before a weekly card (sub_826EB510), the game takes out of the available set every Superstar on
+// a card of the last 7 days back to the last PPV (sub_826E2340(set, id) from 0x826EB8B4: set + 4 * id = 0). With
+// more matches than the game's, half the brand rests the next week and the places can't be filled: a match with a
+// place nobody (512) is invalid (sub_826EAAF8), the game's repair (rule 22, sub_826F09D0(entry, record): a singles
+// match of two available Superstars of the show's ranking) finds nobody, and the match is dropped (2 to 4 matches
+// with 6 asked, a player and the user, 2026-11-06). So, only for a match about to be dropped, the rested
+// Superstars not on this card are made available for the repair, and taken out again after it.
+struct Rested {
+  u32 set, id, flag;
+};
+thread_local std::vector<Rested> t_rested;  // this card's rested Superstars (the slot 3 hooks clear it)
+
 REX_EXTERN(__imp__sub_826F19E0);
 extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
   // a "return 4" shared with other code (a match calls it with r3 = 0 / 1: crash seen 2026-10-27
@@ -4976,6 +4988,7 @@ extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
     t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(slot, ctx.r3.u32);
     t_weekly_matches = g_matches[slot] ? ctx.r3.u32 : 0;
+    t_rested.clear();
   }
 }
 
@@ -4987,6 +5000,7 @@ extern "C" REX_FUNC(sub_82E05C90) {  // Superstars: 3 (shared with other classes
     t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(2, ctx.r3.u32);
     t_weekly_matches = g_matches[2] ? ctx.r3.u32 : 0;
+    t_rested.clear();
   }
 }
 
@@ -5880,4 +5894,56 @@ extern "C" REX_FUNC(sub_82554B68) {
   s_ours[0] = name;
   bd::mem::store<u32>(header + 200, name);
   bd::mem::store<u32>(header + 228, bd::mem::load<u32>(header + 228) & ~0x10u);
+}
+
+REX_EXTERN(__imp__sub_826E2340);  // availability set: take a Superstar out (set, id)
+extern "C" REX_FUNC(sub_826E2340) {
+  if (ctx.lr == 0x826EB8B4 && t_weekly_matches && ctx.r4.u32 < 373) {
+    const u32 flag = bd::mem::load<u32>(ctx.r3.u32 + 4 * ctx.r4.u32);
+    if (flag)
+      t_rested.push_back({ctx.r3.u32, ctx.r4.u32, flag});
+  }
+  __imp__sub_826E2340(ctx, base);
+}
+
+REX_EXTERN(__imp__sub_826EAAF8);  // a booked match record: valid (1)
+REX_EXTERN(__imp__sub_826F09D0);  // card rule 22: repair an invalid match (entry, record)
+extern "C" REX_FUNC(sub_826F09D0) {
+  const PPCContext in = ctx;
+  __imp__sub_826F09D0(ctx, base);
+  const u32 entry = in.r4.u32 ? in.r3.u32 : 0, record = in.r4.u32;
+  if (!t_weekly_matches || t_rested.empty() || !entry || !record)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  if (Call(x, base, __imp__sub_826EAAF8, record) == 1)
+    return;
+  // the Superstars on this card (the booker's 8 records: booker + 20 + j * 1320, +16 places, +40 + 32p the ids)
+  const u32 index = bd::mem::load<u32>(entry + 8);
+  if (index >= 8)
+    return;
+  const u32 booker = record - 20 - index * 1320;
+  std::set<u32> on_card;
+  for (u32 j = 0; j < 8; ++j) {
+    const u32 r = booker + 20 + j * 1320;
+    if (bd::mem::load<u32>(r) == 119)
+      continue;
+    const u32 places = std::min<u32>(bd::mem::load<u32>(r + 16), 40);
+    for (u32 p = 0; p < places; ++p)
+      on_card.insert(bd::mem::load<u32>(r + 40 + 32 * p));
+  }
+  u32 back = 0;
+  for (const Rested &r : t_rested)
+    if (!on_card.count(r.id) && !bd::mem::load<u32>(r.set + 4 * r.id)) {
+      bd::mem::store<u32>(r.set + 4 * r.id, r.flag);
+      ++back;
+    }
+  PPCContext again = in;
+  __imp__sub_826F09D0(again, base);
+  const bool ok = Call(x, base, __imp__sub_826EAAF8, record) == 1;
+  for (const Rested &r : t_rested)  // the ones not picked rest again
+    if (!on_card.count(r.id) && bd::mem::load<u32>(r.set + 4 * r.id))
+      bd::mem::store<u32>(r.set + 4 * r.id, 0);
+  BD_INFO("[univers] matches: match {} had nobody free, {} rested Superstar(s) allowed back: {}", index, back,
+          ok ? "booked" : "still dropped");
 }
