@@ -2277,7 +2277,7 @@ class Page {
     }
     // Its own banner from WWE '13's menus (the 2K games': their Universe's pictures), else the base's.
     const Bytes matchhd = Read13("pac/menu/MatchHD.pac");
-    svrfmt::Image img;
+    svrfmt::Image img, plate2k;
     // (a 2K game's own: its layout has an element less than WWE '12's (no names, a black box), so a WWE '12 VS screen
     // wears its pictures, as SvR 2011's)
     Bytes matchhd12;
@@ -2533,10 +2533,32 @@ class Page {
       }
     }
     if (y_title_ == kWwe13 ? !matchhd.empty() && port13::Banner(matchhd, w13_pick_, img)
-                           : port13::Banner2K([&](const char *p) { return Read13(p); }, y_title_, w13_pick_, img)) {
+                           : port13::Banner2K([&](const char *p) { return Read13(p); }, y_title_, w13_pick_, img, &plate2k)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
       StageCover(fr, img);
+      // (2K15: its select screen's own, the plate over a picture of its minitron movie)
+      Bytes mini;
+      if (!plate2k.rgba.empty() && port13::MiniMovie2K15([&](const char *p) { return Read13(p); }, w13_pick_, mini)) {
+        wchar_t tmp[MAX_PATH];
+        GetTempPathW(MAX_PATH, tmp);
+        const fs::path in = fs::path(tmp) / L"wwe12_mini.bk2";
+        std::ofstream(in, std::ios::binary).write(reinterpret_cast<const char *>(mini.data()), std::streamsize(mini.size()));
+        svrfmt::Image still;
+        if (bink2::Still(bink2::Found(), in, still, nullptr) && still.w > 0) {
+          still = Fill(still, 256, 128);
+          const svrfmt::Image plate = svrfmt::Resize(plate2k, still.w, still.h);
+          for (size_t i = 0; i + 3 < still.rgba.size() && i + 3 < plate.rgba.size(); i += 4) {
+            const int a = plate.rgba[i + 3];
+            for (int c = 0; c < 3; ++c)
+              still.rgba[i + size_t(c)] =
+                  uint8_t((plate.rgba[i + size_t(c)] * a + still.rgba[i + size_t(c)] * (255 - a)) / 255);
+          }
+          SetBanner(still);
+        }
+        std::error_code ec;
+        fs::remove(in, ec);
+      }
     } else {
       banner_custom_ = false;
       LoadBaseBanner();

@@ -703,7 +703,8 @@ inline constexpr Banner2K14 kBanners2K14[] = {
     {17, "maineve", "MainEvent"}, {21, "chamber", "Chamber"},  {22, "royal", "RoyalRumble"}, {23, "raw", "RAW"},
     {56, "WM30", "WM30_M"}};
 
-inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t title, int file, svrfmt::Image &out) {
+inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t title, int file, svrfmt::Image &out,
+                     svrfmt::Image *plate_out = nullptr) {  // (2K15: its logo plate alone, PPV_<name>)
   // 2K14's select screen picture
   std::string select;
   if (title == 0x545408B2) {
@@ -797,6 +798,8 @@ inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t ti
     svrfmt::Image plate;
     if (const auto p = pics.find("PPV_" + record);
         p != pics.end() && svrfmt::DdsDecode(p->second, plate) && plate.w > 0 && out.w > 0) {
+      if (plate_out)
+        *plate_out = plate;
       plate = svrfmt::Resize(plate, out.w, out.h);
       for (size_t i = 0; i + 3 < out.rgba.size() && i + 3 < plate.rgba.size(); i += 4) {
         const int a = plate.rgba[i + 3];
@@ -929,6 +932,23 @@ inline bool Transition2K(const std::function<Bytes(const char *)> &read, int fil
 // text over them with their fonts): 2K16 / 2K17 pac/mov/bg_name|bg_locator/NNNNNN.pac, 2K15
 // pac/evt/evtmov_bg_name|evtmov_bg_locate.pac MOVN|MOVL/MNNNNNN (Bink 2, alpha the tools don't give back: the plate on
 // black, with the arena's lights), 2K14 pac/evt/evtmov2|evtmov3.pac MOVN|MOVL/MNNN (Bink 1 with an alpha plane).
+// A WWE 2K15 arena's minitron movie (pac/evt/evtmov_bg_mini.pac MVAB/M0000NN, Bink 2, 256 x 128): its arena select
+// screen plays it behind the logo plate (RAW 2002: sparks on machinery, the user's reference, 2026-11-06).
+inline bool MiniMovie2K15(const std::function<Bytes(const char *)> &read, int file, Bytes &bk2) {
+  bk2.clear();
+  char entry[16];
+  snprintf(entry, sizeof(entry), "M%06d", file);
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(read("pac/evt/evtmov_bg_mini.pac"), a, nullptr))
+    return false;
+  for (auto &k : a.root.kids)
+    if (k.group == "MVAB" && k.name.compare(0, 7, entry) == 0) {
+      bk2 = svrfmt::ArchiveData(k);
+      break;
+    }
+  return bk2.size() > 44 && memcmp(bk2.data(), "KB2", 3) == 0;
+}
+
 inline bool PlateMovie2K(const std::function<Bytes(const char *)> &read, int file, bool name, Bytes &bk2) {
   bk2.clear();
   const auto first = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
