@@ -4975,7 +4975,7 @@ extern "C" REX_FUNC(sub_826F15E8) {
 struct Rested {
   u32 set, id, flag;
 };
-thread_local std::vector<Rested> t_rested;  // this card's rested Superstars (the slot 3 hooks clear it)
+thread_local std::vector<Rested> t_rested;  // this card's rested Superstars (cleared when a card starts)
 
 REX_EXTERN(__imp__sub_826F19E0);
 extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
@@ -4988,7 +4988,6 @@ extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
     t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(slot, ctx.r3.u32);
     t_weekly_matches = g_matches[slot] ? ctx.r3.u32 : 0;
-    t_rested.clear();
   }
 }
 
@@ -5000,7 +4999,6 @@ extern "C" REX_FUNC(sub_82E05C90) {  // Superstars: 3 (shared with other classes
     t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(2, ctx.r3.u32);
     t_weekly_matches = g_matches[2] ? ctx.r3.u32 : 0;
-    t_rested.clear();
   }
 }
 
@@ -5946,4 +5944,28 @@ extern "C" REX_FUNC(sub_826F09D0) {
       bd::mem::store<u32>(r.set + 4 * r.id, 0);
   BD_INFO("[univers] matches: match {} had nobody free, {} rested Superstar(s) allowed back: {}", index, back,
           ok ? "booked" : "still dropped");
+}
+
+// The weekly card made (sub_826EB510(booker), the booker's records at +20 + j * 1320): with our number, how many
+// matches are valid (sub_826EAAF8), logged to check the number of matches per show without opening every card.
+REX_EXTERN(__imp__sub_826EB510);
+extern "C" REX_FUNC(sub_826EB510) {
+  const PPCContext in = ctx;
+  t_rested.clear();
+  {  // (a weekly booker: its number read again below by the game; a PPV's: none of ours)
+    const u32 v = bd::mem::try_load<u32>(in.r3.u32);
+    if (v != kBookerRaw && v != kBookerSmackDown && v != kBookerSuperstars)
+      t_weekly_matches = 0;
+  }
+  __imp__sub_826EB510(ctx, base);
+  const u32 booker = in.r3.u32, n = t_weekly_matches;
+  if (!n || !booker)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  u32 valid = 0;
+  for (u32 j = 0; j < n && j < 8; ++j)
+    valid += Call(x, base, __imp__sub_826EAAF8, booker + 20 + j * 1320) == 1;
+  BD_INFO("[univers] matches: card of {:08X}: {} of {} valid ({} Superstar(s) resting)", bd::mem::load<u32>(booker),
+          valid, n, t_rested.size());
 }

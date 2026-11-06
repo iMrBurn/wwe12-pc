@@ -98,6 +98,7 @@ tester sur une COPIE de la sauvegarde (`lancer_test_effectif.bat`, ou une copie 
 - 39. Plantage 1.0.0 « 5 matchs RAW + 5 SmackDown » corrigé (2026-11-03, testé sur la copie, candidat 1.0.1)
 - 40. 1.1 : jukebox, news des PPV, relations des catcheurs ajoutés (2026-11-05, vus par l'utilisateur)
 - 41. Arènes ajoutées, logos et matchup screens dans SHOW EDIT (étude puis arènes faites, 2026-11-06)
+- 42. Matchs par show : contenders en double et cartes incomplètes (1.1, 2026-11-06)
 
 ---
 
@@ -1043,3 +1044,21 @@ refaire », `sub_828A9898` remet la scène de la préparation à -1) dans l'Univ
 match chargeait la scène -1 (plantage avant l'entrée dans `sub_822EE080`, lecture de 0x50, ou écran blanc).
 `Wwe12ArenaPlay` le remet à false. Remarque de l'utilisateur (pour Mods) : sur Breaking Point, la foule gêne quand la
 caméra s'éloigne.
+
+## 42. Matchs par show : contenders en double et cartes incomplètes (1.1, 2026-11-06, vu sur la copie)
+
+Liste d'un joueur (points 2, 4, 9) + capture de Bartók (2 « #1 contender » Divas, Natalya deux fois, SmackDown d'après
+TLC) ; l'utilisateur : « des fois 2, des fois 3, des fois 4 » avec 6 demandés.
+- **Modèles** (wuniData MTDT, lus en petit-boutiste dans le fichier, 84 octets, +4 = genre ; `sub_826EA830` donne le
+  titre visé) : tables 0-12 = PPV (6 modèles), 13 = RAW / SmackDown (32 groupes de 4 ; genres 1, 2, 3, 8, 19 ; le 4e
+  toujours genre 4 = main event), 14 = Superstars (12 × 3), 15 = shows d'après un PPV (`sub_826CD010` : 4 modèles,
+  tous genre 8 = #1 contender, un par titre). Nos matchs en plus reprenaient ces modèles : contender en double.
+  Correctif : les matchs en plus prennent les modèles de la semaine autres que le genre 8 ; après un PPV ils gardent
+  leur modèle de la semaine (`t_regular_template`, crochet `sub_826DC6E8` à 0x826F16C8).
+- **Cartes incomplètes** : avant une carte (`sub_826EB510`), le jeu met au repos tout catcheur d'une carte des 7
+  derniers jours jusqu'au dernier PPV (`sub_826E2340(ensemble, id)` depuis 0x826EB8B4). Avec plus de matchs, la moitié
+  de la marque se repose, une place reste « personne » (512), le match est invalide (`sub_826EAAF8`) et la réparation
+  du jeu (règle 22, `sub_826F09D0`, un simple entre deux catcheurs libres du classement) ne trouve personne → match
+  abandonné. Correctif : pour un match sur le point d'être abandonné seulement, les catcheurs au repos qui ne sont pas
+  sur la carte redeviennent libres le temps de la réparation. Ligne de journal par carte : « card of …: x of n valid ».
+  Vu : RAW et SmackDown à 6 sur 6 pendant plusieurs semaines, « match 1 had nobody free, 18 rested … booked ».
