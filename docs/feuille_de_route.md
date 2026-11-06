@@ -36,7 +36,7 @@ Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/mod_make
 
 **Vitesse**
 - 30 fps partout : le mode 30 du jeu imposé aux matchs (clé `wwe12_frame_mode` = original / 30 / 60_entrances), PC + Android (~7-8 h).
-- Chargements plus rapides (autres attentes de la console), avertissement disque dur dans le launcher.
+- Chargements plus rapides (étude : `docs/chargements_1_2.md`) : tout est de l'attente d'images ; le turbo de chargement (`wwe12_load_turbo`) existe mais est coupé par défaut (match ~4,0 → 2,8 s, fin des entrées ~4,5 → 2 s). Ordre : séance de mesure (go de l'utilisateur pour lancer), bridage des animations 2D réécrit par nous (2-3 h), contre-épreuve sur 4 fils, puis décision de l'utilisateur sur le turbo par défaut. Avertissement disque dur dans le launcher.
 - Code natif : `memcpy` / `memset` (fait, désactivé par défaut), puis registres locaux du générateur de code et patch « volatile » (une seule régénération du code, un seul gros test).
 - Idées tirées de Jarrod v0.2.19 (WWE 2K14 recomp, BSD-3, méthodes seulement, crédit THIRD_PARTY.md ; étude de Rendu en cours dans `docs/perf_natif_steam_deck.md`) : qualité AUTO sur GPU intégré (rendu 720p + agrandissement net, foule à 70 %), résolution dynamique de la 3D seulement (menus et HUD nets), recréation de la surface au minimiser / restaurer, foule en gros lots + objets hors écran ignorés, option present mailbox (tearing), contournement des GPU à fenêtre 128 Mo. Android : extensions Vulkan 1.1 pour vieux téléphones (après la 1.1).
 
