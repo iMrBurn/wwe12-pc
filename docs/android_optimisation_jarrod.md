@@ -1,5 +1,23 @@
 # Optimisations Android de Jarrod (WWE 2K14) : étude pour notre version
 
+## État au 2026-11-06
+
+- **Rien de cette liste n'est fait** : pas de 90/120 Hz, pas de résolution dynamique, pas de gros cœurs, pas de
+  SGSR. Tout est classé « après la 1.1 » (bloc B de `docs/android_apres_1_1.md`, qui donne les mesures du
+  Moto G100 : le mur est le CPU du fil de rendu, pas le GPU).
+- **Licence et accord** : Jarrod a un accord oral du 2026-10-31 (Discord) ; la licence de son dépôt est
+  **BSD 3 clauses** (vérifiée le 2026-10-31, `THIRD_PARTY.md`). Le paragraphe « aucune licence » plus bas est
+  celui de la première lecture, **périmé** ; on s'inspire toujours des idées sans copier son code, et tout
+  code repris plus tard sera crédité dans `THIRD_PARTY.md` avec son accord.
+- **Déjà dans notre version depuis l'étude** : pilotes Turnip + rapport des limites (`plume: limits`),
+  messages clairs d'alpha 8, graine des déclarations de sommets dans l'APK (881234f), correctif vieux noyau
+  et rapport de DEVICE_LOST (8b61261). Le cache `VkPipelineCache` est sauvé à la sortie seulement (pas
+  pendant la partie : idée 2 de l'ordre proposé, non faite).
+- **À corriger dans le tableau « Ce que nous avons déjà »** : « Mali : conversion des textures » reste non
+  confirmé sur vrai téléphone ; « barrières mémoire ARM » (idée 8) : les gels du replay se produisent aussi sur
+  l'émulateur x86_64 (ordre mémoire fort), donc ce n'est **pas** la bonne piste pour #51 / replay.
+- Version d'avant ce ménage : `docs/archives/android_optimisation_jarrod_version_2026-11-05.md`.
+
 Étude du 2026-10-31 (conversation Android), demandée par la Main. **Lecture web seulement** (page des
 releases de Jarrodfeng/wwe2k14-recomp) : rien téléchargé, aucun code repris. La page ne montre **aucune
 licence open source** (seulement « projet non commercial de préservation ») : donc on ne reprend pas de

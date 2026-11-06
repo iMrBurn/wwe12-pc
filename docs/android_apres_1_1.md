@@ -1,5 +1,31 @@
 # Android après la 1.1 : replay, performances, ajouts
 
+## État au 2026-11-06
+
+- **Fait (commits locaux, rien poussé)** : correctif vieux noyau (`rexglue-sdk-zz-android-oldkernel.patch`,
+  8b61261) + ligne « Android kernel » dans le journal + rapport VK_EXT_device_fault et 12 derniers
+  shaders liés à un DEVICE_LOST (`plume-zz-android-devicefault.patch`) ; version Android 10100 / 1.1.0
+  (4351ff6) ; graine `declarations_seed.w12d` dans l'APK (881234f) ; nouveau look du launcher de
+  **Yexclsv** intégré (54622e1, crédit fc2426f).
+- **Testé** : émulateur x86_64 seulement (démarrage, menu, Match Creator, match jusqu'à l'entrée, 0 erreur ;
+  nouveau look : pages PLAY / SETTINGS, le jeu démarre à 60 i/s). Les APK de test sont dans
+  `work/android/test11/` (hors dépôt).
+- **Pas testé** : le correctif vieux noyau (aucun noyau 4.14 sous la main), le rapport device_fault, le
+  nouveau look sur vrai téléphone (onglets DLC / CONTROLS / DRIVER / DEBUG, paysage, éditeur de boutons :
+  **Yexclsv doit l'essayer avant publication**), l'Univers, les DLC.
+- **Décisions** : pas de 1.0.1, on sort directement une 1.1 (Android = versionCode 10100) ; les testeurs
+  des issues #41 / #54 attendent la 1.1 (pas d'APK de test pour eux). Tout ce qui est « 1.2 » attend.
+- **Reste pour la 1.1** : refaire l'APK de release signé `v1.1.0` depuis le HEAD final (dès que le PC a joué un
+  match 1.1 : `declarations.bin` existe), vérifier que l'asset est dedans, vérifier la mise à jour automatique
+  depuis le tag `v1.1.0` sur l'émulateur, relire les notes (`work/android/notes_android_1_1.md`).
+- **Après la 1.1** : bloc A (replay), bloc B (performances), bloc C (liste du co-mainteneur : le seul envoi vu dans la conversation Android est le zip du nouveau look, déjà intégré ; si une autre liste de fonctions existe, elle est encore à recevoir).
+- **Corrections apportées à l'étude du 2026-11-05** : la graine `declarations_seed.w12d` est maintenant copiée
+  (ligne du tableau du bloc B) ; l'hypothèse « 5 jeux de descripteurs contre 4 » est **réfutée** (Moto G100 :
+  « 4, le jeu en utilise 5 » et 58-60 i/s) ; le vrai blocage des Adreno 6xx avec leur pilote d'origine est
+  `descriptorIndexing` absent ; le plantage DEVICE_LOST du Moto vient de Turnip v26.2.0-R5 (v24.1.0 R18 le
+  règle) ; le Poco X3 Pro a un noyau 4.14.180 (cohérent avec l'hypothèse MAP_FIXED_NOREPLACE, non prouvé).
+- Version d'avant ce ménage : `docs/archives/android_apres_1_1_version_2026-11-05.md`.
+
 Étude en lecture seule du 2026-11-05 (session Android), à la demande de la Main. Rien n'a été
 modifié dans le code pour l'écrire. Ce qui est **mesuré** est séparé de ce qui est **supposé**.
 
@@ -174,7 +200,7 @@ Les nouveautés PC de la 1.1 sont-elles dans Android ?
 
 | Nouveauté 1.1 | Dans Android ? | À faire |
 |---|---|---|
-| Pipelines connus préparés au démarrage (`svr_pso_boot_objects`, c442aa3) | Le code est partagé (mêmes sources). **La graine `declarations_seed.w12d` n'est pas copiée dans l'APK** : `android/game/build.ps1` ne copie que `pipelines_seed.w12p` | Copier `declarations_seed.w12d` et rafraîchir `pipelines_seed.w12p` à la 1.1 ; vérifier sur le téléphone que le démarrage ne s'allonge pas (compilation en fond : 1 fil par 4 fils matériels, donc 2 sur 8 cœurs, ils peuvent voler du temps aux gros cœurs) ; garder le cache `VkPipelineCache` disque (déjà là) |
+| Pipelines connus préparés au démarrage (`svr_pso_boot_objects`, c442aa3) | Le code est partagé (mêmes sources). **La graine `declarations_seed.w12d` est copiée dans l'APK depuis le 2026-11-05 (881234f)** ; avant, `build.ps1` ne copiait que `pipelines_seed.w12p` | Rafraîchir `pipelines_seed.w12p` à la 1.1 ; vérifier sur le téléphone que le démarrage ne s'allonge pas (compilation en fond : 1 fil par 4 fils matériels, donc 2 sur 8 cœurs, ils peuvent voler du temps aux gros cœurs) ; garder le cache `VkPipelineCache` disque (déjà là) |
 | Mémoire des tas du jeu 12 et 15 (3e52573, +16 Mo et +4 Mo) | Oui (code partagé) | Surveiller la mémoire sur les téléphones à 6 Go ; effet attendu faible |
 | Tenues blanches (867181b) | Oui | À valider sur Adreno / Mali |
 | Petits PC : attentes GPU en veille, relecture des textures sur 32 images (f936b75) | Oui, partagé ; **pas validé sur Android** | Mesurer |
@@ -198,7 +224,7 @@ Turnip. À mesurer sur vrais téléphones (l'émulateur x86 n'est pas représent
 
 ### Bloc C : ajouts de la liste du co-mainteneur
 
-La liste n'a pas encore été transmise par l'utilisateur. Dès réception :
+La Main indique (2026-11-05) que l'utilisateur a envoyé la liste ; dans la conversation Android, seul le zip du nouveau look (Yexclsv) est arrivé, et il est intégré. Pour une éventuelle autre liste, après la 1.1 PC, marche à suivre :
 1. La copier dans ce fichier (section « Liste du co-mainteneur »), chaque ligne triée par effort
    (réglage du launcher / commande tactile / fonction du jeu / SDK) et par partage avec le PC.
 2. Ce qui est déjà vu dans les retours des joueurs et qui pourrait en faire partie : icônes PlayStation,
@@ -219,6 +245,6 @@ La liste n'a pas encore été transmise par l'utilisateur. Dès réception :
 ## 5. Ordre proposé après la sortie de la 1.1
 
 1. Bloc A, étapes 1-3 (replay) : la plus grande valeur pour les joueurs.
-2. Bloc B, graine Android (rapide, sans risque) en même temps que l'APK 1.1.
+2. ~~Bloc B, graine Android~~ : faite (881234f), à vérifier dans l'APK de release.
 3. Bloc C dès que la liste arrive.
 4. Bloc B pistes 1-3 selon les mesures sur téléphones.

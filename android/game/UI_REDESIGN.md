@@ -2,6 +2,15 @@
 
 Design and code by **Yexclsv** (Android co-maintainer), integrated in 1.1. Thank you!
 
+## State on 2026-11-06
+
+- **Done:** integrated in the repo (commit 54622e1, credit in `THIRD_PARTY.md`). It compiles; the launcher
+  pages PLAY and SETTINGS and the start of the game were checked on the x86_64 emulator (portrait, 1080x2400).
+- **Not checked:** a real phone, landscape (side menu), the DLC / CONTROLS / DRIVER / DEBUG pages, the button
+  layout editor, MY SAVES, the loading screen over the game (it passed too quickly to be seen). **Yexclsv tests the
+  test APK on a phone before the release.**
+- Original text of the note (before this cleanup): `docs/archives/android_UI_REDESIGN_version_2026-11-05.md`.
+
 UI only: no game logic, settings, files or native code changed. Not compiled or tested on a device (written without
 a build environment): please build and report errors.
 
