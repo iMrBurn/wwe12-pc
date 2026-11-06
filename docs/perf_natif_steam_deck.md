@@ -559,3 +559,34 @@ menu principal)**
 - La voie 2 pure reste à **9 - 15 h**, grâce au modèle `sub_82449428` trouvé dans WWE '12 (sans lui, plutôt
   12 - 20 h).
 - La méthode de Kaiko (trajet + réécriture) : **6 - 9 h** (Gameplay), plus le trajet de Rendu.
+
+## Idées de Jarrod v0.2.19 (Rendu, 2026-11-06, lecture seule, pour la 1.2)
+
+Source : les notes de version de wwe2k14-recomp v0.2.15 à v0.2.19 (Jarrodfeng, BSD-3, accord oral
+pour s'inspirer). On reprend les **méthodes** seulement, on réécrit nous-mêmes. Avant de copier du vrai
+code : redemander à l'utilisateur et l'ajouter dans `THIRD_PARTY.md`. Rien de tout ça n'entre dans la 1.1.
+
+**Le cas Intel de l'utilisateur** (`wwe12_044.log`, iGPU RaptorLake-S, Vulkan, 720p automatique)
+tournait encore avec la **1.0** : 44 compilations de pipelines au début du match, dont une image de
+170 ms, et le petit écran noir dans la même seconde. Une fois le match lancé, il tient 60 fps : environ
+10 ms de travail par image, et l'attente GPU est presque nulle. Ses soucis venaient donc des
+compilations (corrigées par c442aa3 en 1.1), pas de la vitesse du GPU. La plupart des idées
+ci-dessous ne changent presque rien pour lui. Elles visent les iGPU plus faibles (UHD 620, Vega 3/6).
+
+| # | Idée | Chez nous aujourd'hui | Faisable ? Où | Gain sur le cas Intel | Risque | Estimation |
+|---|---|---|---|---|---|---|
+| 1 | **AUTO sur GPU intégré** : 720p + agrandissement avec netteté (type FSR 1 / RCAS), foule à 70 % | 720p sur iGPU, c'est déjà fait (`svr_resources.cpp`, auto → 720p pour `INTEGRATED` et les cartes de moins de 3,5 Go). L'agrandissement à l'écran est un simple filtre linéaire. La foule n'a que deux choix, oui ou non (`wwe12_crowd`, `hooks/draw.cpp`). | **Netteté** : une passe de plus au moment de l'affichage (`present.cpp`), un shader dans les 3 exe et sur Android. RCAS d'AMD est sous licence MIT, à créditer si on reprend le shader. **Foule à 70 %** : réduire le nombre d'instances des quelques dessins de foule (repérés par shader, comme `wwe12_crowd`). Il faut une coupure stable pour éviter l'effet « des spectateurs qui apparaissent et disparaissent », que Jarrod a corrigé en 0.2.19. | Image plus nette en 720p sur un écran 1080p. Vitesse : la netteté coûte un peu, la foule allégée rapporte un peu. Jarrod n'a pas mesuré non plus. | Faible pour la netteté (un réglage, désactivable). Moyen pour la foule (trous visibles, instances mal comptées). | Netteté 3-4 h ; foule 3-5 h + RenderDoc |
+| 2 | **Résolution dynamique** de la scène 3D seulement (menus et HUD nets) | Absent. `svr_render_scale` est fixe pour toute la partie. Les cibles de la scène sont créées à la taille choisie (`svr_resources.cpp`). | Possible mais lourd : dessiner dans une partie de la cible (viewport et scissor réduits) au lieu de recréer les cibles, puis corriger toutes les passes qui lisent la scène (flou de profondeur, bloom, copies) pour qu'elles ne lisent que cette partie. Android a déjà étudié la même idée (`android_optimisation_jarrod.md`). | Rien tant que le match tient 60 fps. Utile seulement sur un iGPU qui tombe sous 60. | **Élevé** : bords flous, effets décalés, plus de pipelines | 8-12 h + beaucoup de tests |
+| 3 | **Réduire puis restaurer la fenêtre** : recréer la surface (image figée chez lui) | En lisant le code, on n'a **pas** son bug. Quand la fenêtre est réduite, `resize()` de plume remet la taille à 0 et échoue (Vulkan et D3D12). À la restauration, `needsResize()` voit une taille différente et `RebuildSwapChain` (`present.cpp`) refait tout. Jarrod, lui, ne recréait qu'au changement de taille. | Rien à coder. À vérifier une fois en jeu (réduire puis restaurer, en Vulkan, D3D12 et D3D11). L'exe D3D11 n'a pas été relu. | — | — | Test de 5 min |
+| 4 | **Moins de dessins** : foule en gros lots, objets hors écran ignorés, dessins répétés réutilisés (+10 à +40 % sur une 4090 en 720p sans limite) | Nous dessinons les commandes du jeu (natif SvR), sans tri ni regroupement. WWE '12 dessine déjà sa foule en peu d'appels. Ses gains viennent de TRUE NATIVE, son propre moteur de rendu, et sont mesurés **sans limite d'images**. Lui-même s'attend à moins avec la limite à 60. | Il faudrait savoir quand deux dessins sont identiques (mêmes shaders, constantes, géométrie) et tester la visibilité des objets avec leurs boîtes : c'est en partie refaire le moteur de rendu. Point de départ : `reblue/gpu/hooks/draw.cpp`, `draw.cpp`. Il faut d'abord une capture RenderDoc d'un match pour compter les dessins vraiment répétés. | Faible avec 60 fps (le CPU de rendu n'est pas le goulot chez lui). Peut aider les petits CPU et le Steam Deck. | **Élevé** : objets qui disparaissent, image fausse | Mesure 2 h, puis 10 h et plus |
+| 5 | **GPU à fenêtre d'adressage de 128 Mo** (contournement) | Chez lui, ça cassait des formes dans TRUE NATIVE, qui lit de gros tampons. Nous n'avons pas ce mode, et aucun rapport de ce genre chez nous. | Seulement si un joueur le signale : vérifier les tailles de tampons liés (géométrie, constantes) avec les limites du GPU (`maxStorageBufferRange` et autres). | Aucun (l'Intel Raptor Lake n'est pas concerné). | — | 1 h de vérification si besoin |
+| 6 | **Affichage « mailbox »** contre la déchirure de l'image | Vulkan : avec la synchro verticale on utilise FIFO, sans elle IMMEDIATE (déchirure possible). plume détecte déjà si MAILBOX existe (`mailboxPresentModeSupported`) mais ne s'en sert pas. D3D12 : FLIP_DISCARD, la déchirure seulement si la synchro est coupée. | Facile : un choix de plus (synchro OUI / NON / SANS DÉCHIRURE). En Vulkan, MAILBOX si le GPU le propose, sinon FIFO. En D3D12, un intervalle de 0 sans le drapeau de déchirure fait la même chose. Code dans `recomp/plume/plume_vulkan.cpp` (`setVsyncEnabled`), `present.cpp`, et une ligne du menu GRAPHICS. | Aucun en vitesse. Plus de déchirure avec la synchro coupée. | Faible (le GPU travaille plus, plus de chaleur sur portable) | 2-3 h |
+
+**Ordre proposé pour la 1.2 :** d'abord tester l'idée 3 (5 min, pour s'assurer qu'on n'a pas le bug),
+puis 6 (petit et utile), puis la netteté de l'idée 1. La foule à 70 % et l'idée 4 seulement après une
+capture RenderDoc qui montre un gain réel. L'idée 2 reste plus tard, à faire avec Android.
+L'idée 5 attend qu'un joueur signale le problème.
+
+Prochain test Intel : refaire le même match 1v1 avec la 1.1 (c442aa3). Si le petit écran noir reste
+alors qu'il n'y a plus aucune compilation, regarder les cibles créées vides au changement de scène
+(`seeded false` dans le journal).
