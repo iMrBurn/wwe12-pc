@@ -1335,6 +1335,8 @@ u32 g_pad_state = 0;  // guest X_INPUT_STATE for our own reads
 u16 g_last_buttons = 0;
 }  // namespace
 
+bool Wwe12UniverseArenaPages();  // wwe12_universe.cpp: SHOW EDIT's ARENA row open, added arenas allowed
+
 extern "C" REX_FUNC(sub_825A67A0) {
   g_screen = ctx.r3.u32;
   g_last_buttons = 0xFFFF;  // (a button still held from the screen before doesn't count)
@@ -1343,9 +1345,9 @@ extern "C" REX_FUNC(sub_825A67A0) {
     SaveOriginal();
     if (g_saved) {
       BuildPages();
-      // Not in the Universe (*0x8324E51C == 1, wwe12_universe.cpp): its shows keep their stage number from week to
-      // week, and an added arena only plays while it is the one chosen last (decision of the user, 2026-10-26).
-      if (bd::mem::load<u32>(0x8324E51C) == 1)
+      // In the Universe (*0x8324E51C == 1) only on SHOW EDIT's ARENA row (wwe12_universe.cpp keeps each show's added
+      // arena and puts it on its base's stage before the show's matches); elsewhere there the game's arenas only.
+      if (bd::mem::load<u32>(0x8324E51C) == 1 && !Wwe12UniverseArenaPages())
         g_pages.resize(1);
       g_page = 0;
       WritePage(0);
@@ -1959,4 +1961,43 @@ void OpenPageLabel() {
 void Wwe12ArenaPagesInstallLabel(rex::ui::ImGuiDrawer *drawer, std::function<void(std::function<void()>)> post) {
   g_label_drawer = drawer;
   g_label_post = std::move(post);
+}
+
+// ---- For the Universe (wwe12_universe.cpp: a show's added arena, universe_arenas.txt) ----------------------------
+
+// The added arena chosen last on the arena select (its index), -1: one of the game's.
+int Wwe12ArenaChosen() { return g_chosen; }
+
+// An added arena's mod id ("" if none).
+std::string Wwe12ArenaId(int n) { return n >= 0 && size_t(n) < g_added.size() ? g_added[size_t(n)].id : std::string(); }
+
+// An added arena by its mod id: its index and base stage (-1: not installed).
+int Wwe12ArenaFind(const std::string &id, uint32_t &base) {
+  for (size_t i = 0; i < g_added.size(); ++i)
+    if (g_added[i].id == id) {
+      base = g_added[i].base;
+      return int(i);
+    }
+  return -1;
+}
+
+// Puts added arena n on its base's stage, or (n < 0) the game's arena back on `stage`, as a choice on the arena
+// select does (sub_825A56C8 above): its file served, the stage object and the VS screen loaded again if it changed.
+void Wwe12ArenaPlay(int n, uint32_t stage) {
+  if (n >= 0 && size_t(n) < g_added.size()) {
+    if (g_chosen != n) {
+      REXLOG_INFO("[arena pages] Universe show: {} ({}), plays as stage {}", g_added[size_t(n)].name,
+                  g_added[size_t(n)].id, g_added[size_t(n)].base);
+      g_reload_vs = true;
+    }
+    g_chosen = n;
+    Serve(g_added[size_t(n)].base, n);
+    ForgetHeldArena(g_added[size_t(n)].base);
+  } else if (stage < kFirstAdded) {
+    if (g_chosen >= 0)
+      g_reload_vs = true;
+    g_chosen = -1;
+    Serve(stage, -1);
+    ForgetHeldArena(stage);
+  }
 }

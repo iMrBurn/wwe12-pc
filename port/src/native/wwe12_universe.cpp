@@ -5360,6 +5360,134 @@ extern "C" REX_FUNC(sub_82584E98) {
   __imp__sub_82584E98(ctx, base);
 }
 
+// ---- Added arenas (Mod Maker, wwe12_arena_pages.cpp) as a show's arena ------------------------
+//
+// A show's record keeps its stage as a u16 at +898 (sub_826CBFB8 reads it, sub_826CBFD0 writes it), checked < 300 by
+// sub_826CD8D0; a Universe match turns it into the match's stage in sub_826BBE30 (the view's current show,
+// sub_826CCD90, in r31; its stage only if SHOW EDIT saved it, +928 bit 0x40, else 1) -> sub_828AC150(setup, stage,
+// 1), which keeps its old stage for one that isn't in the game's list of places (sub_828A98A8). So an added arena's
+// made-up stage number (150 + n) can't go into the record: the record keeps its BASE's number (sub_825A56C8 gives it
+// back, wwe12_arena_pages.cpp), and universe_arenas.txt, next to the save, says which added arena plays there
+// ("show <the record's +927> <mod id>"). Before each Universe match the show's arena is put in its base's file (or the
+// game's arena back). A mod removed, or the show's stage changed since: the game's arena plays. SHOW EDIT's ARENA
+// row (sub_82583FE8: sub_825A56C8 then sub_826CBFD0 at 0x82584054) shows the added arenas' pages; the choice is
+// kept on SHOW EDIT's SAVE (sub_826CBE70 at 0x825893C4 sets the record's bit 0x40), forgotten on CANCEL. The arena
+// row's photo stays the base's (sub_82586428 has 21 fixed photos).
+
+REXCVAR_DEFINE_BOOL(wwe12_universe_added_arenas, true, "WWE12",
+                    "Universe: SHOW EDIT > ARENA offers the Mod Maker's added arenas (false = 1.0: the game's only).");
+
+// wwe12_arena_pages.cpp
+int Wwe12ArenaChosen();                                  // the added arena chosen last (-1: one of the game's)
+std::string Wwe12ArenaId(int n);                         // an added arena's mod id ("" if none)
+int Wwe12ArenaFind(const std::string &id, uint32_t &base);  // an added arena by mod id (-1: not installed)
+void Wwe12ArenaPlay(int n, uint32_t stage);              // put added arena n (or the game's, n < 0) on its stage
+
+// Asked by wwe12_arena_pages.cpp: whether the arena select shows the added arenas' pages in the Universe.
+bool Wwe12UniverseArenaPages() { return REXCVAR_GET(wwe12_universe_added_arenas) && g_show_edit_open; }
+
+REX_EXTERN(__imp__sub_826CBFD0);  // a show record holder: set its stage (holder, stage)
+REX_EXTERN(__imp__sub_826CBE70);  // a show record holder: "set by SHOW EDIT" (+928 bit 0x40)
+REX_EXTERN(__imp__sub_828AC150);  // match setup: set the stage (setup, stage, 1)
+
+namespace {
+
+std::mutex g_arenas_lock;
+std::map<u32, std::string> g_show_arenas;  // show (+927) -> added arena's mod id
+bool g_show_arenas_loaded = false;
+int g_edit_arena = -2;  // SHOW EDIT's ARENA choice not saved yet: added arena index, -1 the game's, -2 none
+
+std::filesystem::path ArenasFile() {
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator() || state->emulator()->user_data_root().empty())
+    return {};
+  return state->emulator()->user_data_root() / "universe_arenas.txt";
+}
+
+void LoadShowArenas() {  // (g_arenas_lock held)
+  if (g_show_arenas_loaded)
+    return;
+  g_show_arenas_loaded = true;
+  std::ifstream f(ArenasFile());
+  std::string line;
+  while (std::getline(f, line)) {
+    u32 show = 0;
+    char id[256] = {};
+    if (std::sscanf(line.c_str(), "show %u %255s", &show, id) == 2)
+      g_show_arenas[show] = id;
+  }
+}
+
+void SaveShowArenas() {  // (g_arenas_lock held)
+  const std::filesystem::path file = ArenasFile();
+  if (file.empty())
+    return;
+  std::ofstream f(file);
+  for (const auto &[show, id] : g_show_arenas)
+    f << "show " << show << ' ' << id << '\n';
+}
+
+}  // namespace
+
+// SHOW EDIT's ARENA row: the arena chosen (its base's stage number for an added one).
+extern "C" REX_FUNC(sub_826CBFD0) {
+  if (ctx.lr == 0x82584054 && REXCVAR_GET(wwe12_universe_added_arenas))
+    g_edit_arena = Wwe12ArenaChosen();
+  __imp__sub_826CBFD0(ctx, base);
+}
+
+// SHOW EDIT's SAVE: the show's added arena kept (or forgotten for one of the game's).
+extern "C" REX_FUNC(sub_826CBE70) {
+  const u32 record = ctx.r3.u32 ? bd::mem::load<u32>(ctx.r3.u32) : 0;
+  if (ctx.lr == 0x825893C4 && record && g_edit_arena != -2) {
+    const u32 show = bd::mem::load<u8>(record + 927);
+    const std::string id = g_edit_arena >= 0 ? Wwe12ArenaId(g_edit_arena) : std::string();
+    std::lock_guard<std::mutex> lock(g_arenas_lock);
+    LoadShowArenas();
+    const auto it = g_show_arenas.find(show);
+    const std::string before = it == g_show_arenas.end() ? std::string() : it->second;
+    if (before != id) {
+      if (id.empty())
+        g_show_arenas.erase(show);
+      else
+        g_show_arenas[show] = id;
+      SaveShowArenas();
+      BD_INFO("[univers] show {} arena: {} (stage {})", show, id.empty() ? "the game's" : id,
+              bd::mem::load<u16>(record + 898));
+    }
+  }
+  if (ctx.lr == 0x825893C4)
+    g_edit_arena = -2;
+  __imp__sub_826CBE70(ctx, base);
+}
+
+// A Universe match's stage (sub_826BBE30: the show's record in r31): the show's added arena put on its base's stage,
+// or the game's arena (an added one chosen before, in an exhibition or another show, no longer plays there).
+extern "C" REX_FUNC(sub_828AC150) {
+  if (ctx.lr == 0x826BBE88 && REXCVAR_GET(wwe12_universe_added_arenas)) {
+    const u32 stage = ctx.r4.u32, record = ctx.r31.u32;
+    int n = -1;
+    std::string id;
+    if (record) {
+      const u32 show = bd::mem::load<u8>(record + 927);
+      std::lock_guard<std::mutex> lock(g_arenas_lock);
+      LoadShowArenas();
+      const auto it = g_show_arenas.find(show);
+      if (it != g_show_arenas.end()) {
+        id = it->second;
+        u32 on = 0;
+        n = Wwe12ArenaFind(id, on);
+        if (n >= 0 && on != stage)
+          n = -1;  // (the show's stage changed since, DEFAULT or RESET UNIVERSE)
+        BD_INFO("[univers] show {} on stage {}: {} {}", show, stage, id,
+                n >= 0 ? "plays" : "not installed or another stage: the game's arena");
+      }
+    }
+    Wwe12ArenaPlay(n, stage);
+  }
+  __imp__sub_828AC150(ctx, base);
+}
+
 namespace {
 bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen) {
   if (!Enabled() || bd::mem::try_load<u32>(screen) != kShowEditVtbl)
