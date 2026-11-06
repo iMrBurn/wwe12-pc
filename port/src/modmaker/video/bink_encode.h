@@ -27,6 +27,9 @@ BinkWriter *bink_writer_open_alpha(FILE *f, int frames, int width, int height);
  * values span no more than fill_thr is one colour (fill), one two colours fit within pat_thr is a pattern (0: none).
  * Default 2, 2, 0 (as Kaiko's). */
 void bink_writer_quality(BinkWriter *w, int skip_thr, int fill_thr, int pat_thr);
+/* WWE12-PC: no frame over `peak` bytes, and `rate` bytes a frame on average with `saved` more to spend (0: the
+ * titantrons' own, ~0.9 byte a pixel up to 100 KB, 24 KB + 300 KB); a frame over them is encoded again, lossier. */
+void bink_writer_limits(BinkWriter *w, size_t peak, unsigned rate, unsigned saved);
 /* Encodes the next frame (width x height BGRA): 1, 0 out of memory, -1 write failed. */
 int bink_writer_frame(BinkWriter *w, const uint8_t *bgra);
 /* The next frame the same as the last one (all skip blocks; encoded once,

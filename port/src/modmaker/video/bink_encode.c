@@ -369,6 +369,7 @@ struct BinkWriter {
     uint64_t total;  /* WWE12-PC: the frames' bytes so far (bink_writer_frame_yuv's budget) */
     Bits b;
     int skip_thr, fill_thr, pat_thr;  /* WWE12-PC: bink_writer_quality (default 2, 2, 0) */
+    size_t peak_cap; uint64_t rate, saved;  /* WWE12-PC: bink_writer_limits (0: the titantrons' own) */
 };
 
 static int bink_writer_frame_yuv(BinkWriter *w);
@@ -437,6 +438,11 @@ void bink_writer_quality(BinkWriter *w, int skip_thr, int fill_thr, int pat_thr)
     w->skip_thr = skip_thr; w->fill_thr = fill_thr; w->pat_thr = pat_thr;
 }
 
+void bink_writer_limits(BinkWriter *w, size_t peak, unsigned rate, unsigned saved)
+{
+    w->peak_cap = peak; w->rate = rate; w->saved = saved;
+}
+
 int bink_writer_repeat(BinkWriter *w)
 {
     size_t pos;
@@ -473,10 +479,12 @@ static int bink_writer_frame_yuv(BinkWriter *w)
 {
     static const int steps[][3] = {{3, 3, 6}, {4, 4, 10}, {6, 6, 14}, {8, 8, 20}, {10, 10, 28}, {12, 12, 36},
                                    {16, 16, 52}, {24, 24, 80}, {32, 32, 110}, {48, 48, 160}};
-    const size_t ny = (size_t)w->w * w->h, nc = ny / 4, peak = ny * 9 / 10 < 100000 ? ny * 9 / 10 : 100000;
+    const size_t ny = (size_t)w->w * w->h, nc = ny / 4,
+                 peak0 = ny * 9 / 10 < 100000 ? ny * 9 / 10 : 100000,
+                 peak = w->peak_cap && w->peak_cap < peak0 ? w->peak_cap : peak0;
     /* the rate too: the game's titantrons average at most ~26.7 KB a frame (~800 KB/s); Rollins' 2K16 one at 53 KB
      * froze the loading even with every frame under 100 KB. A budget of 24 KB a frame, with 300 KB saved up to spend */
-    const uint64_t allowed = 24000ull * (uint64_t)(w->done + 1) + 300000ull;
+    const uint64_t allowed = (w->rate ? w->rate : 24000ull) * (uint64_t)(w->done + 1) + (w->rate ? w->saved : 300000ull);
     const size_t left = allowed > w->total ? (size_t)(allowed - w->total) : 0;
     const size_t cap = left < peak ? (left > 6000 ? left : 6000) : peak;
     const int skip = w->skip_thr, fill = w->fill_thr, pat = w->pat_thr;

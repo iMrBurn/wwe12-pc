@@ -578,7 +578,11 @@ inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std:
 // writes 24-bit AVI and TGA; WWE '12's are a fade in and out over the picture).
 inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, std::atomic<int> *progress,
                     std::atomic<bool> *cancel, std::wstring *err, int out_w = 0, int out_h = 0, int fade = 0,
-                    const int *quality = nullptr) {  // (quality: bink_writer_quality's three, else the writer's own)
+                    const int *quality = nullptr,  // (quality: bink_writer_quality's three, else the writer's own)
+                    size_t peak = 0, size_t total = 0,  // (the frames' limits, as bink_writer_limits: no frame over
+                                                        // `peak`, about `total` in all; 0: the writer's own)
+                    const std::function<void(const uint8_t *, int, int, std::vector<uint8_t> &)> *frame = nullptr) {
+  // (frame: each decoded picture (BGRA, w x h) made the out_w x out_h one written, BGRA, in place of a resize)
   Info info;
   if (!ReadInfo(in, info)) {
     if (err)
@@ -603,6 +607,9 @@ inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, s
   BinkWriter *bw = fade > 0 ? bink_writer_open_alpha(f, frames, W, H) : bink_writer_open_size(f, frames, W, H);
   if (bw && quality)
     bink_writer_quality(bw, quality[0], quality[1], quality[2]);
+  if (bw && (peak || total))  // (the total: nine tenths spread over the frames, a tenth to spend where they need it)
+    bink_writer_limits(bw, peak, total ? unsigned(total * 9 / 10 / size_t((std::max)(1, frames))) : 0u,
+                       unsigned(total / 10));
   if (!bw) {
     fclose(f);
     if (err)
@@ -614,7 +621,11 @@ inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, s
   const auto put = [&](const uint8_t *bgra, int w, int h) {
     if (done >= frames || (cancel && *cancel))
       return false;
-    if (w == W && h == H) {
+    if (frame) {
+      (*frame)(bgra, w, h, last);
+      if (last.size() != size_t(W) * H * 4)
+        return false;
+    } else if (w == W && h == H) {
       last.assign(bgra, bgra + size_t(W) * H * 4);
     } else {  // (a size not in 16s)
       svrfmt::Image img;

@@ -76,6 +76,7 @@
 #include <map>
 #include <set>
 #include <span>
+#include <tuple>
 #include <string>
 #include <vector>
 
@@ -188,6 +189,10 @@ struct Added {
   u32 load_sector = 0, load_units = 0;  // ... appended to LoadHD.pac (0: the base's)
   std::vector<uint8_t> movie;  // its own transition video (until appended), else empty
   u32 movie_sector = 0, movie_units = 0;  // ... appended to evtmov.pac (0: the base's)
+  std::vector<uint8_t> screens;  // its own wall movie, for every MVSW/M* (until appended), else empty
+  u32 screens_sector = 0, screens_units = 0;  // ... appended to evtmov.pac (0: the base's)
+  std::vector<uint8_t> ribbon;  // its own ribbon movie, for every MVAB/M* and MVSB/M* (until appended), else empty
+  u32 ribbon_sector = 0, ribbon_units = 0;  // ... appended to evtmov.pac (0: the base's)
 };
 std::vector<Added> g_added;
 // A base arena's file as served (Documents\wwe12\arena_slots\pac\bg\bgNN.pac): the whole file of the arena
@@ -287,13 +292,13 @@ bool ReadGameFile(rex::filesystem::VirtualFileSystem *vfs, const std::string &pa
   return ok;
 }
 
-// The added arenas' transition videos appended to a copy of evtmov.pac in movies_root (pac\evt\evtmov.pac), kept
-// between starts with a key (the base's size, each video's size and hash) and rebuilt when it changes. False: none
+// The added arenas' transition videos and screens' movies appended to a copy of evtmov.pac in movies_root
+// (pac\evt\evtmov.pac), kept between starts with a key (the base's size, each video's size and hash) and rebuilt when it changes. False: none
 // (or no copy), so nothing to serve.
 bool ServeMovies(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, const fs::path &movies_root) {
   std::error_code ec;
   const fs::path served = movies_root / "pac" / "evt" / "evtmov.pac", key_file = movies_root / "key.txt";
-  if (std::none_of(g_added.begin(), g_added.end(), [](const Added &a) { return !a.movie.empty(); })) {
+  if (std::none_of(g_added.begin(), g_added.end(), [](const Added &a) { return !a.movie.empty() || !a.screens.empty() || !a.ribbon.empty(); })) {
     fs::remove_all(movies_root, ec);
     return false;
   }
@@ -324,24 +329,27 @@ bool ServeMovies(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, 
       h = (h ^ uint8_t(c)) * 1099511628211ull;
     key += "/" + std::to_string(h);
   }
-  for (auto &a : g_added) {
-    if (a.movie.empty())
-      continue;
-    a.movie_sector = u32(end / 0x800);
-    a.movie_units = u32((a.movie.size() + 0xFF) / 0x100);
-    end = (end + a.movie.size() + 0x7FF) & ~uint64_t(0x7FF);
-    uint64_t h = 1469598103934665603ull;
-    for (uint8_t c : a.movie)
-      h = (h ^ c) * 1099511628211ull;
-    key += " " + std::to_string(a.movie.size()) + ":" + std::to_string(h);
-  }
+  for (auto &a : g_added)
+    for (auto [m, sector, units] : {std::tuple{&a.movie, &a.movie_sector, &a.movie_units},
+                                    std::tuple{&a.screens, &a.screens_sector, &a.screens_units},
+                                    std::tuple{&a.ribbon, &a.ribbon_sector, &a.ribbon_units}}) {
+      if (m->empty())
+        continue;
+      *sector = u32(end / 0x800);
+      *units = u32((m->size() + 0xFF) / 0x100);
+      end = (end + m->size() + 0x7FF) & ~uint64_t(0x7FF);
+      uint64_t h = 1469598103934665603ull;
+      for (uint8_t c : *m)
+        h = (h ^ c) * 1099511628211ull;
+      key += " " + std::to_string(m->size()) + ":" + std::to_string(h);
+    }
   std::vector<uint8_t> old_key;
   if (ReadHost(key_file, old_key) && std::string(old_key.begin(), old_key.end()) == key &&
       fs::file_size(served, ec) == end && !ec) {
     if (file)
       file->Destroy();
     for (auto &a : g_added)
-      a.movie = {};
+      a.movie = {}, a.screens = {}, a.ribbon = {};
     return true;
   }
   fs::remove_all(movies_root, ec);
@@ -363,13 +371,15 @@ bool ServeMovies(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, 
   }
   if (ok) {
     std::fstream o(served, std::ios::binary | std::ios::in | std::ios::out);
-    for (auto &a : g_added) {
-      if (a.movie.empty())
-        continue;
-      o.seekp(std::streamoff(uint64_t(a.movie_sector) * 0x800));
-      o.write(reinterpret_cast<const char *>(a.movie.data()), std::streamsize(a.movie.size()));
-      a.movie = {};
-    }
+    for (auto &a : g_added)
+      for (auto [m, sector] : {std::pair{&a.movie, a.movie_sector}, std::pair{&a.screens, a.screens_sector},
+                               std::pair{&a.ribbon, a.ribbon_sector}}) {
+        if (m->empty())
+          continue;
+        o.seekp(std::streamoff(uint64_t(sector) * 0x800));
+        o.write(reinterpret_cast<const char *>(m->data()), std::streamsize(m->size()));
+        *m = {};
+      }
     o.close();
     ok = bool(o);
     if (ok) {
@@ -381,11 +391,11 @@ bool ServeMovies(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, 
     REXLOG_WARN("[arena pages] could not write {}", rex::path_to_utf8(served));
     fs::remove_all(movies_root, ec);
     for (auto &a : g_added)
-      a.movie_units = 0;
+      a.movie_units = a.screens_units = a.ribbon_units = 0;
     return false;
   }
   WriteHost(key_file, std::vector<uint8_t>(key.begin(), key.end()));
-  REXLOG_INFO("[arena pages] transition videos served in {}", rex::path_to_utf8(served));
+  REXLOG_INFO("[arena pages] transition and screens videos served in {}", rex::path_to_utf8(served));
   return true;
 }
 
@@ -1108,6 +1118,19 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
         a.movie.clear();
       }
     }
+    // (its screens' movies, a wall and a ribbon, as the game's own walls (MVSW, 256 x 256) and ribbons (MVAB, MVSB,
+    // 1024 x 32): 1.8 MB, frames of 32 KB at most; WWE 2K14's arenas show theirs in the entrances too)
+    for (auto [file, m, max_frame, max_size] :
+         {std::tuple{"screens.bik", &a.screens, 33000u, 1810000u}, std::tuple{"ribbon.bik", &a.ribbon, 33000u, 1810000u}}) {
+      if (!ReadHost(d / "arena" / file, *m))
+        continue;
+      const uint32_t largest = m->size() >= 16 ? uint32_t((*m)[12]) | uint32_t((*m)[13]) << 8 | uint32_t((*m)[14]) << 16 : ~0u;
+      if (memcmp(m->data(), "BIK", 3) != 0 || largest > max_frame || m->size() > max_size) {
+        REXLOG_WARN("[arena pages] {}: its {} isn't one the game takes ({} bytes, a frame of {}): the base's plays", a.id,
+                    file, m->size(), largest);
+        m->clear();
+      }
+    }
     g_added.push_back(a);
     if (g_added.size() == 35)  // (the banner pack has 35 free textures)
       break;
@@ -1640,15 +1663,27 @@ extern "C" REX_FUNC(sub_827F29F0) {
       bd::mem::store<u32>(out + 8, a.load_units);
       REXLOG_INFO("[arena pages] {}: the pre-match screen of {}", n, a.id);
     }
-  } else if (g_chosen >= 0 && g_added[size_t(g_chosen)].movie_units && bd::mem::load<u16>(out + 12) == kEvtMovIndex) {
-    // Its own transition video, in place of its base's.
+  } else if (g_chosen >= 0 && bd::mem::load<u16>(out + 12) == kEvtMovIndex) {
+    // Its own transition video, and its own screens' movie, in place of its base's.
     const Added &a = g_added[size_t(g_chosen)];
     char movt[16];
     snprintf(movt, sizeof(movt), "/MOVT/M%03u", a.base);
-    if (strcmp(n, movt) == 0) {
+    // (its ribbons and walls in place of the arena's and every superstar's: asked "MVAB/M001", "MVSB/M110",
+    // "MVSW/M414", no slash first - the dir log, 2026-11-06)
+    const char *g = n[0] == '/' ? n + 1 : n;
+    const bool ribbon = strncmp(g, "MVAB/M", 6) == 0 || strncmp(g, "MVSB/M", 6) == 0, wall = strncmp(g, "MVSW/M", 6) == 0;
+    if (a.movie_units && strcmp(n, movt) == 0) {
       bd::mem::store<u32>(out, a.movie_sector);
       bd::mem::store<u32>(out + 8, a.movie_units);
       REXLOG_INFO("[arena pages] {}: the transition of {}", n, a.id);
+    } else if (a.ribbon_units && ribbon) {
+      bd::mem::store<u32>(out, a.ribbon_sector);
+      bd::mem::store<u32>(out + 8, a.ribbon_units);
+      REXLOG_INFO("[arena pages] {}: the ribbon of {}", n, a.id);
+    } else if (a.screens_units && wall) {
+      bd::mem::store<u32>(out, a.screens_sector);
+      bd::mem::store<u32>(out + 8, a.screens_units);
+      REXLOG_INFO("[arena pages] {}: the wall of {}", n, a.id);
     }
   }
   if (REXCVAR_GET(wwe12_arena_pages_test) &&

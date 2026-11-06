@@ -165,6 +165,127 @@ struct PortInfo {
 // part to the titantron's, the ribbons' part to the side panels', the whole picture to the whole; their textures
 // named as WWE '12's screen of that number (titantron_movie / arena_movie / minitron_movie). Changed in the model's
 // bytes (JboyWrite doesn't give these models back byte for byte).
+// WWE 2K14's screens movie (evtmov.pac MOV/M0NN, 256 x 256): on top (v 0-0.344) one ribbon of 1024 folded in four
+// rows (2026-11-06, RAW: the ribbon model going from row to row), the wall in the middle, at the bottom (v 0.879-0.996)
+// the strip above the titantron (RAW's big logo). WWE '12 plays ribbons (1024 x 32: the arena's MVAB/M0NN, a
+// superstar's MVSB/M0NN in his entrance) and walls (256 x 256: MVSW/M0NN) on its screens: the ribbon unfolded into
+// one, a frame at a time (bink2::ToBink1's `frame`), the whole movie a wall.
+inline constexpr float kRibbonRow2K14 = 0.344f / 4;
+inline void Ribbon2K14(const uint8_t *bgra, int w, int h, std::vector<uint8_t> &out) {
+  out.assign(size_t(1024) * 32 * 4, 0);
+  for (int y = 0; y < 32; ++y)
+    for (int x = 0; x < 1024; ++x) {
+      const int k = x / 256;
+      const float t = (float(y) + 0.5f) / 32.f;
+      const float sy = (float(k) + t) * kRibbonRow2K14 * float(h) - 0.5f;
+      const float sx = (float(x % 256) + 0.5f) / 256.f * float(w) - 0.5f;
+      const int x0 = std::clamp(int(std::floor(sx)), 0, w - 1), y0 = std::clamp(int(std::floor(sy)), 0, h - 1);
+      const int x1 = std::min(x0 + 1, w - 1), y1 = std::min(y0 + 1, h - 1);
+      const float fx = std::clamp(sx - float(x0), 0.f, 1.f), fy = std::clamp(sy - float(y0), 0.f, 1.f);
+      for (int c = 0; c < 4; ++c) {
+        const auto px = [&](int xx, int yy) { return float(bgra[(size_t(yy) * w + xx) * 4 + size_t(c)]); };
+        const float v = (px(x0, y0) * (1 - fx) + px(x1, y0) * fx) * (1 - fy) + (px(x0, y1) * (1 - fx) + px(x1, y1) * fx) * fy;
+        out[(size_t(y) * 1024 + x) * 4 + size_t(c)] = c == 3 ? 255 : uint8_t(std::clamp(v + 0.5f, 0.f, 255.f));
+      }
+    }
+}
+
+// The WWE 2K games' materials carry four parameters WWE '12's don't (g_fvLightLimit before the textures,
+// g_fSpeLodNear, g_fSpeLodFar, g_f4MipmapBias at the end), and WWE '12 takes a material's parameters by their place:
+// the texture after the extra one was read in its place, the mesh drawn with its model's texture 0 (RenderDoc,
+// 2026-11-06: 2K14 RAW's model 212 above the titantron drew raw_titan02r_5, a red and white strip, for its
+// raw_titan01_2, and the minitron raw_titan02r_1 for raw_titan02r_4; every model with several textures alike). Taken
+// out of each mesh's parameter list (its pointers moved down, the count made smaller; the records stay in the file).
+// Their layered materials (sampDiffusePrm, sampDiffuse1Prm..3Prm, scrolled: 212's layer 0 a red and white sweep, layer
+// 1 its RAW logo) are drawn by WWE '12 with layer 0 alone (the same capture): layer 0 given the biggest picture of its
+// layers, the main one.
+inline void Params2KTo12(svrfmt::ArcNode &ga) {
+  constexpr size_t B = 8;
+  static const char *const kExtra[] = {"g_fvLightLimit", "g_fSpeLodNear", "g_fSpeLodFar", "g_f4MipmapBias"};
+  // (the arena's pictures' sizes, by lower-case name)
+  std::map<std::string, int> area;
+  for (auto &k : ga.kids)
+    if (k.id == 400) {
+      std::vector<svrfmt::BundleTexture> texs;
+      if (svrfmt::BundleRead(svrfmt::ArchiveData(k), texs))
+        for (const auto &t : texs) {
+          svrfmt::DdsInfo info;
+          std::string n = t.name;
+          std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+          if (svrfmt::DdsInfoOf(t.data, info))
+            area[n] = info.w * info.h;
+        }
+    }
+  for (auto &k : ga.kids) {
+    Bytes d = svrfmt::ArchiveData(k);
+    if (d.size() < 0x48 || !svrfmt::IsJboy(d))
+      continue;
+    const size_t len = svrfmt::Be32(&d[4]);
+    if (B + len > d.size())
+      continue;
+    const auto in = [&](size_t o, size_t n) { return o + n <= B + len; };
+    const uint32_t nmesh = svrfmt::Be32(&d[0x18]), mptr = svrfmt::Be32(&d[0x1C]);
+    const bool w12 = nmesh && in(B + mptr, 0x80) && d[B + mptr + 0x7C] == 'y' && d[B + mptr + 0x78] != 'y';
+    const size_t stride = w12 ? 0xB8 : 0xB4;
+    const auto f = [w12](size_t off) { return w12 && off >= 0x74 ? off + 4 : off; };
+    bool changed = false;
+    for (uint32_t i = 0; i < nmesh && in(B + mptr + stride * (i + 1), 0); ++i) {
+      const size_t o = B + mptr + stride * i;
+      const uint32_t npar = svrfmt::Be32(&d[o + f(0x90)]), parptr = svrfmt::Be32(&d[o + f(0x94)]);
+      if (!in(B + parptr, 4 * size_t(npar)))
+        continue;
+      std::vector<uint32_t> kept;
+      for (uint32_t j = 0; j < npar; ++j) {
+        const uint32_t at = svrfmt::Be32(&d[B + parptr + 4 * j]);
+        if (!in(B + at, 16)) {
+          kept.push_back(at);
+          continue;
+        }
+        const std::string name(reinterpret_cast<const char *>(&d[B + at]), strnlen(reinterpret_cast<const char *>(&d[B + at]), 16));
+        if (std::none_of(std::begin(kExtra), std::end(kExtra), [&](const char *x) { return name == x; }))
+          kept.push_back(at);
+      }
+      // (the layers: their slots, the biggest picture's to layer 0)
+      {
+        const uint32_t ntex = svrfmt::Be32(&d[0x24]), tptr = svrfmt::Be32(&d[0x2C]);
+        size_t layer0 = 0;
+        int best_slot = -1, best_area = -1, slot0 = -1, layers = 0;
+        for (const uint32_t at : kept) {
+          if (!in(B + at, 24))
+            continue;
+          const std::string name(reinterpret_cast<const char *>(&d[B + at]), strnlen(reinterpret_cast<const char *>(&d[B + at]), 16));
+          if (name.rfind("sampDiffuse", 0) != 0 || name.size() < 14 || name.compare(name.size() - 3, 3, "Prm") != 0)
+            continue;
+          const uint32_t slot = svrfmt::Be32(&d[B + at + 20]);
+          if (name == "sampDiffusePrm")
+            layer0 = B + at + 20, slot0 = int(slot);
+          ++layers;
+          if (slot >= ntex || !in(B + tptr + 16 * size_t(slot), 16))
+            continue;
+          std::string tn(reinterpret_cast<const char *>(&d[B + tptr + 16 * size_t(slot)]),
+                         strnlen(reinterpret_cast<const char *>(&d[B + tptr + 16 * size_t(slot)]), 16));
+          std::transform(tn.begin(), tn.end(), tn.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+          const auto it = area.find(tn);
+          if (it != area.end() && it->second > best_area)
+            best_area = it->second, best_slot = int(slot);
+        }
+        if (layers > 1 && layer0 && best_slot >= 0 && best_slot != slot0) {
+          svrfmt::PutBe32(&d[layer0], uint32_t(best_slot));
+          changed = true;
+        }
+      }
+      if (kept.size() == npar)
+        continue;
+      for (size_t j = 0; j < kept.size(); ++j)
+        svrfmt::PutBe32(&d[B + parptr + 4 * j], kept[j]);
+      svrfmt::PutBe32(&d[o + f(0x90)], uint32_t(kept.size()));
+      changed = true;
+    }
+    if (changed)
+      svrfmt::ArchiveReplace(k, d);
+  }
+}
+
 inline void ScreensTo12(svrfmt::ArcNode &ga) {
   constexpr size_t B = 8;
   // WWE '12 gives each screen its movie by number (RenderDoc, WrestleMania 31, 2026-10-26: renamed, screen 805 still
@@ -644,6 +765,7 @@ inline bool PortTree(svrfmt::Archive &a, svrfmt::Archive &b, Bytes &out, std::st
       svrfmt::ArchiveTouch(n);
     }
   };
+  Params2KTo12(ga);
   ScreensTo12(ga);
   LedPanelsTo12(ga);
   for (auto &k : ga.kids)

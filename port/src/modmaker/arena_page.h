@@ -1988,6 +1988,8 @@ class Page {
     etex_.clear();
     load_.clear();
     movie_.clear();
+    screens_.clear();
+    ribbon_.clear();
     Bytes out;
     std::string why;
     port_svr_arena::PortInfo info;
@@ -2245,6 +2247,8 @@ class Page {
     etex_.clear();
     load_.clear();
     movie_.clear();
+    screens_.clear();
+    ribbon_.clear();
     if (w13.empty() || !port13::Port(w13, shipped_, out, &why, &info) || !other_.Load(out, &why)) {
       port_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
       return;
@@ -2412,6 +2416,23 @@ class Page {
     // (a 2K game's own ETEX found or not: 2K17's are HSPC hashes and 2K15's names longer, and their plates were left
     // out, the base's shown, 2026-10-31: their plates come from their movies anyway)
     const bool own_etex = !evtgd.empty() && port13::Etex(evtgd, w13_pick_, etex_);
+    // (WWE 2K14 writes its plates in a font of their own, in its ETEX as WWE '12's: 20000 pages, 20001 YFB - a plain
+    // white one, not its VS screen's, seen in 2K14, 2026-11-06: kept as a font archive, pages and YFB, for EtexFont2K)
+    Bytes plate_font2k;
+    if (own_etex && y_title_ == 0x545408B2) {
+      svrfmt::Archive o;
+      const svrfmt::ArcNode *pg = nullptr, *yf = nullptr;
+      if (svrfmt::ArchiveOpen(etex_, o, nullptr))
+        for (const auto &k : o.root.kids) {
+          if (k.id == 20000)
+            pg = &k;
+          else if (k.id == 20001)
+            yf = &k;
+        }
+      if (pg && yf)
+        plate_font2k = svrfmt::PachWrite({{0, svrfmt::BpeEncode(svrfmt::ArchiveData(*pg))},
+                                          {1, svrfmt::BpeEncode(svrfmt::ArchiveData(*yf))}});
+    }
     if (own_etex || y_title_ != kWwe13) {
       // (a 2K game's has no plates of its own: WWE '12's WrestleMania XXVII ones wearing its logo and copyright plate)
       svrfmt::Archive e;
@@ -2472,7 +2493,8 @@ class Page {
           std::vector<uint8_t> unsteady;
           if (bink2::Still(bink2::Found(), in, still, nullptr, &intro, 20, true, &unsteady))
             own[n] = port_svr_arena::PlateOnScreen(still, n == 1, intro, text[n][0], text[n][1],
-                                                    slot_ >= 0 ? kSlots[slot_].number : 2, &unsteady);
+                                                    slot_ >= 0 ? kSlots[slot_].number : 2, &unsteady,
+                                                    y_title_ == 0x315A07D2 || y_title_ == 0x545408BA);
           std::error_code ec;
           fs::remove(in, ec);
         }
@@ -2487,7 +2509,8 @@ class Page {
         port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
       // (their text in its VS screen's font, as the 2K game writes them)
       // (as big as their glass takes: the name half its height, the location's two lines in it)
-      if (!etex_.empty() && port_svr_arena::EtexFont2K(etex_, font2k, glass2k[1] * 0.5f, glass2k[0] * 0.42f))
+      if (!etex_.empty() && port_svr_arena::EtexFont2K(etex_, plate_font2k.empty() ? font2k : plate_font2k,
+                                                       glass2k[1] * 0.5f, glass2k[0] * 0.42f))
         port_note_ += fr ? " Leur texte dans sa police." : " Their text in its font.";
     }
     // Its pre-match screen, and its transition video.
@@ -2509,10 +2532,12 @@ class Page {
         std::wstring err;
         // (within the game's limits, lossier and lossier until it fits as the SvR ones below: 2K15's RAW 2002, 21
         // frames up to 82 KB, was refused by the game, the base's played, 2026-11-06)
+        // (the encoder kept within them frame by frame, lossier only where a frame needs it: 2K16's RAW, 61 frames,
+        // fitted only at {20, 32, 40} for all and looked broken in the game, 2026-11-06)
         static constexpr int kQuality2K[][3] = {{2, 2, 0}, {4, 6, 8}, {8, 12, 16}, {12, 20, 24}, {20, 32, 40}, {32, 48, 64}};
         bool converted = false, fits = false;
         for (const auto &q : kQuality2K) {
-          if (!bink2::ToBink1(bink2::Found(), in, out, nullptr, nullptr, &err, 320, 320, 8, q))
+          if (!bink2::ToBink1(bink2::Found(), in, out, nullptr, nullptr, &err, 320, 320, 8, q, 38000, 820000))
             break;
           converted = true;
           std::ifstream f(out, std::ios::binary);
@@ -2534,6 +2559,56 @@ class Page {
           port_note_ += fr ? " Sa transition (Bink 2) n'a pas pu être convertie : " + media::Utf8(err) + "."
                            : " Its transition (Bink 2) couldn't be converted: " + media::Utf8(err) + ".";
         }
+        std::error_code ec;
+        fs::remove(in, ec);
+        fs::remove(out, ec);
+      }
+    }
+    // Its screens' movies (WWE 2K14: evtmov.pac MOV/M0NN, Bink 2 at 256 x 256, its "ppv_header&wall"), made WWE '12's
+    // Bink 1: a wall (as MVSW/M0NN: 256 x 256, frames of 24 KB at most), the whole, for its wall and the strip above
+    // the titantron, and a ribbon (as MVAB / MVSB: 1024 x 32, 1.8 MB, frames of 24 KB at most), its ribbon unfolded
+    // by port13::Ribbon2K14. The game plays them in place of the arena's and the superstars' ribbons and walls, as
+    // 2K14 shows its own in the entrances. (WWE '12 played its own there, red and white blocks, 2026-11-06.)
+    screens_.clear();
+    ribbon_.clear();
+    // (off since 2026-11-06: the 2K14 arenas keep only their titantron screen, ScreensTo12; kept for later)
+    constexpr bool kOwnScreens2K14 = false;
+    if (kOwnScreens2K14 && y_title_ == 0x545408B2 && !evtmov.empty()) {
+      svrfmt::Archive a;
+      char name[8];
+      snprintf(name, sizeof(name), "M%03d", w13_pick_);
+      Bytes bk2;
+      if (svrfmt::ArchiveOpen(evtmov, a, nullptr))
+        for (auto &k : a.root.kids)
+          if (k.group == "MOV " && k.name.compare(0, 4, name) == 0) {
+            bk2 = svrfmt::ArchiveData(k);
+            break;
+          }
+      if (bk2.size() > 44 && memcmp(bk2.data(), "KB2", 3) == 0) {
+        wchar_t tmp[MAX_PATH];
+        GetTempPathW(MAX_PATH, tmp);
+        const fs::path in = fs::path(tmp) / L"wwe12_screens.bk2", out = fs::path(tmp) / L"wwe12_screens.bik";
+        std::ofstream(in, std::ios::binary).write(reinterpret_cast<const char *>(bk2.data()), std::streamsize(bk2.size()));
+        static constexpr int kQuality[][3] = {{2, 2, 0}, {8, 12, 16}, {20, 32, 40}};
+        const std::function<void(const uint8_t *, int, int, std::vector<uint8_t> &)> unfold = port13::Ribbon2K14;
+        for (const bool ribbon : {false, true}) {
+          Bytes &m = ribbon ? ribbon_ : screens_;
+          const uint32_t max_frame = 25000, max_size = 1800000;
+          std::wstring err;
+          for (const auto &q : kQuality) {
+            if (!bink2::ToBink1(bink2::Found(), in, out, nullptr, nullptr, &err, ribbon ? 1024 : 256, ribbon ? 32 : 256, 0,
+                                q, 22000, 1750000, ribbon ? &unfold : nullptr))
+              break;
+            std::ifstream f(out, std::ios::binary);
+            m.assign(std::istreambuf_iterator<char>(f), {});
+            const uint32_t largest = m.size() >= 16 ? uint32_t(m[12]) | uint32_t(m[13]) << 8 | uint32_t(m[14]) << 16 : ~0u;
+            if (largest <= max_frame && m.size() <= max_size)
+              break;
+            m.clear();
+          }
+        }
+        if (!screens_.empty() || !ribbon_.empty())
+          port_note_ += fr ? " Avec les vidéos de ses écrans." : " With its screens' movies.";
         std::error_code ec;
         fs::remove(in, ec);
         fs::remove(out, ec);
@@ -2769,6 +2844,10 @@ class Page {
         entries.push_back({"arena/load_hd.pac", load_});
       if ((mode_ == 3 || mode_ == 4) && !movie_.empty())  // its transition video (evtmov.pac MOVT/M0NN)
         entries.push_back({"arena/transition.bik", movie_});
+      if ((mode_ == 3 || mode_ == 4) && !screens_.empty())  // its screens' movie (served as evtmov.pac MVSW/M0NN)
+        entries.push_back({"arena/screens.bik", screens_});
+      if ((mode_ == 3 || mode_ == 4) && !ribbon_.empty())  // its ribbon's movie (served as evtmov.pac MVAB, MVSB)
+        entries.push_back({"arena/ribbon.bik", ribbon_});
     } else {
       entries.push_back({"files/" + Path(), std::move(out)});
     }
@@ -2831,6 +2910,8 @@ class Page {
   Bytes etex_;                // its entrance graphics from WWE '13 (port13::Etex)
   Bytes load_;                // its pre-match screen from WWE '13 (port13::PreMatch)
   Bytes movie_;               // its transition video from WWE '13 (port13::TransitionVideo)
+  Bytes screens_;             // its screens' movie (WWE 2K14's evtmov.pac MOV/M0NN made Bink 1, served as walls), else empty
+  Bytes ribbon_;              // its ribbon's (the top of that one unfolded, 1024 x 32, served as ribbons), else empty
   Bytes svr_file_;            // the SvR 2011 arena file (port_svr_arena.h)
   fs::path svr_path_;         // ... a file chosen alone
   disc::GameDisc svr_disc_;   // ... or the game's ISO / folder, and its arena chosen
