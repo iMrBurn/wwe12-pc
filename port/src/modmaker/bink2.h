@@ -531,7 +531,8 @@ inline bool Still(const Tool &tool, const fs::path &in, svrfmt::Image &out, std:
 // frames (an arena's transition movie: the 2K games' have alpha, but neither tool gives it back: RAD Video Tools
 // writes 24-bit AVI and TGA; WWE '12's are a fade in and out over the picture).
 inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, std::atomic<int> *progress,
-                    std::atomic<bool> *cancel, std::wstring *err, int out_w = 0, int out_h = 0, int fade = 0) {
+                    std::atomic<bool> *cancel, std::wstring *err, int out_w = 0, int out_h = 0, int fade = 0,
+                    const int *quality = nullptr) {  // (quality: bink_writer_quality's three, else the writer's own)
   Info info;
   if (!ReadInfo(in, info)) {
     if (err)
@@ -554,6 +555,8 @@ inline bool ToBink1(const Tool &tool, const fs::path &in, const fs::path &out, s
     return false;
   }
   BinkWriter *bw = fade > 0 ? bink_writer_open_alpha(f, frames, W, H) : bink_writer_open_size(f, frames, W, H);
+  if (bw && quality)
+    bink_writer_quality(bw, quality[0], quality[1], quality[2]);
   if (!bw) {
     fclose(f);
     if (err)

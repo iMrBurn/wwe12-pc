@@ -2489,10 +2489,29 @@ class Page {
         const fs::path in = fs::path(tmp) / L"wwe12_transition.bk2", out = fs::path(tmp) / L"wwe12_transition.bik";
         std::ofstream(in, std::ios::binary).write(reinterpret_cast<const char *>(bk2.data()), std::streamsize(bk2.size()));
         std::wstring err;
-        if (bink2::ToBink1(bink2::Found(), in, out, nullptr, nullptr, &err, 320, 320, 8)) {
+        // (within the game's limits, lossier and lossier until it fits as the SvR ones below: 2K15's RAW 2002, 21
+        // frames up to 82 KB, was refused by the game, the base's played, 2026-11-06)
+        static constexpr int kQuality2K[][3] = {{2, 2, 0}, {4, 6, 8}, {8, 12, 16}, {12, 20, 24}, {20, 32, 40}, {32, 48, 64}};
+        bool converted = false, fits = false;
+        for (const auto &q : kQuality2K) {
+          if (!bink2::ToBink1(bink2::Found(), in, out, nullptr, nullptr, &err, 320, 320, 8, q))
+            break;
+          converted = true;
           std::ifstream f(out, std::ios::binary);
           movie_.assign(std::istreambuf_iterator<char>(f), {});
+          const uint32_t largest = movie_.size() >= 16 ? uint32_t(movie_[12]) | uint32_t(movie_[13]) << 8 |
+                                                             uint32_t(movie_[14]) << 16
+                                                       : 0;
+          if ((fits = largest <= 40000 && movie_.size() <= 850000))
+            break;
+        }
+        if (!fits)
+          movie_.clear();
+        if (fits) {
           port_note_ += fr ? " Avec sa transition." : " With its transition.";
+        } else if (converted) {
+          port_note_ += fr ? " Sa transition reste trop lourde pour le jeu : celle de l'arène de base passera."
+                           : " Its transition stays too heavy for the game: the base arena's plays.";
         } else {
           port_note_ += fr ? " Sa transition (Bink 2) n'a pas pu être convertie : " + media::Utf8(err) + "."
                            : " Its transition (Bink 2) couldn't be converted: " + media::Utf8(err) + ".";
