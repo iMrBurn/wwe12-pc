@@ -1041,6 +1041,33 @@ inline bool FbxToAttire(const fs::path &fbx, svrfmt::ArcNode &attire, const Opti
       break;
     }
   }
+  // The neck and the head with the chest's move when theirs is over 3 cm more: else the head went up to the base's
+  // and the neck stretched after it (a giraffe: GTA San Andreas' CJ on Cena, his head 15 cm higher there above the
+  // chest, 2026-11-06). The head then turns about the base's joint a few cm off, hardly seen.
+  {
+    int chest = -1;
+    for (size_t b = 0; b < out_bones.size(); ++b)
+      if (out_bones[b] == "mune")
+        chest = int(b);
+    auto in_head = [&](std::string n) {
+      for (; !n.empty(); n = Parent2011(n))
+        if (n == "atama" || n == "kubi")
+          return true;
+      return false;
+    };
+    double worst = 0;
+    for (size_t b = 0; b < out_bones.size() && chest >= 0; ++b)
+      if (in_head(out_bones[b]))
+        worst = std::max(worst, Len(Sub(shift[b], shift[size_t(chest)])));
+    if (worst > 3.0) {
+      for (size_t b = 0; b < out_bones.size(); ++b)
+        if (in_head(out_bones[b]))
+          shift[b] = shift[size_t(chest)];
+      char t[160];
+      snprintf(t, sizeof(t), "neck and head kept at the model's height above the chest (the base's is %.0f cm off)", worst);
+      rep.lines.push_back(t);
+    }
+  }
   for (auto &m : meshes)
     for (size_t k = 0; k < m.pos.size(); ++k)
       for (const auto &[b, w] : m.w[k])
