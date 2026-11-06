@@ -97,7 +97,7 @@ tester sur une COPIE de la sauvegarde (`lancer_test_effectif.bat`, ou une copie 
 - 38. Plan 1.1 : deux mallettes Money in the Bank (demande de l'utilisateur, 2026-11-01)
 - 39. Plantage 1.0.0 « 5 matchs RAW + 5 SmackDown » corrigé (2026-11-03, testé sur la copie, candidat 1.0.1)
 - 40. 1.1 : jukebox, news des PPV, relations des catcheurs ajoutés (2026-11-05, vus par l'utilisateur)
-- 41. Arènes ajoutées, logos et matchup screens dans SHOW EDIT (étude, 2026-11-06)
+- 41. Arènes ajoutées, logos et matchup screens dans SHOW EDIT (étude puis arènes faites, 2026-11-06)
 
 ---
 
@@ -1033,3 +1033,13 @@ scène (+88) que si elle est dans le registre (`sub_828A98A8`), sinon garde l'an
 reste dans la sauvegarde si le mod est retiré). Voie propre : la fiche garde le numéro de la BASE, et un fichier à côté
 de la sauvegarde (`universe_arenas.txt` : show → id du mod) dit quelle arène ajoutée joue ; avant chaque match de
 l'Univers on sert l'arène du show (ou la base). Mod retiré = la base joue, rien de cassé.
+
+**Fait (1.1, 2026-11-06, vu en jeu par l'utilisateur sur une copie : Breaking Point de SvR 2011 sur RAW, OK)** :
+`wwe12_universe.cpp` (crochets `sub_826CBFD0` à 0x82584054 = choix de SHOW EDIT, `sub_826CBE70` à 0x825893C4 = SAVE,
+`sub_828AC150` depuis 0x826BBE88 = match de l'Univers ; r31 y est le PORTEUR de la fiche, fiche = [r31]) et
+`wwe12_arena_pages.cpp` (`Wwe12ArenaChosen/Id/Find/Play`, pages gardées dans l'Univers seulement sur la ligne ARENA de
+SHOW EDIT). Réglage `wwe12_universe_added_arenas` (true). **Piège** : ne jamais laisser `g_reload_vs` (« écran VS à
+refaire », `sub_828A9898` remet la scène de la préparation à -1) dans l'Univers : rien n'y remet la scène ensuite, le
+match chargeait la scène -1 (plantage avant l'entrée dans `sub_822EE080`, lecture de 0x50, ou écran blanc).
+`Wwe12ArenaPlay` le remet à false. Remarque de l'utilisateur (pour Mods) : sur Breaking Point, la foule gêne quand la
+caméra s'éloigne.

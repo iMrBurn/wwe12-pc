@@ -2002,22 +2002,22 @@ int Wwe12ArenaFind(const std::string &id, uint32_t &base) {
 }
 
 // Puts added arena n on its base's stage, or (n < 0) the game's arena back on `stage`, as a choice on the arena
-// select does (sub_825A56C8 above): its file served, the stage object and the VS screen loaded again if it changed.
+// select does (sub_825A56C8 above): its file served, the stage object loads it again if it changed. Called just
+// before sub_828AC150 sets the match's stage: no "VS screen again" (g_reload_vs) there, also none left from SHOW
+// EDIT's choice: in the Universe nothing sets the stage again after sub_828A9898 forgets it, and the match loaded
+// stage -1 (crash before the entrance, or a white screen, 2026-11-06).
 void Wwe12ArenaPlay(int n, uint32_t stage) {
   if (n >= 0 && size_t(n) < g_added.size()) {
-    if (g_chosen != n) {
+    if (g_chosen != n)
       REXLOG_INFO("[arena pages] Universe show: {} ({}), plays as stage {}", g_added[size_t(n)].name,
                   g_added[size_t(n)].id, g_added[size_t(n)].base);
-      g_reload_vs = true;
-    }
     g_chosen = n;
     Serve(g_added[size_t(n)].base, n);
     ForgetHeldArena(g_added[size_t(n)].base);
   } else if (stage < kFirstAdded) {
-    if (g_chosen >= 0)
-      g_reload_vs = true;
     g_chosen = -1;
     Serve(stage, -1);
     ForgetHeldArena(stage);
   }
+  g_reload_vs = false;
 }
