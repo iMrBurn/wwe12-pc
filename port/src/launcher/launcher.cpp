@@ -33,6 +33,7 @@
 #include "keybinds.h"
 #include "mods.h"
 #include "dlc_add.h"
+#include "benchmark_run.h"
 #include "machine_profile.h"
 #include "saves.h"
 #include "toml_file.h"
@@ -617,6 +618,7 @@ ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
 saves::Manager g_saves;
 dlcadd::Adder g_dlc_add;
+bench::Runner g_bench;
 mods::Manager g_mods;
 bool g_launch = false;
 bool g_launch_no_mods = false;  // PLAY WITHOUT MODS: --wwe12_no_mods=true for this game only
@@ -701,6 +703,16 @@ void PagePlay() {
                                  : "One game without any mod (mods folder, arenas, texture packs, added superstars), to "
                                    "find out whether a problem comes from a mod. Nothing is deleted. What this game "
                                    "saves doesn't count: your save is put back as it was at the next start.");
+  }
+  {
+    // The program the PLAY button would start (same choice as LaunchGame, without its message).
+    std::error_code ec;
+    fs::path bench_exe = ExeDir() / L"wwe12.exe";
+    const fs::path api_exe = ExeDir() / (g_s.api == 3 ? L"wwe12_d3d11.exe" : L"wwe12_d3d12.exe");
+    if ((g_s.api == 2 || g_s.api == 3) && fs::exists(api_exe, ec))
+      bench_exe = api_exe;
+    ImGui::Dummy(ImVec2(0, 4));
+    g_bench.Draw(fr, bench_exe, ExeDir(), DocumentsDir(), found && !game::IsRunning());
   }
   if (g_play_note)
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", g_play_note == 1 ? t.already_running : t.wait_busy);
@@ -1848,7 +1860,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
       g_play_note = 0;
       if (game::IsRunning())
         g_play_note = 1;  // one game at a time
-      else if (g_saves.Busy() || g_dlc_add.Busy() || g_updater.Busy())
+      else if (g_saves.Busy() || g_dlc_add.Busy() || g_updater.Busy() || g_bench.Busy())
         g_play_note = 2;  // closing now would cut it short
       else if (LaunchGame(hwnd, no_mods))
         done = true;
