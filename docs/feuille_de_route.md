@@ -219,3 +219,6 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 
 ## Yeux des catcheurs de SvR 2009 / 2010 qui restent derrière en courant (1.2)
 - Le bug principal (yeux détachés) est corrigé et poussé (f543cec). Le détail restant (les globes restent un peu derrière quand le catcheur court) : cause non trouvée, même os et mêmes poids que SvR 2011 (où ça va). Pistes pour la 1.2 : la 3e pièce d'œil de SvR 2010 (format de sommet 7, disque d'iris plat de 0,08 cm), ou une capture RenderDoc comparée image par image (2 à 3 h après la capture). L'utilisateur le laisse tomber pour l'instant (« si y a encore le bug, on me dira »). Dans les notes de la 1.1 : « connu ».
+
+## Mode 30 fps (issue #57, 2026-11-06) : étude, 1.2
+- Dessiner une image sur deux en gardant la vitesse du jeu (un simple plafond le ralentirait), pour téléphones moyens, Steam Deck et petits PC ; à la manière du port 2K14 de Jarrodfeng (accord verbal, voir `credits-and-permissions`). Étude Android + Rendu (gain, risques : read-backs, tenues cuites, cibles de rendu). Dans la liste Steam Deck / petit PC.

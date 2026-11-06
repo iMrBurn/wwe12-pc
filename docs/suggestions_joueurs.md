@@ -96,3 +96,6 @@ Liste du joueur, rangée par la Main. Les numéros de version sont ceux de `docs
 - **Intel HD 4000, D3D11 à 25 images/s** (Fac7) ; **GT 430, peaux cassées en D3D11** (#55, correction de Kaiko pour SvR 2011 à regarder) ; **chutes d'images aux changements de caméra** (#53) : Rendu.
 - **Ceinture qui traverse les CAW** (Wes Smoove) : bug d'origine, Mods / Gameplay (le « belt fit » des catcheurs ajoutés peut aider).
 - **Android** : #54 (Moto G100, DEVICE_LOST avec Turnip), #41 (Poco X3 Pro, nouveaux journaux) : session Android.
+
+## Suggestion du 2026-11-06 (GitHub #57, Android)
+- **Mode 30 fps pour les appareils moyens** (Redmi Note 13 Pro 5G, Snapdragon 7s Gen 2 : « jeu au ralenti ») : le port WWE 2K14 de Jarrodfeng a cette option. Un plafond simple ne suffit pas (le jeu tourne à 60 pas par seconde : il ralentirait) : il faut dessiner une image sur deux en gardant la vitesse. Utile aussi au Steam Deck et aux petits PC. Étude confiée à Android et Rendu (1.2) ; réponse faite sur l'issue (version, journal, préréglage LOW-END PHONE en attendant).
