@@ -298,27 +298,6 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
   auto pos = [](const M4 &w, double scale) {
     return std::array<double, 3>{w.m[3] * scale, w.m[7] * scale, w.m[11] * scale};
   };
-  // SvR 2010's eyes (their pieces' vertex format 7; SvR 2011's 3): in the match they followed behind the head when the
-  // superstar ran (Jay, Discord; Shelton Benjamin, the user 2026-11-06), SvR 2011's don't (Kelly Kelly, RenderDoc).
-  // Their bones (r_eye / l_eye) and weights are 2011's: the cause isn't found; such eyes follow the head instead (no
-  // eye moves, but no lag).
-  {
-    bool old_eyes = false;
-    size_t mi = 0;
-    for (const auto &part : svr.parts)
-      for (uint32_t k = 0; k < part.meshes && mi < svr.meshes.size(); ++k, ++mi) {
-        std::string l;
-        for (char c : part.name)
-          l += char(tolower(static_cast<unsigned char>(c)));
-        old_eyes = old_eyes || ((l == "eye" || l == "eyes") && svr.meshes[mi].vfmt == 7);
-      }
-    for (size_t i = 0; i < svr.nodes.size() && old_eyes; ++i)
-      if (svr.nodes[i].name == "r_eye" || svr.nodes[i].name == "l_eye") {
-        target[i] = -1;
-        if (rep)
-          rep->notes.push_back(svr.nodes[i].name + ": SvR 2010's eye, follows the head");
-      }
-  }
   auto sub = [](std::array<double, 3> a, const std::array<double, 3> &b) {
     for (int q = 0; q < 3; ++q)
       a[q] -= b[q];
