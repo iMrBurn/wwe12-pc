@@ -251,7 +251,7 @@ struct Texts {
 const Texts kEnglish = {
     "PLAY", "SETTINGS", "CONTROLS", "MODS", "SAVES", "ABOUT",
     "PLAY", "Version", "Game files found.",
-    "Game files missing: put your WWE '12 (Xbox 360) .iso in the \"game\" folder.",
+    "Game files missing: put your WWE '12 (Xbox 360) .iso, or its extracted files, in the \"game\" folder.",
     "Language", "Internal resolution", "Automatic", "Display mode", "Full screen", "Window", "V-Sync",
     "60 fps entrances and cutscenes",
     "The original game runs them at 30 fps.",
@@ -357,7 +357,7 @@ const Texts kEnglish = {
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
     "JOUER", "Version", "Fichiers du jeu trouvés.",
-    "Fichiers du jeu manquants : mettez l'image .iso de votre WWE '12 (Xbox 360) dans le "
+    "Fichiers du jeu manquants : mettez l'image .iso de votre WWE '12 (Xbox 360), ou ses fichiers extraits, dans le "
     "dossier \"game\".",
     "Langue", "Résolution interne", "Automatique", "Mode d'affichage", "Plein écran", "Fenêtre", "V-Sync",
     "Entrées et cinématiques à 60 fps",
@@ -461,7 +461,7 @@ const Texts kFrench = {
     "Cela ressemble à un Steam Deck", "Cela ressemble à un petit PC",
     "Sur ce genre de machine, c'est le processeur qui limite le jeu plus que la carte graphique : une résolution "
     "plus basse et moins d'effets donnent une vitesse plus régulière.",
-    "Résolution : %dp", "Tribunes, ombres et flou de profondeur : coupés", "Ombres et flou de profondeur : coupés",
+    "Résolution : %dp", "Foule, ombres et flou de profondeur : coupés", "Ombres et flou de profondeur : coupés",
     "Image 16:10 remplie : activée", "Graphismes : Vulkan",
     "Appliquer le profil", "Pas maintenant", "Non merci, ne plus demander",
     "Rien ne change si vous n'appliquez pas, et RÉGLAGES > Annuler le préréglage remet vos anciennes valeurs.",
@@ -500,6 +500,14 @@ const KeyBind kBinds[] = {
     {"keybind_start", "Start", "Return,Escape"},
     {"keybind_back", "Back", "Tab,Backspace"},
 };
+
+// French names of the actions (same order as kBinds); the key names themselves (A, X, LB...) stay as on the pad.
+const char *const kBindLabelsFr[] = {
+    "Stick gauche haut", "Stick gauche bas", "Stick gauche gauche", "Stick gauche droite",
+    "Stick droit haut", "Stick droit bas", "Stick droit gauche", "Stick droit droite",
+    "X", "A", "B", "Y", "LB", "RB", "LT", "RT", "L3", "R3",
+    "Croix haut", "Croix bas", "Croix gauche", "Croix droite", "Start", "Retour"};
+static_assert(std::size(kBindLabelsFr) == 24, "one French label per binding");
 
 struct Settings {
   int language = 1;  // 1 en, 3 de, 4 fr, 5 es, 6 it
@@ -609,6 +617,7 @@ void SaveSettings() {
 }
 
 const Texts &T() { return g_s.language == 4 ? kFrench : kEnglish; }
+const char *BindLabel(size_t i) { return g_s.language == 4 ? kBindLabelsFr[i] : kBinds[i].label; }
 
 // ---------------------------------------------------------------------------------------------
 // Pages
@@ -1159,12 +1168,12 @@ void PageControls() {
     std::unordered_map<std::string, size_t> first_use;  // key -> first action using it
     for (size_t i = 0; i < std::size(kBinds); ++i) {
       ImGui::TableNextColumn();
-      ImGui::TextUnformatted(kBinds[i].label);
+      ImGui::TextUnformatted(BindLabel(i));
       ImGui::TableNextColumn();
       ImGui::PushID(int(i));
       const keys::Result norm = keys::Normalize(g_s.binds[i]);
       for (const std::string &b : norm.bad)
-        bad_list += (bad_list.empty() ? "" : ", ") + b + " (" + kBinds[i].label + ")";
+        bad_list += (bad_list.empty() ? "" : ", ") + b + " (" + BindLabel(i) + ")";
       for (size_t from = 0; from < norm.text.size();) {  // same key for two actions?
         size_t comma = norm.text.find(',', from);
         if (comma == std::string::npos)
@@ -1173,8 +1182,8 @@ void PageControls() {
         from = comma + 1;
         const auto it = first_use.emplace(key, i);
         if (!it.second && it.first->second != i)
-          dup_list += (dup_list.empty() ? "" : ", ") + key + " (" + kBinds[it.first->second].label + " / " +
-                      kBinds[i].label + ")";
+          dup_list += (dup_list.empty() ? "" : ", ") + key + " (" + BindLabel(it.first->second) + " / " +
+                      BindLabel(i) + ")";
       }
       const float field_w = ImGui::GetContentRegionAvail().x - side_w;
       if (g_capture_idx == int(i)) {  // waiting for a key: click to cancel

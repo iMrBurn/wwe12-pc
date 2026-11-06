@@ -1,4 +1,4 @@
-# Launcher : profil « Steam Deck / petit PC » (2026-11-06, axe A de la 1.1+)
+﻿# Launcher : profil « Steam Deck / petit PC » (2026-11-06, axe A de la 1.1+)
 
 > **État au 2026-11-06** : code écrit (`port/src/launcher/machine_profile.h` + `launcher.cpp`), **jamais compilé ni lancé**
 > (seulement : test hors ligne de la logique de choix, et vérification de syntaxe `clang -fsyntax-only` de `launcher.cpp`, sans
@@ -17,8 +17,8 @@
 | RAM | `GlobalMemoryStatusEx` | +1 point si ≤ 8 Go |
 | Batterie | `GetSystemPowerStatus` (lu, pas encore utilisé pour décider) | informatif |
 
-Profil **Deck** : 720p, tribunes / ombres / flou coupés, 16:10 activé, API Vulkan.
-Profil **petit PC** (score ≥ 2) : 1 point faible = 720p ; 3-4 points = 540p ; ≥ 5 points ou ≤ 4 Go de RAM = 480p ; tribunes coupées
+Profil **Deck** : 720p, foule / ombres / flou coupés, 16:10 activé, API Vulkan.
+Profil **petit PC** (score ≥ 2) : 1 point faible = 720p ; 3-4 points = 540p ; ≥ 5 points ou ≤ 4 Go de RAM = 480p ; foule coupées
 si score ≥ 3 ; ombres et flou coupés ; 16:10 activé ; Vulkan seulement sous Wine / Proton. Un PC normal (score < 2) : rien n'est proposé.
 Valeurs mesurées par le test hors ligne : voir §4.
 
@@ -52,7 +52,7 @@ Valeurs mesurées par le test hors ligne : voir §4.
 
 ## 4. Essais faits (hors ligne, `clang++` à part, jamais le projet)
 
-Sortie du test de `Choose` (cartes inventées + ce PC) : Deck (par nom de carte ou par variable) → 720p, tribunes/ombres/flou coupés,
+Sortie du test de `Choose` (cartes inventées + ce PC) : Deck (par nom de carte ou par variable) → 720p, foule/ombres/flou coupés,
 Vulkan ; vieux PC 2 cœurs / 4 Go / 940MX → 480p ; 4 cœurs / 8 Go / GTX 1050 2 Go → 540p ; PC 6 cœurs / 16 Go / GTX 1660 → **rien
 proposé** ; Wine + carte intégrée → 720p + Vulkan ; ce PC (RTX 5070 dédiée) → **rien proposé** (un premier essai proposait à tort un profil à
 cause de la mémoire DXGI d'une autre carte : corrigé).
