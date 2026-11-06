@@ -302,3 +302,70 @@ mesures, son profil LOW-END PHONE et l'interface de son launcher.
 Tests en jeu nécessaires (avec l'utilisateur) : un match complet à 30 (prises, contres, finisher, sortie du ring,
 objets), un replay et les moments forts, une entrée, un match d'Univers, un Royal Rumble. Puis un test de performance
 sur un petit PC ou en 4 fils (attendu : le double de marge CPU par image).
+
+## Test de performance « à la 2K » : un seul match imposé (Rendu, 2026-11-06, étude, pour la 1.2)
+
+Idée de l'utilisateur (via Launcher et Main) : comme les benchmarks des WWE 2K récents, pas d'entrée, UN match imposé
+(souvent un Hell in a Cell à 6 : s'il tient 60 là, il tient partout), rien à choisir, ~1 min 30, des résultats
+comparables d'un PC à l'autre. Aujourd'hui (85441d9), le joueur choisit lui-même le match.
+
+### Comment imposer le match : deux voies
+
+| Voie | Principe | Heures (hors tests) | Risques |
+|---|---|---|---|
+| **1 (conseillée d'abord) : un trajet fixe dans les menus** | Sur un dossier de données neuf, les curseurs des menus sont toujours au même endroit. L'utilisateur a trouvé le début : `START, LEFT, A, A, A, B` → menu principal. On écrit la suite une fois (EXHIBITION → HELL IN A CELL → 6 catcheurs → 6 cases de la grille → arène → valider), avec les mots déjà en place (`until<état>`, attentes) et des captures `shot` pour la vérifier écran par écran, sans personne devant. | 3 - 4 | Les **mods** changent la grille des catcheurs et la liste des arènes : le test les coupe pour sa durée (`wwe12_superstar_mods`, `wwe12_entrance_mods`, et l'overlay du dossier `mods` à couper aussi, +0,5 - 1 h). Les DLC installés aussi : le dossier neuf n'a que ceux du dossier `dlc` du joueur, qui peuvent différer ; à vérifier (les DLC ajoutent des cases à la fin de la grille ?). Un patch de menu du jeu qui déplace une ligne casse le trajet. |
+| 2 : préparer le match sans menu | Remplir la configuration du match (catcheurs, arène, type, nombre) puis appeler le chargement, comme les modes du jeu le font (`sub_82783808` prépare un match d'un autre mode, `sub_827829B0` = règles du match ; l'Univers remplit ses cartes : `wwe12_universe.cpp`). | 8 - 15, incertain | C'est le travail de Gameplay : trouver la structure de la configuration et la fonction qui lance le chargement. Une fois faite, elle sert aussi ailleurs (lancer un match de test directement). |
+
+**Conseil :** voie 1 pour la 1.2, avec la voie 2 étudiée en parallèle par Gameplay, qui la remplacera quand elle
+existera. Même résumé dans les deux cas.
+
+### Scénario et mesures
+
+- **Scénario :** dossier neuf, mods coupés, trajet fixe jusqu'à un Hell in a Cell à 6 dans une arène du jeu. Les
+  entrées sont passées (START pendant l'entrée, ou option des entrées du jeu si elle existe). Puis 60 s de match
+  mesurées sans toucher à la manette. **Une seule passe** (~1 min 30 de mesure, plus le chargement) ; la 2e passe
+  (caches chauds) devient une option (`wwe12_benchmark_pass2`).
+- **Mesures** (inchangées) : i/s moyen, 1 % pires, pire image, work, gpu wait, CPU par image (fil de rendu, jeu
+  entier), shaders compilés au dessin, temps de chargement, verdict.
+
+### Format du résumé pour le launcher
+
+Le texte lisible reste en haut. Un bloc à la fin se lit facilement par le launcher (une clé par ligne, pas de
+texte libre à analyser) :
+
+    [results]
+    version=1.2.0
+    scenario=hiac6            (ou "player_match" pour le test actuel)
+    cpu=Intel(R) Core(TM) i7-14700HX
+    threads=28
+    gpu=NVIDIA GeForce RTX 5070 Laptop GPU
+    api=Vulkan                (Vulkan | D3D12 | D3D11)
+    platform=Windows          (ou "Wine / Proton 9.0")
+    output=1920x1080
+    render_scale=auto         (ou 360 / 480 / 540 / 720 / …)
+    frame_mode=original       (original | 30 | 60_entrances)
+    match_fps=60.0
+    match_target_fps=60
+    match_p1_ms=18.0
+    match_worst_ms=18.7
+    match_work_ms=3.9
+    match_gpu_wait_ms=0.0
+    cpu_render_ms=3.8
+    cpu_game_ms=13.3
+    pipelines_while_drawing=0
+    load_s=12.2
+    verdict=ok                (ok | cpu | gpu | failed)
+
+Le bouton « réglages conseillés » du launcher peut s'appuyer sur `verdict`, `match_fps` et `render_scale` : `cpu` →
+mode 30 fps (quand il existera) et foule réduite ; `gpu` → résolution interne plus basse ; `ok` → rien.
+
+### Estimation (heures, tests en jeu à part)
+
+| Tâche | Heures |
+|---|---|
+| Trajet fixe jusqu'au HIAC à 6 (avec captures de contrôle) | 3 - 4 |
+| Mods coupés pendant le test | 0,5 - 1 |
+| Une seule passe, entrées passées, 60 s de match | 1 |
+| Bloc `[results]` dans le résumé | 0,5 |
+| **Total voie 1** | **5 - 6,5 h** |
+| Voie 2 (Gameplay, préparation du match sans menu) | 8 - 15 h, à part |
