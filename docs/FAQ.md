@@ -112,6 +112,14 @@ There are no qualifiers for the Royal Rumble.
 **Fewer than 15 Superstars per show.** `wwe12_universe_min_roster` (1 to 15, default 15 = original game). The game
 itself warns that matches may be badly balanced under 15.
 
+**Added Superstars (Mod Maker) in the Universe.** Since 1.1 an added Superstar starts without allies or rivals
+(`wwe12_universe_added_relations = true`; `false` = as in 1.0), and the brand you give him in the Universe is kept
+when you open the select screen. Qualifying matches show their pay-per-view's picture in the NEWS
+(`wwe12_universe_news_ppv_picture = true`; `false` = the blue globe).
+
+**Jukebox music kept over a match.** Fixed in 1.1: the jukebox theme now stops on every loading screen, NEXT MATCH
+included (`wwe12_jukebox_stop_on_load = true`; `false` = as in 1.0).
+
 ## Match Creator
 
 **Extended Match Creator.** On by default. To go back to the original rules, turn it off in the launcher or
@@ -196,6 +204,12 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
   MATCHS DE QUALIFICATION en jeu. Les 2 semaines avant Money in the Bank et Elimination Chamber, des qualifications
   ont lieu dans les émissions, avec des news. Pas de qualifications pour le Royal Rumble.
 - **Moins de 15 catcheurs par émission** : `wwe12_universe_min_roster` (1 à 15, 15 = jeu d'origine).
+- **Catcheurs ajoutés (Mod Maker) dans l'Univers** : depuis la 1.1 ils commencent sans alliés ni rivaux
+  (`wwe12_universe_added_relations = true` ; `false` = comme en 1.0) et la marque que tu leur donnes dans l'Univers est
+  gardée à l'écran de sélection. Les news de qualification montrent l'image de leur PPV
+  (`wwe12_universe_news_ppv_picture = true` ; `false` = le globe bleu).
+- **Jukebox qui restait par-dessus un match** : corrigé en 1.1, le thème s'arrête à chaque écran de chargement, NEXT MATCH
+  compris (`wwe12_jukebox_stop_on_load = true` ; `false` = comme en 1.0).
 - **Match Creator étendu** : activé par défaut. Pour revenir aux règles d'origine : launcher, ou
   `wwe12_mc_unlock = false` dans `wwe12.toml`. Débloque :
   limite de temps partout ; K.O. et Last Man Standing en cage et Hell in a Cell ; Over the Top Rope et Élimination à
