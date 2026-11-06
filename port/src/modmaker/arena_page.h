@@ -2027,11 +2027,13 @@ class Page {
         port_svr_arena::Banner(matchhd, svr_pick_, img, svr_year_)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
+      StageCover(fr, img);
     } else if (svr_pick_ >= 0 && svr_year_ == 2007 && svr_disc_.Read("pac/menu/menuHD.pac", menuhd07) &&
                port_svr_arena::Svr07Banner(menuhd07, svr_pick_, img)) {
       // (SvR 2007 has no VS screen per arena: its picture on its arena select screen)
       SetBanner(img);
       banner_custom_ = true;
+      StageCover(fr, img);
     } else {
       banner_custom_ = false;
       LoadBaseBanner();
@@ -2221,6 +2223,16 @@ class Page {
   }
 
   // The recipe (port13.h) on the chosen arena, its base the slot chosen above.
+  // The ported arena's stage screen in the match: its banner picture behind it (port_svr_arena::StageCover).
+  void StageCover(bool fr, const svrfmt::Image &pic) {
+    Bytes cur = other_.Build();
+    std::string why;
+    if (!port_svr_arena::StageCover(cur, pic) || !other_.Load(cur, &why))
+      return;
+    other_size_ = cur.size();
+    port_note_ += fr ? " Son logo sur le grand écran pendant le match." : " Its logo on the stage screen in the match.";
+  }
+
   void Port13(bool fr) {
     port_ok_ = false;
     const Bytes w13 = Read13(Rel13(w13_pick_));
@@ -2494,6 +2506,7 @@ class Page {
                            : port13::Banner2K([&](const char *p) { return Read13(p); }, y_title_, w13_pick_, img)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
+      StageCover(fr, img);
     } else {
       banner_custom_ = false;
       LoadBaseBanner();

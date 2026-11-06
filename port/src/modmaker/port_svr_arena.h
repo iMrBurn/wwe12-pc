@@ -3190,4 +3190,100 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
   return true;
 }
 
+// A ported arena's stage screen in the match. WWE '12 draws no video screen then (RenderDoc, a 2K15 RAW 2002 port
+// on bg01, 2026-11-06: none of 801-809 drawn, the titantron's 808 gone, its own 800 alone showing the live camera)
+// and a ported arena's stage screen is 808 (port13::ScreensTo12, the old SvR arenas' 800 made 808): an empty frame,
+// the curtain behind. As WWE '12's own (the logo boards behind the minitron): a plain model behind it, its quad 3 cm
+// further from the ring, wearing `pic` (the arena's banner picture, 512 x 256 DXT1, added to its pictures as
+// "stage_cover"): the titantron in front of it in the entrance, the picture in the match (seen in the game with
+// 2K15's own rw02_titan01, 2026-11-06). Only for an arena whose 808 is its stage screen (no 800). False: unchanged.
+inline bool StageCover(Bytes &arena, const svrfmt::Image &pic) {
+  using namespace detail;
+  constexpr size_t B = 8;
+  if (pic.rgba.empty() || pic.w <= 0 || pic.h <= 0)
+    return false;
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(arena, a, nullptr) || a.root.kids.empty() || !svrfmt::ArchiveExpand(a.root.kids[0]))
+    return false;
+  svrfmt::ArcNode &ga = a.root.kids[0];
+  svrfmt::ArcNode *screen = nullptr, *pics = nullptr;
+  std::set<uint32_t> used;
+  for (auto &k : ga.kids) {
+    used.insert(k.id);
+    if (k.id == 800)
+      return false;
+    if (k.id == 808)
+      screen = &k;
+    if (k.id == 400)
+      pics = &k;
+  }
+  if (!screen || !pics)
+    return false;
+  uint32_t id = 230;
+  while (id < 300 && used.count(id))
+    ++id;
+  if (id >= 300)
+    return false;
+  // the picture
+  std::vector<svrfmt::BundleTexture> texs;
+  if (!svrfmt::BundleRead(svrfmt::ArchiveData(*pics), texs))
+    return false;
+  static const char kName[] = "stage_cover";
+  if (std::any_of(texs.begin(), texs.end(), [](const auto &x) { return x.name == kName; }))
+    return false;  // (done already)
+  svrfmt::BundleTexture t;
+  t.name = kName;
+  t.ext = "dds";
+  t.data = svrfmt::DdsEncode(svrfmt::Resize(pic, 512, 256), svrfmt::DxtFormat::kDxt1);
+  texs.push_back(std::move(t));
+  // the model: 808's, its texture named so, the picture whole (v 0-1), 3 cm further from the ring
+  Bytes d = svrfmt::ArchiveData(*screen);
+  svrfmt::Model m;
+  if (!svrfmt::IsJboy(d) || !svrfmt::JboyRead(d, m, nullptr) || m.meshes.empty())
+    return false;
+  const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
+  for (const auto &me : m.meshes) {
+    int slot = -1;
+    for (const auto &p : me.params)
+      if (p.type == 0x0f && p.value.size() >= 4 && svrfmt::Be32(p.value.data()) < m.textures.size())
+        slot = int(svrfmt::Be32(p.value.data()));
+    const size_t vc = me.verts.size(), uvs = B + svrfmt::Be32(&me.raw[0x70]), vblk = B + svrfmt::Be32(&me.raw[0x68]);
+    if (slot < 0 || vblk + 4 > d.size() || uvs + 8 * vc > d.size() || B + tptr + 16 * (size_t(slot) + 1) > d.size())
+      return false;
+    const size_t vd = B + svrfmt::Be32(&d[vblk]);
+    if (vd + 28 * vc > d.size())
+      return false;
+    float v0 = 1e9f, v1 = -1e9f;
+    for (const auto &uv : me.uvs) {
+      v0 = std::min(v0, uv[1]);
+      v1 = std::max(v1, uv[1]);
+    }
+    float dx = me.sphere[0], dz = me.sphere[2];
+    const float len = std::sqrt(dx * dx + dz * dz);
+    if (len > 1)
+      dx /= len, dz /= len;
+    else
+      dx = 0, dz = 1;
+    for (size_t q = 0; q < vc; ++q) {
+      if (v1 > v0)
+        svrfmt::PutBeF(&d[uvs + 8 * q + 4], (me.uvs[q][1] - v0) / (v1 - v0));
+      svrfmt::PutBeF(&d[vd + 28 * q], me.verts[q].pos[0] + 3 * dx);
+      svrfmt::PutBeF(&d[vd + 28 * q + 8], me.verts[q].pos[2] + 3 * dz);
+    }
+    uint8_t *tn = &d[B + tptr + 16 * size_t(slot)];
+    std::memset(tn, 0, 16);
+    std::memcpy(tn, kName, sizeof(kName) - 1);
+  }
+  svrfmt::ArcNode cover = *screen;
+  cover.id = id;
+  ReplaceLike(cover, d);
+  ReplaceLike(*pics, svrfmt::BundleWrite(texs));
+  ga.kids.push_back(std::move(cover));
+  std::sort(ga.kids.begin(), ga.kids.end(), [](const svrfmt::ArcNode &x, const svrfmt::ArcNode &y) { return x.id < y.id; });
+  svrfmt::ArchiveTouch(ga);
+  svrfmt::ArchiveTouch(a.root);
+  arena = svrfmt::ArchiveSave(a);
+  return true;
+}
+
 }  // namespace port_svr_arena
