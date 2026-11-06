@@ -137,6 +137,8 @@ REXCVAR_DEFINE_BOOL(wwe12_arena_pages_test, false, "WWE12",
 // (wwe12_superstar_mods.cpp: the name an entrant's ribbon / wall lookup is served under, "" if none; the superstar
 // entering now, 0 if none)
 std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint8_t *base);
+// (wwe12_superstar_mods.cpp) a menu pictures mod's layout of MnLayHD.pac / MnLaySD.pac: its place in the served copy
+bool Wwe12MenuPictureEntry(const std::string &name, bool sd, uint32_t &sector, uint32_t &units);
 uint32_t Wwe12EnteringSuperstar(const PPCContext &ctx, uint8_t *base);
 
 // A ribbon / wall movie the game can play: Bink, 180 frames or more, 1.8 MB at most (the game's own: all 180 frames,
@@ -171,6 +173,7 @@ constexpr u16 kMatchHdIndex = 234;  // pac\menu\MatchHD.pac in the directory (it
 constexpr u16 kEvtGdHdIndex = 190;  // pac\evt\evtgdhd.pac
 constexpr u16 kLoadHdIndex = 233;   // pac\menu\LoadHD.pac
 constexpr u16 kEvtMovIndex = 192;   // pac\evt\evtmov.pac
+constexpr u16 kMnLayHdIndex = 237;  // pac\menu\MnLayHD.pac
 
 struct Added {
   std::string id, name;
@@ -1618,6 +1621,23 @@ extern "C" REX_FUNC(sub_827F29F0) {
     return;
   const char *n = bd::mem::str(name);
   const bool sd = FourThree();
+  // A menu pictures mod's layout (the Universe's logos, match-up screens, arena photos): its dressed copy, appended to
+  // the served MnLayHD.pac / MnLaySD.pac (wwe12_superstar_mods.cpp).
+  {
+    u32 sector = 0, units = 0;
+    if (strncmp(n, "/MLY", 4) == 0 && Wwe12MenuPictureEntry(n, sd, sector, units)) {
+      const u16 file = bd::mem::load<u16>(out + 12);
+      if (file == kMnLayHdIndex) {
+        bd::mem::store<u32>(out, sector);
+        bd::mem::store<u32>(out + 8, units);
+      }
+      static int logged = 0;
+      if (logged++ < 64)
+        REXLOG_INFO("[menu pictures] {} (file {}): {}", n, file,
+                    file == kMnLayHdIndex ? "the mod's" : "another file, kept");
+      return;
+    }
+  }
   if ((sd ? g_mupa_sd_units : g_mupa_units) && strcmp(n, "/MLYE/MUPA") == 0 &&
       bd::mem::load<u16>(out + 12) == kMatchHdIndex) {
     bd::mem::store<u32>(out, sd ? g_mupa_sd_sector : g_mupa_sector);

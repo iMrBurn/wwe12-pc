@@ -37,6 +37,7 @@
 #include "signs_page.h"
 #include "mods.h"
 #include "moves_page.h"
+#include "menupics_page.h"
 #include "pac_page.h"
 #include "new_star_page.h"
 #include "superstar_page.h"
@@ -196,7 +197,7 @@ void OpenFolder(const fs::path &p) {
 // ---------------------------------------------------------------------------------------------
 // State
 
-enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kMoves, kCaw, kObjects, kMedia, kSigns, kBackgrounds, kLook, kFiles, kDiscs, kDoctor, kAbout };
+enum Page { kHome, kVideos, kTextures, kArenas, kStars, kNewStar, kMoves, kCaw, kObjects, kMedia, kSigns, kBackgrounds, kMenuPics, kLook, kFiles, kDiscs, kDoctor, kAbout };
 Page g_page = kHome;
 bool g_fr = false;  // the game's language (wwe12.toml user_language = 4)
 TomlFile g_toml;
@@ -205,6 +206,7 @@ mods::Manager g_mods;
 media::EntranceVideos g_videos;
 media::TextureMods g_texture_mods;
 pac_page::Browser g_files;
+menupics_page::Page g_menupics;
 arena_page::Page g_arenas;
 superstar_page::Page g_stars;
 new_star_page::Page g_new_star;
@@ -360,6 +362,10 @@ void PageHome() {
        "Les pancartes que la foule brandit pour un catcheur pendant son match."},
       {kBackgrounds, "Menu backgrounds", "Fonds du menu", "The superstar on the main menu and title screen, drawn at each start.",
        "Le catcheur du menu principal et de l'écran-titre, tiré au sort à chaque lancement."},
+      {kMenuPics, "Universe logos", "Logos de l'Univers",
+       "The Universe's show and brand logos, match-up screen pictures and arena photos, replaced by yours.",
+       "Les logos de show et de marque, les images des matchup screens et les photos d'arène de l'Univers, "
+       "remplacés par les vôtres."},
       {kLook, "Look", "Regarder",
        "The game's pictures by what they are for (save one as PNG), the installed mods in 3D, and the game's "
        "animations played on a superstar.",
@@ -821,7 +827,7 @@ void DrawUi() {
       {-1, "CREATE", "CRÉER"},           {kNewStar, nullptr, nullptr},     {kMoves, nullptr, nullptr},
       {kArenas, nullptr, nullptr},       {kStars, nullptr, nullptr},       {kVideos, nullptr, nullptr},
       {kMedia, nullptr, nullptr},        {kSigns, nullptr, nullptr},       {kBackgrounds, nullptr, nullptr},
-      {kObjects, nullptr, nullptr},
+      {kMenuPics, nullptr, nullptr},     {kObjects, nullptr, nullptr},
       {-1, "PORTING", "PORTAGE"},        {kDiscs, nullptr, nullptr},
       {-1, "SAVES", "SAUVEGARDES"},      {kCaw, nullptr, nullptr},
       {-1, "LOOK", "REGARDER"},          {kLook, nullptr, nullptr},        {kFiles, nullptr, nullptr},
@@ -856,9 +862,9 @@ void DrawUi() {
   ImGui::PopFont();
   ImGui::Dummy(ImVec2(0, 8));
   const char *names_en[] = {"HOME",       "VIDEOS",     "TEXTURES",     "ARENAS", "SUPERSTARS",
-                            "NEW SUPERSTAR", "MOVES & ENTRANCES", "CAW", "BELTS & WEAPONS", "MEDIA", "SIGNS", "BACKGROUNDS", "LOOK", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
+                            "NEW SUPERSTAR", "MOVES & ENTRANCES", "CAW", "BELTS & WEAPONS", "MEDIA", "SIGNS", "BACKGROUNDS", "UNIVERSE LOGOS", "LOOK", "GAME FILES", "MY GAME DISCS", "CHECK MODS", "HELP"};
   const char *names_fr[] = {"ACCUEIL", "VIDÉOS",   "TEXTURES",   "ARÈNES",  "CATCHEURS",
-                            "NOUVEAU", "PRISES & ENTRÉES", "CAW", "CEINTURES", "MÉDIA", "PANCARTES", "FONDS", "REGARDER", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
+                            "NOUVEAU", "PRISES & ENTRÉES", "CAW", "CEINTURES", "MÉDIA", "PANCARTES", "FONDS", "LOGOS UNIVERS", "REGARDER", "FICHIERS", "MES DISQUES", "VÉRIFIER", "AIDE"};
   static_assert(sizeof(names_en) / sizeof(*names_en) == kPages && sizeof(names_fr) / sizeof(*names_fr) == kPages);
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, gap));
   for (const auto &r : kRail) {
@@ -908,6 +914,10 @@ void DrawUi() {
   case kBackgrounds:
     Title(g_fr ? "FONDS DU MENU" : "MENU BACKGROUNDS");
     g_backgrounds.Draw(g_fr, g_device.Get(), g_mods);
+    break;
+  case kMenuPics:
+    Title(g_fr ? "LOGOS DE L'UNIVERS" : "UNIVERSE LOGOS");
+    g_menupics.Draw(g_fr, g_device.Get(), g_disc, g_mods);
     break;
   case kLook:
     Title(g_fr ? "REGARDER" : "LOOK");

@@ -53,6 +53,7 @@
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
 
+#include "../modmaker/menu_pictures.h"
 #include "../modmaker/superstar_pack.h"
 #include "../modmaker/svrfmt/jboy.h"
 
@@ -77,6 +78,10 @@ std::set<uint32_t> g_mod_minitrons;  // video numbers whose titantron a VIDEOS m
 std::set<std::pair<uint32_t, uint32_t>> g_own_screens;  // (kind: 1 ribbon, 2 wall; its video number) its mod has
 std::vector<std::pair<uint32_t, std::string>> g_themes;  // added superstars' own themes: music number, name
 fs::path g_menu_dir;                    // the dressed menu files of this start, "" = the game's
+// The menu pictures mods' layouts (menu_pictures.h), appended to the served MnLayHD.pac / MnLaySD.pac: directory name
+// -> {first 2 KB sector, size in 256 bytes} in that copy ([0] HD, [1] SD); answered by the file directory
+// (Wwe12MenuPictureEntry, wwe12_arena_pages.cpp).
+std::map<std::string, std::pair<uint32_t, uint32_t>> g_menu_entries[2];
 std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the save keeps it (286 bytes)
 fs::path g_relations_file;  // Documents/wwe12/relations_cleared.txt: the added superstars whose Universe relations went
 std::map<uint32_t, Bytes> g_moves;      // ... its moves and entrance (CHAR / PRO) as the save keeps them (1068 bytes)
@@ -518,7 +523,120 @@ void RemovePack(const fs::path &content, const fs::path &headers) {
     REXLOG_INFO("[superstar mods] no superstar mods now: pack {} kept (a save may use its superstars)", kPackName);
 }
 
+// The menu pictures mods (type=menupics, mods\.svrmods\MenuPictures\<id>\pictures\<name>.dds, later folders over
+// earlier ones): the Universe's logos, match-up screens and arena photos (modmaker/menu_pictures.h). The layouts
+// showing them, dressed, are appended to the served MnLayHD.pac / MnLaySD.pac (the main menu background's copy when
+// one was drawn, kept in place) and the file directory answers their names with that place (g_menu_entries). Dressing
+// takes seconds: the dressed layouts are kept in Documents\wwe12\menu_pictures and made again only when the pictures
+// or the game's file change.
+void MenuPictures(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root, const fs::path &mods) {
+  g_menu_entries[0].clear();
+  g_menu_entries[1].clear();
+  std::error_code ec;
+  std::vector<fs::path> dirs;
+  for (fs::directory_iterator it(mods / ".svrmods" / "MenuPictures", ec), end; !ec && it != end; it.increment(ec))
+    if (it->is_directory(ec) && !fs::exists(it->path() / "disabled", ec))
+      dirs.push_back(it->path());
+  ec.clear();
+  std::sort(dirs.begin(), dirs.end());
+  std::map<std::string, Bytes> pics;
+  for (const auto &d : dirs)
+    for (fs::directory_iterator it(d / "pictures", ec), end; !ec && it != end; it.increment(ec)) {
+      Bytes b;
+      if (_stricmp(it->path().extension().string().c_str(), ".dds") == 0 && ReadHost(it->path(), b))
+        pics[it->path().stem().string()] = std::move(b);
+    }
+  if (pics.empty())
+    return;
+  uint64_t key = 0xCBF29CE484222325ull;
+  for (const auto &[name, b] : pics)
+    key = Fnv(b, Fnv(Bytes(name.begin(), name.end()), key));
+  const fs::path dir = user_root / "menu_background", cache = user_root / "menu_pictures";
+  if (g_menu_dir.empty())
+    fs::remove_all(dir, ec);
+  int served = 0;
+  for (int sd = 0; sd < 2; ++sd) {
+    const std::string rel = sd ? "pac/menu/MnLaySD.pac" : "pac/menu/MnLayHD.pac";
+    Bytes game;
+    if (!ReadGame(vfs, rel, game) || game.size() < 0x10000)
+      continue;
+    char k[64];
+    snprintf(k, sizeof(k), "%016llX %016llX %zu", static_cast<unsigned long long>(key),
+             static_cast<unsigned long long>(Fnv(Bytes(game.begin(), game.begin() + 0x10000), 0xCBF29CE484222325ull)),
+             game.size());
+    const char *tag = sd ? "sd" : "hd";
+    // The dressed layouts: the cache's (index lines "<name> <size>", then the bytes one after another), else made.
+    std::vector<menu_pictures::Dressed> dressed;
+    Bytes kept, index, blob;
+    if (ReadHost(cache / (std::string(tag) + ".key"), kept) && std::string(kept.begin(), kept.end()) == k &&
+        ReadHost(cache / (std::string(tag) + ".idx"), index) && ReadHost(cache / (std::string(tag) + ".bin"), blob)) {
+      size_t at = 0;
+      const std::string text(index.begin(), index.end());
+      for (size_t p = 0; p < text.size();) {
+        size_t e = text.find('\n', p);
+        if (e == std::string::npos)
+          e = text.size();
+        const std::string line = text.substr(p, e - p);
+        p = e + 1;
+        const size_t sp = line.find(' ');
+        const size_t size = sp == std::string::npos ? 0 : size_t(strtoull(line.c_str() + sp + 1, nullptr, 10));
+        if (!size || at + size > blob.size())
+          break;
+        dressed.push_back({line.substr(0, sp), Bytes(blob.begin() + long(at), blob.begin() + long(at + size))});
+        at += size;
+      }
+    }
+    if (dressed.empty()) {
+      int n = 0;
+      const auto t0 = std::chrono::steady_clock::now();
+      dressed = menu_pictures::Dress(game, pics, &n);
+      std::string idx;
+      blob.clear();
+      for (const auto &d : dressed) {
+        idx += d.name + " " + std::to_string(d.data.size()) + "\n";
+        blob.insert(blob.end(), d.data.begin(), d.data.end());
+      }
+      WriteHost(cache / (std::string(tag) + ".idx"), Bytes(idx.begin(), idx.end()));
+      WriteHost(cache / (std::string(tag) + ".bin"), blob);
+      WriteHost(cache / (std::string(tag) + ".key"), Bytes(k, k + strlen(k)));
+      REXLOG_INFO("[menu pictures] {}: {} picture(s) in {} layout(s), {} ms", rel, n, dressed.size(),
+                  std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
+    }
+    if (dressed.empty())
+      continue;
+    // The served file: the background's copy (EM00 dressed in place) or the game's, the layouts appended on 2 KB.
+    Bytes file;
+    if (g_menu_dir.empty() || !ReadHost(dir / fs::path(rel), file))
+      file = std::move(game);
+    for (const auto &d : dressed) {
+      file.resize((file.size() + 2047) / 2048 * 2048, 0);
+      g_menu_entries[sd][d.name] = {uint32_t(file.size() / 2048), uint32_t((d.data.size() + 255) / 256)};
+      file.insert(file.end(), d.data.begin(), d.data.end());
+    }
+    file.resize((file.size() + 2047) / 2048 * 2048, 0);
+    if (!WriteHost(dir / fs::path(rel), file)) {
+      g_menu_entries[sd].clear();
+      continue;
+    }
+    ++served;
+    REXLOG_INFO("[menu pictures] {}: {} layout(s) served from {}", rel, dressed.size(), rex::path_to_utf8(dir));
+  }
+  if (served)
+    g_menu_dir = dir;
+}
+
 }  // namespace
+
+// (wwe12_arena_pages.cpp, the file directory) a menu pictures mod's layout of MnLayHD.pac / MnLaySD.pac ("/MLYE/USEI"):
+// its place in the served copy, false if none.
+bool Wwe12MenuPictureEntry(const std::string &name, bool sd, uint32_t &sector, uint32_t &units) {
+  const auto it = g_menu_entries[sd ? 1 : 0].find(name);
+  if (it == g_menu_entries[sd ? 1 : 0].end())
+    return false;
+  sector = it->second.first;
+  units = it->second.second;
+  return true;
+}
 
 // The attire mods' own names (attire_name=): text numbers from kAttireText, which no string.pac table has (theirs end at
 // 53114), answered by the game's text lookup hooked below. (Served as new texts in a string.pac over the game's, the
@@ -876,6 +994,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
                   backgrounds[pick - 1].key, dressed);
     }
   }
+  MenuPictures(vfs, user_root, mods);
   if (list.empty() && attires.empty() && media.empty() && signs.empty() && movesets.empty()) {
     AddRestores(GameChEtc(vfs, content));
     RemovePack(content, headers);

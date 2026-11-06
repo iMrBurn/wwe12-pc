@@ -304,7 +304,8 @@ class Manager {
         {"superstar", "Superstars"}, {"attire", "Attires"},   {"arena", "Arenas"},
         {"moves", "Moves"},          {"backstage", "Backstage"}, {"signs", "Signs"},
         {"media", "Media"},          {"background", "Backgrounds"}, {"matchtype", "MatchTypes"},
-        {"textures", "Textures"}, {"files", "Files"}};  // (files: ours, the Mod Maker's GAME FILES page)
+        {"textures", "Textures"}, {"files", "Files"},  // (files: ours, the Mod Maker's GAME FILES page)
+        {"menupics", "MenuPictures"}};  // (ours: the Universe's logos / match-up screens / arena photos)
     const auto it = kinds.find(Lower(type));
     return it == kinds.end() ? std::string() : it->second;
   }
@@ -483,7 +484,7 @@ class Manager {
       m.version = Value(text, "version");
       m.type = Value(text, "type");
       m.on = !fs::exists(d / "disabled", ec);
-      for (const char *sub : {"files", "textures", "arena", "superstar"}) {
+      for (const char *sub : {"files", "textures", "arena", "superstar", "pictures"}) {
         for (fs::recursive_directory_iterator it(d / sub, ec), end; !ec && it != end; it.increment(ec))
           if (it->is_regular_file(ec))
             ++m.files;
