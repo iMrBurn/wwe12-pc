@@ -1298,6 +1298,7 @@ REX_EXTERN(__imp__sub_828BF398);  // grid widget (this + 44): vtable 0x820287E0 
 REX_EXTERN(__imp__sub_824C3220);  // (this + 3368)
 REX_EXTERN(__imp__sub_824D19E8);  // arena select: redraw (this)
 REX_EXTERN(__imp__sub_825A6A98);  // arena select: draw (every frame)
+REX_EXTERN(__imp__sub_823BEED0);  // a stage object: loads its arena ("/STG/%04d" of its +88)
 REX_EXTERN(__imp__sub_825A3318);  // arena select: is this stage available (this, stage)
 REX_EXTERN(__imp__sub_825A56C8);  // arena select: the chosen stage (this)
 REX_EXTERN(__imp__sub_827F29F0);  // file directory: find "/GRP/NAME" (directory, name, out)
@@ -1435,6 +1436,30 @@ extern "C" REX_FUNC(sub_825A3318) {
   __imp__sub_825A3318(ctx, base);
 }
 
+// The game's stage object loads its arena (stage at +88) only when the stage asked differs from the one it holds: a
+// second match on the same stage number kept the arena of the first, an added arena after its base (or the base
+// after it, or another added arena on the same base) showing the arena loaded before with the new one's pictures
+// (WrestleMania 24 then 25 on WM 27's stage, a player's report; RAW then RAW 2002: no load at all in the second
+// match, 2026-11-06). Kept: the object (the same one from match to match) and what it holds (-1: the game's arena).
+u32 g_stage_object = 0;
+int g_stage_holds = -1;
+extern "C" REX_FUNC(sub_823BEED0) {
+  g_stage_object = ctx.r3.u32;
+  g_stage_holds = g_chosen;
+  if (REXCVAR_GET(wwe12_dir_log))
+    REXLOG_INFO("[arena pages] stage object {:08X} loads stage {}", ctx.r3.u32, bd::mem::load<u32>(ctx.r3.u32 + 88));
+  __imp__sub_823BEED0(ctx, base);
+}
+
+// After a choice: if the stage object holds the chosen stage number with another arena in it, it forgets its stage
+// (-1), so the next match loads it again.
+void ForgetHeldArena(u32 stage) {
+  if (!g_stage_object || g_stage_holds == g_chosen || bd::mem::load<u32>(g_stage_object + 88) != stage)
+    return;
+  bd::mem::store<u32>(g_stage_object + 88, 0xFFFFFFFFu);
+  REXLOG_INFO("[arena pages] stage {} held another arena: loaded again", stage);
+}
+
 // The chosen arena: an added one plays as its base (and its file is served, see the directory below).
 extern "C" REX_FUNC(sub_825A56C8) {
   __imp__sub_825A56C8(ctx, base);
@@ -1448,12 +1473,14 @@ extern "C" REX_FUNC(sub_825A56C8) {
     }
     g_chosen = n;
     Serve(g_added[size_t(n)].base, n);
+    ForgetHeldArena(g_added[size_t(n)].base);
     ctx.r3.u64 = g_added[size_t(n)].base;
   } else if (stage < kFirstAdded) {
     if (g_chosen >= 0)
       g_reload_vs = true;  // (from an added arena back to the game's)
     g_chosen = -1;
     Serve(stage, -1);  // (one of the game's: its own file back, if an added arena was in it)
+    ForgetHeldArena(stage);
   }
 }
 
@@ -1478,8 +1505,10 @@ extern "C" REX_FUNC(sub_8253A028) {
   const u32 entry = ctx.r3.u32;
   if (g_chosen >= 0 && entry && entry != 0xFFFFFFFFu && bd::mem::load<u32>(entry + 8) == 1) {
     REXLOG_INFO("[arena pages] main menu: {} no longer chosen", g_added[size_t(g_chosen)].id);
-    Serve(g_added[size_t(g_chosen)].base, -1);
+    const u32 held = g_added[size_t(g_chosen)].base;
+    Serve(held, -1);
     g_chosen = -1;
+    ForgetHeldArena(held);
     g_reload_vs = true;
   }
 }
