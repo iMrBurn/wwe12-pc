@@ -207,3 +207,12 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 ## Décision de l'utilisateur du 2026-11-05 (séance de tests) : tout en 1.1
 - Dans la 1.1 : alliés / rivaux à 0 / 0 des catcheurs ajoutés (Univers : `Wwe12UniverseForgetRelations`, à tester sur une copie de sauvegarde), image des NEWS Elimination Chamber / MITB (logo du PPV au lieu du globe), base neutre automatique de NOUVEAU CATCHEUR (au lieu de Ted DiBiase), entrée 2K14 de Damien Sandow (ni musique ni titantron).
 - **Page ROSTERS du launcher** (marques hors de l'Univers, étude `docs/launcher_rosters.md`, 3 séances, écrit dans la sauvegarde : risque) : **1.3** (décision de l'utilisateur, 2026-11-05).
+
+## À étudier : version Linux native (idée d'un joueur Discord, 2026-11-06)
+- Steam Deck et PC Linux sans Proton (pas de boîtes de fichier Windows ni de détection Wine). Pas pour la 1.1 ni la 1.2.
+- Coût : SDK + jeu pour Linux x86_64 (code du port avec appels Windows), launcher Linux (le nôtre est Win32 + D3D11), paquet (archive / AppImage / AUR, jamais de données du jeu), tests sans vrai Deck. Gain de performance incertain : le goulot est le code du jeu, pas Proton.
+- Étude de faisabilité en lecture seule confiée à la session Android (`docs/linux_natif_etude.md`).
+
+## Steam Deck / petit PC (demande de l'utilisateur, 2026-11-06)
+- A : profil « Steam Deck / petit PC » du launcher (fait et essayé sur ce PC avec un Deck simulé, pas encore sur un vrai Deck), guide dans la FAQ. Confort Deck du launcher (manette, hauteur de fenêtre, boutons) : à faire.
+- B : test de performance intégré (Rendu, vise la 1.2).
