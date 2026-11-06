@@ -25,6 +25,7 @@
 
 #include "svrfmt/archive.h"
 #include "svrfmt/texture.h"
+#include "svrfmt/unzip.h"
 
 namespace menu_pictures {
 
@@ -106,6 +107,23 @@ inline const std::vector<Group> &Groups() {
   return groups;
 }
 
+// An entry's data, a "ZLIB" one inflated here: the game's build of svrfmt reads no ZLIB entries (only the Mod Maker's
+// has SVRFMT_INFLATE), and every picture of MnLayHD.pac is in one (2026-11-06: "0 picture(s)" in the game's log).
+inline Bytes Data(const svrfmt::ArcNode &n) {
+  const Bytes &e = n.stored;
+  if (e.size() >= 18 && !memcmp(e.data(), "ZLIB", 4)) {
+    const uint32_t packed = uint32_t(e[8] | e[9] << 8 | e[10] << 16 | uint32_t(e[11]) << 24),
+                   size = uint32_t(e[12] | e[13] << 8 | e[14] << 16 | uint32_t(e[15]) << 24);
+    if (packed != size && packed >= 2 && 16 + size_t(packed) <= e.size() && size) {
+      Bytes out(size);
+      if (unzip_inflate(&e[18], packed - 2, out.data(), size))
+        return out;
+      return {};
+    }
+  }
+  return svrfmt::ArchiveData(n);
+}
+
 // img into the picture `like` (its size, format and mip levels): cut to its proportions (fill) or whole.
 inline Bytes Like(const Bytes &like, const svrfmt::Image &img, bool fill) {
   svrfmt::DdsInfo info;
@@ -147,7 +165,7 @@ inline Bytes Find(const Bytes &mnlay, const std::string &name) {
       continue;
     for (auto &c : k.kids) {
       std::vector<svrfmt::BundleTexture> t;
-      if (c.id == 7001 && svrfmt::BundleRead(svrfmt::ArchiveData(c), t))
+      if (c.id == 7001 && svrfmt::BundleRead(Data(c), t))
         for (auto &x : t)
           if (x.name == name)
             return x.data;
@@ -167,7 +185,7 @@ inline std::map<std::string, Bytes> FindAll(const Bytes &mnlay, const std::vecto
       continue;
     for (auto &c : k.kids) {
       std::vector<svrfmt::BundleTexture> t;
-      if (c.id == 7001 && svrfmt::BundleRead(svrfmt::ArchiveData(c), t))
+      if (c.id == 7001 && svrfmt::BundleRead(Data(c), t))
         for (auto &x : t)
           if (!out.count(x.name) && std::find(names.begin(), names.end(), x.name) != names.end())
             out[x.name] = x.data;
@@ -336,7 +354,7 @@ inline std::vector<Dressed> Dress(const Bytes &mnlay, const std::map<std::string
     bool changed = false;
     for (auto &c : k.kids) {
       std::vector<svrfmt::BundleTexture> t;
-      if (c.id != 7001 || !svrfmt::BundleRead(svrfmt::ArchiveData(c), t))
+      if (c.id != 7001 || !svrfmt::BundleRead(Data(c), t))
         continue;
       bool any = false;
       for (auto &x : t) {

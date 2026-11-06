@@ -619,7 +619,8 @@ class Manager {
           const std::string n = Lower(e.name);
           return n.rfind("files/", 0) == 0 || n.rfind("textures/", 0) == 0 || n.rfind("arena/", 0) == 0 ||
                  n.rfind("superstar/", 0) == 0 || n.rfind("attire/", 0) == 0 || n.rfind("signs/", 0) == 0 ||
-                 n.rfind("backgrounds/", 0) == 0 || n.rfind("media/", 0) == 0 || n.rfind("matchtype/", 0) == 0;
+                 n.rfind("backgrounds/", 0) == 0 || n.rfind("media/", 0) == 0 || n.rfind("matchtype/", 0) == 0 ||
+                 n.rfind("pictures/", 0) == 0;
         })) {
       message_ = t.no_files;
       return;
