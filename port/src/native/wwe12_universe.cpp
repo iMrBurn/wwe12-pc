@@ -6021,7 +6021,7 @@ extern "C" REX_FUNC(sub_826EB510) {
 // ---- Draft news (asked by the user, 2026-11-06) ------------------------------------------------------------------
 //
 // The draft moves Superstars between RAW and SmackDown without a news: simulating the draft show, nobody knew who
-// went where. (Read around sub_826C0910, "Draft Event Success": no brand changed there, 2026-11-06.) So the brand of
+// went where. (Read around sub_826C0910, "Draft Event Success": no brand changed there.) So the brand of
 // every roster place (sub_82A33440(k), its record sub_82684910(id) +27) is kept, and compared after each match result
 // (sub_826C8690) and when the Universe menu opens, only on a draft day (sub_826CD010(view, day), the day of
 // sub_826CC618(view)) or just after one: each Superstar moved to RAW / SmackDown gets a news (type 5, +14 = 0x52,

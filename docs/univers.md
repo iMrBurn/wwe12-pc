@@ -99,6 +99,7 @@ tester sur une COPIE de la sauvegarde (`lancer_test_effectif.bat`, ou une copie 
 - 40. 1.1 : jukebox, news des PPV, relations des catcheurs ajoutés (2026-11-05, vus par l'utilisateur)
 - 41. Arènes ajoutées, logos et matchup screens dans SHOW EDIT (étude puis arènes faites, 2026-11-06)
 - 42. Matchs par show : contenders en double et cartes incomplètes (1.1, 2026-11-06)
+- 43. News du draft (1.1, 2026-11-06)
 
 ---
 
@@ -1062,3 +1063,17 @@ TLC) ; l'utilisateur : « des fois 2, des fois 3, des fois 4 » avec 6 demandés
   abandonné. Correctif : pour un match sur le point d'être abandonné seulement, les catcheurs au repos qui ne sont pas
   sur la carte redeviennent libres le temps de la réparation. Ligne de journal par carte : « card of …: x of n valid ».
   Vu : RAW et SmackDown à 6 sur 6 pendant plusieurs semaines, « match 1 had nobody free, 18 rested … booked ».
+
+Note : la table 15 (`sub_826CD010` = « draft ce jour-là ») est celle des **matchs du draft** (en-tête « WWE DRAFT
+MATCH », vu le 2026-11-06) ; le genre 8 s'affiche « #1 CONTENDER'S MATCH » dans une semaine normale (table 13).
+
+## 43. News du draft (1.1, 2026-11-06, vu par l'utilisateur sur une copie)
+
+Demande de l'utilisateur : en simulant le draft d'après WrestleMania, on ne savait pas qui changeait de marque. Le draft
+se joue au 1er RAW et au 1er SmackDown d'après WrestleMania (matchs « WWE DRAFT MATCH ») ; un catcheur change de marque
+(+27 de sa fiche, `sub_82684910(id)`) juste après son match (rien ne change dans `sub_826C0910`). Les marques de tout
+l'effectif (`sub_82A33440(k)`, k < 323) sont gardées et comparées après chaque résultat (`sub_826C8690`) et à
+l'ouverture du menu Univers, seulement un jour de draft (`sub_826CD010(vue, sub_826CC618(vue))`) ou juste après : chaque
+catcheur passé à RAW / SmackDown reçoit une news de type 5 (+14 = 0x52, +15 la marque), textes en 5 langues
+(« DRAFTED TO RAW! » / « %s has been drafted to RAW! »). Réglage `wwe12_universe_draft_news` (true). Vu : Cody Rhodes
+→ RAW, Triple H → SmackDown dans NEWS (le jeu vide la liste à chaque show : chaque show du draft montre les siens).
