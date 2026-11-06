@@ -61,6 +61,35 @@ class Page {
       const std::string head = std::string(fr ? g.fr : g.en) + (mine ? " (" + std::to_string(mine) + ")" : "") + "##" + g.en;
       if (!ImGui::CollapsingHeader(head.c_str()))
         continue;
+      // What size each kind is in the game, and how a picture is fitted into it.
+      const std::string what = g.en;
+      const char *help =
+          what == "Show logos"
+              ? (fr ? "Taille dans le jeu : 256 x 128 (et 256 x 64 pour le petit logo de marque de RAW, SmackDown, NXT, "
+                      "ECW, AWA). Votre image est mise ENTIÈRE, centrée, transparente autour. Idéal : un PNG à fond "
+                      "transparent d'environ 512 x 256."
+                    : "Size in the game: 256 x 128 (and 256 x 64 for the small brand logo of RAW, SmackDown, NXT, ECW, "
+                      "AWA). Your picture is put WHOLE, centred, clear around. Best: a PNG with a transparent background, "
+                      "about 512 x 256.")
+          : what == "Brand logos"
+              ? (fr ? "Taille dans le jeu : 256 x 128, et 256 x 64 pour le petit logo des écrans de l'Univers. Votre "
+                      "image est mise ENTIÈRE, centrée, transparente autour. Idéal : un PNG à fond transparent d'environ "
+                      "512 x 256."
+                    : "Size in the game: 256 x 128, and 256 x 64 for the small logo of the Universe screens. Your "
+                      "picture is put WHOLE, centred, clear around. Best: a PNG with a transparent background, about "
+                      "512 x 256.")
+          : what == "Match-up screens"
+              ? (fr ? "Taille dans le jeu : 512 x 128 (4 fois plus large que haut). Votre image est RECADRÉE pour remplir "
+                      "la case (le centre est gardé). Idéal : 1024 x 256, l'important au milieu."
+                    : "Size in the game: 512 x 128 (4 times as wide as high). Your picture is CUT to fill it (its "
+                      "middle kept). Best: 1024 x 256, what matters in the middle.")
+              : (fr ? "Taille dans le jeu : 256 x 64 (4 fois plus large que haut). Votre image est RECADRÉE pour remplir "
+                      "la case (le centre est gardé). Idéal : 1024 x 256, l'arène au milieu."
+                    : "Size in the game: 256 x 64 (4 times as wide as high). Your picture is CUT to fill it (its middle "
+                      "kept). Best: 1024 x 256, the arena in the middle.");
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.94f, 0.75f, 0.24f, 1.0f));
+      ImGui::TextWrapped("%s", help);
+      ImGui::PopStyleColor();
       const float cell = 200;
       const int per_row = std::max(1, int(ImGui::GetContentRegionAvail().x / (cell + 12)));
       int i = 0;
@@ -82,7 +111,16 @@ class Page {
           ImGui::TextColored(green, "%s *", s.label.c_str());
         else
           ImGui::TextUnformatted(s.label.c_str());
-        if (ImGui::SmallButton(fr ? "Remplacer..." : "Replace...")) {
+        const bool pick = ImGui::SmallButton(fr ? "Remplacer..." : "Replace...");
+        if (ImGui::IsItemHovered()) {
+          // (the game's exact size of this one)
+          const auto d = game_dds_.find(key);
+          svrfmt::DdsInfo info;
+          if (d != game_dds_.end() && svrfmt::DdsInfoOf(d->second, info))
+            ImGui::SetTooltip(fr ? "%d x %d dans le jeu - %s" : "%d x %d in the game - %s", info.w, info.h,
+                              s.fill ? (fr ? "recadrée" : "cut to fill") : (fr ? "entière, centrée" : "whole, centred"));
+        }
+        if (pick) {
           const fs::path p = arena_page::PickOpen(fr, false);
           svrfmt::Image img;
           if (!p.empty() && wic_image::Load(p, img) && img.w > 0 && img.h > 0) {
