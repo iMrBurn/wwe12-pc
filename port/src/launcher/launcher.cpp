@@ -625,16 +625,37 @@ Updater g_updater;
 VulkanCheck g_vulkan;
 std::string g_changelog;  // CHANGELOG.md next to the exe (the notes of this version), prepared
 
+std::string BuildDiagnostics();  // (defined with the ABOUT page)
+int g_diag_msg = 0;              // 1 copied, 2 failed
+
 void PagePlay() {
   const Texts &t = T();
+  const bool fr = g_s.language == 4;
   Title("WWE '12 PC");
   ImGui::TextDisabled("%s %s", t.version, WWE12_VERSION);
   ImGui::Dummy(ImVec2(0, 10));
   const bool found = GameFilesFound(ExeDir());
-  if (found)
+  if (found) {
     ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", t.game_found);
-  else
+  } else {
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.game_missing);
+    // What to do, one click away: the folder where the game's files go.
+    if (ImGui::Button(fr ? "Ouvrir le dossier du jeu" : "Open the game folder"))
+      OpenFolder(ExeDir() / "game");
+  }
+  {
+    // The graphics API the PLAY button will start, and a plain warning when its program is not there.
+    std::error_code ec;
+    const bool d3d12 = g_s.api == 2, d3d11 = g_s.api == 3;
+    const wchar_t *exe = d3d11 ? L"wwe12_d3d11.exe" : d3d12 ? L"wwe12_d3d12.exe" : L"wwe12.exe";
+    const char *api = d3d11 ? "DirectX 11" : d3d12 ? "DirectX 12" : "Vulkan";
+    if ((d3d12 || d3d11) && !fs::exists(ExeDir() / exe, ec))
+      ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
+                         fr ? "L'API choisie (DirectX) n'est pas installée : le jeu démarrera en Vulkan. Changez-la dans RÉGLAGES."
+                            : "The chosen API (DirectX) is not installed: the game will start with Vulkan. Change it in SETTINGS.");
+    else
+      ImGui::TextDisabled(fr ? "API graphique : %s" : "Graphics API: %s", api);
+  }
   switch (g_vulkan.GetState()) {
   case VulkanCheck::State::Ok:
     {
@@ -667,7 +688,6 @@ void PagePlay() {
   if (BigButton(t.play_button, ImVec2(340, 90), kGold, IM_COL32(20, 20, 20, 255)))
     g_launch = true;
   {
-    const bool fr = g_s.language == 4;
     if (ImGui::Button(fr ? "Jouer sans mods" : "Play without mods")) {
       g_launch = true;
       g_launch_no_mods = true;
@@ -692,6 +712,22 @@ void PagePlay() {
   g_updater.Draw({t.checking, t.up_to_date, t.update_available, t.install_update, t.check_failed,
                   t.check_now, t.check_at_start, t.downloading, t.update_failed, t.include_beta,
                   t.update_game_running});
+  // A problem? The most useful things for a bug report, within reach of the first page.
+  ImGui::Dummy(ImVec2(0, 6));
+  ImGui::Separator();
+  ImGui::Text("%s", fr ? "Un problème ?" : "A problem?");
+  if (ImGui::Button(t.diag_copy))
+    g_diag_msg = diag::CopyToClipboard(BuildDiagnostics()) ? 1 : 2;
+  ImGui::SameLine();
+  if (ImGui::Button(fr ? "FAQ" : "FAQ"))
+    OpenUrl(L"https://github.com/iMrBurn/wwe12-pc/blob/main/docs/FAQ.md");
+  ImGui::SameLine();
+  if (ImGui::Button(fr ? "Signaler sur GitHub" : "Report on GitHub"))
+    OpenUrl(L"https://github.com/iMrBurn/wwe12-pc/issues");
+  if (g_diag_msg == 1)
+    ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", t.diag_copied);
+  else if (g_diag_msg == 2)
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", t.diag_failed);
   if (!g_changelog.empty()) {
     ImGui::Dummy(ImVec2(0, 10));
     if (ImGui::CollapsingHeader(t.whats_new, ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1390,11 +1426,17 @@ std::string BuildDiagnostics() {
     r += std::string(", wwe12_d3d11.exe ") + (d3d11_present ? "present" : "missing") + "\n";
   }
   r += std::string("Game files: ") + (GameFilesFound(ExeDir()) ? "found" : "missing") + "\n";
+  {
+    const machine::Facts f = machine::Detect();
+    r += std::string("Environment: ") + (f.wine ? "Wine/Proton" : "Windows") + (f.deck_env ? ", Steam Deck" : "") +
+         (f.battery ? ", battery" : "") + ", cores " + std::to_string(f.cores) + "/" + std::to_string(f.threads) + "\n";
+    const auto used = g_vulkan.UsedDevice(g_s.gpu);
+    if (!used.name.empty())
+      r += "Game will use: " + used.name + (used.kind == 1 ? " (dedicated)" : used.kind == 2 ? " (integrated)" : "") + "\n";
+  }
   r += "Mod files: " + std::to_string(mods) + ", DLC installed: " + std::to_string(dlc) + "\n";
   return r;
 }
-
-int g_diag_msg = 0;  // 1 copied, 2 failed
 
 // REPORT A PROBLEM: one zip on the Desktop with what a bug report needs: the machine and settings (the diagnostics
 // text), the installed mods, the game's 3 latest logs (the logs folder next to the exe) and its crash / hang traces
