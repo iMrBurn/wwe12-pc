@@ -2483,6 +2483,9 @@ class Page {
       }
       if (!etex_.empty() && port_note_.find(fr ? "plaques d'entrée" : "entrance plates") == std::string::npos)
         port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
+      // (their text in its VS screen's font, as the 2K game writes them)
+      if (!etex_.empty() && port_svr_arena::EtexFont2K(etex_, font2k))
+        port_note_ += fr ? " Leur texte dans sa police." : " Their text in its font.";
     }
     // Its pre-match screen, and its transition video.
     const Bytes loadhd = Read13("pac/menu/LoadHD.pac");

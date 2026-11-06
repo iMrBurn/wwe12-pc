@@ -1007,12 +1007,11 @@ inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n) {
 // offset of u16s), +0x4C kerning (count, offset; {u16, u16, i32}), +0x5C glyphs (count, offset; {x, y, w, h} u16 and 8
 // zero bytes) on that page}, all offsets from the block's start. The same records: only the versions made WWE '12's.
 // False: not such a font.
-inline bool Font2K(const Bytes &theirs, const Bytes &mf12, Bytes &out) {
+// (into a WWE '12 font's two nodes: its pages' PACH and its YFB, their packing kept)
+inline bool FontInto(const Bytes &theirs, svrfmt::ArcNode &page_node, svrfmt::ArcNode &yfb_node) {
   using namespace detail;
-  out.clear();
-  svrfmt::Archive t, w;
-  if (!svrfmt::ArchiveOpen(theirs, t, nullptr) || t.root.kids.size() < 2 || !svrfmt::ArchiveOpen(mf12, w, nullptr) ||
-      w.root.kids.size() < 2)
+  svrfmt::Archive t;
+  if (!svrfmt::ArchiveOpen(theirs, t, nullptr) || t.root.kids.size() < 2)
     return false;
   // its pages
   std::vector<Bytes> pages;
@@ -1042,8 +1041,7 @@ inline bool Font2K(const Bytes &theirs, const Bytes &mf12, Bytes &out) {
       return false;
     y[at + 4] = 100;
   }
-  // WWE '12 RAW's font wearing them
-  svrfmt::ArcNode &pk = w.root.kids[0];
+  svrfmt::ArcNode pk = page_node;
   if (!svrfmt::ArchiveExpand(pk) || pk.kids.empty())
     return false;
   while (pk.kids.size() > pages.size())
@@ -1052,18 +1050,56 @@ inline bool Font2K(const Bytes &theirs, const Bytes &mf12, Bytes &out) {
   for (size_t i = 0; i < pages.size(); ++i) {
     if (i < pk.kids.size())
       svrfmt::ArchiveReplace(pk.kids[i], pages[i]);
-    else if (!svrfmt::ArchiveAdd(pk, pk.kids[0].group, pk.kids[0].name, uint32_t(i), pages[i], &why))
+    else if (uint32_t next = 0; [&] {  // (after its last id: WWE '12's plate fonts number their pages 0, 2)
+               for (const auto &k : pk.kids)
+                 next = std::max(next, k.id + 1);
+               return !svrfmt::ArchiveAdd(pk, pk.kids[0].group, pk.kids[0].name, next, pages[i], &why);
+             }())
       return false;
   }
   svrfmt::ArchiveTouch(pk);
   svrfmt::Archive one;
   one.root = pk;
   one.root.wrap = svrfmt::ArcWrap::None;  // (packed once, below)
-  ReplaceLike(w.root.kids[0], svrfmt::ArchiveSave(one));
-  ReplaceLike(w.root.kids[1], y);
+  ReplaceLike(page_node, svrfmt::ArchiveSave(one));
+  ReplaceLike(yfb_node, y);
+  return true;
+}
+
+inline bool Font2K(const Bytes &theirs, const Bytes &mf12, Bytes &out) {
+  out.clear();
+  svrfmt::Archive w;
+  if (!svrfmt::ArchiveOpen(mf12, w, nullptr) || w.root.kids.size() < 2 ||
+      !FontInto(theirs, w.root.kids[0], w.root.kids[1]))
+    return false;
   svrfmt::ArchiveTouch(w.root);
   out = svrfmt::ArchiveSave(w);
   return out.size() >= 4 && memcmp(out.data(), "PACH", 4) == 0;
+}
+
+// A WWE '12 entrance graphics pack (ETEX, `etex`) writing its plates' text in a WWE 2K VS screen font (Font2K's
+// `theirs`): its two fonts, 20000 / 20001 (the name's pages, YFB) and 20010 / 20011 (the location's), made it (the
+// WWE 2K games write their plates in their VS screen's font: 2K15's RAW 2002, 2026-11-06). False: unchanged.
+inline bool EtexFont2K(Bytes &etex, const Bytes &theirs) {
+  svrfmt::Archive e;
+  if (theirs.empty() || !svrfmt::ArchiveOpen(etex, e, nullptr))
+    return false;
+  int done = 0;
+  for (const uint32_t at : {20000u, 20010u}) {
+    svrfmt::ArcNode *pg = nullptr, *yf = nullptr;
+    for (auto &k : e.root.kids)
+      if (k.id == at)
+        pg = &k;
+      else if (k.id == at + 1)
+        yf = &k;
+    if (pg && yf && FontInto(theirs, *pg, *yf))
+      ++done;
+  }
+  if (!done)
+    return false;
+  svrfmt::ArchiveTouch(e.root);
+  etex = svrfmt::ArchiveSave(e);
+  return true;
 }
 
 // A WWE 2K game's own VS screen made WWE '12's (2026-10-31): its layout (7000, YXMLBIN VER0003) has WWE '12's frame
