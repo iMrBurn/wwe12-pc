@@ -724,6 +724,9 @@ void PagePlay() {
   ImGui::SameLine();
   if (ImGui::Button(fr ? "Signaler sur GitHub" : "Report on GitHub"))
     OpenUrl(L"https://github.com/iMrBurn/wwe12-pc/issues");
+  ImGui::SameLine();
+  if (ImGui::Button("Discord"))
+    OpenUrl(L"https://discord.gg/SJ8sMhMwNS");
   if (g_diag_msg == 1)
     ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", t.diag_copied);
   else if (g_diag_msg == 2)
