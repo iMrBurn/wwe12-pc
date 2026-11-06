@@ -52,6 +52,17 @@ DirectX 11/12), tell us your screen size and graphics API.
 **Low-end PC.** In the launcher, the LOW-END PC button sets 480p, no crowd, no shadows and no depth of field in one
 click (UNDO puts your old values back). Internal resolutions go down to 360p.
 
+**Steam Deck (guide, not tested by us on a real Deck yet: tell us what you see).** Copy the game folder in Desktop
+Mode, then in Steam add `WWE12 Launcher.exe` (or `wwe12.exe`) as a non-Steam game and run it with a recent Proton
+(Proton Experimental or GE-Proton). Use the Vulkan version (`wwe12.exe`, the default): Vulkan goes straight to the
+Deck's driver, while DirectX 12 and 11 go through translation layers and are slower. The automatic resolution is 720p
+(the Deck's screen is 16:10, which the game fills). What limits the Deck is its processor (4 cores at about 15 W), not
+the graphics: entrances run a little under 30 fps and matches around 45 to 55. Tips: in Steam's quick-access menu
+(performance) cap the frame rate or refresh rate (for example 40) so the speed stays even, keep the power limit at
+its default or higher (a lower limit slows the game), turn the crowd off (`wwe12_crowd = false`) and shadows off for
+more speed. If you send a report, use launcher > ABOUT > "Copy diagnostic info" and the newest log; they show your
+frame times.
+
 **The game is slow / in slow motion.** The game runs at 60 frames per second; when your PC can't keep up,
 the whole game slows down (that's how the original works). Try, in the launcher: a lower internal
 resolution (720p or 540p); empty stands with `wwe12_crowd = false` in `wwe12.toml`. On a laptop: plug in the charger, use Windows' "Best
@@ -182,6 +193,15 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
   (ANNULER remet vos anciennes valeurs). Les résolutions vont jusqu'à 360p.
 - **Écran noir / message Vulkan** : il faut une carte graphique avec un pilote Vulkan (pas les Intel HD
   4000/5000/6000). Mettez à jour votre pilote.
+- **Steam Deck** (guide, pas encore testé par nous sur un vrai Deck : dites-nous ce que vous voyez) : copiez le dossier du
+  jeu en mode Bureau, puis ajoutez `WWE12 Launcher.exe` (ou `wwe12.exe`) à Steam comme jeu non-Steam, avec un Proton
+  récent (Proton Experimental ou GE-Proton). Gardez la version Vulkan (`wwe12.exe`, par défaut) : DirectX 12 et 11 passent
+  par des couches de traduction et sont plus lents. La résolution automatique est 720p (l'écran du Deck est en 16:10,
+  que le jeu remplit). Ce qui limite le Deck, c'est son processeur (4 cœurs à environ 15 W) : entrées un peu sous 30 i/s,
+  matchs vers 45-55. Conseils : dans le menu rapide de Steam (performances), limitez la fréquence (par exemple 40) pour
+  que la vitesse reste régulière, gardez la limite de puissance par défaut ou plus haute, tribunes vides
+  (`wwe12_crowd = false`) et ombres coupées pour gagner en vitesse. Pour un rapport : launcher > ABOUT > « Copy diagnostic
+  info » et le dernier journal.
 - **Ralentis** : le jeu ralentit si le PC ne tient pas 60 images/s. Baissez la résolution interne (720p,
   540p), tribunes vides avec `wwe12_crowd = false` dans `wwe12.toml`, branchez le chargeur, mode « Meilleures performances », bonne carte graphique
   sur la page JOUER, fermez OBS et les overlays.
