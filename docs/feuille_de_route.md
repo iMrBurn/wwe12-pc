@@ -24,7 +24,7 @@ Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/mod_make
 - Royal Rumble de Jay avec ses mods (à lui faire retester) ; PPV à une seule marque (Univers) ; réglage « Largeur » du portrait (685c950, local).
 - Android : correctif des vieux noyaux (joueur de #41), look sur vrai téléphone (Yexclsv).
 
-**Hors 1.1** : reprise des notes / taille / genre (branche `mods-notes-1-2`), vraies animations de prises SvR 2011 / 2K, personnes cachées des entrées 2K, 2K17, détail des yeux SvR 2010 en courant, tenues de The Miz (abandonné), base neutre de NOUVEAU CATCHEUR (refusée).
+**Dans la 1.1 sur décision de l'utilisateur (2026-11-06), NON testé en jeu, annoncé « expérimental »** : reprise automatique des notes / taille / genre depuis SvR 2007-2011 (8fc2fc1, remis dans `main`). **Hors 1.1** : vraies animations de prises SvR 2011 / 2K, personnes cachées des entrées 2K, 2K17, détail des yeux SvR 2010 en courant, tenues de The Miz (abandonné), base neutre de NOUVEAU CATCHEUR (refusée).
 
 **Notes publiques** : les notes de la 1.0 annonçaient pour la 1.1 « squash, finishers de départ, I Quit, Special Referee, deux mallettes MITB, icônes de touches » : les notes de la 1.1 disent que c'est repoussé (1.3).
 
