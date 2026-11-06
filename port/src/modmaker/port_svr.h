@@ -1123,6 +1123,68 @@ inline bool OldSvrPictures(svrfmt::ArcNode &svr) {
 
 // collision: the hair's collision capsules (entry 61, WWE '12's) for a base that has none (a long-haired superstar's,
 // read from the player's disc); null: none.
+// The eyes' pieces (part EYE / eye) made the size of the base's eyeballs, around their eye joint (r_eye / l_eye):
+// SvR 2010's eyeballs are 3.44 cm wide, WWE '12's and SvR 2011's 3.13 - in the base's sockets they stood out of the
+// eyelids, more when the game turned them (Shelton Benjamin running, RenderDoc 2026-11-06). Eyes as big as the
+// base's (within 3 %) are left as they are.
+inline void FitEyes(svrfmt::Model &ms, const svrfmt::Model &mb, Report *rep) {
+  const auto is_eye = [](const std::string &n) {
+    std::string l;
+    for (char c : n)
+      l += char(tolower(static_cast<unsigned char>(c)));
+    return l == "eye" || l == "eyes";
+  };
+  // the widest eye piece's width (x) on the +x side, in cm
+  const auto width = [&](const svrfmt::Model &m, double scale) {
+    double best = 0;
+    size_t mi = 0;
+    for (const auto &part : m.parts)
+      for (uint32_t k = 0; k < part.meshes && mi < m.meshes.size(); ++k, ++mi) {
+        if (!is_eye(part.name))
+          continue;
+        double lo = 1e9, hi = -1e9;
+        for (const auto &v : m.meshes[mi].verts)
+          if (v.pos[0] > 0)
+            lo = std::min(lo, double(v.pos[0])), hi = std::max(hi, double(v.pos[0]));
+        if (hi > lo)
+          best = std::max(best, (hi - lo) * scale);
+      }
+    return best;
+  };
+  const double ws = width(ms, 10), wb = width(mb, 1);
+  if (ws <= 0 || wb <= 0 || ws < wb * 1.03)
+    return;
+  const double f = wb / ws;
+  const auto w = World(ms);
+  int le = -1, re = -1;
+  for (size_t i = 0; i < ms.nodes.size(); ++i) {
+    if (ms.nodes[i].name == "l_eye")
+      le = int(i);
+    if (ms.nodes[i].name == "r_eye")
+      re = int(i);
+  }
+  if (le < 0 || re < 0)
+    return;
+  size_t mi = 0, moved = 0;
+  for (const auto &part : ms.parts)
+    for (uint32_t k = 0; k < part.meshes && mi < ms.meshes.size(); ++k, ++mi) {
+      if (!is_eye(part.name))
+        continue;
+      for (auto &v : ms.meshes[mi].verts) {
+        const M4 &j = w[size_t(v.pos[0] > 0 ? le : re)];
+        const double c[3] = {j.m[3], j.m[7], j.m[11]};
+        for (int q = 0; q < 3; ++q)
+          v.pos[q] = float(c[q] + (v.pos[q] - c[q]) * f);
+        ++moved;
+      }
+    }
+  if (rep && moved) {
+    char b[160];
+    snprintf(b, sizeof(b), "eyes %.2f cm wide made the base's %.2f (x%.2f, around their joints)", ws, wb, f);
+    rep->notes.push_back(b);
+  }
+}
+
 inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep, std::string *why,
                        const Bytes *collision = nullptr) {
   Report own;
@@ -1167,6 +1229,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     rep->notes.push_back("already a WWE '12 attire: taken as it is");
     return true;
   }
+  FitEyes(ms, mb, rep);
   Turns turns;  // (the body's, for its other models)
   if (!ConvertModel(ms, mb, mo, rep, false, nullptr, &turns))
     return fail("the model can't be converted");
