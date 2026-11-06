@@ -724,7 +724,7 @@ inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t ti
     if (svrfmt::BundleRead(d, texs)) {
       for (auto &t : texs)
         if (t.name.rfind("Pbg_", 0) == 0 || t.name.rfind("arena_", 0) == 0 || t.name.rfind("PPVbg_", 0) == 0 ||
-            (!select.empty() && t.name == select))
+            t.name.rfind("PPV_", 0) == 0 || (!select.empty() && t.name == select))
           pics.emplace(t.name, std::move(t.data));
       return;
     }
@@ -791,8 +791,21 @@ inline bool Banner2K(const std::function<Bytes(const char *)> &read, uint32_t ti
   }
   if (stem.empty())
     return false;
-  if (const auto it = pics.find("PPVbg_" + record); !record.empty() && it != pics.end() && take(it->second))
+  if (const auto it = pics.find("PPVbg_" + record); !record.empty() && it != pics.end() && take(it->second)) {
+    // (2K15's arena select screen shows its logo plate, "PPV_<name>" 256 x 128 with its alpha, over that picture: the
+    // user's reference of RAW 2002, 2026-11-06)
+    svrfmt::Image plate;
+    if (const auto p = pics.find("PPV_" + record);
+        p != pics.end() && svrfmt::DdsDecode(p->second, plate) && plate.w > 0 && out.w > 0) {
+      plate = svrfmt::Resize(plate, out.w, out.h);
+      for (size_t i = 0; i + 3 < out.rgba.size() && i + 3 < plate.rgba.size(); i += 4) {
+        const int a = plate.rgba[i + 3];
+        for (int c = 0; c < 3; ++c)
+          out.rgba[i + size_t(c)] = uint8_t((plate.rgba[i + size_t(c)] * a + out.rgba[i + size_t(c)] * (255 - a)) / 255);
+      }
+    }
     return true;
+  }
   const auto lower = [](std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return char(std::tolower(c)); });
     return s;
