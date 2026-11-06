@@ -1,5 +1,16 @@
 # Match Creator : restrictions (Gameplay, étude du 2026-10-27)
 
+> **État au 2026-11-06**
+> - **Fait en 1.0 et testé en jeu** : `wwe12_mc_unlock` (activé par défaut). Il ouvre TIME LIMIT partout, K.O. et
+>   LAST MAN STANDING en cage / Hell in a Cell, OVER THE TOP ROPE et ELIMINATION à 3 catcheurs ou plus, pour les
+>   types de match 0 à 26 (dernière section).
+> - **Laissé fermé** (choix de l'utilisateur) : ENTRANCE, POST MATCH REPLAY, combinaisons incohérentes.
+> - **À faire, non planifié** : les types 27 et plus (Battle Royal, Elimination Chamber, échelles à N…) ; les
+>   combinaisons à risque (étape 3 de la « Suite proposée »).
+> - Les sections « Classement provisoire » et « Suite proposée » sont l'étude d'avant la 1.0 ; les étapes 1 et 2 sont
+>   faites.
+
+
 Demande de l'utilisateur pour la 1.0 : enlever les restrictions du MATCH CREATOR. Étape 1 : lecture du code seulement,
 sans lancer le jeu. Rien n'est codé.
 

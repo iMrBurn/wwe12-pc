@@ -1,5 +1,16 @@
 # Les corrections des 2 mises à jour officielles (Title Updates) de WWE '12
 
+> **État au 2026-11-06**
+> - Étude faite (lecture seule, 2026-11-03 / 04). **Rien codé, rien testé en jeu.**
+> - **Décision de l'utilisateur (2026-11-05) : voie B**, c'est-à-dire refaire nous-mêmes les corrections utiles en
+>   crochets sur le code du disque, chacune avec son réglage. Pas de code généré depuis le xex de la TU.
+> - **Version visée : 1.2**, en même temps que les registres locaux et le patch `volatile` (une seule
+>   régénération). Ordre et contrôles : `docs/plan_1_2_codegen_tu.md`.
+> - À faire en premier (1.2) : reproduire en jeu les gels de finisher (§2.7) et la perte des prises de DLC 3-4
+>   (§2.1), puis les correctifs.
+> - L'ancienne §5 « Suite possible » est archivée dans `docs/archives/title_update_corrections_anciennes_parties.md`.
+
+
 Étude du 2026-11-03, session Gameplay, **lecture seule** : aucun correctif écrit, jeu jamais lancé. But : voir ce
 que THQ a corrigé dans le code des mises à jour 1 (TU1) et 2 (TU2), pour le refaire nous-mêmes dans le port (comme
 le correctif des répliques de Lawler, `wwe12_sound_tables.cpp`). Notre port tourne sur le jeu du disque (v0.0.0.4).
@@ -215,14 +226,3 @@ Toutes les adresses ci-dessous sont celles du **jeu du disque** (les nôtres), s
 | `UPDATE:` (`826A5FE8`, `826B1058`, `82683140`) | Fichiers de la mise à jour | Inutile | — |
 | ~40 fonctions réseau | Xbox Live | Inutile | — |
 
-## 5. Suite possible (avec le go de l'utilisateur)
-
-1. Movesets (§2.1).
-   - D'abord en jeu, avec `lancer_isole.bat` : un CAW avec une prise du DLC 3 ou 4, sauvé, rechargé. Prise
-     gardée ou remise à zéro ?
-   - Pareil avec une prise d'un mod du Mod Maker (banque CA11+).
-   - Ensuite, le correctif par crochets.
-2. Univers (§2.2) : compter les CAW. Trois crochets, plus une ligne dans notre recomptage. Ce changement modifie les
-   règles : il faut l'accord de l'utilisateur.
-3. Comprendre `sub_826CEF28` (TU2) avant toute retouche de notre crochet de résultats.
-4. Le reste (armes, réglages, ralentis) seulement si on trouve un vrai bug qui y correspond.

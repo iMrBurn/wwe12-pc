@@ -1,5 +1,9 @@
 # Caméra de match : étude (Gameplay, 2026-10-27)
 
+> **État au 2026-11-06** : étude seulement (2026-10-27). **Rien codé, rien testé en jeu, pas de version visée**
+> (pas de décision de l'utilisateur). Aucune promesse aux joueurs.
+
+
 Demande d'un joueur : choisir la caméra de match comme dans WWE 2K25/2K26 (caméra « rampe », autres angles).
 Étude courte, en lisant le code seulement (jeu non lancé). Rien n'est codé. Aucune promesse aux joueurs avant un essai.
 

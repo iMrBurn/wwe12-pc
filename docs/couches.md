@@ -1,5 +1,15 @@
 # Couches entre le jeu et le PC (cartographie du 2026-10-21)
 
+> **État au 2026-11-06**
+> - **Fait depuis cette carte** : les attentes du jeu sur le GPU ne tournent plus à vide (`wwe12_cpu.cpp`,
+>   `wwe12_gpu_wait_yield`, 0.9 / 1.0).
+> - **Pas fait** : le plan de découplage ci-dessous (synchro GPU invitée, ring buffer, backend « null »).
+>   Il est pour Rendu, non planifié.
+> - **Corrigé** : la ligne « Code du jeu … impossible sans les sources » est trop pessimiste. Le code recompilé peut
+>   être allégé (registres en variables locales, accès mémoire sans `volatile`) et des fonctions réécrites en natif.
+>   Voir `docs/perf_natif_steam_deck.md`, section « Natif / code du jeu » (**version visée : 1.2**).
+
+
 But : savoir ce qui est déjà natif, ce qui est encore émulé, et ce qu'on peut retirer pour que le
 jeu se comporte comme un vrai jeu PC. Établi par lecture du dépôt et des patchs de `port/patches/`
 (le SDK ReXGlue, `recomp/`, n'est pas versionné : ce qui touche son intérieur vient de ses patchs).
