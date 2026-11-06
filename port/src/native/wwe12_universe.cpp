@@ -5461,15 +5461,20 @@ extern "C" REX_FUNC(sub_826CBE70) {
   __imp__sub_826CBE70(ctx, base);
 }
 
-// A Universe match's stage (sub_826BBE30: the show's record in r31): the show's added arena put on its base's stage,
+// A Universe match's stage (sub_826BBE30: the show's record holder in r31): the show's added arena put on its base's stage,
 // or the game's arena (an added one chosen before, in an exhibition or another show, no longer plays there).
 extern "C" REX_FUNC(sub_828AC150) {
   if (ctx.lr == 0x826BBE88 && REXCVAR_GET(wwe12_universe_added_arenas)) {
-    const u32 stage = ctx.r4.u32, record = ctx.r31.u32;
+    // (r31: what sub_826CCD90 gives, a holder whose +0 is the record, as sub_826CBE50 / sub_826CBFB8 read it)
+    const u32 stage = ctx.r4.u32, holder = ctx.r31.u32;
+    const u32 record = holder ? bd::mem::try_load<u32>(holder) : 0;
     int n = -1;
     std::string id;
     if (record) {
       const u32 show = bd::mem::load<u8>(record + 927);
+      BD_INFO("[univers] match of show {} ({}) on stage {}", show,
+              std::string(reinterpret_cast<const char *>(base + record + 832),
+                          strnlen(reinterpret_cast<const char *>(base + record + 832), 31)), stage);
       std::lock_guard<std::mutex> lock(g_arenas_lock);
       LoadShowArenas();
       const auto it = g_show_arenas.find(show);
