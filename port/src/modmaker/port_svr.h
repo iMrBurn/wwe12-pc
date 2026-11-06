@@ -501,6 +501,13 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
         slot = target[size_t(slot - 1)] + 1;
     // Material: the nearest base mesh of the same part (eyes: a reflecting one; the body: skin).
     const bool reflect = src.shader == "yReflect";
+    // (SvR 2011 marks its skin meshes with muscle regions, g_iMuscleParts > 0: chest, shoulders, arms. Those take
+    // skin, whatever is nearest: Triple H's shoulders and upper chest, all in one part "Triple_H_FB", took the vest
+    // of his attire 2 (yCh_gear, shiny) and showed bright patches with sharp edges - KEVIN SOTO's mod, 2026-11-06)
+    bool muscle = false;
+    for (const auto &p : src.params)
+      if (p.name == "g_iMuscleParts" && p.value.size() >= 4 && svrfmt::Be32(p.value.data()) != 0)
+        muscle = true;
     const std::string part = out.parts.empty() ? "" : out.parts[size_t(part_of[mi])].name;
     const auto c = detail::Centroid(dst);
     int best = -1;
@@ -510,6 +517,8 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
         const svrfmt::Mesh &b = base.meshes[bi];
         if ((b.shader == "yCh_Reflect") != reflect || (part == "body" && b.shader == "yCh_gear"))
           continue;  // (the body is skin: the base's gear there is tape, pads...)
+        if (muscle && b.shader != "yCh_skin")
+          continue;  // (a muscle region is skin)
         if (pass == 0 && (base_part[bi] < 0 || base.parts[size_t(base_part[bi])].name != part))
           continue;
         const auto bc = detail::Centroid(b);
