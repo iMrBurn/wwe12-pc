@@ -1685,7 +1685,7 @@ void DrawUi() {
   if (g_page != kControls)
     g_capture_idx = -1;  // never keep waiting for a key on another page
   ImGui::SetCursorPos(ImVec2(kSide + 40, 30));
-  ImGui::BeginChild("page", ImVec2(W - kSide - 70, H - 60));
+  ImGui::BeginChild("page", ImVec2(W - kSide - 70, H - 60), ImGuiChildFlags_NavFlattened);  // (flattened: the pad can reach its buttons)
   switch (g_page) {
   case kPlay: PagePlay(); break;
   case kSettings: PageSettings(); break;

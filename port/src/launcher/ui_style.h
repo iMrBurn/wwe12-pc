@@ -75,7 +75,7 @@ inline void Stroke(ImDrawList *dl, ImVec2 a, float w, float h, ImU32 col, float 
 inline bool BigButton(const char *label, ImVec2 size, ImU32 fill, ImU32 text_col) {
   ImGui::PushID(label);
   const ImVec2 p = ImGui::GetCursorScreenPos();
-  const bool clicked = ImGui::InvisibleButton("##b", size);
+  const bool clicked = ImGui::InvisibleButton("##b", size, ImGuiButtonFlags_EnableNav);
   const bool focused = ImGui::IsItemFocused() && !ImGui::IsItemHovered();  // (chosen with a controller / keys)
   const bool hovered = ImGui::IsItemHovered() || focused;
   ImDrawList *dl = ImGui::GetWindowDrawList();
