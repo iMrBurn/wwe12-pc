@@ -447,3 +447,17 @@ Tests en jeu nécessaires (avec l'utilisateur) :
 - une séance de sonde ;
 - puis 2 ou 3 benchmarks complets sur un dossier neuf (avec et sans mods installés) ;
 - un match HIAC à 6 normal ensuite, pour vérifier que rien ne reste imposé hors du test.
+
+### Ajouts au test de performance d'après le benchmark de Kaiko (Rendu, 2026-11-06, écrit, pas encore compilé)
+
+Idées reprises du benchmark scripté du portage SvR 2011 de Kaiko (`port/tools/opt_bench.ps1`, `port/docs/PERF_LOG.md`),
+réécrites chez nous avec crédit. Le code attend dans `work/wip/rendu_benchmark_results_fixed.patch` (pas dans l'arbre
+tant qu'il n'est pas compilé) :
+- **condition « faible »** : `--wwe12_benchmark_weak_mask=5` garde le jeu sur 2 cœurs physiques (masque remis toutes
+  les 3 s, le runtime rend tous les cœurs), avec un fil occupé de priorité normale à côté : un petit PC simulé ;
+- **mesures** : médiane, 1 % pires, pire image, images > 20 ms et > 51 ms (3 vblanks : saccade visible), dans le texte
+  et dans `[results]` (`match_median_ms`, `match_frames_over_20ms`, `match_frames_over_51ms`, `condition=`) ;
+- **historique** : une ligne par essai dans `benchmark_history.csv` à côté de l'exe, pour comparer avant / après ;
+- **une passe** (`--wwe12_benchmark_passes=1`), **scénario imposé** (`--wwe12_benchmark_scenario=hiac6`, points
+  d'entrée pour Gameplay : `Wwe12BenchmarkWantsFixedMatch`, `Wwe12BenchmarkFixedMatchStarted`,
+  `Wwe12BenchmarkFixedMatchFailed`), et `verdict=failed` au lieu de mesurer les menus quand aucun match n'arrive.
