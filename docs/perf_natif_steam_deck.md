@@ -461,3 +461,101 @@ tant qu'il n'est pas compilé) :
 - **une passe** (`--wwe12_benchmark_passes=1`), **scénario imposé** (`--wwe12_benchmark_scenario=hiac6`, points
   d'entrée pour Gameplay : `Wwe12BenchmarkWantsFixedMatch`, `Wwe12BenchmarkFixedMatchStarted`,
   `Wwe12BenchmarkFixedMatchFailed`), et `verdict=failed` au lieu de mesurer les menus quand aucun match n'arrive.
+
+### Match imposé : voie 2 (Gameplay, 2026-11-06, lecture seule, pour la 1.2)
+
+Choix de l'utilisateur (via Main) : la **voie 2**, un match préparé **sans passer par les menus**. Cette section
+complète la précédente (« préparation du match »). Rien codé, rien lancé.
+
+**1. Ce qui est établi (lecture du code généré et des fichiers du jeu)**
+- **Type de match = numéro de règle.** Fiche 53 de `misc.pac` = « ARMAGEDDON HELL IN A CELL » (texte
+  27400 + 53, idem 40744), 6 places, chacun pour soi. Le type est le même numéro dans la fiche du match en cours.
+- **Fiche du match en cours :** 104 octets à **0x8317C850** (`sub_8267CF38`), dans un objet plus grand :
+  - le même getter sert à écrire **+12456** et **+336** ;
+  - `sub_826D4888(fiche, type)` remet tout à neuf : +0 type, 6 places de 12 octets à +16.
+- **Une fonction du jeu lance déjà un match sans écran de choix : `sub_82449428`**, appelée par la machine à états
+  `sub_82449638` (état +64 = 3), dans le module des menus d'exhibition (à côté de `sub_82449898`). Dans l'ordre :
+  1. elle vide la fiche (`memset` 64 octets) ;
+  2. elle écrit **le type 49 (HELL IN A CELL 1 contre 1)**, puis +19 = 1, +20 = 1, +336 = 0 et objet+12456 = 3 ;
+  3. elle appelle `sub_82449110` et `sub_8246DBE8(2, -1)` ;
+  4. elle construit une demande de scène (`sub_822AF500`, `sub_827D2548(40)` ou `sub_827D3600(3)`,
+     `sub_822B5D88`) : le passage au chargement.
+  - Ce qu'elle lance (match de démonstration du menu, déblocage, tutoriel…) : à voir en jeu. C'est **le modèle
+    exact de la voie 2** : la même séquence avec le type 53, nos 6 catcheurs et notre arène.
+- **Création des personnages au chargement :**
+  - `sub_822D23A0` → `sub_822D0618` → `sub_822CDF78` : un personnage par fiche de participant (+6 rôle, +9, +16,
+    +20) ;
+  - liste finale à 0x8317B770 (9 cases : 6 catcheurs, arbitre, 2 hors ring).
+  - Les fiches de participants viennent d'une liste encore plus haut : à trouver.
+- **Comparaison avec Kaiko (SvR 2011, `work/kaiko-svr2011/port/src/test_match.cpp`, lu seulement)** : son test
+  **ne se passe pas des menus**.
+  - Un trajet fixe (« route match » : menu principal → PLAY → ONE ON ONE → NORMAL MATCH → écran de choix) amène le
+    jeu à l'écran de choix.
+  - Ensuite deux crochets réécrivent :
+    - les catcheurs, au moment où le jeu construit les personnes du match à partir des choix (SvR `sub_828BC5E8`,
+      places de 2116 octets) ;
+    - l'arène, sur l'objet de l'écran de match, dès qu'il existe.
+  - La règle vient de son crochet « ligne de menu → règle ».
+  - Sa leçon : l'arène écrite directement dans la fiche du match chargé laissait des parties du chargement avec
+    l'ancienne (pas de cage, un gel sur téléphone). Il faut la poser **à la source**, avant que le chargement la lise.
+  - Ses limites : un CAW plante (~2 s), car la préparation des CAW de l'écran de choix n'est pas faite.
+  - Pour nous : **même famille de moteur, adresses différentes** (aucune taille 2116 retrouvée telle quelle dans
+    WWE '12). On reprend la méthode, pas le code (accord de Kaiko pour ce qui s'inspire de lui, **crédit
+    obligatoire**).
+
+**2. Ce qui reste à trouver (une séance de sonde, données isolées, go de l'utilisateur)**
+- **(a) `sub_82449428` : ce qu'elle lance.** On la journalise, puis on va au menu, à l'exhibition, et on lance un
+  HIAC. Est-ce le match de fond du menu ? Un écran ? D'où viennent les catcheurs et l'arène quand elle n'en écrit
+  pas ?
+- **(b) Un HIAC à 6 choisi à la main**, avec un piège d'écriture sur 0x8317C850..+104 et sur +12456/+336 de l'objet,
+  plus un journal de `sub_822D23A0` (fiches de participants).
+  - **But :** trouver les champs des catcheurs (numéro, tenue, manette ou ordinateur, équipe) et le champ de l'arène,
+    avec leur écrivain.
+- **(c) La pile au moment où le chargement démarre** (état `loading` de la télécommande). But : la fonction qui
+  remplace PLAY, et ce que l'écran de choix prépare en plus : manettes (`sub_826E09D8`/`sub_826E0B18`), tenues,
+  musiques d'entrée, objets.
+
+**3. Plan en étapes (critère final « vu en jeu » : un HIAC à 6 chargé et joué 60 s, sans aucun menu après le
+menu principal)**
+
+| Étape | Contenu | Heures (hors tests) | Vu en jeu |
+|---|---|---|---|
+| 0 | Sonde (a)(b)(c) ci-dessus, code + lecture des journaux | 3 - 4 | la carte des champs et du déclencheur |
+| 1 | **Appel direct** depuis le menu principal (fil du jeu, `Wwe12BenchmarkWantsFixedMatch()`) : même séquence que `sub_82449428` avec le type 53, 6 catcheurs et une arène fixes du jeu de base, puis `Wwe12BenchmarkFixedMatchStarted()` | 3 - 5 | le chargement part et le match s'ouvre |
+| 2 | Ce que l'écran de choix faisait : manettes (tous à l'ordinateur), tenues, entrées passées, mods coupés, contrôle « catcheur / arène présents » sinon `Wwe12BenchmarkFixedMatchFailed()` | 2 - 4 | 60 s de HIAC à 6 jouées par l'ordinateur, pas de plantage |
+| 3 | Sortie propre : fin du test (`quit` du benchmark) ou retour au menu sans sauvegarde touchée | 1 - 2 | le dossier de données neuf est intact ou jeté |
+| **Total** | | **9 - 15 h** | |
+
+**4. Risques**
+- **États non initialisés.**
+  - Ce que l'écran de choix met en place en passant (profil du joueur, affectation des manettes, chargement des
+    tenues et des musiques, CAW) manque si on l'évite.
+  - Kaiko le voit déjà avec les CAW. D'où **jamais de CAW, ni de DLC, ni de catcheur moddé** dans le test.
+- **Arène :** la poser à la source (comme Kaiko), sinon la cage peut manquer ou le jeu geler.
+- **Sauvegarde :** un match lancé hors menu peut écrire des statistiques ou un « dernier match ». Le test tourne sur
+  un dossier neuf (déjà le cas), donc la sauvegarde du joueur n'est jamais touchée.
+- **Mods :** `wwe12_superstar_mods`, `wwe12_entrance_mods` et l'overlay du dossier `mods` sont coupés pendant le
+  test.
+- **Dossier neuf :** catcheurs et arènes verrouillés au départ (arène HIAC : texte 41428). On prend des numéros du
+  jeu de base disponibles dès le départ ; la cage du HIAC vient du type de match, pas de l'arène.
+- **4 fils / Android :** l'appel se fait sur le fil du jeu, jamais sur un fil hôte.
+
+**5. Point de repli vers la voie 1 de Rendu**
+- **Basculer après l'étape 0** (environ 4 h) si l'un de ces cas se présente :
+  - `sub_82449428` ne lance pas un vrai match ;
+  - le déclencheur du chargement dépend d'objets d'écran introuvables ;
+  - les champs des catcheurs ou de l'arène restent introuvables.
+- **Basculer aussi après l'étape 2**, si le match lancé sans écran plante ou gèle encore après 2 essais
+  corrigés.
+- **Repli conseillé, plus solide que la voie 1 seule :** la méthode de Kaiko.
+  - Le trajet de Rendu va jusqu'à la page HIAC.
+  - Les crochets de l'étape 0 réécrivent les catcheurs et l'arène à la source.
+  - Les heures de l'étape 0 ne sont pas perdues.
+
+**6. Effet de l'étude de Kaiko sur l'estimation de 8 à 15 h**
+- **Elle ne raccourcit pas la voie 2 pure** : Kaiko ne l'a pas faite. Il garde le trajet dans les menus et réécrit
+  au passage.
+- **Elle confirme la méthode de repli et ses pièges** : arène à la source, pas de CAW.
+- La voie 2 pure reste à **9 - 15 h**, grâce au modèle `sub_82449428` trouvé dans WWE '12 (sans lui, plutôt
+  12 - 20 h).
+- La méthode de Kaiko (trajet + réécriture) : **6 - 9 h** (Gameplay), plus le trajet de Rendu.
