@@ -1701,7 +1701,11 @@ class Page {
       default: return 1.30;          // SvR 2011, 2007
     }
   }
-  static svrfmt::Image Reframe(const svrfmt::Image &img, double k) {
+  // How much narrower than high the portrait is scaled: 0.8 (SvR 2011's renders are wider than life, see below); SvR
+  // 2010's are drawn otherwise (the whole body, Cena's head ~110 pixels wide against 2011's ~210) and came out too
+  // thin with it ("trop étiré", the user, 2026-11-06): the same scale both ways.
+  static double ReframeWidth(uint32_t game) { return game == 0x54510844 ? 1.0 : 0.8; }
+  static svrfmt::Image Reframe(const svrfmt::Image &img, double k, double wide = 0.8) {
     if (img.w <= 0 || img.h <= 0)
       return img;
     auto solid = [&](int x, int y) { return img.rgba[(size_t(y) * img.w + x) * 4 + 3] > 128; };
@@ -1725,7 +1729,7 @@ class Page {
     const double cx = left < 0 ? img.w / 2.0 : (left + right) / 2.0;
     // (and 0.8 as wide: WWE '12 keeps its own renders narrower than life and widens them on screen, its Cena's face
     // ~0.8 the width of SvR's; at the same scale both ways they still looked "a bit stretched", 2026-11-03)
-    const double ky = k, kx = k * 0.8;
+    const double ky = k, kx = k * wide;
     const int w = int(img.w * kx + 0.5), h = int(img.h * ky + 0.5);
     const svrfmt::Image big = svrfmt::Resize(img, w, h);
     svrfmt::Image out;
@@ -1804,7 +1808,7 @@ class Page {
       svrfmt::Image img;
       if (portraits_[1][k].empty() || !svrfmt::DdsDecode(portraits_[1][k], img))
         continue;
-      img = Reframe(img, ReframeScale(svr_game_));
+      img = Reframe(img, ReframeScale(svr_game_), ReframeWidth(svr_game_));
       portraits_[1][k] = svrfmt::DdsEncode(img, svrfmt::DxtFormat::kDxt5, false);
       portraits_[0][k] = svrfmt::DdsEncode(svrfmt::Resize(img, 512, 256), svrfmt::DxtFormat::kDxt5, false);
     }
