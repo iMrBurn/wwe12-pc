@@ -242,3 +242,63 @@ PC), sans personne à la manette.
   chaque test.
 - **À vérifier au premier essai (go de l'utilisateur) :** que « A toutes les 2,5 s » mène bien de l'écran-titre d'un
   dossier neuf jusqu'à un match (premier démarrage : création de la sauvegarde) ; la relance de la passe 2 ; le résumé.
+
+## Mode 30 fps (Rendu, partie PC, 2026-11-06, étude, pour la 1.2)
+
+Demande : issue #57 et décision de l'utilisateur du 2026-11-06. Le mode doit exister aussi sur PC (petits PC,
+portables, Steam Deck). Android étudie la partie téléphone ; le code de rendu est le même.
+
+### Ce que le jeu sait déjà faire
+
+Le jeu a **son propre mode 30 fps**. Il l'utilise pour les entrées et les cinématiques : `SetFrameRate`
+(`sub_82827918`, r3 = 60/50/30/25), « passer à 30 » (`sub_82827AB8`), « revenir à 60 » (`sub_82827B58`), struct
+0x8324CE28 (fps visé, pas de temps de la logique, ms par image ; voir `wwe12_fps.cpp`). Dans ce mode, **la
+logique avance de deux fois plus par image**, et le jeu attend 2 vblanks par image : la vitesse reste juste. C'est
+déjà ce qui se passe à chaque entrée.
+
+`wwe12_60fps` fait l'inverse (il garde 60 quand le jeu demande 30). Le mode 30 fps imposerait 30 **partout**,
+matchs compris : quand le jeu demande 60 (50), on lui donne 30 (25).
+
+### Où couper sur PC : deux voies
+
+| Voie | Ce qu'elle fait | Gain sur un petit PC | Risques |
+|---|---|---|---|
+| **A (conseillée) : le mode 30 du jeu, partout** | Crochet de `SetFrameRate` : 60 → 30 (50 → 25) ; « revenir à 60 » ne fait plus rien ; au démarrage, un appel à `SetFrameRate(30)` si le jeu ne passe pas par là | **CPU ET GPU ÷ 2 environ** : le jeu calcule et dessine 30 images au lieu de 60. C'est le bon levier, puisque nos mesures montrent que le code du jeu limite (`cpu per frame`). | Le jeu n'a sans doute jamais tourné en match à 30 sur Xbox : à vérifier en jeu (prises, contres et fenêtres de pression, physique des objets, replays, sauvegarde des moments forts, chronos, IA). Le rendu ne change pas : chaque image est dessinée en entier, donc read-backs, cuisson des tenues (`svr_attire_bake_check`) et cibles de travail restent justes. |
+| B : la logique à 60, une image sur deux non dessinée | Les dessins d'une image sur deux sautés, présent tous les 2 vblanks | **GPU ÷ 2, CPU presque inchangé** : le fil de rendu ne prend que ~1 ms, c'est la logique à 60 qui coûte. Peu utile sur nos petits PC limités par le processeur. | **Élevés** : sauter une image casse ce que le jeu dessine pour lui-même (cuisson des tenues, peau, ombres, read-backs relus par le CPU) ; il faudrait trier « scène » et « cibles de travail » à chaque dessin. |
+
+**Conseil : voie A.** C'est aussi celle qui répond à « jeu au ralenti » sur Android (#57), où le processeur limite.
+B ne servirait qu'aux PC limités par la carte graphique, où la résolution interne (540p / 480p / 360p) fait déjà le
+travail.
+
+### Réglage et interface
+
+- **wwe12.toml :** une seule clé pour la cadence, plutôt que deux interrupteurs qui se contredisent :
+  `wwe12_frame_mode = "original" | "30" | "60_entrances"` (`wwe12_60fps = true` lu comme `"60_entrances"` pour les
+  anciens fichiers). `"30"` = voie A.
+- **OPTIONS > GRAPHICS > ADVANCED** (page pleine : 5 lignes, voir `rendu-pitfalls`) : la ligne « 60 FPS ENTRANCES »
+  (2 valeurs) devient « FRAME RATE » à 3 valeurs : `30 (LOW-END)`, `ORIGINAL`, `60 ENTRANCES`. Aucune ligne de plus.
+  Il faut 2 textes nouveaux dans la table du menu (comme « GRAPHICS »), puis régénérer les pages avec
+  `tools/graphics_pages.py` (`TABS`, ADVANCED : `[4, 3, 3, 2, 2]`).
+- **Launcher :** la même liste à 3 choix (conversation Launcher), et `"30"` dans le profil Steam Deck / petit PC
+  (`machine_profile.h`), si les tests en match sont bons.
+- **Test de performance intégré :** le résumé note la cadence (cible 30 ou 60) et compare à la bonne cible. Une
+  passe en mode 30 se lance avec `--wwe12_frame_mode=30` ajouté à `lancer_benchmark.bat` (sans autre changement).
+
+### Coordination avec Android
+
+Même code (`wwe12_fps.cpp` est commun) : la voie A marche telle quelle sur téléphone. Android garde ses propres
+mesures, son profil LOW-END PHONE et l'interface de son launcher.
+
+### Estimation (heures de travail, tests en jeu à part)
+
+| Tâche | Heures |
+|---|---|
+| Crochets de cadence (voie A), cvar `wwe12_frame_mode` + lecture de l'ancienne `wwe12_60fps` | 1,5 - 2 |
+| Ligne FRAME RATE à 3 valeurs (2 textes, régénération des pages, enregistrement dans wwe12.toml) | 1,5 - 2 |
+| Test de performance : cible selon la cadence | 0,5 |
+| Launcher : liste à 3 choix + profil Steam Deck (conversation Launcher) | 1 |
+| **Total** | **4,5 - 5,5 h** |
+
+Tests en jeu nécessaires (avec l'utilisateur) : un match complet à 30 (prises, contres, finisher, sortie du ring,
+objets), un replay et les moments forts, une entrée, un match d'Univers, un Royal Rumble. Puis un test de performance
+sur un petit PC ou en 4 fils (attendu : le double de marge CPU par image).
