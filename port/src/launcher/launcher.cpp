@@ -33,6 +33,7 @@
 #include "keybinds.h"
 #include "mods.h"
 #include "dlc_add.h"
+#include "machine_profile.h"
 #include "saves.h"
 #include "toml_file.h"
 #include "ui_style.h"
@@ -241,6 +242,9 @@ struct Texts {
   const char *lowend, *lowend_hint, *lowend_undo, *lowend_undo_hint;
   const char *api_d3d11, *api_d3d11_missing;
   const char *widescreen, *widescreen_hint, *widescreen_stretch;
+  // Steam Deck / small PC profile offer (machine_profile.h).
+  const char *prof_title_deck, *prof_title_small, *prof_why, *prof_res, *prof_off_all, *prof_off_two, *prof_wide,
+      *prof_vulkan, *prof_apply, *prof_later, *prof_never, *prof_undo_note, *prof_guide;
 };
 
 const Texts kEnglish = {
@@ -333,12 +337,21 @@ const Texts kEnglish = {
     "Low-end PC",
     "480p, no crowd, no shadows, no depth of field: for weak PCs. Nothing else changes.",
     "Undo the preset",
-    "Puts back the resolution, crowd, shadows and depth of field you had before the preset.",
+    "Puts back the resolution, crowd, shadows and depth of field you had before the preset (and the 16:10 option and "
+    "the graphics API, if the Steam Deck / small PC profile changed them).",
     "DirectX 11",
     "The DirectX 11 version of the game (wwe12_d3d11.exe) was not found: the game starts with Vulkan instead.",
     "16:10 and ultrawide screens",
     "Fills 16:10 and ultrawide windows in matches and entrances; menus stay 16:9. Turn off for the old black bars.",
-    "Not used with the Stretch picture format."};
+    "Not used with the Stretch picture format.",
+    "This looks like a Steam Deck", "This looks like a small PC",
+    "On this kind of machine the processor limits the game more than the graphics card: a lower resolution and "
+    "fewer effects give a steadier speed.",
+    "Resolution: %dp", "Crowd, shadows and depth of field: off", "Shadows and depth of field: off",
+    "16:10 picture fill: on", "Graphics: Vulkan",
+    "Apply the profile", "Not now", "No thanks, don't ask again",
+    "Nothing is changed unless you apply it, and SETTINGS > Undo the preset puts your old values back.",
+    "Steam Deck guide: see the FAQ (docs/FAQ.md on the project page), section \"Steam Deck\"."};
 
 const Texts kFrench = {
     "JOUER", "RÉGLAGES", "CONTRÔLES", "MODS", "SAUVEGARDES", "À PROPOS",
@@ -436,13 +449,22 @@ const Texts kFrench = {
     "PC modeste",
     "480p, sans foule, sans ombres, sans profondeur de champ : pour les PC peu puissants. Rien d'autre ne change.",
     "Annuler le préréglage",
-    "Remet la résolution, la foule, les ombres et la profondeur de champ que vous aviez avant le préréglage.",
+    "Remet la résolution, la foule, les ombres et la profondeur de champ que vous aviez avant le préréglage (et "
+    "l'option 16:10 et l'API graphique, si le profil Steam Deck / petit PC les a changées).",
     "DirectX 11",
     "La version DirectX 11 du jeu (wwe12_d3d11.exe) est introuvable : le jeu démarre avec Vulkan à la place.",
     "Écrans 16:10 et ultralarges",
     "Remplit les fenêtres 16:10 et ultralarges pendant les matchs et les entrées ; les menus restent en 16:9. "
     "Décochez pour retrouver les anciennes bandes noires.",
-    "Sans effet avec le format d'image Étirer."};
+    "Sans effet avec le format d'image Étirer.",
+    "Cela ressemble à un Steam Deck", "Cela ressemble à un petit PC",
+    "Sur ce genre de machine, c'est le processeur qui limite le jeu plus que la carte graphique : une résolution "
+    "plus basse et moins d'effets donnent une vitesse plus régulière.",
+    "Résolution : %dp", "Tribunes, ombres et flou de profondeur : coupés", "Ombres et flou de profondeur : coupés",
+    "Image 16:10 remplie : activée", "Graphismes : Vulkan",
+    "Appliquer le profil", "Pas maintenant", "Non merci, ne plus demander",
+    "Rien ne change si vous n'appliquez pas, et RÉGLAGES > Annuler le préréglage remet vos anciennes valeurs.",
+    "Guide Steam Deck : voir la FAQ (docs/FAQ.md sur la page du projet), section « Steam Deck »."};
 
 // ---------------------------------------------------------------------------------------------
 // Settings
@@ -691,22 +713,41 @@ bool LowEndBackupExists() {
   return fs::exists(LowEndBackupPath(), ec);
 }
 
-void ApplyLowEndPreset() {
+// The one preset logic: the low-end button and the Steam Deck / small PC profile (machine_profile.h) both go
+// through it. `widescreen` / `api` are changed only when asked (api -1 = leave as is): the low-end button keeps
+// them. A resolution the player already set lower than the preset's is kept (the preset never raises it).
+struct Preset {
+  int scale = 480;
+  bool crowd = false, shadows = false, dof = false;
+  bool set_widescreen = false, widescreen = true;
+  int api = -1;
+};
+
+void ApplyPreset(const Preset &p) {
   if (!LowEndBackupExists()) {
     std::ofstream f(LowEndBackupPath(), std::ios::trunc);
     f << "svr_render_scale=" << g_s.scale << "\n"
       << "wwe12_crowd=" << (g_s.crowd ? 1 : 0) << "\n"
       << "wwe12_shadows=" << (g_s.shadows ? 1 : 0) << "\n"
-      << "wwe12_dof=" << (g_s.dof ? 1 : 0) << "\n";
+      << "wwe12_dof=" << (g_s.dof ? 1 : 0) << "\n"
+      << "wwe12_widescreen=" << (g_s.widescreen ? 1 : 0) << "\n"
+      << "gpu_backend=" << g_s.api << "\n";
     if (!f)
       return;  // no backup, no preset: the player could not get his settings back
   }
-  g_s.scale = 480;
-  g_s.crowd = false;
-  g_s.shadows = false;
-  g_s.dof = false;
+  if (g_s.scale == 0 || g_s.scale > p.scale)
+    g_s.scale = p.scale;
+  g_s.crowd = p.crowd;
+  g_s.shadows = p.shadows;
+  g_s.dof = p.dof;
+  if (p.set_widescreen)
+    g_s.widescreen = p.widescreen;
+  if (p.api >= 0)
+    g_s.api = p.api;
   SaveSettings();
 }
+
+void ApplyLowEndPreset() { ApplyPreset(Preset{}); }
 
 void UndoLowEndPreset() {
   std::ifstream f(LowEndBackupPath());
@@ -730,6 +771,10 @@ void UndoLowEndPreset() {
       g_s.shadows = value != 0;
     else if (key == "wwe12_dof")
       g_s.dof = value != 0;
+    else if (key == "wwe12_widescreen")  // only in backups made by the Steam Deck / small PC profile onwards
+      g_s.widescreen = value != 0;
+    else if (key == "gpu_backend" && value >= 0 && value <= 3)
+      g_s.api = value;
   }
   f.close();
   std::error_code ec;
@@ -1447,6 +1492,85 @@ void PageAbout() {
   ImGui::TextDisabled("%s %s", t.version, WWE12_VERSION);
 }
 
+// Steam Deck / small PC profile (machine_profile.h): offered once, when the launcher opens and the graphics
+// check has answered; never applied by itself. "Not now" asks again next time, "No thanks" (or applying it)
+// writes profile_offer_done.txt next to the launcher so it is not offered again. Applying goes through the
+// low-end preset's logic, so SETTINGS > "Undo the preset" puts everything back. Not offered if that preset
+// (and its backup) already exists.
+fs::path ProfileOfferMarker() { return ExeDir() / "profile_offer_done.txt"; }
+
+void WriteProfileOfferMarker() {
+  std::ofstream f(ProfileOfferMarker(), std::ios::trunc);
+  f << "1\n";
+}
+
+void DrawProfileOffer() {
+  static int state = 0;  // 0 not looked at yet, 1 nothing to offer (or answered), 2 offering
+  static machine::Profile prof;
+  const Texts &t = T();
+  if (state == 0) {
+    if (g_vulkan.GetState() == VulkanCheck::State::Checking)
+      return;
+    state = 1;
+    std::error_code ec;
+    if (fs::exists(ProfileOfferMarker(), ec) || LowEndBackupExists())
+      return;
+    const auto used = g_vulkan.UsedDevice(g_s.gpu);
+    prof = machine::Choose(machine::Detect(), used.name, used.kind);
+    if (prof.kind == machine::Kind::None)
+      return;
+    state = 2;
+    ImGui::OpenPopup("##profile");
+  }
+  if (state != 2)
+    return;
+  ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+  if (!ImGui::BeginPopupModal("##profile", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove))
+    return;
+  ImGui::Text("%s", prof.kind == machine::Kind::Deck ? t.prof_title_deck : t.prof_title_small);
+  ImGui::Dummy(ImVec2(0, 4));
+  ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30);
+  ImGui::TextWrapped("%s", t.prof_why);
+  ImGui::Dummy(ImVec2(0, 4));
+  ImGui::BulletText(t.prof_res, prof.scale);
+  ImGui::BulletText("%s", prof.crowd ? t.prof_off_two : t.prof_off_all);
+  ImGui::BulletText("%s", t.prof_wide);
+  if (prof.api == 1 && g_s.api != 1)
+    ImGui::BulletText("%s", t.prof_vulkan);
+  ImGui::Dummy(ImVec2(0, 4));
+  ImGui::TextDisabled("%s", t.prof_undo_note);
+  if (prof.kind == machine::Kind::Deck)
+    ImGui::TextDisabled("%s", t.prof_guide);
+  ImGui::PopTextWrapPos();
+  ImGui::Dummy(ImVec2(0, 6));
+  if (ImGui::Button(t.prof_apply)) {
+    Preset p;
+    p.scale = prof.scale;
+    p.crowd = prof.crowd;
+    p.shadows = prof.shadows;
+    p.dof = prof.dof;
+    p.set_widescreen = true;
+    p.widescreen = prof.widescreen;
+    p.api = prof.api;
+    ApplyPreset(p);
+    WriteProfileOfferMarker();
+    state = 1;
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(t.prof_later)) {
+    state = 1;
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(t.prof_never)) {
+    WriteProfileOfferMarker();
+    state = 1;
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::EndPopup();
+}
+
 void DrawUi() {
   const ImGuiViewport *vp = ImGui::GetMainViewport();
   ImGui::SetNextWindowPos(vp->Pos);
@@ -1498,6 +1622,7 @@ void DrawUi() {
   case kAbout: PageAbout(); break;
   }
   ImGui::EndChild();
+  DrawProfileOffer();
   ImGui::End();
 }
 
