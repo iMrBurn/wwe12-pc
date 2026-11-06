@@ -176,7 +176,7 @@ Toutes les adresses ci-dessous sont celles du **jeu du disque** (les nôtres), s
   nouvelles vérifications d'erreur. Pas utile (pas de Xbox Live).
 - **Système (TU2)** : `sub_821B5440`, nouvelle `0x821AC930` (« GameMainThreadEvent »), `sub_821AD1E8` (`D:\`). Ce
   sont les fils d'exécution du jeu.
-  - Proche de notre fil d'exécution à 4 cœurs (`wwe12_chamber_hang.md` cite `sub_821AD1E8`).
+  - Proche de notre fil d'exécution à 4 cœurs (`docs/wwe12_chamber_hang.md` cite `sub_821AD1E8`).
   - Pas compris.
 - **Ceintures (TU1)** : `sub_827B16D0`, `827B30E8` (près de `belt_WorldHeavy`, `belt_WWE`…), une borne 23 retirée.
 - **Création (TU1, structure de 0x52xx-0x58xx octets)** : `sub_825DC108`… `825E4900`, `825ED660`, `825EC580`

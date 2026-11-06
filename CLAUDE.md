@@ -185,7 +185,7 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   `sub_828A47D0`. Fausses pistes : `[[écran+268]+8]` (0 ici), `sub_82BFD248` (jamais appelé), auto-pointeur
   `[texte−0x50+0x30]` (vrai seulement sur une ligne neuve). Sonde : `wwe12_kbd_log` ; lanceur
   `tools/dev/lancer_test_clavier.bat`. Le module de départ d'OpenCode (commits 36099f4/9c21077,
-  `wwe12_text_entry_analysis.md`) écrivait dans la copie d'affichage.
+  `docs/wwe12_text_entry_analysis.md`) écrivait dans la copie d'affichage.
 - **Sang des catcheuses (2026-10-21/22, reporté à la 1.0, `wwe12_blood.cpp`)** : l'option BLOOD est l'octet
   **0x8322660D** = bloc de réglages `sub_82684BE8()` (= 0x831CEEA8) + 0x57720 + 69 (1 = activé), écrit par
   UpdateInGameOptions (`sub_82DEC528`, ligne 3 de sa première page). Seul le MATCH CREATOR le lit
