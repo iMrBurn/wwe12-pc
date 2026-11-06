@@ -1001,7 +1001,27 @@ inline bool FbxToAttire(const fs::path &fbx, svrfmt::ArcNode &attire, const Opti
   for (const auto &m : meshes)
     for (const auto &v : m.pos)
       sole = std::max(sole, v[1]);
-  const double scale = sole > 0.5 && tfloor - troot[1] > 1 ? (tfloor - troot[1]) / sole : 10.0;
+  double scale = sole > 0.5 && tfloor - troot[1] > 1 ? (tfloor - troot[1]) / sole : 10.0;
+  // (and the hips to the head as the base's: a model whose legs are long for its body - GTA San Andreas' CJ, the hips
+  // at 61 % of his height against ~52 % for a superstar, 2026-11-06 - came out with its upper body small and its neck
+  // pulled up to the base's head. When the two scales differ by over 15 %, their geometric mean.)
+  {
+    V3 thead;
+    const auto h = src_of.find("atama");
+    if (h != src_of.end() && tpl_pos("atama", thead)) {
+      const double up_model = -game(origin(posed[size_t(h->second)]))[1], up_base = troot[1] - thead[1];
+      if (up_model > 0.5 && up_base > 1) {
+        const double torso = up_base / up_model;
+        if (scale > 0 && (torso / scale > 1.15 || scale / torso > 1.15)) {
+          char b[160];
+          snprintf(b, sizeof(b), "legs and body of other proportions than the base's (scales %.2f / %.2f): %.2f used",
+                   scale, torso, std::sqrt(scale * torso));
+          rep.lines.push_back(b);
+          scale = std::sqrt(scale * torso);
+        }
+      }
+    }
+  }
   rep.scale = scale;
   auto out_pos = [&](const V3 &g) { return V3{g[0] * scale + troot[0], g[1] * scale + troot[1], g[2] * scale + troot[2]}; };
   for (auto &m : meshes)
