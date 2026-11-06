@@ -4885,6 +4885,15 @@ u32 MatchCount(u32 slot, u32 game) {
 }
 }  // namespace
 
+// The match templates (wuniData.pac MTDT, 84 bytes; +4 the kind, sub_826EA830): weekly RAW / SmackDown take table 13
+// (32 groups of 4: kinds 1, 2, 3, 8, 19, the 4th always kind 4, the main event), the shows after a PPV table 15
+// (sub_826CD010: 4 templates, all kind 8 = a #1 contender's match, one per title of the show). Matches past the
+// game's number reused those templates: two #1 contender's matches for the same title with the same Superstar
+// (a player's SmackDown after TLC, 2026-11-06), and the card rules then dropping matches (fewer than asked). So our
+// extra matches take the show's own weekly templates other than kind 8 (and, after a PPV, never table 15's).
+constexpr u32 kContenderKind = 8;
+thread_local u32 t_regular_template = 0;  // the weekly template this booker call picked (0x826F1690)
+
 REX_EXTERN(__imp__sub_826DC6E8);
 extern "C" REX_FUNC(sub_826DC6E8) {
   const u32 table = ctx.r3.u32, group = ctx.r4.u32 & 0xFFFF, i = ctx.r5.u32 & 0xFFFF;
@@ -4893,17 +4902,38 @@ extern "C" REX_FUNC(sub_826DC6E8) {
   if (n && ctx.lr > 0x826F15E8 && ctx.lr < 0x826F1948 && table &&
       group < bd::mem::load<u32>(table + 4)) {
     const u32 count = bd::mem::load<u16>(table + 8 + group * 508 + 2);
+    const auto kind = [&](u32 k) { return bd::mem::load<u32>(table + 8 + group * 508 + 4 + k * 84 + 4); };
     if (ctx.lr == 0x826F1690 && d >= 2 && count >= d) {
-      // the game's template d - 1 is its main event (the 4th of RAW's 4): only our last match
-      // takes it, the others cycle through the game's other ones (0 .. d - 2)
-      const u32 to = i + 1 == n ? d - 1 : i < d - 1 ? i : (i - (d - 1)) % (d - 1);
+      // the game's template d - 1 is its main event (the 4th of RAW's 4): only our last match takes it; the extra
+      // ones (d - 1 .. n - 2) take the other templates that aren't #1 contender's matches, in turn
+      u32 to = i;
+      if (i + 1 == n) {
+        to = d - 1;
+      } else if (i >= d - 1) {
+        std::vector<u32> plain;
+        for (u32 k = 0; k + 1 < d; ++k)
+          if (kind(k) != kContenderKind)
+            plain.push_back(k);
+        const u32 extra = i - (d - 1);
+        to = plain.empty() ? extra % (d - 1) : plain[extra % plain.size()];
+        BD_INFO("[univers] matches: extra match {} takes template {} of group {} (kind {})", i, to, group, kind(to));
+      }
       if (to != i)
         ctx.r5.u64 = to;
-    } else if (count && i >= count) {
-      // a group with fewer templates than our number (the booker's other pick, table 15 group 0
-      // on some weeks, sub_826CD010, takes template i as it is) left the slot empty and a card
-      // rule read it (sub_826EF988, a player's crash in 1.0.0 with RAW / SmackDown at 5). Past
-      // the group's templates, the last match takes its last one, the others cycle the rest.
+      __imp__sub_826DC6E8(ctx, base);
+      t_regular_template = ctx.r3.u32;
+      return;
+    }
+    if (ctx.lr == 0x826F16C8 && i >= d && t_regular_template) {
+      // after a PPV (table 15: a #1 contender's match per title): our extra matches stay the weekly ones
+      BD_INFO("[univers] matches: after a PPV, extra match {} keeps its weekly template", i);
+      ctx.r3.u64 = t_regular_template;
+      return;
+    }
+    if (count && i >= count) {
+      // a group with fewer templates than our number left the slot empty and a card rule read it
+      // (sub_826EF988, a player's crash in 1.0.0 with RAW / SmackDown at 5). Past the group's templates, the last
+      // match takes its last one, the others cycle the rest.
       const u32 to = i + 1 == n ? count - 1 : count >= 2 ? i % (count - 1) : 0;
       BD_INFO("[univers] matches: template {} of group {} -> {} (the group has {})", i, group,
               to, count);
