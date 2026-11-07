@@ -127,3 +127,9 @@ Mods portés :
 13. Tenue Undertaker 2K14 : entrée comique (style Red Dead Redemption).
 14. Mods portés avec alliés et rivaux (déjà réglé pour la 1.1 : réglage wwe12_universe_added_relations).
 15. EDIT SUPERSTAR (R1) : seuls les titres de RAW sont listés, pas ceux de SmackDown.
+
+
+## 2026-11-07 : textures d'un nouveau catcheur (Discord, brasho)
+
+- Suggestion : comme on peut remplacer les textures des catcheurs déjà dans le jeu (page TEXTURES, export PNG, modification, remplacement), pouvoir le faire aussi à la création d'un NOUVEAU CATCHEUR, pour lui donner une autre tenue (capture : aperçu 3D de la page TEXTURES à côté de l'étape « Look at it » de NEW SUPERSTAR).
+- Idée : une étape optionnelle dans NEW SUPERSTAR (ou le moyen d'ouvrir le catcheur ajouté dans la page TEXTURES / « catcheurs installés modifiables »). À étudier par Mods. Prévu : 1.2 (décision de l'utilisateur, 2026-11-07).
