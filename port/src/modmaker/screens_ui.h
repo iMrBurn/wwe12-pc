@@ -103,8 +103,10 @@ class ScreenChoice {
       preview_.Reset();
       std::vector<uint8_t> px;
       const Bytes none;
-      const Bytes &movie = pick_ == 0 ? game_ : pick_ == 1 && size_t(version_) < versions_.size() ? versions_[size_t(version_)].movie : none;
-      if (entrance_screens::Frame(movie, pick_ == 2 ? picture_ : fs::path(), ribbon_, 60, px))
+      const bool v = pick_ == 1 && size_t(version_) < versions_.size();
+      const Bytes &movie = pick_ == 0 ? game_ : v ? versions_[size_t(version_)].movie : none;
+      if (entrance_screens::Frame(movie, pick_ == 2 ? picture_ : fs::path(), ribbon_, 60, px,
+                                  v ? versions_[size_t(version_)].y0 : 0, v ? versions_[size_t(version_)].y1 : 256))
         preview_ = Texture(device, px);
     }
     if (preview_)
@@ -120,8 +122,9 @@ class ScreenChoice {
     Bytes out;
     if (pick_ == 1 && size_t(version_) < versions_.size()) {
       const Bytes &m = versions_[size_t(version_)].movie;
+      const int y0 = versions_[size_t(version_)].y0, y1 = versions_[size_t(version_)].y1;
       if (m.size() > 4 && memcmp(m.data(), "KB2", 3) == 0)
-        if (!entrance_screens::FromBink2(m, ribbon_, out))  // (one the game can't take: none, the arena's)
+        if (!entrance_screens::FromBink2(m, ribbon_, out, y0, y1))  // (one the game can't take: none, the arena's)
           out.clear();
     } else if (pick_ == 2 && !picture_.empty()) {
       if (!entrance_screens::FromPicture(picture_, ribbon_, out))

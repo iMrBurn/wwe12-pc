@@ -68,6 +68,7 @@ inline std::vector<Entry> Entries(Bytes b) {
 struct Version {
   std::string label;
   Bytes movie;
+  int y0 = 0, y1 = 256;  // the rows of the movie used, in 1/256 of its height (2K14's walls hold its ribbon below)
 };
 
 // Every version of superstar `number`'s ribbon (MVSB: its banner) or wall (MVSW) in game `title`:
@@ -75,17 +76,25 @@ struct Version {
 //  - 2K15: pac\evt\evtmov_ss_mini.pac (MVSB) / evtmov_ss_wall.pac (MVSW), "M%04d%02d" (number, version);
 //  - 2K16 / 2K17: pac\mov\ss_mini\ / ss_wall\%04d%02d.pac, one movie each;
 //  - SvR 2011 has none.
-inline std::vector<Version> Versions(const disc::GameDisc &g, uint32_t title, bool ribbon, int number) {
+// 2K14's are laid out otherwise (2026-11-07): its MVSB is the superstar's minitron (256 x 128, name and logo), and its
+// MVSW (256 x 256) holds his wall above row 216 and his ribbon below (40 rows: Antonio Cesaro's "Uber American",
+// above his titantron in 2K14). Its ribbon is that strip, its wall the rows above; `mini`: its MVSB as it is.
+inline std::vector<Version> Versions(const disc::GameDisc &g, uint32_t title, bool ribbon, int number, bool mini = false) {
   std::vector<Version> out;
-  const char *group = ribbon ? "MVSB" : "MVSW";
+  const bool twok14 = title == 0x545408B2;
+  const char *group = ribbon && (!twok14 || mini) ? "MVSB" : "MVSW";
   Bytes b;
-  if (title == 0x545108B4 || title == 0x545408B2) {
+  if (title == 0x545108B4 || twok14) {
     char want[8];
     snprintf(want, sizeof(want), "M%03d", number % 1000);
     if (g.Read("pac/evt/evtmov.pac", b))
       for (auto &e : Entries(std::move(b)))
-        if (e.group == group && e.name == want)
-          out.push_back({e.name, std::move(e.data)});
+        if (e.group == group && e.name == want) {
+          Version v{e.name, std::move(e.data)};
+          if (twok14 && !mini)
+            v.y0 = ribbon ? 216 : 0, v.y1 = ribbon ? 256 : 216;
+          out.push_back(std::move(v));
+        }
   } else if (title == 0x545408B6) {
     char want[8];
     snprintf(want, sizeof(want), "M%04d", number % 10000);
@@ -249,7 +258,7 @@ inline bool Encode(int frames, int W, int H, Next next, Bytes &out) {
 }  // namespace detail
 
 // A ribbon (1024 x 32, the source laid along it) or wall (256 x 256, stretched) from a Bink 2 movie (its game's).
-inline bool FromBink2(const Bytes &bk2, bool ribbon, Bytes &out) {
+inline bool FromBink2(const Bytes &bk2, bool ribbon, Bytes &out, int y0 = 0, int y1 = 256) {
   WCHAR err[256] = L"";
   Bink2Reader *r = bink2_open_memory(bk2.data(), bk2.size(), err, 256);
   if (!r)
@@ -261,7 +270,8 @@ inline bool FromBink2(const Bytes &bk2, bool ribbon, Bytes &out) {
     if (!bink2_next(r))
       return false;
     bink2_bgra(r, src.data());
-    detail::Place(src.data(), sw, sh, dst, W, H, ribbon);
+    const int r0 = sh * y0 / 256, r1 = std::max(r0 + 1, sh * y1 / 256);  // (its rows used)
+    detail::Place(src.data() + size_t(r0) * sw * 4, sw, r1 - r0, dst, W, H, ribbon);
     return true;
   }, out);
   bink2_close(r);
@@ -270,7 +280,8 @@ inline bool FromBink2(const Bytes &bk2, bool ribbon, Bytes &out) {
 
 // A picture of what the game will show (BGRA at the screen's size: 1024 x 32 or 256 x 256), for a preview: frame `at`
 // of a Bink 2 movie (its game's), else the player's picture.
-inline bool Frame(const Bytes &bk2, const fs::path &picture, bool ribbon, int at, std::vector<uint8_t> &out) {
+inline bool Frame(const Bytes &bk2, const fs::path &picture, bool ribbon, int at, std::vector<uint8_t> &out, int y0 = 0,
+                  int y1 = 256) {
   const int W = ribbon ? kRibbonW : kWall, H = ribbon ? kRibbonH : kWall;
   out.assign(size_t(W) * H * 4, 0);
   if (bk2.size() > 4 && memcmp(bk2.data(), "KB2", 3) == 0) {
@@ -285,7 +296,8 @@ inline bool Frame(const Bytes &bk2, const fs::path &picture, bool ribbon, int at
     if (ok) {
       std::vector<uint8_t> src(size_t(sw) * sh * 4);
       bink2_bgra(r, src.data());
-      detail::Place(src.data(), sw, sh, out.data(), W, H, ribbon);
+      const int r0 = sh * y0 / 256, r1 = std::max(r0 + 1, sh * y1 / 256);
+      detail::Place(src.data() + size_t(r0) * sw * 4, sw, r1 - r0, out.data(), W, H, ribbon);
     }
     bink2_close(r);
     return ok;

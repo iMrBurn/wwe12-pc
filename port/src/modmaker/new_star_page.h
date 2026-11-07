@@ -191,7 +191,7 @@ class Page {
     std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char *>(b.data()), std::streamsize(b.size()));
     fs::path mini_tmp = media::TempDir() / (L"mini_" + fs::path(mini).stem().wstring() + L".bk2");
     if (mini.rfind(kEvtmovMini, 0) == 0) {  // (2K14 / WWE '13: evtmov.pac's MVSB/M<number>, a Bink 2 movie as it is)
-      const auto v = entrance_screens::Versions(from, twok_movie_game_, true, atoi(mini.c_str() + strlen(kEvtmovMini)));
+      const auto v = entrance_screens::Versions(from, twok_movie_game_, true, atoi(mini.c_str() + strlen(kEvtmovMini)), true);
       if (v.empty())
         mini_tmp.clear();
       else
@@ -1349,11 +1349,11 @@ class Page {
       for (const auto &f : minis)
         if (f.size() == 10 && f.compare(0, 4, mini) == 0 && _stricmp(f.c_str() + 6, ".pac") == 0)
           twok_minis_.push_back(f);
-    } else if (twok_movie_game_) {
-      // 2K14 / WWE '13: its minitron is evtmov.pac's MVSB/M<number>, 256 x 128 (2K14 Antonio Cesaro's name and logo;
-      // his titantron's own minitron strip is black: none showed, a player's report 2026-11-07)
+    } else if (twok_movie_game_ == 0x545408B2) {
+      // 2K14: its minitron is evtmov.pac's MVSB/M<number>, 256 x 128 (Antonio Cesaro's name and logo; his titantron's
+      // own minitron strip is black: none showed, a player's report 2026-11-07). WWE '13's MVSB is a real ribbon.
       const disc::GameDisc &from = twok_movie_game_ == game_title_ ? game_disc_ : twok_disc_;
-      if (!entrance_screens::Versions(from, twok_movie_game_, true, number).empty())
+      if (!entrance_screens::Versions(from, twok_movie_game_, true, number, true).empty())
         twok_minis_.push_back(kEvtmovMini + std::to_string(number % 1000));
     }
     FindScreens(number);
