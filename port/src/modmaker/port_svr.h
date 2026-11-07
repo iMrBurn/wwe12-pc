@@ -1348,7 +1348,10 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
   // costume pieces; those on the head stay in 20000, see-through (merged, 2008 Orton's eyelashes were opaque black rings
   // round his eyes, 2026-10-31). Likewise the hair model's pieces on none of the head's bones (2009 ch127: one on the
   // left hand, hips and thighs, left floating by the hip).
-  if (old_svr) {
+  // (every SvR, not only 2008 / 2009: SvR 2010 Maryse's boot logos "rogo" in her 20000 and SvR 2011 RVD's "span" in
+  // his hair model, both on the shins, stood off the legs - those models' WWE '12 skeletons have the head alone; Jay,
+  // 2026-11-07)
+  {
     auto merge = [&](const svrfmt::Model &xs, const std::string &what) {
       svrfmt::Model xo;
       Report extra;
