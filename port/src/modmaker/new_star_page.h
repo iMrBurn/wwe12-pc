@@ -178,6 +178,7 @@ class Page {
       ImGui::TextColored(green, "%s", fr ? "Tout est prêt." : "All set.");
   }
 
+  static constexpr const char *kEvtmovMini = "evtmov MVSB/M";  // (a 2K14 / WWE '13 minitron's name in twok_minis_)
   // A 2K game's movie (movies\titantron\<file>) made into its own titantron, and its minitron
   // (pac\mov\ss_mini\<mini>, a pac holding one Bink 2 movie, 256 x 128 in 2K17) its minitron, else the
   // titantron again (converted with the player's tool, bink2.h).
@@ -189,8 +190,16 @@ class Page {
       return;
     std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char *>(b.data()), std::streamsize(b.size()));
     fs::path mini_tmp = media::TempDir() / (L"mini_" + fs::path(mini).stem().wstring() + L".bk2");
-    if (mini.empty() || !from.Read("pac/mov/ss_mini/" + mini, b) || !bink2::PacMovie(b, mini_tmp))
+    if (mini.rfind(kEvtmovMini, 0) == 0) {  // (2K14 / WWE '13: evtmov.pac's MVSB/M<number>, a Bink 2 movie as it is)
+      const auto v = entrance_screens::Versions(from, twok_movie_game_, true, atoi(mini.c_str() + strlen(kEvtmovMini)));
+      if (v.empty())
+        mini_tmp.clear();
+      else
+        std::ofstream(mini_tmp, std::ios::binary).write(reinterpret_cast<const char *>(v[0].movie.data()),
+                                                        std::streamsize(v[0].movie.size()));
+    } else if (mini.empty() || !from.Read("pac/mov/ss_mini/" + mini, b) || !bink2::PacMovie(b, mini_tmp)) {
       mini_tmp.clear();
+    }
     twok_movie_file_ = file;
     twok_mini_file_ = mini_tmp.empty() ? std::string() : mini;
     twok_movie_ = own_movie_ = true;
@@ -1340,6 +1349,12 @@ class Page {
       for (const auto &f : minis)
         if (f.size() == 10 && f.compare(0, 4, mini) == 0 && _stricmp(f.c_str() + 6, ".pac") == 0)
           twok_minis_.push_back(f);
+    } else if (twok_movie_game_) {
+      // 2K14 / WWE '13: its minitron is evtmov.pac's MVSB/M<number>, 256 x 128 (2K14 Antonio Cesaro's name and logo;
+      // his titantron's own minitron strip is black: none showed, a player's report 2026-11-07)
+      const disc::GameDisc &from = twok_movie_game_ == game_title_ ? game_disc_ : twok_disc_;
+      if (!entrance_screens::Versions(from, twok_movie_game_, true, number).empty())
+        twok_minis_.push_back(kEvtmovMini + std::to_string(number % 1000));
     }
     FindScreens(number);
   }

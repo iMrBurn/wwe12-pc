@@ -144,6 +144,13 @@ inline void Place(const uint8_t *src, int sw, int sh, uint8_t *dst, int W, int H
 // ribbons and walls are all 1.8 MB at most (a buffer of that size, it seems): kept under it.
 constexpr size_t kScreenBytes = 1780000;
 constexpr size_t kScreenFrames = 180;  // (the game's ribbons and walls: all 180 frames)
+// Their largest frame (the Bink header's +12): the game's are 32896 bytes at most. 2K14 Antonio Cesaro's wall, 210
+// frames, its largest 33148, froze the loading before his entrance every time (2026-11-07): kept under 31000, and cut
+// to 180 frames like the game's.
+constexpr uint32_t kScreenFrameBytes = 31000;
+inline uint32_t LargestFrame(const Bytes &bik) {
+  return bik.size() < 16 ? 0 : uint32_t(bik[12]) | uint32_t(bik[13]) << 8 | uint32_t(bik[14]) << 16 | uint32_t(bik[15]) << 24;
+}
 
 // The encoder's lossy steps (bink_writer_quality: skip, fill, pattern thresholds), the first Kaiko's.
 constexpr int kQuality[][3] = {{2, 2, 0}, {3, 3, 6}, {4, 4, 10}, {6, 6, 14}, {8, 8, 20}, {10, 10, 28}, {12, 12, 36}, {14, 14, 44}, {16, 16, 52}};
@@ -196,10 +203,13 @@ inline bool EncodeScreen(const std::vector<std::vector<uint8_t>> &pics_in, int W
   std::vector<std::vector<uint8_t>> pics = pics_in;
   for (size_t i = 0; !pics_in.empty() && pics.size() < kScreenFrames; ++i)
     pics.push_back(pics_in[i % pics_in.size()]);
+  if (pics.size() > kScreenFrames)
+    pics.resize(kScreenFrames);
+  const auto too_big = [&] { return out.size() > kScreenBytes || LargestFrame(out) > kScreenFrameBytes; };
   int q = 0;
   if (!EncodeFrames(pics, W, H, 1, out, q))
     return false;
-  while (out.size() > kScreenBytes && q < last)
+  while (too_big() && q < last)
     if (!EncodeFrames(pics, W, H, 1, out, ++q))
       return false;
   for (int stride = 1; out.size() > kScreenBytes && stride < 30;) {
@@ -207,7 +217,7 @@ inline bool EncodeScreen(const std::vector<std::vector<uint8_t>> &pics_in, int W
     if (!EncodeFrames(pics, W, H, stride, out, q))
       return false;
   }
-  return true;
+  return LargestFrame(out) <= kScreenFrameBytes;  // (else none: the arena's, rather than a frozen loading)
 }
 
 // frames (each W x H BGRA, from `next`, which returns false at the end) as a Bink 1 movie (30 fps) in `out`.

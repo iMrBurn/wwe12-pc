@@ -194,12 +194,15 @@ class Page {
     ImGui::EndDisabled();
     // His entrance outfit of this attire (kind 4: Cena's cap, Undertaker's coat and hat): with a ported attire, the
     // game would still dress him in it for the entrance (a player's report, 2026-11-06, points 12-13).
-    if (ported_ && !as_new_ && OutfitIndex() >= 0)
+    if (ported_)
       ImGui::Checkbox(outfit_ported_ ? (fr ? "Remplacer aussi sa tenue d'entrée par la sienne dans son jeu (portée aussi)"
                                            : "Replace his entrance outfit too, with his own from his game (ported too)")
                                      : (fr ? "Remplacer aussi sa tenue d'entrée (casquette, veste, chapeau...) par celle-ci"
                                            : "Replace his entrance outfit too (cap, jacket, hat...) with this one"),
                       &outfit_too_);
+    if (ported_ && outfit_too_)
+      ImGui::TextDisabled("%s", fr ? "(ses accessoires d'entrée du jeu, casquette, chapeau..., sont cachés pour toutes ses tenues)"
+                                   : "(his entrance props in the game, cap, hat..., are hidden for all his attires)");
     // Its own name on the select screen and its own render (both optional: else the game's).
     ImGui::SetNextItemWidth(260);
     ImGui::InputTextWithHint("##attire_label", fr ? "Nom de la tenue (facultatif)" : "Attire name (optional)",
@@ -913,10 +916,6 @@ class Page {
           svrfmt::ArchiveTouch(a.root);
           one = svrfmt::ArchiveSave(a);
           outfit_note.clear();
-          // (and the props of his entrance made for that outfit, Cena's cap, the Undertaker's hat: invisible copies,
-          // served by the game in place of the disc's, entrance13::OutfitProps; not for an added superstar's own)
-          if (disc_ && !s.added)
-            outfit_props = entrance13::OutfitProps(*disc_, s.id, attires_[oi]);
           if (!halved.empty())
             reduced_note_ += std::string(reduced_note_.empty() ? "" : " ") +
                              (fr ? "(Tenue d'entrée : images réduites de moitié pour tenir.)"
@@ -927,6 +926,16 @@ class Page {
         message_ = (fr ? "Tenue d'entrée non remplacée : " : "Entrance outfit not replaced: ") + outfit_note;
         return;
       }
+    }
+    // The props of his entrance made for his entrance outfits (Cena's cap, the Undertaker's hat): invisible copies,
+    // served by the game in place of the disc's (entrance13::OutfitProps), for any of his attires ported, a new one
+    // too (his script dressed the 2K14 Undertaker of attire 3 in his hat). Not for an added superstar (his own).
+    if (ported_ && outfit_too_ && disc_ && !s.added) {
+      std::vector<std::string> outfits;
+      for (const auto &a : attires_)
+        if (a.size() == 8 && a[7] == '4')
+          outfits.push_back(a);
+      outfit_props = entrance13::OutfitProps(*disc_, s.id, outfits);
     }
     std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=" + mod_version::Of(version_) + "\n" +
                            "superstar=" + std::to_string(s.id) + "\nattire=" + entry + "\n" +

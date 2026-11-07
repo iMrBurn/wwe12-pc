@@ -147,7 +147,10 @@ bool OwnScreenFits(const std::vector<uint8_t> &d) {
   if (d.size() < 12 || d.size() > 1810000 || d[0] != 'B' || d[1] != 'I' || d[2] != 'K')
     return false;
   const uint32_t frames = uint32_t(d[8]) | uint32_t(d[9]) << 8 | uint32_t(d[10]) << 16 | uint32_t(d[11]) << 24;
-  return frames >= 180;
+  // (and its largest frame no bigger than the game's own, 32896 bytes at most: 2K14 Antonio Cesaro's wall, 33148, froze
+  // the loading before his entrance every time, 2026-11-07)
+  const uint32_t largest = d.size() < 16 ? 0 : uint32_t(d[12]) | uint32_t(d[13]) << 8 | uint32_t(d[14]) << 16 | uint32_t(d[15]) << 24;
+  return frames >= 180 && largest <= 32896;
 }
 bool OwnScreenFits(const std::filesystem::path &p) {
   std::vector<uint8_t> d;

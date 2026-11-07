@@ -981,16 +981,20 @@ inline int HideMissing(std::vector<Part> &parts, const disc::GameDisc &w12, cons
 }
 
 // The props of WWE '12 superstar `number`'s entrance (his script /EVP*/<number>: objects of type 0x100) made for his
-// entrance outfit `outfit` ("00013904": a texture of the prop named with its last four digits, "13904Cap" John Cena's
-// cap 2081, "0304hat" the Undertaker's hat 2071 / 3071), each as an invisible copy (evtobj.pac's SOBJ/<model>, its
-// model's points all at one place). An attire mod whose port replaces that outfit carries them, so the port isn't
-// dressed in them (2026-11-07). Parts "SOBJ" numbered by model.
-inline std::vector<Part> OutfitProps(const disc::GameDisc &w12, int number, const std::string &outfit) {
+// entrance outfits `outfits` ("00013904", "00013924": a texture of the prop named with the last four digits of one,
+// "13904Cap" John Cena's cap 2081, "0304hat" the Undertaker's hat 2071 / 3071), each as an invisible copy (evtobj.pac's
+// SOBJ/<model>, its model's points all at one place). An attire mod with a port carries them, so the port isn't
+// dressed in them (2026-11-07; his script is the same for all his attires: they lose them for all). Parts "SOBJ"
+// numbered by model.
+inline std::vector<Part> OutfitProps(const disc::GameDisc &w12, int number, const std::vector<std::string> &outfits) {
   using detail::Be32;
   std::vector<Part> out;
-  if (outfit.size() != 8)
+  std::vector<std::string> codes;
+  for (const auto &o : outfits)
+    if (o.size() == 8)
+      codes.push_back(o.substr(4));
+  if (codes.empty())
     return out;
-  const std::string code = outfit.substr(4);
   std::set<uint32_t> models;
   for (const auto &f : w12.List("pac/evt")) {
     if (_strnicmp(f.c_str(), "Nyujyo", 6) != 0)
@@ -1026,7 +1030,8 @@ inline std::vector<Part> OutfitProps(const disc::GameDisc &w12, int number, cons
         std::vector<svrfmt::BundleTexture> t;
         if (svrfmt::BundleRead(svrfmt::Unpack(c.data), t))
           for (const auto &x : t)
-            mine |= x.name.find(code) != std::string::npos;
+            for (const auto &code : codes)
+              mine |= x.name.find(code) != std::string::npos;
       }
     if (!mine)
       continue;
