@@ -28,7 +28,9 @@
 
 #include "game_disc.h"
 #include "svrfmt/archive.h"
+#include "svrfmt/jboy.h"
 #include "svrfmt/pac.h"
+#include "svrfmt/texture.h"
 #include "svrfmt/xcompress.h"
 #include "yanm_ik.h"
 
@@ -976,6 +978,74 @@ inline int HideMissing(std::vector<Part> &parts, const disc::GameDisc &w12, cons
     }
   }
   return hidden;
+}
+
+// The props of WWE '12 superstar `number`'s entrance (his script /EVP*/<number>: objects of type 0x100) made for his
+// entrance outfit `outfit` ("00013904": a texture of the prop named with its last four digits, "13904Cap" John Cena's
+// cap 2081, "0304hat" the Undertaker's hat 2071 / 3071), each as an invisible copy (evtobj.pac's SOBJ/<model>, its
+// model's points all at one place). An attire mod whose port replaces that outfit carries them, so the port isn't
+// dressed in them (2026-11-07). Parts "SOBJ" numbered by model.
+inline std::vector<Part> OutfitProps(const disc::GameDisc &w12, int number, const std::string &outfit) {
+  using detail::Be32;
+  std::vector<Part> out;
+  if (outfit.size() != 8)
+    return out;
+  const std::string code = outfit.substr(4);
+  std::set<uint32_t> models;
+  for (const auto &f : w12.List("pac/evt")) {
+    if (_strnicmp(f.c_str(), "Nyujyo", 6) != 0)
+      continue;
+    svrfmt::Archive a;
+    if (!detail::OpenPac(w12, "pac/evt/" + f, a))
+      continue;
+    for (auto &k : a.root.kids) {
+      if (k.group.rfind("EVP", 0) != 0 || atoi(k.name.c_str()) != number)
+        continue;
+      const Bytes evp = svrfmt::Unpack(svrfmt::ArchiveData(k));
+      if (evp.size() < 0x50)
+        continue;
+      const uint32_t n = Be32(evp, 0x40) & 0xFFFF, t = Be32(evp, 0x48) + 8;
+      for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= evp.size(); ++i)
+        if (Be32(evp, t + 32 * size_t(i) + 8) == 0x100)
+          models.insert(Be32(evp, t + 32 * size_t(i) + 4));
+    }
+  }
+  svrfmt::Archive objs;
+  if (models.empty() || !detail::OpenPac(w12, "pac/evt/evtobj.pac", objs))
+    return out;
+  for (auto &k : objs.root.kids) {
+    const int model = atoi(k.name.c_str());
+    if (k.group.rfind("SOBJ", 0) != 0 || !models.count(uint32_t(model)))
+      continue;
+    std::vector<svrfmt::PachEntry> kids;
+    if (!svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(k)), kids))
+      continue;
+    bool mine = false;
+    for (auto &c : kids)
+      if (c.id == 10) {
+        std::vector<svrfmt::BundleTexture> t;
+        if (svrfmt::BundleRead(svrfmt::Unpack(c.data), t))
+          for (const auto &x : t)
+            mine |= x.name.find(code) != std::string::npos;
+      }
+    if (!mine)
+      continue;
+    bool hidden = false;
+    for (auto &c : kids) {
+      svrfmt::Model m;
+      if (c.id != 0 || !svrfmt::JboyRead(svrfmt::Unpack(c.data), m))
+        continue;
+      for (auto &me : m.meshes)
+        for (auto &v : me.verts)
+          if (!me.verts.empty())
+            std::copy(me.verts[0].pos, me.verts[0].pos + 3, v.pos);
+      c.data = svrfmt::JboyWrite(m);
+      hidden = true;
+    }
+    if (hidden)
+      out.push_back({model, "SOBJ", svrfmt::PachWrite(kids)});
+  }
+  return out;
 }
 
 // Object 5009 (a prop with a skeleton, type 0x100, track object 25007): WWE '12 and 2K15 only pose it (a 2-track chunk

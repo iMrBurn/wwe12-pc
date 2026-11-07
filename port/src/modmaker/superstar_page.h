@@ -21,6 +21,7 @@
 #include "arena_page.h"
 #include "arena_view.h"
 #include "attire_mod.h"
+#include "entrance13.h"
 #include "game_disc.h"
 #include "game_discs.h"
 #include "game_process.h"
@@ -194,8 +195,10 @@ class Page {
     // His entrance outfit of this attire (kind 4: Cena's cap, Undertaker's coat and hat): with a ported attire, the
     // game would still dress him in it for the entrance (a player's report, 2026-11-06, points 12-13).
     if (ported_ && !as_new_ && OutfitIndex() >= 0)
-      ImGui::Checkbox(fr ? "Remplacer aussi sa tenue d'entrée (casquette, veste, chapeau...) par celle-ci"
-                         : "Replace his entrance outfit too (cap, jacket, hat...) with this one",
+      ImGui::Checkbox(outfit_ported_ ? (fr ? "Remplacer aussi sa tenue d'entrée par la sienne dans son jeu (portée aussi)"
+                                           : "Replace his entrance outfit too, with his own from his game (ported too)")
+                                     : (fr ? "Remplacer aussi sa tenue d'entrée (casquette, veste, chapeau...) par celle-ci"
+                                           : "Replace his entrance outfit too (cap, jacket, hat...) with this one"),
                       &outfit_too_);
     // Its own name on the select screen and its own render (both optional: else the game's).
     ImGui::SetNextItemWidth(260);
@@ -393,6 +396,7 @@ class Page {
   void OpenAttire(bool fr) {
     loaded_ = false;
     ported_ = false;
+    outfit_ported_ = false;
     svr_note_.clear();
     thumbs_.clear();
     selected_ = -1;
@@ -567,6 +571,26 @@ class Page {
                                      disc_ ? &hair_donor::Collision(*disc_) : nullptr))) {
       svr_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
       return;
+    }
+    // Its own entrance outfit in its game too ("3902" -> "3904", "00013902" -> "00013904": SvR 2007 John Cena's cap and
+    // grey shirt), ported over his entrance outfit here, when both have one; else Make puts a copy of the attire there.
+    outfit_ported_ = false;
+    if (const int oi = OutfitIndex(); oi >= 0 && size_t(svr_attire_) < svr_attires_.size()) {
+      std::string src = svr_attires_[size_t(svr_attire_)];
+      if (!src.empty() && src.back() == '2') {
+        src.back() = '4';
+        for (size_t i = 0; i < s.root.kids.size(); ++i) {
+          if (s.root.kids[i].name != src)
+            continue;
+          std::string e;
+          port_svr::Report r2;
+          port13_star::Report r13;
+          outfit_ported_ = w13 ? port13_star::PortAttire(s.root.kids[i], w.root.kids[size_t(oi)], &r13, &e)
+                               : port_svr::PortAttire(s.root.kids[i], w.root.kids[size_t(oi)], &r2, &e,
+                                                      disc_ ? &hair_donor::Collision(*disc_) : nullptr);
+          break;
+        }
+      }
     }
     svrfmt::ArchiveTouch(w.root);
     const Bytes out = svrfmt::ArchiveSave(w);
@@ -868,18 +892,20 @@ class Page {
     // size: the mod's attire file's second entry, put in by the game with the attire (superstar_pack.h). Without
     // it the game dressed the port in the disc's outfit for the entrance (Cena's cap, the Undertaker's coat and hat).
     std::string outfit_note;
+    std::vector<entrance13::Part> outfit_props;
     if (const int oi = OutfitIndex(); ported_ && !as_new_ && outfit_too_ && oi >= 0) {
       arena_edit::Arena shipped, copy;
       Bytes fitted, alone;
       std::string e;
       svrfmt::Archive a, o;
-      if (!shipped.Load(file_, &e, oi) || !copy.Load(out, &e, attire_)) {
+      // (its game's own entrance outfit when PortSvr ported it into `out`; else a copy of the attire)
+      if (!shipped.Load(file_, &e, oi) || !copy.Load(out, &e, outfit_ported_ ? oi : attire_)) {
         outfit_note = e;
       } else {
         const auto halved = copy.Fit(shipped.SectionSize(), fitted, true);
         if (copy.SectionSize() > shipped.SectionSize())
           outfit_note = fr ? "trop grande pour la place de la tenue d'entrée" : "too big for the entrance outfit's place";
-        else if (!attire_mod::OneAttire(fitted, attires_[attire_], alone, &e) || !svrfmt::ArchiveOpen(alone, o, &e) ||
+        else if (!attire_mod::OneAttire(fitted, attires_[outfit_ported_ ? oi : attire_], alone, &e) || !svrfmt::ArchiveOpen(alone, o, &e) ||
                  o.root.kids.empty() || !svrfmt::ArchiveOpen(one, a, &e) ||
                  !svrfmt::ArchiveAdd(a.root, "EMD ", attires_[oi], 0, svrfmt::ArchiveData(o.root.kids[0]), &e))
           outfit_note = e;
@@ -887,6 +913,10 @@ class Page {
           svrfmt::ArchiveTouch(a.root);
           one = svrfmt::ArchiveSave(a);
           outfit_note.clear();
+          // (and the props of his entrance made for that outfit, Cena's cap, the Undertaker's hat: invisible copies,
+          // served by the game in place of the disc's, entrance13::OutfitProps; not for an added superstar's own)
+          if (disc_ && !s.added)
+            outfit_props = entrance13::OutfitProps(*disc_, s.id, attires_[oi]);
           if (!halved.empty())
             reduced_note_ += std::string(reduced_note_.empty() ? "" : " ") +
                              (fr ? "(Tenue d'entrée : images réduites de moitié pour tenir.)"
@@ -909,6 +939,8 @@ class Page {
                 ", made with the WWE '12 Mod Maker.\n";
     std::vector<std::pair<std::string, Bytes>> zip = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
                                                       {"attire/attire.pac", std::move(one)}};
+    for (const auto &p : outfit_props)  // (the game puts them in evtobj.pac: wwe12_arena_pages.cpp)
+      zip.push_back({"attire/objects/SOBJ_" + std::to_string(p.number) + ".bin", p.data});
     // (SSFA / SSFB / SSFC "ANNN" in the game's pack, superstar_pack.h: the select screen's, the VS screen's...)
     for (int hd = 0; hd < 2; ++hd)
       for (int k = 0; k < 3; ++k)
@@ -921,6 +953,9 @@ class Page {
     mods.InstallFile(fr, save);
     message_ok_ = true;
     message_ = (fr ? "Mod créé et installé : " : "Mod made and installed: ") + media::Utf8(save.wstring());
+    if (!outfit_props.empty())
+      message_ += (fr ? " Accessoires d'entrée de cette tenue cachés : " : " Entrance props of that outfit hidden: ") +
+                  std::to_string(outfit_props.size()) + ".";
   }
 
   // The entrance outfit of the attire open ("000NNNA2" -> "000NNNA4") in the superstar's file, -1 if none.
@@ -938,6 +973,7 @@ class Page {
   ID3D11Device *device_ = nullptr;
   bool listed_ = false, loaded_ = false;
   bool outfit_too_ = true;  // a ported attire replaces his entrance outfit of it too
+  bool outfit_ported_ = false;  // ... by its own game's entrance outfit (PortSvr), else by a copy of it
   std::vector<Star> stars_;
   int star_ = -1, attire_ = 0, selected_ = -1;
   bool as_new_ = false;  // the mod adds this attire as a new one

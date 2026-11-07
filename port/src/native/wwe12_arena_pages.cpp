@@ -794,6 +794,33 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       }
     ec.clear();
   }
+  // The attire mods' entrance props (attire\objects\SOBJ_<model>.bin: the props of the entrance outfit their port
+  // replaces, made invisible by the Mod Maker, entrance13::OutfitProps: Cena's cap, the Undertaker's hat) in place of
+  // evtobj.pac's SOBJ/<model> (the first mod giving one wins).
+  {
+    std::vector<fs::path> attires;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Attires", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec) && !fs::exists(it->path() / "disabled", ec))
+        attires.push_back(it->path());
+    ec.clear();
+    std::sort(attires.begin(), attires.end());
+    std::set<int> given;
+    for (const auto &d : attires) {
+      for (fs::directory_iterator it(d / "attire" / "objects", ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string f = it->path().filename().string();
+        const int model = f.rfind("SOBJ_", 0) == 0 ? atoi(f.c_str() + 5) : 0;
+        Part part;
+        if (model < 1000 || model > 9999 || given.count(model) || !ReadHost(it->path(), part.data) || part.data.empty())
+          continue;
+        given.insert(model);
+        part.group = "SOBJ";
+        part.name = std::to_string(model);
+        part.replace = true;
+        parts["pac/evt/evtobj.pac"].push_back(std::move(part));
+      }
+      ec.clear();
+    }
+  }
   // Title belts (pac/wuniData.pac /WWEU/BLTS: a PACH of texts by superstar number, two lines "x,y,z,sx,sy,sz": the belt
   // on the shoulder, then at the waist). An added superstar had the text of whoever had his number before (Jeff Hardy
   // at 109: the belt went through his clothes at the waist, 2026-11-03): he gets his base's, its waist's last two
@@ -963,6 +990,8 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
           Append(pac, part.data.data(), part.data.size(), e.sector, e.units);
           part.data = {};
           g_replaced[lead + group + "/" + name] = e;
+          if (rel == "pac/evt/evtobj.pac")  // (asked both ways, as the added objects below)
+            g_replaced[group + "/" + name] = e;
           REXLOG_INFO("[entrances] {}{}/{} replaced by a mod's", lead, group, name);
         } else {
           REXLOG_WARN("[entrances] /{}/{} is the game's already: left out", group, name);
