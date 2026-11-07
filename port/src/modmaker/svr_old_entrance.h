@@ -985,6 +985,23 @@ inline bool Convert(const disc::GameDisc &src, uint32_t title, int scene, bool v
         e.objs[i].model = kGeneric08;
     if (!ConvertEvp08(e, number, notes))
       return fail("its script can't be converted");
+    // (2007's people's heights are from the mat: in the ring 0, on the floor 12 - 2008-2011 and WWE '12's from the
+    // floor: in the ring -12, on the floor 0; object 6 2007 50, 2008 38. SvR 2007 Lita's ring announcer stood in the
+    // mat, 2026-11-07. Every used position of the characters - 8 x {x, y, z} at a stride of 6 words from word 4 - goes
+    // 12 down, in 2011's units)
+    for (auto &o : e.objs) {
+      if (!o.Char())
+        continue;
+      for (auto &s : o.slots)
+        for (int j = 0; j < 8; ++j) {
+          const size_t at = 4 * size_t(4 + j * 6);
+          if (at + 12 > s.size())
+            break;
+          const float x = svrfmt::BeF(&s[at]), y = svrfmt::BeF(&s[at + 4]), z = svrfmt::BeF(&s[at + 8]);
+          if (x != 0.0f || y != 0.0f || z != 0.0f)
+            svrfmt::PutBeF(&s[at + 4], y - 12.0f);
+        }
+    }
     // (the 2007-only type-9 tail record, a music cue, dropped)
     std::vector<Rec> keep;
     for (auto &r : e.recs)
