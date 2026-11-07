@@ -1794,16 +1794,50 @@ extern "C" REX_FUNC(sub_828ADFB8) {
   // Only once that place holds John Cena's as they should be: his bytes past his moves and entrance blocks (from 486;
   // and before them, 0-5), which neither a moves mod nor a moveset edited in the game changes (2026-11-03; all 1068
   // before, and a moves mod for Cena made it fail).
-  const uint32_t moves = roster ? roster - 0x1C + 324792 : 0;
+  uint32_t moves = roster ? roster - 0x1C + 324792 : 0;
   const auto index_of = [](uint32_t id) { return id < 373 ? uint32_t(bd::mem::load<uint16_t>(0x8307B5E0 + id * 2)) : 0xFFFFu; };
-  bool found = moves && g_cena_moves.size() == 1068 && index_of(139) < 373;
-  for (uint32_t k = 0; found && k < 1068; k = k == 5 ? 486 : k + 1)
-    found = bd::mem::load<uint8_t>(moves + index_of(139) * 1068 + k) == g_cena_moves[k];
-  if (moves && !found && !g_moves.empty()) {
+  // (a few bytes may differ: something the save keeps about him changes as one plays - byte 658 was 01 for 00 in the
+  // user's save, and every added superstar went without his moves and entrance, 2026-11-07; the right place matches
+  // hundreds of bytes, so 8 at most may differ)
+  const auto cena_at = [&](uint32_t base_moves) {
+    if (!base_moves || g_cena_moves.size() != 1068 || index_of(139) >= 373)
+      return false;
+    int off = 0;
+    for (uint32_t k = 0; k < 1068 && off <= 8; k = k == 5 ? 486 : k + 1)
+      off += bd::mem::load<uint8_t>(base_moves + index_of(139) * 1068 + k) != g_cena_moves[k];
+    return off <= 8;
+  };
+  bool found = cena_at(moves);
+  // (not there: John Cena's record looked for in the save's memory, from the roster on - the moves' place taken from
+  // where his is, if his index puts it on a whole record. SvR 2007 Lita, added, had no entrance, the game went straight
+  // to her opponent's: "not found where expected", 2026-11-07; what was there is logged, to see why)
+  if (moves && !found && !g_moves.empty() && g_cena_moves.size() == 1068 && index_of(139) < 373) {
     static bool told = false;
+    const uint32_t expected = moves + index_of(139) * 1068;
+    uint32_t first_diff = 0xFFFFFFFF;
+    for (uint32_t k = 0; k < 1068 && first_diff == 0xFFFFFFFF; k = k == 5 ? 486 : k + 1)
+      if (bd::mem::load<uint8_t>(expected + k) != g_cena_moves[k])
+        first_diff = k;
+    const uint8_t *from = bd::mem::at<uint8_t>(roster), *to = from + 8 * 1024 * 1024;
+    const uint8_t *hit = std::search(from, to, g_cena_moves.begin() + 486, g_cena_moves.end());
+    uint32_t moved = 0;
+    if (hit != to) {
+      const uint32_t rec = roster + uint32_t(hit - from) - 486;
+      if (rec >= index_of(139) * 1068 && cena_at(rec - index_of(139) * 1068))
+        moved = rec - index_of(139) * 1068;
+    }
     if (!told)
-      REXLOG_WARN("[superstar mods] the save's moves not found where expected: added superstars' left as they are");
+      REXLOG_WARN("[superstar mods] the save's moves not where expected ({:08X}, Cena index {} at {:08X}, first byte off: "
+                  "{}, there {:02X} wanted {:02X}); Cena's record found {}; moves place {}",
+                  moves, index_of(139), expected, first_diff, first_diff < 1068 ? bd::mem::load<uint8_t>(expected + first_diff) : 0,
+                  first_diff < 1068 ? g_cena_moves[first_diff] : 0,
+                  hit != to ? fmt::format("at {:08X} (roster + {})", roster + uint32_t(hit - from) - 486, uint32_t(hit - from) - 486) : "nowhere",
+                  moved ? fmt::format("{:08X} (expected + {})", moved, int64_t(moved) - int64_t(moves)) : "not found: added superstars' left as they are");
     told = true;
+    if (moved) {
+      moves = moved;
+      found = true;
+    }
   }
   std::vector<uint32_t> restored;
   for (const auto &[id, mv] : g_moves) {
