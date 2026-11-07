@@ -66,7 +66,11 @@ inline std::string MapPart(const std::string &s) {
   std::string l;
   for (char c : s)
     l += char(tolower(static_cast<unsigned char>(c)));
-  if (l == "eye" || l == "eyes")
+  // (and SvR 2007's own names for them: "BT_EYE" Batista, "objEYE" Regal, "objeye01", "rey_EYER", "EYE_02",
+  // "EYE02", "EYE_2", "eyer" / "eyel": any part named with "eye" but the eyelashes, brows and lids - Jay, 2026-11-07)
+  if (l == "eye" || l == "eyes" ||
+      (l.find("eye") != std::string::npos && l.find("lash") == std::string::npos &&
+       l.find("brow") == std::string::npos && l.find("lid") == std::string::npos))
     return "EYE";
   if (l == "teeth" || l == "tooth")
     return "tooth";
