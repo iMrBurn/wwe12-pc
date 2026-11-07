@@ -443,7 +443,7 @@ void PageNewStar() {
 
 void PageMoves() {
   Title(g_fr ? "PRISES & ENTRÉES" : "MOVES & ENTRANCES");
-  g_moves_page.Draw(g_fr, g_disc, g_mods);
+  g_moves_page.Draw(g_fr, g_device.Get(), g_disc, g_mods);
   if (g_moves_page.want_discs_) {  // ("Add it in MY GAME DISCS")
     g_moves_page.want_discs_ = false;
     g_page = kDiscs;

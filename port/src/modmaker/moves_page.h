@@ -24,6 +24,8 @@
 #include "media.h"
 #include "mod_version.h"
 #include "mods.h"
+#include "move_preview.h"
+#include "moves_edit.h"
 #include "star_port.h"
 #include "ui_style.h"
 
@@ -37,20 +39,84 @@ class Page {
   const game_discs::Discs *discs_ = nullptr;  // My game discs (set by the Mod Maker)
   bool want_discs_ = false;                   // the player asked for My game discs (the Mod Maker opens it)
 
-  void Draw(bool fr, const disc::GameDisc &disc, mods::Manager &mods) {
-    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
+  void Draw(bool fr, ID3D11Device *dev, const disc::GameDisc &disc, mods::Manager &mods) {
+    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f);
     disc12_ = &disc;
+    device_ = dev;
+    if (!disc.Found()) {
+      ImGui::TextColored(red, "%s", fr ? "Fichiers du jeu introuvables." : "Game files not found.");
+      return;
+    }
+    if (!listed_) {
+      List(disc);
+      // (test aid: WWE12_MM_MOVES=<superstar number>,<tab>[,<move to play>] opens on him and that tab)
+      if (const char *t = getenv("WWE12_MM_MOVES")) {
+        int id = 0, tab = 0, play = 0;
+        sscanf(t, "%d,%d,%d", &id, &tab, &play);
+        for (int i = 0; i < int(stars12_.size()); ++i)
+          if (stars12_[size_t(i)].id == id)
+            target_ = i, target_by_player_ = true;
+        tab_ = std::clamp(tab, 0, 3);
+        test_play_ = play;
+      }
+      // (and WWE12_MM_PORT=<game title hex>,<his number>: the From another game tab on him, step 3)
+      if (const char *t = getenv("WWE12_MM_PORT")) {
+        unsigned title = 0;
+        int number = 0;
+        sscanf(t, "%x,%d", &title, &number);
+        ChooseGame(title);
+        for (const auto &[n, nm] : list_.list)
+          if (n == number)
+            Pick(n, nm);
+        use_added_moves_ = true;
+        step_ = 2;
+        tab_ = 3;
+        test_new_ = getenv("WWE12_MM_PLAYNEW") != nullptr;
+      }
+    }
+    if (test_new_ && cat_tried_ && !parts_.new_moves.empty()) {
+      preview_.Play(parts_.new_moves.back().high, parts_.new_moves.back().name);
+      test_new_ = false;
+    }
+    if (test_play_ && cat_tried_) {
+      PlayMove(test_play_ > 1 ? test_play_ : moves_edit::Catalog::At(cat_.pro[Who()], 0x026));
+      test_play_ = 0;
+    }
+    if (!cat_tried_) {  // (the game's moves and its roster's movesets; the motions' places in m.pac)
+      cat_tried_ = true;
+      cat_.Load(disc);
+      motions_.Build(disc);
+    }
+    // The tabs, as Kaiko's page: the moves, the taunts, the entrance (by hand, with the game's own), and from another
+    // game (the assistant). One mod for one superstar holds them all.
+    const char *tabs_fr[] = {"Prises", "Provocations", "Entrée", "Depuis un autre jeu"};
+    const char *tabs_en[] = {"Moves", "Taunts", "Entrance", "From another game"};
+    for (int i = 0; i < 4; ++i) {
+      if (i)
+        ImGui::SameLine();
+      const bool on = tab_ == i;
+      if (on)
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.78f, 0.12f, 0.18f, 1.0f));
+      if (ImGui::Button(fr ? tabs_fr[i] : tabs_en[i], ImVec2(0, 28)))
+        tab_ = i;
+      if (on)
+        ImGui::PopStyleColor();
+    }
+    ImGui::Separator();
+    if (tab_ == 3)
+      DrawPort(fr, mods);
+    else
+      DrawHand(fr, disc, mods);
+  }
+
+  // The assistant: a superstar of another game lends his moves, entrance, victory scene and theme.
+  void DrawPort(bool fr, mods::Manager &mods) {
+    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
     ImGui::TextWrapped("%s", fr ? "Donnez à un catcheur de WWE '12 les prises, l'entrée, la scène de victoire et la musique "
                                   "d'un catcheur de vos autres jeux. Le mod se coupe dans le launcher : le catcheur "
                                   "retrouve les siennes."
                                 : "Give a WWE '12 superstar the moves, entrance, victory scene and theme of a superstar of "
                                   "your other games. Turn the mod off in the launcher: the superstar gets his own back.");
-    if (!disc.Found()) {
-      ImGui::TextColored(red, "%s", fr ? "Fichiers du jeu introuvables." : "Game files not found.");
-      return;
-    }
-    if (!listed_)
-      List(disc);
     // The assistant: the game, its superstar, what to take, for whom, the mod.
     const char *steps_fr[] = {"1. Jeu", "2. Catcheur", "3. Ce qu'on prend", "4. Pour qui", "5. Terminer"};
     const char *steps_en[] = {"1. Game", "2. Superstar", "3. What to take", "4. For whom", "5. Finish"};
@@ -66,7 +132,8 @@ class Page {
     }
     ImGui::EndChild();
     ImGui::SameLine();
-    ImGui::BeginChild("mv_body", ImVec2(0, h), ImGuiChildFlags_Borders);
+    const bool with_preview = step_ == 2 && use_moves_ && HasMoves();
+    ImGui::BeginChild("mv_body", ImVec2(with_preview ? -360.0f : 0.0f, h), ImGuiChildFlags_Borders);
     ImGui::PushTextWrapPos(0);
     switch (step_) {
     case 0: StepGame(fr); break;
@@ -77,6 +144,12 @@ class Page {
     }
     ImGui::PopTextWrapPos();
     ImGui::EndChild();
+    if (with_preview) {
+      ImGui::SameLine();
+      ImGui::BeginChild("mv_port_preview", ImVec2(0, h), ImGuiChildFlags_Borders);
+      PreviewPanel(fr);
+      ImGui::EndChild();
+    }
     ImGui::BeginDisabled(step_ == 0);
     if (ImGui::Button(fr ? "Retour" : "Back", ImVec2(110, 0)))
       --step_;
@@ -149,6 +222,355 @@ class Page {
       stars12_.push_back(s);
     }
     std::sort(stars12_.begin(), stars12_.end(), [](const Star &a, const Star &b) { return a.name < b.name; });
+  }
+
+  // ---- by hand: the moves, the taunts, the entrance (the game's own), and the mod
+
+  int Who() const { return target_ >= 0 ? stars12_[size_t(target_)].id : 0; }
+  // His move in slot `off` as the game has it.
+  int Own(int off) const {
+    const auto it = cat_.pro.find(Who());
+    return it != cat_.pro.end() ? moves_edit::Catalog::At(it->second, off) : 0;
+  }
+  // The moves the port gives (from another game, the ticked ones), by slot.
+  std::map<int, int> PortMoves() const {
+    std::map<int, int> out;
+    if (!(use_moves_ && HasMoves()))
+      return out;
+    for (const auto &[off, id] : star_port::MovesToWrite(parts_.moves, use_added_moves_))
+      if (!port_skip_.count(off))
+        out[off] = id;
+    return out;
+  }
+  // The move slot `off` falls back to without a change by hand: the port's, else his own.
+  int Under(int off) const {
+    const auto p = PortMoves();
+    const auto it = p.find(off);
+    return it != p.end() ? it->second : Own(off);
+  }
+  // His move in slot `off` with the mod: changed by hand, else the port's, else his own.
+  int Current(int off) const {
+    const auto e = edits_.find(off);
+    return e != edits_.end() ? e->second : Under(off);
+  }
+  // His opponent in the preview: another superstar of the game.
+  int Opponent() const { return Who() == 139 ? 161 : 139; }
+  void PlayMove(int id) {
+    if (disc12_)
+      preview_.Play(motions_.Full(*disc12_, id), cat_.Name(id));
+  }
+  void PreviewPanel(bool fr) {
+    const int who = Who() ? Who() : 139;
+    preview_.Set(device_, *disc12_, who, Opponent());
+    if (!preview_.HasMotion() && cat_.pro.count(who))  // (standing: his signature move's first frame)
+      preview_.Stand(motions_.Full(*disc12_, moves_edit::Catalog::At(cat_.pro.at(who), 0x022)));
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    preview_.Draw(fr, ImVec2(avail.x, std::max(200.0f, avail.y - 70)));
+    if (!Who())
+      ImGui::TextDisabled("%s", fr ? "(montré sur John Cena : choisissez le catcheur pour le voir sur lui)"
+                                   : "(shown on John Cena: choose the superstar to see it on him)");
+  }
+
+  // The WWE '12 superstar the mod is for (every tab: the same one).
+  void TargetPicker(bool fr) {
+    ImGui::SetNextItemWidth(320);
+    if (ImGui::BeginCombo(fr ? "Catcheur de WWE '12##hand" : "WWE '12 superstar##hand",
+                          target_ < 0 ? (fr ? "Choisir..." : "Choose...") : stars12_[size_t(target_)].name.c_str(),
+                          ImGuiComboFlags_HeightLarge)) {
+      ImGui::SetNextItemWidth(-1);
+      if (ImGui::IsWindowAppearing())
+        ImGui::SetKeyboardFocusHere();
+      ImGui::InputTextWithHint("##hand_target_filter", fr ? "Rechercher" : "Search", target_filter_, sizeof(target_filter_));
+      const std::string want = Lower(target_filter_);
+      for (int i = 0; i < int(stars12_.size()); ++i) {
+        if (!want.empty() && Lower(stars12_[size_t(i)].name).find(want) == std::string::npos)
+          continue;
+        if (ImGui::Selectable(stars12_[size_t(i)].name.c_str(), i == target_) && i != target_) {
+          target_ = i;
+          target_by_player_ = true;
+          message_.clear();
+        }
+      }
+      ImGui::EndCombo();
+    }
+    if (edits_for_ != Who()) {  // (the changes are his: another superstar starts from his own)
+      edits_.clear();
+      entrance_of_ = 0;
+      edits_for_ = Who();
+    }
+  }
+
+  void DrawHand(bool fr, const disc::GameDisc &disc, mods::Manager &mods) {
+    (void)disc;
+    TargetPicker(fr);
+    if (!cat_.loaded) {
+      ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
+                         fr ? "Les prises du jeu n'ont pas pu être lues (misc.pac, chEtc.pac)."
+                            : "The game's moves could not be read (misc.pac, chEtc.pac).");
+      return;
+    }
+    if (target_ < 0) {
+      ImGui::TextDisabled("%s", fr ? "Choisissez le catcheur dont on change les prises, les provocations ou l'entrée."
+                                   : "Choose the superstar whose moves, taunts or entrance are changed.");
+      return;
+    }
+    const float h = std::max(300.0f, ImGui::GetContentRegionAvail().y - 110);
+    ImGui::BeginChild("mv_hand", ImVec2(-360.0f, h), ImGuiChildFlags_Borders);
+    ImGui::PushTextWrapPos(0);
+    if (tab_ == 0) {
+      ImGui::TextWrapped("%s", fr ? "Ses prises case par case. Changer... propose d'abord les prises que les catcheurs du jeu "
+                                    "mettent dans cette case, puis les autres du même genre. Jouer la montre sur lui."
+                                  : "His moves slot by slot. Change... offers the moves the game's superstars put in that "
+                                    "slot first, then the others of the same kind. Play shows it on him.");
+      ImGui::SetNextItemWidth(300);
+      ImGui::InputTextWithHint("##slot_find", fr ? "Chercher dans ses prises" : "Find in his moves", find_, sizeof(find_));
+      for (int sct : {3, 4})
+        SectionSlots(fr, sct, true);
+      for (int sct = 0; sct < moves_edit::SectionCount(); ++sct)
+        if (sct > 4 && moves_edit::SectionInfo(sct).shown)
+          SectionSlots(fr, sct, false);
+    } else if (tab_ == 1) {
+      ImGui::TextWrapped("%s", fr ? "Ses provocations (et son retour) : celles de n'importe quel catcheur du jeu."
+                                  : "His taunts (and his comeback): any superstar of the game's.");
+      for (int sct : {1, 2})
+        SectionSlots(fr, sct, true, false);
+    } else {
+      EntranceTab(fr);
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("mv_hand_preview", ImVec2(0, h), ImGuiChildFlags_Borders);
+    PreviewPanel(fr);
+    ImGui::EndChild();
+    FinishBar(fr, mods);
+  }
+
+  // A section's slots (those the roster doesn't all have alike), each with its move, Change... and Play.
+  void SectionSlots(bool fr, int sct, bool open, bool search = true) {
+    const int a = moveset_port::detail::kSections[sct][0], b = moveset_port::detail::kSections[sct][1];
+    std::vector<int> slots;
+    for (int off = a; off < b; off += 2)
+      if (!cat_.fixed.count(off) && cat_.slot_moves.count(off) && !cat_.slot_moves.at(off).empty())
+        slots.push_back(off);
+    if (slots.empty())
+      return;
+    const std::string want = search ? Lower(find_) : std::string();
+    if (!want.empty()) {  // (a search: only the slots whose move has those letters)
+      std::vector<int> keep;
+      for (int off : slots)
+        if (Lower(cat_.Name(Current(off))).find(want) != std::string::npos)
+          keep.push_back(off);
+      slots.swap(keep);
+      if (slots.empty())
+        return;
+      open = true;
+    }
+    const auto &info = moves_edit::SectionInfo(sct);
+    char head[96];
+    snprintf(head, sizeof(head), "%s (%zu)###sec%d", fr ? info.fr : info.en, slots.size(), sct);
+    if (!want.empty())
+      ImGui::SetNextItemOpen(true);
+    if (!ImGui::CollapsingHeader(head, open ? ImGuiTreeNodeFlags_DefaultOpen : 0))
+      return;
+    int n = 0;
+    for (int off : slots)
+      SlotRow(fr, off, ++n);
+  }
+
+  void SlotRow(bool fr, int off, int n) {
+    ImGui::PushID(off);
+    const int now = Current(off), own = Own(off), under = Under(off);
+    const bool edited = edits_.count(off) != 0, ported = !edited && under != own;
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("%2d.", n);
+    ImGui::SameLine(44);
+    const ImVec4 col = edited   ? ImVec4(0.94f, 0.75f, 0.24f, 1.0f)
+                       : ported ? ImVec4(0.55f, 0.85f, 0.45f, 1.0f)
+                                : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    ImGui::TextColored(col, "%s", cat_.Name(now).c_str());
+    if (edited || ported) {
+      ImGui::SameLine();
+      ImGui::TextDisabled(edited ? (fr ? "(changée ; avant : %s)" : "(changed; before: %s)")
+                                 : (fr ? "(portée ; la sienne : %s)" : "(ported; his own: %s)"),
+                          cat_.Name(edited ? under : own).c_str());
+    }
+    ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 8, ImGui::GetContentRegionMax().x - 200));
+    ImGui::SetNextItemWidth(120);
+    if (ImGui::BeginCombo("##change", fr ? "Changer..." : "Change...", ImGuiComboFlags_HeightLarge)) {
+      if (ImGui::IsWindowAppearing()) {
+        pick_find_[0] = 0;
+        ImGui::SetKeyboardFocusHere();
+      }
+      ImGui::SetNextItemWidth(300);
+      ImGui::InputTextWithHint("##pick_find", fr ? "Rechercher" : "Search", pick_find_, sizeof(pick_find_));
+      const std::string want = Lower(pick_find_);
+      if (edited && ImGui::Selectable(((fr ? "Remettre : " : "Back to: ") + cat_.Name(under)).c_str()))
+        edits_.erase(off);
+      std::set<int> seen;
+      auto item = [&](int id) {
+        if (!seen.insert(id).second || (!want.empty() && Lower(cat_.Name(id)).find(want) == std::string::npos))
+          return;
+        const std::string label = cat_.Name(id) + "##" + std::to_string(id);
+        if (ImGui::Selectable(label.c_str(), id == now)) {
+          if (id == under)
+            edits_.erase(off);
+          else
+            edits_[off] = id;
+          PlayMove(id);
+        }
+      };
+      ImGui::SeparatorText(fr ? "Dans cette case chez les catcheurs du jeu" : "In this slot for the game's superstars");
+      for (int id : cat_.slot_moves[off])
+        item(id);
+      ImGui::SeparatorText(fr ? "Les autres du même genre" : "The others of the same kind");
+      for (int id : cat_.section_moves[moveset_port::detail::SectionOf(off)])
+        item(id);
+      ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!motions_.Has(now));
+    if (ImGui::Button(fr ? "Jouer" : "Play", ImVec2(70, 0)))
+      PlayMove(now);
+    ImGui::EndDisabled();
+    ImGui::PopID();
+  }
+
+  // Another superstar of the game's entrance (his entrance, its music and its titantron), or his own.
+  void EntranceTab(bool fr) {
+    ImGui::TextWrapped("%s", fr ? "Son entrée : la sienne, ou celle d'un autre catcheur du jeu (son entrée, sa musique et sa "
+                                  "vidéo de titantron). Celle d'un catcheur d'un autre jeu : l'onglet Depuis un autre jeu."
+                                : "His entrance: his own, or another superstar of the game's (his entrance, its music and "
+                                  "its titantron video). One of another game's superstar: the From another game tab.");
+    ImGui::Dummy(ImVec2(0, 4));
+    std::string now = fr ? "La sienne" : "His own";
+    for (const auto &st : stars12_)
+      if (st.id == entrance_of_)
+        now = st.name;
+    ImGui::SetNextItemWidth(320);
+    if (ImGui::BeginCombo(fr ? "Entrée" : "Entrance", now.c_str(), ImGuiComboFlags_HeightLarge)) {
+      ImGui::SetNextItemWidth(-1);
+      if (ImGui::IsWindowAppearing())
+        ImGui::SetKeyboardFocusHere();
+      ImGui::InputTextWithHint("##ent_find", fr ? "Rechercher" : "Search", ent_find_, sizeof(ent_find_));
+      if (ImGui::Selectable(fr ? "La sienne" : "His own", entrance_of_ == 0))
+        entrance_of_ = 0;
+      const std::string want = Lower(ent_find_);
+      for (const auto &st : stars12_) {
+        if (st.id == Who() || (!want.empty() && Lower(st.name).find(want) == std::string::npos))
+          continue;
+        if (ImGui::Selectable((st.name + "##e" + std::to_string(st.id)).c_str(), st.id == entrance_of_))
+          entrance_of_ = st.id;
+      }
+      ImGui::EndCombo();
+    }
+    if (use_entrance_ && HasEntrance())
+      ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f),
+                         fr ? "L'entrée de %s (onglet Depuis un autre jeu) passe avant celle-ci."
+                            : "%s's entrance (From another game tab) goes before this one.",
+                         pick_name_.c_str());
+  }
+
+  bool AnyChange() const { return AnyTaken() || !edits_.empty() || entrance_of_ > 0; }
+
+  // Under the tabs by hand: what the mod holds, its name, the button.
+  void FinishBar(bool fr, mods::Manager &mods) {
+    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
+    char what[220];
+    snprintf(what, sizeof(what), fr ? "Le mod : %zu prise(s) changée(s) à la main%s%s" : "The mod: %zu move(s) changed by hand%s%s",
+             edits_.size(), entrance_of_ ? (fr ? ", l'entrée d'un autre" : ", another's entrance") : "",
+             AnyTaken() ? (fr ? ", et ce qui est pris d'un autre jeu" : ", and what is taken from another game") : "");
+    ImGui::TextDisabled("%s", what);
+    if (name_[0] == 0 && target_ >= 0)
+      snprintf(name_, sizeof(name_), "%s moves", stars12_[size_t(target_)].name.c_str());
+    ImGui::SetNextItemWidth(260);
+    ImGui::InputTextWithHint("##hand_name", fr ? "Nom du mod" : "Mod name", name_, sizeof(name_));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160);
+    ImGui::InputTextWithHint("##hand_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!name_[0] || target_ < 0 || !AnyChange() || game::IsRunning());
+    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it...", ImVec2(240, 0)))
+      Make(fr, mods);
+    ImGui::EndDisabled();
+    if (message_ok_) {
+      ImGui::SameLine();
+      ImGui::BeginDisabled(game::IsRunning());
+      if (ImGui::Button(fr ? "Tester en jeu" : "Test in game", ImVec2(140, 0)))
+        arena_page::LaunchGame();
+      ImGui::EndDisabled();
+    }
+    if (game::IsRunning())
+      ImGui::TextColored(red, "%s", fr ? "Le jeu est lancé : fermez-le pour installer le mod."
+                                       : "The game is running: close it to install the mod.");
+    if (!message_.empty())
+      ImGui::TextColored(message_ok_ ? green : red, "%s", message_.c_str());
+  }
+
+  // From another game: his moves by section, each ticked or not, what WWE '12 makes of it, and Play.
+  void PortTable(bool fr) {
+    std::map<int, int> to;  // (slot -> the WWE '12 move it becomes)
+    for (const auto &[off, id] : parts_.moves.moves)
+      to[off] = id;
+    ImGui::Dummy(ImVec2(0, 2));
+    if (ImGui::SmallButton(fr ? "Tout prendre" : "Choose all"))
+      port_skip_.clear();
+    ImGui::SameLine();
+    if (ImGui::SmallButton(fr ? "Ne rien prendre" : "Choose none"))
+      for (const auto &r : parts_.moves.rows)
+        port_skip_.insert(r.off);
+    ImGui::SameLine();
+    ImGui::TextDisabled(fr ? "%zu prise(s) choisie(s)" : "%zu move(s) chosen", PortMoves().size());
+    int last = -1;
+    for (const auto &r : parts_.moves.rows) {
+      const int sct = moveset_port::detail::SectionOf(r.off);
+      if (sct != last) {
+        last = sct;
+        ImGui::SeparatorText(fr ? moves_edit::SectionInfo(sct).fr : moves_edit::SectionInfo(sct).en);
+      }
+      ImGui::PushID(r.off);
+      const auto t = to.find(r.off);
+      const bool can = t != to.end() && (!r.new_move || use_added_moves_);
+      ImGui::BeginDisabled(!can);
+      bool on = can && !port_skip_.count(r.off);
+      if (ImGui::Checkbox("##take", &on)) {
+        if (on)
+          port_skip_.erase(r.off);
+        else
+          port_skip_.insert(r.off);
+      }
+      ImGui::EndDisabled();
+      ImGui::SameLine();
+      ImGui::TextUnformatted(r.from.empty() ? "?" : r.from.c_str());
+      ImGui::SameLine(ImGui::GetContentRegionMax().x * 0.45f);
+      if (t != to.end() && !r.new_move)
+        ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), fr ? "WWE '12 l'a : %s" : "WWE '12 has it: %s", r.to.c_str());
+      else if (t != to.end())
+        ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), "%s",
+                           use_added_moves_ ? (fr ? "ajoutée au jeu (expérimental)" : "added to the game (experimental)")
+                                            : (fr ? "WWE '12 ne l'a pas : cochez Prises ajoutées pour l'ajouter"
+                                                  : "WWE '12 hasn't it: tick Added moves to add it"));
+      else
+        ImGui::TextDisabled("%s", r.kept_why == 2   ? (fr ? "WWE '12 ne l'a pas : la sienne reste" : "WWE '12 hasn't it: his own stays")
+                                  : r.kept_why == 3 ? (fr ? "pas ce genre de case : la sienne reste" : "not that kind of slot: his own stays")
+                                                    : (fr ? "la sienne reste" : "his own stays"));
+      if (t != to.end() && !r.new_move) {
+        ImGui::SameLine(ImGui::GetContentRegionMax().x - 70);
+        ImGui::BeginDisabled(!motions_.Has(t->second));
+        if (ImGui::Button(fr ? "Jouer" : "Play", ImVec2(64, 0)))
+          PlayMove(t->second);
+        ImGui::EndDisabled();
+      } else if (r.new_move) {  // (one WWE '12 hasn't: its motion from his game, as it would be added)
+        for (const auto &m : parts_.new_moves)
+          if (m.number == r.from_id) {
+            ImGui::SameLine(ImGui::GetContentRegionMax().x - 70);
+            if (ImGui::Button(fr ? "Jouer" : "Play", ImVec2(64, 0)))
+              preview_.Play(m.high, m.name);
+            break;
+          }
+      }
+      ImGui::PopID();
+    }
   }
 
   // Step 1: the game, a big tile each (from My game discs).
@@ -239,6 +661,7 @@ class Page {
   // His parts (star_port::Collect) and theme; what can be taken ticked; WWE '12's superstar of the same name proposed.
   void Pick(int number, const std::string &name) {
     pick_ = number;
+    port_skip_.clear();
     pick_name_ = name.size() > 2 && name.compare(name.size() - 2, 2, " ?") == 0 ? name.substr(0, name.size() - 2) : name;
     Collect();
     star_port::FindTheme(list_, number, theme_, &themes_);
@@ -285,8 +708,8 @@ class Page {
     Choice(HasMoves(), use_moves_, HasMoves() ? label : (fr ? "Ses prises" : "His moves"), MovesWhy(fr));
     if (use_moves_ && HasMoves()) {
       ImGui::Indent(24);
-      star_port::DrawMovesTable(fr, parts_.moves, game_, "stays", "inchangée", use_added_moves_);
       star_port::DrawAddedMovesChoice(fr, use_added_moves_, parts_.new_moves.size());
+      PortTable(fr);
       ImGui::Unindent(24);
     }
     // entrance
@@ -470,33 +893,46 @@ class Page {
     save_ = media::PickSave(fr, (file.empty() ? L"moves" : file) + L".svrmod");
     if (save_.empty())
       return;
-    const bool moves = use_moves_ && HasMoves(), entrance = use_entrance_ && HasEntrance(),
-               victory = use_victory_ && HasVictory(), theme = use_theme_ && HasTheme();
+    // (the moves: the port's ticked ones, then those changed by hand over them)
+    std::map<int, int> all = PortMoves();
+    for (const auto &[off, id] : edits_)
+      all[off] = id;
+    const bool moves = !all.empty(), entrance = use_entrance_ && HasEntrance(),
+               victory = use_victory_ && HasVictory(), theme = use_theme_ && HasTheme(),
+               other_entrance = !entrance && entrance_of_ > 0;
     std::string manifest = "game=wwe12\ntype=moves\nid=" + id + "\nname=" + std::string(name_) +
                            "\nsuperstar=" + std::to_string(who.id) + "\nversion=" + mod_version::Of(version_) + "\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     if (moves)  // (the game puts them over his own)
-      manifest += "moves=" + moveset_port::ManifestValue(star_port::MovesToWrite(parts_.moves, use_added_moves_)) + "\n";
+      manifest += "moves=" + moveset_port::ManifestValue(std::vector<std::pair<int, int>>(all.begin(), all.end())) + "\n";
     if (entrance)  // (superstar/entrance/, served by the game under that number)
       manifest += "entrance_own=" + std::to_string(parts_.entrance_number) + "\n";
+    else if (other_entrance)  // (that superstar's entrance, music and video numbers: the game's own)
+      manifest += "entrance=" + std::to_string(entrance_of_) + "\n";
     std::string what;
     for (const auto &[on, t] : {std::pair<bool, const char *>{moves, "moves"}, {entrance, "entrance"},
                                 {victory, "victory scene"}, {theme, "theme"}})
       if (on)
         what += std::string(what.empty() ? "" : ", ") + t;
-    manifest += "description=" + who.name + " with the " + what + " of " + pick_name_ + " from " +
-                star_port::GameName(game_) + " (the player's own copy), made with the WWE '12 Mod Maker.\n";
+    std::string desc = who.name;
+    if (!what.empty() && !pick_name_.empty())
+      desc += " with the " + what + " of " + pick_name_ + " from " + star_port::GameName(game_) + " (the player's own copy)";
+    if (!edits_.empty())
+      desc += std::string(desc == who.name ? " with " : ", and ") + std::to_string(edits_.size()) + " move(s) changed by hand";
+    if (other_entrance)
+      for (const auto &st : stars12_)
+        if (st.id == entrance_of_)
+          desc += ", " + st.name + "'s entrance";
+    manifest += "description=" + desc + ", made with the WWE '12 Mod Maker.\n";
     // (superstar/moves.txt: what it gives, for people; a mod needs a superstar/ file even with moves= alone)
-    std::string notes = pick_name_ + " (" + star_port::GameName(game_) + ") -> " + who.name + " (" +
-                        std::to_string(who.id) + "): " + what + "\n";
-    if (moves)
-      for (const auto &r : parts_.moves.rows)
-        if (!r.to.empty()) {
-          char line[160];
-          snprintf(line, sizeof(line), "%03X  %s -> %s\n", r.off, r.from.c_str(), r.to.c_str());
-          notes += line;
-        }
+    std::string notes = desc + "\n";
+    for (const auto &[off, id] : all) {
+      char line[200];
+      snprintf(line, sizeof(line), "%03X  %s -> %s%s\n", off, cat_.Name(Own(off)).c_str(), cat_.Name(id).c_str(),
+               edits_.count(off) ? "  (by hand)" : "");
+      notes += line;
+    }
     std::vector<std::pair<std::string, Bytes>> entries = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
                                                           {"superstar/moves.txt", Bytes(notes.begin(), notes.end())}};
     if (entrance)
@@ -517,8 +953,13 @@ class Page {
       }
       entries.push_back({"superstar/theme.wem", std::move(pcm)});
     }
+    std::set<int> used;  // (the moves the mod gives: an added one left unticked isn't brought)
+    for (const auto &[off, id] : all)
+      used.insert(id);
     if (moves && use_added_moves_)  // (his moves WWE '12 hasn't: the game adds them to its pack)
       for (const auto &m : parts_.new_moves) {
+        if (!used.count(m.number))
+          continue;
         const std::string n = "superstar/moves/" + std::to_string(m.number);
         entries.push_back({n + ".waze", m.waze});
         entries.push_back({n + "_low.yanm", m.low});
@@ -561,6 +1002,20 @@ class Page {
   fs::path save_;
   std::string message_;
   bool message_ok_ = false;
+  // by hand
+  ID3D11Device *device_ = nullptr;
+  int tab_ = 0;                       // 0 moves, 1 taunts, 2 entrance, 3 from another game
+  moves_edit::Catalog cat_;           // the game's moves and its roster's movesets
+  moves_edit::MotionIndex motions_;   // where the moves' motions are (Play)
+  bool cat_tried_ = false;
+  move_preview::Preview preview_;
+  std::map<int, int> edits_;          // slot (PRO offset) -> the move chosen by hand
+  int edits_for_ = -1;                // the superstar they are for
+  int entrance_of_ = 0;               // another superstar of the game whose entrance he gets, 0: his own
+  std::set<int> port_skip_;           // the port's slots left out (unticked)
+  char find_[64] = {}, pick_find_[64] = {}, ent_find_[64] = {};
+  int test_play_ = 0;
+  bool test_new_ = false;  // (test aid: a move to play once loaded)
 };
 
 }  // namespace moves_page

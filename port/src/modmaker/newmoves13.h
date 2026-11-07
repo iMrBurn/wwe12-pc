@@ -11,6 +11,7 @@
 // with ZMOT/CA(NN + 6) as the game's packs 3 and 4 have CA09 and CA10).
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -22,6 +23,7 @@
 #include "game_disc.h"
 #include "svrfmt/archive.h"
 #include "svrfmt/pac.h"
+#include "yanm.h"
 
 namespace newmoves13 {
 
@@ -48,10 +50,12 @@ inline std::string Trim(std::string s) {
 // WWE '13's WAZE records by number (moveset_port's reading), found where its grid starts.
 inline std::map<int, Bytes> Records(const disc::GameDisc &d) {
   std::map<int, Bytes> out;
+  // (WWE '13: misc.pac; the 2K games keep them in createmode.pac, as moveset_port reads them)
+  for (const char *file : {"pac/misc.pac", "pac/createmode.pac"}) {
   Bytes m;
   svrfmt::Archive a;
-  if (!d.Read("pac/misc.pac", m) || !svrfmt::ArchiveOpen(m, a, nullptr))
-    return out;
+  if (!d.Read(file, m) || !svrfmt::ArchiveOpen(m, a, nullptr))
+    continue;
   for (auto &k : a.root.kids) {
     if (Trim(k.group) != "MOVS" || Trim(k.name) != "WAZE")
       continue;
@@ -70,7 +74,8 @@ inline std::map<int, Bytes> Records(const disc::GameDisc &d) {
     }
     for (size_t o = phase; o + 160 <= t.size(); o += 160)
       if (looks(o))
-        out[t[o + 0x90] << 8 | t[o + 0x91]] = Bytes(t.begin() + long(o), t.begin() + long(o) + 160);
+        out.emplace(t[o + 0x90] << 8 | t[o + 0x91], Bytes(t.begin() + long(o), t.begin() + long(o) + 160));
+  }
   }
   return out;
 }
@@ -92,45 +97,57 @@ inline std::vector<Move> Collect(const disc::GameDisc &w13, const std::set<int> 
     Move m;
     m.number = n;
     m.waze = r->second;
-    for (size_t i = 0x98; i < 0xA0; ++i)
+    // (after its number WWE '12 has FF: from +0x92. WWE '13 had them from +0x98 already; 2K15 keeps other values in
+    // +0x92..+0x9F, its records otherwise WWE '12's, 82 % of the bytes equal on the moves both have, 2026-11-08)
+    for (size_t i = 0x92; i < 0xA0; ++i)
       m.waze[i] = 0xFF;
     m.name = std::string(reinterpret_cast<const char *>(&m.waze[0x10]), strnlen(reinterpret_cast<const char *>(&m.waze[0x10]), 0x40));
     found[MotionOf(n)] = std::move(m);
   }
-  for (const char *file : {"pac/mot00.pac", "pac/mot01.pac"}) {
+  // (WWE '13: pac\mot00.pac, mot01.pac; 2K14: mot00-mot08.pac; WWE '12's own: m.pac)
+  std::vector<std::string> files;
+  for (const auto &f : w13.List("pac"))
+    if (f.size() == 9 && _strnicmp(f.c_str(), "mot", 3) == 0 && _stricmp(f.c_str() + 5, ".pac") == 0)
+      files.push_back("pac/" + f);
+  std::sort(files.begin(), files.end());
+  files.push_back("pac/m.pac");
+  for (const auto &file : files) {
     Bytes head;
     const uint64_t size = w13.SizeOf(file);
     std::vector<svrfmt::EpacRow> rows;
     if (!size || !w13.ReadPart(file, 0, 0x8000, head) || !svrfmt::EpacTable(head, size, rows))
       continue;
+    // (every motion group: WWE '13's ZMOT/CAnn, 2K14's ZMVM/Mnnn, Ennn and ZMBS too - its moves' motions are there,
+    // numbered as WWE '12's: a player's 2K14 Antonio Cesaro, 11 of his 12 moves WWE '12 hasn't were outside ZMOT,
+    // 2026-11-08). Each motion is there twice, its light and its full record: the smaller, the larger.
     for (const auto &row : rows) {
-      if (detail::Trim(row.group) != "ZMOT" || row.name.rfind("CA", 0) != 0)
+      if (row.group.empty() || row.group[0] != 'Z')
         continue;
       Bytes raw;
-      std::vector<svrfmt::PachEntry> tops;
-      if (!w13.ReadPart(file, row.offset, row.size, raw) || !svrfmt::PachRead(svrfmt::Unpack(raw), tops))
+      if (!w13.ReadPart(file, row.offset, row.size, raw))
         continue;
-      for (const auto &top : tops) {
-        std::vector<svrfmt::PachEntry> kids;
-        if (!svrfmt::PachRead(svrfmt::Unpack(top.data), kids))
-          continue;
-        for (size_t i = 0; i + 1 < kids.size(); i += 2) {
-          std::vector<svrfmt::PachEntry> lo, hi;
-          if (!svrfmt::PachRead(svrfmt::Unpack(kids[i].data), lo) || !svrfmt::PachRead(svrfmt::Unpack(kids[i + 1].data), hi))
-            continue;
-          for (const auto &l : lo) {
-            const auto f = found.find(int(l.id));
-            if (f == found.end() || !f->second.low.empty())
-              continue;
-            for (const auto &h : hi)
-              if (h.id == l.id) {
-                f->second.low = svrfmt::Unpack(l.data);
-                f->second.high = svrfmt::Unpack(h.data);
-                break;
-              }
+      struct W {
+        static void Walk(const Bytes &d, int id, std::map<int, Move> &found, int depth) {
+          if (svrfmt::IsPach(d)) {
+            std::vector<svrfmt::PachEntry> kids;
+            if (depth < 6 && svrfmt::PachRead(d, kids))
+              for (const auto &k : kids)
+                Walk(svrfmt::Unpack(k.data), int(k.id), found, depth + 1);
+            return;
+          }
+          const auto f = found.find(id);
+          if (f == found.end() || !yanm::IsRecord(d) || !f->second.high.empty())
+            return;
+          if (f->second.low.empty())
+            f->second.low = d;
+          else if (d.size() != f->second.low.size()) {
+            f->second.high = d;
+            if (f->second.high.size() < f->second.low.size())
+              std::swap(f->second.high, f->second.low);
           }
         }
-      }
+      };
+      W::Walk(svrfmt::Unpack(raw), 0, found, 0);
     }
   }
   // their RGRP/MAGG records (WWE '13's DLC.pac: children 10 and 11, 104 bytes by motion number)

@@ -758,6 +758,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       }
       mv.moves = ParseMoves(Value(text, "moves"));
       mv.own_entrance = std::clamp(atoi(Value(text, "entrance_own").c_str()), 0, 999);
+      mv.entrance = std::clamp(atoi(Value(text, "entrance").c_str()), 0, 372);  // (another superstar's of the game)
       ReadHost(d / "superstar" / "theme.wem", mv.theme);
       mv.new_moves = ReadNewMoves(d / "superstar" / "moves");
       for (auto it = movesets.begin(); it != movesets.end(); ++it)
@@ -769,7 +770,9 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         }
       REXLOG_INFO("[superstar mods] moves mod {}: superstar {}, {} move(s){}{}{}", mv.key, mv.superstar, mv.moves.size(),
                   mv.new_moves.empty() ? "" : ", " + std::to_string(mv.new_moves.size()) + " added",
-                  mv.own_entrance ? ", entrance " + std::to_string(mv.own_entrance) : std::string(),
+                  mv.own_entrance ? ", entrance " + std::to_string(mv.own_entrance)
+                  : mv.entrance   ? ", superstar " + std::to_string(mv.entrance) + "'s entrance"
+                                  : std::string(),
                   mv.theme.empty() ? "" : ", its own theme");
       movesets.push_back(std::move(mv));
     }

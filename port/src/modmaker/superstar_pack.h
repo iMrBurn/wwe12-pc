@@ -187,6 +187,7 @@ struct Moveset {
   int superstar = 0;  // a superstar of the game (50-372)
   std::vector<std::pair<int, int>> moves;  // (CHAR / PRO byte offset, move number), as Star::moves
   int own_entrance = 0;                    // his entrance served under that number (as Star::own_entrance), else 0
+  int entrance = 0;  // another superstar of the game's entrance (his music, video and entrance numbers), else 0
   Bytes theme;                             // his own theme (Wwise PCM), else empty: his music number then
   std::vector<NewMove> new_moves;          // his moves WWE '12 hasn't, as Star::new_moves
 };
@@ -635,6 +636,14 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     if (!p)
       return fail(mv.key + ": no record for superstar " + std::to_string(mv.superstar));
     Bytes moves = svrfmt::ArchiveData(*p);
+    // (another superstar's entrance, both blocks, as an added superstar's Star::entrance: the Mod Maker's MOVES &
+    // ENTRANCES page, Entrance tab, 2026-11-08)
+    if (ArcNode *ep = mv.entrance > 0 && !mv.own_entrance ? Child(*pro, uint32_t(mv.entrance)) : nullptr) {
+      const Bytes e = svrfmt::ArchiveData(*ep);
+      for (const size_t at : {size_t(0x1D4), size_t(0x1E0)})
+        if (e.size() >= at + 10 && moves.size() >= at + 10)
+          std::copy(e.begin() + long(at), e.begin() + long(at) + 10, moves.begin() + long(at));
+    }
     PutMoves(moves, mv.moves, mv.own_entrance, mv.theme.empty() ? 0 : MusicNumber(mv));
     svrfmt::ArchiveReplace(*p, moves);
   }

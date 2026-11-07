@@ -201,8 +201,9 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     moveset_port::FromOld(w12, src, game, number, out.moves, &out.moves_why);
   else
     moveset_port::FromGame(w12, src, number, out.moves, &out.moves_why);
-  // Its WWE '13 moves WWE '12 hasn't: added (newmoves13.h; the game puts them in the added superstars' pack).
-  if (game == 0x545108B4) {
+  // Its moves WWE '12 hasn't, from WWE '13 and the 2K games (their move records and motions are WWE '12's formats:
+  // 2026-11-08, after the WWE '13 ones): added (newmoves13.h; the game puts them in the added superstars' pack).
+  if (game == 0x545108B4 || game == 0x545408B2 || game == 0x545408B6 || game == 0x315A07D2 || game == 0x545408BA) {
     std::set<int> want;
     for (const auto &r : out.moves.rows)
       if (r.new_move)
