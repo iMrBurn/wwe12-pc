@@ -2775,7 +2775,9 @@ void SetPromptLabel(u32 set, u32 k, u32 from, u32 to);
 
 void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base);  // wwe12_superstar_mods.cpp
 
+void Wwe12DiscordUniverseMenu();  // wwe12_discord.cpp (Rich Presence: a Universe match is over)
 extern "C" REX_FUNC(sub_82545A70) {
+  Wwe12DiscordUniverseMenu();
   // added Superstars without allies or rivals from the start, before any select screen (once each)
   Wwe12ForgetAddedRelations(ctx, base);
   DraftCheck(ctx, base);  // (a draft after the show's last match: its news)
