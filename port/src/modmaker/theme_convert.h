@@ -134,6 +134,27 @@ inline void To48k(std::vector<int16_t> &s, int channels, int &rate) {
   rate = 48000;
 }
 
+// At most 100 s (18.3 MiB of 48 kHz stereo PCM), its last 3 s faded out. Ported themes over about 20 MiB never
+// started in an entrance (and a triple threat waited for one forever, black screen): 2K14 Goldberg's 20.57 MB played,
+// Hollywood Hogan's 21.55 MB, Hulk Hogan's, Cesaro's, SvR 2011 MVP's (56 MB) didn't (players' reports and the user's
+// test, 2026-11-07). The game's own themes are at most 3.2 MB (Vorbis); an entrance lasts well under 100 s.
+inline void Cap(std::vector<int16_t> &s, int channels, int rate, double seconds = 100, double fade = 3) {
+  if (channels <= 0 || rate <= 0)
+    return;
+  const size_t max = size_t(seconds * rate), n = s.size() / size_t(channels);
+  if (n <= max)
+    return;
+  s.resize(max * size_t(channels));
+  const size_t f = std::min(max, size_t(fade * rate));
+  for (size_t i = 0; i < f; ++i) {
+    const double g = double(f - i) / double(f);
+    for (int c = 0; c < channels; ++c) {
+      int16_t &v = s[(max - f + i) * size_t(channels) + size_t(c)];
+      v = int16_t(std::lround(v * g));
+    }
+  }
+}
+
 // A stream decoded by vgmstream and written as Wwise PCM. Empty if it can't.
 inline Bytes ToPcm(const fs::path &vgmstream, const Bytes &wem, const std::wstring &ext = L".wem") {
   std::vector<int16_t> s;
@@ -141,6 +162,7 @@ inline Bytes ToPcm(const fs::path &vgmstream, const Bytes &wem, const std::wstri
   if (!Decode(vgmstream, wem, ext, s, channels, rate))
     return {};
   To48k(s, channels, rate);
+  Cap(s, channels, rate);
   return wwise::PcmStream(s.data(), s.size() / size_t(channels), channels, rate);
 }
 
@@ -175,6 +197,7 @@ inline Bytes ToPcmWithIntro(const fs::path &vgmstream, const Bytes &wem, const s
   }
   out.insert(out.end(), s.begin(), s.end());
   To48k(out, channels, rate);
+  Cap(out, channels, rate);
   return wwise::PcmStream(out.data(), out.size() / size_t(channels), channels, rate);
 }
 

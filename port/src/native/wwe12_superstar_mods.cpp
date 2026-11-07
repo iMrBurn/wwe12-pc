@@ -1578,23 +1578,6 @@ uint32_t Entering(const PPCContext &ctx, uint8_t *base) {
 // The superstar entering now (his number), 0 if none (wwe12_arena_pages.cpp: his waist belt).
 uint32_t Wwe12EnteringSuperstar(const PPCContext &ctx, uint8_t *base) { return Entering(ctx, base); }
 
-// An entrance theme's sound name made (sub_8271F080(desc, number, a, b) = "@Entrance_Music-MUS_%04d_<a>_<b>"): logged
-// with the superstar entering, so a ported superstar's silent entrance shows which theme it asked for (players'
-// reports 2026-11-06: 2K14 Cesaro, Hulk Hogan, SvR 2011 MVP silent in their entrance, their theme heard in Create an
-// Entrance).
-REX_EXTERN(__imp__sub_8271F080);
-extern "C" REX_FUNC(sub_8271F080) {
-  const uint32_t number = ctx.r4.u32, a = ctx.r5.u32, b = ctx.r6.u32, lr = uint32_t(ctx.lr);
-  REXLOG_INFO("[superstar mods] theme asked: MUS_{:04}_{}_{} (superstar entering {}, from {:08X}){}", number, a, b,
-          Entering(ctx, base), lr, g_themes.empty() ? "" : " - added themes in the pack:");
-  if (!g_themes.empty()) {
-    std::string list;
-    for (const auto &[n, name] : g_themes)
-      list += " " + std::to_string(n) + " " + name + ";";
-    REXLOG_INFO("[superstar mods]  {}", list);
-  }
-  __imp__sub_8271F080(ctx, base);
-}
 
 // (wwe12_arena_pages.cpp: whether a media mod has a ribbon / wall for that video number)
 bool Wwe12ModScreen(uint32_t kind, uint32_t n);
