@@ -36,6 +36,7 @@
 #include "game_disc.h"
 #include "svrfmt/archive.h"
 #include "svrfmt/pac.h"
+#include "svrfmt/xcompress.h"
 #include "strings2k.h"
 #include "svr_old_slots.h"
 
@@ -90,18 +91,82 @@ struct Game {
 
 // (rec / num: the move records' size and where their number is: 160 / 0x90, SvR 2007-2009 144 / 0x88. A number is read
 // big-endian, as the PRO's moves: SvR 2007-2011 store both little-endian, the same swap on both keeps them matching.)
+// A pac of the disc, unpacked when it is compressed whole (2K17's createmode.pac and chEtc.pac: Xcompress).
+inline bool ReadPac(const disc::GameDisc &d, const char *path, Bytes &out) {
+  if (!d.Read(path, out))
+    return false;
+  if (svrfmt::IsXcompress(out)) {
+    Bytes o;
+    if (!svrfmt::XcompressDecode(out, o))
+      return false;
+    out.swap(o);
+  }
+  return true;
+}
+
 inline bool Load(const disc::GameDisc &d, Game &g, size_t rec = 160, size_t num = 0x90) {
   Bytes m[2], c;
   svrfmt::Archive M[2], C;
-  const bool etc = d.Read("pac/ch/chEtc.pac", c) && svrfmt::ArchiveOpen(c, C, nullptr);
+  const bool etc = ReadPac(d, "pac/ch/chEtc.pac", c) && svrfmt::ArchiveOpen(c, C, nullptr);
   // (the 2K games keep their move names in createmode.pac, Kaiko's moves_port.py Game14)
   svrfmt::ArcNode *w = nullptr;
   const char *files[2] = {"pac/misc.pac", "pac/createmode.pac"};
   for (int i = 0; i < 2 && !w; ++i)
-    if (d.Read(files[i], m[i]) && svrfmt::ArchiveOpen(m[i], M[i], nullptr))
+    if (ReadPac(d, files[i], m[i]) && svrfmt::ArchiveOpen(m[i], M[i], nullptr))
       w = Find(M[i].root, "MOVS", "WAZE");
   // (SvR 2007 / 2008 keep their profiles in misc.pac, Kaiko's superstar_port.py Game08 / Game07: no chEtc.pac)
   svrfmt::ArcNode *pro = etc ? Find(C.root, "CHAR", "PRO ") : Find(M[0].root, "CHAR", "PRO ");
+  svrfmt::ArcNode *dat = etc ? Find(C.root, "CHAR", "DAT ") : nullptr;
+  // 2K17: its pacs are HSPCs, their names hashed (2026-11-08): the move records found by what they hold (the entry
+  // with the most 160-byte records named like moves), the profiles by their shape (an SHDC of 1348-byte records,
+  // PRO, and one of as many 220-byte ones, DAT).
+  auto score = [&](const Bytes &t) {
+    int best_score = 0;
+    for (size_t ph = 0; ph < rec; ph += 2) {
+      int sc = 0;
+      for (size_t o = ph; o + rec <= t.size(); o += rec)
+        sc += o + 0x12 <= t.size() && isalnum(t[o + 0x10]) && isalnum(t[o + 0x11]) && (t[o + num] | t[o + num + 1]);
+      best_score = std::max(best_score, sc);
+    }
+    return best_score;
+  };
+  for (int i = 0; i < 2 && !w; ++i) {
+    if (M[i].root.kind != svrfmt::ArcKind::Hspc)
+      continue;
+    int best_score = 500;
+    for (auto &k : M[i].root.kids)
+      if (const int sc = score(svrfmt::Unpack(svrfmt::ArchiveData(k))); sc > best_score) {
+        best_score = sc;
+        w = &k;
+      }
+  }
+  if (etc && !pro && C.root.kind == svrfmt::ArcKind::Hspc) {
+    auto shape = [](svrfmt::ArcNode &k, size_t &count) -> size_t {  // (its children's size when they are all alike)
+      count = 0;
+      if (!svrfmt::ArchiveExpand(k) || k.kids.empty())
+        return 0;
+      const size_t first = svrfmt::ArchiveData(k.kids[0]).size();
+      for (auto &c : k.kids)
+        if (svrfmt::ArchiveData(c).size() != first)
+          return 0;
+      count = k.kids.size();
+      return first;
+    };
+    size_t most = 0;
+    for (auto &k : C.root.kids) {
+      size_t n = 0;
+      if (shape(k, n) == 1348 && n > most) {
+        most = n;
+        pro = &k;
+      }
+    }
+    for (auto &k : C.root.kids) {
+      size_t n = 0;
+      const size_t sz = shape(k, n);
+      if (pro && n == most && sz >= 200 && sz <= 240)
+        dat = &k;
+    }
+  }
   if (!w || !pro)
     return false;
   const Bytes d0 = svrfmt::Unpack(svrfmt::ArchiveData(*w));  // (SvR 2007 / 2008: BPE-packed)
@@ -140,6 +205,30 @@ inline bool Load(const disc::GameDisc &d, Game &g, size_t rec = 160, size_t num 
     if (svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(*pro)), kids))
       for (auto &k : kids)
         g.pro[int(k.id)] = svrfmt::Unpack(k.data);
+  }
+  // 2K16 / 2K17: PRO by index, the superstar's number at the DAT record of the same index (+4, u16 little-endian:
+  // theme_source.h does the same; 2K16 Cesaro's moveset wasn't found by his number, 2026-11-08)
+  if (dat) {
+    std::map<int, Bytes> recs;
+    if (svrfmt::ArchiveExpand(*dat) && !dat->kids.empty()) {
+      for (auto &k : dat->kids)
+        recs[int(k.id)] = svrfmt::ArchiveData(k);
+    } else {
+      std::vector<svrfmt::PachEntry> kids;
+      if (svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(*dat)), kids))
+        for (auto &k : kids)
+          recs[int(k.id)] = svrfmt::Unpack(k.data);
+    }
+    // (2K16's DAT records: 216 bytes; 2K17's: 220)
+    bool by_index = !recs.empty() && (recs.begin()->second.size() == 216 || recs.begin()->second.size() == 220);
+    if (by_index) {
+      std::map<int, Bytes> pro;
+      for (const auto &[i, r] : recs)
+        if (const auto it = g.pro.find(i); it != g.pro.end() && r.size() >= 6)
+          pro[r[4] | r[5] << 8] = it->second;
+      if (!pro.empty())
+        g.pro.swap(pro);
+    }
   }
   return !g.names.empty() && !g.pro.empty();
 }

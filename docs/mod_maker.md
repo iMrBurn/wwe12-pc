@@ -1440,8 +1440,16 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
 - **Prises ajoutées depuis 2K14 et 2K15** (avant : WWE '13 seul) : fiches dans `createmode.pac`, animations dans tous
   les groupes de `mot*.pac` (2K14 : ZMOT, ZMVM/Mnnn, Ennn, ZMBS), en deux exemplaires (léger, complet). Cesaro 2K14 :
   12/12 trouvées (avant 1) ; 2K15 : 15/15. Fiches de même forme (2K15 : 82 % d'octets égaux, rien de décalé ; FF
-  remis de +0x92 à la fin). 2K16 / 2K17 : fiches non lues, rien d'ajouté. Une prise de 2K14 jouée sur des modèles de
-  WWE '12 : cohérente. **Pas encore vu en jeu.**
+  remis de +0x92 à la fin). Une prise de 2K14 jouée sur des modèles de WWE '12 : cohérente. **Pas encore vu en jeu.**
+- **2K16 et 2K17 aussi (2026-11-08, hors jeu)** : 2K16 = `mot*.pac` compressés en entier (Xcompress), fiches PRO par
+  index (1 348 o) et DAT de 216 o (numéro à +4) ; Cesaro 11/12. 2K17 = archives HSPC à noms hachés : fiches dans
+  `createmode.pac` (Xcompress, HSPC), animations dans `pac/ingame/motion/all_mot*.pac` (Xcompress → HSPC → SHDC
+  imbriqués, feuilles numérotées comme WWE '12 : Super German Suplex 49883 = animation 56258), noms MAGG dans
+  `DLC.pac` (Xcompress, HSPC, enfants 10 et 11). **2K17 n'a qu'une fiche d'animation par prise (la complète)** : elle
+  sert de légère et de complète ; les animations à pistes de genre inconnu de WWE '12 (bit 0x0001) sont écartées.
+  Cesaro 2K17 13/13, Cena 4/4. **À voir en jeu**, surtout 2K17 (la légère = la complète, jamais essayé).
+- **SvR 2007-2011 : pas fait** (autre numérotation, banques YMK, autre squelette ; le premier essai du 2026-11-03 s'est
+  figé en match, voir `docs/prises_svr11.md` ; prévu en 1.2).
 - Aides de test : `WWE12_MM_PAGE=6`, `WWE12_MM_MOVES=<n°>,<onglet>[,<prise>]`, `WWE12_MM_PORT=<titre hex>,<n°>`,
   `WWE12_MM_PLAYNEW=1`.
 
