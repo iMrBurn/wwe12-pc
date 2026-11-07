@@ -680,6 +680,9 @@ public class LauncherActivity extends Activity {
             });
             driverBox.addView(del);
         }
+        // Idea from KaikoClanworth1's SvR 2011 Android build: Turnip option for Xiaomi HyperOS 3 broken pictures.
+        driverBox.addView(prefToggle("Xiaomi HyperOS fix for Turnip drivers (try it if the picture is broken)",
+                "turnip_ubwc_hint", false));
         driverBox.addView(text("If the game shows a black screen, try a recent Turnip driver (Adreno only). "
                 + "Takes effect at the next PLAY. The log tells which driver was really used.", 12, Color.GRAY, false));
     }

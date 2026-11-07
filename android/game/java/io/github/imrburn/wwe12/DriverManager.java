@@ -161,6 +161,11 @@ public class DriverManager {
             android.system.Os.setenv("WWE12_DRIVER_LIB", d.library, true);
             android.system.Os.setenv("WWE12_DRIVER_NAME", d.toString(), true);
             android.system.Os.setenv("WWE12_DRIVER_TMP", tmp.getAbsolutePath() + "/", true);
+            // Turnip reads this at device creation (launcher option, off by default; Kaiko's HyperOS 3 fix).
+            if (c.getSharedPreferences("launcher", Context.MODE_PRIVATE).getBoolean("turnip_ubwc_hint", false))
+                android.system.Os.setenv("FD_DEV_FEATURES", "enable_tp_ubwc_flag_hint=1", true);
+            else
+                android.system.Os.unsetenv("FD_DEV_FEATURES");
         } catch (Exception e) {
             android.util.Log.e("WWE12", "driver environment failed", e);
         }
