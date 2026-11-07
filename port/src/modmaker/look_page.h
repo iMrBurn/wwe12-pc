@@ -207,6 +207,10 @@ class Page {
         std::ifstream f(mods_[size_t(i)].file, std::ios::binary);
         const Bytes b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
         view_error_.clear();
+        if (mods_[size_t(i)].file.string().find("Arenas") == std::string::npos)
+          view_.Light();  // (a superstar or an attire: a light background; an arena stays in the dark)
+        else
+          view_.background[0] = view_.background[1] = 0.015f, view_.background[2] = 0.02f;
         if (!view_.Load(device_, b, &view_error_, 0))
           view_error_ = (fr ? "Vue 3D impossible : " : "No 3D view: ") + view_error_;
       }
@@ -309,6 +313,7 @@ class Page {
   }
   void LoadAnimModel(bool fr) {
     an_view_.keep_skin = true;
+    an_view_.Light();
     an_error_.clear();
     if (!an_view_.Load(device_, an_file_, &an_error_, size_t(an_attires_[size_t(an_attire_)].first)))
       an_error_ = (fr ? "Vue 3D impossible : " : "No 3D view: ") + an_error_;

@@ -96,6 +96,11 @@ class View {
   bool show_entrance = false;  // entrance-only models (stage, ramp lights...) instead of match-only ones
   bool keep_skin = false;      // (before Load) keep what SetPose needs: the skeletons, the bind-pose vertices
   bool show_others = true;     // the superstars added with Add drawn
+  // The background: an arena in the dark, as in the game; a superstar's views take Light() (models seen better).
+  float background[4] = {0.015f, 0.015f, 0.02f, 1.0f};
+  void Light() {
+    background[0] = 0.60f, background[1] = 0.61f, background[2] = 0.64f, background[3] = 1.0f;
+  }
 
   // Reads every model of an arena file (or of `section`, an entry of another pac: a superstar's attire) and
   // uploads it. False (and why) if nothing could be read.
@@ -244,8 +249,7 @@ class View {
       return nullptr;
     if (w != rt_w_ || h != rt_h_)
       CreateTargets(w, h);
-    const float clear[4] = {0.015f, 0.015f, 0.02f, 1.0f};  // (an arena in the dark, as in the game)
-    ctx_->ClearRenderTargetView(rtv_.Get(), clear);
+    ctx_->ClearRenderTargetView(rtv_.Get(), background);
     ctx_->ClearDepthStencilView(dsv_.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
     ID3D11RenderTargetView *rtvs[] = {rtv_.Get()};
     ctx_->OMSetRenderTargets(1, rtvs, dsv_.Get());

@@ -35,6 +35,7 @@ class Preview {
       return;
     }
     view_.keep_skin = true;
+    view_.Light();
     loaded_ = view_.Load(dev, f, &error_, section);
     if (loaded_) {
       view_.SetAngles(3.14159265f, 0.12f, 420);

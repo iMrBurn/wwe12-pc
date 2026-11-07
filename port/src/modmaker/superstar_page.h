@@ -722,6 +722,7 @@ class Page {
       view_stale_ = false;
       view_error_.clear();
       const Bytes now = edit_.Build();
+      view_.Light();
       if (!view_.Load(device_, now, &view_error_, size_t(attire_)))
         view_error_ = (fr ? "Vue 3D impossible : " : "No 3D view: ") + view_error_;
     }

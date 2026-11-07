@@ -2165,6 +2165,7 @@ class Page {
     if (view_stale_) {
       view_stale_ = false;
       view_error_.clear();
+      view_.Light();
       if (!view_.Load(device_, model_, &view_error_, 0))
         view_error_ = (fr ? "Vue 3D impossible : " : "No 3D view: ") + view_error_;
     }
