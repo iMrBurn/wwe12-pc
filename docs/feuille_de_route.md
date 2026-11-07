@@ -28,28 +28,47 @@ Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/mod_make
 
 **Notes publiques** : les notes de la 1.0 annonçaient pour la 1.1 « squash, finishers de départ, I Quit, Special Referee, deux mallettes MITB, icônes de touches » : les notes de la 1.1 disent que c'est repoussé (1.3).
 
-## 1.2 : « Les corrections de THQ, la vitesse et le test de performance »
+## 1.2 : « Les corrections de THQ, la vitesse et le test de performance » (liste de l'utilisateur, 2026-11-07)
 
 **THQ (voie B : nos propres crochets sur le code du disque, un par un, chacun avec son réglage)**
-- Comparaison des 2 mises à jour officielles : faite (`docs/title_update_corrections.md`), reste à tester chaque correctif en jeu.
-- Corriger les bugs du jeu d'origine grâce aux 2 title updates : gel de finisher (TU2, 6-7 crochets), aperçu des prises DLC 3-4 dans l'éditeur de CAW (TU1). Cage Hell in a Cell et évasion de tombé en Elimination Chamber : rien trouvé dans le code, à vérifier en jeu.
+- Comparaison des 2 mises à jour officielles : faite (`docs/title_update_corrections.md`, session Gameplay) ; reste le tri et le test de chaque correctif en jeu.
+- Bugs du jeu d'origine à tester : finishers qui gèlent (TU2, 6-7 crochets), cage / barrières de Hell in a Cell, tables sous le ring, sons après Backstage Brawl, movesets CAW qui se réinitialisent, évasion de tombé en Elimination Chamber, aperçu des prises DLC dans l'éditeur de CAW (TU1). Cage Hell in a Cell et évasion de tombé : rien trouvé dans le code, à vérifier en jeu.
 
 **Vitesse**
+- Chargements plus rapides (étude : `docs/chargements_1_2.md`) : turbo de chargement (`wwe12_load_turbo`, existe mais coupé par défaut : match ~4,0 → 2,8 s, fin des entrées ~4,5 → 2 s), bridage des animations 2D réécrit par nous (2-3 h), contre-épreuve sur 4 fils, décision de l'utilisateur sur le turbo par défaut ; avertissement disque dur dans le launcher.
 - 30 fps partout : le mode 30 du jeu imposé aux matchs (clé `wwe12_frame_mode` = original / 30 / 60_entrances), PC + Android (~7-8 h).
-- Chargements plus rapides (étude : `docs/chargements_1_2.md`) : tout est de l'attente d'images ; le turbo de chargement (`wwe12_load_turbo`) existe mais est coupé par défaut (match ~4,0 → 2,8 s, fin des entrées ~4,5 → 2 s). Ordre : séance de mesure (go de l'utilisateur pour lancer), bridage des animations 2D réécrit par nous (2-3 h), contre-épreuve sur 4 fils, puis décision de l'utilisateur sur le turbo par défaut. Avertissement disque dur dans le launcher.
-- Code natif : `memcpy` / `memset` (fait, désactivé par défaut), puis registres locaux du générateur de code et patch « volatile » (une seule régénération du code, un seul gros test).
-- Idées tirées de Jarrod v0.2.19 (WWE 2K14 recomp, BSD-3, méthodes seulement, crédit THIRD_PARTY.md ; étude de Rendu en cours dans `docs/perf_natif_steam_deck.md`) : qualité AUTO sur GPU intégré (rendu 720p + agrandissement net, foule à 70 %), résolution dynamique de la 3D seulement (menus et HUD nets), recréation de la surface au minimiser / restaurer, foule en gros lots + objets hors écran ignorés, option present mailbox (tearing), contournement des GPU à fenêtre 128 Mo. Android : extensions Vulkan 1.1 pour vieux téléphones (après la 1.1).
+- Code natif plus rapide : `memcpy` / `memset` (fait, désactivé par défaut), registres locaux du générateur de code, patch « volatile » (une seule régénération du code, un seul gros test).
+- Idées de Jarrod v0.2.19 (BSD-3, méthodes seulement, crédit THIRD_PARTY.md ; étude de Rendu dans `docs/perf_natif_steam_deck.md`) : mode mailbox (déchirement, 2-3 h), netteté de l'agrandissement 720p (3-4 h), test minimiser / restaurer (5 min), foule réglable (3-5 h). Plus tard : résolution dynamique de la 3D, foule en gros lots.
 
 **Benchmark (test de performance)**
 - Match imposé : Hell in a Cell à 6 sans menu (voie 2 : `sub_82449428`, 9 à 15 h) ; repli = méthode de Kaiko (6 à 9 h).
 - Résumé + verdict (ok / cpu / gpu / failed), condition « faible » (2 cœurs), bouton dans le launcher.
 
-## 1.3 : « Modes de match et rosters »
-- Stipulations : I Quit (la version légère d'abord), Special Guest Referee.
-- Matchs squash (vie de départ réduite) ; stock de finishers de départ (1 / 2 / 3 / infini, comme 2K14).
-- Univers : deux mallettes Money in the Bank (RAW / SmackDown), embuscade en coulisses.
-- Univers, tout ce qui était prévu en 1.2 passe en 1.3 (décision de l'utilisateur, 2026-11-07) : CAW comptés dans l'Univers (correctif TU2), réglage pour couper blessures / fins de carrière, classement des titres par équipe modifiable, rivalités menées jusqu'au PPV, rivalité inter-marques sans match (forcer un match au PPV ?), liste des titres de SmackDown dans EDIT SUPERSTAR (R1) si c'est le jeu d'origine, photo propre aux arènes ajoutées, ajout de logos / matchup screens (listes du jeu pleines), nouveau show (NXT) = plus tard.
+**Autres**
+- Yeux de SvR 2010 en courant.
 - Page ROSTERS du launcher (marques hors de l'Univers, `docs/launcher_rosters.md`, 3 séances, écrit dans la sauvegarde).
+
+## 1.3 : « Modes de match et Univers » (liste de l'utilisateur, 2026-11-07)
+
+**Modes de match**
+- I Quit (la version légère d'abord), Special Guest Referee.
+- Matchs squash (vie de départ réduite).
+- Stock de finishers de départ (1 / 2 / 3 / infini, comme 2K14).
+- Changer de joueur en plein match.
+- Améliorer le système de tombé (sortie de tombé automatique ou jauge de kickout plus grande : suggestion d'un joueur).
+
+**Univers**
+- Deux mallettes Money in the Bank (RAW / SmackDown), embuscade en coulisses.
+- Débloquer Edge et Christian etc. pour le mode Univers.
+- Choisir le type d'intervention (bouton Y), par exemple attaque en coulisses ou autre.
+- Backport des cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants.
+- Réglage pour couper les blessures et les fins de carrière.
+- Classement des titres par équipe modifiable.
+- Rivalités menées jusqu'au PPV, et rivalité inter-marques sans match (forcer un match au PPV ?).
+- Titres de SmackDown dans EDIT SUPERSTAR (R1), si c'est le jeu d'origine.
+- Photo propre aux arènes ajoutées.
+- AJOUTER des logos et des matchup screens (les listes du jeu sont pleines).
+- Nouveau show comme NXT.
 
 ## 1.4 et après : plateformes et finitions (à décider selon les retours)
 - Launcher : améliorations (`docs/launcher_amelioration.md`, 20 à 28 h : état du jeu, messages, confort Steam Deck à la manette, bouton « Test de performance », finitions) ; pas de refonte du design.
