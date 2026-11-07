@@ -356,3 +356,13 @@ Le replay reste coupé par défaut tant qu'un testeur n'a pas fait quelques matc
 | Kaiko : pilote personnalisé qui échoue = retour au pilote du téléphone | à vérifier dans `DriverManager` | simple |
 | Kaiko : `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` pour HyperOS 3 (Xiaomi) | rien | à tester : nos plantages sont sur Xiaomi/Poco |
 | Kaiko : installation par USB (adb), paquet de textures | non | hors sujet |
+
+### Premier essai du réveil forcé (2026-11-07, émulateur x86_64, joué à la main par l'utilisateur, replay activé)
+
+Un match 1 contre 1 (Orton contre Cena) joué jusqu'au bout, replay activé (`wwe12_instant_replay = true`) : `WWE12_Winning`
+→ `@Entrance_Music` → `WWE12_Transition` → le replay joue (400 lectures de `Spectacular.rps`) → scène de victoire, **sans gel**.
+La sonde a vu **un** cas suspect : une entrée restée dans la file 0,3 s sans être prise, `heal #1` (réveil refait), l'entrée prise
+100 ms plus tard (11:58:58). Compatible avec un réveil perdu guéri, mais **une seule observation** : sans le réveil forcé le gel
+arrive ~1 fois sur 2, donc un match réussi ne prouve rien. À faire avant d'activer le replay par défaut : au moins 10 matchs sans gel
+(émulateur ou testeurs sur vrais téléphones) et lire les lignes `[jobwatch] heal`. Le replay reste coupé par défaut dans la 1.1.
+Émulateur : 12 Go de RAM pris en compte, mais l'outil limite à 6 cœurs ; ~40 i/s dans les menus, ~10 i/s aux entrées (avant : 3-5).
