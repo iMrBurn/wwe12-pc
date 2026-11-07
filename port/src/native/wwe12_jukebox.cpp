@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cstring>
 #include <random>
 #include <vector>
 
@@ -65,9 +66,15 @@ REXCVAR_DEFINE_BOOL(wwe12_jukebox_game_music, true, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_jukebox_stop_on_load, true, "WWE12",
                     "Jukebox: its theme stops on every loading screen (false = 1.0: only when the game stops "
                     "the menu music itself; Universe's NEXT MATCH then kept it over the match).");
+REXCVAR_DEFINE_BOOL(wwe12_jukebox_keep_theme, true, "WWE12",
+                    "Jukebox: while a theme plays, the game's menu music that some screens start on their own "
+                    "(second player) is not started (false = 1.1.0: both played at once).");
+REXCVAR_DEFINE_BOOL(wwe12_jukebox_log_screens, true, "WWE12",
+                    "Jukebox: log the screens that start the game's menu music on their own.");
 REXCVAR_DECLARE(uint32_t, user_language);
 
 int64_t Wwe12MsSinceLoadScreen();  // wwe12_load_turbo.cpp
+bool Wwe12LoadingScreenUp();       // wwe12_load_turbo.cpp
 
 REX_EXTERN(__imp__sub_8271BFD0);
 REX_EXTERN(__imp__sub_8271F080);
@@ -77,6 +84,7 @@ REX_EXTERN(__imp__sub_8271BC90);
 REX_EXTERN(__imp__sub_8271BF58);
 REX_EXTERN(__imp__sub_8271BD28);
 REX_EXTERN(__imp__sub_8271BEE0);
+REX_EXTERN(__imp__sub_821D6368);
 
 #include "wwe12_jukebox_page.inc"
 
@@ -478,8 +486,14 @@ extern "C" REX_FUNC(sub_8271BFD0) {
   // until the game was closed (Discord, 1.0.0). The menus' next song starts the jukebox again.
   static int64_t s_since = INT64_MAX;
   const int64_t since = Wwe12MsSinceLoadScreen();
-  const bool load_screen = since < s_since;
+  // Only with a loading screen up: entering the wrestler select also calls the loading screens'
+  // shared methods (a close, no screen up), and the theme was cut there with nothing after it
+  // (slot 0 stopped by us, so the menus never pick a song again; tested 2026-11-07).
+  const bool load_event = since < s_since;
   s_since = since;
+  const bool load_screen = load_event && Wwe12LoadingScreenUp();
+  if (load_event && !load_screen && g_menus)
+    BD_INFO("[jukebox] loading-screen call without a loading screen up: theme {} goes on", g_playing);
   if (load_screen && g_menus && REXCVAR_GET(wwe12_jukebox_stop_on_load)) {
     if (g_step != Step::Idle)
       StopSlot(saved, base, m, kThemeSlot);
@@ -514,4 +528,37 @@ extern "C" REX_FUNC(sub_8271BFD0) {
   }
   if (g_menus && g_step != Step::Idle)
     Run(saved, base, m);
+}
+
+// sub_821D6368(song): a screen starts the game's menu music ("@System-Menu_Music") on the music
+// manager's player 1 itself, not through the update (so [M+40] does not change and the jukebox
+// does not see it). Callers: screen methods sub_8261A020 (lr 0x8261A07C: starts it when player 1
+// is silent, without stopping player 0) and sub_8261B688 (lr 0x8261B6E0: stops player 0 first);
+// the song is the u16 at [screen+892]+0x140000. The jukebox's Stop step silences player 1, so the
+// next such screen started the menu music over the theme (Jay, Discord, 1.1.0: "default menu music
+// plays over jukebox sometimes"). While a theme plays (or is being loaded), that start is skipped.
+// At the call r31 is still the caller's: the screen object.
+extern "C" REX_FUNC(sub_821D6368) {
+  const u32 song = ctx.r3.u32;
+  const u32 caller = u32(ctx.lr);
+  const u32 screen = ctx.r31.u32;
+  const bool theme_on = REXCVAR_GET(wwe12_jukebox) && g_menus && g_step != Step::Idle && g_step != Step::GameSong;
+  const bool skip = theme_on && REXCVAR_GET(wwe12_jukebox_keep_theme);
+  if (REXCVAR_GET(wwe12_jukebox_log_screens)) {
+    static u32 s_last[4] = {};
+    const u32 vtable = bd::mem::try_load<u32>(screen);
+    const u32 now[4] = {song, caller, vtable, skip ? 1u : 0u};
+    if (std::memcmp(now, s_last, sizeof now) != 0) {
+      std::memcpy(s_last, now, sizeof now);
+      BD_INFO("[jukebox] a screen starts the menu music on player 1: song {}, from {:08X}, screen {:08X} "
+              "(vtable {:08X}){}",
+              song, caller, screen, vtable,
+              skip ? ": skipped, the theme goes on" : (theme_on ? ": played with the theme (keep_theme off)" : ""));
+    }
+  }
+  if (skip) {
+    ctx.r3.u64 = 1;
+    return;
+  }
+  __imp__sub_821D6368(ctx, base);
 }
