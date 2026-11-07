@@ -32,7 +32,7 @@ Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/mod_make
 
 **THQ (voie B : nos propres crochets sur le code du disque, un par un, chacun avec son réglage)**
 - Comparaison des 2 mises à jour officielles : faite (`docs/title_update_corrections.md`), reste à tester chaque correctif en jeu.
-- Corriger les bugs du jeu d'origine grâce aux 2 title updates : gel de finisher (TU2, 6-7 crochets), CAW comptés dans l'Univers (TU2), aperçu des prises DLC 3-4 dans l'éditeur de CAW (TU1). Cage Hell in a Cell et évasion de tombé en Elimination Chamber : rien trouvé dans le code, à vérifier en jeu.
+- Corriger les bugs du jeu d'origine grâce aux 2 title updates : gel de finisher (TU2, 6-7 crochets), aperçu des prises DLC 3-4 dans l'éditeur de CAW (TU1). Cage Hell in a Cell et évasion de tombé en Elimination Chamber : rien trouvé dans le code, à vérifier en jeu.
 
 **Vitesse**
 - 30 fps partout : le mode 30 du jeu imposé aux matchs (clé `wwe12_frame_mode` = original / 30 / 60_entrances), PC + Android (~7-8 h).
@@ -48,6 +48,7 @@ Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/mod_make
 - Stipulations : I Quit (la version légère d'abord), Special Guest Referee.
 - Matchs squash (vie de départ réduite) ; stock de finishers de départ (1 / 2 / 3 / infini, comme 2K14).
 - Univers : deux mallettes Money in the Bank (RAW / SmackDown), embuscade en coulisses.
+- Univers, tout ce qui était prévu en 1.2 passe en 1.3 (décision de l'utilisateur, 2026-11-07) : CAW comptés dans l'Univers (correctif TU2), réglage pour couper blessures / fins de carrière, classement des titres par équipe modifiable, rivalités menées jusqu'au PPV, rivalité inter-marques sans match (forcer un match au PPV ?), liste des titres de SmackDown dans EDIT SUPERSTAR (R1) si c'est le jeu d'origine, photo propre aux arènes ajoutées, ajout de logos / matchup screens (listes du jeu pleines), nouveau show (NXT) = plus tard.
 - Page ROSTERS du launcher (marques hors de l'Univers, `docs/launcher_rosters.md`, 3 séances, écrit dans la sauvegarde).
 
 ## 1.4 et après : plateformes et finitions (à décider selon les retours)
