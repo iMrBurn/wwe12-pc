@@ -1063,8 +1063,8 @@ void PageSettings() {
         const bool fr_ = g_s.language == 4;
         changed |= ImGui::Checkbox(fr_ ? "Afficher à quoi je joue sur Discord" : "Show what I'm playing on Discord",
                                    &g_s.discord);
-        ImGui::TextDisabled("%s", fr_ ? "Rien n'est envoyé à Discord si la case est décochée. Sinon : seulement « joue à WWE '12 PC » et menu / match."
-                                      : "Nothing is sent to Discord unless this is ticked. Only \"playing WWE '12 PC\" and menu / match.");
+        ImGui::TextDisabled("%s", fr_ ? "Rien n'est envoyé à Discord si la case est décochée. Sinon, seuls « joue à WWE '12 PC », le mode de jeu et le type de match sont affichés (aucun nom)."
+                                      : "Nothing is sent to Discord unless this is ticked. Only \"playing WWE '12 PC\", the game mode and the match type are shown (no names).");
       }
 
       // Universe mode (the same two settings are in the game's OPTIONS).
