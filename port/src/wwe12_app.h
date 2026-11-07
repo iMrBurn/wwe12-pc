@@ -91,6 +91,7 @@ void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
 void Wwe12AndroidFreshCache(const std::filesystem::path& cache_dir);  // android/wwe12_replay.cpp
 #endif
 void Wwe12CheckDiscVersion(const std::filesystem::path& user_data_root);  // wwe12_disc.cpp
+void Wwe12DiscordStart();  // wwe12_discord.cpp (nothing outside Windows)
 void Wwe12ImportSaves(const std::filesystem::path& user_data_root);  // wwe12_saves.cpp
 #if defined(__ANDROID__)
 void Wwe12AndroidCaptureStderr();  // android/wwe12_android.cpp: plume's errors into the log
@@ -188,7 +189,11 @@ class Wwe12App : public rex::ReXApp {
   // EditEx.cac...) pour charger plus vite. Le runtime ne la monte pas (cache: sans
   // périphérique) : on la monte, comme Xenia, sur Documents/wwe12/xbox_cache.
   // Version du disque du joueur (journal, et avertissement si elle diffère de celle du portage).
-  void OnPostLoadXexImage() override { Wwe12CheckDiscVersion(user_data_root_); }
+  // Discord Rich Presence's thread (Windows, waits until wwe12_discord is on).
+  void OnPostLoadXexImage() override {
+    Wwe12CheckDiscVersion(user_data_root_);
+    Wwe12DiscordStart();
+  }
 
   void OnPostSetup() override {
     REXLOG_INFO("WWE '12 PC version {}", WWE12_VERSION);

@@ -18,6 +18,11 @@ wwe12_graphics_menu = true
 # Skip the start-up videos (logos and opening) to reach the title screen faster.
 wwe12_skip_intros = true
 
+# Discord Rich Presence: your Discord status shows that you play WWE '12 PC (in the menus, in a match,
+# Universe mode). Windows only; needs the Discord app open on this PC. Off by default.
+wwe12_discord = false
+wwe12_discord_app_id = ""
+
 # ---------------------------------------------------------------------------------------------
 # Graphics
 # ---------------------------------------------------------------------------------------------
