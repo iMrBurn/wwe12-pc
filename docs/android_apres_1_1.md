@@ -366,3 +366,19 @@ La sonde a vu **un** cas suspect : une entrée restée dans la file 0,3 s sans �
 arrive ~1 fois sur 2, donc un match réussi ne prouve rien. À faire avant d'activer le replay par défaut : au moins 10 matchs sans gel
 (émulateur ou testeurs sur vrais téléphones) et lire les lignes `[jobwatch] heal`. Le replay reste coupé par défaut dans la 1.1.
 Émulateur : 12 Go de RAM pris en compte, mais l'outil limite à 6 cœurs ; ~40 i/s dans les menus, ~10 i/s aux entrées (avant : 3-5).
+
+## 9. Mod Maker sur téléphone (question de l'utilisateur, 2026-11-07)
+
+Un vrai Mod Maker Android serait long (le Mod Maker PC est un gros programme Windows : une dizaine de pages,
+sélecteurs de fichiers, vgmstream-cli.exe ; il faudrait refaire l'interface au doigt) : quelques jours pour une
+ou deux pages, plusieurs semaines pour tout. Piste bien plus courte pour la 1.2 : créer le mod sur PC, puis un
+bouton « importer un mod » dans le launcher Android qui le copie dans `files/mods` / `files/dlc` (le code des mods
+est déjà compilé dans libwwe12.so). À vérifier d'abord : un mod fait sur PC marche-t-il sur le téléphone ?
+Un Mod Maker mobile seulement si la demande est forte (le modding profond n'est pas le but du projet).
+
+## 10. APK 1.1.0 refait (2026-11-07, après le build PC final de Main)
+
+Code partagé entré depuis le premier APK : Discord (fonctions vides hors Windows), `superstar_pack.h`,
+jukebox, correctifs Mods. `game-arm64` compile sans rien corriger. Nouvelle empreinte SHA-256 :
+791d95fb4e4b16ec11077a01757e57e930c4398d8b25e0e53e67de94c3358436 (même clé, versionCode 10100).
+L'ancien (43316c68…) est gardé dans `D:\Android\release_old`. Le build TEST3 de Yexclsv est plus ancien.
