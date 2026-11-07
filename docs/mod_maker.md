@@ -1423,6 +1423,28 @@ sinon), pour qui (le catcheur du même nom proposé), terminer.
   trouvée dans Winning0-3/A, entrée BPE comme l'originale : Cena = `Winning0.pac` EVPA/EVZA 6139), sinon ajoutée dans
   Winning0.
 
+### Onglets à la main, « Jouer », cases à cocher (2026-11-08, pour la 1.1.1 ; commits 0a28d9c, 35362d2)
+
+D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, un seul mod par catcheur :
+- **Prises / Provocations** (`moves_edit.h`) : le moveset du catcheur de WWE '12 case par case (sections
+  `moveset_port::kSections` ; cases identiques chez tout le roster cachées). « Changer… » propose d'abord les prises
+  que le roster met dans cette case, puis celles de la section ; recherche. Signatures et finishers en haut.
+- **Jouer** (`move_preview.h`) : la prise en 3D sur lui avec un adversaire (Cena, ou Orton pour Cena), comme la page
+  LOOK. Animation d'une prise : `m.pac` ZMOT/CAnn, numéro = numéro de la prise aux octets inversés (`MotionIndex`,
+  4 864 animations en 0,2 s ; 169 des 177 prises de Cena). Au repos : première image de sa signature, sans adversaire.
+- **Entrée** : celle d'un autre catcheur du jeu (manifest `entrance=N`) ; le jeu copie ses deux blocs d'entrée
+  (`superstar_pack.h` `Moveset::entrance`, vérifié hors jeu : Cena reçoit 161 161 161 604 604 d'Orton).
+- **Depuis un autre jeu** : l'assistant ; à l'étape 3, une case à cocher par prise, rangée par section, avec ce que
+  WWE '12 en fait (« l'a », « ajoutée (expérimental) », « la sienne reste ») et « Jouer » (une prise ajoutée joue sa
+  propre animation de son jeu).
+- **Prises ajoutées depuis 2K14 et 2K15** (avant : WWE '13 seul) : fiches dans `createmode.pac`, animations dans tous
+  les groupes de `mot*.pac` (2K14 : ZMOT, ZMVM/Mnnn, Ennn, ZMBS), en deux exemplaires (léger, complet). Cesaro 2K14 :
+  12/12 trouvées (avant 1) ; 2K15 : 15/15. Fiches de même forme (2K15 : 82 % d'octets égaux, rien de décalé ; FF
+  remis de +0x92 à la fin). 2K16 / 2K17 : fiches non lues, rien d'ajouté. Une prise de 2K14 jouée sur des modèles de
+  WWE '12 : cohérente. **Pas encore vu en jeu.**
+- Aides de test : `WWE12_MM_PAGE=6`, `WWE12_MM_MOVES=<n°>,<onglet>[,<prise>]`, `WWE12_MM_PORT=<titre hex>,<n°>`,
+  `WWE12_MM_PLAYNEW=1`.
+
 ## Correctifs du 2026-11-04 (retours de Jay, LA Max, Discord ; commits locaux, pour la 1.1)
 
 - **2e tenue au format WWE '12** (Jay n°3) : un `.pac` de WWE '12 (un DLC, un mod) choisi comme « autre jeu » dans
