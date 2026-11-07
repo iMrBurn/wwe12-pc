@@ -27,6 +27,8 @@ namespace fs = std::filesystem;
 
 class Runner {
  public:
+  // false = the button is greyed ("Coming soon"): the test is not ready yet (planned for 1.2).
+  static constexpr bool kAvailable = false;
   enum class State { Idle, Running, Done, Failed };
 
   bool Busy() const { return state_ == State::Running; }
@@ -35,10 +37,15 @@ class Runner {
   void Draw(bool fr, const fs::path &exe, const fs::path &exe_dir, const fs::path &documents, bool enabled) {
     root_ = documents / "wwe12_benchmark";
     Poll();
-    ImGui::BeginDisabled(state_ == State::Running || !enabled);
+    ImGui::BeginDisabled(!kAvailable || state_ == State::Running || !enabled);
     if (ImGui::Button(fr ? "Test de performance" : "Performance test"))
       Start(fr, exe, exe_dir);
     ImGui::EndDisabled();
+    if (!kAvailable) {
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", fr ? "Bientôt disponible." : "Coming soon.");
+      return;
+    }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
       ImGui::SetTooltip("%s", fr ? "Lance le jeu : vous choisissez un match d'exhibition à la main, puis le test mesure l'entrée et "
                                    "30 s de match sans que vous touchiez à rien. Le jeu se relance une fois : choisissez "
