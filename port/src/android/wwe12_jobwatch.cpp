@@ -24,7 +24,7 @@
 
 REXCVAR_DEFINE_BOOL(wwe12_jobwatch, true, "WWE12",
                     "Android: log the game's replay-writer job queue (to find the post-match freeze).");
-REXCVAR_DEFINE_BOOL(wwe12_jobwatch_heal, false, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_jobwatch_heal, true, "WWE12",
                     "Android: set the job thread's event again when entries wait in its queue (lost "
                     "wake-up cure, to test).");
 
@@ -36,7 +36,7 @@ void Watch(u32 jobs) {
   bool stuck_logged = false;
   u32 heals = 0;
   for (;;) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     const u32 count = bd::mem::load<u32>(jobs + 184), head = bd::mem::load<u32>(jobs + 180);
     const u32 t0 = bd::mem::load<u32>(jobs + 80 + 28), t1 = bd::mem::load<u32>(jobs + 80 + 48 + 28);
     const u32 types = (t0 & 0xFFFF) << 16 | (t1 & 0xFFFF);
@@ -57,11 +57,12 @@ void Watch(u32 jobs) {
       BD_INFO("[jobwatch] {} entries have waited {:.1f} s and nothing was taken (first {}, types {} {})",
               count, waited, head, t0, t1);
     }
-    if (waited >= 2.0 && REXCVAR_GET(wwe12_jobwatch_heal) && heals < 20) {
+    if (waited >= 0.3 && REXCVAR_GET(wwe12_jobwatch_heal)) {
       ++heals;
-      changed = now;  // again in 2 s if it did not help
+      changed = now;  // again in 0.3 s if it did not help (a spare wake-up is harmless: the loop sees an empty queue)
       const u32 status = rex::kernel::xboxkrnl::xeNtSetEvent(bd::mem::load<u32>(jobs + 64), nullptr);
-      BD_INFO("[jobwatch] heal #{}: event set again (status 0x{:X})", heals, status);
+      if (heals <= 20 || heals % 50 == 0)
+        BD_INFO("[jobwatch] heal #{}: event set again (status 0x{:X})", heals, status);
     }
   }
 }

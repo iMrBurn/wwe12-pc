@@ -328,3 +328,31 @@ Ordre : 1.2, une fois le code commun fait par Rendu. Rien à coder avant son acc
 - À faire après la 1.1 : lire la page, repérer les deux extensions, voir si notre plume/Vulkan les demande déjà, puis les ajouter en
   option (patch plume, Android seulement) et faire tester sur un téléphone concerné.
 - Licence BSD-3 : méthode seulement (aucun code repris) ; créditer dans THIRD_PARTY.md (ligne Jarrod) si on s'en sert.
+
+## 8. Ce que font les builds Android de Jarrod et de Kaiko (lu sur leurs pages de versions, 2026-11-07)
+
+Sources publiques : releases de `Jarrodfeng/wwe2k14-recomp` (android-v0.2.2 à v0.3.0) et README de
+`KaikoClanworth1/wwe-svr2011-pc`. Méthode seulement, aucun code repris (voir `THIRD_PARTY.md`).
+
+**Gel de fin de match : confirmé par Jarrod (android-v0.2.4).** « Les signaux de réveil d'Android fusionnaient deux appels
+proches et bloquaient l'enregistreur de moments forts. » C'est notre hypothèse 1 (§2) : le fil de travaux (`sub_821D9428`)
+traite **un** travail par réveil de l'événement +64 ; deux `NtSetEvent` rapprochés se fondent en un, le 2e travail reste
+dans la file. Notre sonde `wwe12_jobwatch` (`port/src/android/wwe12_jobwatch.cpp`) refait un `NtSetEvent` quand des travaux
+attendent depuis 0,3 s (réveil en trop = sans effet, la boucle voit une file vide). **Activé par défaut** (`wwe12_jobwatch_heal`).
+Non vérifié en jeu : l'émulateur est trop lent ce soir ; test APK `work/android/test11/...TEST3-arm64.apk`.
+Le replay reste coupé par défaut tant qu'un testeur n'a pas fait quelques matchs avec.
+
+| Idée de Jarrod / Kaiko | Nous | À faire |
+|---|---|---|
+| Cadence 30 fps « expérimentale » (Jarrod 0.2.2 / 0.2.5), 120 FPS | étude §6 | 1.2, code commun avec Rendu |
+| Résolution dynamique + baisse thermique + qualité AUTO = LOW sur téléphone (0.2.5) | préréglages à la main | bloc B (2-3 séances) |
+| Mali : écran noir réglé en n'exigeant plus le mélange haute précision (0.2.5) | Mali « non supporté » | à étudier : cause chez nous inconnue |
+| Vulkan 1.1 : deux extensions demandées (0.2.5) | échec « descriptorIndexing » | après la 1.1 (note de Main, §7) |
+| Moins de 6 Go : budget mémoire graphique réduit (0.2.5) | avertissement seulement | simple : réduire le budget |
+| Textures ASTC si pas de BC (0.2.5) | BC décodé sur CPU | plus rapide, mais gros chantier |
+| Fichiers de cache trop gros refusés (0.2.3, chargements infinis) | cache de 150 Mo + EditEx 400 Mo | idée pour les chargements infinis après `Comm_*` |
+| Gels silencieux détectés, mode sûr après échecs répétés, GPU inconnu en mode basique (0.3.0) | rien | bonne idée pour l'après-1.1 |
+| Journal des plantages sur téléphone (0.3.0) | journal normal | à comparer avec le nôtre |
+| Kaiko : pilote personnalisé qui échoue = retour au pilote du téléphone | à vérifier dans `DriverManager` | simple |
+| Kaiko : `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` pour HyperOS 3 (Xiaomi) | rien | à tester : nos plantages sont sur Xiaomi/Poco |
+| Kaiko : installation par USB (adb), paquet de textures | non | hors sujet |
