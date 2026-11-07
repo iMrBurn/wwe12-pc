@@ -20,10 +20,13 @@
 //     creation's label ("SUPERSTAR", "STORY"...) the editor; deeper labels the menu path. Any choice = no longer in
 //     a match. Test of 2026-11-07: PLAY 41001 > ONE ON ONE 41009 > NORMAL MATCH 41041, CREATIONS 41005 >
 //     SUPERSTAR 41024 > NEW 41109, UNIVERSE 41169.
-//   - A loading screen opening (wwe12_load_turbo.cpp calls Wwe12DiscordLoadScreen): a match starts. The current
-//     match's record (0x8317C850, 104 bytes): +0 its type, named by text 27400 + type; +16 six places of 12 bytes
-//     (+0 u16 the superstar's number, a guess: logged to be checked), names from the save's roster (as the jukebox).
-//   - Universe: *0x8324E51C == 1 (set on entering the Universe menu, cleared on leaving it; test of 2026-11-07).
+//   - A loading screen opening (wwe12_load_turbo.cpp calls Wwe12DiscordLoadScreen): the match type, from the match
+//     record (0x8317C850): +0 the type, named by text 27400 + type. (Its places at +16 are empty at that time and
+//     hold something else later: not the superstars. Loading screens also come between menus.)
+//   - The match's characters (sub_822D23A0 hooked below): two superstars or more = a match, with their names
+//     (the save's roster, as the jukebox reads it).
+//   - Universe: *0x8324E51C == 1 (set on entering the Universe menu, cleared on leaving it; test of 2026-11-07); the
+//     Universe menu built again (wwe12_universe.cpp calls Wwe12DiscordUniverseMenu) = its match is over.
 // The texts are the game's own (the player's language); the WWE logo character (U+E018) becomes "WWE".
 // To check in game: the "[discord] ..." log lines.
 
@@ -50,6 +53,7 @@ REXCVAR_DEFINE_STRING(wwe12_discord_app_id, "", "WWE12",
 #include <cctype>
 #include <chrono>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -88,7 +92,7 @@ struct Shared {
   std::vector<std::string> sub;  // the menu path under the mode
   bool in_match = false;
   std::string match_type;        // "Hell in a Cell"
-  std::string players;           // "John Cena vs Randy Orton"
+  std::map<u32, std::string> wrestlers;  // slot -> superstar's name, this match
 };
 Shared g;
 
@@ -251,32 +255,31 @@ void Wwe12DiscordDecide(const PPCContext &ctx, u8 *base) {
   g.mode = mode;
   g.sub = sub;
   g.in_match = false;
+  g.wrestlers.clear();
 }
 
-// A loading screen opens (wwe12_load_turbo.cpp; screen = the loading screen object): a match is coming.
+// A loading screen opens (wwe12_load_turbo.cpp; screen = the loading screen object). Loading screens also come
+// between menus (test of 2026-11-07: at start-up, after the title screen), so it is not a match by itself; it gives
+// the match type while the match record is filled (+0 the type, its name text 27400 + type: "One on One").
+// The game calls the opening several frames in a row: once per 3 s here.
 void Wwe12DiscordLoadScreen(const PPCContext &ctx, u8 *base, u32 screen) {
   if (!On())
     return;
+  static int64_t s_last = 0;
+  const int64_t now = NowS();
+  if (now - s_last < 3)
+    return;
+  s_last = now;
   const u32 type = bd::mem::load<u8>(kMatchRecord);
-  std::string places, players;
-  int count = 0;
-  for (u32 i = 0; i < 6; ++i) {
-    const u32 place = kMatchRecord + 16 + i * 12;
-    for (u32 b = 0; b < 12; ++b)
-      places += fmt::format("{:02X}", bd::mem::load<u8>(place + b));
-    places += ' ';
-    const std::string name = SuperstarName(bd::mem::load<u16>(place));
-    if (!name.empty()) {
-      players += (count++ ? " vs " : "") + name;
-    }
-  }
   const std::string type_name = Text(ctx, base, kMatchTypeText + type);
-  BD_INFO("[discord] loading screen {:08X} (vtable {:08X}): match type {} '{}', places {}", screen,
-          bd::mem::try_load<u32>(screen), type, type_name, places);
+  BD_INFO("[discord] loading screen {:08X} (vtable {:08X}): match type {} '{}'", screen,
+          bd::mem::try_load<u32>(screen), type, type_name);
   std::lock_guard lock(g.mu);
-  g.in_match = true;
-  g.match_type = type_name;
-  g.players = players;
+  if (!g.in_match) {
+    g.wrestlers.clear();  // a new load: the superstars it creates are the next match's
+    if (!type_name.empty())
+      g.match_type = type_name;
+  }
 }
 
 // The Universe menu is built again (wwe12_universe.cpp, sub_82545A70: on entering the Universe and after each of
@@ -286,6 +289,40 @@ void Wwe12DiscordUniverseMenu() {
   if (g.in_match)
     BD_INFO("[discord] Universe menu: match over");
   g.in_match = false;
+  g.wrestlers.clear();
+}
+
+// A match character is asked for (sub_822D23A0(loader, slot, desc, ..): it queues the actor of slot "slot"; the
+// desc's u32 at +0 goes into the loader's per-slot id table, +6 is the role sub_822CDF78 gives the actor). Slots 0-5
+// are the superstars (the match actor list 0x8317B770: 6 superstars, the referee, 2 more). Two superstars or more =
+// a match, unless the menus said an editor (Create a Superstar...) or nothing was chosen yet (the title screen's
+// demo match). The superstar's number at desc+0 is a reading of the code, logged to be checked.
+REX_EXTERN(__imp__sub_822D23A0);
+extern "C" REX_FUNC(sub_822D23A0) {
+  if (On()) {
+    const u32 slot = ctx.r4.u32, desc = ctx.r5.u32;
+    std::string bytes;
+    for (u32 b = 0; b < 24 && desc; ++b)
+      bytes += fmt::format("{:02X}", bd::mem::try_load<u8>(desc + b));
+    const u32 number = desc ? bd::mem::try_load<u32>(desc) : 0xFFFFFFFFu;
+    const std::string name = SuperstarName(number);
+    BD_INFO("[discord] character slot {} number {} '{}' desc {}", slot, number, name, bytes);
+    std::lock_guard lock(g.mu);
+    const bool editor = [&] {
+      for (u32 id : {41024u, 41025u, 41114u, 41026u, 41027u, 41021u, 41111u, 41112u, 41036u, 41171u, 41166u})
+        if (g.mode == EditorOf(id))
+          return true;
+      return false;
+    }();
+    if (slot < 6 && !name.empty() && !g.mode.empty() && !editor) {
+      g.wrestlers[slot] = name;
+      if (!g.in_match && g.wrestlers.size() >= 2) {
+        g.in_match = true;
+        BD_INFO("[discord] match: {} superstars", g.wrestlers.size());
+      }
+    }
+  }
+  __imp__sub_822D23A0(ctx, base);
 }
 
 namespace {
@@ -431,7 +468,10 @@ Presence Read() {
     p.details = mode.empty() ? "In a match" : mode;
     if (!g.match_type.empty())
       p.details += ": " + g.match_type;
-    p.state = g.players.empty() ? "In a match" : g.players;
+    for (const auto &[slot, name] : g.wrestlers)
+      p.state += (p.state.empty() ? "" : " vs ") + name;
+    if (p.state.empty())
+      p.state = "In a match";
     return p;
   }
   if (mode.empty()) {
