@@ -167,11 +167,44 @@ public class LauncherActivity extends Activity {
         showGameError();
     }
 
+    // True when the end (256 KB) of the newest game log holds this text.
+    boolean lastLogHas(String needle) {
+        File[] files = new File(String.valueOf(getExternalFilesDir(null)), "logs").listFiles();
+        if (files == null) return false;
+        File last = null;
+        for (File f : files)
+            if (f.getName().endsWith(".log") && (last == null || f.lastModified() > last.lastModified())) last = f;
+        if (last == null) return false;
+        try (java.io.RandomAccessFile r = new java.io.RandomAccessFile(last, "r")) {
+            long from = Math.max(0, r.length() - 256 * 1024);
+            byte[] buf = new byte[(int) (r.length() - from)];
+            r.seek(from);
+            r.readFully(buf);
+            return new String(buf, "UTF-8").contains(needle);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     // Two game starts in a row that never drew a picture (RunState "started" only): offer the safe mode.
     void checkStartFailures() {
         String state = RunState.take(this);
         if (state.isEmpty()) return;
         File reason = new File(getExternalFilesDir(null), "last_error.txt");
+        // A custom GPU driver that loads but cannot make a device (PanVK on an Adreno, #56): say it at once.
+        if (state.equals("started") && !reason.isFile() && DriverManager.selected(this) != null && lastLogHas("createDevice failed")) {
+            new android.app.AlertDialog.Builder(this).setTitle("This GPU driver does not work")
+                    .setMessage("The game could not start its graphics with the custom GPU driver you chose.\n\n"
+                            + "Go back to the phone's own driver, or import another one (a Turnip driver for a Snapdragon).")
+                    .setPositiveButton("USE THE PHONE'S DRIVER", new android.content.DialogInterface.OnClickListener() {
+                        public void onClick(android.content.DialogInterface d, int w) {
+                            DriverManager.select(LauncherActivity.this, "");
+                            recreate();
+                        }
+                    })
+                    .setNegativeButton("NOT NOW", null).show();
+            return;
+        }
         int fails = prefs.getInt("start_failures", 0);
         fails = state.equals("started") && !reason.isFile() ? fails + 1 : 0;  // a stop with a reason is explained by showGameError
         if (fails < 2 || isFinishing()) {

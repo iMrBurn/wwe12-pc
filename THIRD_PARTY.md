@@ -34,11 +34,15 @@ Projets dont ce portage s'inspire :
   `svr_resources.cpp` (cvar `wwe12_widescreen`). Le dépôt a depuis une licence MIT (vue le 2026-11-04,
   commit 5fcae1a) : l'étiquette de page de l'écran des arènes (« LB  PAGE 1 / 2  RB », son
   `arena_mods.cpp` ArenaPageLabel) est adaptée dans `port/src/native/wwe12_arena_pages.cpp`. Le reste :
-  méthode uniquement.
+  méthode uniquement. Android (README du dépôt, 2026-11-07) : la variable `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1`
+  pour les pilotes Turnip sous HyperOS (case facultative du launcher, `DriverManager.java`) et l'idée du retour au
+  pilote du téléphone quand un pilote personnalisé échoue.
 - [wwe2k14-recomp](https://github.com/Jarrodfeng/wwe2k14-recomp) (recomp de WWE 2K14, Jarrodfeng) :
   licence BSD 3 clauses (vérifiée sur le dépôt le 2026-10-31) ; accord oral de l'auteur (Discord, 2026-10-31) pour s'inspirer de ses mises à
   jour. Idées Android étudiées dans `docs/android_optimisation_jarrod.md` (cadence 90/120 Hz, résolution
-  dynamique, SGSR, cœurs rapides, copies GPU) et correction de la ceinture à 60 fps (méthode). Aucun
+  dynamique, SGSR, cœurs rapides, copies GPU), correction de la ceinture à 60 fps (méthode) et, pour Android
+  (2026-11-07), le constat de ses notes android-v0.2.4 : les réveils d'événements fusionnés bloquent l'enregistreur
+  de moments forts, d'où le réveil forcé de `port/src/android/wwe12_jobwatch.cpp` (code écrit par nous). Aucun
   code repris pour l'instant ; tout code repris plus tard sera ajouté ici avec son fichier.
 - **Yexclsv**, co-mainteneur de la version Android (travail donné pour le projet, crédité dans les notes
   de version) : gestionnaire de pilotes GPU (`DriverManager.java`), vérification du téléphone
