@@ -28,11 +28,13 @@ catcheurs de RAW ?) ; essai à l'aveugle le 2026-11-04 raté (écran éteint).
 « MOVE » (changer l'ordre des matchs) : malentendu, le joueur voulait des catcheurs animés dans les écrans de choix et
 VS (pas l'Univers, « à voir » pour l'utilisateur).
 
-**1.2** : les CAW comptés dans l'effectif des shows (comme la TU2 : `sub_82A330D8` répond « pas un CAW » pour les 4
-appels de `sub_82583B78`, `sub_82599DB0`, `sub_826D3B58` ; notre recomptage ne l'appelle plus ; ½ à 1 séance) ; deux
-mallettes Money in the Bank (§38, réglage 1 ou 2).
-
-**1.3 / plus tard** : surprises du Royal Rumble ; idées de joueurs restantes (`docs/suggestions_joueurs.md`).
+**1.3** (décision de l'utilisateur du 2026-11-07 : l'ancien « 1.2 » de l'Univers passe en 1.3) : les CAW comptés dans
+l'effectif des shows (comme la TU2 : `sub_82A330D8` répond « pas un CAW » pour les 4 appels de `sub_82583B78`,
+`sub_82599DB0`, `sub_826D3B58` ; notre recomptage ne l'appelle plus ; ½ à 1 séance) ; deux mallettes Money in the Bank
+(§38, réglage 1 ou 2) ; couper blessures / fins de carrière ; classement des titres par équipe ; rivalités menées au
+PPV ; rivalité inter-marques sans match ; titres de SmackDown dans EDIT SUPERSTAR (si c'est le jeu d'origine) ; photo
+propre des arènes ajoutées (§41) ; ajout de logos / matchup screens (§41) ; surprises du Royal Rumble ; idées de joueurs
+restantes (`docs/suggestions_joueurs.md`).
 
 **Réglages** : `wwe12_universe_edit`, `wwe12_universe_min_roster`, `wwe12_universe_title_defenses`,
 `wwe12_universe_qualifiers`, `wwe12_universe_news_ppv_picture`, `wwe12_universe_added_relations`,
