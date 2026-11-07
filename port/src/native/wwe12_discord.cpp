@@ -13,7 +13,7 @@
 //
 // What is shown (details / state, and the time since the details changed):
 //   menus:    "Exhibition" / "One on One · Normal Match", "WWE Universe" / "In the menus", "Create a Superstar"...
-//   a match:  "Exhibition: Hell in a Cell" / "John Cena vs Randy Orton"
+//   a match:  "Exhibition" / "In a match · One on One · Hell in a Cell" (no superstars' names: the user's choice)
 // Where it comes from (game thread, kept under a lock for the pipe's thread):
 //   - The menus' decide handler (wwe12_quit.cpp calls Wwe12DiscordDecide): the chosen entry's record, +0 its id,
 //     +4 its parent's id (0 = a main-menu entry), +24 its label (a text id). The main menu's label gives the mode, a
@@ -33,7 +33,7 @@
 #include <rex/cvar.h>
 
 REXCVAR_DEFINE_BOOL(wwe12_discord, false, "WWE12",
-                    "Discord Rich Presence: show in Discord what you play in WWE '12 PC (mode, match, superstars).");
+                    "Discord Rich Presence: show in Discord what you play in WWE '12 PC (mode, kind of match).");
 REXCVAR_DEFINE_STRING(wwe12_discord_app_id, "", "WWE12",
                       "Discord Rich Presence: the Discord application's id (empty = off).");
 
@@ -329,6 +329,9 @@ extern "C" REX_FUNC(sub_822D23A0) {
     const u32 role = desc ? bd::mem::try_load<u8>(desc + 6) : 0xFF;
     const std::string name = role == 0 || role == 2 ? SuperstarName(id / 100) : std::string();
     BD_INFO("[discord] character slot {} id {} role {} '{}' desc {}", slot, id, role, name, bytes);
+    // (the name only tells a real superstar: Discord shows the kind of match, not who is in it)
+    const std::string type_name =
+        name.empty() ? std::string() : Text(ctx, base, kMatchTypeText + bd::mem::load<u8>(kMatchRecord));
     std::lock_guard lock(g.mu);
     const bool editor = [&] {
       for (u32 id : {41024u, 41025u, 41114u, 41026u, 41027u, 41021u, 41111u, 41112u, 41036u, 41171u, 41166u})
@@ -340,6 +343,8 @@ extern "C" REX_FUNC(sub_822D23A0) {
       g.wrestlers[slot] = name;
       if (!g.in_match && g.wrestlers.size() >= 2) {
         g.in_match = true;
+        if (!type_name.empty())
+          g.match_type = type_name;
         BD_INFO("[discord] match: {} superstars", g.wrestlers.size());
       }
     }
@@ -487,13 +492,16 @@ Presence Read() {
   if (universe)
     mode = "WWE Universe";
   if (g.in_match) {
+    // The kind of match, no superstars' names (the user's choice, 2026-11-07): the menu path when the match was
+    // chosen in the menus ("One on One · Normal Match"), else the match type's name ("One on One").
     p.details = mode.empty() ? "In a match" : mode;
-    if (!g.match_type.empty())
-      p.details += ": " + g.match_type;
-    for (const auto &[slot, name] : g.wrestlers)
-      p.state += (p.state.empty() ? "" : " vs ") + name;
-    if (p.state.empty())
-      p.state = "In a match";
+    std::string kind;
+    if (!universe)
+      for (const std::string &s : g.sub)
+        kind += (kind.empty() ? "" : " \xC2\xB7 ") + s;
+    if (kind.empty())
+      kind = g.match_type;
+    p.state = kind.empty() ? "In a match" : "In a match \xC2\xB7 " + kind;
     return p;
   }
   if (mode.empty()) {
