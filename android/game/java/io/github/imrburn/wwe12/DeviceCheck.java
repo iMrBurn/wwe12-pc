@@ -43,7 +43,7 @@ public class DeviceCheck {
         int mhz = fastestCoreMhz();
         summary = chipName() + (gpu.isEmpty() ? "" : " | " + gpu) + " | " + ramGb + " GB RAM | fastest core "
                 + (mhz > 0 ? (mhz / 100) / 10.0 + " GHz" : "?") + " | Vulkan " + vulkanText(context)
-                + " | Android " + Build.VERSION.RELEASE;
+                + " | Android " + Build.VERSION.RELEASE + " | kernel " + kernelText();
 
         if (LauncherActivity.cpuTooOld())
             blockers.add("The processor is too old: the game needs ARMv8.2 (Snapdragon 845 / 7xx from 2018 or newer).");
@@ -68,12 +68,42 @@ public class DeviceCheck {
         else if (!g.contains("adreno") && LauncherActivity.gpuLooksUnsupported())
             warnings.add("This phone does not use a Snapdragon (Adreno) GPU: other GPUs (Mali, Xclipse, PowerVR) "
                     + "are barely tested yet and may show graphics bugs or not start.");
+        // Old Linux kernel (Poco X3 Pro #41, OnePlus 7 Pro #56: 4.14): memory could not be reserved at the
+        // address the game wants and it crashed at start. 1.1 works around it, not proven on every model.
+        double kernel = kernelVersion();
+        if (kernel > 0 && kernel < 4.17)
+            warnings.add("This phone runs an old Linux kernel (" + kernelText() + "). Some phones like it crashed at "
+                    + "start before version 1.1, which now works around it. If the game stops on a black screen or "
+                    + "closes at start, please send the log (SHARE LAST LOG) with this phone's name.");
+        // Snapdragon 845 / 855 / 865 / 870 (Adreno 630 / 640 / 650): their own driver lacks a graphics feature the
+        // game needs; a custom driver (Turnip) gives it (issues #41, #43, #54, #56, #30).
+        if (g.matches(".*adreno[^0-9]*6[3-5]\\d.*") && DriverManager.selected(context) == null)
+            warnings.add("Adreno 6xx (" + gpu + "): the phone's own graphics driver is often not enough for this game. "
+                    + "If it says the graphics cannot start, open the GPU DRIVER panel and import a Turnip driver "
+                    + "(v24.1.0 R18 worked best on an Adreno 650; newer ones stopped the graphics after a few minutes).");
         try {
             long free = new StatFs((appDir != null ? appDir : context.getFilesDir()).getAbsolutePath()).getAvailableBytes();
             if (free < MIN_FREE)
                 warnings.add(String.format(Locale.US, "Only %.1f GB of free storage: the game needs about 8 GB.",
                         free / 1073741824.0));
         } catch (Exception ignored) {
+        }
+    }
+
+    // Kernel release from Android ("4.14.180-perf-gc3a3" -> "4.14.180"), or "?".
+    static String kernelText() {
+        String v = System.getProperty("os.version", "");
+        int dash = v.indexOf('-');
+        return v.isEmpty() ? "?" : (dash > 0 ? v.substring(0, dash) : v);
+    }
+
+    // 4.14.180 -> 4.14; 0 when unknown.
+    static double kernelVersion() {
+        try {
+            String[] p = kernelText().split("\\.");
+            return Integer.parseInt(p[0]) + Integer.parseInt(p[1]) / 100.0;
+        } catch (Exception e) {
+            return 0;
         }
     }
 
