@@ -191,6 +191,12 @@ class Page {
       snprintf(new_label, sizeof(new_label), "%s", fr ? "En nouvelle tenue (déjà 4 tenues)" : "As a new attire (4 already)");
     ImGui::Checkbox(new_label, &as_new_);
     ImGui::EndDisabled();
+    // His entrance outfit of this attire (kind 4: Cena's cap, Undertaker's coat and hat): with a ported attire, the
+    // game would still dress him in it for the entrance (a player's report, 2026-11-06, points 12-13).
+    if (ported_ && !as_new_ && OutfitIndex() >= 0)
+      ImGui::Checkbox(fr ? "Remplacer aussi sa tenue d'entrée (casquette, veste, chapeau...) par celle-ci"
+                         : "Replace his entrance outfit too (cap, jacket, hat...) with this one",
+                      &outfit_too_);
     // Its own name on the select screen and its own render (both optional: else the game's).
     ImGui::SetNextItemWidth(260);
     ImGui::InputTextWithHint("##attire_label", fr ? "Nom de la tenue (facultatif)" : "Attire name (optional)",
@@ -858,6 +864,40 @@ class Page {
       svrfmt::ArchiveTouch(a.root);
       one = svrfmt::ArchiveSave(a);
     }
+    // A ported attire also in place of his entrance outfit ("000NNNA2" -> "000NNNA4"), fitted to that outfit's shipped
+    // size: the mod's attire file's second entry, put in by the game with the attire (superstar_pack.h). Without
+    // it the game dressed the port in the disc's outfit for the entrance (Cena's cap, the Undertaker's coat and hat).
+    std::string outfit_note;
+    if (const int oi = OutfitIndex(); ported_ && !as_new_ && outfit_too_ && oi >= 0) {
+      arena_edit::Arena shipped, copy;
+      Bytes fitted, alone;
+      std::string e;
+      svrfmt::Archive a, o;
+      if (!shipped.Load(file_, &e, oi) || !copy.Load(out, &e, attire_)) {
+        outfit_note = e;
+      } else {
+        const auto halved = copy.Fit(shipped.SectionSize(), fitted, true);
+        if (copy.SectionSize() > shipped.SectionSize())
+          outfit_note = fr ? "trop grande pour la place de la tenue d'entrée" : "too big for the entrance outfit's place";
+        else if (!attire_mod::OneAttire(fitted, attires_[attire_], alone, &e) || !svrfmt::ArchiveOpen(alone, o, &e) ||
+                 o.root.kids.empty() || !svrfmt::ArchiveOpen(one, a, &e) ||
+                 !svrfmt::ArchiveAdd(a.root, "EMD ", attires_[oi], 0, svrfmt::ArchiveData(o.root.kids[0]), &e))
+          outfit_note = e;
+        else {
+          svrfmt::ArchiveTouch(a.root);
+          one = svrfmt::ArchiveSave(a);
+          outfit_note.clear();
+          if (!halved.empty())
+            reduced_note_ += std::string(reduced_note_.empty() ? "" : " ") +
+                             (fr ? "(Tenue d'entrée : images réduites de moitié pour tenir.)"
+                                 : "(Entrance outfit: pictures halved to fit.)");
+        }
+      }
+      if (!outfit_note.empty()) {
+        message_ = (fr ? "Tenue d'entrée non remplacée : " : "Entrance outfit not replaced: ") + outfit_note;
+        return;
+      }
+    }
     std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=" + mod_version::Of(version_) + "\n" +
                            "superstar=" + std::to_string(s.id) + "\nattire=" + entry + "\n" +
                            (attire_label_[0] ? "attire_name=" + std::string(attire_label_) + "\n" : std::string());
@@ -883,8 +923,21 @@ class Page {
     message_ = (fr ? "Mod créé et installé : " : "Mod made and installed: ") + media::Utf8(save.wstring());
   }
 
+  // The entrance outfit of the attire open ("000NNNA2" -> "000NNNA4") in the superstar's file, -1 if none.
+  int OutfitIndex() const {
+    if (attire_ < 0 || attire_ >= int(attires_.size()) || attires_[attire_].size() != 8 || attires_[attire_][7] != '2')
+      return -1;
+    std::string outfit = attires_[attire_];
+    outfit[7] = '4';
+    for (int i = 0; i < int(attires_.size()); ++i)
+      if (attires_[i] == outfit)
+        return i;
+    return -1;
+  }
+
   ID3D11Device *device_ = nullptr;
   bool listed_ = false, loaded_ = false;
+  bool outfit_too_ = true;  // a ported attire replaces his entrance outfit of it too
   std::vector<Star> stars_;
   int star_ = -1, attire_ = 0, selected_ = -1;
   bool as_new_ = false;  // the mod adds this attire as a new one

@@ -408,6 +408,20 @@ inline int PackNumber(const Inputs &in) {
 }
 
 // The pack's files for `stars` (slots set). False (and why) when it can't be made.
+// An attire mod's entrance outfit: its attire file's entry named like the attire with kind 4 ("000NNNA2" ->
+// "000NNNA4"), the Mod Maker's copy of a ported attire in place of the disc's outfit (Cena's cap, the Undertaker's
+// coat and hat: a player's report, 2026-11-06). nullptr if the mod gives none (an older mod, or a retexture).
+inline const ArcNode *AttireOutfit(const svrfmt::Archive &one, const std::string &entry) {
+  if (entry.size() != 8 || entry[7] != '2')
+    return nullptr;
+  std::string outfit = entry;
+  outfit[7] = '4';
+  for (size_t i = 1; i < one.root.kids.size(); ++i)
+    if (one.root.kids[i].name == outfit && one.root.kids[i].group == "EMD ")
+      return &one.root.kids[i];
+  return nullptr;
+}
+
 inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<File> &files, std::string *why,
                   const std::vector<Attire> &attires = {}, const std::vector<MediaPortraits> &media = {},
                   const std::vector<Sign> &signs = {}, const std::vector<Moveset> &movesets = {}) {
@@ -660,6 +674,16 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         svrfmt::ArchiveRemove(ch.root, i);
       if (!svrfmt::ArchiveAdd(ch.root, "EMD ", at.entry, 0, svrfmt::ArchiveData(one.root.kids[0]), &e))
         return fail(at.key + ": " + e);
+      // (its entrance outfit too, when the mod gives one: AttireOutfit)
+      if (const ArcNode *o = AttireOutfit(one, at.entry); o && given_to_added.insert(o->name).second) {
+        size_t j = 0;
+        while (j < ch.root.kids.size() && ch.root.kids[j].name != o->name)
+          ++j;
+        if (j < ch.root.kids.size())
+          svrfmt::ArchiveRemove(ch.root, j);
+        if (!svrfmt::ArchiveAdd(ch.root, "EMD ", o->name, 0, svrfmt::ArchiveData(*o), &e))
+          return fail(at.key + ": " + e);
+      }
     }
     svrfmt::ArchiveTouch(ch.root);
     models.push_back(svrfmt::ArchiveSave(ch));
@@ -675,15 +699,27 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       svrfmt::Archive one;
       if (!svrfmt::ArchiveOpen(at.file, one, &e) || one.root.kids.empty())
         return fail(at.key + ": attire unreadable: " + e);
+      // (its entrance outfit too, when the mod gives one and no other mod gave it first: AttireOutfit)
+      const ArcNode *outfit = AttireOutfit(one, at.entry);
+      if (outfit && !given.insert(outfit->name).second)
+        outfit = nullptr;
+      Bytes outfit_data;
+      std::string outfit_name;
+      if (outfit) {
+        outfit_data = svrfmt::ArchiveData(*outfit);
+        outfit_name = outfit->name;
+      }
       auto it = by_star.find(at.superstar);
       if (it == by_star.end()) {
         one.root.kids.resize(1);
         if (!svrfmt::ArchiveRename(one.root, 0, at.entry, &e))
           return fail(at.key + ": " + e);
-        by_star.emplace(at.superstar, std::move(one));
+        it = by_star.emplace(at.superstar, std::move(one)).first;
       } else if (!svrfmt::ArchiveAdd(it->second.root, "EMD ", at.entry, 0, svrfmt::ArchiveData(one.root.kids[0]), &e)) {
         return fail(at.key + ": " + e);
       }
+      if (!outfit_name.empty() && !svrfmt::ArchiveAdd(it->second.root, "EMD ", outfit_name, 0, outfit_data, &e))
+        return fail(at.key + ": " + e);
     }
     for (auto &[superstar, a] : by_star) {
       svrfmt::ArchiveTouch(a.root);
