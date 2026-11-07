@@ -28,6 +28,15 @@ Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/mod_make
 
 **Notes publiques** : les notes de la 1.0 annonçaient pour la 1.1 « squash, finishers de départ, I Quit, Special Referee, deux mallettes MITB, icônes de touches » : les notes de la 1.1 disent que c'est repoussé (1.3).
 
+## 1.1.1 : « Page Moves & Entrances et 3 retours de joueurs » (demande de l'utilisateur, 2026-11-07, PROPOSITION à valider, rapide)
+
+Sortie après la 1.1.0 (publiée le 2026-11-07). Même chemin : « go build », gel des sessions, APK à refaire si le code partagé change.
+
+- **Entrées de catcheurs ajoutés non sauvegardées** (retour d'un joueur, 1.1.0) : cause probable trouvée par Mods, correctif d'une ligne (`wwe12_superstar_mods.cpp`, test « fiche étrangère » à partir de 0x1EC), commit local 6e7d1d1. Touche le jeu. À tester : catcheur ajouté, choisir une entrée, sauvegarder, relancer. À confirmer avec le joueur qu'il s'agit bien de catcheurs ajoutés.
+- **Gamma / luminosité** (retour d'un joueur) : étude de Rendu faite. Le curseur du jeu ne fait rien (la rampe gamma du jeu est captée par le GPU « null » du SDK mais personne ne la lit) ; la Xbox 360 corrige aussi pour une télé. Plan : (1) faire marcher le curseur, 3-5 h ; (2) réglage « Image : CONSOLE (TV) / PC » dans GRAPHICS et le launcher, 1-2 h, défaut PC proposé. Étape 0 : une ligne de journal pour confirmer avant de coder (build + lancement, avec le « vas-y » de l'utilisateur).
+- **Page MOVES & ENTRANCES au niveau de celle de Kaiko** (comparaison de Mods) : en 1.1.1 (~2 jours) l'entrée d'un AUTRE catcheur de WWE '12 choisie par nom (3-5 h), changer le moveset case par case avec les prises du jeu (6-10 h), raccourcis signatures / finishers (2 h) ; si le temps le permet : provocations (3-4 h). En 1.2 : aperçu 3D d'une prise (6-8 h seul, 12-20 h à deux), aperçu complet d'une entrée (25 h et plus), packs de prises autonomes (10-15 h), porter UNE prise dans une case (8-12 h). Mise en page de Kaiko reprise avec crédit (MIT).
+- **Univers : après un match, le jeu ne passe pas à la victoire** (retour d'un joueur) : rien de bloquant dans le code Univers (relu). Hypothèses : scène de victoire d'un catcheur ajouté / mod de prises, ou blocage du moteur. À confirmer avec le joueur (version, image figée ou non, `hang_trace.txt`, mods, match exact, même résultat en Exhibition). Pas de correctif sans ces réponses.
+
 ## 1.2 : « Les corrections de THQ, la vitesse et le test de performance » (liste de l'utilisateur, 2026-11-07)
 
 **THQ (voie B : nos propres crochets sur le code du disque, un par un, chacun avec son réglage)**
