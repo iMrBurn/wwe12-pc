@@ -15,8 +15,8 @@
 //   menus:    "Exhibition" / "One on One · Normal Match", "WWE Universe" / "In the menus", "Create a Superstar"...
 //   a match:  "Exhibition: Hell in a Cell" / "John Cena vs Randy Orton"
 // Where it comes from (game thread, kept under a lock for the pipe's thread):
-//   - The menus' decide handler (wwe12_quit.cpp calls Wwe12DiscordDecide): the chosen entry's record, +8 its page
-//     (1 = main menu, 2, 3... deeper), +24 its label (a text id). The main menu's label gives the mode, a
+//   - The menus' decide handler (wwe12_quit.cpp calls Wwe12DiscordDecide): the chosen entry's record, +0 its id,
+//     +4 its parent's id (0 = a main-menu entry), +24 its label (a text id). The main menu's label gives the mode, a
 //     creation's label ("SUPERSTAR", "STORY"...) the editor; deeper labels the menu path. Any choice = no longer in
 //     a match. Test of 2026-11-07: PLAY 41001 > ONE ON ONE 41009 > NORMAL MATCH 41041, CREATIONS 41005 >
 //     SUPERSTAR 41024 > NEW 41109, UNIVERSE 41169.
@@ -220,7 +220,14 @@ const char *EditorOf(u32 label) {
   }
 }
 
-std::vector<u32> g_path;  // labels of the chosen entries, by page (game thread)
+// The chosen menu entries (game thread): record +0 id, +4 parent id (0 = the main menu's entries), +24 label.
+// Test of 2026-11-07: PLAY id 1 parent 0, ONE ON ONE id 8 parent 1, NORMAL MATCH id 36 parent 8; +8 is not the depth.
+struct Choice {
+  u32 parent, label;
+};
+std::map<u32, Choice> g_labels;
+std::vector<u32> g_path;                  // labels of the current path, main menu first
+constexpr u32 kPressStart = 99999999;     // the title screen's "Press Start button" entry
 
 }  // namespace
 
@@ -233,12 +240,23 @@ void Wwe12DiscordDecide(const PPCContext &ctx, u8 *base) {
   const u32 entry = probe.r3.u32;
   if (!entry || entry == 0xFFFFFFFFu)
     return;
-  const u32 page = bd::mem::load<u32>(entry + 8), label = bd::mem::load<u32>(entry + 24);
-  BD_INFO("[discord] menu {:08X} choice: page {} label {}", ctx.r3.u32, page, label);
-  if (page == 0 || page > 8)
+  const u32 id = bd::mem::load<u32>(entry), parent = bd::mem::load<u32>(entry + 4),
+            label = bd::mem::load<u32>(entry + 24);
+  BD_INFO("[discord] menu {:08X} choice: id {} parent {} label {}", ctx.r3.u32, id, parent, label);
+  if (label == kPressStart)
     return;
-  g_path.resize(page);
-  g_path[page - 1] = label;
+  // The path: this entry, then its parents (each chosen before, so known), main menu first.
+  g_labels[id] = {parent, label};
+  g_path.clear();
+  for (u32 at = id, steps = 0; steps < 8; ++steps) {
+    const auto it = g_labels.find(at);
+    if (it == g_labels.end())
+      break;
+    g_path.insert(g_path.begin(), it->second.label);
+    if (it->second.parent == 0 || it->second.parent == 0xFFFFFFFFu)
+      break;
+    at = it->second.parent;
+  }
   std::string mode = ModeOf(g_path[0]);
   std::vector<std::string> sub;
   for (size_t i = 1; i < g_path.size(); ++i) {
@@ -304,9 +322,13 @@ extern "C" REX_FUNC(sub_822D23A0) {
     std::string bytes;
     for (u32 b = 0; b < 24 && desc; ++b)
       bytes += fmt::format("{:02X}", bd::mem::try_load<u8>(desc + b));
-    const u32 number = desc ? bd::mem::try_load<u32>(desc) : 0xFFFFFFFFu;
-    const std::string name = SuperstarName(number);
-    BD_INFO("[discord] character slot {} number {} '{}' desc {}", slot, number, name, bytes);
+    // desc +0 u32 = superstar number x 100 + attire (10202 = superstar 102, attire 2), +5 the slot again, +6 the role:
+    // 0 the match's superstars, 1 the referee, 3 superstars that come in during the match (a Universe run-in, 9 s
+    // after the start), 4 two more (test of 2026-11-07).
+    const u32 id = desc ? bd::mem::try_load<u32>(desc) : 0xFFFFFFFFu;
+    const u32 role = desc ? bd::mem::try_load<u8>(desc + 6) : 0xFF;
+    const std::string name = role == 0 || role == 2 ? SuperstarName(id / 100) : std::string();
+    BD_INFO("[discord] character slot {} id {} role {} '{}' desc {}", slot, id, role, name, bytes);
     std::lock_guard lock(g.mu);
     const bool editor = [&] {
       for (u32 id : {41024u, 41025u, 41114u, 41026u, 41027u, 41021u, 41111u, 41112u, 41036u, 41171u, 41166u})
