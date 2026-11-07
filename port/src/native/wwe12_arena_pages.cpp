@@ -212,6 +212,7 @@ std::map<u32, Served> g_served;
 u32 g_mupa_sector = 0, g_mupa_units = 0;  // the rebuilt banner pack, appended to MatchHD.pac
 u32 g_mupa_sd_sector = 0, g_mupa_sd_units = 0;  // ... and to MatchSD.pac
 int g_chosen = -1;                        // the added arena chosen last (its index), -1: one of the game's
+bool g_arena_movies_served = false;  // Documents/wwe12/arena_movies mounted over the game's files (Wwe12MountArenaSlots)
 bool g_reload_vs = false;                 // the match setup's VS screen to load again (another arena on the same stage)
 // The added entrances by directory name ("/EVP3/246"): where they are in their served Nyujyo file, and an entry of
 // the game's in the same file with a name of the same length (asked in their place).
@@ -981,8 +982,16 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     // which runs first; the ribbons and walls appended to it, in its place. Appended to the disc's here, they were
     // answered past the end of the arena's copy and the loading before such a superstar's entrance waited forever:
     // Seth Rollins with the RAW (SvR 2007) arena added, 2026-11-04)
+    // (only when that copy is served: a copy left by an arena mod since removed isn't, and 2K14 Antonio Cesaro's wall
+    // was appended to it, answered past the end of the disc's evtmov.pac the game read: endless loading before his
+    // entrance, 2026-11-07. Such a copy is removed.)
     const fs::path arena_copy = out.parent_path() / "arena_movies" / fs::path(rel);
-    const bool over_arena = rel == "pac/evt/evtmov.pac" && fs::exists(arena_copy, ec);
+    if (rel == "pac/evt/evtmov.pac" && !g_arena_movies_served && fs::exists(arena_copy, ec)) {
+      std::error_code e4;
+      fs::remove_all(out.parent_path() / "arena_movies", e4);
+      REXLOG_INFO("[entrances] arena_movies not served this time (no added arena with videos): removed");
+    }
+    const bool over_arena = rel == "pac/evt/evtmov.pac" && g_arena_movies_served && fs::exists(arena_copy, ec);
     if (!(over_arena ? ReadHost(arena_copy, pac) : ReadForGame(vfs, mods, rel, pac)) || !svrfmt::ArchiveOpen(pac, a, nullptr)) {
       REXLOG_WARN("[entrances] {} can't be read: its added entrances left out", rel);
       continue;
@@ -1252,6 +1261,8 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       REXLOG_WARN("[arena pages] could not serve {}", rex::path_to_utf8(movies));
       for (auto &a : g_added)
         a.movie_units = 0;
+    } else {
+      g_arena_movies_served = true;
     }
   }
   REXLOG_INFO("[arena pages] {} added arena(s), served from {}", g_added.size(), rex::path_to_utf8(out));

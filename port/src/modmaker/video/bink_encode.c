@@ -480,11 +480,13 @@ static int bink_writer_frame_yuv(BinkWriter *w)
     static const int steps[][3] = {{3, 3, 6}, {4, 4, 10}, {6, 6, 14}, {8, 8, 20}, {10, 10, 28}, {12, 12, 36},
                                    {16, 16, 52}, {24, 24, 80}, {32, 32, 110}, {48, 48, 160}};
     const size_t ny = (size_t)w->w * w->h, nc = ny / 4,
-                 peak0 = ny * 9 / 10 < 100000 ? ny * 9 / 10 : 100000,
+                 peak0 = ny * 9 / 10 < 50000 ? ny * 9 / 10 : 50000,
                  peak = w->peak_cap && w->peak_cap < peak0 ? w->peak_cap : peak0;
     /* the rate too: the game's titantrons average at most ~26.7 KB a frame (~800 KB/s); Rollins' 2K16 one at 53 KB
-     * froze the loading even with every frame under 100 KB. A budget of 24 KB a frame, with 300 KB saved up to spend */
-    const uint64_t allowed = (w->rate ? w->rate : 24000ull) * (uint64_t)(w->done + 1) + (w->rate ? w->saved : 300000ull);
+     * froze the loading even with every frame under 100 KB. 2026-11-07: its superstars' own are all ~9.2 MB, ~10 KB a
+     * frame, none over 49 KB; 2K14 Antonio Cesaro's at 24 KB a frame (87 KB at most) froze the loading before his
+     * entrance with his ribbon (each alone played). A budget of 11 KB a frame, 50 KB at most, 300 KB saved up to spend */
+    const uint64_t allowed = (w->rate ? w->rate : 11000ull) * (uint64_t)(w->done + 1) + (w->rate ? w->saved : 300000ull);
     const size_t left = allowed > w->total ? (size_t)(allowed - w->total) : 0;
     const size_t cap = left < peak ? (left > 6000 ? left : 6000) : peak;
     const int skip = w->skip_thr, fill = w->fill_thr, pat = w->pat_thr;
