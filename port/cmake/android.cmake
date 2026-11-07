@@ -16,7 +16,7 @@ endif()
 # RenderDoc / scan mémoire, recensement D3D) : retirés de la cible Android.
 get_target_property(_wwe12_sources wwe12 SOURCES)
 list(FILTER _wwe12_sources EXCLUDE REGEX
-    "/(crash_trace|wwe12_memscan|wwe12_autocap|d3d_census)\\.cpp$")
+    "/(crash_trace|wwe12_memscan|wwe12_autocap|d3d_census|wwe12_benchmark)\\.cpp$")
 set_property(TARGET wwe12 PROPERTY SOURCES ${_wwe12_sources})
 target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_android.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_touch.cpp"
@@ -24,7 +24,8 @@ target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_andr
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_driver.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_perf_hint.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_gamecheck.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_replay.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_replay.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_benchmark_stub.cpp")
 
 # Pilotes Vulkan personnalisés (Turnip…, choisis dans le launcher) : libadrenotools
 # (https://github.com/bylaws/libadrenotools, BSD-2-Clause, avec son sous-module) clonée dans
