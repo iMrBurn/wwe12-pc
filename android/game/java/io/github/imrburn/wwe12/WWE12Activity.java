@@ -37,6 +37,7 @@ public class WWE12Activity extends SDLActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         prepareFolder(this, getExternalFilesDir(null));
+        RunState.mark(this, "started");  // the launcher notices runs that die before the first frame
         super.onCreate(savedInstanceState);
         // On-screen controller (launcher setting, on by default), over SDL's surface.
         android.content.SharedPreferences prefs = getSharedPreferences("launcher", MODE_PRIVATE);
@@ -144,6 +145,7 @@ public class WWE12Activity extends SDLActivity {
     protected void onDestroy() {
         if (tempMonitor != null) tempMonitor.stop();
         if (thermalWatch != null) thermalWatch.stop();
+        if (isFinishing()) RunState.mark(this, "clean");
         super.onDestroy();
         // Leave nothing of the runtime behind for the next PLAY (see the process note above).
         if (isFinishing()) System.exit(0);

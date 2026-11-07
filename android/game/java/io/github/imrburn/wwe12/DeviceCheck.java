@@ -63,8 +63,10 @@ public class DeviceCheck {
                     + " GHz): expect very low speed, or a crash on the title screen.");
         String g = gpu.toLowerCase(Locale.US);
         if (g.contains("mali"))
-            warnings.add("This phone has a Mali GPU (" + gpu + "), not supported yet: expect a black screen or "
-                    + "crashes. Snapdragon (Adreno) phones work.");
+            warnings.add("This phone has a Mali GPU (" + gpu + "). Mali phones work since version 0.9 alpha 6 (the game "
+                    + "converts the textures Mali cannot read; a Poco X7 Pro with a Mali-G720 was reported working), "
+                    + "but it is still early: loadings are slower and use more memory. If the picture is black or "
+                    + "broken, send the log (SHARE LAST LOG) with your phone's name.");
         else if (!g.contains("adreno") && LauncherActivity.gpuLooksUnsupported())
             warnings.add("This phone does not use a Snapdragon (Adreno) GPU: other GPUs (Mali, Xclipse, PowerVR) "
                     + "are barely tested yet and may show graphics bugs or not start.");

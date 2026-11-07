@@ -163,7 +163,44 @@ public class LauncherActivity extends Activity {
         controllerStatus.setText(pad != null
                 ? "Controller detected: " + pad + " (the on-screen buttons hide while it is connected)"
                 : "No controller detected: the on-screen buttons will show.");
+        checkStartFailures();
         showGameError();
+    }
+
+    // Two game starts in a row that never drew a picture (RunState "started" only): offer the safe mode.
+    void checkStartFailures() {
+        String state = RunState.take(this);
+        if (state.isEmpty()) return;
+        File reason = new File(getExternalFilesDir(null), "last_error.txt");
+        int fails = prefs.getInt("start_failures", 0);
+        fails = state.equals("started") && !reason.isFile() ? fails + 1 : 0;  // a stop with a reason is explained by showGameError
+        if (fails < 2 || isFinishing()) {
+            prefs.edit().putInt("start_failures", fails).apply();
+            return;
+        }
+        prefs.edit().putInt("start_failures", 0).apply();
+        final boolean customDriver = DriverManager.selected(this) != null;
+        new android.app.AlertDialog.Builder(this).setTitle("The game did not start twice")
+                .setMessage("The game closed before showing a picture the last two times.\n\nSAFE MODE uses the lowest "
+                        + "graphics (360p, no shadows, no crowd, no depth of field), turns the instant replay and the "
+                        + "60 fps entrances off" + (customDriver ? " and goes back to the phone's own GPU driver" : "")
+                        + ". You can change everything back in SETTINGS.\n\nIf it still does not start, send the log "
+                        + "(SHARE LAST LOG) with your phone's name.")
+                .setPositiveButton("USE SAFE MODE", new android.content.DialogInterface.OnClickListener() {
+                    public void onClick(android.content.DialogInterface d, int w) {
+                        config.set("svr_render_scale", "360");
+                        config.set("wwe12_shadows", "false");
+                        config.set("wwe12_crowd", "false");
+                        config.set("wwe12_dof", "false");
+                        config.set("bd_anisotropy", "0");
+                        config.set("wwe12_60fps", "false");
+                        config.set("wwe12_instant_replay", "false");
+                        config.save();
+                        if (customDriver) DriverManager.select(LauncherActivity.this, "");
+                        recreate();
+                    }
+                })
+                .setNegativeButton("NOT NOW", null).show();
     }
 
     // The game stops with a reason it wrote to last_error.txt (files/): say it once, then forget it.
@@ -632,8 +669,9 @@ public class LauncherActivity extends Activity {
         final java.util.List<DriverManager.Driver> drivers = DriverManager.list(this);
         driverBox.addView(text("GPU: " + gpuName(), 12, Color.LTGRAY, false));
         if (gpuLooksUnsupported())
-            driverBox.addView(text("This GPU looks like a Mali / Tensor / Exynos chip: the game may show a black screen"
-                    + " on it, even with a custom driver (custom drivers only exist for Snapdragon / Adreno).",
+            driverBox.addView(text("This GPU looks like a Mali / Tensor / Exynos chip. The game works on some of them "
+                    + "(the textures Mali cannot read are converted, slower loadings), but it is still early. "
+                    + "Custom drivers only exist for Snapdragon / Adreno: leave this on the system driver.",
                     12, Ui.ORANGE, false));
         driverBox.addView(text("Driver used by the game", 13, Color.LTGRAY, false));
 

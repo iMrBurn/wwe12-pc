@@ -39,7 +39,9 @@ final class GameLoading {
         h.postDelayed(new Runnable() {
             public void run() {
                 if (view.getParent() == null) return;
-                if (firstFrameLogged(logs, wallStart) || SystemClock.elapsedRealtime() - began > GIVE_UP_MS) {
+                boolean frame = firstFrameLogged(logs, wallStart);
+                if (frame) RunState.mark(activity, "ok");
+                if (frame || SystemClock.elapsedRealtime() - began > GIVE_UP_MS) {
                     view.dismiss();
                     return;
                 }
