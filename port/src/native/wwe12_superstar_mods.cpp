@@ -1859,8 +1859,12 @@ extern "C" REX_FUNC(sub_828ADFB8) {
     const uint64_t now_h = Fnv(now, 0xCBF29CE484222325ull);
     if (!g_moves_restore.count(id)) {
       const auto applied = g_applied.find(id);
+      // (past both entrance blocks, +0x1D4 and +0x1E0, 12 bytes each: from 0x1EC. It started at 486, inside the second
+      // block's champion entrances, which the game sets when an entrance is picked in it: the copy was taken for
+      // another superstar's and made again at every select screen, the entrance undone; a moveset, before, stayed.
+      // A player's report, 2026-11-08)
       bool foreign = false;
-      for (uint32_t k = 0; k < 1068 && !foreign; k = k == 5 ? 486 : k + 1)
+      for (uint32_t k = 0; k < 1068 && !foreign; k = k == 5 ? 0x1EC : k + 1)
         foreign = bd::mem::load<uint8_t>(at + k) != mv[k];
       bool original = false;
       if (const auto o = g_originals.find(id); o != g_originals.end()) {
