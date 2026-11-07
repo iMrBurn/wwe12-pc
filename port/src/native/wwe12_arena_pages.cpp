@@ -799,8 +799,10 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
   }
   // The attire mods' entrance props (attire\objects\SOBJ_<model>.bin: the props of the entrance outfit their port
   // replaces, made invisible by the Mod Maker, entrance13::OutfitProps: Cena's cap, the Undertaker's hat) in place of
-  // evtobj.pac's SOBJ/<model> (the first mod giving one wins).
-  {
+  // evtobj.pac's SOBJ/<model> (the first mod giving one wins). OFF for 1.1: with them served the game froze loading
+  // the match (the GPU waiting forever after evtobj.pac was read, stack dump 2026-11-07); mods made today that carry
+  // them are left as they are, their objects ignored.
+  if (constexpr bool kAttireProps = false; kAttireProps) {
     std::vector<fs::path> attires;
     for (fs::directory_iterator it(mods / ".svrmods" / "Attires", ec), end; !ec && it != end; it.increment(ec))
       if (it->is_directory(ec) && !fs::exists(it->path() / "disabled", ec))

@@ -200,7 +200,7 @@ class Page {
                                      : (fr ? "Remplacer aussi sa tenue d'entrée (casquette, veste, chapeau...) par celle-ci"
                                            : "Replace his entrance outfit too (cap, jacket, hat...) with this one"),
                       &outfit_too_);
-    if (ported_ && outfit_too_)
+    if (kOutfitProps && ported_ && outfit_too_)
       ImGui::TextDisabled("%s", fr ? "(ses accessoires d'entrée du jeu, casquette, chapeau..., sont cachés pour toutes ses tenues)"
                                    : "(his entrance props in the game, cap, hat..., are hidden for all his attires)");
     // Its own name on the select screen and its own render (both optional: else the game's).
@@ -930,7 +930,9 @@ class Page {
     // The props of his entrance made for his entrance outfits (Cena's cap, the Undertaker's hat): invisible copies,
     // served by the game in place of the disc's (entrance13::OutfitProps), for any of his attires ported, a new one
     // too (his script dressed the 2K14 Undertaker of attire 3 in his hat). Not for an added superstar (his own).
-    if (ported_ && outfit_too_ && disc_ && !s.added) {
+    // OFF for 1.1 (kOutfitProps): the game froze loading a match with them, the GPU waiting forever after evtobj.pac
+    // was read (stack dump, 2026-11-07: Cena vs Undertaker, and 2K14 Cesaro's entrance). For 1.2: another way.
+    if (kOutfitProps && ported_ && outfit_too_ && disc_ && !s.added) {
       std::vector<std::string> outfits;
       for (const auto &a : attires_)
         if (a.size() == 8 && a[7] == '4')
@@ -967,6 +969,7 @@ class Page {
                   std::to_string(outfit_props.size()) + ".";
   }
 
+  static constexpr bool kOutfitProps = false;  // (the entrance props hidden: off, see Make)
   // The entrance outfit of the attire open ("000NNNA2" -> "000NNNA4") in the superstar's file, -1 if none.
   int OutfitIndex() const {
     if (attire_ < 0 || attire_ >= int(attires_.size()) || attires_[attire_].size() != 8 || attires_[attire_][7] != '2')
