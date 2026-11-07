@@ -174,7 +174,10 @@ inline bool AddTail12(Bytes &evp, int number, uint32_t fullscreen = 0) {
       if (r + 2 > evp.size())
         return false;
       const uint32_t type = uint32_t(evp[r]) << 8 | evp[r + 1];
-      if (type == 1 || type == 8)
+      // (kept only when WWE '12's: {u32 frame, u32 3}. 2K14 Chris Jericho's 104 has a music record of 2K14's own
+      // form, {u16 120, u16 20, u16 1174, u16 3}: WWE '12 read frame 7864340 and never started his theme, a player's
+      // report 2026-11-06; replaced as the others)
+      if ((type == 1 || type == 8) && r + 12 <= evp.size() && b32(r + 4) < 0x10000 && (b32(r + 8) >> 16) == 0)
         return false;
     }
     t = own;
