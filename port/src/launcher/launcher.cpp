@@ -534,6 +534,7 @@ struct Settings {
   int music_db = -20;  // xmp_music_level_db, -40..-6
   std::string gpu;
   bool exit_entry = true;
+  bool discord = false;  // wwe12_discord (Discord Rich Presence, opt-in)
   bool keyboard = true;
   int keyboard_player = 1;  // 1..4: the player the keyboard plays as (2 = separate from pad 1)
   char binds[std::size(kBinds)][64] = {};
@@ -576,6 +577,7 @@ void LoadSettings() {
   g_s.music_db = std::clamp(g_toml.GetInt("xmp_music_level_db", -20), -40, -6);
   g_s.gpu = g_toml.GetString("svr_gpu_device", "");
   g_s.exit_entry = g_toml.GetBool("wwe12_quit_entry", true);
+  g_s.discord = g_toml.GetBool("wwe12_discord", false);
   g_s.keyboard = g_toml.GetBool("mnk_mode", true);
   g_s.keyboard_player = std::clamp(g_toml.GetInt("mnk_player", 1), 1, 4);
   for (size_t i = 0; i < std::size(kBinds); ++i)
@@ -609,6 +611,7 @@ void SaveSettings() {
   g_toml.SetInt("xmp_music_level_db", g_s.music_db);
   g_toml.SetString("svr_gpu_device", g_s.gpu);
   g_toml.SetBool("wwe12_quit_entry", g_s.exit_entry);
+  g_toml.SetBool("wwe12_discord", g_s.discord);
   g_toml.SetBool("mnk_mode", g_s.keyboard);
   g_toml.SetInt("mnk_player", g_s.keyboard_player);
   for (size_t i = 0; i < std::size(kBinds); ++i)
@@ -1056,6 +1059,13 @@ void PageSettings() {
       ImGui::SameLine();
       ImGui::TextDisabled("(%s)", t.exit_hint);
       changed |= ImGui::Checkbox(t.show_fps, &g_s.show_fps);
+      {
+        const bool fr_ = g_s.language == 4;
+        changed |= ImGui::Checkbox(fr_ ? "Afficher à quoi je joue sur Discord" : "Show what I'm playing on Discord",
+                                   &g_s.discord);
+        ImGui::TextDisabled("%s", fr_ ? "Rien n'est envoyé à Discord si la case est décochée. Sinon : seulement « joue à WWE '12 PC » et menu / match."
+                                      : "Nothing is sent to Discord unless this is ticked. Only \"playing WWE '12 PC\" and menu / match.");
+      }
 
       // Universe mode (the same two settings are in the game's OPTIONS).
       ImGui::Dummy(ImVec2(0, 8));
