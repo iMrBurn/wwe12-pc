@@ -347,7 +347,34 @@ inline bool ConvertModel(const svrfmt::Model &svr, const svrfmt::Model &base, sv
         ++rep->unmapped_bones;
       continue;
     }
-    const auto si = pos(ws[i], 10), wi = pos(wb[size_t(target[i])], 1);
+    const auto si = pos(ws[i], 10);
+    auto wi = pos(wb[size_t(target[i])], 1);
+    // The head kept at SvR's height over the neck when WWE '12's neck is much longer (its divas: Kelly Kelly's neck
+    // joint to head joint 15.1 cm, SvR 2007 Lita's 7.5, Torrie's 10.5): placed on WWE '12's head joint, the head rose
+    // ~4.5 cm and the neck stretched (Jay, Discord, 2026-11-07; seen in the game on Lita's entrance). The face and the
+    // hair follow the head's move.
+    // (only when the head stands much higher over the shoulders than in SvR - by more than 3.5 cm: SvR 2011's Triple
+    // H, 2.5 cm, keeps WWE '12's head as before)
+    int s_clav = -1, b_clav = -1;
+    for (size_t k = 0; k < svr.nodes.size(); ++k)
+      if (svr.nodes[k].name == "l_sakotsu")
+        s_clav = int(k);
+    for (size_t k = 0; k < base.nodes.size(); ++k)
+      if (base.nodes[k].name == "Bip L Clavicle")
+        b_clav = int(k);
+    if (svr.nodes[i].name == "atama" && p >= 0 && size_t(p) < i && target[size_t(p)] >= 0 && s_clav >= 0 &&
+        b_clav >= 0) {
+      const auto sk = pos(ws[size_t(p)], 10), bk = pos(wb[size_t(target[size_t(p)])], 1);
+      const double ls = len(sub(si, sk)), lb = len(sub(wi, bk));
+      const double over_svr = len(sub(si, pos(ws[size_t(s_clav)], 10))), over_w12 = len(sub(wi, pos(wb[size_t(b_clav)], 1)));
+      if (over_w12 - over_svr > 3.5) {
+        for (int q = 0; q < 3; ++q)
+          wi[q] = bk[q] + (si[q] - sk[q]);
+        if (rep)
+          rep->notes.push_back("neck: SvR's length kept (" + std::to_string(int(ls * 10) / 10.0).substr(0, 4) +
+                               " cm, WWE '12's " + std::to_string(int(lb * 10) / 10.0).substr(0, 4) + ")");
+      }
+    }
     int farthest = -1;
     double farthest_len = 5;  // (cm: a child at the joint gives no direction)
     // (not a hair chain: the base's chain of the same name is another hairstyle's - Drew McIntyre of SvR on WWE '12's
