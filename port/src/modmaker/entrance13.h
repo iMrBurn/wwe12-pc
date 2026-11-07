@@ -980,14 +980,16 @@ inline int HideMissing(std::vector<Part> &parts, const disc::GameDisc &w12, cons
   return hidden;
 }
 
-// The props of WWE '12 superstar `number`'s entrance (his script /EVP*/<number>: objects of type 0x100) made for his
-// entrance outfits `outfits` ("00013904", "00013924": a texture of the prop named with the last four digits of one,
-// "13904Cap" John Cena's cap 2081, "0304hat" the Undertaker's hat 2071 / 3071), each as an invisible copy (evtobj.pac's
-// SOBJ/<model>, its model's points all at one place). An attire mod with a port carries them, so the port isn't
-// dressed in them (2026-11-07; his script is the same for all his attires: they lose them for all). Parts "SOBJ"
-// numbered by model.
+// The props of WWE '12 superstar `number`'s entrance made for his entrance outfits `outfits` ("00013904",
+// "00013924": a texture of the prop named with the last four digits of one, "13904Cap" John Cena's cap 2081, "0304hat"
+// the Undertaker's hat 2071 / 3071) taken out of his script: its parts /EVP*/<number> and their segments 1x<number>
+// (each a list of objects; a prop of type 0x100 becomes model 2001 with no slot shown, as HideMissing does for the
+// props of ported entrances, seen working). An attire mod with a port carries them, so the port isn't dressed in them
+// (his script is the same for all his attires: they lose them for all). Parts "EVP" numbered as the game's, unpacked.
+// (2026-11-07: invisible copies of the props themselves, in evtobj.pac, froze the match's loading: the GPU waited.)
 inline std::vector<Part> OutfitProps(const disc::GameDisc &w12, int number, const std::vector<std::string> &outfits) {
   using detail::Be32;
+  using yanm::ik::detail::Put32;
   std::vector<Part> out;
   std::vector<std::string> codes;
   for (const auto &o : outfits)
@@ -995,6 +997,8 @@ inline std::vector<Part> OutfitProps(const disc::GameDisc &w12, int number, cons
       codes.push_back(o.substr(4));
   if (codes.empty())
     return out;
+  // his script's parts and the props they show
+  std::vector<Part> scripts;
   std::set<uint32_t> models;
   for (const auto &f : w12.List("pac/evt")) {
     if (_strnicmp(f.c_str(), "Nyujyo", 6) != 0)
@@ -1003,52 +1007,56 @@ inline std::vector<Part> OutfitProps(const disc::GameDisc &w12, int number, cons
     if (!detail::OpenPac(w12, "pac/evt/" + f, a))
       continue;
     for (auto &k : a.root.kids) {
-      if (k.group.rfind("EVP", 0) != 0 || atoi(k.name.c_str()) != number)
+      const int n = atoi(k.name.c_str());
+      if (k.group.rfind("EVP", 0) != 0 || (n != number && !(n >= 10000 && n % 1000 == number)))
         continue;
-      const Bytes evp = svrfmt::Unpack(svrfmt::ArchiveData(k));
-      if (evp.size() < 0x50)
+      Part p{n, "EVP", svrfmt::Unpack(svrfmt::ArchiveData(k))};
+      if (p.data.size() < 0x50)
         continue;
-      const uint32_t n = Be32(evp, 0x40) & 0xFFFF, t = Be32(evp, 0x48) + 8;
-      for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= evp.size(); ++i)
-        if (Be32(evp, t + 32 * size_t(i) + 8) == 0x100)
-          models.insert(Be32(evp, t + 32 * size_t(i) + 4));
+      const uint32_t c = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
+      for (uint32_t i = 0; i < c && t + 32 * size_t(i + 1) <= p.data.size(); ++i)
+        if (Be32(p.data, t + 32 * size_t(i) + 8) == 0x100)
+          models.insert(Be32(p.data, t + 32 * size_t(i) + 4));
+      scripts.push_back(std::move(p));
     }
   }
+  // those made for his outfits
+  std::set<uint32_t> hide;
   svrfmt::Archive objs;
   if (models.empty() || !detail::OpenPac(w12, "pac/evt/evtobj.pac", objs))
     return out;
   for (auto &k : objs.root.kids) {
-    const int model = atoi(k.name.c_str());
-    if (k.group.rfind("SOBJ", 0) != 0 || !models.count(uint32_t(model)))
-      continue;
+    const uint32_t model = uint32_t(atoi(k.name.c_str()));
     std::vector<svrfmt::PachEntry> kids;
-    if (!svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(k)), kids))
+    if (k.group.rfind("SOBJ", 0) != 0 || !models.count(model) ||
+        !svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(k)), kids))
       continue;
-    bool mine = false;
-    for (auto &c : kids)
-      if (c.id == 10) {
-        std::vector<svrfmt::BundleTexture> t;
-        if (svrfmt::BundleRead(svrfmt::Unpack(c.data), t))
-          for (const auto &x : t)
-            for (const auto &code : codes)
-              mine |= x.name.find(code) != std::string::npos;
-      }
-    if (!mine)
-      continue;
-    bool hidden = false;
     for (auto &c : kids) {
-      svrfmt::Model m;
-      if (c.id != 0 || !svrfmt::JboyRead(svrfmt::Unpack(c.data), m))
-        continue;
-      for (auto &me : m.meshes)
-        for (auto &v : me.verts)
-          if (!me.verts.empty())
-            std::copy(me.verts[0].pos, me.verts[0].pos + 3, v.pos);
-      c.data = svrfmt::JboyWrite(m);
-      hidden = true;
+      std::vector<svrfmt::BundleTexture> t;
+      if (c.id == 10 && svrfmt::BundleRead(svrfmt::Unpack(c.data), t))
+        for (const auto &x : t)
+          for (const auto &code : codes)
+            if (x.name.find(code) != std::string::npos)
+              hide.insert(model);
     }
-    if (hidden)
-      out.push_back({model, "SOBJ", svrfmt::PachWrite(kids)});
+  }
+  if (hide.empty())
+    return out;
+  for (auto &p : scripts) {
+    const uint32_t c = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
+    bool changed = false;
+    for (uint32_t i = 0; i < c && t + 32 * size_t(i + 1) <= p.data.size(); ++i) {
+      const size_t q = t + 32 * size_t(i);
+      if (Be32(p.data, q + 8) != 0x100 || !hide.count(Be32(p.data, q + 4)))
+        continue;
+      Put32(p.data, q + 4, 2001);
+      const uint32_t ns = Be32(p.data, q + 24) >> 16, bp = Be32(p.data, q + 28) + 8;
+      for (uint32_t k = 0; k < ns && bp + 212 * size_t(k) + 4 <= p.data.size(); ++k)
+        p.data[bp + 212 * size_t(k) + 2] = 0;
+      changed = true;
+    }
+    if (changed)
+      out.push_back(std::move(p));
   }
   return out;
 }

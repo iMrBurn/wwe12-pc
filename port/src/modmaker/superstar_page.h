@@ -930,8 +930,8 @@ class Page {
     // The props of his entrance made for his entrance outfits (Cena's cap, the Undertaker's hat): invisible copies,
     // served by the game in place of the disc's (entrance13::OutfitProps), for any of his attires ported, a new one
     // too (his script dressed the 2K14 Undertaker of attire 3 in his hat). Not for an added superstar (his own).
-    // OFF for 1.1 (kOutfitProps): the game froze loading a match with them, the GPU waiting forever after evtobj.pac
-    // was read (stack dump, 2026-11-07: Cena vs Undertaker, and 2K14 Cesaro's entrance). For 1.2: another way.
+    // (taken out of his entrance script: invisible copies of the props in evtobj.pac froze the match's loading, the GPU
+    // waiting forever, stack dump 2026-11-07)
     if (kOutfitProps && ported_ && outfit_too_ && disc_ && !s.added) {
       std::vector<std::string> outfits;
       for (const auto &a : attires_)
@@ -950,8 +950,8 @@ class Page {
                 ", made with the WWE '12 Mod Maker.\n";
     std::vector<std::pair<std::string, Bytes>> zip = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
                                                       {"attire/attire.pac", std::move(one)}};
-    for (const auto &p : outfit_props)  // (the game puts them in evtobj.pac: wwe12_arena_pages.cpp)
-      zip.push_back({"attire/objects/SOBJ_" + std::to_string(p.number) + ".bin", p.data});
+    for (const auto &p : outfit_props)  // (his script's parts, served by the game in place of its own: wwe12_arena_pages.cpp)
+      zip.push_back({"attire/entrance/EVP_" + std::to_string(p.number) + ".bin", p.data});
     // (SSFA / SSFB / SSFC "ANNN" in the game's pack, superstar_pack.h: the select screen's, the VS screen's...)
     for (int hd = 0; hd < 2; ++hd)
       for (int k = 0; k < 3; ++k)
@@ -965,11 +965,11 @@ class Page {
     message_ok_ = true;
     message_ = (fr ? "Mod créé et installé : " : "Mod made and installed: ") + media::Utf8(save.wstring());
     if (!outfit_props.empty())
-      message_ += (fr ? " Accessoires d'entrée de cette tenue cachés : " : " Entrance props of that outfit hidden: ") +
-                  std::to_string(outfit_props.size()) + ".";
+      message_ += (fr ? " Accessoires de sa tenue d'entrée retirés de son script (parties : " : " His entrance outfit's props taken out of his script (parts: ") +
+                  std::to_string(outfit_props.size()) + ").";
   }
 
-  static constexpr bool kOutfitProps = false;  // (the entrance props hidden: off, see Make)
+  static constexpr bool kOutfitProps = true;  // (the entrance props hidden, from his script: Make)
   // The entrance outfit of the attire open ("000NNNA2" -> "000NNNA4") in the superstar's file, -1 if none.
   int OutfitIndex() const {
     if (attire_ < 0 || attire_ >= int(attires_.size()) || attires_[attire_].size() != 8 || attires_[attire_][7] != '2')

@@ -797,31 +797,45 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       }
     ec.clear();
   }
-  // The attire mods' entrance props (attire\objects\SOBJ_<model>.bin: the props of the entrance outfit their port
-  // replaces, made invisible by the Mod Maker, entrance13::OutfitProps: Cena's cap, the Undertaker's hat) in place of
-  // evtobj.pac's SOBJ/<model> (the first mod giving one wins). OFF for 1.1: with them served the game froze loading
-  // the match (the GPU waiting forever after evtobj.pac was read, stack dump 2026-11-07); mods made today that carry
-  // them are left as they are, their objects ignored.
-  if (constexpr bool kAttireProps = false; kAttireProps) {
+  // The attire mods' entrance scripts (attire\entrance\EVP_<n>.bin: the superstar's script and its segments 1x<n>
+  // with the props of his entrance outfits taken out, entrance13::OutfitProps: Cena's cap over a ported attire) in
+  // place of the game's /EVP*/<n>, wherever it is (Nyujyo0-A.pac; the first mod giving one wins). (Their earlier
+  // attire\objects\SOBJ_<model>.bin, invisible props in evtobj.pac, froze the match's loading: ignored.)
+  {
     std::vector<fs::path> attires;
     for (fs::directory_iterator it(mods / ".svrmods" / "Attires", ec), end; !ec && it != end; it.increment(ec))
-      if (it->is_directory(ec) && !fs::exists(it->path() / "disabled", ec))
+      if (it->is_directory(ec) && !fs::exists(it->path() / "disabled", ec) &&
+          fs::is_directory(it->path() / "attire" / "entrance", ec))
         attires.push_back(it->path());
     ec.clear();
     std::sort(attires.begin(), attires.end());
-    std::set<int> given;
-    for (const auto &d : attires) {
-      for (fs::directory_iterator it(d / "attire" / "objects", ec), end; !ec && it != end; it.increment(ec)) {
-        const std::string f = it->path().filename().string();
-        const int model = f.rfind("SOBJ_", 0) == 0 ? atoi(f.c_str() + 5) : 0;
-        Part part;
-        if (model < 1000 || model > 9999 || given.count(model) || !ReadHost(it->path(), part.data) || part.data.empty())
+    std::map<std::string, std::pair<std::string, std::string>> where;  // (name -> file, group) of the game's scripts
+    if (!attires.empty())
+      for (const char *f : {"pac/evt/Nyujyo0.pac", "pac/evt/Nyujyo1.pac", "pac/evt/Nyujyo2.pac", "pac/evt/Nyujyo3.pac",
+                            "pac/evt/Nyujyo4.pac", "pac/evt/Nyujyo5.pac", "pac/evt/Nyujyo6.pac", "pac/evt/Nyujyo7.pac",
+                            "pac/evt/Nyujyo8.pac", "pac/evt/Nyujyo9.pac", "pac/evt/NyujyoA.pac"}) {
+        std::vector<uint8_t> pac;
+        svrfmt::Archive a;
+        if (!ReadForGame(vfs, mods, f, pac) || !svrfmt::ArchiveOpen(pac, a, nullptr))
           continue;
-        given.insert(model);
-        part.group = "SOBJ";
-        part.name = std::to_string(model);
+        for (const auto &k : a.root.kids)
+          if (const std::string g = Trimmed(k.group); g.size() == 4 && g.rfind("EVP", 0) == 0)
+            where.emplace(Trimmed(k.name), std::make_pair(std::string(f), g));
+      }
+    std::set<std::string> given;
+    for (const auto &d : attires) {
+      for (fs::directory_iterator it(d / "attire" / "entrance", ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string f = it->path().filename().string();
+        const std::string name = f.rfind("EVP_", 0) == 0 && f.size() > 8 ? std::to_string(atoi(f.c_str() + 4)) : "";
+        const auto at = where.find(name);
+        Part part;
+        if (at == where.end() || given.count(name) || !ReadHost(it->path(), part.data) || part.data.empty())
+          continue;
+        given.insert(name);
+        part.group = at->second.second;
+        part.name = name;
         part.replace = true;
-        parts["pac/evt/evtobj.pac"].push_back(std::move(part));
+        parts[at->second.first].push_back(std::move(part));
       }
       ec.clear();
     }
