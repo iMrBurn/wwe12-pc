@@ -728,7 +728,9 @@ inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out, const svrfmt:
           torso.push_back(std::move(s));
       }
   }
-  // The torso's front and back (lowest and highest z: +z is the back) by 2 cm cells of x and y, below the neck.
+  // The body's front and back surfaces (lowest and highest z: +z is the back) by 1 cm cells of x and y, below the neck,
+  // from its triangles (its vertices alone are too far apart: Kelly Kelly's back between them stood over the strands,
+  // 2026-11-07).
   std::map<std::pair<int, int>, std::pair<double, double>> back;
   double neck_y = 1e30;
   if (body) {
@@ -736,14 +738,36 @@ inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out, const svrfmt:
     for (size_t i = 0; i < body->nodes.size(); ++i)
       if (body->nodes[i].name == "Bip Neck")
         neck_y = wbody[i].m[7];
-    for (const auto &s : torso) {
-      const auto key = std::make_pair(int(std::floor(s.pos[0] / 2)), int(std::floor(s.pos[1] / 2)));
-      const auto it = back.find(key);
-      if (it == back.end())
-        back[key] = {s.pos[2], s.pos[2]};
-      else
-        it->second = {std::min(it->second.first, double(s.pos[2])), std::max(it->second.second, double(s.pos[2]))};
-    }
+    for (const auto &bm : body->meshes)
+      for (const auto &st : bm.strips)
+        for (size_t q = 0; q + 2 < st.indices.size(); q += st.IsStrip() ? 1 : 3) {
+          const uint16_t ia = st.indices[q], ib = st.indices[q + 1], ic = st.indices[q + 2];
+          if (ia == ib || ib == ic || ia == ic || ia >= bm.verts.size() || ib >= bm.verts.size() || ic >= bm.verts.size())
+            continue;
+          const float *a = bm.verts[ia].pos, *b = bm.verts[ib].pos, *c = bm.verts[ic].pos;
+          if (std::max({a[1], b[1], c[1]}) < neck_y)
+            continue;
+          const double area = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+          if (std::abs(area) < 1e-6)
+            continue;
+          const int x0 = int(std::floor(std::min({a[0], b[0], c[0]}))), x1 = int(std::ceil(std::max({a[0], b[0], c[0]})));
+          const int y0 = int(std::floor(std::min({a[1], b[1], c[1]}))), y1 = int(std::ceil(std::max({a[1], b[1], c[1]})));
+          for (int y = y0; y <= y1; ++y)
+            for (int x = x0; x <= x1; ++x) {
+              const double px = x + 0.5, py = y + 0.5;
+              const double l0 = ((b[0] - px) * (c[1] - py) - (c[0] - px) * (b[1] - py)) / area;
+              const double l1 = ((c[0] - px) * (a[1] - py) - (a[0] - px) * (c[1] - py)) / area;
+              const double l2 = 1 - l0 - l1;
+              if (l0 < -0.01 || l1 < -0.01 || l2 < -0.01)
+                continue;
+              const double z = l0 * a[2] + l1 * b[2] + l2 * c[2];
+              const auto it = back.find({x, y});
+              if (it == back.end())
+                back[{x, y}] = {z, z};
+              else
+                it->second = {std::min(it->second.first, z), std::max(it->second.second, z)};
+            }
+        }
   }
   for (size_t mi = 0; mi < out.meshes.size() && mi < svr.meshes.size(); ++mi) {
     const svrfmt::Mesh &src = svr.meshes[mi];
@@ -784,9 +808,9 @@ inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out, const svrfmt:
       // dark marks on Lita's back, 2026-11-07)
       if (!back.empty() && m.verts[k].pos[1] > neck_y) {
         const auto &p = m.verts[k].pos;
-        const auto it = back.find({int(std::floor(p[0] / 2)), int(std::floor(p[1] / 2))});
-        if (it != back.end() && p[2] > (it->second.first + it->second.second) / 2 && p[2] < it->second.second + 0.3)
-          m.verts[k].pos[2] = float(it->second.second + 0.3);
+        const auto it = back.find({int(std::floor(p[0])), int(std::floor(p[1]))});
+        if (it != back.end() && p[2] > (it->second.first + it->second.second) / 2 && p[2] < it->second.second + 0.6)
+          m.verts[k].pos[2] = float(it->second.second + 0.6);
       }
       const double t = std::clamp((m.verts[k].pos[1] - hy) / (cy - hy), 0.0, 1.0);
       // (by node: the head-to-chest hanging, then the back's nearest vertex mixed in below half way)
@@ -1443,9 +1467,12 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
     const Bytes settings = id == 10000 && child(svr, 60) ? HairSettings(svrfmt::ArchiveData(*child(svr, 60))) : Bytes();
     if (!ConvertModel(xs, xb, xo, &extra, !settings.empty(), &turns))
       continue;
+    // (SvR's chains kept: only with SvR's settings - a base's own chains, a diva's, don't count: Kelly Kelly's hair
+    // skeleton has its kami_b chains, so SvR 2007 Lita's strands skipped HangHair, stayed stiff on the head and lay
+    // inside her back, 2026-11-07)
     bool chains = false;
     for (const auto &n : xo.nodes)
-      chains = chains || n.name.rfind("kami", 0) == 0;
+      chains = chains || (!settings.empty() && n.name.rfind("kami", 0) == 0);
     if (id == 10000) {
       hair_settings = chains ? settings : Bytes();
       hair_done = true;
