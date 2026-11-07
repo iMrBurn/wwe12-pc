@@ -299,7 +299,9 @@ REX_EXTERN(__imp__sub_8253A028);
 // The menus' "decide" handler: it asks sub_8253A028(this) for the selected entry's record
 // (0x4C bytes: +0 id, +4 parent, +8 page, +24 label). The main menu's (page 1) record labelled
 // 45061, SHOP relabelled EXIT by wwe12_menu_patch.cpp, closes the game.
+void Wwe12DiscordDecide(const PPCContext &ctx, u8 *base);  // wwe12_discord.cpp: the mode for Discord
 extern "C" REX_FUNC(sub_8253C3F0) {
+  Wwe12DiscordDecide(ctx, base);
   // OPTIONS > GRAPHICS: the entry keeps its sub-menu (DISPLAY / GRAPHICS / ADVANCED,
   // wwe12_menu_patch.cpp); the page to open is noted here (wwe12_graphics_menu.cpp).
   if (Wwe12GraphicsNativeEnabled()) {
