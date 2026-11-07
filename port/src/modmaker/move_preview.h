@@ -66,6 +66,10 @@ class Preview {
   }
 
   void Draw(bool fr, const ImVec2 &size) {
+    ImGui::PushTextWrapPos(0);
+    struct Pop {
+      ~Pop() { ImGui::PopTextWrapPos(); }
+    } pop;
     if (!loaded_) {
       ImGui::TextDisabled("%s", fr ? "(choisissez un catcheur pour le voir ici)" : "(choose a superstar to see him here)");
       return;
