@@ -728,6 +728,23 @@ inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out, const svrfmt:
           torso.push_back(std::move(s));
       }
   }
+  // The torso's front and back (lowest and highest z: +z is the back) by 2 cm cells of x and y, below the neck.
+  std::map<std::pair<int, int>, std::pair<double, double>> back;
+  double neck_y = 1e30;
+  if (body) {
+    const auto wbody = World(*body);
+    for (size_t i = 0; i < body->nodes.size(); ++i)
+      if (body->nodes[i].name == "Bip Neck")
+        neck_y = wbody[i].m[7];
+    for (const auto &s : torso) {
+      const auto key = std::make_pair(int(std::floor(s.pos[0] / 2)), int(std::floor(s.pos[1] / 2)));
+      const auto it = back.find(key);
+      if (it == back.end())
+        back[key] = {s.pos[2], s.pos[2]};
+      else
+        it->second = {std::min(it->second.first, double(s.pos[2])), std::max(it->second.second, double(s.pos[2]))};
+    }
+  }
   for (size_t mi = 0; mi < out.meshes.size() && mi < svr.meshes.size(); ++mi) {
     const svrfmt::Mesh &src = svr.meshes[mi];
     svrfmt::Mesh &m = out.meshes[mi];
@@ -762,6 +779,15 @@ inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out, const svrfmt:
         }
       if (!strand)
         continue;
+      // (a strand's point sunk into the back, below the neck: put back on the back's surface, just outside it - in SvR
+      // the hair physics lifted them off the body; at rest they lie inside it, their tips coming out of the skin as
+      // dark marks on Lita's back, 2026-11-07)
+      if (!back.empty() && m.verts[k].pos[1] > neck_y) {
+        const auto &p = m.verts[k].pos;
+        const auto it = back.find({int(std::floor(p[0] / 2)), int(std::floor(p[1] / 2))});
+        if (it != back.end() && p[2] > (it->second.first + it->second.second) / 2 && p[2] < it->second.second + 0.3)
+          m.verts[k].pos[2] = float(it->second.second + 0.3);
+      }
       const double t = std::clamp((m.verts[k].pos[1] - hy) / (cy - hy), 0.0, 1.0);
       // (by node: the head-to-chest hanging, then the back's nearest vertex mixed in below half way)
       std::map<int, double> mix = {{head, 1 - t}, {chest, t}};
