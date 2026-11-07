@@ -666,7 +666,11 @@ inline Bytes Shine(const Bytes &svr_normal, const Bytes &base_normal) {
 // in the game, 2026-10-26; RenderDoc: the strands drawn, opaque, behind the shoulders). The strands' vertices are
 // weighted from the head to the upper chest (Bip Spine1, in the hair model's skeleton) as they go down, from the
 // head's joint to the chest's: they hang from the shoulders more than from the head.
-inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out) {
+// body: the converted body. The strands lower than half way to the chest take, more and more down to the chest's
+// height and wholly below it, the weights of the body's nearest vertex on the torso, so they lie on the back as it
+// bends: hung from the chest bone alone, the long hair of SvR 2007 Lita went through her back when she leaned forward
+// in the match (2026-11-07).
+inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out, const svrfmt::Model *body = nullptr) {
   int head = -1, chest = -1;
   for (size_t i = 0; i < out.nodes.size(); ++i) {
     if (out.nodes[i].name == "Bip Head")
@@ -680,6 +684,50 @@ inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out) {
   const double hy = w[size_t(head)].m[7], cy = w[size_t(chest)].m[7];
   if (std::abs(cy - hy) < 1)
     return;
+  // The torso's vertices (their main bone a spine, the neck or a clavicle) and their weights by bone name; a bone the
+  // hair's skeleton hasn't is taken as its nearest parent that it has.
+  struct Skin {
+    float pos[3];
+    std::vector<std::pair<int, float>> w;  // (the hair model's node, weight)
+  };
+  std::vector<Skin> torso;
+  if (body) {
+    std::map<std::string, int> in_hair;
+    for (size_t i = 0; i < out.nodes.size(); ++i)
+      in_hair[out.nodes[i].name] = int(i);
+    auto hair_node = [&](int n) {
+      for (int q = n; q >= 0 && size_t(q) < body->nodes.size(); q = body->nodes[size_t(q)].parent)
+        if (const auto it = in_hair.find(body->nodes[size_t(q)].name); it != in_hair.end())
+          return it->second;
+      return -1;
+    };
+    auto torso_bone = [](const std::string &n) {
+      return n.rfind("Bip Spine", 0) == 0 || n == "Bip Neck" || n.find("Clavicle") != std::string::npos ||
+             n.find("Chest") != std::string::npos;
+    };
+    for (const auto &bm : body->meshes)
+      for (size_t k = 0; k < bm.verts.size(); ++k) {
+        Skin s;
+        memcpy(s.pos, bm.verts[k].pos, sizeof(s.pos));
+        int main_node = -1;
+        float main_w = -1;
+        for (const auto &blk : bm.weights) {
+          if (k >= blk.size() || blk[k].bones[0] >= bm.palette.size())
+            continue;
+          const int n = bm.palette[blk[k].bones[0]] - 1;
+          const float wt = bm.weights.size() == 1 ? 1.0f : blk[k].weight;
+          if (n < 0 || wt <= 0)
+            continue;
+          if (wt > main_w)
+            main_w = wt, main_node = n;
+          if (const int h = hair_node(n); h >= 0)
+            s.w.push_back({h, wt});
+        }
+        if (main_node >= 0 && size_t(main_node) < body->nodes.size() && torso_bone(body->nodes[size_t(main_node)].name) &&
+            !s.w.empty())
+          torso.push_back(std::move(s));
+      }
+  }
   for (size_t mi = 0; mi < out.meshes.size() && mi < svr.meshes.size(); ++mi) {
     const svrfmt::Mesh &src = svr.meshes[mi];
     svrfmt::Mesh &m = out.meshes[mi];
@@ -715,11 +763,45 @@ inline void HangHair(const svrfmt::Model &svr, svrfmt::Model &out) {
       if (!strand)
         continue;
       const double t = std::clamp((m.verts[k].pos[1] - hy) / (cy - hy), 0.0, 1.0);
+      // (by node: the head-to-chest hanging, then the back's nearest vertex mixed in below half way)
+      std::map<int, double> mix = {{head, 1 - t}, {chest, t}};
+      const double b = std::clamp((t - 0.5) / 0.5, 0.0, 1.0);
+      if (b > 0 && !torso.empty()) {
+        const auto &p = m.verts[k].pos;
+        size_t best = 0;
+        double best_d = 1e30;
+        for (size_t q = 0; q < torso.size(); ++q) {
+          const double dx = torso[q].pos[0] - p[0], dy = torso[q].pos[1] - p[1], dz = torso[q].pos[2] - p[2];
+          const double d = dx * dx + dy * dy + dz * dz;
+          if (d < best_d)
+            best_d = d, best = q;
+        }
+        if (best_d < 30.0 * 30.0) {  // (within 30 cm: a strand far from the body keeps hanging)
+          for (auto &[n, x] : mix)
+            x *= 1 - b;
+          double total = 0;
+          for (const auto &[n, x] : torso[best].w)
+            total += x;
+          for (const auto &[n, x] : torso[best].w)
+            mix[n] += b * x / std::max(total, 1e-9);
+        }
+      }
+      // the strongest ones, as many as the mesh has influences, summing to 1
+      std::vector<std::pair<double, int>> order;
+      for (const auto &[n, x] : mix)
+        if (x > 1e-4)
+          order.push_back({x, n});
+      std::sort(order.rbegin(), order.rend());
+      order.resize(std::min(order.size(), m.weights.size()));
+      double sum = 0;
+      for (const auto &o : order)
+        sum += o.first;
       for (size_t j = 0; j < m.weights.size(); ++j) {
         auto &wt = m.weights[j][k];
-        wt.bones[0] = j == 0 ? uint8_t(sh) : j == 1 ? uint8_t(sc) : 255;
+        const int s = j < order.size() ? slot(order[j].second) : 255;
+        wt.bones[0] = s < 255 ? uint8_t(s) : 255;
         wt.bones[1] = wt.bones[2] = wt.bones[3] = 255;
-        wt.weight = j == 0 ? float(1 - t) : j == 1 ? float(t) : 0.0f;
+        wt.weight = j < order.size() && s < 255 ? float(order[j].first / std::max(sum, 1e-9)) : 0.0f;
       }
     }
   }
@@ -1343,7 +1425,7 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
       hair_done = true;
     }
     if (!chains)
-      HangHair(xs, xo);
+      HangHair(xs, xo, id == 10000 ? &mo : nullptr);
     // (their places in the colour picture: its alpha kept there, below. Not a piece whose places are mostly the
     // body's: SvR 2011 Kelly Kelly's hair model holds a piece on her clothes' places, and with SvR's alpha kept there
     // her top was cut away - Discord, Jay, 2026-11-05)
