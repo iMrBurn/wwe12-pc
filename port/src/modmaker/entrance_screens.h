@@ -212,6 +212,19 @@ inline bool EncodeScreen(const std::vector<std::vector<uint8_t>> &pics_in, int W
   while (too_big() && q < last)
     if (!EncodeFrames(pics, W, H, 1, out, ++q))
       return false;
+  // Busy pictures whose frames stay over kScreenFrameBytes at the lossiest step (2K14 Cesaro's wall, fine lines
+  // everywhere: 33 KB) are softened, each pixel the mean of its 2 x 2 block (half the detail), then again.
+  for (int soften = 0; LargestFrame(out) > kScreenFrameBytes && soften < 3; ++soften) {
+    for (auto &p : pics)
+      for (int y = soften & 1; y + 1 < H; y += 2)  // (the grid moved by one pixel every other time)
+        for (int x = soften & 1; x + 1 < W; x += 2)
+          for (int c = 0; c < 4; ++c) {
+            uint8_t *a = &p[(size_t(y) * W + x) * 4 + c], *b = a + 4, *d = a + size_t(W) * 4, *e = d + 4;
+            *a = *b = *d = *e = uint8_t((*a + *b + *d + *e + 2) / 4);
+          }
+    if (!EncodeFrames(pics, W, H, 1, out, q))
+      return false;
+  }
   for (int stride = 1; out.size() > kScreenBytes && stride < 30;) {
     stride = std::min(30, int((out.size() * size_t(stride) + kScreenBytes - 1) / kScreenBytes));
     if (!EncodeFrames(pics, W, H, stride, out, q))

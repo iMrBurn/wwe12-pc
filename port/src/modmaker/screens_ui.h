@@ -121,9 +121,11 @@ class ScreenChoice {
     if (pick_ == 1 && size_t(version_) < versions_.size()) {
       const Bytes &m = versions_[size_t(version_)].movie;
       if (m.size() > 4 && memcmp(m.data(), "KB2", 3) == 0)
-        entrance_screens::FromBink2(m, ribbon_, out);
+        if (!entrance_screens::FromBink2(m, ribbon_, out))  // (one the game can't take: none, the arena's)
+          out.clear();
     } else if (pick_ == 2 && !picture_.empty()) {
-      entrance_screens::FromPicture(picture_, ribbon_, out);
+      if (!entrance_screens::FromPicture(picture_, ribbon_, out))
+        out.clear();
     }
     return out;
   }
