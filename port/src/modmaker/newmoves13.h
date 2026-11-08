@@ -383,7 +383,7 @@ inline void FitCategories(const disc::GameDisc &w12, const disc::GameDisc &src, 
 // prefer: for a move number, the hundred WWE '12's rosters use most in the moveset slot it goes in (star_port: its slot
 // tells its kind best - the bits alone put a 2K14 Neutralizer among the taunts, 371xx).
 inline std::map<int, int> Renumber(const disc::GameDisc &w12, std::vector<Move> &moves,
-                                   const std::map<int, int> &prefer = {}) {
+                                   const std::map<int, std::map<int, int>> &prefer = {}) {
   std::map<int, int> out;
   if (moves.empty())
     return out;
@@ -408,7 +408,13 @@ inline std::map<int, int> Renumber(const disc::GameDisc &w12, std::vector<Move> 
   }
   for (auto &m : moves) {
     const int motion = MotionOf(m.number);
-    if (hundreds.count(motion / 100) || m.waze.size() < 16)
+    // (its slot's hundreds: those WWE '12's rosters use in the slot it goes in, with their counts - a 2K14 Cesaro's
+    // taunts, 374xx, froze: WWE '12 has 374xx, but not as taunts, its taunts are 371xx)
+    static const std::map<int, int> none;
+    const auto pf = prefer.find(m.number);
+    const std::map<int, int> &slot = pf != prefer.end() ? pf->second : none;
+    const bool fits = slot.empty() || slot.count(motion / 100);
+    if ((hundreds.count(motion / 100) && fits) || m.waze.size() < 16)
       continue;
     // the closest hundred WWE '12 has in the same thousand (2K14 added hundreds next to WWE '12's: its 505xx front
     // grapples after 500-504xx, its 511xx after 510xx - a 2K14 Neutralizer, 505xx, played in 504xx), else its slot's
@@ -416,12 +422,20 @@ inline std::map<int, int> Renumber(const disc::GameDisc &w12, std::vector<Move> 
     // motion's hundred is known
     int best = -1, best_d = 1 << 30;
     const int h0 = motion / 100;
-    for (int k = 1; k < 10 && best < 0; ++k)
+    for (int k = 0; k < 10 && best < 0; ++k)
+      for (int h : {h0 - k, h0 + k})
+        if (best < 0 && h / 10 == h0 / 10 && hundreds.count(h) && (slot.empty() || slot.count(h)))
+          best = h, best_d = -1;
+    for (int k = 1; k < 10 && best < 0 && slot.empty(); ++k)
       for (int h : {h0 - k, h0 + k})
         if (best < 0 && h / 10 == h0 / 10 && hundreds.count(h))
           best = h, best_d = -1;
-    if (const auto pf = prefer.find(m.number); best < 0 && pf != prefer.end() && hundreds.count(pf->second))
-      best = pf->second, best_d = -1;
+    if (best < 0) {  // (the slot's commonest)
+      int n = 0;
+      for (const auto &[h, c] : slot)
+        if (c > n && hundreds.count(h))
+          n = c, best = h, best_d = -1;
+    }
     for (const auto &[num, r] : recs) {
       if (best_d < 0)
         break;
