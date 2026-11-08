@@ -15,8 +15,10 @@
 //   0/2  20-byte rows (Suplex 3: one, naming its counter branch 0x5A; the packs' moves: none). A copy of Suplex 3
 //        without it stopped half-way through in game (2026-11-08: suspected, not proved); 0/8: not keyed by motion (not understood), left out.
 // A motion's rows travel as a "row set" (Extract, a mod's superstar\moves\<number>.m3) and go into a copy of the
-// latest m3.pac under the added move's motion (Insert). A motion is best put last in its hundred (57098 after the
-// pack's 57007): then no other motion's 0/3 start moves.
+// latest m3.pac under the added move's motion (Insert). The hundred of a motion number is its kind of move: 570xx are
+// the apron moves (Hotshot, Apron Suplex...), 500xx-504xx the front grapples (the packs put theirs in 504xx). A copy of
+// Suplex 3 (501xx) numbered 57099 most likely played as an apron move (camera low behind the ropes, a stop half-way, in game
+// 2026-11-08): an added move's motion goes in its model's hundred, or a free one of the same kind (50399, 50499).
 #pragma once
 
 #include <algorithm>
