@@ -598,7 +598,11 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       rows.events.clear();
       for (auto &[part, list] : evs) {
         Bytes r(8, 0);
-        r[0] = uint8_t(tmotion), r[1] = uint8_t(tmotion >> 8), r[2] = uint8_t(part);
+        // (the part: u16 = segment (0, 90-92 a counter branch) | person << 8 (1 the victim), in SvR and WWE '12 alike;
+        // its high byte dropped, the victim's events went to the attacker - among them the one saying how he ends
+        // (kinds 0x0325-0x0328, 0x0358-0x0359 of the victim go with how he lies, downev): a Batista Bomb's victim
+        // turned over at the end, 2026-11-08)
+        r[0] = uint8_t(tmotion), r[1] = uint8_t(tmotion >> 8), r[2] = uint8_t(part), r[3] = uint8_t(part >> 8);
         r[4] = uint8_t(rows.events.size()), r[5] = uint8_t(rows.events.size() >> 8), r[6] = uint8_t(list.size());
         rows.rows["0/3"].push_back(r);
         for (auto &e : list)
@@ -607,10 +611,10 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     }
     if (exh.size() >= 20) {
       for (auto &r : rows.rows["0/1"])
-        if (r.size() >= 8 && r[2] == 0)
+        if (r.size() >= 8 && r[2] == 0 && r[3] == 0)
           r[6] = exh[10], r[7] = exh[11];
       for (auto &r : rows.rows["0/2"])
-        if (r.size() >= 6 && r[2] == 0)
+        if (r.size() >= 6 && r[2] == 0 && r[3] == 0)
           r[4] = exh[18], r[5] = exh[19];
     }
     if (rows.empty()) {
