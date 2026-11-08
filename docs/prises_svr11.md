@@ -199,3 +199,16 @@ une copie complète de `m3.pac` ; celle du DLC 4 grossit (tables 0/1 +336 o, 0/3
 copie de `m3.pac` (le plus récent) avec, pour chaque prise ajoutée, les fiches de la prise modèle (ou de sa propre
 animation d'origine) recopiées sous le nouveau numéro, sans dupliquer 0/4 ; il faut d'abord comprendre les champs
 d'indices.
+
+## Les prises ajoutées se jouent (2026-11-08, vu en jeu)
+
+Trois défauts, corrigés l'un après l'autre avec des témoins en jeu (Suplex 3 recopié, Side Effect de SvR 2011) :
+1. **tête de groupe** du m_dlcNN : 185 (un groupe de CA03) → 177 + n° de banque = 188 (b77c71a) ;
+2. **paramètres d'animation dans `m3.pac`** (`m3_params.h`, fichier `<numéro>.m3` du mod ; 625aaea) : avec eux, la
+   prise dure le bon temps et fait ses sons, mais les catcheurs restaient figés ;
+3. **la fiche légère doit être compressée (BPE)**, la complète non : c'est le cas des 5 544 paires du disque et des
+   DLC (26b39d8). Avec les trois : **la prise se joue** (« pas parfait » : à détailler).
+Animations placées en fin de centaine (57098, 57099 après 57007 du DLC 4). Le journal `--wwe12_dir_log=true` montre
+`/ZMOT/CA11 found` ; sonde `wwe12_moves_probe` (sub_827D8E30) : les animations ne passent pas par là.
+Reste : le Mod Maker doit écrire le `.m3` des prises ajoutées (WWE '13 / 2K : le m3.pac du jeu d'origine si même format,
+sinon la prise modèle), la table 0/8 (non comprise), et la qualité de la conversion SvR.
