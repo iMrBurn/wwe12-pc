@@ -141,6 +141,79 @@ inline Rows Extract(const Bytes &m3, int motion, double k = 1.0) {
   return out;
 }
 
+// The rows of `motion` in another game's m3.pac, made WWE '12's (the real move's own data, as Kaiko's ports take the
+// source game's records; 2026-11-08). WWE '13 and 2K14 (2K15-2K17: not mapped yet - an empty set) keep the same tables
+// renumbered and widened: 0/11 (28 bytes) = 0/1, 0/12 (20) = 0/2, 0/14 (12: start at +4, count at +8) = 0/3 with its
+// events in 0/15 (4 bytes, as 0/4), 0/10 (40) = 0/6, 0/16 (32) = 0/7, 5 = 5 (0/0-0/7: the same tables in another byte
+// order). The byte maps were learned on the motions both games have (tools_local\moves_study\bytemap, 4 213-14 952
+// rows a table, 85 % or more alike; WWE '13 and 2K14 the same but one byte): each WWE '12 byte from that source byte,
+// or (-1 - v) the constant v.
+inline Rows FromOther(const Bytes &m3, int motion, double k = 1.0) {
+  using namespace detail;
+  Rows out;
+  Prm p;
+  if (!p.Open(m3) || p.Get("0/14").empty() || p.Get("0/15").empty())
+    return out;
+  struct Map {
+    const char *to, *from;
+    size_t stride, head, from_stride;
+    std::vector<int> bytes;
+  };
+  static const std::vector<Map> maps = {
+      {"0/1", "0/11", 28, 0, 28, {0, 1, 2, 3, -1, 9, 4, 5, 6, 7, 12, -1, 14, 15, 10, -1, -1, 10, -1, -1, 17, 11, -1, -1, 0, 1, 2, 3}},
+      {"0/2", "0/12", 20, 0, 20, {0, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1}},
+      // (0/6 +20: a motion it refers to - the source's own, 61 % alike, better than none)
+      {"0/6", "0/10", 36, 0, 40, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, -1, -1, 27, 28, 29, 30, 31, 33, -1, 36, 38}},
+      {"0/7", "0/16", 20, 0, 32, {0, 1, 2, 3, 4, 5, 6, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}},
+      {"5", "5", 20, 28, 20, {0, 1, 2, -1, 4, 5, 6, 7, 8, -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1}},
+  };
+  auto frame = [&](int f) { return std::clamp(int(std::lround(f * k)), 0, 65535); };
+  for (const auto &m : maps) {
+    const Bytes d = p.Get(m.from);
+    for (size_t o = m.head; o + m.from_stride <= d.size(); o += m.from_stride) {
+      if (U16(d, o) != motion)
+        continue;
+      Bytes r(m.stride, 0);
+      for (size_t b = 0; b < m.stride; ++b)
+        r[b] = m.bytes[b] >= 0 ? d[o + size_t(m.bytes[b])] : uint8_t(-1 - m.bytes[b]);
+      // (one less in WWE '12, 0 -> FF: 0/2 +15 (WWE '13 0C5A = WWE '12 0B5A, 0000 = FF00), 0/6 +26 (0001 -> 0000,
+      // 000B -> 000A, 0000 -> 00FF))
+      if (std::string(m.to) == "0/2")
+        r[15] = uint8_t(d[o + 15] - 1);
+      if (std::string(m.to) == "0/6") {
+        r[26] = uint8_t(d[o + 26] - 1);
+        if (U16(r, 20) == 0)  // (WWE '12 names the motion itself there where WWE '13 has 0: rows off 36 % -> 16 %)
+          Put16(r, 20, motion);
+      }
+      if (std::string(m.to) == "5") {
+        Put16(r, 4, frame(U16(r, 4)));
+        Put16(r, 6, frame(U16(r, 6)));
+      }
+      out.rows[m.to].push_back(std::move(r));
+    }
+  }
+  // 0/3 and its events: 0/14 {motion, part, start, 0, count, 0}, its events at the running sum of the counts before
+  const Bytes t14 = p.Get("0/14"), t15 = p.Get("0/15");
+  long base = 0;
+  for (size_t o = 0; o + 12 <= t14.size(); o += 12) {
+    const int count = U16(t14, o + 8);
+    if (U16(t14, o) == motion) {
+      Bytes r(8, 0);
+      Put16(r, 0, motion), Put16(r, 2, U16(t14, o + 2)), Put16(r, 4, int(out.events.size())), Put16(r, 6, count);
+      for (int i = 0; i < count && size_t(base + i + 1) * 4 <= t15.size(); ++i) {
+        Bytes ev(t15.begin() + long(base + i) * 4, t15.begin() + long(base + i + 1) * 4);
+        Put16(ev, 2, frame(U16(ev, 2)));
+        out.events.push_back(ev);
+      }
+      out.rows["0/3"].push_back(std::move(r));
+    }
+    base += count;
+  }
+  if (out.rows["0/3"].empty())
+    return {};
+  return out;
+}
+
 // A row set as a file (superstar\moves\<number>.m3): "M3RS", then per table {name 4 bytes, u32 rows, u32 stride,
 // rows}, then "0/4\0" {u32 events, 4, events}; little-endian.
 inline Bytes Write(const Rows &r) {
