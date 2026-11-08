@@ -982,6 +982,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   g_stars.user_root_ = UserRoot();
   g_new_star.user_root_ = UserRoot();
   g_media.user_root_ = UserRoot();
+  g_moves_page.user_root_ = UserRoot();
   // (test aid: WWE12_MM_PAGE=<page number> opens on that page)
   if (const char *pg = getenv("WWE12_MM_PAGE"))
     g_page = Page(std::clamp(atoi(pg), 0, int(kAbout)));

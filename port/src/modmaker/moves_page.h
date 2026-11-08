@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "arena_page.h"
+#include "dlc_stars.h"
 #include "game_disc.h"
 #include "game_discs.h"
 #include "game_process.h"
@@ -37,6 +38,7 @@ using svrfmt::Bytes;
 class Page {
  public:
   const game_discs::Discs *discs_ = nullptr;  // My game discs (set by the Mod Maker)
+  fs::path user_root_;                         // Documents\wwe12 (set by the Mod Maker): the official DLC installed
   bool want_discs_ = false;                   // the player asked for My game discs (the Mod Maker opens it)
 
   void Draw(bool fr, ID3D11Device *dev, const disc::GameDisc &disc, mods::Manager &mods) {
@@ -221,6 +223,13 @@ class Page {
       s.name = it->second;
       stars12_.push_back(s);
     }
+    // (and the official DLC superstars installed - Batista, Randy Savage...: their CHAR / PRO records are in the disc's
+    // chEtc.pac, where a moves mod goes; they weren't listed, a player looked for Batista here, 2026-11-08)
+    std::set<int> have;
+    for (const auto &s : stars12_)
+      have.insert(s.id);
+    for (const auto &d : dlc_stars::List(user_root_, have))
+      stars12_.push_back({d.id, d.name + " (DLC)"});
     std::sort(stars12_.begin(), stars12_.end(), [](const Star &a, const Star &b) { return a.name < b.name; });
   }
 
@@ -805,12 +814,12 @@ class Page {
       }
       ImGui::EndCombo();
     }
-    // (players looked here for superstars WWE '12 hasn't - Shawn Michaels, Batista, 2026-11-08: those are made with NEW
+    // (players looked here for Shawn Michaels, a DLC superstar: those not installed are made with NEW
     // SUPERSTAR)
-    ImGui::TextDisabled("%s", fr ? "(seulement les catcheurs de WWE '12 ; pour un catcheur que WWE '12 n'a pas, comme Shawn "
-                                   "Michaels ou Batista : page NOUVEAU CATCHEUR)"
-                                 : "(WWE '12's superstars only; for one WWE '12 hasn't, as Shawn Michaels or Batista: the "
-                                   "NEW SUPERSTAR page)");
+    ImGui::TextDisabled("%s", fr ? "(les catcheurs de WWE '12 et de ses DLC installés ; pour un autre, comme Shawn Michaels "
+                                   "sans son DLC : page NOUVEAU CATCHEUR)"
+                                 : "(WWE '12's superstars and its installed DLC's; for another, as Shawn Michaels without his "
+                                   "DLC: the NEW SUPERSTAR page)");
     // (2K16 / 2K17's effects stand in with his own in WWE '12 when no older game has them: made again for him)
     if (target_ >= 0 && collected_for_ != target_ && (game_ == 0x315A07D2 || game_ == 0x545408BA))
       Recollect();
