@@ -246,3 +246,17 @@ mêmes tables, renumérotées et élargies (outil `m3map`, `fieldmap`, appris su
 | 0/7 (20 o) | 0/16 (32 o) | les 20 premiers octets (88-100 %) (5 565) |
 Donc pour WWE '13 / 2K14 on peut importer les vraies données de la prise (champ par champ), comme Kaiko. Restent :
 la table d'événements de WWE '13, les sons (5), 2K15-2K17, et SvR (WAZA/DATA, plus loin).
+
+## Prises de 2K14 en jeu (2026-11-08)
+
+- Le Suplex 3 de 2K14 (son animation, ses données m3 converties par `m3_params::FromOther`, son aperçu) rangé en 50499 :
+  **parfait** une fois les jambes converties ; le Neutralizer de Cesaro (2K14) rangé en 50498 : se joue, « un peu moins »
+  bien (à préciser).
+- **Gel** de toutes les prises du Cesaro de 2K14 porté tel quel : leurs animations tombent dans des centaines que
+  WWE '12 n'a pas (505xx...) - la centaine est le genre de prise. Rangées dans une centaine connue, elles se jouent. À
+  faire : le Mod Maker doit renuméroter une prise ajoutée dont la centaine n'existe pas dans WWE '12 (une case libre de
+  la centaine de sa prise « donneuse »), et ses cases du moveset avec.
+- 2K14 pilote **mollets et avant-bras par IK** (cibles) : `yanm_ik.h` les cuit en rotations (jambes comme pour les
+  entrées de WWE '13, bras ajoutés), et écrit maintenant la taille des blocs dans la table.
+- Bits de catégorie de la fiche WAZE : pris de prises « donneuses » (`FitCategories`), sinon « None » dans le moveset.
+- Aperçus : `motd` de 2K14 → deux lignes `motn`.
