@@ -55,6 +55,9 @@ inline void PutBe32(Bytes &d, size_t o, uint32_t v) {
 }
 inline void PutBe16(Bytes &d, size_t o, uint16_t v) { d[o] = uint8_t(v >> 8), d[o + 1] = uint8_t(v); }
 inline int BankId(int number) { return ((number & 0xFF) << 8) | (number >> 8); }  // (WAZE number <-> bank id)
+// a person lying flat from his Bip x axis' height: 1 on his front, -1 on his back (WWE '12's Side Effect 1 victim, on
+// his back: -0.93), 0 neither
+inline int Lying(double x_up) { return x_up > 0.7 ? 1 : x_up < -0.7 ? -1 : 0; }
 
 // SvR -> WWE '12 placement of one person: a turn (0 or pi, about the vertical) and a shift (cm), fitted on the roots
 struct Fit {
@@ -446,6 +449,7 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     Bytes full;
     yanm::Record rec;
     std::set<int> segments;
+    int lying[2] = {0, 0};  // its last pose, each person: 1 on his front, -1 on his back, 0 neither (Lying)
   };
   std::map<int, Model> models;
   auto model = [&](int id) -> const Model & {
@@ -483,6 +487,15 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
           pts.push_back({0.1 * k.root[0], 0.1 * k.root[2], p[0], p[2]});
       }
       md.f[who] = Solve(pts);
+      int frames = 0;
+      for (auto &b : md.rec.blocks)
+        if (b.name == (who ? "00000001" : "00000000"))
+          frames = b.frames;
+      bool hr, hp;
+      yanm::Q q{};
+      yanm::V p{};
+      yanm::Sample(*bip[who], float(std::max(0, frames - 1)), hr, q, hp, p);
+      md.lying[who] = Lying(2.0 * (double(q[0]) * q[1] + double(q[2]) * q[3]));  // (the Bip x axis' height)
     }
     md.ok = md.f[0].err < 15 && md.f[1].err < 15;
     return md;
@@ -504,7 +517,18 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     }
     const Bytes &mine = mine_it->second;
     const int my_frames = sv.frames[0][want];
-    // the model: the same SvR category (+0x91), then kind (+0x73), segments and length
+    // how each person ends (on his back or front): the game keeps the model's way - the victim of a Batista Bomb made
+    // on Gory Bomb 2 ended on his back, then turned over onto his front (in game, 2026-11-08; no field of m3.pac, WAZE or
+    // the in-motion commands tells it on 979 moves: the data driving it isn't found, the model is chosen alike)
+    int my_lying[2] = {0, 0};
+    for (int who = 0; who < 2; ++who)
+      if (const auto &k = sv.keys[who][want]; !k.empty()) {
+        std::vector<se::M3> loc;
+        se::V3 pos;
+        se::Skeletons::Get().Solve(k.back().root, k.back().bones, loc, pos);
+        my_lying[who] = Lying(loc[size_t(se::Skeletons::Get().ib)][3]);  // (the Bip x axis' height)
+      }
+    // the model: the same SvR category (+0x91), then kind (+0x73), how each person ends, segments and length
     int best = -1;
     long best_score = 0;
     for (auto &[id, k] : sv.keys[0]) {
@@ -516,8 +540,11 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       const Model &md = model(id);
       if (!md.ok)
         continue;
-      const long score = (r->second[0x73] == mine[0x73] ? 0 : 100000) +
-                         (md.segments == sv.segments[want] ? 0 : 50000) + std::abs(sv.frames[0][id] - my_frames);
+      long score = (r->second[0x73] == mine[0x73] ? 0 : 100000) + (md.segments == sv.segments[want] ? 0 : 50000) +
+                   std::abs(sv.frames[0][id] - my_frames);
+      for (int who = 0; who < 2; ++who)
+        if (my_lying[who] && md.lying[who] != my_lying[who])
+          score += 60000;
       if (best < 0 || score < best_score)
         best = id, best_score = score;
     }
