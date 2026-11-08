@@ -169,3 +169,9 @@ telle quelle), 178 / 166 images (modèle 180). Mis dans le mod de test `test_sid
 version est gardée dans le bloc-notes de la session. **À voir en jeu.**
 
 Inventaire (`survey`) : 111 prises de SvR 2011 que WWE '12 n'a pas (par le nom) avec leurs animations à deux.
+
+**Essai en jeu du 2026-11-08 : même échec, corps étirés.** Cause trouvée : dans la table de l'en-tête, le u16 à +2 de
+chaque entrée est **la taille du bloc en unités de 32 octets** (Pedigree 1 : 366 / 364 pour 448 images ; Stone Cold
+Stunner 2 : 188 / 245 pour 272), pas le nombre d'images (« FF + u24 images » plus haut est faux). Les deux essais y
+écrivaient le nombre d'images : le jeu ne lisait qu'une partie de chaque bloc. Corrigé dans `makemove2` (taille
+recalculée, événements recalés sur le nombre d'images du bloc du modèle) ; mod de test v1.2.
