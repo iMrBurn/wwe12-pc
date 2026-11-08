@@ -210,8 +210,8 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
         want.insert(r.from_id);
     out.new_moves = newmoves13::Collect(src, want);
     // (only the moves whose own motion parameters we could read: without m3.pac rows the game doesn't play an added move
-    // - the wrestlers freeze. 2K16 and 2K17 lay their m3.pac out otherwise, not read yet: their slots keep the base's
-    // move, 2026-11-08)
+    // - the wrestlers freeze. Every game's m3.pac is read since 2026-11-08 (2K17: 1 436 of its superstars' 1 444 added
+    // moves have rows; the others - JBL 5, Emma 1 and 2, Emma Lock, Konnor - none): those slots keep the base's move)
     out.new_moves.erase(std::remove_if(out.new_moves.begin(), out.new_moves.end(), [](const auto &m) { return m.m3.empty(); }),
                         out.new_moves.end());
     newmoves13::FitCategories(w12, src, out.new_moves);  // (their category bits WWE '12's: else "None" in the moveset)

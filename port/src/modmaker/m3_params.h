@@ -92,6 +92,62 @@ struct Prm {
   }
 };
 
+// Another game's PRM tables by name ("0/N", "N"). WWE '13 - 2K16: the PACH above. 2K17: an HSPC whose entry is an
+// SHDC laid out as the HSPC itself (header {'SHDC', 0x7DA, 0x40, 0x800, ..., +0x18 index bytes, +0x20 table bytes,
+// +0x38 count}; index at 0x800, then 0x800-aligned the table {u32 id, u32 offset, u32 size, u32 0}); its child 21
+// holds 2K16's 0/0-0/11 (the same bytes, 2026-11-08), its children 1-14 2K16's 1-14 (child 0: 2K16's 0/21-0/40).
+struct OtherPrm {
+  std::map<std::string, Bytes> t;
+  static uint32_t U32(const Bytes &d, size_t o) {
+    return d[o] | d[o + 1] << 8 | d[o + 2] << 16 | uint32_t(d[o + 3]) << 24;
+  }
+  // an SHDC of the HSPC kind: its children by id (unpacked); false if it isn't one
+  static bool Shdc(const Bytes &d, std::map<uint32_t, Bytes> &kids) {
+    if (d.size() < 0x40 || memcmp(d.data(), "SHDC", 4) != 0 || U32(d, 0x0C) != 0x800)
+      return false;
+    const uint32_t ib = U32(d, 0x18), n = U32(d, 0x38);
+    const size_t at = 0x800 + ((size_t(ib) + 0x7FF) & ~size_t(0x7FF));
+    if (at + size_t(n) * 16 > d.size())
+      return false;
+    for (uint32_t i = 0; i < n; ++i) {
+      const size_t off = U32(d, at + 16 * i + 4), sz = U32(d, at + 16 * i + 8);
+      if (off + sz <= d.size())
+        kids[U32(d, at + 16 * i)] = svrfmt::Unpack(Bytes(d.begin() + long(off), d.begin() + long(off + sz)));
+    }
+    return true;
+  }
+  bool Open(const Bytes &m3) {
+    Prm p;
+    if (p.Open(m3)) {
+      for (const auto &e : p.inner)
+        t["0/" + std::to_string(e.id)] = svrfmt::Unpack(e.data);
+      for (const auto &e : p.top)
+        if (e.id != 0)
+          t[std::to_string(e.id)] = svrfmt::Unpack(e.data);
+      return true;
+    }
+    svrfmt::Archive a;
+    if (!svrfmt::ArchiveOpen(m3, a, nullptr) || a.root.kind != svrfmt::ArcKind::Hspc)
+      return false;
+    for (const auto &k : a.root.kids) {
+      std::map<uint32_t, Bytes> top, inner;
+      if (!Shdc(svrfmt::ArchiveData(k), top) || !top.count(21) || !Shdc(top[21], inner))
+        continue;
+      for (auto &[id, d] : inner)
+        t["0/" + std::to_string(id)] = std::move(d);
+      for (auto &[id, d] : top)
+        if (id >= 1 && id <= 14)
+          t[std::to_string(id)] = std::move(d);
+      return true;
+    }
+    return false;
+  }
+  Bytes Get(const std::string &name) const {
+    const auto it = t.find(name);
+    return it == t.end() ? Bytes{} : it->second;
+  }
+};
+
 }  // namespace detail
 
 // A motion's rows: per table its rows (0/3's starts made relative to the set's own events), and its 0/4 events.
@@ -143,7 +199,7 @@ inline Rows Extract(const Bytes &m3, int motion, double k = 1.0) {
 }
 
 // The rows of `motion` in another game's m3.pac, made WWE '12's (the real move's own data, as Kaiko's ports take the
-// source game's records; 2026-11-08). WWE '13 and 2K14 (2K15-2K17: not mapped yet - an empty set) keep the same tables
+// source game's records; 2026-11-08). WWE '13 and 2K14 (2K16: the console-order set only; 2K17: 2K16's, OtherPrm) keep the same tables
 // renumbered and widened: 0/11 (28 bytes) = 0/1, 0/12 (20) = 0/2, 0/14 (12: start at +4, count at +8) = 0/3 with its
 // events in 0/15 (4 bytes, as 0/4), 0/10 (40) = 0/6, 0/16 (32) = 0/7, 5 = 5 (0/0-0/7: the same tables in another byte
 // order). The byte maps were learned on the motions both games have (tools_local\moves_study\bytemap, 4 213-14 952
@@ -152,7 +208,7 @@ inline Rows Extract(const Bytes &m3, int motion, double k = 1.0) {
 inline Rows FromOther(const Bytes &m3, int motion, double k = 1.0) {
   using namespace detail;
   Rows out;
-  Prm p;
+  OtherPrm p;
   if (!p.Open(m3))
     return out;
   // The game's tables in WWE '13 / 2K14 order. 2K14 keeps each twice: 0/0-0/7 in the console's byte order, 0/10-0/17 in
