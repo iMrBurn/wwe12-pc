@@ -814,12 +814,9 @@ class Page {
       }
       ImGui::EndCombo();
     }
-    // (players looked here for Shawn Michaels, a DLC superstar: those not installed are made with NEW
-    // SUPERSTAR)
-    ImGui::TextDisabled("%s", fr ? "(les catcheurs de WWE '12 et de ses DLC installés ; pour un autre, comme Shawn Michaels "
-                                   "sans son DLC : page NOUVEAU CATCHEUR)"
-                                 : "(WWE '12's superstars and its installed DLC's; for another, as Shawn Michaels without his "
-                                   "DLC: the NEW SUPERSTAR page)");
+    // (a superstar WWE '12 hasn't is made with NEW SUPERSTAR)
+    ImGui::TextDisabled("%s", fr ? "(les catcheurs de WWE '12 et de ses DLC installés ; pour un autre : page NOUVEAU CATCHEUR)"
+                                 : "(WWE '12's superstars and its installed DLC's; for another: the NEW SUPERSTAR page)");
     // (2K16 / 2K17's effects stand in with his own in WWE '12 when no older game has them: made again for him)
     if (target_ >= 0 && collected_for_ != target_ && (game_ == 0x315A07D2 || game_ == 0x545408BA))
       Recollect();
