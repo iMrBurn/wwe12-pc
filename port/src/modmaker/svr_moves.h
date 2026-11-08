@@ -197,8 +197,42 @@ inline void SetVector(se::Raw &raw, const std::vector<se::RotKey> &ks) {
     }
 }
 
-// a block's kept tail (YAT2, POF0...): its commands' frames scaled by k
-inline void Retime(Bytes &tail, double k) {
+// a block's kept tail (YAT2, POF0...): the first frame of each of its commands (by id)
+inline std::map<int, int> CmdFrames(const Bytes &tail) {
+  std::map<int, int> out;
+  for (size_t o = 0; o + 8 <= tail.size(); o += 4) {
+    if (memcmp(&tail[o], "YAT2", 4))
+      continue;
+    const size_t b = o + 8;
+    if (b + 12 > tail.size())
+      return out;
+    const uint16_t n = Be16At(tail, b + 2);
+    const uint32_t eoff = Be32At(tail, b + 4), poff = Be32At(tail, b + 8);
+    for (uint16_t i = 0; i < n && b + eoff + 8 * size_t(i) + 6 <= tail.size(); ++i) {
+      const size_t e = b + eoff + 8 * size_t(i);
+      size_t p = b + poff + Be16At(tail, e + 2);
+      for (int c = 0; c < Be16At(tail, e + 4) && p + 4 <= tail.size(); ++c) {
+        out.emplace(Be16At(tail, p), Be16At(tail, e));
+        p += std::max<size_t>(4, tail[p + 2]);
+      }
+    }
+    return out;
+  }
+  return out;
+}
+
+// a block's kept tail: its commands' frames moved by a piecewise-linear map through `anchors` (old frame -> new frame,
+// increasing; the first (0, 0), the last (old end, new end))
+inline void Retime(Bytes &tail, const std::vector<std::pair<int, int>> &anchors) {
+  auto map = [&](int f) {
+    for (size_t i = 1; i < anchors.size(); ++i)
+      if (f <= anchors[i].first || i + 1 == anchors.size()) {
+        const auto &a = anchors[i - 1], &z = anchors[i];
+        return z.first == a.first ? z.second
+                                  : int(std::lround(a.second + double(f - a.first) * (z.second - a.second) / (z.first - a.first)));
+      }
+    return f;
+  };
   for (size_t o = 0; o + 8 <= tail.size(); o += 4) {
     if (memcmp(&tail[o], "YAT2", 4))
       continue;
@@ -210,18 +244,20 @@ inline void Retime(Bytes &tail, double k) {
     int last = -1;
     for (uint16_t i = 0; i < n && b + eoff + 8 * size_t(i) + 2 <= tail.size(); ++i) {
       const size_t e = b + eoff + 8 * size_t(i);
-      int f = std::max(int(std::lround(Be16At(tail, e) * k)), last);  // (kept in order)
+      int f = std::max(map(Be16At(tail, e)), last);  // (kept in order)
       last = f;
-      PutBe16(tail, e, uint16_t(std::min(f, 65535)));
+      PutBe16(tail, e, uint16_t(std::clamp(f, 0, 65535)));
     }
     return;
   }
 }
 
 // the model's record with blocks' YANM + POF0 replaced (by index; new frame count), their commands retimed from the
-// model's frame counts; the table's u16 at +2 of each entry = the block's size in 32-byte units
+// model's frame counts - through the move's own moments where it has them (`own`: block -> command id -> its frame);
+// the table's u16 at +2 of each entry = the block's size in 32-byte units
 inline Bytes Rebuild(const Bytes &tpl, const std::map<size_t, std::pair<Bytes, int>> &repl,
-                     const std::map<size_t, int> &tpl_frames, int motion) {
+                     const std::map<size_t, int> &tpl_frames, int motion,
+                     const std::map<size_t, std::map<int, int>> &own = {}) {
   const uint32_t first = Be32At(tpl, 12), n = Be32At(tpl, 0x48);
   std::vector<size_t> at, start;
   for (uint32_t i = 0; i < n; ++i)
@@ -244,8 +280,22 @@ inline Bytes Rebuild(const Bytes &tpl, const std::map<size_t, std::pair<Bytes, i
         o += 8 + Be32At(tpl, o + 4);
     Bytes tail(tpl.begin() + long(o), tpl.begin() + long(e));
     const auto old = tpl_frames.find(i);
-    if (old != tpl_frames.end() && old->second > 0)
-      Retime(tail, double(r->second.second) / double(old->second));
+    if (old != tpl_frames.end() && old->second > 0) {
+      std::vector<std::pair<int, int>> anchors = {{0, 0}}, mid;
+      if (const auto ow = own.find(i); ow != own.end()) {
+        const auto cf = CmdFrames(tail);
+        for (const auto &[id, f] : ow->second)
+          if (const auto c = cf.find(id); c != cf.end() && c->second > 0 && c->second < old->second && f > 0 &&
+                                          f < r->second.second)
+            mid.push_back({c->second, f});
+        std::sort(mid.begin(), mid.end());
+      }
+      for (const auto &m : mid)  // (both frames increasing: one out of order is left out)
+        if (m.first > anchors.back().first && m.second > anchors.back().second)
+          anchors.push_back(m);
+      anchors.push_back({old->second, r->second.second});
+      Retime(tail, anchors);
+    }
     out.insert(out.end(), r->second.first.begin(), r->second.first.end());
     out.insert(out.end(), tail.begin(), tail.end());
   }
@@ -530,6 +580,7 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     // its blocks: every segment of each person (x < 90; the counter branches' stubs stay the model's)
     std::map<size_t, std::pair<Bytes, int>> repl;
     std::map<size_t, int> tf;
+    std::map<size_t, std::map<int, int>> own;  // block -> command id -> the move's own frame for it
     int frames0 = 0;
     std::string why;
     for (size_t idx = 0; idx < md.rec.blocks.size(); ++idx) {
@@ -572,6 +623,17 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
         break;
       }
       repl[idx] = {chunk, n60};
+      // (its own moments, where the model's commands for them go - SvR in-motion events 38 / 39 / 86 are WWE '12's
+      // commands 172 / 173 / 73 (finishers' own commands, 28 each, and an impact; within 3 frames on the moves both
+      // games have, evros: 28 % / 33 % - WWE '12 timed them anew -, 87 %): the finisher's effect
+      // came a bit late, stretched with the length only, in game 2026-11-08)
+      for (auto &k : bk)
+        for (auto &e : k.events)
+          if (!e.Empty()) {
+            const int id = e[0] == 38 ? 172 : e[0] == 39 ? 173 : e[0] == 86 ? 73 : 0;
+            if (id && !own[idx].count(id))
+              own[idx][id] = 2 * k.frame;
+          }
       if (bx == 0 && by == 0)
         frames0 = n60;
     }
@@ -583,7 +645,7 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     newmoves13::Move mv;
     mv.number = number;
     mv.name = note.name;
-    mv.high = Rebuild(md.full, repl, tf, motion);
+    mv.high = Rebuild(md.full, repl, tf, motion, own);
     mv.low = mv.high;
     // its WAZE record: the model's (category bits; the slot's are set later), its name and number
     mv.waze = recs12.at(md.num);
