@@ -1296,6 +1296,9 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         break;
     }
   }
+  // (two mods' different added moves on one number: the later one renumbered within its kind of move)
+  if (const int n = superstar_pack::SpreadNewMoves(stars, movesets, in.misc, in.m3); n > 0)
+    REXLOG_INFO("[superstar mods] {} added move(s) renumbered: another mod's move had the number", n);
   if (!superstar_pack::Build(in, stars, files, &why, attires, media, signs, movesets)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;

@@ -428,6 +428,88 @@ inline const ArcNode *AttireOutfit(const svrfmt::Archive &one, const std::string
   return nullptr;
 }
 
+// Two mods' different added moves on one number (each mod's Mod Maker renumbers its moves alone - a free motion of a
+// kind of move WWE '12 knows, newmoves13::Renumber - so two ported superstars can get the same one; the pack keeps the
+// first, and the second superstar would play the first one's move): the later one takes another free motion of the
+// same hundred (the hundred is the kind of move), its records, preview script, MAGG rows and its mod's moveset slots
+// following. The same move given by two mods stays shared. `misc` / `m3`: the latest ones (the numbers and motions
+// taken). How many moves were renumbered.
+inline int SpreadNewMoves(std::vector<Star> &stars, std::vector<Moveset> &movesets, const Bytes &misc, const Bytes &m3) {
+  auto motion_of = [](int n) { return ((n & 0xFF) << 8) | (n >> 8); };
+  std::set<int> used;  // motions taken: the game's rows, its move records', and the added moves' so far
+  {
+    m3_params::detail::Prm p;
+    if (p.Open(m3)) {
+      const Bytes t = p.Get("0/3");
+      for (size_t o = 0; o + 8 <= t.size(); o += 8)
+        used.insert(t[o] | t[o + 1] << 8);
+    }
+    svrfmt::Archive a;
+    if (svrfmt::ArchiveOpen(misc, a, nullptr))
+      for (auto &k : a.root.kids)
+        if (k.group == "MOVS" && k.name.rfind("WAZE", 0) == 0) {
+          const Bytes t = svrfmt::ArchiveData(k);
+          for (size_t o = 0x430; o + 160 <= t.size(); o += 160)
+            if (t[o + 0x10])
+              used.insert(motion_of(t[o + 0x90] << 8 | t[o + 0x91]));
+        }
+  }
+  std::map<int, const NewMove *> owner;  // number -> the move that has it
+  auto same = [](const NewMove &a, const NewMove &b) {
+    return a.high == b.high && std::equal(a.waze.begin() + std::min<size_t>(0x10, a.waze.size()),
+                                          a.waze.begin() + std::min<size_t>(0x50, a.waze.size()),
+                                          b.waze.begin() + std::min<size_t>(0x10, b.waze.size()));
+  };
+  int renumbered = 0;
+  auto spread = [&](std::vector<NewMove> &moves, std::vector<std::pair<int, int>> &slots) {
+    for (auto &m : moves) {
+      const auto o = owner.find(m.number);
+      if (o == owner.end()) {
+        owner[m.number] = &m;
+        used.insert(motion_of(m.number));
+        continue;
+      }
+      if (same(*o->second, m))
+        continue;
+      const int old = m.number, h = motion_of(old) / 100;
+      int fresh = -1;
+      for (int mo = h * 100 + 99; mo >= h * 100 && fresh < 0; --mo)
+        if (!used.count(mo) && !owner.count(motion_of(mo)))
+          fresh = mo;
+      if (fresh < 0)
+        continue;  // (no room left in that kind: the first one keeps the number, as before)
+      const int number = motion_of(fresh);
+      used.insert(fresh);
+      m.number = number;
+      if (m.waze.size() >= 0x92)
+        m.waze[0x90] = uint8_t(number >> 8), m.waze[0x91] = uint8_t(number);
+      char text[16] = {};
+      snprintf(text, sizeof(text), "%d", fresh);
+      for (Bytes *y : {&m.low, &m.high})
+        if (y->size() > 0x58 && !svrfmt::IsBpe(*y))
+          memcpy(&(*y)[0x4C], text, 12);
+      std::string s(m.mvmot.begin(), m.mvmot.end());
+      const std::string from = "," + std::to_string(motion_of(old)) + ",", to = "," + std::to_string(fresh) + ",";
+      for (size_t p; (p = s.find(from)) != std::string::npos;)
+        s.replace(p, from.size(), to);
+      m.mvmot.assign(s.begin(), s.end());
+      for (size_t at : {size_t(0), size_t(104)})
+        if (m.magg.size() >= at + 2 && (m.magg[at] | m.magg[at + 1] << 8) == motion_of(old))
+          m.magg[at] = uint8_t(fresh), m.magg[at + 1] = uint8_t(fresh >> 8);
+      for (auto &[off, n] : slots)
+        if (n == old)
+          n = number;
+      owner[number] = &m;
+      ++renumbered;
+    }
+  };
+  for (auto &st : stars)
+    spread(st.new_moves, st.moves);
+  for (auto &mv : movesets)
+    spread(mv.new_moves, mv.moves);
+  return renumbered;
+}
+
 inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<File> &files, std::string *why,
                   const std::vector<Attire> &attires = {}, const std::vector<MediaPortraits> &media = {},
                   const std::vector<Sign> &signs = {}, const std::vector<Moveset> &movesets = {}) {
