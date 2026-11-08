@@ -12,7 +12,8 @@
 //   0/7  20-byte rows (one a part);
 //   5    "SMB" (sounds), a 28-byte header (u16 +6 a count) then 20-byte rows {motion, 0, u16 from, u16 to (frames),
 //        ..., u16 +18 = its row number from 1};
-// (0/2 rows: Suplex 3 has one, the packs' moves none: left out; 0/8: not keyed by motion, left out.)
+//   0/2  20-byte rows (Suplex 3: one, naming its counter branch 0x5A; the packs' moves: none). A copy of Suplex 3
+//        without it stopped half-way through in game (2026-11-08: suspected, not proved); 0/8: not keyed by motion (not understood), left out.
 // A motion's rows travel as a "row set" (Extract, a mod's superstar\moves\<number>.m3) and go into a copy of the
 // latest m3.pac under the added move's motion (Insert). A motion is best put last in its hundred (57098 after the
 // pack's 57007): then no other motion's 0/3 start moves.
@@ -43,7 +44,7 @@ struct Table {
   size_t stride, head, self;  // row size, header size, where else the row holds its motion (0: nowhere)
 };
 inline const std::vector<Table> &Keyed() {
-  static const std::vector<Table> t = {{"0/1", 28, 0, 24}, {"0/3", 8, 0, 0}, {"0/6", 36, 0, 20}, {"0/7", 20, 0, 0},
+  static const std::vector<Table> t = {{"0/1", 28, 0, 24}, {"0/2", 20, 0, 0}, {"0/3", 8, 0, 0}, {"0/6", 36, 0, 20}, {"0/7", 20, 0, 0},
                                        {"5", 20, 28, 0}};
   return t;
 }
