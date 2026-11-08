@@ -232,3 +232,17 @@ WAZE pris de prises « donneuses »). Chez nous, ces données ont déménagé da
 - 0/6, 0/7, 5 et le reste de 0/1 / 0/2 n'ont pas d'équivalent direct (outil `rosetta`, 1 778 lignes comparées).
 Plan : prendre de la prise SvR ce qui a un équivalent (événements, champs EXH), le reste de la prise WWE '12 la plus
 proche, la piste « vector » tirée de l'animation elle-même (cap du Bip) ou de cette prise proche.
+
+## Porter n'importe quelle prise (demande du 2026-11-08) : les m3.pac des autres jeux
+
+WWE '13, 2K14, 2K15, 2K16 et 2K17 ont tous un `m3.pac` (2K16 / 2K17 : réorganisé, 2K17 en HSPC). WWE '13 / 2K14 : les
+mêmes tables, renumérotées et élargies (outil `m3map`, `fieldmap`, appris sur les prises communes, mêmes numéros) :
+| WWE '12 | WWE '13 / 2K14 | conversion apprise (WWE '13, lignes comparées) |
+|---|---|---|
+| 0/1 (28 o) | 0/11 (28 o) | champs déplacés : +6 ← +4, +8 ← +6, +10 ← +12, +12 ← +14 (95-99 %) (4 275) |
+| 0/2 (20 o) | 0/12 (20 o) | même forme (97-100 %) (674) |
+| 0/3 (8 o) | 0/14 (12 o) | début ← +4, nombre ← +8 (11 204) ; table d'événements à confirmer |
+| 0/6 (36 o) | 0/10 (40 o) | +4..+30 ← mêmes places (96-100 %), +34 ← (FFFF 77 %) (14 952) |
+| 0/7 (20 o) | 0/16 (32 o) | les 20 premiers octets (88-100 %) (5 565) |
+Donc pour WWE '13 / 2K14 on peut importer les vraies données de la prise (champ par champ), comme Kaiko. Restent :
+la table d'événements de WWE '13, les sons (5), 2K15-2K17, et SvR (WAZA/DATA, plus loin).
