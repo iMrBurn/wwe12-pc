@@ -24,6 +24,14 @@ struct Star {
   fs::path pack;     // its package's folder (its chEtc.pac: its record)
 };
 
+// A superstar file of the disc: chNNN.pac, or chNN.pac (Shawn Michaels' ch53.pac, his pre-order DLC on the disc: no
+// page listed him, players' reports 2026-11-08)
+inline bool DiscStarFile(const std::string &f) {
+  auto dig = [&](size_t i) { return i < f.size() && isdigit(static_cast<unsigned char>(f[i])); };
+  return (f.size() == 8 || f.size() == 9) && !_strnicmp(f.c_str(), "ch", 2) && dig(2) && dig(3) && (f.size() == 8 || dig(4)) &&
+         !_stricmp(f.c_str() + f.size() - 4, ".pac");
+}
+
 // Those not already in `have` (the disc's), in package order.
 inline std::vector<Star> List(const fs::path &user_root, const std::set<int> &have) {
   std::vector<Star> out;

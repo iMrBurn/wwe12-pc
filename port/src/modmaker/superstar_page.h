@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "dlc_stars.h"
 #include "arena_edit.h"
 #include "arena_page.h"
 #include "arena_view.h"
@@ -268,7 +269,7 @@ class Page {
     const auto names = disc::SuperstarNames(disc);
     for (const auto &f : disc.List("pac/ch")) {
       // chNNN.pac (not chEtc.pac, not the DLC packages)
-      if (f.size() != 9 || _strnicmp(f.c_str(), "ch", 2) || _stricmp(f.c_str() + 5, ".pac") || !isdigit(f[2]))
+      if (!dlc_stars::DiscStarFile(f))
         continue;
       Star s;
       s.id = atoi(f.c_str() + 2);

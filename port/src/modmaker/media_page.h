@@ -164,7 +164,7 @@ class Page {
   void List(const disc::GameDisc &disc) {
     const auto names = disc::SuperstarNames(disc);
     for (const auto &f : disc.List("pac/ch")) {
-      if (f.size() != 9 || _strnicmp(f.c_str(), "ch", 2) || !isdigit(f[2]))
+      if (!dlc_stars::DiscStarFile(f))
         continue;
       const int id = atoi(f.c_str() + 2);
       if (auto n = names.find(id); n != names.end())

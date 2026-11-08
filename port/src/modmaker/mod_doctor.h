@@ -277,7 +277,7 @@ class Page {
                       const char *off, std::function<bool()> disable) {
     const int base = atoi(Value(text, "base").c_str());
     char base_file[32];
-    snprintf(base_file, sizeof(base_file), "pac/ch/ch%03d.pac", base);
+    snprintf(base_file, sizeof(base_file), "pac/ch/ch%d.pac", base);  // (chNN.pac below 100: ch53)
     Bytes base_pac;
     if (Value(text, "name").empty())
       add(1, fr ? "Pas de nom : il s'appellera comme son dossier." : "No name: it will be called as its folder.", "", {});
