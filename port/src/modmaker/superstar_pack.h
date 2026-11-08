@@ -38,6 +38,7 @@
 #include <utility>
 #include <vector>
 
+#include "m3_params.h"
 #include "svrfmt/archive.h"
 #include "svrfmt/pac.h"
 #include "svrfmt/texture.h"
@@ -53,6 +54,7 @@ struct NewMove {
   int number = 0;
   Bytes waze, low, high;
   Bytes magg;  // its two RGRP/MAGG records (children 10 and 11 of DLC.pac's, 104 bytes each), else empty
+  Bytes m3;    // its motion's m3.pac rows (m3_params row set, superstar\moves\<number>.m3), else empty
 };
 
 struct Star {
@@ -196,6 +198,7 @@ struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)
   Bytes misc;                                      // ... and pac\misc.pac (the move records), when moves are added
+  Bytes m3;  // ... and pac\m3.pac (the motions' parameters), when moves with m3 rows are added
   Bytes edit;  // ... the Superstar Threads table: the latest pack's pac\edit\edit_dlcNN.pac, else the disc's edit.pac
   std::vector<Bytes> portraits_hd, portraits_sd;   // pacs that may hold the bases' SSFA/SSFB/SSFC "%04d"
   std::vector<std::pair<int, Bytes>> catalogs;     // the installed packs (number, info/catalog.dlc), not ours
@@ -861,7 +864,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     }
   }
   // 4b. Moves to add: the records into a copy of misc.pac, the motions into m_dlcNN.pac.
-  Bytes misc_out, moves_out;
+  Bytes misc_out, moves_out, m3_out;
   {
     std::vector<const NewMove *> adds;
     std::set<int> taken;
@@ -943,6 +946,16 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         }
         if (moves_out.empty())
           misc_out.clear();  // (records without their motions: neither)
+        // m3.pac: the motions' parameters (m3_params.h) - without them the game doesn't play an added move: a copy of
+        // the latest m3.pac with their rows (packs 3 and 4 ship theirs the same way)
+        std::vector<std::pair<int, m3_params::Rows>> rows;
+        for (const NewMove *m : added) {
+          m3_params::Rows r;
+          if (!m->m3.empty() && m3_params::Read(m->m3, r) && !r.empty())
+            rows.push_back({((m->number & 0xFF) << 8) | (m->number >> 8), std::move(r)});
+        }
+        if (!moves_out.empty() && !rows.empty() && !in.m3.empty())
+          m3_out = m3_params::Insert(in.m3, rows);
       }
     }
   }
@@ -1196,6 +1209,10 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   }
   if (!misc_out.empty()) {  // (moves added, or added superstars' attire lines)
     entries.push_back({"pac/misc.pac", next, next, &misc_out});
+    ++next;
+  }
+  if (!m3_out.empty()) {  // (the added moves' motion parameters)
+    entries.push_back({"pac/m3.pac", next, next, &m3_out});
     ++next;
   }
   entries.push_back({"pac/ch/chEtc.pac", next, next, &etc_out});

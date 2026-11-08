@@ -223,6 +223,7 @@ std::vector<superstar_pack::NewMove> ReadNewMoves(const fs::path &dir) {
     if (nm.number > 0 && ReadHost(w, nm.waze) && ReadHost(d / (stem.string() + "_low.yanm"), nm.low) &&
         ReadHost(d / (stem.string() + "_high.yanm"), nm.high)) {
       ReadHost(d / (stem.string() + ".magg"), nm.magg);  // (optional: its RGRP/MAGG records)
+      ReadHost(d / (stem.string() + ".m3"), nm.m3);      // (its motion parameters, m3_params; needed to play)
       out.push_back(std::move(nm));
     }
   }
@@ -1267,6 +1268,15 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   // (the moves mods' added moves: into a copy of misc.pac too)
   if (in.misc.empty() && std::any_of(movesets.begin(), movesets.end(), [](const auto &mv) { return !mv.new_moves.empty(); }))
     latest("pac/misc.pac", in.misc);
+  // (and their motions' parameters: into a copy of m3.pac)
+  {
+    auto with_m3 = [](const std::vector<superstar_pack::NewMove> &v) {
+      return std::any_of(v.begin(), v.end(), [](const auto &m) { return !m.m3.empty(); });
+    };
+    if (std::any_of(movesets.begin(), movesets.end(), [&](const auto &mv) { return with_m3(mv.new_moves); }) ||
+        std::any_of(stars.begin(), stars.end(), [&](const auto &st) { return with_m3(st.new_moves); }))
+      latest("pac/m3.pac", in.m3);
+  }
   // Themes: the game's sound\Music.pck (read in parts) and the newest pack's pac\sound_dlc_NN.pac.
   if (std::any_of(stars.begin(), stars.end(), [](const auto &s) { return !s.theme.empty(); }) ||
       std::any_of(movesets.begin(), movesets.end(), [](const auto &mv) { return !mv.theme.empty(); })) {
