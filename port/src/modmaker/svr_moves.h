@@ -550,7 +550,14 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       std::vector<se::BodyKey> bk;
       std::vector<se::TemplateTrack> tpl;
       se::Raw raw;
-      const int n60 = 2 * int(mo->frames);
+      // (both people as long as the longer one, the shorter one's last pose held: WWE '12's moves have their two blocks
+      // alike - Gory Bomb 2 534 / 534 -, SvR's don't - Batista Bomb 272 / 187 frames; a victim whose motion ended first
+      // went into the game's default down state, on his front: he turned over at the end, in game 2026-11-08)
+      uint32_t longest = mo->frames;
+      for (auto &x : sv.wanted[want])
+        if (x.x == bx && (x.y == 0 || x.y == 1))
+          longest = std::max(longest, x.frames);
+      const int n60 = 2 * int(longest);
       TplFrom(blk, tpl);
       if (!se::BodyKeys(se::SpanOf(mo->data), se::SpanOf(mo->T), bk, ctx) || !se::BodyBlock(tpl, bk, n60, {}, raw, ctx)) {
         why = "its animation couldn't be converted (" + ctx.why + ")";
