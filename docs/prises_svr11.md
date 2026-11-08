@@ -144,3 +144,28 @@ numéro et le nom de la prise), YANM attaquant / victime = la prise SvR 2011 con
 3. Fabriquer une prise depuis un modèle WWE '12 ; l'ajouter au paquet des mods comme `newmoves13` (misc.pac, m_dlcNN).
 4. Brancher dans le Mod Maker (`star_port.h` : `new_move` pour SvR 2011) ; tester en match (un finisher).
 5. Puis SvR 2007-2009 (mêmes banques sans l'en-tête de 16 octets, d'après Kaiko) et SvR 2010 (format à étudier).
+
+## Placement mesuré sur les prises communes (2026-11-08, hors jeu)
+
+Outil `pairfit` (`tools_local\moves_study`) : pour les 770 prises que les deux jeux ont (même nom, animations SvR
+MOT/BM00 x0 y0 / y1 et fiche complète WWE '12), on cherche le demi-tour et le décalage (cm, plan xz) qui envoient la
+racine SvR (0,1 × root) de chaque catcheur sur le Bip de WWE '12 (image 2f). 570 se recalent à moins de 15 cm :
+
+- **la victime garde son repère** (angle 0 dans 532 cas sur 570) ;
+- **l'attaquant est tourné d'un demi-tour** dans ~430 cas, pas tourné dans ~90 ;
+- **l'écart attaquant - victime dépend de la prise** : tourné et 150 cm (241 prises, la règle de Kaiko et du premier
+  essai), tourné et 0 (120), tourné et 100 (39), non tourné et +100 / +150 (72), non tourné et 0 (15) ;
+- c'est **la catégorie SvR de la prise** qui le dit : l'octet +0x91 de la fiche SvR (l'octet haut du numéro, la
+  « banque » de la prise) prédit la famille dans 90 % des cas, +0x73 dans 88 % ;
+- les grands déplacements sont normaux, et **finir à 1,5-2 m l'un de l'autre aussi** : le modèle Stone Cold Stunner 2
+  de WWE '12 finit avec 2,2 m entre les deux racines.
+
+D'où la nouvelle méthode (outil `makemove2`) : **modèle = une prise commune aux deux jeux, de la même catégorie SvR
+(+0x91, puis +0x73), bien recalée, de durée la plus proche** ; chaque catcheur de la prise portée est placé avec le
+demi-tour et le décalage mesurés sur ce modèle ; les fiches légère / complète du modèle gardent tout sauf les blocs
+x 0000 y 0000 / 0001, **et les événements YAT2 de ces blocs sont recalés sur la nouvelle durée** (avant : laissés à la
+durée du modèle, piste du gel). Side Effect (5233) : modèle Stone Cold Stunner 2 (attaquant tourné, -143 cm ; victime
+telle quelle), 178 / 166 images (modèle 180). Mis dans le mod de test `test_side_effect` (v1.1, réactivé) ; l'ancienne
+version est gardée dans le bloc-notes de la session. **À voir en jeu.**
+
+Inventaire (`survey`) : 111 prises de SvR 2011 que WWE '12 n'a pas (par le nom) avec leurs animations à deux.
