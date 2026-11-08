@@ -292,3 +292,22 @@ devrait répartir les numéros en construisant le paquet) ; 2K15-2K17 et SvR.
   (événements 78 %, 1 397 animations identiques). Roster de 2K17 : 1 436 des 1 444 prises ajoutées ont leurs lignes,
   aperçu et fiches CAM ; les 8 autres (JBL 5, Emma 1 et 2, Emma Lock, Konnor) n'en ont pas et gardent la prise de base.
   Pas encore vu en jeu.
+
+## SvR 2011 dans le Mod Maker (2026-11-08, « Moveset update »)
+
+`port/src/modmaker/svr_moves.h` (branché dans `star_port.h` : une case gardée parce que WWE '12 n'a pas de prise de ce
+nom devient une prise ajoutée). **Vient de la vraie prise SvR** : attaquant et victime de chaque segment (x 0, 1, 2,
+80…) convertis, le **cap** (piste « vector ») recalculé depuis le corps converti, ses **événements** (WAZA/DATA EVT →
+m3 0/3 + 0/4) et deux champs EXH (+10 → 0/1 +6, +18 → 0/2 +4). **Vient d'un modèle WWE '12** (prise commune aux deux
+jeux, même catégorie SvR, mêmes segments, durée la plus proche, bien recalée) : le placement de chaque catcheur (demi-tour
+et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvois de contre (x 90-92), les autres lignes m3
+(recalées), la fiche WAZE (nom et numéro changés), l'aperçu et les fiches CAM. Comme Kaiko dans l'autre sens.
+
+- **Piste « vector »** (outils `vectest*`) : indépendante de Bip (racine à part) ; dans WWE '12 elle reste à 20° du cap
+  de l'axe z de Bip - 90° dans 84 % des images (2 990 blocs). Calcul : ce cap après le demi-tour du placement, moyenné
+  sur ±8 images. Sa composante y (des creux au moment des chutes, 73 % des blocs) n'est pas comprise : laissée à 0.
+- **Validation** (`tools_local\moves_study\makemove3`, VALIDATE : une prise commune convertie avec un autre modèle,
+  comparée à celle de WWE '12) sur 56 prises : quand l'animation SvR est celle de WWE '12 (Bip < 10°, 68 % des blocs), le
+  cap est à 12° du vrai (celui du modèle : 52°). Pedigree 1 : Bip 2° / 6 cm. Événements : 46 % identiques dans l'ordre.
+- Pas encore pris : les prises sur banques YMBs (soumissions comme Walls of Jericho), les taunts (une seule personne),
+  SvR 2007-2010. Batista (160) : 2 Batista Bomb ajoutées ; Matt Hardy : Diving Elbow, Wheelbarrow. **Pas encore vu en jeu.**
