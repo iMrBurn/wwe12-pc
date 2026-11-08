@@ -209,6 +209,7 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
       if (r.new_move)
         want.insert(r.from_id);
     out.new_moves = newmoves13::Collect(src, want);
+    newmoves13::FitCategories(w12, src, out.new_moves);  // (their category bits WWE '12's: else "None" in the moveset)
     std::set<int> got;
     for (const auto &m : out.new_moves)
       got.insert(m.number);

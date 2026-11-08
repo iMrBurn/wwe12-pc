@@ -304,4 +304,44 @@ inline std::vector<Move> Collect(const disc::GameDisc &w13, const std::set<int> 
   return out;
 }
 
+// The added moves' category bits (WAZE bytes 0x00-0x0F: which moveset slots and lists a move may go in) made WWE '12's:
+// each game lays them out its own way (2K14: byte 0 differs on 42 % of the moves both games have, 0x0F on 39 %), and a
+// 2K14 Cesaro's added moves showed as "None" in his moveset (2026-11-08). As Kaiko's ports do (svr10_moves.py, "WAZE
+// category bits: from 2011 donor moves whose 2010 bits are equal"): the bits WWE '12 gives the moves both games have
+// with the same bits in the source game (the commonest), else those of the closest such move (fewest bits apart).
+inline void FitCategories(const disc::GameDisc &w12, const disc::GameDisc &src, std::vector<Move> &moves) {
+  if (moves.empty())
+    return;
+  const auto a = detail::Records(w12), b = detail::Records(src);
+  for (auto &m : moves) {
+    if (m.waze.size() < 16)
+      continue;
+    std::map<Bytes, int> votes;
+    int best_d = 1 << 30;
+    Bytes nearest;
+    for (const auto &[num, rb] : b) {
+      const auto ra = a.find(num);
+      if (ra == a.end() || num == m.number)
+        continue;
+      int d = 0;
+      for (int i = 0; i < 16; ++i)
+        d += __builtin_popcount(unsigned(rb[size_t(i)] ^ m.waze[size_t(i)]));
+      const Bytes bits(ra->second.begin(), ra->second.begin() + 16);
+      if (d == 0)
+        votes[bits]++;
+      else if (d < best_d)
+        best_d = d, nearest = bits;
+    }
+    const Bytes *pick = nullptr;
+    int n = 0;
+    for (const auto &[bits, c] : votes)
+      if (c > n)
+        n = c, pick = &bits;
+    if (!pick && !nearest.empty())
+      pick = &nearest;
+    if (pick)
+      std::copy(pick->begin(), pick->end(), m.waze.begin());
+  }
+}
+
 }  // namespace newmoves13
