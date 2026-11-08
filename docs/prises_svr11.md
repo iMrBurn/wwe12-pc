@@ -311,3 +311,10 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   cap est à 12° du vrai (celui du modèle : 52°). Pedigree 1 : Bip 2° / 6 cm. Événements : 46 % identiques dans l'ordre.
 - Pas encore pris : les prises sur banques YMBs (soumissions comme Walls of Jericho), les taunts (une seule personne),
   SvR 2007-2010. Batista (160) : 2 Batista Bomb ajoutées ; Matt Hardy : Diving Elbow, Wheelbarrow. **Pas encore vu en jeu.**
+- **Premier essai en jeu (Batista Bomb de SvR 2011 sur Batista DLC, modèle Gory Bomb 2) : « parfaite à 95 % »**, sauf la
+  fin : la victime finit sur le dos (comme dans SvR) puis se retourne d'un coup sur le ventre. Dans la vraie Gory Bomb 2
+  de WWE '12, la victime finit sur le ventre : **le jeu applique la position de fin du modèle**. Aucun champ de m3.pac
+  (tables à clé), de la fiche WAZE ni des commandes YAT2 ne la prédit sur 979 prises (`downstate`, `downwaze`,
+  `downyat`, `downev`). Piste : la table **0/8** (listes {genre, image} finies par {0, 0}, non indexée par numéro ;
+  le DLC 4 y ajoute 21 listes, `diff08`, `lists08`), sans doute référencée par le rang d'une ligne d'une autre table.
+  Essai : choisir un modèle qui finit pareil (The Last Ride) → « ça bug pas mal » en jeu, annulé (87d1322).
