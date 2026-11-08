@@ -282,3 +282,13 @@ devrait répartir les numéros en construisant le paquet) ; 2K15-2K17 et SvR.
 - 2K15 : mêmes tables m3 que 2K14 (FromOther marche). 2K16 : tables plus triées par animation, une table « 14 » (24 o,
   8 lignes pour Suplex 3) semble l'index ; 2K17 : HSPC. Tant qu'ils ne sont pas lus, leurs prises ajoutées ne sont pas
   ajoutées (sans données m3, elles gèleraient).
+
+## 2K16 et 2K17 lus (2026-11-08, nuit)
+
+- 2K16 : seulement les tables 0/0-0/7 dans l'ordre d'octets de la console ; l'ordre est appris sur les deux copies de
+  2K14 (`m3_params::FromOther`, 4ae3914). 2K17 : un HSPC dont l'entrée est un SHDC rangé comme un HSPC (index à 0x800,
+  table {id, décalage, taille, 0} après) ; son enfant 21 = les 0/0-0/11 de 2K16 (mêmes octets), ses enfants 1-14 = ceux
+  de 2K16 (`detail::OtherPrm`, 7e6adde). Contre WWE '12 sur ~4 530 animations communes : 2K17 aussi bon que 2K16
+  (événements 78 %, 1 397 animations identiques). Roster de 2K17 : 1 436 des 1 444 prises ajoutées ont leurs lignes,
+  aperçu et fiches CAM ; les 8 autres (JBL 5, Emma 1 et 2, Emma Lock, Konnor) n'en ont pas et gardent la prise de base.
+  Pas encore vu en jeu.
