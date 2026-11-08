@@ -916,12 +916,18 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, m->low}})});
           pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, m->high}})});
         }
-        const Bytes tree = svrfmt::PachWrite({{uint32_t(180 + pack), svrfmt::PachWrite(pairs)}});
         svrfmt::Epac like, out;
         char bank[8];
         // (the game loads every /ZMOT/CA00..CA19 that exists, wherever it is (sub_822B65xx, the loop at 0x822B665C):
         // the disc has CA01-CA08, the game's packs 3 and 4 CA09 and CA10; ours never below CA11, whatever its number)
-        snprintf(bank, sizeof(bank), "CA%02d", std::min(19, std::max(pack, 5) + 6));
+        const int ca = std::min(19, std::max(pack, 5) + 6);
+        snprintf(bank, sizeof(bank), "CA%02d", ca);
+        // The top id: a motion group's own number, unique across the banks (the disc's CA01-CA08 use 0-185, pack 3's
+        // CA09 186, pack 4's CA10 187: 177 + the bank). It was 180 + the pack (185 for pack 5 = a group of the disc's
+        // CA03): the game took the disc's group and never found an added move's motion - even an exact copy of a game
+        // move froze both wrestlers (in-game controls, 2026-11-08; Mankind's Mandible Claw, "seen in game", was pack
+        // 4's own)
+        const Bytes tree = svrfmt::PachWrite({{uint32_t(177 + ca), svrfmt::PachWrite(pairs)}});
         if (svrfmt::EpacRead(in.chetc, like) && !like.groups.empty()) {
           out.header = like.header;
           out.epk8 = like.epk8;

@@ -134,7 +134,7 @@ Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chant
   Code : Mod Maker `newmoves13.h` (prises de WWE '13 dont WWE '12 n'a pas le numéro : fiche WAZE avec +0x98.. = FF,
   animations légère / complète prises dans `mot00/mot01.pac ZMOT/CA*` de WWE '13) → `superstar/moves/<n>.waze`,
   `_low.yanm`, `_high.yanm`, et leurs cases dans `moves=` ; jeu : `superstar_pack.h` (copie du `misc.pac` le plus récent
-  avec les fiches insérées et les compteurs, `m_dlcNN.pac` dans le genre de pac de `chEtc.pac`, tête 180 + NN), les
+  avec les fiches insérées et les compteurs, `m_dlcNN.pac` dans le genre de pac de `chEtc.pac`, tête 177 + n° de banque : 188 pour CA11 ; avant 180 + NN = 185, un groupe de CA03 du disque, les prises ajoutées ne se jouaient pas, corrigé le 2026-11-08), les
   prises qu'un DLC installé a déjà sont sautées. **Vérifié hors jeu avec le vrai `Build`** : Mankind de WWE '13 → 8 prises
   (Mandible Claw, Stump Puller Piledriver, Cactus Elbow, Mankind Clothesline…) insérées à leur place, total +8 ; avec le
   DLC 4 installé, 3 seulement (les 5 autres sont les siennes). Sheamus → Beast Bite.
