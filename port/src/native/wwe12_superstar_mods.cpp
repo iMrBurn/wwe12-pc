@@ -1922,3 +1922,22 @@ void Wwe12MountMenuBackground(rex::filesystem::VirtualFileSystem *vfs, const std
   if (!overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(overlay)))
     REXLOG_WARN("[superstar mods] could not serve {}", rex::path_to_utf8(g_menu_dir));
 }
+
+// Test: the added moves' motions. sub_827D8E30(pack r3, id r4) = the index of an entry id in an opened pack, -1 if
+// none (wwe12_universe.cpp): with wwe12_moves_probe, the lookups of the motion groups 186-190 and of the motions
+// 57000-57199 (and Suplex 3's 50176, for a game motion's way) go to the log ([moves probe]), with what came back - do
+// the game look for an added move's motion, and in which pack (2026-11-08)
+REXCVAR_DEFINE_BOOL(wwe12_moves_probe, false, "WWE12",
+                    "Test: the lookups of the added moves' motions (groups 186-190, motions 57000-57199) to the log.");
+REX_EXTERN(__imp__sub_827D8E30);
+extern "C" REX_FUNC(sub_827D8E30) {
+  const uint32_t pack = ctx.r3.u32, id = ctx.r4.u32, lr = uint32_t(ctx.lr);
+  __imp__sub_827D8E30(ctx, base);
+  static int logged = 0;
+  if (REXCVAR_GET(wwe12_moves_probe) && logged < 2000 &&
+      ((id >= 186 && id <= 190) || (id >= 57000 && id < 57200) || id == 50176)) {
+    ++logged;
+    REXLOG_INFO("[moves probe] pack {:08X} id {} -> index {} (lr {:08X}, pack head {:08X} {:08X})", pack, id,
+                int32_t(ctx.r3.u32), lr, pack ? bd::mem::load<uint32_t>(pack) : 0, pack ? bd::mem::load<uint32_t>(pack + 4) : 0);
+  }
+}

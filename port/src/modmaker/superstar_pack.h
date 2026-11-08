@@ -916,8 +916,12 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         std::vector<svrfmt::PachEntry> pairs;
         for (const NewMove *m : added) {
           const uint32_t motion = uint32_t(((m->number & 0xFF) << 8) | (m->number >> 8));
-          pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, m->low}})});
-          pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, m->high}})});
+          // (the light record BPE-compressed, the full one plain: so are all 5 544 pairs of the disc's ZMOT/CA01-CA08
+          // and the packs'; a plain light record left the wrestlers still through the move, 2026-11-08)
+          const Bytes low = svrfmt::IsBpe(m->low) ? m->low : svrfmt::BpeEncode(m->low);
+          const Bytes high = svrfmt::IsBpe(m->high) ? svrfmt::Unpack(m->high) : m->high;
+          pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, low}})});
+          pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, high}})});
         }
         svrfmt::Epac like, out;
         char bank[8];
