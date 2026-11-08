@@ -373,4 +373,99 @@ inline void FitCategories(const disc::GameDisc &w12, const disc::GameDisc &src, 
   }
 }
 
+// Added moves renumbered into a kind of move WWE '12 knows. The hundred of a motion number is its kind of move (570xx
+// the apron moves, 500-504xx the front grapples...); a motion in a hundred WWE '12 doesn't have froze both wrestlers -
+// every added move of a 2K14 Cesaro (505xx...), while the same moves renumbered into 504xx played (2026-11-08). A move
+// whose hundred WWE '12's m3.pac has keeps its number; else it takes a free motion of the hundred of the WWE '12 move
+// with the same category bits (FitCategories' donors; else the closest bits), from the top of that hundred down (the
+// packs fill theirs from the bottom: pack 4's 50420-50436). Its number follows (the motion's bytes swapped) and so do
+// its records, preview script and RGRP/MAGG records. Returns old number -> new number (the moveset's slots follow).
+// prefer: for a move number, the hundred WWE '12's rosters use most in the moveset slot it goes in (star_port: its slot
+// tells its kind best - the bits alone put a 2K14 Neutralizer among the taunts, 371xx).
+inline std::map<int, int> Renumber(const disc::GameDisc &w12, std::vector<Move> &moves,
+                                   const std::map<int, int> &prefer = {}) {
+  std::map<int, int> out;
+  if (moves.empty())
+    return out;
+  Bytes m3;
+  std::set<int> used, hundreds;  // motions WWE '12 has rows for, and their hundreds
+  m3_params::detail::Prm prm;
+  if (w12.Read("pac/m3.pac", m3) && prm.Open(m3)) {
+    const Bytes t = prm.Get("0/3");
+    for (size_t o = 0; o + 8 <= t.size(); o += 8) {
+      const int mo = t[o] | t[o + 1] << 8;
+      used.insert(mo), hundreds.insert(mo / 100);
+    }
+  }
+  if (hundreds.empty())
+    return out;
+  const auto recs = detail::Records(w12);
+  for (const auto &[num, r] : recs)
+    used.insert(MotionOf(num));
+  for (auto &m : moves) {
+    const int motion = MotionOf(m.number);
+    used.insert(motion);
+  }
+  for (auto &m : moves) {
+    const int motion = MotionOf(m.number);
+    if (hundreds.count(motion / 100) || m.waze.size() < 16)
+      continue;
+    // the closest hundred WWE '12 has in the same thousand (2K14 added hundreds next to WWE '12's: its 505xx front
+    // grapples after 500-504xx, its 511xx after 510xx - a 2K14 Neutralizer, 505xx, played in 504xx), else its slot's
+    // commonest hundred, else the donor: a WWE '12 move with these category bits (else the fewest bits apart) whose
+    // motion's hundred is known
+    int best = -1, best_d = 1 << 30;
+    const int h0 = motion / 100;
+    for (int k = 1; k < 10 && best < 0; ++k)
+      for (int h : {h0 - k, h0 + k})
+        if (best < 0 && h / 10 == h0 / 10 && hundreds.count(h))
+          best = h, best_d = -1;
+    if (const auto pf = prefer.find(m.number); best < 0 && pf != prefer.end() && hundreds.count(pf->second))
+      best = pf->second, best_d = -1;
+    for (const auto &[num, r] : recs) {
+      if (best_d < 0)
+        break;
+      const int h = MotionOf(num) / 100;
+      if (!hundreds.count(h))
+        continue;
+      int d = 0;
+      for (int i = 0; i < 16; ++i)
+        d += __builtin_popcount(unsigned(r[size_t(i)] ^ m.waze[size_t(i)]));
+      if (d < best_d)
+        best_d = d, best = h;
+    }
+    if (best < 0)
+      continue;
+    int fresh = -1;
+    for (int mo = best * 100 + 99; mo >= best * 100; --mo)
+      if (!used.count(mo) && !recs.count(MotionOf(mo))) {
+        fresh = mo;
+        break;
+      }
+    if (fresh < 0)
+      continue;
+    used.insert(fresh);
+    const int number = MotionOf(fresh);  // (the swap is its own inverse)
+    out[m.number] = number;
+    m.number = number;
+    m.waze[0x90] = uint8_t(number >> 8), m.waze[0x91] = uint8_t(number);
+    char text[16] = {};
+    snprintf(text, sizeof(text), "%d", fresh);
+    for (Bytes *y : {&m.low, &m.high})
+      if (y->size() > 0x58)
+        memcpy(&(*y)[0x4C], text, 12);
+    std::string s(m.mvmot.begin(), m.mvmot.end());
+    const std::string from = "," + std::to_string(motion) + ",", to = "," + std::to_string(fresh) + ",";
+    for (size_t p; (p = s.find(from)) != std::string::npos;)
+      s.replace(p, from.size(), to);
+    m.mvmot.assign(s.begin(), s.end());
+    for (size_t o : {size_t(0), size_t(104)})
+      if (m.magg.size() >= o + 2 && (m.magg[o] | m.magg[o + 1] << 8) == motion)
+        m.magg[o] = uint8_t(fresh), m.magg[o + 1] = uint8_t(fresh >> 8);
+    // (its m3 rows: m3_params::Insert writes the new motion over the first u16 and over the old one where a row names
+    // itself - nothing to change here)
+  }
+  return out;
+}
+
 }  // namespace newmoves13

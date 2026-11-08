@@ -219,6 +219,31 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
           m.m3 = m3_params::Write(rows);
       }
     }
+    // (renumbered into a kind of move WWE '12 knows: a motion in a hundred it hasn't froze the wrestlers; the moveset's
+    // slots take the new numbers)
+    std::map<int, int> prefer;  // move number -> the hundred WWE '12's rosters use most in its slot
+    {
+      moveset_port::detail::Game g12;
+      moveset_port::detail::Load(w12, g12);
+      std::map<int, std::map<int, int>> by_slot;  // slot -> hundred -> count
+      for (const auto &[id, p] : g12.pro)
+        for (size_t o = 0x0A; o + 2 <= p.size() && o < 0x1C4; o += 2)
+          if (const int v = moveset_port::detail::U16(p, o); v > 0)
+            by_slot[int(o)][newmoves13::MotionOf(v) / 100]++;
+      for (const auto &r : out.moves.rows)
+        if (r.new_move && !prefer.count(r.from_id)) {
+          int best = -1, n = 0;
+          for (const auto &[h, c] : by_slot[r.off])
+            if (c > n)
+              n = c, best = h;
+          if (best >= 0)
+            prefer[r.from_id] = best;
+        }
+    }
+    const auto renamed = newmoves13::Renumber(w12, out.new_moves, prefer);
+    for (auto &r : out.moves.rows)
+      if (r.new_move && renamed.count(r.from_id))
+        r.from_id = renamed.at(r.from_id);
     std::set<int> got;
     for (const auto &m : out.new_moves)
       got.insert(m.number);
