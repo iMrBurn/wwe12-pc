@@ -15,64 +15,75 @@ suivantes se font en un clic depuis le launcher). Mode d'emploi complet en fran�
 
 ## Playing
 
+### Windows
+
 1. Download the latest zip from [Releases](https://github.com/iMrBurn/wwe12-pc/releases).
 2. Unzip it, then put the disc image (`.iso`) of **your** WWE '12 (Xbox 360) in the `game`
    folder (or the disc contents: `default.xex`, `pac\`, `movies\`…).
 3. Run `WWE12 Launcher.exe` (or `wwe12.exe` to start the game directly).
 
-Requirements: Windows 10/11 64-bit, a graphics card with a Vulkan 1.2 driver (most cards since
-2016; not Intel HD 4000/5000/6000 series, which have no Vulkan driver on Windows), an Xbox or PlayStation controller
-(DualShock 4, DualSense) or the keyboard (ZQSD/WASD, layout in `README.txt`).
-Settings (language, internal resolution…) are in `wwe12.toml`, explained in `README.txt`.
+Requirements: Windows 10/11 64-bit, a graphics card with a Vulkan 1.2, DirectX 12 or DirectX 11
+driver (the launcher picks the best one; older cards such as the GeForce GT 430 work with
+DirectX 11), an Xbox or PlayStation controller (DualShock 4, DualSense) or the keyboard
+(ZQSD/WASD, layout in `README.txt`). Settings (language, internal resolution…) are in the
+launcher and in `wwe12.toml`, explained in `README.txt`.
 
-## Status (v0.9.0-beta)
+### Android
 
-- Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps. Entrances and
-  cutscenes run at 30 fps like on Xbox 360, or at 60 fps with an experimental option.
-- **Launcher** (`WWE12 Launcher.exe`): settings, keyboard controls, mods, **saves** (backups,
-  restore, **import of your Xbox 360 saves**), diagnostic info for bug reports, and **one-click
-  updates** from this page's releases.
-- **In-game graphics settings** (OPTIONS > GRAPHICS, built with the game's own menus):
-  internal resolution from 540p to 4K (automatic by default: 720p on Steam Deck, integrated and
-  small GPUs), texture filtering, crowd, shadows, depth of field, vertical sync, 60 fps entrances.
-- **Match loading about twice as fast** as on the console, start-up videos skipped.
-- DLC support (see below).
-- All five languages of the European release (English, French, German, Spanish, Italian).
-- An "EXIT" entry in the main menu (in place of SHOP, the dead Xbox LIVE store); Xbox LIVE is
-  labelled "Online".
-- Custom attires (Superstar Threads), eyes and teeth (NVIDIA and Intel), blood, post-match
-  replays and MATCH HIGHLIGHTS, controller vibration (Universe mode included).
-- **Custom theme music for created wrestlers**: drop your tracks (mp3, m4a, aac, wav, flac) in
-  the `music` folder and pick them where the game chooses entrance themes. They play on the
-  entrance, the post-match replay and the victory ceremony, with automatic loudness leveling.
-- **Keyboard typing** in Create a Story and CAW name screens.
-- **WWE Universe**: reset your Universe (with an automatic save backup), vacate a title no show
-  uses, choose each Superstar's attire, manual rankings, full contender lists for minor, tag team
-  and Divas titles, and SAVE a match you edited on the card without playing it.
-- Video memory stays stable over long sessions (no more slowdowns after a few matches).
-- A `mods` folder: files in it replace the game's own (HD titantron videos, textures...).
-- Xbox and PlayStation controllers (with PlayStation button icons), and the keyboard, either
-  together with a controller or as player 2 (two players with one controller).
+Download `WWE12-PC-Android-v<version>.apk` from [Releases](https://github.com/iMrBurn/wwe12-pc/releases),
+install it, then pick your WWE '12 `.iso` in the app. The app updates itself. It needs a phone
+whose graphics driver supports Vulkan with `bufferDeviceAddress` and `descriptorIndexing` (the
+app tells you if yours does not; a custom Turnip driver can help on Snapdragon phones) and a
+recent Android. Touch controls or a controller. See the [FAQ](docs/FAQ.md).
+
+## Status (v1.1.0)
+
+- Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps on Windows
+  (Vulkan, DirectX 12 and DirectX 11 renderers). Entrances and cutscenes run at 30 fps like on
+  Xbox 360, or at 60 fps with an option.
+- **Launcher** (`WWE12 Launcher.exe`): settings, controls (controller navigation), mods,
+  **saves** (backups, restore, **import of your Xbox 360 saves**), diagnostic info for bug
+  reports, a Steam Deck / small-PC profile, optional Discord status, and **one-click updates**.
+- **In-game graphics settings** (OPTIONS > GRAPHICS): internal resolution from 540p to 4K,
+  texture filtering, crowd, shadows, depth of field, vertical sync, 60 fps entrances.
+- **Match loading about twice as fast** as on the console, start-up videos skipped, graphics
+  shaders prepared in the background to avoid stutters.
+- **Android version** (Snapdragon with a Vulkan driver that has the needed features; Mali
+  phones are experimental): full game, on-screen buttons, performance presets, wide-screen fill.
+- **WWE '12 Mod Maker** (`WWE12 Mod Maker.exe`): add wrestlers (ported from SmackDown vs. Raw
+  2007 to 2011 and WWE '13 / 2K games), arenas, entrances, moves, attires, media, and replace the
+  Universe menu pictures. Added wrestlers and arenas work in Universe mode. See
+  [docs/mod_maker.md](docs/mod_maker.md).
+- DLC support (see below). All five languages of the European release.
+- Custom attires (Superstar Threads), eyes and teeth, blood, post-match replays and MATCH
+  HIGHLIGHTS, controller vibration.
+- **Custom theme music for created wrestlers** (mp3, m4a, aac, wav, flac in the `music`
+  folder), keyboard typing in text screens, a jukebox.
+- **WWE Universe**: reset your Universe (with a save backup), vacate a title, attire choice,
+  manual rankings, full contender lists, SAVE a match without playing it, playable added arenas,
+  draft news.
+- A `mods` folder: files in it replace the game's own (HD titantron videos, textures…).
+- Xbox and PlayStation controllers, and the keyboard, alone, with a controller or as player 2.
 - Display options: borderless window, FPS counter (F2), frame limit, CPU priority.
 
-Known issues: coloured blocks during entrances and matches on some Intel and AMD graphics
-(#7, #11, #13, #16: a probable fix is in 0.9, please report); white eyes on some AMD cards (#12);
-white body with a custom colour for some wrestlers; a rare freeze fixed in 0.9 (#4, #8, #11:
-please report if it still happens).
+Known issues: see each release's notes. The main ones: a short stutter and a one-frame flicker
+at the start of a match on some PCs, a gamma that is not the console's (a console / PC choice is
+planned), and some Adreno 6xx Android phones whose driver lacks needed features.
 
-Planned for 1.0: every known bug fixed. Then: the title update (1.1), even shorter loading, a
-richer Universe mode (qualifying matches, Royal Rumble surprise entrants, booking), a mod tool,
-HD textures and videos, online play.
+Roadmap (no dates): **1.2 "Moveset update"** (moves from SmackDown vs. Raw 2007-2011 and WWE 2K14
+to 2K17 in the Mod Maker, a Moves & Entrances page, gamma option, bug fixes), then the title
+update corrections and speed work, match modes and a richer Universe. Details in
+[docs/feuille_de_route.md](docs/feuille_de_route.md) (in French).
 
 ## Reporting a bug
 
 Read the [FAQ](docs/FAQ.md) first: it answers the most common questions (DLC, antivirus, slow PCs,
 black screen, freezes, saves).
 
-Open an [issue](https://github.com/iMrBurn/wwe12-pc/issues) with: the version, what you were doing
+Open an [issue](https://github.com/iMrBurn/wwe12-pc/issues) with: the version (PC or Android), what you were doing
 (mode, wrestlers), a screenshot, and the text from the launcher's **ABOUT > Copy diagnostic info**
 button (graphics card, driver, settings; no personal data). Logs are in `Documents\wwe12\logs`
-(**ABOUT > Open the logs folder**). If the game freezes, wait 15 seconds, close it and attach
+(**ABOUT > Open the logs folder**; on Android, launcher > SHARE LAST LOG). If the game freezes, wait 15 seconds, close it and attach
 `hang_trace.txt` from that folder.
 
 Antivirus warnings: the exes are not digitally signed, so Windows Defender may flag them by mistake.

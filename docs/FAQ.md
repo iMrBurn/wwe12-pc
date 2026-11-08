@@ -29,7 +29,7 @@ then in `Documents\wwe12` delete the `xbox_cache` folder and the
 `0000000000000000\54510890\00000002` folder (**not** `00000001`: that's your saves). Start the game
 again: the DLC are reinstalled and every wrestler shows up.
 
-**Do I need the Title Update?** No. It isn't supported yet (planned for 1.1).
+**Do I need the Title Update?** No. It isn't supported yet (planned for 1.3).
 
 ## Graphics and performance
 
@@ -178,7 +178,7 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
   Corrigé automatiquement en 0.9 ; avant : jeu fermé, supprimez dans `Documents\wwe12` le dossier
   `xbox_cache` et le dossier `0000000000000000\54510890\00000002` (**pas** `00000001` : vos sauvegardes),
   puis relancez.
-- **Title Update** : pas encore prise en charge (prévue pour la 1.1), pas nécessaire.
+- **Title Update** : pas encore prise en charge (prévue pour la 1.3), pas nécessaire.
 - **Quelle API graphique ?** Laissez AUTO (launcher → réglages → API graphique). Trois versions du jeu : Vulkan
   (par défaut), DirectX 12 (`wwe12_d3d12.exe`) et DirectX 11 (`wwe12_d3d11.exe`, pour les cartes plus anciennes sans
   Vulkan 1.2 ni DirectX 12). AUTO essaie Vulkan, puis DirectX 12, puis DirectX 11. Ou `gpu_backend = "vulkan"`,
