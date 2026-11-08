@@ -805,6 +805,12 @@ class Page {
       }
       ImGui::EndCombo();
     }
+    // (players looked here for superstars WWE '12 hasn't - Shawn Michaels, Batista, 2026-11-08: those are made with NEW
+    // SUPERSTAR)
+    ImGui::TextDisabled("%s", fr ? "(seulement les catcheurs de WWE '12 ; pour un catcheur que WWE '12 n'a pas, comme Shawn "
+                                   "Michaels ou Batista : page NOUVEAU CATCHEUR)"
+                                 : "(WWE '12's superstars only; for one WWE '12 hasn't, as Shawn Michaels or Batista: the "
+                                   "NEW SUPERSTAR page)");
     // (2K16 / 2K17's effects stand in with his own in WWE '12 when no older game has them: made again for him)
     if (target_ >= 0 && collected_for_ != target_ && (game_ == 0x315A07D2 || game_ == 0x545408BA))
       Recollect();
