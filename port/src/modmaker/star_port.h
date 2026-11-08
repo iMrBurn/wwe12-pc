@@ -210,6 +210,15 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
         want.insert(r.from_id);
     out.new_moves = newmoves13::Collect(src, want);
     newmoves13::FitCategories(w12, src, out.new_moves);  // (their category bits WWE '12's: else "None" in the moveset)
+    {  // (their events of kinds WWE '12 never uses left out: m3_params::DropUnknownEvents)
+      svrfmt::Bytes m3;
+      const auto known = w12.Read("pac/m3.pac", m3) ? m3_params::KnownEvents(m3) : std::set<int>{};
+      for (auto &m : out.new_moves) {
+        m3_params::Rows rows;
+        if (!m.m3.empty() && m3_params::Read(m.m3, rows) && m3_params::DropUnknownEvents(rows, known) > 0)
+          m.m3 = m3_params::Write(rows);
+      }
+    }
     std::set<int> got;
     for (const auto &m : out.new_moves)
       got.insert(m.number);

@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -212,6 +213,40 @@ inline Rows FromOther(const Bytes &m3, int motion, double k = 1.0) {
   if (out.rows["0/3"].empty())
     return {};
   return out;
+}
+
+// The kinds of event WWE '12's own motions use (its m3.pac's 0/4).
+inline std::set<int> KnownEvents(const Bytes &m3) {
+  std::set<int> out;
+  detail::Prm p;
+  if (p.Open(m3)) {
+    const Bytes t4 = p.Get("0/4");
+    for (size_t o = 0; o + 4 <= t4.size(); o += 4)
+      out.insert(detail::U16(t4, o));
+  }
+  return out;
+}
+// Events of kinds WWE '12 never uses left out (2K14 added 0x338-0x343, 0x0001...: its Neutralizer's victim has
+// 0x338 after the impact, and fell too soon in WWE '12, 2026-11-08). 0/3's starts and counts follow. How many dropped.
+inline int DropUnknownEvents(Rows &r, const std::set<int> &known) {
+  if (known.empty())
+    return 0;
+  std::vector<Bytes> kept;
+  int dropped = 0;
+  for (auto &row : r.rows["0/3"]) {
+    const int start = detail::U16(row, 4), count = detail::U16(row, 6);
+    const int at = int(kept.size());
+    for (int i = start; i < start + count && i < int(r.events.size()); ++i) {
+      if (known.count(detail::U16(r.events[size_t(i)], 0)))
+        kept.push_back(r.events[size_t(i)]);
+      else
+        ++dropped;
+    }
+    detail::Put16(row, 4, at);
+    detail::Put16(row, 6, int(kept.size()) - at);
+  }
+  r.events = std::move(kept);
+  return dropped;
 }
 
 // A row set as a file (superstar\moves\<number>.m3): "M3RS", then per table {name 4 bytes, u32 rows, u32 stride,
