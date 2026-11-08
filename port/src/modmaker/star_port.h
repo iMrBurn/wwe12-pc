@@ -233,6 +233,38 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
       for (const auto &r : out.moves.rows)
         if (r.new_move && !prefer.count(r.from_id))
           prefer[r.from_id] = by_slot[r.off];
+      // (and their category bits: those of the WWE '12 move used in the same slot whose bits are closest - bits valid
+      // for that slot's Create a Moveset list; the donors' bits alone are WWE '12's for 62 % of the moves only, and a
+      // 2K14 Cesaro's Neutralizer was in no list, 2026-11-08)
+      std::map<int, std::set<int>> in_slot;  // slot -> move numbers WWE '12's rosters put there
+      for (const auto &[id, p] : g12.pro)
+        for (size_t o = 0x0A; o + 2 <= p.size() && o < 0x1C4; o += 2)
+          if (const int v = moveset_port::detail::U16(p, o); v > 0)
+            in_slot[int(o)].insert(v);
+      for (auto &m : out.new_moves) {
+        int slot = -1;
+        for (const auto &r : out.moves.rows)
+          if (r.new_move && r.from_id == m.number) {
+            slot = r.off;
+            break;
+          }
+        if (slot < 0 || m.waze.size() < 16)
+          continue;
+        const svrfmt::Bytes *best = nullptr;
+        int best_d = 1 << 30;
+        for (int v : in_slot[slot]) {
+          const auto c = g12.cats.find(v);
+          if (c == g12.cats.end() || c->second.size() < 16)
+            continue;
+          int d = 0;
+          for (int i = 0; i < 16; ++i)
+            d += __builtin_popcount(unsigned(c->second[size_t(i)] ^ m.waze[size_t(i)]));
+          if (d < best_d)
+            best_d = d, best = &c->second;
+        }
+        if (best)
+          std::copy(best->begin(), best->begin() + 16, m.waze.begin());
+      }
     }
     const auto renamed = newmoves13::Renumber(w12, out.new_moves, prefer);
     for (auto &r : out.moves.rows)
