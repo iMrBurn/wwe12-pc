@@ -269,7 +269,17 @@ inline std::vector<Move> Collect(const disc::GameDisc &w13, const std::set<int> 
     auto take = [&](uint32_t id, const Bytes &d) {
       if ((id == 10 || id == 11) && d.size() >= 104)
         for (size_t o = 0; o + 104 <= d.size(); o += 104)
-          rec[id == 11][d[o] | d[o + 1] << 8] = Bytes(d.begin() + long(o), d.begin() + long(o) + 104);
+        {
+          Bytes r(d.begin() + long(o), d.begin() + long(o) + 104);
+          // (2K14's layout: {motion, kind, flag, flag, 0, 0, 0}; WWE '12's: {motion, kind, 0, flag, 0, flag, 0} - copied as
+          // it was, the game read no valid kind and listed a 2K14 Cesaro's moves nowhere in Create a Moveset; learned
+          // on the 793 rows both games have, kinds the same at 99 %, 2026-11-08)
+          if (r[6] == 0 && r[7] == 0 && r[5] == 0 && (r[3] || r[4])) {
+            const uint8_t f3 = r[3], f4 = r[4];
+            r[3] = 0, r[4] = f3, r[5] = 0, r[6] = f4, r[7] = 0;
+          }
+          rec[id == 11][d[o] | d[o + 1] << 8] = std::move(r);
+        }
     };
     if (w13.Read("pac/DLC.pac", dlc) && svrfmt::IsXcompress(dlc) && svrfmt::XcompressDecode(dlc, plain))
       dlc.swap(plain);
@@ -478,6 +488,37 @@ inline std::map<int, int> Renumber(const disc::GameDisc &w12, std::vector<Move> 
         m.magg[o] = uint8_t(fresh), m.magg[o + 1] = uint8_t(fresh >> 8);
     // (its m3 rows: m3_params::Insert writes the new motion over the first u16 and over the old one where a row names
     // itself - nothing to change here)
+  }
+  // (their Create a Moveset kind, RGRP/MAGG +2: one WWE '12's lists don't have - 2K14 added 0x16 - becomes the commonest
+  // kind of WWE '12's rows in the motion's hundred)
+  {
+    Bytes dlc;
+    svrfmt::Archive a;
+    std::set<int> kinds;
+    std::map<int, std::map<int, int>> by_hundred;
+    if (w12.Read("pac/DLC.pac", dlc) && svrfmt::ArchiveOpen(dlc, a, nullptr))
+      for (auto &k : a.root.kids) {
+        std::vector<svrfmt::PachEntry> kids;
+        if (detail::Trim(k.group) != "RGRP" || !svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(k)), kids))
+          continue;
+        for (const auto &kid : kids)
+          if (kid.id == 10) {
+            const Bytes d = svrfmt::Unpack(kid.data);
+            for (size_t o = 0; o + 104 <= d.size(); o += 104) {
+              kinds.insert(d[o + 2]);
+              by_hundred[(d[o] | d[o + 1] << 8) / 100][d[o + 2]]++;
+            }
+          }
+      }
+    for (auto &m : moves)
+      for (size_t o : {size_t(0), size_t(104)})
+        if (m.magg.size() >= o + 104 && !kinds.empty() && !kinds.count(m.magg[o + 2])) {
+          int best = 0, n = 0;
+          for (const auto &[k, c] : by_hundred[MotionOf(m.number) / 100])
+            if (c > n)
+              n = c, best = k;
+          m.magg[o + 2] = uint8_t(best);
+        }
   }
   return out;
 }
