@@ -175,3 +175,27 @@ chaque entrée est **la taille du bloc en unités de 32 octets** (Pedigree 1 : 3
 Stunner 2 : 188 / 245 pour 272), pas le nombre d'images (« FF + u24 images » plus haut est faux). Les deux essais y
 écrivaient le nombre d'images : le jeu ne lisait qu'une partie de chaque bloc. Corrigé dans `makemove2` (taille
 recalculée, événements recalés sur le nombre d'images du bloc du modèle) ; mod de test v1.2.
+
+## Les prises ajoutées ne se jouent pas du tout (essais du 2026-11-08)
+
+Témoins en jeu (Front Facelock, stick gauche haut + A) :
+- copie exacte du Stone Cold Stunner 2 ajoutée (n° 59645 puis 3295) : gel ; le vrai Stunner (33476) dans la même case :
+  **marche** → la case n'est pas en cause ;
+- copie exacte du Suplex 3 de Cena ajoutée (n° 3295, animation 57100) : **gel**, même après la correction de la tête de
+  groupe (185 = un groupe de CA03 du disque → 188, commit b77c71a) → **le mécanisme d'ajout ne suffit pas, quelle que
+  soit l'animation**. La Mandible Claw de Mankind « vue en jeu » était celle du DLC 4 installé.
+
+Ce qui manque très probablement : **`m3.pac` (MDAT/PRM), les paramètres de chaque animation**. Les DLC 3 et 4 livrent
+une copie complète de `m3.pac` ; celle du DLC 4 grossit (tables 0/1 +336 o, 0/3 +776, 0/4 +2 300, 0/7 +280, 0/8 +284,
+5 +640). Les tables sont des tableaux triés par numéro d'animation (u16 petit-boutiste en tête de fiche, sans en-tête) :
+0/3 fiches de 8 o {animation, partie, début u16 et nombre u16 dans 0/4}, 0/4 des paires {événement u16, image u16}
+(« 67 00 83 00 » : des temps à 60 Hz), 0/7 fiches de 20 o, 0/1 fiches de 28 o {animation u32, autre animation u32, ...},
+5 (« SMB ») fiches de 20 o finissant par un numéro qui se suit (0CF2, 0CF3…). Suplex 3 (50176) a des fiches dans 0/1,
+0/2, 0/3, 0/6 (12), 0/7 et 5 ; la prise 50429 du DLC 4 dans 0/1, 0/2, 0/3, 0/6, 0/7. 0/2 et 0/6 gardent leur taille
+(cases réutilisées ?). Après une insertion, des champs plus loin changent (0/1, 0/7, 0/8 : indices décalés ?).
+
+**Conséquence pour la 1.1** : les « prises ajoutées » de WWE '13 et 2K14-2K17 (case « Prises ajoutées
+(expérimental) », décochée par défaut) ne se jouent sans doute pas non plus en jeu. Piste : ajouter à notre paquet une
+copie de `m3.pac` (le plus récent) avec, pour chaque prise ajoutée, les fiches de la prise modèle (ou de sa propre
+animation d'origine) recopiées sous le nouveau numéro, sans dupliquer 0/4 ; il faut d'abord comprendre les champs
+d'indices.
