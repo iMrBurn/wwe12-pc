@@ -80,7 +80,25 @@ inline const std::vector<Node> &Legs13() {
       {"Bip R Thigh", {0.0002365f, 11.4999838f, 6.9e-06f}, {-3e-07f, 4e-07f, 2.8797929f}, 2},
       {"R_Thigh_x", {21.6535416f, 3.81e-05f, 0.0008295f}, {-5e-07f, 0.0f, 1e-07f}, 7},
       {"Bip R Calf", {21.8264275f, 3.8e-06f, -0.001462f}, {-4e-07f, -4.02e-05f, -1e-07f}, 8},
-      {"Bip R Foot", {43.4799805f, 3.8e-06f, -0.0013588f}, {1e-07f, 7.82e-05f, 0.0f}, 9}};
+      {"Bip R Foot", {43.4799805f, 3.8e-06f, -0.0013588f}, {1e-07f, 7.82e-05f, 0.0f}, 9},
+      // the arms (2K14 drives the forearms by IK too: its Neutralizer's grab played with wrong arms, 2026-11-08) -
+      // the same WWE '13 ch246 table (svr11_entrance.h Nodes13)
+      {"Bip Spine", {-3e-07f, -18.6909637f, 7.8e-06f}, {1.5707958f, -3.1415927f, 1.5707953f}, 1},
+      {"Bip Spine1", {22.3148727f, 0.0f, 1.86e-05f}, {7e-07f, 8.17e-05f, 0.0f}, 11},
+      {"Bip L Clavicle", {17.6370239f, -3.05e-05f, 0.0014681f}, {-3.1415396f, -8e-07f, -1.5707964f}, 12},
+      {"Bip L UpperArm", {20.0014915f, -0.0015564f, 3.03e-05f}, {2.16e-05f, 1e-07f, 0.261799f}, 13},
+      {"L_UpperArm_x", {14.0794487f, -0.0011292f, 5.6e-06f}, {1e-07f, 1e-07f, -1e-07f}, 14},
+      {"Bip L Forearm", {14.0696106f, -0.0011292f, 0.0f}, {0.0f, 0.3490654f, -3e-07f}, 15},
+      {"L_Wrist_x", {9.7812347f, -0.0008087f, -3.8e-06f}, {8.7e-06f, 5e-07f, 1.1e-06f}, 16},
+      {"L_Wrist_x2", {9.077755f, -0.0006256f, 6.7e-06f}, {1.3e-06f, 2e-06f, -1.3e-06f}, 17},
+      {"Bip L Hand", {9.2910805f, -0.0007324f, 2.9e-06f}, {-1.5707968f, -1.7e-06f, 0.0f}, 18},
+      {"Bip R Clavicle", {17.6370239f, -0.0015259f, 1.31e-05f}, {3.1415114f, 6e-07f, 1.5707964f}, 12},
+      {"Bip R UpperArm", {19.9998322f, -0.0015259f, -0.0014551f}, {-9.8e-06f, -3e-07f, -0.2618007f}, 20},
+      {"R_UpperArm_x", {14.0794506f, 0.0044861f, -2e-06f}, {0.0f, 2e-07f, 0.0f}, 21},
+      {"Bip R Forearm", {14.1205711f, 0.0011444f, -3.24e-05f}, {6e-07f, 0.3490664f, 1.2e-06f}, 22},
+      {"R_Wrist_x", {9.7302628f, 0.0009003f, 5.34e-05f}, {8.8e-06f, -1.3e-06f, -5e-07f}, 23},
+      {"R_Wrist_x2", {9.0777931f, 0.0007629f, -6.7e-06f}, {1.1e-06f, 2e-07f, 1e-07f}, 24},
+      {"Bip R Hand", {9.2922173f, 0.0007324f, -4.8e-06f}, {1.5708044f, 7e-07f, 9e-07f}, 25}};
   return n;
 }
 
@@ -261,7 +279,7 @@ inline bool BakeBlock(const Bytes &in, Bytes &out, int *frames_out) {
     IkStream ik;
     bool on = false;
   };
-  Leg legs[2] = {{3, 5, 6, {}, false}, {7, 9, 10, {}, false}};
+  Leg legs[4] = {{3, 5, 6, {}, false}, {7, 9, 10, {}, false}, {14, 16, 19, {}, false}, {21, 23, 26, {}, false}};  // (legs, then arms: upper arm, forearm, hand)
   int frames = blk.frames;
   for (auto &l : legs) {
     const int dc = desc_of[size_t(l.calf)], dt = desc_of[size_t(l.thigh)];
@@ -278,7 +296,7 @@ inline bool BakeBlock(const Bytes &in, Bytes &out, int *frames_out) {
     if (l.on)
       frames = std::max(frames, l.ik.keys.back().t + 1);
   }
-  if (!legs[0].on && !legs[1].on)
+  if (!legs[0].on && !legs[1].on && !legs[2].on && !legs[3].on)
     return false;
   // bind
   std::vector<Q> bq(nn);
@@ -296,7 +314,7 @@ inline bool BakeBlock(const Bytes &in, Bytes &out, int *frames_out) {
     times.push_back(f);
   if (times.back() != frames - 1 && frames > 1)
     times.push_back(frames - 1);
-  std::vector<std::vector<V>> thigh_keys(2), calf_keys(2);
+  std::vector<std::vector<V>> thigh_keys(4), calf_keys(4);
   for (int f : times) {
     std::vector<M3> lr(nn);
     std::vector<V> lt(nn);
@@ -331,7 +349,7 @@ inline bool BakeBlock(const Bytes &in, Bytes &out, int *frames_out) {
       }
     };
     fk();
-    for (int s = 0; s < 2; ++s) {
+    for (int s = 0; s < 4; ++s) {
       Leg &l = legs[s];
       if (!l.on)
         continue;
@@ -383,7 +401,7 @@ inline bool BakeBlock(const Bytes &in, Bytes &out, int *frames_out) {
     }
     return at;
   };
-  for (int s = 0; s < 2; ++s) {
+  for (int s = 0; s < 4; ++s) {
     if (!legs[s].on)
       continue;
     for (const auto &[node, keys] : {std::pair<int, const std::vector<V> *>{legs[s].thigh, &thigh_keys[size_t(s)]},
@@ -471,6 +489,13 @@ inline bool BakeLegIk(Bytes &rec) {
   }
   if (!any)
     return false;
+  // each table entry's u16 at +2: its block's size in 32-byte units (a move record's: the game reads that much - a wrong
+  // one stretched the bodies, 2026-11-08)
+  for (uint32_t i = 0; i < n; ++i) {
+    const uint32_t s = B32(out, 0x70 + 0x28 * size_t(i) + 0x24);
+    const uint32_t e = i + 1 < n ? B32(out, 0x70 + 0x28 * size_t(i + 1) + 0x24) : uint32_t(out.size() - first);
+    detail::Put16(out, 0x70 + 0x28 * size_t(i) + 2, uint16_t(std::min<uint32_t>((e - s) / 32, 65535)));
+  }
   detail::Put32(out, 4, uint32_t(out.size() - first));
   rec.swap(out);
   return true;
