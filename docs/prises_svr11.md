@@ -212,3 +212,23 @@ Animations placées en fin de centaine (57098, 57099 après 57007 du DLC 4). Le 
 `/ZMOT/CA11 found` ; sonde `wwe12_moves_probe` (sub_827D8E30) : les animations ne passent pas par là.
 Reste : le Mod Maker doit écrire le `.m3` des prises ajoutées (WWE '13 / 2K : le m3.pac du jeu d'origine si même format,
 sinon la prise modèle), la table 0/8 (non comprise), et la qualité de la conversion SvR.
+
+## Importer la vraie prise, comme Kaiko (2026-11-08)
+
+Constats en jeu : la copie de Suplex 3 joue proprement une fois sa fiche complète mise aussi à la place de la légère
+(96d4200 ; le jeu ne trouve pas la complète d'une prise ajoutée, cause inconnue) ; Side Effect « presque parfaite », sauf
+la fin (l'attaquant ne se couche pas vraiment). WWE '12 a déjà Side Effect 1 (50185) : **même animation** que le Side
+Effect de SvR (Bip à 3 cm près) ; ses différences avec notre conversion : la piste **« vector »** (cap du catcheur, se
+retourne de 180° quand l'attaquant est au sol, marque de hauteur à l'image 96), figée chez nous (celle du modèle), et les
+événements du modèle (Stunner) au lieu des siens.
+
+Kaiko (`svr10_moves.py`, SvR 2010 → 2011) importe la **vraie** prise : ses animations ET ses données de `misc.pac
+WAZA/DATA` (EXH 32 → 36 octets, +u32 « pris de la fiche la plus proche », événements sonores, MBD, bits de catégorie
+WAZE pris de prises « donneuses »). Chez nous, ces données ont déménagé dans `m3.pac` :
+- **SvR EVT** (fiches 16 o {prise, partie, …, +8 début, +10 nombre} + événements 4 o, 30 images/s) = **0/3 + 0/4** :
+  quasi identiques (Side Effect 5233 et Side Effect 1 : mêmes genres et images, 2-3 différences : 0BB9 → 0BC4, un BBB
+  ajouté) ;
+- **SvR EXH** (36 o) se retrouve en partie dans 0/1 (+6 = EXH+10, 39 %) et 0/2 (+4 = EXH+18, 46 %) ;
+- 0/6, 0/7, 5 et le reste de 0/1 / 0/2 n'ont pas d'équivalent direct (outil `rosetta`, 1 778 lignes comparées).
+Plan : prendre de la prise SvR ce qui a un équivalent (événements, champs EXH), le reste de la prise WWE '12 la plus
+proche, la piste « vector » tirée de l'animation elle-même (cap du Bip) ou de cette prise proche.
