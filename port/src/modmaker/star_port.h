@@ -32,6 +32,7 @@
 #include "imgui.h"
 #include "moveset_port.h"
 #include "newmoves13.h"
+#include "svr_moves.h"
 #include "strings2k.h"
 #include "svr_old_entrance.h"
 #include "svr_scenes.h"
@@ -203,18 +204,31 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     moveset_port::FromGame(w12, src, number, out.moves, &out.moves_why);
   // Its moves WWE '12 hasn't, from WWE '13 and the 2K games (their move records and motions are WWE '12's formats:
   // 2026-11-08, after the WWE '13 ones): added (newmoves13.h; the game puts them in the added superstars' pack).
-  if (game == 0x545108B4 || game == 0x545408B2 || game == 0x545408B6 || game == 0x315A07D2 || game == 0x545408BA) {
+  // SvR 2011's (2026-11-08, the Moveset update): its own animations converted, a WWE '12 model of its kind for the rest
+  // (svr_moves.h); a slot kept because WWE '12 has no move of that name is one to add.
+  const bool from13 =
+      game == 0x545108B4 || game == 0x545408B2 || game == 0x545408B6 || game == 0x315A07D2 || game == 0x545408BA;
+  const bool from11 = game == 0x5451085D;
+  if (from13 || from11) {
     std::set<int> want;
-    for (const auto &r : out.moves.rows)
+    for (auto &r : out.moves.rows) {
+      if (from11 && r.to.empty() && r.kept_why == 2 && r.from_id > 0)
+        r.new_move = true;
       if (r.new_move)
         want.insert(r.from_id);
-    out.new_moves = newmoves13::Collect(src, want);
-    // (only the moves whose own motion parameters we could read: without m3.pac rows the game doesn't play an added move
-    // - the wrestlers freeze. Every game's m3.pac is read since 2026-11-08 (2K17: 1 436 of its superstars' 1 444 added
-    // moves have rows; the others - JBL 5, Emma 1 and 2, Emma Lock, Konnor - none): those slots keep the base's move)
-    out.new_moves.erase(std::remove_if(out.new_moves.begin(), out.new_moves.end(), [](const auto &m) { return m.m3.empty(); }),
-                        out.new_moves.end());
-    newmoves13::FitCategories(w12, src, out.new_moves);  // (their category bits WWE '12's: else "None" in the moveset)
+    }
+    if (from11) {
+      out.new_moves = svr_moves::Collect(w12, src, want);
+    } else {
+      out.new_moves = newmoves13::Collect(src, want);
+      // (only the moves whose own motion parameters we could read: without m3.pac rows the game doesn't play an added
+      // move - the wrestlers freeze. Every game's m3.pac is read since 2026-11-08 (2K17: 1 436 of its superstars' 1 444
+      // added moves have rows; the others - JBL 5, Emma 1 and 2, Emma Lock, Konnor - none): those slots keep the base's)
+      out.new_moves.erase(
+          std::remove_if(out.new_moves.begin(), out.new_moves.end(), [](const auto &m) { return m.m3.empty(); }),
+          out.new_moves.end());
+      newmoves13::FitCategories(w12, src, out.new_moves);  // (their category bits WWE '12's: else "None" in the moveset)
+    }
     {  // (their events of kinds WWE '12 never uses left out: m3_params::DropUnknownEvents)
       svrfmt::Bytes m3;
       const auto known = w12.Read("pac/m3.pac", m3) ? m3_params::KnownEvents(m3) : std::set<int>{};
