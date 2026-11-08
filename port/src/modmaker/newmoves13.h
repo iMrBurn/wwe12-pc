@@ -24,6 +24,7 @@
 #include "svrfmt/archive.h"
 #include "svrfmt/pac.h"
 #include "svrfmt/xcompress.h"
+#include "m3_params.h"
 #include "yanm.h"
 
 namespace newmoves13 {
@@ -36,6 +37,8 @@ struct Move {
   Bytes waze;         // its 160-byte record, made WWE '12's
   Bytes low, high;    // its motion's light and full records
   Bytes magg;         // its DLC.pac RGRP/MAGG records (children 10 and 11, 104 bytes each), else empty
+  Bytes m3;           // its own motion parameters from its game's m3.pac, made WWE '12's (m3_params row set)
+  Bytes mvmot;        // its moveset editor preview script (its game's pac/menu/mvMot.pac), else empty
 };
 
 inline int MotionOf(int number) { return ((number & 0xFF) << 8) | (number >> 8); }
@@ -239,7 +242,7 @@ inline std::vector<Move> Collect(const disc::GameDisc &w13, const std::set<int> 
     svrfmt::Archive a;
     std::map<int, Bytes> rec[2];
     auto take = [&](uint32_t id, const Bytes &d) {
-      if ((id == 10 || id == 11) && d.size() >= 104 && d.size() % 104 == 0)
+      if ((id == 10 || id == 11) && d.size() >= 104)
         for (size_t o = 0; o + 104 <= d.size(); o += 104)
           rec[id == 11][d[o] | d[o + 1] << 8] = Bytes(d.begin() + long(o), d.begin() + long(o) + 104);
     };
@@ -269,6 +272,32 @@ inline std::vector<Move> Collect(const disc::GameDisc &w13, const std::set<int> 
     for (auto &[motion, m] : found)
       if (!m.low.empty() && m.high.empty() && detail::KnownTracks(m.low))
         m.high = m.low;
+  // their own data: the motion's rows of the game's m3.pac (WWE '13 / 2K14: m3_params::FromOther; without them the
+  // game doesn't play an added move) and its preview script in pac/menu/mvMot.pac (2026-11-08)
+  {
+    Bytes m3, plain, mv;
+    if (w13.Read("pac/m3.pac", m3) && svrfmt::IsXcompress(m3) && svrfmt::XcompressDecode(m3, plain))
+      m3.swap(plain);
+    std::vector<svrfmt::PachEntry> scripts;
+    svrfmt::Archive ma;
+    if (w13.Read("pac/menu/mvMot.pac", mv) && svrfmt::IsXcompress(mv) && svrfmt::XcompressDecode(mv, plain))
+      mv.swap(plain);
+    if (!mv.empty() && svrfmt::ArchiveOpen(mv, ma, nullptr) && !ma.root.kids.empty())
+      svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(ma.root.kids[0])), scripts);
+    for (auto &[motion, m] : found) {
+      if (m.low.empty() || m.high.empty())
+        continue;
+      const auto rows = m3.empty() ? m3_params::Rows{} : m3_params::FromOther(m3, motion);
+      if (!rows.empty())
+        m.m3 = m3_params::Write(rows);
+      for (const auto &e : scripts)
+        if (int(e.id) == motion) {
+          std::vector<svrfmt::PachEntry> kids;
+          if (svrfmt::PachRead(svrfmt::Unpack(e.data), kids) && !kids.empty())
+            m.mvmot = svrfmt::Unpack(kids[0].data);
+        }
+    }
+  }
   for (auto &[motion, m] : found)
     if (!m.low.empty() && !m.high.empty())
       out.push_back(std::move(m));

@@ -966,6 +966,10 @@ class Page {
         entries.push_back({n + "_high.yanm", m.high});
         if (!m.magg.empty())
           entries.push_back({n + ".magg", m.magg});
+        if (!m.m3.empty())
+          entries.push_back({n + ".m3", m.m3});
+        if (!m.mvmot.empty())
+          entries.push_back({n + ".mvmot", m.mvmot});
       }
     if (!mods::Manager::WriteZip(save_, entries)) {
       message_ = (fr ? "Impossible d'écrire " : "Could not write ") + media::Utf8(save_.wstring());

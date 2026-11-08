@@ -2340,6 +2340,10 @@ class Page {
         entries.push_back({n + "_high.yanm", m.high});
         if (!m.magg.empty())
           entries.push_back({n + ".magg", m.magg});
+        if (!m.m3.empty())
+          entries.push_back({n + ".m3", m.m3});
+        if (!m.mvmot.empty())
+          entries.push_back({n + ".mvmot", m.mvmot});
       }
     if (keep_portraits_ && !portraits_[1][0].empty())  // (its game's portraits, or the player's picture)
       for (int hd = 0; hd < 2; ++hd)
