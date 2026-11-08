@@ -153,7 +153,45 @@ inline Rows FromOther(const Bytes &m3, int motion, double k = 1.0) {
   using namespace detail;
   Rows out;
   Prm p;
-  if (!p.Open(m3) || p.Get("0/14").empty() || p.Get("0/15").empty())
+  if (!p.Open(m3))
+    return out;
+  // The game's tables in WWE '13 / 2K14 order. 2K14 keeps each twice: 0/0-0/7 in the console's byte order, 0/10-0/17 in
+  // the other; 2K16 keeps only the first set. The byte order learned on 2K14's two copies (each byte of a 0/1N row from
+  // which byte of its 0/N row, 100 % of the rows; tools_local\moves_studyeperm), 2026-11-08.
+  std::map<std::string, Bytes> tab;
+  {
+    // per table: its row size and, for each byte, the byte it comes from (2-byte and 4-byte fields reversed)
+    struct Perm {
+      const char *be, *le;
+      std::vector<int> from;
+    };
+    static const std::vector<Perm> perms = {
+        {"0/0", "0/10", {1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 22, 23, 25, 24, 26, 27,
+                         28, 29, 30, 31, 35, 34, 33, 32, 37, 36, 38, 39}},
+        {"0/1", "0/11", {1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 12, 14, 15, 17, 16, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27}},
+        {"0/2", "0/12", {1, 0, 2, 3, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 14, 15, 16, 17, 18, 19}},
+        {"0/4", "0/14", {1, 0, 2, 3, 7, 6, 5, 4, 9, 8, 10, 11}},  // (start: 4 bytes; count: 2 bytes, then 2 zeros)
+        {"0/5", "0/15", {1, 0, 3, 2}},
+        {"0/6", "0/16", {1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+                         28, 29, 30, 31}},
+    };
+    // (all from one side: 2K16 has tables named 0/10 and 0/11 too, holding something else)
+    const bool both = !p.Get("0/14").empty() && !p.Get("0/15").empty();
+    for (const auto &pm : perms) {
+      Bytes le = both ? p.Get(pm.le) : Bytes{};
+      if (!both) {
+        const Bytes be = p.Get(pm.be);
+        const size_t s = pm.from.size();
+        le.resize(be.size() / s * s);
+        for (size_t o = 0; o + s <= be.size(); o += s)
+          for (size_t i = 0; i < s; ++i)
+            le[o + i] = be[o + size_t(pm.from[i])];
+      }
+      tab[pm.le] = std::move(le);
+    }
+    tab["5"] = p.Get("5");
+  }
+  if (tab["0/14"].empty() || tab["0/15"].empty())
     return out;
   struct Map {
     const char *to, *from;
@@ -170,7 +208,7 @@ inline Rows FromOther(const Bytes &m3, int motion, double k = 1.0) {
   };
   auto frame = [&](int f) { return std::clamp(int(std::lround(f * k)), 0, 65535); };
   for (const auto &m : maps) {
-    const Bytes d = p.Get(m.from);
+    const Bytes &d = tab[m.from];
     for (size_t o = m.head; o + m.from_stride <= d.size(); o += m.from_stride) {
       if (U16(d, o) != motion)
         continue;
@@ -183,6 +221,8 @@ inline Rows FromOther(const Bytes &m3, int motion, double k = 1.0) {
         r[15] = uint8_t(d[o + 15] - 1);
       if (std::string(m.to) == "0/6") {
         r[26] = uint8_t(d[o + 26] - 1);
+        if (r[27] == 0xFF)
+          r[27] = 0;  // (2K16 sets this byte FF where 2K14 and WWE '12 have 0)
         if (U16(r, 20) == 0)  // (WWE '12 names the motion itself there where WWE '13 has 0: rows off 36 % -> 16 %)
           Put16(r, 20, motion);
       }
@@ -194,7 +234,7 @@ inline Rows FromOther(const Bytes &m3, int motion, double k = 1.0) {
     }
   }
   // 0/3 and its events: 0/14 {motion, part, start, 0, count, 0}, its events at the running sum of the counts before
-  const Bytes t14 = p.Get("0/14"), t15 = p.Get("0/15");
+  const Bytes &t14 = tab["0/14"], &t15 = tab["0/15"];
   long base = 0;
   for (size_t o = 0; o + 12 <= t14.size(); o += 12) {
     const int count = U16(t14, o + 8);
