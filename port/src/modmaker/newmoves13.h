@@ -113,6 +113,30 @@ inline std::map<int, Bytes> Records(const disc::GameDisc &d) {
 
 // Every track of a motion record uses kinds of keys WWE '12's own motions use (bits of the track flags: 0x0001, 0x0002,
 // 0x0020-0x0080 never; 2026-11-08 over m.pac's 50 503 records).
+// A preview script made WWE '12's: 2K14's "0,0,motd,<motion>,0,0,0," (both people's motion in one line) is two lines
+// in WWE '12's, "0,0,motn,<motion>,0,0,0," and "0,1,motn,<motion>,0,1,0," (WWE '12 doesn't know motd: Cesaro 2K14's
+// previews showed both people standing in each other, 2026-11-08)
+inline Bytes PreviewScript(const Bytes &in) {
+  std::string s(in.begin(), in.end()), out;
+  for (size_t at = 0; at < s.size();) {
+    size_t end = s.find('\n', at);
+    end = end == std::string::npos ? s.size() : end + 1;
+    std::string line = s.substr(at, end - at);
+    at = end;
+    const size_t p = line.find(",motd,");
+    if (p == std::string::npos) {
+      out += line;
+      continue;
+    }
+    const std::string eol = line.find('\r') != std::string::npos ? "\r\n" : "\n";
+    const size_t q = line.find(',', p + 6);
+    const std::string motion = line.substr(p + 6, q == std::string::npos ? std::string::npos : q - p - 6);
+    out += line.substr(0, p) + ",motn," + motion + ",0,0,0," + eol;
+    out += "0,1,motn," + motion + ",0,1,0," + eol;
+  }
+  return Bytes(out.begin(), out.end());
+}
+
 inline bool KnownTracks(const Bytes &d) {
   yanm::Record r;
   if (!yanm::Read(d, r))
@@ -294,7 +318,7 @@ inline std::vector<Move> Collect(const disc::GameDisc &w13, const std::set<int> 
         if (int(e.id) == motion) {
           std::vector<svrfmt::PachEntry> kids;
           if (svrfmt::PachRead(svrfmt::Unpack(e.data), kids) && !kids.empty())
-            m.mvmot = svrfmt::Unpack(kids[0].data);
+            m.mvmot = detail::PreviewScript(svrfmt::Unpack(kids[0].data));
         }
     }
   }
