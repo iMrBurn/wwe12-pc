@@ -271,3 +271,14 @@ une prise ne la garde que si les catcheurs de WWE '12 l'utilisent dans la même 
 374xx → 373xx, Neutralizer 505xx → 504xx).
 Reste : Create a Moveset « pas vraiment » (à préciser) ; deux mods peuvent renuméroter vers le même numéro (le jeu
 devrait répartir les numéros en construisant le paquet) ; 2K15-2K17 et SvR.
+
+## Suite (2026-11-08 soir)
+
+- Deux mods qui renumérotent vers le même numéro : `superstar_pack::SpreadNewMoves` (jeu, avant le paquet) donne au
+  second une autre case libre de la même centaine ; ses fiches et son moveset suivent ; même prise = partagée (c453f95).
+- Create a Moveset : fiches RGRP/MAGG de 2K14 converties au format de WWE '12 (a94fbb9), bits de catégorie pris d'une
+  prise de WWE '12 de la même case (982c49d) ; taunts et Very European Uppercut vus dans les listes, le reste à revoir ;
+  aucun aperçu de prise ajoutée ne se joue (à étudier : l'aperçu du DLC 4 marche-t-il ?). Mis de côté (1.2).
+- 2K15 : mêmes tables m3 que 2K14 (FromOther marche). 2K16 : tables plus triées par animation, une table « 14 » (24 o,
+  8 lignes pour Suplex 3) semble l'index ; 2K17 : HSPC. Tant qu'ils ne sont pas lus, leurs prises ajoutées ne sont pas
+  ajoutées (sans données m3, elles gèleraient).
