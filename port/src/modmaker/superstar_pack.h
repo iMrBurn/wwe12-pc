@@ -54,6 +54,7 @@ struct NewMove {
   int number = 0;
   Bytes waze, low, high;
   Bytes magg;  // its two RGRP/MAGG records (children 10 and 11 of DLC.pac's, 104 bytes each), else empty
+  Bytes mvmot;  // its preview script for the moveset editor (pac\menu\mvMot.pac, text; superstar\moves\<number>.mvmot)
   Bytes m3;    // its motion's m3.pac rows (m3_params row set, superstar\moves\<number>.m3), else empty
 };
 
@@ -199,6 +200,7 @@ struct Inputs {
   Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)
   Bytes misc;                                      // ... and pac\misc.pac (the move records), when moves are added
   Bytes m3;  // ... and pac\m3.pac (the motions' parameters), when moves with m3 rows are added
+  Bytes mvmot;  // ... and pac\menu\mvMot.pac (the moveset editor's preview scripts), when moves with one are added
   Bytes edit;  // ... the Superstar Threads table: the latest pack's pac\edit\edit_dlcNN.pac, else the disc's edit.pac
   std::vector<Bytes> portraits_hd, portraits_sd;   // pacs that may hold the bases' SSFA/SSFB/SSFC "%04d"
   std::vector<std::pair<int, Bytes>> catalogs;     // the installed packs (number, info/catalog.dlc), not ours
@@ -864,7 +866,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     }
   }
   // 4b. Moves to add: the records into a copy of misc.pac, the motions into m_dlcNN.pac.
-  Bytes misc_out, moves_out, m3_out;
+  Bytes misc_out, moves_out, m3_out, mvmot_out;
   {
     std::vector<const NewMove *> adds;
     std::set<int> taken;
@@ -960,6 +962,28 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         }
         if (!moves_out.empty() && !rows.empty() && !in.m3.empty())
           m3_out = m3_params::Insert(in.m3, rows);
+        // menu\mvMot.pac (MTDA/WAZA): the moveset editor's preview, a text script by motion number ("0,0,motn,50176,..."
+        // places both people, plays the motion, quits at a frame) - without one the preview stayed empty (2026-11-08);
+        // pack 4 ships its own copy with its moves' scripts. Each entry: BPE(PACH {0: BPE(script)}), ids in order.
+        svrfmt::Archive mv;
+        if (!moves_out.empty() && !in.mvmot.empty() && svrfmt::ArchiveOpen(in.mvmot, mv, nullptr) && !mv.root.kids.empty()) {
+          std::vector<svrfmt::PachEntry> scripts;
+          bool changed = false;
+          if (svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(mv.root.kids[0])), scripts))
+            for (const NewMove *m : added) {
+              const uint32_t motion = uint32_t(((m->number & 0xFF) << 8) | (m->number >> 8));
+              if (m->mvmot.empty() || std::any_of(scripts.begin(), scripts.end(), [&](const auto &e) { return e.id == motion; }))
+                continue;
+              const auto at = std::find_if(scripts.begin(), scripts.end(), [&](const auto &e) { return e.id > motion; });
+              scripts.insert(at, {motion, svrfmt::BpeEncode(svrfmt::PachWrite({{0, svrfmt::BpeEncode(m->mvmot)}}))});
+              changed = true;
+            }
+          if (changed) {
+            svrfmt::ArchiveReplace(mv.root.kids[0], svrfmt::PachWrite(scripts));
+            svrfmt::ArchiveTouch(mv.root);
+            mvmot_out = svrfmt::ArchiveSave(mv);
+          }
+        }
       }
     }
   }
@@ -1217,6 +1241,10 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   }
   if (!m3_out.empty()) {  // (the added moves' motion parameters)
     entries.push_back({"pac/m3.pac", next, next, &m3_out});
+    ++next;
+  }
+  if (!mvmot_out.empty()) {  // (their previews in the moveset editor)
+    entries.push_back({"pac/menu/mvMot.pac", next, next, &mvmot_out});
     ++next;
   }
   entries.push_back({"pac/ch/chEtc.pac", next, next, &etc_out});
