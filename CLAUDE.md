@@ -96,7 +96,7 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
   à (*0x8317C84C)+128+6200 ; sub_821EDEE0 = « au moins un moment » (sinon MATCH HIGHLIGHTS grisé).
   Interrupteur 0x83174250, mis par sub_822B6D30 (place libre sur `cache:` + `Spectacular.rps`).
   Sonde dans `wwe12_game_log.cpp` (lignes « [replay] »).
-- Title Update (décision 2026-11-05 : voie B, nos propres crochets en 1.2, plan `docs/plan_1_2_codegen_tu.md`, corrections THQ
+- Title Update (décision 2026-11-05 : voie B, nos propres crochets en 1.3 (ex-1.2), plan `docs/plan_1_2_codegen_tu.md`, corrections THQ
   listées dans `docs/title_update_corrections.md` : TU1 = v0.0.1.4, TU2 = v0.0.2.4) : le SDK applique déjà un `default.xexp` posé
   à côté du xex (codegen compris). **Mesure** (image 0.0.2.4 vs `image.bin` 0.0.0.4, même taille 20 316 160 o) : 82 %
   des mots du code diffèrent ; sur 47 240 fonctions, 54 seulement restent à leur adresse, 46 834 (99,1 %) sont
@@ -310,8 +310,8 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
 
 ## Plans et feuilles de route
 
-- Feuille de route actuelle : `docs/feuille_de_route.md` (1.1 en cours, 1.2 = corrections THQ par nos crochets + performances / code natif,
-  1.3 = modes de match + page ROSTERS). Idées de joueurs : `docs/suggestions_joueurs.md`.
+- Feuille de route actuelle : `docs/feuille_de_route.md` (1.1.0 publiée le 2026-11-07, pas de 1.1.1 (décision du 2026-11-08), 1.2 = « Moveset update » (prises SvR / 2K dans le Mod Maker + page Moves & Entrances + gamma + corrections),
+  1.3 = corrections THQ par nos crochets + performances / code natif, 1.4 = modes de match + page ROSTERS ; décision du 2026-11-08). Idées de joueurs : `docs/suggestions_joueurs.md`.
 - Anciens plans 0.8 / 0.9 / 1.0 et anciennes listes : `docs/archives/claude_md_anciens_plans_2026-11-06.md`.
 
 ## Optimisation (2026-10-12)
