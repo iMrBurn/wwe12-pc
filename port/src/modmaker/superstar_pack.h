@@ -920,8 +920,12 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           const uint32_t motion = uint32_t(((m->number & 0xFF) << 8) | (m->number >> 8));
           // (the light record BPE-compressed, the full one plain: so are all 5 544 pairs of the disc's ZMOT/CA01-CA08
           // and the packs'; a plain light record left the wrestlers still through the move, 2026-11-08)
-          const Bytes low = svrfmt::IsBpe(m->low) ? m->low : svrfmt::BpeEncode(m->low);
+          // (and the light record is the full one: the game finds an added motion's light record, not its full one -
+          // a copy of Suplex 3 played coarse in a match and not at all in the moveset editor's preview; with its full
+          // record in both places it played as the game's own, seen in game 2026-11-08. Why the full one isn't found:
+          // not known yet)
           const Bytes high = svrfmt::IsBpe(m->high) ? svrfmt::Unpack(m->high) : m->high;
+          const Bytes low = svrfmt::BpeEncode(high);
           pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, low}})});
           pairs.push_back({uint32_t(pairs.size()), svrfmt::PachWrite({{motion, high}})});
         }
