@@ -260,3 +260,14 @@ la table d'événements de WWE '13, les sons (5), 2K15-2K17, et SvR (WAZA/DATA, 
   entrées de WWE '13, bras ajoutés), et écrit maintenant la taille des blocs dans la table.
 - Bits de catégorie de la fiche WAZE : pris de prises « donneuses » (`FitCategories`), sinon « None » dans le moveset.
 - Aperçus : `motd` de 2K14 → deux lignes `motn`.
+
+## Cesaro 2K14 porté : tout marche en match (2026-11-08, vu en jeu)
+
+Avec le Mod Maker du commit 3fce4b4 : ses 12 prises que WWE '12 n'a pas (finisher Neutralizer, taunts compris) se
+jouent en match. Ce qu'il a fallu, en plus des correctifs du paquet (groupe 188, m3.pac, fiche légère = complète) :
+données m3 de la vraie prise (`FromOther`), bits de catégorie de donneuses, IK des jambes et des bras cuit, événements
+de genres inconnus retirés, **renumérotation par famille** : la centaine du numéro d'animation est le genre de prise ;
+une prise ne la garde que si les catcheurs de WWE '12 l'utilisent dans la même case du moveset (taunts de 2K14 en
+374xx → 373xx, Neutralizer 505xx → 504xx).
+Reste : Create a Moveset « pas vraiment » (à préciser) ; deux mods peuvent renuméroter vers le même numéro (le jeu
+devrait répartir les numéros en construisant le paquet) ; 2K15-2K17 et SvR.
