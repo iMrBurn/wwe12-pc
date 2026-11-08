@@ -26,6 +26,7 @@
 #include "svrfmt/xcompress.h"
 #include "m3_params.h"
 #include "yanm.h"
+#include "yanm_ik.h"
 
 namespace newmoves13 {
 
@@ -311,6 +312,10 @@ inline std::vector<Move> Collect(const disc::GameDisc &w13, const std::set<int> 
     for (auto &[motion, m] : found) {
       if (m.low.empty() || m.high.empty())
         continue;
+      // (legs driven by IK from WWE '13 on - the calves' ankle targets - made plain rotations WWE '12 plays: a 2K14
+      // Suplex 3 played with still feet, 2026-11-08; yanm_ik.h, as the WWE '13 entrances)
+      yanm::ik::BakeLegIk(m.low);
+      yanm::ik::BakeLegIk(m.high);
       const auto rows = m3.empty() ? m3_params::Rows{} : m3_params::FromOther(m3, motion);
       if (!rows.empty())
         m.m3 = m3_params::Write(rows);
