@@ -70,6 +70,12 @@ REXCVAR_DEFINE_BOOL(svr_edge_blur, false, "SvR",
 #include "gpu/output.h"
 #include "gpu/shaders/shader_cache.h"
 
+#if defined(SVR_NATIVE_RENDERER)
+namespace bd::gpu {
+extern std::atomic<bool> g_test_hidden_frame;  // hooks/device.cpp (svr_test_half_frames)
+}
+#endif
+
 namespace {
 
 namespace xe = rex::graphics::xenos;
@@ -150,6 +156,9 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
                   const DrawArgs &args = {}) {
   WWE12_CPU_ZONE(kDraws);
 #if defined(SVR_NATIVE_RENDERER)
+  // svr_test_half_frames (hooks/device.cpp): a frame not shown draws nothing.
+  if (bd::gpu::g_test_hidden_frame.load(std::memory_order_relaxed))
+    return;
   // A clear the Xbox did after resolving this surface's tiles, due now that it is drawn again.
   if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest)) {
     u32 clear_flags = 0, clear_color = 0, clear_stencil = 0;

@@ -34,6 +34,19 @@
 #include "gpu/host_resource_heap.h"
 #include "gpu/occlusion.h"
 
+#if defined(SVR_NATIVE_RENDERER)
+#include <atomic>
+#include <rex/cvar.h>
+// Test only (1.2, measuring Kaiko's "30 fps with the world at 60 Hz" idea before writing it): every
+// other frame the renderer skips its draws and clears and the frame is not presented; the game's
+// world and its D3D library run as usual, resolves still run. Off by default, not in the menus.
+REXCVAR_DEFINE_BOOL(svr_test_half_frames, false, "SvR",
+                    "Test: draw and show every other frame only (the game still runs at 60 Hz).");
+namespace bd::gpu {
+std::atomic<bool> g_test_hidden_frame{false};  // the frame being built now is not shown
+}
+#endif
+
 namespace {
 
 // The Xenon ABI reserves a GPR slot for every float arg (Z is in f1 but still
@@ -48,6 +61,8 @@ u32 D3DDevice_Clear_hook([[maybe_unused]] u32 device, [[maybe_unused]] u32 count
   bd::gpu::SvrDrawLogClear(device, count, rects, flags, color);
   if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device))
     bd::gpu::SvrNoteGameClear(u32(dev->renderTargetShadow[0]), float(z), stencil);
+  if (bd::gpu::g_test_hidden_frame.load(std::memory_order_relaxed))
+    return 0;  // svr_test_half_frames: a frame not shown
 #endif
   bd::gpu::Video::Clear(flags, color, float(z), stencil);
   return 0;
@@ -100,6 +115,17 @@ u32 D3DDevice_Swap_hook(u32 /*device*/, u32 front_buffer_va,
   auto *front_buffer =
       bd::gpu::HostResourceHeap::FromGuest<bd::gpu::GuestTexture>(
           front_buffer_va);
+#endif
+#if defined(SVR_NATIVE_RENDERER)
+  // svr_test_half_frames: the frame that ends here was hidden (not drawn): not presented. The
+  // next frame is hidden when this one was shown.
+  const bool hidden = bd::gpu::g_test_hidden_frame.load(std::memory_order_relaxed);
+  bd::gpu::g_test_hidden_frame.store(REXCVAR_GET(svr_test_half_frames) && !hidden,
+                                     std::memory_order_relaxed);
+  if (hidden) {
+    bd::gpu::Video::SkipPresent();
+    return 0;
+  }
 #endif
   if (bd::engine::SparseFrame())
     bd::gpu::Video::SkipPresent();
