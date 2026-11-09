@@ -8,6 +8,7 @@
 #include <wrl/client.h>
 
 #include <filesystem>
+#include <vector>
 
 #include "svrfmt/texture.h"
 
@@ -39,6 +40,30 @@ inline bool Load(const std::filesystem::path &file, svrfmt::Image &out) {
     return false;
   out.w = int(w);
   out.h = int(h);
+  out.rgba.resize(size_t(w) * h * 4);
+  return SUCCEEDED(conv->CopyPixels(nullptr, w * 4, UINT(out.rgba.size()), out.rgba.data()));
+}
+
+// The same from bytes in memory (a PNG read from a disc: a game's icon, xex_icon.h)
+inline bool LoadMemory(const std::vector<uint8_t> &bytes, svrfmt::Image &out) {
+  auto wic = Factory();
+  ComPtr<IWICStream> stream;
+  ComPtr<IWICBitmapDecoder> dec;
+  if (!wic || bytes.empty() || FAILED(wic->CreateStream(&stream)) ||
+      FAILED(stream->InitializeFromMemory(const_cast<BYTE *>(bytes.data()), DWORD(bytes.size()))) ||
+      FAILED(wic->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnLoad, &dec)))
+    return false;
+  ComPtr<IWICBitmapFrameDecode> frame;
+  ComPtr<IWICFormatConverter> conv;
+  if (FAILED(dec->GetFrame(0, &frame)) || FAILED(wic->CreateFormatConverter(&conv)) ||
+      FAILED(conv->Initialize(frame.Get(), GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone, nullptr, 0,
+                              WICBitmapPaletteTypeCustom)))
+    return false;
+  UINT w = 0, h = 0;
+  conv->GetSize(&w, &h);
+  if (!w || !h || w > 8192 || h > 8192)
+    return false;
+  out.w = int(w), out.h = int(h);
   out.rgba.resize(size_t(w) * h * 4);
   return SUCCEEDED(conv->CopyPixels(nullptr, w * 4, UINT(out.rgba.size()), out.rgba.data()));
 }

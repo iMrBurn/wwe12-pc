@@ -20,6 +20,7 @@
 #include "dlc_stars.h"
 #include "game_disc.h"
 #include "game_discs.h"
+#include "game_icons.h"
 #include "game_process.h"
 #include "imgui.h"
 #include "media.h"
@@ -582,47 +583,20 @@ class Page {
     }
   }
 
-  // Step 1: the game, a big tile each (from My game discs).
+  // Step 1: the game, one row each (from My game discs).
   void StepGame(bool fr) {
     ImGui::TextWrapped("%s", fr ? "De quel jeu vient le catcheur ? Les jeux de MES DISQUES sont prêts ; ajoutez les autres "
                                   "là-bas une fois pour toutes."
                                 : "Which game does the superstar come from? The games of MY GAME DISCS are ready; add the "
                                   "others there once and for all.");
     ImGui::Dummy(ImVec2(0, 4));
-    const float tile_w = 250, tile_h = 132, gap = ImGui::GetStyle().ItemSpacing.x;
-    const int per_row = std::max(1, int((ImGui::GetContentRegionAvail().x + gap) / (tile_w + gap)));
-    int shown = 0;
-    for (const auto &k : game_discs::kKnown) {
-      if (k.title == 0x54510890 || k.superstars == game_discs::Can::kNo)  // (WWE '12 itself)
-        continue;
-      if (shown++ % per_row)
-        ImGui::SameLine();
-      const bool have = discs_ && !discs_->PathOf(k.title).empty(), chosen = game_ == k.title;
-      ImGui::PushID(int(k.title));
-      ImGui::PushStyleColor(ImGuiCol_ChildBg, chosen ? ImVec4(0.30f, 0.22f, 0.08f, 0.85f)
-                                                     : have ? ImVec4(0.12f, 0.12f, 0.14f, 0.9f)
-                                                            : ImVec4(0.08f, 0.08f, 0.09f, 0.7f));
-      ImGui::BeginChild("tile", ImVec2(tile_w, tile_h), ImGuiChildFlags_Borders);
-      ImGui::PushFont(ui::g_font_title, 28.0f);
-      ImGui::TextColored(have ? ImVec4(0.94f, 0.75f, 0.24f, 1.0f) : ImVec4(0.55f, 0.53f, 0.5f, 1.0f), "%s",
-                         star_port::GameName(k.title));
-      ImGui::PopFont();
-      ImGui::TextDisabled("%s", star_port::SvrOld(k.title)
-                                    ? (fr ? "entrée, victoire, musique" : "entrance, victory, theme")
-                                    : (fr ? "prises, entrée, victoire, musique" : "moves, entrance, victory, theme"));
-      if (have) {
-        ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.45f, 1.0f), "%s", fr ? "Votre disque est prêt" : "Your disc is set");
-        if (ImGui::Button(chosen ? (fr ? "Choisi" : "Chosen") : (fr ? "Choisir" : "Choose"), ImVec2(-1, 0)))
-          ChooseGame(k.title);
-      } else {
-        ImGui::TextDisabled("%s", fr ? "Pas encore de disque" : "No disc yet");
-        if (ImGui::Button(fr ? "L'ajouter dans MES DISQUES" : "Add it in MY GAME DISCS", ImVec2(-1, 0)))
-          want_discs_ = true;
-      }
-      ImGui::EndChild();
-      ImGui::PopStyleColor();
-      ImGui::PopID();
-    }
+    // (a simple list with each game's icon from the player's disc, the user's wish, 2026-11-09: a grid of cards before)
+    game_icons::DrawList(
+        fr, device_, discs_, icons_, game_,
+        [](const game_discs::Known &k) { return k.title != 0x54510890 && k.superstars != game_discs::Can::kNo; },
+        [](uint32_t t) { return star_port::GameName(t); },
+        [fr](uint32_t) { return fr ? "prises, entrée, victoire, musique" : "moves, entrance, victory, theme"; },
+        [this](uint32_t t) { ChooseGame(t); }, [this]() { want_discs_ = true; });
   }
 
   void ChooseGame(uint32_t title) {
@@ -1020,6 +994,7 @@ class Page {
   bool message_ok_ = false;
   // by hand
   ID3D11Device *device_ = nullptr;
+  game_icons::Icons icons_;  // the games' icons, read from the discs in the background
   int tab_ = 0;                       // 0 moves, 1 taunts, 2 entrance, 3 from another game
   moves_edit::Catalog cat_;           // the game's moves and its roster's movesets
   moves_edit::MotionIndex motions_;   // where the moves' motions are (Play)
