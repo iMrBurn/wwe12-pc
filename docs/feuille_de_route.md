@@ -65,6 +65,7 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 **Autres**
 - Yeux de SvR 2010 en courant.
 - Page ROSTERS du launcher (marques hors de l'Univers, `docs/launcher_rosters.md`, 3 séances, écrit dans la sauvegarde).
+- Encodeur Vorbis (Wwise) à nous, pour les thèmes portés de plus de 20 Mo (en 1.1 : coupés à 100 s).
 
 ## 1.4 : « Modes de match et Univers » (liste de l'utilisateur, 2026-11-07 ; ex-1.3, décalée le 2026-11-08)
 
@@ -93,7 +94,9 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - Android après la 1.1 PC : replay d'après match, performances, ajouts de Yexclsv (`docs/android_apres_1_1.md`).
 - Prises avec leurs animations d'autres jeux (SvR 2011, puis 2K) ; yeux de SvR 2010.
 - Version Linux native (étude faite, `docs/linux_natif_etude.md` : 8 à 12 séances).
-- 16:10 / 21:9 (D3D11/D3D12, menu pause, HUD) à confirmer ; icônes de touches de clavier ; test sur un vrai Steam Deck.
+- 16:10 / 21:9 (D3D11/D3D12, menu pause, HUD en 21:9) à confirmer ; icônes de touches de clavier ; test sur un vrai Steam Deck.
+- Android : vrais téléphones, boutons PlayStation, ce que disent les joueurs.
+- Shaders qui font saccader à la première fois (en 1.1 : préparés en arrière-plan ; reste à voir ce qui saccade encore, voir l'issue #53 : surtout le processeur).
 
 ## Plus tard (sans date)
 - Plus de 6 superstars sur le ring ; 100 / 200 slots CAW et logos (probablement 2.0) ; le jeu en full natif ; Univers : cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants ; choix de caméra de match.
