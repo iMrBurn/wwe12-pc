@@ -12,6 +12,9 @@
 #include <cctype>
 #include <cstdio>
 #include <filesystem>
+#include <chrono>
+#include <functional>
+#include <future>
 #include <string>
 #include <utility>
 #include <vector>
@@ -123,7 +126,8 @@ class Page {
     // The assistant: the game, its superstar, what to take, for whom, the mod.
     const char *steps_fr[] = {"1. Jeu", "2. Catcheur", "3. Ce qu'on prend", "4. Pour qui", "5. Terminer"};
     const char *steps_en[] = {"1. Game", "2. Superstar", "3. What to take", "4. For whom", "5. Finish"};
-    const int reach = !GameSet() ? 0 : pick_ < 0 ? 1 : !AnyTaken() ? 2 : target_ < 0 ? 3 : 4;
+    PollCollect();
+    const int reach = !GameSet() ? 0 : pick_ < 0 || picking_ ? 1 : !AnyTaken() ? 2 : target_ < 0 ? 3 : 4;
     step_ = std::min(step_, reach);
     const float h = std::max(320.0f, ImGui::GetContentRegionAvail().y - 72);
     ImGui::BeginChild("mv_steps", ImVec2(190, h), ImGuiChildFlags_Borders);
@@ -141,7 +145,12 @@ class Page {
     switch (step_) {
     case 0: StepGame(fr); break;
     case 1: StepSuperstar(fr); break;
-    case 2: StepTake(fr); break;
+    case 2:
+      if (picking_)
+        DrawBusy(fr);
+      else
+        StepTake(fr);
+      break;
     case 3: StepTarget(fr); break;
     default: StepFinish(fr, mods); break;
     }
@@ -633,11 +642,13 @@ class Page {
         continue;
       char label[96];
       snprintf(label, sizeof(label), old ? "%s  (ch%02d)" : "%s  (ch%03d)", nm.c_str(), n);
-      if (ImGui::Selectable(label, n == pick_) && n != pick_)
+      if (ImGui::Selectable(label, n == pick_, Busy() ? ImGuiSelectableFlags_Disabled : 0) && n != pick_)
         Pick(n, nm);
     }
     ImGui::EndChild();
-    if (pick_ >= 0)
+    if (picking_)
+      DrawBusy(fr);
+    else if (pick_ >= 0)
       ImGui::TextDisabled(fr ? "Choisi : %s" : "Chosen: %s", pick_name_.c_str());
   }
 
@@ -646,34 +657,70 @@ class Page {
     pick_ = number;
     port_skip_.clear();
     pick_name_ = name.size() > 2 && name.compare(name.size() - 2, 2, " ?") == 0 ? name.substr(0, name.size() - 2) : name;
-    Collect();
-    star_port::FindTheme(list_, number, theme_, &themes_);
-    theme_pick_ = 0;
-    tool_ = !star_port::Vgmstream(discs_).empty();
-    use_moves_ = HasMoves();
-    use_entrance_ = HasEntrance();
-    use_victory_ = HasVictory();
-    use_theme_ = HasTheme();
-    if (!target_by_player_) {
-      target_ = -1;
-      for (int i = 0; i < int(stars12_.size()); ++i)
-        if (Key(stars12_[size_t(i)].name) == Key(pick_name_))
-          target_ = i;
-    }
-    snprintf(name_, sizeof(name_), "%s (%s)", pick_name_.c_str(), star_port::GameName(game_));
-    message_.clear();
+    parts_ = {};
+    use_moves_ = use_entrance_ = use_victory_ = use_theme_ = false;
+    picking_ = true;
+    Collect([this, number]() {
+      picking_ = false;
+      star_port::FindTheme(list_, number, theme_, &themes_);
+      theme_pick_ = 0;
+      tool_ = !star_port::Vgmstream(discs_).empty();
+      use_moves_ = HasMoves();
+      use_entrance_ = HasEntrance();
+      use_victory_ = HasVictory();
+      use_theme_ = HasTheme();
+      if (!target_by_player_) {
+        target_ = -1;
+        for (int i = 0; i < int(stars12_.size()); ++i)
+          if (Key(stars12_[size_t(i)].name) == Key(pick_name_))
+            target_ = i;
+      }
+      snprintf(name_, sizeof(name_), "%s (%s)", pick_name_.c_str(), star_port::GameName(game_));
+      message_.clear();
+    });
   }
 
-  void Collect() {
+  // His parts, read in the background (seconds: his moves WWE '12 hasn't are made then - the window froze, "Not
+  // responding", 2026-11-09); `then` runs once they're in (PollCollect, each frame).
+  void Collect(std::function<void()> then = {}) {
     if (pick_ < 0 || !discs_ || !disc12_)
       return;
+    if (collecting_.valid())
+      collecting_.wait();  // (one at a time: the list is greyed out meanwhile, this is only a safety)
     std::string listed;
     for (const auto &[n, nm] : list_.list)
       if (n == pick_)
         listed = nm;
-    star_port::Collect(*disc12_, *discs_, game_, pick_, listed, target_ >= 0 ? stars12_[size_t(target_)].id : -1,
-                       music12_, parts_);
-    collected_for_ = target_;
+    const disc::GameDisc *w12 = disc12_;
+    const game_discs::Discs *discs = discs_;
+    const uint32_t game = game_;
+    const int pick = pick_, base = target_ >= 0 ? stars12_[size_t(target_)].id : -1;
+    star_port::Music12 *music = &music12_;
+    collecting_for_ = target_;
+    after_collect_ = std::move(then);
+    collecting_ = std::async(std::launch::async, [=]() {
+      star_port::Parts p;
+      star_port::Collect(*w12, *discs, game, pick, listed, base, *music, p);
+      return p;
+    });
+  }
+  bool Busy() const { return collecting_.valid(); }
+  void PollCollect() {
+    if (!collecting_.valid() || collecting_.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+      return;
+    parts_ = collecting_.get();
+    collected_for_ = collecting_for_;
+    auto then = std::move(after_collect_);
+    after_collect_ = {};
+    if (then)
+      then();
+  }
+  void DrawBusy(bool fr) {
+    static const char *kDots[] = {"", ".", "..", "..."};
+    ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), fr ? "Lecture de %s dans %s%s" : "Reading %s in %s%s",
+                       pick_name_.c_str(), star_port::GameName(game_), kDots[int(ImGui::GetTime() * 3) % 4]);
+    ImGui::TextDisabled("%s", fr ? "(ses prises, son entrée, sa victoire, sa musique : quelques secondes)"
+                                 : "(his moves, entrance, victory and theme: a few seconds)");
   }
 
   // Step 3: what to take, each with whether it can be.
@@ -820,10 +867,11 @@ class Page {
   // Its parts again for another WWE '12 superstar (only his effects may change), the choices kept.
   void Recollect() {
     const bool m = use_moves_, e = use_entrance_, v = use_victory_;
-    Collect();
-    use_moves_ = m && HasMoves();
-    use_entrance_ = e && HasEntrance();
-    use_victory_ = v && HasVictory();
+    Collect([this, m, e, v]() {
+      use_moves_ = m && HasMoves();
+      use_entrance_ = e && HasEntrance();
+      use_victory_ = v && HasVictory();
+    });
   }
 
   // Step 5: the mod.
@@ -842,11 +890,13 @@ class Page {
                             : "The mod (.svrmod) is saved where you want, to share it, then installed. In the game: %s, "
                               "next time the game starts.",
                          stars12_[size_t(target_)].name.c_str());
-    const bool ready = name_[0] && target_ >= 0 && AnyTaken();
+    const bool ready = name_[0] && target_ >= 0 && AnyTaken() && !Busy();  // (not while his parts are read again)
     ImGui::BeginDisabled(!ready || game::IsRunning());
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it...", ImVec2(260, 36)))
       Make(fr, mods);
     ImGui::EndDisabled();
+    if (Busy())
+      DrawBusy(fr);
     if (message_ok_) {
       ImGui::SameLine();
       ImGui::BeginDisabled(game::IsRunning());
@@ -986,7 +1036,11 @@ class Page {
   bool use_added_moves_ = false;  // his moves WWE '12 hasn't, added (experimental, off by default: 2026-11-05)
   int target_ = -1;            // the WWE '12 superstar (index in stars12_), -1: none yet
   bool target_by_player_ = false;  // ... chosen by the player (else the one of the same name, proposed)
-  int collected_for_ = -1;     // the target parts_ was collected with (2K16 / 2K17's effects)
+  int collected_for_ = -1;
+  std::future<star_port::Parts> collecting_;  // his parts being read (Collect)
+  std::function<void()> after_collect_;
+  int collecting_for_ = -1;
+  bool picking_ = false;  // the first read of a superstar just picked (steps 3 on wait for it)     // the target parts_ was collected with (2K16 / 2K17's effects)
   char target_filter_[64] = {};
   char name_[64] = {}, author_[64] = {}, version_[16] = {};
   fs::path save_;

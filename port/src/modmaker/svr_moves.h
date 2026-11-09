@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -749,6 +750,12 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
         continue;
       const auto r = sv.recs.find(BankId(id));
       if (r == sv.recs.end() || r->second.size() < 0x92 || r->second[0x91] != mine[0x91])
+        continue;
+      // (what refuses a model below, known without reading it: its kind, its people, its length - each model's fit
+      // reads a WWE '12 motion, 8 of the 9.7 s Jeff Hardy's 27 SvR 2010 moves took, 2026-11-09)
+      const int their_people = sv.keys[2].count(id) && sv.keys[1].count(id) ? 3 : sv.keys[1].count(id) ? 2 : 1;
+      if (r->second[0x73] != mine[0x73] || their_people != people || 2 * sv.frames[0][id] < my_frames ||
+          sv.frames[0][id] > 2 * my_frames)
         continue;
       const Model &md = model(id);
       if (!(md.ok || md.start_ok) || md.people != people)

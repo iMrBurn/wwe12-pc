@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <map>
+#include <mutex>
 #include <set>
 #include <string>
 #include <vector>
@@ -115,6 +116,10 @@ class MotionIndex {
 
   // Every ZMOT/CA row read once (a few seconds): motion number -> (row, top, pair).
   void Build(const disc::GameDisc &w12) {
+    {
+      std::lock_guard<std::mutex> lock(cache_mutex_);
+      cache_.clear();
+    }
     built = true;
     const std::string file = "pac/m.pac";
     Bytes head;
@@ -148,14 +153,28 @@ class MotionIndex {
     const auto it = where_.find(newmoves13::MotionOf(move));
     if (it == where_.end())
       return {};
-    const auto &row = rows_[it->second.row];
-    Bytes raw;
-    std::vector<svrfmt::PachEntry> tops, kids, hi;
-    if (!w12.ReadPart("pac/m.pac", row.offset, row.size, raw) || !svrfmt::PachRead(svrfmt::Unpack(raw), tops) ||
-        it->second.top >= tops.size() || !svrfmt::PachRead(svrfmt::Unpack(tops[it->second.top].data), kids) ||
-        it->second.kid >= kids.size() || !svrfmt::PachRead(svrfmt::Unpack(kids[it->second.kid].data), hi))
-      return {};
-    for (const auto &h : hi)
+    // (the motions' group - an entry of m.pac, unpacked three times over - kept for the next ones: a SvR move's
+    // model choice reads ~1 000 motions, 6 ms each from the disc, 2026-11-09)
+    const Place &pl = it->second;
+    std::lock_guard<std::mutex> lock(cache_mutex_);
+    std::vector<svrfmt::PachEntry> *hi = nullptr;
+    for (auto &c : cache_)
+      if (c.row == pl.row && c.top == pl.top && c.kid == pl.kid)
+        hi = &c.hi;
+    if (!hi) {
+      const auto &row = rows_[pl.row];
+      Bytes raw;
+      std::vector<svrfmt::PachEntry> tops, kids, got;
+      if (!w12.ReadPart("pac/m.pac", row.offset, row.size, raw) || !svrfmt::PachRead(svrfmt::Unpack(raw), tops) ||
+          pl.top >= tops.size() || !svrfmt::PachRead(svrfmt::Unpack(tops[pl.top].data), kids) ||
+          pl.kid >= kids.size() || !svrfmt::PachRead(svrfmt::Unpack(kids[pl.kid].data), got))
+        return {};
+      if (cache_.size() >= 24)
+        cache_.erase(cache_.begin());
+      cache_.push_back({pl.row, pl.top, pl.kid, std::move(got)});
+      hi = &cache_.back().hi;
+    }
+    for (const auto &h : *hi)
       if (int(h.id) == it->first)
         return svrfmt::Unpack(h.data);
     return {};
@@ -168,6 +187,12 @@ class MotionIndex {
   };
   std::vector<svrfmt::EpacRow> rows_;
   std::map<int, Place> where_;
+  struct Group {
+    size_t row, top, kid;
+    std::vector<svrfmt::PachEntry> hi;
+  };
+  mutable std::mutex cache_mutex_;
+  mutable std::vector<Group> cache_;  // the last motion groups read (Full)
 };
 
 }  // namespace moves_edit
