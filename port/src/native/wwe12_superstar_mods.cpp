@@ -1898,6 +1898,7 @@ extern "C" REX_FUNC(sub_828ADFB8) {
     for (uint32_t k = 0; k < 1068; ++k)
       now[k] = bd::mem::load<uint8_t>(at + k);
     const uint64_t now_h = Fnv(now, 0xCBF29CE484222325ull);
+    std::string why_made;
     if (!g_moves_restore.count(id)) {
       const auto applied = g_applied.find(id);
       // (past both entrance blocks, +0x1D4 and +0x1E0, 12 bytes each: from 0x1EC. It started at 486, inside the second
@@ -1907,8 +1908,10 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       // (and +0x296, which the game sets to 1 when an entrance is picked in it: Lesnar's picked for Jeff Hardy, saved,
       // came back as his own at the next start - the copy taken for another's again, the save's diff, 2026-11-09)
       bool foreign = false;
+      uint32_t foreign_at = 0;
       for (uint32_t k = 0; k < 1068 && !foreign; k = k == 5 ? 0x1EC : k + 1)
-        foreign = k != 0x296 && bd::mem::load<uint8_t>(at + k) != mv[k];
+        if ((foreign = k != 0x296 && bd::mem::load<uint8_t>(at + k) != mv[k]))
+          foreign_at = k;
       bool original = false;
       if (const auto o = g_originals.find(id); o != g_originals.end()) {
         original = true;
@@ -1919,10 +1922,28 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       const bool unsaved = before != g_applied_before.end() && before->second == now_h;
       if (applied != g_applied.end() && applied->second == h && !foreign && !original && !unsaved)
         continue;  // (the mod's, edited in the game since: kept)
+      // (why, in the log: an entrance picked in the game came back as the mod's three times, 2026-11-09)
+      why_made = applied == g_applied.end() ? "never made" : applied->second != h ? "the mod changed" : "";
+      if (foreign)
+        why_made += fmt::format("{}another superstar's? +0x{:X} is {:02X}, the mod's {:02X}", why_made.empty() ? "" : "; ",
+                                foreign_at, bd::mem::load<uint8_t>(at + foreign_at), mv[foreign_at]);
+      if (foreign) {  // (every byte that differs, the entrance blocks too)
+        std::string all;
+        int n = 0;
+        for (uint32_t k = 0; k < 1068; ++k)
+          if (bd::mem::load<uint8_t>(at + k) != mv[k] && n++ < 24)
+            all += fmt::format(" {:X}:{:02X}/{:02X}", k, bd::mem::load<uint8_t>(at + k), mv[k]);
+        why_made += fmt::format(" - {} bytes differ:{}", n, all);
+      }
+      if (original)
+        why_made += why_made.empty() ? "the game's own record" : "; the game's own record";
+      if (unsaved)
+        why_made += why_made.empty() ? "as before it was last made (not saved since)" : "; as before it was last made";
     }
     for (uint32_t k = 0; k < 1068; ++k)
       bd::mem::store<uint8_t>(at + k, mv[k]);
-    REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its moves and entrance made again", id);
+    REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its moves and entrance made again ({})", id,
+                why_made.empty() ? "a mod gone: put back" : why_made);
     if (g_moves_restore.count(id)) {
       g_applied.erase(id);
       g_applied_before.erase(id);
