@@ -305,8 +305,19 @@ void PinScreenUVScaleReg(u8 *block) {
 // only for the same raw guest bytes and the same edits (key), so the GPU reads the same values.
 #if defined(__ANDROID__)
 constexpr bool kReuseConstantBlocks = true;
+static bool ReuseConstantBlocks() { return true; }
+#elif defined(SVR_NATIVE_RENDERER)
+// PC (1.2): small PCs are CPU bound in 4/6-man matches (#53: 1,500-2,800 blocks a frame, none
+// reused); the same reuse as Android, behind a switch to compare.
+REXCVAR_DEFINE_BOOL(svr_reuse_constant_blocks, true, "SvR",
+                    "Reuse the last shader-constant block of a stage while the game's constants do "
+                    "not change (fewer 4 KiB copies per draw; Android since alpha 3). false = copy "
+                    "for every draw (1.1).");
+constexpr bool kReuseConstantBlocks = true;
+static bool ReuseConstantBlocks() { return REXCVAR_GET(svr_reuse_constant_blocks); }
 #else
-constexpr bool kReuseConstantBlocks = false;  // PC: unchanged until measured there
+constexpr bool kReuseConstantBlocks = false;
+static bool ReuseConstantBlocks() { return false; }
 #endif
 struct StageBlockCache {
   u8 raw[kConstantBlockBytes];
@@ -319,7 +330,7 @@ std::atomic<u64> g_constant_blocks_uploaded{0}, g_constant_blocks_reused{0};
 // Returns the cached block if `raw` and `key` match the last upload of this frame.
 bool ReuseBlock(StageBlockCache &cache, const UploadState &s, const u8 *raw, u64 key,
                 ConstantAllocation &out) {
-  if (!kReuseConstantBlocks || !raw || cache.epoch != s.epoch || cache.key != key ||
+  if (!kReuseConstantBlocks || !ReuseConstantBlocks() || !raw || cache.epoch != s.epoch || cache.key != key ||
       std::memcmp(cache.raw, raw, kConstantBlockBytes) != 0)
     return false;
   out = cache.alloc;
@@ -330,7 +341,7 @@ bool ReuseBlock(StageBlockCache &cache, const UploadState &s, const u8 *raw, u64
 void RememberBlock(StageBlockCache &cache, const UploadState &s, const u8 *raw, u64 key,
                    const ConstantAllocation &alloc) {
   g_constant_blocks_uploaded.fetch_add(1, std::memory_order_relaxed);
-  if (!kReuseConstantBlocks || !raw)
+  if (!kReuseConstantBlocks || !ReuseConstantBlocks() || !raw)
     return;
   std::memcpy(cache.raw, raw, kConstantBlockBytes);
   cache.alloc = alloc;

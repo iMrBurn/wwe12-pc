@@ -28,8 +28,6 @@ struct Scope {
 
 }  // namespace bd::gpu::zones
 
-#if defined(__ANDROID__)
+// PC too since 1.2: small PCs are CPU bound (#53), and players' logs are all we get from them.
+// Cost: two clock reads per zone (a few hundred per frame), well under 0.1 ms.
 #define WWE12_CPU_ZONE(id) ::bd::gpu::zones::Scope wwe12_cpu_zone_##id(::bd::gpu::zones::id)
-#else
-#define WWE12_CPU_ZONE(id) ((void)0)
-#endif

@@ -479,7 +479,6 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
               "{:.1f} ms | constant blocks {:.0f} uploaded, {:.0f} reused",
               (cpu_now - fs.window_cpu_ms) / n, fs.sum_work / n,
               (process_now - fs.window_process_ms) / n, blocks_uploaded / n, blocks_reused / n);
-#if defined(__ANDROID__)
     {
       using namespace zones;
       const auto ms = [&](Id id) { return g_ns[id].exchange(0, std::memory_order_relaxed) / n / 1e6; };
@@ -490,7 +489,6 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
               "textures {:.1f} ms | geometry {:.1f} ms | present {:.1f} ms (waits included)",
               draws, constants, textures, geometry, present);
     }
-#endif
     fs = FrameStats{};
     fs.window_start = now;
     fs.last_present = now;
