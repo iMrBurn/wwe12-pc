@@ -51,6 +51,8 @@ struct GuestTexture;
 }
 void Wwe12RemoteOnPresent(bd::gpu::GuestTexture *front_buffer);  // wwe12_remote_pad.cpp
 void Wwe12BenchmarkFrame(double interval_ms, double work_ms, double gpu_wait_ms);  // wwe12_benchmark.cpp
+float Wwe12GameGammaExponent();  // wwe12_gamma.cpp
+bool Wwe12ConsolePicture();      // wwe12_gamma.cpp
 #endif
 
 namespace bd::gpu {
@@ -287,10 +289,11 @@ void RecordPresentPass(VideoState &s, GuestTexture *rt,
                         off_y + static_cast<i32>(fit_h)));
 #if defined(SVR_NATIVE_RENDERER)
   // SvR's front buffer is already display-encoded (Blue Dragon's is linear and relies on the
-  // pow(x, 0.5) scanout ramp its bdBuildGammaRampLUT hook captures; SvR has neither), and the
-  // playable build shows it as written: present it unchanged.
-  constexpr float kPresentGamma = 1.0f;
-  constexpr float kPresentDisplayCorrection = 0.0f;
+  // pow(x, 0.5) scanout ramp its bdBuildGammaRampLUT hook captures). WWE '12's BRIGHTNESS option
+  // is its scanout ramp, fitted as a power (native/wwe12_gamma.cpp; 1.0 when neutral), and the
+  // CONSOLE picture adds the Xbox's TV correction (issue #48). Default: as written, plus the ramp.
+  const float kPresentGamma = Wwe12GameGammaExponent();
+  const float kPresentDisplayCorrection = Wwe12ConsolePicture() ? 1.0f : 0.0f;
   s.guest_gamma = 1.0f;
 #else
   constexpr float kPresentGamma = 1.0f;

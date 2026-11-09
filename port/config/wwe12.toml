@@ -55,6 +55,12 @@ bd_aspect_ratio = 5
 # false = the 16:9 picture with black bars everywhere. No effect with bd_aspect_ratio = 6 (stretch).
 wwe12_widescreen = true
 
+# Picture: false = as the game writes it (PC); true = as the Xbox 360 shows it on a TV (darker
+# mid-tones, richer colours). The game's own BRIGHTNESS option works in both.
+wwe12_console_picture = false
+# The game's BRIGHTNESS option (applied as the Xbox's video output does). false = ignored (1.1).
+wwe12_game_brightness = true
+
 # Vertical sync: true avoids tearing (horizontal cuts in the picture).
 bd_vsync = true
 
