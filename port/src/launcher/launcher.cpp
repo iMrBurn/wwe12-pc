@@ -534,6 +534,7 @@ struct Settings {
   int music_db = -20;  // xmp_music_level_db, -40..-6
   std::string gpu;
   bool exit_entry = true;
+  bool console_picture = false;  // wwe12_console_picture (Xbox 360 TV correction; false = PC picture)
   bool discord = false;  // wwe12_discord (Discord Rich Presence, opt-in)
   bool keyboard = true;
   int keyboard_player = 1;  // 1..4: the player the keyboard plays as (2 = separate from pad 1)
@@ -578,6 +579,7 @@ void LoadSettings() {
   g_s.gpu = g_toml.GetString("svr_gpu_device", "");
   g_s.exit_entry = g_toml.GetBool("wwe12_quit_entry", true);
   g_s.discord = g_toml.GetBool("wwe12_discord", false);
+  g_s.console_picture = g_toml.GetBool("wwe12_console_picture", false);
   g_s.keyboard = g_toml.GetBool("mnk_mode", true);
   g_s.keyboard_player = std::clamp(g_toml.GetInt("mnk_player", 1), 1, 4);
   for (size_t i = 0; i < std::size(kBinds); ++i)
@@ -612,6 +614,7 @@ void SaveSettings() {
   g_toml.SetString("svr_gpu_device", g_s.gpu);
   g_toml.SetBool("wwe12_quit_entry", g_s.exit_entry);
   g_toml.SetBool("wwe12_discord", g_s.discord);
+  g_toml.SetBool("wwe12_console_picture", g_s.console_picture);
   g_toml.SetBool("mnk_mode", g_s.keyboard);
   g_toml.SetInt("mnk_player", g_s.keyboard_player);
   for (size_t i = 0; i < std::size(kBinds); ++i)
@@ -1042,6 +1045,13 @@ void PageSettings() {
       ImGui::TextDisabled("(%s)", t.crowd_hint);
       changed |= ImGui::Checkbox(t.shadow_res, &g_s.shadows);
       changed |= ImGui::Checkbox(t.dof, &g_s.dof);
+      {
+        const bool fr_ = g_s.language == 4;
+        changed |= ImGui::Checkbox(fr_ ? "Image console (Xbox 360 sur TV)" : "Console picture (Xbox 360 on a TV)",
+                                   &g_s.console_picture);
+        ImGui::TextDisabled("%s", fr_ ? "Applique la correction TV de la Xbox 360 (image plus sombre et plus contrastée). Défaut : image PC."
+                                      : "Applies the Xbox 360's TV correction (darker, more contrasted picture). Default: PC picture.");
+      }
       ImGui::Dummy(ImVec2(0, 8));
       ImGui::TextDisabled("%s", t.more_graphics);
       ImGui::EndTabItem();
