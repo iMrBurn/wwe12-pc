@@ -42,6 +42,7 @@ REXCVAR_DECLARE(int32_t, bd_aspect_ratio);
 REXCVAR_DECLARE(int32_t, bd_anisotropy);
 REXCVAR_DECLARE(bool, bd_vsync);
 REXCVAR_DECLARE(bool, wwe12_60fps);
+REXCVAR_DECLARE(std::string, wwe12_frame_mode);
 REXCVAR_DECLARE(bool, wwe12_crowd);
 REXCVAR_DECLARE(bool, fullscreen);
 REXCVAR_DECLARE(bool, borderless);
@@ -96,19 +97,21 @@ struct Texts {
   const char *mode, *mode_full, *mode_window, *mode_border, *win_size, *screen_size, *cpu, *prio_normal,
       *prio_above, *prio_high, *exit_entry;
   const char *api, *aspect, *stretch;
+  const char *fr_original, *fr_30, *fr_60;  // FRAME RATE values (the label is fps60)
 };
 constexpr Texts kTexts[] = {
     {"GRAPHICS", "INTERNAL RESOLUTION", "TEXTURE SHARPNESS", "VERTICAL SYNC",
-     "60 FPS ENTRANCES", "OFF", "ON", "YES", "NO", "AUTO",
+     "FRAME RATE", "OFF", "ON", "YES", "NO", "AUTO",
      "APPLIED THE NEXT TIME THE GAME STARTS", "OPTIONS", "CHANGE", "BACK",
      "EXPERIMENTAL: TITLE BELTS CAN MOVE ODDLY",
      "DISPLAY", "GRAPHICS", "ADVANCED", "ANTI-ALIASING", "SHADOWS", "SHADOW DISTANCE",
      "DEPTH OF FIELD", "CROWD", "EDGE BLUR", "FRAME LIMIT", "FPS COUNTER", "NONE", "TABS",
      "DISPLAY MODE", "FULL SCREEN", "WINDOW", "BORDERLESS WINDOW", "WINDOW SIZE", "SCREEN SIZE",
      "CPU PRIORITY", "NORMAL", "ABOVE NORMAL", "HIGH", "EXIT ENTRY IN THE MAIN MENU",
-     "GRAPHICS API", "PICTURE FORMAT", "STRETCH"},
+     "GRAPHICS API", "PICTURE FORMAT", "STRETCH",
+     "ORIGINAL", "30 (LOW-END PC)", "60 IN ENTRANCES"},
     {"GRAPHISMES", "R\xC3\x89SOLUTION INTERNE", "NETTET\xC3\x89 DES TEXTURES", "SYNCHRO VERTICALE",
-     "ENTR\xC3\x89" "ES \xC3\x80 60 FPS", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "OUI", "NON",
+     "IMAGES PAR SECONDE", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "OUI", "NON",
      "AUTO", "APPLIQU\xC3\x89 AU PROCHAIN LANCEMENT DU JEU", "OPTIONS", "CHANGER", "RETOUR",
      "EXP\xC3\x89RIMENTAL : LES CEINTURES PEUVENT BOUGER BIZARREMENT",
      "AFFICHAGE", "GRAPHISMES", "AVANC\xC3\x89", "ANTICR\xC3\x89" "NELAGE", "OMBRES",
@@ -117,9 +120,10 @@ constexpr Texts kTexts[] = {
      "MODE D'AFFICHAGE", "PLEIN \xC3\x89" "CRAN", "FEN\xC3\x8A" "TRE", "FEN\xC3\x8A" "TRE SANS BORDURE",
      "TAILLE DE LA FEN\xC3\x8A" "TRE", "TAILLE DE L'\xC3\x89" "CRAN", "PRIORIT\xC3\x89 DU PROCESSEUR",
      "NORMALE", "SUP\xC3\x89" "RIEURE", "HAUTE", "ENTR\xC3\x89" "E QUITTER DANS LE MENU PRINCIPAL",
-     "API GRAPHIQUE", "FORMAT DE L'IMAGE", "\xC3\x89TIRER"},
+     "API GRAPHIQUE", "FORMAT DE L'IMAGE", "\xC3\x89TIRER",
+     "D'ORIGINE", "30 (PETIT PC)", "60 DANS LES ENTR\xC3\x89" "ES"},
     {"GRAFIK", "INTERNE AUFL\xC3\x96SUNG", "TEXTURSCH\xC3\x84RFE", "VERTIKALE SYNC.",
-     "EINZ\xC3\x9CGE MIT 60 FPS", "AUS", "AN", "JA", "NEIN", "AUTO",
+     "BILDRATE", "AUS", "AN", "JA", "NEIN", "AUTO",
      "WIRD BEIM N\xC3\x84" "CHSTEN SPIELSTART \xC3\x9C" "BERNOMMEN", "OPTIONEN",
      "\xC3\x84NDERN", "ZUR\xC3\x9C" "CK",
      "EXPERIMENTELL: TITELG\xC3\x9CRTEL K\xC3\x96NNEN SICH SELTSAM BEWEGEN",
@@ -128,9 +132,10 @@ constexpr Texts kTexts[] = {
      "FPS-ANZEIGE", "KEINE", "REITER",
      "ANZEIGEMODUS", "VOLLBILD", "FENSTER", "RANDLOSES FENSTER", "FENSTERGR\xC3\x96" "SSE",
      "BILDSCHIRMGR\xC3\x96" "SSE", "CPU-PRIORIT\xC3\x84" "T", "NORMAL", "\xC3\x9C" "BER NORMAL", "HOCH",
-     "EXIT-EINTRAG IM HAUPTMEN\xC3\x9C", "GRAFIK-API", "BILDFORMAT", "STRECKEN"},
+     "EXIT-EINTRAG IM HAUPTMEN\xC3\x9C", "GRAFIK-API", "BILDFORMAT", "STRECKEN",
+     "ORIGINAL", "30 (SCHWACHER PC)", "60 BEI EINZ\xC3\x9CGEN"},
     {"GR\xC3\x81" "FICOS", "RESOLUCI\xC3\x93N INTERNA", "NITIDEZ DE TEXTURAS",
-     "SINCRONIZACI\xC3\x93N VERTICAL", "ENTRADAS A 60 FPS", "NO", "S\xC3\x8D", "S\xC3\x8D", "NO",
+     "SINCRONIZACI\xC3\x93N VERTICAL", "FOTOGRAMAS POR SEGUNDO", "NO", "S\xC3\x8D", "S\xC3\x8D", "NO",
      "AUTO", "SE APLICA LA PR\xC3\x93XIMA VEZ QUE SE INICIE EL JUEGO", "OPCIONES", "CAMBIAR",
      "VOLVER", "EXPERIMENTAL: LOS CINTURONES PUEDEN MOVERSE DE FORMA EXTRA\xC3\x91" "A",
      "PANTALLA", "GR\xC3\x81" "FICOS", "AVANZADO", "ANTIALIASING", "SOMBRAS",
@@ -139,9 +144,10 @@ constexpr Texts kTexts[] = {
      "MODO DE PANTALLA", "PANTALLA COMPLETA", "VENTANA", "VENTANA SIN BORDES", "TAMA\xC3\x91" "O DE VENTANA",
      "TAMA\xC3\x91" "O DE PANTALLA", "PRIORIDAD DE CPU", "NORMAL", "SUPERIOR", "ALTA",
      "ENTRADA SALIR EN EL MEN\xC3\x9A" " PRINCIPAL", "API GR\xC3\x81" "FICA",
-     "FORMATO DE IMAGEN", "ESTIRAR"},
+     "FORMATO DE IMAGEN", "ESTIRAR",
+     "ORIGINAL", "30 (PC MODESTO)", "60 EN ENTRADAS"},
     {"GRAFICA", "RISOLUZIONE INTERNA", "NITIDEZZA TEXTURE", "SINCRONIA VERTICALE",
-     "INGRESSI A 60 FPS", "NO", "S\xC3\x8C", "S\xC3\x8C", "NO", "AUTO",
+     "FRAME RATE", "NO", "S\xC3\x8C", "S\xC3\x8C", "NO", "AUTO",
      "APPLICATO AL PROSSIMO AVVIO DEL GIOCO", "OPZIONI", "CAMBIA", "INDIETRO",
      "SPERIMENTALE: LE CINTURE POSSONO MUOVERSI IN MODO STRANO",
      "SCHERMO", "GRAFICA", "AVANZATE", "ANTIALIASING", "OMBRE", "DISTANZA OMBRE",
@@ -149,7 +155,8 @@ constexpr Texts kTexts[] = {
      "SCHEDE",
      "MODALIT\xC3\x80 SCHERMO", "SCHERMO INTERO", "FINESTRA", "FINESTRA SENZA BORDI", "DIMENSIONE FINESTRA",
      "DIMENSIONE SCHERMO", "PRIORIT\xC3\x80 CPU", "NORMALE", "SUPERIORE", "ALTA", "VOCE ESCI NEL MENU PRINCIPALE",
-     "API GRAFICA", "FORMATO IMMAGINE", "ADATTA"},
+     "API GRAFICA", "FORMATO IMMAGINE", "ADATTA",
+     "ORIGINALE", "30 (PC MODESTO)", "60 NEGLI INGRESSI"},
 };
 
 const Texts &T() { return kTexts[CurrentLang()]; }
@@ -238,13 +245,29 @@ std::vector<Setting> BuildSettings() {
     s.push_back(std::move(v));
   }
   {
+    // FRAME RATE (1.2, was "60 FPS ENTRANCES"): ORIGINAL, 30 (small PCs: the whole game in its own
+    // 30 fps mode), 60 IN ENTRANCES. wwe12_frame_mode (wwe12_fps.cpp); wwe12_60fps kept in step for
+    // the launcher and older files. Applied from the next start.
+    static constexpr const char *kModes[] = {"original", "30", "60_entrances"};
     Setting f60;
     f60.label = &Texts::fps60;
     f60.tab = 2;
-    f60.values = {t.no, t.yes};
-    f60.index = REXCVAR_GET(wwe12_60fps) ? 1 : 0;
-    f60.apply = [](int i) { rex::cvar::SetFlagByName("wwe12_60fps", i ? "true" : "false"); };
-    f60.save = [](TomlFile &f, int i) { f.SetBool("wwe12_60fps", i != 0); };
+    f60.values = {t.fr_original, t.fr_30, t.fr_60};
+    const std::string &mode = REXCVAR_GET(wwe12_frame_mode);
+    f60.index = mode == "30"                                  ? 1
+                : mode == "60_entrances" || mode == "60"      ? 2
+                : mode == "original"                          ? 0
+                : REXCVAR_GET(wwe12_60fps)                    ? 2
+                                                              : 0;
+    f60.next_start = true;
+    f60.apply = [](int i) {
+      rex::cvar::SetFlagByName("wwe12_frame_mode", kModes[i]);
+      rex::cvar::SetFlagByName("wwe12_60fps", i == 2 ? "true" : "false");
+    };
+    f60.save = [](TomlFile &f, int i) {
+      f.SetString("wwe12_frame_mode", kModes[i]);
+      f.SetBool("wwe12_60fps", i == 2);
+    };
     s.push_back(std::move(f60));
   }
   // Frame limit and FPS counter (display tab).

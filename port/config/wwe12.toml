@@ -32,7 +32,10 @@ wwe12_discord_app_id = "1568590628952998010"
 # on the weakest graphics built into the processor.
 svr_render_scale = 0
 
-# 60 fps in entrances and cutscenes (the original game drops to 30 there).
+# Frame rate: "original" (60, entrances and cutscenes at 30 like the Xbox), "30" (30 everywhere,
+# smoother on small PCs than a rate jumping between 40 and 60), "60_entrances" (60 everywhere).
+wwe12_frame_mode = "original"
+# Older setting, kept in step with wwe12_frame_mode: true = "60_entrances".
 wwe12_60fps = false
 
 # Sharpness of textures seen at an angle (ring, ramp, crowd): 0 (off), 2, 4, 8 or 16.
