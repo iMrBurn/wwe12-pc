@@ -352,3 +352,12 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   (`svr_moves::SetImpact`, partagé avec SvR). **3 prises de 2K16** avaient une victime qui se serait retournée : la
   position au sol est maintenant posée d'après la dernière pose pour les 2K aussi (`svr_moves::SetDown`). Restent 4 à 15
   prises par jeu sans lignes m3 (laissées de côté, comme avant).
+- **SvR 2010 dans le Mod Maker (2026-11-09)** : ses prises ont les mêmes formats que SvR 2011 (banques YMKs de m.pac, fiches
+  WAZE de 160 octets) ; ses tables de prise sont dans misc.pac **BATS/INIT enfants 10 / 11 / 12** (au lieu de WAZA/DATA
+  0 / 1 / 2) et ses lignes EXH font **32 octets** (36 en 2011 : un u32 ajouté à la fin), d'après `svr10_moves.py` de Kaiko.
+  `svr_moves.h` lit les deux ; `star_port.h` ajoute les prises de SvR 2010 comme celles de 2011. Vérif hors jeu (`svrcheck`) :
+  **966 prises fabriquées** sur 2 464 (1 377 avec leurs propres événements, 1 337 avec leur EXH), modèle du même genre et
+  des mêmes segments pour 887 (92 % ; SvR 2011 : 713 sur 730, 98 %). Refusées : 141 à trois, 60 avec un objet, 145
+  animations non converties, 65 sans modèle. Pas encore vu en jeu.
+- **SvR 2007-2009 : pas encore** : notre lecteur n'y trouve aucune prise (fiches WAZE de 144 octets, banques sans l'en-tête
+  de 16 octets et autre table de tailles d'événements, d'après Kaiko).

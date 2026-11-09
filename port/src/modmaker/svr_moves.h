@@ -327,6 +327,7 @@ struct Svr {
   std::map<int, std::set<int>> segments;       // bank id -> its x (< 90, more than one frame)
   std::map<int, std::vector<Mo>> wanted;       // bank id -> its motions
   Bytes waza;
+  uint32_t waza_base = 0;  // its children's first id (EXH, then the events): WAZA/DATA 0, SvR 2010's BATS/INIT 10
   void Load(const disc::GameDisc &s, const std::set<int> &want_ids) {
     moveset_port::detail::Game g;
     moveset_port::detail::Load(s, g);
@@ -381,6 +382,12 @@ struct Svr {
         for (auto &en : gr.entries)
           if (gr.type == "WAZA" && en.name.rfind("DATA", 0) == 0)
             waza = svrfmt::Unpack(en.data);
+    // (SvR 2010 has them in BATS/INIT, children 10 / 11 / 12 for 2011's WAZA/DATA 0 / 1 / 2 - Kaiko's svr10_moves.py)
+    if (waza.empty())
+      for (auto &gr : me.groups)
+        for (auto &en : gr.entries)
+          if (gr.type == "BATS" && en.name.rfind("INIT", 0) == 0)
+            waza = svrfmt::Unpack(en.data), waza_base = 10;
   }
   // its own events by part (EVT rows {move, part, ..., +8 first event, +10 count}, 4-byte events {kind, frame}) and
   // its EXH row (36 bytes)
@@ -395,12 +402,14 @@ struct Svr {
       svrfmt::PachRead(svrfmt::Unpack(k.data), groups);
       for (auto &g : groups) {
         const Bytes u = svrfmt::Unpack(g.data);
-        if (k.id == 0 && u.size() >= 8 && !memcmp(u.data(), "EXH", 3)) {
-          for (uint32_t i = 0; i < L32(u, 4) && 8 + 36 * size_t(i + 1) <= u.size(); ++i)
-            if (U16(u, 8 + 36 * size_t(i)) == id && U16(u, 8 + 36 * size_t(i) + 2) == 0)  // (its own row: part 0; the
+        if (k.id == waza_base && u.size() >= 8 && !memcmp(u.data(), "EXH", 3)) {
+          // (rows of 36 bytes; SvR 2010's 32, 2011's the same with a u32 appended - Kaiko's svr10_moves.py)
+          const size_t st = L32(u, 4) && (u.size() - 8) / L32(u, 4) == 32 ? 32 : 36;
+          for (uint32_t i = 0; i < L32(u, 4) && 8 + st * size_t(i + 1) <= u.size(); ++i)
+            if (U16(u, 8 + st * size_t(i)) == id && U16(u, 8 + st * size_t(i) + 2) == 0)  // (its own row: part 0; the
               // counter branch's (part 0x5A) came last and was taken, 2026-11-09)
-              exh.assign(u.begin() + long(8 + 36 * i), u.begin() + long(8 + 36 * (i + 1)));
-        } else if (k.id == 1 && u.size() >= 8 && L32(u, 0) == 16) {
+              exh.assign(u.begin() + long(8 + st * i), u.begin() + long(8 + st * (i + 1)));
+        } else if (k.id == waza_base + 1 && u.size() >= 8 && L32(u, 0) == 16) {
           const uint32_t n = L32(u, 4);
           const size_t ev = 8 + 16 * size_t(n);
           for (uint32_t i = 0; i < n && 8 + 16 * size_t(i + 1) <= u.size(); ++i) {
@@ -521,6 +530,7 @@ inline void SetDown(const Bytes &high, m3_params::Rows &rows) {
 struct Note {
   int number = 0;
   std::string name, model, why;  // why: empty when made
+  bool same_kind = false;         // its model is of its kind (WAZE +0x73) with its segments
 };
 
 // The moves `numbers` (SvR 2011 numbers, as its PRO holds them) as WWE '12 moves (newmoves13::Move: number = the SvR
@@ -607,7 +617,7 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     };
     const auto mine_it = sv.recs.find(number);
     if (mine_it == sv.recs.end() || !sv.wanted.count(want) || !sv.frames[0].count(want) || !sv.frames[1].count(want)) {
-      fail("no animation for two people in SvR 2011");
+      fail("no animation for two people in its game");
       continue;
     }
     // (the parts this port can't make: y 2 = a third person (88 SvR moves, the double-team ones; WWE '12 keeps it, 82
@@ -647,6 +657,7 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     }
     const Model &md = models[best];
     note.model = sv.names[best];
+    note.same_kind = best_score < 50000;
     // its blocks: every segment of each person (x < 90; the counter branches' stubs stay the model's)
     std::map<size_t, std::pair<Bytes, int>> repl;
     std::map<size_t, int> tf;
