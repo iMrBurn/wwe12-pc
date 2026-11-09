@@ -666,7 +666,16 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     if (!evs.empty()) {
       rows.rows["0/3"].clear();
       rows.events.clear();
-      for (auto &[part, list] : evs) {
+      // (in WWE '12's order: by segment, then person - 0000 0100 005A 015A, as its moves have them -, not by the part's
+      // value - 0000 005A 0100 015A: the victim's list came after the counter branch's; suspected cause of the game
+      // choosing his front-down
+      // state (animation 1) over his back-down one (0) at the end, Gameplay's probe wwe12_down_probe, 2026-11-09)
+      std::vector<int> order;
+      for (const auto &[part, list] : evs)
+        order.push_back(part);
+      std::sort(order.begin(), order.end(), [](int a, int b) { return std::make_pair(a & 0xFF, a >> 8) < std::make_pair(b & 0xFF, b >> 8); });
+      for (const int part : order) {
+        const auto &list = evs.at(part);
         Bytes r(8, 0);
         // (the part: u16 = segment (0, 90-92 a counter branch) | person << 8 (1 the victim), in SvR and WWE '12 alike;
         // its high byte dropped, the victim's events went to the attacker - among them the one saying how he ends
