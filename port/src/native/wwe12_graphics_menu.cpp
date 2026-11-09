@@ -109,7 +109,7 @@ constexpr Texts kTexts[] = {
      "DISPLAY MODE", "FULL SCREEN", "WINDOW", "BORDERLESS WINDOW", "WINDOW SIZE", "SCREEN SIZE",
      "CPU PRIORITY", "NORMAL", "ABOVE NORMAL", "HIGH", "EXIT ENTRY IN THE MAIN MENU",
      "GRAPHICS API", "PICTURE FORMAT", "STRETCH",
-     "ORIGINAL", "30 (LOW-END PC)", "60 IN ENTRANCES"},
+     "ORIGINAL", "30 IN MATCHES (EXPERIMENTAL)", "60 IN ENTRANCES"},
     {"GRAPHISMES", "R\xC3\x89SOLUTION INTERNE", "NETTET\xC3\x89 DES TEXTURES", "SYNCHRO VERTICALE",
      "IMAGES PAR SECONDE", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "OUI", "NON",
      "AUTO", "APPLIQU\xC3\x89 AU PROCHAIN LANCEMENT DU JEU", "OPTIONS", "CHANGER", "RETOUR",
@@ -121,7 +121,7 @@ constexpr Texts kTexts[] = {
      "TAILLE DE LA FEN\xC3\x8A" "TRE", "TAILLE DE L'\xC3\x89" "CRAN", "PRIORIT\xC3\x89 DU PROCESSEUR",
      "NORMALE", "SUP\xC3\x89" "RIEURE", "HAUTE", "ENTR\xC3\x89" "E QUITTER DANS LE MENU PRINCIPAL",
      "API GRAPHIQUE", "FORMAT DE L'IMAGE", "\xC3\x89TIRER",
-     "D'ORIGINE", "30 (PETIT PC)", "60 DANS LES ENTR\xC3\x89" "ES"},
+     "D'ORIGINE", "30 EN MATCH (EXP\xC3\x89RIMENTAL)", "60 DANS LES ENTR\xC3\x89" "ES"},
     {"GRAFIK", "INTERNE AUFL\xC3\x96SUNG", "TEXTURSCH\xC3\x84RFE", "VERTIKALE SYNC.",
      "BILDRATE", "AUS", "AN", "JA", "NEIN", "AUTO",
      "WIRD BEIM N\xC3\x84" "CHSTEN SPIELSTART \xC3\x9C" "BERNOMMEN", "OPTIONEN",
@@ -133,7 +133,7 @@ constexpr Texts kTexts[] = {
      "ANZEIGEMODUS", "VOLLBILD", "FENSTER", "RANDLOSES FENSTER", "FENSTERGR\xC3\x96" "SSE",
      "BILDSCHIRMGR\xC3\x96" "SSE", "CPU-PRIORIT\xC3\x84" "T", "NORMAL", "\xC3\x9C" "BER NORMAL", "HOCH",
      "EXIT-EINTRAG IM HAUPTMEN\xC3\x9C", "GRAFIK-API", "BILDFORMAT", "STRECKEN",
-     "ORIGINAL", "30 (SCHWACHER PC)", "60 BEI EINZ\xC3\x9CGEN"},
+     "ORIGINAL", "30 IM MATCH (EXPERIMENTELL)", "60 BEI EINZ\xC3\x9CGEN"},
     {"GR\xC3\x81" "FICOS", "RESOLUCI\xC3\x93N INTERNA", "NITIDEZ DE TEXTURAS",
      "SINCRONIZACI\xC3\x93N VERTICAL", "FOTOGRAMAS POR SEGUNDO", "NO", "S\xC3\x8D", "S\xC3\x8D", "NO",
      "AUTO", "SE APLICA LA PR\xC3\x93XIMA VEZ QUE SE INICIE EL JUEGO", "OPCIONES", "CAMBIAR",
@@ -145,7 +145,7 @@ constexpr Texts kTexts[] = {
      "TAMA\xC3\x91" "O DE PANTALLA", "PRIORIDAD DE CPU", "NORMAL", "SUPERIOR", "ALTA",
      "ENTRADA SALIR EN EL MEN\xC3\x9A" " PRINCIPAL", "API GR\xC3\x81" "FICA",
      "FORMATO DE IMAGEN", "ESTIRAR",
-     "ORIGINAL", "30 (PC MODESTO)", "60 EN ENTRADAS"},
+     "ORIGINAL", "30 EN COMBATES (EXPERIMENTAL)", "60 EN ENTRADAS"},
     {"GRAFICA", "RISOLUZIONE INTERNA", "NITIDEZZA TEXTURE", "SINCRONIA VERTICALE",
      "FRAME RATE", "NO", "S\xC3\x8C", "S\xC3\x8C", "NO", "AUTO",
      "APPLICATO AL PROSSIMO AVVIO DEL GIOCO", "OPZIONI", "CAMBIA", "INDIETRO",
@@ -156,7 +156,7 @@ constexpr Texts kTexts[] = {
      "MODALIT\xC3\x80 SCHERMO", "SCHERMO INTERO", "FINESTRA", "FINESTRA SENZA BORDI", "DIMENSIONE FINESTRA",
      "DIMENSIONE SCHERMO", "PRIORIT\xC3\x80 CPU", "NORMALE", "SUPERIORE", "ALTA", "VOCE ESCI NEL MENU PRINCIPALE",
      "API GRAFICA", "FORMATO IMMAGINE", "ADATTA",
-     "ORIGINALE", "30 (PC MODESTO)", "60 NEGLI INGRESSI"},
+     "ORIGINALE", "30 NEI MATCH (SPERIMENTALE)", "60 NEGLI INGRESSI"},
 };
 
 const Texts &T() { return kTexts[CurrentLang()]; }
@@ -245,8 +245,8 @@ std::vector<Setting> BuildSettings() {
     s.push_back(std::move(v));
   }
   {
-    // FRAME RATE (1.2, was "60 FPS ENTRANCES"): ORIGINAL, 30 (small PCs: the whole game in its own
-    // 30 fps mode), 60 IN ENTRANCES. wwe12_frame_mode (wwe12_fps.cpp); wwe12_60fps kept in step for
+    // FRAME RATE (1.2, was "60 FPS ENTRANCES"): ORIGINAL, 30 IN MATCHES (experimental, small PCs:
+    // the game's own 30 fps mode in matches, menus at 60), 60 IN ENTRANCES. wwe12_frame_mode (wwe12_fps.cpp); wwe12_60fps kept in step for
     // the launcher and older files. Applied from the next start.
     static constexpr const char *kModes[] = {"original", "30", "60_entrances"};
     Setting f60;

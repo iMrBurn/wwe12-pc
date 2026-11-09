@@ -11,9 +11,11 @@
 // wwe12_frame_mode:
 // - "original": the game's own rates (60 in menus and matches, 30 in entrances and cutscenes);
 // - "60_entrances": 60 everywhere (the mode is kept at 60 when the game asks for 30);
-// - "30": 30 everywhere (1.2, small PCs, issue #57): the game's own 30 fps mode, the one it uses
-//   for entrances, also in menus and matches. The logic steps twice as far per frame and the game
-//   waits 2 vblanks a frame, so speeds stay right while the CPU and GPU do half the frames.
+// - "30" (EXPERIMENTAL, 1.2, small PCs, issue #57): the game's own 30 fps mode, the one it uses
+//   for entrances, kept on in matches (menus and loading at 60). The logic steps twice as far per
+//   frame and the game waits 2 vblanks a frame, so speeds stay right while the CPU and GPU do half
+//   the frames. Some moves look a little off (the matches were made for 60); a match started
+//   without entrances stays at 60 (the switch happens when the entrances end).
 // Empty (older wwe12.toml): wwe12_60fps decides between "original" and "60_entrances".
 
 #include <atomic>
@@ -83,16 +85,6 @@ extern "C" REX_FUNC(sub_82827918) {
     ctx.r3.u64 = requested == 30 ? 60 : 50;
     g_entrance_at60.store(true, std::memory_order_relaxed);
     BD_INFO("[fps] game set frame rate {}; using {}", requested, ctx.r3.u32);
-  } else if (mode == FrameMode::k30 && (requested == 60 || requested == 50)) {
-    // Not SetFrameRate(30): it leaves the step at +36 at its 60 fps value (only "drop to 30",
-    // sub_82827AB8, sets it), and matches ran in slow motion (test 2026-11-09). The game's own 60
-    // first, then its "drop to 30", exactly as for an entrance.
-    g_entrance_at60.store(false, std::memory_order_relaxed);
-    __imp__sub_82827918(ctx, base);
-    __imp__sub_82827AB8(ctx, base);
-    BD_INFO("[fps] game set frame rate {}; dropped to {} (30 fps mode)", requested,
-            requested == 60 ? 30 : 25);
-    return;
   } else {
     g_entrance_at60.store(false, std::memory_order_relaxed);
     BD_DEBUG("[fps] game set frame rate {}", requested);
@@ -117,8 +109,22 @@ extern "C" REX_FUNC(sub_82827AB8) {
   __imp__sub_82827AB8(ctx, base);
 }
 
-// "Back to 60 (50) fps": the entrance or cutscene is over. In the 30 fps mode the game's own
-// function still runs, then its "drop to 30" (the entrance mode, every step value set) at once.
+// A loading screen opens (wwe12_load_turbo.cpp, game thread): in the 30 fps mode, menus and
+// loading run at 60 again (at 30 they felt sluggish, as in Kaiko's SvR 2011 port): the game's own
+// "back to 60", which undoes its "drop to 30" (does nothing when already at 60).
+void Wwe12FpsLoadScreenOpened(PPCContext &ctx, u8 *base) {
+  if (Mode() != FrameMode::k30)
+    return;
+  const auto r3 = ctx.r3;
+  __imp__sub_82827B58(ctx, base);
+  ctx.r3 = r3;
+  BD_INFO("[fps] loading screen: back to 60 until the match (30 fps mode)");
+}
+
+// "Back to 60 (50) fps": the entrance or cutscene is over. In the 30 fps mode (matches only: from
+// the end of the entrances to the next loading screen) the game's own function still runs, then
+// its "drop to 30" (the entrance mode, every step value set; SetFrameRate(30) left the +36 step at
+// its 60 fps value and matches ran in slow motion, test 2026-11-09).
 extern "C" REX_FUNC(sub_82827B58) {
   g_entrance_at60.store(false, std::memory_order_relaxed);
   g_scene_mode.store(false, std::memory_order_relaxed);
