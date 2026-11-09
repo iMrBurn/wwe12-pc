@@ -359,5 +359,15 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   **966 prises fabriquées** sur 2 464 (1 377 avec leurs propres événements, 1 337 avec leur EXH), modèle du même genre et
   des mêmes segments pour 887 (92 % ; SvR 2011 : 713 sur 730, 98 %). Refusées : 141 à trois, 60 avec un objet, 145
   animations non converties, 65 sans modèle. Pas encore vu en jeu.
-- **SvR 2007-2009 : pas encore** : notre lecteur n'y trouve aucune prise (fiches WAZE de 144 octets, banques sans l'en-tête
-  de 16 octets et autre table de tailles d'événements, d'après Kaiko).
+- **SvR 2007-2009 dans le Mod Maker (2026-11-09)** : fiches WAZE de **144 octets** (numéro à +0x88) refaites en 160 : mêmes
+  octets jusqu'à +0x73, le reste 8 octets plus loin (appris sur les 1 254 prises que 2009 et 2010 ont toutes deux,
+  `wazemap`) ; banques d'animations dans m.pac **MVMT** (2009 : une par catégorie, STAT, BASE… ; 2007 / 2008 : MOTN), sans
+  l'en-tête de 16 octets (elles commencent par la table de tailles, `01 02 03 05`) : on le leur rend, comme
+  `svr_old_entrance::ConvertEvt`. 2009 a ses tables dans BATS/INIT 10 / 11 comme 2010 ; 2007 / 2008 n'ont qu'une table EXH
+  à part et pas de table d'événements : leurs prises gardent les événements du modèle (recalés).
+- **Moins de bons modèles dans les vieux jeux** : les prises qui ont le même nom dans WWE '12 n'ont souvent plus la même
+  animation (WWE '12 a repris celles de 2011). Modèles à moins de 15 cm : SvR 2011 / 2010 / 2009 / 2008 / 2007 = 80 / 40 /
+  23 / 12 / 7 % (ni la durée ni une échelle n'y changent rien, `agefit`). D'où deux règles pour toutes les SvR : **le modèle
+  doit être du même genre, avec les mêmes segments, et de durée proche (entre 2/3 et 1,5 fois celle de la prise)**, sinon
+  la prise est refusée. Prises fabriquées : **2011 687, 2010 825, 2009 565, 2008 329, 2007 199** (Batista Bomb inchangée,
+  octet pour octet). 2007 / 2008 restent les moins sûres : 15 et 28 modèles seulement pour toutes leurs prises.

@@ -312,6 +312,40 @@ inline Bytes Rebuild(const Bytes &tpl, const std::map<size_t, std::pair<Bytes, i
   return out;
 }
 
+// SvR 2007-2009's WAZE records (144 bytes, the number at +0x88) made SvR 2010 / 2011's 160-byte ones: the same bytes
+// up to +0x73, the rest 8 bytes further (learnt on the 1 254 moves SvR 2009 and 2010 both have, wazemap 2026-11-09:
+// +0x73 87 %, +0x80..+0x8D 88-98 %, the number 89-93 %), FF after it. By number, as newmoves13::detail::Records.
+inline std::map<int, Bytes> OldRecords(const disc::GameDisc &d) {
+  std::map<int, Bytes> out;
+  Bytes m;
+  svrfmt::Archive a;
+  if (!d.Read("pac/misc.pac", m) || !svrfmt::ArchiveOpen(m, a, nullptr))
+    return out;
+  for (auto &k : a.root.kids) {
+    if (newmoves13::detail::Trim(k.group) != "MOVS" || newmoves13::detail::Trim(k.name) != "WAZE")
+      continue;
+    const Bytes t = svrfmt::Unpack(svrfmt::ArchiveData(k));
+    auto looks = [&](size_t o) { return o + 144 <= t.size() && isalnum(t[o + 0x10]) && (t[o + 0x88] | t[o + 0x89]); };
+    size_t phase = 0;
+    int best = -1;
+    for (size_t ph = 0; ph < 144; ph += 2) {
+      int sc = 0;
+      for (size_t o = ph; o + 144 <= t.size(); o += 144)
+        sc += looks(o);
+      if (sc > best)
+        best = sc, phase = ph;
+    }
+    for (size_t o = phase; o + 144 <= t.size(); o += 144)
+      if (looks(o)) {
+        Bytes r(160, 0xFF);
+        for (size_t b = 0; b < 0x98; ++b)
+          r[b] = t[o + (b < 0x74 ? b : b - 8)];
+        out.emplace(r[0x90] << 8 | r[0x91], r);
+      }
+  }
+  return out;
+}
+
 // SvR 2011, read once: its moves' names and records, every move's x 0 attacker / victim (body keys, for the models'
 // fit), the wanted moves' motions (all segments, copied), its WAZA/DATA (events, EXH)
 struct Svr {
@@ -328,16 +362,32 @@ struct Svr {
   std::map<int, std::vector<Mo>> wanted;       // bank id -> its motions
   Bytes waza;
   uint32_t waza_base = 0;  // its children's first id (EXH, then the events): WAZA/DATA 0, SvR 2010's BATS/INIT 10
+  bool old = false;         // SvR 2007-2009: 144-byte WAZE records, motion banks without their 16-byte header
   void Load(const disc::GameDisc &s, const std::set<int> &want_ids) {
+    recs = newmoves13::detail::Records(s);
+    {
+      std::map<int, Bytes> o = OldRecords(s);
+      old = o.size() > recs.size();
+      if (old)
+        recs.swap(o);
+    }
     moveset_port::detail::Game g;
-    moveset_port::detail::Load(s, g);
+    moveset_port::detail::Load(s, g, old ? 144 : 160, old ? 0x88 : 0x90);
     for (auto &[sid, n] : g.names)
       names[BankId(sid)] = n;
-    recs = newmoves13::detail::Records(s);
     Bytes m;
     svrfmt::Epac e;
     if (s.Read("pac/m.pac", m) && svrfmt::EpacRead(m, e)) {
-      std::function<void(const Bytes &, int)> walk = [&](const Bytes &b, int depth) {
+      std::function<void(const Bytes &, int)> walk = [&](const Bytes &in, int depth) {
+        // (SvR 2007-2009's banks: 2011's without its 16-byte header - the event size table first, 01 02 03 05 -,
+        // given it back as svr_old_entrance::ConvertEvt does; their events walk their own size table)
+        Bytes with;
+        const bool bare = in.size() >= 4 && in[0] == 1 && in[1] == 2 && in[2] == 3 && in[3] == 5;
+        if (bare) {
+          with = {'Y', 'M', 'K', 's', 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+          with.insert(with.end(), in.begin(), in.end());
+        }
+        const Bytes &b = bare ? with : in;
         if (b.size() >= 4 && !memcmp(b.data(), "YMKs", 4)) {
           std::vector<se::Motion> ms;
           se::Span T;
@@ -372,7 +422,8 @@ struct Svr {
       };
       for (auto &gr : e.groups)
         for (auto &en : gr.entries)
-          if (gr.type == "MOT " && en.name.rfind("BM", 0) == 0)
+          if ((gr.type == "MOT " && en.name.rfind("BM", 0) == 0) || (old && gr.type == "MVMT"))  // (2007-2009: by
+            // category, MVMT/STAT, BASE...; 2007 / 2008 MVMT/MOTN)
             walk(svrfmt::Unpack(en.data), 0);
     }
     Bytes misc;
@@ -651,13 +702,19 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       if (best < 0 || score < best_score)
         best = id, best_score = score;
     }
-    if (best < 0) {
+    // (a model of another kind or other segments isn't taken: its commands and rows - grabs, how the victim is held -
+    // aren't the move's. The older the game, the fewer of its moves are WWE '12's animations under the same name -
+    // models fitting within 15 cm, SvR 2011 / 2010 / 2009 / 2008 / 2007: 80 / 40 / 23 / 12 / 7 %, neither the timing
+    // nor a scale changing it (agefit, 2026-11-09) -: SvR 2007's 394 moves made had only 16 models, Poison Mist one
+    // for 35 of them)
+    // (nor one much shorter or longer: its commands retimed that far aren't the move's moments either)
+    if (best < 0 || best_score >= 50000 || 3 * sv.frames[0][best] < 2 * my_frames || 2 * sv.frames[0][best] > 3 * my_frames) {
       fail("no WWE '12 model of its kind");
       continue;
     }
     const Model &md = models[best];
     note.model = sv.names[best];
-    note.same_kind = best_score < 50000;
+    note.same_kind = true;
     // its blocks: every segment of each person (x < 90; the counter branches' stubs stay the model's)
     std::map<size_t, std::pair<Bytes, int>> repl;
     std::map<size_t, int> tf;

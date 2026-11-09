@@ -208,8 +208,9 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
   // (svr_moves.h); a slot kept because WWE '12 has no move of that name is one to add.
   const bool from13 =
       game == 0x545108B4 || game == 0x545408B2 || game == 0x545408B6 || game == 0x315A07D2 || game == 0x545408BA;
-  const bool from11 = game == 0x5451085D || game == 0x54510844;  // (SvR 2011, and 2010: its moves kept the same formats, its
-  // tables in misc.pac BATS/INIT - svr_moves.h, 2026-11-09)
+  // (SvR 2011, and 2007-2010 the same way, 2026-11-09: 2010 kept 2011's formats, its tables in misc.pac BATS/INIT;
+  // 2007-2009 with 144-byte records and their banks without their header - svr_moves.h)
+  const bool from11 = game == 0x5451085D || svr_old;
   if (from13 || from11) {
     std::set<int> want;
     for (auto &r : out.moves.rows) {
