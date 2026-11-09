@@ -801,6 +801,20 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         if (const size_t colon = line.find(':', eq); colon != std::string::npos)
           g_applied_before[id] = std::strtoull(line.c_str() + colon + 1, nullptr, 10);
       }
+    a.close();
+    // (the save written after the copies were last made: the game saved them, what they held before is past. Kept, an
+    // edit that happened to bring a copy back to it - the same entrance picked again, Lesnar's for Jeff Hardy - was
+    // taken for a game closed unsaved and undone at every start, test of 2026-11-09)
+    {
+      std::error_code e2;
+      const fs::path save = user_root / "B13EBABEBABEBABE" / "54510890" / "00000001" / "SaveData.dat" / "SaveData.Dat";
+      if (!g_applied_before.empty() && fs::exists(save, e2) && fs::exists(g_applied_file, e2) &&
+          fs::last_write_time(save, e2) > fs::last_write_time(g_applied_file, e2)) {
+        g_applied_before.clear();
+        WriteAppliedFile();
+        REXLOG_INFO("[superstar mods] the save was written after the moves copies were made: they are the save's now");
+      }
+    }
   }
   // The attire mods (type=attire with attire/attire.pac; older ones, a whole file, go through the mods folder).
   std::vector<superstar_pack::Attire> attires;
