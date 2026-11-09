@@ -60,6 +60,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <set>
 #include <mutex>
 #include <sstream>
@@ -5328,6 +5329,54 @@ extern "C" REX_FUNC(sub_823DDBB0) {
     BD_INFO("[univers] flow: after the match returned {}", ctx.r3.u32);
 }
 
+// The Universe's steps, always logged (wwe12_universe_flow_log; log lines only, nothing changed):
+// a Universe match that never reaches its result (Steam Deck player, 1.1.0: the match "ends" but no
+// victory, no result line) then shows the last step reached. Each step made by the factory
+// (sub_823DCC38 id), each change of a mode owner's state (sub_823894C0, owner+32), and a state
+// that has not changed for 60 s (once per state: a match itself lasts minutes, so this alone is
+// not a fault; the last lines before a stuck screen are what matters).
+REXCVAR_DEFINE_BOOL(wwe12_universe_flow_log, true, "WWE12",
+                    "Universe: log its steps (state factory ids, state changes, a step unchanged for 60 s).");
+namespace {
+struct FlowOwner {
+  u32 state = 0;
+  int64_t since = 0;
+  bool told = false;
+};
+std::mutex g_flow_lock;                  // (no guest call made while held)
+std::map<u32, FlowOwner> g_flow_owners;
+std::map<u32, u32> g_flow_ids;           // state vtable -> factory id
+int64_t FlowMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+bool FlowLog() { return REXCVAR_GET(wwe12_universe_flow_log) && bd::mem::load<u32>(kInUniverseFlag) == 1; }
+std::string FlowId(u32 vt) {
+  const auto it = g_flow_ids.find(vt);
+  return it == g_flow_ids.end() ? std::string("?") : std::to_string(it->second);
+}
+void FlowTick(u32 owner, u32 state) {
+  std::lock_guard<std::mutex> lock(g_flow_lock);
+  FlowOwner &o = g_flow_owners[owner];
+  const int64_t now = FlowMs();
+  if (state != o.state) {
+    const u32 old_vt = o.state ? bd::mem::try_load<u32>(o.state) : 0;
+    const u32 new_vt = state ? bd::mem::try_load<u32>(state) : 0;
+    if (o.since)
+      BD_INFO("[univers] flow: owner {:08X} step {} (vt {:08X}) -> {} (vt {:08X}) after {} s", owner,
+              FlowId(old_vt), old_vt, FlowId(new_vt), new_vt, (now - o.since) / 1000);
+    o.state = state;
+    o.since = now;
+    o.told = false;
+  } else if (!o.told && o.since && now - o.since >= 60000) {
+    o.told = true;
+    const u32 vt = state ? bd::mem::try_load<u32>(state) : 0;
+    BD_INFO("[univers] flow: owner {:08X} still in step {} (vt {:08X}, its +4 = {}) for 60 s", owner, FlowId(vt),
+            vt, state ? bd::mem::try_load<u32>(state + 4) : 0);
+  }
+}
+}  // namespace
+
 // Dev (wwe12_universe_probe): the mode's state machine (sub_823894C0(owner)): owner+32 = the current
 // state object; when it ends (its +4 = 5) the owner's vtable +56 makes the next one. Logged when it
 // changes: the owner, its vtable, the maker, the old and new states' vtables.
@@ -5337,6 +5386,8 @@ extern "C" REX_FUNC(sub_823894C0) {
   const u32 before = bd::mem::load<u32>(owner + 32);
   const u32 before_vt = before ? bd::mem::try_load<u32>(before) : 0;
   __imp__sub_823894C0(ctx, base);
+  if (FlowLog())
+    FlowTick(owner, bd::mem::load<u32>(owner + 32));
   if (!REXCVAR_GET(wwe12_universe_probe))
     return;
   const u32 after = bd::mem::load<u32>(owner + 32);
@@ -5357,6 +5408,14 @@ extern "C" REX_FUNC(sub_823DCC38) {
   if (REXCVAR_GET(wwe12_universe_probe))
     LogChain(fmt::format("flow: state factory id {}", id).c_str(), ctx);
   __imp__sub_823DCC38(ctx, base);
+  if (FlowLog()) {
+    const u32 vt = ctx.r3.u32 ? bd::mem::try_load<u32>(ctx.r3.u32) : 0;
+    if (vt) {
+      std::lock_guard<std::mutex> lock(g_flow_lock);
+      g_flow_ids[vt] = id;
+    }
+    BD_INFO("[univers] flow: step id {} made (vt {:08X})", id, vt);
+  }
   if (REXCVAR_GET(wwe12_universe_probe))
     BD_INFO("[univers] flow: state factory id {} made {:08X} (vt {:08X})", id, ctx.r3.u32,
             ctx.r3.u32 ? bd::mem::try_load<u32>(ctx.r3.u32) : 0);
