@@ -696,9 +696,13 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
       for (size_t i = 0; i < 12; ++i)
         d[4 + i] = d[16 + i] = uint8_t(std::min<int>(st.attributes[i], 100));
     memcpy(&d[0xF0], &own[0xF0], 8);
+    // (never its number, names or person: 0x2C..0x103 - but its gender, 0xEE alone, the Mod Maker's Man / Woman: it fell
+    // in that range and never reached the record, a diva made on a man's base stayed a man for the whole game; the belt
+    // alone read it. Found by the Universe conversation, 2026-11-09)
     for (const auto &[at, bytes] : st.record)
-      if (at >= 4 && size_t(at) + bytes.size() <= d.size() && (at >= 0x104 || at + bytes.size() <= 0x2E))
-        memcpy(&d[size_t(at)], bytes.data(), bytes.size());  // (never its number, names or person: 0x2C..0x103)
+      if (at >= 4 && size_t(at) + bytes.size() <= d.size() &&
+          (at >= 0x104 || at + bytes.size() <= 0x2E || (at == 0xEE && bytes.size() == 1)))
+        memcpy(&d[size_t(at)], bytes.data(), bytes.size());
     d[0x11F] = 1;  // a DLC superstar (the select screen's DLC tile; a disc superstar's copy had 0 and showed nowhere)
     while (person > 0 && person_used[size_t(person)])
       --person;
