@@ -460,6 +460,63 @@ inline Bytes Magg(const disc::GameDisc &w12, int motion) {
 
 }  // namespace detail
 
+// A move's impact frame in its m3 rows: 0/6's attacker row +34 (u16) is its attacker block's command 73 frame (959 of
+// WWE '12's 1 005 moves with one, 980 within 4 frames; FFFF in 808 moves without; f34, 2026-11-09). An SvR move kept its
+// model's (Gory Bomb 2's 436 for a Batista Bomb hitting at 308): the finisher's flashes came late. The 2K games' rows
+// hold only its low byte (2K14 / 2K15 / 2K17: 151 / 184 / 202 moves longer than 255 frames, impact 256 or 512 frames
+// early, k2check 2026-11-09).
+inline void SetImpact(const Bytes &high, m3_params::Rows &rows) {
+  using namespace detail;
+  if (high.size() < 0x70)
+    return;
+  int impact = -1;
+  const uint32_t first = Be32At(high, 12), cnt = Be32At(high, 0x48);
+  for (uint32_t i = 0; i < cnt && impact < 0; ++i) {
+    const size_t e = 0x70 + 0x28 * size_t(i);
+    if (e + 0x28 > high.size() || memcmp(&high[e + 4], "00000000", 8) != 0)
+      continue;
+    size_t s = first + Be32At(high, e + 0x24);
+    const size_t end = i + 1 < cnt ? first + Be32At(high, e + 0x28 + 0x24) : high.size();
+    for (const char *tag : {"YANM", "POF0"})
+      if (s + 8 <= end && !memcmp(&high[s], tag, 4))
+        s += 8 + Be32At(high, s + 4);
+    if (s < end && end <= high.size()) {
+      const auto cf = CmdFrames(Bytes(high.begin() + long(s), high.begin() + long(end)));
+      if (const auto it = cf.find(73); it != cf.end())
+        impact = it->second;
+    }
+  }
+  for (auto &r : rows.rows["0/6"])
+    if (impact >= 0 && r.size() >= 36 && r[2] == 0 && r[3] == 0 && !(r[34] == 0xFF && r[35] == 0xFF))
+      r[34] = uint8_t(impact), r[35] = uint8_t(impact >> 8);
+}
+
+// How the victim lies at the end: 0/6's victim row +20 (u16) is his down animation, 0 on his back, 1 on his front (the
+// game's command 81, sub_824AE820, made from that row: Gameplay's probe, 2026-11-09). On WWE '12's moves it follows his
+// last pose exactly: Bip x axis pointing down -> 0 (690 of 690), up -> 1 (218 of 218), down20. An SvR move kept its
+// model's value (1 for a Batista Bomb ending on his back): he turned over onto his front at the end. (The 2K games'
+// own rows already agree: k2check.)
+inline void SetDown(const Bytes &high, m3_params::Rows &rows) {
+  yanm::Record out;
+  if (!yanm::Read(high, out))
+    return;
+  for (auto &b : out.blocks)
+    if (b.name == "00000001")
+      for (auto &t : b.tracks)
+        if (t.name == "Bip") {
+          bool hr, hp;
+          yanm::Q q{};
+          yanm::V p{};
+          yanm::Sample(t, float(b.frames - 1), hr, q, hp, p);
+          // (the x axis turned by q, its height: y of q * (1, 0, 0) * q^-1)
+          const double up = 2 * (q[0] * q[1] + q[3] * q[2]);
+          const int down = up < -0.6 ? 0 : up > 0.6 ? 1 : -1;
+          for (auto &r : rows.rows["0/6"])
+            if (down >= 0 && r.size() >= 22 && r[2] == 0 && r[3] == 1 && r[21] == 0 && r[20] <= 1)
+              r[20] = uint8_t(down);
+        }
+}
+
 // What happened to each wanted move (for the Mod Maker's report)
 struct Note {
   int number = 0;
@@ -723,54 +780,9 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       fail("its model has no motion parameters");
       continue;
     }
-    // the frame of its impact: 0/6's attacker row +34 (u16) is its attacker block's command 73 frame (959 of WWE '12's
-    // 1 005 moves with one, 980 within 4 frames; FFFF in 808 moves without; f34, 2026-11-09). The model's stayed (Gory
-    // Bomb 2's 436 for a Batista Bomb hitting at 308): the finisher's flashes came late, the victim turned over.
-    {
-      int impact = -1;
-      const uint32_t first = Be32At(mv.high, 12), cnt = Be32At(mv.high, 0x48);
-      for (uint32_t i = 0; i < cnt && impact < 0; ++i) {
-        const size_t e = 0x70 + 0x28 * size_t(i);
-        if (e + 0x28 > mv.high.size() || memcmp(&mv.high[e + 4], "00000000", 8) != 0)
-          continue;
-        size_t s = first + Be32At(mv.high, e + 0x24);
-        const size_t end = i + 1 < cnt ? first + Be32At(mv.high, e + 0x28 + 0x24) : mv.high.size();
-        for (const char *tag : {"YANM", "POF0"})
-          if (s + 8 <= end && !memcmp(&mv.high[s], tag, 4))
-            s += 8 + Be32At(mv.high, s + 4);
-        if (s < end) {
-          const auto cf = CmdFrames(Bytes(mv.high.begin() + long(s), mv.high.begin() + long(end)));
-          if (const auto it = cf.find(73); it != cf.end())
-            impact = it->second;
-        }
-      }
-      for (auto &r : rows.rows["0/6"])
-        if (impact >= 0 && r.size() >= 36 && r[2] == 0 && r[3] == 0 && !(r[34] == 0xFF && r[35] == 0xFF))
-          r[34] = uint8_t(impact), r[35] = uint8_t(impact >> 8);
-    }
-    // how the victim lies at the end: 0/6's victim row +20 (u16) is his down animation, 0 on his back, 1 on his front
-    // (the game's command 81, sub_824AE820, made from that row: Gameplay's probe, 2026-11-09). On WWE '12's moves it
-    // follows his last pose exactly: Bip x axis pointing down -> 0 (690 of 690), up -> 1 (218 of 218), down20. The
-    // model's value stayed (1 for a Batista Bomb ending on his back): he turned over onto his front at the end.
-    {
-      yanm::Record out;
-      if (yanm::Read(mv.high, out))
-        for (auto &b : out.blocks)
-          if (b.name == "00000001")
-            for (auto &t : b.tracks)
-              if (t.name == "Bip") {
-                bool hr, hp;
-                yanm::Q q{};
-                yanm::V p{};
-                yanm::Sample(t, float(b.frames - 1), hr, q, hp, p);
-                // (the x axis turned by q, its height: y of q * (1, 0, 0) * q^-1)
-                const double up = 2 * (q[0] * q[1] + q[3] * q[2]);
-                const int down = up < -0.6 ? 0 : up > 0.6 ? 1 : -1;
-                for (auto &r : rows.rows["0/6"])
-                  if (down >= 0 && r.size() >= 22 && r[2] == 0 && r[3] == 1 && r[21] == 0 && r[20] <= 1)
-                    r[20] = uint8_t(down);
-              }
-    }
+    // the frame of its impact and how the victim lies at the end: SetImpact, SetDown (below the namespace detail)
+    SetImpact(mv.high, rows);
+    SetDown(mv.high, rows);
     mv.m3 = m3_params::Write(rows);
     // the model's preview script (its motion number replaced, its "quit" frame scaled) and Create a Moveset rows
     const Bytes script = Mvmot(w12, tmotion);

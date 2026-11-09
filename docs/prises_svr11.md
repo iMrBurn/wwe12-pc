@@ -344,3 +344,11 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   conséquence : 270 sans fiches MAGG (aperçu seulement, facultatif), 4 avec des événements inconnus (retirés par star_port).
   Les autres pièces de SvR (y 10-12 / 30-32 cordes, 50-57) n'existent plus dans les prises de WWE '12 (outil `w12y`) et
   sont laissées de côté comme avant. Reste à voir en jeu : quelques prises de chaque famille.
+- **Vérification hors jeu des prises 2K (2026-11-09, outil `k2check`)** : toutes les prises que WWE '12 n'a pas, dans WWE '13
+  (321 avec lignes m3), 2K14 (668), 2K15 (953), 2K16 (1 071), 2K17 (1 154). Deux personnes toujours de même durée,
+  aller-retour des lignes m3 identique. **Défaut trouvé et corrigé : l'image d'impact** (0/6 attaquant +34) n'a que son
+  octet bas dans les lignes des jeux 2K : 62 / 151 / 184 / 221 / 202 prises de plus de 255 images avaient leur impact
+  256 ou 512 images trop tôt (effet du finisher en avance). Le Mod Maker la reprend de la commande 73 de l'animation
+  (`svr_moves::SetImpact`, partagé avec SvR). **3 prises de 2K16** avaient une victime qui se serait retournée : la
+  position au sol est maintenant posée d'après la dernière pose pour les 2K aussi (`svr_moves::SetDown`). Restent 4 à 15
+  prises par jeu sans lignes m3 (laissées de côté, comme avant).
