@@ -318,3 +318,14 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   `downyat`, `downev`). Piste : la table **0/8** (listes {genre, image} finies par {0, 0}, non indexée par numéro ;
   le DLC 4 y ajoute 21 listes, `diff08`, `lists08`), sans doute référencée par le rang d'une ligne d'une autre table.
   Essai : choisir un modèle qui finit pareil (The Last Ride) → « ça bug pas mal » en jeu, annulé (87d1322).
+- **Tests en jeu du 2026-11-09 (Batista Bomb SvR sur Batista DLC, comparée à la Batista Bomb officielle du DLC 4,
+  animation 50429)** : l'animation de la victime du DLC est **la nôtre** à 1 cm près. Corrigé : l'image d'impact
+  (m3 0/6 ligne de l'attaquant +34 = image de la commande 73, 959 des 1 005 prises de WWE '12 ; le modèle gardait la
+  sienne → flashs du finisher en retard, **vu réglé en jeu**), la ligne EXH de la prise (partie 0, pas celle du contre),
+  la durée commune des deux personnes, la personne des événements. **Reste : la victime se retourne à la fin.** Écartés par
+  des tests : événements (A1), tables 0/1 + 0/2 (A2) ; l'octet 0/7 victime +4 du DLC (0) fige la prise s'il est seul (A3, C).
+  Avec **toutes** les tables du DLC (A), plus de retournement. Écartés hors jeu : commande 56, +8 de 0/6 (pas une image).
+  Différences restantes avec le DLC : 0/6 attaquant +5 (0E/0F) et +8 (19/120), 0/7 victime +4 (2/0), sons (5), commandes
+  15 (prises de main, celles du modèle). Prise « contre les cordes » SvR (31074, anime aussi y60 / y61) : gèle ; retirée.
+- **Bug du jeu, pas du Mod Maker** : la Beast Bomb du Batista DLC (case 0x4E) plante sans aucun mod
+  (sub_824A5458 ← sub_82481C78, lecture 0x5C) ; transmis à Gameplay le 2026-11-09.
