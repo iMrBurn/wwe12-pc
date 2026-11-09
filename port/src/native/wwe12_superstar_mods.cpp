@@ -1827,16 +1827,14 @@ extern "C" REX_FUNC(sub_828ADFB8) {
         first = k;
     if (same && bd::mem::load<uint8_t>(at + 247))
       continue;
-    // (made again, its brand stays the player's when the copy is already this superstar - its name +42..+73 or its
-    // number +40: the brand was compared no more but still written over, Goldberg back from WCW to SmackDown after a
+    // (made again, its brand stays the player's when the copy is already this superstar - its name +42..+73: the brand was compared no more but still written over, Goldberg back from WCW to SmackDown after a
     // restart or a match, a player's report and the Universe conversation, 2026-11-09. The pack's brand only for a
     // copy that isn't him yet: a first install.)
-    bool his = bd::mem::load<uint8_t>(at + 40) == rec[40] && bd::mem::load<uint8_t>(at + 41) == rec[41];
-    if (!his) {
-      his = true;
-      for (uint32_t k = 42; k < 74 && his; ++k)
-        his = bd::mem::load<uint8_t>(at + k) == rec[k];
-    }
+    // (by his name only: +40 is the slot's number, any superstar's there - a slot another added superstar had before
+    // kept that one's brand, AJ Styles made RAW came on SmackDown, test of 2026-11-09)
+    bool his = true;
+    for (uint32_t k = 42; k < 74 && his; ++k)
+      his = bd::mem::load<uint8_t>(at + k) == rec[k];
     uint8_t brand[4];
     for (uint32_t k = 0; k < 4; ++k)
       brand[k] = bd::mem::load<uint8_t>(at + 24 + k);
