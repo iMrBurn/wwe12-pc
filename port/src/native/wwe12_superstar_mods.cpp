@@ -1890,9 +1890,11 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       // block's champion entrances, which the game sets when an entrance is picked in it: the copy was taken for
       // another superstar's and made again at every select screen, the entrance undone; a moveset, before, stayed.
       // A player's report, 2026-11-08)
+      // (and +0x296, which the game sets to 1 when an entrance is picked in it: Lesnar's picked for Jeff Hardy, saved,
+      // came back as his own at the next start - the copy taken for another's again, the save's diff, 2026-11-09)
       bool foreign = false;
       for (uint32_t k = 0; k < 1068 && !foreign; k = k == 5 ? 0x1EC : k + 1)
-        foreign = bd::mem::load<uint8_t>(at + k) != mv[k];
+        foreign = k != 0x296 && bd::mem::load<uint8_t>(at + k) != mv[k];
       bool original = false;
       if (const auto o = g_originals.find(id); o != g_originals.end()) {
         original = true;
