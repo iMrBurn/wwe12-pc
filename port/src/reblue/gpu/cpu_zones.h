@@ -11,7 +11,9 @@
 
 namespace bd::gpu::zones {
 
-enum Id { kDraws, kConstants, kGeometry, kTextures, kPresent, kCount };
+// kGuestD3D: the game's own D3D library inside our hooked calls (it still writes its PM4 packets
+// for the null guest GPU), the part a native path would remove (docs/couches.md).
+enum Id { kDraws, kConstants, kGeometry, kTextures, kPresent, kGuestD3D, kCount };
 
 inline std::atomic<uint64_t> g_ns[kCount];
 

@@ -15,6 +15,8 @@
 #include <rex/ppc/context.h>
 #include <rex/ppc/function.h>
 
+#include "gpu/cpu_zones.h"  // kGuestD3D: time in the game's own D3D functions
+
 namespace svr {
 
 // The argument registers of a guest call: r3-r10 (integers and pointers), f1-f8 (floats), and r1
@@ -50,7 +52,7 @@ inline void CopyArgs(PPCContext &dst, const PPCContext &src) {
   extern "C" REX_FUNC(subroutine) {                              \
     PPCContext svr_args;                                         \
     ::svr::CopyArgs(svr_args, ctx);                              \
-    __imp__##subroutine(ctx, base);                              \
+    { WWE12_CPU_ZONE(kGuestD3D); __imp__##subroutine(ctx, base); }                              \
     rex::ppc::HostToGuestFunction<function>(svr_args, base);     \
   }
 
@@ -61,7 +63,7 @@ inline void CopyArgs(PPCContext &dst, const PPCContext &src) {
     PPCContext svr_args;                                         \
     ::svr::CopyArgs(svr_args, ctx);                              \
     rex::ppc::HostToGuestFunction<function>(svr_args, base);     \
-    __imp__##subroutine(ctx, base);                              \
+    { WWE12_CPU_ZONE(kGuestD3D); __imp__##subroutine(ctx, base); }                              \
   }
 
 // The game's function, then the renderer's with the arguments and the game's return value (r3).
@@ -70,6 +72,6 @@ inline void CopyArgs(PPCContext &dst, const PPCContext &src) {
   extern "C" REX_FUNC(subroutine) {                              \
     PPCContext svr_args;                                         \
     ::svr::CopyArgs(svr_args, ctx);                              \
-    __imp__##subroutine(ctx, base);                              \
+    { WWE12_CPU_ZONE(kGuestD3D); __imp__##subroutine(ctx, base); }                              \
     function(svr_args, ctx.r3.u32, base);                        \
   }

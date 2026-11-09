@@ -483,11 +483,13 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
       using namespace zones;
       const auto ms = [&](Id id) { return g_ns[id].exchange(0, std::memory_order_relaxed) / n / 1e6; };
       const double draws = ms(kDraws), constants = ms(kConstants), geometry = ms(kGeometry),
-                   textures = ms(kTextures), present = ms(kPresent);
-      // The rest of the render thread's time is the game's own code (recompiled).
+                   textures = ms(kTextures), present = ms(kPresent), guest_d3d = ms(kGuestD3D);
+      // The rest of the render thread's time is the game's own code (recompiled). "game D3D" is
+      // the game's own D3D functions inside our hooked calls (draws, state, Resolve, Swap).
       BD_INFO("[perf] render thread split per frame: draws {:.1f} ms (constants {:.1f} of it) | "
-              "textures {:.1f} ms | geometry {:.1f} ms | present {:.1f} ms (waits included)",
-              draws, constants, textures, geometry, present);
+              "textures {:.1f} ms | geometry {:.1f} ms | present {:.1f} ms (waits included) | "
+              "game D3D in hooks {:.1f} ms",
+              draws, constants, textures, geometry, present, guest_d3d);
     }
     fs = FrameStats{};
     fs.window_start = now;

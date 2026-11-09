@@ -154,8 +154,13 @@ std::unique_ptr<plume::RenderBuffer> CreateCopy(const u8 *src, u32 size, u32 end
 // Dynamic buffers change every few frames and never settle; a settled buffer rewritten in place
 // shows at once if a slice changes, or within a few frames at worst.
 constexpr u32 kSampledHashMin = 32 * 1024;
-constexpr u64 kSettledFrames = 300;
+// 1.2: 60 instead of 300 (5 s of full hashes of every wrestler and arena mesh after each load);
+// a settled buffer still gets its full hash every kFullHashFrames frames.
+constexpr u64 kSettledFrames = 60;
 constexpr u64 kFullHashFrames = 32;
+// A dynamic buffer (new content on each of its last checks) is copied again anyway: hashing it
+// first is wasted work, except every kDynamicHashFrames frames to see whether it has settled.
+constexpr u64 kDynamicHashFrames = 8;
 
 }  // namespace
 // Bytes hashed in full and buffers checked by sample, for the [perf] line (present.cpp).
@@ -201,8 +206,13 @@ bool ResolveLocked(u32 address, u32 size, u32 endian, bool index, u64 frame,
     out = m.buffer.get();
     return true;
   }
-  g_geometry_hashed_bytes.fetch_add(size, std::memory_order_relaxed);
-  const u64 hash = XXH3_64bits(src, size);
+  // Known dynamic content (changed on its last checks, small enough for the ring): copy without
+  // hashing; the hash is still taken every kDynamicHashFrames frames to catch it settling.
+  const bool skip_hash = same_kind && m.changes >= kDynamicAfterChanges && size <= kMaxRingBytes &&
+                         !CompareEveryDraw() && frame % kDynamicHashFrames != 0;
+  if (!skip_hash)
+    g_geometry_hashed_bytes.fetch_add(size, std::memory_order_relaxed);
+  const u64 hash = skip_hash ? m.hash ^ 1 : XXH3_64bits(src, size);
   if (same_kind && hash == m.hash) {
     m.checked_frame = frame;
     m.sample = sample;
@@ -242,7 +252,8 @@ bool ResolveLocked(u32 address, u32 size, u32 endian, bool index, u64 frame,
   Retire(m);
   m.endian = endian;
   m.index = index;
-  m.hash = hash;
+  if (!skip_hash)  // else keep the last real hash: the next check compares against it
+    m.hash = hash;
   m.sample = sample;
   m.full_frame = frame;
   m.same_since = frame;
