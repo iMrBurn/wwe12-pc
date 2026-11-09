@@ -254,10 +254,10 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 ## Yeux des catcheurs de SvR 2009 / 2010 qui restent derrière en courant (1.2)
 - Le bug principal (yeux détachés) est corrigé et poussé (f543cec). Le détail restant (les globes restent un peu derrière quand le catcheur court) : cause non trouvée, même os et mêmes poids que SvR 2011 (où ça va). Pistes pour la 1.2 : la 3e pièce d'œil de SvR 2010 (format de sommet 7, disque d'iris plat de 0,08 cm), ou une capture RenderDoc comparée image par image (2 à 3 h après la capture). L'utilisateur le laisse tomber pour l'instant (« si y a encore le bug, on me dira »). Dans les notes de la 1.1 : « connu ».
 
-## Mode 30 fps (issue #57, 2026-11-06) : étude, 1.2
+## Mode 30 fps (issue #57, 2026-11-06) : étude, 1.3 (ex-1.2)
 - Dessiner une image sur deux en gardant la vitesse du jeu (un simple plafond le ralentirait), pour téléphones moyens, Steam Deck et petits PC ; à la manière du port 2K14 de Jarrodfeng (accord verbal, voir `credits-and-permissions`). Étude Android + Rendu (gain, risques : read-backs, tenues cuites, cibles de rendu). Dans la liste Steam Deck / petit PC. **Décision de l'utilisateur (2026-11-06) : l'option doit exister aussi dans la version PC** (réglage, page OPTIONS > GRAPHICS du jeu, case du launcher, profil Steam Deck) ; Rendu pilote la partie PC, Android la partie téléphone.
 
-## Mode 30 fps : conclusion des études Rendu + Android (2026-11-06, 1.2)
+## Mode 30 fps : conclusion des études Rendu + Android (2026-11-06, 1.3, ex-1.2)
 - Le jeu avance d'un pas de logique par image : un plafond à 30 le ralentirait de moitié. Mais il a SON PROPRE mode 30 (celui des entrées, logique deux fois plus par image) : on l'impose partout par un crochet de SetFrameRate (voie A). CPU et GPU font environ moitié moins par seconde. Ne pas dessiner une image sur deux (voie B) : déconseillé (peu de gain, casse la cuisson des tenues et les read-backs).
 - Une clé commune `wwe12_frame_mode` = original / 30 / 60_entrances (l'ancienne `wwe12_60fps` est relue) ; ligne « FRAME RATE » d'ADVANCED en jeu, liste dans les launchers PC et Android, profil Steam Deck / petit PC à 30 ; test de performance : `--wwe12_frame_mode=30`.
 - Estimation hors tests : ~5 h code commun (Rendu) + ~2,5 h Android. Risque : le jeu n'a sans doute jamais tourné en match à 30 (prises, contres, physique, replays, chronomètres) : à tester en jeu avec des joueurs.
