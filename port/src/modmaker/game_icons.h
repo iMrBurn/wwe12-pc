@@ -115,7 +115,10 @@ inline void DrawList(bool fr, ID3D11Device *device, const game_discs::Discs *dis
       if (ImGui::Button(fr ? "Ajouter le disque" : "Add its disc", ImVec2(220, 0)))
         on_add();
     }
-    ImGui::SetCursorPos(ImVec2(p0.x, p0.y + row_h + ImGui::GetStyle().ItemSpacing.y));
+    // (the row's size given back with an item: a bare SetCursorPos past the content trips ImGui's check, "Code uses
+    // SetCursorPos() to extend window boundaries", seen by the user 2026-11-09)
+    ImGui::SetCursorPos(p0);
+    ImGui::Dummy(ImVec2(w, row_h));
     ImGui::PopID();
   }
 }
