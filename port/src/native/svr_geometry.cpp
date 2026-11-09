@@ -44,9 +44,11 @@
 #include "svr_resources.h"
 
 #include <rex/cvar.h>
-REXCVAR_DEFINE_INT32(svr_geometry_sample_min, 32 * 1024, "SvR",
+// 1.2: 4096 (was 32 KiB): 97 % of the bytes hashed each frame were in buffers under 32 KiB; at 4096
+// 70 % fewer bytes, no visible change (Intel test 2026-11-09).
+REXCVAR_DEFINE_INT32(svr_geometry_sample_min, 4096, "SvR",
                      "Size (bytes) from which a geometry buffer that stopped changing is checked by "
-                     "sample instead of hashed in full every frame (min 4096).")
+                     "sample instead of hashed in full every frame (min 4096; 32768 = 1.1).")
     .range(4096, 64 * 1024 * 1024);
 
 namespace bd::gpu {
