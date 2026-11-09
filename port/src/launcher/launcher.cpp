@@ -519,7 +519,7 @@ struct Settings {
   bool show_fps = false;
   int cpu_priority = 0;  // 0 normal, 1 above normal, 2 high
   bool vsync = true;
-  bool fps60 = false;
+  int frame_mode = 0;  // wwe12_frame_mode: 0 "original", 1 "30" (experimental), 2 "60_entrances"
   int aniso = 16;
   int title_defenses = 0;    // wwe12_universe_title_defenses, percent 0..100 (0 = the original game)
   bool qualifiers = false;   // wwe12_universe_qualifiers
@@ -557,7 +557,11 @@ void LoadSettings() {
   g_s.show_fps = g_toml.GetBool("wwe12_show_fps", false);
   g_s.cpu_priority = std::clamp(g_toml.GetInt("wwe12_cpu_priority", 0), 0, 2);
   g_s.vsync = g_toml.GetBool("bd_vsync", true);
-  g_s.fps60 = g_toml.GetBool("wwe12_60fps", false);
+  {
+    const std::string fm = g_toml.GetString("wwe12_frame_mode", "");
+    g_s.frame_mode = fm == "30" ? 1 : fm == "60_entrances" ? 2 : fm == "original" ? 0
+                     : g_toml.GetBool("wwe12_60fps", false) ? 2 : 0;  // (empty: the older setting decides)
+  }
   g_s.aniso = g_toml.GetInt("bd_anisotropy", 16);
   {
     const std::string api = g_toml.GetString("gpu_backend", "any");
@@ -598,7 +602,8 @@ void SaveSettings() {
   g_toml.SetBool("wwe12_show_fps", g_s.show_fps);
   g_toml.SetInt("wwe12_cpu_priority", g_s.cpu_priority);
   g_toml.SetBool("bd_vsync", g_s.vsync);
-  g_toml.SetBool("wwe12_60fps", g_s.fps60);
+  g_toml.SetString("wwe12_frame_mode", g_s.frame_mode == 1 ? "30" : g_s.frame_mode == 2 ? "60_entrances" : "original");
+  g_toml.SetBool("wwe12_60fps", g_s.frame_mode == 2);  // (older setting, kept in step)
   g_toml.SetInt("bd_anisotropy", g_s.aniso);
   g_toml.SetString("gpu_backend", g_s.api == 3 ? "d3d11" : g_s.api == 2 ? "d3d12" : g_s.api == 1 ? "vulkan" : "any");
   g_toml.SetInt("wwe12_universe_title_defenses", g_s.title_defenses);
@@ -1062,9 +1067,17 @@ void PageSettings() {
         changed = true;
       ImGui::TextDisabled("%s", t.prio_hint);
       ImGui::Dummy(ImVec2(0, 6));
-      changed |= ImGui::Checkbox(t.fps60, &g_s.fps60);
-      ImGui::SameLine();
-      ImGui::TextDisabled("(%s)", t.fps60_hint);
+      {
+        const bool fr_ = g_s.language == 4;
+        const char *modes[] = {fr_ ? "Original (entrées à 30)" : "Original (entrances at 30)",
+                               fr_ ? "30 en match (expérimental)" : "30 in matches (experimental)",
+                               fr_ ? "60 aux entrées" : "60 in entrances"};
+        changed |= ImGui::Combo(fr_ ? "Fréquence d'images" : "Frame rate", &g_s.frame_mode, modes, 3);
+        ImGui::TextDisabled("%s", fr_ ? "Original : 60 en match, entrées et scènes à 30 comme sur Xbox. « 30 en match » : plus stable "
+                                        "sur un petit PC, mais certaines prises paraissent un peu bizarres. « 60 aux entrées » : 60 partout."
+                                      : "Original: 60 in matches, entrances and cutscenes at 30 like the Xbox. \"30 in matches\": steadier on "
+                                        "a small PC, but some moves look a little off. \"60 in entrances\": 60 everywhere.");
+      }
       changed |= ImGui::Checkbox(t.exit_entry, &g_s.exit_entry);
       ImGui::SameLine();
       ImGui::TextDisabled("(%s)", t.exit_hint);
@@ -1438,7 +1451,7 @@ std::string BuildDiagnostics() {
   r += g_vulkan.Report();
   r += "Settings:";
   for (const char *key : {"user_language", "svr_render_scale", "fullscreen", "bd_vsync", "bd_anisotropy",
-                          "wwe12_60fps", "svr_gpu_device", "wwe12_quit_entry", "wwe12_graphics_menu",
+                          "wwe12_frame_mode", "wwe12_60fps", "svr_gpu_device", "wwe12_quit_entry", "wwe12_graphics_menu",
                           "mnk_mode", "wwe12_crowd", "wwe12_shadows", "wwe12_dof"}) {
     const auto v = g_toml.Raw(key);
     r += std::string(" ") + key + "=" + (v ? *v : "default");
