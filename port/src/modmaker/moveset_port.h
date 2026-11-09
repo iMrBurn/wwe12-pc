@@ -605,6 +605,15 @@ inline void Fill(const Game &w, const Game &s, const Bytes &pro, const std::map<
           r.variant = true;
         }
       }
+      // (SvR 2010's "Extreme ..." moves are WWE '12's of the rest of the name: Extreme Twist of Fate = Twist of Fate 1,
+      // 29 of their records' 32 bytes +0x70..+0x8F alike; Extreme Alley Oop = Alley Oop 2, 26 - Jeff Hardy's finisher
+      // 2 and signature 2; as an added move his Twist of Fate, on a model that isn't a finisher, didn't go off in
+      // game, 2026-11-09)
+      if (got < 0 && r.from.rfind("Extreme ", 0) == 0)
+        if (const auto b = base.find(Norm(r.from.substr(8), true)); b != base.end()) {
+          got = pick(b->second);
+          r.variant = got >= 0;
+        }
     }
     if (got < 0 && same_numbers && w.names.count(sv)) {  // (the same move under another name)
       got = pick({sv});
