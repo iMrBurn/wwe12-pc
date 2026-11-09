@@ -252,45 +252,12 @@ inline void Retime(Bytes &tail, const std::vector<std::pair<int, int>> &anchors)
   }
 }
 
-// a block's kept tail as its YAT2 commands (frame, {id, type, data}) - empty if it has none - and back (YAT2 + an
-// empty POF0, svr11_entrance's writer)
-inline bool ReadYat2(const Bytes &tail, std::vector<se::Ev> &out) {
-  out.clear();
-  for (size_t o = 0; o + 8 <= tail.size(); o += 4) {
-    if (memcmp(&tail[o], "YAT2", 4))
-      continue;
-    const size_t b = o + 8;
-    if (b + 12 > tail.size())
-      return false;
-    const uint16_t n = Be16At(tail, b + 2);
-    const uint32_t eoff = Be32At(tail, b + 4), poff = Be32At(tail, b + 8);
-    for (uint16_t i = 0; i < n; ++i) {
-      const size_t e = b + eoff + 8 * size_t(i);
-      if (e + 6 > tail.size())
-        return false;
-      se::Ev ev{Be16At(tail, e), {}};
-      size_t p = b + poff + Be16At(tail, e + 2);
-      for (int c = 0; c < Be16At(tail, e + 4); ++c) {
-        if (p + 4 > tail.size() || tail[p + 2] < 4 || p + tail[p + 2] > tail.size())
-          return false;
-        ev.cmds.push_back({Be16At(tail, p), tail[p + 3], Bytes(tail.begin() + long(p + 4), tail.begin() + long(p + tail[p + 2]))});
-        p += tail[p + 2];
-      }
-      out.push_back(std::move(ev));
-    }
-    return true;
-  }
-  return false;
-}
-
 // the model's record with blocks' YANM + POF0 replaced (by index; new frame count), their commands retimed from the
-// model's frame counts - through the move's own moments where it has them (`own`: block -> command id -> its frame) -,
-// then changed by `edit` (block -> a function of its commands); the table's u16 at +2 of each entry = the block's size
-// in 32-byte units
+// model's frame counts - through the move's own moments where it has them (`own`: block -> command id -> its frame);
+// the table's u16 at +2 of each entry = the block's size in 32-byte units
 inline Bytes Rebuild(const Bytes &tpl, const std::map<size_t, std::pair<Bytes, int>> &repl,
                      const std::map<size_t, int> &tpl_frames, int motion,
-                     const std::map<size_t, std::map<int, int>> &own = {},
-                     const std::map<size_t, std::function<void(std::vector<se::Ev> &)>> &edit = {}) {
+                     const std::map<size_t, std::map<int, int>> &own = {}) {
   const uint32_t first = Be32At(tpl, 12), n = Be32At(tpl, 0x48);
   std::vector<size_t> at, start;
   for (uint32_t i = 0; i < n; ++i)
@@ -328,19 +295,6 @@ inline Bytes Rebuild(const Bytes &tpl, const std::map<size_t, std::pair<Bytes, i
           anchors.push_back(m);
       anchors.push_back({old->second, r->second.second});
       Retime(tail, anchors);
-    }
-    if (const auto ed = edit.find(i); ed != edit.end()) {
-      std::vector<se::Ev> evs;
-      if (ReadYat2(tail, evs)) {
-        ed->second(evs);
-        std::sort(evs.begin(), evs.end(), [](const se::Ev &a, const se::Ev &b) { return a.frame < b.frame; });
-        evs.erase(std::remove_if(evs.begin(), evs.end(), [](const se::Ev &x) { return x.cmds.empty(); }), evs.end());
-        se::Ctx ctx;
-        Bytes t;
-        se::Yat2(evs, t, ctx);
-        if (ctx.ok)
-          tail.swap(t);
-      }
     }
     out.insert(out.end(), r->second.first.begin(), r->second.first.end());
     out.insert(out.end(), tail.begin(), tail.end());
@@ -628,7 +582,6 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     std::map<size_t, std::pair<Bytes, int>> repl;
     std::map<size_t, int> tf;
     std::map<size_t, std::map<int, int>> own;  // block -> command id -> the move's own frame for it
-    std::map<size_t, std::function<void(std::vector<se::Ev> &)>> edit;  // block -> a change of its commands
     int frames0 = 0;
     std::string why;
     for (size_t idx = 0; idx < md.rec.blocks.size(); ++idx) {
@@ -671,19 +624,6 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
         break;
       }
       repl[idx] = {chunk, n60};
-      // (the victim's block as WWE '12's own Batista Bomb has it - DLC 4's, the very same victim animation -: none of the
-      // model's hand grabs (command 15: the game let go of the victim where the model's grabs ended, half-way up the lift,
-      // with 0/7 +4 = 0, in game 2026-11-09), his move over (254) where his own SvR motion ends; 0/7 +4 = 0 below)
-      if (bx == 0 && by == 1) {
-        const int vend = std::max(1, std::min(n60 - 1, 2 * int(mo->frames) - 1));
-        edit[idx] = [vend](std::vector<se::Ev> &evs) {
-          for (auto &e : evs)
-            e.cmds.erase(std::remove_if(e.cmds.begin(), e.cmds.end(), [](const se::Cmd &c) { return c.id == 15 || c.id == 254; }),
-                         e.cmds.end());
-          evs.erase(std::remove_if(evs.begin(), evs.end(), [vend](const se::Ev &e) { return e.frame > vend; }), evs.end());
-          evs.push_back({vend, {{254, 0, {}}}});
-        };
-      }
       // (its own moments, where the model's commands for them go - SvR in-motion events 38 / 39 / 86 are WWE '12's
       // commands 172 / 173 / 73 (finishers' own commands, 28 each, and an impact; within 3 frames on the moves both
       // games have, evros: 28 % / 33 % - WWE '12 timed them anew -, 87 %): the finisher's effect
@@ -706,7 +646,7 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     newmoves13::Move mv;
     mv.number = number;
     mv.name = note.name;
-    mv.high = Rebuild(md.full, repl, tf, motion, own, edit);
+    mv.high = Rebuild(md.full, repl, tf, motion, own);
     mv.low = mv.high;
     // its WAZE record: the model's (category bits; the slot's are set later), its name and number
     mv.waze = recs12.at(md.num);
@@ -751,12 +691,6 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       fail("its model has no motion parameters");
       continue;
     }
-    // (the victim's 0/7 row +4 = 0, as DLC 4's Batista Bomb: with the model's 2 the game turned him over onto his front
-    // at the end - Gory Bomb 2's victim ends so -; with 0 and the model's grabs he was let go half-way, both in game
-    // 2026-11-09: the grabs are left out above)
-    for (auto &r : rows.rows["0/7"])
-      if (r.size() >= 5 && r[2] == 0 && r[3] == 1)
-        r[4] = 0;
     // the frame of its impact: 0/6's attacker row +34 (u16) is its attacker block's command 73 frame (959 of WWE '12's
     // 1 005 moves with one, 980 within 4 frames; FFFF in 808 moves without; f34, 2026-11-09). The model's stayed (Gory
     // Bomb 2's 436 for a Batista Bomb hitting at 308): the finisher's flashes came late, the victim turned over.
