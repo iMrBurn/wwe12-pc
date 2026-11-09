@@ -19,6 +19,7 @@ REXCVAR_DEFINE_BOOL(wwe12_move_event_fix, true, "WWE12",
                     "Fix a crash in moves (Batista's Beast Bomb) whose animation events need a superstar that the game does not give.");
 
 #include <atomic>
+#include <mutex>
 
 #include "svr_hook.h"
 #include "core/logging.h"
@@ -27,6 +28,8 @@ REXCVAR_DEFINE_BOOL(wwe12_move_event_fix, true, "WWE12",
 REX_EXTERN(__imp__sub_824A5458);  // first event frame of a motion
 REX_EXTERN(__imp__sub_824A3E40);  // event value of a motion for a type
 REX_EXTERN(__imp__sub_821A8400);  // a superstar's state (r3 superstar, r4 0/1, r5 count)
+
+void Wwe12DownProbeStart();  // wwe12_down_probe.cpp
 
 namespace {
 
@@ -56,6 +59,8 @@ u32 Call3E40(const PPCContext &in, u8 *base, u32 motion, u32 type) {
 }  // namespace
 
 extern "C" REX_FUNC(sub_824A5458) {
+  static std::once_flag probe;  // a match is running: start the down-state probe if asked
+  std::call_once(probe, Wwe12DownProbeStart);
   const u32 motion = ctx.r3.u32;
   if (!REXCVAR_GET(wwe12_move_event_fix) || ctx.r7.u32 != 0 || motion == 0) {
     __imp__sub_824A5458(ctx, base);
