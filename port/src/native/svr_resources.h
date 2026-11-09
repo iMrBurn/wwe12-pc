@@ -32,6 +32,9 @@ void SvrSurfaceScaleXY(u32 surface_va, float &scale_x, float &scale_y);
 // resolve made, else the render scale; scale_y 0 = scale_x). A resolve passes its source
 // surface's, so copies stay 1:1.
 GuestTexture *SvrResolveTarget(u32 texture_va, float scale_x = 0.0f, float scale_y = 0.0f);
+// D3DDevice_Swap: the guest texture presented this frame, the stand-in for a new screen image
+// sampled before any resolve wrote it (svr_early_screen_fill).
+void SvrNoteFrontBuffer(u32 texture_va);
 // wwe12_widescreen: the screen's shape against 16:9 while a 3D scene is drawn (matches,
 // entrances), else 1 and 1. wide > 1: wider (up to 2, 32:9); tall > 1: taller (16:10: 1.111).
 void SvrSceneShape(float &wide, float &tall);

@@ -64,7 +64,14 @@ REXCVAR_DEFINE_INT32(svr_readback_streak, 32, "SvR",
                      "(was 6: Superstar Threads attires redrawn over more frames came out with "
                      "white patches, as in Jarrod's WWE 2K14 recomp, which went from 4 to 32).")
     .range(1, 1000);
-REXCVAR_DEFINE_INT32(svr_readback_small_streak, 4, "SvR",
+REXCVAR_DEFINE_BOOL(svr_readback_defer_streak, true, "SvR",
+                    "Within a streak of read-backs, only the first one waits for the GPU at once; "
+                    "the next ones become a single copy at the end of a frame, once the target "
+                    "rests (one GPU wait instead of one per frame). false = every one at once (1.1).");
+REXCVAR_DEFINE_BOOL(svr_early_screen_fill, true, "SvR",
+                    "A new screen image (16:9) the game samples before drawing it shows the last "
+                    "presented frame instead of black (the black flash just before the bell).");
+REXCVAR_DEFINE_INT32(svr_readback_small_streak, 2, "SvR",
                      "Same as svr_readback_streak for small work textures (both sides up to "
                      "svr_readback_small_size): the shadow and lighting ones the game redraws every "
                      "frame. Each copy waits for the GPU in the middle of a frame: at match start "
@@ -137,6 +144,8 @@ struct HostTarget {
 // done (each one waits for the GPU; the immediate ones in the middle of a frame), the time spent in
 // them, and render targets created. Counting only, no change of behaviour.
 std::atomic<u64> g_readbacks{0}, g_readbacks_deferred{0}, g_readback_ns{0}, g_targets_created{0};
+// The guest texture presented last (D3DDevice_Swap), see SvrNoteFrontBuffer.
+std::atomic<u32> g_front_buffer_va{0};
 // Read-backs of the current second by target size (width << 16 | height), for the [load] line.
 std::mutex g_readback_sizes_mutex;
 std::unordered_map<u32, u32> g_readback_sizes;
@@ -589,6 +598,11 @@ float SvrSurfaceScale(u32 surface_va) {
   return std::min(x, y);
 }
 
+void SvrNoteFrontBuffer(u32 texture_va) {
+  if (texture_va)
+    g_front_buffer_va.store(texture_va, std::memory_order_relaxed);
+}
+
 GuestTexture *SvrResolveTarget(u32 texture_va, float scale_x, float scale_y) {
   if (!texture_va)
     return nullptr;
@@ -728,6 +742,12 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
     st.last_frame = frame;
     if (st.frames > max_streak)
       return;
+    // Later frames of a streak: one copy at a frame's end once the target rests (the final
+    // content lands in memory), instead of a GPU wait in the middle of every frame.
+    if (st.frames > 1 && REXCVAR_GET(svr_readback_defer_streak)) {
+      g_deferred_readbacks[texture_va] = DeferredReadback{dst, frame};
+      return;
+    }
   }
   ReadBackTarget(texture_va, dst, false);
 }
@@ -1450,14 +1470,30 @@ GuestTexture *SvrResolveTexture(u32 texture_va, bool check_every_use) {
   if (auto it = g_targets.find(texture_va);
       it != g_targets.end() && it->second.host && TargetCurrent(texture_va, it)) {
     it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
-    // Diagnostic (match-start blink): a target read before any resolve wrote it shows what we
-    // filled it with (its memory, or transparent black), where the Xbox showed older contents.
-    if (!it->second.resolved && !it->second.early_logged) {
-      it->second.early_logged = true;
-      static std::atomic<u32> s_early{0};
-      if (s_early.fetch_add(1, std::memory_order_relaxed) < 64)
-        BD_INFO("SvR target 0x{:08X}: {}x{} sampled before its first resolve (frame {})", texture_va,
-                it->second.host->width, it->second.host->height, frame);
+    // A target read before any resolve wrote it shows what we filled it with (its memory, or
+    // transparent black), where the Xbox showed older contents. For a new screen image (16:9, at
+    // each change of scene: entrances, the match before the bell) that was a black frame: show
+    // the last presented frame instead until the game draws it.
+    if (!it->second.resolved) {
+      GuestTexture *stand_in = nullptr;
+      const GuestTexture *host = it->second.host;
+      const u32 front_va = g_front_buffer_va.load(std::memory_order_relaxed);
+      if (REXCVAR_GET(svr_early_screen_fill) && u64(host->width) * 9 == u64(host->height) * 16 &&
+          front_va && front_va != texture_va) {
+        if (const auto f = g_targets.find(front_va); f != g_targets.end() && f->second.host &&
+                                                     f->second.resolved)
+          stand_in = f->second.host;
+      }
+      if (!it->second.early_logged) {
+        it->second.early_logged = true;
+        static std::atomic<u32> s_early{0};
+        if (s_early.fetch_add(1, std::memory_order_relaxed) < 64)
+          BD_INFO("SvR target 0x{:08X}: {}x{} sampled before its first resolve (frame {}){}",
+                  texture_va, host->width, host->height, frame,
+                  stand_in ? ": the last frame shown instead" : "");
+      }
+      if (stand_in)
+        return stand_in;
     }
     return it->second.host;
   }

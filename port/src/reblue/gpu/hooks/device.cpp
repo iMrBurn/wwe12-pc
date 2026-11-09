@@ -95,6 +95,7 @@ u32 D3DDevice_Swap_hook(u32 /*device*/, u32 front_buffer_va,
   if (present_override)
     front_buffer_va = present_override;
   auto *front_buffer = bd::gpu::SvrResolveTarget(front_buffer_va);
+  bd::gpu::SvrNoteFrontBuffer(front_buffer_va);
 #else
   auto *front_buffer =
       bd::gpu::HostResourceHeap::FromGuest<bd::gpu::GuestTexture>(
