@@ -797,6 +797,17 @@ class Page {
         gender_ = 1;
       ImGui::TextDisabled("%s", fr ? "(une catcheuse sur la base d'un homme : choisissez Femme, sinon le jeu la traite en homme)"
                                    : "(a woman on a man's base: pick Woman, else the game treats her as a man)");
+      // (the gender her own game gives, when it differs from the one this mod gets: said plainly - the game's
+      // divas roster, Divas titles and moves follow this byte only, 2026-11-09)
+      const int got = gender_ >= 0 ? gender_ : (base_woman ? 1 : 0);
+      if (game_gender_ >= 0 && game_gender_ != got)
+        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
+                           game_gender_ ? (fr ? "Attention : son jeu d'origine en fait une catcheuse, ce mod en fait un homme "
+                                                "(prises, sélection et Univers des hommes). Choisissez Femme sauf pour de l'intergender voulu."
+                                              : "Careful: her own game makes her a woman, this mod a man (men's moves, select "
+                                                "screen and Universe). Pick Woman unless you want intergender.")
+                                        : (fr ? "Attention : son jeu d'origine en fait un homme, ce mod en fait une catcheuse."
+                                              : "Careful: his own game makes him a man, this mod a woman."));
     }
     // His brand (2026-11-09: every added superstar went to SmackDown, his base's): the record's +24..+27 (DAT 0x1C..0x1F,
     // the Universe reads +27), 0 RAW, 1 SmackDown, 6 none (the free agents: 280 of the disc's records). Set at his first
@@ -1488,6 +1499,7 @@ class Page {
     ratings_from_ = from;
     ratings_game_ = game;
     ratings_took_ = 0;
+    game_gender_ = -1;
     if (!r.attributes.empty()) {
       attributes_ = r.attributes;
       own_attributes_ = true;
@@ -1500,6 +1512,7 @@ class Page {
     }
     if (r.gender >= 0) {
       gender_ = r.gender;
+      game_gender_ = r.gender;
       ratings_took_ |= 4;
     }
     if (!r.abilities.empty()) {
@@ -2472,6 +2485,7 @@ class Page {
   bool all_attires_ = true;  // its other WWE '13 attires too (up to 4)  // its WWE '13 entrance outfit too (kind 4), when its attire has one
   bool own_size_ = false, own_abilities_ = false;  // its own size / abilities (else the base's)
   int gender_ = -1, base_ee_ = -1;  // its gender (-1 the base's, 0 man, 1 woman); the base's record byte 0xEE
+  int game_gender_ = -1;            // the gender its own game gives (ratings_import), -1 unknown
   int brand_ = -1, base_brand_ = -1;  // its brand (-1 the base's, 0 RAW, 1 SmackDown, 6 none); the base's (DAT 0x1F)
   int size_ = 4096, base_size_[2] = {0, 0};          // record +0x28 (+0x2A: the base's ratio kept), 4096 = 1.0
   std::vector<int> abilities_, base_abilities_;      // record +0x104.. (kAbilities' numbers)
