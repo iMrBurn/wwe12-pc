@@ -119,7 +119,14 @@ struct HostTarget {
   u32 shape = 0;     // host pixels per guest pixel across and down (PackScale), 0 = none made
   u64 last_used = 0; // frame it was last drawn to, resolved into or sampled
   bool in_memory = false;  // texture: its last resolve was read back into the game's memory
+  bool resolved = false;   // texture: a resolve has written it at least once (diagnostic)
+  bool early_logged = false;  // texture: "sampled before its first resolve" already logged
 };
+
+// Diagnostic counters for the [load] line (match-start stutter on integrated GPUs): read-backs
+// done (each one waits for the GPU; the immediate ones in the middle of a frame), the time spent in
+// them, and render targets created. Counting only, no change of behaviour.
+std::atomic<u64> g_readbacks{0}, g_readbacks_deferred{0}, g_readback_ns{0}, g_targets_created{0};
 
 // Host pixels per guest pixel, across and down. They differ only for the full-screen targets of a
 // 3D scene on a screen that isn't 16:9 (wwe12_widescreen): wider, or taller on 16:10.
@@ -637,6 +644,8 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale_x, float scale_y) {
     Video::ClearTexture(host, REXCVAR_GET(svr_debug_magenta) ? 0xFFFF00FFu : 0u);
   g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, 0, packed,
                                            g_surface_frame.load(std::memory_order_relaxed)});
+  if (host)
+    g_targets_created.fetch_add(1, std::memory_order_relaxed);
   return host;
 }
 
@@ -652,7 +661,7 @@ struct DeferredReadback {
   u64 last_frame = 0;
 };
 std::unordered_map<u32, DeferredReadback> g_deferred_readbacks;
-void ReadBackTarget(u32 texture_va, GuestTexture *dst);
+void ReadBackTarget(u32 texture_va, GuestTexture *dst, bool deferred);
 }  // namespace
 
 void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
@@ -661,8 +670,10 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
   {
     // New content on the GPU only, until a read back below copies it to the game's memory.
     std::lock_guard lock(g_mutex);
-    if (const auto it = g_targets.find(texture_va); it != g_targets.end() && it->second.host == dst)
+    if (const auto it = g_targets.find(texture_va); it != g_targets.end() && it->second.host == dst) {
       it->second.in_memory = false;
+      it->second.resolved = true;
+    }
   }
   if (level != 0 || face != 0 || !REXCVAR_GET(svr_resolve_readback))
     return;
@@ -700,7 +711,7 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
     if (st.frames > max_streak)
       return;
   }
-  ReadBackTarget(texture_va, dst);
+  ReadBackTarget(texture_va, dst, false);
 }
 
 // Called once per frame (game thread, no lock held): read back the bursts that have settled.
@@ -720,15 +731,24 @@ static void SvrProcessDeferredReadbacks(u64 frame) {
     }
   }
   for (const auto &[texture_va, dst] : ready)
-    ReadBackTarget(texture_va, dst);
+    ReadBackTarget(texture_va, dst, true);
 }
 
 namespace {
-void ReadBackTarget(u32 texture_va, GuestTexture *dst) {
+void ReadBackTarget(u32 texture_va, GuestTexture *dst, bool deferred) {
   std::vector<u8> pixels;
   u32 row_pitch = 0;
-  if (!Video::ReadbackTextureLevel(dst, 0, 0, pixels, row_pitch))
+  const auto t0 = std::chrono::steady_clock::now();
+  const bool read = Video::ReadbackTextureLevel(dst, 0, 0, pixels, row_pitch);
+  g_readback_ns.fetch_add(
+      u64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0)
+              .count()),
+      std::memory_order_relaxed);
+  if (!read)
     return;
+  g_readbacks.fetch_add(1, std::memory_order_relaxed);
+  if (deferred)
+    g_readbacks_deferred.fetch_add(1, std::memory_order_relaxed);
   const bool written = WriteGuestTextureBase(texture_va, pixels.data(), row_pitch, dst->width,
                                              dst->height);
   if (written) {
@@ -1321,14 +1341,21 @@ static void LoadStatsTick() {
   const u64 pso = g_render_thread_pso_compiles.load(), frame = g_frame.load();
   const u64 pso_known = g_render_thread_pso_known.load(), pso_ns = g_render_thread_pso_ns.load();
   static u64 last_pso_known = 0, last_pso_ns = 0;
+  const u64 rb = g_readbacks.load(), rb_deferred = g_readbacks_deferred.load(),
+            rb_ns = g_readback_ns.load(), created = g_targets_created.load();
+  static u64 last_rb = 0, last_rb_deferred = 0, last_rb_ns = 0, last_created = 0;
   const double mb = double(bytes - last_bytes) / (1024.0 * 1024.0);
   const double fps = double(frame - last_frame) / seconds;
-  if (bytes != last_bytes || mirrors != last_mirrors || pso != last_pso || fps < 55.0)
+  if (bytes != last_bytes || mirrors != last_mirrors || pso != last_pso || rb != last_rb ||
+      fps < 55.0)
     BD_INFO("[load] {:.1f} s: read {:.1f} MB in {} calls ({} ms) | textures {} ({} ms) | "
-            "pipelines {} ({} known, {} ms) | {:.0f} fps",
+            "pipelines {} ({} known, {} ms) | readbacks {} ({} at frame end, {} ms) | "
+            "new targets {} | {:.0f} fps",
             seconds, mb, calls - last_calls, (io_ns - last_io_ns) / 1000000, mirrors - last_mirrors,
             (mirror_ns - last_mirror_ns) / 1000000, pso - last_pso, pso_known - last_pso_known,
-            (pso_ns - last_pso_ns) / 1000000, fps);
+            (pso_ns - last_pso_ns) / 1000000, rb - last_rb, rb_deferred - last_rb_deferred,
+            (rb_ns - last_rb_ns) / 1000000, created - last_created, fps);
+  last_rb = rb, last_rb_deferred = rb_deferred, last_rb_ns = rb_ns, last_created = created;
   last_pso_known = pso_known, last_pso_ns = pso_ns;
   last_bytes = bytes, last_calls = calls, last_io_ns = io_ns, last_mirrors = mirrors,
   last_mirror_ns = mirror_ns, last_pso = pso, last_frame = frame;
@@ -1386,6 +1413,15 @@ GuestTexture *SvrResolveTexture(u32 texture_va, bool check_every_use) {
   if (auto it = g_targets.find(texture_va);
       it != g_targets.end() && it->second.host && TargetCurrent(texture_va, it)) {
     it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
+    // Diagnostic (match-start blink): a target read before any resolve wrote it shows what we
+    // filled it with (its memory, or transparent black), where the Xbox showed older contents.
+    if (!it->second.resolved && !it->second.early_logged) {
+      it->second.early_logged = true;
+      static std::atomic<u32> s_early{0};
+      if (s_early.fetch_add(1, std::memory_order_relaxed) < 64)
+        BD_INFO("SvR target 0x{:08X}: {}x{} sampled before its first resolve (frame {})", texture_va,
+                it->second.host->width, it->second.host->height, frame);
+    }
     return it->second.host;
   }
   check_every_use = check_every_use && REXCVAR_GET(svr_attire_bake_check);
