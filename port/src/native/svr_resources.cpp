@@ -64,6 +64,16 @@ REXCVAR_DEFINE_INT32(svr_readback_streak, 32, "SvR",
                      "(was 6: Superstar Threads attires redrawn over more frames came out with "
                      "white patches, as in Jarrod's WWE 2K14 recomp, which went from 4 to 32).")
     .range(1, 1000);
+REXCVAR_DEFINE_INT32(svr_readback_small_streak, 4, "SvR",
+                     "Same as svr_readback_streak for small work textures (both sides up to "
+                     "svr_readback_small_size): the shadow and lighting ones the game redraws every "
+                     "frame. Each copy waits for the GPU in the middle of a frame: at match start "
+                     "~650 copies a second (32 frames x ~20 targets) made integrated GPUs stutter.")
+    .range(1, 1000);
+REXCVAR_DEFINE_INT32(svr_readback_small_size, 128, "SvR",
+                     "Largest side (pixels) of a work texture counted as small for "
+                     "svr_readback_small_streak. 0 = none (every texture uses svr_readback_streak).")
+    .range(0, 4096);
 REXCVAR_DEFINE_BOOL(svr_attire_bake_check, true, "SvR",
                     "Draws into an attire composite check their textures at every use, not once "
                     "a frame (Superstar Threads attires damaged / white on slow PCs; Kaiko's fix).");
@@ -127,6 +137,9 @@ struct HostTarget {
 // done (each one waits for the GPU; the immediate ones in the middle of a frame), the time spent in
 // them, and render targets created. Counting only, no change of behaviour.
 std::atomic<u64> g_readbacks{0}, g_readbacks_deferred{0}, g_readback_ns{0}, g_targets_created{0};
+// Read-backs of the current second by target size (width << 16 | height), for the [load] line.
+std::mutex g_readback_sizes_mutex;
+std::unordered_map<u32, u32> g_readback_sizes;
 
 // Host pixels per guest pixel, across and down. They differ only for the full-screen targets of a
 // 3D scene on a screen that isn't 16:9 (wwe12_widescreen): wider, or taller on 16:10.
@@ -686,7 +699,12 @@ void SvrAfterResolve(u32 texture_va, GuestTexture *dst, u32 level, u32 face) {
   // the CPU reads are built at load, or now and then in a match. Only those are worth the GPU
   // wait: a target resolved on more than svr_readback_streak frames in a row (32; per-frame ones
   // run for hundreds) is skipped until it rests.
-  const u64 max_streak = u64(std::max(1, REXCVAR_GET(svr_readback_streak)));
+  // Small ones (shadows, lighting: 64x64 at match start, ~20 of them) stop sooner: each copy is a
+  // GPU wait in the middle of the frame (see svr_readback_small_streak).
+  const u32 small_side = u32(std::max(0, REXCVAR_GET(svr_readback_small_size)));
+  const bool small = small_side && dst->width <= small_side && dst->height <= small_side;
+  const u64 max_streak =
+      u64(std::max(1, small ? REXCVAR_GET(svr_readback_small_streak) : REXCVAR_GET(svr_readback_streak)));
   constexpr u64 kRestFrames = 30;
   {
     std::lock_guard lock(g_mutex);
@@ -749,6 +767,10 @@ void ReadBackTarget(u32 texture_va, GuestTexture *dst, bool deferred) {
   g_readbacks.fetch_add(1, std::memory_order_relaxed);
   if (deferred)
     g_readbacks_deferred.fetch_add(1, std::memory_order_relaxed);
+  {
+    std::lock_guard size_lock(g_readback_sizes_mutex);
+    ++g_readback_sizes[dst->width << 16 | (dst->height & 0xFFFFu)];
+  }
   const bool written = WriteGuestTextureBase(texture_va, pixels.data(), row_pitch, dst->width,
                                              dst->height);
   if (written) {
@@ -1355,6 +1377,21 @@ static void LoadStatsTick() {
             (mirror_ns - last_mirror_ns) / 1000000, pso - last_pso, pso_known - last_pso_known,
             (pso_ns - last_pso_ns) / 1000000, rb - last_rb, rb_deferred - last_rb_deferred,
             (rb_ns - last_rb_ns) / 1000000, created - last_created, fps);
+  // Which targets those read-backs were (the 6 most frequent sizes), to tune the streaks.
+  std::vector<std::pair<u32, u32>> sizes;
+  {
+    std::lock_guard size_lock(g_readback_sizes_mutex);
+    sizes.assign(g_readback_sizes.begin(), g_readback_sizes.end());
+    g_readback_sizes.clear();
+  }
+  if (!sizes.empty()) {
+    std::sort(sizes.begin(), sizes.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
+    std::string list;
+    for (size_t i = 0; i < sizes.size() && i < 6; ++i)
+      list += fmt::format("{}{}x{} x{}", i ? ", " : "", sizes[i].first >> 16, sizes[i].first & 0xFFFFu,
+                          sizes[i].second);
+    BD_INFO("[load] readback sizes: {}", list);
+  }
   last_rb = rb, last_rb_deferred = rb_deferred, last_rb_ns = rb_ns, last_created = created;
   last_pso_known = pso_known, last_pso_ns = pso_ns;
   last_bytes = bytes, last_calls = calls, last_io_ns = io_ns, last_mirrors = mirrors,
