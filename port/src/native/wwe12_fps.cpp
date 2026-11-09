@@ -84,9 +84,15 @@ extern "C" REX_FUNC(sub_82827918) {
     g_entrance_at60.store(true, std::memory_order_relaxed);
     BD_INFO("[fps] game set frame rate {}; using {}", requested, ctx.r3.u32);
   } else if (mode == FrameMode::k30 && (requested == 60 || requested == 50)) {
-    ctx.r3.u64 = requested == 60 ? 30 : 25;
+    // Not SetFrameRate(30): it leaves the step at +36 at its 60 fps value (only "drop to 30",
+    // sub_82827AB8, sets it), and matches ran in slow motion (test 2026-11-09). The game's own 60
+    // first, then its "drop to 30", exactly as for an entrance.
     g_entrance_at60.store(false, std::memory_order_relaxed);
-    BD_INFO("[fps] game set frame rate {}; using {} (30 fps mode)", requested, ctx.r3.u32);
+    __imp__sub_82827918(ctx, base);
+    __imp__sub_82827AB8(ctx, base);
+    BD_INFO("[fps] game set frame rate {}; dropped to {} (30 fps mode)", requested,
+            requested == 60 ? 30 : 25);
+    return;
   } else {
     g_entrance_at60.store(false, std::memory_order_relaxed);
     BD_DEBUG("[fps] game set frame rate {}", requested);
@@ -112,19 +118,18 @@ extern "C" REX_FUNC(sub_82827AB8) {
 }
 
 // "Back to 60 (50) fps": the entrance or cutscene is over. In the 30 fps mode the game's own
-// function still runs (it may release its mode lock), then SetFrameRate(30) puts 30 back.
+// function still runs, then its "drop to 30" (the entrance mode, every step value set) at once.
 extern "C" REX_FUNC(sub_82827B58) {
   g_entrance_at60.store(false, std::memory_order_relaxed);
   g_scene_mode.store(false, std::memory_order_relaxed);
   __imp__sub_82827B58(ctx, base);
   if (Mode() == FrameMode::k30) {
     const auto r3 = ctx.r3;
-    ctx.r3.u64 = g_pal.load(std::memory_order_relaxed) ? 25 : 30;
-    __imp__sub_82827918(ctx, base);
+    __imp__sub_82827AB8(ctx, base);
     ctx.r3 = r3;
     static std::atomic<u32> s_calls{0};
     if (s_calls.fetch_add(1, std::memory_order_relaxed) < 10)
-      BD_INFO("[fps] game went back to 60 fps mode; kept at {} (30 fps mode)",
+      BD_INFO("[fps] game went back to 60 fps mode; dropped to {} again (30 fps mode)",
               g_pal.load(std::memory_order_relaxed) ? 25 : 30);
   }
 }
