@@ -736,6 +736,29 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
         if (impact >= 0 && r.size() >= 36 && r[2] == 0 && r[3] == 0 && !(r[34] == 0xFF && r[35] == 0xFF))
           r[34] = uint8_t(impact), r[35] = uint8_t(impact >> 8);
     }
+    // how the victim lies at the end: 0/6's victim row +20 (u16) is his down animation, 0 on his back, 1 on his front
+    // (the game's command 81, sub_824AE820, made from that row: Gameplay's probe, 2026-11-09). On WWE '12's moves it
+    // follows his last pose exactly: Bip x axis pointing down -> 0 (690 of 690), up -> 1 (218 of 218), down20. The
+    // model's value stayed (1 for a Batista Bomb ending on his back): he turned over onto his front at the end.
+    {
+      yanm::Record out;
+      if (yanm::Read(mv.high, out))
+        for (auto &b : out.blocks)
+          if (b.name == "00000001")
+            for (auto &t : b.tracks)
+              if (t.name == "Bip") {
+                bool hr, hp;
+                yanm::Q q{};
+                yanm::V p{};
+                yanm::Sample(t, float(b.frames - 1), hr, q, hp, p);
+                // (the x axis turned by q, its height: y of q * (1, 0, 0) * q^-1)
+                const double up = 2 * (q[0] * q[1] + q[3] * q[2]);
+                const int down = up < -0.6 ? 0 : up > 0.6 ? 1 : -1;
+                for (auto &r : rows.rows["0/6"])
+                  if (down >= 0 && r.size() >= 22 && r[2] == 0 && r[3] == 1 && r[21] == 0 && r[20] <= 1)
+                    r[20] = uint8_t(down);
+              }
+    }
     mv.m3 = m3_params::Write(rows);
     // the model's preview script (its motion number replaced, its "quit" frame scaled) and Create a Moveset rows
     const Bytes script = Mvmot(w12, tmotion);
