@@ -329,3 +329,10 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   15 (prises de main, celles du modèle). Prise « contre les cordes » SvR (31074, anime aussi y60 / y61) : gèle ; retirée.
 - **Bug du jeu, pas du Mod Maker** : la Beast Bomb du Batista DLC (case 0x4E) plante sans aucun mod
   (sub_824A5458 ← sub_82481C78, lecture 0x5C) ; transmis à Gameplay le 2026-11-09.
+- **Retournement de la victime : RÉGLÉ le 2026-11-09 (aa9cc6d, vérifié en jeu : « nickel », sonde de Gameplay).** La
+  position au sol de la victime vient de la commande 81 du jeu (`sub_824AE820`), fabriquée depuis la **ligne 0/6 de la
+  victime** (segment 0, personne 1) : **+20 u16 = animation au sol, 0 sur le dos, 1 sur le ventre**. On gardait celle du
+  modèle (Gory Bomb 2 : 1). Sur 910 prises de WWE '12, elle suit exactement la dernière pose de la victime (axe x du Bip
+  vers le bas → 0 : 690/690 ; vers le haut → 1 : 218/218, outil down20) : le Mod Maker la calcule maintenant d'après notre
+  animation. Fausses pistes réfutées en jeu : l'ordre des listes d'événements (a9b8530, gardé car c'est l'ordre du jeu)
+  et l'événement 0325/032D de la victime. Sonde : `wwe12_down_probe`, `tools/dev/lancer_test_au_sol_copie.bat`.
