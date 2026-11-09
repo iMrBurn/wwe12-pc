@@ -336,3 +336,11 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   vers le bas → 0 : 690/690 ; vers le haut → 1 : 218/218, outil down20) : le Mod Maker la calcule maintenant d'après notre
   animation. Fausses pistes réfutées en jeu : l'ordre des listes d'événements (a9b8530, gardé car c'est l'ordre du jeu)
   et l'événement 0325/032D de la victime. Sonde : `wwe12_down_probe`, `tools/dev/lancer_test_au_sol_copie.bat`.
+- **Vérification hors jeu de toutes les prises SvR 2011 (2026-11-09, outil `svrcheck`, copie dans `tools_local/moves_study`)** :
+  sur 2 780 prises, **730 fabriquées** et relues sans défaut bloquant (deux personnes de même durée, m3 lisible, position
+  au sol de la victime posée : 505 sur le dos, 158 sur le ventre, 67 debout ou sans ligne). Refusées : 1 887 sans animation à
+  deux dans SvR (prises seules), **83 à trois personnes (y 2) et 41 avec un objet (y 60/61, cas de la Batista Bomb « Rope »
+  qui gelait le jeu)** : refus ajoutés au Mod Maker ; 37 dont l'animation ne se convertit pas, 2 sans modèle. Sans
+  conséquence : 270 sans fiches MAGG (aperçu seulement, facultatif), 4 avec des événements inconnus (retirés par star_port).
+  Les autres pièces de SvR (y 10-12 / 30-32 cordes, 50-57) n'existent plus dans les prises de WWE '12 (outil `w12y`) et
+  sont laissées de côté comme avant. Reste à voir en jeu : quelques prises de chaque famille.

@@ -553,6 +553,18 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       fail("no animation for two people in SvR 2011");
       continue;
     }
+    // (the parts this port can't make: y 2 = a third person (88 SvR moves, the double-team ones; WWE '12 keeps it, 82
+    // moves), y 60 / 61 = an object (SvR 88 moves; WWE '12's only Frying-Pan Chop): the rope Batista Bomb (31074, y 60
+    // / 61) froze the game, in game 2026-11-09. SvR's other parts - y 10-12 / 30-32 the ropes, 50-57 - WWE '12's moves
+    // dropped (w12y): left out as before)
+    if (std::any_of(sv.wanted[want].begin(), sv.wanted[want].end(), [](const Svr::Mo &x) { return x.y == 2; })) {
+      fail("a move for three people (not handled yet)");
+      continue;
+    }
+    if (std::any_of(sv.wanted[want].begin(), sv.wanted[want].end(), [](const Svr::Mo &x) { return x.y >= 60; })) {
+      fail("it uses an object (not handled yet)");
+      continue;
+    }
     const Bytes &mine = mine_it->second;
     const int my_frames = sv.frames[0][want];
     // the model: the same SvR category (+0x91), then kind (+0x73), segments and length
