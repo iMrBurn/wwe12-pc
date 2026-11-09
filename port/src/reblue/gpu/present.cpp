@@ -415,6 +415,7 @@ double CpuMs(bool whole_process) {
 }
 FrameStats g_frame_stats;
 extern std::atomic<u64> g_geometry_hashed_bytes, g_geometry_sampled;  // svr_geometry.cpp
+extern std::atomic<u64> g_geometry_hashed_small_bytes;                // svr_geometry.cpp
 extern std::atomic<u64> g_texture_hashed_bytes, g_texture_sampled;    // svr_resources.cpp
 
 double MsSince(FrameStats::Clock::time_point t) {
@@ -467,10 +468,12 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
             vram.budget >> 20);
     // Change checks of the game's memory (geometry and texture copies): MB hashed in full per
     // frame, and copies checked by sample instead.
-    BD_INFO("[perf] hashed per frame: geometry {:.2f} MB ({:.0f} sampled), textures {:.2f} MB "
-            "({:.0f} sampled)",
-            g_geometry_hashed_bytes.exchange(0) / n / 1048576.0, g_geometry_sampled.exchange(0) / n,
-            g_texture_hashed_bytes.exchange(0) / n / 1048576.0, g_texture_sampled.exchange(0) / n);
+    BD_INFO("[perf] hashed per frame: geometry {:.2f} MB ({:.2f} MB in buffers under 32 KiB, "
+            "{:.0f} sampled), textures {:.2f} MB ({:.0f} sampled)",
+            g_geometry_hashed_bytes.exchange(0) / n / 1048576.0,
+            g_geometry_hashed_small_bytes.exchange(0) / n / 1048576.0,
+            g_geometry_sampled.exchange(0) / n, g_texture_hashed_bytes.exchange(0) / n / 1048576.0,
+            g_texture_sampled.exchange(0) / n);
     const double cpu_now = CpuMs(false), process_now = CpuMs(true);
     u64 blocks_uploaded = 0, blocks_reused = 0;
     ConstantBlockStats(blocks_uploaded, blocks_reused);

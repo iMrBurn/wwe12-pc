@@ -43,6 +43,12 @@
 #include "svr_hook.h"
 #include "svr_resources.h"
 
+#include <rex/cvar.h>
+REXCVAR_DEFINE_INT32(svr_geometry_sample_min, 32 * 1024, "SvR",
+                     "Size (bytes) from which a geometry buffer that stopped changing is checked by "
+                     "sample instead of hashed in full every frame (min 4096).")
+    .range(4096, 64 * 1024 * 1024);
+
 namespace bd::gpu {
 namespace {
 
@@ -153,7 +159,11 @@ std::unique_ptr<plume::RenderBuffer> CreateCopy(const u8 *src, u32 size, u32 end
 // sampled hash (32 slices of 64 bytes) each frame and its full hash every kFullHashFrames frames.
 // Dynamic buffers change every few frames and never settle; a settled buffer rewritten in place
 // shows at once if a slice changes, or within a few frames at worst.
-constexpr u32 kSampledHashMin = 32 * 1024;
+// Buffers from this size on can settle into the sampled check (svr_geometry_sample_min, 1.2: a
+// cvar to measure smaller ones; never below 4 KiB, where 32 slices of 64 bytes save little).
+u32 SampledHashMin() {
+  return u32(std::max(4096, REXCVAR_GET(svr_geometry_sample_min)));
+}
 // 1.2: 60 instead of 300 (5 s of full hashes of every wrestler and arena mesh after each load);
 // a settled buffer still gets its full hash every kFullHashFrames frames.
 constexpr u64 kSettledFrames = 60;
@@ -165,6 +175,7 @@ constexpr u64 kDynamicHashFrames = 8;
 }  // namespace
 // Bytes hashed in full and buffers checked by sample, for the [perf] line (present.cpp).
 std::atomic<u64> g_geometry_hashed_bytes{0}, g_geometry_sampled{0};
+std::atomic<u64> g_geometry_hashed_small_bytes{0};  // of which in buffers under 32 KiB
 namespace {
 
 u64 SampleHash(const u8 *data, u32 size) {
@@ -197,7 +208,7 @@ bool ResolveLocked(u32 address, u32 size, u32 endian, bool index, u64 frame,
       return true;
     }
   }
-  const bool sampled = size >= kSampledHashMin && !CompareEveryDraw();
+  const bool sampled = size >= SampledHashMin() && !CompareEveryDraw();
   const u64 sample = sampled ? SampleHash(src, size) : 0;
   if (sampled && same_kind && m.buffer && m.checked_frame != 0 && sample == m.sample &&
       frame - m.same_since >= kSettledFrames && frame - m.full_frame < kFullHashFrames) {
@@ -210,8 +221,11 @@ bool ResolveLocked(u32 address, u32 size, u32 endian, bool index, u64 frame,
   // hashing; the hash is still taken every kDynamicHashFrames frames to catch it settling.
   const bool skip_hash = same_kind && m.changes >= kDynamicAfterChanges && size <= kMaxRingBytes &&
                          !CompareEveryDraw() && frame % kDynamicHashFrames != 0;
-  if (!skip_hash)
+  if (!skip_hash) {
     g_geometry_hashed_bytes.fetch_add(size, std::memory_order_relaxed);
+    if (size < 32 * 1024)
+      g_geometry_hashed_small_bytes.fetch_add(size, std::memory_order_relaxed);
+  }
   const u64 hash = skip_hash ? m.hash ^ 1 : XXH3_64bits(src, size);
   if (same_kind && hash == m.hash) {
     m.checked_frame = frame;
