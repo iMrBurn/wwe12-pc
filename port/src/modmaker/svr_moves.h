@@ -675,8 +675,19 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
         r[0] = uint8_t(tmotion), r[1] = uint8_t(tmotion >> 8), r[2] = uint8_t(part), r[3] = uint8_t(part >> 8);
         r[4] = uint8_t(rows.events.size()), r[5] = uint8_t(rows.events.size() >> 8), r[6] = uint8_t(list.size());
         rows.rows["0/3"].push_back(r);
-        for (auto &e : list)
+        // (its kinds as WWE '12 has them: SvR's variants of a few effect kinds are one kind in WWE '12 - learned on the
+        // 1 491 moves both games name alike, kindmap 2026-11-09: 0BB9 -> 0BB8 73 %, 0BBA -> 0BB8 53 %, 0BBC -> 0BBB
+        // 79 %, 0BBD -> 0BBB 78 %, 0BBF -> 0BBE 81 %, 0BC0 -> 0BBE 75 %, 0BC2 / 0BC3 -> 0BC1 85 / 100 %, 0BC5 -> 0BC4
+        // 71 %, 0BC6 -> 0BC4 60 %; the others kept, 70-90 % alike. WWE '12's own Batista Bomb has 0BBB where SvR's has
+        // 0BBC, its victim's first event)
+        static const std::map<int, int> kinds = {{0x0BB9, 0x0BB8}, {0x0BBA, 0x0BB8}, {0x0BBC, 0x0BBB}, {0x0BBD, 0x0BBB},
+                                                 {0x0BBF, 0x0BBE}, {0x0BC0, 0x0BBE}, {0x0BC2, 0x0BC1}, {0x0BC3, 0x0BC1},
+                                                 {0x0BC5, 0x0BC4}, {0x0BC6, 0x0BC4}};
+        for (auto e : list) {
+          if (const auto k = kinds.find(e[0] | e[1] << 8); k != kinds.end())
+            e[0] = uint8_t(k->second), e[1] = uint8_t(k->second >> 8);
           rows.events.push_back(e);
+        }
       }
     }
     if (exh.size() >= 20) {
