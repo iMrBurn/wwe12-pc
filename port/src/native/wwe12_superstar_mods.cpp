@@ -1628,6 +1628,8 @@ std::vector<std::pair<uint32_t, std::string>> Wwe12AddedThemes() { return g_them
 
 // How many added superstars the pack has (wwe12_heap_probe.cpp: the heaps grown only for many).
 size_t Wwe12AddedSuperstarCount() { return g_records.size(); }
+// (an added superstar: the Universe's brand reset leaves his brand as it is, wwe12_universe.cpp, 2026-11-09)
+bool Wwe12AddedSuperstar(uint32_t id) { return g_records.count(id) != 0; }
 
 // A lookup of "MVSB/M%03d" / "MVSW/M%03d" (an entrant's ribbon / wall) while an added superstar with its own is
 // entering: the name it is served under ("MVSB/M<its video number>"), else "".
@@ -1819,16 +1821,36 @@ extern "C" REX_FUNC(sub_828ADFB8) {
     // player's: compared, it made the copy again with the pack's brand at the next exhibition, Discord 2026-11-05,
     // ChrisX's Goldberg always back on SmackDown; found by the Universe conversation)
     bool same = true;
+    uint32_t first = 0;
     for (uint32_t k = 0; k < 286 && same; ++k)
-      same = k == 247 || (k >= 24 && k < 28) || bd::mem::load<uint8_t>(at + k) == rec[k];
+      if (!(same = k == 247 || (k >= 24 && k < 28) || bd::mem::load<uint8_t>(at + k) == rec[k]))
+        first = k;
     if (same && bd::mem::load<uint8_t>(at + 247))
       continue;
+    // (made again, its brand stays the player's when the copy is already this superstar - its name +42..+73 or its
+    // number +40: the brand was compared no more but still written over, Goldberg back from WCW to SmackDown after a
+    // restart or a match, a player's report and the Universe conversation, 2026-11-09. The pack's brand only for a
+    // copy that isn't him yet: a first install.)
+    bool his = bd::mem::load<uint8_t>(at + 40) == rec[40] && bd::mem::load<uint8_t>(at + 41) == rec[41];
+    if (!his) {
+      his = true;
+      for (uint32_t k = 42; k < 74 && his; ++k)
+        his = bd::mem::load<uint8_t>(at + k) == rec[k];
+    }
+    uint8_t brand[4];
+    for (uint32_t k = 0; k < 4; ++k)
+      brand[k] = bd::mem::load<uint8_t>(at + 24 + k);
+    const uint8_t was = bd::mem::load<uint8_t>(at + first);  // (for the log, before it's written over)
     for (uint32_t k = 0; k < 286; ++k)
-      if (k != 247)
+      if (k != 247 && !(his && k >= 24 && k < 28))
         bd::mem::store<uint8_t>(at + k, rec[k]);
     bd::mem::store<uint8_t>(at + 247, 1);
-    REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its record made again{}", id,
-                same ? " (it was locked)" : "");
+    REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its record made again ({}; brand {:02X}{:02X}{:02X}{:02X} "
+                "{})",
+                id,
+                same ? std::string("it was locked")
+                     : fmt::format("first diff at +{}: save {:02X} pack {:02X}", first, was, rec[first]),
+                brand[0], brand[1], brand[2], brand[3], his ? "kept, the player's" : "the pack's: a first install");
   }
   Wwe12ForgetAddedRelations(ctx, base);  // (their Universe allies and rivals, once)
   // Its moves and entrance too: the save keeps them after the records (SaveData.Dat: the records at 0x1C, the moves at
