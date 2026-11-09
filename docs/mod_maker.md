@@ -1254,6 +1254,11 @@ Hors jeu, sauf la vérification de « Jouer sans mods » notée plus bas.
 - **Réglages du catcheur (piste n° 2 du tableau) : taille et capacités, faits.** Fiche `CHAR/DAT` de 290 octets
   (`chEtc.pac`). Le mod écrit des octets de sa fiche par `record=OFF:HEX,...` (offset en hexa dans la fiche, octets en
   hexa ; jamais 0x2C..0x103 : numéro, noms, personne), appliqué par `superstar_pack.h` après le reste.
+  - **Marque = +0x1C..+0x1F** (2026-11-09, option C) : 0 RAW, 1 SmackDown, 6 sans marque (agents libres, 280 fiches du
+    disque), 4 une autre (19 fiches, The Rock) ; les quatre octets égaux, l'Univers lit le dernier (fiche de sauvegarde
+    +27). NOUVEAU CATCHEUR : « Marque » (celle de la base par défaut, RAW, SmackDown, sans marque) écrit `1C:VVVVVVVV`
+    dans `record=`. Posée à la première installation seulement : changée ensuite dans le jeu, elle reste (correctif A,
+    `wwe12_superstar_mods.cpp`). Les anciens mods sans elle gardent la marque de leur base. Pas encore vu en jeu.
   - **Taille = +0x28 et +0x2A**, deux échelles où 4096 = 1,0 (Rey 3449, Cena 3988, Big Show 4591, Khali 4764 ; chez
     certaines divas la 2e est plus grande, Trish 3513 / 4096). **Vu en jeu le 2026-10-30** : Mankind avec 4764 sur les
     deux dépasse Cena d'une tête. Rôle exact de la 2e non vérifié : le Mod Maker garde le rapport de la base.

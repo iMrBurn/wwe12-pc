@@ -798,6 +798,29 @@ class Page {
       ImGui::TextDisabled("%s", fr ? "(une catcheuse sur la base d'un homme : choisissez Femme, sinon le jeu la traite en homme)"
                                    : "(a woman on a man's base: pick Woman, else the game treats her as a man)");
     }
+    // His brand (2026-11-09: every added superstar went to SmackDown, his base's): the record's +24..+27 (DAT 0x1C..0x1F,
+    // the Universe reads +27), 0 RAW, 1 SmackDown, 6 none (the free agents: 280 of the disc's records). Set at his first
+    // install only: one changed in the game stays (wwe12_superstar_mods.cpp).
+    if (base_brand_ >= 0) {
+      auto brand_name = [&](int b) {
+        return b == 0 ? "RAW" : b == 1 ? "SmackDown" : b == 6 ? (fr ? "sans marque" : "no brand") : (fr ? "autre" : "other");
+      };
+      ImGui::TextUnformatted(fr ? "Marque :" : "Brand:");
+      ImGui::SameLine();
+      char lbl[96];
+      snprintf(lbl, sizeof(lbl), "%s (%s)##b", fr ? "Celle de la base" : "The base's", brand_name(base_brand_));
+      if (ImGui::RadioButton(lbl, brand_ < 0))
+        brand_ = -1;
+      for (const int b : {0, 1, 6}) {
+        ImGui::SameLine();
+        char l2[48];
+        snprintf(l2, sizeof(l2), "%s##b%d", brand_name(b), b);
+        if (ImGui::RadioButton(l2, brand_ == b))
+          brand_ = b;
+      }
+      ImGui::TextDisabled("%s", fr ? "(sa marque à sa première installation ; changée ensuite dans le jeu, l'Univers la garde)"
+                                   : "(his brand when first installed; changed later in the game, the Universe keeps it)");
+    }
     ImGui::Checkbox(fr ? "Sa propre taille (sinon celle de la base)" : "Its own size (else the base's)", &own_size_);
     ImGui::BeginDisabled(!own_size_);
     int v = own_size_ ? size_ : base_size_[0];
@@ -857,12 +880,17 @@ class Page {
       snprintf(buf, sizeof(buf), "%sEE:%02X", r.empty() ? "" : ",", (base_ee_ & ~1) | gender_);
       r += buf;
     }
+    if (brand_ >= 0 && brand_ != base_brand_) {  // (its brand: 0x1C..0x1F, the four alike as the game's records have them)
+      snprintf(buf, sizeof(buf), "%s1C:%02X%02X%02X%02X", r.empty() ? "" : ",", brand_, brand_, brand_, brand_);
+      r += buf;
+    }
     return r;
   }
 
   // The base's attributes: its record (pac\ch\chEtc.pac, CHAR / DAT, the child of its number) +4..+15.
   void LoadBaseAttributes(const disc::GameDisc &disc) {
     base_attributes_.clear();
+    base_brand_ = -1;
     base_size_[0] = base_size_[1] = 0;
     Bytes etc;
     svrfmt::Archive a;
@@ -881,6 +909,7 @@ class Page {
             if (d.size() >= 16)
               base_attributes_.assign(d.begin() + 4, d.begin() + 16);
             base_ee_ = d.size() > 0xEE ? d[0xEE] : -1;
+            base_brand_ = d.size() > 0x1F ? d[0x1F] : -1;
             if (d.size() >= 0x10C) {
               base_size_[0] = d[0x28] | d[0x29] << 8;
               base_size_[1] = d[0x2A] | d[0x2B] << 8;
@@ -1990,7 +2019,7 @@ class Page {
                     "\ndisc_pick=" + std::to_string(disc_pick_) + "\nsvr_attire=" + std::to_string(svr_attire_) +
                     "\nfbx=" + u8(fbx_path_) + "\nfbx_budget=" + std::to_string(fbx_budget_) + "\nportrait=" +
                     u8(custom_portrait_) + "\nkeep_portraits=" + (keep_portraits_ ? "1" : "0") + "\nas_attire=" +
-                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_moves=" + (use_own_moves_ ? "1" : "0") + "\nadded_moves=" + (use_added_moves_ ? "1" : "0") + "\ngender=" + std::to_string(gender_) + "\nentrance=" + std::to_string(entrance_ >= 0 ? stars_[size_t(entrance_)].id : 0) + "\nown_attributes=" +
+                    (as_attire_ ? "1" : "0") + "\nattire_entry=" + attire_entry_ + "\nown_moves=" + (use_own_moves_ ? "1" : "0") + "\nadded_moves=" + (use_added_moves_ ? "1" : "0") + "\ngender=" + std::to_string(gender_) + "\nbrand=" + std::to_string(brand_) + "\nentrance=" + std::to_string(entrance_ >= 0 ? stars_[size_t(entrance_)].id : 0) + "\nown_attributes=" +
                     (own_attributes_ ? "1" : "0") + "\nattributes=";
     for (size_t i = 0; i < attributes_.size(); ++i)
       t += std::to_string(attributes_[i]) + (i + 1 < attributes_.size() ? "," : "");
@@ -2084,6 +2113,9 @@ class Page {
       size_ = std::clamp(atoi(value("size").c_str()), 3200, 5000);
     own_abilities_ = value("own_abilities") == "1";
     gender_ = value("gender").empty() ? -1 : std::clamp(atoi(value("gender").c_str()), -1, 1);
+    brand_ = value("brand").empty() ? -1 : atoi(value("brand").c_str());
+    if (brand_ != 0 && brand_ != 1 && brand_ != 6)
+      brand_ = -1;
     if (own_abilities_) {
       abilities_.clear();
       const std::string a = value("abilities");
@@ -2440,6 +2472,7 @@ class Page {
   bool all_attires_ = true;  // its other WWE '13 attires too (up to 4)  // its WWE '13 entrance outfit too (kind 4), when its attire has one
   bool own_size_ = false, own_abilities_ = false;  // its own size / abilities (else the base's)
   int gender_ = -1, base_ee_ = -1;  // its gender (-1 the base's, 0 man, 1 woman); the base's record byte 0xEE
+  int brand_ = -1, base_brand_ = -1;  // its brand (-1 the base's, 0 RAW, 1 SmackDown, 6 none); the base's (DAT 0x1F)
   int size_ = 4096, base_size_[2] = {0, 0};          // record +0x28 (+0x2A: the base's ratio kept), 4096 = 1.0
   std::vector<int> abilities_, base_abilities_;      // record +0x104.. (kAbilities' numbers)
   bool svr_movie_ = false;     // its SvR 2011 entrance movie, as it is
