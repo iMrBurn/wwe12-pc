@@ -397,7 +397,8 @@ struct Svr {
         const Bytes u = svrfmt::Unpack(g.data);
         if (k.id == 0 && u.size() >= 8 && !memcmp(u.data(), "EXH", 3)) {
           for (uint32_t i = 0; i < L32(u, 4) && 8 + 36 * size_t(i + 1) <= u.size(); ++i)
-            if (U16(u, 8 + 36 * size_t(i)) == id)
+            if (U16(u, 8 + 36 * size_t(i)) == id && U16(u, 8 + 36 * size_t(i) + 2) == 0)  // (its own row: part 0; the
+              // counter branch's (part 0x5A) came last and was taken, 2026-11-09)
               exh.assign(u.begin() + long(8 + 36 * i), u.begin() + long(8 + 36 * (i + 1)));
         } else if (k.id == 1 && u.size() >= 8 && L32(u, 0) == 16) {
           const uint32_t n = L32(u, 4);
@@ -689,6 +690,31 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     if (rows.empty()) {
       fail("its model has no motion parameters");
       continue;
+    }
+    // the frame of its impact: 0/6's attacker row +34 (u16) is its attacker block's command 73 frame (959 of WWE '12's
+    // 1 005 moves with one, 980 within 4 frames; FFFF in 808 moves without; f34, 2026-11-09). The model's stayed (Gory
+    // Bomb 2's 436 for a Batista Bomb hitting at 308): the finisher's flashes came late, the victim turned over.
+    {
+      int impact = -1;
+      const uint32_t first = Be32At(mv.high, 12), cnt = Be32At(mv.high, 0x48);
+      for (uint32_t i = 0; i < cnt && impact < 0; ++i) {
+        const size_t e = 0x70 + 0x28 * size_t(i);
+        if (e + 0x28 > mv.high.size() || memcmp(&mv.high[e + 4], "00000000", 8) != 0)
+          continue;
+        size_t s = first + Be32At(mv.high, e + 0x24);
+        const size_t end = i + 1 < cnt ? first + Be32At(mv.high, e + 0x28 + 0x24) : mv.high.size();
+        for (const char *tag : {"YANM", "POF0"})
+          if (s + 8 <= end && !memcmp(&mv.high[s], tag, 4))
+            s += 8 + Be32At(mv.high, s + 4);
+        if (s < end) {
+          const auto cf = CmdFrames(Bytes(mv.high.begin() + long(s), mv.high.begin() + long(end)));
+          if (const auto it = cf.find(73); it != cf.end())
+            impact = it->second;
+        }
+      }
+      for (auto &r : rows.rows["0/6"])
+        if (impact >= 0 && r.size() >= 36 && r[2] == 0 && r[3] == 0 && !(r[34] == 0xFF && r[35] == 0xFF))
+          r[34] = uint8_t(impact), r[35] = uint8_t(impact >> 8);
     }
     mv.m3 = m3_params::Write(rows);
     // the model's preview script (its motion number replaced, its "quit" frame scaled) and Create a Moveset rows
