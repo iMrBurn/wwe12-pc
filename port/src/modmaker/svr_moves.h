@@ -34,6 +34,7 @@
 #include "moveset_port.h"
 #include "newmoves13.h"
 #include "svr11_entrance.h"
+#include "svr_ymbs.h"
 #include "svrfmt/archive.h"
 #include "svrfmt/pac.h"
 #include "yanm.h"
@@ -352,17 +353,32 @@ struct Svr {
   struct Mo {
     int x = 0, y = 0;
     uint32_t frames = 0;
-    Bytes data, T;
+    Bytes data, T;                  // a YMKs motion
+    bool ymbs = false;              // ... or a YMBs one, read as body keys already (svr_ymbs.h)
+    std::vector<se::BodyKey> keys;
   };
   std::map<int, std::string> names;            // by bank id
   std::map<int, Bytes> recs;                   // WAZE records by number
-  std::map<int, std::vector<se::BodyKey>> keys[2];  // x 0, y 0 / 1, by bank id (events not kept)
-  std::map<int, int> frames[2];
+  std::map<int, std::vector<se::BodyKey>> keys[3];  // x 0, y 0 / 1 / 2 (a third person), by bank id (events not kept)
+  std::map<int, int> frames[3];
   std::map<int, std::set<int>> segments;       // bank id -> its x (< 90, more than one frame)
   std::map<int, std::vector<Mo>> wanted;       // bank id -> its motions
   Bytes waza;
   uint32_t waza_base = 0;  // its children's first id (EXH, then the events): WAZA/DATA 0, SvR 2010's BATS/INIT 10
   bool old = false;         // SvR 2007-2009: 144-byte WAZE records, motion banks without their 16-byte header
+  // a wanted motion, unless one of that segment and person with more than one frame is there already (a move's
+  // motions may be in several banks - a one-frame stub in a YMKs one, the real one in a YMBs one: the Walls of
+  // Jericho's attacker wasn't found, 2026-11-09)
+  void Want(int id, Mo mo) {
+    auto &v = wanted[id];
+    for (auto &x : v)
+      if (x.x == mo.x && x.y == mo.y) {
+        if (x.frames <= 1 && mo.frames > 1)
+          x = std::move(mo);
+        return;
+      }
+    v.push_back(std::move(mo));
+  }
   void Load(const disc::GameDisc &s, const std::set<int> &want_ids) {
     recs = newmoves13::detail::Records(s);
     {
@@ -395,11 +411,11 @@ struct Svr {
             return;
           std::set<int> here;
           for (auto &mo : ms) {
-            if (want_ids.count(mo.id) && !wanted.count(mo.id))
+            if (want_ids.count(mo.id))
               here.insert(mo.id);
             if (mo.y == 0 && mo.x < 90 && mo.frames > 1)
               segments[mo.id].insert(mo.x);
-            if (mo.x != 0 || mo.y > 1 || keys[mo.y].count(mo.id))
+            if (mo.x != 0 || mo.y > 2 || keys[mo.y].count(mo.id))
               continue;
             std::vector<se::BodyKey> k;
             se::Ctx c;
@@ -412,7 +428,35 @@ struct Svr {
           for (int id : here)
             for (auto &mo : ms)
               if (mo.id == id)
-                wanted[id].push_back({mo.x, mo.y, mo.frames, se::BytesOf(mo.data), se::BytesOf(T)});
+                Want(id, {mo.x, mo.y, mo.frames, se::BytesOf(mo.data), se::BytesOf(T)});
+          return;
+        }
+        // (the YMBs banks - the taunts, the submissions, some finishers: 348 of the 503 moveset slots SvR 2011's
+        // superstars have with a move WWE '12 hasn't, demand 2026-11-09 -, read as body keys: svr_ymbs.h)
+        if (b.size() >= 4 && !memcmp(b.data(), "YMBs", 4)) {
+          svr_ymbs::Bank bank;
+          if (!bank.Open(b))
+            return;
+          std::set<int> here;
+          for (const auto &d : bank.dir) {
+            if (want_ids.count(d.id))
+              here.insert(d.id);
+            if (d.y == 0 && d.x < 90 && d.frames > 1)
+              segments[d.id].insert(d.x);
+            if (d.x != 0 || d.y > 2 || keys[d.y].count(d.id) || d.frames < 2)
+              continue;
+            std::vector<se::BodyKey> k;
+            if (svr_ymbs::BodyKeys(bank, d.id, d.x, d.y, k))
+              keys[d.y][d.id] = std::move(k), frames[d.y][d.id] = int(d.frames);
+          }
+          for (int id : here)
+            for (const auto &d : bank.dir)
+              if (d.id == id) {
+                Mo mo;
+                mo.x = d.x, mo.y = d.y, mo.frames = d.frames, mo.ymbs = true;
+                if (d.y > 2 || svr_ymbs::BodyKeys(bank, d.id, d.x, d.y, mo.keys))
+                  Want(id, std::move(mo));
+              }
           return;
         }
         std::vector<svrfmt::PachEntry> kids;
@@ -608,13 +652,16 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
   Bytes m3;
   w12.Read("pac/m3.pac", m3);
   // the models' fits, once per model
+  constexpr int kStartFrames = 20;
   struct Model {
     bool ok = false;
     int num = 0;
-    Fit f[2];
+    Fit f[3], fs[3];       // its whole motion's fit, its start's (the first kStartFrames frames), by person
+    bool start_ok = false;
     Bytes full;
     yanm::Record rec;
     std::set<int> segments;
+    int people = 0;  // 1 (a taunt...) or 2
   };
   std::map<int, Model> models;
   auto model = [&](int id) -> const Model & {
@@ -623,37 +670,43 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       return it->second;
     Model &md = models[id];
     const auto n = sv.names.find(id);
-    if (n == sv.names.end() || !w12num.count(n->second) || !sv.keys[0].count(id) || !sv.keys[1].count(id))
+    if (n == sv.names.end() || !w12num.count(n->second) || !sv.keys[0].count(id))
       return md;
     md.num = w12num[n->second];
     md.full = mi.Full(w12, md.num);
     if (md.full.empty() || !yanm::Read(md.full, md.rec) || !recs12.count(md.num))
       return md;
-    const yanm::Track *bip[2] = {nullptr, nullptr};
+    const yanm::Track *bip[3] = {nullptr, nullptr, nullptr};
     for (auto &b : md.rec.blocks) {
-      for (int who = 0; who < 2; ++who)
-        if (b.name == (who ? "00000001" : "00000000"))
+      for (int who = 0; who < 3; ++who)
+        if (b.name == (who == 2 ? "00000002" : who ? "00000001" : "00000000"))
           for (auto &t : b.tracks)
             if (t.name == "Bip")
               bip[who] = &t;
       if (b.name.size() == 8 && atoi(b.name.substr(4).c_str()) == 0 && atoi(b.name.substr(0, 4).c_str()) < 90)
         md.segments.insert(atoi(b.name.substr(0, 4).c_str()));
     }
-    if (!bip[0] || !bip[1])
+    md.people = bip[2] ? 3 : bip[1] ? 2 : 1;
+    if (!bip[0] || (md.people >= 2) != (sv.keys[1].count(id) > 0) || (md.people == 3) != (sv.keys[2].count(id) > 0))
       return md;
-    for (int who = 0; who < 2; ++who) {
-      std::vector<std::array<double, 4>> pts;
+    for (int who = 0; who < md.people; ++who) {
+      std::vector<std::array<double, 4>> pts, start;
       for (auto &k : sv.keys[who][id]) {
         bool hr, hp;
         yanm::Q q;
         yanm::V p;
         yanm::Sample(*bip[who], float(2 * k.frame), hr, q, hp, p);
-        if (hp)
+        if (hp) {
           pts.push_back({0.1 * k.root[0], 0.1 * k.root[2], p[0], p[2]});
+          if (k.frame <= kStartFrames)
+            start.push_back(pts.back());
+        }
       }
-      md.f[who] = Solve(pts);
+      md.f[who] = Solve(pts), md.fs[who] = Solve(start);
     }
-    md.ok = md.f[0].err < 15 && md.f[1].err < 15;
+    md.ok = md.start_ok = true;
+    for (int who = 0; who < md.people; ++who)
+      md.ok = md.ok && md.f[who].err < 15, md.start_ok = md.start_ok && md.fs[who].err < 15;
     return md;
   };
   for (int number : numbers) {
@@ -667,15 +720,18 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
         notes->push_back(note);
     };
     const auto mine_it = sv.recs.find(number);
-    if (mine_it == sv.recs.end() || !sv.wanted.count(want) || !sv.frames[0].count(want) || !sv.frames[1].count(want)) {
-      fail("no animation for two people in its game");
+    if (mine_it == sv.recs.end() || !sv.wanted.count(want) || !sv.frames[0].count(want)) {
+      fail("no animation in its game");
       continue;
     }
-    // (the parts this port can't make: y 2 = a third person (88 SvR moves, the double-team ones; WWE '12 keeps it, 82
-    // moves), y 60 / 61 = an object (SvR 88 moves; WWE '12's only Frying-Pan Chop): the rope Batista Bomb (31074, y 60
-    // / 61) froze the game, in game 2026-11-09. SvR's other parts - y 10-12 / 30-32 the ropes, 50-57 - WWE '12's moves
-    // dropped (w12y): left out as before)
-    if (std::any_of(sv.wanted[want].begin(), sv.wanted[want].end(), [](const Svr::Mo &x) { return x.y == 2; })) {
+    // (one person - the taunts -, two, or three - y 2, the double-team moves: WWE '12 has 82 with a third person, and
+    // they fill 328 / 500 / 476 moveset slots of SvR 2010 / 2009 / 2008's superstars, demand 2026-11-09 -: its model
+    // the same)
+    const int people = sv.frames[2].count(want) && sv.frames[1].count(want) ? 3 : sv.frames[1].count(want) ? 2 : 1;
+    // (the parts this port can't make: a third person only in some segments; y 60 / 61 = an object (SvR 88 moves; WWE
+    // '12's only Frying-Pan Chop): the rope Batista Bomb (31074, y 60 / 61) froze the game, in game 2026-11-09. SvR's
+    // other parts - y 10-12 / 30-32 the ropes, 50-57 - WWE '12's moves dropped (w12y): left out as before)
+    if (people < 3 && std::any_of(sv.wanted[want].begin(), sv.wanted[want].end(), [](const Svr::Mo &x) { return x.y == 2; })) {
       fail("a move for three people (not handled yet)");
       continue;
     }
@@ -695,10 +751,13 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       if (r == sv.recs.end() || r->second.size() < 0x92 || r->second[0x91] != mine[0x91])
         continue;
       const Model &md = model(id);
-      if (!md.ok)
+      if (!(md.ok || md.start_ok) || md.people != people)
         continue;
-      const long score = (r->second[0x73] == mine[0x73] ? 0 : 100000) +
-                         (md.segments == sv.segments[want] ? 0 : 50000) + std::abs(sv.frames[0][id] - my_frames);
+      // (a model whose whole motion isn't the same as WWE '12's - the older games' moves, re-animated since - is placed
+      // by its start, the grapple's set-up, which the moves of a kind share: the start's fit gives the whole one's
+      // placement for 97 % of SvR 2011's good models, 89 % of 2008's, 2026-11-09; the whole one preferred)
+      const long score = (r->second[0x73] == mine[0x73] ? 0 : 100000) + (md.segments == sv.segments[want] ? 0 : 50000) +
+                         (md.ok ? 0 : 20000) + std::abs(sv.frames[0][id] - my_frames);
       if (best < 0 || score < best_score)
         best = id, best_score = score;
     }
@@ -708,11 +767,12 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
     // nor a scale changing it (agefit, 2026-11-09) -: SvR 2007's 394 moves made had only 16 models, Poison Mist one
     // for 35 of them)
     // (nor one much shorter or longer: its commands retimed that far aren't the move's moments either)
-    if (best < 0 || best_score >= 50000 || 3 * sv.frames[0][best] < 2 * my_frames || 2 * sv.frames[0][best] > 3 * my_frames) {
+    if (best < 0 || best_score >= 50000 || 2 * sv.frames[0][best] < my_frames || sv.frames[0][best] > 2 * my_frames) {
       fail("no WWE '12 model of its kind");
       continue;
     }
     const Model &md = models[best];
+    const Fit *fit = md.ok ? md.f : md.fs;
     note.model = sv.names[best];
     note.same_kind = true;
     // its blocks: every segment of each person (x < 90; the counter branches' stubs stay the model's)
@@ -727,7 +787,7 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       if (blk.name.size() != 8)
         continue;
       const int bx = atoi(blk.name.substr(0, 4).c_str()), by = atoi(blk.name.substr(4).c_str());
-      if ((by != 0 && by != 1) || bx >= 90)
+      if (by < 0 || by > 2 || bx >= 90)
         continue;
       const Svr::Mo *mo = nullptr;
       for (auto &x : sv.wanted[want])
@@ -744,16 +804,44 @@ inline std::vector<newmoves13::Move> Collect(const disc::GameDisc &w12, const di
       // went into the game's default down state, on his front: he turned over at the end, in game 2026-11-08)
       uint32_t longest = mo->frames;
       for (auto &x : sv.wanted[want])
-        if (x.x == bx && (x.y == 0 || x.y == 1))
+        if (x.x == bx && x.y >= 0 && x.y <= 2)
           longest = std::max(longest, x.frames);
       const int n60 = 2 * int(longest);
       TplFrom(blk, tpl);
-      if (!se::BodyKeys(se::SpanOf(mo->data), se::SpanOf(mo->T), bk, ctx) || !se::BodyBlock(tpl, bk, n60, {}, raw, ctx)) {
+      if (mo->ymbs)
+        bk = mo->keys;
+      else if (!se::BodyKeys(se::SpanOf(mo->data), se::SpanOf(mo->T), bk, ctx))
+        bk.clear();
+      // (one pose per time: two keys landing on one 60 Hz time - frame + count - failed the conversion, "two keys at
+      // the same time": 126 / 269 / 271 / 405 moveset slots of SvR 2010 / 2009 / 2008 / 2007's superstars, 2026-11-09;
+      // the later one kept)
+      {
+        std::vector<se::BodyKey> one;
+        int last = -1;
+        for (auto &k : bk) {
+          if (!k.has_pose) {
+            one.push_back(k);
+            continue;
+          }
+          const int t = 2 * (k.frame + k.count);
+          if (t <= last && !one.empty()) {
+            for (auto it = one.rbegin(); it != one.rend(); ++it)
+              if (it->has_pose) {
+                *it = k;
+                break;
+              }
+            continue;
+          }
+          one.push_back(k), last = t;
+        }
+        bk.swap(one);
+      }
+      if (bk.empty() || !se::BodyBlock(tpl, bk, n60, {}, raw, ctx)) {
         why = "its animation couldn't be converted (" + ctx.why + ")";
         break;
       }
-      Place(raw, md.f[by].ang, md.f[by].tx, md.f[by].tz);
-      SetVector(raw, VectorKeys(bk, std::fabs(md.f[by].ang) > 1, n60 - 1, 8));
+      Place(raw, fit[by].ang, fit[by].tx, fit[by].tz);
+      SetVector(raw, VectorKeys(bk, std::fabs(fit[by].ang) > 1, n60 - 1, 8));
       Bytes chunk;
       se::Serialize(raw, chunk, ctx);
       if (!ctx.ok) {

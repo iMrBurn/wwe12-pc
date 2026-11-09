@@ -371,3 +371,21 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   doit être du même genre, avec les mêmes segments, et de durée proche (entre 2/3 et 1,5 fois celle de la prise)**, sinon
   la prise est refusée. Prises fabriquées : **2011 687, 2010 825, 2009 565, 2008 329, 2007 199** (Batista Bomb inchangée,
   octet pour octet). 2007 / 2008 restent les moins sûres : 15 et 28 modèles seulement pour toutes leurs prises.
+- **Prises seules, soumissions, prises à trois (2026-11-09)** : mesure d'abord (`demand` : les cases des movesets de tous les
+  catcheurs d'un jeu dont la prise manque à WWE '12, et pourquoi elle est refusée). SvR 2011 : 50 prises manquantes dans
+  503 cases, dont **32 dans des banques YMBs (348 cases : les provocations, les soumissions)**.
+  - **YMBs lu** (`svr_ymbs.h`, d'après `ymbs.py` / `ymbs_retarget.py` de Kaiko, avec sa permission) : canaux ADPCM, membres
+    par IK (cible main / pied + angle de coude / genou), refaits en clés YMKs (21 os sur leur pose de liaison, racine).
+    Vérifié sur 139 provocations que WWE '12 a sous le même nom : bras et avant-bras à 1-3°, jambes à 3-7° de celles de WWE
+    '12 (les prises YMKs, témoin : 10-34° aux bras) ; 16 391 mouvements YMBs sur 16 404 se décodent.
+  - **Une personne** (provocations) et **trois** (y 2, prises en équipe : WWE '12 en a 82) : le modèle a le même nombre.
+  - **Placement par le début** quand l'animation entière du modèle diffère de celle de WWE '12 (vieux jeux) : le début (la
+    mise en place de la prise) donne le même placement que l'ensemble pour 97 % des bons modèles de 2011, 89 % de 2008.
+  - Durée du modèle entre 0,5 et 2 fois celle de la prise ; une pose par instant (« two keys at the same time » venait de
+    deux clés au même instant) ; une prise dont le mouvement est dans plusieurs banques prend le vrai (Walls of Jericho :
+    un bout d'une image en YMKs, le vrai en YMBs).
+  - **Cases couvertes** (prises manquantes à WWE '12 ajoutées), avant → après : 2011 22 → 96 %, 2010 48 → 68 %, 2009 50 →
+    66 %, 2008 20 → 48 %, 2007 15 → 48 %. Batista Bomb inchangée octet pour octet.
+  - **Toujours refusées** : les prises avec un objet (y 60/61 : 7 / 177 / 78 / 181 / 16 cases ; elles comprennent des prises
+    en équipe des vieux jeux), sans modèle de leur genre (surtout les contres « Reversal … » et les tombés « … Pin », 800 à
+    1 200 cases des vieux jeux), sans animation trouvée (2008 : 561 cases, 16 prises). Rien de cela vu en jeu.
