@@ -1090,11 +1090,14 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     if (stars.back().slot)
       taken.push_back(stars.back().slot);
   }
+  // (a new one only on the disc's empty records, 100-372: a DLC slot, under 100, given after the game has seen our
+  // pack stays locked - not in Universe nor Create a Moveset, a freeze at its select, issue #60 2026-11-09 and FBX
+  // TEST 2026-10-26. Those already in superstar_slots.txt keep theirs, as the saves have them.)
   for (auto &st : stars) {
     if (st.slot)
       continue;
     for (int s : free_slots)
-      if (std::find(taken.begin(), taken.end(), s) == taken.end()) {
+      if (s >= 100 && std::find(taken.begin(), taken.end(), s) == taken.end()) {
         st.slot = s;
         taken.push_back(s);
         break;
@@ -1104,7 +1107,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   for (size_t i = 0; i < stars.size(); ++i) {
     auto &st = stars[i];
     if (!st.slot) {
-      REXLOG_WARN("[superstar mods] {}: no free superstar slot left", st.key);
+      REXLOG_WARN("[superstar mods] {}: no free superstar slot left (193 added superstars at most: turn some superstar "
+                  "mods off in the launcher)", st.key);
       continue;
     }
     // Its own portraits, if any (superstar\SSFA_HD.dds ... SSFC_SD.dds).

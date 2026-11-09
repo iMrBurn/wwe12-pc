@@ -230,6 +230,17 @@ class Page {
                            fr ? "Plus de 35 arènes ajoutées : les suivantes n'ont pas de bannière."
                               : "Over 35 added arenas: the next ones have no banner.",
                            "", {}});
+    // (the game gives the added superstars the disc's 193 empty records, 100-372; past them, it no longer gives the
+    // DLC ones, which stayed locked - not in Universe nor Create a Moveset, a freeze at the select, issue #60)
+    if (superstar_ids.size() > 193)
+      problems_.push_back({2, fr ? "Catcheurs ajoutés" : "Added superstars",
+                           fr ? "Plus de 193 catcheurs ajoutés (" + std::to_string(superstar_ids.size()) +
+                                    ") : le jeu n'a pas de place pour les derniers, ils n'apparaîtront pas. "
+                                    "Désactivez-en quelques-uns dans le launcher."
+                              : "Over 193 added superstars (" + std::to_string(superstar_ids.size()) +
+                                    "): the game has no room for the last ones, they won't show. Turn some off in "
+                                    "the launcher.",
+                           "", {}});
     CheckSlots(fr, user_root, superstar_ids);
     CheckPack(fr, user_root, superstar_ids);
     std::stable_sort(problems_.begin(), problems_.end(),
