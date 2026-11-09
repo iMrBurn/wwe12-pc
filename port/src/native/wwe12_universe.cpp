@@ -123,6 +123,8 @@ REX_EXTERN(__imp__sub_82564548);  // TITLE MANAGEMENT: constructor (object, pad)
 REX_EXTERN(__imp__sub_82565A30);  // TITLE MANAGEMENT: destructor (object, 1 = free)
 REX_EXTERN(__imp__sub_828942C0);  // button bar: prompt set (9 = A SELECT, B BACK)
 
+bool Wwe12AddedSuperstar(uint32_t id);  // wwe12_superstar_mods.cpp: a superstar added by a mod
+
 namespace {
 
 constexpr u32 kUniverseMenuVtbl = 0x82021F98;
@@ -600,6 +602,8 @@ void StatsReset() {
 // (sub_82683940) or, when this+48 is set, into the buffer there. The data is kept when the game reads
 // it; a reset reads it again into a buffer of ours and puts back bytes +24..+27 of every record.
 // Created Superstars (ids < 50, sub_82A330D8) have no original record: their brand is kept.
+// So is a mod's added superstar's (Wwe12AddedSuperstar): the disc's record at his place is a blank or DLC one, whose
+// brand put him back on SmackDown (a player's Goldberg, WCW, 2026-11-09); he keeps the one he has.
 REX_EXTERN(__imp__sub_82DCAA58);  // /CHAR/DAT reader (this, data, size)
 REX_EXTERN(__imp__sub_82A33418);  // Superstar -> roster place (512: none)
 REX_EXTERN(__imp__sub_82A330D8);  // a created Superstar?
@@ -643,7 +647,7 @@ void RestoreBrands(const PPCContext &ctx, u8 *base) {
     std::memset(bd::mem::at<u8>(records), 0, kRosterPlaces * kRecordSize);
     bd::mem::store<u32>(reader + 48, records);
     Call(in, base, __imp__sub_82DCAA58, reader, g_char_data, g_char_size);
-    u32 changed = 0, read = 0;
+    u32 changed = 0, read = 0, kept = 0;
     for (u32 k = 0; k < kRosterPlaces; ++k)
       for (u32 o = 0; o < kRecordSize; o += 4)
         if (bd::mem::load<u32>(records + k * kRecordSize + o)) {
@@ -667,6 +671,10 @@ void RestoreBrands(const PPCContext &ctx, u8 *base) {
     for (u32 id = 50; id < 512; ++id) {
       if (Call(in, base, __imp__sub_82A330D8, id))
         continue;
+      if (Wwe12AddedSuperstar(id)) {
+        ++kept;
+        continue;
+      }
       const u32 place = Call(in, base, __imp__sub_82A33418, id);
       if (place >= kRosterPlaces)
         continue;
@@ -680,7 +688,8 @@ void RestoreBrands(const PPCContext &ctx, u8 *base) {
           ++changed;
         }
     }
-    BD_INFO("[univers] reset: original brands put back ({} bytes changed)", changed);
+    BD_INFO("[univers] reset: original brands put back ({} bytes changed, {} added superstar(s) kept theirs)",
+            changed, kept);
   }
   if (reader)
     memory->SystemHeapFree(reader);
