@@ -68,9 +68,11 @@ REXCVAR_DEFINE_BOOL(svr_readback_defer_streak, true, "SvR",
                     "Within a streak of read-backs, only the first one waits for the GPU at once; "
                     "the next ones become a single copy at the end of a frame, once the target "
                     "rests (one GPU wait instead of one per frame). false = every one at once (1.1).");
-REXCVAR_DEFINE_BOOL(svr_early_screen_fill, true, "SvR",
-                    "A new screen image (16:9) the game samples before drawing it shows the last "
-                    "presented frame instead of black (the black flash just before the bell).");
+REXCVAR_DEFINE_BOOL(svr_early_screen_fill, false, "SvR",
+                    "Experimental, OFF: a new screen image (16:9) the game samples before any "
+                    "resolve shows the last presented frame instead of black. Broken as is: some "
+                    "of these images are never resolved (drawn into directly), so the whole picture "
+                    "went blurry and wrestlers vanished in entrances (test 2026-11-09).");
 REXCVAR_DEFINE_INT32(svr_readback_small_streak, 2, "SvR",
                      "Same as svr_readback_streak for small work textures (both sides up to "
                      "svr_readback_small_size): the shadow and lighting ones the game redraws every "
