@@ -4415,6 +4415,26 @@ extern "C" REX_FUNC(sub_82558FC8) {
   __imp__sub_828366A8(x, base);
 }
 
+// A news's Superstar name: sub_82559100(-, id), called only by the news text (sub_8255A558). For 12
+// fixed numbers (115, 131, 135, 165, 182, 261, 272, 278, 330, 331, 338, 340) it gives a fixed text of
+// string.pac (27950-27961, short names of THQ's), not the record's name (sub_82A32618, as for all
+// the others). A mod's added superstar on one of those places had that text: Seth Rollins' news said
+// "MVP has won the United States Championship!" with his own picture (a player, 2026-11-10). Those
+// texts are used nowhere else. An added superstar's name is now his record's, as for the others.
+REXCVAR_DEFINE_BOOL(wwe12_universe_news_added_names, true, "WWE12",
+                    "Universe: the news name an added superstar by his own name (false: the game's fixed "
+                    "texts for 12 numbers).");
+REX_EXTERN(__imp__sub_82559100);
+extern "C" REX_FUNC(sub_82559100) {
+  const u32 id = ctx.r4.u32;
+  if (REXCVAR_GET(wwe12_universe_news_added_names) && id < 512 && Wwe12AddedSuperstar(id)) {
+    ctx.r3.u64 = id;
+    __imp__sub_82A32618(ctx, base);  // (r3 = his name, as the game's own path returns it)
+    return;
+  }
+  __imp__sub_82559100(ctx, base);
+}
+
 namespace {
 // Our news texts (27068 / 27069 type 5, 27070 / 27071 type 6), for the news being drawn.
 u32 DraftNewsText(u32 id) {
