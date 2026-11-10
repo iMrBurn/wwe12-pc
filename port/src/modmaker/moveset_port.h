@@ -300,6 +300,57 @@ inline void Fill(const Game &w, const Game &s, const Bytes &pro, const std::map<
 
 }  // namespace detail
 
+// A stand-in for a move that couldn't be added (star_port.h): among `slot` (WWE '12 move number -> how many of its
+// rosters put it in that slot), the one whose name ends with the same word as `name` ("Running Leg Drop" -> a "... Drop"),
+// then has the most words alike, then is the most used; 0 if none ends so. Numbers and case don't count.
+inline int StandIn(const std::string &name, const std::map<int, int> &slot, const std::map<int, std::string> &names) {
+  auto words = [](const std::string &s) {
+    std::vector<std::string> out;
+    std::string w;
+    for (char c : s + " ") {
+      if (std::isalpha(static_cast<unsigned char>(c))) {
+        w += char(std::tolower(static_cast<unsigned char>(c)));
+        continue;
+      }
+      if (w.size() >= 2)
+        out.push_back(w);
+      w.clear();
+    }
+    return out;
+  };
+  const auto mine = words(name);
+  if (mine.empty())
+    return 0;
+  // (and done from the same place: "Running Leg Drop" found "Diving Fist Drop 4", from the top rope, 2026-11-10)
+  auto where = [](const std::vector<std::string> &ws) {
+    static const std::set<std::string> places = {"running", "diving", "springboard", "apron", "corner", "top", "rope",
+                                                 "ropes", "turnbuckle", "slingshot", "ladder", "table", "cage"};
+    std::set<std::string> out;
+    for (const auto &w : ws)
+      if (places.count(w))
+        out.insert(w);
+    return out;
+  };
+  const auto my_place = where(mine);
+  int best = 0;
+  std::pair<int, int> best_score{-1, -1};
+  for (const auto &[id, count] : slot) {
+    const auto it = names.find(id);
+    if (it == names.end())
+      continue;
+    const auto theirs = words(it->second);
+    if (theirs.empty() || theirs.back() != mine.back() || where(theirs) != my_place)
+      continue;
+    int alike = 0;
+    for (const auto &w : mine)
+      alike += std::count(theirs.begin(), theirs.end(), w) > 0;
+    const std::pair<int, int> score{alike, count};
+    if (score > best_score)
+      best_score = score, best = id;
+  }
+  return best;
+}
+
 namespace detail {
 
 inline bool g_in_order_only = false;  // (study tools: the slot map without its out-of-order pass)

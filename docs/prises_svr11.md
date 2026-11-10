@@ -440,3 +440,14 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   avec des prises ajoutées (sans cache : relire 100 Mo de cache prenait autant). **Pas encore vu en jeu.** Les packs
   de THQ n'ajoutent qu'une banque ZMOT (CA09, CA10), sans ZMVM, et leurs prises marchent : ceci n'est peut-être pas la
   correction du Gut Kick.
+
+## Une prise qui ne peut pas être ajoutée : un remplaçant de WWE '12 (1.3, 2026-11-10)
+
+- Avant, sa case gardait la prise du catcheur de base (Hogan 2K14 : le finisher de Ted DiBiase). Maintenant
+  (`moveset_port::StandIn`, appelé par `star_port.h`) : la prise de WWE '12 **que les rosters mettent dans cette case**
+  (donc jouable là) dont le nom finit par le même mot (« Drop », « Kick »…), **faite au même endroit** (en courant,
+  depuis la corde, dans le coin…), puis avec le plus de mots en commun, puis la plus utilisée ; aucune : la base, comme
+  avant. Hors jeu : Hogan 2K14 « Right Punch 2 » → « Cena Punch 2 » ; son Running Leg Drop n'a pas de remplaçant (les
+  finishers de WWE '12 n'ont aucun leg drop en courant ; sans la règle de l'endroit, « Diving Fist Drop 4 », depuis la
+  corde) : la base. AJ Styles 2K17 : 5 prises à ajouter, 3 faites sur un modèle, Lionsault 2 et Rope Hung Suplex sans
+  modèle ni remplaçant.

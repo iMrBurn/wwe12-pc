@@ -261,6 +261,7 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     moveset_port::detail::Game g12;
     moveset_port::detail::Load(w12, g12);
     std::map<int, std::set<int>> in_slot;  // slot -> move numbers WWE '12's rosters put there
+    std::map<int, std::map<int, int>> slot_counts;  // slot -> move number -> how many of WWE '12's rosters
     {
       std::map<int, std::map<int, int>> by_slot;  // slot -> hundred -> count
       for (const auto &[id, p] : g12.pro)
@@ -268,6 +269,7 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
           if (const int v = moveset_port::detail::U16(p, o); v > 0) {
             by_slot[int(o)][newmoves13::MotionOf(v) / 100]++;
             in_slot[int(o)].insert(v);
+            slot_counts[int(o)][v]++;
           }
       for (const auto &r : out.moves.rows)
         if (r.new_move && !prefer.count(r.from_id))
@@ -335,6 +337,21 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
         --out.moves.kept;
         ++out.moves.exact;
       }
+    // (a move that couldn't be added - no WWE '12 model of its kind, 2026-11-10: 2K14 Hogan's Running Leg Drop gave him
+    // his base Ted DiBiase's finisher -: in its slot the WWE '12 move of that slot closest by name instead, one WWE '12's
+    // rosters put there (so it plays there), its last word the same - "Drop", "Kick" -, then the most words alike, then
+    // the most used; none so named: the base's, as before)
+    for (auto &r : out.moves.rows) {
+      if (!r.new_move || r.added || !r.to.empty())
+        continue;
+      if (const int pick = moveset_port::StandIn(r.from, slot_counts[r.off], g12.names); pick > 0) {
+        r.to = g12.names.at(pick);
+        r.variant = true;
+        out.moves.moves.push_back({r.off, pick});
+        --out.moves.kept;
+        ++out.moves.variant;
+      }
+    }
   }
   // Its WWE '13 / 2K14-2K17 entrance (entrance13.h: WWE '12's format; 2K15-2K17's made so), when WWE '12 has none with
   // that number.
