@@ -304,7 +304,9 @@ u16 Wwe12RemotePadButtons() {
 
 // Each presented frame (present.cpp, before it takes the renderer's lock): the scripts' state,
 // and a requested shot of the frame being presented.
+void Wwe12FlashRecorderFrame(bd::gpu::GuestTexture *front_buffer);  // wwe12_flash_recorder.cpp (dev)
 void Wwe12RemoteOnPresent(bd::gpu::GuestTexture *front_buffer) {
+  Wwe12FlashRecorderFrame(front_buffer);
   if (!REXCVAR_GET(wwe12_remote_pad) && !Wwe12BenchmarkActive())
     return;
   const long long now = NowMs();
