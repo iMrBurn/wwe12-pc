@@ -1102,15 +1102,22 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       dirs.push_back(it->path());
   std::sort(dirs.begin(), dirs.end());
   std::vector<std::vector<uint8_t>> banners;
+  size_t ignored = 0;  // (enabled added arenas past the 35th)
   for (const auto &d : dirs) {
     std::vector<uint8_t> m, pac;
     if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m))
       continue;
     const std::string text(m.begin(), m.end());
-    if (Value(text, "slot") != "new" || Value(text, "base").empty() || !ReadHost(d / "arena" / "arena.pac", pac))
+    if (Value(text, "slot") != "new" || Value(text, "base").empty())
+      continue;
+    if (g_added.size() >= 35) {  // (the banner pack has 35 free textures: two pages)
+      ++ignored;
+      continue;
+    }
+    if (!ReadHost(d / "arena" / "arena.pac", pac))
       continue;
     Added a;
-    a.id = d.filename().string();
+    a.id = rex::path_to_utf8(d.filename());  // (not string(): it throws on a name outside the code page)
     a.name = Value(text, "name");
     a.base = u32(atoi(Value(text, "base").c_str()));
     // Its STG data: the EPAC's STG record at 0x800 = {"STG ", ..., +0x10 start (sectors), +0x14 size (256 bytes)}.
@@ -1192,9 +1199,10 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       }
     }
     g_added.push_back(a);
-    if (g_added.size() == 35)  // (the banner pack has 35 free textures)
-      break;
   }
+  // (said, not silent: a player saw only two pages of added arenas, 2026-11-10; the Mod Maker's CHECK MODS says it too)
+  if (ignored)
+    REXLOG_WARN("[arena pages] arena mods: 35 added arenas at most, {} ignored: turn some off", ignored);
   if (g_added.empty())
     return;
   for (auto &[stage, sv] : g_served) {

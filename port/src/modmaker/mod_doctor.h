@@ -227,10 +227,17 @@ class Page {
       }
       ec.clear();
     }
+    // (the game takes 35 added arenas at most - its banner pack has 35 free textures, two pages - and leaves the next
+    // ones out; "[arena pages] arena mods: 35 added arenas at most, N ignored" in its log. A player saw only two pages,
+    // 2026-11-10)
     if (added_arenas > 35)
-      problems_.push_back({1, fr ? "Arènes ajoutées" : "Added arenas",
-                           fr ? "Plus de 35 arènes ajoutées : les suivantes n'ont pas de bannière."
-                              : "Over 35 added arenas: the next ones have no banner.",
+      problems_.push_back({2, fr ? "Arènes ajoutées" : "Added arenas",
+                           fr ? "Plus de 35 arènes ajoutées (" + std::to_string(added_arenas) + ") : le jeu n'en prend "
+                                    "que 35 (deux pages), les " + std::to_string(added_arenas - 35) +
+                                    " suivantes n'apparaîtront pas. Désactivez-en quelques-unes dans le launcher."
+                              : "Over 35 added arenas (" + std::to_string(added_arenas) + "): the game takes 35 (two "
+                                    "pages), the next " + std::to_string(added_arenas - 35) +
+                                    " won't show. Turn some off in the launcher.",
                            "", {}});
     // (the game gives the added superstars the disc's 193 empty records, 100-372; past them, it no longer gives the
     // DLC ones, which stayed locked - not in Universe nor Create a Moveset, a freeze at the select, issue #60)
