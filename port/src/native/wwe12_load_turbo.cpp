@@ -346,6 +346,7 @@ bool BootFrame() {
       // drawn or not) left the game in its start-up screens most times, then an endless first load;
       // without the fast boot it starts every time. Small processors get the 1.2 start-up.
       g_boot = Boot::kDone;
+      g_boot_first_ms = 0;  // (no fast boot ran: Wwe12FastBootDone waits for the opening video)
       BD_INFO("[boot] {} usable logical processors (< {}): no fast boot, the usual start-up", threads,
               REXCVAR_GET(wwe12_fast_boot_min_threads));
       return false;
@@ -391,9 +392,16 @@ bool BootFrame() {
 }  // namespace
 
 // The start-up is over: the title screen is shown (or the fast boot is off).
+std::atomic<int64_t> g_opening_asked_ms{0};  // the opening video (start-up movie 2) asked: the title follows
 bool Wwe12FastBootDone() {
   const Boot b = g_boot.load();
-  return b == Boot::kDone || (b == Boot::kNotStarted && !BootWanted());
+  if (b != Boot::kDone && !(b == Boot::kNotStarted && !BootWanted()))
+    return false;
+  // The title screen is up: a fast boot ended, or (the usual start-up: small processors, fast boot off)
+  // the opening video was asked a second ago, or 60 s went by (intros played, something else).
+  const int64_t now = NowMs(), opening = g_opening_asked_ms.load(std::memory_order_relaxed);
+  return g_boot_first_ms.load() != 0 || (opening && now - opening >= 1000) ||
+         now - g_process_start_ms >= 60000;
 }
 
 // wwe12_intros.cpp: a start-up movie (0, 1 logo, 2 opening) is asked for the first time.
@@ -402,6 +410,7 @@ void Wwe12BootMovieAsked(u32 movie) {
   BD_INFO("[boot] start-up movie {} asked at {} ms", movie, now - g_process_start_ms);
   if (movie != 2)
     return;
+  g_opening_asked_ms.store(now, std::memory_order_relaxed);
   Boot expected = Boot::kTurbo;
   if (g_boot.compare_exchange_strong(expected, Boot::kSettle)) {
     g_boot_settle_ms = now;
