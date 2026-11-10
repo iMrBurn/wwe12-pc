@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <map>
 #include <set>
@@ -309,6 +310,54 @@ inline Bytes FullMipChains(const Bytes &bundle) {
   return changed ? svrfmt::BundleWrite(tex) : Bytes();
 }
 
+// The eyes (the mesh drawn with yCh_Reflect) given the base's eye parameters, their texture slots found by name in the
+// ported model's list (added when missing). 2K14's eye has a reflection colour g_f4Ref_COL (0.26, 0.26, 0.42) and no
+// cube light (g_mCubeLPrm) where all 72 eyes of WWE '12 read have 0 and the cube light: 2K14 Hogan's and Cesaro's eyes
+// came out glowing white in the game (2026-11-10). "cube_light" is none of the superstar's pictures: the game's own,
+// found by its name like "cubemap_eyes".
+inline void EyeAsBase(svrfmt::Model &ms, const svrfmt::Model &mb) {
+  const svrfmt::Mesh *base_eye = nullptr;
+  for (const auto &m : mb.meshes)
+    if (m.shader == "yCh_Reflect")
+      base_eye = &m;
+  if (!base_eye)
+    return;
+  auto lower = [](std::string s) {
+    for (auto &c : s)
+      c = char(std::tolower(uint8_t(c)));
+    return s;
+  };
+  for (auto &m : ms.meshes) {
+    if (m.shader != "yCh_Reflect")
+      continue;
+    std::vector<svrfmt::Param> params = base_eye->params;
+    bool ok = true;
+    for (auto &p : params) {
+      if (p.type != 0x0F)
+        continue;
+      if (p.value.size() < 4) {
+        ok = false;
+        break;
+      }
+      const uint32_t slot = uint32_t(p.value[0]) << 24 | uint32_t(p.value[1]) << 16 | uint32_t(p.value[2]) << 8 | p.value[3];
+      if (slot >= mb.textures.size()) {
+        ok = false;
+        break;
+      }
+      const std::string name = lower(mb.textures[slot]);
+      size_t at = 0;
+      while (at < ms.textures.size() && lower(ms.textures[at]) != name)
+        ++at;
+      if (at == ms.textures.size())
+        ms.textures.push_back(mb.textures[slot]);
+      for (int i = 0; i < 4; ++i)
+        p.value[size_t(i)] = uint8_t(at >> (24 - 8 * i));
+    }
+    if (ok)
+      m.params = std::move(params);
+  }
+}
+
 // The WWE '13 attire (an "EMD " entry of its chNNN.pac) over the base's (WWE '12): the base attire node changed in
 // place. False (and why) when it can't.
 inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep, std::string *why) {
@@ -365,6 +414,8 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
       return false;
     if (from == 0 && rep)
       rep->meshes = int(ms.meshes.size());
+    if (from == 0)
+      EyeAsBase(ms, mb);
     svrfmt::ArchiveReplace(*b, svrfmt::JboyWrite(ms));
   }
   // Its extra models (JBOY children 0x10-0xff: WWE '13 Mankind's Mr. Socko "sockko" 0x1c, his Mandible Claw's; WWE '12
