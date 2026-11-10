@@ -30,7 +30,7 @@ Priorité = gain pour les joueurs ÷ risque. Durées = heures de travail hors te
 | 7 | **Finitions visuelles** (§5, look actuel gardé) | moyen | faible | 3 – 4 h | oui (goût) |
 | 8 | **Bouton « Vérifier le jeu »** (§6d) : fichiers attendus présents, tailles, version | moyen | faible | 2 h | non |
 | 9 | Textes EN/FR relus, libellés CONTRÔLES en français (déjà noté) | faible-moyen | très faible | 1 – 1,5 h | relecture iel |
-| 10 | Page ROSTERS | — | — | **1.3**, pas maintenant | — |
+| 10 | Page ROSTERS | — | — | **1.3 : FAIT 2026-11-10** (exhibition seulement, voir docs/launcher_rosters.md §9) | — |
 
 Total hors finitions : **≈ 17 – 24 h** ; avec les finitions : **≈ 20 – 28 h**. Ordre conseillé : 2 → 4 → 5 → 1 → 3 → 6 → 8 → 9 →
 7 en dernier (le design touche tout : le faire après, pour ne pas refaire le confort Deck deux fois ; mais le **choix** de la
@@ -149,3 +149,10 @@ e. **Textes** (1 – 1,5 h) : relecture EN/FR de tout `Texts`, libellés des tou
 1. (réglé : look actuel gardé, finitions seulement)
 2. Ordre : je commence par « État du jeu + messages + diagnostic » (séance 1, sans risque) ?
 3. Grande interface : automatique sur Deck seulement, ou case dans RÉGLAGES pour tout le monde ?
+
+## 9. État au 2026-11-10 (1.3, tout en commits locaux)
+
+- **Fait** : page ROSTERS visible pour tous (marque de l'exhibition seulement, noms lus dans `chEtc.pac`, testée en jeu sur copie) ;
+  bouton « Performance test » actif (1 passe ~3 min 30, panneau validé par l'utilisateur, conseils seulement par « Appliquer les réglages
+  conseillés » avec annulation, jamais sur Steam Deck / petit PC) ; avertissement disque dur (HDD) sur PLAY ; page MUSIC corrigée.
+- **Pas fait, seulement sur demande de l'utilisateur** : pastilles d'état sur PLAY, espacement régulier, icônes simples.
