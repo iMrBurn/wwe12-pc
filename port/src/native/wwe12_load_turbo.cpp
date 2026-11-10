@@ -320,6 +320,12 @@ bool BootFrame() {
 }
 }  // namespace
 
+// The start-up is over: the title screen is shown (or the fast boot is off).
+bool Wwe12FastBootDone() {
+  const Boot b = g_boot.load();
+  return b == Boot::kDone || (b == Boot::kNotStarted && !BootWanted());
+}
+
 // wwe12_intros.cpp: a start-up movie (0, 1 logo, 2 opening) is asked for the first time.
 void Wwe12BootMovieAsked(u32 movie) {
   const int64_t now = NowMs();

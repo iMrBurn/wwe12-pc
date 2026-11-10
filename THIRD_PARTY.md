@@ -37,6 +37,10 @@ Projets dont ce portage s'inspire :
   méthode uniquement. Android (README du dépôt, 2026-11-07) : la variable `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1`
   pour les pilotes Turnip sous HyperOS (case facultative du launcher, `DriverManager.java`) et l'idée du retour au
   pilote du téléphone quand un pilote personnalisé échoue.
+  Benchmark (1.3) : sa méthode du match de test (un trajet fixe dans les menus, puis une vérification du
+  match obtenu, `test_match.cpp`) est reprise en méthode seulement dans `port/src/native/wwe12_benchmark.cpp`
+  (scénario `hiac6`, trajet enregistré, vérification au départ du match), ainsi que l'idée de sa condition
+  « faible » (`opt_bench.ps1` : cœurs limités et un fil occupé à côté).
 - [wwe2k14-recomp](https://github.com/Jarrodfeng/wwe2k14-recomp) (recomp de WWE 2K14, Jarrodfeng) :
   licence BSD 3 clauses (vérifiée sur le dépôt le 2026-10-31) ; accord oral de l'auteur (Discord, 2026-10-31) pour s'inspirer de ses mises à
   jour. Idées Android étudiées dans `docs/android_optimisation_jarrod.md` (cadence 90/120 Hz, résolution

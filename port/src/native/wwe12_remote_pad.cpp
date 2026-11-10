@@ -389,3 +389,10 @@ void Wwe12RemoteOnPresent(bd::gpu::GuestTexture *front_buffer) {
 
 // The scripts' state now (wwe12_benchmark.cpp).
 const char *Wwe12RemoteState() { return g_state.load(); }
+
+// A match is being loaded without an entrance before it (the benchmark's fixed match): the
+// loading screen that ends it counts as the end of the entrances.
+void Wwe12RemoteExpectMatch() {
+  g_saw_scene = true;
+  g_loaded_after_scene = false;
+}

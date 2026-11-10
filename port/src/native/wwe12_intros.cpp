@@ -29,6 +29,8 @@ REX_EXTERN(__imp__sub_82A8C070);
 
 u16 Wwe12RemotePadButtons();  // wwe12_remote_pad.cpp (dev)
 void Wwe12BootMovieAsked(u32 movie);  // wwe12_load_turbo.cpp (fast boot)
+void Wwe12BenchmarkRecordPad(u16 buttons, int16_t stick_x, int16_t stick_y, bool loading);  // wwe12_benchmark.cpp
+bool Wwe12LoadingScreenUp();  // wwe12_load_turbo.cpp
 
 namespace {
 // Window (steady clock, ms) during which player 1's Start is held down.
@@ -66,6 +68,9 @@ extern "C" REX_FUNC(sub_82A8C070) {
   __imp__sub_82A8C070(ctx, base);
   if (user != 0 || !state)
     return;
+  if (ctx.r3.u32 == 0)  // a pad is there: its own buttons, for the benchmark's route recorder (dev)
+    Wwe12BenchmarkRecordPad(bd::mem::load<u16>(state + 4), bd::mem::load<int16_t>(state + 8),
+                            bd::mem::load<int16_t>(state + 10), Wwe12LoadingScreenUp());
   const long long now = NowMs();
   u16 press = Wwe12RemotePadButtons();
   constexpr u16 kStart = 0x0010;
