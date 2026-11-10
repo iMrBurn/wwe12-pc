@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "game_process.h"
+#include "path_utf8.h"
 #include "imgui.h"
 #include "stfs_check.h"
 
@@ -503,7 +504,7 @@ class Manager {
       if (!e.is_directory(ec))
         continue;
       Backup b;
-      b.name = e.path().filename().string();
+      b.name = pathutil::Utf8(e.path().filename());
       b.when = b.name;
       if (b.name.size() >= 19) {  // 2026-10-13_10-29-42 -> 2026-10-13 10:29:42
         b.when = b.name.substr(0, 10) + " " + b.name.substr(11, 8);

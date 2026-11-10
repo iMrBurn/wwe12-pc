@@ -46,6 +46,7 @@
 #include <vector>
 
 #include "game_process.h"
+#include "path_utf8.h"
 #include "imgui.h"
 #include "inflate.h"
 
@@ -461,7 +462,7 @@ class Manager {
     std::error_code ec;
     std::vector<fs::path> dirs;
     for (fs::directory_iterator k(root_, ec), end; !ec && k != end; k.increment(ec)) {
-      if (!k->is_directory(ec) || k->path().filename().string()[0] == '.')
+      if (!k->is_directory(ec) || k->path().filename().native().rfind(L'.', 0) == 0)
         continue;
       for (fs::directory_iterator m(k->path(), ec), e2; !ec && m != e2; m.increment(ec))
         if (m->is_directory(ec))
@@ -475,8 +476,8 @@ class Manager {
       const std::string text((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
       Mod m;
       m.dir = d;
-      m.kind = d.parent_path().filename().string();
-      m.id = d.filename().string();
+      m.kind = pathutil::Utf8(d.parent_path().filename());
+      m.id = pathutil::Utf8(d.filename());
       m.name = Value(text, "name");
       if (m.name.empty())
         m.name = m.id;
@@ -627,7 +628,7 @@ class Manager {
     }
     std::string id = Value(text, "id");
     if (id.empty())
-      id = zip_file.stem().string();
+      id = pathutil::Utf8(zip_file.stem());
     id = SafeId(id);
 
     // Unpack beside, then swap in (a mod with the same id is replaced; its "disabled" is kept).

@@ -29,6 +29,7 @@
 
 #include "changelog.h"
 #include "diagnostics.h"
+#include "path_utf8.h"
 #include "game_process.h"
 #include "keybinds.h"
 #include "mods.h"
@@ -1368,7 +1369,7 @@ void PageModsFolder(const Texts &t) {
       continue;
     const std::u8string rel = fs::relative(it->path(), mods, ec).generic_u8string();
     if (!g_mods.IsDeployed(std::string(rel.begin(), rel.end())))
-      files.push_back(fs::relative(it->path(), mods, ec).string());
+      files.push_back(pathutil::Utf8(fs::relative(it->path(), mods, ec)));
   }
   if (ImGui::Button(t.open_mods))
     OpenFolder(mods);
@@ -1553,7 +1554,7 @@ fs::path MakeReport() {
     return fs::last_write_time(a, e1) > fs::last_write_time(b, e1);
   });
   for (size_t i = 0; i < logs.size() && i < 3; ++i)
-    file("logs/" + logs[i].filename().string(), logs[i]);
+    file("logs/" + pathutil::Utf8(logs[i].filename()), logs[i]);
   for (const char *name : {"crash_trace.txt", "hang_trace.txt", "stderr.txt"})
     file(std::string("traces/") + name, DocumentsDir() / "wwe12" / "logs" / name);
   PWSTR desk = nullptr;

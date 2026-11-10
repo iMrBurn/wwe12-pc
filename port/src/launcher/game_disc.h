@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+#include "path_utf8.h"
+
 namespace disc {
 
 namespace fs = std::filesystem;
@@ -184,7 +186,7 @@ class GameDisc {
       std::error_code ec;
       for (fs::directory_iterator it(folder_ / dir, ec), end; !ec && it != end; it.increment(ec))
         if (it->is_regular_file(ec))
-          names.push_back(it->path().filename().string());
+          names.push_back(pathutil::Utf8(it->path().filename()));
       return names;
     }
     Item d;
@@ -202,7 +204,7 @@ class GameDisc {
       std::error_code ec;
       for (fs::directory_iterator it(folder_ / dir, ec), end; !ec && it != end; it.increment(ec))
         if (it->is_directory(ec))
-          names.push_back(it->path().filename().string());
+          names.push_back(pathutil::Utf8(it->path().filename()));
       return names;
     }
     Item d;
