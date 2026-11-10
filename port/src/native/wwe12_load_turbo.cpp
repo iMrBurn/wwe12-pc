@@ -425,8 +425,14 @@ bool Wwe12LoadTurboHideNextFrame() {
   Wwe12Ag2dProbeTick();
   if (!REXCVAR_GET(wwe12_load_turbo_skip_draws))
     return false;
-  if (g_boot.load() != Boot::kDone && BootFrame())
-    return true;
+  // The start-up's frames are hidden but still DRAWN: with their draws skipped the game never left its
+  // start-up screens on 4 and 2 logical processors (tests of 2026-11-10, turbo or not: the opening video
+  // never asked, then an endless first load; drawn, the same start-up reached the title). Video::Present
+  // still keeps them off screen (Wwe12LoadTurboSkipPresent).
+  if (g_boot.load() != Boot::kDone) {
+    BootFrame();
+    return false;
+  }
   return TurboFrame();
 }
 
