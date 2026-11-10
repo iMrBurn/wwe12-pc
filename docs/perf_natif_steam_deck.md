@@ -560,6 +560,25 @@ menu principal)**
   12 - 20 h).
 - La méthode de Kaiko (trajet + réécriture) : **6 - 9 h** (Gameplay), plus le trajet de Rendu.
 
+**7. Étape 0 faite (Rendu, 2026-11-10, sonde `wwe12_bench_probe`, HIAC Armageddon à 6 lancé à la main, iGPU Intel)**
+- `sub_82449428` n'est **pas** sur le chemin normal de PLAY : jamais appelée.
+- **Passage au match** : `sub_822B51A0` met l'objet de la fiche (`sub_8267CF38`) +12456 = 2, vide le mot global
+  0x8318B7E0, alloue une tâche de 208 octets (`sub_827D2548(208)` ou `sub_827D3600(13)`) et la construit avec
+  `sub_821D5430` = constructeur de la tâche **`CGameMainSequence`** (nom à 0x82002EB0, vtable posée à +0 ; elle
+  fait elle-même la demande de scène 40 / 3 et objet+12456). `sub_822B51A0` est appelée en 0x822B51FC (chemin
+  vu au test) ; `sub_822B5210` la précède d'une copie de 2 064 octets (`sub_827D3808`) : sans appelant direct
+  (pointeur de fonction), sans doute « refaire le match ».
+- **Fiche du match** (0x8317C850) au moment du passage : déjà remplie, +0 = 53.
+- **Catcheurs choisis** : tableau de places de **48 octets au début du heap 0** (heap 0 = 0xAEDDFE00 ; place 0 à
+  0xAEDDFEA4, numéro x 100 + tenue à +16 ; place 1 à +48…), copie identique à 0xAEDE06B4, 3e structure à
+  0xAEDE1D58 (pas 0x44). La liste de chargement (0xAEECBC20, 80 octets : +0 numéro x 100 + tenue, +5 place,
+  +6 rôle ; arbitre et extras aux places 7 et 8) en est tirée.
+- **Stage** de l'objet de mise en place (`sub_828A9898()` +88) : 0 pour ce match.
+- **Reste pour l'étape 1** : l'adresse du tableau est-elle la même à chaque lancement (heaps créés dans le même
+  ordre : probable, à vérifier) ; qui remplit ces places et la fiche (piège d'écriture) ; appeler
+  `sub_822B51A0` depuis le menu principal laisse-t-il la séquence des menus en place (elle doit se terminer comme
+  à la sortie de l'écran de choix) ; le stage et l'arène.
+
 ## Idées de Jarrod v0.2.19 (Rendu, 2026-11-06, lecture seule, pour la 1.2)
 
 Source : les notes de version de wwe2k14-recomp v0.2.15 à v0.2.19 (Jarrodfeng, BSD-3, accord oral
