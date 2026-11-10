@@ -66,7 +66,11 @@ REXCVAR_DEFINE_STRING(wwe12_benchmark_scenario, "player_match", "WWE12",
 // to the same match. The route is recorded once by hand (wwe12_benchmark_record_route) and set
 // here; the remote pad's words (buttons, wait<ms>, until<state>). The check at the match start
 // (sub_822B51A0) makes a wrong route "failed: wrong match" instead of a measure of something else.
-REXCVAR_DEFINE_STRING(wwe12_benchmark_route, "", "WWE12",
+// Recorded on 2026-11-10 (fresh data folder, version 1.3 in progress): the first-start prompts, PLAY, the
+// Armageddon Hell in a Cell, 6 superstars and their attires, the default arena, entrances off.
+REXCVAR_DEFINE_STRING(wwe12_benchmark_route,
+                      "START wait10000 A wait1500 LEFT wait1500 A wait5000 B wait1500 A wait1500 DOWN wait1500 DOWN wait1500 DOWN wait1500 DOWN wait1500 A wait1500 DOWN wait1500 A wait1533 DOWN wait1500 DOWN wait1500 DOWN wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait4500 DOWN wait1500 A",
+                      "WWE12",
                       "Benchmark hiac6: the remote pad's words from the title screen to the match "
                       "loading (recorded with wwe12_benchmark_record_route).");
 REXCVAR_DEFINE_BOOL(wwe12_benchmark_record_route, false, "WWE12",
@@ -454,7 +458,9 @@ std::string Wwe12BenchmarkTakeScript() {
     }
     BD_INFO("[benchmark] fixed match {}: route {}", std::string(REXCVAR_GET(wwe12_benchmark_scenario)),
             route);
-    return "wait2000 " + route + " untilloading:120 untilscene:900 markentrance untilmatch:600" + measure;
+    // (no entrances in the recorded match: the check at the match start tells the remote pad that the
+    // next loading screen ends in the match)
+    return "wait2000 " + route + " untilmatch:600" + measure;
   }
   // The player picks the match (pressing A by itself got lost in the first-start menus,
   // 2026-11-06): the benchmark measures from the first entrance.
@@ -571,7 +577,7 @@ extern "C" REX_FUNC(sub_822B51A0) {
     }
     BD_INFO("[benchmark] match start: type {} superstars {} ({})", type, superstars, ids);
     if (type == kArmageddonHiac && superstars == 6) {
-      g_fixed_started.store(true, std::memory_order_relaxed);  // (entrances follow: measured as usual)
+      Wwe12BenchmarkFixedMatchStarted();
     } else {
       static char why[160];
       std::snprintf(why, sizeof(why), "wrong match: type %u (want %u), %u superstars (want 6)", unsigned(type),
