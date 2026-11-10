@@ -869,11 +869,14 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       }
       // Its own name and portraits (attire_name=, attire/SSFA_SD.dds ... SSFC_HD.dds), if it gives them.
       at.label = Value(text, "attire_name");
+      // (outfit_only=1: only its entrance outfit counts, its attire is the one as made, left to the other mods)
+      at.outfit_only = Value(text, "outfit_only") == "1" && !at.added;
       for (int hd = 0; hd < 2; ++hd)
         for (int k = 0; k < 3; ++k)
           ReadHost(d / "attire" / (std::string("SSF") + char('A' + k) + (hd ? "_HD.dds" : "_SD.dds")), at.render[hd][k]);
-      REXLOG_INFO("[superstar mods] attire mod {}: superstar {}, attire {}{}{}{}", at.key, at.superstar, at.entry,
-                  at.added ? " (a new one)" : "", at.label.empty() ? "" : ", named \"" + at.label + "\"",
+      REXLOG_INFO("[superstar mods] attire mod {}: superstar {}, attire {}{}{}{}{}", at.key, at.superstar, at.entry,
+                  at.added ? " (a new one)" : "", at.outfit_only ? " (its entrance outfit only)" : "",
+                  at.label.empty() ? "" : ", named \"" + at.label + "\"",
                   at.render[1][1].empty() ? "" : ", its own render");
       attires.push_back(std::move(at));
     }

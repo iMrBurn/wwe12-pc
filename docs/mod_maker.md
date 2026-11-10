@@ -1483,3 +1483,18 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
   Ses 7 agents de sécurité (personne 19202) ne peuvent pas être placés par WWE '12 : NEW SUPERSTAR le dit. Pas vu en jeu.
 - Pour plus tard (1.2) : personnes des entrées 2K visibles, écrans VS et plaques exacts des arènes portées, vidéos de
   l'arène NXT 2K14 sur les bons écrans, au-delà de 55 catcheurs.
+
+## Tenue d'entrée d'une tenue, à soi (1.3, 2026-11-10)
+
+- **Idée d'un joueur** : mettre une tenue d'entrée (veste, peignoir : Cody Rhodes « American Dream ») sur une tenue d'un
+  catcheur AJOUTÉ ; avant, seulement la tenue d'entrée d'une tenue portée, pour les catcheurs du jeu.
+- **Mod Maker**, page CATCHEURS, section « Tenue d'entrée de cette tenue » (`superstar_page.h` DrawEntranceOutfit) :
+  pour toute tenue qui a sa place de tenue d'entrée (`000NNNA4` à côté de `000NNNA2`), catcheur du jeu ou ajouté.
+  Source : une autre de ses tenues (copie), ou une tenue d'un autre jeu (Mes disques de jeu ou un fichier) portée sur
+  sa tenue d'entrée (`port_svr` / `port13_star` PortAttire). Aperçu 3D (« Voir la tenue d'entrée en 3D »), réduite à
+  la taille de la place d'origine comme une tenue. Le FBX comme source viendra avec l'import FBX des tenues.
+- **Mod** : une tenue (`type=attire`) dont `attire.pac` a la tenue telle quelle + la tenue d'entrée ; si la tenue
+  n'est pas changée, le manifeste dit `outfit_only=1` : le jeu (`superstar_pack.h`, `wwe12_superstar_mods.cpp`) ne
+  met alors que la tenue d'entrée et laisse la tenue aux autres mods. Un jeu 1.2.0 ignore la clé et remet la tenue
+  telle quelle (sans dommage, sauf si un autre mod change cette même tenue).
+- **État** : vérifié par la syntaxe seulement (pas de build, pas d'essai en jeu).

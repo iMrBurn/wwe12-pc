@@ -104,6 +104,7 @@ class Page {
     if (star_ < 0 || attires_.empty() || !loaded_)
       return;
     DrawPortSvr(fr, red, green);
+    DrawEntranceOutfit(fr, red, green);
 
     auto &texs = edit_.Textures();
     int changed = 0;
@@ -195,7 +196,7 @@ class Page {
     ImGui::EndDisabled();
     // His entrance outfit of this attire (kind 4: Cena's cap, Undertaker's coat and hat): with a ported attire, the
     // game would still dress him in it for the entrance (a player's report, 2026-11-06, points 12-13).
-    if (ported_)
+    if (ported_ && outfit_src_.empty())
       ImGui::Checkbox(outfit_ported_ ? (fr ? "Remplacer aussi sa tenue d'entrée par la sienne dans son jeu (portée aussi)"
                                            : "Replace his entrance outfit too, with his own from his game (ported too)")
                                      : (fr ? "Remplacer aussi sa tenue d'entrée (casquette, veste, chapeau...) par celle-ci"
@@ -235,7 +236,7 @@ class Page {
     DrawRenderFromGame(fr);
     ImGui::SameLine();
     ImGui::BeginDisabled((changed == 0 && !ported_ && !edit_.MaterialsChanged() && !as_new_ && !attire_label_[0] &&
-                          render_[1][1].empty()) ||
+                          render_[1][1].empty() && outfit_src_.empty()) ||
                          game::IsRunning());
     if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
       Make(fr, mods);
@@ -393,6 +394,7 @@ class Page {
     for (const auto &[group, name] : probe.Sections())
       attires_.push_back(name);
     attire_ = 0;
+    ClearOutfit();
     snprintf(name_, sizeof(name_), "%s", stars_[star_].name.c_str());
     OpenAttire(fr);
   }
@@ -401,6 +403,8 @@ class Page {
     loaded_ = false;
     ported_ = false;
     outfit_ported_ = false;
+    if (outfit_attire_ != attire_)  // (kept when the same attire is opened again: another port of it)
+      ClearOutfit();
     svr_note_.clear();
     thumbs_.clear();
     selected_ = -1;
@@ -621,6 +625,216 @@ class Page {
     svr_note_ = b;
   }
 
+  // The entrance outfit of the attire open (kind 4, "000NNNA2" -> "000NNNA4", worn only during his entrance: a jacket,
+  // a robe), his own one chosen here: another attire of his, or an attire of another game (SvR, WWE '13, 2K) ported
+  // over it. For the game's superstars and the added ones alike (a player's idea, 2026-11-10: Cody Rhodes' "American
+  // Dream" robe over his ring attire; before, only a ported attire's own outfit, for the game's superstars). Unless
+  // the attire is changed too, the mod gives that outfit only (manifest outfit_only=1): his attire stays his.
+  void DrawEntranceOutfit(bool fr, const ImVec4 &red, const ImVec4 &green) {
+    if (!ImGui::CollapsingHeader(fr ? "Tenue d'entrée de cette tenue (veste, peignoir...)"
+                                    : "Entrance outfit of this attire (jacket, robe...)"))
+      return;
+    const int oi = OutfitIndex();
+    if (oi < 0) {
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextDisabled("%s", fr ? "Cette tenue n'a pas de tenue d'entrée dans son fichier (pas de « ...4 » à côté de "
+                                     "son nom) : le jeu ne lui en met pas."
+                                   : "This attire has no entrance outfit in its file (no \"...4\" beside its name): the "
+                                     "game puts none on it.");
+      ImGui::PopTextWrapPos();
+      return;
+    }
+    if (as_new_) {
+      ImGui::TextDisabled("%s", fr ? "Pas pour une nouvelle tenue : décochez « En nouvelle tenue »."
+                                   : "Not for a new attire: untick \"As a new attire\".");
+      return;
+    }
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextWrapped(fr ? "Portée seulement pendant son entrée, à la place de %s. Prenez une autre de ses tenues, ou "
+                            "une tenue d'un autre jeu portée dessus. Le mod ne donne que cette tenue d'entrée, sauf si "
+                            "vous changez aussi la tenue."
+                          : "Worn only during his entrance, in place of %s. Take another of his attires, or an attire "
+                            "of another game ported over it. The mod gives that entrance outfit only, unless you change "
+                            "the attire too.",
+                       attires_[size_t(oi)].c_str());
+    ImGui::PopTextWrapPos();
+    // 1. Another attire of his (the same skeleton: a plain copy).
+    {
+      char label[64];
+      snprintf(label, sizeof(label), "%s", fr ? "Choisir..." : "Choose...");
+      if (outfit_from_own_ && outfit_idx_ >= 0 && outfit_idx_ < int(attires_.size()))
+        snprintf(label, sizeof(label), fr ? "Tenue %d  (%s)" : "Attire %d  (%s)", outfit_idx_ + 1, attires_[size_t(outfit_idx_)].c_str());
+      ImGui::SetNextItemWidth(260);
+      if (ImGui::BeginCombo(fr ? "Une autre de ses tenues##outfit_own" : "Another of his attires##outfit_own", label)) {
+        for (int i = 0; i < int(attires_.size()); ++i) {
+          if (i == oi)
+            continue;
+          snprintf(label, sizeof(label), fr ? "Tenue %d  (%s)" : "Attire %d  (%s)", i + 1, attires_[size_t(i)].c_str());
+          if (ImGui::Selectable(label, outfit_from_own_ && i == outfit_idx_)) {
+            ClearOutfit();
+            outfit_src_ = file_;
+            outfit_idx_ = i;
+            outfit_attire_ = attire_;
+            outfit_from_own_ = true;
+            outfit_ok_ = true;
+            outfit_note_ = fr ? "Sa tenue d'entrée sera une copie de cette tenue." : "His entrance outfit will be a copy of that attire.";
+            view_stale_ = true;
+          }
+        }
+        ImGui::EndCombo();
+      }
+    }
+    // 2. An attire of another game (My game discs, or a file), ported over his entrance outfit.
+    ImGui::SetNextItemWidth(160);
+    if (discs_ && ImGui::BeginCombo("##outfit_game", outfit_game_ ? GameName(outfit_game_) : (fr ? "Autre jeu..." : "Other game..."))) {
+      for (const auto &[title, name] : kGames)
+        if (!discs_->PathOf(title).empty() && ImGui::Selectable(name, title == outfit_game_) && title != outfit_game_) {
+          outfit_game_ = title;
+          outfit_pick_name_.clear();
+          ListGame(outfit_game_, outfit_list_);
+        }
+      ImGui::EndCombo();
+    }
+    if (outfit_game_) {
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(300);
+      if (ImGui::BeginCombo(fr ? "Catcheur##outfit_star" : "Superstar##outfit_star", outfit_pick_name_.c_str(), ImGuiComboFlags_HeightLarge)) {
+        for (const auto &[file, nm] : outfit_list_)
+          if (ImGui::Selectable((nm + "  (" + file + ")##outfit").c_str())) {
+            disc::GameDisc d;
+            Bytes b;
+            if (d.OpenPath(discs_->PathOf(outfit_game_)) && d.Read("pac/ch/" + file, b)) {
+              outfit_pick_name_ = nm;
+              LoadOutfitSource(fr, std::move(b), outfit_game_);
+            } else {
+              outfit_ok_ = false;
+              outfit_note_ = (fr ? "Lecture impossible : " : "Could not read: ") + file;
+            }
+          }
+        ImGui::EndCombo();
+      }
+    }
+    if (ImGui::Button(fr ? "Ou un fichier (chNNN.pac)...##outfit" : "Or a file (chNNN.pac)...##outfit")) {
+      const fs::path p = arena_page::PickOpen(fr, true);
+      if (!p.empty()) {
+        std::ifstream f(p, std::ios::binary);
+        outfit_pick_name_.clear();
+        LoadOutfitSource(fr, Bytes(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()), 0);
+      }
+    }
+    if (!outfit_file_attires_.empty()) {
+      ImGui::SameLine();
+      char label[64];
+      snprintf(label, sizeof(label), fr ? "Tenue %d  (%s)" : "Attire %d  (%s)", outfit_file_pick_ + 1,
+               outfit_file_attires_[size_t(outfit_file_pick_)].c_str());
+      ImGui::SetNextItemWidth(220);
+      if (ImGui::BeginCombo("##outfit_attire", label)) {
+        for (int i = 0; i < int(outfit_file_attires_.size()); ++i) {
+          snprintf(label, sizeof(label), fr ? "Tenue %d  (%s)" : "Attire %d  (%s)", i + 1, outfit_file_attires_[size_t(i)].c_str());
+          if (ImGui::Selectable(label, i == outfit_file_pick_))
+            outfit_file_pick_ = i;
+        }
+        ImGui::EndCombo();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button(fr ? "Porter sur sa tenue d'entrée" : "Port onto his entrance outfit"))
+        PortOutfit(fr, oi);
+    }
+    if (!outfit_note_.empty()) {
+      ImGui::PushTextWrapPos(0);
+      ImGui::TextColored(outfit_ok_ ? green : red, "%s", outfit_note_.c_str());
+      ImGui::PopTextWrapPos();
+    }
+    if (!outfit_src_.empty()) {
+      if (ImGui::Checkbox(fr ? "Voir la tenue d'entrée en 3D" : "See the entrance outfit in 3D", &outfit_view_))
+        view_stale_ = true;
+      ImGui::SameLine();
+      if (ImGui::SmallButton(fr ? "Retirer##outfit" : "Remove##outfit")) {
+        ClearOutfit();
+        view_stale_ = true;
+      }
+    }
+  }
+
+  // An attire file of another game for his entrance outfit (an EPK8 of "EMD " entries, any names; 2K17's an HSPC of
+  // SHDCs), as LoadSvrBytes.
+  void LoadOutfitSource(bool fr, Bytes file, uint32_t from) {
+    outfit_file_ = std::move(file);
+    outfit_file_from_ = from;
+    outfit_file_attires_.clear();
+    outfit_file_kids_.clear();
+    outfit_file_pick_ = 0;
+    outfit_note_.clear();
+    svrfmt::Archive a;
+    std::string why;
+    if (outfit_file_.empty() || !svrfmt::ArchiveOpen(outfit_file_, a, &why)) {
+      outfit_ok_ = false;
+      outfit_note_ = (fr ? "Fichier illisible : " : "Unreadable file: ") + why;
+      return;
+    }
+    outfit_file_hspc_ = a.root.kind == svrfmt::ArcKind::Hspc;
+    for (size_t i = 0; i < a.root.kids.size(); ++i) {
+      const auto &k = a.root.kids[i];
+      if (outfit_file_hspc_ ? svrfmt::ArchiveKindOf(k) == "SHDC" : k.group == "EMD ") {
+        outfit_file_attires_.push_back(outfit_file_hspc_ ? "2K17" : k.name);
+        outfit_file_kids_.push_back(i);
+      }
+    }
+    if (outfit_file_attires_.empty()) {
+      outfit_ok_ = false;
+      outfit_note_ = fr ? "Ce n'est pas un fichier de catcheur." : "Not a superstar file.";
+    }
+  }
+
+  // The attire picked in that file, ported over his entrance outfit (entry `oi` of his file; as PortSvr).
+  void PortOutfit(bool fr, int oi) {
+    const uint32_t from = outfit_file_from_;
+    const bool w13 = outfit_file_hspc_ || from == 0x545108B4 || from == 0x545408B2 || from == 0x545408B6 ||
+                     from == 0x315A07D2 || from == 0x545408BA;
+    svrfmt::Archive s, w;
+    std::string why;
+    port_svr::Report rep;
+    port13_star::Report rep13;
+    if (size_t(outfit_file_pick_) >= outfit_file_kids_.size() || !svrfmt::ArchiveOpen(outfit_file_, s, &why) ||
+        !svrfmt::ArchiveOpen(file_, w, &why) || size_t(oi) >= w.root.kids.size() ||
+        !(w13 ? port13_star::PortAttire(s.root.kids[outfit_file_kids_[size_t(outfit_file_pick_)]], w.root.kids[size_t(oi)], &rep13, &why)
+              : port_svr::PortAttire(s.root.kids[outfit_file_kids_[size_t(outfit_file_pick_)]], w.root.kids[size_t(oi)], &rep, &why,
+                                     disc_ ? &hair_donor::Collision(*disc_) : nullptr))) {
+      outfit_ok_ = false;
+      outfit_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
+      return;
+    }
+    svrfmt::ArchiveTouch(w.root);
+    Bytes out = svrfmt::ArchiveSave(w);
+    arena_edit::Arena probe;
+    if (!probe.Load(out, &why, size_t(oi))) {
+      outfit_ok_ = false;
+      outfit_note_ = (fr ? "Portage illisible : " : "Unreadable port: ") + why;
+      return;
+    }
+    outfit_src_ = std::move(out);
+    outfit_idx_ = oi;
+    outfit_attire_ = attire_;
+    outfit_from_own_ = false;
+    outfit_ok_ = true;
+    outfit_view_ = true;
+    view_stale_ = true;
+    char b[200];
+    snprintf(b, sizeof(b), fr ? "Tenue d'entrée portée : %d maillages convertis. Voyez-la en 3D, puis créez le mod ci-dessous."
+                              : "Entrance outfit ported: %d meshes converted. See it in 3D, then make the mod below.",
+             w13 ? rep13.meshes : rep.meshes);
+    outfit_note_ = b;
+  }
+
+  void ClearOutfit() {
+    outfit_src_.clear();
+    outfit_idx_ = -1;
+    outfit_attire_ = -1;
+    outfit_from_own_ = false;
+    outfit_view_ = false;
+    outfit_note_.clear();
+  }
+
   void Replace(bool fr) {
     note_.clear();
     const fs::path p = arena_page::PickOpen(fr, false);
@@ -722,9 +936,11 @@ class Page {
     if (view_stale_) {
       view_stale_ = false;
       view_error_.clear();
-      const Bytes now = edit_.Build();
+      // (his entrance outfit chosen, when asked: as picked, before it's fitted)
+      const bool outfit = outfit_view_ && !outfit_src_.empty() && outfit_idx_ >= 0;
+      const Bytes now = outfit ? outfit_src_ : edit_.Build();
       view_.Light();
-      if (!view_.Load(device_, now, &view_error_, size_t(attire_)))
+      if (!view_.Load(device_, now, &view_error_, size_t(outfit ? outfit_idx_ : attire_)))
         view_error_ = (fr ? "Vue 3D impossible : " : "No 3D view: ") + view_error_;
     }
     if (!view_error_.empty()) {
@@ -898,19 +1114,22 @@ class Page {
     // it the game dressed the port in the disc's outfit for the entrance (Cena's cap, the Undertaker's coat and hat).
     std::string outfit_note;
     std::vector<entrance13::Part> outfit_props;
-    if (const int oi = OutfitIndex(); ported_ && !as_new_ && outfit_too_ && oi >= 0) {
+    // (or the one chosen in "Entrance outfit of this attire": DrawEntranceOutfit)
+    const bool own_outfit = !outfit_src_.empty() && outfit_idx_ >= 0 && outfit_idx_ < int(attires_.size());
+    if (const int oi = OutfitIndex(); (own_outfit || (ported_ && outfit_too_)) && !as_new_ && oi >= 0) {
       arena_edit::Arena shipped, copy;
       Bytes fitted, alone;
       std::string e;
       svrfmt::Archive a, o;
       // (its game's own entrance outfit when PortSvr ported it into `out`; else a copy of the attire)
-      if (!shipped.Load(file_, &e, oi) || !copy.Load(out, &e, outfit_ported_ ? oi : attire_)) {
+      const int from = own_outfit ? outfit_idx_ : outfit_ported_ ? oi : attire_;
+      if (!shipped.Load(file_, &e, oi) || !copy.Load(own_outfit ? outfit_src_ : out, &e, from)) {
         outfit_note = e;
       } else {
         const auto halved = copy.Fit(shipped.SectionSize(), fitted, true);
         if (copy.SectionSize() > shipped.SectionSize())
           outfit_note = fr ? "trop grande pour la place de la tenue d'entrée" : "too big for the entrance outfit's place";
-        else if (!attire_mod::OneAttire(fitted, attires_[outfit_ported_ ? oi : attire_], alone, &e) || !svrfmt::ArchiveOpen(alone, o, &e) ||
+        else if (!attire_mod::OneAttire(fitted, attires_[size_t(from)], alone, &e) || !svrfmt::ArchiveOpen(alone, o, &e) ||
                  o.root.kids.empty() || !svrfmt::ArchiveOpen(one, a, &e) ||
                  !svrfmt::ArchiveAdd(a.root, "EMD ", attires_[oi], 0, svrfmt::ArchiveData(o.root.kids[0]), &e))
           outfit_note = e;
@@ -934,7 +1153,7 @@ class Page {
     // too (his script dressed the 2K14 Undertaker of attire 3 in his hat). Not for an added superstar (his own).
     // (taken out of his entrance script: invisible copies of the props in evtobj.pac froze the match's loading, the GPU
     // waiting forever, stack dump 2026-11-07)
-    if (kOutfitProps && ported_ && outfit_too_ && disc_ && !s.added) {
+    if (kOutfitProps && ((ported_ && outfit_too_) || (own_outfit && !as_new_ && OutfitIndex() >= 0)) && disc_ && !s.added) {
       std::vector<std::string> outfits;
       for (const auto &a : attires_)
         if (a.size() == 8 && a[7] == '4')
@@ -944,11 +1163,20 @@ class Page {
     std::string manifest = "game=wwe12\ntype=attire\nid=" + id + "\nname=" + std::string(name_) + "\nversion=" + mod_version::Of(version_) + "\n" +
                            "superstar=" + std::to_string(s.id) + "\nattire=" + entry + "\n" +
                            (attire_label_[0] ? "attire_name=" + std::string(attire_label_) + "\n" : std::string());
+    // Its entrance outfit only (the attire as it is): the game leaves his attire to the other mods (superstar_pack.h).
+    int changed = 0;
+    for (const auto &t : edit_.Textures())
+      changed += t.replaced;
+    const bool outfit_only = own_outfit && OutfitIndex() >= 0 && !as_new_ && changed == 0 && !ported_ &&
+                             !edit_.MaterialsChanged() && !attire_label_[0] && render_[1][1].empty();
+    if (outfit_only)
+      manifest += "outfit_only=1\n";
     if (author_[0])
       manifest += std::string("author=") + author_ + "\n";
     manifest += "description=" + s.name + ", attire " + std::to_string(new_attire ? new_attire : attire_ + 1) + " (" + entry +
                 (new_attire ? ", a new one made from attire " + std::to_string(attire_ + 1) : std::string()) + ")" +
                 (ported_ ? ", replaced by an attire ported from another game (the player's own file)" : "") +
+                (outfit_only ? ", its entrance outfit only" : own_outfit ? ", with its own entrance outfit" : "") +
                 ", made with the WWE '12 Mod Maker.\n";
     std::vector<std::pair<std::string, Bytes>> zip = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
                                                       {"attire/attire.pac", std::move(one)}};
@@ -988,6 +1216,21 @@ class Page {
   bool listed_ = false, loaded_ = false;
   bool outfit_too_ = true;  // a ported attire replaces his entrance outfit of it too
   bool outfit_ported_ = false;  // ... by its own game's entrance outfit (PortSvr), else by a copy of it
+  // His entrance outfit chosen (DrawEntranceOutfit): a superstar file holding it at entry outfit_idx_ (his own file,
+  // another attire of his; or his file with the outfit ported over), for attire outfit_attire_; empty: none.
+  Bytes outfit_src_;
+  int outfit_idx_ = -1, outfit_attire_ = -1;
+  bool outfit_from_own_ = false, outfit_view_ = false, outfit_ok_ = false;
+  std::string outfit_note_;
+  uint32_t outfit_game_ = 0;  // another game for it (My game discs), its superstars (file, name), the one picked
+  std::vector<std::pair<std::string, std::string>> outfit_list_;
+  std::string outfit_pick_name_;
+  Bytes outfit_file_;  // that superstar's file, its attires (names, entries), the one picked
+  uint32_t outfit_file_from_ = 0;
+  bool outfit_file_hspc_ = false;
+  std::vector<std::string> outfit_file_attires_;
+  std::vector<size_t> outfit_file_kids_;
+  int outfit_file_pick_ = 0;
   std::vector<Star> stars_;
   int star_ = -1, attire_ = 0, selected_ = -1;
   bool as_new_ = false;  // the mod adds this attire as a new one

@@ -106,6 +106,9 @@ struct Attire {
   // (DLC.pac IGST/VOL, info/catalog.dlc) of the game's DLC attires (The Miz, Hawk, Animal): kind 2, the superstar,
   // the attire's index (0-3).
   bool added = false;
+  // Its entrance outfit only (manifest outfit_only=1, the Mod Maker's "Entrance outfit of this attire"): its file's
+  // attire is the one as it was made, put in only as a fallback by older games; here it's left to the other mods.
+  bool outfit_only = false;
   // Its own name on the select screen (empty: the game's), under text number label_id (set by the game: a number no
   // string.pac table has, answered by its text lookup hook) and its own render (SSFA / SSFB / SSFC "ANNN": attire index
   // A, superstar NNN; [0 SD / 1 HD][SSFA, SSFB, SSFC], DXT5 as the game's; empty: none).
@@ -762,18 +765,21 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     // (attire mods for this added superstar, superstar=<its slot>: in his own file, the pack can't hold two
     // chNNN_dlc files for one number; one of his attires replaced, or one more. Jay's report n°6, 2026-11-04)
     for (const auto &at : attires) {
-      if (at.superstar != st.slot || at.entry.size() != 8 || !given_to_added.insert(at.entry).second)
+      // (an entrance outfit only: his attire left as it is, or to another mod)
+      if (at.superstar != st.slot || at.entry.size() != 8 || (!at.outfit_only && !given_to_added.insert(at.entry).second))
         continue;
       svrfmt::Archive one;
       if (!svrfmt::ArchiveOpen(at.file, one, &e) || one.root.kids.empty())
         return fail(at.key + ": attire unreadable: " + e);
-      size_t i = 0;
-      while (i < ch.root.kids.size() && ch.root.kids[i].name != at.entry)
-        ++i;
-      if (i < ch.root.kids.size())
-        svrfmt::ArchiveRemove(ch.root, i);
-      if (!svrfmt::ArchiveAdd(ch.root, "EMD ", at.entry, 0, svrfmt::ArchiveData(one.root.kids[0]), &e))
-        return fail(at.key + ": " + e);
+      if (!at.outfit_only) {
+        size_t i = 0;
+        while (i < ch.root.kids.size() && ch.root.kids[i].name != at.entry)
+          ++i;
+        if (i < ch.root.kids.size())
+          svrfmt::ArchiveRemove(ch.root, i);
+        if (!svrfmt::ArchiveAdd(ch.root, "EMD ", at.entry, 0, svrfmt::ArchiveData(one.root.kids[0]), &e))
+          return fail(at.key + ": " + e);
+      }
       // (its entrance outfit too, when the mod gives one: AttireOutfit)
       if (const ArcNode *o = AttireOutfit(one, at.entry); o && given_to_added.insert(o->name).second) {
         size_t j = 0;
@@ -794,6 +800,27 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     std::map<int, svrfmt::Archive> by_star;
     std::set<std::string> given = given_to_added;
     for (const auto &at : attires) {
+      // An entrance outfit only: that entry alone (an added superstar's was put in his own file above: its name is
+      // given already), his attire left to the other mods.
+      if (at.outfit_only) {
+        svrfmt::Archive one;
+        if (!svrfmt::ArchiveOpen(at.file, one, &e) || one.root.kids.empty())
+          return fail(at.key + ": attire unreadable: " + e);
+        const ArcNode *outfit = AttireOutfit(one, at.entry);
+        if (!outfit || !given.insert(outfit->name).second)
+          continue;
+        const std::string outfit_name = outfit->name;
+        const Bytes outfit_data = svrfmt::ArchiveData(*outfit);
+        auto it = by_star.find(at.superstar);
+        if (it == by_star.end()) {
+          while (one.root.kids.size() > 1)  // (that entry kept alone)
+            svrfmt::ArchiveRemove(one.root, one.root.kids[0].name == outfit_name ? one.root.kids.size() - 1 : 0);
+          by_star.emplace(at.superstar, std::move(one));
+        } else if (!svrfmt::ArchiveAdd(it->second.root, "EMD ", outfit_name, 0, outfit_data, &e)) {
+          return fail(at.key + ": " + e);
+        }
+        continue;
+      }
       if (!given.insert(at.entry).second)
         continue;
       svrfmt::Archive one;
