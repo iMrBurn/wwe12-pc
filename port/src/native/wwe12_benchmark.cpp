@@ -50,40 +50,43 @@ REXCVAR_DEFINE_INT32(wwe12_benchmark_pass, 1, "WWE12", "Benchmark pass (2 = warm
     .range(1, 2);
 REXCVAR_DEFINE_INT32(wwe12_benchmark_match_s, 30, "WWE12", "Seconds of match measured in each pass.")
     .range(5, 600);
-REXCVAR_DEFINE_INT32(wwe12_benchmark_passes, 2, "WWE12",
+// 1 by default (user, 2026-11-10: with entrances one pass is ~3.5 min, two ~7.5 min); 2 adds a warm pass.
+REXCVAR_DEFINE_INT32(wwe12_benchmark_passes, 1, "WWE12",
                      "Benchmark passes: 1, or 2 (the game starts itself again with warm caches).")
     .range(1, 2);
 REXCVAR_DEFINE_INT32(wwe12_benchmark_weak_mask, 0, "WWE12",
                      "Benchmark 'weak' condition: keep the game on these cores (5 = two physical "
                      "cores) with one busy thread beside it, a small PC stand-in (0 = off).");
-REXCVAR_DEFINE_STRING(wwe12_benchmark_scenario, "player_match", "WWE12",
-                      "player_match: the player picks an exhibition match with entrances. hiac6: the "
-                      "benchmark drives the menus itself (wwe12_benchmark_route) to an Armageddon Hell "
-                      "in a Cell with 6 superstars, and checks it is that match.");
+REXCVAR_DEFINE_STRING(wwe12_benchmark_scenario, "one_on_one", "WWE12",
+                      "one_on_one (default): the benchmark drives the menus itself (wwe12_benchmark_route) to "
+                      "a one on one with its 2 entrances, as the WWE 2K14 recomp's benchmark, and checks "
+                      "it is that match. player_match: the player picks an exhibition match.");
 // 1.3: the fixed match goes through the menus like a player (Kaiko's way for his SvR 2011 PC port's
 // test match: a fixed route, then a check; the direct call of the game's match start was dropped,
 // 9-15 h and risky). On a fresh data folder nothing is remembered, so the same buttons always lead
 // to the same match. The route is recorded once by hand (wwe12_benchmark_record_route) and set
 // here; the remote pad's words (buttons, wait<ms>, until<state>). The check at the match start
 // (sub_822B51A0) makes a wrong route "failed: wrong match" instead of a measure of something else.
-// Recorded on 2026-11-10 (fresh data folder, version 1.3 in progress): the first-start prompts, PLAY, the
-// Armageddon Hell in a Cell, 6 superstars and their attires, the default arena, entrances off.
-// Its first START comes 8 s after the title screen shows (10 s more than the route's own 2 s): pressed
-// 2 s after it, the game missed it (its title animation) and the whole route went astray (test of
-// 2026-11-10; the player pressed it 13 s after). The first loading screen only comes after the
-// first-start prompts, so "tap until loading" would press START into them.
+// Recorded on 2026-11-10 (fresh data folder, version 1.3 in progress, by the user): the first-start
+// prompts, PLAY, ONE ON ONE, a normal match with entrances, 2 superstars and their attires, the default
+// arena. Its first START comes 8 s after the title screen shows (pressed 2 s after it, the game missed it:
+// its title animation, test of the first route; the first loading screen only comes after the first-start
+// prompts, so "tap until loading" would press START into them), and its longer waits are rounded up.
+// (The first route, an Armageddon Hell in a Cell with 6 superstars without entrances, was replaced at the
+// user's wish for the WWE 2K14 recomp's shape: entrances, then the match.)
 REXCVAR_DEFINE_STRING(wwe12_benchmark_route,
-                      "wait8000 START wait10000 A wait1500 LEFT wait1500 A wait5000 B wait1500 A wait1500 DOWN wait1500 DOWN wait1500 DOWN wait1500 DOWN wait1500 A wait1500 DOWN wait1500 A wait1533 DOWN wait1500 DOWN wait1500 DOWN wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait4500 DOWN wait1500 A",
+                      "wait8000 START wait8000 A wait1500 LEFT wait1500 A wait4000 B wait1500 A wait1500 A wait1500 A wait1867 DOWN wait1500 A wait2033 A wait1500 A wait1500 A wait1500 A wait3905 RIGHT wait1500 RIGHT wait1500 A wait1500 UP wait1500 LEFT wait1500 A wait3349 LEFT wait1500 LEFT wait1500 A",
                       "WWE12",
-                      "Benchmark hiac6: the remote pad's words from the title screen to the match "
+                      "Benchmark fixed match: the remote pad's words from the title screen to the match "
                       "loading (recorded with wwe12_benchmark_record_route).");
 // What the route must lead to (checked at the match start) and whether its match has entrances (measured
 // first, as the WWE 2K14 recomp's benchmark does: entrances, then the match). Logged by the recorder.
-REXCVAR_DEFINE_INT32(wwe12_benchmark_expect_type, 53, "WWE12",
-                     "Benchmark fixed match: the match type the route must lead to (53 = Armageddon Hell in a Cell).");
-REXCVAR_DEFINE_INT32(wwe12_benchmark_expect_superstars, 6, "WWE12",
+REXCVAR_DEFINE_INT32(wwe12_benchmark_expect_type, 0, "WWE12",
+                     "Benchmark fixed match: the match type the route must lead to (0 = one on one, normal "
+                     "match; 53 = Armageddon Hell in a Cell).");
+REXCVAR_DEFINE_INT32(wwe12_benchmark_expect_superstars, 2, "WWE12",
                      "Benchmark fixed match: how many superstars the route's match has.");
-REXCVAR_DEFINE_BOOL(wwe12_benchmark_entrances, false, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_benchmark_entrances, true, "WWE12",
                     "Benchmark fixed match: the route's match has entrances (measured before the match).");
 REXCVAR_DEFINE_BOOL(wwe12_benchmark_record_route, false, "WWE12",
                     "Dev: log player 1's buttons as a remote pad route ('[route]' lines), from the "
@@ -195,7 +198,9 @@ struct MatchFigures {
   u64 pso = 0;
 };
 
-MatchFigures Figures(const Phase &p) {
+// Slow frames: over 1.2 frames of the target (20 ms at 60 fps, 40 ms at 30: the entrances' own pace) and
+// over 3 frames of it (51 ms at 60: a visible stutter; 100 ms at 30).
+MatchFigures Figures(const Phase &p, int target_fps = 60) {
   MatchFigures f;
   if (p.intervals.empty())
     return f;
@@ -210,9 +215,12 @@ MatchFigures Figures(const Phase &p) {
   f.fps = 1000.0 / f.avg_ms;
   f.median_ms = sorted[n / 2];
   f.p1_ms = sorted[std::min(n - 1, size_t(n * 0.99))];
+  const float frame_ms = 1000.0f / float(std::max(1, target_fps));
+  const float slow = target_fps == 60 ? 20.0f : 1.2f * frame_ms;
+  const float stutter = target_fps == 60 ? 51.0f : 3.0f * frame_ms;
   for (float v : sorted) {
-    f.over20 += v > 20.0f;
-    f.over51 += v > 51.0f;
+    f.over20 += v > slow;
+    f.over51 += v > stutter;
   }
   f.worst_ms = sorted.back();
   f.work_ms = p.work / n;
@@ -224,16 +232,19 @@ MatchFigures Figures(const Phase &p) {
 }
 
 std::string PhaseLines(const char *title, const Phase &p, int target_fps) {
-  const MatchFigures f = Figures(p);
+  const MatchFigures f = Figures(p, target_fps);
   if (!f.measured)
     return std::string("  ") + title + ": not reached\n";
+  const int slow_ms = target_fps == 60 ? 20 : 1200 / std::max(1, target_fps);
+  const int stutter_ms = target_fps == 60 ? 51 : 3000 / std::max(1, target_fps);
   char line[640];
   std::snprintf(line, sizeof(line),
                 "  %s: %.0f fps average (target %d) | frame %.1f ms average, %.1f ms median, %.1f ms 1%% "
-                "worst, %.1f ms worst, %zu over 20 ms, %zu over 51 ms | work %.1f ms, gpu wait %.1f ms | "
+                "worst, %.1f ms worst, %zu over %d ms, %zu over %d ms | work %.1f ms, gpu wait %.1f ms | "
                 "CPU per frame: render thread %.1f ms, whole game %.1f ms | pipelines compiled while "
                 "drawing: %llu\n",
-                title, f.fps, target_fps, f.avg_ms, f.median_ms, f.p1_ms, f.worst_ms, f.over20, f.over51,
+                title, f.fps, target_fps, f.avg_ms, f.median_ms, f.p1_ms, f.worst_ms, f.over20, slow_ms,
+                f.over51, stutter_ms,
                 f.work_ms, f.gpu_wait_ms, f.cpu_render_ms, f.cpu_game_ms,
                 static_cast<unsigned long long>(f.pso));
   return line;
@@ -588,7 +599,7 @@ u32 CountChosen(u8 &type, std::string &ids) {
   for (u32 i = 0; i < 6; ++i) {
     const u32 id = bd::mem::load<u32>(kPlaces + i * kPlaceSize + 16);
     ids += (i ? "," : "") + std::to_string(id);
-    superstars += id >= 100 && id < 100000;
+    superstars += id >= 100 && id < 100000 && id != 0xC800;  // (0xC800 = 51200: an empty place)
   }
   return superstars;
 }
