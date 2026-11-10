@@ -72,7 +72,7 @@ REXCVAR_DEFINE_BOOL(svr_edge_blur, false, "SvR",
 
 #if defined(SVR_NATIVE_RENDERER)
 namespace bd::gpu {
-extern std::atomic<bool> g_test_hidden_frame;  // hooks/device.cpp (svr_test_half_frames)
+bool SvrSkipHiddenDraw();  // hooks/device.cpp (svr_test_half_frames, turbo loading screens)
 }
 #endif
 
@@ -157,7 +157,7 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
   WWE12_CPU_ZONE(kDraws);
 #if defined(SVR_NATIVE_RENDERER)
   // svr_test_half_frames (hooks/device.cpp): a frame not shown draws nothing.
-  if (bd::gpu::g_test_hidden_frame.load(std::memory_order_relaxed))
+  if (bd::gpu::SvrSkipHiddenDraw())
     return;
   // A clear the Xbox did after resolving this surface's tiles, due now that it is drawn again.
   if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest)) {

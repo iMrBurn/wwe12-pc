@@ -44,6 +44,24 @@ REXCVAR_DEFINE_BOOL(svr_test_half_frames, false, "SvR",
                     "Test: draw and show every other frame only (the game still runs at 60 Hz).");
 namespace bd::gpu {
 std::atomic<bool> g_test_hidden_frame{false};  // the frame being built now is not shown
+// A hidden frame of the WWE '12 turbo loading screens (native/wwe12_load_turbo.cpp). Unlike the
+// test above, only its screen-shaped (16:9) draws are skipped: the game also renders work targets
+// while a loading screen is up (Superstar Threads attires baked into a 2:1 target, read back by the
+// game: skipped, the attire came out black in the 1.3 test of 2026-11-10), and those must happen.
+std::atomic<bool> g_turbo_hidden_frame{false};
+
+// True: skip this draw or clear (the frame is hidden and the draw only matters on screen).
+bool SvrSkipHiddenDraw() {
+  if (g_test_hidden_frame.load(std::memory_order_relaxed))
+    return true;
+  if (!g_turbo_hidden_frame.load(std::memory_order_relaxed))
+    return false;
+  const GuestTexture *rt = state().render_target;
+  if (!rt || !rt->width || !rt->height)
+    return false;  // unknown target: draw it
+  const u64 w9 = u64(rt->width) * 9, h16 = u64(rt->height) * 16;
+  return w9 + 9 * 8 >= h16 && h16 + 16 * 8 >= w9;  // 16:9 within a few pixels
+}
 }
 #endif
 
@@ -61,8 +79,8 @@ u32 D3DDevice_Clear_hook([[maybe_unused]] u32 device, [[maybe_unused]] u32 count
   bd::gpu::SvrDrawLogClear(device, count, rects, flags, color);
   if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device))
     bd::gpu::SvrNoteGameClear(u32(dev->renderTargetShadow[0]), float(z), stencil);
-  if (bd::gpu::g_test_hidden_frame.load(std::memory_order_relaxed))
-    return 0;  // svr_test_half_frames: a frame not shown
+  if (bd::gpu::SvrSkipHiddenDraw())
+    return 0;  // svr_test_half_frames / turbo loading: a frame not shown
 #endif
   bd::gpu::Video::Clear(flags, color, float(z), stencil);
   return 0;
@@ -122,10 +140,12 @@ u32 D3DDevice_Swap_hook(u32 /*device*/, u32 front_buffer_va,
   // next frame is hidden when this one was shown. The WWE '12 turbo loading screens hide their
   // frames the same way (native/wwe12_load_turbo.cpp, wwe12_load_turbo_skip_draws): called once per
   // frame, here, so it also keeps its window and its timing lines up to date.
-  const bool hidden = bd::gpu::g_test_hidden_frame.load(std::memory_order_relaxed);
-  const bool turbo_hidden = Wwe12LoadTurboHideNextFrame();
-  bd::gpu::g_test_hidden_frame.store(
-      (REXCVAR_GET(svr_test_half_frames) && !hidden) || turbo_hidden, std::memory_order_relaxed);
+  const bool test_hidden = bd::gpu::g_test_hidden_frame.load(std::memory_order_relaxed);
+  const bool hidden =
+      test_hidden || bd::gpu::g_turbo_hidden_frame.load(std::memory_order_relaxed);
+  bd::gpu::g_test_hidden_frame.store(REXCVAR_GET(svr_test_half_frames) && !test_hidden,
+                                     std::memory_order_relaxed);
+  bd::gpu::g_turbo_hidden_frame.store(Wwe12LoadTurboHideNextFrame(), std::memory_order_relaxed);
   if (hidden) {
     bd::gpu::Video::SkipPresent();
     return 0;
