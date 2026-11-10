@@ -31,6 +31,7 @@
 #include "diagnostics.h"
 #include "disk_type.h"
 #include "path_utf8.h"
+#include "rosters.h"
 #include "game_process.h"
 #include "keybinds.h"
 #include "mods.h"
@@ -634,7 +635,7 @@ const char *BindLabel(size_t i) { return g_s.language == 4 ? kBindLabelsFr[i] : 
 
 // ---------------------------------------------------------------------------------------------
 // Pages
-enum Page { kPlay, kSettings, kControls, kMods, kSaves, kMusic, kAbout };
+enum Page { kPlay, kSettings, kControls, kMods, kSaves, kMusic, kAbout, kRosters };
 Page g_page = kPlay;
 ComPtr<ID3D11ShaderResourceView> g_logo;
 int g_logo_w = 0, g_logo_h = 0;
@@ -1486,6 +1487,21 @@ void PageSaves() {
   g_saves.Draw(g_s.language == 4);
 }
 
+// ROSTERS (read only for now, 1.3): shown only when WWE12_LAUNCHER_ROSTERS is set, until the page is finished.
+bool RostersPageOn() {
+  static const bool on = std::getenv("WWE12_LAUNCHER_ROSTERS") != nullptr;
+  return on;
+}
+rosters::Page g_rosters;
+void PageRosters() {
+  Title("ROSTERS");
+  const char *override_file = std::getenv("WWE12_LAUNCHER_ROSTERS_FILE");  // (test aid: a COPY of a save)
+  g_rosters.Draw(g_s.language == 4,
+                 override_file ? fs::path(override_file)
+                               : DocumentsDir() / "wwe12" / "B13EBABEBABEBABE" / "54510890" / "00000001" / "SaveData.dat" /
+                                     "SaveData.Dat");
+}
+
 // Facts a tester pastes into a bug report. Nothing personal: no user name, no folder paths.
 std::string BuildDiagnostics() {
   std::string r = "WWE '12 PC diagnostic\n";
@@ -1759,20 +1775,31 @@ void DrawUi() {
   }
   ImGui::Dummy(ImVec2(0, 14));
   const Texts &t = T();
-  const char *names[] = {t.play, t.settings, t.controls, t.mods, t.saves, t.music, t.about};
+  // The pages in the order of the sidebar (ROSTERS only while it is being built).
+  std::vector<std::pair<Page, const char *>> items = {{kPlay, t.play}, {kSettings, t.settings}, {kControls, t.controls},
+                                                      {kMods, t.mods}, {kSaves, t.saves}};
+  if (RostersPageOn())
+    items.push_back({kRosters, "ROSTERS"});
+  items.push_back({kMusic, t.music});
+  items.push_back({kAbout, t.about});
+  const int n_items = int(items.size());
   // Controller: LB / RB change page (the sticks and D-pad move between buttons, A presses, B goes back).
   if (g_capture_idx < 0) {
+    int cur = 0;
+    for (int i = 0; i < n_items; ++i)
+      if (items[i].first == g_page)
+        cur = i;
     if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false))
-      g_page = Page((g_page + 6) % 7);
+      g_page = items[(cur + n_items - 1) % n_items].first;
     if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false))
-      g_page = Page((g_page + 1) % 7);
+      g_page = items[(cur + 1) % n_items].first;
   }
-  for (int i = 0; i < 7; ++i) {
+  for (int i = 0; i < n_items; ++i) {
     ImGui::SetCursorPosX(16);
-    const bool sel = g_page == i;
-    if (BigButton(names[i], ImVec2(kSide - 32, g_deck || H < 800 ? 44 : 52), sel ? kGold : IM_COL32(28, 28, 32, 255),
+    const bool sel = g_page == items[i].first;
+    if (BigButton(items[i].second, ImVec2(kSide - 32, g_deck || H < 800 ? 44 : 52), sel ? kGold : IM_COL32(28, 28, 32, 255),
                   sel ? IM_COL32(20, 20, 20, 255) : IM_COL32(235, 235, 235, 255)))
-      g_page = Page(i);
+      g_page = items[i].first;
   }
 
   if (g_page != kControls)
@@ -1787,6 +1814,7 @@ void DrawUi() {
   case kSaves: PageSaves(); break;
   case kMusic: PageMusic(); break;
   case kAbout: PageAbout(); break;
+  case kRosters: PageRosters(); break;
   }
   ImGui::EndChild();
   DrawProfileOffer();
