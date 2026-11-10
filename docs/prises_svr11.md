@@ -408,4 +408,6 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   structure diffère, cause probable du gel. Hogan garde le finisher de la base.
 - **Vérification hors jeu** (`work/wip/moves_debug/model_check.cpp`) : toutes les prises à ajouter de tous les
   catcheurs d'un jeu ; 2K14 : 337 à ajouter, 327 avec paramètres, **300 faites sur un modèle**, 27 sans modèle, 0 défaut
-  (fiche relue, blocs, paramètres m3). Pas encore vu en jeu.
+  (fiche relue, blocs, paramètres m3). Tous jeux : 1 586 / 1 725 faites (WWE '13 120/127, 2K14 300/327, 2K15 447/488,
+  2K16 343/369, 2K17 376/414). **Vu en jeu le 2026-11-10** : Hogan 2K14 refait (13 prises sur modèle), un match :
+  « rien vu de spécial » (plus de gel).
