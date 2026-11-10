@@ -54,6 +54,9 @@ REXCVAR_DEFINE_BOOL(svr_clear_new_surfaces, true, "SvR",
 // "undefined" in RenderDoc, black on the PC). On the Xbox a new surface sits in the same EDRAM as the scene
 // before it, so it starts with that scene's picture. A new colour surface now starts as a copy of the live
 // surface of the same size and format used last (instead of black); none: cleared as before.
+REXCVAR_DEFINE_BOOL(svr_keep_same_size_surfaces, true, "SvR",
+                    "A render surface described again with the same host size and format keeps its "
+                    "content (no new, empty one).");
 REXCVAR_DEFINE_BOOL(svr_seed_new_surfaces, true, "SvR",
                     "A new colour render surface starts with the last picture of the same-sized one "
                     "(as the Xbox's EDRAM), not black.");
@@ -415,7 +418,11 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
       it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
       return it->second.host;
     }
-    RetireHost(it->second.host);
+    // (kept until the new size is known: the same host size and format keeps its host, below)
+  }
+  HostTarget previous{};
+  if (auto it = g_surfaces.find(surface_va); it != g_surfaces.end()) {
+    previous = it->second;
     g_surfaces.erase(it);
   }
   u32 extent = 0;
@@ -440,6 +447,21 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   const Scale2 scale = surface_scale(extent);
   g_surface_scale[surface_va] = scale;
   g_surface_scale_gen.fetch_add(1, std::memory_order_release);
+  // 1.3, the black frame before the bell: the match's scene surface was made twice a second apart
+  // (its tiled extent learned after its first frame), the same 1280x736 each time, and the second one
+  // started empty. A surface whose host would come out the same size and format keeps its host and
+  // what it holds (svr_keep_same_size_surfaces); otherwise the old one goes as before.
+  if (previous.host) {
+    if (REXCVAR_GET(svr_keep_same_size_surfaces) && previous.desc[1] == format &&
+        previous.host->width == Scaled(width, scale.x) && previous.host->height == Scaled(height, scale.y)) {
+      BD_INFO("SvR surface 0x{:08X}: {}x{} kept (same host size, new description)", surface_va, width,
+              height);
+      g_surfaces.emplace(surface_va, HostTarget{previous.host, {bits, format}, extent, PackScale(scale),
+                                                g_surface_frame.load(std::memory_order_relaxed)});
+      return previous.host;
+    }
+    RetireHost(previous.host);
+  }
   GuestTexture *host =
       SvrCreateHostSurface(Scaled(width, scale.x), Scaled(height, scale.y), format);
   // The live surface of the same host size and format drawn to last (svr_seed_new_surfaces).
