@@ -61,6 +61,9 @@ REXCVAR_DEFINE_BOOL(svr_seed_new_surfaces, true, "SvR",
                     "A new colour render surface starts with the last picture of the same-sized one "
                     "(as the Xbox's EDRAM), not black.");
 // 1.3: see SvrFrontBufferUnwritten.
+REXCVAR_DEFINE_BOOL(svr_hold_new_scene_frame, true, "SvR",
+                    "Do not show the frame drawn while a new scene surface is made (it comes out black: "
+                    "the flash before the bell); the previous picture stays.");
 REXCVAR_DEFINE_BOOL(svr_hold_unwritten_front_buffer, true, "SvR",
                     "Keep the last picture instead of presenting a brand-new, never-drawn screen texture.");
 REXCVAR_DEFINE_BOOL(svr_debug_magenta, false, "SvR",
@@ -161,6 +164,8 @@ struct HostTarget {
 // done (each one waits for the GPU; the immediate ones in the middle of a frame), the time spent in
 // them, and render targets created. Counting only, no change of behaviour.
 std::atomic<u64> g_readbacks{0}, g_readbacks_deferred{0}, g_readback_ns{0}, g_targets_created{0};
+// Set when a new scene surface is made: that frame is not presented (svr_hold_new_scene_frame).
+std::atomic<bool> g_hold_new_scene_frame{false};
 // The guest texture presented last (D3DDevice_Swap), see SvrNoteFrontBuffer.
 std::atomic<u32> g_front_buffer_va{0};
 // Read-backs of the current second by target size (width << 16 | height), for the [load] line.
@@ -490,8 +495,15 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
     Video::ClearTexture(host, 0u);
   if (seed_va)
     BD_INFO("SvR surface 0x{:08X}: starts with the picture of 0x{:08X}", surface_va, seed_va);
-  if (host && height == 736 && width >= 1280 && !IsDepthFormat(host->format))
+  if (host && height == 736 && width >= 1280 && !IsDepthFormat(host->format)) {
     Wwe12FlashRecorderArm(surface_va);  // (dev, off by default: wwe12_flash_recorder.cpp)
+    // The black frame before the bell, FOUND (flash recorder, 2026-11-10): the frame being built when a
+    // new scene surface is made comes out entirely black (brightness 0.0, the frames around it normal),
+    // at the change from the entrances to the match. That one frame is not presented: the previous
+    // picture stays 1/60 s more (SvrFrontBufferUnwritten).
+    if (REXCVAR_GET(svr_hold_new_scene_frame))
+      g_hold_new_scene_frame.store(true, std::memory_order_relaxed);
+  }
   BD_INFO("SvR surface 0x{:08X}: {}x{} format 0x{:08X} -> host {}{}", surface_va, width, height,
           format, host ? "ok" : "FAILED",
           scale.x != scale.y ? fmt::format(" ({}x{})", Scaled(width, scale.x), Scaled(height, scale.y))
@@ -663,6 +675,12 @@ float SvrSurfaceScale(u32 surface_va) {
 // black. The Xbox showed what that memory held. A front buffer made in the last few frames and never
 // resolved into is not presented (the previous picture stays), at most kMaxHeld frames in a row.
 bool SvrFrontBufferUnwritten(u32 texture_va) {
+  if (g_hold_new_scene_frame.exchange(false, std::memory_order_relaxed)) {
+    static std::atomic<u32> s_logged{0};
+    if (s_logged.fetch_add(1, std::memory_order_relaxed) < 32)
+      BD_INFO("SvR: the first frame of a new scene surface is not shown (it comes out black)");
+    return true;
+  }
   constexpr u64 kRecentFrames = 10;
   constexpr int kMaxHeld = 4;
   static int s_held = 0;
