@@ -54,6 +54,8 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 
 ## 1.3 : « Les corrections de THQ, la vitesse et le test de performance » (liste de l'utilisateur, 2026-11-07 ; ex-1.2, décalée le 2026-11-08)
 
+**Décisions de l'utilisateur du 2026-11-10 (soir)** : vraie table de gamma : NON (le réglage actuel lui convient) ; image noire avant la cloche : il s'en occupe lui-même (outil de capture automatique `wwe12_autocap.cpp` / `lancer_autocap_*.bat`, version de diagnostic) ; foule réglable : non retenue ; mailbox : mis de côté ; test minimiser / restaurer : fait pendant un autre test. Fait dans la 1.3 : chargements 2,5 fois plus rapides, démarrage jusqu'à l'écran-titre 15,5 s → 5,4 s, netteté du 720p (`svr_upscale_sharpness`), benchmark « 1 contre 1 avec entrées » (une passe, ~3,5 min ; bouton du launcher grisé jusqu'à validation), `memcpy` natifs écrits et mesurés (gain trop petit : désactivés).
+
 **Reporté de la 1.2 (2026-11-10)**
 - Mode 30 fps plus fluide pour les petits processeurs (issues #53, #57, #41) : la voie Kaiko (une image sur deux, logique à 60 Hz) a été mesurée : ~15 % de CPU en moins seulement, et des prises qui paraissent buguées ; le mode natif gagne ~60 % mais des prises sont moins fluides. Autres pistes de CPU : code D3D du jeu dans nos crochets (~0,7 ms, risque de gel élevé, plan `docs/couches.md`), constantes (~0,3 ms, demande de modifier XenosRecomp).
 - Gamma : vraie table (LUT) pour les réglages extrêmes (une simple puissance colle mal) ; image noire d'une image avant la cloche (capture RenderDoc automatique).
