@@ -3979,6 +3979,7 @@ REX_EXTERN(__imp__sub_82A32DB8);  // Superstar: a woman?
 REX_EXTERN(__imp__sub_826D2B50);  // Superstar: his brand
 REX_EXTERN(__imp__sub_826CC0E0);  // show: set a brand (shows, brand, on)
 REX_EXTERN(__imp__sub_82550538);  // EDIT BRAND: done
+bool Wwe12TuCawRoster();  // wwe12_title_update.cpp: created Superstars count in a show's roster (TU2)
 
 namespace {
 
@@ -4007,6 +4008,9 @@ u32 g_contract_extra = 0;  // the contract count's remaining raise
 
 extern "C" REX_FUNC(sub_826D0598) {
   const u32 from = u32(ctx.lr);
+  // r5 = 0: the count starts at number 100; other: at 0, created Superstars counted too (as TU2 passes it here)
+  if (from == kLeaveCountReturn && Wwe12TuCawRoster())
+    ctx.r5.u64 = 1;
   __imp__sub_826D0598(ctx, base);
   if (from == kLeaveCountReturn && SmallRosters()) {
     const u32 size = ctx.r3.u32;
@@ -4048,7 +4052,7 @@ extern "C" REX_FUNC(sub_82583B78) {
   u32 count = 0;
   for (u32 id = 0; id < 373; ++id) {
     if (!Call(in, base, __imp__sub_826D3218, id, 1) || Call(in, base, __imp__sub_82A32DB8, id) ||
-        Call(in, base, __imp__sub_82A330D8, id) == 1)
+        (!Wwe12TuCawRoster() && Call(in, base, __imp__sub_82A330D8, id) == 1))  // (TU2: created ones count)
       continue;
     const int32_t brand = int32_t(Call(in, base, __imp__sub_826D2B50, id));
     if (brand >= 0 && brand < 13 && bd::mem::load<u32>(s + (u32(brand) + 66) * 4) == 1)
