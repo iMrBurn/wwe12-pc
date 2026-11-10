@@ -216,8 +216,9 @@ Code : `port/src/native/wwe12_title_update.cpp`. Commit local. Ni compilé ni te
 - **CAW dans l'effectif (§2.2)**, réglage `wwe12_tu_caw_roster` (activé). Ce que fait la TU2, exactement :
   - EDIT BRAND et contrat : le catcheur créé n'est plus écarté du compte ;
   - départ d'une émission : le catcheur créé n'a plus de passe-droit, il est contrôlé comme les autres ;
-  - **en plus** (vu le 2026-11-10), l'effectif lu pour ce départ ne compte qu'à partir de l'id 100 :
-    `sub_826D0598` reçoit 1 au lieu de 0 en 3e argument, et 1 fait démarrer sa boucle à 100.
+  - **en plus** (vu le 2026-11-10), l'effectif lu pour ce départ compte aussi les catcheurs créés :
+    `sub_826D0598` reçoit 1 au lieu de 0 en 3e argument. Avec 0, sa boucle démarre à l'id 100 ; avec une autre
+    valeur, elle démarre à 0 (correction de la session Univers).
   - Côté code : un crochet sur `sub_82A330D8` répond « pas créé » aux trois appels retirés, reconnus par leur
     retour : 0x82583BD4, 0x82599F94, 0x826D3C24.
   - Restent dans `wwe12_universe.cpp` (session Univers), via `Wwe12TuCawRoster()` :

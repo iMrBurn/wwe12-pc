@@ -9,8 +9,8 @@
 //    - sub_82599DB0, a contract: same in its count of the show (returns to 0x82599F94): now counted;
 //    - sub_826D3B58, "may this Superstar leave his show?": a created Superstar could always leave
 //      (second call, returns to 0x826D3C24); now he is checked like the others (show > 15).
-//    TU2 also counts that last roster from id 100 (sub_826D0598's 3rd argument 0 -> 1, call
-//    returning to 0x826D3C84). That call and the Universe line's own EDIT BRAND recount are hooked
+//    TU2 also counts the created Superstars in that last roster (sub_826D0598's 3rd argument
+//    0 -> 1, call returning to 0x826D3C84: 0 starts its count at id 100, non-zero at 0). That call and the Universe line's own EDIT BRAND recount are hooked
 //    in wwe12_universe.cpp: they ask Wwe12TuCawRoster().
 //
 // 2. Title index checks (TU2, wwe12_tu_title_index). The Universe keeps 23 titles' records of 964
