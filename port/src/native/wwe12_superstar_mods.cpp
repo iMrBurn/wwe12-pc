@@ -222,13 +222,13 @@ std::vector<superstar_pack::NewMove> ReadNewMoves(const fs::path &dir) {
     if (w.extension() != ".waze")
       continue;
     superstar_pack::NewMove nm;
-    nm.number = atoi(w.stem().string().c_str());
+    nm.number = atoi(rex::path_to_utf8(w.stem()).c_str());
     const fs::path d = w.parent_path(), stem = w.stem();
-    if (nm.number > 0 && ReadHost(w, nm.waze) && ReadHost(d / (stem.string() + "_low.yanm"), nm.low) &&
-        ReadHost(d / (stem.string() + "_high.yanm"), nm.high)) {
-      ReadHost(d / (stem.string() + ".magg"), nm.magg);  // (optional: its RGRP/MAGG records)
-      ReadHost(d / (stem.string() + ".m3"), nm.m3);      // (its motion parameters, m3_params; needed to play)
-      ReadHost(d / (stem.string() + ".mvmot"), nm.mvmot);  // (its preview script in the moveset editor)
+    if (nm.number > 0 && ReadHost(w, nm.waze) && ReadHost(d / (stem.wstring() + L"_low.yanm"), nm.low) &&
+        ReadHost(d / (stem.wstring() + L"_high.yanm"), nm.high)) {
+      ReadHost(d / (stem.wstring() + L".magg"), nm.magg);  // (optional: its RGRP/MAGG records)
+      ReadHost(d / (stem.wstring() + L".m3"), nm.m3);      // (its motion parameters, m3_params; needed to play)
+      ReadHost(d / (stem.wstring() + L".mvmot"), nm.mvmot);  // (its preview script in the moveset editor)
       out.push_back(std::move(nm));
     }
   }
@@ -295,7 +295,7 @@ void BackupSave(const fs::path &user_root, const std::string &why) {
     std::ifstream info(it->path() / "backup.txt");
     std::string kind;
     if (std::getline(info, kind) && kind == "auto")
-      autos.push_back(it->path().filename().string());
+      autos.push_back(rex::path_to_utf8(it->path().filename()));
   }
   std::sort(autos.begin(), autos.end());
   for (size_t i = 0; i + 10 < autos.size(); ++i)
@@ -549,8 +549,8 @@ void MenuPictures(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_
   for (const auto &d : dirs)
     for (fs::directory_iterator it(d / "pictures", ec), end; !ec && it != end; it.increment(ec)) {
       Bytes b;
-      if (_stricmp(it->path().extension().string().c_str(), ".dds") == 0 && ReadHost(it->path(), b))
-        pics[it->path().stem().string()] = std::move(b);
+      if (_stricmp(rex::path_to_utf8(it->path().extension()).c_str(), ".dds") == 0 && ReadHost(it->path(), b))
+        pics[rex::path_to_utf8(it->path().stem())] = std::move(b);
     }
   if (pics.empty())
     return;
@@ -659,7 +659,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     g_mod_minitrons.clear();
     std::error_code e0;
     for (fs::directory_iterator it(mods / "movies" / "titantron", e0), end; !e0 && it != end; it.increment(e0)) {
-      const std::string f = it->path().filename().string();
+      const std::string f = rex::path_to_utf8(it->path().filename());
       if (f.size() == 7 && isdigit(static_cast<unsigned char>(f[0])) && _stricmp(f.c_str() + 3, ".bik") == 0)
         g_mod_minitrons.insert(uint32_t(atoi(f.c_str())));
     }
@@ -694,7 +694,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       continue;
     const std::string text(m.begin(), m.end());
     Mod mod;
-    mod.key = d.filename().string();
+    mod.key = rex::path_to_utf8(d.filename());
     mod.name = Value(text, "name");
     mod.base = atoi(Value(text, "base").c_str());
     {
@@ -754,7 +754,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         continue;
       const std::string text(m.begin(), m.end());
       superstar_pack::Moveset mv;
-      mv.key = d.filename().string();
+      mv.key = rex::path_to_utf8(d.filename());
       mv.name = Value(text, "name");
       mv.superstar = atoi(Value(text, "superstar").c_str());
       if (mv.superstar < 50 || mv.superstar >= 373) {
@@ -835,7 +835,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m) || !ReadHost(d / "attire" / "attire.pac", at.file))
         continue;
       const std::string text(m.begin(), m.end());
-      at.key = d.filename().string();
+      at.key = rex::path_to_utf8(d.filename());
       at.superstar = atoi(Value(text, "superstar").c_str());
       at.entry = Value(text, "attire");
       char nnn[8];
@@ -855,7 +855,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
             continue;
           std::error_code e2;
           for (fs::directory_iterator f(it->path() / "pac" / "ch", e2), fend; !read && !e2 && f != fend; f.increment(e2)) {
-            const std::string name = f->path().filename().string();
+            const std::string name = rex::path_to_utf8(f->path().filename());
             if (_strnicmp(name.c_str(), prefix.c_str(), prefix.size()) == 0)
               read = ReadHost(f->path(), game);
           }
@@ -897,17 +897,17 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         ReadHost(d / "manifest.txt", m);
         std::string pack_name = Value(std::string(m.begin(), m.end()), "name");
         if (pack_name.empty())
-          pack_name = d.filename().string();
+          pack_name = rex::path_to_utf8(d.filename());
         for (auto &c : pack_name)
           if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
             c = '_';
         for (fs::directory_iterator it(d / "media" / "music", ec), end; !ec && it != end; it.increment(ec)) {
-          const fs::path to = mods.parent_path() / "music" / fs::u8path(pack_name + " " + it->path().filename().string());
+          const fs::path to = mods.parent_path() / "music" / fs::u8path(pack_name + " " + rex::path_to_utf8(it->path().filename()));
           std::error_code e2;
           if (!fs::exists(to, e2) || fs::file_size(to, e2) != it->file_size(e2)) {
             fs::create_directories(to.parent_path(), e2);
             fs::copy_file(it->path(), to, fs::copy_options::overwrite_existing, e2);
-            REXLOG_INFO("[superstar mods] media mod {}: song {} added to the music folder", d.filename().string(),
+            REXLOG_INFO("[superstar mods] media mod {}: song {} added to the music folder", rex::path_to_utf8(d.filename()),
                         rex::path_to_utf8(to.filename()));
           }
         }
@@ -915,8 +915,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       }
       for (fs::directory_iterator it(d / "media" / "portraits", ec), end; !ec && it != end; it.increment(ec)) {
         superstar_pack::MediaPortraits mp;
-        mp.key = d.filename().string();
-        mp.superstar = atoi(it->path().filename().string().c_str());
+        mp.key = rex::path_to_utf8(d.filename());
+        mp.superstar = atoi(rex::path_to_utf8(it->path().filename()).c_str());
         if (mp.superstar < 50 || mp.superstar >= 373)
           continue;
         bool any = false;
@@ -945,10 +945,10 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         continue;
       int n = 0;
       for (fs::directory_iterator it(d / "signs", ec), end; !ec && it != end; it.increment(ec)) {
-        const std::string f = it->path().filename().string();
+        const std::string f = rex::path_to_utf8(it->path().filename());
         const size_t us = f.find('_');
         superstar_pack::Sign sg;
-        sg.key = d.filename().string();
+        sg.key = rex::path_to_utf8(d.filename());
         if (it->path().extension() != ".dds" || !ReadHost(it->path(), sg.dds))
           continue;
         // NNN_K.dds: superstar NNN's sign K; <id>.dds: any sign by its number (the crowd's general ones: 4001-5151)
@@ -963,7 +963,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       }
       ec.clear();
       if (n)
-        REXLOG_INFO("[superstar mods] signs mod {}: {} sign(s)", d.filename().string(), n);
+        REXLOG_INFO("[superstar mods] signs mod {}: {} sign(s)", rex::path_to_utf8(d.filename()), n);
     }
   }
   // The main menu backgrounds mods (backgrounds/NN/menu.dds, title.dds).
@@ -986,14 +986,14 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       std::sort(one.begin(), one.end());
       for (const auto &b : one) {
         superstar_pack::Background bg;
-        bg.key = d.filename().string();
+        bg.key = rex::path_to_utf8(d.filename());
         if (!ReadHost(b / "menu.dds", bg.menu))
           continue;
         ReadHost(b / "title.dds", bg.title);
         backgrounds.push_back(std::move(bg));
       }
       if (!one.empty())
-        REXLOG_INFO("[superstar mods] backgrounds mod {}: {} background(s)", d.filename().string(), one.size());
+        REXLOG_INFO("[superstar mods] backgrounds mod {}: {} background(s)", rex::path_to_utf8(d.filename()), one.size());
     }
   }
   // One background drawn for this start (or the game's own): MnLayHD / MnLaySD.pac dressed, served from
@@ -1050,7 +1050,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   // Portraits: the packs' DLC_HD/SD_dlcNN.pac, the disc's DLC_HD/SD.pac and menu\menuHD/SD.pac.
   for (const auto &[n, dir] : packs)
     for (fs::directory_iterator it(dir / "pac", ec), end; !ec && it != end; it.increment(ec)) {
-      const std::string f = it->path().filename().string();
+      const std::string f = rex::path_to_utf8(it->path().filename());
       Bytes b;
       if (f.rfind("DLC_HD_", 0) == 0 && ReadHost(it->path(), b))
         in.portraits_hd.push_back(std::move(b));
@@ -1144,7 +1144,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     if (!ReadGame(vfs, "pac/ch/ch" + std::to_string(st.base) + ".pac", st.model))
       for (const auto &[n, dir] : packs)
         for (fs::directory_iterator it(dir / "pac" / "ch", ec), end; !ec && it != end && st.model.empty(); it.increment(ec))
-          if (it->path().filename().string().rfind("ch" + std::to_string(st.base) + "_dlc", 0) == 0)
+          if (rex::path_to_utf8(it->path().filename()).rfind("ch" + std::to_string(st.base) + "_dlc", 0) == 0)
             ReadHost(it->path(), st.model);
     if (st.model.empty())
       REXLOG_WARN("[superstar mods] {}: no model (superstar\\ch.pac) and none for base {}", st.key, st.base);
@@ -1282,7 +1282,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     // Superstar Threads: the newest pack's table (pac\edit\edit_dlcNN.pac, the number is the pack's), else the disc's.
     for (const auto &[n, dir] : packs) {
       for (fs::directory_iterator it(dir / "pac" / "edit", ec), end; !ec && it != end; it.increment(ec))
-        if (it->path().filename().string().rfind("edit_dlc", 0) == 0 && ReadHost(it->path(), in.edit))
+        if (rex::path_to_utf8(it->path().filename()).rfind("edit_dlc", 0) == 0 && ReadHost(it->path(), in.edit))
           break;
       if (!in.edit.empty())
         break;
@@ -1314,7 +1314,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     in.music.Open([vfs](uint64_t at, uint32_t size, Bytes &out) { return ReadGamePart(vfs, "sound/Music.pck", at, size, out); });
     for (const auto &[n, dir] : packs) {
       for (fs::directory_iterator it(dir / "pac", ec), end; !ec && it != end; it.increment(ec))
-        if (it->path().filename().string().rfind("sound_dlc_", 0) == 0 && ReadHost(it->path(), in.sound_pac))
+        if (rex::path_to_utf8(it->path().filename()).rfind("sound_dlc_", 0) == 0 && ReadHost(it->path(), in.sound_pac))
           break;
       if (!in.sound_pac.empty())
         break;
@@ -1351,7 +1351,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         WriteHost(to, st.movie);
     }
     for (fs::directory_iterator it(mdir, e2), end; !e2 && it != end; it.increment(e2))
-      if (!keep.count(it->path().filename().string()))
+      if (!keep.count(rex::path_to_utf8(it->path().filename())))
         fs::remove(it->path(), e2);
     std::string game_device;
     if (!keep.empty() && vfs && vfs->FindSymbolicLink("game:", game_device)) {

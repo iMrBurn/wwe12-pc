@@ -670,7 +670,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         }
       }
     }
-    const auto slot = moves_mod ? slots.end() : slots.find(d.filename().string());
+    const auto slot = moves_mod ? slots.end() : slots.find(rex::path_to_utf8(d.filename()));
     if (slot != slots.end() && slot->second > 0)
       for (const char *kind : {"EVP", "EVZ"}) {
         Part part;
@@ -683,7 +683,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     // its own ribbon and wall (superstar\ribbon.bik, wall.bik: Bink 1, 1024 x 32 and 256 x 256, made by the Mod
     // Maker) as evtmov.pac's MVSB / MVSW M<its own video number> (wwe12_superstar_mods.cpp, Wwe12OwnScreen: asked
     // without a leading slash)
-    if (const auto movie = moves_mod ? movies.end() : movies.find(d.filename().string()); movie != movies.end())
+    if (const auto movie = moves_mod ? movies.end() : movies.find(rex::path_to_utf8(d.filename())); movie != movies.end())
       for (const auto &[group, file] : {std::pair<const char *, const char *>{"MVSB", "ribbon.bik"}, {"MVSW", "wall.bik"}}) {
         Part part;
         if (!ReadHost(d / "superstar" / file, part.data) || part.data.empty())
@@ -692,7 +692,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         // loading before his entrance, every time, 2026-11-04; left to the arena's, as OwnScreenFits)
         if (!OwnScreenFits(part.data)) {
           REXLOG_WARN("[arena pages] {}: its own {} left out ({} bytes; the game's are 180 frames, 1.8 MB at most);"
-                      " make it again with the Mod Maker", d.filename().string(), file, part.data.size());
+                      " make it again with the Mod Maker", rex::path_to_utf8(d.filename()), file, part.data.size());
           continue;
         }
         char name[8];
@@ -704,7 +704,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     // the objects of its entrance and victory scene that WWE '12 hasn't (superstar\objects\SOBJ_<model>.bin: Cena's
     // chain, Kane's mask..., entrance13::Objects) as evtobj.pac's SOBJ/<model>
     for (fs::directory_iterator it(d / "superstar" / "objects", ec), end; !ec && it != end; it.increment(ec)) {
-      const std::string f = it->path().filename().string();
+      const std::string f = rex::path_to_utf8(it->path().filename());
       const int model = f.rfind("SOBJ_", 0) == 0 ? atoi(f.c_str() + 5) : 0;
       Part part;
       if (model < 1000 || model > 9999 || !ReadHost(it->path(), part.data) || part.data.empty())
@@ -735,7 +735,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       continue;
     }
     for (fs::directory_iterator it(d / "superstar" / "entrance", ec), end; !ec && it != end; it.increment(ec)) {
-      const std::string f = it->path().filename().string();
+      const std::string f = rex::path_to_utf8(it->path().filename());
       const size_t bar = f.find('_');
       // (only "<KIND>_<number>.bin": a copy beside it, "EVZ_497.bin.bak", was served too, and in its place, 2026-11-02)
       if (bar == std::string::npos || f.size() < bar + 6 || f.compare(f.size() - 4, 4, ".bin") != 0 ||
@@ -780,7 +780,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     std::sort(media.begin(), media.end());
     for (const auto &d : media)
       for (fs::directory_iterator it(d / "media" / "screens", ec), end; !ec && it != end; it.increment(ec)) {
-        const std::string f = it->path().filename().string();
+        const std::string f = rex::path_to_utf8(it->path().filename());
         const bool ribbon = f.rfind("ribbon_", 0) == 0, wall = f.rfind("wall_", 0) == 0;
         const int n = atoi(f.c_str() + (ribbon ? 7 : 5));
         if ((!ribbon && !wall) || n <= 0 || n > 999)
@@ -826,7 +826,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     std::set<std::string> given;
     for (const auto &d : attires) {
       for (fs::directory_iterator it(d / "attire" / "entrance", ec), end; !ec && it != end; it.increment(ec)) {
-        const std::string f = it->path().filename().string();
+        const std::string f = rex::path_to_utf8(it->path().filename());
         const std::string name = f.rfind("EVP_", 0) == 0 && f.size() > 8 ? std::to_string(atoi(f.c_str() + 4)) : "";
         const auto at = where.find(name);
         Part part;
@@ -874,7 +874,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     std::map<uint32_t, std::string> mine;
     for (const auto &[d, moves_mod] : dirs) {
       std::vector<uint8_t> m;
-      const auto slot = slots.find(d.filename().string());
+      const auto slot = slots.find(rex::path_to_utf8(d.filename()));
       if (moves_mod || slot == slots.end() || fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m))
         continue;
       const int base = atoi(Value(std::string(m.begin(), m.end()), "base").c_str());
