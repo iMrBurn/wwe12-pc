@@ -1569,7 +1569,7 @@ void PageSaves() {
   g_saves.Draw(g_s.language == 4);
 }
 
-// ROSTERS (read only for now, 1.3): shown only when WWE12_LAUNCHER_ROSTERS is set, until the page is finished.
+// ROSTERS (1.3): shown only when WWE12_LAUNCHER_ROSTERS is set, until the page is finished.
 bool RostersPageOn() {
   static const bool on = std::getenv("WWE12_LAUNCHER_ROSTERS") != nullptr;
   return on;
@@ -1578,10 +1578,14 @@ rosters::Page g_rosters;
 void PageRosters() {
   Title("ROSTERS");
   const char *override_file = std::getenv("WWE12_LAUNCHER_ROSTERS_FILE");  // (test aid: a COPY of a save)
+  rosters::Page::Env env;
+  env.can_write = !game::IsRunning() && !g_saves.Busy();
+  env.backup = [](std::string &err) { return g_saves.BackupBeforeChange(err); };
   g_rosters.Draw(g_s.language == 4,
                  override_file ? fs::path(override_file)
                                : DocumentsDir() / "wwe12" / "B13EBABEBABEBABE" / "54510890" / "00000001" / "SaveData.dat" /
-                                     "SaveData.Dat");
+                                     "SaveData.Dat",
+                 env);
 }
 
 // Facts a tester pastes into a bug report. Nothing personal: no user name, no folder paths.

@@ -146,6 +146,8 @@ class Manager {
     if (worker_.joinable())
       worker_.join();
   }
+  // For the ROSTERS page: a backup of the save made right now. Returns its name, or "" (reason in err, empty err = no save).
+  std::string BackupBeforeChange(std::string &err) { return busy_.load() ? std::string() : MakeBackup(true, "rosters", err); }
   // A backup, restore, delete or import is running: the game must not start now.
   bool Busy() const { return busy_.load(); }
 
