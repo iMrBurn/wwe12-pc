@@ -9,7 +9,7 @@
 //    (499 down to 100; it is the theme's music number too);
 //  - victory scene: 6000 + his number (entrance13::Victory, svr_scenes::Victory);
 //  - objects: those of both WWE '12 hasn't (from WWE '13 / 2K: evtobj.pac; SvR's props are another format: hidden);
-//  - theme: theme_source.h, made Wwise PCM with the player's vgmstream (theme_convert.h).
+//  - theme: theme_source.h, made Wwise Vorbis like the game's themes (else PCM) with the player's vgmstream (theme_convert.h).
 #pragma once
 
 #include <windows.h>
@@ -461,7 +461,7 @@ inline fs::path Vgmstream(const game_discs::Discs *discs) {
   return theme_convert::FindVgmstream(discs ? discs->PathOf(0x5451085D) : fs::path());
 }
 
-// The theme made Wwise PCM for the mod (superstar/theme.wem), empty if vgmstream couldn't. `entrance`: the entrance
+// The theme made for the mod (Wwise Vorbis like the game's themes, else PCM: theme_convert::Finish) (superstar/theme.wem), empty if vgmstream couldn't. `entrance`: the entrance
 // going into the mod with it (else null): one whose video plays full screen first (2K15 Bray Wyatt's) gets that video's
 // sound before the song (`video`: the video, a 2K .bk2; empty: the song alone), and then its script's EVP in `entries`
 // (the mod's files so far) plays the music from frame 100.

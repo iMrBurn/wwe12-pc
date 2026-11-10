@@ -980,7 +980,7 @@ class Page {
     if (entrance || victory)  // (their objects WWE '12 hasn't: the game adds them to evtobj.pac)
       for (const auto &part : parts_.objects)
         entries.push_back({entrance13::ModPath(part), part.data});
-    if (theme) {  // (Wwise PCM; with the entrance it is played as its number, else as 900 + his)
+    if (theme) {  // (Wwise Vorbis as the game's, else PCM; with the entrance it is played as its number, else as 900 + his)
       Bytes pcm = star_port::ThemeWem(star_port::Vgmstream(discs_), theme_, entrance ? &parts_.entrance : nullptr,
                                       parts_.entrance_number, Bytes{}, entries);
       if (pcm.empty()) {

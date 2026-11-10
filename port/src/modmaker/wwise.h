@@ -239,6 +239,30 @@ inline bool IsPcm(const Bytes &wem) {
   return false;
 }
 
+// The setup packet of a Wwise Vorbis stream (RIFX "fmt " tag 0xFFFF: its vorb +0x10 in the data chunk, u16 size), empty
+// if it hasn't one.
+inline Bytes VorbisSetup(const Bytes &wem) {
+  size_t fmt = 0, data = 0;
+  for (size_t q = 12; q + 8 <= wem.size();) {
+    const uint32_t len = Be32(wem, q + 4);
+    if (!memcmp(&wem[q], "fmt ", 4))
+      fmt = q + 8;
+    if (!memcmp(&wem[q], "data", 4)) {
+      data = q + 8;
+      break;
+    }
+    q += 8 + len + (len & 1);
+  }
+  if (wem.size() < 12 || memcmp(wem.data(), "RIFX", 4) || !fmt || !data || Be16(wem, fmt) != 0xFFFF ||
+      fmt + 0x18 + 0x2A > wem.size())
+    return {};
+  const size_t so = data + Be32(wem, fmt + 0x18 + 0x10);
+  const size_t n = Be16(wem, so);
+  if (so + 2 + n > wem.size() || n < 16)
+    return {};
+  return Bytes(wem.begin() + long(so + 2), wem.begin() + long(so + 2 + n));
+}
+
 // A Wwise PCM stream (RIFX, big-endian 16-bit samples, "fmt " WAVE_FORMAT_EXTENSIBLE) from little-endian 16-bit
 // samples: what WWE '12's Wwise plays whatever made the theme (checked with vgmstream: "16-bit Big Endian PCM").
 inline Bytes PcmStream(const int16_t *samples, size_t frames, int channels, int rate) {
@@ -349,9 +373,19 @@ inline bool MusicPackage(const Package &game, int pack, const std::vector<Theme>
   std::vector<uint32_t> containers;
   std::vector<std::pair<uint32_t, const Bytes *>> streams;
   std::vector<std::pair<uint32_t, Bytes>> media;  // the prefetches (DIDX / DATA)
+  // Wwise Vorbis only as the game's own themes are (the Mod Maker's wwise_vorbis.h, 1.3): the same setup packet as the
+  // game's theme 139 (its sound's source); another game's Wwise Vorbis may crash WWE '12's decoder (theme_convert.h).
+  Bytes game_setup;
+  if (game.streams.count(Be32(snd->body, 8))) {
+    Bytes cena;
+    if (game.Data(game.streams.at(Be32(snd->body, 8)), cena))
+      game_setup = VorbisSetup(cena);
+  }
   for (const auto &t : themes) {
-    if (t.stream.empty() || t.number <= 0 || t.number > 9999 || !IsPcm(t.stream))
-      continue;  // (PCM only: another game's Wwise Vorbis may crash WWE '12's decoder, theme_convert.h)
+    if (t.stream.empty() || t.number <= 0 || t.number > 9999)
+      continue;
+    if (!IsPcm(t.stream) && (game_setup.empty() || VorbisSetup(t.stream) != game_setup))
+      continue;
     char s[48];
     snprintf(s, sizeof(s), "wwe12pc_mus_%04d", t.number);
     const uint32_t sid = Fnv(s);

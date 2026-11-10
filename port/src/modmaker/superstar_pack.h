@@ -82,7 +82,7 @@ struct Star {
   // Its own entrance (a WWE '13 one the game serves under that number: wwe12_arena_pages.cpp), else 0: CHAR / PRO
   // +0x1D8 and +0x1E4, the entrance number of both blocks (music, video, entrance).
   int own_entrance = 0;
-  // Its own entrance theme (superstar/theme.wem, or superstar/entrance/MUS_<n>.bin: Wwise PCM made by the Mod Maker
+  // Its own entrance theme (superstar/theme.wem, or superstar/entrance/MUS_<n>.bin: Wwise PCM or Vorbis made by the Mod Maker
   // from its game's theme, theme_source.h), else empty: played as its music number (MusicNumber: CHAR / PRO +0x1D4
   // and +0x1E0) from the pack's sound\DLC_NN.pck (wwise.h).
   Bytes theme;
@@ -194,7 +194,7 @@ struct Moveset {
   std::vector<std::pair<int, int>> moves;  // (CHAR / PRO byte offset, move number), as Star::moves
   int own_entrance = 0;                    // his entrance served under that number (as Star::own_entrance), else 0
   int entrance = 0;  // another superstar of the game's entrance (his music, video and entrance numbers), else 0
-  Bytes theme;                             // his own theme (Wwise PCM), else empty: his music number then
+  Bytes theme;                             // his own theme (Wwise PCM or Vorbis), else empty: his music number then
   std::vector<NewMove> new_moves;          // his moves WWE '12 hasn't, as Star::new_moves
 };
 

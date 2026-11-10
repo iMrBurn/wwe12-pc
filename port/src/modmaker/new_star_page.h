@@ -2369,7 +2369,7 @@ class Page {
     if (own_entrance || use_own_victory_)  // (their objects WWE '12 hasn't: the game adds them to evtobj.pac)
       for (const auto &part : own_objects_)
         entries.push_back({entrance13::ModPath(part), part.data});
-    if (use_theme_ && !theme_.stream.empty() && (look_ == 2 || look_ == 3)) {  // (its theme, Wwise PCM)
+    if (use_theme_ && !theme_.stream.empty() && (look_ == 2 || look_ == 3)) {  // (its theme: Wwise Vorbis as the game's, else PCM)
       // (with its 2K video's sound first when its entrance plays that video full screen: star_port::ThemeWem)
       Bytes video;
       if (own_entrance && !twok_movie_file_.empty())

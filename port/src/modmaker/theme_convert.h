@@ -1,7 +1,8 @@
 // Mod Maker: a WWE '13 entrance theme made playable by WWE '12. WWE '13's themes are Wwise Vorbis of a newer Wwise
 // than WWE '12's: the same "fmt ", but WWE '12's decoder crashed on them (2026-11-01). They are decoded by vgmstream
 // (vgmstream-cli, a tool the player has: Kaiko's Mod Maker Tools ship it, as his wwise.py uses it; nothing of it ships
-// with the port) and written again as Wwise PCM (wwise::PcmStream), which WWE '12 played.
+// with the port) and written again as WWE '12's own themes are (1.3: Wwise Vorbis 32 kHz stereo, wwise_vorbis.h, the
+// whole theme), or as Wwise PCM (wwise::PcmStream, 100 s at most) if that can't be done.
 #pragma once
 
 #include <windows.h>
@@ -16,6 +17,7 @@
 #include <vector>
 
 #include "wwise.h"
+#include "wwise_vorbis.h"
 
 namespace theme_convert {
 
@@ -155,15 +157,74 @@ inline void Cap(std::vector<int16_t> &s, int channels, int rate, double seconds 
   }
 }
 
-// A stream decoded by vgmstream and written as Wwise PCM. Empty if it can't.
+// Stereo at 32 kHz (WWE '12's themes' Wwise Vorbis): mono copied to both sides, then a windowed-sinc resampling (16
+// taps each side, Blackman window, cut a little under the lower Nyquist: no aliasing from 48 kHz).
+inline std::vector<int16_t> To32kStereo(const std::vector<int16_t> &s, int channels, int rate) {
+  const size_t n = channels > 0 ? s.size() / size_t(channels) : 0;
+  std::vector<float> in(n * 2);
+  for (size_t i = 0; i < n; ++i)
+    for (int c = 0; c < 2; ++c)
+      in[2 * i + size_t(c)] = s[i * size_t(channels) + size_t(channels == 1 ? 0 : c)];
+  if (rate == wwise_vorbis::kRate || rate <= 0 || n == 0) {
+    std::vector<int16_t> out(in.size());
+    for (size_t i = 0; i < in.size(); ++i)
+      out[i] = int16_t(in[i]);
+    return out;
+  }
+  constexpr int kTaps = 16;
+  constexpr double kPi = 3.14159265358979323846;
+  const double step = double(rate) / wwise_vorbis::kRate, cut = std::min(1.0, 1.0 / step) * 0.95;
+  const size_t m = size_t(double(n) / step);
+  std::vector<int16_t> out(m * 2);
+  for (size_t i = 0; i < m; ++i) {
+    const double at = double(i) * step;
+    const long base = long(std::floor(at));
+    double l = 0, r = 0, wsum = 0;
+    for (long k = base - kTaps + 1; k <= base + kTaps; ++k) {
+      const double x = at - double(k), t = x / kTaps;
+      if (std::abs(t) >= 1)
+        continue;
+      const double win = 0.42 + 0.5 * std::cos(kPi * t) + 0.08 * std::cos(2 * kPi * t);
+      const double sinc = x == 0 ? 1.0 : std::sin(kPi * cut * x) / (kPi * cut * x);
+      const double wgt = cut * sinc * win;
+      wsum += wgt;
+      if (k >= 0 && size_t(k) < n)
+        l += wgt * in[2 * size_t(k)], r += wgt * in[2 * size_t(k) + 1];
+    }
+    if (wsum > 0)  // (gain 1 whatever the phase)
+      l /= wsum, r /= wsum;
+    out[2 * i] = int16_t(std::clamp(std::lround(l), -32768L, 32767L));
+    out[2 * i + 1] = int16_t(std::clamp(std::lround(r), -32768L, 32767L));
+  }
+  return out;
+}
+
+// The samples as the mod's theme: Wwise Vorbis like the game's themes (up to 10 minutes), else Wwise PCM at 48 kHz cut
+// at 100 s (theme sizes over ~20 MiB never started). Empty if neither.
+inline Bytes Finish(std::vector<int16_t> &s, int channels, int rate) {
+  if (channels <= 0 || rate <= 0 || s.empty())
+    return {};
+  {
+    std::vector<int16_t> v = To32kStereo(s, channels, rate);
+    const size_t max = size_t(600) * wwise_vorbis::kRate;
+    if (v.size() / 2 > max)
+      Cap(v, 2, wwise_vorbis::kRate, 600);
+    Bytes wem = wwise_vorbis::Encode(v.data(), v.size() / 2);
+    if (!wem.empty())
+      return wem;
+  }
+  To48k(s, channels, rate);
+  Cap(s, channels, rate);
+  return wwise::PcmStream(s.data(), s.size() / size_t(channels), channels, rate);
+}
+
+// A stream decoded by vgmstream and written for the mod (Finish). Empty if it can't.
 inline Bytes ToPcm(const fs::path &vgmstream, const Bytes &wem, const std::wstring &ext = L".wem") {
   std::vector<int16_t> s;
   int channels = 0, rate = 0;
   if (!Decode(vgmstream, wem, ext, s, channels, rate))
     return {};
-  To48k(s, channels, rate);
-  Cap(s, channels, rate);
-  return wwise::PcmStream(s.data(), s.size() / size_t(channels), channels, rate);
+  return Finish(s, channels, rate);
 }
 
 // The same with the sound of a video before it (from `from` to `seconds`, at the theme's rate and channels): a 2K15
@@ -196,9 +257,7 @@ inline Bytes ToPcmWithIntro(const fs::path &vgmstream, const Bytes &wem, const s
     }
   }
   out.insert(out.end(), s.begin(), s.end());
-  To48k(out, channels, rate);
-  Cap(out, channels, rate);
-  return wwise::PcmStream(out.data(), out.size() / size_t(channels), channels, rate);
+  return Finish(out, channels, rate);
 }
 
 }  // namespace theme_convert

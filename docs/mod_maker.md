@@ -1498,3 +1498,27 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
   met alors que la tenue d'entrée et laisse la tenue aux autres mods. Un jeu 1.2.0 ignore la clé et remet la tenue
   telle quelle (sans dommage, sauf si un autre mod change cette même tenue).
 - **État** : vérifié par la syntaxe seulement (pas de build, pas d'essai en jeu).
+
+## Thèmes portés en entier : Wwise Vorbis comme ceux du jeu (1.3, 2026-11-10)
+
+- **Avant** : les thèmes portés étaient écrits en Wwise PCM 48 kHz, coupés à 100 s (au-delà d'environ 20 Mo un thème
+  ne démarrait jamais). **Maintenant** (`theme_convert::Finish`) : le thème décodé par vgmstream est mis en stéréo
+  32 kHz (rééchantillonnage sinc fenêtré, `To32kStereo`) puis encodé en **Wwise Vorbis exactement comme les thèmes du
+  disque** (`wwise_vorbis.h`, jusqu'à 10 min) : environ 2,3 Mo pour 3 min 15. Si l'encodage échoue : l'ancien PCM.
+- **Encodeur** : aoTuV beta6.03 + libogg 1.3.5 (`third_party/vorbis_aotuv`, `third_party/libogg`, BSD-3, accord de
+  l'utilisateur le 2026-11-10 ; bibliothèque CMake `wwe12_vorbisenc`, Mod Maker seulement). À la qualité 0,2 en 32 kHz
+  stéréo, son setup réécrit au format compact de Wwise est **identique bit pour bit** à celui des 125 thèmes stéréo du
+  disque (201 octets). Les livres de codes y sont désignés par leur numéro dans la table du jeu (599 entrées à
+  0x8310D1D8 de default.xex, ordre différent du fichier de ww2ogg) : `kGameBooks`. Aucune donnée du jeu dans le
+  dépôt : le setup produit est vérifié par son empreinte (FNV-1a 64).
+- **Format** (mesuré sur Music.pck, détail en tête de `wwise_vorbis.h`) : paquets « modifiés » (sans le bit de type ni
+  les drapeaux de fenêtre), table de recherche (un point tous les ≥ 2048 échantillons, octets comptés depuis le setup),
+  champs vorb tous recalculés à l'identique sur deux thèmes du disque. Hors jeu : Cena du disque ré-encodé depuis
+  48 kHz est lu par vgmstream (durée exacte, 21,6 dB contre l'original : comme un Ogg Vorbis normal de même qualité).
+- **Jeu** (`wwise::MusicPackage`) : un thème Vorbis n'entre dans le paquet DLC_NN.pck que si son setup est celui du
+  thème 139 du `Music.pck` du joueur (les Vorbis d'autres jeux, WWE '13, faisaient planter le décodeur) ; il est
+  préchargé comme les thèmes du jeu. Un jeu 1.2.0 ne prend pas ces thèmes (le catcheur garde alors sa musique de
+  base) : refaire le mod avec l'ancien Mod Maker pour un jeu 1.2.0.
+- **État** : vérifié hors jeu (essai `work/wip/vorbis/proto/integ_test.cpp` : thème 48 kHz stéréo et 44,1 kHz mono →
+  Vorbis → paquet du jeu → relu à l'identique ; vgmstream). **Pas de build, pas encore d'essai en jeu** (thème long,
+  entrée, jukebox, victoire).
