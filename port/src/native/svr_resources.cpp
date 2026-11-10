@@ -57,6 +57,9 @@ REXCVAR_DEFINE_BOOL(svr_clear_new_surfaces, true, "SvR",
 REXCVAR_DEFINE_BOOL(svr_seed_new_surfaces, true, "SvR",
                     "A new colour render surface starts with the last picture of the same-sized one "
                     "(as the Xbox's EDRAM), not black.");
+// 1.3: see SvrFrontBufferUnwritten.
+REXCVAR_DEFINE_BOOL(svr_hold_unwritten_front_buffer, true, "SvR",
+                    "Keep the last picture instead of presenting a brand-new, never-drawn screen texture.");
 REXCVAR_DEFINE_BOOL(svr_debug_magenta, false, "SvR",
                     "Dev: fill every new host render target with magenta, so whatever the game reads "
                     "before drawing it shows up (NVIDIA starts them black, older Intel/AMD with "
@@ -148,6 +151,7 @@ struct HostTarget {
   bool in_memory = false;  // texture: its last resolve was read back into the game's memory
   bool resolved = false;   // texture: a resolve has written it at least once (diagnostic)
   bool early_logged = false;  // texture: "sampled before its first resolve" already logged
+  u64 created = 0;            // texture: the frame it was made (a new front buffer, see below)
 };
 
 // Diagnostic counters for the [load] line (match-start stutter on integrated GPUs): read-backs
@@ -626,6 +630,37 @@ float SvrSurfaceScale(u32 surface_va) {
   return std::min(x, y);
 }
 
+// 1.3, the black frame before the bell: the game may hand D3D Swap a front buffer it has not
+// resolved anything into yet (a new screen texture at the change of scene), which the PC starts
+// black. The Xbox showed what that memory held. A front buffer made in the last few frames and never
+// resolved into is not presented (the previous picture stays), at most kMaxHeld frames in a row.
+bool SvrFrontBufferUnwritten(u32 texture_va) {
+  constexpr u64 kRecentFrames = 10;
+  constexpr int kMaxHeld = 4;
+  static int s_held = 0;
+  if (!texture_va || !REXCVAR_GET(svr_hold_unwritten_front_buffer)) {
+    s_held = 0;
+    return false;
+  }
+  bool unwritten = false;
+  {
+    std::lock_guard lock(g_mutex);
+    const auto it = g_targets.find(texture_va);
+    const u64 now = g_surface_frame.load(std::memory_order_relaxed);
+    unwritten = it != g_targets.end() && it->second.host && !it->second.resolved &&
+                now - it->second.created <= kRecentFrames;
+  }
+  if (!unwritten || s_held >= kMaxHeld) {
+    s_held = unwritten ? s_held : 0;
+    return false;
+  }
+  ++s_held;
+  static std::atomic<u32> s_logged{0};
+  if (s_logged.fetch_add(1, std::memory_order_relaxed) < 32)
+    BD_INFO("SvR front buffer 0x{:08X} never drawn yet: the previous picture stays", texture_va);
+  return true;
+}
+
 void SvrNoteFrontBuffer(u32 texture_va) {
   if (texture_va)
     g_front_buffer_va.store(texture_va, std::memory_order_relaxed);
@@ -697,8 +732,10 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale_x, float scale_y) {
   // in the crowd during entrances. Start them transparent black.
   if (host && !cube && !seeded)
     Video::ClearTexture(host, REXCVAR_GET(svr_debug_magenta) ? 0xFFFF00FFu : 0u);
-  g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, 0, packed,
-                                           g_surface_frame.load(std::memory_order_relaxed)});
+  const auto made = g_targets.emplace(
+      texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, 0, packed,
+                             g_surface_frame.load(std::memory_order_relaxed)});
+  made.first->second.created = g_surface_frame.load(std::memory_order_relaxed);
   if (host)
     g_targets_created.fetch_add(1, std::memory_order_relaxed);
   return host;
