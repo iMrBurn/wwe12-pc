@@ -68,8 +68,12 @@ REXCVAR_DEFINE_STRING(wwe12_benchmark_scenario, "player_match", "WWE12",
 // (sub_822B51A0) makes a wrong route "failed: wrong match" instead of a measure of something else.
 // Recorded on 2026-11-10 (fresh data folder, version 1.3 in progress): the first-start prompts, PLAY, the
 // Armageddon Hell in a Cell, 6 superstars and their attires, the default arena, entrances off.
+// Its first START comes 8 s after the title screen shows (10 s more than the route's own 2 s): pressed
+// 2 s after it, the game missed it (its title animation) and the whole route went astray (test of
+// 2026-11-10; the player pressed it 13 s after). The first loading screen only comes after the
+// first-start prompts, so "tap until loading" would press START into them.
 REXCVAR_DEFINE_STRING(wwe12_benchmark_route,
-                      "START wait10000 A wait1500 LEFT wait1500 A wait5000 B wait1500 A wait1500 DOWN wait1500 DOWN wait1500 DOWN wait1500 DOWN wait1500 A wait1500 DOWN wait1500 A wait1533 DOWN wait1500 DOWN wait1500 DOWN wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait4500 DOWN wait1500 A",
+                      "wait8000 START wait10000 A wait1500 LEFT wait1500 A wait5000 B wait1500 A wait1500 DOWN wait1500 DOWN wait1500 DOWN wait1500 DOWN wait1500 A wait1500 DOWN wait1500 A wait1533 DOWN wait1500 DOWN wait1500 DOWN wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait1500 A wait4500 DOWN wait1500 A",
                       "WWE12",
                       "Benchmark hiac6: the remote pad's words from the title screen to the match "
                       "loading (recorded with wwe12_benchmark_record_route).");
