@@ -241,12 +241,112 @@ bool TurboFrame() {
 }
 }  // namespace
 
+// ---- Fast boot (1.3): the first picture shown is the title screen ("Press START").
+//
+// From the first frame, the game runs as on a turbo loading screen (vsync off, guest vblank at
+// 1 kHz, screen draws skipped) and NOTHING is presented: the warning / legal screens (~9 s of
+// frame-timed still pictures before the start-up videos, measured 2026-11-10) and the start-up
+// videos (skipped by wwe12_intros.cpp) are never seen; the window stays as it was. The sound is
+// muted during the turbo (SDK cvar audio_mute), so the screens' sounds played fast are not heard.
+// The title screen comes right after the opening video (start-up movie 2, which wwe12_intros.cpp
+// skips): once it is asked for, the turbo stops (the game's own pace again) and the frames stay
+// hidden wwe12_fast_boot_settle_ms longer (the title's fade-in); then everything is shown and
+// heard as usual. Safety: whatever happens, after kBootMaxMs from the first frame the boot ends
+// (never an endless black window). Needs wwe12_skip_intros (with the videos played, movie 2
+// would be asked before its own showing). wwe12_fast_boot = false: the 1.2 start-up.
+// "[boot]" lines: times from the process start (first frame, movies, end and why).
+REXCVAR_DEFINE_BOOL(wwe12_fast_boot, true, "WWE12",
+                    "Start-up: nothing is shown until the title screen (no warning screens).");
+REXCVAR_DEFINE_INT32(wwe12_fast_boot_settle_ms, 800, "WWE12",
+                     "Fast boot: hidden time at normal pace after the opening video, before the "
+                     "title screen is shown.")
+    .range(0, 5000);
+
+namespace {
+constexpr int64_t kBootMaxMs = 20000;
+const int64_t g_process_start_ms = NowMs();  // (static init: before the runtime starts)
+
+enum class Boot { kNotStarted, kTurbo, kSettle, kDone };
+std::atomic<Boot> g_boot{Boot::kNotStarted};
+std::atomic<int64_t> g_boot_first_ms{0}, g_boot_settle_ms{0};
+bool g_boot_saved_vsync = true, g_boot_saved_mute = false;  // (frame thread only)
+u32 g_boot_frames = 0;
+
+bool BootWanted() {
+  return REXCVAR_GET(wwe12_fast_boot) && rex::cvar::Query<bool>("wwe12_skip_intros");
+}
+
+void BootEnd(int64_t now, const char *why) {
+  if (g_boot.exchange(Boot::kDone) == Boot::kDone)
+    return;
+  rex::cvar::SetFlagByName("vsync", g_boot_saved_vsync ? "true" : "false");
+  rex::cvar::SetFlagByName("audio_mute", g_boot_saved_mute ? "true" : "false");
+  BD_INFO("[boot] title screen shown at {} ms ({}): {} game frames hidden since the first frame "
+          "at {} ms",
+          now - g_process_start_ms, why, g_boot_frames,
+          g_boot_first_ms.load() - g_process_start_ms);
+}
+
+// Once per game frame while the boot is not done: true = this frame is hidden.
+bool BootFrame() {
+  const int64_t now = NowMs();
+  Boot b = g_boot.load();
+  if (b == Boot::kNotStarted) {
+    if (!BootWanted()) {
+      g_boot = Boot::kDone;
+      return false;
+    }
+    g_boot_first_ms = now;
+    g_boot_saved_vsync = rex::cvar::Query<bool>("vsync");
+    g_boot_saved_mute = rex::cvar::Query<bool>("audio_mute");
+    rex::cvar::SetFlagByName("vsync", "false");
+    rex::cvar::SetFlagByName("audio_mute", "true");
+    g_boot = b = Boot::kTurbo;
+    BD_INFO("[boot] first frame at {} ms: fast boot, nothing shown until the title screen",
+            now - g_process_start_ms);
+  }
+  ++g_boot_frames;
+  if (now - g_boot_first_ms.load() >= kBootMaxMs) {
+    BootEnd(now, "safety limit, the opening video never came");
+    return false;
+  }
+  if (b == Boot::kSettle) {
+    if (now - g_boot_settle_ms.load() >= REXCVAR_GET(wwe12_fast_boot_settle_ms)) {
+      BootEnd(now, "opening video skipped, settle time over");
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
+// wwe12_intros.cpp: a start-up movie (0, 1 logo, 2 opening) is asked for the first time.
+void Wwe12BootMovieAsked(u32 movie) {
+  const int64_t now = NowMs();
+  BD_INFO("[boot] start-up movie {} asked at {} ms", movie, now - g_process_start_ms);
+  if (movie != 2)
+    return;
+  Boot expected = Boot::kTurbo;
+  if (g_boot.compare_exchange_strong(expected, Boot::kSettle)) {
+    g_boot_settle_ms = now;
+    // The game's own pace again for the title's start (its fade-in), still hidden; its sound
+    // back now, so the title music starts as usual.
+    rex::cvar::SetFlagByName("vsync", g_boot_saved_vsync ? "true" : "false");
+    rex::cvar::SetFlagByName("audio_mute", g_boot_saved_mute ? "true" : "false");
+  }
+}
+
 // Called by Video::Present before presenting: true = render this frame but do not show it.
 // With wwe12_load_turbo_skip_draws (default) the frame was already hidden at its start
-// (Wwe12LoadTurboHideNextFrame) and is never presented, so nothing to do here.
+// (Wwe12LoadTurboHideNextFrame) and is never presented; the fast boot also hides here the very
+// first frame (drawn before any Swap could hide it).
 bool Wwe12LoadTurboSkipPresent() {
-  if (REXCVAR_GET(wwe12_load_turbo_skip_draws))
-    return false;
+  if (REXCVAR_GET(wwe12_load_turbo_skip_draws)) {
+    const Boot b = g_boot.load();
+    return (b == Boot::kNotStarted && BootWanted()) || b == Boot::kTurbo || b == Boot::kSettle;
+  }
+  if (g_boot.load() != Boot::kDone && BootFrame())
+    return true;
   return TurboFrame();
 }
 
@@ -257,6 +357,8 @@ bool Wwe12LoadTurboHideNextFrame() {
   Wwe12Ag2dProbeTick();
   if (!REXCVAR_GET(wwe12_load_turbo_skip_draws))
     return false;
+  if (g_boot.load() != Boot::kDone && BootFrame())
+    return true;
   return TurboFrame();
 }
 

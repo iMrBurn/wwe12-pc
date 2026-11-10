@@ -28,6 +28,7 @@ REX_EXTERN(__imp__sub_821A9AC0);
 REX_EXTERN(__imp__sub_82A8C070);
 
 u16 Wwe12RemotePadButtons();  // wwe12_remote_pad.cpp (dev)
+void Wwe12BootMovieAsked(u32 movie);  // wwe12_load_turbo.cpp (fast boot)
 
 namespace {
 // Window (steady clock, ms) during which player 1's Start is held down.
@@ -46,6 +47,7 @@ extern "C" REX_FUNC(sub_821A9AC0) {
   if (REXCVAR_GET(wwe12_skip_intros) && movie <= 2) {
     const u32 bit = 1u << movie;
     if (!(s_skipped.fetch_or(bit) & bit)) {
+      Wwe12BootMovieAsked(movie);  // wwe12_load_turbo.cpp: the fast boot ends after movie 2
       bd::mem::store<u8>(ctx.r3.u32, 0);
       ctx.r3.u64 = 0;
       const long long now = NowMs();

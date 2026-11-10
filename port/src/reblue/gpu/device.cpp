@@ -313,6 +313,14 @@ VideoState &state() {
 Video::OverlayDrawHook g_overlay_draw_hook;
 
 bool Video::CreateHostDevice(rex::ui::Window *window) {
+  // "[boot]" timing of the host device's start (2026-11-10: ~2.3 s without a log line between
+  // "[settings]" and "GPU caps" on the Intel iGPU).
+  const auto boot_t0 = std::chrono::steady_clock::now();
+  const auto boot_ms = [&boot_t0] {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - boot_t0)
+        .count();
+  };
   // The bd_* graphics cvars (config file already loaded here) and their change callbacks: never
   // done before, so V-sync, texture filtering and the picture shape kept their defaults whatever
   // the launcher or OPTIONS > GRAPHICS set (Android #32, #35, #39).
@@ -339,6 +347,7 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
     if (!bd::platform::GetNativeRenderWindow(window, render_window)) {
       return false;
     }
+    BD_INFO("[boot] device: output and window ready after {} ms", boot_ms());
 
     for (u32 i = 0; i < std::size(s.input_slots); ++i) {
       s.input_slots[i].index = i;
@@ -368,6 +377,7 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
       return false;
     }
 #endif
+    BD_INFO("[boot] device: graphics API interface after {} ms", boot_ms());
     // svr_gpu_device: the Vulkan name of the GPU to use (as vulkaninfo lists it), e.g. a laptop's
     // integrated one; empty picks the most capable (a discrete GPU first).
     s.device = s.render_iface->createDevice(REXCVAR_GET(svr_gpu_device));
@@ -375,6 +385,7 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
       BD_ERROR("Plume RenderInterface::createDevice failed");
       return false;
     }
+    BD_INFO("[boot] device: GPU device created after {} ms", boot_ms());
     // plume treats these as optional, the recompiled shaders don't: without them every draw
     // reads nothing and the game runs behind a black screen (old drivers, e.g. issue #14 on a
     // Radeon HD 8790M). Fail here so the player gets the "Vulkan too old" message instead.
