@@ -1580,7 +1580,10 @@ void PageRosters() {
   const char *override_file = std::getenv("WWE12_LAUNCHER_ROSTERS_FILE");  // (test aid: a COPY of a save)
   rosters::Page::Env env;
   env.can_write = !game::IsRunning() && !g_saves.Busy();
-  env.backup = [](std::string &err) { return g_saves.BackupBeforeChange(err); };
+  if (override_file)  // test aid: the file is a COPY, nothing of the real saves is touched
+    env.backup = [](std::string &) { return std::string("(test copy: no backup)"); };
+  else
+    env.backup = [](std::string &err) { return g_saves.BackupBeforeChange(err); };
   g_rosters.Draw(g_s.language == 4,
                  override_file ? fs::path(override_file)
                                : DocumentsDir() / "wwe12" / "B13EBABEBABEBABE" / "54510890" / "00000001" / "SaveData.dat" /
