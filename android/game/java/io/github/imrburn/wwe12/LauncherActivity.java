@@ -227,6 +227,7 @@ public class LauncherActivity extends Activity {
                         config.set("wwe12_dof", "false");
                         config.set("bd_anisotropy", "0");
                         config.set("wwe12_60fps", "false");
+                        config.set("wwe12_frame_mode", "original");
                         config.set("wwe12_instant_replay", "false");
                         config.save();
                         if (customDriver) DriverManager.select(LauncherActivity.this, "");
@@ -339,7 +340,7 @@ public class LauncherActivity extends Activity {
         set.addView(prefToggle("Warn me when the phone gets too hot (Android 10+)", "thermal_warning", true));
         set.addView(toggle("Shadows", "wwe12_shadows"));
         set.addView(toggle("Crowd", "wwe12_crowd"));
-        set.addView(toggle("60 fps in entrances (heavier)", "wwe12_60fps"));
+        set.addView(frameRateChoice());
         // From Yexclsv's work: more settings and one-tap presets.
         set.addView(toggle("Depth of field (blur, heavier)", "wwe12_dof"));
         set.addView(toggle("V-sync (no tearing)", "bd_vsync"));
@@ -621,6 +622,7 @@ public class LauncherActivity extends Activity {
                 config.set("wwe12_dof", dof);
                 config.set("bd_anisotropy", aniso);
                 config.set("wwe12_60fps", "false");
+                config.set("wwe12_frame_mode", "original");
                 config.save();
                 recreate();  // rebuilds the settings with the new values
             }
@@ -670,6 +672,29 @@ public class LauncherActivity extends Activity {
             public void onNothingSelected(AdapterView<?> p) {}
         });
         return dropRow(label, s);
+    }
+
+    // Frame rate (1.2): the game's own rates, 30 fps in matches (experimental, for slow phones, issue #57), or
+    // 60 fps in entrances. Writes wwe12_frame_mode and keeps the older wwe12_60fps in step (like the PC launcher).
+    View frameRateChoice() {
+        final String[] values = {"original", "30", "60_entrances"};
+        String current = config.get("wwe12_frame_mode", "");
+        if (current.isEmpty()) current = "true".equals(config.get("wwe12_60fps", "false")) ? "60_entrances" : "original";
+        Spinner s = Ui.spinner(this, new String[] {"Original (entrances at 30)",
+                "30 in matches (experimental, easier on slow phones)", "60 in entrances (heavier)"});
+        for (int i = 0; i < values.length; i++)
+            if (values[i].equals(current)) s.setSelection(i);
+        s.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                if (!values[pos].equals(config.get("wwe12_frame_mode", ""))) {
+                    config.set("wwe12_frame_mode", values[pos]);
+                    config.set("wwe12_60fps", pos == 2 ? "true" : "false");
+                    config.save();
+                }
+            }
+            public void onNothingSelected(AdapterView<?> p) {}
+        });
+        return dropRow("Frame rate", s);
     }
 
     View prefChoice(String label, final String key, String[] names, final int[] values, int def) {
