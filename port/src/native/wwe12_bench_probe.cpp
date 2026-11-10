@@ -116,7 +116,7 @@ void ScanForChoices(u8 *base) {
       if (VirtualQuery(h, &mbi, sizeof(mbi)) != sizeof(mbi))
         break;
       const u8 *start = static_cast<const u8 *>(mbi.BaseAddress);
-      const u8 *end = std::min(start + mbi.RegionSize, base + 0x100000000ull);
+      const u8 *end = std::min<const u8 *>(start + mbi.RegionSize, base + 0x100000000ull);
       if (mbi.State == MEM_COMMIT && mbi.Protect && !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)))
         for (const u8 *q = std::max(start, h); hits < 32;) {
           q = std::search(q, end, pats[k][0].begin(), pats[k][0].end());
