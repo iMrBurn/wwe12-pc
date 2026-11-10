@@ -248,54 +248,70 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     // (renumbered into a kind of move WWE '12 knows: a motion in a hundred it hasn't froze the wrestlers; the moveset's
     // slots take the new numbers)
     std::map<int, std::map<int, int>> prefer;  // move number -> the hundreds WWE '12's rosters use in its slot (counts)
+    moveset_port::detail::Game g12;
+    moveset_port::detail::Load(w12, g12);
+    std::map<int, std::set<int>> in_slot;  // slot -> move numbers WWE '12's rosters put there
     {
-      moveset_port::detail::Game g12;
-      moveset_port::detail::Load(w12, g12);
       std::map<int, std::map<int, int>> by_slot;  // slot -> hundred -> count
       for (const auto &[id, p] : g12.pro)
         for (size_t o = 0x0A; o + 2 <= p.size() && o < 0x1C4; o += 2)
-          if (const int v = moveset_port::detail::U16(p, o); v > 0)
+          if (const int v = moveset_port::detail::U16(p, o); v > 0) {
             by_slot[int(o)][newmoves13::MotionOf(v) / 100]++;
+            in_slot[int(o)].insert(v);
+          }
       for (const auto &r : out.moves.rows)
         if (r.new_move && !prefer.count(r.from_id))
           prefer[r.from_id] = by_slot[r.off];
-      // (and their category bits: those of the WWE '12 move used in the same slot whose bits are closest - bits valid
-      // for that slot's Create a Moveset list; the donors' bits alone are WWE '12's for 62 % of the moves only, and a
-      // 2K14 Cesaro's Neutralizer was in no list, 2026-11-08)
-      std::map<int, std::set<int>> in_slot;  // slot -> move numbers WWE '12's rosters put there
-      for (const auto &[id, p] : g12.pro)
-        for (size_t o = 0x0A; o + 2 <= p.size() && o < 0x1C4; o += 2)
-          if (const int v = moveset_port::detail::U16(p, o); v > 0)
-            in_slot[int(o)].insert(v);
-      for (auto &m : out.new_moves) {
-        int slot = -1;
-        for (const auto &r : out.moves.rows)
-          if (r.new_move && r.from_id == m.number) {
-            slot = r.off;
-            break;
-          }
-        if (slot < 0 || m.waze.size() < 16)
-          continue;
-        const svrfmt::Bytes *best = nullptr;
-        int best_d = 1 << 30;
-        for (int v : in_slot[slot]) {
-          const auto c = g12.cats.find(v);
-          if (c == g12.cats.end() || c->second.size() < 16)
-            continue;
-          int d = 0;
-          for (int i = 0; i < 16; ++i)
-            d += __builtin_popcount(unsigned(c->second[size_t(i)] ^ m.waze[size_t(i)]));
-          if (d < best_d)
-            best_d = d, best = &c->second;
-        }
-        if (best)
-          std::copy(best->begin(), best->begin() + 16, m.waze.begin());
-      }
     }
     const auto renamed = newmoves13::Renumber(w12, out.new_moves, prefer);
     for (auto &r : out.moves.rows)
       if (r.new_move && renamed.count(r.from_id))
         r.from_id = renamed.at(r.from_id);
+    // (and their category bits: those of a WWE '12 move used in the same slot whose bits are closest - bits valid for
+    // that slot's Create a Moveset list; the donors' bits alone are WWE '12's for 62 % of the moves only, and a 2K14
+    // Cesaro's Neutralizer was in no list, 2026-11-08 - and of the same kind of move: its motion's hundred, as given
+    // after the renumbering. The bits tell the game how the move starts (running, from the top rope...): 2K14 Hogan's
+    // Running Leg Drop (333xx, the running moves at a downed opponent: People's Elbow, Running Senton) took a diving
+    // finisher's bits (560xx: Diving Fist Drop 4) and froze as his finisher, 2026-11-10. Order: a move of the slot of
+    // that hundred, else any WWE '12 move of that hundred, else a move of the slot.)
+    for (auto &m : out.new_moves) {
+      int slot = -1;
+      for (const auto &r : out.moves.rows)
+        if (r.new_move && r.from_id == m.number) {
+          slot = r.off;
+          break;
+        }
+      if (slot < 0 || m.waze.size() < 16)
+        continue;
+      const int hundred = newmoves13::MotionOf(m.number) / 100;
+      const svrfmt::Bytes *best = nullptr;
+      int best_d = 1 << 30;
+      auto consider = [&](int v, bool same_kind) {
+        const auto c = g12.cats.find(v);
+        if (c == g12.cats.end() || c->second.size() < 16 || (same_kind && newmoves13::MotionOf(v) / 100 != hundred))
+          return;
+        bool any = false;  // (a record without bits - an unnamed motion - gives none)
+        for (int i = 0; i < 16; ++i)
+          any |= c->second[size_t(i)] != 0;
+        if (!any)
+          return;
+        int d = 0;
+        for (int i = 0; i < 16; ++i)
+          d += __builtin_popcount(unsigned(c->second[size_t(i)] ^ m.waze[size_t(i)]));
+        if (d < best_d)
+          best_d = d, best = &c->second;
+      };
+      for (int v : in_slot[slot])
+        consider(v, true);
+      if (!best)
+        for (const auto &[v, c] : g12.cats)
+          consider(v, true);
+      if (!best)
+        for (int v : in_slot[slot])
+          consider(v, false);
+      if (best)
+        std::copy(best->begin(), best->begin() + 16, m.waze.begin());
+    }
     std::set<int> got;
     for (const auto &m : out.new_moves)
       got.insert(m.number);
