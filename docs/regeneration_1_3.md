@@ -50,6 +50,15 @@ Comptage automatique dans `port/src` (2026-11-10) :
   - Les lectures de `r4`-`r6` après l'appel lisent déjà, sur la console, une valeur que l'original a pu écraser :
     à vérifier une par une (souvent elles veulent l'argument d'entrée, à garder avant l'appel).
 - Aucun crochet au milieu d'une fonction (« midasm ») dans `wwe12_config.toml` : rien à revoir de ce côté.
+- **Crochets qui reconnaissent leur appelant par `ctx.lr`** (contrôle demandé par Gameplay, 2026-11-10) : correctifs
+  THQ et Univers (`sub_82A330D8`, `sub_826D0598`, `sub_826CC0B8`) et `wwe12_move_events.cpp`. Aujourd'hui, le
+  code généré écrit `ctx.lr = 0x…;` juste avant chaque appel. Aucun des six réglages ne concerne `lr`, mais il faut le
+  **vérifier sur une fonction régénérée** (lire le C++ produit) avant de compiler. Si `lr` n'était plus écrit, ces
+  correctifs cesseraient de s'appliquer **sans le dire**. Au gros test : les lignes de journal `[tu]` attendues
+  doivent apparaître comme avant la régénération (comparer un même parcours avant / après).
+- **Sonde de Gameplay sur `sub_822769C8`** : elle lit `r25` / `r28` / `r31` de l'appelant dans `ctx`. Elle est
+  coupée par défaut (pas de risque pour le jeu), mais elle ne donnerait plus les bonnes valeurs avec
+  `non_volatile_as_local` : à refaire si on en a encore besoin.
 - Les sondes (`*_probe.cpp`) sont coupées par défaut : à revoir quand même, mais elles ne touchent pas les joueurs.
 
 ## 3. Plan de test et retour en arrière
