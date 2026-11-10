@@ -30,7 +30,7 @@ namespace fs = std::filesystem;
 class Runner {
  public:
   // false = the button is greyed ("Coming soon"). Set to true only once the user has validated the result panel (1.3).
-  static constexpr bool kAvailable = false;
+  static constexpr bool kAvailable = true;
   enum class State { Idle, Running, Done, Failed };
 
   bool Busy() const { return state_ == State::Running; }
