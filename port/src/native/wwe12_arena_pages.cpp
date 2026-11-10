@@ -560,19 +560,18 @@ bool Waist(const std::vector<uint8_t> &ch, float &width, float &depth) {
 
 constexpr const char *kEntrancesCache = "cache.txt";
 
-std::string EntrancesKey(const fs::path &user_root, const fs::path &mods) {
+// A key (FNV-1a 64, hex) of a start-up step's inputs: `extra` (its own), this file's build and every file of the mods
+// folder by path, size and time.
+std::string InputsKey(const std::vector<std::string> &extra, const fs::path &mods) {
   uint64_t h = 0xCBF29CE484222325ull;
   auto add = [&](const std::string &s) {
     for (char c : s)
       h = (h ^ uint8_t(c)) * 0x100000001B3ull;
     h = (h ^ 0xFF) * 0x100000001B3ull;  // (a separator)
   };
-  add("entrances cache 1 " __DATE__ " " __TIME__);
-  add(std::to_string(int(REXCVAR_GET(wwe12_belt_fit))) + std::to_string(int(REXCVAR_GET(wwe12_belt_length))));
-  for (const char *f : {"superstar_slots.txt", "superstar_movies.txt", "belts.txt"}) {
-    std::vector<uint8_t> t;
-    add(ReadHost(user_root / f, t) ? std::string(t.begin(), t.end()) : std::string("-"));
-  }
+  add("inputs 1 " __DATE__ " " __TIME__);
+  for (const auto &e : extra)
+    add(e);
   std::vector<std::string> files;
   std::error_code ec;
   for (fs::recursive_directory_iterator it(mods, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end;
@@ -592,6 +591,17 @@ std::string EntrancesKey(const fs::path &user_root, const fs::path &mods) {
   char hex[24];
   snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)h);
   return hex;
+}
+
+std::string EntrancesKey(const fs::path &user_root, const fs::path &mods) {
+  std::vector<std::string> extra = {"entrances",
+                                    std::to_string(int(REXCVAR_GET(wwe12_belt_fit))) +
+                                        std::to_string(int(REXCVAR_GET(wwe12_belt_length)))};
+  for (const char *f : {"superstar_slots.txt", "superstar_movies.txt", "belts.txt"}) {
+    std::vector<uint8_t> t;
+    extra.push_back(ReadHost(user_root / f, t) ? std::string(t.begin(), t.end()) : std::string("-"));
+  }
+  return InputsKey(extra, mods);
 }
 
 // The tables and files of the last start, if its key is `key` and its files are all there. False (and the tables
@@ -1273,13 +1283,139 @@ void Wwe12MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::str
     MountEntrances(vfs, game_device, user_root, mods);
 }
 
+namespace {
+
+// ---- A cache of the added arenas step (1.3, as the entrances': EntrancesKey). Made again each start, it read every
+// added arena's whole file (10-25 MB) for its 24-byte STG record, and wrote again copies of the game's files: each base
+// arena's (~10 MB, twice), MatchHD / MatchSD (25 MB each), evtgdhd (24 MB), LoadHD (61 MB). Now the arena files'
+// records alone are read, and when the inputs' key (InputsKey: this code, every file of the mods folder) is the one of
+// arena_slots\cache.txt and the files listed there are still there at their size, the copies are kept with the places
+// saved beside them (the banner pack's, each arena's VS screen, entrance graphics and pre-match screen). A base arena's
+// served file that holds an added arena (Serve: a "<file>.current" beside it) is given the game's back first.
+
+constexpr const char *kArenasCache = "cache.txt";
+
+// A file's size as the game sees it (the mods folder's copy first), 0 if none.
+uint64_t GameFileSize(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods, const std::string &rel) {
+  std::error_code ec;
+  if (const fs::path m = mods / fs::path(rel); fs::is_regular_file(m, ec))
+    return fs::file_size(m, ec);
+  std::string path = "game:\\" + rel;
+  std::replace(path.begin(), path.end(), '/', '\\');
+  rex::filesystem::Entry *entry = vfs->ResolvePath(path);
+  return entry ? entry->size() : 0;
+}
+
+// A host file's first `n` bytes and its size.
+bool ReadHostHead(const fs::path &p, size_t n, std::vector<uint8_t> &out, uint64_t &size) {
+  std::ifstream f(p, std::ios::binary | std::ios::ate);
+  if (!f)
+    return false;
+  size = uint64_t(f.tellg());
+  out.resize(size_t(std::min<uint64_t>(n, size)));
+  f.seekg(0);
+  f.read(reinterpret_cast<char *>(out.data()), std::streamsize(out.size()));
+  return bool(f);
+}
+
+std::string ArenaCacheLine(const Added &a) {
+  std::string t = "A " + a.id + "\t" + a.banner;
+  for (u32 v : {a.mb_sector, a.mb_units, a.mf_sector, a.mf_units, a.mb_sd_sector, a.mb_sd_units, a.mf_sd_sector,
+                a.mf_sd_units, a.etex_sector, a.etex_units, a.load_sector, a.load_units})
+    t += "\t" + std::to_string(v);
+  return t;
+}
+
+bool LoadArenasCache(const fs::path &out, const std::string &key) {
+  std::vector<uint8_t> t;
+  if (!ReadHost(out / kArenasCache, t))
+    return false;
+  std::vector<std::string> lines(1);
+  for (char c : std::string(t.begin(), t.end()))
+    if (c == '\n')
+      lines.emplace_back();
+    else if (c != '\r')
+      lines.back() += c;
+  if (!lines.empty() && lines.back().empty())
+    lines.pop_back();
+  if (lines.size() < 3 || lines[0] != "key=" + key || lines.back() != "end")
+    return false;
+  auto cells = [](const std::string &l) {
+    std::vector<std::string> v(1);
+    for (size_t i = 2; i < l.size(); ++i)
+      if (l[i] == '\t')
+        v.emplace_back();
+      else
+        v.back() += l[i];
+    return v;
+  };
+  size_t next = 0;  // (the added arenas, in their order)
+  u32 g[4] = {};
+  bool have_g = false;
+  std::vector<std::vector<std::string>> rows;
+  for (size_t i = 1; i + 1 < lines.size(); ++i) {
+    const std::string &l = lines[i];
+    if (l.size() < 2 || l[1] != ' ')
+      return false;
+    const auto v = cells(l);
+    if (l[0] == 'G' && v.size() == 4) {
+      for (int k = 0; k < 4; ++k)
+        g[k] = u32(strtoul(v[size_t(k)].c_str(), nullptr, 10));
+      have_g = true;
+    } else if (l[0] == 'A' && v.size() == 14) {
+      if (next >= g_added.size() || v[0] != g_added[next].id)
+        return false;
+      rows.push_back(v);
+      ++next;
+    } else if (l[0] == 'F' && v.size() == 2) {
+      std::error_code ec;
+      const fs::path p = out / fs::path(v[0]);
+      if (!fs::is_regular_file(p, ec) || fs::file_size(p, ec) != strtoull(v[1].c_str(), nullptr, 10))
+        return false;
+    } else {
+      return false;
+    }
+  }
+  if (!have_g || next != g_added.size())
+    return false;
+  g_mupa_sector = g[0], g_mupa_units = g[1], g_mupa_sd_sector = g[2], g_mupa_sd_units = g[3];
+  for (size_t i = 0; i < rows.size(); ++i) {
+    Added &a = g_added[i];
+    const auto &v = rows[i];
+    a.banner = v[1];
+    u32 *f[] = {&a.mb_sector, &a.mb_units, &a.mf_sector, &a.mf_units, &a.mb_sd_sector, &a.mb_sd_units, &a.mf_sd_sector,
+                &a.mf_sd_units, &a.etex_sector, &a.etex_units, &a.load_sector, &a.load_units};
+    for (size_t k = 0; k < 12; ++k)
+      *f[k] = u32(strtoul(v[2 + k].c_str(), nullptr, 10));
+  }
+  return true;
+}
+
+void SaveArenasCache(const fs::path &out, const std::string &key,
+                     const std::vector<std::pair<std::string, uint64_t>> &written) {
+  std::string t = "key=" + key + "\n";
+  t += "G " + std::to_string(g_mupa_sector) + "\t" + std::to_string(g_mupa_units) + "\t" + std::to_string(g_mupa_sd_sector) +
+       "\t" + std::to_string(g_mupa_sd_units) + "\n";
+  for (const auto &a : g_added)
+    t += ArenaCacheLine(a) + "\n";
+  for (const auto &[rel, size] : written)
+    t += "F " + rel + "\t" + std::to_string(size) + "\n";
+  t += "end\n";
+  WriteHost(out / kArenasCache, std::vector<uint8_t>(t.begin(), t.end()));
+}
+
+}  // namespace
+
 void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device,
                           const fs::path &user_root, const fs::path &mods) {
   if (!REXCVAR_GET(wwe12_arena_pages) || user_root.empty())
     return;
   const fs::path out = user_root / "arena_slots";
+  const auto t0 = std::chrono::steady_clock::now();
+  auto ms = [&] {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+  };
   std::error_code ec;
-  fs::remove_all(out, ec);
   // The added arenas, in folder order.
   std::vector<fs::path> dirs;
   for (fs::directory_iterator it(mods / ".svrmods" / "Arenas", ec), end; !ec && it != end; it.increment(ec))
@@ -1299,14 +1435,15 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       ++ignored;
       continue;
     }
-    if (!ReadHost(d / "arena" / "arena.pac", pac))
+    uint64_t pac_size = 0;  // (its STG record only: the whole file is read when it plays, Serve)
+    if (!ReadHostHead(d / "arena" / "arena.pac", 0x818, pac, pac_size))
       continue;
     Added a;
     a.id = rex::path_to_utf8(d.filename());  // (not string(): it throws on a name outside the code page)
     a.name = Value(text, "name");
     a.base = u32(atoi(Value(text, "base").c_str()));
     // Its STG data: the EPAC's STG record at 0x800 = {"STG ", ..., +0x10 start (sectors), +0x14 size (256 bytes)}.
-    if (a.base > 22 || pac.size() < 0x818 || memcmp(&pac[0x800], "STG ", 4) != 0) {
+    if (a.base > 22 || pac.size() < 0x818 || pac_size < 0x818 || memcmp(&pac[0x800], "STG ", 4) != 0) {
       REXLOG_WARN("[arena pages] {}: not an arena file", a.id);
       continue;
     }
@@ -1314,25 +1451,25 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
     memcpy(&start, &pac[0x810], 4);
     memcpy(&units, &pac[0x814], 4);
     start += 8;  // (counted from the data, which starts at 0x4000, after the EPAC header)
-    if (size_t(start) * 0x800 + size_t(units) * 0x100 > pac.size()) {
+    if (uint64_t(start) * 0x800 + uint64_t(units) * 0x100 > pac_size) {
       REXLOG_WARN("[arena pages] {}: arena file cut short", a.id);
       continue;
     }
     char rel[32];
     snprintf(rel, sizeof(rel), "pac/bg/bg%02u.pac", a.base);
     Served &sv = g_served[a.base];
-    if (sv.path.empty()) {  // the game's file of this base, kept beside, and served as it is for now
-      std::vector<uint8_t> game;
-      if (!ReadForGame(vfs, mods, rel, game) || !WriteHost(out / "game" / rel, game)) {
+    if (sv.path.empty()) {  // the game's file of this base, kept beside, and served as it is for now (copied below)
+      const uint64_t game = GameFileSize(vfs, mods, rel);
+      if (!game) {
         REXLOG_WARN("[arena pages] {}: {} unreadable", a.id, rel);
         g_served.erase(a.base);
         continue;
       }
       sv.path = out / rel;
       sv.original = out / "game" / rel;
-      sv.size = game.size();
+      sv.size = size_t(game);
     }
-    sv.size = std::max(sv.size, (pac.size() + 0x7FF) & ~size_t(0x7FF));
+    sv.size = std::max(sv.size, size_t((pac_size + 0x7FF) & ~uint64_t(0x7FF)));
     a.file = d / "arena" / "arena.pac";
     a.sector = start;
     a.units = units;
@@ -1388,14 +1525,57 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
   // (said, not silent: a player saw only two pages of added arenas, 2026-11-10; the Mod Maker's CHECK MODS says it too)
   if (ignored)
     REXLOG_WARN("[arena pages] arena mods: 35 added arenas at most, {} ignored: turn some off", ignored);
-  if (g_added.empty())
+  if (g_added.empty()) {
+    fs::remove_all(out, ec);
     return;
-  for (auto &[stage, sv] : g_served) {
+  }
+  // (the cache: kArenasCache)
+  const std::string key = InputsKey({"arenas"}, mods);
+  if (LoadArenasCache(out, key)) {
+    for (auto &[stage, sv] : g_served) {  // (a base's file left holding an added arena: the game's back)
+      fs::path marker = sv.path;
+      marker += ".current";
+      if (!fs::exists(marker, ec))
+        continue;
+      std::vector<uint8_t> game;
+      if (ReadHost(sv.original, game)) {
+        game.resize(sv.size, 0);
+        WriteHost(sv.path, game);
+      }
+      fs::remove(marker, ec);
+    }
+    for (auto &a : g_added)
+      a.card_mb = {}, a.card_mf = {}, a.etex = {}, a.load = {};
+    REXLOG_INFO("[arena pages] nothing changed since the last start: its files used again ({} ms)", ms());
+  } else {
+  fs::remove_all(out, ec);
+  std::vector<std::pair<std::string, uint64_t>> written;  // (the files written, for the cache)
+  auto write = [&](const std::string &rel, const std::vector<uint8_t> &data) {
+    if (!WriteHost(out / fs::path(rel), data)) {
+      REXLOG_WARN("[arena pages] could not write {}", rel);
+      return false;
+    }
+    written.push_back({rel, uint64_t(data.size())});
+    return true;
+  };
+  for (auto it = g_served.begin(); it != g_served.end();) {
+    auto &[stage, sv] = *it;
+    char rel[32];
+    snprintf(rel, sizeof(rel), "pac/bg/bg%02u.pac", stage);
     std::vector<uint8_t> game;
-    ReadHost(sv.original, game);
+    if (!ReadForGame(vfs, mods, rel, game) || !write(std::string("game/") + rel, game)) {
+      REXLOG_WARN("[arena pages] {} unreadable: its added arenas left out", rel);
+      for (size_t i = g_added.size(); i-- > 0;)  // (with their banners: the same order)
+        if (g_added[i].base == stage) {
+          g_added.erase(g_added.begin() + long(i));
+          banners.erase(banners.begin() + long(i));
+        }
+      it = g_served.erase(it);
+      continue;
+    }
     game.resize(sv.size, 0);
-    if (!WriteHost(sv.path, game))
-      REXLOG_WARN("[arena pages] could not write {}", rex::path_to_utf8(sv.path));
+    write(rel, game);
+    ++it;
   }
   for (const bool hd : {true, false}) {  // (HD first: it names the banners)
     std::vector<uint8_t> match;
@@ -1410,7 +1590,7 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
       Append(match, a.card_mf.data(), a.card_mf.size(), hd ? a.mf_sector : a.mf_sd_sector,
              hd ? a.mf_units : a.mf_sd_units);
     }
-    WriteHost(out / "pac" / "menu" / (hd ? "MatchHD.pac" : "MatchSD.pac"), match);
+    write(hd ? "pac/menu/MatchHD.pac" : "pac/menu/MatchSD.pac", match);
   }
   for (auto &a : g_added) {
     a.card_mb = {};
@@ -1425,7 +1605,7 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
         Append(evtgd, a.etex.data(), a.etex.size(), a.etex_sector, a.etex_units);
         a.etex = {};
       }
-      WriteHost(out / "pac" / "evt" / "evtgdhd.pac", evtgd);
+      write("pac/evt/evtgdhd.pac", evtgd);
     }
   }
   if (std::any_of(g_added.begin(), g_added.end(), [](const Added &a) { return !a.load.empty(); })) {
@@ -1437,8 +1617,11 @@ void Wwe12MountArenaSlots(rex::filesystem::VirtualFileSystem *vfs, const std::st
         Append(loadhd, a.load.data(), a.load.size(), a.load_sector, a.load_units);
         a.load = {};
       }
-      WriteHost(out / "pac" / "menu" / "LoadHD.pac", loadhd);
+      write("pac/menu/LoadHD.pac", loadhd);
     }
+  }
+  REXLOG_INFO("[arena pages] made again ({} file(s) written, {} ms)", written.size(), ms());
+  SaveArenasCache(out, key, written);
   }
   const fs::path movies = user_root / "arena_movies";
   const bool serve_movies = ServeMovies(vfs, mods, movies);
@@ -1562,6 +1745,15 @@ void Serve(u32 base, int added) {
     return;
   }
   sv.current = added;
+  {  // (said beside it for the next start's cache: kArenasCache)
+    fs::path marker = sv.path;
+    marker += ".current";
+    std::error_code ec;
+    if (added < 0)
+      fs::remove(marker, ec);
+    else
+      WriteHost(marker, std::vector<uint8_t>(g_added[size_t(added)].id.begin(), g_added[size_t(added)].id.end()));
+  }
   REXLOG_INFO("[arena pages] stage {} now plays {}", base, added < 0 ? "the game's arena" : g_added[size_t(added)].id);
 }
 

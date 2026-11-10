@@ -1549,3 +1549,19 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
 - **État** : contrôle de syntaxe avec les vraies options de compilation ; **pas de build, pas d'essai en jeu**. À
   vérifier au prochain build groupé : deux lancements de suite → la 2e ligne doit dire « used again », et un catcheur
   ajouté doit garder son entrée, sa victoire, son ruban et son mur.
+
+## Démarrage : cache des arènes ajoutées (1.3, 2026-11-10, étape B)
+
+- **Avant** : à chaque lancement, `Wwe12MountArenaSlots` lisait chaque `arena.pac` en entier (10-25 Mo) pour ses
+  24 octets d'enregistrement STG, et réécrivait les copies des fichiers du jeu : chaque arène de base (~10 Mo, deux
+  fois), MatchHD / MatchSD (25 Mo chacun), evtgdhd (24 Mo), LoadHD (61 Mo).
+- **Maintenant** : seul le début de `arena.pac` est lu (`ReadHostHead`, la taille par le système de fichiers ; le
+  fichier entier n'est lu que quand l'arène joue, `Serve`). Les copies sont gardées si la clé d'entrée (`InputsKey` :
+  le code, chaque fichier du dossier `mods`) est celle de `arena_slots\cache.txt` et que les fichiers listés sont là à
+  leur taille ; les places enregistrées (pack des bannières, écran VS, graphismes d'entrée, écran d'avant-match de chaque
+  arène) sont reprises. Une arène de base laissée avec une arène ajoutée dedans (`Serve` écrit `bgNN.pac.current` à
+  côté) reprend d'abord le fichier du jeu. Journal : « [arena pages] nothing changed since the last start: its files
+  used again (N ms) » ou « made again (N file(s) written, N ms) ».
+- **État** : contrôle de syntaxe avec les vraies options ; **pas de build, pas d'essai en jeu**. À vérifier : deux
+  lancements de suite avec des arènes ajoutées ; choisir une arène ajoutée, quitter, relancer : l'arène de base doit
+  redevenir celle du jeu ; bannières, écran VS et écran d'avant-match des arènes ajoutées.
