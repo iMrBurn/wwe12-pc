@@ -31,6 +31,7 @@
 #include "game_discs.h"
 #include "imgui.h"
 #include "moveset_port.h"
+#include "model_moves.h"
 #include "newmoves13.h"
 #include "svr_moves.h"
 #include "strings2k.h"
@@ -212,6 +213,7 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
   // 2007-2009 with 144-byte records and their banks without their header - svr_moves.h)
   const bool from11 = game == 0x5451085D || svr_old;
   if (from13 || from11) {
+    std::map<int, std::map<int, int>> model_hundreds;  // (WWE '13 / 2K moves on a model: its hundred, model_moves.h)
     std::set<int> want;
     for (auto &r : out.moves.rows) {
       if (from11 && r.to.empty() && r.kept_why == 2 && r.from_id > 0)
@@ -230,6 +232,14 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
           std::remove_if(out.new_moves.begin(), out.new_moves.end(), [](const auto &m) { return m.m3.empty(); }),
           out.new_moves.end());
       newmoves13::FitCategories(w12, src, out.new_moves);  // (their category bits WWE '12's: else "None" in the moveset)
+      // (and rebuilt on a WWE '12 model of their kind, as SvR's: model_moves.h - those without one keep the base's)
+      std::map<int, int> slot_of;
+      for (const auto &r : out.moves.rows)
+        if (r.new_move && !slot_of.count(r.from_id))
+          slot_of[r.from_id] = r.off;
+      std::vector<model_moves::Note> notes;
+      model_moves::OnModels(w12, out.new_moves, slot_of, &notes);
+      model_hundreds = model_moves::ModelHundreds(notes);
     }
     {  // (their events of kinds WWE '12 never uses left out: m3_params::DropUnknownEvents; the 2K games' impact frame,
        // only its low byte in their rows, set from the motion: svr_moves::SetImpact)
@@ -262,6 +272,8 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
       for (const auto &r : out.moves.rows)
         if (r.new_move && !prefer.count(r.from_id))
           prefer[r.from_id] = by_slot[r.off];
+      for (const auto &[num, hundreds] : model_hundreds)  // (a move on a model: its model's hundred, model_moves.h)
+        prefer[num] = hundreds;
     }
     const auto renamed = newmoves13::Renumber(w12, out.new_moves, prefer);
     for (auto &r : out.moves.rows)

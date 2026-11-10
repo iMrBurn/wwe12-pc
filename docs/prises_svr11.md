@@ -389,3 +389,23 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   - **Toujours refusées** : les prises avec un objet (y 60/61 : 7 / 177 / 78 / 181 / 16 cases ; elles comprennent des prises
     en équipe des vieux jeux), sans modèle de leur genre (surtout les contres « Reversal … » et les tombés « … Pin », 800 à
     1 200 cases des vieux jeux), sans animation trouvée (2008 : 561 cases, 16 prises). Rien de cela vu en jeu.
+
+## Prises de WWE '13 et des 2K sur un modèle WWE '12, comme Kaiko (1.3, 2026-11-10)
+
+- **Constat en jeu (2026-11-10)** : Hulk Hogan de 2K14 porté, son finisher (Running Leg Drop) et quelques prises
+  ajoutées figeaient les deux catcheurs pendant la prise, qui repartaient à la fin. Les prises 2K gardaient leurs propres
+  commandes (YAT2) et paramètres (m3, convertis par `FromOther`), là où les prises SvR prennent celles d'un modèle.
+- **Maintenant** (`model_moves.h`, appelé par `star_port.h` après `FitCategories`) : chaque prise WWE '13 / 2K ajoutée
+  est refaite sur un **modèle WWE '12** du même genre (fiche +0x72-0x73), mêmes personnes, **mêmes segments** (x < 90),
+  durée entre la moitié et le double, de préférence une prise que les rosters de WWE '12 mettent dans la même case, puis
+  la durée la plus proche. Elle garde ses animations (YANM + POF0 de chaque bloc) ; du modèle elle prend la fiche (nom
+  et numéro gardés), les commandes (retimées par `svr_moves::detail::Rebuild`, en passant par ses propres moments 73 /
+  172 / 173), les paramètres m3 (retimés, `SetImpact` / `SetDown`), l'aperçu et les fiches Create a Moveset ; son numéro
+  d'animation va dans la centaine du modèle (`Renumber`, `ModelHundreds`). **Sans modèle sûr, elle n'est pas ajoutée** :
+  sa case garde la prise de la base (plus de gel).
+- **Running Leg Drop de 2K14** : sans modèle. Ses phases sont 0-2, 10-15, 80-81 ; celles des prises de WWE '12 de ce
+  genre (0003, en courant sur un adversaire au sol : Elbow Drop 7, Boom Drop, Ballin' Elbow) sont 0-8, 20-21 : la
+  structure diffère, cause probable du gel. Hogan garde le finisher de la base.
+- **Vérification hors jeu** (`work/wip/moves_debug/model_check.cpp`) : toutes les prises à ajouter de tous les
+  catcheurs d'un jeu ; 2K14 : 337 à ajouter, 327 avec paramètres, **300 faites sur un modèle**, 27 sans modèle, 0 défaut
+  (fiche relue, blocs, paramètres m3). Pas encore vu en jeu.
