@@ -49,6 +49,14 @@ REXCVAR_DEFINE_BOOL(svr_clear_new_surfaces, true, "SvR",
                     "Clear every new host render surface to transparent black. Host surfaces live in "
                     "recycled GPU memory: NVIDIA happens to hand them out black, older Intel/AMD "
                     "drivers with leftovers (suspected cause of the right-strip blocks, #7/#11/#13).");
+// 1.3: the one-frame black picture before the bell (user's RenderDoc captures of 2026-11-10: the frame after
+// the entrances draws the match into NEW 1280x736 surfaces, and one of its passes blends with what they held,
+// "undefined" in RenderDoc, black on the PC). On the Xbox a new surface sits in the same EDRAM as the scene
+// before it, so it starts with that scene's picture. A new colour surface now starts as a copy of the live
+// surface of the same size and format used last (instead of black); none: cleared as before.
+REXCVAR_DEFINE_BOOL(svr_seed_new_surfaces, true, "SvR",
+                    "A new colour render surface starts with the last picture of the same-sized one "
+                    "(as the Xbox's EDRAM), not black.");
 REXCVAR_DEFINE_BOOL(svr_debug_magenta, false, "SvR",
                     "Dev: fill every new host render target with magenta, so whatever the game reads "
                     "before drawing it shows up (NVIDIA starts them black, older Intel/AMD with "
@@ -430,10 +438,28 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   g_surface_scale_gen.fetch_add(1, std::memory_order_release);
   GuestTexture *host =
       SvrCreateHostSurface(Scaled(width, scale.x), Scaled(height, scale.y), format);
+  // The live surface of the same host size and format drawn to last (svr_seed_new_surfaces).
+  u32 seed_va = 0;
+  if (host && REXCVAR_GET(svr_seed_new_surfaces) && !IsDepthFormat(host->format)) {
+    GuestTexture *seed = nullptr;
+    u64 seed_used = 0;
+    for (const auto &[va, other] : g_surfaces)
+      if (other.host && other.host != host && other.host->width == host->width &&
+          other.host->height == host->height && other.host->format == host->format &&
+          other.last_used >= seed_used) {
+        seed = other.host;
+        seed_used = other.last_used;
+        seed_va = va;
+      }
+    if (!seed || !Video::SeedTextureBaseLevel(host, seed))
+      seed_va = 0;
+  }
   if (host && REXCVAR_GET(svr_debug_magenta))
     Video::ClearTexture(host, 0xFFFF00FFu);
-  else if (host && REXCVAR_GET(svr_clear_new_surfaces))
+  else if (host && !seed_va && REXCVAR_GET(svr_clear_new_surfaces))
     Video::ClearTexture(host, 0u);
+  if (seed_va)
+    BD_INFO("SvR surface 0x{:08X}: starts with the picture of 0x{:08X}", surface_va, seed_va);
   BD_INFO("SvR surface 0x{:08X}: {}x{} format 0x{:08X} -> host {}{}", surface_va, width, height,
           format, host ? "ok" : "FAILED",
           scale.x != scale.y ? fmt::format(" ({}x{})", Scaled(width, scale.x), Scaled(height, scale.y))
