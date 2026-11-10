@@ -278,8 +278,8 @@ REXCVAR_DEFINE_INT32(wwe12_fast_boot_settle_ms, 800, "WWE12",
 // opening video never came and the first load never ended. Below this many usable logical processors the
 // start-up still hides everything until the title screen, but at the game's own pace (no turbo).
 REXCVAR_DEFINE_INT32(wwe12_fast_boot_min_threads, 8, "WWE12",
-                     "Fast boot: fewest usable logical processors for the start-up turbo (fewer: hidden "
-                     "start-up at the normal pace).")
+                     "Fast boot: fewest usable logical processors for it (fewer: the usual start-up; "
+                     "on 4 and 2 the hidden start-up got stuck).")
     .range(1, 256);
 
 // Game frames (the frame barrier's calls, all threads): the start-up turbo's stall guard.
@@ -341,7 +341,16 @@ bool BootFrame() {
     g_boot_saved_vsync = rex::cvar::Query<bool>("vsync");
     g_boot_saved_mute = rex::cvar::Query<bool>("audio_mute");
     const u32 threads = UsableThreads();
-    g_boot_turbo = threads >= u32(REXCVAR_GET(wwe12_fast_boot_min_threads));
+    if (threads < u32(REXCVAR_GET(wwe12_fast_boot_min_threads))) {
+      // Tests of 2026-11-10 on 4 and 2 logical processors: hiding the start-up frames (turbo or not,
+      // drawn or not) left the game in its start-up screens most times, then an endless first load;
+      // without the fast boot it starts every time. Small processors get the 1.2 start-up.
+      g_boot = Boot::kDone;
+      BD_INFO("[boot] {} usable logical processors (< {}): no fast boot, the usual start-up", threads,
+              REXCVAR_GET(wwe12_fast_boot_min_threads));
+      return false;
+    }
+    g_boot_turbo = true;
     if (g_boot_turbo)
       rex::cvar::SetFlagByName("vsync", "false");
     rex::cvar::SetFlagByName("audio_mute", "true");
