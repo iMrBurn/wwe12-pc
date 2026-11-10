@@ -260,9 +260,14 @@ std::string PassText(int pass, const Pass &p) {
   const int entrance_target = REXCVAR_GET(wwe12_60fps) ? 60 : 30;
   std::ostringstream o;
   char line[256];
-  std::snprintf(line, sizeof(line), "Pass %d (%s caches): start to first entrance %.1f s (menus by hand), loading screens %.1f s\n",
-                pass, pass == 1 ? "cold" : "warm", p.to_entrance_s, p.load_s);
-  o << line << PhaseLines("Entrances", p.entrance, entrance_target) << PhaseLines("Match", p.match, 60);
+  const bool fixed = std::string(REXCVAR_GET(wwe12_benchmark_scenario)) != "player_match";
+  std::snprintf(line, sizeof(line), "Pass %d (%s caches): start to %s %.1f s (%s), loading screens %.1f s\n",
+                pass, pass == 1 ? "cold" : "warm", fixed ? "match start" : "first entrance", p.to_entrance_s,
+                fixed ? "menus driven by the benchmark" : "menus by hand", p.load_s);
+  o << line;
+  if (!fixed)  // (the fixed match has no entrances)
+    o << PhaseLines("Entrances", p.entrance, entrance_target);
+  o << PhaseLines("Match", p.match, 60);
   return o.str();
 }
 
@@ -464,7 +469,9 @@ std::string Wwe12BenchmarkTakeScript() {
             route);
     // (no entrances in the recorded match: the check at the match start tells the remote pad that the
     // next loading screen ends in the match)
-    return "wait2000 " + route + " untilmatch:600" + measure;
+    // (the match's own loading screen first: the remote pad says "match" as soon as the check passed,
+    // and the first 4 s measured were that loading screen, test of 2026-11-10)
+    return "wait2000 " + route + " untilloading:120 untilmatch:600" + measure;
   }
   // The player picks the match (pressing A by itself got lost in the first-start menus,
   // 2026-11-06): the benchmark measures from the first entrance.
