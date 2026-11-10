@@ -40,6 +40,7 @@ class Reader {
   std::string Load(const fs::path &file) {
     rows_.clear();
     sum_ok_ = false;
+    empty_ = 0;
     try {
       std::error_code ec;
       if (!fs::exists(file, ec))
@@ -63,12 +64,15 @@ class Reader {
           r.name += char(d[k]);
         const uint8_t b = d[o + 27];
         const bool same = d[o + 24] == b && d[o + 25] == b && d[o + 26] == b;
-        if (same && (b == 0 || b == 1 || b == 4 || b == 6) && (r.id == int(i) + 50 || (i >= 206 && r.id == int(i) - 206)))
+        if (same && (b == 0 || b == 1 || b == 4 || b == 6) && r.id == int(i) + 50)
           r.brand = b;
         if (r.name == "0")
           r.name.clear();  // (the game stores "0" for wrestlers whose name comes from its own text tables)
         if (r.name.empty() && r.id == 0)
-          continue;  // an empty slot (no number, no name): nothing to show
+        {
+          ++empty_;  // an empty slot (number 0, no name): not listed, never written
+          continue;
+        }
         if (r.name.empty())
           r.name = "(#" + std::to_string(r.id) + ")";
         rows_.push_back(std::move(r));
@@ -82,6 +86,7 @@ class Reader {
 
   const std::vector<Row> &Rows() const { return rows_; }
   bool SumOk() const { return sum_ok_; }
+  int Empty() const { return empty_; }
 
  private:
   static uint32_t U32(const std::vector<uint8_t> &d, size_t o) {
@@ -89,6 +94,7 @@ class Reader {
   }
   std::vector<Row> rows_;
   bool sum_ok_ = false;
+  int empty_ = 0;
 };
 
 inline const char *BrandName(int brand, bool fr) {
@@ -136,8 +142,8 @@ class Page {
       else if (r.brand == 4) ++other;
       else ++unknown;
     }
-    ImGui::Text("RAW %d   SmackDown %d   %s %d   %s %d   ?  %d", count[0], count[1], fr ? "Sans marque" : "No brand",
-                count[2], fr ? "Autre (4)" : "Other (4)", other, unknown);
+    ImGui::Text("RAW %d   SmackDown %d   %s %d   %s %d   ?  %d   (%s %d)", count[0], count[1], fr ? "Sans marque" : "No brand",
+                count[2], fr ? "Autre (4)" : "Other (4)", other, unknown, fr ? "emplacements vides" : "empty slots", reader_.Empty());
     if (count[0] < 15 || count[1] < 15)
       ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
                          fr ? "Le mode Univers veut au moins 15 catcheurs par émission."
