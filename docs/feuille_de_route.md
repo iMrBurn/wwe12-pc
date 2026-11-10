@@ -62,7 +62,7 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 
 **THQ (voie B : nos propres crochets sur le code du disque, un par un, chacun avec son réglage)**
 - Comparaison des 2 mises à jour officielles : faite (`docs/title_update_corrections.md`, session Gameplay) ; reste le tri et le test de chaque correctif en jeu.
-- Bugs du jeu d'origine à tester : finishers qui gèlent (TU2, 6-7 crochets), cage / barrières de Hell in a Cell, tables sous le ring, sons après Backstage Brawl, movesets CAW qui se réinitialisent, évasion de tombé en Elimination Chamber, aperçu des prises DLC dans l'éditeur de CAW (TU1). Cage Hell in a Cell et évasion de tombé : rien trouvé dans le code, à vérifier en jeu.
+- **Objectif de l'utilisateur (bloc-notes Discord du 2026-11-07, relu le 2026-11-10) : tester les bugs du jeu d'origine et appliquer nous-mêmes les DEUX Title Updates** (nos propres crochets, voie B). Bugs du jeu d'origine à tester : finishers qui gèlent (TU2, 6-7 crochets), cage / barrières de Hell in a Cell, tables sous le ring, sons après Backstage Brawl, movesets CAW qui se réinitialisent, évasion de tombé en Elimination Chamber, aperçu des prises DLC dans l'éditeur de CAW (TU1). Cage Hell in a Cell et évasion de tombé : rien trouvé dans le code, à vérifier en jeu.
 
 **Vitesse**
 - Chargements plus rapides (étude : `docs/chargements_1_2.md`) : turbo de chargement (`wwe12_load_turbo`, existe mais coupé par défaut : match ~4,0 → 2,8 s, fin des entrées ~4,5 → 2 s), bridage des animations 2D réécrit par nous (2-3 h), contre-épreuve sur 4 fils, décision de l'utilisateur sur le turbo par défaut ; avertissement disque dur dans le launcher.
