@@ -17,6 +17,7 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
+#include <vector>
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -33,6 +34,9 @@
 #endif
 
 #include <plume_render_interface.h>
+#if !defined(REBLUE_D3D11) && !defined(REBLUE_D3D12) && !defined(__APPLE__)
+#include <plume_vulkan.h>  // (adaptive V-sync: the swap chain's present mode)
+#endif
 
 #include "gpu/gpu_profiling.h"
 
@@ -47,6 +51,14 @@
 #include "platform/platform.h"
 
 bool Wwe12LoadTurboSkipPresent();  // native/wwe12_load_turbo.cpp
+
+// 1.3, the WWE 2K14 recomp's "late frame" idea: with V-sync, a frame that misses its vblank waits for
+// the next one (shown 33 ms after the one before: a visible hitch on PCs that sit just under 60). A late
+// frame is now shown at once (a tear line, on that frame only). Vulkan: the FIFO_RELAXED present mode
+// (does exactly that, when the driver offers it); DirectX 12 / 11: that one present without V-sync.
+REXCVAR_DEFINE_BOOL(svr_adaptive_vsync, true, "SvR",
+                    "With V-sync on, a frame that comes too late is shown at once (may tear) instead "
+                    "of waiting for the next screen refresh.");
 
 // 1.3: sharpening of an enlarged picture (present pass, see UpscaleSharpness below).
 REXCVAR_DEFINE_INT32(svr_upscale_sharpness, 50, "SvR",
@@ -71,10 +83,58 @@ float SvrHostAspect(const GuestTexture *host);  // native/svr_resources.cpp
 namespace {
 
 void ApplyVsync(VideoState &s) {
-  if (s.swap_chain) {
-    s.swap_chain->setVsyncEnabled(Settings::Get().Vsync());
+  if (!s.swap_chain)
+    return;
+  const bool vsync = Settings::Get().Vsync();
+  s.swap_chain->setVsyncEnabled(vsync);
+#if !defined(REBLUE_D3D11) && !defined(REBLUE_D3D12) && !defined(__APPLE__)
+  // Adaptive V-sync on Vulkan: FIFO_RELAXED where the driver has it (asked once per swap chain).
+  if (vsync && REXCVAR_GET(svr_adaptive_vsync)) {
+    auto *vk = static_cast<plume::VulkanSwapChain *>(s.swap_chain.get());
+    static const void *s_checked = nullptr;
+    static bool s_relaxed = false;
+    if (s_checked != vk && vk->surface != VK_NULL_HANDLE && vk->commandQueue && vk->commandQueue->device) {
+      s_checked = vk;
+      u32 count = 0;
+      const VkPhysicalDevice gpu = vk->commandQueue->device->physicalDevice;
+      vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, vk->surface, &count, nullptr);
+      std::vector<VkPresentModeKHR> modes(count);
+      vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, vk->surface, &count, modes.data());
+      s_relaxed = std::find(modes.begin(), modes.end(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != modes.end();
+      BD_INFO("[present] adaptive V-sync: {}", s_relaxed ? "FIFO_RELAXED (late frames shown at once)"
+                                                         : "not offered by this driver (plain V-sync)");
+    }
+    if (s_relaxed)
+      vk->requiredPresentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
   }
+#endif
 }
+
+#if defined(REBLUE_D3D11) || defined(REBLUE_D3D12)
+// DirectX: true = present this frame without V-sync (it is late: more than 1.25 refreshes since the
+// previous present). Counted for the [present] line every 10 s.
+bool LatePresentNow(VideoState &s) {
+  using Clock = std::chrono::steady_clock;
+  static Clock::time_point s_last{}, s_log{};
+  static u32 s_late = 0;
+  const auto now = Clock::now();
+  const bool on = Settings::Get().Vsync() && REXCVAR_GET(svr_adaptive_vsync);
+  u32 hz = s.swap_chain ? s.swap_chain->getRefreshRate() : 0;
+  if (hz < 30 || hz > 500)
+    hz = 60;
+  const double since_ms = std::chrono::duration<double, std::milli>(now - s_last).count();
+  const bool late = on && s_last.time_since_epoch().count() != 0 && since_ms > 1250.0 / hz;
+  s_last = now;
+  s_late += late;
+  if (now - s_log > std::chrono::seconds(10)) {
+    if (s_late)
+      BD_INFO("[present] adaptive V-sync: {} late frame(s) shown at once in 10 s", s_late);
+    s_late = 0;
+    s_log = now;
+  }
+  return late;
+}
+#endif
 
 constexpr i32 kIdleFPS = 30;
 
@@ -621,10 +681,19 @@ void Video::Present(GuestTexture *frontBuffer) {
   {
     BD_CPU_ZONE("PresentSwap");
     const auto present_start = FrameStats::Clock::now();
+#if defined(REBLUE_D3D11) || defined(REBLUE_D3D12)
+    const bool late = LatePresentNow(s);
+    if (late)
+      s.swap_chain->setVsyncEnabled(false);  // (this one present only; ApplyVsync sets it back)
+#endif
     if (!s.swap_chain->present(texture_index, signals, 1)) {
       if (!CheckDeviceRemoved("swapchain present"))
         s.resize_requested.store(true, std::memory_order_release);
     }
+#if defined(REBLUE_D3D11) || defined(REBLUE_D3D12)
+    if (late)
+      s.swap_chain->setVsyncEnabled(Settings::Get().Vsync());
+#endif
     swap_ms += MsSince(present_start);
   }
   double gpu_wait_ms = 0;
