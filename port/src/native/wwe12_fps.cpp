@@ -14,8 +14,8 @@
 // - "30" (EXPERIMENTAL, 1.2, small PCs, issue #57): the game's own 30 fps mode, the one it uses
 //   for entrances, kept on in matches (menus and loading at 60). The logic steps twice as far per
 //   frame and the game waits 2 vblanks a frame, so speeds stay right while the CPU and GPU do half
-//   the frames. Some moves look a little off (the matches were made for 60); a match started
-//   without entrances stays at 60 (the switch happens when the entrances end).
+//   the frames. Some moves look a little off (the matches were made for 60). The switch happens when
+//   the entrances end, and (1.3, issue #61) when a match's loading screen closes, entrances or not.
 // Empty (older wwe12.toml): wwe12_60fps decides between "original" and "60_entrances".
 
 #include <atomic>
@@ -50,6 +50,19 @@ std::atomic<bool> g_entrance_at60{false};
 std::atomic<bool> g_scene_mode{false};
 // The game asked for 50 or 25 once (PAL timing): the 30 fps mode then uses 25.
 std::atomic<bool> g_pal{false};
+// The guest memory base, kept from a hook: "drop to 30" (sub_82827AB8) is a leaf that only stores into
+// the frame-rate struct, so it can be run with a scratch context where no hook gives one.
+std::atomic<u8 *> g_base{nullptr};
+// 30 fps mode: a match is being loaded (its loading screen's closing drops to 30).
+std::atomic<bool> g_match_pending{false};
+
+void DropTo30Now() {
+  u8 *base = g_base.load(std::memory_order_relaxed);
+  if (!base)
+    return;
+  PPCContext scratch{};
+  __imp__sub_82827AB8(scratch, base);
+}
 
 enum class FrameMode { kOriginal, k60Entrances, k30 };
 
@@ -76,6 +89,7 @@ bool Wwe12FrameMode30() { return Mode() == FrameMode::k30; }
 
 // SetFrameRate(fps).
 extern "C" REX_FUNC(sub_82827918) {
+  g_base.store(base, std::memory_order_relaxed);
   const u32 requested = ctx.r3.u32;
   if (requested == 50 || requested == 25)
     g_pal.store(true, std::memory_order_relaxed);
@@ -94,6 +108,14 @@ extern "C" REX_FUNC(sub_82827918) {
 
 // "Drop to 30 (25) fps": skipped while the 60 fps mode is kept.
 extern "C" REX_FUNC(sub_82827AB8) {
+  g_base.store(base, std::memory_order_relaxed);
+  // Which kind of scene asks for 30 (1.3 study: 60 fps for entrances and victory scenes only). The game
+  // has four callers: sub_823DEA10, sub_828DEAB8, sub_828DFDB8, sub_82DCAEE8 (return addresses logged).
+  {
+    static std::atomic<u32> s_logged{0};
+    if (s_logged.fetch_add(1, std::memory_order_relaxed) < 200)
+      BD_INFO("[fps] drop to 30 asked from {:08X}", u32(ctx.lr));
+  }
   g_scene_mode.store(true, std::memory_order_relaxed);
   if (Mode() == FrameMode::k60Entrances) {
     g_entrance_at60.store(true, std::memory_order_relaxed);
@@ -113,6 +135,7 @@ extern "C" REX_FUNC(sub_82827AB8) {
 // loading run at 60 again (at 30 they felt sluggish, as in Kaiko's SvR 2011 port): the game's own
 // "back to 60", which undoes its "drop to 30" (does nothing when already at 60).
 void Wwe12FpsLoadScreenOpened(PPCContext &ctx, u8 *base) {
+  g_base.store(base, std::memory_order_relaxed);
   if (Mode() != FrameMode::k30)
     return;
   const auto r3 = ctx.r3;
@@ -126,6 +149,7 @@ void Wwe12FpsLoadScreenOpened(PPCContext &ctx, u8 *base) {
 // its "drop to 30" (the entrance mode, every step value set; SetFrameRate(30) left the +36 step at
 // its 60 fps value and matches ran in slow motion, test 2026-11-09).
 extern "C" REX_FUNC(sub_82827B58) {
+  g_base.store(base, std::memory_order_relaxed);
   g_entrance_at60.store(false, std::memory_order_relaxed);
   g_scene_mode.store(false, std::memory_order_relaxed);
   __imp__sub_82827B58(ctx, base);
@@ -138,4 +162,21 @@ extern "C" REX_FUNC(sub_82827B58) {
       BD_INFO("[fps] game went back to 60 fps mode; dropped to {} again (30 fps mode)",
               g_pal.load(std::memory_order_relaxed) ? 25 : 30);
   }
+}
+
+// 1.3, issue #61: the game's match start (sub_822B51A0, wwe12_benchmark.cpp). In the 30 fps mode the
+// match's loading screen closing drops to 30 (a match without entrances never ended any, so it stayed
+// at 60); with entrances, the game's own entrance mode and the end of the entrances do the same.
+void Wwe12FpsMatchStarting() {
+  if (Mode() == FrameMode::k30)
+    g_match_pending.store(true, std::memory_order_relaxed);
+}
+
+// wwe12_load_turbo.cpp: a loading screen closed (game thread).
+void Wwe12FpsLoadScreenClosed() {
+  if (Mode() != FrameMode::k30 || !g_match_pending.exchange(false, std::memory_order_relaxed))
+    return;
+  DropTo30Now();
+  BD_INFO("[fps] match loaded: dropped to {} (30 fps mode, entrances or not)",
+          g_pal.load(std::memory_order_relaxed) ? 25 : 30);
 }

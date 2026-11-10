@@ -606,7 +606,9 @@ u32 CountChosen(u8 &type, std::string &ids) {
 }  // namespace
 
 REX_EXTERN(__imp__sub_822B51A0);
+void Wwe12FpsMatchStarting();  // wwe12_fps.cpp: the 30 fps mode's drop when this match has loaded
 extern "C" REX_FUNC(sub_822B51A0) {
+  Wwe12FpsMatchStarting();
   if (REXCVAR_GET(wwe12_benchmark_record_route) && !g_route_match_started.exchange(true)) {
     u8 type = 0;
     std::string ids;

@@ -53,6 +53,12 @@ REXCVAR_DEFINE_BOOL(svr_clear_new_surfaces, true, "SvR",
 REXCVAR_DEFINE_BOOL(svr_hold_new_scene_frame, true, "SvR",
                     "Do not show the frame drawn while a new scene surface is made (it comes out black: "
                     "the flash before the bell); the previous picture stays.");
+// 1.3, issue #63 (Road to WrestleMania cutscenes at 60 fall behind their sound): the render thread spent
+// ~5.8 ms a frame on textures there, ~185 texture rebuilds a second ([load] lines). This probe says which:
+// every 2 s, the textures rebuilt most (address, size, format, rebuilds, how many different contents) -
+// few contents rebuilt again and again = textures taking turns in the same memory. Measure only.
+REXCVAR_DEFINE_BOOL(svr_texture_churn_probe, false, "SvR",
+                    "Dev: log the textures rebuilt most often ([texchurn] lines every 2 s).");
 REXCVAR_DEFINE_BOOL(svr_debug_magenta, false, "SvR",
                     "Dev: fill every new host render target with magenta, so whatever the game reads "
                     "before drawing it shows up (NVIDIA starts them black, older Intel/AMD with "
@@ -1482,6 +1488,43 @@ void SvrOnFrame() {
 
 u64 SvrFrameIndex() { return g_frame.load(std::memory_order_relaxed); }
 
+// svr_texture_churn_probe (dev): rebuilds per texture address, logged every 2 s (caller holds g_mutex).
+namespace {
+struct Churn {
+  u32 builds = 0, bytes = 0, width = 0, height = 0;
+  u64 recent[8] = {};  // the last contents seen (hashes)
+  u32 next = 0, distinct = 0;
+};
+std::unordered_map<u32, Churn> g_churn;
+}  // namespace
+void NoteTextureChurn(u32 texture_va, u64 hash, u64 bytes, const GuestTexture *host) {
+  Churn &c = g_churn[texture_va];
+  ++c.builds;
+  c.bytes = u32(bytes);
+  if (host)
+    c.width = host->width, c.height = host->height;
+  if (std::find(std::begin(c.recent), std::end(c.recent), hash) == std::end(c.recent)) {
+    ++c.distinct;
+    c.recent[c.next++ % 8] = hash;
+  }
+  static auto s_last = std::chrono::steady_clock::now();
+  const auto now = std::chrono::steady_clock::now();
+  if (now - s_last < std::chrono::seconds(2))
+    return;
+  s_last = now;
+  std::vector<std::pair<u32, Churn>> top(g_churn.begin(), g_churn.end());
+  std::sort(top.begin(), top.end(), [](const auto &a, const auto &b) { return a.second.builds > b.second.builds; });
+  u32 total = 0;
+  for (const auto &[va, ch] : top)
+    total += ch.builds;
+  BD_INFO("[texchurn] 2 s: {} rebuilds of {} textures", total, top.size());
+  for (size_t i = 0; i < top.size() && i < 8; ++i)
+    BD_INFO("[texchurn]   0x{:08X} {}x{} {} KB: {} rebuilds, {} different contents", top[i].first,
+            top[i].second.width, top[i].second.height, top[i].second.bytes >> 10, top[i].second.builds,
+            top[i].second.distinct);
+  g_churn.clear();
+}
+
 // The game writes texture memory with the CPU whenever it likes (every Bink movie frame, menus
 // reloading into reused memory), so a mirror is checked against its source once per frame it's
 // used and rebuilt when the fetch constant or the bytes changed. A texture that can't be mirrored
@@ -1576,6 +1619,8 @@ GuestTexture *SvrResolveTexture(u32 texture_va, bool check_every_use) {
   }
   const auto build_start = std::chrono::steady_clock::now();
   check.host = GetOrCreateNativeMirror(texture_va, 0);
+  if (REXCVAR_GET(svr_texture_churn_probe))
+    NoteTextureChurn(texture_va, hash, src.base_size + src.mips_size, check.host);
   g_mirror_builds.fetch_add(1, std::memory_order_relaxed);
   g_mirror_build_ns.fetch_add(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                   std::chrono::steady_clock::now() - build_start)

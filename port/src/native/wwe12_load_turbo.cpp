@@ -58,6 +58,7 @@
 // the launcher's updates), so the old key is read but no longer used.
 REXCVAR_DEFINE_BOOL(wwe12_fast_loading, true, "WWE12",
                     "Loading screens run the game as fast as possible; false = the original pace.");
+void Wwe12FpsLoadScreenClosed();  // wwe12_fps.cpp (30 fps mode: a match's loading screen closed)
 REXCVAR_DEFINE_BOOL(wwe12_load_turbo, false, "WWE12",
                     "1.2's key for the turbo loading screens: no longer used (wwe12_fast_loading).");
 REXCVAR_DEFINE_INT32(wwe12_load_turbo_frames, 16, "WWE12",
@@ -131,6 +132,7 @@ std::atomic<int64_t> g_closed_screen_ms{-1};  // last screen's time up, waiting 
 // The loading-screen window closes (its close methods or the entrance script): its time is kept
 // and logged by the next frame, once the turbo has added its own numbers ("[loadtime]").
 void ScreenClosed() {
+  Wwe12FpsLoadScreenClosed();
   if (g_screen_up.exchange(false, std::memory_order_relaxed))
     g_closed_screen_ms.store(NowMs() - g_screen_since_ms.load(std::memory_order_relaxed),
                              std::memory_order_relaxed);
