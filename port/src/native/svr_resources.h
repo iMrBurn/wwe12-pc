@@ -35,8 +35,8 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale_x = 0.0f, float scale
 // D3DDevice_Swap: the guest texture presented this frame, the stand-in for a new screen image
 // sampled before any resolve wrote it (svr_early_screen_fill).
 void SvrNoteFrontBuffer(u32 texture_va);
-// True: this front buffer is new and was never resolved into (keep the previous picture).
-bool SvrFrontBufferUnwritten(u32 texture_va);
+// D3D Swap: true = do not present this frame (the black frame before the bell; svr_resources.cpp).
+bool SvrHoldThisFrame();
 // wwe12_widescreen: the screen's shape against 16:9 while a 3D scene is drawn (matches,
 // entrances), else 1 and 1. wide > 1: wider (up to 2, 32:9); tall > 1: taller (16:10: 1.111).
 void SvrSceneShape(float &wide, float &tall);

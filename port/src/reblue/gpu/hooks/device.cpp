@@ -152,8 +152,8 @@ u32 D3DDevice_Swap_hook(u32 /*device*/, u32 front_buffer_va,
   }
 #endif
 #if defined(SVR_NATIVE_RENDERER)
-  // (a brand-new front buffer nothing was resolved into yet: the black frame before the bell)
-  const bool hold = bd::gpu::SvrFrontBufferUnwritten(front_buffer_va);
+  // (the frame drawn while a new scene surface was made comes out black: the flash before the bell)
+  const bool hold = bd::gpu::SvrHoldThisFrame();
 #else
   const bool hold = false;
 #endif

@@ -49,23 +49,10 @@ REXCVAR_DEFINE_BOOL(svr_clear_new_surfaces, true, "SvR",
                     "Clear every new host render surface to transparent black. Host surfaces live in "
                     "recycled GPU memory: NVIDIA happens to hand them out black, older Intel/AMD "
                     "drivers with leftovers (suspected cause of the right-strip blocks, #7/#11/#13).");
-// 1.3: the one-frame black picture before the bell (user's RenderDoc captures of 2026-11-10: the frame after
-// the entrances draws the match into NEW 1280x736 surfaces, and one of its passes blends with what they held,
-// "undefined" in RenderDoc, black on the PC). On the Xbox a new surface sits in the same EDRAM as the scene
-// before it, so it starts with that scene's picture. A new colour surface now starts as a copy of the live
-// surface of the same size and format used last (instead of black); none: cleared as before.
-REXCVAR_DEFINE_BOOL(svr_keep_same_size_surfaces, true, "SvR",
-                    "A render surface described again with the same host size and format keeps its "
-                    "content (no new, empty one).");
-REXCVAR_DEFINE_BOOL(svr_seed_new_surfaces, true, "SvR",
-                    "A new colour render surface starts with the last picture of the same-sized one "
-                    "(as the Xbox's EDRAM), not black.");
-// 1.3: see SvrFrontBufferUnwritten.
+// 1.3: see SvrHoldThisFrame.
 REXCVAR_DEFINE_BOOL(svr_hold_new_scene_frame, true, "SvR",
                     "Do not show the frame drawn while a new scene surface is made (it comes out black: "
                     "the flash before the bell); the previous picture stays.");
-REXCVAR_DEFINE_BOOL(svr_hold_unwritten_front_buffer, true, "SvR",
-                    "Keep the last picture instead of presenting a brand-new, never-drawn screen texture.");
 REXCVAR_DEFINE_BOOL(svr_debug_magenta, false, "SvR",
                     "Dev: fill every new host render target with magenta, so whatever the game reads "
                     "before drawing it shows up (NVIDIA starts them black, older Intel/AMD with "
@@ -157,7 +144,6 @@ struct HostTarget {
   bool in_memory = false;  // texture: its last resolve was read back into the game's memory
   bool resolved = false;   // texture: a resolve has written it at least once (diagnostic)
   bool early_logged = false;  // texture: "sampled before its first resolve" already logged
-  u64 created = 0;            // texture: the frame it was made (a new front buffer, see below)
 };
 
 // Diagnostic counters for the [load] line (match-start stutter on integrated GPUs): read-backs
@@ -427,11 +413,7 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
       it->second.last_used = g_surface_frame.load(std::memory_order_relaxed);
       return it->second.host;
     }
-    // (kept until the new size is known: the same host size and format keeps its host, below)
-  }
-  HostTarget previous{};
-  if (auto it = g_surfaces.find(surface_va); it != g_surfaces.end()) {
-    previous = it->second;
+    RetireHost(it->second.host);
     g_surfaces.erase(it);
   }
   u32 extent = 0;
@@ -456,51 +438,18 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
   const Scale2 scale = surface_scale(extent);
   g_surface_scale[surface_va] = scale;
   g_surface_scale_gen.fetch_add(1, std::memory_order_release);
-  // 1.3, the black frame before the bell: the match's scene surface was made twice a second apart
-  // (its tiled extent learned after its first frame), the same 1280x736 each time, and the second one
-  // started empty. A surface whose host would come out the same size and format keeps its host and
-  // what it holds (svr_keep_same_size_surfaces); otherwise the old one goes as before.
-  if (previous.host) {
-    if (REXCVAR_GET(svr_keep_same_size_surfaces) && previous.desc[1] == format &&
-        previous.host->width == Scaled(width, scale.x) && previous.host->height == Scaled(height, scale.y)) {
-      BD_INFO("SvR surface 0x{:08X}: {}x{} kept (same host size, new description)", surface_va, width,
-              height);
-      g_surfaces.emplace(surface_va, HostTarget{previous.host, {bits, format}, extent, PackScale(scale),
-                                                g_surface_frame.load(std::memory_order_relaxed)});
-      return previous.host;
-    }
-    RetireHost(previous.host);
-  }
   GuestTexture *host =
       SvrCreateHostSurface(Scaled(width, scale.x), Scaled(height, scale.y), format);
-  // The live surface of the same host size and format drawn to last (svr_seed_new_surfaces).
-  u32 seed_va = 0;
-  if (host && REXCVAR_GET(svr_seed_new_surfaces) && !IsDepthFormat(host->format)) {
-    GuestTexture *seed = nullptr;
-    u64 seed_used = 0;
-    for (const auto &[va, other] : g_surfaces)
-      if (other.host && other.host != host && other.host->width == host->width &&
-          other.host->height == host->height && other.host->format == host->format &&
-          other.last_used >= seed_used) {
-        seed = other.host;
-        seed_used = other.last_used;
-        seed_va = va;
-      }
-    if (!seed || !Video::SeedTextureBaseLevel(host, seed))
-      seed_va = 0;
-  }
   if (host && REXCVAR_GET(svr_debug_magenta))
     Video::ClearTexture(host, 0xFFFF00FFu);
-  else if (host && !seed_va && REXCVAR_GET(svr_clear_new_surfaces))
+  else if (host && REXCVAR_GET(svr_clear_new_surfaces))
     Video::ClearTexture(host, 0u);
-  if (seed_va)
-    BD_INFO("SvR surface 0x{:08X}: starts with the picture of 0x{:08X}", surface_va, seed_va);
   if (host && height == 736 && width >= 1280 && !IsDepthFormat(host->format)) {
     Wwe12FlashRecorderArm(surface_va);  // (dev, off by default: wwe12_flash_recorder.cpp)
     // The black frame before the bell, FOUND (flash recorder, 2026-11-10): the frame being built when a
     // new scene surface is made comes out entirely black (brightness 0.0, the frames around it normal),
     // at the change from the entrances to the match. That one frame is not presented: the previous
-    // picture stays 1/60 s more (SvrFrontBufferUnwritten).
+    // picture stays 1/60 s more (SvrHoldThisFrame).
     if (REXCVAR_GET(svr_hold_new_scene_frame))
       g_hold_new_scene_frame.store(true, std::memory_order_relaxed);
   }
@@ -670,40 +619,13 @@ float SvrSurfaceScale(u32 surface_va) {
   return std::min(x, y);
 }
 
-// 1.3, the black frame before the bell: the game may hand D3D Swap a front buffer it has not
-// resolved anything into yet (a new screen texture at the change of scene), which the PC starts
-// black. The Xbox showed what that memory held. A front buffer made in the last few frames and never
-// resolved into is not presented (the previous picture stays), at most kMaxHeld frames in a row.
-bool SvrFrontBufferUnwritten(u32 texture_va) {
-  if (g_hold_new_scene_frame.exchange(false, std::memory_order_relaxed)) {
-    static std::atomic<u32> s_logged{0};
-    if (s_logged.fetch_add(1, std::memory_order_relaxed) < 32)
-      BD_INFO("SvR: the first frame of a new scene surface is not shown (it comes out black)");
-    return true;
-  }
-  constexpr u64 kRecentFrames = 10;
-  constexpr int kMaxHeld = 4;
-  static int s_held = 0;
-  if (!texture_va || !REXCVAR_GET(svr_hold_unwritten_front_buffer)) {
-    s_held = 0;
+// D3D Swap: true = do not present this frame, the previous picture stays (svr_hold_new_scene_frame).
+bool SvrHoldThisFrame() {
+  if (!g_hold_new_scene_frame.exchange(false, std::memory_order_relaxed))
     return false;
-  }
-  bool unwritten = false;
-  {
-    std::lock_guard lock(g_mutex);
-    const auto it = g_targets.find(texture_va);
-    const u64 now = g_surface_frame.load(std::memory_order_relaxed);
-    unwritten = it != g_targets.end() && it->second.host && !it->second.resolved &&
-                now - it->second.created <= kRecentFrames;
-  }
-  if (!unwritten || s_held >= kMaxHeld) {
-    s_held = unwritten ? s_held : 0;
-    return false;
-  }
-  ++s_held;
   static std::atomic<u32> s_logged{0};
   if (s_logged.fetch_add(1, std::memory_order_relaxed) < 32)
-    BD_INFO("SvR front buffer 0x{:08X} never drawn yet: the previous picture stays", texture_va);
+    BD_INFO("SvR: the first frame of a new scene surface is not shown (it comes out black)");
   return true;
 }
 
@@ -778,10 +700,8 @@ GuestTexture *SvrResolveTarget(u32 texture_va, float scale_x, float scale_y) {
   // in the crowd during entrances. Start them transparent black.
   if (host && !cube && !seeded)
     Video::ClearTexture(host, REXCVAR_GET(svr_debug_magenta) ? 0xFFFF00FFu : 0u);
-  const auto made = g_targets.emplace(
-      texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, 0, packed,
-                             g_surface_frame.load(std::memory_order_relaxed)});
-  made.first->second.created = g_surface_frame.load(std::memory_order_relaxed);
+  g_targets.emplace(texture_va, HostTarget{host, {fetch.dword_1, fetch.dword_2}, 0, packed,
+                                           g_surface_frame.load(std::memory_order_relaxed)});
   if (host)
     g_targets_created.fetch_add(1, std::memory_order_relaxed);
   return host;
