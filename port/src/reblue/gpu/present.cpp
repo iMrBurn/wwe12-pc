@@ -12,6 +12,7 @@
 #include "gpu/frame.h"
 #include "gpu/cpu_zones.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <mutex>
@@ -35,6 +36,8 @@
 
 #include "gpu/gpu_profiling.h"
 
+#include <rex/cvar.h>
+
 #include "core/logging.h"
 #include "engine/engine.h"
 #include "gpu/backend.h"
@@ -44,6 +47,11 @@
 #include "platform/platform.h"
 
 bool Wwe12LoadTurboSkipPresent();  // native/wwe12_load_turbo.cpp
+
+// 1.3: sharpening of an enlarged picture (present pass, see UpscaleSharpness below).
+REXCVAR_DEFINE_INT32(svr_upscale_sharpness, 50, "SvR",
+                     "Sharpening of the picture when it is enlarged to the screen (0 = off, 100 = most).")
+    .range(0, 100);
 
 #if defined(SVR_NATIVE_RENDERER)
 namespace bd::gpu {
@@ -223,6 +231,15 @@ GuestTexture *SelectPresentSource(VideoState &s, GuestTexture *frontBuffer) {
   return rt;
 }
 
+// 1.3: an enlarged picture (720p AUTO on a small GPU, 540p...) is sharpened in the present pass
+// (gamma_correction_ps.hlsl), as the WWE 2K14 recomp's 720p mode does. Only when the picture is drawn
+// wider than the scene was rendered; 0 turns it off.
+u32 UpscaleSharpness(const GuestTexture *rt, u32 drawn_width) {
+  if (!rt || !rt->width || rt->width >= drawn_width)
+    return 0;
+  return u32(std::clamp(REXCVAR_GET(svr_upscale_sharpness), 0, 100));
+}
+
 void RecordPresentPass(VideoState &s, GuestTexture *rt,
                        plume::RenderTexture *back,
                        plume::RenderFramebuffer *back_fb) {
@@ -305,7 +322,7 @@ void RecordPresentPass(VideoState &s, GuestTexture *rt,
     u32 descriptor_index_2;
     float gamma;
     float display_correction;
-  } pc{gamma_src_desc, 0, s.guest_gamma * kPresentGamma,
+  } pc{gamma_src_desc, UpscaleSharpness(rt, fit_w), s.guest_gamma * kPresentGamma,
        kPresentDisplayCorrection};
 #if defined(REBLUE_D3D11)
   D3D11BindHostSlot(gamma_src_desc, 0);

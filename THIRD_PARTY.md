@@ -62,3 +62,6 @@ dans `port/dist/THIRD_PARTY_NOTICES.txt` (livré avec chaque version, textes dan
 
 - Icône de `wwe12.exe` (`port/res/wwe12.ico`) : composée à partir du logo de WWE '12, marque de WWE/THQ, utilisée par ce projet de fans sans affiliation.
 - Icônes de boutons PlayStation (`port/res/ps3_buttons.bin`, intégrées à `wwe12.exe`) : extraites de la version PS3 de WWE '12 (THQ/Yuke's ; symboles des manettes PlayStation, marques de Sony Interactive Entertainment), utilisées par ce projet de fans sans affiliation, à la demande de l'auteur du projet.
+- Netteté de l'image agrandie (1.3, `svr_upscale_sharpness`, `port/src/reblue/gpu/shaders/hlsl/gamma_correction_ps.hlsl`) :
+  idée du mode 720p du recomp WWE 2K14 de Jarrodfeng ; formule de netteté adaptative au contraste décrite par AMD
+  FidelityFX CAS (licence MIT), réécrite par nous (aucun code copié).
