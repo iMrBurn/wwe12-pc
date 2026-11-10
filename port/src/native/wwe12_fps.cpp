@@ -10,7 +10,9 @@
 //
 // wwe12_frame_mode:
 // - "original": the game's own rates (60 in menus and matches, 30 in entrances and cutscenes);
-// - "60_entrances": 60 everywhere (the mode is kept at 60 when the game asks for 30);
+// - "60_entrances": 60 in entrances and victory scenes (1.3; victory scenes: to be checked in game),
+//   story scenes (Road to WrestleMania, Create a Story...) at the game's own 30. Before 1.3 every
+//   scene was kept at 60: a PC that can't draw a cutscene at 60 fell behind its sound (issue #63);
 // - "30" (EXPERIMENTAL, 1.2, small PCs, issue #57): the game's own 30 fps mode, the one it uses
 //   for entrances, kept on in matches (menus and loading at 60). The logic steps twice as far per
 //   frame and the game waits 2 vblanks a frame, so speeds stay right while the CPU and GPU do half
@@ -39,6 +41,14 @@ REXCVAR_DEFINE_STRING(wwe12_frame_mode, "", "WWE12",
 void wwe12_dev_entrance_started();  // wwe12_autocap.cpp
 #endif
 
+// 1.3, issue #63: which scenes the 60 fps mode keeps at 60. Every scene asks for 30 through the same
+// function, but each one first asks for its script, "/GMEV/%04d" (sub_825B85B8, wwe12_load_turbo.cpp):
+// a superstar entrance is the superstar's number (139 Cena, 161...), a Create a Story scene 4000 and up
+// (test 2026-11-10). Scripts from this number up stay at the game's 30.
+REXCVAR_DEFINE_INT32(wwe12_60fps_story_from, 4000, "WWE12",
+                     "60 fps entrances: scene scripts from this number up (story scenes) stay at 30. "
+                     "0 = every scene at 60 (as before 1.3).");
+
 REX_EXTERN(__imp__sub_82827918);
 REX_EXTERN(__imp__sub_82827AB8);
 REX_EXTERN(__imp__sub_82827B58);
@@ -55,6 +65,9 @@ std::atomic<bool> g_pal{false};
 std::atomic<u8 *> g_base{nullptr};
 // 30 fps mode: a match is being loaded (its loading screen's closing drops to 30).
 std::atomic<bool> g_match_pending{false};
+// The last scene script asked for since the game went back to 60 (none: kNoScript).
+constexpr u32 kNoScript = 0xFFFFFFFFu;
+std::atomic<u32> g_scene_script{kNoScript};
 
 void DropTo30Now() {
   u8 *base = g_base.load(std::memory_order_relaxed);
@@ -76,6 +89,18 @@ FrameMode Mode() {
     return FrameMode::kOriginal;
   return REXCVAR_GET(wwe12_60fps) ? FrameMode::k60Entrances : FrameMode::kOriginal;
 }
+
+// The 60 fps mode keeps this scene at 60: an entrance (a script below wwe12_60fps_story_from). A scene
+// with no script asked since the last "back to 60" stays at the game's 30 (not an entrance).
+bool KeepAt60() {
+  if (Mode() != FrameMode::k60Entrances)
+    return false;
+  const int32_t story_from = REXCVAR_GET(wwe12_60fps_story_from);
+  if (story_from <= 0)
+    return true;
+  const u32 script = g_scene_script.load(std::memory_order_relaxed);
+  return script != kNoScript && script < u32(story_from);
+}
 }  // namespace
 
 // wwe12_title_fix.cpp: the console only showed the even animation frames of these scenes.
@@ -94,8 +119,7 @@ extern "C" REX_FUNC(sub_82827918) {
   if (requested == 50 || requested == 25)
     g_pal.store(true, std::memory_order_relaxed);
   g_scene_mode.store(requested == 30 || requested == 25, std::memory_order_relaxed);
-  const FrameMode mode = Mode();
-  if (mode == FrameMode::k60Entrances && (requested == 30 || requested == 25)) {
+  if ((requested == 30 || requested == 25) && KeepAt60()) {
     ctx.r3.u64 = requested == 30 ? 60 : 50;
     g_entrance_at60.store(true, std::memory_order_relaxed);
     BD_INFO("[fps] game set frame rate {}; using {}", requested, ctx.r3.u32);
@@ -114,10 +138,11 @@ extern "C" REX_FUNC(sub_82827AB8) {
   {
     static std::atomic<u32> s_logged{0};
     if (s_logged.fetch_add(1, std::memory_order_relaxed) < 200)
-      BD_INFO("[fps] drop to 30 asked from {:08X}", u32(ctx.lr));
+      BD_INFO("[fps] drop to 30 asked from {:08X}, scene script {}", u32(ctx.lr),
+              int32_t(g_scene_script.load(std::memory_order_relaxed)));
   }
   g_scene_mode.store(true, std::memory_order_relaxed);
-  if (Mode() == FrameMode::k60Entrances) {
+  if (KeepAt60()) {
     g_entrance_at60.store(true, std::memory_order_relaxed);
 #if defined(WWE12_DEV_PROBES)
     wwe12_dev_entrance_started();
@@ -125,9 +150,13 @@ extern "C" REX_FUNC(sub_82827AB8) {
     static std::atomic<u32> s_calls{0};
     const u32 n = s_calls.fetch_add(1, std::memory_order_relaxed);
     if (n < 10 || n % 100 == 0)
-      BD_INFO("[fps] game switched to 30 fps mode; kept at 60");
+      BD_INFO("[fps] game switched to 30 fps mode; kept at 60 (entrance)");
     return;
   }
+  if (Mode() == FrameMode::k60Entrances)
+    BD_INFO("[fps] story scene (script {}): the game's 30",
+            int32_t(g_scene_script.load(std::memory_order_relaxed)));
+  g_entrance_at60.store(false, std::memory_order_relaxed);
   __imp__sub_82827AB8(ctx, base);
 }
 
@@ -152,6 +181,7 @@ extern "C" REX_FUNC(sub_82827B58) {
   g_base.store(base, std::memory_order_relaxed);
   g_entrance_at60.store(false, std::memory_order_relaxed);
   g_scene_mode.store(false, std::memory_order_relaxed);
+  g_scene_script.store(kNoScript, std::memory_order_relaxed);
   __imp__sub_82827B58(ctx, base);
   if (Mode() == FrameMode::k30) {
     const auto r3 = ctx.r3;
@@ -179,4 +209,12 @@ void Wwe12FpsLoadScreenClosed() {
   DropTo30Now();
   BD_INFO("[fps] match loaded: dropped to {} (30 fps mode, entrances or not)",
           g_pal.load(std::memory_order_relaxed) ? 25 : 30);
+}
+
+// wwe12_load_turbo.cpp: a scene script "/GMEV/%04d" is asked for (game thread).
+void Wwe12FpsSceneScript(u32 number) {
+  g_scene_script.store(number, std::memory_order_relaxed);
+  static std::atomic<u32> s_logged{0};
+  if (s_logged.fetch_add(1, std::memory_order_relaxed) < 200)
+    BD_INFO("[fps] scene script {} asked", number);
 }

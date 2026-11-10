@@ -59,6 +59,7 @@
 REXCVAR_DEFINE_BOOL(wwe12_fast_loading, true, "WWE12",
                     "Loading screens run the game as fast as possible; false = the original pace.");
 void Wwe12FpsLoadScreenClosed();  // wwe12_fps.cpp (30 fps mode: a match's loading screen closed)
+void Wwe12FpsSceneScript(u32 number);  // wwe12_fps.cpp (60 fps mode: which scene is starting)
 REXCVAR_DEFINE_BOOL(wwe12_load_turbo, false, "WWE12",
                     "1.2's key for the turbo loading screens: no longer used (wwe12_fast_loading).");
 REXCVAR_DEFINE_INT32(wwe12_load_turbo_frames, 16, "WWE12",
@@ -183,6 +184,8 @@ bool Wwe12LoadingScreenUp() { return g_screen_up.load(std::memory_order_relaxed)
 REX_EXTERN(__imp__sub_825B85B8);
 extern "C" REX_FUNC(sub_825B85B8) {
   const u32 kind = ctx.r3.u32;
+  if (kind == 0 || kind == 11)
+    Wwe12FpsSceneScript(ctx.r4.u32);
   if ((kind == 0 || kind == 11) && REXCVAR_GET(wwe12_load_turbo_scene_end) &&
       g_screen_up.load(std::memory_order_relaxed)) {
     g_scene_started.store(true, std::memory_order_relaxed);
