@@ -3,6 +3,8 @@
 // own, else the arena's, replaced or added by the mod).
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <windows.h>
 #include <d3d11.h>
 #include <shobjidl.h>
@@ -97,7 +99,7 @@ class ScreenChoice {
                                                  : reinterpret_cast<const char *>(picture_.filename().u8string().c_str()));
     }
     // the preview, made again when the choice changes
-    const std::string of = std::to_string(pick_) + "|" + std::to_string(version_) + "|" + picture_.string();
+    const std::string of = std::to_string(pick_) + "|" + std::to_string(version_) + "|" + pathutil::Utf8(picture_);
     if (of != preview_of_) {
       preview_of_ = of;
       preview_.Reset();

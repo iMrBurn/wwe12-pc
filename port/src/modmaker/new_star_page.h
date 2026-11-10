@@ -10,6 +10,8 @@
 // portraits (kDefaultBases), and the look must then be the mod's own.
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -1262,7 +1264,7 @@ class Page {
 
   void LoadSvr(bool fr, const fs::path &p) {
     from_disc_ = false;
-    const std::string stem = p.stem().string();
+    const std::string stem = pathutil::Utf8(p.stem());
     const int number = stem.size() > 2 && _strnicmp(stem.c_str(), "ch", 2) == 0 && isdigit(stem[2]) ? atoi(stem.c_str() + 2)
                                                                                                     : -1;
     LoadSvrBytes(fr, p, ReadAll(p), number,

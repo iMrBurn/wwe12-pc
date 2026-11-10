@@ -16,13 +16,17 @@
 //    have none either).
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <set>
 #include <string>
@@ -533,10 +537,15 @@ inline bool LoadFbxTexture(const ufbx_texture *t, const fs::path &fbx_dir, svrfm
                         static_cast<const uint8_t *>(t->content.data) + t->content.size),
                   out))
     return true;
+  // (read by its path, not path::string(): that throws on a name outside the code page - Japanese, emoji - and fopen
+  // with it never found such a file)
   auto read = [&](const fs::path &p) {
-    Bytes b;
     std::error_code ec;
-    return fs::is_regular_file(p, ec) && svrfmt::ReadFile(p.string(), b) && LoadPicture(b, out);
+    if (!fs::is_regular_file(p, ec))
+      return false;
+    std::ifstream f(p, std::ios::binary);
+    const Bytes b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    return !b.empty() && LoadPicture(b, out);
   };
   std::vector<std::string> names;
   for (const ufbx_string *s : {&t->absolute_filename, &t->filename, &t->relative_filename})
@@ -552,7 +561,7 @@ inline bool LoadFbxTexture(const ufbx_texture *t, const fs::path &fbx_dir, svrfm
     return false;
   // (by its name in the folders around: Unity / Blender projects keep them in a Textures folder; another extension)
   const fs::path want = fs::u8path(names[0]).filename();
-  const std::string stem = Lower(want.stem().string()), full = Lower(want.string());
+  const std::string stem = Lower(pathutil::Utf8(want.stem())), full = Lower(pathutil::Utf8(want));
   for (const fs::path &root : {fbx_dir, fbx_dir.parent_path()}) {
     std::error_code ec;
     int seen = 0;
@@ -560,8 +569,8 @@ inline bool LoadFbxTexture(const ufbx_texture *t, const fs::path &fbx_dir, svrfm
          !ec && it != fs::recursive_directory_iterator() && seen < 20000; it.increment(ec), ++seen) {
       if (!it->is_regular_file(ec))
         continue;
-      const std::string f = Lower(it->path().filename().string());
-      if ((f == full || Lower(it->path().stem().string()) == stem) && read(it->path()))
+      const std::string f = Lower(pathutil::Utf8(it->path().filename()));
+      if ((f == full || Lower(pathutil::Utf8(it->path().stem())) == stem) && read(it->path()))
         return true;
     }
   }

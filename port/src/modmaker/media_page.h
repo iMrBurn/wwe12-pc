@@ -5,6 +5,8 @@
 // an Entrance's USER PLAYLIST finds them, their loudness levelled to the game's own music). One pack can hold many.
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -205,7 +207,7 @@ class Page {
       if (!it.music.empty()) {
         std::ifstream f(it.music, std::ios::binary);
         Bytes song((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-        std::string ext = it.music.extension().string();
+        std::string ext = pathutil::Utf8(it.music.extension());
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return char(std::tolower(c)); });
         if (!song.empty())
           entries.push_back({"media/music/" + std::to_string(sid) + ext, std::move(song)});

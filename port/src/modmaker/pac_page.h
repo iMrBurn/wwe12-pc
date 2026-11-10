@@ -7,6 +7,8 @@
 // the changed archive is written over the original in place (InPlace), each changed entry in its own room.
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -168,7 +170,7 @@ class Browser {
       return;
     }
     title_ = title;
-    export_name_ = fs::path(title).stem().string();
+    export_name_ = pathutil::Utf8(fs::u8path(title).stem());
   }
 
   static std::string Label(const svrfmt::ArcNode &n) {
@@ -390,8 +392,7 @@ class Browser {
       save_ok_ = why.empty();
       save_msg_ = why;
       if (save_ok_) {
-        const std::string base = fs::path(title_).filename().string();
-        const fs::path to = PickSaveAny(fr, std::wstring(base.begin(), base.end()));
+        const fs::path to = PickSaveAny(fr, fs::u8path(title_).filename().wstring());
         if (!to.empty()) {
           std::ofstream f(to, std::ios::binary | std::ios::trunc);
           f.write(reinterpret_cast<const char *>(out.data()), std::streamsize(out.size()));

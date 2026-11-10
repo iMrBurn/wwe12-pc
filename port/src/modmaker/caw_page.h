@@ -16,6 +16,8 @@
 // Every change copies the save first (Documents\wwe12\SaveBackups, as the launcher's automatic backups).
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -237,7 +239,7 @@ class Page {
     caws_.clear();
     std::error_code ec;
     for (fs::directory_iterator it(SaveDir() / "00000001", ec), end; !ec && it != end; it.increment(ec)) {
-      const std::string dir = it->path().filename().string();
+      const std::string dir = pathutil::Utf8(it->path().filename());
       if (!it->is_directory(ec) || dir.size() != 21 || dir.substr(2) != "CreateSuperStar.cas" || !isdigit(dir[0]) ||
           !isdigit(dir[1]))
         continue;

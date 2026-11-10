@@ -19,6 +19,8 @@
 //    replaces, Bink 1 videos; two mods giving the same file (the first one wins).
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -127,7 +129,7 @@ class Page {
     std::sort(dirs.begin(), dirs.end());
     for (const auto &dir : dirs) {
       const std::string text = ReadText(dir / "manifest.txt");
-      const std::string id = dir.filename().string();
+      const std::string id = pathutil::Utf8(dir.filename());
       const std::string label = Value(text, "name").empty() ? id : Value(text, "name") + "  (" + id + ")";
       ++read_;
       auto add = [&](int level, const std::string &t, const std::string &fix_label = "", std::function<bool()> fix = {}) {
@@ -195,7 +197,7 @@ class Page {
       for (fs::recursive_directory_iterator it(files, ec), end; !ec && it != end; it.increment(ec)) {
         if (!it->is_regular_file(ec))
           continue;
-        std::string rel = fs::relative(it->path(), files, ec).generic_string();
+        std::string rel = pathutil::Utf8(fs::relative(it->path(), files, ec).generic_wstring());
         std::string key = rel;
         std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return char(std::tolower(c)); });
         if (auto o = owner.find(key); o != owner.end()) {
@@ -375,7 +377,7 @@ class Page {
           continue;
         svrfmt::DdsInfo i;
         if (!svrfmt::DdsInfoOf(ReadBytes(p), i) || i.w != want[hd][k][0] || i.h != want[hd][k][1])
-          add(1, p.filename().string() + (fr ? " : pas à la taille du jeu, le portrait de la base est pris."
+          add(1, pathutil::Utf8(p.filename()) + (fr ? " : pas à la taille du jeu, le portrait de la base est pris."
                                              : ": not the game's size, the base's portrait is used."),
               fr ? "Retirer ce portrait" : "Remove this portrait", [p] {
                 std::error_code e;

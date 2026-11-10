@@ -6,6 +6,8 @@
 // line, dlc.h): each game's packages are read over its disc.
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <windows.h>
 #include <shobjidl.h>
 #include <algorithm>
@@ -156,7 +158,7 @@ class Discs {
         continue;
       }
       const fs::path p = it->path();
-      std::string ext = p.extension().string();
+      std::string ext = pathutil::Utf8(p.extension());
       for (auto &c : ext)
         c = char(tolower(static_cast<unsigned char>(c)));
       const bool iso = it->is_regular_file(ec) && ext == ".iso";

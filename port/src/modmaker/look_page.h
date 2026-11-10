@@ -8,6 +8,8 @@
 //  - animations: a superstar playing the game's motions (pac\m.pac, motions.h / yanm.h), after Kaiko's Animations page.
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -195,7 +197,7 @@ class Page {
         for (fs::directory_iterator it(mods_dir / ".svrmods" / k.kind, ec), end; !ec && it != end; it.increment(ec)) {
           const fs::path f = it->path() / fs::u8path(k.file);
           if (fs::exists(f, ec))
-            mods_.push_back({std::string(fr ? k.fr : k.en) + " : " + it->path().filename().string(), f});
+            mods_.push_back({std::string(fr ? k.fr : k.en) + " : " + pathutil::Utf8(it->path().filename()), f});
         }
       shown_ = -1;
     }
@@ -208,7 +210,7 @@ class Page {
         std::ifstream f(mods_[size_t(i)].file, std::ios::binary);
         const Bytes b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
         view_error_.clear();
-        if (mods_[size_t(i)].file.string().find("Arenas") == std::string::npos)
+        if (pathutil::Utf8(mods_[size_t(i)].file).find("Arenas") == std::string::npos)
           view_.Light();  // (a superstar or an attire: a light background; an arena stays in the dark)
         else
           view_.background[0] = view_.background[1] = 0.015f, view_.background[2] = 0.02f;

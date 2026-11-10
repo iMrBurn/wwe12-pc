@@ -4,6 +4,8 @@
 // keeps its winding), with its first diffuse picture; and an arena model written back as OBJ.
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -184,7 +186,7 @@ inline bool LoadFbx(const fs::path &file, TriMesh &out, std::string &why) {
 }
 
 inline bool Load(const fs::path &file, TriMesh &out, std::string &why) {
-  std::string ext = file.extension().string();
+  std::string ext = pathutil::Utf8(file.extension());
   for (auto &c : ext)
     c = char(std::tolower(static_cast<unsigned char>(c)));
   return ext == ".fbx" ? LoadFbx(file, out, why) : LoadObj(file, out, why);
@@ -220,7 +222,7 @@ inline bool SaveObj(const fs::path &file, const svrfmt::Model &m, Picture pictur
   if (!o || !mtl)
     return false;
   o << "# " << m.name << ", exported by the WWE '12 Mod Maker\nmtllib "
-    << fs::path(file).replace_extension(".mtl").filename().string() << "\n";
+    << pathutil::Utf8(fs::path(file).replace_extension(".mtl").filename()) << "\n";
   size_t base = 1;
   for (size_t i = 0; i < m.meshes.size(); ++i) {
     const auto &me = m.meshes[i];

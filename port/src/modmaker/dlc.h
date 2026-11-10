@@ -6,6 +6,8 @@
 // "pac/ch/ch65_dlc02.pac", 2K16 "pac/ch/ch124.pac", "pac/ch/chEtc_dlc20.pac"): the pages read those names.
 #pragma once
 
+#include "../launcher/path_utf8.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -51,7 +53,7 @@ class Game : public disc::GameDisc::Layer {
   void AddFolder(const fs::path &dir) {
     Pack k;
     k.path = dir;
-    k.name = dir.filename().string();
+    k.name = pathutil::Utf8(dir.filename());
     std::error_code ec;
     for (fs::recursive_directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
       if (it->is_regular_file(ec)) {
@@ -162,7 +164,7 @@ class Game : public disc::GameDisc::Layer {
       else
         s += {char(0xE0 | (c >> 12)), char(0x80 | ((c >> 6) & 0x3F)), char(0x80 | (c & 0x3F))};
     }
-    return s.empty() ? p.filename().string() : s;
+    return s.empty() ? pathutil::Utf8(p.filename()) : s;
   }
 
   std::vector<Pack> packs_;
@@ -203,7 +205,7 @@ class Library {
     }
     // (an extracted package: ...\<title id>\00000002\<package>\info\catalog.dlc)
     for (const auto &d : folders) {
-      const std::string t = d.parent_path().parent_path().filename().string();
+      const std::string t = pathutil::Utf8(d.parent_path().parent_path().filename());
       if (t.size() != 8 || !std::all_of(t.begin(), t.end(), [](char c) { return isxdigit(static_cast<unsigned char>(c)); }))
         continue;
       Of(uint32_t(strtoul(t.c_str(), nullptr, 16))).AddFolder(d);
