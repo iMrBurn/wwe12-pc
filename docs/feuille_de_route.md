@@ -76,7 +76,7 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - Résumé + verdict (ok / cpu / gpu / failed), condition « faible » (2 cœurs), bouton dans le launcher.
 
 **Autres**
-- Yeux de SvR 2010 en courant.
+- ~~Yeux de SvR 2010 en courant~~ : corrigé (confirmé par l'utilisateur le 2026-11-10) ; à rouvrir seulement si un joueur le signale.
 - Page ROSTERS du launcher (marques hors de l'Univers, `docs/launcher_rosters.md`, 3 séances, écrit dans la sauvegarde).
 - Encodeur Vorbis (Wwise) à nous, pour les thèmes portés de plus de 20 Mo (en 1.1 : coupés à 100 s).
 
@@ -105,7 +105,7 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 ## 1.5 et après : plateformes et finitions (à décider selon les retours)
 - Launcher : améliorations (`docs/launcher_amelioration.md`, 20 à 28 h : état du jeu, messages, confort Steam Deck à la manette, bouton « Test de performance », finitions) ; pas de refonte du design.
 - Android après la 1.1 PC : replay d'après match, performances, ajouts de Yexclsv (`docs/android_apres_1_1.md`).
-- Prises avec leurs animations d'autres jeux (SvR 2011, puis 2K) ; yeux de SvR 2010.
+- Prises avec leurs animations d'autres jeux (SvR 2011, puis 2K) .
 - Version Linux native (étude faite, `docs/linux_natif_etude.md` : 8 à 12 séances).
 - 16:10 / 21:9 (D3D11/D3D12, menu pause, HUD en 21:9) à confirmer ; icônes de touches de clavier ; test sur un vrai Steam Deck.
 - Android : vrais téléphones, boutons PlayStation, ce que disent les joueurs.
@@ -264,7 +264,7 @@ Pas en 1.0.1 (1.1) : tout le Mod Maker (prises, entrées, arènes), foule SvR 20
 - A : profil « Steam Deck / petit PC » du launcher (fait et essayé sur ce PC avec un Deck simulé, pas encore sur un vrai Deck), guide dans la FAQ. Confort Deck du launcher (manette, hauteur de fenêtre, boutons) : à faire.
 - B : test de performance intégré (Rendu, vise la 1.2).
 
-## Yeux des catcheurs de SvR 2009 / 2010 qui restent derrière en courant (1.2)
+## Yeux des catcheurs de SvR 2009 / 2010 qui restent derrière en courant (1.2) : CORRIGÉ, confirmé par l'utilisateur le 2026-11-10
 - Le bug principal (yeux détachés) est corrigé et poussé (f543cec). Le détail restant (les globes restent un peu derrière quand le catcheur court) : cause non trouvée, même os et mêmes poids que SvR 2011 (où ça va). Pistes pour la 1.2 : la 3e pièce d'œil de SvR 2010 (format de sommet 7, disque d'iris plat de 0,08 cm), ou une capture RenderDoc comparée image par image (2 à 3 h après la capture). L'utilisateur le laisse tomber pour l'instant (« si y a encore le bug, on me dira »). Dans les notes de la 1.1 : « connu ».
 
 ## Mode 30 fps (issue #57, 2026-11-06) : étude, 1.3 (ex-1.2)
