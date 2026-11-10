@@ -67,9 +67,8 @@ class Reader {
         r.id = (d[o + 40] << 8) | d[o + 41];
         for (size_t k = o + 42; k < o + 42 + 60 && d[k] >= 32 && d[k] < 127; ++k)
           r.name += char(d[k]);
-        const uint8_t b = d[o + 27];
-        const bool same = d[o + 24] == b && d[o + 25] == b && d[o + 26] == b;
-        if (same && b < 19 && r.id == int(i) + 50)
+        const uint8_t b = d[o + 27];  // the Universe brand (+24..+26 = base brand, other modes)
+        if (b < 19 && r.id == int(i) + 50)
           r.brand = b;
         if (!r.name.empty() && std::all_of(r.name.begin(), r.name.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
           r.name.clear();  // ("0", "22"...: placeholders, not names)
@@ -117,7 +116,7 @@ inline std::string BrandName(int brand, bool fr) {
   }
 }
 
-// ---- Writing (session 2). Only the four brand bytes +24..+27 of chosen, consistent records are changed, then the sum. ----
+// ---- Writing (session 2). Only the Universe brand byte +27 of chosen, consistent records is changed, then the sum. ----
 
 inline bool ReadAll(const fs::path &file, std::vector<uint8_t> &d) {
   try {
@@ -172,13 +171,13 @@ inline bool WriteAtomic(const fs::path &file, const std::vector<uint8_t> &d) {
   }
 }
 
-// A record may be changed only when it is consistent: number (u16 big-endian at +40) = index + 50, four equal brand
-// bytes, and a brand we know how to write (0, 1, 6). Brand 4 and "?" records are never touched.
+// A record may be changed only when it is consistent: number (u16 big-endian at +40) = index + 50 and a Universe brand
+// (+27) we know how to leave: 0, 1, 6 or 2 (the game itself sets 2). Brand 4 and "?" records are never touched.
 inline bool Changeable(const std::vector<uint8_t> &d, size_t i) {
   const size_t o = Reader::kHeader + i * Reader::kRecord;
   const int id = (d[o + 40] << 8) | d[o + 41];
   const uint8_t b = d[o + 27];
-  return id == int(i) + 50 && d[o + 24] == b && d[o + 25] == b && d[o + 26] == b && (b == 0 || b == 1 || b == 6);
+  return id == int(i) + 50 && (b == 0 || b == 1 || b == 6 || b == 2);
 }
 
 class Editor {
@@ -197,8 +196,7 @@ class Editor {
           !(c.second == 0 || c.second == 1 || c.second == 6))
         return "record";
       const size_t o = Reader::kHeader + size_t(c.first) * Reader::kRecord;
-      for (int k = 24; k <= 27; ++k)
-        d[o + k] = uint8_t(c.second);
+      d[o + 27] = uint8_t(c.second);  // (like the game's own Universe code: +24..+26 are the base brand, left alone)
     }
     const uint32_t sum = SumOf(d);
     d[24] = uint8_t(sum >> 24), d[25] = uint8_t(sum >> 16), d[26] = uint8_t(sum >> 8), d[27] = uint8_t(sum);
@@ -368,7 +366,7 @@ class Page {
       for (const Row *r : shown) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        const bool ok = r->brand == 0 || r->brand == 1 || r->brand == 6;  // (Other (n) and ? are never changed)
+        const bool ok = r->brand == 0 || r->brand == 1 || r->brand == 6 || r->brand == 2;  // (Other (4...) and ? are never changed)
         bool on = selected_.count(r->index) > 0;
         ImGui::PushID(r->index);
         ImGui::BeginDisabled(!ok);
@@ -410,7 +408,8 @@ class Page {
       if (!selected_.count(r.index) || r.brand == target)
         continue;
       ++moved;
-      after[r.brand == 0 ? 0 : r.brand == 1 ? 1 : 2]--;
+      if (r.brand == 0 || r.brand == 1 || r.brand == 6)  // (brand 2 is in none of the three counts)
+        after[r.brand == 0 ? 0 : r.brand == 1 ? 1 : 2]--;
       after[target == 0 ? 0 : target == 1 ? 1 : 2]++;
     }
     ImGui::Text(fr ? "Mettre %d catcheur(s) sur : %s ?" : "Put %d wrestler(s) on: %s?", moved, BrandName(target, fr).c_str());
