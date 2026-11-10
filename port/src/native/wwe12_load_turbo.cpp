@@ -32,7 +32,18 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <thread>
 #include <vector>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #include <fmt/format.h>
 
@@ -262,8 +273,34 @@ REXCVAR_DEFINE_INT32(wwe12_fast_boot_settle_ms, 800, "WWE12",
                      "title screen is shown.")
     .range(0, 5000);
 
+// 1.3, after the 4-thread test of 2026-11-10: the start-up turbo (guest vblank at 1 kHz for ~13,000 game
+// frames) locked the game's threads at their frame barrier (sub_827DEA20) on 4 logical processors: the
+// opening video never came and the first load never ended. Below this many usable logical processors the
+// start-up still hides everything until the title screen, but at the game's own pace (no turbo).
+REXCVAR_DEFINE_INT32(wwe12_fast_boot_min_threads, 8, "WWE12",
+                     "Fast boot: fewest usable logical processors for the start-up turbo (fewer: hidden "
+                     "start-up at the normal pace).")
+    .range(1, 256);
+
+// Game frames (the frame barrier's calls, all threads): the start-up turbo's stall guard.
+std::atomic<u64> g_barrier_total{0};
+
 namespace {
-constexpr int64_t kBootMaxMs = 20000;
+constexpr int64_t kBootMaxMs = 20000, kBootMaxSlowMs = 40000;
+constexpr int64_t kStallMs = 2000;  // turbo: no game frame for this long = stopped (normal pace again)
+
+u32 UsableThreads() {
+#if defined(_WIN32)
+  DWORD_PTR process = 0, system = 0;
+  if (GetProcessAffinityMask(GetCurrentProcess(), &process, &system) && process) {
+    u32 n = 0;
+    for (DWORD_PTR m = process; m; m &= m - 1)
+      ++n;
+    return n;
+  }
+#endif
+  return std::max(1u, std::thread::hardware_concurrency());
+}
 const int64_t g_process_start_ms = NowMs();  // (static init: before the runtime starts)
 
 enum class Boot { kNotStarted, kTurbo, kSettle, kDone };
@@ -271,6 +308,9 @@ std::atomic<Boot> g_boot{Boot::kNotStarted};
 std::atomic<int64_t> g_boot_first_ms{0}, g_boot_settle_ms{0};
 bool g_boot_saved_vsync = true, g_boot_saved_mute = false;  // (frame thread only)
 u32 g_boot_frames = 0;
+bool g_boot_turbo = false;           // the start-up runs the game fast (enough processors)
+u64 g_boot_barrier_seen = 0;         // stall guard: game frames at the last check
+int64_t g_boot_barrier_ms = 0;
 
 bool BootWanted() {
   return REXCVAR_GET(wwe12_fast_boot) && rex::cvar::Query<bool>("wwe12_skip_intros");
@@ -279,7 +319,8 @@ bool BootWanted() {
 void BootEnd(int64_t now, const char *why) {
   if (g_boot.exchange(Boot::kDone) == Boot::kDone)
     return;
-  rex::cvar::SetFlagByName("vsync", g_boot_saved_vsync ? "true" : "false");
+  if (g_boot_turbo)
+    rex::cvar::SetFlagByName("vsync", g_boot_saved_vsync ? "true" : "false");
   rex::cvar::SetFlagByName("audio_mute", g_boot_saved_mute ? "true" : "false");
   BD_INFO("[boot] title screen shown at {} ms ({}): {} game frames hidden since the first frame "
           "at {} ms",
@@ -299,14 +340,34 @@ bool BootFrame() {
     g_boot_first_ms = now;
     g_boot_saved_vsync = rex::cvar::Query<bool>("vsync");
     g_boot_saved_mute = rex::cvar::Query<bool>("audio_mute");
-    rex::cvar::SetFlagByName("vsync", "false");
+    const u32 threads = UsableThreads();
+    g_boot_turbo = threads >= u32(REXCVAR_GET(wwe12_fast_boot_min_threads));
+    if (g_boot_turbo)
+      rex::cvar::SetFlagByName("vsync", "false");
     rex::cvar::SetFlagByName("audio_mute", "true");
+    g_boot_barrier_seen = g_barrier_total.load(std::memory_order_relaxed);
+    g_boot_barrier_ms = now;
     g_boot = b = Boot::kTurbo;
-    BD_INFO("[boot] first frame at {} ms: fast boot, nothing shown until the title screen",
-            now - g_process_start_ms);
+    BD_INFO("[boot] first frame at {} ms: fast boot, nothing shown until the title screen ({} usable "
+            "logical processors: {})",
+            now - g_process_start_ms, threads, g_boot_turbo ? "turbo" : "the game's own pace, no turbo");
   }
   ++g_boot_frames;
-  if (now - g_boot_first_ms.load() >= kBootMaxMs) {
+  // Stall guard: the turbo on and no game frame for kStallMs = the game's threads stopped; back to the
+  // game's own pace (vblank at 60 Hz) for the rest of the start-up.
+  if (g_boot_turbo && b == Boot::kTurbo) {
+    const u64 seen = g_barrier_total.load(std::memory_order_relaxed);
+    if (seen != g_boot_barrier_seen) {
+      g_boot_barrier_seen = seen;
+      g_boot_barrier_ms = now;
+    } else if (now - g_boot_barrier_ms >= kStallMs) {
+      g_boot_turbo = false;
+      rex::cvar::SetFlagByName("vsync", g_boot_saved_vsync ? "true" : "false");
+      BD_WARN("[boot] no game frame for {} ms under the turbo: turbo stopped (game's own pace)",
+              now - g_boot_barrier_ms);
+    }
+  }
+  if (now - g_boot_first_ms.load() >= (g_boot_turbo ? kBootMaxMs : kBootMaxSlowMs)) {
     BootEnd(now, "safety limit, the opening video never came");
     return false;
   }
@@ -337,7 +398,8 @@ void Wwe12BootMovieAsked(u32 movie) {
     g_boot_settle_ms = now;
     // The game's own pace again for the title's start (its fade-in), still hidden; its sound
     // back now, so the title music starts as usual.
-    rex::cvar::SetFlagByName("vsync", g_boot_saved_vsync ? "true" : "false");
+    if (g_boot_turbo)
+      rex::cvar::SetFlagByName("vsync", g_boot_saved_vsync ? "true" : "false");
     rex::cvar::SetFlagByName("audio_mute", g_boot_saved_mute ? "true" : "false");
   }
 }
@@ -371,6 +433,7 @@ bool Wwe12LoadTurboHideNextFrame() {
 // The frame barrier of the game's threads: counted per guest thread for the probe.
 REX_EXTERN(__imp__sub_827DEA20);
 extern "C" REX_FUNC(sub_827DEA20) {
+  g_barrier_total.fetch_add(1, std::memory_order_relaxed);
   if (REXCVAR_GET(wwe12_load_probe)) {
     std::lock_guard lock(g_barrier_mu);
     ++g_barrier_calls[ctx.r13.u32];
