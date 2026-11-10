@@ -40,6 +40,9 @@ In WWE12 Launcher.exe and WWE12 Mod Maker.exe
 - Bink video reader (Mod Maker): Kaiko's port of FFmpeg's libavcodec/bink.c (Konstantin Shishkov,
   Peter Ross): LGPL 2.1 or later - licenses\FFmpeg-LGPL-2.1.txt. Its source is in this port's
   source code (port/src/modmaker/video).
+- Vorbis encoder (Mod Maker): aoTuV beta6.03 (Copyright (c) 2003-2021 Aoyumi, (c) 2002-2020 Xiph.org
+  Foundation): BSD 3-Clause - licenses\aoTuV.txt; libogg 1.3.5 (Copyright (c) 2002 Xiph.org Foundation):
+  BSD 3-Clause - licenses\libogg.txt
 - Bink 2 video decoder (Mod Maker): the decoder proposed to FFmpeg-devel on 2020-03-20 by Paul B Mahol
   (Copyright (c) 2014 Konstantin Shishkov, (c) 2019 Paul B Mahol), taken unchanged: LGPL 2.1 or later -
   licenses\FFmpeg-LGPL-2.1.txt. Its source is in this port's source code (port/src/modmaker/video/bink2).

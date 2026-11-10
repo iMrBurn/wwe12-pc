@@ -83,6 +83,22 @@ if(WIN32)
     # Mod Maker (« WWE12 Mod Maker.exe », à côté du jeu) : fabrique les mods (.svrmod). Basé sur celui du portage
     # SvR 2011 de Kaiko (crédit dans chaque fichier repris) ; partage le style, les mods et la lecture du jeu
     # avec le launcher (src/launcher).
+    # Vorbis encoder of the Mod Maker (ported themes written like the disc's Wwise Vorbis themes): aoTuV beta6.03
+    # (libvorbis by Xiph + Aoyumi's tuning, BSD-3) and libogg 1.3.5 (BSD-3), encoder files only, unchanged.
+    set(WWE12_VORBIS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/modmaker/third_party/vorbis_aotuv")
+    set(WWE12_OGG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/modmaker/third_party/libogg")
+    set(WWE12_VORBIS_SOURCES)
+    foreach(f mdct smallft block envelope window lsp lpc analysis synthesis psy info floor1 floor0 res0 mapping0
+            registry codebook sharedbook lookup bitrate vorbisenc)
+        list(APPEND WWE12_VORBIS_SOURCES "${WWE12_VORBIS_DIR}/lib/${f}.c")
+    endforeach()
+    add_library(wwe12_vorbisenc STATIC ${WWE12_VORBIS_SOURCES}
+        "${WWE12_OGG_DIR}/src/bitwise.c" "${WWE12_OGG_DIR}/src/framing.c")
+    target_include_directories(wwe12_vorbisenc PUBLIC "${WWE12_VORBIS_DIR}/include" "${WWE12_OGG_DIR}/include"
+        PRIVATE "${WWE12_VORBIS_DIR}/lib")
+    target_compile_definitions(wwe12_vorbisenc PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(wwe12_vorbisenc PRIVATE -w)
+
     configure_file(res/modmaker.rc.in "${CMAKE_CURRENT_BINARY_DIR}/modmaker.rc" @ONLY)
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/modmaker.rc" PROPERTIES
         OBJECT_DEPENDS "${WWE12_RES_DIR}/wwe12.ico;${WWE12_RES_DIR}/wwe12.png")
@@ -115,7 +131,7 @@ if(WIN32)
         "${CMAKE_CURRENT_SOURCE_DIR}/../recomp/rexglue-sdk/thirdparty/xxHash"
         "${WWE12_IMGUI_DIR}/backends")
     target_link_libraries(wwe12_modmaker PRIVATE d3d11 dxgi d3dcompiler windowscodecs ole32 shell32
-        mfplat mfreadwrite mfuuid propsys delayimp)
+        mfplat mfreadwrite mfuuid propsys delayimp wwe12_vorbisenc)
     # svrfmt reads "ZLIB" entries (WWE '13's entrance graphics) with the launcher's inflate.
     target_compile_definitions(wwe12_modmaker PRIVATE SVRFMT_INFLATE)
     # Media Foundation is missing on Windows "N" editions: loaded only when a movie is made.
