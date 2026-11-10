@@ -110,8 +110,6 @@ class Wwe12App : public rex::ReXApp {
   // GPU Xenos émulé par défaut ; --gpu_plugin=<nom> permet d'en choisir un autre,
   // et --gpu_backend=d3d12|vulkan le backend de rendu.
   void OnPreSetup(rex::RuntimeConfig& config) override {
-    // Start-up: the Vulkan interface is made meanwhile (mods, DLC, menus: ~2 s), not after.
-    bd::gpu::Video::PrepareHostInterfaceEarly();
 #if defined(__ANDROID__)
     Wwe12AndroidCaptureStderr();
 #endif
@@ -198,6 +196,10 @@ class Wwe12App : public rex::ReXApp {
   }
 
   void OnPostSetup() override {
+    // Start-up: the Vulkan interface is made meanwhile (mods, DLC, menus: ~2 s), not after. Not
+    // earlier: made before the guest memory is mapped, it held that mapping back as long (test of
+    // 2026-11-10: the loader waking a hybrid laptop's other GPU).
+    bd::gpu::Video::PrepareHostInterfaceEarly();
     REXLOG_INFO("WWE '12 PC version {}", WWE12_VERSION);
     if (user_data_root_.empty())
       return;
