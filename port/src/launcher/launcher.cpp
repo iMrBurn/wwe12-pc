@@ -1570,11 +1570,7 @@ void PageSaves() {
   g_saves.Draw(g_s.language == 4);
 }
 
-// ROSTERS (1.3): shown only when WWE12_LAUNCHER_ROSTERS is set, until the page is finished.
-bool RostersPageOn() {
-  static const bool on = std::getenv("WWE12_LAUNCHER_ROSTERS") != nullptr;
-  return on;
-}
+// ROSTERS (1.3): moves wrestlers between RAW / SmackDown / no brand in the save.
 rosters::Page g_rosters;
 void PageRosters() {
   Title("ROSTERS");
@@ -1878,13 +1874,10 @@ void DrawUi() {
   }
   ImGui::Dummy(ImVec2(0, 14));
   const Texts &t = T();
-  // The pages in the order of the sidebar (ROSTERS only while it is being built).
-  std::vector<std::pair<Page, const char *>> items = {{kPlay, t.play}, {kSettings, t.settings}, {kControls, t.controls},
-                                                      {kMods, t.mods}, {kSaves, t.saves}};
-  if (RostersPageOn())
-    items.push_back({kRosters, "ROSTERS"});
-  items.push_back({kMusic, t.music});
-  items.push_back({kAbout, t.about});
+  // The pages in the order of the sidebar.
+  std::vector<std::pair<Page, const char *>> items = {{kPlay, t.play},   {kSettings, t.settings}, {kControls, t.controls},
+                                                      {kMods, t.mods},   {kSaves, t.saves},       {kRosters, "ROSTERS"},
+                                                      {kMusic, t.music}, {kAbout, t.about}};
   const int n_items = int(items.size());
   // Controller: LB / RB change page (the sticks and D-pad move between buttons, A presses, B goes back).
   if (g_capture_idx < 0) {

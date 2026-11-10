@@ -6,8 +6,8 @@
 //   28 .. 28 + 0xAE358. Then the wrestlers' records, 286 bytes each: record(i) = 28 + i * 286, i = 0 .. 322, the wrestler's
 //   number (50 .. 372) = i + 50, stored as a big-endian u16 at +40. Inside a record: +24..+27 brand (four equal bytes; the
 //   Universe reads +27), +42 full name (ASCII), +178 short name, +234 gender.
-// Brand values: 0 RAW, 1 SmackDown, 6 no brand ("Other": legends, DLC, free agents), 4 exists (19 wrestlers) with an unknown
-// meaning: shown as "Other (4)", never written. A record with different brand bytes or a wrong number is "?" (untouchable).
+// Brand values: 0 RAW, 1 SmackDown, 6 no brand ("Other": legends, DLC, free agents), 4 (19 wrestlers) and 2 (a mod's wrestler) exist with an
+// unknown meaning: any other value 0..18 is shown as "Other (n)", never written. A record with different brand bytes or a wrong number is "?" (untouchable).
 #pragma once
 
 #include <algorithm>
@@ -33,7 +33,7 @@ namespace fs = std::filesystem;
 struct Row {
   int index = 0, id = 0;
   std::string name;
-  int brand = -1;  // 0, 1, 4, 6, or -1 = "?" (inconsistent)
+  int brand = -1;  // 0 RAW, 1 SmackDown, 6 no brand, any other 0..18 = "Other (n)", -1 = "?" (inconsistent)
 };
 
 class Reader {
@@ -69,10 +69,10 @@ class Reader {
           r.name += char(d[k]);
         const uint8_t b = d[o + 27];
         const bool same = d[o + 24] == b && d[o + 25] == b && d[o + 26] == b;
-        if (same && (b == 0 || b == 1 || b == 4 || b == 6) && r.id == int(i) + 50)
+        if (same && b < 19 && r.id == int(i) + 50)
           r.brand = b;
-        if (r.name == "0")
-          r.name.clear();  // (the game stores "0" for wrestlers whose name comes from its own text tables)
+        if (!r.name.empty() && std::all_of(r.name.begin(), r.name.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
+          r.name.clear();  // ("0", "22"...: placeholders, not names)
         if (r.name.empty() && r.id == 0)
         {
           ++empty_;  // an empty slot (number 0, no name): not listed, never written
@@ -80,7 +80,8 @@ class Reader {
         }
         if (r.name.empty() && names) {
           const auto it = names->find(r.id);
-          if (it != names->end() && it->second != "0")  // (the game files too hold "0" for unused numbers)
+          // (the game files too hold "0", "22"... for unused numbers: not names)
+          if (it != names->end() && !std::all_of(it->second.begin(), it->second.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
             r.name = it->second;
         }
         if (r.name.empty())
@@ -107,13 +108,12 @@ class Reader {
   int empty_ = 0;
 };
 
-inline const char *BrandName(int brand, bool fr) {
+inline std::string BrandName(int brand, bool fr) {
   switch (brand) {
   case 0: return "RAW";
   case 1: return "SmackDown";
   case 6: return fr ? "Sans marque" : "No brand";
-  case 4: return fr ? "Autre (4)" : "Other (4)";
-  default: return "?";
+  default: return brand < 0 ? "?" : std::string(fr ? "Autre (" : "Other (") + std::to_string(brand) + ")";
   }
 }
 
@@ -276,11 +276,11 @@ class Page {
       if (r.brand == 0) ++count[0];
       else if (r.brand == 1) ++count[1];
       else if (r.brand == 6) ++count[2];
-      else if (r.brand == 4) ++other;
+      else if (r.brand > 0) ++other;  // (brand 0 and 1 are counted above, 6 too)
       else ++unknown;
     }
     ImGui::Text("RAW %d   SmackDown %d   %s %d   %s %d   ?  %d   (%s %d)", count[0], count[1], fr ? "Sans marque" : "No brand",
-                count[2], fr ? "Autre (4)" : "Other (4)", other, unknown, fr ? "emplacements vides" : "empty slots",
+                count[2], fr ? "Autre" : "Other", other, unknown, fr ? "emplacements vides" : "empty slots",
                 reader_.Empty());
     if (count[0] < 15 || count[1] < 15)
       ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
@@ -292,7 +292,7 @@ class Page {
     ImGui::SameLine();
     ImGui::SetNextItemWidth(200);
     const char *filters[] = {fr ? "Toutes les marques" : "All brands", "RAW", "SmackDown", fr ? "Sans marque" : "No brand",
-                             fr ? "Autre (4)" : "Other (4)", "?"};
+                             fr ? "Autre" : "Other", "?"};
     ImGui::Combo("##brand", &filter_, filters, 6);
 
     // The move: tick wrestlers below, choose the brand, apply.
@@ -331,7 +331,7 @@ class Page {
 
     std::string needle = find_;
     std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    static const int kFilterBrand[] = {-2, 0, 1, 6, 4, -1};
+    static const int kFilterBrand[] = {-2, 0, 1, 6, -3, -1};  // -2 all, -3 any other brand
     if (ImGui::BeginTable("rosters", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                                             ImGuiTableFlags_Sortable | ImGuiTableFlags_SizingStretchProp,
                           ImVec2(0, 0))) {
@@ -343,7 +343,8 @@ class Page {
       ImGui::TableHeadersRow();
       std::vector<const Row *> shown;
       for (const Row &r : reader_.Rows()) {
-        if (kFilterBrand[filter_] != -2 && r.brand != kFilterBrand[filter_])
+        const int fb = kFilterBrand[filter_];
+        if (fb == -3 ? !(r.brand > 0 && r.brand != 1 && r.brand != 6) : (fb != -2 && r.brand != fb))
           continue;
         if (!needle.empty()) {
           std::string n = r.name;
@@ -359,13 +360,15 @@ class Page {
         std::stable_sort(shown.begin(), shown.end(), [&](const Row *a, const Row *b) {
           if (col == 2) return asc ? a->id < b->id : a->id > b->id;
           if (col == 3) return asc ? a->brand < b->brand : a->brand > b->brand;
+          const bool an = a->name[0] != '(', bn = b->name[0] != '(';  // (numbers without a name go last)
+          if (an != bn) return an;
           return asc ? a->name < b->name : a->name > b->name;
         });
       }
       for (const Row *r : shown) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        const bool ok = r->brand == 0 || r->brand == 1 || r->brand == 6;  // (Other (4) and ? are never changed)
+        const bool ok = r->brand == 0 || r->brand == 1 || r->brand == 6;  // (Other (n) and ? are never changed)
         bool on = selected_.count(r->index) > 0;
         ImGui::PushID(r->index);
         ImGui::BeginDisabled(!ok);
@@ -382,7 +385,7 @@ class Page {
         ImGui::TableNextColumn();
         ImGui::Text("%d", r->id);
         ImGui::TableNextColumn();
-        ImGui::TextUnformatted(BrandName(r->brand, fr));
+        ImGui::TextUnformatted(BrandName(r->brand, fr).c_str());
       }
       ImGui::EndTable();
     }
@@ -410,7 +413,7 @@ class Page {
       after[r.brand == 0 ? 0 : r.brand == 1 ? 1 : 2]--;
       after[target == 0 ? 0 : target == 1 ? 1 : 2]++;
     }
-    ImGui::Text(fr ? "Mettre %d catcheur(s) sur : %s ?" : "Put %d wrestler(s) on: %s?", moved, BrandName(target, fr));
+    ImGui::Text(fr ? "Mettre %d catcheur(s) sur : %s ?" : "Put %d wrestler(s) on: %s?", moved, BrandName(target, fr).c_str());
     ImGui::Dummy(ImVec2(0, 4));
     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 34.0f);
     ImGui::TextWrapped("%s", fr ? "Une copie de votre sauvegarde est faite d'abord (onglet SAVES). Gardez le jeu fermé."
