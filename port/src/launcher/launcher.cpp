@@ -29,6 +29,7 @@
 
 #include "changelog.h"
 #include "diagnostics.h"
+#include "disk_type.h"
 #include "path_utf8.h"
 #include "game_process.h"
 #include "keybinds.h"
@@ -666,6 +667,27 @@ void PagePlay() {
     // What to do, one click away: the folder where the game's files go.
     if (ImGui::Button(fr ? "Ouvrir le dossier du jeu" : "Open the game folder"))
       OpenFolder(ExeDir() / "game");
+  }
+  if (found) {
+    // A hard disk makes loading slow: one discreet line, hidden for good with the box (a small file next to the launcher).
+    static const disk::Kind kind = [] {
+      std::error_code ec;
+      const fs::path game = ExeDir() / "game";
+      return disk::KindOf(fs::exists(game, ec) ? game : ExeDir());
+    }();
+    static bool hidden = [] {
+      std::error_code ec;
+      return fs::exists(ExeDir() / "hdd_warning_hidden.txt", ec);
+    }();
+    if (kind == disk::Kind::Hdd && !hidden) {
+      ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
+                         fr ? "Le jeu est sur un disque dur : les chargements seront longs. Le déplacer sur un SSD aide beaucoup."
+                            : "The game is on a hard disk: loading will be slow. Moving it to an SSD helps a lot.");
+      if (ImGui::Checkbox(fr ? "Ne plus afficher" : "Don't show again", &hidden) && hidden) {
+        std::ofstream f(ExeDir() / "hdd_warning_hidden.txt", std::ios::trunc);
+        f << "1\n";
+      }
+    }
   }
   {
     // The graphics API the PLAY button will start, and a plain warning when its program is not there.
