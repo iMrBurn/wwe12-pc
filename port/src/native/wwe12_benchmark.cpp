@@ -77,6 +77,14 @@ REXCVAR_DEFINE_STRING(wwe12_benchmark_route,
                       "WWE12",
                       "Benchmark hiac6: the remote pad's words from the title screen to the match "
                       "loading (recorded with wwe12_benchmark_record_route).");
+// What the route must lead to (checked at the match start) and whether its match has entrances (measured
+// first, as the WWE 2K14 recomp's benchmark does: entrances, then the match). Logged by the recorder.
+REXCVAR_DEFINE_INT32(wwe12_benchmark_expect_type, 53, "WWE12",
+                     "Benchmark fixed match: the match type the route must lead to (53 = Armageddon Hell in a Cell).");
+REXCVAR_DEFINE_INT32(wwe12_benchmark_expect_superstars, 6, "WWE12",
+                     "Benchmark fixed match: how many superstars the route's match has.");
+REXCVAR_DEFINE_BOOL(wwe12_benchmark_entrances, false, "WWE12",
+                    "Benchmark fixed match: the route's match has entrances (measured before the match).");
 REXCVAR_DEFINE_BOOL(wwe12_benchmark_record_route, false, "WWE12",
                     "Dev: log player 1's buttons as a remote pad route ('[route]' lines), from the "
                     "title screen to the first match loading.");
@@ -265,7 +273,7 @@ std::string PassText(int pass, const Pass &p) {
                 pass, pass == 1 ? "cold" : "warm", fixed ? "match start" : "first entrance", p.to_entrance_s,
                 fixed ? "menus driven by the benchmark" : "menus by hand", p.load_s);
   o << line;
-  if (!fixed)  // (the fixed match has no entrances)
+  if (!fixed || REXCVAR_GET(wwe12_benchmark_entrances))
     o << PhaseLines("Entrances", p.entrance, entrance_target);
   o << PhaseLines("Match", p.match, 60);
   return o.str();
@@ -293,7 +301,7 @@ void FinishPass() {
     // The fixed match's route was recorded on a fresh data folder: pass 1 made a save, which changes
     // the first menus. Everything but the caches and the logs goes, so pass 2 finds the same menus
     // with warm caches. Only in the benchmark's own folder (the launchers' Documents\wwe12_benchmark).
-    if (std::string(REXCVAR_GET(wwe12_benchmark_scenario)) == "hiac6") {
+    if (std::string(REXCVAR_GET(wwe12_benchmark_scenario)) != "player_match") {
       const std::filesystem::path root = logs.parent_path();
       if (root.filename() == "wwe12_benchmark") {
         for (const auto &entry : std::filesystem::directory_iterator(root, ec)) {
@@ -467,10 +475,11 @@ std::string Wwe12BenchmarkTakeScript() {
     }
     BD_INFO("[benchmark] fixed match {}: route {}", std::string(REXCVAR_GET(wwe12_benchmark_scenario)),
             route);
+    if (REXCVAR_GET(wwe12_benchmark_entrances))  // (as the player's match: entrances, then the match)
+      return "wait2000 " + route + " untilscene:900 markentrance untilmatch:600" + measure;
     // (no entrances in the recorded match: the check at the match start tells the remote pad that the
-    // next loading screen ends in the match)
-    // (the match's own loading screen first: the remote pad says "match" as soon as the check passed,
-    // and the first 4 s measured were that loading screen, test of 2026-11-10)
+    // next loading screen ends in the match; its own loading screen first: the remote pad says "match"
+    // as soon as the check passed, and the first 4 s measured were that loading screen, 2026-11-10)
     return "wait2000 " + route + " untilloading:120 untilmatch:600" + measure;
   }
   // The player picks the match (pressing A by itself got lost in the first-start menus,
@@ -570,29 +579,48 @@ void Wwe12BenchmarkFrame(double interval_ms, double work_ms, double gpu_wait_ms)
 // heap 0, superstar x 100 + attire at +16; probe of 2026-11-10) must be the scenario's.
 std::atomic<bool> g_route_match_started{false};  // the route recorder's end: the game's match start
 
+namespace {
+// The match being started: its type and how many superstars sit in the chosen places.
+u32 CountChosen(u8 &type, std::string &ids) {
+  constexpr u32 kMatchRecord = 0x8317C850, kPlaces = 0xAEDDFEA4, kPlaceSize = 48;
+  type = bd::mem::load<u8>(kMatchRecord);
+  u32 superstars = 0;
+  for (u32 i = 0; i < 6; ++i) {
+    const u32 id = bd::mem::load<u32>(kPlaces + i * kPlaceSize + 16);
+    ids += (i ? "," : "") + std::to_string(id);
+    superstars += id >= 100 && id < 100000;
+  }
+  return superstars;
+}
+}  // namespace
+
 REX_EXTERN(__imp__sub_822B51A0);
 extern "C" REX_FUNC(sub_822B51A0) {
-  if (REXCVAR_GET(wwe12_benchmark_record_route) && !g_route_match_started.exchange(true))
-    BD_INFO("[route] the game starts the match (type {})", bd::mem::load<u8>(0x8317C850));
-  if (REXCVAR_GET(wwe12_benchmark) && std::string(REXCVAR_GET(wwe12_benchmark_scenario)) == "hiac6" &&
-      !g_fixed_started.load(std::memory_order_relaxed)) {
-    constexpr u32 kMatchRecord = 0x8317C850, kPlaces = 0xAEDDFEA4, kPlaceSize = 48;
-    constexpr u8 kArmageddonHiac = 53;
-    const u8 type = bd::mem::load<u8>(kMatchRecord);
-    u32 superstars = 0;
+  if (REXCVAR_GET(wwe12_benchmark_record_route) && !g_route_match_started.exchange(true)) {
+    u8 type = 0;
     std::string ids;
-    for (u32 i = 0; i < 6; ++i) {
-      const u32 id = bd::mem::load<u32>(kPlaces + i * kPlaceSize + 16);
-      ids += (i ? "," : "") + std::to_string(id);
-      superstars += id >= 100 && id < 100000;
-    }
+    const u32 superstars = CountChosen(type, ids);
+    BD_INFO("[route] the game starts the match: --wwe12_benchmark_expect_type={} "
+            "--wwe12_benchmark_expect_superstars={} ({})",
+            type, superstars, ids);
+  }
+  if (REXCVAR_GET(wwe12_benchmark) && std::string(REXCVAR_GET(wwe12_benchmark_scenario)) != "player_match" &&
+      !g_fixed_started.load(std::memory_order_relaxed)) {
+    u8 type = 0;
+    std::string ids;
+    const u32 superstars = CountChosen(type, ids);
+    const u32 want_type = u32(REXCVAR_GET(wwe12_benchmark_expect_type));
+    const u32 want_superstars = u32(REXCVAR_GET(wwe12_benchmark_expect_superstars));
     BD_INFO("[benchmark] match start: type {} superstars {} ({})", type, superstars, ids);
-    if (type == kArmageddonHiac && superstars == 6) {
-      Wwe12BenchmarkFixedMatchStarted();
+    if (type == want_type && superstars == want_superstars) {
+      if (REXCVAR_GET(wwe12_benchmark_entrances))
+        g_fixed_started.store(true, std::memory_order_relaxed);  // (entrances follow, measured as usual)
+      else
+        Wwe12BenchmarkFixedMatchStarted();
     } else {
       static char why[160];
-      std::snprintf(why, sizeof(why), "wrong match: type %u (want %u), %u superstars (want 6)", unsigned(type),
-                    unsigned(kArmageddonHiac), superstars);
+      std::snprintf(why, sizeof(why), "wrong match: type %u (want %u), %u superstars (want %u)", unsigned(type),
+                    want_type, superstars, want_superstars);
       Wwe12BenchmarkFixedMatchFailed(why);
     }
   }
