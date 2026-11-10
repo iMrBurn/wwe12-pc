@@ -1533,3 +1533,19 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
   d'entrée, « Importer comme tenue d'entrée » (le modèle sur l'entrée de la tenue d'entrée, `outfit_only` si la tenue
   n'est pas changée). Curseur « Sommets au plus » (4 000-30 000, défaut 12 000 ; un catcheur du jeu : ~9 000).
 - **État** : contrôle de syntaxe seulement (pas de build, pas d'essai en jeu, pas d'essai du Mod Maker).
+
+## Démarrage : cache des entrées (1.3, 2026-11-10, étape A de l'étude du démarrage)
+
+- **Avant** : à chaque lancement, `MountEntrances` (`wwe12_arena_pages.cpp`) effaçait `entrance_slots` puis relisait
+  et réécrivait ~330 Mo (evtmov.pac 276 Mo, prtcls, Nyujyo5, gm, Winning0), même sans aucun changement.
+- **Maintenant** : une clé d'entrée (FNV-1a 64) = le code (date de compilation du fichier), les cvars lues
+  (`wwe12_belt_fit`, `wwe12_belt_length`), `superstar_slots.txt`, `superstar_movies.txt`, `belts.txt`, et chaque fichier
+  du dossier `mods` (chemin, taille, date). Si elle est celle de `entrance_slots\cache.txt` et que les fichiers listés
+  sont là à leur taille, ils sont servis de nouveau avec les tables enregistrées (`g_entrances`, `g_replaced`,
+  `g_mod_screens`, `g_mod_entrances`, `g_belt_length`). Journal : « [entrances] nothing changed since the last start:
+  its files used again (N ms) » ou « made again (N file(s) written, N ms) ».
+- **Pas de cache** quand une arène ajoutée sert ses vidéos (`arena_movies`, refaite à chaque lancement par
+  `Wwe12MountArenaSlots`, et cette étape y ajoute ses entrées) ou qu'il en reste une copie (cette étape l'efface).
+- **État** : contrôle de syntaxe avec les vraies options de compilation ; **pas de build, pas d'essai en jeu**. À
+  vérifier au prochain build groupé : deux lancements de suite → la 2e ligne doit dire « used again », et un catcheur
+  ajouté doit garder son entrée, sa victoire, son ruban et son mur.

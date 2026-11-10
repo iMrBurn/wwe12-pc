@@ -549,16 +549,207 @@ bool Waist(const std::vector<uint8_t> &ch, float &width, float &depth) {
   return false;
 }
 
+// ---- A cache of the entrances step (1.3, docs/mod_maker.md "Démarrage"): made again each start, it read and wrote
+// ~330 MB (evtmov.pac 276 MB, prtcls.pac, Nyujyo5.pac, gm.pac, Winning0.pac) though nothing had changed. Its inputs
+// make a key: this code (its build), the cvars it reads, superstar_slots.txt / superstar_movies.txt / belts.txt, and every
+// file of the mods folder (path, size, time: the .svrmods folders and the loose files read over the game's). When the key
+// is the one of entrance_slots\cache.txt and the files listed there are still there, at their size, they are served
+// again with the tables saved beside them (g_entrances, g_replaced, g_mod_screens, g_mod_entrances, g_belt_length).
+// Not used when an added arena's videos are served (Wwe12MountArenaSlots makes that copy again at each start and this
+// step appends to it) or left over (this step removes it).
+
+constexpr const char *kEntrancesCache = "cache.txt";
+
+std::string EntrancesKey(const fs::path &user_root, const fs::path &mods) {
+  uint64_t h = 0xCBF29CE484222325ull;
+  auto add = [&](const std::string &s) {
+    for (char c : s)
+      h = (h ^ uint8_t(c)) * 0x100000001B3ull;
+    h = (h ^ 0xFF) * 0x100000001B3ull;  // (a separator)
+  };
+  add("entrances cache 1 " __DATE__ " " __TIME__);
+  add(std::to_string(int(REXCVAR_GET(wwe12_belt_fit))) + std::to_string(int(REXCVAR_GET(wwe12_belt_length))));
+  for (const char *f : {"superstar_slots.txt", "superstar_movies.txt", "belts.txt"}) {
+    std::vector<uint8_t> t;
+    add(ReadHost(user_root / f, t) ? std::string(t.begin(), t.end()) : std::string("-"));
+  }
+  std::vector<std::string> files;
+  std::error_code ec;
+  for (fs::recursive_directory_iterator it(mods, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end;
+       it.increment(ec)) {
+    std::error_code e2;
+    if (!it->is_regular_file(e2))
+      continue;
+    const auto size = it->file_size(e2);
+    const auto time = it->last_write_time(e2).time_since_epoch().count();
+    std::string rel = rex::path_to_utf8(fs::relative(it->path(), mods, e2));
+    std::replace(rel.begin(), rel.end(), '\\', '/');
+    files.push_back(rel + "|" + std::to_string(size) + "|" + std::to_string(time));
+  }
+  std::sort(files.begin(), files.end());
+  for (const auto &f : files)
+    add(f);
+  char hex[24];
+  snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)h);
+  return hex;
+}
+
+// The tables and files of the last start, if its key is `key` and its files are all there. False (and the tables
+// empty) otherwise.
+bool LoadEntrancesCache(const fs::path &out, const std::string &key) {
+  std::vector<uint8_t> t;
+  if (!ReadHost(out / kEntrancesCache, t))
+    return false;
+  const std::string text(t.begin(), t.end());
+  std::vector<std::string> lines;
+  std::string line;
+  for (char c : text)
+    if (c == '\n') {
+      lines.push_back(line);
+      line.clear();
+    } else if (c != '\r') {
+      line += c;
+    }
+  if (lines.empty() || lines[0] != "key=" + key || lines.back() != "end")
+    return false;
+  auto cells = [](const std::string &l) {
+    std::vector<std::string> v(1);
+    for (size_t i = 2; i < l.size(); ++i)
+      if (l[i] == '\t')
+        v.emplace_back();
+      else
+        v.back() += l[i];
+    return v;
+  };
+  bool ok = true;
+  for (size_t i = 1; i + 1 < lines.size() && ok; ++i) {
+    const std::string &l = lines[i];
+    if (l.size() < 2 || l[1] != ' ') {
+      ok = false;
+      break;
+    }
+    const auto v = cells(l);
+    switch (l[0]) {
+      case 'E':
+      case 'R': {
+        if (v.size() != 4) {
+          ok = false;
+          break;
+        }
+        AddedEntrance e;
+        e.sector = u32(strtoul(v[1].c_str(), nullptr, 10));
+        e.units = u32(strtoul(v[2].c_str(), nullptr, 10));
+        e.like = v[3];
+        (l[0] == 'E' ? g_entrances : g_replaced)[v[0]] = e;
+        break;
+      }
+      case 'S':
+        if (v.size() != 2) {
+          ok = false;
+          break;
+        }
+        g_mod_screens.insert({uint32_t(strtoul(v[0].c_str(), nullptr, 10)), uint32_t(strtoul(v[1].c_str(), nullptr, 10))});
+        break;
+      case 'M':
+        if (v.size() != 2) {
+          ok = false;
+          break;
+        }
+        g_mod_entrances.push_back({atoi(v[0].c_str()), v[1]});
+        break;
+      case 'B':
+        if (v.size() != 2) {
+          ok = false;
+          break;
+        }
+        g_belt_length[uint32_t(strtoul(v[0].c_str(), nullptr, 10))] = strtof(v[1].c_str(), nullptr);
+        break;
+      case 'F': {  // (a file written, its size: still there?)
+        std::error_code ec;
+        const fs::path p = out / fs::path(v[0]);
+        if (v.size() != 2 || !fs::is_regular_file(p, ec) || fs::file_size(p, ec) != strtoull(v[1].c_str(), nullptr, 10))
+          ok = false;
+        break;
+      }
+      default:
+        ok = false;
+    }
+  }
+  if (!ok) {
+    g_entrances.clear();
+    g_replaced.clear();
+    g_mod_screens.clear();
+    g_mod_entrances.clear();
+    g_belt_length.clear();
+  }
+  return ok;
+}
+
+void SaveEntrancesCache(const fs::path &out, const std::string &key,
+                        const std::vector<std::pair<std::string, uint64_t>> &written) {
+  std::string t = "key=" + key + "\n";
+  for (const auto *table : {&g_entrances, &g_replaced})
+    for (const auto &[name, e] : *table)
+      t += std::string(table == &g_entrances ? "E " : "R ") + name + "\t" + std::to_string(e.sector) + "\t" +
+           std::to_string(e.units) + "\t" + e.like + "\n";
+  for (const auto &[kind, n] : g_mod_screens)
+    t += "S " + std::to_string(kind) + "\t" + std::to_string(n) + "\n";
+  for (const auto &[number, label] : g_mod_entrances)
+    t += "M " + std::to_string(number) + "\t" + label + "\n";
+  for (const auto &[id, k] : g_belt_length) {
+    char f[32];
+    snprintf(f, sizeof(f), "%.9g", k);
+    t += "B " + std::to_string(id) + "\t" + f + "\n";
+  }
+  for (const auto &[rel, size] : written)
+    t += "F " + rel + "\t" + std::to_string(size) + "\n";
+  t += "end\n";
+  WriteHost(out / kEntrancesCache, std::vector<uint8_t>(t.begin(), t.end()));
+}
+
+// entrance_slots over the game's files, when it has something to serve.
+void ServeEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device, const fs::path &out) {
+  if (g_entrances.empty() && g_replaced.empty())
+    return;
+  auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, out, true);
+  if (!overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(overlay))) {
+    REXLOG_WARN("[entrances] could not serve {}", rex::path_to_utf8(out));
+    g_entrances.clear();
+    g_replaced.clear();
+    g_mod_screens.clear();
+    return;
+  }
+  REXLOG_INFO("[entrances] {} added entrance entries, {} replaced, served from {}", g_entrances.size(), g_replaced.size(),
+              rex::path_to_utf8(out));
+}
+
 void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device, const fs::path &user_root,
                     const fs::path &mods) {
   const fs::path out = user_root / "entrance_slots";
+  const auto t0 = std::chrono::steady_clock::now();
+  auto ms = [&] {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+  };
   std::error_code ec;
-  fs::remove_all(out, ec);
   g_entrances.clear();
   g_replaced.clear();
   g_mod_screens.clear();
-  if (!REXCVAR_GET(wwe12_entrance_mods))
+  g_mod_entrances.clear();
+  g_belt_length.clear();
+  if (!REXCVAR_GET(wwe12_entrance_mods)) {
+    fs::remove_all(out, ec);
     return;
+  }
+  // (the cache: see EntrancesKey)
+  const bool cacheable = !g_arena_movies_served && !fs::exists(user_root / "arena_movies" / "pac" / "evt" / "evtmov.pac", ec);
+  const std::string key = cacheable ? EntrancesKey(user_root, mods) : std::string();
+  if (!key.empty() && LoadEntrancesCache(out, key)) {
+    REXLOG_INFO("[entrances] nothing changed since the last start: its files used again ({} ms)", ms());
+    ServeEntrances(vfs, game_device, out);
+    return;
+  }
+  fs::remove_all(out, ec);
+  std::vector<std::pair<std::string, uint64_t>> written;  // (the files written, for the cache)
   static const char kGroups[] = "12345EFGHIK";
   // The parts by file: the script and tracks (EVP_n / EVZ_n) in their Nyujyo file, the game event script (GMEV_n) in
   // gm.pac, the effects (PCE6_n) in prtcls.pac; each with its group and entry name.
@@ -1058,20 +1249,14 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       fs::remove(out.parent_path() / "arena_movies" / "key.txt", e3);
     } else {
       WriteHost(out / fs::path(rel), pac);
+      written.push_back({rel, uint64_t(pac.size())});
     }
   }
-  if (g_entrances.empty() && g_replaced.empty())
-    return;
-  auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, out, true);
-  if (!overlay->Initialize() || !vfs->RegisterOverlay(game_device, std::move(overlay))) {
-    REXLOG_WARN("[entrances] could not serve {}", rex::path_to_utf8(out));
-    g_entrances.clear();
-    g_replaced.clear();
-    g_mod_screens.clear();
-    return;
-  }
-  REXLOG_INFO("[entrances] {} added entrance entries, {} replaced, served from {}", g_entrances.size(), g_replaced.size(),
-              rex::path_to_utf8(out));
+  REXLOG_INFO("[entrances] made again ({} file(s) written, {} ms{})", written.size(), ms(),
+              key.empty() ? ", no cache: an added arena's videos" : "");
+  if (!key.empty())
+    SaveEntrancesCache(out, key, written);
+  ServeEntrances(vfs, game_device, out);
 }
 
 }  // namespace
