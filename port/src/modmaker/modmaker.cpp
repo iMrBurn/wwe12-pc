@@ -617,7 +617,10 @@ const Guide kGuides[] = {
       "NEW SUPERSTAR from SvR: no entrance outfit yet; the base's is taken out (no one else's jacket).",
       "A game superstar: in NEW SUPERSTAR, with him as the base, make An attire of <him> (Finish), then pick His "
       "entrance outfit (attire N) or An entrance outfit (attire N): the look you made is worn for his entrances in "
-      "attire N (a vest for CM Punk)."},
+      "attire N (a vest for CM Punk).",
+      "SUPERSTARS, an attire open, His entrance outfit: another attire of his, one of another game, a file, or a 3D "
+      "model (.fbx). EXPERIMENTAL for a 3D model (on an attire or as an entrance outfit): not tried in the game yet; "
+      "look at it in 3D, then in the game, and remove the mod if it looks wrong."},
      {"Une tenue d'entrée n'est portée que pendant l'entrée ; ensuite le catcheur combat dans sa tenue (comme l'armure "
       "d'Animal dans WWE '12).",
       "NOUVEAU depuis WWE '13 ou 2K14 : cochez Avec sa tenue d'entrée (étape 1) : elle est trouvée toute seule.",
@@ -627,7 +630,10 @@ const Guide kGuides[] = {
       "NOUVEAU depuis SvR : pas encore de tenue d'entrée ; celle de la base est retirée (pas la veste d'un autre).",
       "Un catcheur du jeu : dans NOUVEAU, avec lui comme base, faites Une tenue de <lui> (Terminer), puis choisissez "
       "Sa tenue d'entrée (tenue N) ou Une tenue d'entrée (tenue N) : l'apparence faite lui sert pour ses entrées en "
-      "tenue N (une veste pour CM Punk)."}},
+      "tenue N (une veste pour CM Punk).",
+      "CATCHEURS, une tenue ouverte, Sa tenue d'entrée : une autre de ses tenues, celle d'un autre jeu, un fichier, ou "
+      "un modèle 3D (.fbx). EXPÉRIMENTAL pour un modèle 3D (sur une tenue ou comme tenue d'entrée) : pas encore essayé "
+      "en jeu ; regardez-le en 3D, puis en jeu, et retirez le mod s'il s'affiche mal."}},
     {"Your mods: turn on, off, share",
      "Vos mods : activer, désactiver, partager",
      {"Every mod is a .svrmod file, saved where you chose: share that file.",

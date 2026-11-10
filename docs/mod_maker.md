@@ -1522,3 +1522,14 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
 - **État** : vérifié hors jeu (essai `work/wip/vorbis/proto/integ_test.cpp` : thème 48 kHz stéréo et 44,1 kHz mono →
   Vorbis → paquet du jeu → relu à l'identique ; vgmstream). **Pas de build, pas encore d'essai en jeu** (thème long,
   entrée, jukebox, victoire).
+
+## Modèle 3D (FBX) sur une tenue ou comme tenue d'entrée : EXPÉRIMENTAL (1.3, 2026-11-10)
+
+- **Décision de l'utilisateur (2026-11-10, relayée par la Main)** : il ne l'essaiera pas lui-même ; livré comme
+  fonction **expérimentale**, laissée aux joueurs. Avertissement en orange dans la page (`FbxWarning`), étape dans
+  l'aide (« Tenues d'entrée »), et la description du mod le dit (« FBX import, experimental »).
+- **CATCHEURS, une tenue ouverte** : « Un modèle 3D (.fbx)... » puis « Importer sur la tenue N » (le modèle remplace la
+  tenue, comme un portage ; `fbx_star::FbxToAttire`, même chaîne que NOUVEAU > Un modèle 3D), ou, dans Sa tenue
+  d'entrée, « Importer comme tenue d'entrée » (le modèle sur l'entrée de la tenue d'entrée, `outfit_only` si la tenue
+  n'est pas changée). Curseur « Sommets au plus » (4 000-30 000, défaut 12 000 ; un catcheur du jeu : ~9 000).
+- **État** : contrôle de syntaxe seulement (pas de build, pas d'essai en jeu, pas d'essai du Mod Maker).

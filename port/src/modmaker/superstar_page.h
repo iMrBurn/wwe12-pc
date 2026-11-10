@@ -23,6 +23,7 @@
 #include "arena_view.h"
 #include "attire_mod.h"
 #include "entrance13.h"
+#include "fbx_star.h"
 #include "game_disc.h"
 #include "game_discs.h"
 #include "game_process.h"
@@ -403,6 +404,7 @@ class Page {
     loaded_ = false;
     ported_ = false;
     outfit_ported_ = false;
+    fbx_ported_ = false;
     if (outfit_attire_ != attire_)  // (kept when the same attire is opened again: another port of it)
       ClearOutfit();
     svr_note_.clear();
@@ -502,6 +504,104 @@ class Page {
       ImGui::TextColored(ported_ ? green : red, "%s", svr_note_.c_str());
       ImGui::PopTextWrapPos();
     }
+    // Or a 3D model (.fbx) of any tool (Blender, Mixamo, VRChat...) over that attire: fbx_star.h, as NEW SUPERSTAR's
+    // "A 3D model" (a player's idea, 2026-11-10).
+    ImGui::Separator();
+    DrawFbxPick(fr);
+    if (!fbx_path_.empty()) {
+      FbxWarning(fr);
+      char label[64];
+      snprintf(label, sizeof(label), fr ? "Importer sur la tenue %d" : "Import onto attire %d", attire_ + 1);
+      ImGui::BeginDisabled(ported_);
+      if (ImGui::Button(label))
+        PortFbx(fr);
+      ImGui::EndDisabled();
+    }
+  }
+
+  // EXPERIMENTAL (decided 2026-11-10: not tried in the game by us, left to the players): said where the import is offered.
+  static void FbxWarning(bool fr) {
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.25f, 1.0f), "%s",
+                       fr ? "EXPÉRIMENTAL : l'import d'un modèle 3D sur une tenue n'a pas été essayé en jeu. Regardez-le en "
+                            "3D ici, puis en jeu ; si le catcheur s'affiche mal ou si le jeu plante, retirez le mod."
+                          : "EXPERIMENTAL: importing a 3D model onto an attire hasn't been tried in the game. Look at it in "
+                            "3D here, then in the game; if the superstar looks wrong or the game crashes, remove the mod.");
+    ImGui::PopTextWrapPos();
+  }
+
+  // The FBX file and its detail (shared by the attire and its entrance outfit).
+  void DrawFbxPick(bool fr) {
+    if (ImGui::Button(fr ? "Un modèle 3D (.fbx)..." : "A 3D model (.fbx)...")) {
+      const fs::path p = arena_page::PickOpen(fr, false, fr ? L"Modèles 3D (*.fbx)" : L"3D models (*.fbx)", L"*.fbx");
+      if (!p.empty())
+        fbx_path_ = p;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", fbx_path_.empty() ? (fr ? "(Blender, Mixamo, VRChat... : son squelette et ses textures)"
+                                                      : "(Blender, Mixamo, VRChat...: its skeleton and textures)")
+                                                : media::Utf8(fbx_path_.wstring()).c_str());
+    if (!fbx_path_.empty()) {
+      ImGui::SetNextItemWidth(200);
+      ImGui::SliderInt(fr ? "Sommets au plus##fbx" : "Vertices at most##fbx", &fbx_budget_, 4000, 30000, "%d",
+                       ImGuiSliderFlags_AlwaysClamp);
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", fr ? "(un catcheur du jeu : ~9 000)" : "(a game superstar: ~9,000)");
+    }
+  }
+
+  // The FBX model over entry `index` of his file (his attire or its entrance outfit): his file with it, else empty.
+  Bytes FbxInto(bool fr, int index, std::string &note) {
+    svrfmt::Archive w;
+    std::string why;
+    fbx_star::Options opts;
+    opts.max_vertices = fbx_budget_;
+    fbx_star::Report rep;
+    if (!svrfmt::ArchiveOpen(file_, w, &why) || index < 0 || size_t(index) >= w.root.kids.size() ||
+        !fbx_star::FbxToAttire(fbx_path_, w.root.kids[size_t(index)], opts, rep, &why)) {
+      note = (fr ? "Import impossible : " : "Can't import it: ") + why;
+      return {};
+    }
+    svrfmt::ArchiveTouch(w.root);
+    Bytes out = svrfmt::ArchiveSave(w);
+    arena_edit::Arena probe;
+    if (!probe.Load(out, &why, size_t(index))) {
+      note = (fr ? "Import illisible : " : "Unreadable import: ") + why;
+      return {};
+    }
+    char b[256];
+    snprintf(b, sizeof(b),
+             fr ? "Importé : squelette %s, %d os reconnus sur %d, %d sommets, %d maillages, %d texture(s)."
+                : "Imported: skeleton %s, %d bones recognised of %d, %d vertices, %d meshes, %d texture(s).",
+             rep.rig.c_str(), rep.mapped, rep.bones, rep.vertices, rep.meshes, rep.textures);
+    note = b;
+    if (rep.reduced_from)
+      note += (fr ? " Détail réduit de " : " Detail reduced from ") + std::to_string(rep.reduced_from) + ".";
+    for (const auto &warn : rep.warnings)
+      note += " (" + warn + ")";
+    return out;
+  }
+
+  // The FBX model in place of the attire open (as PortSvr): its budget stays the shipped attire's (Make fits it).
+  void PortFbx(bool fr) {
+    svr_note_.clear();
+    std::string note, why;
+    const Bytes out = FbxInto(fr, attire_, note);
+    if (out.empty() || !edit_.Load(out, &why, attire_)) {
+      svr_note_ = out.empty() ? note : (fr ? "Import illisible : " : "Unreadable import: ") + why;
+      return;
+    }
+    thumbs_.clear();
+    selected_ = -1;
+    for (const auto &t : edit_.Textures())
+      thumbs_.push_back(arena_page::MakeThumb(device_, edit_.Get(t).data));
+    view_stale_ = true;
+    ported_ = true;
+    outfit_ported_ = false;  // (his entrance outfit: a copy of it, Make)
+    fbx_ported_ = true;
+    message_.clear();
+    reduced_note_.clear();
+    svr_note_ = note + (fr ? " Voyez-la en 3D, puis créez le mod ci-dessous." : " See it in 3D, then make the mod below.");
   }
 
   void LoadSvr(bool fr, const fs::path &p) {
@@ -740,6 +840,29 @@ class Page {
       if (ImGui::Button(fr ? "Porter sur sa tenue d'entrée" : "Port onto his entrance outfit"))
         PortOutfit(fr, oi);
     }
+    // 3. A 3D model (.fbx) as his entrance outfit (the robe of the player's idea).
+    DrawFbxPick(fr);
+    if (!fbx_path_.empty()) {
+      FbxWarning(fr);
+      if (ImGui::Button(fr ? "Importer comme tenue d'entrée" : "Import as his entrance outfit")) {
+        std::string note;
+        Bytes out = FbxInto(fr, oi, note);
+        if (out.empty()) {
+          outfit_ok_ = false;
+          outfit_note_ = note;
+        } else {
+          ClearOutfit();
+          outfit_src_ = std::move(out);
+          outfit_idx_ = oi;
+          outfit_attire_ = attire_;
+          outfit_ok_ = true;
+          outfit_view_ = true;
+          outfit_fbx_ = true;
+          view_stale_ = true;
+          outfit_note_ = note;
+        }
+      }
+    }
     if (!outfit_note_.empty()) {
       ImGui::PushTextWrapPos(0);
       ImGui::TextColored(outfit_ok_ ? green : red, "%s", outfit_note_.c_str());
@@ -832,6 +955,7 @@ class Page {
     outfit_attire_ = -1;
     outfit_from_own_ = false;
     outfit_view_ = false;
+    outfit_fbx_ = false;
     outfit_note_.clear();
   }
 
@@ -1175,8 +1299,11 @@ class Page {
       manifest += std::string("author=") + author_ + "\n";
     manifest += "description=" + s.name + ", attire " + std::to_string(new_attire ? new_attire : attire_ + 1) + " (" + entry +
                 (new_attire ? ", a new one made from attire " + std::to_string(attire_ + 1) : std::string()) + ")" +
-                (ported_ ? ", replaced by an attire ported from another game (the player's own file)" : "") +
+                (fbx_ported_ ? ", replaced by a 3D model (FBX import, experimental)"
+                 : ported_   ? ", replaced by an attire ported from another game (the player's own file)"
+                             : "") +
                 (outfit_only ? ", its entrance outfit only" : own_outfit ? ", with its own entrance outfit" : "") +
+                (own_outfit && outfit_fbx_ ? " (a 3D model, FBX import, experimental)" : "") +
                 ", made with the WWE '12 Mod Maker.\n";
     std::vector<std::pair<std::string, Bytes>> zip = {{"manifest.txt", Bytes(manifest.begin(), manifest.end())},
                                                       {"attire/attire.pac", std::move(one)}};
@@ -1216,6 +1343,11 @@ class Page {
   bool listed_ = false, loaded_ = false;
   bool outfit_too_ = true;  // a ported attire replaces his entrance outfit of it too
   bool outfit_ported_ = false;  // ... by its own game's entrance outfit (PortSvr), else by a copy of it
+  // A 3D model (.fbx, fbx_star.h) chosen for the attire or its entrance outfit, its vertex budget; the attire open /
+  // the entrance outfit chosen come from it (EXPERIMENTAL, FbxWarning).
+  fs::path fbx_path_;
+  int fbx_budget_ = 12000;
+  bool fbx_ported_ = false, outfit_fbx_ = false;
   // His entrance outfit chosen (DrawEntranceOutfit): a superstar file holding it at entry outfit_idx_ (his own file,
   // another attire of his; or his file with the outfit ported over), for attire outfit_attire_; empty: none.
   Bytes outfit_src_;
