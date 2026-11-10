@@ -551,8 +551,12 @@ void Wwe12BenchmarkFrame(double interval_ms, double work_ms, double gpu_wait_ms)
 // +12456 = 2, then the CGameMainSequence task: docs/perf_natif_steam_deck.md, step 0). There the
 // match record (0x8317C850: +0 the type) and the chosen superstars (48-byte places at the start of
 // heap 0, superstar x 100 + attire at +16; probe of 2026-11-10) must be the scenario's.
+std::atomic<bool> g_route_match_started{false};  // the route recorder's end: the game's match start
+
 REX_EXTERN(__imp__sub_822B51A0);
 extern "C" REX_FUNC(sub_822B51A0) {
+  if (REXCVAR_GET(wwe12_benchmark_record_route) && !g_route_match_started.exchange(true))
+    BD_INFO("[route] the game starts the match (type {})", bd::mem::load<u8>(0x8317C850));
   if (REXCVAR_GET(wwe12_benchmark) && std::string(REXCVAR_GET(wwe12_benchmark_scenario)) == "hiac6" &&
       !g_fixed_started.load(std::memory_order_relaxed)) {
     constexpr u32 kMatchRecord = 0x8317C850, kPlaces = 0xAEDDFEA4, kPlaceSize = 48;
@@ -579,8 +583,9 @@ extern "C" REX_FUNC(sub_822B51A0) {
 }
 
 // ---- Route recorder (dev): player 1's button presses (and the left stick as the d-pad) logged as
-// remote pad words with the waits between them, from the title screen (first press) to the first
-// loading screen after the menus. The whole route is logged again in one line at the end
+// remote pad words with the waits between them, from the title screen (first press) to the loading
+// screen of the match (after the game's match start, sub_822B51A0: loading screens also come between
+// menus, the first try of 2026-11-10 stopped at the main menu's). The whole route is logged again in one line at the end
 // ("[route] full: ..."): paste it into wwe12_benchmark_route. Waits are kept at least 1.5 s
 // (slower PCs), and each press is a remote pad press (120 ms).
 void Wwe12BenchmarkRecordPad(u16 buttons, int16_t stick_x, int16_t stick_y, bool loading) {
@@ -598,7 +603,7 @@ void Wwe12BenchmarkRecordPad(u16 buttons, int16_t stick_x, int16_t stick_y, bool
   if (stick_x < -kDeflect) now_buttons |= 0x0004;
   if (stick_y > kDeflect) now_buttons |= 0x0001;
   if (stick_y < -kDeflect) now_buttons |= 0x0002;
-  if (loading && !s_route.empty()) {
+  if (loading && !s_route.empty() && g_route_match_started.load()) {
     s_done = true;
     BD_INFO("[route] full: {}", s_route);
     return;
