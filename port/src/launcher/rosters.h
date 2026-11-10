@@ -63,10 +63,14 @@ class Reader {
           r.name += char(d[k]);
         const uint8_t b = d[o + 27];
         const bool same = d[o + 24] == b && d[o + 25] == b && d[o + 26] == b;
-        if (same && (b == 0 || b == 1 || b == 4 || b == 6) && r.id == int(i) + 50)
+        if (same && (b == 0 || b == 1 || b == 4 || b == 6) && (r.id == int(i) + 50 || (i >= 206 && r.id == int(i) - 206)))
           r.brand = b;
+        if (r.name == "0")
+          r.name.clear();  // (the game stores "0" for wrestlers whose name comes from its own text tables)
+        if (r.name.empty() && r.id == 0)
+          continue;  // an empty slot (no number, no name): nothing to show
         if (r.name.empty())
-          r.name = "(" + std::to_string(r.id) + ")";
+          r.name = "(#" + std::to_string(r.id) + ")";
         rows_.push_back(std::move(r));
       }
       return sum_ok_ ? "" : "sum";
