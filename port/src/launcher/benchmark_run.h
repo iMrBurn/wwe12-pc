@@ -2,7 +2,7 @@
 // data folder (Documents\wwe12_benchmark, emptied each time: the player's saves are never touched), waits for it to
 // end and shows its summary (logs\benchmark_<date>_<time>.txt in that folder): the verdict, a few figures, and
 // buttons to copy the text or open the folder. Same steps as tools/dev/lancer_benchmark.bat. Nothing is sent.
-// The game restarts itself between the two passes, so "finished" = no game process for a few seconds in a row.
+// One pass (a 1 vs 1 match with both entrances, then 30 s of match); the game closes by itself, so "finished" = no game process for a few seconds in a row.
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -61,19 +61,19 @@ class Runner {
       return;
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-      ImGui::SetTooltip("%s", fr ? "Lance le jeu, qui joue tout seul un match fixe (Hell in a Cell à 6) pendant environ "
-                                   "4 minutes : ne touchez à rien. Le jeu se ferme et se relance seul une fois. Le "
+      ImGui::SetTooltip("%s", fr ? "Lance le jeu, qui joue tout seul un match fixe (1 contre 1 avec entrées) pendant environ "
+                                   "3 minutes 30 : ne touchez à rien. Le jeu se ferme tout seul à la fin. Le "
                                    "résultat dit si ça tourne bien et ce qui limite. Votre sauvegarde n'est pas touchée "
                                    "(dossier de test séparé). Rien n'est envoyé."
-                                 : "Starts the game, which plays a fixed match by itself (Hell in a Cell, 6 wrestlers) for "
-                                   "about 4 minutes: don't touch anything. The game closes and restarts by itself once. "
+                                 : "Starts the game, which plays a fixed match by itself (1 vs 1 with entrances) for "
+                                   "about 3.5 minutes: don't touch anything. The game closes by itself at the end. "
                                    "The result says how well it runs and what limits it. Your save is not touched "
                                    "(separate test folder). Nothing is sent.");
     switch (state_) {
     case State::Running:
       ImGui::SameLine();
-      ImGui::TextDisabled("%s", fr ? "Test en cours... (le jeu se ferme et se relance seul une fois)"
-                                   : "Running... (the game closes and restarts by itself once)");
+      ImGui::TextDisabled("%s", fr ? "Test en cours... (environ 3 min 30, le jeu se ferme tout seul)"
+                                   : "Running... (about 3.5 min, the game closes by itself)");
       break;
     case State::Failed:
       ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
@@ -99,10 +99,10 @@ class Runner {
     SYSTEM_INFO sys{};
     GetSystemInfo(&sys);
     const bool weak = sys.dwNumberOfProcessors <= 2;
-    std::wstring ask = fr ? L"Cela lance le jeu, qui joue tout seul un match fixe pendant environ 4 minutes : ne touchez "
-                            L"à rien. Le jeu se ferme et se relance seul une fois. Votre sauvegarde n'est pas touchée."
-                          : L"This starts the game, which plays a fixed match by itself for about 4 minutes: don't touch "
-                            L"anything. The game closes and restarts by itself once. Your save is not touched.";
+    std::wstring ask = fr ? L"Cela lance le jeu, qui joue tout seul un match fixe (1 contre 1 avec entrées) pendant environ 3 minutes 30 : ne touchez "
+                            L"à rien. Le jeu se ferme tout seul à la fin. Votre sauvegarde n'est pas touchée."
+                          : L"This starts the game, which plays a fixed match by itself (1 vs 1 with entrances) for about 3.5 minutes: don't touch "
+                            L"anything. The game closes by itself at the end. Your save is not touched.";
     if (weak)
       ask += fr ? L"\n\nVotre PC a 2 cœurs ou moins : le test sera long et le résultat probablement faible."
                 : L"\n\nYour PC has 2 cores or fewer: the test will be slow and the result probably poor.";
@@ -116,7 +116,7 @@ class Runner {
       return;
     fs::remove_all(root_, ec);
     const std::wstring path = exe.wstring();
-    std::wstring cmd = L"\"" + path + L"\" --user_data_root \"" + root_.wstring() + L"\" --wwe12_benchmark=true --wwe12_benchmark_scenario=hiac6";
+    std::wstring cmd = L"\"" + path + L"\" --user_data_root \"" + root_.wstring() + L"\" --wwe12_benchmark=true";
     STARTUPINFOW si{sizeof(si)};
     PROCESS_INFORMATION pi{};
     if (!CreateProcessW(path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, exe_dir.wstring().c_str(), &si,
