@@ -209,6 +209,63 @@ Toutes les adresses ci-dessous sont celles du **jeu du disque** (les nôtres), s
 | Passer à travers la cage HIAC / les barrières | Pas trouvé : la collision (Havok) ne change que par recompilation ; peut-être un réglage (§2.4) |
 | Évasion d'un tombé en Elimination Chamber | Pas trouvé |
 
+## 3 bis. Travail 1.3 (2026-11-10, session Gameplay)
+
+Code : `port/src/native/wwe12_title_update.cpp`. Commit local. Ni compilé ni testé en jeu.
+
+- **CAW dans l'effectif (§2.2)**, réglage `wwe12_tu_caw_roster` (activé). Ce que fait la TU2, exactement :
+  - EDIT BRAND et contrat : le catcheur créé n'est plus écarté du compte ;
+  - départ d'une émission : le catcheur créé n'a plus de passe-droit, il est contrôlé comme les autres ;
+  - **en plus** (vu le 2026-11-10), l'effectif lu pour ce départ ne compte qu'à partir de l'id 100 :
+    `sub_826D0598` reçoit 1 au lieu de 0 en 3e argument, et 1 fait démarrer sa boucle à 100.
+  - Côté code : un crochet sur `sub_82A330D8` répond « pas créé » aux trois appels retirés, reconnus par leur
+    retour : 0x82583BD4, 0x82599F94, 0x826D3C24.
+  - Restent dans `wwe12_universe.cpp` (session Univers), via `Wwe12TuCawRoster()` :
+    - le 3e argument de `sub_826D0598` (appel 0x826D3C84) ;
+    - le recomptage d'EDIT BRAND.
+  - Journal : `[tu] catcheur cree N compte comme les autres (...)`.
+- **Index de titre < 23 (§2.2)**, réglage `wwe12_tu_title_index` (activé).
+  - Les 23 fiches de 964 octets sont les **23 titres** (U + 1492, et une seconde série à U + 23664).
+  - Fonctions concernées : `sub_826E1E60` (r4), `826E21A8` (r4), `826E23C0` (r5) et `826E24F8` (r5, sortes 0 et 16).
+  - Hors limites, elles répondent 512, comme leur propre échec. Journal : `[tu] titre N hors limites dans ...`.
+  - `sub_826E1F08` n'est pas un contrôle d'index (test `sub_826CE440` ajouté) : pas fait.
+- **3 réglages 40/60/80 → 70/80/90 (§2.4) : lecteur trouvé, sans piège.**
+  - Un seul lecteur : `sub_822769C8(niveau)`.
+    - niveau 1 → [0x831740C8] (80 → 90) ; 2 → [C4] (60 → 80) ; 3 → [C0] (40 → 70) ; sinon 100 ;
+    - le résultat est un facteur en pourcentage (× 0,01).
+  - Un seul appelant : `sub_8223BF68`, un calcul de dégâts appelé de nombreux endroits. Son f30 est multiplié par
+    ce facteur, selon le niveau `[sub_82327550(r28) + 156]`.
+  - Donc la TU2 **réduit moins** quelque chose qui a un niveau 1-3, sans doute lié au catcheur r28.
+  - Sonde : `wwe12_tu_tune_probe` (désactivée), lignes `[tu_reglage]` (niveau, facteur, valeur avant / après,
+    acteurs). Les valeurs de la TU2 ne sont pas appliquées.
+
+### Protocole des gels de finisher (§2.7), sur le code du disque, à faire à la main
+
+- **Préparation :**
+  - données de test (copie, jamais `Documents\wwe12`) ;
+  - Exhibition 1 contre 1, IA facile en face ;
+  - `wwe12_down_probe = true` : ses lignes `[au_sol]` donnent état / prise / étapes des deux catcheurs, donc on
+    voit si l'état visé par la TU2 survient.
+- **Chaque prise : 5 essais**, en variant la position :
+  - milieu du ring ;
+  - près des cordes ;
+  - adversaire qui se relève ;
+  - adversaire au sol si la prise le permet.
+  - Noter : gel (image figée, son qui continue ou non), fin normale, ou adversaire mal placé.
+- **Prises** (numéros de prise ; vérifier le propriétaire dans l'éditeur de moveset) :
+  1. **Skull Crushing Finale** (51062, The Miz). Condition TU2 dans `sub_823F24C8` : l'adversaire est en Skull
+     Crushing Finale. C'est le correctif le plus simple : à essayer en premier.
+  2. **Edgecution** (50151). `sub_8223F440` : état 37229 + Edgecution + adversaire à l'état 20.
+  3. **Spear 3** (33901). `sub_821D3F58` : état 53 + adversaire à l'état 284. `sub_8223F878` : étapes e1 = 0 ou 7,
+     e2 = 0. Essayer aussi contre un adversaire qui court ou se relève.
+  4. **Sleeper Hold 2** (58012). `sub_8223F878`, mêmes étapes.
+  5. **Ankle Lock 3** (58204). `sub_82280DF0` : étape 7. Laisser la soumission durer, ou être lâchée.
+  6. **Sweet Chin Music** (33902). C'est dans l'éditeur de ralentis (`sub_822A5470`) : faire la prise, puis la
+     revoir et l'ajouter au Highlight Reel.
+  7. **Prise 57006** (nom inconnu, à trouver). `sub_823CCDB8` : +702 = +703 = 0.
+- **Ensuite :** un gel reproduit → un crochet sur sa fonction, avec réglage et ligne de journal, puis le même essai
+  avec le correctif.
+
 ## 4. Tableau court
 
 | Fonction (disque) | Ce que THQ a changé | Chez nous ? | Difficulté |
