@@ -247,9 +247,10 @@ class Page {
     names_ = env.names;
     if (!loaded_ || ImGui::Button(fr ? "Relire la sauvegarde" : "Reload the save"))
       Reload(save_file);
-    ImGui::SameLine();
+    ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", fr ? "Marques de l'exhibition (écran de sélection). L'Univers ne change pas. Rien n'est modifié sans « Appliquer »."
                                  : "Exhibition brands (selection screen). Universe mode is not changed. Nothing changes without \"Apply\".");
+    ImGui::PopTextWrapPos();
     ImGui::Dummy(ImVec2(0, 4));
     if (reason_ == "nosave") {
       ImGui::TextWrapped("%s", fr ? "Aucune sauvegarde trouvée. Lancez le jeu une fois et enregistrez."

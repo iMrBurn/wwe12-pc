@@ -134,3 +134,16 @@ and the SvR 2011 PC port contributors »). Si du code ou la table `roster_names.
   du jeu et saute les créés (< 50), ceux hors des données du jeu et les ajoutés : à écrire dans l'aide de la page. Sans lecteur PAC,
   « remettre les marques d'origine » = restaurer la copie automatique.
 - Les commits d'Univers 3d47e4f / d702618 (marque gardée pour les ajoutés) sont dans la 1.2.0 publiée.
+
+## 9. État final (2026-11-10, vérifié en jeu sur une copie de sauvegarde)
+
+- **Décision de l'utilisateur** : la page change la marque de l'**exhibition seulement** (écran de sélection). Dans l'Univers on
+  change déjà les marques dans le jeu ; ce n'est pas touché. Donc : lecture/écriture de **+24..+26** (trois octets égaux), **jamais +27**
+  (marque de l'Univers, que le jeu change seul ; il peut mettre +27 à une valeur différente, vu : 1,1,1,2 = base SmackDown, Univers 2).
+- Vérifié : Batista SmackDown → RAW = 3 octets + somme changés, écran de sélection RAW, Univers inchangé ; annulation = fichier
+  identique ; fiche dont le numéro ≠ index + 50 ou dont +24..+26 diffèrent = « ? » non modifiable ; « Autre (n) » (4 : 19 catcheurs,
+  2 : un catcheur ajouté) non modifiable.
+- **Numéro = index + 50 pour les 323 fiches** (confirmé par Univers) ; 65 emplacements vides (numéro 0, sans nom) comptés et cachés ;
+  les noms viennent de `pac/ch/chEtc.pac` (lu en lecture seule) quand la sauvegarde a « 0 » ou un nombre ; sans nom : « (#numéro) » en bas.
+- Page visible pour tous (plus de variable d'environnement) ; `WWE12_LAUNCHER_ROSTERS_FILE` reste une aide de test (copie, sans copie de sécurité).
+  Test en jeu : `tools/dev/lancer_test_rosters.bat` (données `Documents\wwe12_test_launcher`).
