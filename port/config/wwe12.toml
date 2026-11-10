@@ -166,10 +166,10 @@ wwe12_heap_grow = "12:16384,15:4096"
 # drive). 12 loads matches about twice as fast; 0 keeps the original pace.
 wwe12_load_slice_ms = 12
 
-# Loading screens run the game as fast as possible until the entrance starts (shorter match loads;
-# the loading animation spins faster). Experimental: it can hang a load on some PCs; false keeps the
-# original pace.
-wwe12_load_turbo = false
+# Loading screens run the game as fast as possible until the entrance starts (much shorter loads;
+# the loading animation spins faster). If a load ever hangs on your PC, set it to false: the original
+# pace.
+wwe12_fast_loading = true
 
 # Graphics API, chosen in the launcher (SETTINGS > GRAPHICS): "any" or "vulkan" starts wwe12.exe
 # (Vulkan, the default); "d3d12" starts wwe12_d3d12.exe (DirectX 12); "d3d11" starts wwe12_d3d11.exe

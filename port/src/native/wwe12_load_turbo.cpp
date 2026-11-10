@@ -30,7 +30,11 @@
 #include <chrono>
 #include <cstdint>
 #include <mutex>
+#include <string>
 #include <unordered_map>
+#include <vector>
+
+#include <fmt/format.h>
 
 #include <rex/cvar.h>
 
@@ -38,12 +42,23 @@
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
 
+// 1.3: on by default (the WWE 2K14 recomp does the same for everyone). The switch has a NEW key:
+// every player's wwe12.toml still holds "wwe12_load_turbo = false" (1.2's shipped default, kept by
+// the launcher's updates), so the old key is read but no longer used.
+REXCVAR_DEFINE_BOOL(wwe12_fast_loading, true, "WWE12",
+                    "Loading screens run the game as fast as possible; false = the original pace.");
 REXCVAR_DEFINE_BOOL(wwe12_load_turbo, false, "WWE12",
-                    "Loading screens run the game as fast as possible (the loading animation spins "
-                    "faster).");
-REXCVAR_DEFINE_INT32(wwe12_load_turbo_frames, 6, "WWE12",
+                    "1.2's key for the turbo loading screens: no longer used (wwe12_fast_loading).");
+REXCVAR_DEFINE_INT32(wwe12_load_turbo_frames, 16, "WWE12",
                      "During a turbo loading screen, game frames per frame shown.")
-    .range(1, 16);
+    .range(1, 32);
+// 1.3: the hidden turbo frames used to be drawn in full and only their present skipped, so the
+// render thread (draws, constants, geometry) held the game's frame rate back. Now the frame is
+// known hidden when it starts (decided at the previous D3D Swap, hooks/device.cpp): its draws and
+// clears are skipped like svr_test_half_frames does; the game's world, its D3D library and the
+// resolves still run (the next shown frame draws everything again). false = the 1.2 behaviour.
+REXCVAR_DEFINE_BOOL(wwe12_load_turbo_skip_draws, true, "WWE12",
+                    "Turbo loading: frames that are not shown are not drawn either.");
 REXCVAR_DEFINE_BOOL(wwe12_load_turbo_vblank, true, "WWE12",
                     "Dev: the turbo also turns the SDK's vsync off (guest vblank at 1 kHz).");
 REXCVAR_DEFINE_BOOL(wwe12_load_turbo_scene_end, true, "WWE12",
@@ -88,10 +103,27 @@ struct TurboState {
   bool saved_vsync = true;
   bool vblank = false;  // this turbo turned the SDK's vsync off
   u32 frame = 0;
+  u32 shown = 0;  // frames shown during this turbo window (timing line)
   int64_t since_ms = 0;
   int64_t probe_ms = 0;
 };
-TurboState g_turbo;  // the present thread only
+// Updated by the present thread (wwe12_load_turbo_skip_draws off) or by the thread that calls the
+// game's D3D Swap (on): the mutex keeps a mid-game cvar change safe.
+TurboState g_turbo;
+std::mutex g_turbo_mu;
+
+// Timing of the last loading screen (the "[loadtime]" line when it closes).
+std::atomic<int64_t> g_turbo_on_ms{0};   // turbo time inside the current screen
+std::atomic<u32> g_turbo_frames{0}, g_turbo_shown{0};
+std::atomic<int64_t> g_closed_screen_ms{-1};  // last screen's time up, waiting to be logged
+
+// The loading-screen window closes (its close methods or the entrance script): its time is kept
+// and logged by the next frame, once the turbo has added its own numbers ("[loadtime]").
+void ScreenClosed() {
+  if (g_screen_up.exchange(false, std::memory_order_relaxed))
+    g_closed_screen_ms.store(NowMs() - g_screen_since_ms.load(std::memory_order_relaxed),
+                             std::memory_order_relaxed);
+}
 
 u32 BusiestThreadFrames() {
   std::lock_guard lock(g_barrier_mu);
@@ -141,7 +173,7 @@ extern "C" REX_FUNC(sub_825B85B8) {
   if ((kind == 0 || kind == 11) && REXCVAR_GET(wwe12_load_turbo_scene_end) &&
       g_screen_up.load(std::memory_order_relaxed)) {
     g_scene_started.store(true, std::memory_order_relaxed);
-    g_screen_up.store(false, std::memory_order_relaxed);
+    ScreenClosed();
     BD_INFO("[turbo] entrance script {} asked: turbo window closed", ctx.r4.u32);
   }
   __imp__sub_825B85B8(ctx, base);
@@ -152,13 +184,16 @@ void Wwe12LoaderTick() {
   g_loader_calls.fetch_add(1, std::memory_order_relaxed);
 }
 
-// Called by Video::Present before presenting: true = render this frame but do not show it.
-bool Wwe12LoadTurboSkipPresent() {
+namespace {
+// One frame of the turbo: turns it on / off with the loading-screen window and says whether the
+// frame it counts is hidden. Called once per game frame, from one place (see the two callers).
+bool TurboFrame() {
   const int64_t now = NowMs();
   const bool probe = REXCVAR_GET(wwe12_load_probe);
-  const bool want = REXCVAR_GET(wwe12_load_turbo) &&
+  const bool want = REXCVAR_GET(wwe12_fast_loading) &&
                     g_screen_up.load(std::memory_order_relaxed) &&
                     now - g_screen_since_ms.load(std::memory_order_relaxed) < kScreenMaxMs;
+  std::lock_guard lock(g_turbo_mu);
   TurboState &t = g_turbo;
   if (want != t.active) {
     if (want) {
@@ -169,20 +204,60 @@ bool Wwe12LoadTurboSkipPresent() {
       }
       t.since_ms = now;
       t.frame = 0;
-    } else if (t.vblank) {
-      rex::cvar::SetFlagByName("vsync", t.saved_vsync ? "true" : "false");
+      t.shown = 0;
+    } else {
+      if (t.vblank)
+        rex::cvar::SetFlagByName("vsync", t.saved_vsync ? "true" : "false");
+      g_turbo_on_ms.fetch_add(now - t.since_ms, std::memory_order_relaxed);
+      g_turbo_frames.fetch_add(t.frame, std::memory_order_relaxed);
+      g_turbo_shown.fetch_add(t.shown, std::memory_order_relaxed);
     }
     t.active = want;
-    BD_INFO("[turbo] {} (after {} ms)", want ? "on" : "off", now - t.since_ms);
+    if (want)
+      BD_INFO("[turbo] on");
+    else
+      BD_INFO("[turbo] off after {} ms: {} game frames, {} shown ({} game frames/s)",
+              now - t.since_ms, t.frame, t.shown,
+              now > t.since_ms ? int64_t(t.frame) * 1000 / (now - t.since_ms) : 0);
     if (probe)
       ProbeLine(want ? "turbo on" : "turbo off", now);
+  }
+  if (!t.active) {
+    const int64_t screen_ms = g_closed_screen_ms.exchange(-1, std::memory_order_relaxed);
+    if (screen_ms >= 0)
+      BD_INFO("[loadtime] loading screen {} ms (turbo {} ms, {} game frames, {} shown)", screen_ms,
+              g_turbo_on_ms.exchange(0, std::memory_order_relaxed),
+              g_turbo_frames.exchange(0, std::memory_order_relaxed),
+              g_turbo_shown.exchange(0, std::memory_order_relaxed));
   }
   if (probe && now - t.probe_ms >= 1000)
     ProbeLine("1 s", now);
   const bool skip =
       t.active && (t.frame++ % u32(std::max(1, REXCVAR_GET(wwe12_load_turbo_frames)))) != 0;
+  if (t.active && !skip)
+    ++t.shown;
   (skip ? g_skips : g_presents).fetch_add(1, std::memory_order_relaxed);
   return skip;
+}
+}  // namespace
+
+// Called by Video::Present before presenting: true = render this frame but do not show it.
+// With wwe12_load_turbo_skip_draws (default) the frame was already hidden at its start
+// (Wwe12LoadTurboHideNextFrame) and is never presented, so nothing to do here.
+bool Wwe12LoadTurboSkipPresent() {
+  if (REXCVAR_GET(wwe12_load_turbo_skip_draws))
+    return false;
+  return TurboFrame();
+}
+
+// Called by the game's D3D Swap (hooks/device.cpp) at the end of each frame: true = the frame that
+// starts now is a hidden turbo frame (no draws, no clears, not presented).
+void Wwe12Ag2dProbeTick();  // below (dev probe, off by default)
+bool Wwe12LoadTurboHideNextFrame() {
+  Wwe12Ag2dProbeTick();
+  if (!REXCVAR_GET(wwe12_load_turbo_skip_draws))
+    return false;
+  return TurboFrame();
 }
 
 // The frame barrier of the game's threads: counted per guest thread for the probe.
@@ -199,7 +274,7 @@ extern "C" REX_FUNC(sub_827DEA20) {
 // The opening also tells the Discord Rich Presence that a match is coming (wwe12_discord.cpp).
 void Wwe12DiscordLoadScreen(const PPCContext &ctx, u8 *base, u32 screen);
 void Wwe12FpsLoadScreenOpened(PPCContext &ctx, u8 *base);  // wwe12_fps.cpp: 30 fps mode, menus at 60
-#define WWE12_LOAD_SCREEN_HOOK(subroutine, index, opens)                         REX_EXTERN(__imp__##subroutine);                                              extern "C" REX_FUNC(subroutine) {                                               g_screen_calls[index].fetch_add(1, std::memory_order_relaxed); g_screen_event_ms.store(NowMs(), std::memory_order_relaxed);                if (opens) {                                                                    if (!g_scene_started.load(std::memory_order_relaxed) &&                           !g_screen_up.exchange(true, std::memory_order_relaxed)) {                   g_screen_since_ms.store(NowMs(), std::memory_order_relaxed);                Wwe12DiscordLoadScreen(ctx, base, ctx.r3.u32); Wwe12FpsLoadScreenOpened(ctx, base);                            }                                                                           } else {                                                                        g_screen_up.store(false, std::memory_order_relaxed);                          g_scene_started.store(false, std::memory_order_relaxed);                    }                                                                             __imp__##subroutine(ctx, base);                                             }
+#define WWE12_LOAD_SCREEN_HOOK(subroutine, index, opens)                         REX_EXTERN(__imp__##subroutine);                                              extern "C" REX_FUNC(subroutine) {                                               g_screen_calls[index].fetch_add(1, std::memory_order_relaxed); g_screen_event_ms.store(NowMs(), std::memory_order_relaxed);                if (opens) {                                                                    if (!g_scene_started.load(std::memory_order_relaxed) &&                           !g_screen_up.exchange(true, std::memory_order_relaxed)) {                   g_screen_since_ms.store(NowMs(), std::memory_order_relaxed);                Wwe12DiscordLoadScreen(ctx, base, ctx.r3.u32); Wwe12FpsLoadScreenOpened(ctx, base);                            }                                                                           } else {                                                                        ScreenClosed();                          g_scene_started.store(false, std::memory_order_relaxed);                    }                                                                             __imp__##subroutine(ctx, base);                                             }
 WWE12_LOAD_SCREEN_HOOK(sub_826AF0F0, 0, true)
 WWE12_LOAD_SCREEN_HOOK(sub_826A83B0, 1, false)
 WWE12_LOAD_SCREEN_HOOK(sub_826A6B90, 2, false)
@@ -268,4 +343,76 @@ extern "C" REX_FUNC(sub_827F57A8) {
   g_inflate_us.fetch_add(NowUs() - start, std::memory_order_relaxed);
   g_inflates.fetch_add(1, std::memory_order_relaxed);
   Wwe12FixSoundTableAfterInflate(stream, ctx.r3.u32);
+}
+
+// Dev probe (1.3, off by default): finding what moves the loading screens' 2D animations (AG2D),
+// to keep them at real-time speed under the turbo. sub_8287BC20(object, data, size, memory) loads
+// an AG2D (or another 2D layout) into `object`: the objects loaded while a loading screen is up are
+// kept, and once a second the u32 words of their first 0x200 bytes that changed are logged
+// ("[ag2dprobe]"): the field that counts the animation's frames shows up, then a write trap on it
+// names the function that advances it.
+REXCVAR_DEFINE_BOOL(wwe12_ag2d_probe, false, "WWE12",
+                    "Dev: log the 2D animation objects of the loading screens and their changing fields.");
+namespace {
+constexpr u32 kAg2dWords = 0x200 / 4;
+struct Ag2dObject {
+  u32 va = 0, caller = 0;
+  u32 words[kAg2dWords] = {};
+};
+std::mutex g_ag2d_mu;
+std::vector<Ag2dObject> g_ag2d;  // at most 16
+int64_t g_ag2d_ms = 0;
+}  // namespace
+
+REX_EXTERN(__imp__sub_8287BC20);
+extern "C" REX_FUNC(sub_8287BC20) {
+  const u32 object = ctx.r3.u32, data = ctx.r4.u32, caller = u32(ctx.lr);
+  __imp__sub_8287BC20(ctx, base);
+  if (!REXCVAR_GET(wwe12_ag2d_probe) || !object)
+    return;
+  const u32 magic = data ? bd::mem::load<u32>(data) : 0;
+  BD_INFO("[ag2dprobe] load object {:08X} data {:08X} magic {:08X} from {:08X} | screen {}",
+          object, data, magic, caller, g_screen_up.load(std::memory_order_relaxed) ? "up" : "no");
+  if (!g_screen_up.load(std::memory_order_relaxed))
+    return;
+  std::lock_guard lock(g_ag2d_mu);
+  if (g_ag2d.size() >= 16)
+    return;
+  Ag2dObject o;
+  o.va = object;
+  o.caller = caller;
+  for (u32 i = 0; i < kAg2dWords; ++i)
+    o.words[i] = bd::mem::load<u32>(object + i * 4);
+  g_ag2d.push_back(o);
+}
+
+// Called once a frame from the game's D3D Swap (Wwe12LoadTurboHideNextFrame).
+void Wwe12Ag2dProbeTick() {
+  if (!REXCVAR_GET(wwe12_ag2d_probe))
+    return;
+  const int64_t now = NowMs();
+  std::lock_guard lock(g_ag2d_mu);
+  if (!g_screen_up.load(std::memory_order_relaxed)) {
+    if (!g_ag2d.empty())
+      BD_INFO("[ag2dprobe] screen closed: {} objects forgotten", g_ag2d.size());
+    g_ag2d.clear();
+    return;
+  }
+  if (now - g_ag2d_ms < 1000)
+    return;
+  g_ag2d_ms = now;
+  for (Ag2dObject &o : g_ag2d) {
+    std::string changed;
+    u32 count = 0;
+    for (u32 i = 0; i < kAg2dWords; ++i) {
+      const u32 w = bd::mem::load<u32>(o.va + i * 4);
+      if (w != o.words[i]) {
+        if (count++ < 12)
+          changed += fmt::format(" +{:X}:{:08X}->{:08X}", i * 4, o.words[i], w);
+        o.words[i] = w;
+      }
+    }
+    BD_INFO("[ag2dprobe] object {:08X} (from {:08X}): {} words changed{}", o.va, o.caller, count,
+            changed);
+  }
 }

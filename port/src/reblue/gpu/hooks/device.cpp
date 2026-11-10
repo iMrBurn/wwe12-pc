@@ -90,6 +90,7 @@ void bdBuildGammaRampLUT_hook(mapped_f32 sub, mapped_f32 mul) {
 #if defined(SVR_NATIVE_RENDERER)
 }  // namespace
 void SvrFrameSwapHook();  // src/fps_hooks.cpp: FPS counter frame tick
+bool Wwe12LoadTurboHideNextFrame();  // native/wwe12_load_turbo.cpp
 namespace {
 #endif
 
@@ -118,10 +119,13 @@ u32 D3DDevice_Swap_hook(u32 /*device*/, u32 front_buffer_va,
 #endif
 #if defined(SVR_NATIVE_RENDERER)
   // svr_test_half_frames: the frame that ends here was hidden (not drawn): not presented. The
-  // next frame is hidden when this one was shown.
+  // next frame is hidden when this one was shown. The WWE '12 turbo loading screens hide their
+  // frames the same way (native/wwe12_load_turbo.cpp, wwe12_load_turbo_skip_draws): called once per
+  // frame, here, so it also keeps its window and its timing lines up to date.
   const bool hidden = bd::gpu::g_test_hidden_frame.load(std::memory_order_relaxed);
-  bd::gpu::g_test_hidden_frame.store(REXCVAR_GET(svr_test_half_frames) && !hidden,
-                                     std::memory_order_relaxed);
+  const bool turbo_hidden = Wwe12LoadTurboHideNextFrame();
+  bd::gpu::g_test_hidden_frame.store(
+      (REXCVAR_GET(svr_test_half_frames) && !hidden) || turbo_hidden, std::memory_order_relaxed);
   if (hidden) {
     bd::gpu::Video::SkipPresent();
     return 0;
