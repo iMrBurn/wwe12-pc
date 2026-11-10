@@ -1387,24 +1387,52 @@ void PageMusic() {
   ImGui::Dummy(ImVec2(0, 8));
   // Same folder as the game: xmp_music_folder, or "music" next to the exe when empty.
   const std::string custom = g_toml.GetString("xmp_music_folder", "");
-  const fs::path dir = custom.empty() ? ExeDir() / "music" : fs::path(custom);
-  std::vector<std::string> tracks, unread;
-  std::error_code ec;
-  for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
-    if (!it->is_regular_file(ec))
-      continue;
-    std::string ext = it->path().extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    const std::string name = it->path().filename().string();
-    if (ext == ".mp3" || ext == ".m4a" || ext == ".aac" || ext == ".wma" || ext == ".wav" || ext == ".flac")
-      tracks.push_back(name);
-    else if (ext == ".ogg" || ext == ".opus" || ext == ".mid" || ext == ".midi")
-      unread.push_back(name);
+  fs::path dir = ExeDir() / "music";
+  if (!custom.empty()) {
+    try {
+      dir = fs::path(std::u8string(custom.begin(), custom.end()));  // (wwe12.toml is UTF-8)
+    } catch (...) {
+    }
   }
-  std::sort(tracks.begin(), tracks.end());
+  std::error_code ec;
+  // The folder is read once a second, not every frame, and no file can make this page fail: names are
+  // converted to UTF-8 by hand (path::string() throws on a name the ANSI code page can't hold: Japanese,
+  // emoji...), a file that can't be read is skipped.
+  static std::vector<std::string> tracks, unread;
+  static fs::path scanned_dir;
+  static std::chrono::steady_clock::time_point scanned_at{};
+  const auto now = std::chrono::steady_clock::now();
+  if (scanned_dir != dir || now - scanned_at > std::chrono::seconds(1)) {
+    scanned_dir = dir;
+    scanned_at = now;
+    tracks.clear();
+    unread.clear();
+    try {
+      for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        try {
+          std::error_code fec;
+          if (!it->is_regular_file(fec) || fec)
+            continue;
+          std::wstring ext = it->path().extension().wstring();
+          std::transform(ext.begin(), ext.end(), ext.begin(), [](wchar_t c) { return c < 128 ? (wchar_t)std::tolower(c) : c; });
+          const std::string name = diag::Utf8(it->path().filename().wstring());
+          if (ext == L".mp3" || ext == L".m4a" || ext == L".aac" || ext == L".wma" || ext == L".wav" || ext == L".flac")
+            tracks.push_back(name);
+          else if (ext == L".ogg" || ext == L".opus" || ext == L".mid" || ext == L".midi")
+            unread.push_back(name);
+        } catch (...) {  // (one odd file: skipped)
+        }
+      }
+    } catch (...) {
+    }
+    std::sort(tracks.begin(), tracks.end());
+  }
   if (ImGui::Button(t.open_music)) {
-    fs::create_directories(dir, ec);
-    OpenFolder(dir);
+    try {
+      fs::create_directories(dir, ec);
+      OpenFolder(dir);
+    } catch (...) {
+    }
   }
   ImGui::SameLine();
   ImGui::TextDisabled("%zu %s", tracks.size(), t.music_count);
