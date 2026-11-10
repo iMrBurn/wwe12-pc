@@ -67,8 +67,9 @@ class Reader {
         r.id = (d[o + 40] << 8) | d[o + 41];
         for (size_t k = o + 42; k < o + 42 + 60 && d[k] >= 32 && d[k] < 127; ++k)
           r.name += char(d[k]);
-        const uint8_t b = d[o + 27];  // the Universe brand (+24..+26 = base brand, other modes)
-        if (b < 19 && r.id == int(i) + 50)
+        // The exhibition's brand: +24..+26 (three equal bytes). The Universe has its own, +27 (changed in the game).
+        const uint8_t b = d[o + 24];
+        if (d[o + 25] == b && d[o + 26] == b && b < 19 && r.id == int(i) + 50)
           r.brand = b;
         if (!r.name.empty() && std::all_of(r.name.begin(), r.name.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
           r.name.clear();  // ("0", "22"...: placeholders, not names)
@@ -116,7 +117,8 @@ inline std::string BrandName(int brand, bool fr) {
   }
 }
 
-// ---- Writing (session 2). Only the Universe brand byte +27 of chosen, consistent records is changed, then the sum. ----
+// ---- Writing (session 2). Only the exhibition brand bytes +24..+26 of chosen, consistent records are changed (never +27,
+// the Universe's brand), then the sum. ----
 
 inline bool ReadAll(const fs::path &file, std::vector<uint8_t> &d) {
   try {
@@ -171,13 +173,13 @@ inline bool WriteAtomic(const fs::path &file, const std::vector<uint8_t> &d) {
   }
 }
 
-// A record may be changed only when it is consistent: number (u16 big-endian at +40) = index + 50 and a Universe brand
-// (+27) we know how to leave: 0, 1, 6 or 2 (the game itself sets 2). Brand 4 and "?" records are never touched.
+// A record may be changed only when it is consistent: number (u16 big-endian at +40) = index + 50, three equal
+// exhibition brand bytes (+24..+26) that we know how to leave: 0, 1 or 6. Brand 4 and "?" records are never touched.
 inline bool Changeable(const std::vector<uint8_t> &d, size_t i) {
   const size_t o = Reader::kHeader + i * Reader::kRecord;
   const int id = (d[o + 40] << 8) | d[o + 41];
-  const uint8_t b = d[o + 27];
-  return id == int(i) + 50 && (b == 0 || b == 1 || b == 6 || b == 2);
+  const uint8_t b = d[o + 24];
+  return id == int(i) + 50 && d[o + 25] == b && d[o + 26] == b && (b == 0 || b == 1 || b == 6);
 }
 
 class Editor {
@@ -196,7 +198,8 @@ class Editor {
           !(c.second == 0 || c.second == 1 || c.second == 6))
         return "record";
       const size_t o = Reader::kHeader + size_t(c.first) * Reader::kRecord;
-      d[o + 27] = uint8_t(c.second);  // (like the game's own Universe code: +24..+26 are the base brand, left alone)
+      for (int k = 24; k <= 26; ++k)  // (+27, the Universe's brand, is left alone: the game changes it itself)
+        d[o + k] = uint8_t(c.second);
     }
     const uint32_t sum = SumOf(d);
     d[24] = uint8_t(sum >> 24), d[25] = uint8_t(sum >> 16), d[26] = uint8_t(sum >> 8), d[27] = uint8_t(sum);
@@ -245,8 +248,8 @@ class Page {
     if (!loaded_ || ImGui::Button(fr ? "Relire la sauvegarde" : "Reload the save"))
       Reload(save_file);
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", fr ? "Un catcheur n'est modifié que si vous cliquez sur « Appliquer »."
-                                 : "A wrestler is changed only when you click \"Apply\".");
+    ImGui::TextDisabled("%s", fr ? "Marques de l'exhibition (écran de sélection). L'Univers ne change pas. Rien n'est modifié sans « Appliquer »."
+                                 : "Exhibition brands (selection screen). Universe mode is not changed. Nothing changes without \"Apply\".");
     ImGui::Dummy(ImVec2(0, 4));
     if (reason_ == "nosave") {
       ImGui::TextWrapped("%s", fr ? "Aucune sauvegarde trouvée. Lancez le jeu une fois et enregistrez."
@@ -280,10 +283,6 @@ class Page {
     ImGui::Text("RAW %d   SmackDown %d   %s %d   %s %d   ?  %d   (%s %d)", count[0], count[1], fr ? "Sans marque" : "No brand",
                 count[2], fr ? "Autre" : "Other", other, unknown, fr ? "emplacements vides" : "empty slots",
                 reader_.Empty());
-    if (count[0] < 15 || count[1] < 15)
-      ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
-                         fr ? "Le mode Univers veut au moins 15 catcheurs par émission."
-                            : "Universe mode wants at least 15 wrestlers on each show.");
 
     ImGui::SetNextItemWidth(260);
     ImGui::InputTextWithHint("##find", fr ? "Chercher un nom" : "Search a name", find_, sizeof(find_));
@@ -366,7 +365,7 @@ class Page {
       for (const Row *r : shown) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        const bool ok = r->brand == 0 || r->brand == 1 || r->brand == 6 || r->brand == 2;  // (Other (4...) and ? are never changed)
+        const bool ok = r->brand == 0 || r->brand == 1 || r->brand == 6;  // (Other (n) and ? are never changed)
         bool on = selected_.count(r->index) > 0;
         ImGui::PushID(r->index);
         ImGui::BeginDisabled(!ok);
@@ -401,33 +400,20 @@ class Page {
       return;
     static const int kBrandOf[] = {0, 1, 6};
     const int target = kBrandOf[target_];
-    // What the shows will look like afterwards (for the 15-wrestler warning).
-    int after[3] = {count[0], count[1], count[2]};
+    (void)count;
     int moved = 0;
-    for (const Row &r : reader_.Rows()) {
-      if (!selected_.count(r.index) || r.brand == target)
-        continue;
-      ++moved;
-      if (r.brand == 0 || r.brand == 1 || r.brand == 6)  // (brand 2 is in none of the three counts)
-        after[r.brand == 0 ? 0 : r.brand == 1 ? 1 : 2]--;
-      after[target == 0 ? 0 : target == 1 ? 1 : 2]++;
-    }
+    for (const Row &r : reader_.Rows())
+      if (selected_.count(r.index) && r.brand != target)
+        ++moved;
     ImGui::Text(fr ? "Mettre %d catcheur(s) sur : %s ?" : "Put %d wrestler(s) on: %s?", moved, BrandName(target, fr).c_str());
     ImGui::Dummy(ImVec2(0, 4));
     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 34.0f);
     ImGui::TextWrapped("%s", fr ? "Une copie de votre sauvegarde est faite d'abord (onglet SAVES). Gardez le jeu fermé."
                                 : "A backup of your save is made first (SAVES tab). Keep the game closed.");
-    ImGui::TextWrapped("%s", fr ? "Dans le mode Univers, un catcheur déplacé peut encore apparaître une fois sur un carton déjà "
-                                  "placé, et un champion garde son titre. Le « Reset » de l'Univers ne remet pas les catcheurs "
-                                  "ajoutés à leur marque d'origine."
-                                : "In Universe mode, a moved wrestler may still appear once on an already booked card, and a "
-                                  "champion keeps the title. Universe's \"Reset\" does not put added wrestlers back on their "
-                                  "original brand.");
-    if (after[0] < 15 || after[1] < 15)
-      ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s %d / %d",
-                         fr ? "Attention : moins de 15 catcheurs sur une émission (RAW / SmackDown) :"
-                            : "Warning: fewer than 15 wrestlers on a show (RAW / SmackDown):",
-                         after[0], after[1]);
+    ImGui::TextWrapped("%s", fr ? "Seule la marque de l'exhibition change. Les marques du mode Univers ne sont pas touchées "
+                                  "(on les change dans le jeu)."
+                                : "Only the exhibition's brand changes. Universe mode's brands are not touched (change "
+                                  "them in the game).");
     ImGui::PopTextWrapPos();
     ImGui::Dummy(ImVec2(0, 6));
     ImGui::BeginDisabled(!env.can_write || moved == 0);
