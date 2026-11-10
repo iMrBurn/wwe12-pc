@@ -381,6 +381,10 @@ float SvrRenderScale() {
   return expected;
 }
 
+}  // namespace bd::gpu
+void Wwe12FlashRecorderArm(u32 surface_va);  // wwe12_flash_recorder.cpp (dev)
+namespace bd::gpu {
+
 GuestTexture *SvrResolveSurface(u32 surface_va) {
   if (!surface_va)
     return nullptr;
@@ -486,6 +490,8 @@ GuestTexture *SvrResolveSurface(u32 surface_va) {
     Video::ClearTexture(host, 0u);
   if (seed_va)
     BD_INFO("SvR surface 0x{:08X}: starts with the picture of 0x{:08X}", surface_va, seed_va);
+  if (host && height == 736 && width >= 1280 && !IsDepthFormat(host->format))
+    Wwe12FlashRecorderArm(surface_va);  // (dev, off by default: wwe12_flash_recorder.cpp)
   BD_INFO("SvR surface 0x{:08X}: {}x{} format 0x{:08X} -> host {}{}", surface_va, width, height,
           format, host ? "ok" : "FAILED",
           scale.x != scale.y ? fmt::format(" ({}x{})", Scaled(width, scale.x), Scaled(height, scale.y))

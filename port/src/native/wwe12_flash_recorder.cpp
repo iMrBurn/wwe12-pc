@@ -46,6 +46,13 @@ struct Slot {
 std::array<Slot, kRing> g_ring;
 u32 g_next = 0;
 u64 g_frame = 0;
+// Saving armed: F11 or a new scene surface (the match's, made right at the flash: test of
+// 2026-11-10, F11 came 7 ms after it, so the flash itself was not in the ring yet). The ring is saved
+// kAfter frames later: half of it before the event, half after.
+constexpr u32 kAfter = kRing / 2;
+std::atomic<int> g_saves_left{3};
+u64 g_save_at = 0;
+const char *g_why = "";
 
 void SaveBmp(const std::filesystem::path &file, const std::vector<u8> &pixels, u32 row_pitch, u32 w, u32 h,
              bool rgba, double &average) {
@@ -83,7 +90,10 @@ void SaveRing() {
   dir = (dir.empty() ? rex::filesystem::GetExecutableFolder() : dir) / "logs" / "flash";
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
-  BD_INFO("[flash] F11: saving the last {} pictures to {}", kRing, rex::path_to_utf8(dir));
+  static int s_batch = 0;
+  dir /= std::to_string(++s_batch);
+  std::filesystem::create_directories(dir, ec);
+  BD_INFO("[flash] saving the last {} pictures to {}", kRing, rex::path_to_utf8(dir));
   for (u32 i = 0; i < kRing; ++i) {
     const Slot &s = g_ring[(g_next + i) % kRing];
     if (!s.filled || !s.tex)
@@ -103,14 +113,29 @@ void SaveRing() {
 }
 }  // namespace
 
+// svr_resources.cpp: a new scene-sized colour surface was made (the change to the match, before the
+// bell): the ring is saved kAfter frames later, at most 3 times a run.
+void Wwe12FlashRecorderArm(u32 surface_va) {
+  if (!REXCVAR_GET(wwe12_flash_recorder) || g_save_at || g_saves_left.fetch_sub(1) <= 0)
+    return;
+  g_save_at = g_frame + kAfter;
+  g_why = "new scene surface";
+  BD_INFO("[flash] new scene surface 0x{:08X} at frame {}: the pictures around it will be saved", surface_va, g_frame);
+}
+
 // Each presented frame (wwe12_remote_pad.cpp's Wwe12RemoteOnPresent, before the renderer's lock).
 void Wwe12FlashRecorderFrame(bd::gpu::GuestTexture *front_buffer) {
   if (!REXCVAR_GET(wwe12_flash_recorder) || !front_buffer)
     return;
   ++g_frame;
-  if (GetAsyncKeyState(VK_F11) & 1) {
+  if ((GetAsyncKeyState(VK_F11) & 1) && !g_save_at) {
+    g_save_at = g_frame + kAfter;
+    g_why = "F11";
+  }
+  if (g_save_at && g_frame >= g_save_at) {
+    BD_INFO("[flash] saving ({}: half the pictures before it, half after)", g_why);
+    g_save_at = 0;
     SaveRing();
-    return;
   }
   Slot &s = g_ring[g_next];
   if (s.tex && (s.tex->width != front_buffer->width || s.tex->height != front_buffer->height))
