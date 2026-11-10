@@ -73,6 +73,7 @@ using Bytes = std::vector<uint8_t>;
 constexpr const char *kPackName = "WWE12PCMODS";
 
 std::map<uint32_t, uint32_t> g_movies;  // added superstar -> the number of its own entrance video
+std::map<uint32_t, uint32_t> g_movie_base;  // ... -> his base's number (the video his own entrance asks for)
 std::map<std::string, uint32_t> g_mod_movies;          // ... by its mod's folder name (wwe12_arena_pages.cpp)
 std::set<uint32_t> g_mod_minitrons;  // video numbers whose titantron a VIDEOS mod replaced (sub_82A31538 below)
 std::set<std::pair<uint32_t, uint32_t>> g_own_screens;  // (kind: 1 ribbon, 2 wall; its video number) its mod has
@@ -103,6 +104,9 @@ std::map<uint32_t, uint64_t> g_applied;
 // copy had no entrance, and the game skipped it, 2026-11-04)
 std::map<uint32_t, uint64_t> g_applied_before;
 std::map<uint32_t, Bytes> g_originals;  // a moves mod's superstar -> the game's record, as the save keeps it
+// Added superstars whose roster copy wasn't theirs (another name at +42) when RemakeAddedRecords made it again: their
+// moves copy, in the same place, is another's too (made again at the select screen, then forgotten).
+std::set<uint32_t> g_slot_was_another;
 
 void WriteAppliedFile() {
   std::string text;
@@ -1204,6 +1208,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   stars.erase(std::remove_if(stars.begin(), stars.end(), [](const auto &s) { return !s.slot || s.model.empty(); }),
               stars.end());
   g_movies.clear();
+  g_movie_base.clear();
   g_mod_movies.clear();
   g_own_screens.clear();
   g_themes.clear();
@@ -1213,6 +1218,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   for (const auto &st : stars) {
     if (st.movie_number) {
       g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
+      g_movie_base[uint32_t(st.slot)] = uint32_t(st.base);
       g_mod_movies[st.key] = uint32_t(st.movie_number);
       std::error_code e1;
       for (const auto &[kind, file] : {std::pair<uint32_t, const char *>{1, "ribbon.bik"}, {2, "wall.bik"}})
@@ -1653,10 +1659,17 @@ static bool EntranceVideoNumber(uint32_t n) { return !(n >= 500 && n < 600) && !
 extern "C" REX_FUNC(sub_82A316A0) {
   if (!g_movies.empty() && EntranceVideoNumber(ctx.r3.u32)) {
     const uint32_t id = Entering(ctx, base);
-    const auto it = g_movies.find(id);
+    auto it = g_movies.find(id);
+    // (only the video his own entrance asks for - his base's number, his own, or 999, a created superstar's: a team's
+    // entrance asks for the team's video, which stays. Discord 2026-11-10: an added superstar's titantron came over
+    // the one chosen for his team. Solo, the log shows 261 asked for Jeff Hardy, base 261.)
+    const bool team = it != g_movies.end() && ctx.r3.u32 != 999 && ctx.r3.u32 != id && ctx.r3.u32 != it->second &&
+                      !(g_movie_base.count(id) && g_movie_base[id] == ctx.r3.u32);
     REXLOG_INFO("[superstar mods] entrance video {} (superstar entering: {}){}", ctx.r3.u32, id,
-                it != g_movies.end() ? " -> its own, " + std::to_string(it->second) : std::string());
-    if (it != g_movies.end())
+                it == g_movies.end() ? std::string()
+                : team               ? std::string(" -> kept: not his entrance's own (a team's, another's)")
+                                     : " -> its own, " + std::to_string(it->second));
+    if (it != g_movies.end() && !team)
       ctx.r3.u64 = it->second;
   }
   __imp__sub_82A316A0(ctx, base);
@@ -1783,6 +1796,8 @@ void RemakeAddedRecords() {
     bool his = true;
     for (uint32_t k = 42; k < 74 && his; ++k)
       his = bd::mem::load<uint8_t>(at + k) == rec[k];
+    if (!his)
+      g_slot_was_another.insert(id);
     uint8_t brand[4];
     for (uint32_t k = 0; k < 4; ++k)
       brand[k] = bd::mem::load<uint8_t>(at + 24 + k);
@@ -1935,11 +1950,19 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       // A player's report, 2026-11-08)
       // (and +0x292 / +0x296, which the game sets to 1 when an entrance is picked in it - +0x292 found by the log below: Lesnar's picked for Jeff Hardy, saved,
       // came back as his own at the next start - the copy taken for another's again, the save's diff, 2026-11-09)
+      // (2026-11-10, a player's report: a moveset copied in the game onto Giant Bernard didn't stay. The save's copy
+      // keeps per-superstar data past 0x1EC - colour blocks at 0x2E8 / 0x354 / 0x3C0 - and 0-5 differ between men,
+      // divas and empty slots, so a copy made in the game could change them and be taken for another's. Now another's
+      // only when the roster's copy in the same place had another name (RemakeAddedRecords, as the brand); the first
+      // byte that differs there is still logged. Without the roster fix, the bytes as before.)
       bool foreign = false;
       uint32_t foreign_at = 0;
-      for (uint32_t k = 0; k < 1068 && !foreign; k = k == 5 ? 0x1EC : k + 1)
-        if ((foreign = k != 0x292 && k != 0x296 && bd::mem::load<uint8_t>(at + k) != mv[k]))
-          foreign_at = k;
+      for (uint32_t k = 0; k < 1068 && !foreign_at; k = k == 5 ? 0x1EC : k + 1)
+        if (k != 0x292 && k != 0x296 && bd::mem::load<uint8_t>(at + k) != mv[k])
+          foreign_at = k ? k : 0xFFFF;
+      foreign = roster ? g_slot_was_another.count(id) != 0 : foreign_at != 0;
+      if (foreign_at == 0xFFFF)
+        foreign_at = 0;
       bool original = false;
       if (const auto o = g_originals.find(id); o != g_originals.end()) {
         original = true;
@@ -1948,13 +1971,22 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       }
       const auto before = g_applied_before.find(id);
       const bool unsaved = before != g_applied_before.end() && before->second == now_h;
-      if (applied != g_applied.end() && applied->second == h && !foreign && !original && !unsaved)
-        continue;  // (the mod's, edited in the game since: kept)
+      if (applied != g_applied.end() && applied->second == h && !foreign && !original && !unsaved) {
+        // (the mod's, edited in the game since: kept. Its first byte off the mod's past the moves, if any, said once)
+        static std::set<std::pair<uint32_t, uint64_t>> told;
+        if (foreign_at && told.insert({id, now_h}).second)
+          REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its moves kept, edited in the game (+0x{:X} is "
+                      "{:02X}, the mod's {:02X})",
+                      id, foreign_at, bd::mem::load<uint8_t>(at + foreign_at), mv[foreign_at]);
+        continue;
+      }
       // (why, in the log: an entrance picked in the game came back as the mod's three times, 2026-11-09)
       why_made = applied == g_applied.end() ? "never made" : applied->second != h ? "the mod changed" : "";
       if (foreign)
-        why_made += fmt::format("{}another superstar's? +0x{:X} is {:02X}, the mod's {:02X}", why_made.empty() ? "" : "; ",
-                                foreign_at, bd::mem::load<uint8_t>(at + foreign_at), mv[foreign_at]);
+        why_made += fmt::format("{}another superstar's (the roster had another name there); +0x{:X} is {:02X}, the "
+                                "mod's {:02X}",
+                                why_made.empty() ? "" : "; ", foreign_at, bd::mem::load<uint8_t>(at + foreign_at),
+                                mv[foreign_at]);
       if (foreign) {  // (every byte that differs, the entrance blocks too)
         std::string all;
         int n = 0;
@@ -1972,6 +2004,7 @@ extern "C" REX_FUNC(sub_828ADFB8) {
       bd::mem::store<uint8_t>(at + k, mv[k]);
     REXLOG_INFO("[superstar mods] superstar {}: the save's copy of its moves and entrance made again ({})", id,
                 why_made.empty() ? "a mod gone: put back" : why_made);
+    g_slot_was_another.erase(id);
     if (g_moves_restore.count(id)) {
       g_applied.erase(id);
       g_applied_before.erase(id);
