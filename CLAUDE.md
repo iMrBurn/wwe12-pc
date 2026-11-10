@@ -310,7 +310,7 @@ Ce qu'on découvre d'important sur le moteur va dans la section « Savoir acquis
 
 ## Plans et feuilles de route
 
-- Feuille de route actuelle : `docs/feuille_de_route.md` (1.1.0 publiée le 2026-11-07, pas de 1.1.1 (décision du 2026-11-08), 1.2 = « Moveset update » (prises SvR / 2K dans le Mod Maker + page Moves & Entrances + gamma + corrections),
+- Feuille de route actuelle : `docs/feuille_de_route.md` (1.1.0 publiée le 2026-11-07, 1.2.0 « Moveset update » publiée le 2026-11-10 (prises SvR / 2K dans le Mod Maker, page Moves & Entrances, gamma, 30 fps expérimental, corrections ; Android 1.2.0 avec), pas de 1.1.1 (décision du 2026-11-08),
   1.3 = corrections THQ par nos crochets + performances / code natif, 1.4 = modes de match + page ROSTERS ; décision du 2026-11-08). Idées de joueurs : `docs/suggestions_joueurs.md`.
 - Anciens plans 0.8 / 0.9 / 1.0 et anciennes listes : `docs/archives/claude_md_anciens_plans_2026-11-06.md`.
 

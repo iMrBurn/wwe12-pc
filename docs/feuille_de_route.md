@@ -28,7 +28,13 @@ Les détails techniques sont dans `CLAUDE.md`, `docs/univers.md`, `docs/mod_make
 
 **Notes publiques** : les notes de la 1.0 annonçaient pour la 1.1 « squash, finishers de départ, I Quit, Special Referee, deux mallettes MITB, icônes de touches » : les notes de la 1.1 disent que c'est repoussé (1.3).
 
-## 1.2 : « Moveset update » (décision de l'utilisateur, 2026-11-08 : pas de 1.1.1, tout va directement dans la 1.2)
+## 1.2 : « Moveset update » : PUBLIÉE le 2026-11-10 (PC + Android, tag v1.2.0, zip SHA ab13bf6d…, APK 2c72767b…)
+
+**Livré** : prises SvR 2007-2011 et WWE '13 / 2K14-2K17 dans le Mod Maker (expérimental) + page MOVES & ENTRANCES ; choix de la marque (RAW / SmackDown / aucune) d'un catcheur ajouté, marque gardée (sauvegarde, match, reset de l'Univers) ; genre Homme / Femme qui compte enfin (0xEE autorisé : une diva sur base d'homme est une femme) ; entrée choisie dans le jeu gardée ; moveset copié gardé ; titantron d'équipe respecté ; news de l'Univers avec le vrai nom ; noms de fichiers à accents / japonais lus en UTF-8 (jeu, launcher, Mod Maker : plantage au démarrage et page MUSIC) ; gamma (curseur du jeu actif, image un peu plus sombre par défaut, option « Console picture ») ; saccade de début de match (read-backs différés, ~10 fois moins d'attente) ; moins de CPU (blocs de constantes réutilisés, hachage 4096) ; mode 30 fps EXPÉRIMENTAL en matchs (jamais par défaut ; liste « Frame rate » du launcher PC et Android) ; journal des étapes de l'Univers ; message clair au-delà de 35 arènes ajoutées. Android : ligne Frame rate, APK signé avec la même clé.
+**Non vérifié en jeu avant la sortie** : moveset copié après relance, diva « Femme » dans l'Univers (matchs / classements Divas), gamma sur un vrai téléphone, hachage 4096 et read-backs différés sur Android.
+**Ouvert après la 1.2** (voir 1.3) : plantage des équipes avec des modèles SvR 2011 (il faut le crash_trace du joueur), gel des 2K17 de l'issue #60 (journal du joueur ; à refaire avec le nouveau Mod Maker), blocage de fin de match de l'Univers sur Steam Deck (le journal d'étapes dira où), image noire avant la cloche (capture RenderDoc), arènes 2K14 / SvR 2009 (défauts graphiques ; « la précédente reste » : journal du joueur).
+
+(Texte d'origine de la section, gardé pour l'historique : décision de l'utilisateur, 2026-11-08 : pas de 1.1.1, tout va directement dans la 1.2.)
 
 Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK à refaire si le code partagé change.
 
@@ -47,6 +53,12 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - **Tout ce qui était prévu pour l'ancienne 1.2 est décalé en 1.3, l'ancienne 1.3 en 1.4, l'ancienne « 1.4 et après » en 1.5 et après.** Les sections « Détails et historique » plus bas gardent l'ancienne numérotation (1.2 = THQ / vitesse, 1.3 = modes de match).
 
 ## 1.3 : « Les corrections de THQ, la vitesse et le test de performance » (liste de l'utilisateur, 2026-11-07 ; ex-1.2, décalée le 2026-11-08)
+
+**Reporté de la 1.2 (2026-11-10)**
+- Mode 30 fps plus fluide pour les petits processeurs (issues #53, #57, #41) : la voie Kaiko (une image sur deux, logique à 60 Hz) a été mesurée : ~15 % de CPU en moins seulement, et des prises qui paraissent buguées ; le mode natif gagne ~60 % mais des prises sont moins fluides. Autres pistes de CPU : code D3D du jeu dans nos crochets (~0,7 ms, risque de gel élevé, plan `docs/couches.md`), constantes (~0,3 ms, demande de modifier XenosRecomp).
+- Gamma : vraie table (LUT) pour les réglages extrêmes (une simple puissance colle mal) ; image noire d'une image avant la cloche (capture RenderDoc automatique).
+- Mod Maker : importer un FBX comme tenue ; tenue d'entrée pour une tenue d'un catcheur AJOUTÉ (Cody American Dream) ; limite de 35 arènes ajoutées (textures de bannière libres du paquet) ; défauts graphiques des arènes 2K14 / SvR 2009 ; « option intergender » limitée à l'Univers (sub_82A39EF8) ; alerte CHECK MODS « catcheuse sur base d'homme ? » (fausses alertes possibles).
+- Plantage des équipes SvR 2011, gel 2K17 de #60, fin de match de l'Univers sur Steam Deck : selon les traces des joueurs.
 
 **THQ (voie B : nos propres crochets sur le code du disque, un par un, chacun avec son réglage)**
 - Comparaison des 2 mises à jour officielles : faite (`docs/title_update_corrections.md`, session Gameplay) ; reste le tri et le test de chaque correctif en jeu.
