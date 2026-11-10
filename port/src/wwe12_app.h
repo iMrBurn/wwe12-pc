@@ -222,12 +222,16 @@ class Wwe12App : public rex::ReXApp {
     // les trouve comme sur le disque dur de la console.
     Wwe12InstallDlc(user_data_root_);
     // Catcheurs ajoutés : les mods de catcheurs deviennent un pack DLC de plus, avant que le jeu liste les siens.
-    Wwe12MountSuperstarMods(fs, user_data_root_, rex::filesystem::GetExecutableFolder() / "mods");
+    ModsGuarded("catcheurs ajoutés", [&] {
+      Wwe12MountSuperstarMods(fs, user_data_root_, rex::filesystem::GetExecutableFolder() / "mods");
+    });
     {
       std::string game_device;
       if (fs->FindSymbolicLink("game:", game_device)) {
         if (!REXCVAR_GET(wwe12_no_mods))
-          Wwe12MountEntrances(fs, game_device, user_data_root_, rex::filesystem::GetExecutableFolder() / "mods");
+          ModsGuarded("entrées", [&] {
+            Wwe12MountEntrances(fs, game_device, user_data_root_, rex::filesystem::GetExecutableFolder() / "mods");
+          });
         Wwe12MountMenuBackground(fs, game_device);
       }
     }
@@ -236,6 +240,20 @@ class Wwe12App : public rex::ReXApp {
     // Jouer sans mods : les catcheurs ajoutés partent aussi, et ce que cette partie sauvegarde ne compte pas.
     if (REXCVAR_GET(wwe12_no_mods))
       Wwe12NoModsHide(user_data_root_);
+  }
+
+  // Filet de sécurité : un nom de fichier ou de dossier de mod illisible (caractères hors page de code,
+  // path::string()) ou une erreur de fichier lève une exception ; sans ce filet, le jeu plantait au
+  // démarrage à chaque lancement. Ces mods sont ignorés et le jeu démarre.
+  template <typename F>
+  static void ModsGuarded(const char* what, F&& mount) {
+    try {
+      mount();
+    } catch (const std::exception& e) {
+      REXLOG_ERROR("Mods ignorés ({}) : nom illisible ou erreur de fichier ({})", what, e.what());
+    } catch (...) {
+      REXLOG_ERROR("Mods ignorés ({}) : erreur inconnue", what);
+    }
   }
 
   // Dossier « mods » à côté de l'exe : un fichier posé là au même chemin que sur le disque le
@@ -256,7 +274,7 @@ class Wwe12App : public rex::ReXApp {
       return;
     }
     // Arènes ajoutées : leurs fichiers passent avant ceux du dossier mods (wwe12_arena_pages.cpp).
-    Wwe12MountArenaSlots(fs, game_device, user_data_root_, mods);
+    ModsGuarded("arènes ajoutées", [&] { Wwe12MountArenaSlots(fs, game_device, user_data_root_, mods); });
     auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, mods, true);
     if (!overlay->Initialize() || !fs->RegisterOverlay(game_device, std::move(overlay))) {
       REXLOG_WARN("Mods : impossible d'utiliser {}", rex::path_to_utf8(mods));

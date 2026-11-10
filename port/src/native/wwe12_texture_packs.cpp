@@ -420,7 +420,7 @@ void DumpThread() {
     const fs::path path = g_dump_dir / (std::to_string(it.width) + "x" + std::to_string(it.height) + "_" +
                                         FormatTag(it.format) + "_" + Hex16(it.hash) + ".png");
     if (!WriteAll(path, EncodePng(rgba.data(), it.width, it.height)))
-      BD_WARN("Textures : écriture impossible de {}", path.string());
+      BD_WARN("Textures : écriture impossible de {}", rex::path_to_utf8(path));
   }
 }
 
@@ -535,14 +535,14 @@ void Start() {
     for (fs::recursive_directory_iterator it(exe / "textures", ec), end; !ec && it != end; it.increment(ec)) {
       if (!it->is_regular_file(ec))
         continue;
-      const std::string ext = Lower(it->path().extension().string());
+      const std::string ext = Lower(rex::path_to_utf8(it->path().extension()));
       if (ext == ".png" || ext == ".dds")
         found.push_back(it->path());
     }
     std::sort(found.begin(), found.end());  // the first one by path wins
     for (const auto &p : found) {
       uint64_t h = 0;
-      if (HashOfStem(p.stem().string(), &h))
+      if (HashOfStem(rex::path_to_utf8(p.stem()), &h))
         g_files.emplace(h, p);
     }
     if (!g_files.empty())
@@ -553,12 +553,12 @@ void Start() {
     std::error_code ec;
     for (fs::directory_iterator it(g_dump_dir, ec), end; !ec && it != end; it.increment(ec)) {
       uint64_t h = 0;
-      if (HashOfStem(it->path().stem().string(), &h))
+      if (HashOfStem(rex::path_to_utf8(it->path().stem()), &h))
         g_dumped.insert(h);  // dumped by an earlier run
     }
     g_dumping = true;
     std::thread(DumpThread).detach();
-    BD_INFO("Textures : dump actif dans {} ({} déjà là)", g_dump_dir.string(), g_dumped.size());
+    BD_INFO("Textures : dump actif dans {} ({} déjà là)", rex::path_to_utf8(g_dump_dir), g_dumped.size());
   }
   g_active = g_dumping || !g_files.empty();
 }
@@ -613,15 +613,15 @@ std::shared_ptr<const Replacement> Find(uint64_t hash) {
   }
   auto r = std::make_shared<Replacement>();
   std::vector<uint8_t> data;
-  const std::string ext = Lower(file.extension().string());
+  const std::string ext = Lower(rex::path_to_utf8(file.extension()));
   const bool ok = ReadAll(file, data) && (ext == ".dds" ? DecodeDds(data, *r) : DecodePng(data, *r));
   std::lock_guard lock(g_mutex);
   if (!ok) {
     g_failed.insert(hash);
-    BD_WARN("Textures : {} illisible (PNG, ou DDS DXT1/3/5 ou 32 bits)", file.string());
+    BD_WARN("Textures : {} illisible (PNG, ou DDS DXT1/3/5 ou 32 bits)", rex::path_to_utf8(file));
     return nullptr;
   }
-  BD_INFO("Textures : {} ({}x{}) utilisé", file.filename().string(), r->width, r->height);
+  BD_INFO("Textures : {} ({}x{}) utilisé", rex::path_to_utf8(file.filename()), r->width, r->height);
   return g_loaded[hash] = std::move(r);
 }
 

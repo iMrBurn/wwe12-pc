@@ -417,17 +417,19 @@ bool BackupSave(const char *label = "Before RESET UNIVERSE") {
   }
   std::ofstream(dest / "backup.txt") << "auto\n" << label << "\n";
   // Keep the latest 10 automatic backups (names sort by date), as the launcher does.
-  std::vector<std::string> automatic;
+  // (kept as paths: a folder renamed by the player may hold characters outside the code page, and
+  // path::string() throws on them)
+  std::vector<fs::path> automatic;
   for (const auto &e : fs::directory_iterator(backups, ec)) {
     std::string kind;
     std::ifstream info(e.path() / "backup.txt");
     if (e.is_directory() && std::getline(info, kind) && kind == "auto")
-      automatic.push_back(e.path().filename().string());
+      automatic.push_back(e.path().filename());
   }
   std::sort(automatic.rbegin(), automatic.rend());
   for (size_t i = 10; i < automatic.size(); ++i)
     fs::remove_all(backups / automatic[i], ec);
-  BD_INFO("[univers] save backed up to {}", dest.string());
+  BD_INFO("[univers] save backed up to {}", rex::path_to_utf8(dest));
   return true;
 }
 
