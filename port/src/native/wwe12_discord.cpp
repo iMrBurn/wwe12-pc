@@ -316,7 +316,9 @@ void Wwe12DiscordUniverseMenu() {
 // a match, unless the menus said an editor (Create a Superstar...) or nothing was chosen yet (the title screen's
 // demo match). The superstar's number at desc+0 is a reading of the code, logged to be checked.
 REX_EXTERN(__imp__sub_822D23A0);
+void Wwe12BenchProbeCharacter(u32 loader, u32 slot, u32 desc);  // wwe12_bench_probe.cpp (dev, off)
 extern "C" REX_FUNC(sub_822D23A0) {
+  Wwe12BenchProbeCharacter(ctx.r3.u32, ctx.r4.u32, ctx.r5.u32);
   if (On()) {
     const u32 slot = ctx.r4.u32, desc = ctx.r5.u32;
     std::string bytes;

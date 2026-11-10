@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <format>
 #include <memory>
 #include <mutex>
@@ -312,6 +313,66 @@ VideoState &state() {
 // Registered by the app (ReblueApp::OnPreLaunchModule), invoked from Present.
 Video::OverlayDrawHook g_overlay_draw_hook;
 
+// The early interface (PrepareHostInterfaceEarly): made on its own thread, taken once.
+REXCVAR_DEFINE_BOOL(svr_early_interface, true, "SvR",
+                    "Start-up: create the graphics API interface while the mods are set up.");
+namespace {
+std::mutex g_early_mu;
+std::condition_variable g_early_cv;
+bool g_early_started = false, g_early_done = false;
+std::unique_ptr<plume::RenderInterface> g_early_iface;
+int64_t g_early_ms = 0;
+
+std::unique_ptr<plume::RenderInterface> MakeRenderInterface() {
+#if defined(REBLUE_D3D11)
+  return plume::CreateD3D11Interface();
+#elif defined(REBLUE_D3D12)
+  return plume::CreateD3D12Interface();
+#else
+  return plume::CreateVulkanInterface();
+#endif
+}
+
+// The early interface if one was started (waits for it), else null.
+std::unique_ptr<plume::RenderInterface> TakeEarlyInterface() {
+  std::unique_lock lock(g_early_mu);
+  if (!g_early_started)
+    return nullptr;
+  g_early_cv.wait(lock, [] { return g_early_done; });
+  g_early_started = false;
+  return std::move(g_early_iface);
+}
+}  // namespace
+
+void Video::PrepareHostInterfaceEarly() {
+#if defined(_WIN32) && !defined(REBLUE_D3D12) && !defined(REBLUE_D3D11)
+  // Vulkan on Windows only: its instance needs no window (D3D12's interface is quick, and its
+  // debug-layer order matters: kept where it was; Android makes it with its window).
+  if (!REXCVAR_GET(svr_early_interface))
+    return;
+  {
+    std::lock_guard lock(g_early_mu);
+    if (g_early_started)
+      return;
+    g_early_started = true;
+  }
+  std::thread([] {
+    const auto t0 = std::chrono::steady_clock::now();
+    auto iface = MakeRenderInterface();
+    const int64_t ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - t0)
+                           .count();
+    {
+      std::lock_guard lock(g_early_mu);
+      g_early_iface = std::move(iface);
+      g_early_ms = ms;
+      g_early_done = true;
+    }
+    g_early_cv.notify_all();
+  }).detach();
+#endif
+}
+
 bool Video::CreateHostDevice(rex::ui::Window *window) {
   // "[boot]" timing of the host device's start (2026-11-10: ~2.3 s without a log line between
   // "[settings]" and "GPU caps" on the Intel iGPU).
@@ -371,7 +432,12 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
     // D3D12Core.dll that ends up owning the device.
     const bool dred_armed = EnableDred();
 #else
-    s.render_iface = plume::CreateVulkanInterface();
+    s.render_iface = TakeEarlyInterface();
+    if (s.render_iface)
+      BD_INFO("[boot] device: graphics API interface made early ({} ms on its own thread)",
+              g_early_ms);
+    else
+      s.render_iface = plume::CreateVulkanInterface();
     if (!s.render_iface) {
       BD_ERROR("Plume CreateVulkanInterface failed");
       return false;

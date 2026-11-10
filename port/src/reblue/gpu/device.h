@@ -45,6 +45,11 @@ public:
   // Host setup runs pre-Runtime, and the guest tail completes after.
   static bool CreateHostDevice(rex::ui::Window *window);
 
+  // Start-up (1.3): creates the graphics API interface (Vulkan instance, loader, its implicit
+  // layers) on a thread of its own as early as possible, so it overlaps the mods' setup;
+  // CreateHostDevice takes it when it gets there. svr_early_interface = false: not used.
+  static void PrepareHostInterfaceEarly();
+
   // Shutdown stage 1: atomic store only, so it cannot deadlock against a guest
   // thread parked inside the renderer. After it returns BeginCommandList
   // refuses to open a list and every recording path no-ops.
