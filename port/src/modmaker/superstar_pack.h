@@ -43,6 +43,7 @@
 #include "svrfmt/pac.h"
 #include "svrfmt/texture.h"
 #include "wwise.h"
+#include "zmvm_add.h"
 
 namespace superstar_pack {
 
@@ -212,6 +213,11 @@ struct Inputs {
   // sound.pac, which has none, so none is brought).
   wwise::Package music;
   Bytes sound_pac;
+  // For added moves: the game's pac\m.pac, read in parts, for the situation sets (zmvm_add.h); without a reader the
+  // moves go into the ZMOT bank alone, as before. zmvm_log: what was done.
+  zmvm_add::Reader m_pac;
+  uint64_t m_pac_size = 0;
+  std::string *zmvm_log = nullptr;
 };
 
 struct File {
@@ -1054,6 +1060,39 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         // move froze both wrestlers (in-game controls, 2026-11-08; Mankind's Mandible Claw, "seen in game", was pack
         // 4's own)
         const Bytes tree = svrfmt::PachWrite({{uint32_t(177 + ca), svrfmt::PachWrite(pairs)}});
+        // ... and beside their WWE '12 template move in the game's situation sets that hold it (zmvm_add.h, LA Max's
+        // method). The template: the game's move whose record the added one was made from (svr_moves.h,
+        // model_moves.h: the model's record, its name, number and category bits its own - bytes 0x50-0x8F the
+        // same), of the same hundred if one is; a move made otherwise (an older mod's WWE '13 move) has none.
+        std::vector<svrfmt::EpacEntry> sets;
+        if (in.m_pac) {
+          std::set<int> added_numbers;
+          for (const NewMove *m : added)
+            added_numbers.insert(m->number);
+          std::vector<Bytes> highs;
+          std::vector<zmvm_add::Add> zadds;
+          highs.reserve(added.size());
+          for (const NewMove *m : added) {
+            const int motion = ((m->number & 0xFF) << 8) | (m->number >> 8);
+            int model = 0;
+            for (size_t o = 0x430; o + 160 <= t.size(); o += 160) {
+              const int n = t[o + 0x90] << 8 | t[o + 0x91];
+              if (!t[o + 0x10] || added_numbers.count(n) || memcmp(&t[o + 0x50], &m->waze[0x50], 0x40) != 0)
+                continue;
+              const int mo = ((n & 0xFF) << 8) | (n >> 8);
+              if (!model || (mo / 100 == motion / 100 && model / 100 != motion / 100))
+                model = mo;
+            }
+            highs.push_back(svrfmt::IsBpe(m->high) ? svrfmt::Unpack(m->high) : m->high);
+            zadds.push_back({motion, model, nullptr});
+          }
+          for (size_t i = 0; i < zadds.size(); ++i)
+            zadds[i].high = &highs[i];
+          std::string zlog;
+          sets = zmvm_add::Make(in.m_pac, in.m_pac_size, zadds, &zlog);
+          if (in.zmvm_log)
+            *in.zmvm_log = zlog;
+        }
         if (svrfmt::EpacRead(in.chetc, like) && !like.groups.empty()) {
           out.header = like.header;
           out.epk8 = like.epk8;
@@ -1065,6 +1104,14 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           g.extra = 0;
           g.entries.push_back({bank, tree, 0});
           out.groups.push_back(std::move(g));
+          if (!sets.empty()) {
+            svrfmt::EpacGroup z;
+            z.type = "ZMVM";
+            z.number = like.groups[0].number;
+            z.extra = 0;
+            z.entries = std::move(sets);
+            out.groups.push_back(std::move(z));
+          }
           moves_out = svrfmt::EpacWrite(out);
         }
         if (moves_out.empty())

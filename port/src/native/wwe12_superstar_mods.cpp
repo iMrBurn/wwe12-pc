@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -37,6 +38,7 @@
 #include <map>
 #include <set>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 #include <vector>
@@ -84,6 +86,11 @@ fs::path g_menu_dir;                    // the dressed menu files of this start,
 // (Wwe12MenuPictureEntry, wwe12_arena_pages.cpp).
 std::map<std::string, std::pair<uint32_t, uint32_t>> g_menu_entries[2];
 std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the save keeps it (286 bytes)
+// The game's situation sets (m.pac ZMVM, "STAT", "RUN"...) the pack serves with the added moves, under lowercase names
+// (zmvm_add.h), and those names' paths in guest memory for the lookup hook (sub_827D98D8).
+std::mutex g_zmvm_mutex;
+std::set<std::string> g_zmvm_ours;
+std::map<std::string, uint32_t> g_zmvm_path_at;
 fs::path g_relations_file;  // Documents/wwe12/relations_cleared.txt: the added superstars whose Universe relations went
 std::map<uint32_t, Bytes> g_moves;      // ... its moves and entrance (CHAR / PRO) as the save keeps them (1068 bytes)
 Bytes g_cena_moves;                     // John Cena's (139), as the save keeps them: where they are is checked on his
@@ -1323,6 +1330,17 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         break;
     }
   }
+  // (the added moves beside their templates in the game's situation sets too: m.pac read in parts, zmvm_add.h)
+  std::string zmvm_log;
+  if (std::any_of(movesets.begin(), movesets.end(), [](const auto &mv) { return !mv.new_moves.empty(); }) ||
+      std::any_of(stars.begin(), stars.end(), [](const auto &st) { return !st.new_moves.empty(); })) {
+    rex::filesystem::Entry *m_entry = vfs ? vfs->ResolvePath("game:\\pac\\m.pac") : nullptr;
+    if (m_entry && m_entry->size() > 0x8000) {
+      in.m_pac_size = m_entry->size();
+      in.m_pac = [vfs](uint64_t at, uint32_t size, Bytes &out) { return ReadGamePart(vfs, "pac/m.pac", at, size, out); };
+      in.zmvm_log = &zmvm_log;
+    }
+  }
   // (two mods' different added moves on one number: the later one renumbered within its kind of move)
   if (const int n = superstar_pack::SpreadNewMoves(stars, movesets, in.misc, in.m3); n > 0)
     REXLOG_INFO("[superstar mods] {} added move(s) renumbered: another mod's move had the number", n);
@@ -1332,6 +1350,30 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   }
   if (!why.empty())
     REXLOG_WARN("[superstar mods] {}", why);
+  if (!zmvm_log.empty())
+    REXLOG_INFO("[superstar mods] added moves: {}", zmvm_log);
+  // (the situation sets the pack serves, by their game names: the lookup hook below tries ours first)
+  {
+    std::lock_guard<std::mutex> lock(g_zmvm_mutex);
+    g_zmvm_ours.clear();
+    for (const auto &f : files) {
+      svrfmt::Epac e;
+      if (f.path.rfind("pac/m_dlc", 0) != 0 || !svrfmt::EpacRead(f.data, e))
+        continue;
+      for (const auto &g : e.groups)
+        if (g.type == "ZMVM")
+          for (const auto &en : g.entries) {
+            std::string up = en.name.substr(0, 4);
+            for (auto &c : up)
+              c = char(std::toupper(static_cast<unsigned char>(c)));
+            while (!up.empty() && (up.back() == ' ' || up.back() == '\0'))
+              up.pop_back();
+            g_zmvm_ours.insert(up);
+          }
+    }
+    if (!g_zmvm_ours.empty())
+      REXLOG_INFO("[superstar mods] {} situation set(s) of the game served with the added moves", g_zmvm_ours.size());
+  }
   {  // (what the string.pac way left, 2026-11-02)
     std::error_code e2;
     fs::remove_all(user_root / "attire_names", e2);
@@ -1722,6 +1764,46 @@ extern "C" REX_FUNC(sub_82A31578) {
   // a game superstar's ribbon / wall from a media mod (VIDEOS page; one it hadn't: added)
   if (Wwe12ModScreen(kind, n))
     ctx.r3.u64 = 1;
+}
+
+// The game's archive lookup by path: sub_827D98D8(path r3, out r4) -> the entry or 0 (sub_827F29F0: the first mounted
+// archive that has the name). A situation set the pack serves with the added moves (zmvm_add.h: "/ZMVM/stat" for the
+// game's "/ZMVM/STAT") is asked for by its lowercase name first, so ours is taken whatever order the archives are in;
+// the game's when the pack has none.
+REX_EXTERN(__imp__sub_827D98D8);
+extern "C" REX_FUNC(sub_827D98D8) {
+  const uint32_t path = ctx.r3.u32;
+  uint32_t ours = 0;
+  if (path) {
+    const char *p = bd::mem::at<char>(path);
+    if (p[0] == '/' && p[1] == 'Z' && p[2] == 'M' && p[3] == 'V' && p[4] == 'M' && p[5] == '/') {
+      std::string name;
+      for (int i = 6; i < 12 && p[i]; ++i)
+        name += p[i];
+      std::lock_guard<std::mutex> lock(g_zmvm_mutex);
+      if (g_zmvm_ours.count(name)) {
+        uint32_t &at = g_zmvm_path_at[name];
+        if (!at) {
+          std::string low = "/ZMVM/" + name;
+          for (size_t i = 6; i < low.size(); ++i)
+            low[i] = char(std::tolower(static_cast<unsigned char>(low[i])));
+          at = REX_KERNEL_MEMORY()->SystemHeapAlloc(uint32_t(low.size() + 1), 4);
+          if (at)
+            memcpy(bd::mem::at<char>(at), low.c_str(), low.size() + 1);
+        }
+        ours = at;
+      }
+    }
+  }
+  if (ours) {
+    const uint64_t r4 = ctx.r4.u64;
+    ctx.r3.u64 = ours;
+    __imp__sub_827D98D8(ctx, base);
+    if (ctx.r3.u32)
+      return;
+    ctx.r3.u64 = path, ctx.r4.u64 = r4;
+  }
+  __imp__sub_827D98D8(ctx, base);
 }
 
 // The game's texts by number: sub_827DB6D0(texts, table, number) -> the text (guest address) or 0, by a binary search

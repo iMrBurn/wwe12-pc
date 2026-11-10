@@ -411,3 +411,32 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   (fiche relue, blocs, paramètres m3). Tous jeux : 1 586 / 1 725 faites (WWE '13 120/127, 2K14 300/327, 2K15 447/488,
   2K16 343/369, 2K17 376/414). **Vu en jeu le 2026-11-10** : Hogan 2K14 refait (13 prises sur modèle), un match :
   « rien vu de spécial » (plus de gel).
+
+## Prises ajoutées dans les « situations » du jeu, comme LA Max (1.3, 2026-11-10)
+
+- **Constat (joueurs, 2026-11-10)** : avec un mod de Maria (SvR 2009, fait en 1.2.0), le **Gut Kick de tous les
+  catcheurs** était cassé ; mod retiré, plus de bug. Hors jeu, le port de Maria ne touche ni les lignes m3 des Gut Kick
+  (1 = n° 22172 / anim 40022, 2 = 46236 / 40116) ni leurs fiches ; l'insertion des fiches WAZE par nom est celle des
+  packs de THQ (le Gut Kick passe de la place 807 à 826 avec le pack 4). Son « Woman's Toe Kick » tombe en 40199, la
+  centaine de Gut Kick 2. **Cause pas prouvée.**
+- **Les situations** : m.pac a 23 entrées ZMVM (STAT, BASE, STN1, GRND, CORN, ROPE, APRO, RUN, SPE1, ABIL..., 128 Mo
+  en tout), chacune un PACH de **groupes entiers copiés de ZMOT/CA01-CA08** (mêmes numéros, mêmes octets : le groupe
+  47 de CA05, celui des 400xx / 401xx, est dans STAT, GRND, CORN et SPE1 ; cases paires = fiches légères BPE, impaires
+  = complètes ZLIB). Le jeu les demande par nom (`/ZMVM/STAT`, table à 0x820166D1) et prend la **première archive**
+  qui a le nom (`sub_827F29F0`, appelé par `sub_827D98D8`).
+- **La méthode de LA Max** (son outil `wwe12_port.py`, fait sur les modules de Kaiko, reçu le 2026-11-10, lu sans être
+  lancé) : une animation portée est ajoutée **à côté de sa prise modèle** dans toutes les situations qui l'ont (même
+  groupe, même case), et sa fiche prend une case vide de la table.
+- **Maintenant** (`zmvm_add.h`, appelé par `superstar_pack::Build`) : le modèle d'une prise ajoutée est la prise du
+  jeu dont la fiche a les mêmes octets 0x50-0x8F (la fiche du modèle, copiée par `svr_moves.h` / `model_moves.h`), de
+  la même centaine si possible ; chaque situation qui a ce modèle est copiée avec l'animation ajoutée à côté (légère =
+  la complète en BPE, comme dans notre banque ZMOT). Une **case vide de 128 octets** du jeu au numéro de la prise (les
+  centaines 502xx, 370xx, 371xx en sont pleines : Judo Flip Suplex 50292, provocations 37098 / 37134 de Maria) est
+  remplacée par la vraie animation. Rien d'autre ne change. Les copies vont dans le `m_dlcNN.pac` du paquet sous des
+  noms en minuscules (`ZMVM/stat`) ; le crochet de `sub_827D98D8` (`wwe12_superstar_mods.cpp`) demande d'abord
+  `/ZMVM/stat` pour `/ZMVM/STAT`, quel que soit l'ordre des archives.
+- **Hors jeu** (Maria 2009, 13 prises) : 12 situations copiées, 6 groupes, 26 places ; tous les autres groupes
+  identiques octet pour octet, rien du jeu perdu (seules les 3 cases vides remplacées) ; 0,45 s à chaque démarrage
+  avec des prises ajoutées (sans cache : relire 100 Mo de cache prenait autant). **Pas encore vu en jeu.** Les packs
+  de THQ n'ajoutent qu'une banque ZMOT (CA09, CA10), sans ZMVM, et leurs prises marchent : ceci n'est peut-être pas la
+  correction du Gut Kick.

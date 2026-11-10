@@ -37,6 +37,8 @@ In WWE12 Launcher.exe and WWE12 Mod Maker.exe
 - Mod Maker: based on the Mod Maker of Kaiko's WWE SmackDown vs. Raw 2011 PC port
   (KaikoClanworth1/wwe-svr2011-pc), used with his permission: the .svrmod format, the entrance
   movie maker and Bink encoder (movie_maker.c, bink_encode.c), the .pac readers (svrfmt)
+- Added moves in the game's situation sets (Mod Maker / mods pack): the method of LA Max's WWE '12 move
+  porter (built on Kaiko's tools), used with credit; our own code
 - Bink video reader (Mod Maker): Kaiko's port of FFmpeg's libavcodec/bink.c (Konstantin Shishkov,
   Peter Ross): LGPL 2.1 or later - licenses\FFmpeg-LGPL-2.1.txt. Its source is in this port's
   source code (port/src/modmaker/video).

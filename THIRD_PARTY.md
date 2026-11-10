@@ -42,6 +42,10 @@ Projets dont ce portage s'inspire :
   match obtenu, `test_match.cpp`) est reprise en méthode seulement dans `port/src/native/wwe12_benchmark.cpp`
   (scénario `hiac6`, trajet enregistré, vérification au départ du match), ainsi que l'idée de sa condition
   « faible » (`opt_bench.ps1` : cœurs limités et un fil occupé à côté).
+- **LA Max** (outils de mods WWE '12, faits sur les modules de Kaiko) : son convertisseur d'entrées SvR 2011 →
+  WWE '12 (accord du 2026-11-01) et, pour les prises (2026-11-10), la méthode de son `wwe12_port.py` : une animation
+  ajoutée rangée à côté de sa prise modèle dans les « situations » ZMVM de m.pac qui l'ont. Méthode seulement, code
+  écrit par nous (`port/src/modmaker/zmvm_add.h`).
 - [wwe2k14-recomp](https://github.com/Jarrodfeng/wwe2k14-recomp) (recomp de WWE 2K14, Jarrodfeng) :
   licence BSD 3 clauses (vérifiée sur le dépôt le 2026-10-31) ; accord oral de l'auteur (Discord, 2026-10-31) pour s'inspirer de ses mises à
   jour. Idées Android étudiées dans `docs/android_optimisation_jarrod.md` (cadence 90/120 Hz, résolution
