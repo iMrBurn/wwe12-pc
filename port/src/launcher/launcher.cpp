@@ -31,6 +31,7 @@
 #include "diagnostics.h"
 #include "disk_type.h"
 #include "path_utf8.h"
+#include "game_disc.h"
 #include "rosters.h"
 #include "game_process.h"
 #include "keybinds.h"
@@ -1580,6 +1581,19 @@ void PageRosters() {
   const char *override_file = std::getenv("WWE12_LAUNCHER_ROSTERS_FILE");  // (test aid: a COPY of a save)
   rosters::Page::Env env;
   env.can_write = !game::IsRunning() && !g_saves.Busy();
+  static std::map<int, std::string> names;  // read once from the player's game files (chEtc.pac), read only
+  static bool names_read = false;
+  if (!names_read) {
+    names_read = true;
+    try {
+      disc::GameDisc gd;
+      gd.Open(ExeDir());
+      if (gd.Found())
+        names = disc::SuperstarNames(gd);
+    } catch (...) {
+    }
+  }
+  env.names = &names;
   if (override_file)  // test aid: the file is a COPY, nothing of the real saves is touched
     env.backup = [](std::string &) { return std::string("(test copy: no backup)"); };
   else

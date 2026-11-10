@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <iterator>
 #include <set>
 #include <string>
@@ -40,7 +41,8 @@ class Reader {
   static constexpr size_t kHeader = 28, kRecord = 286, kCount = 323, kSumSpan = 0xAE358;
 
   // Reads the file; returns "" when fine, else the reason (the list stays empty).
-  std::string Load(const fs::path &file) {
+  // `names` (wrestler number -> name, from the game's chEtc.pac) fills the names the save doesn't hold.
+  std::string Load(const fs::path &file, const std::map<int, std::string> *names = nullptr) {
     rows_.clear();
     sum_ok_ = false;
     empty_ = 0;
@@ -75,6 +77,11 @@ class Reader {
         {
           ++empty_;  // an empty slot (number 0, no name): not listed, never written
           continue;
+        }
+        if (r.name.empty() && names) {
+          const auto it = names->find(r.id);
+          if (it != names->end() && it->second != "0")  // (the game files too hold "0" for unused numbers)
+            r.name = it->second;
         }
         if (r.name.empty())
           r.name = "(#" + std::to_string(r.id) + ")";
@@ -231,10 +238,12 @@ class Page {
  public:
   struct Env {
     bool can_write = false;                            // the game is closed and no other save operation runs
+    const std::map<int, std::string> *names = nullptr;  // from the game files (may stay empty)
     std::function<std::string(std::string &)> backup;  // makes a backup of the save; returns its name ("" = failed)
   };
 
   void Draw(bool fr, const fs::path &save_file, const Env &env) {
+    names_ = env.names;
     if (!loaded_ || ImGui::Button(fr ? "Relire la sauvegarde" : "Reload the save"))
       Reload(save_file);
     ImGui::SameLine();
@@ -381,7 +390,7 @@ class Page {
 
  private:
   void Reload(const fs::path &save_file) {
-    reason_ = reader_.Load(save_file);
+    reason_ = reader_.Load(save_file, names_);
     loaded_ = true;
     selected_.clear();
   }
@@ -453,6 +462,7 @@ class Page {
   }
 
   Reader reader_;
+  const std::map<int, std::string> *names_ = nullptr;
   Editor editor_;
   bool loaded_ = false, msg_ok_ = false;
   std::string reason_, msg_;
