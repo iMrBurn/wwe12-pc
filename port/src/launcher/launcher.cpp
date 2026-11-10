@@ -654,6 +654,11 @@ std::string BuildDiagnostics();  // (defined with the ABOUT page)
 int g_diag_msg = 0;              // 1 copied, 2 failed
 bool g_deck = false;             // Steam Deck (SteamDeck=1): bigger controls, window kept inside the screen
 
+// (defined further down, next to the low-end preset)
+std::string ApplyBenchAdvice(const std::string &verdict, bool fr);
+bool BenchBackupExists();
+void UndoBenchAdvice();
+
 void PagePlay() {
   const Texts &t = T();
   const bool fr = g_s.language == 4;
@@ -756,7 +761,8 @@ void PagePlay() {
     if ((g_s.api == 2 || g_s.api == 3) && fs::exists(api_exe, ec))
       bench_exe = api_exe;
     ImGui::Dummy(ImVec2(0, 4));
-    g_bench.Draw(fr, bench_exe, ExeDir(), DocumentsDir(), found && !game::IsRunning());
+    g_bench.Draw(fr, bench_exe, ExeDir(), DocumentsDir(), found && !game::IsRunning(),
+                {ApplyBenchAdvice, BenchBackupExists, UndoBenchAdvice});
   }
   if (g_play_note)
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", g_play_note == 1 ? t.already_running : t.wait_busy);
@@ -875,6 +881,82 @@ void UndoLowEndPreset() {
   f.close();
   std::error_code ec;
   fs::remove(LowEndBackupPath(), ec);
+  SaveSettings();
+}
+
+// "Apply the advised settings" after the performance test (benchmark_run.h): only on the player's click. The values from
+// before go to benchmark_advice_backup.txt (next to the launcher), the button "Undo" puts them back. cpu = 30 fps in
+// matches (experimental) + no crowd; gpu = a lower resolution. On the Steam Deck / small-PC profile the 30 fps is never
+// proposed (the profile has its own choices). A second click never overwrites the first backup.
+fs::path BenchBackupPath() { return ExeDir() / "benchmark_advice_backup.txt"; }
+
+bool BenchBackupExists() {
+  std::error_code ec;
+  return fs::exists(BenchBackupPath(), ec);
+}
+
+std::string ApplyBenchAdvice(const std::string &verdict, bool fr) {
+  if (verdict != "cpu" && verdict != "gpu")
+    return {};
+  if (!BenchBackupExists()) {
+    std::ofstream f(BenchBackupPath(), std::ios::trunc);
+    f << "svr_render_scale=" << g_s.scale << "\n"
+      << "wwe12_crowd=" << (g_s.crowd ? 1 : 0) << "\n"
+      << "wwe12_frame_mode=" << g_s.frame_mode << "\n";
+    if (!f)
+      return fr ? "Impossible de sauvegarder vos réglages : rien n'a été changé." : "Could not back up your settings: nothing was changed.";
+  }
+  std::string done;
+  const auto add = [&done](const std::string &s) { done += (done.empty() ? "" : ", ") + s; };
+  if (verdict == "cpu") {
+    if (!g_deck && !LowEndBackupExists() && g_s.frame_mode != 1) {  // (not on the Deck / small-PC profile)
+      g_s.frame_mode = 1;
+      add(fr ? "30 images/s en match (expérimental)" : "30 fps in matches (experimental)");
+    }
+    if (g_s.crowd) {
+      g_s.crowd = false;
+      add(fr ? "foule retirée" : "no crowd");
+    }
+  } else {
+    const int target = g_s.scale == 0 || g_s.scale > 720 ? 720 : g_s.scale > 480 ? 480 : 0;
+    if (target) {
+      g_s.scale = target;
+      add(fr ? "résolution " + std::to_string(target) + "p" : "resolution " + std::to_string(target) + "p");
+    }
+  }
+  if (done.empty()) {
+    std::error_code ec;
+    fs::remove(BenchBackupPath(), ec);
+    return fr ? "Rien à changer : vos réglages sont déjà au plus bas pour ce conseil." : "Nothing to change: your settings are already as low as this advice goes.";
+  }
+  SaveSettings();
+  return (fr ? "Réglages appliqués : " : "Settings applied: ") + done + ".";
+}
+
+void UndoBenchAdvice() {
+  std::ifstream f(BenchBackupPath());
+  std::string line;
+  while (std::getline(f, line)) {
+    const size_t eq = line.find('=');
+    if (eq == std::string::npos)
+      continue;
+    const std::string key = line.substr(0, eq);
+    int value = 0;
+    try {
+      value = std::stoi(line.substr(eq + 1));
+    } catch (...) {
+      continue;
+    }
+    if (key == "svr_render_scale")
+      g_s.scale = value;
+    else if (key == "wwe12_crowd")
+      g_s.crowd = value != 0;
+    else if (key == "wwe12_frame_mode" && value >= 0 && value <= 2)
+      g_s.frame_mode = value;
+  }
+  f.close();
+  std::error_code ec;
+  fs::remove(BenchBackupPath(), ec);
   SaveSettings();
 }
 
