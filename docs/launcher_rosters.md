@@ -39,7 +39,7 @@ Xbox 360 qu'on importe).
   officielle est `u16[373]` à 0x8307B5E0 : id → index, à relire en jeu pour les autres ids ; les catcheurs créés, ids < 50,
   sont dans la zone des CAW, index × 1 832 à bloc + 0x1B9CC : hors de cette étude).
 - Dans une fiche : **+24..+27 = marque** (quatre octets identiques ; l'Univers lit +27), **+41 = id**, **+42 = nom complet** (ASCII),
-  **+178 = nom court**, +238/0xEE bit 0 = sexe, +247 = « débloqué », +283 = drapeau DLC (docs/mod_maker.md, commit d7918b0).
+  **+178 = nom court**, +234 = genre (corrigé le 2026-11-10 : ce document disait à tort +238), +247 = « débloqué », +283 = drapeau DLC (docs/mod_maker.md, commit d7918b0).
 - Valeurs de marque vues dans la copie (330 fiches) : **0 = RAW (111), 1 = SmackDown (34), 4 (19), 6 (160, « autres » :
   légendes/DLC/free agents)**. Quelques fiches ont des octets +24..+26 différents de +27 (6 sur 330) ou des valeurs hors
   table (125, 71 : ce ne sont probablement pas de vraies fiches, au-delà du dernier catcheur) : le launcher doit les montrer
@@ -113,3 +113,24 @@ les fournit).
 Idée et organisation de l'onglet : launcher de KaikoClanworth1 (SvR 2011 PC port, MIT : « Copyright (c) 2026 KaikoClanworth1
 and the SvR 2011 PC port contributors »). Si du code ou la table `roster_names.inc` est repris, garder cet avis et le citer dans
 `THIRD_PARTY_NOTICES`. Pour notre page, les noms viennent de la sauvegarde elle-même : la table de Kaiko n'est pas nécessaire.
+
+## 8. Réponses d'Univers aux 4 questions (2026-11-10, lecture du code, rien testé en jeu)
+
+- **Q1** : changer +24..+27 suffit, même dans un Univers déjà commencé (le jeu ne garde pas d'autre copie ; effectifs recalculés
+  depuis +27 par `sub_826D2B50` ; EDIT BRAND ne stocke que les marques des émissions ; fiches de 112 octets = points de titre /
+  stats, sans marque ; le transfert du jeu écrit ces mêmes octets). La page n'a donc pas à se limiter aux sauvegardes sans
+  Univers, mais elle doit AVERTIR : (a) minimum de 15 catcheurs par émission (`wwe12_universe_min_roster`) : compter par marque
+  et avertir sous 15 ; (b) un catcheur transféré peut encore apparaître une fois sur une carte déjà placée de son ancienne
+  émission (non vérifié) ; (c) un champion transféré garde son titre.
+- **Q2** : « Autre » = **6** (« sans marque » du Mod Maker : légendes, DLC, free agents). La valeur **4** (19 catcheurs, The Rock...)
+  a un sens inconnu : l'afficher « Autre (4) » et ne JAMAIS l'écrire. Catcheur ajouté : RAW 0, SmackDown 1, sans marque 6 ; toujours
+  les 4 octets +24..+27 identiques.
+- **Q3** : pas d'index > 323 (la table compte 323 fiches, numéros 50..372, index = numéro − 50). Identifier chaque fiche par SON
+  numéro (u16 à +41), pas par un calcul. Ne pas toucher aux catcheurs créés (numéros < 50, zone CAW de 1832 octets).
+- **Q4** : les fiches d'origine sont dans `misc.pac`, groupe /CHAR/DAT (une entrée par place k < 323 : u16 version 1, u16 taille + 4,
+  puis 286 octets ; `sub_82DCAA58`, docs/univers.md §27) ; retrouver le catcheur par le numéro. Il faut un lecteur PAC (Mods en
+  a un) ; on ne sait pas si le groupe est compressé. Pour un catcheur AJOUTÉ l'entrée du disque est celle d'une case vide ou d'un
+  DLC : ne PAS la remettre. La remise à zéro de l'Univers dans le jeu (`RestoreBrands`) remet les marques d'origine des catcheurs
+  du jeu et saute les créés (< 50), ceux hors des données du jeu et les ajoutés : à écrire dans l'aide de la page. Sans lecteur PAC,
+  « remettre les marques d'origine » = restaurer la copie automatique.
+- Les commits d'Univers 3d47e4f / d702618 (marque gardée pour les ajoutés) sont dans la 1.2.0 publiée.
