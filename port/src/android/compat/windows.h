@@ -134,6 +134,18 @@ struct EXCEPTION_POINTERS {
 };
 using PVECTORED_EXCEPTION_HANDLER = LONG (*)(EXCEPTION_POINTERS *);
 inline void *AddVectoredExceptionHandler(UINT, PVECTORED_EXCEPTION_HANDLER) { return nullptr; }
+// Pile d'appels des sondes (wwe12_down_probe.cpp, 1.2) : jamais atteinte sur Android (pas de piège).
+#define UNW_FLAG_NHANDLER 0
+struct RUNTIME_FUNCTION {
+  DWORD BeginAddress;
+  DWORD EndAddress;
+  DWORD UnwindData;
+};
+using PRUNTIME_FUNCTION = RUNTIME_FUNCTION *;
+inline PRUNTIME_FUNCTION RtlLookupFunctionEntry(DWORD64, DWORD64 *, void *) { return nullptr; }
+inline void *RtlVirtualUnwind(DWORD, DWORD64, DWORD64, PRUNTIME_FUNCTION, CONTEXT *, void **, DWORD64 *, void *) {
+  return nullptr;
+}
 
 // ---- Windows (fenêtres) : pas de fenêtres Win32 sur Android ---------------------------------
 #define WM_CLOSE 0x0010u
