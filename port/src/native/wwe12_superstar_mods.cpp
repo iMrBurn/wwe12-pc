@@ -61,6 +61,9 @@
 
 REXCVAR_DEFINE_BOOL(wwe12_superstar_mods, true, "WWE12",
                     "Added superstars (superstar mods) as a DLC pack made at startup.");
+REXCVAR_DEFINE_BOOL(wwe12_added_moves, false, "WWE12",
+                    "Superstar and moves mods: their moves WWE '12 hasn't (from other games) added to the game. Off: "
+                    "their slots keep the base superstar's moves (the added ones changed shared move data, 2026-11-10).");
 REXCVAR_DEFINE_BOOL(wwe12_belt_donor, true, "WWE12",
                     "Added superstars with their own model: the waist belt's fit of the game's superstar nearest in build.");
 
@@ -1299,6 +1302,28 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     }
     if (in.edit.empty())
       ReadGame(vfs, "pac/edit/edit.pac", in.edit);
+  }
+  // Added moves (other games' moves WWE '12 hasn't) off by default since 2026-11-10: with them the game's shared move
+  // tables were changed for everyone - a running superstar went through the ropes after an Irish whip (not without
+  // mods, test copy), a 2009 Maria mod broke every Gut Kick (players), 2K17 AJ Styles' moves ended 1-2 m off. Their
+  // slots keep the base's move; wwe12_added_moves = true brings them back.
+  if (!REXCVAR_GET(wwe12_added_moves)) {
+    size_t dropped = 0;
+    auto drop = [&](std::vector<superstar_pack::NewMove> &moves, std::vector<std::pair<int, int>> &slots) {
+      std::set<int> numbers;
+      for (const auto &m : moves)
+        numbers.insert(m.number);
+      slots.erase(std::remove_if(slots.begin(), slots.end(), [&](const auto &s) { return numbers.count(s.second) != 0; }),
+                  slots.end());
+      dropped += moves.size();
+      moves.clear();
+    };
+    for (auto &st : stars)
+      drop(st.new_moves, st.moves);
+    for (auto &mv : movesets)
+      drop(mv.new_moves, mv.moves);
+    if (dropped)
+      REXLOG_INFO("[superstar mods] {} added move(s) left out (wwe12_added_moves off): their slots keep the base's", dropped);
   }
   // (the moves mods' added moves: into a copy of misc.pac too)
   if (in.misc.empty() && std::any_of(movesets.begin(), movesets.end(), [](const auto &mv) { return !mv.new_moves.empty(); }))

@@ -451,3 +451,17 @@ et décalage mesurés), l'en-tête et les commandes YAT2 (recalées), les renvoi
   finishers de WWE '12 n'ont aucun leg drop en courant ; sans la règle de l'endroit, « Diving Fist Drop 4 », depuis la
   corde) : la base. AJ Styles 2K17 : 5 prises à ajouter, 3 faites sur un modèle, Lionsault 2 et Rope Hung Suplex sans
   modèle ni remplaçant.
+
+## Prises ajoutées coupées par défaut (décision de l'utilisateur, 2026-11-10)
+
+- **Constat** : sur la copie de test, avec les mods, un catcheur envoyé dans les cordes (irish whip) **traverse le
+  ring** ; **sans mods** (`--wwe12_no_mods`), il rebondit normalement. Joueurs : Gut Kick de tous cassé avec un mod Maria
+  2009. AJ Styles 2K17 : ses 3 prises ajoutées finissent l'adversaire à 1-2 m de la position de leur modèle (Fireman's
+  Carry Neckbreaker : victime 2,4 m de l'autre côté, sur la barrière ; modèle mal choisi, Brain Chop 1). Cause exacte du
+  bug commun pas trouvée : l'ajout touche des données que tous partagent (fiches WAZE insérées, lignes m3.pac insérées,
+  situations ZMVM) ; les tables m3 0/20, 0/21, 0/22, 1-4 ne sont pas comprises.
+- **Maintenant** : réglage `wwe12_added_moves` (défaut **false**, `wwe12_superstar_mods.cpp`) : les prises ajoutées des
+  mods sont laissées de côté au démarrage et leurs cases gardent la prise de la base. Le Mod Maker le dit sous sa case
+  « Prises ajoutées (expérimental) » (décochée par défaut depuis le 2026-11-05).
+- **Pour plus tard** : l'outil de MrSmith (annoncé par l'utilisateur) ; la méthode complète de LA Max (case vide de la
+  table des prises, rien d'inséré dans m3.pac, l'animation dans les situations du modèle).

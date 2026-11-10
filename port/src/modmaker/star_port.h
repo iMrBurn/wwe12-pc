@@ -564,6 +564,12 @@ inline void DrawAddedMovesChoice(bool fr, bool &use, size_t count) {
                                  "décochez puis refaites le mod)"
                                : "(unticked: those slots keep the base's move; if an added move stops the match, untick "
                                  "and make the mod again)");
+  // (the game leaves them out unless wwe12_added_moves = true, 2026-11-10: they changed shared move data)
+  ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "%s",
+                     fr ? "Coupées dans le jeu par défaut : elles peuvent casser d'autres prises de tous les catcheurs "
+                          "(réglage wwe12_added_moves = true dans wwe12.toml pour les essayer)."
+                        : "Off in the game by default: they can break other moves of every superstar (setting "
+                          "wwe12_added_moves = true in wwe12.toml to try them).");
 }
 
 // His moves, slot by slot (a tree node: the other game's move, WWE '12's it became), under a summary: how many go,
