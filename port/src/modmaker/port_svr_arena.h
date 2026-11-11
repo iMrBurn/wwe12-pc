@@ -3792,6 +3792,40 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
   return true;
 }
 
+// The old games' announce table and ring steps (pac/bg/bgEtc.pac STG /WPON: 6 the table "1060", 7 its monitors
+// "1070", 32 the steps "1320"; their pictures in their entry 10), the same models and picture names as WWE '12's
+// (ji_desk, ji_bl, ji_meta, ji_top, ji_mon, ar_stair0-2; SvR 2008, 2026-11-11). WWE '12 looks a weapon's picture up in
+// the arena first (its RAW, SmackDown... hold their own ji_bl): put in the arena, they dress WWE '12's table and steps
+// as the old game's (its grey steps, its dark table - WWE '12's white steps and "WWE HD" table front before). The
+// first of each name (the table's own before its monitors').
+inline bool SvrWeaponPictures(const Bytes &bgetc, std::vector<svrfmt::BundleTexture> &out) {
+  out.clear();
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(bgetc, a, nullptr))
+    return false;
+  std::set<std::string> have;
+  for (auto &k : a.root.kids) {
+    if (k.group != "STG " || k.name != "WPON" || !svrfmt::ArchiveExpand(k))
+      continue;
+    for (const uint32_t id : {6u, 7u, 32u})
+      for (auto &w : k.kids) {
+        if (w.id != id || !svrfmt::ArchiveExpand(w))
+          continue;
+        for (auto &c : w.kids) {
+          std::vector<svrfmt::BundleTexture> texs;
+          if (c.id != 10 || !svrfmt::BundleRead(svrfmt::ArchiveData(c), texs))
+            continue;
+          for (auto &t : texs)
+            if ((t.name.rfind("ji_", 0) == 0 || t.name == "ar_stair0" || t.name == "ar_stair1" ||
+                 t.name == "ar_stair2") &&
+                have.insert(t.name).second)
+              out.push_back(t);
+        }
+      }
+  }
+  return !out.empty();
+}
+
 struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
   int pictures_added = 0;           // ring and crowd pictures copied from the base
@@ -3804,7 +3838,8 @@ struct PortInfo {
 };
 
 // The SvR 2011 file and the base arena's WWE '12 file -> the WWE '12 arena.
-inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string *why, PortInfo *info = nullptr) {
+inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string *why, PortInfo *info = nullptr,
+                 const std::vector<svrfmt::BundleTexture> *extra = nullptr) {  // (pictures to add by name: SvrWeaponPictures)
   using namespace detail;
   auto fail = [&](const std::string &w) {
     if (why)
@@ -4231,6 +4266,13 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
             names.insert(n);
             break;
           }
+    // its game's weapons' pictures WWE '12 looks up in the arena first (SvrWeaponPictures: its announce table, steps)
+    if (extra)
+      for (const auto &t : *extra)
+        if (!names.count(t.name)) {
+          add.push_back(t);
+          names.insert(t.name);
+        }
     pi.pictures_added = AddPictures(pkg, add, models);
     pi.pictures_missing = int(add.size()) - pi.pictures_added;
     // No free record left for the others (ECW, Night of Champions, Royal Rumble): the package grows (written again

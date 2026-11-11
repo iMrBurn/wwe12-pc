@@ -727,6 +727,13 @@ places ×10, d'après le code de Kaiko).
   titantrons 808 + minitron 806, tapis (`yBG_BumpMap` + `samp*Prm`), foule grise, plaque de nom, bannière, transition
   W. Reste : marches et table des commentateurs (`bgEtc.pac`, communs), teinte orange des entrées (lumière de la base ?).
   Aperçu 3D : les brumes (`z` sans `a`) ne sont plus dessinées.
+- **Marches et table des commentateurs SvR 2008 (2026-11-11, essai)** : `bgEtc.pac` STG /WPON a la même organisation
+  dans WWE '12 et SvR 2008 : 6 = table `1060` (`ji_desk`, `ji_bl`, `ji_meta`), 7 = ses écrans `1070` (`ji_mon`, `ji_top`),
+  32-37 = marches `1320`… (`ar_stair0-2`), images dans leur entrée 10. Images de marches disposées pareil, `ji_mon`
+  identique ; `ji_top` de WWE '12 = devant « W / WWE HD ». Des arènes de WWE '12 (RAW, SmackDown, bg15, 17-19, 23)
+  ont leur propre `ji_bl` dans leur paquet : le jeu cherche ces images d'abord dans l'arène. `SvrWeaponPictures` met
+  les `ji_*` et `ar_stair0-2` de SvR 2008 dans l'arène portée (paramètre `extra` de `Port`). Les marches : aucune arène
+  de WWE '12 ne le fait, à vérifier en jeu.
 - **Planche de contrôle SvR 2008 / 2009 (2026-11-11)** : `tools/dev/svr_arenas_sheet.py "<iso>" 2008` lit le disque du
   joueur, sans rien porter, et écrit `work/svr_check/svr2008_arenas.png` : une ligne par arène (bannière, écran VS
   recomposé, plus grande image de la plaque d'entrée, image de la vidéo de logo via ffmpeg). Pour comparer avec Xenia.
