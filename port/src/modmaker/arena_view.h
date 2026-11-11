@@ -1,7 +1,8 @@
 // Mod Maker: an arena in 3D (Direct3D 11, drawn into a picture the page shows). Its models (JBOY entries of the
 // arena's PACH, read with Kaiko's svrfmt/jboy) are drawn where they are stored: WWE '12 arena models hold their
 // vertices in arena space, in cm, y pointing down. The flag table (entry 50001, one line per model id, see the
-// Japanese help at its end) says how the game draws each: "r" also mirrored across x = 0, "a" additive, "m(n)"
+// Japanese help at its end) says how the game draws each: "r" also mirrored across x = 0, "a" additive ("z", no
+// depth write - the hazes - drawn so too), "m(n)"
 // placed by an animation (light rigs, beams: left out, they sit at the centre until the game moves them), "e"
 // entrance only, "g" match only. Pictures come from the arena's texture packages (sampDiffusePrm = the slot in the
 // model's texture list); light maps and shader effects are not drawn: it's a preview, not the game's look.
@@ -64,8 +65,8 @@ inline std::map<uint32_t, Flags> ReadFlags(const Bytes &text) {
       const std::string w = line.substr(i, j - i);
       if (w == "r")
         f.mirrored = true;
-      else if (w == "a")
-        f.additive = true;
+      else if (w == "a" || w == "z")  // ("z": no depth write - hazes: SvR 2008 Judgment Day's mci_moya, 71 m across,
+        f.additive = true;            // drawn solid it closed the arena in a blue dome, 2026-11-11; glows as additive)
       else if (w == "e")
         f.entrance_only = true;
       else if (w == "g")
