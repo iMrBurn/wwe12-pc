@@ -251,6 +251,21 @@ inline void NoReflect(Bytes &d) {
   }
 }
 
+// Relief meshes ("yBumpMap": SvR's arenas' - Judgment Day 2008's ring-side mats, a mesh of its ramp) made WWE '12's
+// background one ("yBG_BumpMap", as BgShaders): "yBumpMap" isn't a shader WWE '12 draws an arena with (RenderDoc,
+// 2026-11-11: no draw at all for the mats, the floor's hole under them black).
+inline void BumpToBg(Bytes &d) {
+  for (uint32_t i = 0; i < U32(d, 0x18); ++i) {
+    const size_t at = kPofBase + kMeshTable + i * kW12Mesh + 0x7C;
+    if (at + 16 > d.size())
+      return;
+    if (svrfmt::Name16(&d[at]) == "yBumpMap") {
+      memset(&d[at], 0, 16);
+      memcpy(&d[at], "yBG_BumpMap", 11);
+    }
+  }
+}
+
 // Material colours (g_f4MatAmbCol, g_f4MatDifCol: name[16], u16 type 0x0D = float4, u16 size, value) times f.
 inline void Dim(Bytes &d, double f) {
   for (const char *name : {"g_f4MatAmbCol", "g_f4MatDifCol"}) {
@@ -3818,6 +3833,7 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
         Dim(m, 0.3);
       }
       NoReflect(m);
+      BumpToBg(m);
       ReplaceLike(k, m);
       ++pi.models;
       return true;

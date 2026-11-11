@@ -685,6 +685,13 @@ places ×10, d'après le code de Kaiko).
   2008 ; à vérifier en jeu). Le bas noir sous la plaque est dans l'image de fond de SvR elle-même.
   Reste : lumière (tapis noirs, marches blanches, foule rouge = foule et lumières de Hell in a Cell, la base ; le sol
   de Judgment Day 2008 n'a aucun jeu de lumières `l(N)` dans 50001, ceux de WWE '12 ont `l(121)`) : RenderDoc d'abord.
+  **RenderDoc (2026-11-11, `capture_frame17740.rdc`, scripts `arena_pixel.py` + `svr08_mats.py`)** : le noir autour du
+  ring n'est PAS une lumière : rien n'y est dessiné. Le sol (objet 0, ± 28,8 × 38,4 m) est dessiné avec un trou sous
+  le tapis ; le tapis `ar_dwnmt01` = 2 maillages : `yBumpMap` (± 7 m, la surface) jamais dessiné, `yDefault` (sous le
+  ring) oui. `yBumpMap` n'est pas un shader d'arène de WWE '12 (les arènes WWE '12 : `yBG_*`). SvR 2011 a les mêmes
+  `yBumpMap` (16 maillages dans bg01, dont son tapis). Maintenant `BumpToBg` les fait `yBG_BumpMap` (comme `BgShaders`
+  pour les projecteurs, vu en jeu) pour toutes les arènes SvR portées. Marches blanches : ce sont celles de WWE '12
+  (`bgEtc.pac`), éclairées (0,73 0,69 0,59 à l'écran).
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
   (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le
