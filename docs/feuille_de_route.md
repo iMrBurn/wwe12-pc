@@ -118,6 +118,9 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - Shaders qui font saccader à la première fois (en 1.1 : préparés en arrière-plan ; reste à voir ce qui saccade encore, voir l'issue #53 : surtout le processeur).
 
 ## Plus tard (sans date)
+- **Bloc-notes de l'utilisateur, 2026-11-11 (pas de version décidée)** :
+  - Mod Maker : ajouter des titantrons (et pas seulement remplacer) ; vidéos pour le ruban et le walltron ; faire porter des entrées spéciales WM / titre ; retravailler les arènes portées ; aperçu des entrées dans le Mod Maker comme SvR 2011.
+  - Bugs : avec les thèmes du jukebox activés, on entend la musique normale du menu en dessous, et elle repart juste après START à l'écran-titre (le thème du jukebox s'arrête) ; les attributs ne se sauvegardent pas ; corriger quelques modèles et entrées.
 - **Régénération du code** (registres locaux + patch « volatile », 10 à 14 h + un gros test de ~2 h, risque de casse) : sans version, décision de l'utilisateur du 2026-11-11. Étude : `docs/regeneration_1_3.md`.
 - Plus de 6 superstars sur le ring ; 100 / 200 slots CAW et logos (probablement 2.0) ; le jeu en full natif ; Univers : cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants ; choix de caméra de match.
 
