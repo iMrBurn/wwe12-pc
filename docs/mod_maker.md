@@ -727,6 +727,11 @@ places ×10, d'après le code de Kaiko).
   titantrons 808 + minitron 806, tapis (`yBG_BumpMap` + `samp*Prm`), foule grise, plaque de nom, bannière, transition
   W. Reste : marches et table des commentateurs (`bgEtc.pac`, communs), teinte orange des entrées (lumière de la base ?).
   Aperçu 3D : les brumes (`z` sans `a`) ne sont plus dessinées.
+- **SvR 2009 (2026-11-11, captures Xenia de SmackDown)** : écran VS = fond `mh_sd_bg` + `mh_sd_fr` = logo + cadre des noms
+  (une plaque, comme 2008 ; celle de Judgment Day 2009 est une bande à planètes), posée en bas sous les noms ; plaque de
+  nom (animée) depuis le bord gauche sur toute la largeur, logo du show à gauche, nom dedans ; pas de plaque de ville ;
+  marches grises de SvR (même limite que 2008). → 2009 traité comme 2008 : plaque VS dans `hell_fr` (640 × 96), plaques
+  d'entrée à leur place SvR (écran de 512, ×2,5), plaque de ville vide, pas de `fit`. Transition : le logo WWE (gardé).
 - **Marches et table des commentateurs SvR 2008 (2026-11-11, essai)** : `bgEtc.pac` STG /WPON a la même organisation
   dans WWE '12 et SvR 2008 : 6 = table `1060` (`ji_desk`, `ji_bl`, `ji_meta`), 7 = ses écrans `1070` (`ji_mon`, `ji_top`),
   32-37 = marches `1320`… (`ar_stair0-2`), images dans leur entrée 10. Images de marches disposées pareil, `ji_mon`

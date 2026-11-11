@@ -2095,7 +2095,7 @@ class Page {
         port_svr_arena::Plate2K city = plate;
         city.x += t.city_x - t.name_x;
         city.y += t.city_y - t.name_y;
-        if (svr_year_ == 2008) {  // (an empty city plate: the city alone)
+        if (svr_year_ == 2008 || svr_year_ == 2009) {  // (an empty city plate: the city alone; none in those games)
           std::fill(city.img.rgba.begin(), city.img.rgba.end(), uint8_t(0));
           for (auto &f : city.intro)
             std::fill(f.rgba.begin(), f.rgba.end(), uint8_t(0));
@@ -2122,7 +2122,7 @@ class Page {
           }
         };
         fit(city, t.city_x, t.city_y);
-        if (svr_year_ != 2008)  // (SvR 2008's at its own place, the screen's edge included)
+        if (svr_year_ != 2008 && svr_year_ != 2009)  // (SvR 2008 / 2009's at their own place, the screen's edge included)
           fit(plate, t.name_x, t.name_y);
         if (port_svr_arena::EtexWearing(evtgd12, svrfmt::Image(), 3.4, svrfmt::Image(), etex_, city, plate))
           port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";

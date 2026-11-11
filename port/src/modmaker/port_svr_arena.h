@@ -2854,7 +2854,7 @@ inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate
     const Atb1 &anim = an->second;
     // (SvR 2008 draws them on a 512-wide screen, as its logo animation: 2.5 across - its Judgment Day plate came out
     // 76 % of the width at 2, 95 % on Xenia, 2026-11-11)
-    const float sx = year == 2008 ? 2.5f : 2.0f, sy = 720.0f / 448;
+    const float sx = year == 2008 || year == 2009 ? 2.5f : 2.0f, sy = 720.0f / 448;  // (2009: the same, its SmackDown on Xenia)
     const int W = 1920, H = 1080, ox = 320, oy = 180;
     const auto light = [&](float t) {
       double sum = 0;
@@ -2978,7 +2978,7 @@ inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate
       // SvR 2008: where that game shows it (its 1280 x 720 screen, here at (ox, oy), made 1920 x 1080), not moved to
       // WWE '12's text - the user's wish, comparing with Xenia (2026-11-11: Judgment Day's frame from the left edge
       // over 95 % of the width, at the bottom; each arena as SvR 2008 had it)
-      if (year == 2008) {
+      if (year == 2008 || year == 2009) {
         name.x = 1.5f * float(x0 - ox);
         name.y = 1.5f * float(y0 - oy);
       }
@@ -3114,7 +3114,7 @@ inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, con
     if (k.group == "MENU" && k.name == ni)
       if (auto *p = Pictures(k))
         svrfmt::BundleRead(svrfmt::ArchiveData(*p), theirs);
-  if (!CardWearing(theirs, matchhd12, banner, mb, mf, template_name, false, year == 2008))
+  if (!CardWearing(theirs, matchhd12, banner, mb, mf, template_name, false, year == 2008 || year == 2009))
     return false;
   // SvR 2008 / 2009: their VS screen's own font (MENU/MnnF, a YFB of the 2K games' version, 0x68: Font2K), the names
   // written as in those games (the user missed it on Judgment Day 2008, 2026-11-11). Hell in a Cell's when it doesn't
