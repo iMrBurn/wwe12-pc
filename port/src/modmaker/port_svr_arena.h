@@ -255,16 +255,31 @@ inline void NoReflect(Bytes &d) {
 // ("yDefault", as the arena's other models): "yBumpMap" isn't a shader WWE '12 draws an arena with (RenderDoc,
 // 2026-11-11: no draw at all for the mats, the floor's hole under them black). (WWE '12's "yBG_BumpMap" drew them
 // but speckled black and white - its noise, whose level the SvR mesh doesn't set; the mats' relief map is flat.)
+// yDefault needs its "g_bUseGlow" (every other model of the arena has it): the relief meshes have none - the game
+// crashed loading Judgment Day 2008 so (a read of 0x70320078, 2026-11-11). Their "g_bUseRefRegMap" (a bool, used by
+// no shader of WWE '12's arenas) renamed so, its value 0 (no glow); "g_bReflectAdd" / "g_fReflectAlpha" stay (yReflect's
+// extra ones didn't hurt yDefault, NoReflect).
 inline void BumpToBg(Bytes &d) {
+  bool changed = false;
   for (uint32_t i = 0; i < U32(d, 0x18); ++i) {
     const size_t at = kPofBase + kMeshTable + i * kW12Mesh + 0x7C;
     if (at + 16 > d.size())
-      return;
+      break;
     if (svrfmt::Name16(&d[at]) == "yBumpMap") {
       memset(&d[at], 0, 16);
       memcpy(&d[at], "yDefault", 8);
+      changed = true;
     }
   }
+  if (!changed)
+    return;
+  static const char kFrom[16] = "g_bUseRefRegMap";
+  for (size_t at = 0; at + 24 <= d.size(); ++at)
+    if (memcmp(&d[at], kFrom, 16) == 0) {
+      memset(&d[at], 0, 16);
+      memcpy(&d[at], "g_bUseGlow", 10);
+      memset(&d[at + 20], 0, 4);
+    }
 }
 
 // Material colours (g_f4MatAmbCol, g_f4MatDifCol: name[16], u16 type 0x0D = float4, u16 size, value) times f.
