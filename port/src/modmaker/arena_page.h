@@ -2094,12 +2094,13 @@ class Page {
         // half its height (Judgment Day on Xenia, the user's capture, 2026-11-11): put round the text WWE '12 writes
         // (it writes it at its own place, under the plate as SvR's animation put it); no city plate in that game.
         if (svr_year_ == 2008 && plate.img.w > 0) {
-          // (its picture cut to what shows first: the animation's picture holds much empty room round the frame -
-          // made 1856 wide whole, the frame came out half as wide, 2026-11-11)
+          // (its picture cut to the frame: the animation's picture holds a black band at half opacity across the
+          // screen behind it (alpha <= 128; RenderDoc, 2026-11-11: the 1024 x 128 picture drawn where asked, the
+          // wood in its left half) - cut to its opaque pixels, the wood)
           int x0 = plate.img.w, y0 = plate.img.h, x1 = -1, y1 = -1;
           for (int y = 0; y < plate.img.h; ++y)
             for (int x = 0; x < plate.img.w; ++x)
-              if (plate.img.rgba[(size_t(y) * plate.img.w + x) * 4 + 3] > 8)
+              if (plate.img.rgba[(size_t(y) * plate.img.w + x) * 4 + 3] > 160)  // (the wood, not the shadow band)
                 x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x), y1 = std::max(y1, y);
           if (x1 > x0 && y1 > y0) {
             const int w0 = plate.img.w, h0 = plate.img.h;
