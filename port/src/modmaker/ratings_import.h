@@ -11,7 +11,9 @@
 //    size fits (u16 +22), 2008's doesn't.
 //  - Gender: the bit that matched every shared superstar (SvR 2009-2011 +212, 2008 +206, WWE '13 +256, 2K14 / 2K15
 //    +27, 2K16 +31; SvR 2007: its weight class +147 is 0 for a diva, Kaiko's superstar_port.py).
-//  - Abilities: WWE '13's +274..+278 (the same set as WWE '12's for 23 of 42); the other games number theirs otherwise.
+//  - Abilities: WWE '13's +274..+278 (the same set as WWE '12's for 23 of 42); 2K14 and 2K15 +56, 2K16 +60 (5 bytes,
+//    WWE '12's numbers: Mr. McMahon 1 7 24 in all, Triple H 7 9 11 14 in 2K14, 2026-11-11; their rosters' abilities
+//    changed since, so 15 / 9 / 9 of 67 / 58 / 57 shared superstars alike); SvR's number theirs otherwise.
 //  - 2K17's records aren't read.
 // Guards: ratings only if all 12 are within 20-100 and not all alike, a size only within 3200-5000 (0.78-1.22 x Cena),
 // else the base's; the player can change them all on the page.
@@ -37,7 +39,7 @@ struct Result {
   std::vector<int> attributes;  // WWE '12's 12, empty: the base's
   int size = 0;                 // record +0x28 (4096 = 1.0), 0: the base's
   int gender = -1;              // 0 man, 1 woman, -1: unknown (the base's)
-  std::vector<int> abilities;   // WWE '12 ability numbers (WWE '13 only), empty: the base's
+  std::vector<int> abilities;   // WWE '12 ability numbers (WWE '13, 2K14-2K16), empty: the base's
 };
 
 namespace detail {
@@ -144,9 +146,9 @@ inline Result Read(const disc::GameDisc &src, uint32_t game, int number, const s
   if (game == 0x545108B4)
     at = 4, size_at = 0x34, gender_at = 256, abilities_at = 274;
   else if (game == 0x545408B2 || game == 0x545408B6)
-    at = 36, size_at = 22, gender_at = 27;
+    at = 36, size_at = 22, gender_at = 27, abilities_at = 56;
   else if (game == 0x315A07D2)
-    at = 40, size_at = 26, gender_at = 31;
+    at = 40, size_at = 26, gender_at = 31, abilities_at = 60;
   const Fitted *fitted = FittedOf(game);
   if ((at < 0 && !fitted) || number < 0)
     return out;
