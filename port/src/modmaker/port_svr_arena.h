@@ -3811,6 +3811,77 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
         kid(ga, 801)->id = to;
         break;
       }
+  // The walltron: an LED wall the old game animated as a flip book of models in one place, all of whose pictures are
+  // "<show>_anim<nn>" (SvR 2009 SmackDown's sd_anim00-09, left of its big screen: "the walltron", the user,
+  // 2026-11-11). WWE '12's 803 plays the superstar's wall movie (seen: Judgment Day 2008's side screens on 803 showed
+  // blue sparkles): a copy of the first one, 3 cm towards the ring, made 803 (its pictures "titantron_movie", its UVs
+  // whole) - the wall movie over it in the entrances; in the match (no movie screen drawn) the old models show.
+  if (!kid(ga, 803)) {
+    const auto anim_pic = [](const std::string &t) {
+      const size_t at = t.find("_anim");
+      return at != std::string::npos && at > 0 && at + 5 < t.size() &&
+             std::all_of(t.begin() + long(at + 5), t.end(), ::isdigit);
+    };
+    std::vector<svrfmt::ArcNode *> flip;
+    for (auto &k : ga.kids) {
+      svrfmt::Model m;
+      if (k.id < 800 && svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr) && !m.textures.empty() &&
+          std::all_of(m.textures.begin(), m.textures.end(), anim_pic))
+        flip.push_back(&k);
+    }
+    if (flip.size() >= 3) {
+      Bytes d = svrfmt::ArchiveData(*flip[0]);
+      svrfmt::Model m;
+      if (svrfmt::JboyRead(d, m, nullptr)) {
+        constexpr size_t B = 8;
+        const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
+        bool ok = true;
+        for (const auto &me : m.meshes) {
+          const size_t vc = me.verts.size(), uvs = B + svrfmt::Be32(&me.raw[0x70]),
+                       vblk = B + svrfmt::Be32(&me.raw[0x68]);
+          if (vblk + 4 > d.size() || uvs + 8 * vc > d.size()) {
+            ok = false;
+            break;
+          }
+          const size_t vd = B + svrfmt::Be32(&d[vblk]);
+          if (vd + 28 * vc > d.size()) {
+            ok = false;
+            break;
+          }
+          float u0 = 1e9f, u1 = -1e9f, v0 = 1e9f, v1 = -1e9f;
+          for (const auto &uv : me.uvs)
+            u0 = std::min(u0, uv[0]), u1 = std::max(u1, uv[0]), v0 = std::min(v0, uv[1]), v1 = std::max(v1, uv[1]);
+          float dx = me.sphere[0], dz = me.sphere[2];
+          const float len = std::sqrt(dx * dx + dz * dz);
+          if (len > 1)
+            dx /= len, dz /= len;
+          else
+            dx = 0, dz = 1;
+          for (size_t q = 0; q < vc; ++q) {
+            if (u1 > u0 && v1 > v0) {
+              svrfmt::PutBeF(&d[uvs + 8 * q], (me.uvs[q][0] - u0) / (u1 - u0));
+              svrfmt::PutBeF(&d[uvs + 8 * q + 4], (me.uvs[q][1] - v0) / (v1 - v0));
+            }
+            svrfmt::PutBeF(&d[vd + 28 * q], me.verts[q].pos[0] - 0.3f * dx);  // (towards the ring: 3 cm, the old games in tens of cm)
+            svrfmt::PutBeF(&d[vd + 28 * q + 8], me.verts[q].pos[2] - 0.3f * dz);
+          }
+        }
+        for (uint32_t s = 0; ok && s < m.textures.size() && B + tptr + 16 * (size_t(s) + 1) <= d.size(); ++s) {
+          uint8_t *tn = &d[B + tptr + 16 * size_t(s)];
+          std::memset(tn, 0, 16);
+          std::memcpy(tn, "titantron_movie", 15);
+        }
+        if (ok) {
+          svrfmt::ArcNode wall = *flip[0];
+          wall.id = 803;
+          ReplaceLike(wall, d);
+          ga.kids.push_back(std::move(wall));
+          if (notes)
+            notes->push_back("its LED wall (" + m.name + "...) a wall movie screen too (803)");
+        }
+      }
+    }
+  }
   std::sort(ga.kids.begin(), ga.kids.end(), [](const svrfmt::ArcNode &a, const svrfmt::ArcNode &b) { return a.id < b.id; });
   svrfmt::ArchiveTouch(ga);
   return true;
@@ -4370,23 +4441,21 @@ inline bool StageCover(Bytes &arena, const svrfmt::Image &pic) {
   if (!svrfmt::ArchiveOpen(arena, a, nullptr) || a.root.kids.empty() || !svrfmt::ArchiveExpand(a.root.kids[0]))
     return false;
   svrfmt::ArcNode &ga = a.root.kids[0];
-  svrfmt::ArcNode *screen = nullptr, *pics = nullptr;
+  // (808, and the old SvR arenas' minitron 806 too: SvR 2009 SmackDown's band under its big screen showed its logo
+  // in the match as long as it was 808, then nothing; the user found it perfect so, 2026-11-11)
+  svrfmt::ArcNode *pics = nullptr;
+  std::vector<uint32_t> screens;
   std::set<uint32_t> used;
   for (auto &k : ga.kids) {
     used.insert(k.id);
     if (k.id == 800)
       return false;
-    if (k.id == 808)
-      screen = &k;
+    if (k.id == 808 || k.id == 806)
+      screens.push_back(k.id);
     if (k.id == 400)
       pics = &k;
   }
-  if (!screen || !pics)
-    return false;
-  uint32_t id = 230;
-  while (id < 300 && used.count(id))
-    ++id;
-  if (id >= 300)
+  if (screens.empty() || std::find(screens.begin(), screens.end(), 808u) == screens.end() || !pics)
     return false;
   // the picture
   std::vector<svrfmt::BundleTexture> texs;
@@ -4400,11 +4469,23 @@ inline bool StageCover(Bytes &arena, const svrfmt::Image &pic) {
   t.ext = "dds";
   t.data = svrfmt::DdsEncode(svrfmt::Resize(pic, 512, 256), svrfmt::DxtFormat::kDxt1);
   texs.push_back(std::move(t));
+  std::vector<svrfmt::ArcNode> covers;
+  for (const uint32_t sid : screens) {
+  svrfmt::ArcNode *screen = nullptr;
+  for (auto &k : ga.kids)
+    if (k.id == sid)
+      screen = &k;
+  uint32_t id = 230;
+  while (id < 300 && used.count(id))
+    ++id;
+  if (!screen || id >= 300)
+    continue;
+  used.insert(id);
   // the model: 808's, its texture named so, the picture whole (v 0-1), 3 cm further from the ring
   Bytes d = svrfmt::ArchiveData(*screen);
   svrfmt::Model m;
   if (!svrfmt::IsJboy(d) || !svrfmt::JboyRead(d, m, nullptr) || m.meshes.empty())
-    return false;
+    continue;
   const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
   for (const auto &me : m.meshes) {
     int slot = -1;
@@ -4413,10 +4494,10 @@ inline bool StageCover(Bytes &arena, const svrfmt::Image &pic) {
         slot = int(svrfmt::Be32(p.value.data()));
     const size_t vc = me.verts.size(), uvs = B + svrfmt::Be32(&me.raw[0x70]), vblk = B + svrfmt::Be32(&me.raw[0x68]);
     if (slot < 0 || vblk + 4 > d.size() || uvs + 8 * vc > d.size() || B + tptr + 16 * (size_t(slot) + 1) > d.size())
-      return false;
+      continue;
     const size_t vd = B + svrfmt::Be32(&d[vblk]);
     if (vd + 28 * vc > d.size())
-      return false;
+      continue;
     float v0 = 1e9f, v1 = -1e9f;
     for (const auto &uv : me.uvs) {
       v0 = std::min(v0, uv[1]);
@@ -4441,8 +4522,13 @@ inline bool StageCover(Bytes &arena, const svrfmt::Image &pic) {
   svrfmt::ArcNode cover = *screen;
   cover.id = id;
   ReplaceLike(cover, d);
+  covers.push_back(std::move(cover));
+  }
+  if (covers.empty())
+    return false;
   ReplaceLike(*pics, svrfmt::BundleWrite(texs));
-  ga.kids.push_back(std::move(cover));
+  for (auto &c : covers)
+    ga.kids.push_back(std::move(c));
   std::sort(ga.kids.begin(), ga.kids.end(), [](const svrfmt::ArcNode &x, const svrfmt::ArcNode &y) { return x.id < y.id; });
   svrfmt::ArchiveTouch(ga);
   svrfmt::ArchiveTouch(a.root);

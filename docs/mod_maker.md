@@ -744,7 +744,10 @@ places ×10, d'après le code de Kaiko).
   801 = bandeau du bas + écrans suspendus au-dessus du ring) ; le grand écran est le 803, ni renommé ni vidéo : en 2009
   les écrans portent une vraie image (`sd_titan`), pas reconnue comme écran → `_titan` accepté ; titantron = le plus
   haut des deux (hauteur médiane), minitron = l'autre (la largeur se trompait pour SmackDown). Rôles d'après
-  l'utilisateur : en haut le walltron (anneau), le titantron, en bas le minitron.
+  l'utilisateur (schéma) : titantron au milieu, minitron en bas ET l'anneau en haut, walltron = le mur LED à gauche.
+  Vu en jeu : titantron OK. En match le bandeau n'avait plus le logo (StageCover seulement derrière 808) → aussi derrière
+  806. Walltron : 10 modèles `sd_anim00-09` (feuilletage du mur LED, ids 180-189) → copie du premier, 3 cm devant,
+  en 803 (`titantron_movie`, UV entières) : la vidéo « mur » du catcheur en entrée, le motif de SvR en match.
 - **Marches et table des commentateurs SvR 2008 (2026-11-11, essai)** : `bgEtc.pac` STG /WPON a la même organisation
   dans WWE '12 et SvR 2008 : 6 = table `1060` (`ji_desk`, `ji_bl`, `ji_meta`), 7 = ses écrans `1070` (`ji_mon`, `ji_top`),
   32-37 = marches `1320`… (`ar_stair0-2`), images dans leur entrée 10. Images de marches disposées pareil, `ji_mon`
