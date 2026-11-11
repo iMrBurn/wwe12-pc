@@ -3703,31 +3703,41 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
       if (slot < 0 || me.raw.size() < 0x74 || B + tptr + 16 * (size_t(slot) + 1) > d.size())
         continue;
       const std::string &t = m.textures[size_t(slot)];  // (as read: a slot two meshes share is renamed twice alike)
-      if (t != "titan_mov" && t != "titan" && (pictures.empty() || pictures.count(t)))
+      // (SvR 2009's screens wear a picture of their own, "sd_titan", "jd_titan"...: a screen all the same - its
+      // SmackDown kept it, the screens not made movie ones, 2026-11-11)
+      if (t != "titan_mov" && t != "titan" && t.find("_titan") == std::string::npos &&
+          (pictures.empty() || pictures.count(t)))
         continue;
       movies.push_back({i, slot});
     }
     return movies;
   };
-  // The stage's two screen models 801 and 803 (Judgment Day 2008: 803 the two big screens on the sides, one mesh,
-  // 801 the dome under the logo; 2009 the other way round): in those games the big ones showed the superstar's movie,
-  // the small one the minitron (the user, 2026-11-11). The wider one is the titantron (808, each of its screens the
-  // whole movie), the other the minitron
-  // (806, WWE '12 RAW's minitron: the strip under the titantron's movie, v 0.69-1).
+  // The stage's two screen models 801 and 803: the titantron and the minitron, in either order (Judgment Day 2008:
+  // 803 the two big side screens, 801 the dome under the logo; Judgment Day 2009 the other way round; SvR 2009
+  // SmackDown: 803 the big screen, 801 the band under it and the screens hanging over the ring - RenderDoc,
+  // 2026-11-11). In those games the big ones showed the superstar's movie, the other the minitron (the user). The
+  // higher one on the stage (its vertices' median height; y is down) is the titantron (808, each of its screens the
+  // whole movie), the other the minitron (806, WWE '12 RAW's minitron: the strip under the titantron's movie, v 0.69-1).
+  // (The wider one first: wrong for SmackDown, its band as wide as its big screen.)
   int mini = -1;
   if (!kid(ga, 800) && kid(ga, 801) && kid(ga, 803)) {
-    float w[2] = {0, 0};
+    float h[2] = {0, 0};
+    bool any[2] = {false, false};
     for (int j = 0; j < 2; ++j) {
       svrfmt::Model m;
       const Bytes d = svrfmt::ArchiveData(*kid(ga, j ? 803 : 801));
-      float x0 = 1e9f, x1 = -1e9f;
+      std::vector<float> ys;
       for (const auto &[i, slot] : movie_meshes(d, m))
         for (const auto &v : m.meshes[i].verts)
-          x0 = std::min(x0, v.pos[0]), x1 = std::max(x1, v.pos[0]);
-      w[j] = x1 - x0;
+          ys.push_back(v.pos[1]);
+      if (!ys.empty()) {
+        std::nth_element(ys.begin(), ys.begin() + ys.size() / 2, ys.end());
+        h[j] = ys[ys.size() / 2];
+        any[j] = true;
+      }
     }
-    if (w[0] > 0 && w[1] > 0)
-      mini = w[0] < w[1] ? 801 : 803;
+    if (any[0] && any[1])
+      mini = h[0] > h[1] ? 801 : 803;  // (y down: the larger, the lower)
   }
   for (auto &k : ga.kids) {
     if (k.id != 800 && k.id != 801 && k.id != 803)

@@ -740,6 +740,11 @@ places ×10, d'après le code de Kaiko).
   En match (aucun écran vidéo dessiné par WWE '12), l'image posée derrière le 808 (`StageCover`) est maintenant ce logo
   (`OldScreenLogo`, la plus grande de ces images) au lieu de la photo de l'écran de choix : vidéo à l'entrée, logo en
   match, comme SvR.
+  **RenderDoc SmackDown 2009 (`capture_frame3801.rdc`, `movie_draws.py`)** : une seule vidéo dessinée, le 808 (ancien
+  801 = bandeau du bas + écrans suspendus au-dessus du ring) ; le grand écran est le 803, ni renommé ni vidéo : en 2009
+  les écrans portent une vraie image (`sd_titan`), pas reconnue comme écran → `_titan` accepté ; titantron = le plus
+  haut des deux (hauteur médiane), minitron = l'autre (la largeur se trompait pour SmackDown). Rôles d'après
+  l'utilisateur : en haut le walltron (anneau), le titantron, en bas le minitron.
 - **Marches et table des commentateurs SvR 2008 (2026-11-11, essai)** : `bgEtc.pac` STG /WPON a la même organisation
   dans WWE '12 et SvR 2008 : 6 = table `1060` (`ji_desk`, `ji_bl`, `ji_meta`), 7 = ses écrans `1070` (`ji_mon`, `ji_top`),
   32-37 = marches `1320`… (`ar_stair0-2`), images dans leur entrée 10. Images de marches disposées pareil, `ji_mon`
