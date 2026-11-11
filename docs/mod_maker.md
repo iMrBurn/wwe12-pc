@@ -689,7 +689,11 @@ places ×10, d'après le code de Kaiko).
   ring n'est PAS une lumière : rien n'y est dessiné. Le sol (objet 0, ± 28,8 × 38,4 m) est dessiné avec un trou sous
   le tapis ; le tapis `ar_dwnmt01` = 2 maillages : `yBumpMap` (± 7 m, la surface) jamais dessiné, `yDefault` (sous le
   ring) oui. `yBumpMap` n'est pas un shader d'arène de WWE '12 (les arènes WWE '12 : `yBG_*`). SvR 2011 a les mêmes
-  `yBumpMap` (16 maillages dans bg01, dont son tapis). `BumpToBg` les fait `yDefault` (1er essai `yBG_BumpMap` : tapis dessiné mais tacheté noir et blanc, le bruit de ce shader ; sa carte de relief est plate ; 2e essai `yDefault` seul : **plantage au chargement** (lecture de 0x70320078) : il manque `g_bUseGlow` que `yDefault` attend → `g_bUseRefRegMap` (même type 0x10, taille 0x18, valeur 0) renommé `g_bUseGlow` : **plante encore** (même adresse, arène portée sur la base 5) → retour à `yBG_BumpMap` (dessiné, tacheté : à étudier avec RenderDoc ; sommets avec tangentes, que `yDefault` n'a pas)) (comme `BgShaders`
+  `yBumpMap` (16 maillages dans bg01, dont son tapis). `BumpToBg` les fait `yDefault` (1er essai `yBG_BumpMap` : tapis dessiné mais tacheté noir et blanc, le bruit de ce shader ; sa carte de relief est plate ; 2e essai `yDefault` seul : **plantage au chargement** (lecture de 0x70320078) : il manque `g_bUseGlow` que `yDefault` attend → `g_bUseRefRegMap` (même type 0x10, taille 0x18, valeur 0) renommé `g_bUseGlow` : **plante encore** (même adresse, arène portée sur la base 5) → retour à `yBG_BumpMap` (sommets avec tangentes, que `yDefault` n'a pas) : ne plante plus (vu en jeu 2026-11-11). Taches :
+  `yBG_BumpMap` de WWE '12 (rampes `slo_floor`) prend ses images par `sampDiffusePrm` / `sampNormalPrm` / `sampSpecularPrm`
+  (brillance 0,25, couleur 0,5), SvR les nomme `texDiffuse` / `texNormal` / `texSpecularMap` et sa carte de brillance
+  est la carte de relief (bleue) à 0,8 → renommés, carte de brillance retirée (-1), 0,25 / 0,5 (enregistrements de
+  paramètres propres aux maillages en relief seulement)) (comme `BgShaders`
   pour les projecteurs, vu en jeu) pour toutes les arènes SvR portées. Marches blanches : ce sont celles de WWE '12
   (`bgEtc.pac`), éclairées (0,73 0,69 0,59 à l'écran).
 - **Plaques d'entrée SvR 2008 (2026-11-11)** : sur Xenia (Judgment Day) la plaque de nom fait presque toute la

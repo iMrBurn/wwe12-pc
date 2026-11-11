@@ -256,14 +256,67 @@ inline void NoReflect(Bytes &d) {
 // 2026-11-11: no draw at all for the mats, the floor's hole under them black). Drawn so, but speckled black and white
 // (to look into). Not yDefault: the game crashed loading them so (a read of 0x70320078, even with a g_bUseGlow given -
 // their vertices carry tangents, yDefault's don't).
+// Their parameters made WWE '12's background ones (the speckles: yBG_BumpMap looks its pictures up as sampDiffusePrm /
+// sampNormalPrm / sampSpecularPrm - WWE '12's ramps - and SvR names them texDiffuse / texNormal / texSpecularMap, its
+// specular map the relief map itself at a specular level of 0.8; WWE '12's: none, 0.25, colour 0.5). Only the
+// parameter records no other mesh of the model uses (records may be shared). Parameter record: name[16], u16 type,
+// u16 size, value; a mesh's list: count at +0x94, offset of its record offsets at +0x98 (WWE '12's mesh records).
 inline void BumpToBg(Bytes &d) {
-  for (uint32_t i = 0; i < U32(d, 0x18); ++i) {
+  const uint32_t n = U32(d, 0x18);
+  std::vector<bool> bump(n, false);
+  for (uint32_t i = 0; i < n; ++i) {
     const size_t at = kPofBase + kMeshTable + i * kW12Mesh + 0x7C;
     if (at + 16 > d.size())
       return;
     if (svrfmt::Name16(&d[at]) == "yBumpMap") {
       memset(&d[at], 0, 16);
       memcpy(&d[at], "yBG_BumpMap", 11);
+      bump[i] = true;
+    }
+  }
+  const auto records = [&](uint32_t i) {
+    std::vector<size_t> out;
+    const size_t m = kPofBase + kMeshTable + i * kW12Mesh;
+    if (m + 0x9C > d.size())
+      return out;
+    const uint32_t count = U32(d, m + 0x94), list = U32(d, m + 0x98);
+    for (uint32_t k = 0; k < count && kPofBase + list + 4 * (k + 1) <= d.size(); ++k)
+      out.push_back(kPofBase + U32(d, kPofBase + list + 4 * k));
+    return out;
+  };
+  std::set<size_t> others;
+  for (uint32_t i = 0; i < n; ++i)
+    if (!bump[i])
+      for (size_t r : records(i))
+        others.insert(r);
+  const auto put = [&](size_t r, const char *name) {
+    memset(&d[r], 0, 16);
+    memcpy(&d[r], name, strlen(name));
+  };
+  const auto putf = [&](size_t at, float v) {
+    uint32_t u;
+    memcpy(&u, &v, 4);
+    d[at] = uint8_t(u >> 24), d[at + 1] = uint8_t(u >> 16), d[at + 2] = uint8_t(u >> 8), d[at + 3] = uint8_t(u);
+  };
+  for (uint32_t i = 0; i < n; ++i) {
+    if (!bump[i])
+      continue;
+    for (size_t r : records(i)) {
+      if (others.count(r) || r + 36 > d.size())
+        continue;
+      const std::string name = svrfmt::Name16(&d[r]);
+      if (name == "texDiffuse")
+        put(r, "sampDiffusePrm");
+      else if (name == "texNormal")
+        put(r, "sampNormalPrm");
+      else if (name == "texSpecularMap") {
+        put(r, "sampSpecularPrm");
+        memset(&d[r + 20], 0xFF, 4);  // (none)
+      } else if (name == "g_fSpecularLev")
+        putf(r + 20, 0.25f);
+      else if (name == "g_f4SpecularCol")
+        for (int c = 0; c < 3; ++c)
+          putf(r + 20 + 4 * size_t(c), 0.5f);
     }
   }
 }
