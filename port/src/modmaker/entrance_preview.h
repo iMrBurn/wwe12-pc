@@ -12,6 +12,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <map>
@@ -19,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include <fstream>
 #include <future>
 
 #include "arena_page.h"
@@ -27,6 +29,7 @@
 #include "media.h"
 #include "theme_convert.h"
 #include "theme_source.h"
+#include "video/bink2_decode.h"
 #include "entrance13.h"
 #include "game_disc.h"
 #include "imgui.h"
@@ -44,13 +47,164 @@ struct Star {
   std::string name;
 };
 
+// A titantron movie: Bink 1 (WWE '12, SvR: bink_decode) or Bink 2 (WWE '13, the 2K games: our bink2_decode).
+class Video {
+ public:
+  ~Video() { Close(); }
+  bool Open(const Bytes &data) {
+    Close();
+    WCHAR err[256];
+    if (data.size() > 4 && !memcmp(data.data(), "KB2", 3)) {
+      b2_ = bink2_open_memory(data.data(), data.size(), err, 256);
+    } else if (data.size() > 4 && !memcmp(data.data(), "BIK", 3)) {  // (Bink 1 reads a file)
+      const std::filesystem::path p = media::TempDir() / L"entrance_preview.bik";
+      std::ofstream(p, std::ios::binary).write(reinterpret_cast<const char *>(data.data()), std::streamsize(data.size()));
+      b1_ = bink_open(p.c_str(), err, 256);
+    }
+    return On();
+  }
+  void Close() {
+    if (b1_)
+      bink_close(b1_), b1_ = nullptr;
+    if (b2_)
+      bink2_close(b2_), b2_ = nullptr;
+  }
+  bool On() const { return b1_ || b2_; }
+  int W() const { return b1_ ? bink_width(b1_) : b2_ ? bink2_width(b2_) : 0; }
+  int H() const { return b1_ ? bink_height(b1_) : b2_ ? bink2_height(b2_) : 0; }
+  int Frames() const { return b1_ ? bink_frames(b1_) : b2_ ? bink2_frames(b2_) : 0; }
+  long long FrameTime() const { return b1_ ? bink_frame_time(b1_) : b2_ ? bink2_frame_time(b2_) : 0; }
+  void Next() { b1_ ? void(bink_next(b1_)) : b2_ ? void(bink2_next(b2_)) : void(); }
+  void Rewind() { b1_ ? bink_rewind(b1_) : b2_ ? bink2_rewind(b2_) : void(); }
+  void Bgra(uint8_t *out) const { b1_ ? bink_bgra(b1_, out) : b2_ ? bink2_bgra(b2_, out) : void(); }
+
+ private:
+  BinkReader *b1_ = nullptr;
+  Bink2Reader *b2_ = nullptr;
+};
+
+// An arena's walkable heights outside the ring (its stage, its ramp): per 20 cm cell, the highest upward-facing
+// surface between the floor and 2.2 m up (y 0 .. -220, y down), from its models as the 3D view draws them for the
+// entrance (arena_view: flags 50001, "r" mirrored across x = 0, animated / match-only / haze left out). 0: the floor.
+class Ground {
+ public:
+  static constexpr float kX0 = -2400, kZ0 = -2400, kCell = 20;
+  static constexpr int kNx = 240, kNz = 480;  // x -24..24 m, z -24..72 m (the stages are at +z)
+  bool Empty() const { return h_.empty(); }
+  float At(float x, float z) const {
+    if (h_.empty() || (std::fabs(x) < 450 && std::fabs(z) < 450))  // (the ring and its steps: the tracks' own)
+      return 0;
+    const int i = int((x - kX0) / kCell), j = int((z - kZ0) / kCell);
+    return i >= 0 && j >= 0 && i < kNx && j < kNz ? h_[size_t(j) * kNx + size_t(i)] : 0.0f;
+  }
+  void Build(const Bytes &file) {
+    h_.clear();
+    svrfmt::Archive a;
+    if (!svrfmt::ArchiveOpen(file, a, nullptr) || a.root.kids.empty() || !svrfmt::ArchiveExpand(a.root.kids[0]))
+      return;
+    h_.assign(size_t(kNx) * kNz, 0.0f);
+    std::map<uint32_t, arena_view::Flags> flags;
+    for (auto &k : a.root.kids[0].kids)
+      if (k.id == 50001)
+        flags = arena_view::ReadFlags(svrfmt::ArchiveData(k));
+    for (auto &k : a.root.kids[0].kids) {
+      const Bytes data = svrfmt::ArchiveData(k);
+      svrfmt::Model m;
+      if (!svrfmt::IsJboy(data) || !svrfmt::JboyRead(data, m, nullptr))
+        continue;
+      const arena_view::Flags f = flags.count(k.id) ? flags[k.id] : arena_view::Flags{};
+      if (f.animated || f.match_only || f.haze || f.additive)
+        continue;
+      for (const auto &me : m.meshes)
+        for (const auto &st : me.strips) {
+          std::vector<std::array<uint16_t, 3>> tris;
+          if (st.IsStrip())
+            for (const auto &t : svrfmt::StripToTriangles(st.indices))
+              tris.push_back({uint16_t(t[0]), uint16_t(t[1]), uint16_t(t[2])});
+          else
+            for (size_t q = 0; q + 2 < st.indices.size(); q += 3)
+              tris.push_back({st.indices[q], st.indices[q + 1], st.indices[q + 2]});
+          for (const auto &t : tris) {
+            if (t[0] >= me.verts.size() || t[1] >= me.verts.size() || t[2] >= me.verts.size())
+              continue;
+            for (int mirror = 0; mirror < (f.mirrored ? 2 : 1); ++mirror) {
+              float p[3][3];
+              for (int v = 0; v < 3; ++v)
+                for (int c = 0; c < 3; ++c)
+                  p[v][c] = me.verts[t[size_t(v)]].pos[c] * (c == 0 && mirror ? -1.0f : 1.0f);
+              Add(p);
+            }
+          }
+        }
+    }
+  }
+
+ private:
+  void Add(const float p[3][3]) {
+    const float ux = p[1][0] - p[0][0], uy = p[1][1] - p[0][1], uz = p[1][2] - p[0][2];
+    const float vx = p[2][0] - p[0][0], vy = p[2][1] - p[0][1], vz = p[2][2] - p[0][2];
+    const float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const float nl = std::sqrt(nx * nx + ny * ny + nz * nz);
+    if (nl < 1e-6f || std::fabs(ny) / nl < 0.7f)  // (walls)
+      return;
+    for (int v = 0; v < 3; ++v)
+      if (p[v][1] < -220.0f || p[v][1] > 5.0f)
+        return;
+    const float det = ux * vz - vx * uz;
+    if (std::fabs(det) < 1e-6f)
+      return;
+    const float minx = std::min({p[0][0], p[1][0], p[2][0]}), maxx = std::max({p[0][0], p[1][0], p[2][0]});
+    const float minz = std::min({p[0][2], p[1][2], p[2][2]}), maxz = std::max({p[0][2], p[1][2], p[2][2]});
+    for (int j = std::max(0, int((minz - kZ0) / kCell)); j <= std::min(kNz - 1, int((maxz - kZ0) / kCell)); ++j)
+      for (int i = std::max(0, int((minx - kX0) / kCell)); i <= std::min(kNx - 1, int((maxx - kX0) / kCell)); ++i) {
+        const float cx = kX0 + (float(i) + 0.5f) * kCell, cz = kZ0 + (float(j) + 0.5f) * kCell;
+        const float b1 = ((cx - p[0][0]) * vz - vx * (cz - p[0][2])) / det;
+        const float b2 = (ux * (cz - p[0][2]) - (cx - p[0][0]) * uz) / det;
+        if (b1 < 0 || b2 < 0 || b1 + b2 > 1)
+          continue;
+        float &h = h_[size_t(j) * kNx + size_t(i)];
+        h = std::min(h, p[0][1] + b1 * uy + b2 * vy);  // (y down: the highest)
+      }
+  }
+  std::vector<float> h_;
+};
+
+// A superstar's titantron movie in his game (number `n`): WWE '13 / 2K14 NNN.bik2, 2K15-2K17 ent_NNNN_*.bk2 (the
+// first), SvR NNN.bik / NN.bik. Empty if none; `name` its file.
+inline Bytes SourceMovie(const disc::GameDisc &g, uint32_t title, int n, std::string *name) {
+  const bool twok = title == 0x545408B6 || title == 0x315A07D2 || title == 0x545408BA;
+  char pre[16], pre2[16];
+  snprintf(pre, sizeof(pre), twok ? "ent_%04d_" : "%03d.", n);
+  snprintf(pre2, sizeof(pre2), "%02d.", n);
+  auto files = g.List("movies/titantron");
+  std::sort(files.begin(), files.end());
+  for (const auto &f : files) {
+    const size_t dot = f.rfind('.');
+    if (dot == std::string::npos)
+      continue;
+    const std::string ext = f.substr(dot);
+    const bool movie = !_stricmp(ext.c_str(), ".bik") || !_stricmp(ext.c_str(), ".bik2") || !_stricmp(ext.c_str(), ".bk2");
+    if (!movie || (_strnicmp(f.c_str(), pre, strlen(pre)) && (twok || _strnicmp(f.c_str(), pre2, strlen(pre2)))))
+      continue;
+    Bytes b;
+    if (g.Read("movies/titantron/" + f, b) && !b.empty()) {
+      if (name)
+        *name = f;
+      return b;
+    }
+  }
+  return {};
+}
+
 class Window {
  public:
   // Opens the window on entrance `number` of `parts` (WWE '12's format), shown on WWE '12 superstar `star`; `stars`:
   // the superstars "Show it on someone else" offers. `title`: whose entrance (the window's name).
   void Open(ID3D11Device *dev, const disc::GameDisc &w12, const std::vector<entrance13::Part> &parts, int number,
             const std::string &title, int star, const std::vector<Star> &stars, const theme_source::Theme &theme = {},
-            const std::filesystem::path &vgmstream = {}) {
+            const std::filesystem::path &vgmstream = {}, const Bytes &movie = {}, const std::string &movie_name = {}) {
+    movie_bytes_ = movie;  // (his own titantron, else the shown superstar's: LoadMovie)
+    movie_name_ = movie_name;
     device_ = dev;
     w12_ = &w12;
     title_ = title;
@@ -83,8 +237,6 @@ class Window {
     PickTake();
   }
   ~Window() {
-    if (bink_)
-      bink_close(bink_);
   }
   bool IsOpen() const { return open_; }
   // Test aid: paused at `seconds`, the picture saved to `png` (and what was read to <png>.txt), once.
@@ -141,6 +293,7 @@ class Window {
   // The script's entrant and camera, their records, the parts.
   void Parse(const std::vector<entrance13::Part> &parts, int number) {
     body_ = cam_ = {};
+    lifts_.clear();
     parts_.clear();
     total_ = 1;
     const entrance13::Part *evp = nullptr, *evz = nullptr;
@@ -265,6 +418,8 @@ class Window {
       snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", want);
       if (!w12_->Read(rel, arena_file_))
         arena_error_ = "no arena file";
+      ground_.Build(arena_file_);
+      lifts_.clear();
     }
     view_.keep_skin = false;
     if (arena_error_.empty() && !view_.Add(arena_file_, &arena_error_, 0, 2) && arena_error_.empty())
@@ -273,6 +428,42 @@ class Window {
     view_.show_entrance = true;
     for (int c = 0; c < 4; ++c)
       view_.background[c] = c == 3 ? 1.0f : 0.015f;
+  }
+
+  // The arena's stage / ramp height under him at frame f of part `part` (0 on the floor, in the ring and without an
+  // arena): the entrance's tracks walk a floor-level stage; the game puts him on its own (Kaiko's Full preview does
+  // the same: "the arena's stage / ramp height under the entrant"). Eased over +-16 frames: stepping up doesn't jump.
+  float Lift(int part, float f) {
+    if (arena_shown_ < 0 || ground_.Empty() || part < 0 || size_t(part) >= parts_.size())
+      return 0;
+    auto &v = lifts_[part];
+    const Part &p = parts_[size_t(part)];
+    if (v.empty()) {
+      const yanm::Track *bip = nullptr;
+      if (p.body)
+        for (const auto &t : p.body->tracks)
+          if (t.name == "Bip")
+            bip = &t;
+      std::vector<float> raw(size_t(std::max(1, p.frames)), 0.0f);
+      for (size_t k = 0; bip && k < raw.size(); ++k) {
+        bool hr = false, hp = false;
+        yanm::Q q{0, 0, 0, 1};
+        yanm::V pos{0, 0, 0};
+        yanm::Sample(*bip, float(k), hr, q, hp, pos);
+        if (hp)
+          raw[k] = ground_.At(pos[0], pos[2]);
+      }
+      const int ease = 16, n = int(raw.size());
+      v.resize(raw.size());
+      for (int k = 0; k < n; ++k) {
+        float sum = 0;
+        int c = 0;
+        for (int j = std::max(0, k - ease); j <= std::min(n - 1, k + ease); ++j)
+          sum += raw[size_t(j)], ++c;
+        v[size_t(k)] = sum / float(std::max(1, c));
+      }
+    }
+    return v[std::min(v.size() - 1, size_t(std::max(0.0f, f)))];
   }
 
   // The part playing at `time` (its index) and the frame in it.
@@ -295,7 +486,7 @@ class Window {
         arena_view::BonePose bp;
         yanm::Sample(t, f, bp.has_rot, bp.rot, bp.has_pos, bp.pos);
         if (t.name == "Bip" && bp.has_pos)
-          bp.pos[1] += body_y_;
+          bp.pos[1] += body_y_ + lift_now_;
         pose[t.name] = bp;
       }
     return pose;
@@ -306,11 +497,11 @@ class Window {
     FILE *f = fopen(file.c_str(), "w");
     if (!f)
       return;
-    fprintf(f, "at %.1f: eye %.1f %.1f %.1f target %.1f %.1f %.1f fov %.3f %.3f %.3f hips %.1f %.1f %.1f\n", time_,
+    fprintf(f, "at %.1f: eye %.1f %.1f %.1f target %.1f %.1f %.1f fov %.3f %.3f %.3f hips %.1f %.1f %.1f lift %.1f\n", time_,
             last_eye_[0], last_eye_[1], last_eye_[2], last_tgt_[0], last_tgt_[1], last_tgt_[2], last_fov_[0],
-            last_fov_[1], last_fov_[2], view_.Hips()[0], view_.Hips()[1], view_.Hips()[2]);
+            last_fov_[1], last_fov_[2], view_.Hips()[0], view_.Hips()[1], view_.Hips()[2], lift_now_);
     fprintf(f, "song %d (%.1f s) %s, music from %u, titantron %d (%d frames) from %u\n", int(player_.Ready()),
-            player_.Length(), song_error_.c_str(), music_frame_, int(bink_ != nullptr), bink_ ? bink_frames(bink_) : 0,
+            player_.Length(), song_error_.c_str(), music_frame_, int(video_.On()), video_.Frames(),
             movie_frame_);
     fprintf(f, "star %d loaded %d %s\ntotal %d frames, %zu parts\n", star_, int(loaded_), model_error_.c_str(), total_,
             parts_.size());
@@ -363,22 +554,26 @@ class Window {
       player_.Pause();
   }
 
-  // The superstar's titantron movie (WWE '12's movies\titantron\NNN.bik), on the arena's screens.
+  // The titantron movie, on the arena's screens: the ported superstar's own (from his game: movie_bytes_), else the
+  // shown WWE '12 superstar's (movies\titantron\NNN.bik).
   void LoadMovie() {
-    if (bink_)
-      bink_close(bink_), bink_ = nullptr;
+    video_.Close();
     movie_srv_.Reset();
     movie_tex_.Reset();
     view_.screen = nullptr;
+    movie_from_.clear();
+    Bytes own;
     char file[16];
     snprintf(file, sizeof(file), "%03d.bik", star_);
-    const std::filesystem::path p = media::CopyGameMovie(*w12_, file);
-    WCHAR err[256];
-    if (p.empty() || !(bink_ = bink_open(p.c_str(), err, 256)))
+    if (!movie_bytes_.empty() && video_.Open(movie_bytes_))
+      movie_from_ = movie_name_;
+    else if (w12_->Read(std::string("movies/titantron/") + file, own) && video_.Open(own))
+      movie_from_ = std::string("WWE '12 ") + file;
+    if (!video_.On())
       return;
     D3D11_TEXTURE2D_DESC td{};
-    td.Width = UINT(bink_width(bink_));
-    td.Height = UINT(bink_height(bink_));
+    td.Width = UINT(video_.W());
+    td.Height = UINT(video_.H());
     td.MipLevels = 1;
     td.ArraySize = 1;
     td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -387,7 +582,7 @@ class Window {
     td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     if (FAILED(device_->CreateTexture2D(&td, nullptr, &movie_tex_)) ||
         FAILED(device_->CreateShaderResourceView(movie_tex_.Get(), nullptr, &movie_srv_))) {
-      bink_close(bink_), bink_ = nullptr;
+      video_.Close();
       return;
     }
     pixels_.assign(size_t(td.Width) * td.Height * 4, 0);
@@ -395,22 +590,22 @@ class Window {
   }
   // Its picture at the entrance's time (from the script's movie frame, looping), decoded up to there.
   void Movie() {
-    view_.screen = movie_on_ && bink_ ? movie_srv_.Get() : nullptr;
+    view_.screen = movie_on_ && video_.On() ? movie_srv_.Get() : nullptr;
     if (!view_.screen)
       return;
-    const double per = bink_frame_time(bink_) > 0 ? double(bink_frame_time(bink_)) / 1e7 : 1.0 / 30;
-    const int frames = std::max(1, bink_frames(bink_));
+    const double per = video_.FrameTime() > 0 ? double(video_.FrameTime()) / 1e7 : 1.0 / 30;
+    const int frames = std::max(1, video_.Frames());
     const int want = int(std::max(0.0f, time_ - float(movie_frame_)) / 60.0 / per) % frames;
     if (want == movie_at_)
       return;
     if (want < movie_at_ || movie_at_ < 0)
-      bink_rewind(bink_), movie_at_ = -1;
+      video_.Rewind(), movie_at_ = -1;
     for (int k = 0; movie_at_ < want && k < 120; ++k)  // (a long jump catches up over a few frames)
-      bink_next(bink_), ++movie_at_;
-    bink_bgra(bink_, pixels_.data());
+      video_.Next(), ++movie_at_;
+    video_.Bgra(pixels_.data());
     ID3D11DeviceContext *ctx = nullptr;
     device_->GetImmediateContext(&ctx);
-    ctx->UpdateSubresource(movie_tex_.Get(), 0, nullptr, pixels_.data(), UINT(bink_width(bink_) * 4), 0);
+    ctx->UpdateSubresource(movie_tex_.Get(), 0, nullptr, pixels_.data(), UINT(video_.W() * 4), 0);
     ctx->Release();
   }
 
@@ -452,7 +647,7 @@ class Window {
     if (!tgt)
       for (int c = 0; c < 3; ++c)
         t[size_t(c)] = view_.Hips()[c];
-    e[1] += cam_y_, t[1] += cam_y_;
+    e[1] += cam_y_ + lift_now_, t[1] += cam_y_ + lift_now_;  // (the camera with him: it aims at him as keyed)
     const float d[3] = {e[0] - t[0], e[1] - t[1], e[2] - t[2]};
     const float dist = std::max(1.0f, std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
     const float target[3] = {t[0], t[1], t[2]};
@@ -505,6 +700,7 @@ class Window {
       const float key = float(part) * 100000.0f + local;
       if (key != posed_) {
         posed_ = key;
+        lift_now_ = Lift(part, local);
         view_.SetPose(Pose(p.body, local));
         if (!(use_cam_ && Camera(p, local)) && follow_)
           view_.SetTarget(view_.Hips());
@@ -592,10 +788,10 @@ class Window {
       ImGui::TextDisabled("%s", fr ? "(lecture du thème...)" : "(reading the theme...)");
     else if (!song_error_.empty())
       ImGui::TextDisabled(fr ? "(pas de musique : %s)" : "(no music: %s)", song_error_.c_str());
-    else if (!bink_)
+    else if (!video_.On())
       ImGui::TextDisabled("%s", fr ? "(pas de titantron pour lui)" : "(no titantron for him)");
     else
-      ImGui::NewLine();
+      ImGui::TextDisabled(fr ? "(vidéo : %s)" : "(video: %s)", movie_from_.c_str());
     // the arena
     if (ImGui::Checkbox(fr ? "Arène" : "Arena", &arena_on_))
       ShowArena();
@@ -662,7 +858,9 @@ class Window {
   uint32_t music_frame_ = 100, movie_frame_ = 0;  // (the script's: when the music and the titantron start)
   bool music_on_ = true, movie_on_ = true;
   // the titantron
-  BinkReader *bink_ = nullptr;
+  Video video_;
+  Bytes movie_bytes_;  // the ported superstar's own movie (his game's), else empty
+  std::string movie_name_, movie_from_;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> movie_tex_;
   Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> movie_srv_;
   std::vector<uint8_t> pixels_;
@@ -684,6 +882,9 @@ class Window {
   bool arena_on_ = true;             // the arena drawn
   int arena_ = 1, arena_shown_ = -1, arena_file_for_ = -1;  // its stage number (RAW), the one in the view, the one read
   Bytes arena_file_;
+  Ground ground_;                        // its stage and ramp heights
+  std::map<int, std::vector<float>> lifts_;  // per part, per frame: the height under him (Lift)
+  float lift_now_ = 0;
   std::string arena_error_;
   int take_choice_ = -1, take_ = 0;  // the camera take: -1 random (take_ the one drawn), 0 A, 1 B
   float time_ = 0, posed_ = -1;

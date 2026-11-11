@@ -1768,7 +1768,13 @@ l'entrée), et NOUVEAU CATCHEUR (à côté de « Sa propre entrée »). Il ouvre
 - **Arène** (case + liste des arènes de WWE '12, RAW par défaut) : `pac/bg/bgNN.pac` ajouté à la vue sans squelette,
   objets d'entrée montrés (`show_entrance`). Changer d'arène recharge toute la vue (`View::Remove` n'enlève que les
   modèles posés : enlever l'arène ainsi laissait des textures libérées, plantage corrigé).
-- **Titantron** (case) : `movies/titantron/NNN.bik` du catcheur montré, décodé à l'heure de l'entrée (en boucle, à
+- **Sol de l'arène** (2026-11-11, après l'essai de l'utilisateur : Mark Henry 2K14 traversait la scène de RAW) : les
+  pistes marchent sur une scène au niveau du sol ; une grille de 20 cm des surfaces tournées vers le haut de l'arène
+  (entre le sol et 2,2 m, hors ring) donne la hauteur sous lui, lissée sur ±16 images, ajoutée au catcheur et à la
+  caméra (comme le StageGrid de Kaiko). Orton sur RAW : 1,80 m sur la scène, 0 dans le ring.
+- **Titantron** (case) : la vidéo **du catcheur porté**, de son jeu (2K14 / WWE '13 `NNN.bik2`, 2K15-2K17
+  `ent_NNNN_*.bk2`, SvR `NNN.bik` ; NOUVEAU CATCHEUR : la vidéo 2K choisie sur la page), lue par `bink2_decode` ;
+  sinon `movies/titantron/NNN.bik` du catcheur montré, décodé à l'heure de l'entrée (en boucle, à
   partir de l'image du film dans la queue du script, type 8) et posé sur les modèles d'arène sans image (les écrans :
   `arena_view::screen`).
 - **Musique** (case « Musique du thème ») : le thème porté, décodé par vgmstream (`theme_convert::Decode`, en
