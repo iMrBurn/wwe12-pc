@@ -2089,10 +2089,24 @@ class Page {
         port_svr_arena::OldSvrPlates(evtgd, svr_pick_, svr_year_, slot_ >= 0 ? kSlots[slot_].number : 2, plate,
                                      &transition)) {
       if (!plate.img.rgba.empty() && disc_ && disc_->Read("pac/evt/evtgdhd.pac", evtgd12)) {
-        port_svr_arena::Plate2K city = plate;
         const port_svr_arena::PlateText t = port_svr_arena::PlateTextFor(slot_ >= 0 ? kSlots[slot_].number : 2);
+        // SvR 2008: its name plate nearly as wide as the screen at the bottom, the name in it at 64 % of its width,
+        // half its height (Judgment Day on Xenia, the user's capture, 2026-11-11): put round the text WWE '12 writes
+        // (it writes it at its own place, under the plate as SvR's animation put it); no city plate in that game.
+        if (svr_year_ == 2008 && plate.img.w > 0) {
+          plate.w = 1856;
+          plate.h = plate.w * float(plate.img.h) / float(plate.img.w);
+          plate.x = t.name_x - 0.64f * plate.w;
+          plate.y = t.name_y - 0.49f * plate.h;
+        }
+        port_svr_arena::Plate2K city = plate;
         city.x += t.city_x - t.name_x;
         city.y += t.city_y - t.name_y;
+        if (svr_year_ == 2008) {  // (an empty city plate: the city alone)
+          std::fill(city.img.rgba.begin(), city.img.rgba.end(), uint8_t(0));
+          for (auto &f : city.intro)
+            std::fill(f.rgba.begin(), f.rgba.end(), uint8_t(0));
+        }
         // (made smaller round their text when they would leave the screen, to 70 % at most: WWE '12 writes the city
         // near the top left, the name near the bottom, SvR 2007 RAW's big plates went off it, 2026-11-01)
         const auto fit = [](port_svr_arena::Plate2K &p, float ax, float ay) {

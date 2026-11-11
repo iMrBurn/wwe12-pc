@@ -2259,6 +2259,8 @@ inline PlateText PlateTextFor(int base) {
       return {1105, 802, 957, 162};
     case 5:  // Fatal 4-Way (RAW of 2K14: Randy Orton, The Miz, Providence)
       return {1115, 925, 610, 195};
+    case 9:  // Hell in a Cell (Judgment Day of SvR 2008 / 2009: The Miz, Newark; 2026-11-11)
+      return {1145, 928, 385, 265};
     default:  // 2, NXT (SmackDown of 2K17: Vladimir Kozlov, Rio Rancho, Indianapolis)
       return {918, 857, 610, 215};
   }

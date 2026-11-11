@@ -692,6 +692,11 @@ places ×10, d'après le code de Kaiko).
   `yBumpMap` (16 maillages dans bg01, dont son tapis). Maintenant `BumpToBg` les fait `yBG_BumpMap` (comme `BgShaders`
   pour les projecteurs, vu en jeu) pour toutes les arènes SvR portées. Marches blanches : ce sont celles de WWE '12
   (`bgEtc.pac`), éclairées (0,73 0,69 0,59 à l'écran).
+- **Plaques d'entrée SvR 2008 (2026-11-11)** : sur Xenia (Judgment Day) la plaque de nom fait presque toute la
+  largeur en bas, le nom écrit dedans à 64 % de sa largeur, mi-hauteur ; pas de plaque de ville. WWE '12 écrit le nom à
+  sa place fixe (mesurée pour Hell in a Cell, base 9 : centre (1145, 928) sur 1920 × 1080, ville (385, 265) ; ajouté à
+  `PlateTextFor`) : la plaque de 2008 est maintenant posée autour (1856 de large), la plaque de ville vide (la ville
+  seule). Écran VS : la plaque 640 × 96 n'était jamais appliquée (`BundleRead` refuse les paquets `atb`) : lue à la main.
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
   (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le
