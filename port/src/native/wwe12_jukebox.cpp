@@ -260,6 +260,42 @@ void StopSlot(PPCContext &ctx, u8 *base, u32 m, int slot) {
   g_own_call = false;
 }
 
+bool SlotBusy(PPCContext &ctx, u8 *base, u32 m, int slot) {
+  const u32 st = SlotState(ctx, base, m, slot);
+  return st != 0 && !(st & 0x21);
+}
+
+// While a theme plays, the menu music started on slot 0 or 1 by any other way (title screen -> main menu:
+// neither the update's pick nor sub_821D6368 was seen, the theme "went on" and the game's music was heard,
+// user 2026-11-11, log wwe12_530) is stopped at once; each stop is logged with the slot's state.
+void GuardTheme(PPCContext &ctx, u8 *base, u32 m) {
+  if (REXCVAR_GET(wwe12_jukebox_log_screens)) {  // (the three slots' states when they change, while a theme plays)
+    static u32 s_last[3] = {~0u, ~0u, ~0u};
+    u32 now[3];
+    for (int slot = 0; slot <= 2; ++slot)
+      now[slot] = SlotState(ctx, base, m, slot);
+    if (std::memcmp(now, s_last, sizeof now) != 0) {
+      std::memcpy(s_last, now, sizeof now);
+      BD_INFO("[jukebox] slots during theme {}: 0 = {:X}, 1 = {:X}, 2 = {:X} ([M+32] {})", g_playing, now[0], now[1],
+              now[2], bd::mem::try_field<u32>(m, 32));
+    }
+  }
+  if (!REXCVAR_GET(wwe12_jukebox_keep_theme))
+    return;
+  for (int slot = 0; slot <= 1; ++slot) {
+    const u32 st = SlotState(ctx, base, m, slot);
+    if (st == 0 || (st & 0x21))
+      continue;
+    StopSlot(ctx, base, m, slot);
+    static u32 s_logged = 0;
+    if (s_logged < 50) {
+      ++s_logged;
+      BD_INFO("[jukebox] the game's music started on slot {} (state {:X}, [M+32] {}, [M+40] {}) over theme {}: stopped",
+              slot, st, bd::mem::try_field<u32>(m, 32), bd::mem::try_field<u32>(m, 40), g_playing);
+    }
+  }
+}
+
 void Go(Step s) {
   g_step = s;
   g_frames = 0;
@@ -346,6 +382,7 @@ void Run(PPCContext &ctx, u8 *base, u32 m) {
     Go(Step::Playing);
     break;
   case Step::Playing:
+    GuardTheme(ctx, base, m);
     if (g_frames > 30 && !Call(__imp__sub_8271BEE0, ctx, base, m, kThemeSlot))
       Go(Step::Prepare);  // the theme ended: the next one
     break;
@@ -543,11 +580,6 @@ extern "C" REX_FUNC(sub_8271BFD0) {
 // 2026-11-11), that start is skipped too and the jukebox takes over again (its Stop step, then a theme), unless
 // a loading screen is up or slot 2 is busy (Create an Entrance's preview).
 constexpr u32 kMusicManager = 0x83231754u;  // M = [[kMusicManager] + 52]
-
-static bool SlotBusy(PPCContext &ctx, u8 *base, u32 m, int slot) {
-  const u32 st = SlotState(ctx, base, m, slot);
-  return st != 0 && !(st & 0x21);
-}
 
 extern "C" REX_FUNC(sub_821D6368) {
   const u32 song = ctx.r3.u32;
