@@ -100,7 +100,8 @@ class View {
   bool keep_skin = false;      // (before Load) keep what SetPose needs: the skeletons, the bind-pose vertices
   bool show_others = true;     // the superstars added with Add drawn
   float fov = 0.9f;            // the vertical field of view (radians; an entrance's camera sets its own)
-  ID3D11ShaderResourceView *screen = nullptr;  // a movie's picture on the arena's models without one (its screens)
+  // Movies on the arena's video screens (models 800-899 without a picture of their own), by model number.
+  std::map<uint32_t, ID3D11ShaderResourceView *> screens;
   // The background: an arena in the dark, as in the game; a superstar's views take Light() (models seen better).
   float background[4] = {0.015f, 0.015f, 0.02f, 1.0f};
   void Light() {
@@ -286,7 +287,10 @@ class View {
           memcpy(c.view_proj, view_proj, sizeof(view_proj));
           c.mirror = mirror ? -1.0f : 1.0f;
           c.additive = d.flags.additive ? 1.0f : 0.0f;
-          ID3D11ShaderResourceView *pic = d.tex ? d.tex : d.skel < 0 ? screen : nullptr;  // (a screen: the movie)
+          ID3D11ShaderResourceView *pic = d.tex;
+          if (!pic && d.skel < 0)  // (a screen: its movie)
+            if (const auto it = screens.find(d.model); it != screens.end())
+              pic = it->second;
           c.textured = pic ? 1.0f : 0.0f;
           c.baked = d.baked_light && pic == d.tex ? 1.0f : 0.0f;
           c.opaque = d.opaque || (pic && pic != d.tex) ? 1.0f : 0.0f;
@@ -477,6 +481,7 @@ class View {
 
   struct Draw {
     int skel = -1;               // its model's skeleton (keep_skin)
+    uint32_t model = 0;          // its model's number in the arena (screens: 800-899)
     bool vb_dynamic = false;
     std::vector<Vtx> base;       // the bind-pose vertices
     int per = 0;                 // influences a vertex
@@ -616,6 +621,7 @@ class View {
         }
     Draw d;
     d.flags = f;
+    d.model = id;
     // Superstars' shaders (yCh_*) light them in the game: their vertex colours aren't baked light.
     d.baked_light = s.shader.rfind("yCh", 0) != 0;
     // (Only for pictures with a full alpha channel: a DXT1 colour picture's 1-bit alpha may cut real holes.)

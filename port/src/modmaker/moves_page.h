@@ -749,11 +749,10 @@ class Page {
         on = stars12_[i].id;
     if (!on && !stars12_.empty())
       on = stars12_[0].id;
-    std::string movie_name;  // (his own titantron, from his game)
-    const Bytes movie = entrance_preview::SourceMovie(list_.disc, game_, pick_, &movie_name);
+    // (his own titantron, wall and ribbon, from his game)
     watch_.Open(device_, *disc12_, parts_.entrance, parts_.entrance_number,
                 pick_name_ + " (" + star_port::GameName(game_) + ")", on, stars, theme_, star_port::Vgmstream(discs_),
-                movie, movie_name);
+                entrance_preview::FromGame(list_.disc, game_, pick_));
   }
 
   // Step 3: what to take, each with whether it can be.

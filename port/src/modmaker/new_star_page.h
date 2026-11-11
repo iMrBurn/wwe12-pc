@@ -1637,20 +1637,18 @@ class Page {
       for (const auto &st : stars_)
         if (st.dlc.empty())
           stars.push_back({st.id, st.name});
-      // (its own titantron: the 2K movie picked on the page, else its game's)
-      Bytes movie;
-      std::string movie_name;
+      // (its own titantron, wall and ribbon from its game; the titantron: the 2K movie picked on the page)
+      entrance_preview::Sources screens = entrance_preview::FromGame(game_disc_, game_title_, disc_pick_);
       if (!twok_movie_file_.empty()) {
         const disc::GameDisc &g = twok_movie_game_ == game_title_ ? game_disc_ : twok_disc_;
+        Bytes movie;
         if (g.Read("movies/titantron/" + twok_movie_file_, movie))
-          movie_name = twok_movie_file_;
-      } else if (disc_pick_ >= 0) {
-        movie = entrance_preview::SourceMovie(game_disc_, game_title_, disc_pick_, &movie_name);
+          screens.titan = {std::move(movie), 0, 256, twok_movie_file_}, screens.titan_2k = twok_movie_game_ != 0x545108B4;
       }
       watch_.Open(device_, *disc12_, own_entrance_, own_entrance_number_,
                   std::string(name_[0] ? name_ : "?") + " (" + GameName(own_moves_game_) + ")",
                   base_ >= 0 ? stars_[size_t(base_)].id : (stars.empty() ? 0 : stars[0].id), stars, theme_, Vgmstream(),
-                  movie, movie_name);
+                  screens);
     }
     if (disc12_ && discs_)  // (its champion's entrance: its game's, or one picked)
       champ_.Draw(fr, *disc12_, *discs_, own_moves_game_, base_ >= 0 ? stars_[size_t(base_)].id : -1, music12_, champ_parts_);

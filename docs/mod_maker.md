@@ -1772,11 +1772,16 @@ l'entrée), et NOUVEAU CATCHEUR (à côté de « Sa propre entrée »). Il ouvre
   pistes marchent sur une scène au niveau du sol ; une grille de 20 cm des surfaces tournées vers le haut de l'arène
   (entre le sol et 2,2 m, hors ring) donne la hauteur sous lui, lissée sur ±16 images, ajoutée au catcheur et à la
   caméra (comme le StageGrid de Kaiko). Orton sur RAW : 1,80 m sur la scène, 0 dans le ring.
-- **Titantron** (case) : la vidéo **du catcheur porté**, de son jeu (2K14 / WWE '13 `NNN.bik2`, 2K15-2K17
-  `ent_NNNN_*.bk2`, SvR `NNN.bik` ; NOUVEAU CATCHEUR : la vidéo 2K choisie sur la page), lue par `bink2_decode` ;
-  sinon `movies/titantron/NNN.bik` du catcheur montré, décodé à l'heure de l'entrée (en boucle, à
-  partir de l'image du film dans la queue du script, type 8) et posé sur les modèles d'arène sans image (les écrans :
-  `arena_view::screen`).
+- **Écrans** (case « Titantron » ; 2026-11-11, demande de l'utilisateur : « les bonnes vidéos au bon endroit ») :
+  WWE '12 donne une vidéo par numéro de modèle (bg01 RAW, images « titantron_movie » 800 / 803 / 806 / 808,
+  « arena_movie » 801 / 807 / 809, « minitron_movie » 804). Pendant l'entrée : la vidéo d'entrée sur 808 (et 800 ; sa
+  bande du bas, v 0,69-1, sur 806 = le minitron), le **mur** du catcheur (evtmov MVSW) sur 803, son **ruban** (MVSB)
+  sur 801 / 807 / 809 ; 804 = la caméra en direct, laissé sombre (`arena_view::screens`, par numéro). Sources : celles
+  **du catcheur porté**, de son jeu, comme le mod les prend (`entrance_preview::FromGame` : vidéo `NNN.bik2` /
+  `ent_NNNN_*.bk2` / `NNN.bik`, mur et ruban `entrance_screens::Versions`) ; une vidéo 2K (une image 16:9 dans le
+  carré) est mise dans la partie titantron (lignes 0-218 sur 320) et son minitron (2K14 MVSB, 2K15-2K17 ss_mini)
+  dessous. Ce qui lui manque : ceux du catcheur de WWE '12 montré (`movies/titantron/NNN.bik`, evtmov MVSW / MVSB
+  M<numéro>). Orton 2K14 : 161.bik2 + M161, mur M161, ruban M161 (vus aux bons endroits).
 - **Musique** (case « Musique du thème ») : le thème porté, décodé par vgmstream (`theme_convert::Decode`, en
   arrière-plan) et joué par XAudio2 (`audio_out.h`, d'après l'`audio_out` de Kaiko) à partir de l'image de la musique
   (queue du script, type 1 ; 100 d'habitude) ; Pause, Recommencer, Aller au ring et la barre de temps la recalent.

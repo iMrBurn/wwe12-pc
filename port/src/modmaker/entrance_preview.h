@@ -26,6 +26,7 @@
 #include "arena_page.h"
 #include "arena_view.h"
 #include "audio_out.h"
+#include "entrance_screens.h"
 #include "media.h"
 #include "theme_convert.h"
 #include "theme_source.h"
@@ -50,6 +51,9 @@ struct Star {
 // A titantron movie: Bink 1 (WWE '12, SvR: bink_decode) or Bink 2 (WWE '13, the 2K games: our bink2_decode).
 class Video {
  public:
+  Video() = default;
+  Video(const Video &) = delete;
+  Video &operator=(const Video &) = delete;
   ~Video() { Close(); }
   bool Open(const Bytes &data) {
     Close();
@@ -82,6 +86,134 @@ class Video {
   BinkReader *b1_ = nullptr;
   Bink2Reader *b2_ = nullptr;
 };
+
+// A movie for a screen: its bytes (Bink 1 or 2), the rows of it used (in 1/256 of its height: 2K14's walls hold the
+// ribbon below), what it is (shown on the window).
+struct Clip {
+  Bytes movie;
+  int y0 = 0, y1 = 256;
+  std::string name;
+};
+// A ported superstar's screens from his game (FromGame): his titantron (titan_2k: one 16:9 picture in the square, the
+// 2K games'), the minitron put under it, his wall and his ribbon. Empty ones: the shown WWE '12 superstar's.
+struct Sources {
+  Clip titan, mini, wall, ribbon;
+  bool titan_2k = false;
+};
+
+// A screen's picture: a movie (rows y0..y1) stretched to W x H, or laid along it (a ribbon); or, with a strip, the
+// movie in the titantron's part (rows 0..218 of 320, v 0-0.684, WWE '12's layout) and the strip's movie under it.
+class Screen {
+ public:
+  Screen() = default;
+  Screen(const Screen &) = delete;
+  Screen &operator=(const Screen &) = delete;
+  bool Open(ID3D11Device *dev, const Clip &main, int W, int H, bool tile, const Clip *strip) {
+    Close();
+    if (!a_.v.Open(main.movie))
+      return false;
+    a_.y0 = main.y0, a_.y1 = main.y1;
+    if (strip && !strip->movie.empty() && b_.v.Open(strip->movie))
+      b_.y0 = strip->y0, b_.y1 = strip->y1;
+    W_ = W, H_ = H, tile_ = tile, compose_ = strip != nullptr;
+    name = main.name + (b_.v.On() ? " + " + strip->name : "");
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = UINT(W), td.Height = UINT(H), td.MipLevels = 1, td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(dev->CreateTexture2D(&td, nullptr, &tex_)) || FAILED(dev->CreateShaderResourceView(tex_.Get(), nullptr, &srv_))) {
+      Close();
+      return false;
+    }
+    out_.assign(size_t(W) * H * 4, 0);
+    return true;
+  }
+  void Close() {
+    for (Src *s : {&a_, &b_})
+      s->v.Close(), s->at = -1, s->y0 = 0, s->y1 = 256, s->px.clear();
+    tex_.Reset(), srv_.Reset();
+    name.clear();
+  }
+  bool On() const { return a_.v.On() && srv_; }
+  ID3D11ShaderResourceView *Srv() const { return srv_.Get(); }
+  int Frames() const { return a_.v.Frames(); }
+  // Its picture at `seconds` into its movie (looping).
+  void At(double seconds, ID3D11DeviceContext *ctx) {
+    if (!On())
+      return;
+    const bool a = a_.Step(seconds), b = b_.v.On() && b_.Step(seconds);
+    if (!a && !b)
+      return;
+    const int split = compose_ ? kTitanRows : H_;
+    Put(a_, out_.data(), split, compose_ ? false : tile_);
+    if (compose_) {
+      if (b_.v.On())
+        Put(b_, out_.data() + size_t(split) * W_ * 4, H_ - split, false);
+      else
+        std::fill(out_.begin() + ptrdiff_t(size_t(split) * W_ * 4), out_.end(), uint8_t(0));
+    }
+    ctx->UpdateSubresource(tex_.Get(), 0, nullptr, out_.data(), UINT(W_ * 4), 0);
+  }
+  std::string name;
+
+ private:
+  static constexpr int kTitanRows = 219;  // (320 x 0.684)
+  struct Src {
+    Video v;
+    int y0 = 0, y1 = 256, at = -1;
+    std::vector<uint8_t> px;
+    // Decoded up to the frame at `seconds`; false if it is the one already there.
+    bool Step(double seconds) {
+      const double per = v.FrameTime() > 0 ? double(v.FrameTime()) / 1e7 : 1.0 / 30;
+      const int frames = std::max(1, v.Frames()), want = int(seconds / per) % frames;
+      if (want == at)
+        return false;
+      if (want < at || at < 0)
+        v.Rewind(), at = -1;
+      for (int k = 0; at < want && k < 120; ++k)  // (a long jump catches up over a few frames)
+        v.Next(), ++at;
+      px.resize(size_t(v.W()) * v.H() * 4);
+      v.Bgra(px.data());
+      return true;
+    }
+  };
+  void Put(const Src &s, uint8_t *dst, int rows, bool tile) const {
+    const int sw = s.v.W(), sh = s.v.H();
+    if (sw <= 0 || sh <= 0 || s.px.empty() || rows <= 0)
+      return;
+    const int r0 = sh * s.y0 / 256, r1 = std::max(r0 + 1, std::min(sh, sh * s.y1 / 256));
+    entrance_screens::detail::Place(s.px.data() + size_t(r0) * sw * 4, sw, r1 - r0, dst, W_, rows, tile);
+  }
+  Src a_, b_;
+  int W_ = 0, H_ = 0;
+  bool tile_ = false, compose_ = false;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> tex_;
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> srv_;
+  std::vector<uint8_t> out_;
+};
+
+// A ported superstar's screens from his game `title` (his number there `n`): titantron (SourceMovie), wall and ribbon
+// (entrance_screens::Versions, as the mod gets them), and for a 2K titantron its minitron (2K14 evtmov MVSB, 2K15-2K17
+// ss_mini).
+inline Bytes SourceMovie(const disc::GameDisc &g, uint32_t title, int n, std::string *name);
+inline Sources FromGame(const disc::GameDisc &g, uint32_t title, int n) {
+  Sources s;
+  if (n < 0)
+    return s;
+  s.titan.movie = SourceMovie(g, title, n, &s.titan.name);
+  s.titan_2k = title == 0x545408B2 || title == 0x545408B6 || title == 0x315A07D2 || title == 0x545408BA;
+  const auto first = [](std::vector<entrance_screens::Version> v, Clip &c) {
+    if (!v.empty())
+      c.movie = std::move(v[0].movie), c.y0 = v[0].y0, c.y1 = v[0].y1, c.name = v[0].label;
+  };
+  first(entrance_screens::Versions(g, title, false, n), s.wall);
+  first(entrance_screens::Versions(g, title, true, n), s.ribbon);
+  if (s.titan_2k)
+    first(entrance_screens::Versions(g, title, true, n, true), s.mini);
+  return s;
+}
 
 // An arena's walkable heights outside the ring (its stage, its ramp): per 20 cm cell, the highest upward-facing
 // surface between the floor and 2.2 m up (y 0 .. -220, y down), from its models as the 3D view draws them for the
@@ -202,9 +334,8 @@ class Window {
   // the superstars "Show it on someone else" offers. `title`: whose entrance (the window's name).
   void Open(ID3D11Device *dev, const disc::GameDisc &w12, const std::vector<entrance13::Part> &parts, int number,
             const std::string &title, int star, const std::vector<Star> &stars, const theme_source::Theme &theme = {},
-            const std::filesystem::path &vgmstream = {}, const Bytes &movie = {}, const std::string &movie_name = {}) {
-    movie_bytes_ = movie;  // (his own titantron, else the shown superstar's: LoadMovie)
-    movie_name_ = movie_name;
+            const std::filesystem::path &vgmstream = {}, const Sources &screens = {}) {
+    sources_ = screens;  // (his own titantron, wall and ribbon, else the shown superstar's: LoadMovie)
     device_ = dev;
     w12_ = &w12;
     title_ = title;
@@ -500,9 +631,9 @@ class Window {
     fprintf(f, "at %.1f: eye %.1f %.1f %.1f target %.1f %.1f %.1f fov %.3f %.3f %.3f hips %.1f %.1f %.1f lift %.1f\n", time_,
             last_eye_[0], last_eye_[1], last_eye_[2], last_tgt_[0], last_tgt_[1], last_tgt_[2], last_fov_[0],
             last_fov_[1], last_fov_[2], view_.Hips()[0], view_.Hips()[1], view_.Hips()[2], lift_now_);
-    fprintf(f, "song %d (%.1f s) %s, music from %u, titantron %d (%d frames) from %u\n", int(player_.Ready()),
-            player_.Length(), song_error_.c_str(), music_frame_, int(video_.On()), video_.Frames(),
-            movie_frame_);
+    fprintf(f, "song %d (%.1f s) %s, music from %u; movies from %u: titantron [%s] %d frames, wall [%s], ribbon [%s]\n",
+            int(player_.Ready()), player_.Length(), song_error_.c_str(), music_frame_, movie_frame_,
+            titan_.name.c_str(), titan_.Frames(), wall_.name.c_str(), ribbon_.name.c_str());
     fprintf(f, "star %d loaded %d %s\ntotal %d frames, %zu parts\n", star_, int(loaded_), model_error_.c_str(), total_,
             parts_.size());
     for (const auto &p : parts_) {
@@ -554,59 +685,69 @@ class Window {
       player_.Pause();
   }
 
-  // The titantron movie, on the arena's screens: the ported superstar's own (from his game: movie_bytes_), else the
-  // shown WWE '12 superstar's (movies\titantron\NNN.bik).
+  // The arena's video screens during the entrance, as WWE '12 feeds them by model number (bg01 RAW: pictures
+  // "titantron_movie" 800 / 803 / 806 / 808, "arena_movie" 801 / 807 / 809, "minitron_movie" 804; port13.h,
+  // port_svr_arena.h): the titantron movie on 808 (and its minitron strip, v 0.69-1, on 806; 800 the small screen),
+  // the superstar's wall (evtmov MVSW) on 803, his ribbon (MVSB) on 801 / 807 / 809; 804 the live camera (left dark).
+  // The ported superstar's own, from his game (sources_), else the shown WWE '12 superstar's.
   void LoadMovie() {
-    video_.Close();
-    movie_srv_.Reset();
-    movie_tex_.Reset();
-    view_.screen = nullptr;
-    movie_from_.clear();
-    Bytes own;
-    char file[16];
-    snprintf(file, sizeof(file), "%03d.bik", star_);
-    if (!movie_bytes_.empty() && video_.Open(movie_bytes_))
-      movie_from_ = movie_name_;
-    else if (w12_->Read(std::string("movies/titantron/") + file, own) && video_.Open(own))
-      movie_from_ = std::string("WWE '12 ") + file;
-    if (!video_.On())
-      return;
-    D3D11_TEXTURE2D_DESC td{};
-    td.Width = UINT(video_.W());
-    td.Height = UINT(video_.H());
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_DEFAULT;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    if (FAILED(device_->CreateTexture2D(&td, nullptr, &movie_tex_)) ||
-        FAILED(device_->CreateShaderResourceView(movie_tex_.Get(), nullptr, &movie_srv_))) {
-      video_.Close();
-      return;
+    titan_.Close(), wall_.Close(), ribbon_.Close();
+    view_.screens.clear();
+    char num[8];
+    snprintf(num, sizeof(num), "%03d", star_);
+    // the titantron: a 2K one (one 16:9 picture in the square) put above its minitron, as WWE '12's are laid out
+    if (!sources_.titan.movie.empty())
+      titan_.Open(device_, sources_.titan, 320, 320, false, sources_.titan_2k ? &sources_.mini : nullptr);
+    if (!titan_.On()) {
+      Clip own;
+      own.name = std::string("WWE '12 ") + num + ".bik";
+      if (w12_->Read(std::string("movies/titantron/") + num + ".bik", own.movie))
+        titan_.Open(device_, own, 320, 320, false, nullptr);
     }
-    pixels_.assign(size_t(td.Width) * td.Height * 4, 0);
-    movie_at_ = -1;
+    // the wall and the ribbon: his, else the shown superstar's (WWE '12's pac\evt\evtmov.pac MVSW / MVSB M<number>)
+    if (evtmov12_.empty()) {
+      Bytes b;
+      if (w12_->Read("pac/evt/evtmov.pac", b))
+        for (auto &e : entrance_screens::Entries(std::move(b)))
+          if (e.group == "MVSW" || e.group == "MVSB")
+            evtmov12_[e.group + "/" + e.name] = std::move(e.data);
+      evtmov12_["-"] = {};  // (read once)
+    }
+    for (const bool ribbon : {false, true}) {
+      Screen &s = ribbon ? ribbon_ : wall_;
+      const Clip &his = ribbon ? sources_.ribbon : sources_.wall;
+      if (!his.movie.empty())
+        s.Open(device_, his, ribbon ? entrance_screens::kRibbonW : entrance_screens::kWall,
+               ribbon ? entrance_screens::kRibbonH : entrance_screens::kWall, ribbon, nullptr);
+      if (!s.On()) {
+        const auto it = evtmov12_.find(std::string(ribbon ? "MVSB" : "MVSW") + "/M" + num);
+        if (it != evtmov12_.end()) {
+          Clip own{it->second, 0, 256, std::string("WWE '12 ") + it->first};
+          s.Open(device_, own, ribbon ? entrance_screens::kRibbonW : entrance_screens::kWall,
+                 ribbon ? entrance_screens::kRibbonH : entrance_screens::kWall, ribbon, nullptr);
+        }
+      }
+    }
   }
-  // Its picture at the entrance's time (from the script's movie frame, looping), decoded up to there.
+  // Their pictures at the entrance's time (from the script's movie frame, looping), decoded up to there.
   void Movie() {
-    view_.screen = movie_on_ && video_.On() ? movie_srv_.Get() : nullptr;
-    if (!view_.screen)
+    view_.screens.clear();
+    if (!movie_on_)
       return;
-    const double per = video_.FrameTime() > 0 ? double(video_.FrameTime()) / 1e7 : 1.0 / 30;
-    const int frames = std::max(1, video_.Frames());
-    const int want = int(std::max(0.0f, time_ - float(movie_frame_)) / 60.0 / per) % frames;
-    if (want == movie_at_)
-      return;
-    if (want < movie_at_ || movie_at_ < 0)
-      video_.Rewind(), movie_at_ = -1;
-    for (int k = 0; movie_at_ < want && k < 120; ++k)  // (a long jump catches up over a few frames)
-      video_.Next(), ++movie_at_;
-    video_.Bgra(pixels_.data());
+    const double at = std::max(0.0, double(time_ - float(movie_frame_)) / 60.0);
     ID3D11DeviceContext *ctx = nullptr;
     device_->GetImmediateContext(&ctx);
-    ctx->UpdateSubresource(movie_tex_.Get(), 0, nullptr, pixels_.data(), UINT(video_.W() * 4), 0);
+    for (Screen *s : {&titan_, &wall_, &ribbon_})
+      s->At(at, ctx);
     ctx->Release();
+    if (titan_.On())
+      for (uint32_t m : {800u, 806u, 808u})
+        view_.screens[m] = titan_.Srv();
+    if (wall_.On())
+      view_.screens[803] = wall_.Srv();
+    if (ribbon_.On())
+      for (uint32_t m : {801u, 807u, 809u})
+        view_.screens[m] = ribbon_.Srv();
   }
 
   // The camera take played: the one picked, else one of the two at random (the game's way).
@@ -788,10 +929,12 @@ class Window {
       ImGui::TextDisabled("%s", fr ? "(lecture du thème...)" : "(reading the theme...)");
     else if (!song_error_.empty())
       ImGui::TextDisabled(fr ? "(pas de musique : %s)" : "(no music: %s)", song_error_.c_str());
-    else if (!video_.On())
+    else if (!titan_.On())
       ImGui::TextDisabled("%s", fr ? "(pas de titantron pour lui)" : "(no titantron for him)");
     else
-      ImGui::TextDisabled(fr ? "(vidéo : %s)" : "(video: %s)", movie_from_.c_str());
+      ImGui::TextDisabled(fr ? "(titantron : %s ; mur : %s ; ruban : %s)" : "(titantron: %s; wall: %s; ribbon: %s)",
+                          titan_.name.c_str(), wall_.On() ? wall_.name.c_str() : "-",
+                          ribbon_.On() ? ribbon_.name.c_str() : "-");
     // the arena
     if (ImGui::Checkbox(fr ? "Arène" : "Arena", &arena_on_))
       ShowArena();
@@ -858,13 +1001,9 @@ class Window {
   uint32_t music_frame_ = 100, movie_frame_ = 0;  // (the script's: when the music and the titantron start)
   bool music_on_ = true, movie_on_ = true;
   // the titantron
-  Video video_;
-  Bytes movie_bytes_;  // the ported superstar's own movie (his game's), else empty
-  std::string movie_name_, movie_from_;
-  Microsoft::WRL::ComPtr<ID3D11Texture2D> movie_tex_;
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> movie_srv_;
-  std::vector<uint8_t> pixels_;
-  int movie_at_ = -1;
+  Sources sources_;                          // the ported superstar's screens (his game's)
+  Screen titan_, wall_, ribbon_;             // what the arena's screens show (LoadMovie)
+  std::map<std::string, Bytes> evtmov12_;   // WWE '12's walls and ribbons ("MVSW/M139"...), read once
   std::string title_, error_, model_error_;
   std::vector<Star> stars_;
   yanm::Record body_, cam_;
