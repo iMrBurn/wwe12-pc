@@ -1729,3 +1729,18 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
   scripts d'entrée, avec recherche : « champ », « miz »...). Le mod a `entrance_champ=<n>` ; le jeu la met dans les deux
   cases de champion (`PutMoves`) et l'ajoute aux listes de Créer une entrée (« <NOM> CHAMP »). Hors jeu : 2K14 668 et
   656 lues (script, pistes, GMEV, PCE6). **Pas encore vu en jeu.**
+
+## Visages animés dans les entrées portées (1.3, 2026-11-11)
+
+- **Constat** (Obs Kenobs, Discord) : visage figé dans les entrées importées. Dans WWE '12, le catcheur (objet 0 de la
+  banque de pistes EVZ) a **95 pistes** par segment : corps (`Bip ...`), doigts et **34 pistes du visage** (noms hachés :
+  yeux, sourcils, bouche, mâchoire) ; la même entrée de **2K14 n'en a que 61, aucune du visage**, et ses fichiers ne les
+  rangent nulle part ailleurs.
+- **Maintenant** (`face12.h`, appelé par `star_port` pour l'entrée, l'entrée de champion et la scène de victoire, tous
+  jeux) : les pistes du visage d'une entrée de WWE '12 (celle du catcheur de base, sinon Cena 139) sont ajoutées à
+  chaque segment du catcheur (`xxxx0000`) qui n'en a pas (20 manquantes au moins), celles du segment de même nom (sinon
+  le premier), **copiées octet pour octet** et coupées à la durée du segment. Les pistes du catcheur gardent leurs
+  octets (seuls les décalages des flux et le POF0 sont refaits : une première version qui décodait et réécrivait les
+  pistes abîmait le corps, les clés 0x0004 de 2K14 étant inconnues de l'écrivain de `svr11_entrance`).
+- **Hors jeu** : Cena 139 et The Miz 218 de 2K14, donneur Ted DiBiase 261 : 61 → 95 pistes, corps identique (écart 0
+  sur toutes les pistes échantillonnées), durées des segments inchangées. **Pas encore vu en jeu.**
