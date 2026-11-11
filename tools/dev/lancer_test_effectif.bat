@@ -1,9 +1,9 @@
 @echo off
 rem Univers : emissions de moins de 15 catcheurs (wwe12_universe_min_roster, ici 8).
-rem Donnees isolees (Documents\wwe12_test_effectif) : une COPIE de la vraie sauvegarde y est faite
+rem Donnees isolees (Documents\wwe12_test) : une COPIE de la vraie sauvegarde y est faite
 rem au premier lancement, la vraie nest jamais touchee. Supprimer ce dossier pour repartir de zero.
 rem Journal dans effectif_test.log (lignes « [univers] roster »).
-set "TEST=%USERPROFILE%\Documents\wwe12_test_effectif"
+set "TEST=%USERPROFILE%\Documents\wwe12_test"
 if not exist "%TEST%\B13EBABEBABEBABE" (
   xcopy /e /i /q "%USERPROFILE%\Documents\wwe12\B13EBABEBABEBABE" "%TEST%\B13EBABEBABEBABE" >nul
   if exist "%USERPROFILE%\Documents\wwe12\achievements" xcopy /e /i /q "%USERPROFILE%\Documents\wwe12\achievements" "%TEST%\achievements" >nul
