@@ -1993,12 +1993,8 @@ class Page {
     Bytes out;
     std::string why;
     port_svr_arena::PortInfo info;
-    // (SvR 2008: its announce table's and steps' pictures from its bgEtc.pac, by name into the arena)
-    std::vector<svrfmt::BundleTexture> weapons;
-    if (Bytes etc; svr_pick_ >= 0 && svr_year_ == 2008 && svr_disc_.Read("pac/bg/bgEtc.pac", etc))
-      port_svr_arena::SvrWeaponPictures(etc, weapons);
-    if (!port_svr_arena::Port(svr_file_, shipped_, out, &why, &info, weapons.empty() ? nullptr : &weapons) ||
-        !other_.Load(out, &why)) {
+    // (not SvrWeaponPictures' table and steps pictures: the game takes the weapons' own, seen 2026-11-11)
+    if (!port_svr_arena::Port(svr_file_, shipped_, out, &why, &info) || !other_.Load(out, &why)) {
       port_note_ = (fr ? "Portage impossible : " : "Can't port it: ") + why;
       return;
     }

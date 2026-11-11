@@ -733,7 +733,10 @@ places ×10, d'après le code de Kaiko).
   identique ; `ji_top` de WWE '12 = devant « W / WWE HD ». Des arènes de WWE '12 (RAW, SmackDown, bg15, 17-19, 23)
   ont leur propre `ji_bl` dans leur paquet : le jeu cherche ces images d'abord dans l'arène. `SvrWeaponPictures` met
   les `ji_*` et `ar_stair0-2` de SvR 2008 dans l'arène portée (paramètre `extra` de `Port`). Les marches : aucune arène
-  de WWE '12 ne le fait, à vérifier en jeu.
+  de WWE '12 ne le fait, à vérifier en jeu. **Vu en jeu : sans effet** (images bien dans l'arène, table et marches
+  inchangées : les armes prennent les images de leur propre entrée) → retiré de l'arène (place). Le jeu ne cherche
+  pas WPON par l'annuaire (`sub_827F29F0` : seul `/STGE/EFFC` de bgEtc y passe) : trouver comment il charge les
+  armes, puis servir celles de SvR par arène (code du jeu). `ji_bl` des arènes RAW / SmackDown… : autre usage.
 - **Planche de contrôle SvR 2008 / 2009 (2026-11-11)** : `tools/dev/svr_arenas_sheet.py "<iso>" 2008` lit le disque du
   joueur, sans rien porter, et écrit `work/svr_check/svr2008_arenas.png` : une ligne par arène (bannière, écran VS
   recomposé, plus grande image de la plaque d'entrée, image de la vidéo de logo via ffmpeg). Pour comparer avec Xenia.
