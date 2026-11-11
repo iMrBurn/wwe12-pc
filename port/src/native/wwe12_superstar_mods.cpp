@@ -113,6 +113,13 @@ std::map<uint32_t, uint64_t> g_applied;
 // wasn't saved since (closed or frozen before): made again. Taken for an edit made in the game, Seth Rollins' stale
 // copy had no entrance, and the game skipped it, 2026-11-04)
 std::map<uint32_t, uint64_t> g_applied_before;
+// The same for the added superstars' records (Documents\wwe12\records_applied.txt, "<number>=<hash>:<before>"): the
+// save's copy made again only when the mod's record changed since, when the copy is another superstar's, or when it is
+// still what it held before it was made (the game not saved since). Made again whenever it differed, the attributes
+// edited in the game were undone at each select screen and Universe menu (a player, 2026-11-11: "brands now get saved
+// in universe mode but attributes still dont get saved at all").
+fs::path g_rec_applied_file;
+std::map<uint32_t, uint64_t> g_rec_applied, g_rec_before;
 std::map<uint32_t, Bytes> g_originals;  // a moves mod's superstar -> the game's record, as the save keeps it
 // Added superstars whose roster copy wasn't theirs (another name at +42) when RemakeAddedRecords made it again: their
 // moves copy, in the same place, is another's too (made again at the select screen, then forgotten).
@@ -664,6 +671,26 @@ std::map<uint32_t, uint32_t> g_attire_text_at;   // number -> its copy in guest 
 void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root,
                              const fs::path &mods) {
   g_relations_file = user_root / "relations_cleared.txt";
+  {  // (the added superstars' records as last made in the save, RemakeAddedRecords)
+    g_rec_applied_file = user_root / "records_applied.txt";
+    g_rec_applied.clear();
+    g_rec_before.clear();
+    std::ifstream a(g_rec_applied_file);
+    for (std::string line; std::getline(a, line);)
+      if (const size_t eq = line.find('='); eq != std::string::npos) {
+        const uint32_t id = uint32_t(atoi(line.c_str()));
+        g_rec_applied[id] = std::strtoull(line.c_str() + eq + 1, nullptr, 10);
+        if (const size_t colon = line.find(':', eq); colon != std::string::npos)
+          g_rec_before[id] = std::strtoull(line.c_str() + colon + 1, nullptr, 10);
+      }
+    a.close();
+    // (the save written after: what the copies held before is past, as for the moves below)
+    std::error_code e2;
+    const fs::path save = user_root / "B13EBABEBABEBABE" / "54510890" / "00000001" / "SaveData.dat" / "SaveData.Dat";
+    if (!g_rec_before.empty() && fs::exists(save, e2) && fs::exists(g_rec_applied_file, e2) &&
+        fs::last_write_time(save, e2) > fs::last_write_time(g_rec_applied_file, e2))
+      g_rec_before.clear();
+  }
   // (the VIDEOS page's titantrons of the game's superstars, mods/movies/titantron/NNN.bik: each has its own minitron)
   {
     g_mod_minitrons.clear();
@@ -1881,13 +1908,53 @@ REXCVAR_DEFINE_BOOL(wwe12_superstar_roster_fix, true, "WWE12",
 // The added superstars' copies of their records made again when they differ, unlocked (the select screen's hook below
 // and the Universe menu, through Wwe12ForgetAddedRelations: a player going straight to the Universe didn't see an
 // added superstar until he had been to the select screen once - AJ Styles, test of 2026-11-09).
+void WriteRecAppliedFile() {
+  std::string text;
+  for (const auto &[id, h] : g_rec_applied) {
+    text += std::to_string(id) + "=" + std::to_string(h);
+    if (const auto b = g_rec_before.find(id); b != g_rec_before.end())
+      text += ":" + std::to_string(b->second);
+    text += "\n";
+  }
+  if (!g_rec_applied_file.empty())
+    WriteHost(g_rec_applied_file, Bytes(text.begin(), text.end()));
+}
+
 void RemakeAddedRecords() {
   const uint32_t roster = REXCVAR_GET(wwe12_superstar_roster_fix) ? bd::mem::load<uint32_t>(0x8317FA08) : 0;
+  bool wrote = false;
   for (const auto &[id, rec] : g_records) {
     const uint32_t index = id < 373 ? bd::mem::load<uint16_t>(0x8307B5E0 + id * 2) : 0xFFFF;
     if (!roster || index >= 373)
       continue;
     const uint32_t at = roster + index * 286;
+    // (the mod's record and the save's copy hashed alike: its brand and "unlocked" byte left out)
+    uint64_t h = 0xCBF29CE484222325ull, now = 0xCBF29CE484222325ull;
+    for (uint32_t k = 0; k < 286 && k < rec.size(); ++k)
+      if (k != 247 && (k < 24 || k >= 28)) {
+        h = (h ^ rec[k]) * 0x100000001B3ull;
+        now = (now ^ bd::mem::load<uint8_t>(at + k)) * 0x100000001B3ull;
+      }
+    bool his_now = true;  // (his name +42..+73)
+    for (uint32_t k = 42; k < 74 && his_now; ++k)
+      his_now = bd::mem::load<uint8_t>(at + k) == rec[k];
+    // The player's copy: his, the mod's record the one last made (none noted yet: the copy the earlier versions made
+    // at the last start, edited since), and not the copy as it was before it was last made (the game closed unsaved):
+    // kept - his attributes, size, abilities edited in the game -, unlocked only.
+    const auto applied = g_rec_applied.find(id);
+    const auto before = g_rec_before.find(id);
+    if (his_now && (applied == g_rec_applied.end() || applied->second == h) &&
+        !(before != g_rec_before.end() && before->second == now)) {
+      if (!bd::mem::load<uint8_t>(at + 247))
+        bd::mem::store<uint8_t>(at + 247, 1);
+      if (applied == g_rec_applied.end()) {
+        g_rec_applied[id] = h;
+        wrote = true;
+      }
+      continue;
+    }
+    if (applied == g_rec_applied.end() || applied->second != h || before == g_rec_before.end() || before->second != now)
+      g_rec_applied[id] = h, g_rec_before[id] = now, wrote = true;
     // (its brand, +24..+27 - the Universe reads +27, sub_826D2B50; EDIT BRAND and the transfers write there - is the
     // player's: compared, it made the copy again with the pack's brand at the next exhibition, Discord 2026-11-05,
     // ChrisX's Goldberg always back on SmackDown; found by the Universe conversation)
@@ -1923,6 +1990,8 @@ void RemakeAddedRecords() {
                      : fmt::format("first diff at +{}: save {:02X} pack {:02X}", first, was, rec[first]),
                 brand[0], brand[1], brand[2], brand[3], his ? "kept, the player's" : "the pack's: a first install");
   }
+  if (wrote)
+    WriteRecAppliedFile();
 }
 
 void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base) {
