@@ -21,6 +21,7 @@
 
 #include "arena_page.h"
 #include "dlc_stars.h"
+#include "entrance_preview.h"
 #include "game_disc.h"
 #include "game_discs.h"
 #include "game_icons.h"
@@ -187,6 +188,16 @@ class Page {
                                        : "Choose the WWE '12 superstar who gets them (step 4).");
     else
       ImGui::TextColored(green, "%s", fr ? "Tout est prêt." : "All set.");
+    watch_.Draw(fr);  // (the entrance's full preview, a window, while open)
+    // (test aid: WWE12_MM_WATCH=<seconds>[,<png>] with WWE12_MM_PORT: his entrance's full preview opened once it's
+    // read, paused there; with a file, the picture saved there and what was read beside it)
+    if (const char *w = getenv("WWE12_MM_WATCH"); w && !watch_tested_ && !picking_ && HasEntrance()) {
+      watch_tested_ = true;
+      Watch();
+      const char *comma = strchr(w, ',');
+      if (comma)
+        watch_.TestShot(float(atof(w)), comma + 1);
+    }
   }
 
  private:
@@ -724,6 +735,24 @@ class Page {
                                  : "(his moves, entrance, victory and theme: a few seconds)");
   }
 
+  // His entrance's full preview (entrance_preview.h), on the WWE '12 superstar who gets it (else the one of his name,
+  // else the first).
+  void Watch() {
+    if (!disc12_ || !HasEntrance())
+      return;
+    std::vector<entrance_preview::Star> stars;
+    for (const auto &st : stars12_)
+      stars.push_back({st.id, st.name});
+    int on = target_ >= 0 ? stars12_[size_t(target_)].id : 0;
+    for (size_t i = 0; !on && i < stars12_.size(); ++i)
+      if (Key(stars12_[i].name) == Key(pick_name_))
+        on = stars12_[i].id;
+    if (!on && !stars12_.empty())
+      on = stars12_[0].id;
+    watch_.Open(device_, *disc12_, parts_.entrance, parts_.entrance_number,
+                pick_name_ + " (" + star_port::GameName(game_) + ")", on, stars);
+  }
+
   // Step 3: what to take, each with whether it can be.
   void StepTake(bool fr) {
     const char *from = star_port::GameName(game_);
@@ -749,6 +778,14 @@ class Page {
              int(std::count_if(parts_.entrance.begin(), parts_.entrance.end(), [](const auto &p) { return p.kind == "EVP"; })));
     Choice(HasEntrance(), use_entrance_, HasEntrance() ? label : (fr ? "Son entrée" : "His entrance"),
            fr ? "pas d'entrée à lui trouvée dans son jeu" : "no entrance of his found in his game");
+    if (HasEntrance()) {
+      ImGui::Indent(24);
+      if (ImGui::Button(fr ? "Regarder l'entrée" : "Watch the entrance"))
+        Watch();
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", fr ? "(toute l'entrée en 3D, avant de l'ajouter)" : "(the whole entrance in 3D, before adding it)");
+      ImGui::Unindent(24);
+    }
     if (use_entrance_ && HasEntrance() && parts_.one_take)
       ImGui::TextDisabled("%s", fr ? "(entrée de 2K15 d'un seul tenant : sortie de l'intro cachée de WWE '12, avec la foule et l'annonceur)"
                                    : "(a 2K15 entrance in one piece: moved out of WWE '12's hidden intro, with the crowd and the ring announcer)");
@@ -1036,6 +1073,8 @@ class Page {
   star_port::Parts parts_;     // what can be taken of him
   star_port::Music12 music12_;
   star_port::ChampChoice champ_;  // his champion's entrance
+  entrance_preview::Window watch_;  // his entrance's full preview
+  bool watch_tested_ = false;
   theme_source::Theme theme_;  // his theme (theme_source.h), stream empty if none
   std::vector<theme_source::Theme> themes_;
   int theme_pick_ = 0;
