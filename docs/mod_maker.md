@@ -715,6 +715,8 @@ places ×10, d'après le code de Kaiko).
   la plaque est bien dessinée où demandé (x 78-1746 sur 1920, en bas ; les dessins 2D ont y inversé à 1280 × 720),
   mais le bois n'occupe que sa moitié gauche : l'image de l'animation de SvR porte une **bande noire à 50 %** (alpha
   ≤ 128) sur toute la largeur derrière la plaque, que le recadrage (alpha > 8) gardait → recadrage sur alpha > 160.
+  Vu en jeu ensuite : bois agrandi, nom dedans (68 % de large). Demande de l'utilisateur (même place que Xenia pour
+  toutes les arènes) : plaque SvR 2008 posée à x 0, 95 % de la largeur, 70-96 % de la hauteur, sans `fit`.
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
   (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le

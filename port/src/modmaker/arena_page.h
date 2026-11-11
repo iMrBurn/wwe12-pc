@@ -2110,10 +2110,13 @@ class Page {
                 f = port_svr_arena::detail::Crop(f, x0 * f.w / w0, y0 * f.h / h0, std::max(1, (x1 - x0 + 1) * f.w / w0),
                                                  std::max(1, (y1 - y0 + 1) * f.h / h0));
           }
-          plate.w = 1856;
-          plate.h = plate.w * float(plate.img.h) / float(plate.img.w);
-          plate.x = t.name_x - 0.64f * plate.w;
-          plate.y = t.name_y - 0.49f * plate.h;
+          // (where SvR 2008 shows it, on Xenia: from the left edge over 95 % of the width, 70 % to 96 % of the
+          // height; the name at 62 % across - WWE '12 writes it at about 60 %, 86 % down: in it; the user's wish for
+          // every arena, 2026-11-11)
+          plate.x = 0;
+          plate.w = 0.95f * 1920;
+          plate.y = 0.70f * 1080;
+          plate.h = 0.26f * 1080;
         }
         port_svr_arena::Plate2K city = plate;
         city.x += t.city_x - t.name_x;
@@ -2145,7 +2148,8 @@ class Page {
           }
         };
         fit(city, t.city_x, t.city_y);
-        fit(plate, t.name_x, t.name_y);
+        if (svr_year_ != 2008)  // (SvR 2008's at its own place, the screen's edge included)
+          fit(plate, t.name_x, t.name_y);
         if (port_svr_arena::EtexWearing(evtgd12, svrfmt::Image(), 3.4, svrfmt::Image(), etex_, city, plate))
           port_note_ += fr ? " Avec ses plaques d'entrée." : " With its entrance plates.";
       }
