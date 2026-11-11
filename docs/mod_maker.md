@@ -658,7 +658,11 @@ places ×10, d'après le code de Kaiko).
   (Judgment Day 2008 puis 2009) : arène rechargée au 2e match (corrigé), écran VS mieux, barrière et tapis OK. Les vidéos
   de logo jouées avant les entrées sont `pac/movie.pac` (2008) / `pac/evt/_EvtMov.pac` (2009) `MOV /M0NN` (numéro de
   l'arène vérifié : 1 RAW, 9 Royal Rumble, 13 Judgment Day ; Bink 1 256 × 256 sans alpha, images ≤ 34 Ko) → prises telles
-  quelles comme `arena/transition.bik` (à vérifier en jeu). 2008 a aussi `ARMV/<show>` (320 × 320 avec alpha, 15-30
+  quelles comme `arena/transition.bik`, puis **retiré** : l'utilisateur a vérifié sur Xenia que SvR 2008 n'a pas de
+  transition propre, seulement le logo W (`pac/movie.pac` `MOV /M0we`, Bink 1 256 × 256, 30 images) : c'est sa
+  transition maintenant ; SvR 2009 garde le logo WWE (2D). Bannière (écran de choix) : la photo de l'écran de choix
+  d'arène du jeu, SvR 2008 `menuHD.pac` MENU/STTX (comme 2007, `Svr07Banner`), SvR 2009 `ScrLayHD.pac` SCRL/LSSE 7001
+  `arena_<show>` 256 × 256 encadrées (`Svr09Banner`, ordre des arènes déduit des noms `mh_<show>_bg`). 2008 a aussi `ARMV/<show>` (320 × 320 avec alpha, 15-30
   images : des volets de transition), pas pris. Écrans : 801 (les deux grands écrans de côté de Judgment Day) était
   « arena_movie », que WWE '12 n'affiche pas pendant les entrées (2008 : carrés vides, 2009 : logo JD) → maintenant
   titantron (coupé comme 800 / 803) et renuméroté 808 (sinon 806). Table des commentateurs et marches : objets « arme »

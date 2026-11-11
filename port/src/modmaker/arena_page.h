@@ -2025,8 +2025,19 @@ class Page {
     // Its own banner from SvR 2011's menus (from the ISO), else the base's.
     Bytes matchhd, menuhd07;
     svrfmt::Image img;
-    if (svr_pick_ >= 0 && svr_disc_.Read("pac/menu/MatchHD.pac", matchhd) &&
-        port_svr_arena::Banner(matchhd, svr_pick_, img, svr_year_)) {
+    // (SvR 2008 / 2009: their arena select screen's photo, as SvR 2007's)
+    Bytes select_pics;
+    if (svr_pick_ >= 0)
+      svr_disc_.Read("pac/menu/MatchHD.pac", matchhd);
+    if (svr_pick_ >= 0 &&
+        ((svr_year_ == 2008 && svr_disc_.Read("pac/menu/menuHD.pac", select_pics) &&
+          port_svr_arena::Svr07Banner(select_pics, svr_pick_, img)) ||
+         (svr_year_ == 2009 && svr_disc_.Read("pac/menu/ScrLayHD.pac", select_pics) &&
+          port_svr_arena::Svr09Banner(select_pics, svr_pick_, img)))) {
+      SetBanner(img);
+      banner_custom_ = true;
+      StageCover(fr, img);
+    } else if (svr_pick_ >= 0 && !matchhd.empty() && port_svr_arena::Banner(matchhd, svr_pick_, img, svr_year_)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
       StageCover(fr, img);
@@ -2170,18 +2181,15 @@ class Page {
         (!evtgd12.empty() || disc_->Read("pac/evt/evtgdhd.pac", evtgd12)) &&
         port13::Etex(evtgd12, kSlots[slot_].number, etex_))
       port_note_ += fr ? " Avec les plaques d'entrée de son arène de base." : " With its base arena's entrance plates.";
-    // SvR 2008 / 2009: the arena's logo movie those games play before the entrances (2008: pac/movie.pac, 2009:
-    // pac/evt/_EvtMov.pac, "MOV /M0NN" by the arena's number: Bink 1 256 x 256, 4-8 s, frames of 34 KB at most), as
-    // its transition, in place of SvR 2009's WWE logo (the user missed them, 2026-11-11).
-    if (old_svr && (svr_year_ == 2008 || svr_year_ == 2009)) {
+    // SvR 2008: no transition of its own, the W logo (pac/movie.pac "MOV /M0we": Bink 1 256 x 256, 30 frames, seen in
+    // the game by the user, 2026-11-11). (Its "MOV /M0NN" are the arenas' logo movies, 4-8 s, no transition; SvR
+    // 2009's the same in pac/evt/_EvtMov.pac, its transition the WWE logo taken above.)
+    if (old_svr && svr_year_ == 2008) {
       Bytes pac;
       svrfmt::Archive a;
-      char name[8];
-      snprintf(name, sizeof(name), "M%03d", svr_pick_);
-      if (svr_disc_.Read(svr_year_ == 2008 ? "pac/movie.pac" : "pac/evt/_EvtMov.pac", pac) &&
-          svrfmt::ArchiveOpen(pac, a, nullptr))
+      if (svr_disc_.Read("pac/movie.pac", pac) && svrfmt::ArchiveOpen(pac, a, nullptr))
         for (auto &k : a.root.kids) {
-          if (k.group != "MOV " || k.name != name)
+          if (k.group != "MOV " || k.name != "M0we")
             continue;
           Bytes bik = svrfmt::ArchiveData(k);
           const size_t size = bik.size() >= 16 && memcmp(bik.data(), "BIK", 3) == 0
@@ -2191,7 +2199,7 @@ class Page {
           if (size && size <= bik.size() && largest <= 40000) {
             bik.resize(size);
             movie_ = std::move(bik);
-            port_note_ += fr ? " Avec la vidéo de son logo avant les entrées." : " With its logo movie before the entrances.";
+            port_note_ += fr ? " Avec sa transition (le logo W de SvR 2008)." : " With its transition (SvR 2008's W logo).";
           }
           break;
         }

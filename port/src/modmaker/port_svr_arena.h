@@ -871,6 +871,41 @@ inline bool Svr07Banner(const Bytes &menuhd, int n, svrfmt::Image &out) {
   return false;
 }
 
+// SvR 2009's arena `n` banner: its photo on the arena select screen (menu/ScrLayHD.pac SCRL/LSSE 7001, "arena_<show>"
+// 256 x 256 in a thin frame; the order of the arenas from their VS screens' names, mh_sd_bg, mh_raw_bg...), inside its
+// frame, a 2:1 band of it a little above the middle (the user wanted those pictures on WWE '12's arena select,
+// 2026-11-11).
+inline bool Svr09Banner(const Bytes &scrlay, int n, svrfmt::Image &out) {
+  static constexpr const char *kPhotos[] = {"arena_smack",  "arena_raw",    "arena_ecw",   "arena_troop",   "arena_summer",
+                                            "arena_unfor",  "arena_nomercy", "arena_survive", "arena_armage", "arena_rumble",
+                                            "arena_noway",  "arena_WM24",   "arena_backlash", "arena_judge",  "arena_ven",
+                                            "arena_GAB",    "arena_SNME",   "arena_ONS",   "arena_cybers"};
+  if (n < 0 || n >= int(std::size(kPhotos)))
+    return false;
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(scrlay, a, nullptr))
+    return false;
+  for (auto &k : a.root.kids)
+    if (k.group == "SCRL" && k.name == "LSSE" && svrfmt::ArchiveExpand(k))
+      for (auto &c : k.kids) {
+        std::vector<svrfmt::BundleTexture> texs;
+        if (c.id != 7001 || !svrfmt::BundleRead(svrfmt::ArchiveData(c), texs))
+          continue;
+        for (const auto &t : texs) {
+          svrfmt::Image img;
+          if (t.name != kPhotos[n] || !svrfmt::DdsDecode(t.data, img) || img.w < 64 || img.h < 64)
+            continue;
+          const int m = img.w / 32, w = img.w - 2 * m, ch = std::min(img.h - 2 * m, w / 2), y0 = m + (img.h - 2 * m - ch) / 3;
+          svrfmt::Image band{w, ch, std::vector<uint8_t>(size_t(w) * ch * 4)};
+          for (int y = 0; y < ch; ++y)
+            memcpy(&band.rgba[size_t(y) * w * 4], &img.rgba[(size_t(y0 + y) * img.w + m) * 4], size_t(w) * 4);
+          out = svrfmt::Resize(band, 256, 128);
+          return true;
+        }
+      }
+  return false;
+}
+
 // The arena's banner in SvR 2011's menu/MatchHD.pac.
 namespace detail {
 inline svrfmt::ArcNode *Pictures(svrfmt::ArcNode &n);
