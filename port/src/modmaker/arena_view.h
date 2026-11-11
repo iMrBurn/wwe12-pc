@@ -1,8 +1,8 @@
 // Mod Maker: an arena in 3D (Direct3D 11, drawn into a picture the page shows). Its models (JBOY entries of the
 // arena's PACH, read with Kaiko's svrfmt/jboy) are drawn where they are stored: WWE '12 arena models hold their
 // vertices in arena space, in cm, y pointing down. The flag table (entry 50001, one line per model id, see the
-// Japanese help at its end) says how the game draws each: "r" also mirrored across x = 0, "a" additive ("z", no
-// depth write - the hazes - drawn so too), "m(n)"
+// Japanese help at its end) says how the game draws each: "r" also mirrored across x = 0, "a" additive ("z" without "a",
+// a haze: not drawn), "m(n)"
 // placed by an animation (light rigs, beams: left out, they sit at the centre until the game moves them), "e"
 // entrance only, "g" match only. Pictures come from the arena's texture packages (sampDiffusePrm = the slot in the
 // model's texture list); light maps and shader effects are not drawn: it's a preview, not the game's look.
@@ -36,7 +36,7 @@ using Microsoft::WRL::ComPtr;
 using svrfmt::Bytes;
 
 struct Flags {
-  bool mirrored = false, additive = false, animated = false, entrance_only = false, match_only = false;
+  bool mirrored = false, additive = false, animated = false, entrance_only = false, match_only = false, haze = false;
 };
 
 // Entry 50001: "<id> <flags>" lines.
@@ -65,8 +65,10 @@ inline std::map<uint32_t, Flags> ReadFlags(const Bytes &text) {
       const std::string w = line.substr(i, j - i);
       if (w == "r")
         f.mirrored = true;
-      else if (w == "a" || w == "z")  // ("z": no depth write - hazes: SvR 2008 Judgment Day's mci_moya, 71 m across,
-        f.additive = true;            // drawn solid it closed the arena in a blue dome, 2026-11-11; glows as additive)
+      else if (w == "a")
+        f.additive = true;
+      else if (w == "z")  // (no depth write: glows, with "a", and hazes, without: SvR 2008 Judgment Day's mci_moya,
+        f.haze = true;    // 71 m across, a blue dome round the arena drawn solid, a white veil as a glow; 2026-11-11)
       else if (w == "e")
         f.entrance_only = true;
       else if (w == "g")
@@ -271,7 +273,7 @@ class View {
       ctx_->OMSetBlendState(pass ? blend_add_.Get() : blend_alpha_.Get(), nullptr, 0xFFFFFFFF);
       ctx_->OMSetDepthStencilState(pass ? depth_read_.Get() : depth_write_.Get(), 0);
       for (const auto &d : draws_) {
-        if (d.flags.additive != (pass == 1))
+        if (d.flags.additive != (pass == 1) || (d.flags.haze && !d.flags.additive))  // (hazes: not drawn)
           continue;
         if (d.skel >= 0 && skels_[size_t(d.skel)].person != 0 && !show_others)
           continue;
