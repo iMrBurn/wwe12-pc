@@ -722,6 +722,11 @@ places ×10, d'après le code de Kaiko).
   la déplacer vers le texte de WWE '12 ; image entière (bande sombre comprise, comme SvR la dessine), pas de `fit`.
   Vu en jeu : bord gauche, nom dedans, mais 76 % de large (Xenia 95 %, rapport 1,25 = 2,5 / 2) : SvR 2008 dessine
   ses plaques sur un écran de 512 de large (comme l'animation du logo) → échelle horizontale 2,5 au lieu de 2.
+  **Vu en jeu (14 h 55) : plaque de Judgment Day comme Xenia** (bord gauche → ~95 %, nom dedans).
+  **État SvR 2008 (2026-11-11 soir)** : fait et vu en jeu = arène rechargée, écran VS (fond + plaque pleine largeur),
+  titantrons 808 + minitron 806, tapis (`yBG_BumpMap` + `samp*Prm`), foule grise, plaque de nom, bannière, transition
+  W. Reste : marches et table des commentateurs (`bgEtc.pac`, communs), teinte orange des entrées (lumière de la base ?).
+  Aperçu 3D : les brumes (`z` sans `a`) ne sont plus dessinées.
 - **Planche de contrôle SvR 2008 / 2009 (2026-11-11)** : `tools/dev/svr_arenas_sheet.py "<iso>" 2008` lit le disque du
   joueur, sans rien porter, et écrit `work/svr_check/svr2008_arenas.png` : une ligne par arène (bannière, écran VS
   recomposé, plus grande image de la plaque d'entrée, image de la vidéo de logo via ffmpeg). Pour comparer avec Xenia.
