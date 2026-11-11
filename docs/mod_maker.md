@@ -707,6 +707,11 @@ places ×10, d'après le code de Kaiko).
   Hell in a Cell et RAW (moyenne 76 35 34), violette dans bg13 → pour les arènes SvR elle est copiée **en gris** (même
   luminosité). Les 12 jeux de lumières cherchés par le jeu (10-14, 20, 30, 31, 100, 110, 115, 500) sont les mêmes
   chez Hell in a Cell et RAW (pas la cause).
+- **SvR 2008, 5e essai (2026-11-11 14 h 20, vu en jeu)** : plus de plantage, foule sans rouge (lightmaps grises), tapis
+  lisse (paramètres `samp*Prm`). **Plaque de nom toujours mal placée** : demandé x 16, w 1764 (après `fit`) → affiché
+  x ≈ 285, w ≈ 915 (texte 915-1370) ; même rendu qu'avec la plaque non recadrée de 1856 → la plaque passe par le
+  feuilletage (`Ag2dFlipBook` / `Ag2dPlaceLayer`, couche w = w / 3 / ps) et le jeu ne la dessine pas à la taille
+  demandée (≈ moitié). À mesurer (RenderDoc pendant une entrée) avant de corriger.
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
   (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le
