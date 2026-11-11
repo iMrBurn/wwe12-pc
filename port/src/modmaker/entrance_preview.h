@@ -7,7 +7,8 @@
 // the script). A record has a block per part of the entrance and per take, named "PPPPYYYY" (PPPP the part: 0000,
 // 0005, 0010...; YYYY 0000 the body, a camera has two takes 0000 / 0001, the game plays one of them at random). Part 0
 // is the hidden intro (the titantron plays, the superstar comes out after it). Tracks are 60 frames a second, positions
-// in cm in the arena's space (y down).
+// in cm (y down) in the arena's space but with the ring mat at y 0 (moved 1.2 m up into the arena: cam_y_ / body_y_).
+// The camera: eye #5edfdf5f, target #70d146a5 (both positions), field of view #70d304a4 (its third value, vertical).
 #pragma once
 
 #include <algorithm>
@@ -18,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "arena_page.h"
 #include "arena_view.h"
 #include "entrance13.h"
 #include "game_disc.h"
@@ -53,7 +55,8 @@ class Window {
     SetStar(star);
     time_ = 0;
     playing_ = true;
-    posed_ = -1;
+    use_cam_ = true;
+    PickTake();
   }
   bool IsOpen() const { return open_; }
   // Test aid: paused at `seconds`, the picture saved to `png` (and what was read to <png>.txt), once.
@@ -62,6 +65,19 @@ class Window {
     playing_ = false;
     shot_ = png;
     shot_wait_ = 3;
+    // (WWE12_MM_WATCH_ARENA=<stage number, -1 none>, WWE12_MM_WATCH_TAKE=<0 A, 1 B>, WWE12_MM_WATCH_FREE: no camera)
+    if (const char *a = getenv("WWE12_MM_WATCH_ARENA"))
+      arena_on_ = atoi(a) >= 0, arena_ = std::max(0, atoi(a)), ShowArena();
+    if (const char *t = getenv("WWE12_MM_WATCH_TAKE"))
+      take_choice_ = std::clamp(atoi(t), 0, 1), PickTake();
+    // (and WWE12_MM_WATCH_CAMY / _BODYY: other heights for the camera / him, in cm, to try)
+    if (const char *y = getenv("WWE12_MM_WATCH_CAMY"))
+      cam_y_ = float(atof(y));
+    if (const char *y = getenv("WWE12_MM_WATCH_BODYY"))
+      body_y_ = float(atof(y));
+    if (getenv("WWE12_MM_WATCH_FREE"))
+      use_cam_ = false, view_.fov = 0.9f;
+    posed_ = -1;
   }
   void Close() { open_ = false; }
 
@@ -183,11 +199,48 @@ class Window {
           break;
         }
     view_.keep_skin = true;
-    view_.Light();
     loaded_ = view_.Load(device_, f, &model_error_, section);
     if (loaded_)
       view_.SetAngles(3.14159265f, 0.15f, 520);
+    view_.Light();
+    arena_shown_ = -1;  // (Load took everything away: the arena comes back)
+    ShowArena();
     posed_ = -1;
+  }
+
+  // The arena drawn around him (WWE '12's pac\bg\bgNN.pac, its entrance objects: stage, ramp), or none: as person 2,
+  // without skeletons (not posed).
+  void ShowArena() {
+    const int want = arena_on_ ? arena_ : -1;
+    if (!loaded_ || want == arena_shown_)
+      return;
+    if (arena_shown_ >= 0) {  // (an arena in the view: all of it loaded again, View::Remove only takes posed models away)
+      const int id = star_;
+      star_ = -1;
+      SetStar(id);
+      return;
+    }
+    arena_shown_ = want;
+    arena_error_.clear();
+    if (want < 0) {
+      view_.Light();
+      return;
+    }
+    if (arena_file_for_ != want) {
+      arena_file_.clear();
+      arena_file_for_ = want;
+      char rel[32];
+      snprintf(rel, sizeof(rel), "pac/bg/bg%02d.pac", want);
+      if (!w12_->Read(rel, arena_file_))
+        arena_error_ = "no arena file";
+    }
+    view_.keep_skin = false;
+    if (arena_error_.empty() && !view_.Add(arena_file_, &arena_error_, 0, 2) && arena_error_.empty())
+      arena_error_ = "not readable";
+    view_.keep_skin = true;
+    view_.show_entrance = true;
+    for (int c = 0; c < 4; ++c)
+      view_.background[c] = c == 3 ? 1.0f : 0.015f;
   }
 
   // The part playing at `time` (its index) and the frame in it.
@@ -209,6 +262,8 @@ class Window {
           continue;
         arena_view::BonePose bp;
         yanm::Sample(t, f, bp.has_rot, bp.rot, bp.has_pos, bp.pos);
+        if (t.name == "Bip" && bp.has_pos)
+          bp.pos[1] += body_y_;
         pose[t.name] = bp;
       }
     return pose;
@@ -219,6 +274,9 @@ class Window {
     FILE *f = fopen(file.c_str(), "w");
     if (!f)
       return;
+    fprintf(f, "at %.1f: eye %.1f %.1f %.1f target %.1f %.1f %.1f fov %.3f %.3f %.3f hips %.1f %.1f %.1f\n", time_,
+            last_eye_[0], last_eye_[1], last_eye_[2], last_tgt_[0], last_tgt_[1], last_tgt_[2], last_fov_[0],
+            last_fov_[1], last_fov_[2], view_.Hips()[0], view_.Hips()[1], view_.Hips()[2]);
     fprintf(f, "star %d loaded %d %s\ntotal %d frames, %zu parts\n", star_, int(loaded_), model_error_.c_str(), total_,
             parts_.size());
     for (const auto &p : parts_) {
@@ -239,6 +297,63 @@ class Window {
       }
     }
     fclose(f);
+  }
+
+  // The camera take played: the one picked, else one of the two at random (the game's way).
+  void PickTake() {
+    take_ = take_choice_ >= 0 ? take_choice_ : int(GetTickCount64() & 1);
+    posed_ = -1;
+  }
+
+  // The entrance's camera at frame f of part p (its take, else the other): eye, target, field of view. False if the
+  // part has none. (2K16 / 2K17 name the tracks with another last digit: matched without it.)
+  bool Camera(const Part &p, float f) {
+    const yanm::Block *b = p.cam[take_] ? p.cam[take_] : p.cam[1 - take_];
+    if (!b)
+      return false;
+    auto find = [&](const char *h) -> const yanm::Track * {
+      const yanm::Track *alike = nullptr;
+      for (const auto &t : b->tracks)
+        if (t.name == h)
+          return &t;
+        else if (!alike && t.name.size() == 9 && t.name.compare(0, 8, h, 8) == 0)
+          alike = &t;
+      return alike;
+    };
+    const yanm::Track *eye = find("#5edfdf5f"), *tgt = find("#70d146a5"), *fov = find("#70d304a4");
+    if (!eye)
+      return false;
+    bool hr = false, hp = false;
+    yanm::Q q{0, 0, 0, 1};
+    yanm::V e{0, 0, 0}, t{0, 0, 0}, v{0, 0, 0};
+    yanm::Sample(*eye, f, hr, q, hp, e);
+    if (!hp)
+      return false;
+    if (tgt) {
+      yanm::Sample(*tgt, f, hr, q, hp, t);
+      if (!hp)
+        tgt = nullptr;
+    }
+    if (!tgt)
+      for (int c = 0; c < 3; ++c)
+        t[size_t(c)] = view_.Hips()[c];
+    e[1] += cam_y_, t[1] += cam_y_;
+    const float d[3] = {e[0] - t[0], e[1] - t[1], e[2] - t[2]};
+    const float dist = std::max(1.0f, std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
+    const float target[3] = {t[0], t[1], t[2]};
+    for (int c = 0; c < 3; ++c)
+      last_eye_[c] = e[size_t(c)], last_tgt_[c] = t[size_t(c)];
+    view_.SetTarget(target);
+    view_.SetAngles(std::atan2(d[0], d[2]), std::asin(std::clamp(-d[1] / dist, -1.0f, 1.0f)), dist);
+    // the field of view: the track's third value
+    view_.fov = 0.6f;
+    if (fov) {
+      yanm::Sample(*fov, f, hr, q, hp, v);
+      if (hp && v[2] > 0.05f && v[2] < 3.0f)
+        view_.fov = v[2];
+      last_fov_[0] = v[0], last_fov_[1] = v[1], last_fov_[2] = v[2];
+    }
+    return true;
   }
 
   static std::string Clock(float frames) {
@@ -274,7 +389,7 @@ class Window {
       if (key != posed_) {
         posed_ = key;
         view_.SetPose(Pose(p.body, local));
-        if (follow_)
+        if (!(use_cam_ && Camera(p, local)) && follow_)
           view_.SetTarget(view_.Hips());
       }
       const ImVec2 at = ImGui::GetCursorScreenPos();
@@ -289,11 +404,16 @@ class Window {
         }
         if (ImGui::IsItemHovered()) {
           const ImGuiIO &io = ImGui::GetIO();
+          // (the mouse takes the camera: the entrance's let go)
+          const bool drag_l = ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0),
+                     drag_r = ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0);
+          if (use_cam_ && (io.MouseWheel != 0 || drag_l || drag_r))
+            use_cam_ = false, view_.fov = 0.9f;
           if (io.MouseWheel != 0)
             view_.Zoom(io.MouseWheel);
-          if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0))
+          if (drag_l)
             view_.Orbit(io.MouseDelta.x, io.MouseDelta.y);
-          if (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0))
+          if (drag_r)
             view_.Pan(io.MouseDelta.x, io.MouseDelta.y), follow_ = false;
         }
       }
@@ -312,7 +432,7 @@ class Window {
     }
     ImGui::SameLine();
     if (ImGui::Button(fr ? "Recommencer" : "Restart", ImVec2(110, 0)))
-      time_ = 0, playing_ = true;
+      time_ = 0, playing_ = true, PickTake();
     ImGui::SameLine();
     if (ImGui::Button(fr ? "Aller au ring" : "Skip to the ring", ImVec2(130, 0)))
       time_ = float(parts_.back().start), playing_ = true;
@@ -324,6 +444,51 @@ class Window {
       time_ = t;
     ImGui::SameLine();
     ImGui::Text(fr ? "partie %d sur %d" : "part %d of %d", part + 1, int(parts_.size()));
+    // the camera
+    if (ImGui::Checkbox(fr ? "La caméra de l'entrée" : "The entrance's camera", &use_cam_)) {
+      posed_ = -1;
+      if (!use_cam_)
+        view_.fov = 0.9f, view_.SetAngles(3.14159265f, 0.15f, 520), follow_ = true;
+    }
+    ImGui::SameLine();
+    {
+      const char *ab[] = {"A", "B"};
+      char now_cam[48];
+      snprintf(now_cam, sizeof(now_cam), "%s%s", take_choice_ < 0 ? (fr ? "au hasard : " : "random: ") : "", ab[take_]);
+      ImGui::SetNextItemWidth(150);
+      if (ImGui::BeginCombo(fr ? "Caméras##ep_cam" : "Cameras##ep_cam", now_cam)) {
+        if (ImGui::Selectable(fr ? "Au hasard (comme le jeu)" : "Random (as the game)", take_choice_ < 0))
+          take_choice_ = -1, PickTake();
+        for (int k = 0; k < 2; ++k)
+          if (ImGui::Selectable(ab[k], take_choice_ == k))
+            take_choice_ = k, PickTake();
+        ImGui::EndCombo();
+      }
+    }
+    ImGui::SameLine(0, 24);
+    // the arena
+    if (ImGui::Checkbox(fr ? "Arène" : "Arena", &arena_on_))
+      ShowArena();
+    ImGui::SameLine();
+    {
+      std::string now_arena = "?";
+      for (const auto &sl : arena_page::kSlots)
+        if (sl.number == arena_)
+          now_arena = sl.name;
+      ImGui::SetNextItemWidth(200);
+      if (ImGui::BeginCombo("##ep_arena", now_arena.c_str(), ImGuiComboFlags_HeightLarge)) {
+        for (const auto &sl : arena_page::kSlots)
+          if (ImGui::Selectable(arena_page::SlotLabel(sl).c_str(), sl.number == arena_)) {
+            arena_ = sl.number, arena_on_ = true;
+            ShowArena();
+          }
+        ImGui::EndCombo();
+      }
+      if (!arena_error_.empty()) {
+        ImGui::SameLine();
+        ImGui::TextColored(red, "(%s)", arena_error_.c_str());
+      }
+    }
     // the superstar
     ImGui::TextUnformatted(fr ? "Montrée sur" : "Shown on");
     ImGui::SameLine();
@@ -339,9 +504,11 @@ class Window {
       ImGui::EndCombo();
     }
     ImGui::SameLine();
-    if (ImGui::Checkbox(fr ? "Suivre le catcheur" : "Follow the superstar", &follow_))
-      posed_ = -1;
-    ImGui::SameLine();
+    if (!use_cam_) {
+      if (ImGui::Checkbox(fr ? "Suivre le catcheur" : "Follow the superstar", &follow_))
+        posed_ = -1;
+      ImGui::SameLine();
+    }
     if (!model_error_.empty())
       ImGui::TextColored(red, "%s", fr ? "(pas de modèle pour lui : choisissez-en un autre)" : "(no model for him: pick another)");
     else
@@ -360,6 +527,17 @@ class Window {
   arena_view::View view_;
   int star_ = -1;
   bool loaded_ = false, playing_ = true, follow_ = true;
+  bool use_cam_ = true;              // the entrance's camera (else the mouse's)
+  // An entrance's tracks (his and the camera's) have the ring mat at y 0; in the arena it is 1.2 m up (y -120: his feet
+  // on the mat in the ring, on the ramp and in the ring with it; sunk to the knees without, 2026-11-11). (Test aid
+  // WWE12_MM_WATCH_CAMY / _BODYY: other heights.)
+  float cam_y_ = -120, body_y_ = -120;
+  float last_eye_[3] = {}, last_tgt_[3] = {}, last_fov_[3] = {};  // (test aid: the camera last set)
+  bool arena_on_ = true;             // the arena drawn
+  int arena_ = 1, arena_shown_ = -1, arena_file_for_ = -1;  // its stage number (RAW), the one in the view, the one read
+  Bytes arena_file_;
+  std::string arena_error_;
+  int take_choice_ = -1, take_ = 0;  // the camera take: -1 random (take_ the one drawn), 0 A, 1 B
   float time_ = 0, posed_ = -1;
   std::string shot_;
   int shot_wait_ = 0;

@@ -99,6 +99,7 @@ class View {
   bool show_entrance = false;  // entrance-only models (stage, ramp lights...) instead of match-only ones
   bool keep_skin = false;      // (before Load) keep what SetPose needs: the skeletons, the bind-pose vertices
   bool show_others = true;     // the superstars added with Add drawn
+  float fov = 0.9f;            // the vertical field of view (radians; an entrance's camera sets its own)
   // The background: an arena in the dark, as in the game; a superstar's views take Light() (models seen better).
   float background[4] = {0.015f, 0.015f, 0.02f, 1.0f};
   void Light() {
@@ -500,7 +501,7 @@ class View {
     // View (row-vector convention, left-handed: z forward).
     const float v[16] = {r[0], u[0], f[0], 0, r[1], u[1], f[1], 0, r[2], u[2], f[2], 0,
                          -Dot(r, eye), -Dot(u, eye), -Dot(f, eye), 1};
-    const float zn = 10.0f, zf = 60000.0f, fov = 0.9f, ys = 1.0f / std::tan(fov * 0.5f), xs = ys / aspect;
+    const float zn = 10.0f, zf = 60000.0f, ys = 1.0f / std::tan(fov * 0.5f), xs = ys / aspect;
     const float p[16] = {xs, 0, 0, 0, 0, ys, 0, 0, 0, 0, zf / (zf - zn), 1, 0, 0, -zn * zf / (zf - zn), 0};
     for (int i = 0; i < 4; ++i)
       for (int j = 0; j < 4; ++j) {
