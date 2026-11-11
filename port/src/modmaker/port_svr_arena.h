@@ -3323,6 +3323,34 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
   const std::set<uint32_t> old = {20000, 20001, 20002, 20003, 20010, 31010};
   ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(), [&](const svrfmt::ArcNode &k) { return old.count(k.id) != 0; }),
                 ga.kids.end());
+  // The mats round the ring: WWE '12's code looks them up by name, "ar_dwnmt01" (in its image, as the barricades'
+  // ar_fence01_a...); the old games' model is "ar_dwnmt" (SvR 2009's Judgment Day: a black floor round the ring, no
+  // mats, a player's report, 2026-11-11). Renamed in place (a 16-byte field), before the visibility tree takes the
+  // models' names.
+  {
+    bool has01 = false;
+    std::vector<svrfmt::ArcNode *> mats;
+    for (auto &k : ga.kids) {
+      const Bytes d = svrfmt::ArchiveData(k);
+      svrfmt::Model m;
+      if (k.id >= 50000 || !svrfmt::IsJboy(d) || !svrfmt::JboyRead(d, m, nullptr))
+        continue;
+      has01 |= m.name == "ar_dwnmt01";
+      if (m.name == "ar_dwnmt")
+        mats.push_back(&k);
+    }
+    for (auto *k : has01 ? std::vector<svrfmt::ArcNode *>() : mats) {
+      Bytes d = svrfmt::ArchiveData(*k);
+      const size_t at = 8 + svrfmt::Be32(&d[0x30]);
+      if (at + 16 > d.size() || memcmp(&d[at], "ar_dwnmt\0", 9) != 0)
+        continue;
+      memcpy(&d[at], "ar_dwnmt01", 10);
+      ReplaceLike(*k, d);
+      if (notes)
+        notes->push_back("ring-side mats renamed ar_dwnmt01 (WWE '12 looks them up by name)");
+      break;  // (one: the game looks one up)
+    }
+  }
   // The pictures the old games put on the big screen when no movie plays ("titan_logo_01", the scrolling
   // "titan_logo_02", "titan_kari_01": 2007 RAW's starfield and "ENTER" art), on its plane, before the visibility tree is made: the game hid them during the
   // movies; WWE '12 draws them always, over the titantron (seen in the game, 2026-11-01): left out.
@@ -3916,6 +3944,24 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
               break;
             }
           if (own) {
+            names.insert(n);
+            continue;
+          }
+        }
+        // The base barricades' logo panels (ar_fence02: "ar_fen_wwe", WWE '12's "WWE HD"): an arena without that
+        // picture (SvR 2007-2009) had none, its panels wear its own barricade's cover instead (seen on Judgment Day,
+        // a player's report, 2026-11-11).
+        if (n == "ar_fen_wwe") {
+          const svrfmt::BundleTexture *own = nullptr, *like = nullptr;
+          for (const auto &t : have)
+            if (t.name == "ar_fence")
+              own = &t;
+          for (const auto &t : theirs)
+            if (t.name == n)
+              like = &t;
+          svrfmt::Image img;
+          if (own && like && svrfmt::DdsDecode(own->data, img)) {
+            add.push_back({n, "dds", detail::LikePicture(like->data, img, true)});
             names.insert(n);
             continue;
           }

@@ -648,6 +648,12 @@ places ×10, d'après le code de Kaiko).
   l'image obtenue en fond de `MB09` ; logo et barre de Hell in a Cell cachés. Il faut reporter l'arène dans le Mod Maker.
   SvR 2009 a aussi `pac/evt/_EvtMov.pac` (`MOV /M0NN`, numéro de l'arène, + M100-M103) : animations de logo de chaque
   arène, Bink 1 256 × 256 **sans alpha**, 5-7 s (les transitions de WWE '12 : 640 × 640 avec alpha, ~1,6 s) : pas prises.
+- **Tapis autour du ring et barrière « WWE HD » (SvR 2007-2009, 2026-11-11, pas encore vérifié en jeu)** : le code de
+  WWE '12 cherche les tapis par leur nom `ar_dwnmt01` (chaîne dans l'image du jeu, comme `ar_fence01_a`…) ; SvR 2008 /
+  2009 les nomment `ar_dwnmt` (2010 / 2011 : `ar_dwnmt01`) → sol noir sans tapis. `OldSvrArena` renomme le modèle
+  (champ de 16 octets) avant de faire l'arbre de visibilité. Barrière : le panneau `ar_fence02` des barrières de la base
+  porte `ar_fen_wwe` (« WWE HD » de WWE '12) ; une arène qui n'a pas cette image prend maintenant la couverture de sa
+  propre barrière (`ar_fence`) au lieu de celle de la base.
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
   (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le
