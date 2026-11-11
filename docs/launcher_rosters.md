@@ -95,7 +95,7 @@ les fournit).
 - Séance 1 : lecture seule (analyse de l'en-tête + liste + filtres), testée sur des COPIES de sauvegardes (dont celle
   de Petchy, 95 paquets, et un SaveData sans Univers).
 - Séance 2 : écriture (copie auto, fichier temporaire, somme, retour arrière) ; tests hors ligne sur copies ; relecture par
-  le jeu seulement avec l'utilisateur (« vas-y »), sur `Documents\wwe12_test_launcher`.
+  le jeu seulement avec l'utilisateur (« vas-y »), sur `Documents\wwe12_test`.
 - Séance 3 : vérification en jeu (exhibition + Univers : le catcheur apparaît dans la bonne émission / liste de marque),
   Univers déjà commencé, catcheurs ajoutés (WWE12PCMODS), textes EN/FR, finitions.
 - Total : **3 séances** (2 si on limite aux sauvegardes sans Univers commencé et sans option B).
@@ -146,4 +146,4 @@ and the SvR 2011 PC port contributors »). Si du code ou la table `roster_names.
 - **Numéro = index + 50 pour les 323 fiches** (confirmé par Univers) ; 65 emplacements vides (numéro 0, sans nom) comptés et cachés ;
   les noms viennent de `pac/ch/chEtc.pac` (lu en lecture seule) quand la sauvegarde a « 0 » ou un nombre ; sans nom : « (#numéro) » en bas.
 - Page visible pour tous (plus de variable d'environnement) ; `WWE12_LAUNCHER_ROSTERS_FILE` reste une aide de test (copie, sans copie de sécurité).
-  Test en jeu : `tools/dev/lancer_test_rosters.bat` (données `Documents\wwe12_test_launcher`).
+  Test en jeu : `tools/dev/lancer_test_rosters.bat` (données `Documents\wwe12_test`).
