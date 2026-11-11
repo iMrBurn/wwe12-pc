@@ -1944,6 +1944,36 @@ extern "C" REX_FUNC(sub_823BEE70) {
   __imp__sub_823BEE70(ctx, base);
 }
 
+// The stage loader (*0x8322DD48) is asked for the match's stage by sub_8268BF90(loader, {stage, x}, ...) (the
+// match start sub_822FF0B0 among others); sub_8268B960 compares the request with the last one (loader +36 stage,
+// +40..+60 the rest) and queues a load only when they differ. An added arena plays on its base's number: two added
+// arenas on the same base (Judgment Day 2008 then 2009 on Hell in a Cell's 9, through the main menu, 2026-11-11), or
+// an added arena and its base, ask the same request: no load, the first arena stayed with the second one's VS
+// screen and plates. Kept: the stage asked last and the arena served then (g_chosen); when the same stage is asked
+// with another arena served, the loader forgets its stage (-1): the requests differ, the stage loads again.
+REX_EXTERN(__imp__sub_8268BF90);
+namespace {
+int g_loader_stage = -1;  // the stage asked last (-1: none yet)
+int g_loader_arena = -1;  // the arena served then (g_chosen)
+}  // namespace
+extern "C" REX_FUNC(sub_8268BF90) {
+  const u32 loader = ctx.r3.u32;
+  const int stage = int(u32(ctx.r4.u64 >> 32));  // (the request is passed by value: its first word is r4's high one)
+  const int held = loader ? int(bd::mem::load<u32>(loader + 36)) : -2;
+  bool again = false;
+  if (loader && held == stage && g_loader_stage == stage && g_loader_arena != g_chosen) {
+    bd::mem::store<u32>(loader + 36, 0xFFFFFFFFu);
+    again = true;
+    REXLOG_INFO("[arena pages] stage {} asked again with another arena in it: loaded again", stage);
+  }
+  if (REXCVAR_GET(wwe12_dir_log))
+    REXLOG_INFO("[arena pages] loader {:08X} asked stage {} by {:08X} (it held {}, arena {} then, {} now{})", loader,
+                stage, u32(ctx.lr), held, g_loader_arena, g_chosen, again ? ", forgotten" : "");
+  g_loader_stage = stage;
+  g_loader_arena = g_chosen;
+  __imp__sub_8268BF90(ctx, base);
+}
+
 // After a choice: if the stage object holds the chosen stage number with another arena in it, it forgets its stage
 // (-1), so the next match loads it again.
 void ForgetHeldArena(u32 stage) {
