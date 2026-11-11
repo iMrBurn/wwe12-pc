@@ -3652,11 +3652,11 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
     // the minitron on 806, the titantron on 808: WWE '12's 803 plays another movie (the superstar's wall, blue
     // sparkles: Judgment Day 2008's side screens looked empty on 803, 2026-11-11), 808 the titantron's (the dome
     // showed the superstar there, 1st try)
-    svrfmt::ArcNode *big = kid(ga, mini == 801 ? 803u : 801u), *small = kid(ga, uint32_t(mini));
+    svrfmt::ArcNode *titan = kid(ga, mini == 801 ? 803u : 801u), *minitron = kid(ga, uint32_t(mini));
     if (!kid(ga, 806))
-      small->id = 806;
+      minitron->id = 806;
     if (!kid(ga, 808))
-      big->id = 808;
+      titan->id = 808;
   }
   // WWE '12 gives 800 no movie (its own 800 is a small screen; a 2K stage screen left on 800 stayed black, 2026-10-31;
   // 2007 RAW's big screen, 800 and 803 on one quad, stayed dark in the match, 2026-11-01): 800 made 808, a titantron
