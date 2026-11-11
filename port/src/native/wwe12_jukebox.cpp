@@ -282,10 +282,18 @@ void GuardTheme(PPCContext &ctx, u8 *base, u32 m) {
   }
   if (!REXCVAR_GET(wwe12_jukebox_keep_theme))
     return;
+  // (one stop per start: a song already playing fades out over ~2 s, still "playing" (8) meanwhile; it was stopped
+  // again every update, test of 2026-11-11)
+  static bool s_stopping[2] = {};
   for (int slot = 0; slot <= 1; ++slot) {
     const u32 st = SlotState(ctx, base, m, slot);
-    if (st == 0 || (st & 0x21))
+    if (st == 0 || (st & 0x21)) {
+      s_stopping[slot] = false;
       continue;
+    }
+    if (s_stopping[slot])
+      continue;
+    s_stopping[slot] = true;
     StopSlot(ctx, base, m, slot);
     static u32 s_logged = 0;
     if (s_logged < 50) {
