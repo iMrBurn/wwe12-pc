@@ -754,6 +754,8 @@ places ×10, d'après le code de Kaiko).
   `sd_titan1` (`sd_titan_l`) est sur l'anneau du haut. → pour les arènes à vraies images d'écran (`_titan` dans le
   paquet) : les caches restent, poussés 3 cm vers l'extérieur ; copies des 801 / 803 d'origine (ids 760+, pas 230-269 :
   projecteurs assombris par Port) poussées 6 cm ; pas de StageCover.
+  **Vu en jeu (19 h 28) : SmackDown 2009 « nickel »** (écran VS, plaque de nom, titantron / minitron / walltron en
+  entrée, images d'origine en match). État SvR 2009 : mêmes règles pour toutes ses arènes (non revues une par une).
 - **Marches et table des commentateurs SvR 2008 (2026-11-11, essai)** : `bgEtc.pac` STG /WPON a la même organisation
   dans WWE '12 et SvR 2008 : 6 = table `1060` (`ji_desk`, `ji_bl`, `ji_meta`), 7 = ses écrans `1070` (`ji_mon`, `ji_top`),
   32-37 = marches `1320`… (`ar_stair0-2`), images dans leur entrée 10. Images de marches disposées pareil, `ji_mon`
