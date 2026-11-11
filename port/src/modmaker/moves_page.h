@@ -750,7 +750,7 @@ class Page {
     if (!on && !stars12_.empty())
       on = stars12_[0].id;
     watch_.Open(device_, *disc12_, parts_.entrance, parts_.entrance_number,
-                pick_name_ + " (" + star_port::GameName(game_) + ")", on, stars);
+                pick_name_ + " (" + star_port::GameName(game_) + ")", on, stars, theme_, star_port::Vgmstream(discs_));
   }
 
   // Step 3: what to take, each with whether it can be.

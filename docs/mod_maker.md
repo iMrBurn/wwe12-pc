@@ -1744,3 +1744,39 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
   pistes abîmait le corps, les clés 0x0004 de 2K14 étant inconnues de l'écrivain de `svr11_entrance`).
 - **Hors jeu** : Cena 139 et The Miz 218 de 2K14, donneur Ted DiBiase 261 : 61 → 95 pistes, corps identique (écart 0
   sur toutes les pistes échantillonnées), durées des segments inchangées. **Pas encore vu en jeu.**
+
+## Aperçu complet des entrées portées (1.3, 2026-11-11)
+
+Demande de l'utilisateur : comme le « Full preview » du Mod Maker de Kaiko (`port/modmaker/full_preview.cpp`, MIT,
+crédit). Bouton **« Regarder l'entrée »** : MOVES & ENTRANCES > Depuis un autre jeu, étape 3 (sous la ligne de
+l'entrée), et NOUVEAU CATCHEUR (à côté de « Sa propre entrée »). Il ouvre une fenêtre « Aperçu complet : <nom> »
+(`entrance_preview.h`).
+
+- **Lecture** : script EVP (objets de 32 octets à +0x48 + 8 ; le catcheur = type 01000000 0, la caméra = 00010000 0)
+  et banque EVZ (PACH, une fiche YANM par objet, id de la feuille = place de l'objet). Blocs nommés « PPPPYYYY » :
+  PPPP la partie (0000 l'intro cachée, 0005, 0010, 0015, 0020 au ring), YYYY 0000 le corps ; la caméra a deux prises
+  0000 / 0001 (le jeu en tire une au hasard). Orton 2K14 : 5 parties, 4 961 images à 60 par seconde = 1:22, comme chez
+  Kaiko.
+- **Catcheur** : le modèle d'un catcheur de WWE '12 (`pac/ch/chNNN.pac`, première tenue ; liste « Montrée sur » =
+  « Show it on someone else » de Kaiko), posé par `arena_view` (`SetPose`) comme l'aperçu des prises.
+- **Caméra** (case « La caméra de l'entrée », liste « Caméras » : au hasard / A / B) : pistes `#5edfdf5f` œil,
+  `#70d146a5` cible (positions), `#70d304a4` champ de vision (3e valeur = vertical ; 2K16 / 2K17 : dernier chiffre
+  du nom différent, accepté). La souris reprend la main (tourner, déplacer, zoom).
+- **Hauteur** : les pistes (catcheur et caméra) ont le **tapis du ring à y = 0** ; dans l'arène il est 1,20 m plus
+  haut (y = −120). Sans ce décalage Orton était enfoncé jusqu'aux genoux dans le ring et la caméra filmait le dessous
+  de la scène ; avec, pieds sur la rampe, sur le tapis et en coulisses (RAW).
+- **Arène** (case + liste des arènes de WWE '12, RAW par défaut) : `pac/bg/bgNN.pac` ajouté à la vue sans squelette,
+  objets d'entrée montrés (`show_entrance`). Changer d'arène recharge toute la vue (`View::Remove` n'enlève que les
+  modèles posés : enlever l'arène ainsi laissait des textures libérées, plantage corrigé).
+- **Titantron** (case) : `movies/titantron/NNN.bik` du catcheur montré, décodé à l'heure de l'entrée (en boucle, à
+  partir de l'image du film dans la queue du script, type 8) et posé sur les modèles d'arène sans image (les écrans :
+  `arena_view::screen`).
+- **Musique** (case « Musique du thème ») : le thème porté, décodé par vgmstream (`theme_convert::Decode`, en
+  arrière-plan) et joué par XAudio2 (`audio_out.h`, d'après l'`audio_out` de Kaiko) à partir de l'image de la musique
+  (queue du script, type 1 ; 100 d'habitude) ; Pause, Recommencer, Aller au ring et la barre de temps la recalent.
+- **Aide de test** : `WWE12_MM_PAGE=6`, `WWE12_MM_PORT=545408B2,161` (Orton de 2K14), `WWE12_MM_WATCH=<secondes>,<png>`
+  ouvre l'aperçu en pause à ce moment, enregistre l'image et un rapport (`<png>.txt` : parties, pistes, caméra,
+  hanches, thème, titantron) ; `WWE12_MM_WATCH_ARENA=<n | -1>`, `_TAKE=<0 | 1>`, `_FREE`, `_CAMY` / `_BODYY`.
+- **Vu** (hors jeu, images de test) : catcheur, caméras A / B et arène justes sur Orton 2K14. Titantron et musique :
+  à voir / entendre par l'utilisateur. Reste : les cordes du ring (objets animés de l'entrée, non dessinés), le
+  catcheur montré pendant l'intro cachée.

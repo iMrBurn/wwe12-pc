@@ -100,6 +100,7 @@ class View {
   bool keep_skin = false;      // (before Load) keep what SetPose needs: the skeletons, the bind-pose vertices
   bool show_others = true;     // the superstars added with Add drawn
   float fov = 0.9f;            // the vertical field of view (radians; an entrance's camera sets its own)
+  ID3D11ShaderResourceView *screen = nullptr;  // a movie's picture on the arena's models without one (its screens)
   // The background: an arena in the dark, as in the game; a superstar's views take Light() (models seen better).
   float background[4] = {0.015f, 0.015f, 0.02f, 1.0f};
   void Light() {
@@ -285,14 +286,15 @@ class View {
           memcpy(c.view_proj, view_proj, sizeof(view_proj));
           c.mirror = mirror ? -1.0f : 1.0f;
           c.additive = d.flags.additive ? 1.0f : 0.0f;
-          c.textured = d.tex ? 1.0f : 0.0f;
-          c.baked = d.baked_light ? 1.0f : 0.0f;
-          c.opaque = d.opaque ? 1.0f : 0.0f;
+          ID3D11ShaderResourceView *pic = d.tex ? d.tex : d.skel < 0 ? screen : nullptr;  // (a screen: the movie)
+          c.textured = pic ? 1.0f : 0.0f;
+          c.baked = d.baked_light && pic == d.tex ? 1.0f : 0.0f;
+          c.opaque = d.opaque || (pic && pic != d.tex) ? 1.0f : 0.0f;
           ctx_->UpdateSubresource(cb_.Get(), 0, nullptr, &c, 0, 0);
           ID3D11Buffer *cbs[] = {cb_.Get()};
           ctx_->VSSetConstantBuffers(0, 1, cbs);
           ctx_->PSSetConstantBuffers(0, 1, cbs);
-          ID3D11ShaderResourceView *srv[] = {d.tex};
+          ID3D11ShaderResourceView *srv[] = {pic};
           ctx_->PSSetShaderResources(0, 1, srv);
           const UINT stride = sizeof(Vtx), offset = 0;
           ID3D11Buffer *vb[] = {d.vb.Get()};

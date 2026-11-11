@@ -42,6 +42,9 @@ Projets dont ce portage s'inspire :
   match obtenu, `test_match.cpp`) est reprise en méthode seulement dans `port/src/native/wwe12_benchmark.cpp`
   (scénario `hiac6`, trajet enregistré, vérification au départ du match), ainsi que l'idée de sa condition
   « faible » (`opt_bench.ps1` : cœurs limités et un fil occupé à côté).
+  Mod Maker (1.3, licence MIT) : l'aperçu complet des entrées (`port/src/modmaker/entrance_preview.h`) suit son
+  « Full preview » (`port/modmaker/full_preview.cpp` : fenêtre, parties, caméra A / B, thème et titantron, tapis du
+  ring à y 0 dans les pistes) et le lecteur de son `port/src/modmaker/audio_out.h` est adapté de son `audio_out.cpp`.
 - **LA Max** (outils de mods WWE '12, faits sur les modules de Kaiko) : son convertisseur d'entrées SvR 2011 →
   WWE '12 (accord du 2026-11-01) et, pour les prises (2026-11-10), la méthode de son `wwe12_port.py` : une animation
   ajoutée rangée à côté de sa prise modèle dans les « situations » ZMVM de m.pac qui l'ont. Méthode seulement, code

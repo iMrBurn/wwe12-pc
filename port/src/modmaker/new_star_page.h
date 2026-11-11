@@ -33,6 +33,7 @@
 #include "imgui.h"
 #include "mod_version.h"
 #include "entrance13.h"
+#include "entrance_preview.h"
 #include "svr_scenes.h"
 #include "screens_ui.h"
 #include "theme_convert.h"
@@ -67,6 +68,7 @@ class Page {
     disc_ = &disc;
     disc12_ = &disc;
     device_ = device;
+    watch_.Draw(fr);  // (its entrance's full preview, a window, while open)
     const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f), yellow(0.94f, 0.75f, 0.24f, 1.0f);
     ImGui::TextWrapped("%s", fr ? "Ajoutez un catcheur au jeu, à côté des autres (il apparaît dans la case DLC de "
                                   "l'écran de choix). Il peut partir d'un catcheur de base (ses prises, ses stats, ses "
@@ -1628,6 +1630,17 @@ class Page {
              GameName(own_moves_game_), own_entrance_number_,
              int(std::count_if(own_entrance_.begin(), own_entrance_.end(), [](const auto &p) { return p.kind == "EVP"; })));
     ImGui::Checkbox(label, &use_own_entrance_);
+    ImGui::SameLine();
+    if (ImGui::SmallButton(fr ? "Regarder l'entrée" : "Watch the entrance") && disc12_) {
+      // (entrance_preview.h: on the base superstar's model, another one can be picked there)
+      std::vector<entrance_preview::Star> stars;
+      for (const auto &st : stars_)
+        if (st.dlc.empty())
+          stars.push_back({st.id, st.name});
+      watch_.Open(device_, *disc12_, own_entrance_, own_entrance_number_,
+                  std::string(name_[0] ? name_ : "?") + " (" + GameName(own_moves_game_) + ")",
+                  base_ >= 0 ? stars_[size_t(base_)].id : (stars.empty() ? 0 : stars[0].id), stars, theme_, Vgmstream());
+    }
     if (disc12_ && discs_)  // (its champion's entrance: its game's, or one picked)
       champ_.Draw(fr, *disc12_, *discs_, own_moves_game_, base_ >= 0 ? stars_[size_t(base_)].id : -1, music12_, champ_parts_);
     if (own_entrance_one_take_)
@@ -2480,6 +2493,7 @@ class Page {
   std::vector<entrance13::Part> own_objects_;  // ... their objects WWE '12 hasn't (entrance13::Objects)
   bool use_own_victory_ = true;
   screens_ui::ScreenChoice ribbon_{true}, wall_{false};  // its ribbon around the arena and its stage wall
+  entrance_preview::Window watch_;  // its own entrance's full preview
   theme_source::Theme theme_;  // its theme in its game (theme_source.h), stream empty if none
   std::vector<theme_source::Theme> themes_;  // every theme found for it (its profile's first), theme_ the one picked
   int theme_pick_ = 0;

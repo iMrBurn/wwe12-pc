@@ -19,8 +19,14 @@
 #include <string>
 #include <vector>
 
+#include <future>
+
 #include "arena_page.h"
 #include "arena_view.h"
+#include "audio_out.h"
+#include "media.h"
+#include "theme_convert.h"
+#include "theme_source.h"
 #include "entrance13.h"
 #include "game_disc.h"
 #include "imgui.h"
@@ -43,7 +49,8 @@ class Window {
   // Opens the window on entrance `number` of `parts` (WWE '12's format), shown on WWE '12 superstar `star`; `stars`:
   // the superstars "Show it on someone else" offers. `title`: whose entrance (the window's name).
   void Open(ID3D11Device *dev, const disc::GameDisc &w12, const std::vector<entrance13::Part> &parts, int number,
-            const std::string &title, int star, const std::vector<Star> &stars) {
+            const std::string &title, int star, const std::vector<Star> &stars, const theme_source::Theme &theme = {},
+            const std::filesystem::path &vgmstream = {}) {
     device_ = dev;
     w12_ = &w12;
     title_ = title;
@@ -51,12 +58,33 @@ class Window {
     error_.clear();
     open_ = true;
     Parse(parts, number);
+    // the theme (decoded on a worker: vgmstream takes seconds), from the frame the script starts the music at
+    player_.Unload();
+    song_error_.clear();
+    music_frame_ = 100;
+    for (const auto &p : parts)
+      if (p.number == number && p.kind == "EVP")
+        music_frame_ = TailFrame(p.data, 1, 100), movie_frame_ = TailFrame(p.data, 8, 0);
+    if (!theme.stream.empty() && !vgmstream.empty()) {
+      const std::wstring ext(theme.ext.begin(), theme.ext.end());
+      decoding_ = std::async(std::launch::async, [vgmstream, stream = theme.stream, ext]() {
+        Song s;
+        theme_convert::Decode(vgmstream, stream, ext, s.samples, s.channels, s.rate);
+        return s;
+      });
+    } else {
+      song_error_ = theme.stream.empty() ? "no theme" : "no vgmstream";
+    }
     star_ = -1;
     SetStar(star);
     time_ = 0;
     playing_ = true;
     use_cam_ = true;
     PickTake();
+  }
+  ~Window() {
+    if (bink_)
+      bink_close(bink_);
   }
   bool IsOpen() const { return open_; }
   // Test aid: paused at `seconds`, the picture saved to `png` (and what was read to <png>.txt), once.
@@ -83,8 +111,11 @@ class Window {
 
   // Every frame (draws the window while it is open).
   void Draw(bool fr) {
-    if (!open_)
+    if (!open_) {
+      if (player_.Playing())  // (closed: silence)
+        player_.Pause();
       return;
+    }
     ImGui::SetNextWindowSize(ImVec2(1100, 760), ImGuiCond_FirstUseEver);
     char head[160];
     snprintf(head, sizeof(head), "%s %s###entrance_preview", fr ? "Aperçu complet :" : "Full preview:", title_.c_str());
@@ -205,6 +236,7 @@ class Window {
     view_.Light();
     arena_shown_ = -1;  // (Load took everything away: the arena comes back)
     ShowArena();
+    LoadMovie();
     posed_ = -1;
   }
 
@@ -277,6 +309,9 @@ class Window {
     fprintf(f, "at %.1f: eye %.1f %.1f %.1f target %.1f %.1f %.1f fov %.3f %.3f %.3f hips %.1f %.1f %.1f\n", time_,
             last_eye_[0], last_eye_[1], last_eye_[2], last_tgt_[0], last_tgt_[1], last_tgt_[2], last_fov_[0],
             last_fov_[1], last_fov_[2], view_.Hips()[0], view_.Hips()[1], view_.Hips()[2]);
+    fprintf(f, "song %d (%.1f s) %s, music from %u, titantron %d (%d frames) from %u\n", int(player_.Ready()),
+            player_.Length(), song_error_.c_str(), music_frame_, int(bink_ != nullptr), bink_ ? bink_frames(bink_) : 0,
+            movie_frame_);
     fprintf(f, "star %d loaded %d %s\ntotal %d frames, %zu parts\n", star_, int(loaded_), model_error_.c_str(), total_,
             parts_.size());
     for (const auto &p : parts_) {
@@ -297,6 +332,86 @@ class Window {
       }
     }
     fclose(f);
+  }
+
+  // A record of the script's tail ({u16 type, u16 0, u32 frame...}: type 1 the music, 8 the titantron movie,
+  // entrance13::AddTail12): its frame, `none` if it has none.
+  static uint32_t TailFrame(const Bytes &evp, uint32_t type, uint32_t none) {
+    if (evp.size() < 0x50 || !Be32(evp, 0x1C))
+      return none;
+    const size_t h = size_t(Be32(evp, 0x1C)) + 8;
+    const uint32_t lists = Be32(evp, h) & 0xFFFF, at = Be32(evp, h + 4) + 8;
+    for (uint32_t l = 0; l < lists && l < 64 && at + 16 * size_t(l + 1) <= evp.size(); ++l)
+      if ((Be32(evp, at + 16 * l) >> 16) == type)
+        return Be32(evp, at + 16 * l + 4);
+    return none;
+  }
+
+  // The theme: playing while the entrance plays, from its music frame (each pause or jump: started again there).
+  void Sound() {
+    if (decoding_.valid() && decoding_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+      Song s = decoding_.get();
+      if (s.samples.empty())
+        song_error_ = "the theme couldn't be decoded";
+      else
+        player_.Set(std::move(s.samples), s.channels, s.rate);
+    }
+    const bool want = music_on_ && playing_ && time_ >= float(music_frame_) && player_.Ready();
+    if (want && !player_.Playing())
+      player_.Play((time_ - float(music_frame_)) / 60.0);
+    else if (!want && player_.Playing())
+      player_.Pause();
+  }
+
+  // The superstar's titantron movie (WWE '12's movies\titantron\NNN.bik), on the arena's screens.
+  void LoadMovie() {
+    if (bink_)
+      bink_close(bink_), bink_ = nullptr;
+    movie_srv_.Reset();
+    movie_tex_.Reset();
+    view_.screen = nullptr;
+    char file[16];
+    snprintf(file, sizeof(file), "%03d.bik", star_);
+    const std::filesystem::path p = media::CopyGameMovie(*w12_, file);
+    WCHAR err[256];
+    if (p.empty() || !(bink_ = bink_open(p.c_str(), err, 256)))
+      return;
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = UINT(bink_width(bink_));
+    td.Height = UINT(bink_height(bink_));
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(device_->CreateTexture2D(&td, nullptr, &movie_tex_)) ||
+        FAILED(device_->CreateShaderResourceView(movie_tex_.Get(), nullptr, &movie_srv_))) {
+      bink_close(bink_), bink_ = nullptr;
+      return;
+    }
+    pixels_.assign(size_t(td.Width) * td.Height * 4, 0);
+    movie_at_ = -1;
+  }
+  // Its picture at the entrance's time (from the script's movie frame, looping), decoded up to there.
+  void Movie() {
+    view_.screen = movie_on_ && bink_ ? movie_srv_.Get() : nullptr;
+    if (!view_.screen)
+      return;
+    const double per = bink_frame_time(bink_) > 0 ? double(bink_frame_time(bink_)) / 1e7 : 1.0 / 30;
+    const int frames = std::max(1, bink_frames(bink_));
+    const int want = int(std::max(0.0f, time_ - float(movie_frame_)) / 60.0 / per) % frames;
+    if (want == movie_at_)
+      return;
+    if (want < movie_at_ || movie_at_ < 0)
+      bink_rewind(bink_), movie_at_ = -1;
+    for (int k = 0; movie_at_ < want && k < 120; ++k)  // (a long jump catches up over a few frames)
+      bink_next(bink_), ++movie_at_;
+    bink_bgra(bink_, pixels_.data());
+    ID3D11DeviceContext *ctx = nullptr;
+    device_->GetImmediateContext(&ctx);
+    ctx->UpdateSubresource(movie_tex_.Get(), 0, nullptr, pixels_.data(), UINT(bink_width(bink_) * 4), 0);
+    ctx->Release();
   }
 
   // The camera take played: the one picked, else one of the two at random (the game's way).
@@ -374,12 +489,14 @@ class Window {
       if (time_ >= float(total_ - 1))
         time_ = float(total_ - 1), playing_ = false;
     }
+    Sound();
+    Movie();
     float local = 0;
     const int part = PartAt(time_, local);
     const Part &p = parts_[size_t(part)];
     // the picture
     const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const ImVec2 size(avail.x, std::max(200.0f, avail.y - 90));
+    const ImVec2 size(avail.x, std::max(200.0f, avail.y - 100));
     if (!loaded_) {
       ImGui::Dummy(size);
       if (!shot_.empty())
@@ -395,7 +512,7 @@ class Window {
       const ImVec2 at = ImGui::GetCursorScreenPos();
       if (ID3D11ShaderResourceView *pic = view_.Render(int(size.x), int(size.y))) {
         ImGui::Image(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(pic))), size);
-        if (!shot_.empty() && --shot_wait_ <= 0) {
+        if (!shot_.empty() && (decoding_.valid() ? --shot_wait_ < -900 : --shot_wait_ <= 0)) {  // (the theme read first)
           svrfmt::Image img;
           if (view_.ReadBack(img))
             wic_image::SavePng(std::filesystem::u8path(shot_), img);
@@ -432,16 +549,16 @@ class Window {
     }
     ImGui::SameLine();
     if (ImGui::Button(fr ? "Recommencer" : "Restart", ImVec2(110, 0)))
-      time_ = 0, playing_ = true, PickTake();
+      time_ = 0, playing_ = true, PickTake(), player_.Pause();
     ImGui::SameLine();
     if (ImGui::Button(fr ? "Aller au ring" : "Skip to the ring", ImVec2(130, 0)))
-      time_ = float(parts_.back().start), playing_ = true;
+      time_ = float(parts_.back().start), playing_ = true, player_.Pause();
     ImGui::SameLine();
     const std::string clock = Clock(time_) + " / " + Clock(float(total_));
     ImGui::SetNextItemWidth(std::max(120.0f, ImGui::GetContentRegionAvail().x - 120));
     float t = time_;
     if (ImGui::SliderFloat("##time", &t, 0, float(total_ - 1), clock.c_str()))
-      time_ = t;
+      time_ = t, player_.Pause();
     ImGui::SameLine();
     ImGui::Text(fr ? "partie %d sur %d" : "part %d of %d", part + 1, int(parts_.size()));
     // the camera
@@ -465,7 +582,20 @@ class Window {
         ImGui::EndCombo();
       }
     }
+    // the theme and the titantron
     ImGui::SameLine(0, 24);
+    ImGui::Checkbox(fr ? "Musique du thème" : "Theme music", &music_on_);
+    ImGui::SameLine();
+    ImGui::Checkbox("Titantron", &movie_on_);
+    ImGui::SameLine();
+    if (decoding_.valid())
+      ImGui::TextDisabled("%s", fr ? "(lecture du thème...)" : "(reading the theme...)");
+    else if (!song_error_.empty())
+      ImGui::TextDisabled(fr ? "(pas de musique : %s)" : "(no music: %s)", song_error_.c_str());
+    else if (!bink_)
+      ImGui::TextDisabled("%s", fr ? "(pas de titantron pour lui)" : "(no titantron for him)");
+    else
+      ImGui::NewLine();
     // the arena
     if (ImGui::Checkbox(fr ? "Arène" : "Arena", &arena_on_))
       ShowArena();
@@ -489,6 +619,7 @@ class Window {
         ImGui::TextColored(red, "(%s)", arena_error_.c_str());
       }
     }
+    ImGui::SameLine(0, 24);
     // the superstar
     ImGui::TextUnformatted(fr ? "Montrée sur" : "Shown on");
     ImGui::SameLine();
@@ -516,9 +647,26 @@ class Window {
                                    : "Drag: turn, right drag: move, wheel: zoom.");
   }
 
+  struct Song {
+    std::vector<int16_t> samples;
+    int channels = 0, rate = 0;
+  };
+
   ID3D11Device *device_ = nullptr;
   const disc::GameDisc *w12_ = nullptr;
   bool open_ = false;
+  // the theme
+  std::future<Song> decoding_;
+  audio_out::Player player_;
+  std::string song_error_;
+  uint32_t music_frame_ = 100, movie_frame_ = 0;  // (the script's: when the music and the titantron start)
+  bool music_on_ = true, movie_on_ = true;
+  // the titantron
+  BinkReader *bink_ = nullptr;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> movie_tex_;
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> movie_srv_;
+  std::vector<uint8_t> pixels_;
+  int movie_at_ = -1;
   std::string title_, error_, model_error_;
   std::vector<Star> stars_;
   yanm::Record body_, cam_;
