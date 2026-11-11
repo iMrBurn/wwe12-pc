@@ -640,6 +640,18 @@ places ×10, d'après le code de Kaiko).
   images de l'arène (`port_svr_arena::Card`) : l'écran de WWE '12 aux images de mêmes noms et proportions s'il existe
   (WWE '12 a repris ceux de Hell in a Cell, RAW, Night of Champions, Superstars de SvR), sinon celui de Hell in a Cell
   (`MB09`) avec la plus grande image en fond, le logo (sinon la bannière), la plaque ; feu et grille cachés.
+- **Écran VS des arènes de SvR 2008 / 2009 (2026-11-11, aperçu vérifié hors du jeu, pas encore en jeu)** : leur `MatchHD.pac`
+  n'a que des images par arène (`MENU/MnnI` 7001 : `mh_<show>_bg` 1024 × 512 = tout l'écran, `mh_<show>_fr` 1024 × 256,
+  128 pour HEAT = bande du bas avec le logo, qui s'efface vers le haut) et une police (`MnnF`) ; pas de mise en page propre.
+  Avant : la bande allait dans la barre des noms de Hell in a Cell (écrasée) et le fond à la place du logo (Judgment Day,
+  joueur, 2026-11-11). Maintenant `CardWearing` pose la bande en bas du fond (autant de lignes qu'elle en a) et met
+  l'image obtenue en fond de `MB09` ; logo et barre de Hell in a Cell cachés. Il faut reporter l'arène dans le Mod Maker.
+  SvR 2009 a aussi `pac/evt/_EvtMov.pac` (`MOV /M0NN`, numéro de l'arène, + M100-M103) : animations de logo de chaque
+  arène, Bink 1 256 × 256 **sans alpha**, 5-7 s (les transitions de WWE '12 : 640 × 640 avec alpha, ~1,6 s) : pas prises.
+- **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
+  (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
+  (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le
+  même numéro est demandé avec une autre arène servie.
 - **Foule de SvR 2011** (2026-10-25, WM 26 validée en jeu) : la sienne, personnes **non agrandies**, fichiers de places
   ×10 (sièges : les 4 nombres entre parenthèses ; zones `; R` / `; NR` : tous les nombres) ; celle de la base si un
   modèle ne se convertit pas.

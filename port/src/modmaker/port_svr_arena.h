@@ -1697,8 +1697,45 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
       if ((has(t.name, "plate") || has(t.name, "_fr") || t.name == "fr") && !plate)
         plate = &t;
     }
+    // SvR 2008 / 2009: a VS screen is "mh_<show>_bg" (1024 x 512, the whole screen) and "mh_<show>_fr" (1024 x 256,
+    // 128 for HEAT: a band with the show's logo, fading out upwards, over the bottom of the background, as many rows of
+    // it as it has). Before, the band went into Hell in a Cell's name plate (squeezed) and the background into its logo
+    // (Judgment Day 2008 / 2009, a player's report, 2026-11-11). Now the two made one background, as in those games;
+    // Hell in a Cell's logo and plate hidden.
+    svrfmt::Image old_vs;
+    {
+      const svrfmt::BundleTexture *tb = nullptr, *tf = nullptr;
+      for (const auto &t : theirs) {
+        const bool mh = t.name.compare(0, 3, "mh_") == 0 && t.name.size() > 6;
+        if (mh && t.name.compare(t.name.size() - 3, 3, "_bg") == 0)
+          tb = &t;
+        else if (mh && t.name.compare(t.name.size() - 3, 3, "_fr") == 0)
+          tf = &t;
+      }
+      svrfmt::Image b, f;
+      if (decode(tb, b) && b.w > 0 && b.h > 0) {
+        if (decode(tf, f) && f.w > 0 && f.h > 0) {
+          const int fh = std::min(b.h, std::max(1, f.h * b.w / f.w));
+          const svrfmt::Image band = svrfmt::Resize(f, b.w, fh);
+          for (int y = 0; y < fh; ++y)
+            for (int x = 0; x < b.w; ++x) {
+              const uint8_t *s = &band.rgba[(size_t(y) * band.w + x) * 4];
+              uint8_t *d = &b.rgba[(size_t(b.h - fh + y) * b.w + x) * 4];
+              const int a = s[3];
+              for (int c = 0; c < 3; ++c)
+                d[c] = uint8_t((s[c] * a + d[c] * (255 - a) + 127) / 255);
+              d[3] = 255;
+            }
+        }
+        old_vs = std::move(b);
+      }
+    }
     for (auto &t : ours) {
-      if (t.name == "hell_bg" && decode(bg, img)) {  // (two pictures one above the other: the background twice)
+      if (!old_vs.rgba.empty() && (t.name == "logo" || t.name == "hell_fr")) {
+        t.data = Clear(t.data);
+        continue;
+      }
+      if (t.name == "hell_bg" && (!old_vs.rgba.empty() ? (img = old_vs, true) : decode(bg, img))) {  // (two pictures one above the other: the background twice)
         svrfmt::DdsInfo info;
         svrfmt::DdsInfoOf(t.data, info);
         svrfmt::Image half;
