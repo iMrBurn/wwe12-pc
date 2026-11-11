@@ -538,12 +538,31 @@ extern "C" REX_FUNC(sub_8271BFD0) {
 // next such screen started the menu music over the theme (Jay, Discord, 1.1.0: "default menu music
 // plays over jukebox sometimes"). While a theme plays (or is being loaded), that start is skipped.
 // At the call r31 is still the caller's: the screen object.
+// With no theme on (the game stopped slot 0 itself: a match, Create an Entrance, or START on the title screen,
+// after which no song is picked by the update any more, so the menu music came back under nothing - user,
+// 2026-11-11), that start is skipped too and the jukebox takes over again (its Stop step, then a theme), unless
+// a loading screen is up or slot 2 is busy (Create an Entrance's preview).
+constexpr u32 kMusicManager = 0x83231754u;  // M = [[kMusicManager] + 52]
+
+static bool SlotBusy(PPCContext &ctx, u8 *base, u32 m, int slot) {
+  const u32 st = SlotState(ctx, base, m, slot);
+  return st != 0 && !(st & 0x21);
+}
+
 extern "C" REX_FUNC(sub_821D6368) {
   const u32 song = ctx.r3.u32;
   const u32 caller = u32(ctx.lr);
   const u32 screen = ctx.r31.u32;
   const bool theme_on = REXCVAR_GET(wwe12_jukebox) && g_menus && g_step != Step::Idle && g_step != Step::GameSong;
-  const bool skip = theme_on && REXCVAR_GET(wwe12_jukebox_keep_theme);
+  bool take_over = false;
+  if (REXCVAR_GET(wwe12_jukebox) && REXCVAR_GET(wwe12_jukebox_keep_theme) && !g_menus && g_step == Step::Idle &&
+      !Wwe12LoadingScreenUp()) {
+    const u32 holder = bd::mem::try_load<u32>(kMusicManager);
+    const u32 m = holder ? bd::mem::try_load<u32>(holder + 52) : 0;
+    PPCContext c = ctx;
+    take_over = m && !SlotBusy(c, base, m, kThemeSlot);
+  }
+  const bool skip = (theme_on && REXCVAR_GET(wwe12_jukebox_keep_theme)) || take_over;
   if (REXCVAR_GET(wwe12_jukebox_log_screens)) {
     static u32 s_last[4] = {};
     const u32 vtable = bd::mem::try_load<u32>(screen);
@@ -553,8 +572,14 @@ extern "C" REX_FUNC(sub_821D6368) {
       BD_INFO("[jukebox] a screen starts the menu music on player 1: song {}, from {:08X}, screen {:08X} "
               "(vtable {:08X}){}",
               song, caller, screen, vtable,
-              skip ? ": skipped, the theme goes on" : (theme_on ? ": played with the theme (keep_theme off)" : ""));
+              take_over ? ": skipped, the jukebox takes over"
+                        : (skip ? ": skipped, the theme goes on"
+                                : (theme_on ? ": played with the theme (keep_theme off)" : "")));
     }
+  }
+  if (take_over) {
+    g_menus = true;
+    Go(Step::Stop);  // (run by the next update: slots 0-2 stopped, player 1 included, then a theme)
   }
   if (skip) {
     ctx.r3.u64 = 1;
