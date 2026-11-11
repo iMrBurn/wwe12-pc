@@ -1787,6 +1787,17 @@ l'entrée), et NOUVEAU CATCHEUR (à côté de « Sa propre entrée »). Il ouvre
   (`kTitanPart`) ; son minitron (2K14 MVSB, 2K15-2K17 ss_mini)
   dessous. Ce qui lui manque : ceux du catcheur de WWE '12 montré (`movies/titantron/NNN.bik`, evtmov MVSW / MVSB
   M<numéro>). Orton 2K14 : 161.bik2 + M161, mur M161, ruban M161 (vus aux bons endroits).
+- **Ring** (2026-11-11, « fais-moi une arène parfaite », RAW par défaut) : l'arène ne garde qu'**un exemplaire** des
+  pièces du ring, au centre, que le jeu recopie (sommets relevés par le rapport de test) : la corde 960 (5,74 m le
+  long de x, 25 os ; 956 son ombre et 980 sa version lointaine non dessinées), le coussin de coin 964 et sa pièce 952
+  (un coin), le tablier 973 / 974 (un côté, du tapis au sol). Posés par `arena_view::View::copies` (rotation autour de
+  y puis déplacement) : cordes sur les 4 côtés à 288 cm, aux hauteurs 34 / 76 / 118 cm au-dessus du tapis (y −120 ;
+  76 et 118 lus dans les objets « corde » des scripts d'entrée, 34 estimé), coussins et pièces à chaque coin et
+  hauteur, tablier à 318 cm. Poteaux 951 et tapis 953 déjà entiers. Les longues barres blanches en travers du ring
+  étaient des effets du jeu dessinés là où ils sont rangés (trouvés en masquant des groupes de modèles, aide
+  `WWE12_MM_WATCH_HIDE=a-b,c`) : 31000 « flash » (photographes), 32000 « blood », 40200 « rop_mask » : pas dessinés.
+  Reste différent du jeu : la foule des gradins du bas (le jeu la dessine à part), les faisceaux de lumière animés
+  (m(n), l(n)), les cordes qui bougent quand il entre (objets « corde » du script : pas joués).
 - **Musique** (case « Musique du thème ») : le thème porté, décodé par vgmstream (`theme_convert::Decode`, en
   arrière-plan) et joué par XAudio2 (`audio_out.h`, d'après l'`audio_out` de Kaiko) à partir de l'image de la musique
   (queue du script, type 1 ; 100 d'habitude) ; Pause, Recommencer, Aller au ring et la barre de temps la recalent.

@@ -252,7 +252,30 @@ class Ground {
       if (!svrfmt::IsJboy(data) || !svrfmt::JboyRead(data, m, nullptr))
         continue;
       const arena_view::Flags f = flags.count(k.id) ? flags[k.id] : arena_view::Flags{};
-      if (k.id >= 800 && k.id <= 899) {  // (test aid: where each screen is, which part of its movie)
+      if ((k.id >= 800 && k.id <= 899) || (k.id >= 950 && k.id <= 999)) {  // (test aid: screens, ring pieces)
+        for (const auto &me : m.meshes) {  // (the ring's: their meshes, first vertices and how they're bound)
+          if (k.id < 950)
+            break;
+          char b[256];
+          snprintf(b, sizeof(b), "  mesh of %u: %zu verts, palette %zu, weights %zu", k.id, me.verts.size(),
+                   me.palette.size(), me.weights.size());
+          screens += b;
+          for (size_t v = 0; v < me.verts.size() && v < 4; ++v) {
+            snprintf(b, sizeof(b), " (%.1f %.1f %.1f", me.verts[v].pos[0], me.verts[v].pos[1], me.verts[v].pos[2]);
+            screens += b;
+            for (size_t j = 0; j < me.weights.size() && j < 2; ++j)
+              if (v < me.weights[j].size()) {
+                snprintf(b, sizeof(b), " b%d w%.2f", me.weights[j][v].bones[0], me.weights[j][v].weight);
+                screens += b;
+              }
+            screens += ")";
+          }
+          if (!me.palette.empty()) {
+            snprintf(b, sizeof(b), " pal0 %d", me.palette[0]);
+            screens += b;
+          }
+          screens += "\n";
+        }
         float lo[5] = {1e9f, 1e9f, 1e9f, 1e9f, 1e9f}, hi[5] = {-1e9f, -1e9f, -1e9f, -1e9f, -1e9f};
         for (const auto &me : m.meshes)
           for (size_t v = 0; v < me.verts.size(); ++v)
@@ -445,6 +468,7 @@ class Window {
   // The script's entrant and camera, their records, the parts.
   void Parse(const std::vector<entrance13::Part> &parts, int number) {
     body_ = cam_ = {};
+    objects_.clear();
     lifts_.clear();
     parts_.clear();
     total_ = 1;
@@ -467,6 +491,16 @@ class Window {
         entrant = int(i);
       if (camera < 0 && t0 == 0x10000 && t1 == 0)
         camera = int(i);
+      Object o;
+      o.index = int(i), o.model = Be32(s, t + 32 * size_t(i) + 4), o.t0 = t0, o.t1 = t1;
+      const uint32_t slots = Be32(s, t + 32 * size_t(i) + 24) >> 16, at = Be32(s, t + 32 * size_t(i) + 28) + 8;
+      for (uint32_t k = 0; k < slots && at + 212 * size_t(k + 1) <= s.size(); ++k) {
+        std::vector<float> w(53);
+        for (size_t j = 0; j < w.size(); ++j)
+          w[j] = svrfmt::BeF(&s[at + 212 * size_t(k) + 4 * j]);
+        o.slots.push_back(std::move(w));
+      }
+      objects_.push_back(std::move(o));
     }
     Bytes bank = svrfmt::IsBpe(evz->data) ? svrfmt::Unpack(evz->data) : evz->data;
     std::vector<svrfmt::PachEntry> leaves;
@@ -475,6 +509,9 @@ class Window {
       return;
     }
     for (const auto &e : leaves) {
+      for (auto &o : objects_)
+        if (o.index == int(e.id))
+          yanm::Read(svrfmt::Unpack(e.data), o.record);
       if (int(e.id) != entrant && int(e.id) != camera)
         continue;
       yanm::Read(svrfmt::Unpack(e.data), int(e.id) == entrant ? body_ : cam_);
@@ -574,12 +611,58 @@ class Window {
       lifts_.clear();
     }
     view_.keep_skin = false;
+    view_.copies = RingPieces();
     if (arena_error_.empty() && !view_.Add(arena_file_, &arena_error_, 0, 2) && arena_error_.empty())
       arena_error_ = "not readable";
+    view_.copies.clear();
     view_.keep_skin = true;
     view_.show_entrance = true;
     for (int c = 0; c < 4; ++c)
       view_.background[c] = c == 3 ? 1.0f : 0.015f;
+  }
+
+  // The ring's pieces the arena holds once (bg01 RAW, 2026-11-11: their vertices dumped), placed around the ring as
+  // the game does: the rope 960 (5.74 m along x at the centre, 25 bones; 956 its shadow and 980 its far version left
+  // out) on the four sides (288 cm out) at its three heights (the entrances' rope objects hold the middle and top ones
+  // 76 and 118 cm above the mat; the bottom one guessed 34), the turnbuckle pad 964 (one corner) and its fitting 952 at
+  // every corner and height, the apron 973 / 974 (one side, from the mat down to the floor) on the four sides. The mat
+  // is at y -120 (953), the posts (951) whole.
+  static std::map<uint32_t, std::vector<arena_view::View::Place>> RingPieces() {
+    using P = arena_view::View::Place;
+    const float pi = 3.14159265f, mat = -120, side = 288, apron = 318;
+    const float heights[3] = {mat - 34, mat - 76, mat - 118};
+    std::map<uint32_t, std::vector<P>> out;
+    out[956], out[980];  // (not drawn)
+    // the game's effects, not scenery (bg01: 31000 "flash" the photographers' flashes, 32000 "blood", 40200 "rop_mask";
+    // drawn where stored they were long white bars across the ring, 2026-11-11)
+    out[31000], out[32000], out[40200];
+    if (const char *hide = getenv("WWE12_MM_WATCH_HIDE"))  // (test aid: these models not drawn, "204,205,300-399")
+      for (const char *p = hide; *p;) {
+        char *e = nullptr;
+        const uint32_t a = uint32_t(strtoul(p, &e, 10));
+        const uint32_t b = *e == '-' ? uint32_t(strtoul(e + 1, &e, 10)) : a;
+        for (uint32_t id = a; id <= b && id - a < 100000; ++id)
+          out[id];
+        p = e;
+        while (*p && *p != ',')
+          ++p;
+        if (*p)
+          ++p;
+      }
+    for (float h : heights) {
+      out[960].push_back({0, {0, h, -side}});
+      out[960].push_back({pi, {0, h, side}});
+      out[960].push_back({pi / 2, {-side, h, 0}});
+      out[960].push_back({-pi / 2, {side, h, 0}});
+      for (int k = 0; k < 4; ++k)
+        for (uint32_t id : {964u, 952u})
+          out[id].push_back({float(k) * pi / 2, {0, h, 0}});
+    }
+    out[973].push_back({0, {0, 0, -apron}});
+    out[973].push_back({pi, {0, 0, apron}});
+    out[974].push_back({pi / 2, {-apron, 0, 0}});
+    out[974].push_back({-pi / 2, {apron, 0, 0}});
+    return out;
   }
 
   // The arena's stage / ramp height under him at frame f of part `part` (0 on the floor, in the ring and without an
@@ -656,6 +739,28 @@ class Window {
             int(player_.Ready()), player_.Length(), song_error_.c_str(), music_frame_, movie_frame_,
             titan_.name.c_str(), titan_.Frames(), wall_.name.c_str(), ribbon_.name.c_str());
     fputs(ground_.screens.c_str(), f);
+    for (const auto &o : objects_) {  // (the script's objects: slot 0's words, the first block's tracks at frame 0)
+      fprintf(f, "object %d model %u type %08x %08x, %zu slots, %zu blocks\n", o.index, o.model, o.t0, o.t1,
+              o.slots.size(), o.record.blocks.size());
+      if (!o.slots.empty()) {
+        fprintf(f, "  slot0:");
+        for (float v : o.slots[0])
+          fprintf(f, " %g", v);
+        fprintf(f, "\n");
+      }
+      if (!o.record.blocks.empty()) {
+        const auto &b = o.record.blocks[0];
+        fprintf(f, "  block %s frames %d:", b.name.c_str(), b.frames);
+        for (const auto &t : b.tracks) {
+          bool hr = false, hp = false;
+          yanm::Q q{0, 0, 0, 1};
+          yanm::V v{0, 0, 0};
+          yanm::Sample(t, 0, hr, q, hp, v);
+          fprintf(f, " [%s%s%s %.1f %.1f %.1f]", t.name.c_str(), hr ? " r" : "", hp ? " p" : "", v[0], v[1], v[2]);
+        }
+        fprintf(f, "\n");
+      }
+    }
     fprintf(f, "star %d loaded %d %s\ntotal %d frames, %zu parts\n", star_, int(loaded_), model_error_.c_str(), total_,
             parts_.size());
     for (const auto &p : parts_) {
@@ -1067,6 +1172,14 @@ class Window {
   std::string title_, error_, model_error_;
   std::vector<Star> stars_;
   yanm::Record body_, cam_;
+  // Every object of the script (its place, model, type, slots' words, its record): ropes, turnbuckles, props...
+  struct Object {
+    int index = 0;
+    uint32_t model = 0, t0 = 0, t1 = 0;
+    std::vector<std::vector<float>> slots;
+    yanm::Record record;
+  };
+  std::vector<Object> objects_;
   std::vector<Part> parts_;
   int total_ = 1;
   arena_view::View view_;

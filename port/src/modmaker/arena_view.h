@@ -99,6 +99,13 @@ class View {
   bool show_entrance = false;  // entrance-only models (stage, ramp lights...) instead of match-only ones
   bool keep_skin = false;      // (before Load) keep what SetPose needs: the skeletons, the bind-pose vertices
   bool show_others = true;     // the superstars added with Add drawn
+  // (before Add) Models drawn elsewhere than where they're stored, once per place (none: not drawn): the ring's
+  // pieces, one rope or one turnbuckle the game puts again and again. Turned by `yaw` about y, then moved by `t`.
+  struct Place {
+    float yaw = 0;
+    float t[3] = {0, 0, 0};
+  };
+  std::map<uint32_t, std::vector<Place>> copies;
   float fov = 0.9f;            // the vertical field of view (radians; an entrance's camera sets its own)
   // Movies on the arena's video screens (models 800-899 without a picture of their own), by model number; null: that
   // screen not drawn (WWE '12's arenas have screens in twos on the same faces, one shown at a time).
@@ -182,6 +189,21 @@ class View {
           sk.inv_bind.push_back(Inverse(b));
         skel = int(skels_.size());
         skels_.push_back(std::move(sk));
+      }
+      if (const auto c = copies.find(k.id); c != copies.end()) {  // (placed again and again, not where it's stored)
+        for (const Place &pl : c->second) {
+          svrfmt::Model moved = m;
+          const float cy = std::cos(pl.yaw), sy = std::sin(pl.yaw);
+          for (auto &me : moved.meshes)
+            for (auto &v : me.verts) {
+              const float x = v.pos[0], z = v.pos[2], nx = v.normal[0], nz = v.normal[2];
+              v.pos[0] = cy * x + sy * z + pl.t[0], v.pos[1] += pl.t[1], v.pos[2] = -sy * x + cy * z + pl.t[2];
+              v.normal[0] = cy * nx + sy * nz, v.normal[2] = -sy * nx + cy * nz;
+            }
+          for (const auto &s : moved.meshes)
+            AddMesh(k.id, moved, s, f, dds, -1);
+        }
+        continue;
       }
       for (const auto &s : m.meshes)
         AddMesh(k.id, m, s, f, dds, skel);
