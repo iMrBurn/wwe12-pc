@@ -2852,7 +2852,9 @@ inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate
   // light (the layers' alpha times their area) for where it comes in and where it holds.
   if (const auto an = anims.find(10000); an != anims.end() && !an->second.layers.empty() && an->second.length > 4) {
     const Atb1 &anim = an->second;
-    const float sx = 2.0f, sy = 720.0f / 448;
+    // (SvR 2008 draws them on a 512-wide screen, as its logo animation: 2.5 across - its Judgment Day plate came out
+    // 76 % of the width at 2, 95 % on Xenia, 2026-11-11)
+    const float sx = year == 2008 ? 2.5f : 2.0f, sy = 720.0f / 448;
     const int W = 1920, H = 1080, ox = 320, oy = 180;
     const auto light = [&](float t) {
       double sum = 0;

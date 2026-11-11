@@ -720,6 +720,8 @@ places ×10, d'après le code de Kaiko).
   Puis précisé : cette place est celle de Judgment Day ; chaque arène comme SvR 2008 la montrait → `OldSvrPlates` (2008)
   garde la place de l'animation de SvR (son écran 640 × 448 étiré en 1280 × 720 comme Xenia, ×1,5 en 1920 × 1080), sans
   la déplacer vers le texte de WWE '12 ; image entière (bande sombre comprise, comme SvR la dessine), pas de `fit`.
+  Vu en jeu : bord gauche, nom dedans, mais 76 % de large (Xenia 95 %, rapport 1,25 = 2,5 / 2) : SvR 2008 dessine
+  ses plaques sur un écran de 512 de large (comme l'animation du logo) → échelle horizontale 2,5 au lieu de 2.
 - **Planche de contrôle SvR 2008 / 2009 (2026-11-11)** : `tools/dev/svr_arenas_sheet.py "<iso>" 2008` lit le disque du
   joueur, sans rien porter, et écrit `work/svr_check/svr2008_arenas.png` : une ligne par arène (bannière, écran VS
   recomposé, plus grande image de la plaque d'entrée, image de la vidéo de logo via ffmpeg). Pour comparer avec Xenia.
