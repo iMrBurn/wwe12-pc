@@ -2054,7 +2054,7 @@ class Page {
     // Its VS screen: a WWE '12 one wearing its pictures (port_svr_arena::Card).
     Bytes matchhd12;
     if (!matchhd.empty() && disc_ && disc_->Read("pac/menu/MatchHD.pac", matchhd12) &&
-        port_svr_arena::Card(matchhd, matchhd12, svr_pick_, img, card_mb_, card_mf_))
+        port_svr_arena::Card(matchhd, matchhd12, svr_pick_, img, card_mb_, card_mf_, nullptr, svr_year_))
       port_note_ += fr ? " Avec son écran VS." : " With its VS screen.";
     // (SvR 2007: its background and logo from menuHD.pac, port_svr_arena::Svr07CardPictures)
     std::vector<svrfmt::BundleTexture> vs07;

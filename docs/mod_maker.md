@@ -672,6 +672,13 @@ places ×10, d'après le code de Kaiko).
   entière, v 0-0,684), l'autre = minitron (806, bande v 0,69-1 comme le RAW de WWE '12), comme l'a demandé
   l'utilisateur (minitron en bas au milieu). Table des commentateurs et marches : objets « arme »
   communs (`bgEtc.pac` WPON), pas dans l'arène : il faudrait servir un `bgEtc` par arène ajoutée (non fait).
+- **SvR 2008, 3e essai (2026-11-11, vu en jeu par l'utilisateur à côté de Xenia)** : les 2 carrés de côté de Judgment
+  Day restaient « vides » sur 803 : le 803 de WWE '12 joue une autre vidéo (le mur du catcheur, étincelles bleues) ;
+  808 joue le titantron (le dôme y montrait le catcheur au 1er essai) → titantron = 808, minitron = 806. Écran VS :
+  le `mh_jud_fr` de 2008 est une **plaque en bois** autour des noms (pas une bande comme 2009) ; posée en bas du fond,
+  WWE '12 la coupait (bas de l'écran noir) → en 2008 elle va dans `hell_fr` (plaque des noms), le fond seul en fond.
+  Police : `MnnF` (`font_judge`, étroite et grasse) est bien servie, mais les noms du vrai écran VS de 2008 sont dans
+  la police générale du jeu, pas celle de l'arène. Reste : lumière (tapis noirs, marches blanches, foule rouge).
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
   (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le

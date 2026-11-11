@@ -1662,7 +1662,10 @@ inline bool Card2KOwn(svrfmt::ArcNode &card, const Bytes &matchhd12, Bytes &mb, 
 // logo, came out narrow): made 3.4 times as wide as high again, then fitted whole.
 inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const Bytes &matchhd12,
                         const svrfmt::Image &banner, Bytes &mb, Bytes &mf, std::string *template_name = nullptr,
-                        bool stretched_logo = false) {
+                        bool stretched_logo = false, bool plate_fr = false) {
+  // (plate_fr: SvR 2008, its "mh_<show>_fr" a name plate, a wooden frame round the names on Judgment Day: Hell in a
+  // Cell's plate, not laid over the background's bottom, which WWE '12 cuts off - the bottom of the screen stayed
+  // black, 2026-11-11)
   using namespace detail;
   mb.clear();
   mf.clear();
@@ -1749,7 +1752,7 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
       }
       svrfmt::Image b, f;
       if (decode(tb, b) && b.w > 0 && b.h > 0) {
-        if (decode(tf, f) && f.w > 0 && f.h > 0) {
+        if (!plate_fr && decode(tf, f) && f.w > 0 && f.h > 0) {
           const int fh = std::min(b.h, std::max(1, f.h * b.w / f.w));
           const svrfmt::Image band = svrfmt::Resize(f, b.w, fh);
           for (int y = 0; y < fh; ++y)
@@ -1767,7 +1770,7 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
     }
     for (auto &t : ours) {
       if (!old_vs.rgba.empty() && (t.name == "logo" || t.name == "hell_fr")) {
-        t.data = Clear(t.data);
+        t.data = plate_fr && t.name == "hell_fr" && decode(plate, img) ? LikePicture(t.data, img, true) : Clear(t.data);
         continue;
       }
       if (t.name == "hell_bg" && (!old_vs.rgba.empty() ? (img = old_vs, true) : decode(bg, img))) {  // (two pictures one above the other: the background twice)
@@ -2982,7 +2985,7 @@ inline bool SvrEtex(const Bytes &evtgdhd_svr, int file, Bytes &out) {
 }
 
 inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, const svrfmt::Image &banner, Bytes &mb,
-                 Bytes &mf, std::string *template_name = nullptr) {
+                 Bytes &mf, std::string *template_name = nullptr, int year = 0) {
   using namespace detail;
   svrfmt::Archive s;
   if (!svrfmt::ArchiveOpen(svr_matchhd, s, nullptr))
@@ -2995,7 +2998,7 @@ inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, con
     if (k.group == "MENU" && k.name == ni)
       if (auto *p = Pictures(k))
         svrfmt::BundleRead(svrfmt::ArchiveData(*p), theirs);
-  if (!CardWearing(theirs, matchhd12, banner, mb, mf, template_name))
+  if (!CardWearing(theirs, matchhd12, banner, mb, mf, template_name, false, year == 2008))
     return false;
   // SvR 2008 / 2009: their VS screen's own font (MENU/MnnF, a YFB of the 2K games' version, 0x68: Font2K), the names
   // written as in those games (the user missed it on Judgment Day 2008, 2026-11-11). Hell in a Cell's when it doesn't
@@ -3578,8 +3581,8 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
   };
   // The stage's two screen models 801 and 803 (Judgment Day 2008: 803 the two big screens on the sides, one mesh,
   // 801 the dome under the logo; 2009 the other way round): in those games the big ones showed the superstar's movie,
-  // the small one the minitron (the user, 2026-11-11: the sides showed two halves of the movie, sparkles, the dome
-  // the face). The wider one is the titantron (803, each of its screens the whole movie), the other the minitron
+  // the small one the minitron (the user, 2026-11-11). The wider one is the titantron (808, each of its screens the
+  // whole movie), the other the minitron
   // (806, WWE '12 RAW's minitron: the strip under the titantron's movie, v 0.69-1).
   int mini = -1;
   if (!kid(ga, 800) && kid(ga, 801) && kid(ga, 803)) {
@@ -3646,10 +3649,14 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
     ReplaceLike(k, d);
   }
   if (mini > 0) {
-    // the minitron on 806, the titantron on 803
-    kid(ga, uint32_t(mini))->id = kid(ga, 806) ? (kid(ga, 808) ? 804u : 808u) : 806u;
-    if (mini == 803)
-      kid(ga, 801)->id = 803;
+    // the minitron on 806, the titantron on 808: WWE '12's 803 plays another movie (the superstar's wall, blue
+    // sparkles: Judgment Day 2008's side screens looked empty on 803, 2026-11-11), 808 the titantron's (the dome
+    // showed the superstar there, 1st try)
+    svrfmt::ArcNode *big = kid(ga, mini == 801 ? 803u : 801u), *small = kid(ga, uint32_t(mini));
+    if (!kid(ga, 806))
+      small->id = 806;
+    if (!kid(ga, 808))
+      big->id = 808;
   }
   // WWE '12 gives 800 no movie (its own 800 is a small screen; a 2K stage screen left on 800 stayed black, 2026-10-31;
   // 2007 RAW's big screen, 800 and 803 on one quad, stayed dark in the match, 2026-11-01): 800 made 808, a titantron
