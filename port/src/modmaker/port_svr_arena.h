@@ -1828,17 +1828,22 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
   // round its centre.
   if (plate_fr && old_card)
     for (auto &c : card->kids) {
-      std::vector<svrfmt::BundleTexture> anims;
-      if (c.id != 7002 || !svrfmt::BundleRead(svrfmt::ArchiveData(c), anims))
+      // (a bundle as the pictures' - count, then 32-byte records: name[16], ext[4] "atb", size, offset - read here:
+      // BundleRead takes pictures only)
+      if (c.id != 7002)
         continue;
+      Bytes raw = svrfmt::ArchiveData(c);
+      const uint32_t n = raw.size() >= 16 ? svrfmt::Le32(&raw[0]) : 0;
       bool changed = false;
-      for (auto &a : anims) {
-        Bytes &x = a.data;
-        if (a.name != "hell_fr" || x.size() < 0x18 || memcmp(x.data(), "ATB0", 4) != 0)
+      for (uint32_t e = 0; e < n && 16 + 32 * size_t(e + 1) <= raw.size(); ++e) {
+        const uint8_t *r = &raw[16 + 32 * size_t(e)];
+        const size_t size = svrfmt::Le32(r + 20), off = svrfmt::Le32(r + 24);
+        if (strncmp(reinterpret_cast<const char *>(r), "hell_fr", 16) != 0 || off + size > raw.size() || size < 0x18 ||
+            memcmp(&raw[off], "ATB0", 4) != 0)
           continue;
-        const uint32_t np = svrfmt::Le32(&x[0x10]), po = svrfmt::Le32(&x[0x14]);
-        for (uint32_t i = 0; i < np && size_t(po) + 32 * (i + 1) <= x.size(); ++i) {
-          uint8_t *p = &x[po + 32 * size_t(i)];
+        const uint32_t np = svrfmt::Le32(&raw[off + 0x10]), po = svrfmt::Le32(&raw[off + 0x14]);
+        for (uint32_t i = 0; i < np && size_t(po) + 32 * (i + 1) <= size; ++i) {
+          uint8_t *p = &raw[off + po + 32 * size_t(i)];
           if (strncmp(reinterpret_cast<const char *>(p + 16), "plate", 16) != 0)
             continue;
           svrfmt::PutLe32(p, 640);
@@ -1847,7 +1852,7 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
         }
       }
       if (changed)
-        ReplaceLike(c, svrfmt::BundleWrite(anims));
+        ReplaceLike(c, raw);
       break;
     }
   // Saved as stored in its pac: the nodes down to the pictures rebuilt.
