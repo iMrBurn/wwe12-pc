@@ -2170,6 +2170,32 @@ class Page {
         (!evtgd12.empty() || disc_->Read("pac/evt/evtgdhd.pac", evtgd12)) &&
         port13::Etex(evtgd12, kSlots[slot_].number, etex_))
       port_note_ += fr ? " Avec les plaques d'entrée de son arène de base." : " With its base arena's entrance plates.";
+    // SvR 2008 / 2009: the arena's logo movie those games play before the entrances (2008: pac/movie.pac, 2009:
+    // pac/evt/_EvtMov.pac, "MOV /M0NN" by the arena's number: Bink 1 256 x 256, 4-8 s, frames of 34 KB at most), as
+    // its transition, in place of SvR 2009's WWE logo (the user missed them, 2026-11-11).
+    if (old_svr && (svr_year_ == 2008 || svr_year_ == 2009)) {
+      Bytes pac;
+      svrfmt::Archive a;
+      char name[8];
+      snprintf(name, sizeof(name), "M%03d", svr_pick_);
+      if (svr_disc_.Read(svr_year_ == 2008 ? "pac/movie.pac" : "pac/evt/_EvtMov.pac", pac) &&
+          svrfmt::ArchiveOpen(pac, a, nullptr))
+        for (auto &k : a.root.kids) {
+          if (k.group != "MOV " || k.name != name)
+            continue;
+          Bytes bik = svrfmt::ArchiveData(k);
+          const size_t size = bik.size() >= 16 && memcmp(bik.data(), "BIK", 3) == 0
+                                  ? size_t(bik[4] | bik[5] << 8 | bik[6] << 16 | uint32_t(bik[7]) << 24) + 8
+                                  : 0;
+          const uint32_t largest = size ? uint32_t(bik[12] | bik[13] << 8 | bik[14] << 16) : ~0u;
+          if (size && size <= bik.size() && largest <= 40000) {
+            bik.resize(size);
+            movie_ = std::move(bik);
+            port_note_ += fr ? " Avec la vidéo de son logo avant les entrées." : " With its logo movie before the entrances.";
+          }
+          break;
+        }
+    }
     // Its transition video (evtmov.pac MOVT/M0NN: Bink 1 at 640 x 640, as WWE '12's).
     Bytes evtmov;
     if (svr_pick_ >= 0 && !old_svr && svr_disc_.Read("pac/evt/evtmov.pac", evtmov) &&

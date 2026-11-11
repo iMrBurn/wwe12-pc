@@ -3533,7 +3533,7 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
     }
     for (const auto &[i, slot] : movies) {
       const auto &me = m.meshes[i];
-      if (k.id != 801 && u1 > u0 && v1 > v0) {
+      if (u1 > u0 && v1 > v0) {
         const size_t uvs = B + svrfmt::Be32(&me.raw[0x70]);
         if (uvs + 8 * me.uvs.size() > d.size())
           continue;
@@ -3542,7 +3542,7 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
           svrfmt::PutBeF(&d[uvs + 8 * q + 4], (me.uvs[q][1] - v0) / (v1 - v0) * 0.684f);
         }
       }
-      const char *name = k.id == 801 ? "arena_movie" : "titantron_movie";
+      const char *name = "titantron_movie";
       uint8_t *tn = &d[B + tptr + 16 * size_t(slot)];
       std::memset(tn, 0, 16);
       std::memcpy(tn, name, std::strlen(name));
@@ -3555,6 +3555,16 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
   // screen, when the arena has none.
   if (kid(ga, 800) && !kid(ga, 808))
     kid(ga, 800)->id = 808;
+  // 801 (Judgment Day 2008 / 2009: the two big screens on the sides of the stage) was the arena's movie: WWE '12
+  // draws no "arena_movie" screen during the entrances (2008: the two squares empty, 2009: its logo picture behind
+  // showing, the superstar's movie nowhere; 2026-11-11). As in those games (the same "titan_mov" on all their
+  // screens), it shows the titantron's movie too (cut as 800 / 803 above), on a titantron screen number left free.
+  if (kid(ga, 801))
+    for (const uint32_t to : {808u, 806u})
+      if (!kid(ga, to)) {
+        kid(ga, 801)->id = to;
+        break;
+      }
   std::sort(ga.kids.begin(), ga.kids.end(), [](const svrfmt::ArcNode &a, const svrfmt::ArcNode &b) { return a.id < b.id; });
   svrfmt::ArchiveTouch(ga);
   return true;

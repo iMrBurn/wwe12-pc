@@ -654,6 +654,15 @@ places ×10, d'après le code de Kaiko).
   (champ de 16 octets) avant de faire l'arbre de visibilité. Barrière : le panneau `ar_fence02` des barrières de la base
   porte `ar_fen_wwe` (« WWE HD » de WWE '12) ; une arène qui n'a pas cette image prend maintenant la couverture de sa
   propre barrière (`ar_fence`) au lieu de celle de la base.
+- **Vidéo de logo avant les entrées et écrans des côtés (SvR 2008 / 2009, 2026-11-11)** : vu en jeu par l'utilisateur
+  (Judgment Day 2008 puis 2009) : arène rechargée au 2e match (corrigé), écran VS mieux, barrière et tapis OK. Les vidéos
+  de logo jouées avant les entrées sont `pac/movie.pac` (2008) / `pac/evt/_EvtMov.pac` (2009) `MOV /M0NN` (numéro de
+  l'arène vérifié : 1 RAW, 9 Royal Rumble, 13 Judgment Day ; Bink 1 256 × 256 sans alpha, images ≤ 34 Ko) → prises telles
+  quelles comme `arena/transition.bik` (à vérifier en jeu). 2008 a aussi `ARMV/<show>` (320 × 320 avec alpha, 15-30
+  images : des volets de transition), pas pris. Écrans : 801 (les deux grands écrans de côté de Judgment Day) était
+  « arena_movie », que WWE '12 n'affiche pas pendant les entrées (2008 : carrés vides, 2009 : logo JD) → maintenant
+  titantron (coupé comme 800 / 803) et renuméroté 808 (sinon 806). Table des commentateurs et marches : objets « arme »
+  communs (`bgEtc.pac` WPON), pas dans l'arène : il faudrait servir un `bgEtc` par arène ajoutée (non fait).
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
   (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le
