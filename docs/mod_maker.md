@@ -732,6 +732,11 @@ places ×10, d'après le code de Kaiko).
   nom (animée) depuis le bord gauche sur toute la largeur, logo du show à gauche, nom dedans ; pas de plaque de ville ;
   marches grises de SvR (même limite que 2008). → 2009 traité comme 2008 : plaque VS dans `hell_fr` (640 × 96), plaques
   d'entrée à leur place SvR (écran de 512, ×2,5), plaque de ville vide, pas de `fit`. Transition : le logo WWE (gardé).
+- **SvR 2009 SmackDown vu en jeu (2026-11-11)** : plaque de nom comme Xenia ; écran VS : la plaque coupait le logo du
+  dessus (`LikePicture` remplissage = recadrage) → étirée entière. Grand écran : le logo SmackDown restait (objet 75
+  `sd_titan1`, image `sd_titan_l`, devant l'écran ; SvR le cachait pendant les vidéos, Xenia montre la vidéo) → les
+  objets dont toutes les images sont `<show>_titan_l` / `<show>_titan<chiffres>` sont retirés comme les `titan_logo`
+  (Judgment Day 2009 : `jd_titan0/1`).
 - **Marches et table des commentateurs SvR 2008 (2026-11-11, essai)** : `bgEtc.pac` STG /WPON a la même organisation
   dans WWE '12 et SvR 2008 : 6 = table `1060` (`ji_desk`, `ji_bl`, `ji_meta`), 7 = ses écrans `1070` (`ji_mon`, `ji_top`),
   32-37 = marches `1320`… (`ar_stair0-2`), images dans leur entrée 10. Images de marches disposées pareil, `ji_mon`

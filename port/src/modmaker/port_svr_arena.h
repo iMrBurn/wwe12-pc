@@ -3530,8 +3530,17 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
   // The pictures the old games put on the big screen when no movie plays ("titan_logo_01", the scrolling
   // "titan_logo_02", "titan_kari_01": 2007 RAW's starfield and "ENTER" art), on its plane, before the visibility tree is made: the game hid them during the
   // movies; WWE '12 draws them always, over the titantron (seen in the game, 2026-11-01): left out.
+  // (and the show's logo on its own model before the screen, "<show>_titan_l" / "<show>_titan0..": SvR 2009 SmackDown's
+  // sd_titan_l, Judgment Day's jd_titan0 / 1 - the big screens showed the logo during the entrances where SvR showed
+  // the superstar's movie, seen in the game and on Xenia, 2026-11-11)
   const auto cover = [](const std::string &t) {
-    return t.rfind("titan_logo", 0) == 0 || t.rfind("titan_kari", 0) == 0;
+    if (t.rfind("titan_logo", 0) == 0 || t.rfind("titan_kari", 0) == 0)
+      return true;
+    const size_t at = t.find("_titan");
+    if (at == std::string::npos || at == 0 || at > 6)
+      return false;
+    const std::string rest = t.substr(at + 6);
+    return rest == "_l" || std::all_of(rest.begin(), rest.end(), ::isdigit);
   };
   const size_t before = ga.kids.size();
   ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(), [&](const svrfmt::ArcNode &k) {
