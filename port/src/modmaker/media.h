@@ -542,6 +542,48 @@ class EntranceVideos {
       Finish(fr, mods);
     ImGui::BeginDisabled(editor_.Busy());
 
+    // A game superstar's video changed, or a new video added to CREATE AN ENTRANCE's MOVIE list (2026-11-11, the
+    // user: "add titantrons, not only replace them"; the game gives it a free video number, wwe12_superstar_mods.cpp)
+    if (ImGui::RadioButton(fr ? "Changer la vidéo d'un catcheur du jeu" : "Change a game superstar's video", !add_new_)) {
+      add_new_ = false;
+      if (star_ >= 0)
+        editor_.SetGame(device_, CopyGameMovie(disc_, stars_[star_].file));
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton(fr ? "Ajouter une nouvelle vidéo (Créer une entrée)" : "Add a new video (Create an Entrance)",
+                           add_new_) &&
+        !add_new_) {
+      add_new_ = true;
+      editor_.SetGame(device_, {});
+    }
+    if (add_new_) {
+      ImGui::TextDisabled("%s", fr ? "(elle s'ajoute à la liste MOVIE de Créer une entrée, sous son nom, sans remplacer celles du jeu)"
+                                   : "(it is added to Create an Entrance's MOVIE list, under its name, replacing none of the game's)");
+      ImGui::SetNextItemWidth(360);
+      ImGui::InputTextWithHint(fr ? "Nom dans la liste" : "Name in the list", fr ? "ex. : MON TITANTRON" : "e.g. MY TITANTRON",
+                               new_name_, sizeof(new_name_));
+      ImGui::EndDisabled();
+      editor_.Draw(fr, "videos_new");
+      ImGui::Dummy(ImVec2(0, 6));
+      ImGui::BeginDisabled(editor_.Busy());
+      ImGui::SetNextItemWidth(260);
+      ImGui::InputText(fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
+      mod_version::Input("Version##video_version_new", version_, sizeof(version_));
+      ImGui::EndDisabled();
+      const bool running = game::IsRunning();
+      ImGui::BeginDisabled(editor_.Busy() || running || !editor_.Ready() || !new_name_[0]);
+      if (ImGui::Button(fr ? "Créer le mod et l'installer...##new" : "Make the mod and install it...##new"))
+        StartNew(fr);
+      ImGui::EndDisabled();
+      editor_.DrawProgress(fr);
+      if (running)
+        ImGui::TextColored(red, "%s", fr ? "Le jeu est lancé : fermez-le pour installer le mod."
+                                         : "The game is running: close it to install the mod.");
+      if (!message_.empty())
+        ImGui::TextColored(message_ok_ ? green : red, "%s", message_.c_str());
+      return;
+    }
+
     // The superstar.
     ImGui::SetNextItemWidth(360);
     const std::string current = star_ < 0 ? (fr ? "Choisir..." : "Choose...") : Label(stars_[star_]);
@@ -779,11 +821,62 @@ class EntranceVideos {
       Finish(fr, mods, false);  // (only its ribbon / wall)
   }
 
+  // A new video: its name made a file name.
+  std::string NewKey() const {
+    std::string k;
+    for (const char *c = new_name_; *c; ++c)
+      k += std::isalnum(static_cast<unsigned char>(*c)) ? char(std::tolower(static_cast<unsigned char>(*c))) : '_';
+    return k.empty() ? "video" : k;
+  }
+  void StartNew(bool fr) {
+    std::wstring name;
+    for (char c : NewKey())
+      name += wchar_t(c);
+    out_ = PickSave(fr, name + L"_video.svrmod");
+    if (out_.empty())
+      return;
+    made_ = TempDir() / "made_new_video.bik";
+    message_.clear();
+    editor_.Start(made_);
+  }
+
   // On the UI thread once the movie is made: the .svrmod, then its install.
   void Finish(bool fr, mods::Manager &mods, bool movie = true) {
     message_ok_ = false;
     if (movie && !editor_.Ok()) {
       message_ = (fr ? "La vidéo n'a pas pu être faite : " : "The movie could not be made: ") + editor_.Error();
+      return;
+    }
+    if (add_new_) {  // (a new video: media\titantron_add.bik, titantron_add=<its name>; the game numbers it)
+      std::vector<uint8_t> bik;
+      {
+        std::ifstream f(made_, std::ios::binary);
+        bik.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+      }
+      std::error_code ec;
+      fs::remove(made_, ec);
+      std::string label = new_name_;
+      for (auto &c : label)
+        c = char(std::toupper(static_cast<unsigned char>(c)));
+      std::string manifest = "game=wwe12\ntype=media\nid=added_video_" + NewKey() + "\nname=" +
+                             (fr ? "Nouvelle vidéo : " : "New video: ") + label + "\nversion=" + mod_version::Of(version_) +
+                             "\ntitantron_add=" + label + "\n";
+      if (author_[0])
+        manifest += std::string("author=") + author_ + "\n";
+      manifest += "description=A new entrance video, " + label + " (" + editor_.Parts() +
+                  "), added to Create an Entrance's MOVIE list, made with the WWE '12 Mod Maker.\n";
+      std::vector<std::pair<std::string, std::vector<uint8_t>>> entries = {
+          {"manifest.txt", std::vector<uint8_t>(manifest.begin(), manifest.end())},
+          {"media/titantron_add.bik", std::move(bik)}};
+      if (!mods::Manager::WriteZip(out_, entries)) {
+        message_ = (fr ? "Impossible d'écrire " : "Could not write ") + Utf8(out_.wstring());
+        return;
+      }
+      mods.InstallFile(fr, out_);
+      message_ok_ = true;
+      message_ = (fr ? "Mod créé et installé : " : "Mod made and installed: ") + Utf8(out_.wstring()) +
+                 (fr ? " (dans le jeu : Créer une entrée > MOVIE, « " : " (in the game: Create an Entrance > MOVIE, \"") + label +
+                 (fr ? " »)" : "\")");
       return;
     }
     const Star &s = stars_[star_];
@@ -827,6 +920,8 @@ class EntranceVideos {
   disc::GameDisc disc_;
   std::vector<Star> stars_;
   int star_ = -1;
+  bool add_new_ = false;    // a new video (Create an Entrance's MOVIE list), not a game superstar's
+  char new_name_[40] = {};  // ... its name there
   char filter_[64] = {};
   fs::path out_, made_;
   char author_[64] = {}, version_[16] = {};

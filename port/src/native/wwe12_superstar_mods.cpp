@@ -668,6 +668,122 @@ constexpr uint32_t kAttireText = 60000;
 std::map<uint32_t, std::string> g_attire_texts;  // number -> text
 std::map<uint32_t, uint32_t> g_attire_text_at;   // number -> its copy in guest memory
 
+// Added videos (2026-11-11, the user: "add titantrons, not only replace them"): a VIDEOS mod made as a new video
+// (.svrmods\Media\<mod>\manifest.txt "titantron_add=<NAME>", media\titantron_add.bik, laid out as the game's: the
+// titantron on top, its minitron below) gets a video number no video of the disc or of the packs has, from 899 down
+// (the added superstars take theirs from the bottom of 373-399, 428-499, 551-615, 726-899), kept from one start to the
+// next (Documents\wwe12\added_videos.txt, "<mod>=<number>": a created superstar's entrance keeps pointing at it),
+// served as movies\titantron\NNN.bik (Documents\wwe12\added_videos), with its minitron, and listed in CREATE AN
+// ENTRANCE's MOVIE list under its name (wwe12_arena_pages.cpp, sub_829F9F90 kind 0).
+std::vector<std::pair<int, std::string>> g_added_videos;  // (number, name)
+std::vector<std::pair<int, std::string>> g_star_videos;   // the added superstars' own videos (number, name)
+std::set<int> g_added_video_numbers;
+
+void MountAddedVideos(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root, const fs::path &mods) {
+  g_added_videos.clear();
+  g_added_video_numbers.clear();
+  if (user_root.empty())
+    return;
+  std::error_code ec;
+  struct One {
+    std::string key, name;
+    fs::path file;
+  };
+  std::vector<One> list;
+  for (fs::directory_iterator it(mods / ".svrmods" / "Media", ec), end; !ec && it != end; it.increment(ec)) {
+    Bytes m;
+    if (!it->is_directory(ec) || fs::exists(it->path() / "disabled", ec) || !ReadHost(it->path() / "manifest.txt", m))
+      continue;
+    std::string name = Value(std::string(m.begin(), m.end()), "titantron_add");
+    const fs::path file = it->path() / "media" / "titantron_add.bik";
+    if (name.empty() || !fs::exists(file, ec))
+      continue;
+    for (char &c : name)
+      c = char(toupper(uint8_t(c)));
+    list.push_back({rex::path_to_utf8(it->path().filename()), name.substr(0, 40), file});
+  }
+  ec.clear();
+  std::sort(list.begin(), list.end(), [](const One &a, const One &b) { return a.key < b.key; });
+  const fs::path dir = user_root / "added_videos", mdir = dir / "movies" / "titantron", kept_file = user_root / "added_videos.txt";
+  std::map<std::string, int> kept;
+  {
+    std::ifstream f(kept_file);
+    for (std::string line; std::getline(f, line);)
+      if (const size_t eq = line.find('='); eq != std::string::npos)
+        kept[line.substr(0, eq)] = atoi(line.c_str() + eq + 1);
+  }
+  // (taken: a video of the disc or of an installed pack, other than our own pack's served ones)
+  const fs::path content = user_root / "0000000000000000" / "54510890" / "00000002";
+  auto taken = [&](int n) {
+    if (g_added_video_numbers.count(n))
+      return true;
+    char rel[40];
+    snprintf(rel, sizeof(rel), "movies/titantron/%03d.bik", n);
+    std::string game = std::string("game:/") + rel;
+    std::replace(game.begin(), game.end(), '/', char(92));
+    if (vfs && vfs->ResolvePath(game) && !fs::exists(mdir / (rel + 17), ec))
+      return true;
+    for (fs::directory_iterator it(content, ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec) && fs::exists(it->path() / fs::path(rel), ec))
+        return true;
+    ec.clear();
+    return false;
+  };
+  std::set<std::string> keep;
+  std::string text;
+  for (const auto &v : list) {
+    Bytes movie;
+    if (!ReadHost(v.file, movie) || movie.size() < 16 || memcmp(movie.data(), "BIK", 3) != 0)
+      continue;
+    const uint32_t largest = movie[12] | movie[13] << 8 | movie[14] << 16 | uint32_t(movie[15]) << 24;
+    const uint32_t frames = movie[8] | movie[9] << 8 | movie[10] << 16 | uint32_t(movie[11]) << 24;
+    if (largest > 120000 || (frames && movie.size() / frames > 32000)) {  // (as the added superstars' own)
+      REXLOG_WARN("[added videos] {}: left out (frames too big for the game); make it again with the Mod Maker", v.key);
+      continue;
+    }
+    int n = 0;
+    if (const auto k = kept.find(v.key); k != kept.end() && k->second >= 373 && k->second <= 899 && !taken(k->second))
+      n = k->second;
+    for (const auto &[from, to] : std::vector<std::pair<int, int>>{{726, 899}, {551, 615}, {428, 499}, {373, 399}})
+      for (int x = to; x >= from && !n; --x)
+        if ((x < 500 || x >= 600) && !taken(x))  // (500-550 are a title match's pictures)
+          n = x;
+    if (!n) {
+      REXLOG_WARN("[added videos] {}: no free video number", v.key);
+      continue;
+    }
+    g_added_video_numbers.insert(n);
+    g_added_videos.push_back({n, v.name});
+    g_mod_minitrons.insert(uint32_t(n));
+    text += v.key + "=" + std::to_string(n) + "\n";
+    char name[16];
+    snprintf(name, sizeof(name), "%03d.bik", n);
+    keep.insert(name);
+    if (!fs::exists(mdir / name, ec) || fs::file_size(mdir / name, ec) != movie.size())
+      WriteHost(mdir / name, movie);
+    REXLOG_INFO("[added videos] {} \"{}\": video {}", v.key, v.name, n);
+  }
+  for (fs::directory_iterator it(mdir, ec), end; !ec && it != end; it.increment(ec))
+    if (!keep.count(rex::path_to_utf8(it->path().filename())))
+      fs::remove(it->path(), ec);
+  ec.clear();
+  if (keep.empty()) {
+    fs::remove(kept_file, ec);
+    return;
+  }
+  WriteHost(kept_file, Bytes(text.begin(), text.end()));
+  std::string game_device;
+  if (vfs && vfs->FindSymbolicLink("game:", game_device)) {
+    auto overlay = std::make_unique<rex::filesystem::HostPathDevice>(game_device, dir, true);
+    if (overlay->Initialize() && vfs->RegisterOverlay(game_device, std::move(overlay)))
+      REXLOG_INFO("[added videos] {} served from {}", keep.size(), rex::path_to_utf8(dir));
+  }
+}
+
+// (wwe12_arena_pages.cpp: CREATE AN ENTRANCE's MOVIE list gets these)
+const std::vector<std::pair<int, std::string>> &Wwe12AddedVideos() { return g_added_videos; }
+const std::vector<std::pair<int, std::string>> &Wwe12StarVideos() { return g_star_videos; }
+
 void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root,
                              const fs::path &mods) {
   g_relations_file = user_root / "relations_cleared.txt";
@@ -701,6 +817,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         g_mod_minitrons.insert(uint32_t(atoi(f.c_str())));
     }
   }
+  MountAddedVideos(vfs, user_root, mods);
   if (!REXCVAR_GET(wwe12_superstar_mods) || user_root.empty())
     return;
   const fs::path content = user_root / "0000000000000000" / "54510890" / "00000002";
@@ -1194,7 +1311,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   {
     std::vector<int> used;
     auto taken_number = [&](int n) {
-      if (std::find(used.begin(), used.end(), n) != used.end())
+      if (std::find(used.begin(), used.end(), n) != used.end() || g_added_video_numbers.count(n))
         return true;
       char rel[40];
       snprintf(rel, sizeof(rel), "movies/titantron/%03d.bik", n);
@@ -1250,6 +1367,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   g_movies.clear();
   g_movie_base.clear();
   g_mod_movies.clear();
+  g_star_videos.clear();
   g_own_screens.clear();
   g_themes.clear();
   std::map<std::string, fs::path> star_dirs;  // (its superstar\ folder)
@@ -1260,6 +1378,12 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       g_movies[uint32_t(st.slot)] = uint32_t(st.movie_number);
       g_movie_base[uint32_t(st.slot)] = uint32_t(st.base);
       g_mod_movies[st.key] = uint32_t(st.movie_number);
+      {  // (in CREATE AN ENTRANCE's MOVIE list under its name: wwe12_arena_pages.cpp)
+        std::string label = st.name;
+        for (char &c : label)
+          c = char(toupper(uint8_t(c)));
+        g_star_videos.push_back({st.movie_number, label.empty() ? st.key : label});
+      }
       std::error_code e1;
       for (const auto &[kind, file] : {std::pair<uint32_t, const char *>{1, "ribbon.bik"}, {2, "wall.bik"}})
         if (OwnScreenFits(star_dirs[st.key] / file))

@@ -137,6 +137,10 @@ REXCVAR_DEFINE_BOOL(wwe12_arena_pages_test, false, "WWE12",
 // (wwe12_superstar_mods.cpp: the name an entrant's ribbon / wall lookup is served under, "" if none; the superstar
 // entering now, 0 if none)
 std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint8_t *base);
+// (wwe12_superstar_mods.cpp: CREATE AN ENTRANCE's MOVIE list additions, (video number, name): the VIDEOS mods' added
+// videos and the added superstars' own videos)
+const std::vector<std::pair<int, std::string>> &Wwe12AddedVideos();
+const std::vector<std::pair<int, std::string>> &Wwe12StarVideos();
 // (wwe12_superstar_mods.cpp) a menu pictures mod's layout of MnLayHD.pac / MnLaySD.pac: its place in the served copy
 bool Wwe12MenuPictureEntry(const std::string &name, bool sd, uint32_t &sector, uint32_t &units);
 uint32_t Wwe12EnteringSuperstar(const PPCContext &ctx, uint8_t *base);
@@ -2213,10 +2217,20 @@ extern "C" REX_FUNC(sub_829F9F90) {
   if (REXCVAR_GET(wwe12_entrance_list_log))
     REXLOG_INFO("[entrance list] list {:08X} kind {} first {}: {} entries (value/text/superstar):{}", list, kind, first,
                 count, seen);
-  if (!superstars || g_mod_entrances.empty() || !REXCVAR_GET(wwe12_entrance_list))
+  // (kind 0 is the MOVIE list, by video number - movies\titantron\NNN.bik -, the others are entrances: an added
+  // superstar went there under his entrance's number, 498, and showed a black video, 2026-11-11. Its own video's
+  // number now, and the VIDEOS mods' added videos, wwe12_superstar_mods.cpp)
+  std::vector<std::pair<int, std::string>> adds;
+  if (kind == 0) {
+    adds = Wwe12StarVideos();
+    adds.insert(adds.end(), Wwe12AddedVideos().begin(), Wwe12AddedVideos().end());
+  } else {
+    adds = g_mod_entrances;
+  }
+  if (!superstars || adds.empty() || !REXCVAR_GET(wwe12_entrance_list))
     return;
   static std::map<std::string, u32> texts;
-  for (const auto &[number, label] : g_mod_entrances) {
+  for (const auto &[number, label] : adds) {
     bool there = false;
     const u32 n = bd::mem::load<u32>(list), items = bd::mem::load<u32>(list + 8);
     for (u32 i = 0; items && i < n && !there; ++i)

@@ -1565,3 +1565,19 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
 - **État** : contrôle de syntaxe avec les vraies options ; **pas de build, pas d'essai en jeu**. À vérifier : deux
   lancements de suite avec des arènes ajoutées ; choisir une arène ajoutée, quitter, relancer : l'arène de base doit
   redevenir celle du jeu ; bannières, écran VS et écran d'avant-match des arènes ajoutées.
+
+## Nouvelles vidéos dans Créer une entrée (1.3, 2026-11-11)
+
+- **Demande** (bloc-notes 1.3) : ajouter des titantrons, pas seulement remplacer ceux des catcheurs du jeu.
+- **La liste MOVIE** de Créer une entrée est remplie par `sub_829F9F90` (genre 0 ; les autres genres sont les listes
+  d'entrées, 1, 2, 16, 17), ses valeurs = numéros des vidéos `movies\titantron\NNN.bik` (96 sur le disque, dont 401-426,
+  999). Vu par le journal `wwe12_entrance_list_log` le 2026-11-11.
+- **Bug corrigé** : un catcheur ajouté y était mis sous le numéro de son entrée (Jey Uso 498 : vidéo noire) ; maintenant
+  sous celui de sa vidéo (104).
+- **Page VIDÉOS** : choix « Ajouter une nouvelle vidéo (Créer une entrée) » + son nom ; le mod (`type=media`) a
+  `titantron_add=<NOM>` et `media/titantron_add.bik` (titantron en haut, minitron en bas, comme le jeu).
+- **Jeu** (`MountAddedVideos`, `wwe12_superstar_mods.cpp`) : un numéro qu'aucune vidéo du disque ni d'un pack n'a, pris
+  de 899 vers le bas (les catcheurs ajoutés prennent les leurs par le bas), gardé d'un démarrage à l'autre
+  (`Documents\wwe12\added_videos.txt`) ; servi depuis `Documents\wwe12\added_videos\movies\titantron\NNN.bik`, avec son
+  minitron ; ajouté à la liste MOVIE sous son nom. Les catcheurs ajoutés évitent ces numéros. **Pas encore vu en jeu.**
+- Le ruban et le mur vidéo d'un catcheur du jeu se font déjà sur la même page (choix « ruban » et « mur »).
