@@ -1927,8 +1927,21 @@ extern "C" REX_FUNC(sub_823BEED0) {
   g_stage_object = ctx.r3.u32;
   g_stage_holds = g_chosen;
   if (REXCVAR_GET(wwe12_dir_log))
-    REXLOG_INFO("[arena pages] stage object {:08X} loads stage {}", ctx.r3.u32, bd::mem::load<u32>(ctx.r3.u32 + 88));
+    REXLOG_INFO("[arena pages] stage object {:08X} loads stage {} (from {:08X})", ctx.r3.u32,
+                bd::mem::load<u32>(ctx.r3.u32 + 88), u32(ctx.lr));
   __imp__sub_823BEED0(ctx, base);
+}
+
+// Probe (2026-11-11: Judgment Day 2008 then 2009 on the same base, through the main menu: the second match looked its
+// "/STG/0009" up but never loaded it, the 2008 arena stayed): sub_823BEE70(object, stage) finds the stage's file (an
+// entry, 0 if none); who asks, and what the stage object holds then. Logged with wwe12_dir_log.
+REX_EXTERN(__imp__sub_823BEE70);
+extern "C" REX_FUNC(sub_823BEE70) {
+  if (REXCVAR_GET(wwe12_dir_log))
+    REXLOG_INFO("[arena pages] stage lookup {} by {:08X} (object {:08X}, it holds {}; last load's object {:08X} holds {})",
+                ctx.r4.u32, u32(ctx.lr), ctx.r3.u32, ctx.r3.u32 ? int(bd::mem::load<u32>(ctx.r3.u32 + 88)) : -2,
+                g_stage_object, g_stage_object ? int(bd::mem::load<u32>(g_stage_object + 88)) : -2);
+  __imp__sub_823BEE70(ctx, base);
 }
 
 // After a choice: if the stage object holds the chosen stage number with another arena in it, it forgets its stage
