@@ -4148,11 +4148,22 @@ inline bool Port(const Bytes &svr, const Bytes &base12, Bytes &out, std::string 
         wanted(wanted, k);
     // The light maps WWE '12's code looks up by name in every arena (no model names them; SvR 2011 has
     // aud_lightmap instead): without them the crowd stays dark.
+    // Made grey (their brightness kept): the base's tint is its show's (Hell in a Cell's and RAW's fade_lightmap01 red,
+    // the crowd of Judgment Day 2008 came out red, 2026-11-11; SvR's crowds have no tint).
     for (const char *n : {"fade_lightmap00", "fade_lightmap01"})
       if (!names.count(n))
         for (const auto &t : theirs)
           if (t.name == n) {
-            add.push_back(t);
+            svrfmt::BundleTexture g = t;
+            svrfmt::Image img;
+            if (svrfmt::DdsDecode(t.data, img)) {
+              for (size_t i = 0; i + 3 < img.rgba.size(); i += 4) {
+                const int l = (img.rgba[i] * 77 + img.rgba[i + 1] * 150 + img.rgba[i + 2] * 29) >> 8;
+                img.rgba[i] = img.rgba[i + 1] = img.rgba[i + 2] = uint8_t(l);
+              }
+              g.data = detail::LikePicture(t.data, img, true);
+            }
+            add.push_back(g);
             names.insert(n);
             break;
           }

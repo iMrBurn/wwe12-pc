@@ -2094,6 +2094,21 @@ class Page {
         // half its height (Judgment Day on Xenia, the user's capture, 2026-11-11): put round the text WWE '12 writes
         // (it writes it at its own place, under the plate as SvR's animation put it); no city plate in that game.
         if (svr_year_ == 2008 && plate.img.w > 0) {
+          // (its picture cut to what shows first: the animation's picture holds much empty room round the frame -
+          // made 1856 wide whole, the frame came out half as wide, 2026-11-11)
+          int x0 = plate.img.w, y0 = plate.img.h, x1 = -1, y1 = -1;
+          for (int y = 0; y < plate.img.h; ++y)
+            for (int x = 0; x < plate.img.w; ++x)
+              if (plate.img.rgba[(size_t(y) * plate.img.w + x) * 4 + 3] > 8)
+                x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x), y1 = std::max(y1, y);
+          if (x1 > x0 && y1 > y0) {
+            const int w0 = plate.img.w, h0 = plate.img.h;
+            plate.img = port_svr_arena::detail::Crop(plate.img, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+            for (auto &f : plate.intro)  // (the intro's pictures: the same rectangle, scaled to their size)
+              if (f.w > 0 && f.h > 0)
+                f = port_svr_arena::detail::Crop(f, x0 * f.w / w0, y0 * f.h / h0, std::max(1, (x1 - x0 + 1) * f.w / w0),
+                                                 std::max(1, (y1 - y0 + 1) * f.h / h0));
+          }
           plate.w = 1856;
           plate.h = plate.w * float(plate.img.h) / float(plate.img.w);
           plate.x = t.name_x - 0.64f * plate.w;

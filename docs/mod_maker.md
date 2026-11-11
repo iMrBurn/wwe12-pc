@@ -697,6 +697,12 @@ places ×10, d'après le code de Kaiko).
   sa place fixe (mesurée pour Hell in a Cell, base 9 : centre (1145, 928) sur 1920 × 1080, ville (385, 265) ; ajouté à
   `PlateTextFor`) : la plaque de 2008 est maintenant posée autour (1856 de large), la plaque de ville vide (la ville
   seule). Écran VS : la plaque 640 × 96 n'était jamais appliquée (`BundleRead` refuse les paquets `atb`) : lue à la main.
+- **SvR 2008, 4e essai (2026-11-11, vu en jeu)** : tapis du ring dessiné (`yBG_BumpMap`), plaque VS pleine largeur OK.
+  Plaque de nom : l'image tirée de l'animation a beaucoup de vide autour du bois → recadrée sur ce qui est visible avant
+  d'être posée (1856 de large). Foule rouge : `fade_lightmap01` (cherchée par nom, copiée de la base) est rougeâtre chez
+  Hell in a Cell et RAW (moyenne 76 35 34), violette dans bg13 → pour les arènes SvR elle est copiée **en gris** (même
+  luminosité). Les 12 jeux de lumières cherchés par le jeu (10-14, 20, 30, 31, 100, 110, 115, 500) sont les mêmes
+  chez Hell in a Cell et RAW (pas la cause).
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
   (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le
