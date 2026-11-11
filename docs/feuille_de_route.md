@@ -74,7 +74,7 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 **Vitesse**
 - Chargements plus rapides (étude : `docs/chargements_1_2.md`) : turbo de chargement (`wwe12_load_turbo`, existe mais coupé par défaut : match ~4,0 → 2,8 s, fin des entrées ~4,5 → 2 s), bridage des animations 2D réécrit par nous (2-3 h), contre-épreuve sur 4 fils, décision de l'utilisateur sur le turbo par défaut ; avertissement disque dur dans le launcher.
 - 30 fps partout : le mode 30 du jeu imposé aux matchs (clé `wwe12_frame_mode` = original / 30 / 60_entrances), PC + Android (~7-8 h).
-- Code natif plus rapide : `memcpy` / `memset` (fait, désactivé par défaut), registres locaux du générateur de code, patch « volatile » (une seule régénération du code, un seul gros test).
+- Code natif plus rapide : `memcpy` / `memset` (fait, désactivé par défaut), (registres locaux du générateur de code, patch « volatile » : RÉGÉNÉRATION DU CODE sortie de la 1.3 le 2026-11-11, dans « Plus tard » sans numéro de version, décision de l'utilisateur ; étude dans `docs/regeneration_1_3.md`).
 - Idées de Jarrod v0.2.19 (BSD-3, méthodes seulement, crédit THIRD_PARTY.md ; étude de Rendu dans `docs/perf_natif_steam_deck.md`) : mode mailbox (déchirement, 2-3 h), netteté de l'agrandissement 720p (3-4 h), test minimiser / restaurer (5 min), foule réglable (3-5 h). Plus tard : résolution dynamique de la 3D, foule en gros lots.
 
 **Benchmark (test de performance)**
@@ -118,6 +118,7 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - Shaders qui font saccader à la première fois (en 1.1 : préparés en arrière-plan ; reste à voir ce qui saccade encore, voir l'issue #53 : surtout le processeur).
 
 ## Plus tard (sans date)
+- **Régénération du code** (registres locaux + patch « volatile », 10 à 14 h + un gros test de ~2 h, risque de casse) : sans version, décision de l'utilisateur du 2026-11-11. Étude : `docs/regeneration_1_3.md`.
 - Plus de 6 superstars sur le ring ; 100 / 200 slots CAW et logos (probablement 2.0) ; le jeu en full natif ; Univers : cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants ; choix de caméra de match.
 
 ## Abandonné / pas prévu
