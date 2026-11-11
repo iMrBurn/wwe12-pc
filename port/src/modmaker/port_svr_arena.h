@@ -1842,7 +1842,12 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
     }
     for (auto &t : ours) {
       if (!old_vs.rgba.empty() && (t.name == "logo" || t.name == "hell_fr")) {
-        t.data = plate_fr && t.name == "hell_fr" && decode(plate, img) ? LikePicture(t.data, img, true) : Clear(t.data);
+        // (the plate stretched whole: cut to the plate's proportions, SvR 2009 SmackDown's logo above its frame was
+        // lost, 2026-11-11; whole, the frame and logo come out about as SvR shows them, 6.6 times as wide as high)
+        svrfmt::DdsInfo pi;
+        t.data = plate_fr && t.name == "hell_fr" && decode(plate, img) && svrfmt::DdsInfoOf(t.data, pi)
+                     ? LikePicture(t.data, svrfmt::Resize(img, pi.w, pi.h), true)
+                     : Clear(t.data);
         continue;
       }
       if (t.name == "hell_bg" && (!old_vs.rgba.empty() ? (img = old_vs, true) : decode(bg, img))) {  // (two pictures one above the other: the background twice)
