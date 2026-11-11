@@ -2090,34 +2090,7 @@ class Page {
                                      &transition)) {
       if (!plate.img.rgba.empty() && disc_ && disc_->Read("pac/evt/evtgdhd.pac", evtgd12)) {
         const port_svr_arena::PlateText t = port_svr_arena::PlateTextFor(slot_ >= 0 ? kSlots[slot_].number : 2);
-        // SvR 2008: its name plate nearly as wide as the screen at the bottom, the name in it at 64 % of its width,
-        // half its height (Judgment Day on Xenia, the user's capture, 2026-11-11): put round the text WWE '12 writes
-        // (it writes it at its own place, under the plate as SvR's animation put it); no city plate in that game.
-        if (svr_year_ == 2008 && plate.img.w > 0) {
-          // (its picture cut to the frame: the animation's picture holds a black band at half opacity across the
-          // screen behind it (alpha <= 128; RenderDoc, 2026-11-11: the 1024 x 128 picture drawn where asked, the
-          // wood in its left half) - cut to its opaque pixels, the wood)
-          int x0 = plate.img.w, y0 = plate.img.h, x1 = -1, y1 = -1;
-          for (int y = 0; y < plate.img.h; ++y)
-            for (int x = 0; x < plate.img.w; ++x)
-              if (plate.img.rgba[(size_t(y) * plate.img.w + x) * 4 + 3] > 160)  // (the wood, not the shadow band)
-                x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x), y1 = std::max(y1, y);
-          if (x1 > x0 && y1 > y0) {
-            const int w0 = plate.img.w, h0 = plate.img.h;
-            plate.img = port_svr_arena::detail::Crop(plate.img, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
-            for (auto &f : plate.intro)  // (the intro's pictures: the same rectangle, scaled to their size)
-              if (f.w > 0 && f.h > 0)
-                f = port_svr_arena::detail::Crop(f, x0 * f.w / w0, y0 * f.h / h0, std::max(1, (x1 - x0 + 1) * f.w / w0),
-                                                 std::max(1, (y1 - y0 + 1) * f.h / h0));
-          }
-          // (where SvR 2008 shows it, on Xenia: from the left edge over 95 % of the width, 70 % to 96 % of the
-          // height; the name at 62 % across - WWE '12 writes it at about 60 %, 86 % down: in it; the user's wish for
-          // every arena, 2026-11-11)
-          plate.x = 0;
-          plate.w = 0.95f * 1920;
-          plate.y = 0.70f * 1080;
-          plate.h = 0.26f * 1080;
-        }
+        // (SvR 2008: its plate where that game shows it, from OldSvrPlates; no city plate in that game)
         port_svr_arena::Plate2K city = plate;
         city.x += t.city_x - t.name_x;
         city.y += t.city_y - t.name_y;

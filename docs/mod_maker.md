@@ -717,6 +717,9 @@ places ×10, d'après le code de Kaiko).
   ≤ 128) sur toute la largeur derrière la plaque, que le recadrage (alpha > 8) gardait → recadrage sur alpha > 160.
   Vu en jeu ensuite : bois agrandi, nom dedans (68 % de large). Demande de l'utilisateur (même place que Xenia pour
   toutes les arènes) : plaque SvR 2008 posée à x 0, 95 % de la largeur, 70-96 % de la hauteur, sans `fit`.
+  Puis précisé : cette place est celle de Judgment Day ; chaque arène comme SvR 2008 la montrait → `OldSvrPlates` (2008)
+  garde la place de l'animation de SvR (son écran 640 × 448 étiré en 1280 × 720 comme Xenia, ×1,5 en 1920 × 1080), sans
+  la déplacer vers le texte de WWE '12 ; image entière (bande sombre comprise, comme SvR la dessine), pas de `fit`.
 - **Planche de contrôle SvR 2008 / 2009 (2026-11-11)** : `tools/dev/svr_arenas_sheet.py "<iso>" 2008` lit le disque du
   joueur, sans rien porter, et écrit `work/svr_check/svr2008_arenas.png` : une ligne par arène (bannière, écran VS
   recomposé, plus grande image de la plaque d'entrée, image de la vidéo de logo via ffmpeg). Pour comparer avec Xenia.

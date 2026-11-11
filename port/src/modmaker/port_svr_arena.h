@@ -2973,6 +2973,13 @@ inline bool OldSvrPlates(const Bytes &evtgd, int file, int year, int base, Plate
       const PlateText t = PlateTextFor(base);
       name.x = t.name_x - 1.5f * ax * w;
       name.y = t.name_y - 1.5f * ay * h;
+      // SvR 2008: where that game shows it (its 1280 x 720 screen, here at (ox, oy), made 1920 x 1080), not moved to
+      // WWE '12's text - the user's wish, comparing with Xenia (2026-11-11: Judgment Day's frame from the left edge
+      // over 95 % of the width, at the bottom; each arena as SvR 2008 had it)
+      if (year == 2008) {
+        name.x = 1.5f * float(x0 - ox);
+        name.y = 1.5f * float(y0 - oy);
+      }
       // its coming in: 20 pictures from the first frame it shows, every other frame (the flip book shows each 2
       // frames at 60 a second), at half size, cut as the plate
       for (int k = 0; k < 20 && start + 2 * k < hold; ++k) {
