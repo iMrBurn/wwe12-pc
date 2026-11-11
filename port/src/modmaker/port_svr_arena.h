@@ -3554,18 +3554,13 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
       for (const auto &x : t)
         pictures.insert(x.name);
   }
-  for (auto &k : ga.kids) {
-    if (k.id != 800 && k.id != 801 && k.id != 803)
-      continue;
-    Bytes d = svrfmt::ArchiveData(k);
-    svrfmt::Model m;
-    if (!svrfmt::IsJboy(d) || !svrfmt::JboyRead(d, m, nullptr))
-      continue;
-    constexpr size_t B = 8;
-    const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
-    // Its movie meshes and their picture slot.
+  // A model's movie meshes (their picture a placeholder) and their picture slot.
+  constexpr size_t B = 8;
+  const auto movie_meshes = [&](const Bytes &d, svrfmt::Model &m) {
     std::vector<std::pair<size_t, int>> movies;
-    float u0 = 1e9f, u1 = -1e9f, v0 = 1e9f, v1 = -1e9f;
+    if (!svrfmt::IsJboy(d) || !svrfmt::JboyRead(d, m, nullptr))
+      return movies;
+    const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
     for (size_t i = 0; i < m.meshes.size(); ++i) {
       const auto &me = m.meshes[i];
       int slot = -1;
@@ -3578,39 +3573,91 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
       if (t != "titan_mov" && t != "titan" && (pictures.empty() || pictures.count(t)))
         continue;
       movies.push_back({i, slot});
-      for (const auto &uv : me.uvs) {
-        u0 = std::min(u0, uv[0]), u1 = std::max(u1, uv[0]);
-        v0 = std::min(v0, uv[1]), v1 = std::max(v1, uv[1]);
-      }
     }
+    return movies;
+  };
+  // The stage's two screen models 801 and 803 (Judgment Day 2008: 803 the two big screens on the sides, one mesh,
+  // 801 the dome under the logo; 2009 the other way round): in those games the big ones showed the superstar's movie,
+  // the small one the minitron (the user, 2026-11-11: the sides showed two halves of the movie, sparkles, the dome
+  // the face). The wider one is the titantron (803, each of its screens the whole movie), the other the minitron
+  // (806, WWE '12 RAW's minitron: the strip under the titantron's movie, v 0.69-1).
+  int mini = -1;
+  if (!kid(ga, 800) && kid(ga, 801) && kid(ga, 803)) {
+    float w[2] = {0, 0};
+    for (int j = 0; j < 2; ++j) {
+      svrfmt::Model m;
+      const Bytes d = svrfmt::ArchiveData(*kid(ga, j ? 803 : 801));
+      float x0 = 1e9f, x1 = -1e9f;
+      for (const auto &[i, slot] : movie_meshes(d, m))
+        for (const auto &v : m.meshes[i].verts)
+          x0 = std::min(x0, v.pos[0]), x1 = std::max(x1, v.pos[0]);
+      w[j] = x1 - x0;
+    }
+    if (w[0] > 0 && w[1] > 0)
+      mini = w[0] < w[1] ? 801 : 803;
+  }
+  for (auto &k : ga.kids) {
+    if (k.id != 800 && k.id != 801 && k.id != 803)
+      continue;
+    Bytes d = svrfmt::ArchiveData(k);
+    svrfmt::Model m;
+    const auto movies = movie_meshes(d, m);
+    if (movies.empty())
+      continue;
+    const uint32_t tptr = svrfmt::Be32(&d[0x2C]);
+    // Its screens: one, or two apart side by side in the same meshes (a gap in x over a quarter of the width): each
+    // its UVs taken as a whole.
+    std::vector<float> xs;
+    for (const auto &[i, slot] : movies)
+      for (const auto &v : m.meshes[i].verts)
+        xs.push_back(v.pos[0]);
+    std::sort(xs.begin(), xs.end());
+    float split = 1e30f, gap = 0;
+    for (size_t q = 1; q < xs.size(); ++q)
+      if (xs[q] - xs[q - 1] > gap)
+        gap = xs[q] - xs[q - 1], split = (xs[q] + xs[q - 1]) / 2;
+    if (xs.empty() || gap <= (xs.back() - xs.front()) / 4 || int(k.id) == mini)
+      split = 1e30f;
+    float u0[2] = {1e9f, 1e9f}, u1[2] = {-1e9f, -1e9f}, v0[2] = {1e9f, 1e9f}, v1[2] = {-1e9f, -1e9f};
+    for (const auto &[i, slot] : movies)
+      for (size_t q = 0; q < m.meshes[i].uvs.size(); ++q) {
+        const int c = m.meshes[i].verts[q].pos[0] > split;
+        const auto &uv = m.meshes[i].uvs[q];
+        u0[c] = std::min(u0[c], uv[0]), u1[c] = std::max(u1[c], uv[0]);
+        v0[c] = std::min(v0[c], uv[1]), v1[c] = std::max(v1[c], uv[1]);
+      }
+    const float vt = int(k.id) == mini ? 0.69f : 0.f, vh = int(k.id) == mini ? 0.31f : 0.684f;
     for (const auto &[i, slot] : movies) {
       const auto &me = m.meshes[i];
-      if (u1 > u0 && v1 > v0) {
-        const size_t uvs = B + svrfmt::Be32(&me.raw[0x70]);
-        if (uvs + 8 * me.uvs.size() > d.size())
-          continue;
+      const size_t uvs = B + svrfmt::Be32(&me.raw[0x70]);
+      if (uvs + 8 * me.uvs.size() <= d.size())
         for (size_t q = 0; q < me.uvs.size(); ++q) {
-          svrfmt::PutBeF(&d[uvs + 8 * q], (me.uvs[q][0] - u0) / (u1 - u0));
-          svrfmt::PutBeF(&d[uvs + 8 * q + 4], (me.uvs[q][1] - v0) / (v1 - v0) * 0.684f);
+          const int c = me.verts[q].pos[0] > split;
+          if (u1[c] > u0[c] && v1[c] > v0[c]) {
+            svrfmt::PutBeF(&d[uvs + 8 * q], (me.uvs[q][0] - u0[c]) / (u1[c] - u0[c]));
+            svrfmt::PutBeF(&d[uvs + 8 * q + 4], vt + (me.uvs[q][1] - v0[c]) / (v1[c] - v0[c]) * vh);
+          }
         }
-      }
       const char *name = "titantron_movie";
       uint8_t *tn = &d[B + tptr + 16 * size_t(slot)];
       std::memset(tn, 0, 16);
       std::memcpy(tn, name, std::strlen(name));
     }
-    if (!movies.empty())
-      ReplaceLike(k, d);
+    ReplaceLike(k, d);
+  }
+  if (mini > 0) {
+    // the minitron on 806, the titantron on 803
+    kid(ga, uint32_t(mini))->id = kid(ga, 806) ? (kid(ga, 808) ? 804u : 808u) : 806u;
+    if (mini == 803)
+      kid(ga, 801)->id = 803;
   }
   // WWE '12 gives 800 no movie (its own 800 is a small screen; a 2K stage screen left on 800 stayed black, 2026-10-31;
   // 2007 RAW's big screen, 800 and 803 on one quad, stayed dark in the match, 2026-11-01): 800 made 808, a titantron
   // screen, when the arena has none.
   if (kid(ga, 800) && !kid(ga, 808))
     kid(ga, 800)->id = 808;
-  // 801 (Judgment Day 2008 / 2009: the two big screens on the sides of the stage) was the arena's movie: WWE '12
-  // draws no "arena_movie" screen during the entrances (2008: the two squares empty, 2009: its logo picture behind
-  // showing, the superstar's movie nowhere; 2026-11-11). As in those games (the same "titan_mov" on all their
-  // screens), it shows the titantron's movie too (cut as 800 / 803 above), on a titantron screen number left free.
+  // 801 otherwise (an arena's movie screen: WWE '12 draws none during the entrances, 2008's squares were empty,
+  // 2026-11-11): the titantron's movie too, on a titantron screen number left free.
   if (kid(ga, 801))
     for (const uint32_t to : {808u, 806u})
       if (!kid(ga, to)) {

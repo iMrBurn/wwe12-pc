@@ -665,7 +665,12 @@ places ×10, d'après le code de Kaiko).
   `arena_<show>` 256 × 256 encadrées (`Svr09Banner`, ordre des arènes déduit des noms `mh_<show>_bg`). 2008 a aussi `ARMV/<show>` (320 × 320 avec alpha, 15-30
   images : des volets de transition), pas pris. Écrans : 801 (les deux grands écrans de côté de Judgment Day) était
   « arena_movie », que WWE '12 n'affiche pas pendant les entrées (2008 : carrés vides, 2009 : logo JD) → maintenant
-  titantron (coupé comme 800 / 803) et renuméroté 808 (sinon 806). Table des commentateurs et marches : objets « arme »
+  titantron (coupé comme 800 / 803) et renuméroté 808 (sinon 806). **2e essai** (vu en jeu : côtés = étincelles
+  bleues, dôme = visage) : en 2008 les 2 écrans de côté sont UN modèle (803, un seul maillage, u 0-1 sur les deux : chaque
+  écran montrait une moitié de la vidéo), 801 = le dôme en bas ; en 2009 l'inverse (801 côtés, 803 dôme). Maintenant le
+  plus large des deux = titantron (803, chaque écran séparé par un trou en x > 1/4 de la largeur prend la vidéo
+  entière, v 0-0,684), l'autre = minitron (806, bande v 0,69-1 comme le RAW de WWE '12), comme l'a demandé
+  l'utilisateur (minitron en bas au milieu). Table des commentateurs et marches : objets « arme »
   communs (`bgEtc.pac` WPON), pas dans l'arène : il faudrait servir un `bgEtc` par arène ajoutée (non fait).
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
