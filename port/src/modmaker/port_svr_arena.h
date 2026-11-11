@@ -251,9 +251,10 @@ inline void NoReflect(Bytes &d) {
   }
 }
 
-// Relief meshes ("yBumpMap": SvR's arenas' - Judgment Day 2008's ring-side mats, a mesh of its ramp) made WWE '12's
-// background one ("yBG_BumpMap", as BgShaders): "yBumpMap" isn't a shader WWE '12 draws an arena with (RenderDoc,
-// 2026-11-11: no draw at all for the mats, the floor's hole under them black).
+// Relief meshes ("yBumpMap": SvR's arenas' - Judgment Day 2008's ring-side mats, a mesh of its ramp) drawn plain
+// ("yDefault", as the arena's other models): "yBumpMap" isn't a shader WWE '12 draws an arena with (RenderDoc,
+// 2026-11-11: no draw at all for the mats, the floor's hole under them black). (WWE '12's "yBG_BumpMap" drew them
+// but speckled black and white - its noise, whose level the SvR mesh doesn't set; the mats' relief map is flat.)
 inline void BumpToBg(Bytes &d) {
   for (uint32_t i = 0; i < U32(d, 0x18); ++i) {
     const size_t at = kPofBase + kMeshTable + i * kW12Mesh + 0x7C;
@@ -261,7 +262,7 @@ inline void BumpToBg(Bytes &d) {
       return;
     if (svrfmt::Name16(&d[at]) == "yBumpMap") {
       memset(&d[at], 0, 16);
-      memcpy(&d[at], "yBG_BumpMap", 11);
+      memcpy(&d[at], "yDefault", 8);
     }
   }
 }

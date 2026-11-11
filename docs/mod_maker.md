@@ -689,7 +689,7 @@ places ×10, d'après le code de Kaiko).
   ring n'est PAS une lumière : rien n'y est dessiné. Le sol (objet 0, ± 28,8 × 38,4 m) est dessiné avec un trou sous
   le tapis ; le tapis `ar_dwnmt01` = 2 maillages : `yBumpMap` (± 7 m, la surface) jamais dessiné, `yDefault` (sous le
   ring) oui. `yBumpMap` n'est pas un shader d'arène de WWE '12 (les arènes WWE '12 : `yBG_*`). SvR 2011 a les mêmes
-  `yBumpMap` (16 maillages dans bg01, dont son tapis). Maintenant `BumpToBg` les fait `yBG_BumpMap` (comme `BgShaders`
+  `yBumpMap` (16 maillages dans bg01, dont son tapis). `BumpToBg` les fait `yDefault` (1er essai `yBG_BumpMap` : tapis dessiné mais tacheté noir et blanc, le bruit de ce shader ; sa carte de relief est plate) (comme `BgShaders`
   pour les projecteurs, vu en jeu) pour toutes les arènes SvR portées. Marches blanches : ce sont celles de WWE '12
   (`bgEtc.pac`), éclairées (0,73 0,69 0,59 à l'écran).
 - **Plaques d'entrée SvR 2008 (2026-11-11)** : sur Xenia (Judgment Day) la plaque de nom fait presque toute la
