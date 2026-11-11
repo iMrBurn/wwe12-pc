@@ -60,6 +60,8 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 
 **Décision de l'utilisateur (2026-11-10, nuit) : prises ajoutées d'autres jeux COUPÉES par défaut** (réglage `wwe12_added_moves`, false ; Mods 189cead, local, non compilé). Preuve sur la copie de test : avec des mods à prises ajoutées, un catcheur envoyé dans les cordes (irish whip) traverse le ring, et les prises d'AJ Styles 2K17 finissent l'adversaire 1 à 2 m trop loin ; colle avec le Gut Kick cassé chez les joueurs (Maria SvR 2009). Cause exacte non trouvée ; essai « comme LA Max » (zmvm_add.h, faeb35f) fait mais non prouvé. L'utilisateur attend l'outil de MrSmith pour reprendre ce sujet. En attendant : refaire le mod en décochant « Prises ajoutées ». À écrire dans les notes de la 1.3 (la 1.2 « Moveset update » a ce défaut connu).
 
+**Ajouts 1.3 de l'utilisateur (2026-11-11)** : titantrons AJOUTÉS (pas seulement remplacés) ; vidéos pour ruban et walltron ; entrées spéciales WM / titre portées ; arènes portées retravaillées ; aperçu des entrées dans le Mod Maker (comme SvR 2011) ; bugs : musique du menu sous les thèmes du jukebox et après START, attributs non sauvegardés, quelques modèles et entrées à corriger.
+
 **Reporté de la 1.2 (2026-11-10)**
 - Mode 30 fps plus fluide pour les petits processeurs (issues #53, #57, #41) : la voie Kaiko (une image sur deux, logique à 60 Hz) a été mesurée : ~15 % de CPU en moins seulement, et des prises qui paraissent buguées ; le mode natif gagne ~60 % mais des prises sont moins fluides. Autres pistes de CPU : code D3D du jeu dans nos crochets (~0,7 ms, risque de gel élevé, plan `docs/couches.md`), constantes (~0,3 ms, demande de modifier XenosRecomp).
 - Gamma : vraie table (LUT) pour les réglages extrêmes (une simple puissance colle mal) ; image noire d'une image avant la cloche (capture RenderDoc automatique).
@@ -118,7 +120,7 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - Shaders qui font saccader à la première fois (en 1.1 : préparés en arrière-plan ; reste à voir ce qui saccade encore, voir l'issue #53 : surtout le processeur).
 
 ## Plus tard (sans date)
-- **Bloc-notes de l'utilisateur, 2026-11-11 (pas de version décidée)** :
+- **Bloc-notes de l'utilisateur, 2026-11-11 : EN 1.3 (décision de l'utilisateur le 2026-11-11, voir aussi la section 1.3)** :
   - Mod Maker : ajouter des titantrons (et pas seulement remplacer) ; vidéos pour le ruban et le walltron ; faire porter des entrées spéciales WM / titre ; retravailler les arènes portées ; aperçu des entrées dans le Mod Maker comme SvR 2011.
   - Bugs : avec les thèmes du jukebox activés, on entend la musique normale du menu en dessous, et elle repart juste après START à l'écran-titre (le thème du jukebox s'arrête) ; les attributs ne se sauvegardent pas ; corriger quelques modèles et entrées.
 - **Régénération du code** (registres locaux + patch « volatile », 10 à 14 h + un gros test de ~2 h, risque de casse) : sans version, décision de l'utilisateur du 2026-11-11. Étude : `docs/regeneration_1_3.md`.
