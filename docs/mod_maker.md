@@ -748,6 +748,12 @@ places ×10, d'après le code de Kaiko).
   Vu en jeu : titantron OK. En match le bandeau n'avait plus le logo (StageCover seulement derrière 808) → aussi derrière
   806. Walltron : 10 modèles `sd_anim00-09` (feuilletage du mur LED, ids 180-189) → copie du premier, 3 cm devant,
   en 803 (`titantron_movie`, UV entières) : la vidéo « mur » du catcheur en entrée, le motif de SvR en match.
+  Vu en jeu : walltron et reste « parfaits », mais en match le titantron montrait le logo étiré (StageCover) et en
+  entrée la vidéo et le logo se battaient (scintillement). L'original (capture de l'utilisateur) : en match les écrans
+  montrent leurs propres images (`sd_titan` : logo incliné sur le grand écran, logo plat sur le bandeau) et l'objet 75
+  `sd_titan1` (`sd_titan_l`) est sur l'anneau du haut. → pour les arènes à vraies images d'écran (`_titan` dans le
+  paquet) : les caches restent, poussés 3 cm vers l'extérieur ; copies des 801 / 803 d'origine (ids 760+, pas 230-269 :
+  projecteurs assombris par Port) poussées 6 cm ; pas de StageCover.
 - **Marches et table des commentateurs SvR 2008 (2026-11-11, essai)** : `bgEtc.pac` STG /WPON a la même organisation
   dans WWE '12 et SvR 2008 : 6 = table `1060` (`ji_desk`, `ji_bl`, `ji_meta`), 7 = ses écrans `1070` (`ji_mon`, `ji_top`),
   32-37 = marches `1320`… (`ar_stair0-2`), images dans leur entrée 10. Images de marches disposées pareil, `ji_mon`

@@ -3542,7 +3542,84 @@ inline bool OldSvrArena(svrfmt::ArcNode &ga, svrfmt::ArcNode &gb, std::vector<st
     const std::string rest = t.substr(at + 6);
     return rest == "_l" || std::all_of(rest.begin(), rest.end(), ::isdigit);
   };
+  // A model's vertices moved away from the ring (outwards from the arena's centre, in x and z) by `by` (the old games'
+  // units, tens of cm): behind the screens they were on (2026-11-11).
+  const auto push_out = [](svrfmt::ArcNode &k, float by) {
+    Bytes d = svrfmt::ArchiveData(k);
+    svrfmt::Model m;
+    if (!svrfmt::JboyRead(d, m, nullptr))
+      return false;
+    constexpr size_t B = 8;
+    for (const auto &me : m.meshes) {
+      const size_t vblk = B + svrfmt::Be32(&me.raw[0x68]);
+      if (vblk + 4 > d.size())
+        return false;
+      const size_t vd = B + svrfmt::Be32(&d[vblk]);
+      if (vd + 28 * me.verts.size() > d.size())
+        return false;
+      for (size_t q = 0; q < me.verts.size(); ++q) {
+        const float x = me.verts[q].pos[0], z = me.verts[q].pos[2], r = std::sqrt(x * x + z * z);
+        if (r < 1)
+          continue;
+        svrfmt::PutBeF(&d[vd + 28 * q], x + by * x / r);
+        svrfmt::PutBeF(&d[vd + 28 * q + 8], z + by * z / r);
+      }
+    }
+    ReplaceLike(k, d);
+    return true;
+  };
+  // SvR 2009's screens wear pictures of their own ("sd_titan": its SmackDown's tilted logo on the big screen, its flat
+  // one on the band, its sd_titan_l on the ring over them), which are what they show in the match (the user's capture
+  // of the original, 2026-11-11). There the covers stay, 3 cm behind the screens (the movies over them in the
+  // entrances, they in the match: WWE '12 draws no movie screen then), and the screens' own models, as they are, 6 cm
+  // behind (ScreensBacking, below) - the stage cover's stretched logo and its flicker against the movie before.
+  bool real_screens = false;
+  {
+    std::set<std::string> own;
+    if (svrfmt::ArcNode *p = kid(ga, 400)) {
+      std::vector<svrfmt::BundleTexture> t;
+      if (svrfmt::BundleRead(svrfmt::ArchiveData(*p), t))
+        for (const auto &x : t)
+          own.insert(x.name);
+    }
+    for (const uint32_t id : {800u, 801u, 803u}) {
+      svrfmt::Model m;
+      if (svrfmt::ArcNode *k = kid(ga, id); k && svrfmt::JboyRead(svrfmt::ArchiveData(*k), m, nullptr))
+        for (const auto &t : m.textures)
+          real_screens |= t.find("_titan") != std::string::npos && own.count(t);
+    }
+  }
   const size_t before = ga.kids.size();
+  if (real_screens) {
+    for (auto &k : ga.kids) {
+      svrfmt::Model m;
+      if (k.id < 800 && svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr) && !m.textures.empty() &&
+          std::all_of(m.textures.begin(), m.textures.end(), cover))
+        push_out(k, 0.3f);
+    }
+    std::vector<svrfmt::ArcNode> backing;
+    std::set<uint32_t> used;
+    for (const auto &k : ga.kids)
+      used.insert(k.id);
+    for (const uint32_t id : {801u, 803u})
+      if (svrfmt::ArcNode *k = kid(ga, id)) {
+        uint32_t to = 760;  // (not 230-269 / 300-305: Port takes those for moving lights and dims them)
+        while (to < 800 && used.count(to))
+          ++to;
+        if (to >= 800)
+          break;
+        used.insert(to);
+        svrfmt::ArcNode c = *k;
+        c.id = to;
+        if (push_out(c, 0.6f))
+          backing.push_back(std::move(c));
+      }
+    for (auto &c : backing)
+      ga.kids.push_back(std::move(c));
+    if (notes)
+      notes->push_back("its screens' own pictures kept behind them for the match");
+  }
+  if (!real_screens)
   ga.kids.erase(std::remove_if(ga.kids.begin(), ga.kids.end(), [&](const svrfmt::ArcNode &k) {
                   svrfmt::Model m;
                   return k.id < 800 && svrfmt::JboyRead(svrfmt::ArchiveData(k), m, nullptr) && !m.textures.empty() &&

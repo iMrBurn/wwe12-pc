@@ -2038,8 +2038,11 @@ class Page {
       SetBanner(img);
       banner_custom_ = true;
       // (on the stage screen in the match: its show's logo the old game had before that screen, else the photo)
+      // (not when its screens' own pictures were kept behind them: SvR 2009's real screen pictures, OldSvrArena)
       svrfmt::Image logo;
-      StageCover(fr, port_svr_arena::OldScreenLogo(svr_file_, logo) ? logo : img);
+      if (std::none_of(info.notes.begin(), info.notes.end(),
+                       [](const std::string &n) { return n.find("screens' own pictures kept") != std::string::npos; }))
+        StageCover(fr, port_svr_arena::OldScreenLogo(svr_file_, logo) ? logo : img);
     } else if (svr_pick_ >= 0 && !matchhd.empty() && port_svr_arena::Banner(matchhd, svr_pick_, img, svr_year_)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
