@@ -678,7 +678,13 @@ places ×10, d'après le code de Kaiko).
   le `mh_jud_fr` de 2008 est une **plaque en bois** autour des noms (pas une bande comme 2009) ; posée en bas du fond,
   WWE '12 la coupait (bas de l'écran noir) → en 2008 elle va dans `hell_fr` (plaque des noms), le fond seul en fond.
   Police : `MnnF` (`font_judge`, étroite et grasse) est bien servie, mais les noms du vrai écran VS de 2008 sont dans
-  la police générale du jeu, pas celle de l'arène. Reste : lumière (tapis noirs, marches blanches, foule rouge).
+  la police générale du jeu, pas celle de l'arène. Mise en page `MB09` (YXMLBIN VER0003, écran virtuel 640 × 360) :
+  les images sont placées par les animations `7002` (ATB0 : +0x10 nombre de pièces, +0x14 leur place, 32 octets
+  chacune : w, h, deux entiers, nom de 16) ; `hell_bg` = `bg01` / `bg02` 700 × 370 (plein écran), `hell_fr` = la
+  pièce `plate` 474 × 72 (+ feu, grille, logo). En 2008 `plate` passe à 640 × 96 (plaque pleine largeur comme SvR
+  2008 ; à vérifier en jeu). Le bas noir sous la plaque est dans l'image de fond de SvR elle-même.
+  Reste : lumière (tapis noirs, marches blanches, foule rouge = foule et lumières de Hell in a Cell, la base ; le sol
+  de Judgment Day 2008 n'a aucun jeu de lumières `l(N)` dans 50001, ceux de WWE '12 ont `l(121)`) : RenderDoc d'abord.
 - **Arène qui reste (même base, via le menu principal, 2026-11-11, pas encore vérifié en jeu)** : le chargeur d'arène
   (`*0x8322DD48`) reçoit la demande par `sub_8268BF90` et `sub_8268B960` ne recharge que si elle diffère de la dernière
   (numéro à +36). Deux arènes ajoutées sur la même base = même demande. `wwe12_arena_pages.cpp` remet +36 à -1 quand le

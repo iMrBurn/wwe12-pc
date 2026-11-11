@@ -1709,6 +1709,7 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
     return t && svrfmt::DdsDecode(t->data, img);
   };
   svrfmt::Image img;
+  bool old_card = false;  // (SvR 2008 / 2009's: background and frame made one, below)
   if (best) {
     for (auto &t : ours)  // (its own pictures SvR 2011's hasn't: hidden)
       if (!generic.count(t.name))
@@ -1766,6 +1767,7 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
             }
         }
         old_vs = std::move(b);
+        old_card = true;
       }
     }
     for (auto &t : ours) {
@@ -1805,6 +1807,34 @@ inline bool CardWearing(const std::vector<svrfmt::BundleTexture> &theirs, const 
     }
   }
   ReplaceLike(*pics, svrfmt::BundleWrite(ours));
+  // SvR 2008's name plate is as wide as the screen and taller (its wooden frame on Judgment Day; Hell in a Cell's is
+  // 474 x 72 of the 640 x 360 screen, the frame came out narrow, 2026-11-11): in hell_fr's animation (7002, ATB0: at
+  // +0x10 its parts' count, +0x14 their offset, 32 bytes each: w, h, two ints, a 16-byte name), "plate" made 640 x 96,
+  // round its centre.
+  if (plate_fr && old_card)
+    for (auto &c : card->kids) {
+      std::vector<svrfmt::BundleTexture> anims;
+      if (c.id != 7002 || !svrfmt::BundleRead(svrfmt::ArchiveData(c), anims))
+        continue;
+      bool changed = false;
+      for (auto &a : anims) {
+        Bytes &x = a.data;
+        if (a.name != "hell_fr" || x.size() < 0x18 || memcmp(x.data(), "ATB0", 4) != 0)
+          continue;
+        const uint32_t np = svrfmt::Le32(&x[0x10]), po = svrfmt::Le32(&x[0x14]);
+        for (uint32_t i = 0; i < np && size_t(po) + 32 * (i + 1) <= x.size(); ++i) {
+          uint8_t *p = &x[po + 32 * size_t(i)];
+          if (strncmp(reinterpret_cast<const char *>(p + 16), "plate", 16) != 0)
+            continue;
+          svrfmt::PutLe32(p, 640);
+          svrfmt::PutLe32(p + 4, 96);
+          changed = true;
+        }
+      }
+      if (changed)
+        ReplaceLike(c, svrfmt::BundleWrite(anims));
+      break;
+    }
   // Saved as stored in its pac: the nodes down to the pictures rebuilt.
   const auto touch = [&](auto &self, svrfmt::ArcNode &n) -> bool {
     if (&n == pics)
