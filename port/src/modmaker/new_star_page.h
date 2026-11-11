@@ -1643,7 +1643,9 @@ class Page {
         const disc::GameDisc &g = twok_movie_game_ == game_title_ ? game_disc_ : twok_disc_;
         Bytes movie;
         if (g.Read("movies/titantron/" + twok_movie_file_, movie))
-          screens.titan = {std::move(movie), 0, 256, twok_movie_file_}, screens.titan_2k = twok_movie_game_ != 0x545108B4;
+          screens.titan = {std::move(movie), 0, twok_movie_game_ == 0x545408B2 ? entrance_preview::kTitanPart : 256,
+                           twok_movie_file_},
+          screens.titan_2k = twok_movie_game_ != 0x545108B4;
       }
       watch_.Open(device_, *disc12_, own_entrance_, own_entrance_number_,
                   std::string(name_[0] ? name_ : "?") + " (" + GameName(own_moves_game_) + ")",

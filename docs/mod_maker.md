@@ -1781,8 +1781,10 @@ l'entrée), et NOUVEAU CATCHEUR (à côté de « Sa propre entrée »). Il ouvre
   evtmov MVSW, une feuille découpée), 809 la bande tout en haut autour de l'arène (le **ruban**, MVSB), 800 le petit
   écran. `arena_view::screens` par numéro (nul = pas dessiné). Sources : celles **du catcheur porté**, de son jeu,
   comme le mod les prend (`entrance_preview::FromGame` : vidéo `NNN.bik2` / `ent_NNNN_*.bk2` / `NNN.bik`, mur et
-  ruban `entrance_screens::Versions`) ; une vidéo 2K (une image 16:9 dans le carré) est mise dans la partie
-  titantron (lignes 0-218 sur 320) et son minitron (2K14 MVSB, 2K15-2K17 ss_mini)
+  ruban `entrance_screens::Versions`) ; une vidéo 2K15-2K17 (une image 16:9 dans le carré) est mise dans la partie
+  titantron (lignes 0-218 sur 320), celle de **2K14** (disposée comme celles de WWE '12 : la vidéo en haut, des
+  bandes dessous ; elles apparaissaient dans le titantron, Mark Henry, retour de l'utilisateur) **son haut seul**
+  (`kTitanPart`) ; son minitron (2K14 MVSB, 2K15-2K17 ss_mini)
   dessous. Ce qui lui manque : ceux du catcheur de WWE '12 montré (`movies/titantron/NNN.bik`, evtmov MVSW / MVSB
   M<numéro>). Orton 2K14 : 161.bik2 + M161, mur M161, ruban M161 (vus aux bons endroits).
 - **Musique** (case « Musique du thème ») : le thème porté, décodé par vgmstream (`theme_convert::Decode`, en

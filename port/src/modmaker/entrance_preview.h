@@ -87,6 +87,9 @@ class Video {
   Bink2Reader *b2_ = nullptr;
 };
 
+// The titantron's part of a movie laid out like WWE '12's (320 x 320: rows 0-218, v 0-0.684), in 1/256 of its height.
+constexpr int kTitanPart = 175;
+
 // A movie for a screen: its bytes (Bink 1 or 2), the rows of it used (in 1/256 of its height: 2K14's walls hold the
 // ribbon below), what it is (shown on the window).
 struct Clip {
@@ -204,6 +207,8 @@ inline Sources FromGame(const disc::GameDisc &g, uint32_t title, int n) {
     return s;
   s.titan.movie = SourceMovie(g, title, n, &s.titan.name);
   s.titan_2k = title == 0x545408B2 || title == 0x545408B6 || title == 0x315A07D2 || title == 0x545408BA;
+  if (title == 0x545408B2)  // (2K14's is laid out like WWE '12's: its video on top, strips below - its part alone)
+    s.titan.y1 = kTitanPart;
   const auto first = [](std::vector<entrance_screens::Version> v, Clip &c) {
     if (!v.empty())
       c.movie = std::move(v[0].movie), c.y0 = v[0].y0, c.y1 = v[0].y1, c.name = v[0].label;
