@@ -2995,7 +2995,24 @@ inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, con
     if (k.group == "MENU" && k.name == ni)
       if (auto *p = Pictures(k))
         svrfmt::BundleRead(svrfmt::ArchiveData(*p), theirs);
-  return CardWearing(theirs, matchhd12, banner, mb, mf, template_name);
+  if (!CardWearing(theirs, matchhd12, banner, mb, mf, template_name))
+    return false;
+  // SvR 2008 / 2009: their VS screen's own font (MENU/MnnF, a YFB of the 2K games' version, 0x68: Font2K), the names
+  // written as in those games (the user missed it on Judgment Day 2008, 2026-11-11). Hell in a Cell's when it doesn't
+  // convert.
+  char nf[8];
+  snprintf(nf, sizeof(nf), "M%02dF", file);
+  bool old_kind = false;
+  for (const auto &t : theirs)
+    old_kind |= t.name.compare(0, 3, "mh_") == 0;
+  if (old_kind)
+    for (auto &k : s.root.kids)
+      if (k.group == "MENU" && k.name == nf) {
+        if (Bytes own; Font2K(k.stored, mf, own))
+          mf = std::move(own);
+        break;
+      }
+  return true;
 }
 
 // SvR 2007's VS screen of arena `n` as pictures for CardWearing: menu/menuHD.pac MACH/<show> (its frame and logo) and
