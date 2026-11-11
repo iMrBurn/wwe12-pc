@@ -229,8 +229,10 @@ class Ground {
     const int i = int((x - kX0) / kCell), j = int((z - kZ0) / kCell);
     return i >= 0 && j >= 0 && i < kNx && j < kNz ? h_[size_t(j) * kNx + size_t(i)] : 0.0f;
   }
+  std::string screens;  // (test aid: its screen models, Build)
   void Build(const Bytes &file) {
     h_.clear();
+    screens.clear();
     svrfmt::Archive a;
     if (!svrfmt::ArchiveOpen(file, a, nullptr) || a.root.kids.empty() || !svrfmt::ArchiveExpand(a.root.kids[0]))
       return;
@@ -245,6 +247,20 @@ class Ground {
       if (!svrfmt::IsJboy(data) || !svrfmt::JboyRead(data, m, nullptr))
         continue;
       const arena_view::Flags f = flags.count(k.id) ? flags[k.id] : arena_view::Flags{};
+      if (k.id >= 800 && k.id <= 899) {  // (test aid: where each screen is, which part of its movie)
+        float lo[5] = {1e9f, 1e9f, 1e9f, 1e9f, 1e9f}, hi[5] = {-1e9f, -1e9f, -1e9f, -1e9f, -1e9f};
+        for (const auto &me : m.meshes)
+          for (size_t v = 0; v < me.verts.size(); ++v)
+            for (int c = 0; c < 5; ++c) {
+              const float x = c < 3 ? me.verts[v].pos[c] : v < me.uvs.size() ? me.uvs[v][size_t(c - 3)] : 0.0f;
+              lo[c] = std::min(lo[c], x), hi[c] = std::max(hi[c], x);
+            }
+        char b[256];
+        snprintf(b, sizeof(b), "screen %u%s %s: x %.0f..%.0f y %.0f..%.0f z %.0f..%.0f u %.3f..%.3f v %.3f..%.3f\n", k.id,
+                 f.mirrored ? " (r)" : "", m.textures.empty() ? "-" : m.textures[0].c_str(), lo[0], hi[0], lo[1], hi[1],
+                 lo[2], hi[2], lo[3], hi[3], lo[4], hi[4]);
+        screens += b;
+      }
       if (f.animated || f.match_only || f.haze || f.additive)
         continue;
       for (const auto &me : m.meshes)
@@ -634,6 +650,7 @@ class Window {
     fprintf(f, "song %d (%.1f s) %s, music from %u; movies from %u: titantron [%s] %d frames, wall [%s], ribbon [%s]\n",
             int(player_.Ready()), player_.Length(), song_error_.c_str(), music_frame_, movie_frame_,
             titan_.name.c_str(), titan_.Frames(), wall_.name.c_str(), ribbon_.name.c_str());
+    fputs(ground_.screens.c_str(), f);
     fprintf(f, "star %d loaded %d %s\ntotal %d frames, %zu parts\n", star_, int(loaded_), model_error_.c_str(), total_,
             parts_.size());
     for (const auto &p : parts_) {
@@ -687,8 +704,10 @@ class Window {
 
   // The arena's video screens during the entrance, as WWE '12 feeds them by model number (bg01 RAW: pictures
   // "titantron_movie" 800 / 803 / 806 / 808, "arena_movie" 801 / 807 / 809, "minitron_movie" 804; port13.h,
-  // port_svr_arena.h): the titantron movie on 808 (and its minitron strip, v 0.69-1, on 806; 800 the small screen),
-  // the superstar's wall (evtmov MVSW) on 803, his ribbon (MVSB) on 801 / 807 / 809; 804 the live camera (left dark).
+  // the screens come in twos on the same faces, seen with each one coloured, 2026-11-11): the titantron movie on 808
+  // (v 0-0.684; 803 its twin, the whole movie: not drawn) and its minitron strip (v 0.69-1) on 806 (807 its twin, the
+  // arena's movie: not drawn), 800 the small screen; the superstar's wall (evtmov MVSW, a sheet cut up) on 801 / 804
+  // (the panel left of the titantron and the ring under the roof); his ribbon (MVSB) on 809 (the band round the top).
   // The ported superstar's own, from his game (sources_), else the shown WWE '12 superstar's.
   void LoadMovie() {
     titan_.Close(), wall_.Close(), ribbon_.Close();
@@ -732,6 +751,38 @@ class Window {
   // Their pictures at the entrance's time (from the script's movie frame, looping), decoded up to there.
   void Movie() {
     view_.screens.clear();
+    // (test aid WWE12_MM_WATCH_SCREENS: each screen model a colour - 800 red, 801 green, 802 blue, 803 yellow, 804
+    // magenta, 805 cyan, 806 orange, 807 purple, 808 white, 809 grey -, its picture's top half bright, bottom half dark,
+    // a black band at u < 0.25: which screen is where, and its movie's way up)
+    if (getenv("WWE12_MM_WATCH_SCREENS")) {
+      static const uint32_t kColours[10] = {0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF,
+                                            0x00FFFF, 0xFF8000, 0x8000FF, 0xFFFFFF, 0x808080};
+      if (test_colours_.empty())
+        for (uint32_t c : kColours) {
+          std::vector<uint8_t> px(16 * 16 * 4);
+          for (int y = 0; y < 16; ++y)
+            for (int x = 0; x < 16; ++x) {
+              const float k = x < 4 ? 0.0f : y < 8 ? 1.0f : 0.35f;
+              uint8_t *p = &px[size_t(y * 16 + x) * 4];
+              p[0] = uint8_t((c & 0xFF) * k), p[1] = uint8_t((c >> 8 & 0xFF) * k), p[2] = uint8_t((c >> 16) * k), p[3] = 255;
+            }
+          D3D11_TEXTURE2D_DESC td{};
+          td.Width = td.Height = 16, td.MipLevels = 1, td.ArraySize = 1;
+          td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+          td.SampleDesc.Count = 1;
+          td.Usage = D3D11_USAGE_DEFAULT;
+          td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+          D3D11_SUBRESOURCE_DATA sd{px.data(), 16 * 4, 0};
+          Microsoft::WRL::ComPtr<ID3D11Texture2D> t;
+          Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> v;
+          if (SUCCEEDED(device_->CreateTexture2D(&td, &sd, &t)))
+            device_->CreateShaderResourceView(t.Get(), nullptr, &v);
+          test_colours_.push_back(v);
+        }
+      for (uint32_t m = 0; m < 10; ++m)
+        view_.screens[800 + m] = test_colours_[m].Get();
+      return;
+    }
     if (!movie_on_)
       return;
     const double at = std::max(0.0, double(time_ - float(movie_frame_)) / 60.0);
@@ -740,14 +791,17 @@ class Window {
     for (Screen *s : {&titan_, &wall_, &ribbon_})
       s->At(at, ctx);
     ctx->Release();
+    // (the twins on the same faces not drawn: 803 the titantron's whole movie over 808, minitron strip included; 807
+    // the arena's movie over 806)
+    view_.screens[803] = view_.screens[807] = nullptr;
     if (titan_.On())
       for (uint32_t m : {800u, 806u, 808u})
         view_.screens[m] = titan_.Srv();
     if (wall_.On())
-      view_.screens[803] = wall_.Srv();
+      for (uint32_t m : {801u, 804u})
+        view_.screens[m] = wall_.Srv();
     if (ribbon_.On())
-      for (uint32_t m : {801u, 807u, 809u})
-        view_.screens[m] = ribbon_.Srv();
+      view_.screens[809] = ribbon_.Srv();
   }
 
   // The camera take played: the one picked, else one of the two at random (the game's way).
@@ -1003,6 +1057,7 @@ class Window {
   // the titantron
   Sources sources_;                          // the ported superstar's screens (his game's)
   Screen titan_, wall_, ribbon_;             // what the arena's screens show (LoadMovie)
+  std::vector<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>> test_colours_;  // (test aid: Movie)
   std::map<std::string, Bytes> evtmov12_;   // WWE '12's walls and ribbons ("MVSW/M139"...), read once
   std::string title_, error_, model_error_;
   std::vector<Star> stars_;

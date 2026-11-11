@@ -100,7 +100,8 @@ class View {
   bool keep_skin = false;      // (before Load) keep what SetPose needs: the skeletons, the bind-pose vertices
   bool show_others = true;     // the superstars added with Add drawn
   float fov = 0.9f;            // the vertical field of view (radians; an entrance's camera sets its own)
-  // Movies on the arena's video screens (models 800-899 without a picture of their own), by model number.
+  // Movies on the arena's video screens (models 800-899 without a picture of their own), by model number; null: that
+  // screen not drawn (WWE '12's arenas have screens in twos on the same faces, one shown at a time).
   std::map<uint32_t, ID3D11ShaderResourceView *> screens;
   // The background: an arena in the dark, as in the game; a superstar's views take Light() (models seen better).
   float background[4] = {0.015f, 0.015f, 0.02f, 1.0f};
@@ -282,15 +283,18 @@ class View {
           continue;
         if (show_entrance ? d.flags.match_only : d.flags.entrance_only)
           continue;
+        ID3D11ShaderResourceView *pic = d.tex;
+        if (!pic && d.skel < 0)  // (a screen: its movie; null: not drawn, its twin is)
+          if (const auto it = screens.find(d.model); it != screens.end()) {
+            if (!it->second)
+              continue;
+            pic = it->second;
+          }
         for (int mirror = 0; mirror < (d.flags.mirrored ? 2 : 1); ++mirror) {
           Constants c{};
           memcpy(c.view_proj, view_proj, sizeof(view_proj));
           c.mirror = mirror ? -1.0f : 1.0f;
           c.additive = d.flags.additive ? 1.0f : 0.0f;
-          ID3D11ShaderResourceView *pic = d.tex;
-          if (!pic && d.skel < 0)  // (a screen: its movie)
-            if (const auto it = screens.find(d.model); it != screens.end())
-              pic = it->second;
           c.textured = pic ? 1.0f : 0.0f;
           c.baked = d.baked_light && pic == d.tex ? 1.0f : 0.0f;
           c.opaque = d.opaque || (pic && pic != d.tex) ? 1.0f : 0.0f;
