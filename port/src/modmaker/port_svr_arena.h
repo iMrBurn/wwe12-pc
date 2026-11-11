@@ -3840,6 +3840,35 @@ inline bool SvrWeaponPictures(const Bytes &bgetc, std::vector<svrfmt::BundleText
   return !out.empty();
 }
 
+// An SvR 2008 / 2009 arena's show logo on its own model before the big screen ("<show>_titan_l", "<show>_titan0..":
+// SvR 2009 SmackDown's sd_titan_l), the biggest such picture of its package (200): what the screen showed when no
+// movie played, left out of the arena (OldSvrArena's covers) - put on the stage cover for the match (StageCover:
+// the user asked whether the show's logo came back in the match, 2026-11-11). False: none.
+inline bool OldScreenLogo(const Bytes &svr_arena, svrfmt::Image &out) {
+  svrfmt::Archive a;
+  if (!svrfmt::ArchiveOpen(svr_arena, a, nullptr) || a.root.kids.empty() || !svrfmt::ArchiveExpand(a.root.kids[0]))
+    return false;
+  int best = 0;
+  for (auto &k : a.root.kids[0].kids) {
+    std::vector<svrfmt::BundleTexture> texs;
+    if ((k.id != 200 && k.id != 400) || !svrfmt::BundleRead(svrfmt::ArchiveData(k), texs))
+      continue;
+    for (const auto &t : texs) {
+      const size_t at = t.name.find("_titan");
+      if (at == std::string::npos || at == 0 || at > 6)
+        continue;
+      const std::string rest = t.name.substr(at + 6);
+      svrfmt::Image img;
+      if ((rest == "_l" || (!rest.empty() && std::all_of(rest.begin(), rest.end(), ::isdigit))) &&
+          svrfmt::DdsDecode(t.data, img) && img.w * img.h > best) {
+        best = img.w * img.h;
+        out = std::move(img);
+      }
+    }
+  }
+  return best > 0;
+}
+
 struct PortInfo {
   int models = 0, models_left = 0;  // models converted, models not (unknown layout)
   int pictures_added = 0;           // ring and crowd pictures copied from the base

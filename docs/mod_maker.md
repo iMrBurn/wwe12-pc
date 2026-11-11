@@ -737,6 +737,9 @@ places ×10, d'après le code de Kaiko).
   `sd_titan1`, image `sd_titan_l`, devant l'écran ; SvR le cachait pendant les vidéos, Xenia montre la vidéo) → les
   objets dont toutes les images sont `<show>_titan_l` / `<show>_titan<chiffres>` sont retirés comme les `titan_logo`
   (Judgment Day 2009 : `jd_titan0/1`).
+  En match (aucun écran vidéo dessiné par WWE '12), l'image posée derrière le 808 (`StageCover`) est maintenant ce logo
+  (`OldScreenLogo`, la plus grande de ces images) au lieu de la photo de l'écran de choix : vidéo à l'entrée, logo en
+  match, comme SvR.
 - **Marches et table des commentateurs SvR 2008 (2026-11-11, essai)** : `bgEtc.pac` STG /WPON a la même organisation
   dans WWE '12 et SvR 2008 : 6 = table `1060` (`ji_desk`, `ji_bl`, `ji_meta`), 7 = ses écrans `1070` (`ji_mon`, `ji_top`),
   32-37 = marches `1320`… (`ar_stair0-2`), images dans leur entrée 10. Images de marches disposées pareil, `ji_mon`

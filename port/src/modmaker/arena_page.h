@@ -2037,7 +2037,9 @@ class Page {
           port_svr_arena::Svr09Banner(select_pics, svr_pick_, img)))) {
       SetBanner(img);
       banner_custom_ = true;
-      StageCover(fr, img);
+      // (on the stage screen in the match: its show's logo the old game had before that screen, else the photo)
+      svrfmt::Image logo;
+      StageCover(fr, port_svr_arena::OldScreenLogo(svr_file_, logo) ? logo : img);
     } else if (svr_pick_ >= 0 && !matchhd.empty() && port_svr_arena::Banner(matchhd, svr_pick_, img, svr_year_)) {
       SetBanner(Fill(img, 256, 128));
       banner_custom_ = true;
