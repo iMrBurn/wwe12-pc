@@ -161,6 +161,8 @@ inline std::set<int> TakenEntrances() {
       while (std::getline(f, line))
         if (line.rfind("entrance_own=", 0) == 0)
           out.insert(atoi(line.c_str() + 13));
+        else if (line.rfind("entrance_champ=", 0) == 0)  // (and their champion's entrances)
+          out.insert(atoi(line.c_str() + 15));
     }
     ec.clear();
   }
@@ -179,8 +181,104 @@ struct Parts {
   bool one_take = false;                    // ... a 2K15 "one-take" (entrance13::OneTake)
   std::vector<entrance13::Part> victory;    // his victory scene (6000 + his number), else empty
   std::vector<entrance13::Part> objects;    // the objects of both WWE '12 hasn't (entrance13::Objects)
+  // His champion's entrance (2026-11-11, the user's 1.3 list: "the special WM / title entrances", 2K14's The Miz): the
+  // one his profile names for a title holder (WWE '12's CHAR / PRO block +0x1DA / +0x1DC: Cena 602 John_Cena_Champ;
+  // 2K14 +582 / +584: The Miz 668), or one the player picks (PortChamp), else empty: his own entrance then.
+  std::vector<entrance13::Part> champ;
+  int champ_number = 0;  // ... the number it is served under (a free one)
+  int champ_from = 0;    // ... its number in its game
+  std::string champ_name;  // ... its script's name there ("The Miz ABE")
   int hidden_people = 0;  // people of its entrance other than him (2K17 Goldberg's security: 7) WWE '12 can't show
 };
+
+// The entrances of a WWE '13 / 2K14-2K17 disc by number, with their script's name (+0x22 of the EVP, "The Miz ABE",
+// "0105_AJ_Styles"), their variants (1xNNN) left out: the champion's entrance the player may pick.
+inline std::vector<std::pair<int, std::string>> EntranceList(const disc::GameDisc &src) {
+  std::map<int, std::string> out;
+  auto name_of = [](const Bytes &u) {
+    if (u.size() < 0x40 || memcmp(u.data(), "0FOP", 4))
+      return std::string();
+    std::string n(reinterpret_cast<const char *>(&u[0x22]), 30);
+    return std::string(n.c_str());
+  };
+  for (const auto &f : src.List("pac/evt")) {
+    const bool many = _strnicmp(f.c_str(), "Entrance", 8) == 0;  // (WWE '13 - 2K15: Entrance00..10, _dlc)
+    const bool one = f.size() == 9 && f.compare(0, 2, "00") == 0 && _stricmp(f.c_str() + 5, ".pac") == 0;  // (2K16 / 2K17)
+    svrfmt::Archive a;
+    if ((!many && !one) || !entrance13::detail::OpenPac(src, "pac/evt/" + f, a))
+      continue;
+    for (auto &k : a.root.kids) {
+      const int n = one ? atoi(f.c_str()) : atoi(k.name.c_str());
+      if ((many && k.group.rfind("EVP", 0) != 0) || n <= 0 || n >= 1000 || out.count(n))
+        continue;
+      const std::string nm = name_of(svrfmt::Unpack(svrfmt::ArchiveData(k)));
+      if (!nm.empty())
+        out[n] = nm;
+    }
+  }
+  return {out.begin(), out.end()};
+}
+
+// His champion's entrance: entrance `from` of `game` (src) as WWE '12's, served under a free number other than his own
+// entrance's (`own`): into out.champ, champ_number, champ_from (champ_name left to the caller). False if it can't be.
+inline bool PortChamp(const disc::GameDisc &w12, const game_discs::Discs &discs, const disc::GameDisc &src, uint32_t game,
+                      int from, int own, int base12, Music12 &music, Parts &out) {
+  out.champ.clear();
+  out.champ_number = out.champ_from = 0;
+  if (from <= 0 || !Scenes(game) || Svr(game) || !entrance13::Entrance(src, from, out.champ, nullptr))
+    return false;
+  // (its effects as for his own entrance, in Collect: 2K16 / 2K17's newer PCE6 from an older game, else the base's)
+  if (game == 0x315A07D2 || game == 0x545408BA) {
+    Bytes older;
+    for (uint32_t t : {0x545408B6u, 0x545408B2u, 0x545108B4u}) {
+      disc::GameDisc g;
+      if (older.empty() && !discs.PathOf(t).empty() && g.OpenPath(discs.PathOf(t)))
+        older = entrance13::Pce6Of(g, from);
+    }
+    if (older.empty() && base12 >= 0)
+      older = entrance13::Pce6Of(w12, base12);
+    for (size_t i = out.champ.size(); i-- > 0;)
+      if (out.champ[i].kind == "PCE6") {
+        if (older.empty())
+          out.champ.erase(out.champ.begin() + long(i));
+        else
+          out.champ[i].data = older;
+      }
+  }
+  if (std::none_of(out.champ.begin(), out.champ.end(), [](const auto &q) { return q.kind == "LPE6"; }))
+    for (size_t i = 0, n = out.champ.size(); i < n; ++i)
+      if (out.champ[i].kind == "PCE6") {
+        entrance13::Part l = out.champ[i];
+        l.kind = "LPE6";
+        out.champ.push_back(std::move(l));
+        break;
+      }
+  // (a free number, as his own entrance's: 499 down, none the game, a mod or his own entrance has)
+  const std::set<int> taken = TakenEntrances();
+  int to = 0;
+  for (int n = 499; n >= 100 && !to; --n)
+    if (n != own && n != from && !taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(w12, n) &&
+        !music.Has(w12, n))
+      to = n;
+  if (!to) {
+    out.champ.clear();
+    return false;
+  }
+  entrance13::Renumber(out.champ, from, to);
+  out.champ_number = to;
+  out.champ_from = from;
+  return true;
+}
+
+// The champion's entrance's script name (its EVP +0x22), "" if none.
+inline std::string ChampName(const Parts &p) {
+  for (const auto &q : p.champ)
+    if (q.kind == "EVP" && q.number == p.champ_number && q.data.size() >= 0x40) {
+      std::string n(reinterpret_cast<const char *>(&q.data[0x22]), 30);
+      return n.c_str();
+    }
+  return {};
+}
 
 // Superstar `number` of `game` (in My game discs): his moves, entrance, victory scene and their objects. `name`: his
 // name in that game's list (ListGame; the 2K16 / 2K17 entrance is found by it); `base12`: a WWE '12 superstar whose
@@ -451,6 +549,18 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
       }
     }
   }
+  // its champion's entrance, when its profile names one of its own (2K14 / 2K15: the block after its entrance, the
+  // fourth number, +582 / +586 - The Miz 2K14: 218 218 218 668 668, as WWE '12's 139 139 139 602 602 for Cena)
+  if (out.entrance_number > 0 && (game == 0x545408B2 || game == 0x545408B6)) {
+    const auto pro = theme_source::detail::Records(src, "PRO");
+    const size_t at = game == 0x545408B2 ? 582 : 586;
+    if (const auto it = pro.find(uint32_t(number)); it != pro.end() && it->second.size() > at + 1) {
+      const int champ = it->second[at] | it->second[at + 1] << 8;
+      if (champ > 0 && champ < 1000 && champ != entrance &&
+          PortChamp(w12, discs, src, game, champ, out.entrance_number, base12, music, out))
+        out.champ_name = ChampName(out);
+    }
+  }
   // its victory scene (served under 6000 + its slot)
   if (scenes)
     entrance13::Victory(src, number, out.victory);
@@ -460,12 +570,14 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
   if (scenes || svr) {
     std::vector<entrance13::Part> both = out.entrance;
     both.insert(both.end(), out.victory.begin(), out.victory.end());
+    both.insert(both.end(), out.champ.begin(), out.champ.end());  // (and its champion's entrance's)
     // (SvR 2007-2011's props are another format: none brought, the ones WWE '12 hasn't hidden)
     if (scenes)
       out.objects = entrance13::Objects(src, w12, both);
     // (the props neither WWE '12 nor the mod has: an existing one, hidden)
     entrance13::HideMissing(out.entrance, w12, out.objects);
     entrance13::HideMissing(out.victory, w12, out.objects);
+    entrance13::HideMissing(out.champ, w12, out.objects);
     // (the people of its entrance other than him: objects of type 0x01000000 after object 0 with another model (person
     // NNNAA = superstar NNN, attire AA, of its own game). 2K16 / 2K17 place them with their game, WWE '12 can't: they
     // take WWE '12's people's spots and are not shown (2K17 Goldberg's 7 security men, model 19202, a player's report,
@@ -484,7 +596,7 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
       }
     }
     // (2K16 / 2K17's object 5009 and superstars waiting in the ring, made for their skeleton and placement: WWE '12's)
-    for (auto *parts : {&out.entrance, &out.victory}) {
+    for (auto *parts : {&out.entrance, &out.victory, &out.champ}) {
       entrance13::Announcer12(*parts, w12);
       entrance13::Waiting12(*parts, w12);
       entrance13::WaitingFirst12(*parts);
@@ -492,6 +604,103 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     }
   }
 }
+
+// A champion's entrance the player picked on a page (PortChamp done): its objects WWE '12 hasn't added to out.objects,
+// the missing ones hidden, the ring announcer and waiting people made WWE '12's - as Collect does for his own.
+inline void FinishChamp(const disc::GameDisc &w12, const disc::GameDisc &src, Parts &out) {
+  for (auto &o : entrance13::Objects(src, w12, out.champ))
+    if (std::none_of(out.objects.begin(), out.objects.end(), [&](const auto &x) { return x.number == o.number; }))
+      out.objects.push_back(std::move(o));
+  entrance13::HideMissing(out.champ, w12, out.objects);
+  entrance13::Announcer12(out.champ, w12);
+  entrance13::Waiting12(out.champ, w12);
+  entrance13::WaitingFirst12(out.champ);
+  entrance13::People12(out.champ, w12);
+  out.champ_name = ChampName(out);
+}
+
+// The champion's entrance on a page (MOVES & ENTRANCES, NEW SUPERSTAR; the user, 2026-11-11: "we could add the belt
+// entrances ourselves"): the one his profile names, ticked; or another entrance of his game picked in a list (any of
+// them: "The_Miz_Champ" 656 for 2K14's The Miz, a generic champion's...). Not ticked or none: his own entrance plays
+// when he holds a title too, as before.
+class ChampChoice {
+ public:
+  bool use = true;
+  void Reset() {
+    list_.clear();
+    listed_ = false;
+    filter_[0] = 0;
+    use = true;
+  }
+  void Draw(bool fr, const disc::GameDisc &w12, const game_discs::Discs &discs, uint32_t game, int base12, Music12 &music,
+            Parts &parts) {
+    if (!Scenes(game) || Svr(game))
+      return;  // (WWE '13 and the 2K games: their entrances are WWE '12's format)
+    char label[200];
+    if (parts.champ_number > 0) {
+      snprintf(label, sizeof(label),
+               fr ? "Son entrée de champion : %s (n° %d de son jeu ; essai)" : "His champion's entrance: %s (no. %d of his game; a test)",
+               parts.champ_name.empty() ? "?" : parts.champ_name.c_str(), parts.champ_from);
+      ImGui::Checkbox(label, &use);
+    } else {
+      ImGui::TextDisabled("%s", fr ? "Entrée de champion : aucune à lui (son entrée sert aussi quand il a un titre)"
+                                   : "Champion's entrance: none of his own (his entrance plays when he holds a title too)");
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(220);
+    if (ImGui::BeginCombo("##champ_pick", fr ? "En choisir une de son jeu..." : "Pick one of his game...",
+                          ImGuiComboFlags_HeightLarge)) {
+      if (!listed_) {
+        listed_ = true;
+        disc::GameDisc src;
+        if (!discs.PathOf(game).empty() && src.OpenPath(discs.PathOf(game)))
+          list_ = EntranceList(src);
+      }
+      ImGui::SetNextItemWidth(-1);
+      if (ImGui::IsWindowAppearing())
+        ImGui::SetKeyboardFocusHere();
+      ImGui::InputTextWithHint("##champ_filter", fr ? "Rechercher (champ, miz...)" : "Search (champ, miz...)", filter_,
+                               sizeof(filter_));
+      std::string f = filter_;
+      for (auto &c : f)
+        c = char(std::tolower(static_cast<unsigned char>(c)));
+      for (const auto &[n, nm] : list_) {
+        std::string l = nm;
+        for (auto &c : l)
+          c = char(std::tolower(static_cast<unsigned char>(c)));
+        if (!f.empty() && l.find(f) == std::string::npos)
+          continue;
+        char item[96];
+        snprintf(item, sizeof(item), "%3d  %s", n, nm.c_str());
+        if (ImGui::Selectable(item, parts.champ_from == n)) {
+          disc::GameDisc src;
+          if (src.OpenPath(discs.PathOf(game)) &&
+              PortChamp(w12, discs, src, game, n, parts.entrance_number, base12, music, parts)) {
+            FinishChamp(w12, src, parts);
+            use = true;
+          }
+        }
+      }
+      ImGui::EndCombo();
+    }
+  }
+  // Into a mod: its manifest line (entrance_champ=<number>, "" if none) and its parts (superstar/entrance/, as his own
+  // entrance's).
+  bool On(const Parts &parts) const { return use && parts.champ_number > 0 && !parts.champ.empty(); }
+  std::string ManifestLine(const Parts &parts) const {
+    return On(parts) ? "entrance_champ=" + std::to_string(parts.champ_number) + "\n" : std::string();
+  }
+  void Write(const Parts &parts, std::vector<std::pair<std::string, Bytes>> &entries) const {
+    if (On(parts))
+      for (const auto &part : parts.champ)
+        entries.push_back({entrance13::ModPath(part), part.data});
+  }
+
+ private:
+  std::vector<std::pair<int, std::string>> list_;
+  bool listed_ = false;
+  char filter_[48] = {};
+};
 
 // His theme in his game (theme_source.h; `all`: every one found, his profile's first), false if none.
 inline bool FindTheme(const GameList &g, int number, theme_source::Theme &out, std::vector<theme_source::Theme> *all) {

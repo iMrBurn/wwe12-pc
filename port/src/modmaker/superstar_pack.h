@@ -83,6 +83,9 @@ struct Star {
   // Its own entrance (a WWE '13 one the game serves under that number: wwe12_arena_pages.cpp), else 0: CHAR / PRO
   // +0x1D8 and +0x1E4, the entrance number of both blocks (music, video, entrance).
   int own_entrance = 0;
+  // Its champion's entrance (entrance_champ=, served as its own: CHAR / PRO +0x1DA / +0x1DC and +0x1E6 / +0x1E8, the
+  // block's two champion numbers), else 0: its own entrance there too.
+  int champ_entrance = 0;
   // Its own entrance theme (superstar/theme.wem, or superstar/entrance/MUS_<n>.bin: Wwise PCM or Vorbis made by the Mod Maker
   // from its game's theme, theme_source.h), else empty: played as its music number (MusicNumber: CHAR / PRO +0x1D4
   // and +0x1E0) from the pack's sound\DLC_NN.pck (wwise.h).
@@ -194,6 +197,7 @@ struct Moveset {
   int superstar = 0;  // a superstar of the game (50-372)
   std::vector<std::pair<int, int>> moves;  // (CHAR / PRO byte offset, move number), as Star::moves
   int own_entrance = 0;                    // his entrance served under that number (as Star::own_entrance), else 0
+  int champ_entrance = 0;                  // his champion's entrance (as Star::champ_entrance), else 0
   int entrance = 0;  // another superstar of the game's entrance (his music, video and entrance numbers), else 0
   Bytes theme;                             // his own theme (Wwise PCM or Vorbis), else empty: his music number then
   std::vector<NewMove> new_moves;          // his moves WWE '12 hasn't, as Star::new_moves
@@ -276,7 +280,8 @@ inline int MusicNumber(const Moveset &mv) { return mv.own_entrance > 0 ? mv.own_
 // The moves are 16-bit big-endian from +0x00A to +0x1C2; the entrance block is there twice, +0x1D4 and +0x1E0 (equal
 // on the disc's records), and the game plays the second (the first changed alone: the base's entrance, music and
 // video, 2026-10-28): both written.
-inline void PutMoves(Bytes &pro, const std::vector<std::pair<int, int>> &moves, int own_entrance, int music) {
+inline void PutMoves(Bytes &pro, const std::vector<std::pair<int, int>> &moves, int own_entrance, int music,
+                     int champ_entrance = 0) {
   for (const auto &[at, id] : moves)
     if (at >= 0x00A && at < 0x1C2 && (at & 1) == 0 && size_t(at) + 1 < pro.size()) {  // (the moves, not the entrance)
       pro[size_t(at)] = uint8_t(id >> 8);
@@ -285,12 +290,15 @@ inline void PutMoves(Bytes &pro, const std::vector<std::pair<int, int>> &moves, 
   // (and its champion's entrances, the block's next two numbers: the base's otherwise, Cena's 602 John_Cena_Champ
   // played in place of his own from a moves mod while he held a title, and an added superstar on base John Morrison
   // would have entered as his champion, 606; 2026-11-03)
-  if (own_entrance > 0)
-    for (const size_t at : {size_t(0x1D8), size_t(0x1DA), size_t(0x1DC), size_t(0x1E4), size_t(0x1E6), size_t(0x1E8)})
-      if (pro.size() >= at + 2) {
-        pro[at] = uint8_t(own_entrance);
-        pro[at + 1] = uint8_t(own_entrance >> 8);
-      }
+  // (and a champion's entrance of its own there, when the mod has one: entrance_champ=, 2026-11-11)
+  for (const size_t at : {size_t(0x1D8), size_t(0x1DA), size_t(0x1DC), size_t(0x1E4), size_t(0x1E6), size_t(0x1E8)}) {
+    const bool champ_slot = at == 0x1DA || at == 0x1DC || at == 0x1E6 || at == 0x1E8;
+    const int v = champ_slot && champ_entrance > 0 ? champ_entrance : own_entrance;
+    if (v > 0 && pro.size() >= at + 2) {
+      pro[at] = uint8_t(v);
+      pro[at + 1] = uint8_t(v >> 8);
+    }
+  }
   if (music > 0)  // its music number (the theme in our package)
     for (const size_t at : {size_t(0x1D4), size_t(0x1E0)})
       if (pro.size() >= at + 2) {
@@ -726,7 +734,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         if (e.size() >= at + 10 && moves.size() >= at + 10)
           std::copy(e.begin() + long(at), e.begin() + long(at) + 10, moves.begin() + long(at));
     }
-    PutMoves(moves, st.moves, st.own_entrance, st.theme.empty() ? 0 : MusicNumber(st));
+    PutMoves(moves, st.moves, st.own_entrance, st.theme.empty() ? 0 : MusicNumber(st), st.champ_entrance);
     svrfmt::ArchiveReplace(*sp, moves);
   }
   // The moves mods: the game's superstar's own record. Several on one superstar: the last one in folder order wins
@@ -744,7 +752,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         if (e.size() >= at + 10 && moves.size() >= at + 10)
           std::copy(e.begin() + long(at), e.begin() + long(at) + 10, moves.begin() + long(at));
     }
-    PutMoves(moves, mv.moves, mv.own_entrance, mv.theme.empty() ? 0 : MusicNumber(mv));
+    PutMoves(moves, mv.moves, mv.own_entrance, mv.theme.empty() ? 0 : MusicNumber(mv), mv.champ_entrance);
     svrfmt::ArchiveReplace(*p, moves);
   }
   svrfmt::ArchiveTouch(*dat);

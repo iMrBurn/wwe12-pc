@@ -936,6 +936,10 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         c = char(toupper(uint8_t(c)));
       if (std::none_of(g_mod_entrances.begin(), g_mod_entrances.end(), [&](const auto &e) { return e.first == own; }))
         g_mod_entrances.push_back({own, label});
+      // (its champion's entrance too, entrance_champ=, 2026-11-11: "<NAME> CHAMP")
+      if (const int champ = atoi(Value(manifest, "entrance_champ").c_str());
+          champ > 0 && std::none_of(g_mod_entrances.begin(), g_mod_entrances.end(), [&](const auto &e) { return e.first == champ; }))
+        g_mod_entrances.push_back({champ, label + " CHAMP"});
     } else {
       continue;
     }

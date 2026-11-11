@@ -1607,6 +1607,14 @@ class Page {
     own_victory_ = std::move(parts.victory);
     own_objects_ = std::move(parts.objects);
     own_hidden_people_ = parts.hidden_people;
+    // (its champion's entrance: star_port::ChampChoice works on a Parts)
+    champ_parts_ = {};
+    champ_parts_.champ = std::move(parts.champ);
+    champ_parts_.champ_number = parts.champ_number;
+    champ_parts_.champ_from = parts.champ_from;
+    champ_parts_.champ_name = parts.champ_name;
+    champ_parts_.entrance_number = parts.entrance_number;
+    champ_.Reset();
   }
 
   // Step 2's part: its own WWE '13 / 2K14 entrance.
@@ -1620,6 +1628,8 @@ class Page {
              GameName(own_moves_game_), own_entrance_number_,
              int(std::count_if(own_entrance_.begin(), own_entrance_.end(), [](const auto &p) { return p.kind == "EVP"; })));
     ImGui::Checkbox(label, &use_own_entrance_);
+    if (disc12_ && discs_)  // (its champion's entrance: its game's, or one picked)
+      champ_.Draw(fr, *disc12_, *discs_, own_moves_game_, base_ >= 0 ? stars_[size_t(base_)].id : -1, music12_, champ_parts_);
     if (own_entrance_one_take_)
       ImGui::TextDisabled("%s", fr ? "(entrée de 2K15 d'un seul tenant : sortie de l'intro cachée de WWE '12, avec la foule et l'annonceur)"
                                    : "(a 2K15 entrance in one piece: moved out of WWE '12's hidden intro, with the crowd and the ring announcer)");
@@ -2337,6 +2347,9 @@ class Page {
     const bool own_entrance = use_own_entrance_ && own_entrance_number_ > 0 && !own_entrance_.empty();
     if (own_entrance)  // (its WWE '13 entrance: superstar/entrance/, served by the game under that number)
       manifest += "entrance_own=" + std::to_string(own_entrance_number_) + "\n";
+    const bool champ = (look_ == 2 || look_ == 3) && champ_.On(champ_parts_);
+    if (champ)  // (its champion's entrance)
+      manifest += champ_.ManifestLine(champ_parts_);
     manifest += "description=" + std::string(name_) + ", a new superstar starting from " +
                 (chosen_ ? b.name : "an average superstar (" + b.name + ")") +
                 (look_ == 4   ? ", its look from a 3D model (FBX)"
@@ -2366,7 +2379,13 @@ class Page {
     if (use_own_victory_)  // (its WWE '13 victory scene: the game serves it under 6000 + its slot)
       for (const auto &part : own_victory_)
         entries.push_back({"superstar/victory/" + part.kind + ".bin", part.data});
-    if (own_entrance || use_own_victory_)  // (their objects WWE '12 hasn't: the game adds them to evtobj.pac)
+    if (champ) {
+      champ_.Write(champ_parts_, entries);
+      for (const auto &part : champ_parts_.objects)  // (the objects of one picked on the page, not its own entrance's)
+        if (std::none_of(own_objects_.begin(), own_objects_.end(), [&](const auto &o) { return o.number == part.number; }))
+          entries.push_back({entrance13::ModPath(part), part.data});
+    }
+    if (own_entrance || use_own_victory_ || champ)  // (their objects WWE '12 hasn't: the game adds them to evtobj.pac)
       for (const auto &part : own_objects_)
         entries.push_back({entrance13::ModPath(part), part.data});
     if (use_theme_ && !theme_.stream.empty() && (look_ == 2 || look_ == 3)) {  // (its theme: Wwise Vorbis as the game's, else PCM)
@@ -2449,6 +2468,8 @@ class Page {
   moveset_port::Result own_moves_;  // its SvR 2011 moves in WWE '12's slots (moveset_port.h)
   std::string own_moves_why_;
   star_port::Music12 music12_;  // (WWE '12's theme events)
+  star_port::Parts champ_parts_;    // its champion's entrance (champ, champ_number...: star_port::ChampChoice)
+  star_port::ChampChoice champ_;
   uint32_t own_moves_game_ = 0;  // the game its own moves come from
   bool use_own_moves_ = true;
   bool use_added_moves_ = false;  // its moves WWE '12 hasn't, added (experimental, off by default: 2026-11-05)

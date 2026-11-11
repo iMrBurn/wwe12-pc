@@ -832,6 +832,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     std::vector<std::pair<int, int>> moves;  // moves=OFF:NUMBER,... (hex offset in CHAR / PRO), else the base's
     int entrance = 0;                         // entrance=NUMBER: that superstar's entrance, else the base's
     int own_entrance = 0;                     // entrance_own=NUMBER: its own (superstar/entrance/), else 0
+    int champ_entrance = 0;                   // entrance_champ=NUMBER: its champion's (the same folder), else 0
     std::vector<superstar_pack::NewMove> new_moves;  // superstar/moves/<number>.waze, _low.yanm, _high.yanm
     fs::path model, movie;
     fs::path theme;  // superstar/entrance/MUS_<own entrance>.bin: its own theme (a WWE '13 one), else empty
@@ -878,6 +879,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     mod.moves = ParseMoves(Value(text, "moves"));
     mod.entrance = std::clamp(atoi(Value(text, "entrance").c_str()), 0, 372);
     mod.own_entrance = std::clamp(atoi(Value(text, "entrance_own").c_str()), 0, 999);
+    mod.champ_entrance = std::clamp(atoi(Value(text, "entrance_champ").c_str()), 0, 999);
     if (mod.own_entrance > 0 &&
         fs::exists(d / "superstar" / "entrance" / ("MUS_" + std::to_string(mod.own_entrance) + ".bin"), ec))
       mod.theme = d / "superstar" / "entrance" / ("MUS_" + std::to_string(mod.own_entrance) + ".bin");
@@ -918,6 +920,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       }
       mv.moves = ParseMoves(Value(text, "moves"));
       mv.own_entrance = std::clamp(atoi(Value(text, "entrance_own").c_str()), 0, 999);
+      mv.champ_entrance = std::clamp(atoi(Value(text, "entrance_champ").c_str()), 0, 999);
       mv.entrance = std::clamp(atoi(Value(text, "entrance").c_str()), 0, 372);  // (another superstar's of the game)
       ReadHost(d / "superstar" / "theme.wem", mv.theme);
       mv.new_moves = ReadNewMoves(d / "superstar" / "moves");
@@ -1254,6 +1257,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     st.moves = mod.moves;
     st.entrance = mod.entrance;
     st.own_entrance = mod.own_entrance;
+    st.champ_entrance = mod.champ_entrance;
     st.new_moves = mod.new_moves;
     if (!mod.theme.empty())
       ReadHost(mod.theme, st.theme);

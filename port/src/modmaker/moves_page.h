@@ -709,6 +709,7 @@ class Page {
     if (!collecting_.valid() || collecting_.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
       return;
     parts_ = collecting_.get();
+    champ_.Reset();
     collected_for_ = collecting_for_;
     auto then = std::move(after_collect_);
     after_collect_ = {};
@@ -751,6 +752,9 @@ class Page {
     if (use_entrance_ && HasEntrance() && parts_.one_take)
       ImGui::TextDisabled("%s", fr ? "(entrée de 2K15 d'un seul tenant : sortie de l'intro cachée de WWE '12, avec la foule et l'annonceur)"
                                    : "(a 2K15 entrance in one piece: moved out of WWE '12's hidden intro, with the crowd and the ring announcer)");
+    // champion's entrance (his game's, or one picked: star_port::ChampChoice)
+    if (disc12_ && discs_)
+      champ_.Draw(fr, *disc12_, *discs_, game_, target_ >= 0 ? stars12_[size_t(target_)].id : -1, music12_, parts_);
     // victory scene
     Choice(HasVictory(), use_victory_, fr ? "Sa scène de victoire (essai)" : "His victory scene (a test)",
            fr ? "pas de scène de victoire à lui trouvée dans son jeu" : "no victory scene of his found in his game");
@@ -960,6 +964,7 @@ class Page {
       for (const auto &st : stars12_)
         if (st.id == entrance_of_)
           desc += ", " + st.name + "'s entrance";
+    manifest += champ_.ManifestLine(parts_);  // (his champion's entrance, star_port::ChampChoice)
     manifest += "description=" + desc + ", made with the WWE '12 Mod Maker.\n";
     // (superstar/moves.txt: what it gives, for people; a mod needs a superstar/ file even with moves= alone)
     std::string notes = desc + "\n";
@@ -977,7 +982,9 @@ class Page {
     if (victory)  // (the game serves it as his own, 6000 + his number)
       for (const auto &part : parts_.victory)
         entries.push_back({"superstar/victory/" + part.kind + ".bin", part.data});
-    if (entrance || victory)  // (their objects WWE '12 hasn't: the game adds them to evtobj.pac)
+    champ_.Write(parts_, entries);  // (his champion's entrance: superstar/entrance/)
+    const bool champ = champ_.On(parts_);
+    if (entrance || victory || champ)  // (their objects WWE '12 hasn't: the game adds them to evtobj.pac)
       for (const auto &part : parts_.objects)
         entries.push_back({entrance13::ModPath(part), part.data});
     if (theme) {  // (Wwise Vorbis as the game's, else PCM; with the entrance it is played as its number, else as 900 + his)
@@ -1028,6 +1035,7 @@ class Page {
   std::string pick_name_;      // ... his name
   star_port::Parts parts_;     // what can be taken of him
   star_port::Music12 music12_;
+  star_port::ChampChoice champ_;  // his champion's entrance
   theme_source::Theme theme_;  // his theme (theme_source.h), stream empty if none
   std::vector<theme_source::Theme> themes_;
   int theme_pick_ = 0;

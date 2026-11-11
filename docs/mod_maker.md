@@ -1581,3 +1581,18 @@ D'après la page de Kaiko (mise en page reprise, crédit MIT). Quatre onglets, u
   (`Documents\wwe12\added_videos.txt`) ; servi depuis `Documents\wwe12\added_videos\movies\titantron\NNN.bik`, avec son
   minitron ; ajouté à la liste MOVIE sous son nom. Les catcheurs ajoutés évitent ces numéros. **Pas encore vu en jeu.**
 - Le ruban et le mur vidéo d'un catcheur du jeu se font déjà sur la même page (choix « ruban » et « mur »).
+
+## Entrées de champion des catcheurs portés (1.3, 2026-11-11)
+
+- **Fiche** (CHAR / PRO) : un bloc de 5 numéros à +0x1D4 (répété à +0x1E0) : musique, vidéo, entrée, puis **deux
+  entrées de champion** (+0x1DA, +0x1DC) : Cena 139 139 139 602 602 (602 = John_Cena_Champ), Orton 604, The Rock 610
+  (champion générique). Les entrées de champion de WWE '12 sont 600-6xx (Nyujyo9). 2K14 a le même bloc à +576 :
+  The Miz 218 218 218 **668** 668 (« The Miz ABE ») ; il a aussi 656 « The_Miz_Champ » (+ 657 / 658 Bigsize / Divasize).
+- **Avant** : un mod mettait son entrée dans les deux cases de champion (correctif du 2026-11-03 : Cena de SvR 2010
+  jouait 602 en champion).
+- **Maintenant** : `star_port` reprend l'entrée de champion que la fiche nomme (2K14 +582, 2K15 +586 ; les autres
+  jeux : pas encore lu), portée comme son entrée (objets, annonceur...) sous un numéro libre ; les pages MOVES &
+  ENTRANCES et NOUVEAU CATCHEUR la montrent (case à cocher) et proposent **d'en choisir une autre de son jeu** (liste des
+  scripts d'entrée, avec recherche : « champ », « miz »...). Le mod a `entrance_champ=<n>` ; le jeu la met dans les deux
+  cases de champion (`PutMoves`) et l'ajoute aux listes de Créer une entrée (« <NOM> CHAMP »). Hors jeu : 2K14 668 et
+  656 lues (script, pistes, GMEV, PCE6). **Pas encore vu en jeu.**
