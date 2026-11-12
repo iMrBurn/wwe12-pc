@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "belt12.h"
 #include "entrance13.h"
 #include "face12.h"
 #include "game_disc.h"
@@ -605,6 +606,7 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
       // (his face moving: the face tracks of his base's WWE '12 entrance, else Cena's, where his game's has none -
       // 2K14's entrances have no face tracks, face12.h)
       face12::AddFaces(*parts, w12, base12 > 0 && entrance13::Exists12(w12, base12) ? base12 : 139);
+      belt12::BeltInHand12(*parts);  // (his belt in his hand, not at his waist too, belt12.h)
     }
   }
 }
@@ -621,6 +623,7 @@ inline void FinishChamp(const disc::GameDisc &w12, const disc::GameDisc &src, Pa
   entrance13::WaitingFirst12(out.champ);
   entrance13::People12(out.champ, w12);
   face12::AddFaces(out.champ, w12, 139);  // (its face moving, face12.h)
+  belt12::BeltInHand12(out.champ);         // (the belt in his hand, not at his waist too, belt12.h)
   out.champ_name = ChampName(out);
 }
 

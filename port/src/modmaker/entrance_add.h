@@ -350,8 +350,12 @@ class Page {
       nm.pop_back();
     while (!nm.empty() && nm.front() == ' ')
       nm.erase(nm.begin());
+    // (with its game: "Sandman (SvR 2008)" - the player picks which game's entrance a superstar comes with, the user
+    // 2026-11-12)
     if (nm.empty())
       nm = std::string(star_port::GameName(game_)) + " " + std::to_string(it.number);
+    else
+      nm += std::string(" (") + star_port::GameName(game_) + ")";
     snprintf(name_, sizeof(name_), "%s", nm.c_str());
     const disc::GameDisc *w = &w12;
     const game_discs::Discs *d = &discs;
