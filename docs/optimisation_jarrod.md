@@ -1,5 +1,17 @@
 # Optimisations du recomp WWE 2K14 (Jarrod) : ce qu'on peut reprendre
 
+## État au 2026-11-12 (Rendu)
+
+- **Faits** : point 1 (read-back 32 images, f936b75), point 2 (attente GPU qui dort, −12 % de CPU), point 3
+  (pipelines connus préparés au démarrage, c442aa3 en 1.1), point 4 (image en retard montrée tout de suite :
+  `svr_adaptive_vsync`, 6bef73b, 1.3), test de performance intégré (benchmark 1 contre 1, 1.3).
+- **Plus tard, sans version** : point 6 (registres locaux + `volatile`, `docs/regeneration_1_3.md`) ; point 10
+  (fonctions réécrites en natif).
+- **Pas prévus** : points 5, 7, 8, 9 (notre fil de rendu n'est pas le goulot ; à reprendre seulement sur une mesure).
+- Ce n'est **pas un doublon** de `android_optimisation_jarrod.md` : celui-là étudie sa version Android.
+
+Parties finies archivées dans `docs/archives/optimisation_jarrod_anciennes_parties_2026-11-12.md`.
+
 Étude de la conversation Rendu, le 2026-10-31, à la demande de Main. **Lecture seulement** : les
 notes de version (pages 1 à 4 des releases), le README, le CHANGELOG et la liste des fichiers de
 `patches/`. Rien n'a été cloné ni téléchargé, et aucun code n'a été repris.
@@ -44,30 +56,6 @@ notes de version (pages 1 à 4 des releases), le README, le CHANGELOG et la list
 
 Pas pour nous : le passage de l'EDRAM émulée au rendu natif (déjà fait chez nous), FSR / DLSS,
 les choix de rendu LIGHT / ACCURATE.
-
-## Sa méthode (pour la 1.1)
-
-Ses notes ne parlent pas de décompilation en C++ lisible. Elles disent seulement :
-- **Code natif à la main :** une fonction du jeu (la déformation des catcheurs) a été réécrite en
-  natif.
-- **Vérifications :** chaque changement est contrôlé image par image (« pixel-identique »,
-  « read-backs octet pour octet », replay comparé image par image).
-- **Mesures :** il fait un test de performance intégré (deux entrées et un début de match, deux
-  fois) et demande aux joueurs leurs résultats sur portables.
-- **Organisation :** il travaille par séances numérotées et garde un patch par séance.
-
-Une idée à reprendre : un **test de performance intégré**, reproductible, qui donne aux joueurs des
-chiffres comparables.
-
-## Proposition
-
-1. **Tout de suite (petit, sans risque) :** le point 1, la limite de read-back de 6 à 32 images. Il
-   faut tester avec une tenue Superstar Threads en match.
-2. **Pour les petits PC, en 1.0 :** les points 2, 3 et 4. Ils touchent l'attente du CPU, les
-   pipelines et l'affichage des images en retard. On mesure avec `wwe12_dev_affinity=F` et le
-   journal `[load]`.
-3. **Plus tard (1.1) :** les points 6, 7, 8 et 10. Ils demandent de lire ses patchs (accord de
-   l'utilisateur pour le téléchargement, et de Jarrod pour la reprise).
 
 ## Fait le 2026-10-31 (choix de l'utilisateur : points 1 à 4)
 

@@ -1,5 +1,8 @@
 # Fonctions Direct3D (XDK) de WWE '12
 
+> État au 2026-11-12 : document de référence (adresses des fonctions D3D de la XDK dans WWE '12, relevées pour la
+> 0.1.0). Toujours valable tant que le code du jeu n'est pas régénéré depuis une autre version (Title Update).
+
 Le rendu natif (repris des portages SvR 2008-2010 de nefariousjosiah, GPL-3.0) observe les
 appels Direct3D du jeu par des crochets posés sur les fonctions de la bibliothèque D3D de la
 XDK, liée statiquement dans `default.xex`. Il faut donc retrouver leur adresse dans WWE '12 :
