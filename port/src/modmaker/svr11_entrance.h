@@ -2193,6 +2193,16 @@ inline bool Convert(const Bytes &ymks, const Bytes &evp11, const Bytes &base_evz
           FrameEvents(f, ev, T, fe);
         }
         b.events = prop ? ConvertEvents(fe, kProp) : GlobalEvents(fe, true);
+        // (ours) a prop's block starting with 179 gets 180 (u32 0) beside it, as every block of WWE '12's own props
+        // has (its 506, the same Sandman entrance as SvR 2008's: 179 + 180 at frame 0; SvR has no 180 - without it
+        // the kendo stick and the beer didn't show, 2026-11-12)
+        if (prop && !b.events.empty() && b.events.front().frame == 0) {
+          auto &c0 = b.events.front().cmds;
+          const bool has179 = std::any_of(c0.begin(), c0.end(), [](const Cmd &c) { return c.id == 179; });
+          const bool has180 = std::any_of(c0.begin(), c0.end(), [](const Cmd &c) { return c.id == 180; });
+          if (has179 && !has180)
+            c0.push_back({180, 1, U32s({0})});
+        }
         if (!ParseRaw(*bl, base_block(b.name), b.raw, ctx))
           break;
         if (!prop)

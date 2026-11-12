@@ -9,6 +9,8 @@
 // (Two titles held: the game's own commands, as in its own entrances - the user: "two belts if he has two, one if one".)
 #pragma once
 
+#include <algorithm>
+#include <cstring>
 #include <map>
 #include <string>
 #include <vector>
@@ -176,6 +178,53 @@ inline int BeltInHand12(std::vector<entrance13::Part> &parts) {
       const Bytes bank = svrfmt::PachWrite(leaves);
       p.data = packed ? svrfmt::BpeEncode(bank) : bank;
       n += here;
+    }
+  }
+  return n;
+}
+
+// The parts' scripts (EVP): the title worn (object model 5009, a prop: WWE '12 shows the champion's title there, at
+// his waist - its own entrances' object 7, as 2K14's) hidden in the segments where the entrance shows belts of its
+// own (props 2009 / 3009, shown and hidden by 148 / 149 on their tracks: 2K14 The Miz's 668 holds 2009 overhead and
+// has 3009 on his shoulder; the US title stayed at his waist too, 2026-11-12). Returns how many slots were hidden.
+inline int HideTitleUnderOwnBelts(std::vector<entrance13::Part> &parts) {
+  using detail::Be32;
+  int n = 0;
+  for (auto &p : parts) {
+    Bytes &d = p.data;
+    if (p.kind != "EVP" || d.size() < 0x50 || memcmp(d.data(), "0FOP", 4))
+      continue;
+    const uint32_t count = Be32(d, 0x40) & 0xFFFF;
+    const size_t t = size_t(Be32(d, 0x48)) + 8;
+    struct O {
+      uint32_t model, ns;
+      size_t bp;
+    };
+    std::vector<O> objs;
+    for (uint32_t i = 0; i < count && t + 32 * size_t(i + 1) <= d.size(); ++i) {
+      const size_t q = t + 32 * size_t(i);
+      if (Be32(d, q + 8) != 0x100 || Be32(d, q + 12) != 0)
+        continue;
+      objs.push_back({Be32(d, q + 4), Be32(d, q + 24) >> 16, size_t(Be32(d, q + 28)) + 8});
+    }
+    auto shown = [&](const O &o, uint32_t k) {
+      const size_t sl = o.bp + 212 * size_t(k);
+      return k < o.ns && sl + 212 <= d.size() && (Be32(d, sl) & 0xFF00) != 0;
+    };
+    for (const auto &title : objs) {
+      if (title.model != 5009)
+        continue;
+      for (uint32_t k = 0; k < title.ns; ++k) {
+        const bool own = std::any_of(objs.begin(), objs.end(), [&](const O &o) {
+          return (o.model == 2009 || o.model == 3009) && shown(o, k);
+        });
+        if (!own || !shown(title, k))
+          continue;
+        const size_t sl = title.bp + 212 * size_t(k);
+        const uint32_t w = Be32(d, sl) & ~0xFF00u;
+        d[sl] = uint8_t(w >> 24), d[sl + 1] = uint8_t(w >> 16), d[sl + 2] = uint8_t(w >> 8), d[sl + 3] = uint8_t(w);
+        ++n;
+      }
     }
   }
   return n;
