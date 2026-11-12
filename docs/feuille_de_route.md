@@ -112,6 +112,32 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - AJOUTER des logos et des matchup screens (les listes du jeu sont pleines).
 - Nouveau show comme NXT.
 
+**Suivi 1.4 (bloc-notes de l'utilisateur du 2026-11-12, un point à la fois, dans CET ordre ; cocher quand codé + testé par l'utilisateur)**
+
+Décision du 2026-11-12 : 1.4 à sortir en une semaine environ ; l'utilisateur commence par le mode Univers, un point après l'autre, en suivant son bloc-notes. Estimations : Univers et Gameplay (messages du 2026-11-12).
+
+*Matchs (Gameplay)*
+- [ ] I Quit (léger : le match SUBMISSION affiche « I QUIT », 3-4 h)
+- [ ] Special Guest Referee (risque moyen, 8-16 h : probablement reporté)
+- [ ] Matchs squash (léger : option « prochain match : squash », sonde STARTING HEALTH d'abord)
+- [ ] Stock de finishers de départ (OFF / 1 / 2 / 3 / INFINI, page d'options ; sonde d'abord)
+- [ ] Changer de joueur en plein match (non étudié, risque élevé : probablement reporté)
+- [ ] Améliorer le système de tombé (zone de sortie plus grande, non étudié)
+
+*Univers (Univers + Mods)*
+- [ ] Deux mallettes Money in the Bank (RAW / SmackDown) + embuscade en coulisses (léger ~8 h ; complet 12-20 h)
+- [ ] Débloquer Edge, Christian etc. dans l'Univers (3-6 h ; il faut la liste de ceux qui manquent)
+- [ ] Choisir le type d'intervention (bouton Y) : non en 7 jours (20 h et plus)
+- [ ] Backport des cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants : non en 7 jours
+- [ ] Réglage pour couper les blessures et les fins de carrière (1-2 h + 3-5 h)
+- [ ] Classement des titres par équipe modifiable (6-10 h)
+- [ ] Rivalités menées jusqu'au PPV, rivalité inter-marques sans match (10-20 h ; léger ~8 h)
+- [ ] Titres de SmackDown dans EDIT SUPERSTAR (R1), si c'est le jeu d'origine (2-5 h)
+- [ ] Photo propre aux arènes ajoutées (3-5 h chez Univers + Mods fournit l'image 256x64)
+- [ ] Ajouter des logos et des matchup screens (léger : Mods remplace Add_01..15 et PPVbg_origin01..10 par les images du joueur)
+- [ ] Nouveau show comme NXT (30 h et plus : non)
+- [ ] Beaucoup plus de News (2-3 h par sorte ; 3-4 sortes au choix de l'utilisateur)
+
 ## 1.5 et après : plateformes et finitions (à décider selon les retours)
 - Launcher : améliorations (`docs/launcher_amelioration.md`, 20 à 28 h : état du jeu, messages, confort Steam Deck à la manette, bouton « Test de performance », finitions) ; pas de refonte du design.
 - Android après la 1.1 PC : replay d'après match, performances, ajouts de Yexclsv (`docs/android_apres_1_1.md`).
