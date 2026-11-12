@@ -237,6 +237,11 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   0x12345678 (`svrfmt::ShdcHashFor`).
 
 ### Tenues
+- **Modèles à part (2026-11-12, vus bons)** : coudières (0x1a / 0x1b) gardées sur leur propre squelette, sur le modèle
+  de la base de même numéro (`port13_star.h`) ; ceux de la base que la tenue n'a pas rendus invisibles
+  (`port_svr::HideBaseExtras`, The Rock de WWE '12 sous Roman 2K17) ; l'aperçu 3D les pose sur les os du bras
+  (`arena_view::OnBody`). Lumières 21000+ de WWE '13 (veste de Jericho) ajoutées au modèle des cils, fixes. Aide de
+  test : `WWE12_MM_KIDS=<titre hex>,<pac>|*,<rapport>` (enfants de chaque tenue).
 - Mod `type=attire` : `attire/attire.pac` + `superstar=NNN`, `attire=000NNNAK` ; mis dans le pack (son annuaire passe
   avant le disque ; vu en jeu). Plusieurs mods sur un catcheur vont ensemble.
 - **Ajouter une tenue (4 au plus)** : « En nouvelle tenue (tenue N, garde l'originale) » ; nombre de tenues relevé dans
