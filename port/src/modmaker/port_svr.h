@@ -1295,6 +1295,37 @@ inline bool OldSvrPictures(svrfmt::ArcNode &svr) {
 
 // collision: the hair's collision capsules (entry 61, WWE '12's) for a base that has none (a long-haired superstar's,
 // read from the player's disc); null: none.
+// The base attire's extra models (JBOY children 0x10-0xFF: WWE '12 The Rock's ch100 elbow pads "elbow_l" / "elbow_r"
+// 0x1a / 0x1b, which the moves show or hide) that the ported attire hasn't: made invisible - every vertex on the first
+// one -, kept under their number so the moves still find them. Kept, the Rock's pads stayed on any superstar ported over
+// him (2K17 Roman Reigns, The Rock of every game: a tester's list, 2026-11-12). `keep`: the numbers the port brought.
+// Returns how many.
+inline int HideBaseExtras(svrfmt::ArcNode &base, const std::set<uint32_t> &keep) {
+  int n = 0;
+  for (auto &k : base.kids) {
+    if (k.id < 0x10 || k.id > 0xFF || keep.count(k.id))
+      continue;
+    const Bytes data = svrfmt::Unpack(svrfmt::ArchiveData(k));
+    svrfmt::Model m;
+    std::string e;
+    if (!svrfmt::IsJboy(data) || !svrfmt::JboyRead(data, m, &e))
+      continue;
+    const svrfmt::Vertex *first = nullptr;
+    for (const auto &me : m.meshes)
+      if (!first && !me.verts.empty())
+        first = &me.verts.front();
+    if (!first)
+      continue;
+    const float at[3] = {first->pos[0], first->pos[1], first->pos[2]};
+    for (auto &me : m.meshes)
+      for (auto &v : me.verts)
+        v.pos[0] = at[0], v.pos[1] = at[1], v.pos[2] = at[2];
+    svrfmt::ArchiveReplace(k, svrfmt::JboyWrite(m));
+    ++n;
+  }
+  return n;
+}
+
 inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep, std::string *why,
                        const Bytes *collision = nullptr) {
   Report own;
@@ -1609,6 +1640,8 @@ inline bool PortAttire(svrfmt::ArcNode &svr, svrfmt::ArcNode &base, Report *rep,
       svrfmt::ArchiveReplace(*b10, svrfmt::BundleWrite(bt));
     }
   }
+  if (const int hidden = HideBaseExtras(base, {}); hidden > 0)
+    rep->notes.push_back(std::to_string(hidden) + " extra model(s) of the base hidden (its elbow pads...)");
   svrfmt::ArchiveTouch(base);
   return true;
 }

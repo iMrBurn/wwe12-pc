@@ -442,6 +442,14 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
           svrfmt::ArchiveAdd(base, "", "", k.id, out, &e);
       }
   }
+  // (the base's extra models it hasn't: hidden, port_svr::HideBaseExtras)
+  {
+    std::set<uint32_t> brought;
+    for (const auto &k : w13.kids)
+      if (k.id >= 0x10 && k.id <= 0xFF)
+        brought.insert(k.id);
+    port_svr::HideBaseExtras(base, brought);
+  }
   // Its springs (60 the settings, 61 the collisions: text, the same "Version2" in WWE '12, '13 and 2K14), for its spring
   // bones kept above, in place of the base's. A setting line: chain, radius, viscosity, gravity, spring, damping, A,
   // length correction, bend, move correction (Kaiko's w13_char.py). The chains on the legs are not kept (Reskeleton): their
