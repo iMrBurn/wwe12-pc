@@ -2089,7 +2089,13 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
   Choose(in, base, o.options,
          {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers,
           std::string(o.briefcases) + ":  " + briefcases,
-          std::string(o.injuries) + ":  " + (REXCVAR_GET(wwe12_universe_injuries) ? o.on : o.off)},
+          std::string(o.injuries) + ":  " + (REXCVAR_GET(wwe12_universe_injuries) ? o.on : o.off),
+          // (a 5th line: with 4 the game lays the box out in two columns and the long lines overlap, test of
+          // 2026-11-12; from 5 on, our one-column list)
+          [] {
+            static const char *const kBack[5] = {"BACK", "RETOUR", "ZUR\xC3\x9C" "CK", "VOLVER", "INDIETRO"};
+            return std::string(kBack[CurrentLang()]);
+          }()},
          [](const PPCContext &in, u8 *base, size_t i) {
            const OptionWords &o = OWords();
            if (i == 0) {
@@ -2102,6 +2108,8 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
                                     k ? (std::to_string(kPct[k]) + " %").c_str() : OWords().off);
                       Inform(in, base, text);
                     });
+           } else if (i == 4) {
+             // BACK: nothing
            } else if (i == 3) {
              Choose(in, base, o.injuries, {o.off, o.on}, [](const PPCContext &in, u8 *base, size_t k) {
                SaveUniverseOption("wwe12_universe_injuries", k ? "true" : "false");
