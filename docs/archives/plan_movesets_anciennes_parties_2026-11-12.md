@@ -1,0 +1,461 @@
+Archive du 2026-11-12 : contenu complet de docs/plan_movesets.md avant son rangement (historique, essais, détails). L'état actuel est dans docs/plan_movesets.md.
+
+# Prises et entrées des catcheurs portés : plan (2026-10-27)
+
+Demande de l'utilisateur (« gros chantier, je veux une super 1.0 ») : un catcheur porté d'un autre jeu (SvR 2011,
+WWE '13, 2K14-2K17) garde **son moveset et son entrée**, comme le fait le Mod Maker de SvR 2011 de Kaiko (autorisation
+de lire et d'adapter son code, avec crédit). Aujourd'hui il prend ceux de sa base WWE '12.
+
+Source : lecture des outils Python de Kaiko (`Desktop\SVR 2011 KAIKO\Mod Maker Tools` : `moveset_port.py`,
+`moves_port.py`, `entrance_port.py`, `wwe13_entrance.py`, `moveset_maps.json`, `pro_slots.json`, `superstar_port.py`).
+Son sens est autre jeu → SvR 2011 ; il **lit** les formats de WWE '12 (source), il ne les écrit pas.
+
+## Ce qu'on sait de WWE '12 (d'après son code, à vérifier chez nous)
+
+- **Fiche de prises** `pac/ch/chEtc.pac` CHAR/PRO, 1 072 o par catcheur, u16 gros-boutistes. Prises de +0x00A à +0x1C0
+  (220 cases, même ordre que SvR 2011 décalé de +4 octets : ring, provocations, signatures, finishers, Rumble, échelle,
+  coups, prises avant / arrière, au sol, coin, plongeons, apron, course, Irish whip, équipe, plongeons dehors,
+  contres, soumissions). **Entrée à +0x1D4** : musique, vidéo, entrée, autre (4 × u16). La sauvegarde garde sa copie
+  (1 068 o, déjà refaite pour les catcheurs ajoutés : `wwe12_superstar_mods.cpp`).
+- **Noms des prises** : `misc.pac` MOVS/WAZE, fiches de 160 o depuis 0x430, nom à +0x10, numéro u16 à +0x90.
+- **Animations** : `m.pac` ZMVM (déjà lu par la visionneuse d'animations, `motions.h`), YANM. Les autres champs des
+  fiches de prises (dégâts, contres, événements) ne sont décodés nulle part.
+- **Entrées** : `pac/evt/Nyujyo0-9,A.pac`, groupes EVP (script, même disposition que SvR 2011, cm) et EVZ (pistes
+  YANM par objet). Pyro : `prtcls.pac` PCE6/LPE6, même format que SvR 2011. Thème : `sound/Music.pck`.
+- **Correspondance des cases** entre jeux : `moveset_maps.json` (cases du jeu source → SvR 2011 ; WWE '12 ≈ SvR 2011
+  + 4 octets) : on obtient WWE '13 / 2K → WWE '12 en composant avec l'inverse de la table « wwe12 ».
+
+## Étapes
+
+1. **Moveset traduit par le nom des prises** (pas d'animation portée). Lire la fiche PRO du catcheur source, passer
+   chaque case dans la case WWE '12, trouver la prise de WWE '12 du même nom (nom normalisé) qui a une animation et
+   que le roster de WWE '12 met dans cette case ou le même groupe (un coup ne va pas dans une case de prise) ; sinon
+   la prise de la base reste. Le mod garde la liste des cases changées ; le jeu l'applique à la fiche du catcheur
+   ajouté (et à la copie de la sauvegarde). Rapport dans le Mod Maker : chaque case, prise trouvée ou gardée.
+   Choix séparés « prises de… » / « entrée de… » parmi les catcheurs de WWE '12 au passage.
+2. **Entrée par le nom** : l'entrée (+0x1D4) d'un catcheur de WWE '12 choisi, ou trouvée par le nom du catcheur
+   source quand WWE '12 l'a ; sa musique et sa vidéo suivent (la vidéo portée existe déjà).
+3. **Prises absentes de WWE '12, animations portées** : écrire du YANM (aucun encodeur chez Kaiko), recibler vers le
+   squelette de WWE '12 (FK, comme ses Biped), copier les fiches d'une prise « modèle » de WWE '12 sur un numéro libre,
+   et un chargeur de « packs de prises » dans le jeu (l'équivalent de son `move_packs.cpp`, absent de ses outils).
+   Raccourci à essayer : WWE '13 / 2K14 ont le même conteneur que WWE '12 (copie directe, avec un flux IK que WWE '12
+   n'utilise pas). Gros travail de rétro-ingénierie.
+4. **Entrées portées** (script EVP, pistes EVZ en YANM, caméras, pyro) : après l'étape 3 (même encodeur).
+
+Les étapes 1 et 2 sont sûres et utiles seules ; 3 et 4 sont le vrai gros chantier.
+
+## État (2026-10-27 au soir)
+
+- **Étape 1 faite pour SvR 2011 et WWE '13** (`port/src/modmaker/moveset_port.h`, commits ed437af, 76fb312) :
+  NEW SUPERSTAR, étape 2, case « Ses propres prises de … » (cochée par défaut) et détail case par case ; ligne
+  `moves=OFF:NUMÉRO,...` du mod ; le jeu les met sur la fiche PRO du catcheur ajouté (`superstar_pack.h`), la copie
+  de la sauvegarde suit. Correspondance des cases calculée à partir des catcheurs des deux jeux (paires de cases dont
+  les prises ont le plus souvent le même nom, dans l'ordre, au moins 15 % : la méthode de `moveset_maps.py`) ; les
+  fiches de noms trouvées où elles commencent (WWE '13 : pas à 0x430). Vérifié hors jeu : CM Punk de SvR → G.T.S.,
+  Shining Wizard, Tiger Bomb, ses provocations ; de WWE '13 → G.T.S., Anaconda Vise ; Drew de SvR → Future Shock.
+  **Pas encore vu en jeu.** Sur 223 catcheurs SvR, ~78 % des cases trouvent leur prise.
+- **Étape 2 faite** (commit 1d9d064) : « Entrée (musique, vidéo, entrée) » = celle de la base ou d'un autre catcheur
+  de WWE '12 ; ligne `entrance=NUMÉRO` ; le jeu recopie PRO +0x1D4..+0x1DE de ce catcheur (nombres de 16 bits
+  **petit-boutistes** ici, alors que les prises sont gros-boutistes : Cena 139, 139, 139, 602, 602). Pas vu en jeu.
+- **2K14-2K17 : pas encore.** Noms dans `createmode.pac` MOVS/WAZE (nom d'entrée avec des octets en plus après
+  « WAZE ») ; la fiche PRO de 2K14 ne s'ouvre pas en arbre (0 enfant) ; 2K16/2K17 : tables à entrées de 20 octets et
+  HSPC chez Kaiko (`moves_port.py` Game14, Game2K16, Game2K17 ; `superstar_port.py` 1084-1224).
+- **Ce que l'étape 3 apporterait** (mesuré hors jeu, `moveset_port::FromGame` sur tout le roster) : SvR 2011, 222
+  catcheurs, cases mises en correspondance : 83 % même nom, 12 % autre version, **5 % gardent la base** (220 prises
+  distinctes manquent : Five Star Frog Splash, Rolling Thunder, Quake, Book of Ezekiel, Texas Piledriver…) ;
+  WWE '13, 273 catcheurs : 84 % / 4 % / **12 %** (291 prises : Beast Bite, White Noise, Saito Suplex, Vise Grip,
+  Glam Slam Stretch…).
+- **Animations de WWE '13 : lisibles telles quelles.** Pas dans `m.pac` (30 Ko chez lui) mais dans `pac/mot06-08.pac`
+  (EPK8 en clair dans la copie de l'utilisateur ; `dlc_mot01.pac` est xcompressé), mêmes banques ZMVM qu'en WWE '12
+  (STAT, BASE, STN1/2, GRND, CORN, FINI, SPE0-2, RUMB, LADR, CELL… plus ABL0/1, LIMB) : **100 % des fiches lues par
+  `yanm::Read`**. **Mêmes os (Biped : Bip, Pelvis, Spine, Spine1, Neck, Head, bras, jambes, `vector`, `root`)** :
+  banque FINI, 76 fiches de WWE '13 contre 58 de WWE '12 ; dans la moitié des fiches de WWE '13 les pistes des mains
+  et des orteils manquent (20 pistes au lieu de 24 : ces os restent au repos, ou viennent des pistes `#fdd95b2x` /
+  `#fc5bf1xx` propres à WWE '13, sans doute la cible IK dont parle Kaiko). Les clés sont des mêmes sortes (rot8,
+  charnières, positions). → **une copie presque telle quelle des animations de WWE '13 semble possible** (à essayer
+  en jeu : une prise de WWE '13 mise sur un numéro de WWE '12) ; SvR 2011 (YMKs) et les 2K demanderont une vraie
+  conversion.
+- **Ce qui manque pour l'étape 3, dans le jeu** : un « pack de prises » (l'équivalent de `move_packs.cpp` de Kaiko,
+  hors de ses outils) : ajouter des fiches ZMVM à `m.pac` (270 Mo : pas de copie, une redirection d'entrées comme
+  pour les vidéos d'arènes) et cloner les fiches WAZE de `misc.pac` (petit : copie patchée par l'overlay, comme
+  `menu.pac`) ; les autres données d'une prise (dégâts, contres, événements) ne sont décodées nulle part : on part
+  d'une prise « modèle » de WWE '12 du même genre (méthode de Kaiko).
+- **Une prise de WWE '12, vue de près** (2026-10-27, outils `mtree` / `wazerec` du bloc-notes) :
+  - `misc.pac` n'a que MOVS/WAZE pour les prises (les autres entrées : BATS/BATH INIT = tables du jeu STG, COS,
+    RUL, OPT…, CMAI, RVSL) → **les données d'une prise sont sa fiche WAZE de 160 o** : +0x00 genre (0x0C), +0x03
+    catégorie ?, +0x0E/+0x0F drapeaux, nom +0x10, réglages +0x70..+0x8F (dégâts, contres ?), numéro u16 +0x90 (AA 4
+    = 0x96C4, STF = 0xEEE3), puis FF.
+  - `m.pac` ZMVM/FINI : PACH → 112 → 20 sous-groupes (0, 1, 2…) → **numéro d'animation = numéro de la prise** (fiche WAZE +0x90 lue en petit-boutiste : 33002 = « Scissors kick » de
+    Booker T, prise DLC ; Attitude Adjustment 4 = 0xC496 = 50326, trouvée dans SPE1 et STN1) ; le
+    sous-groupe 0 (10 Ko) et le 1 (35 Ko) ont les mêmes blocs (deux qualités, ou corps / mains-visage ?). Blocs
+    `PPPPWWWW` : phase, personne (0000/0001), jusqu'à 0x0011xxxx et 0x0021xxxx (contres ?). Nos outils lisent ces numéros en gros-boutiste dans WAZE comme dans PRO : cohérent entre eux, mais
+    le vrai numéro (celui des animations) est l'autre sens.
+- **Mesures 2K** (2026-10-27) : 2K14 / 2K15 / 2K16 lus (noms dans `createmode.pac`) ; 2K15 : 79 % / 8 % / 13 % ;
+  2K16 : 84 % / 9 % / 7 % (moins de cases mises en correspondance : leur moveset est plus réorganisé). **2K17 non lu** : noms
+  d'entrées hachés (`#939ce2614c8dd2cd`…) ; la table des noms se reconnaît à son contenu (entrée de 459 Ko de
+  `createmode.pac`, fiches de 160 o) mais les fiches de catcheurs de `chEtc.pac` sont dans des conteneurs « SHDC »
+  que nous ne lisons pas encore (Kaiko : `superstar_port.py` `hspc` / `shdc`).
+- **WWE '13 et les 2K gardent la numérotation des prises de WWE '12** (le numéro = celui de l'animation), certaines
+  renommées : « White Noise 1 » de WWE '13 = « Celtic Cross 1 » de WWE '12 (animation 50024, mêmes blocs, 526
+  images). `moveset_port` prend donc aussi le même numéro quand le nom manque, pour un jeu qui partage la
+  numérotation (même numéro dans la même case pour plus d'un tiers des catcheurs communs ; SvR 2011 non).
+  Cases gardant la base : WWE '13 12,3 → 11,6 %, 2K15 13 → 10 %. Les prises qui manquent encore sont de vraies
+  nouveautés (Vertical Suplex, Beast Bite, Saito Suplex…) : étape 3.
+- **Fiches WAZE de WWE '13 contre WWE '12** (STF, même numéro 0xEEE3) : nom +0x10, réglages +0x70..+0x8F proches
+  (STF : +0x7C `02 00 01` en WWE '12, `0A 00 05` en WWE '13), numéro +0x90 identique ; **les 16 premiers octets sont
+  rangés autrement** (WWE '12 `0C 00 00 01 … 84 00` : genre +0x00, drapeaux +0x0E ; WWE '13 `… 08 01` vers +0x07)
+  et WWE '13 a des octets après le numéro (+0x98…) où WWE '12 a des FF. Une nouvelle prise de WWE '13 (ex. Vertical
+  Suplex, 0xC520) se recopiera avec ces 16 octets traduits (correspondance à apprendre sur les prises communes).
+  **Mesuré sur 1 781 prises communes (même numéro et nom, outil `wazefit`)** : +0x70..+0x97 identiques à 97-100 % ;
+  +0x01..+0x0E identiques en place à 83-98 % (STF était une exception) ; seuls +0x00 (43 %), +0x03 (71 %), +0x04
+  (66 %), +0x0B (66 %), +0x0C (69 %), +0x0F (59 %) changent souvent (genre / drapeaux revus entre les jeux) ;
+  +0x98..+0x9F toujours FF en WWE '12. → recopier la fiche de WWE '13 telle quelle avec +0x98.. = FF ; les 6 octets
+  variables : garder ceux de WWE '13, ou mieux, les prendre d'une prise de WWE '12 de même genre (à essayer en jeu).
+- **Plan concret de l'étape 3 pour WWE '13 / 2K** : (1) fiche WAZE recopiée (16 premiers octets traduits) ajoutée à
+  `misc.pac` (copie patchée par l'overlay, comme `menu.pac`) ; (2) ses animations (même numéro, mêmes banques et
+  sous-groupes que dans WWE '13) ajoutées aux arbres ZMVM de `m.pac` : servir une copie de la banque touchée
+  (1 à 16 Mo) par une redirection d'entrée comme pour les vidéos d'arènes ; (3) vérifier que ce numéro est libre en
+  WWE '12 ; (4) les mains / orteils absents restent au repos. SvR 2011 (YMKs, autre numérotation) viendra après.
+- **Étape 3 codée pour WWE '13 (2026-10-27, commit 9be496c), PAS ESSAYÉE EN JEU.** Méthode : celle des DLC officiels de
+  WWE '12, que nos catcheurs ajoutés utilisent déjà (pack `WWE12PCMODS`). Trouvé en regardant les DLC 3 et 4 installés :
+  - un pack apporte `pac/m_dlcNN.pac` avec **une banque `ZMOT/CA(NN+6)`** (pack 3 → CA09, pack 4 → CA10 ; le disque a
+    CA01-CA08 et CA90-92) : PACH → un id de tête (CA01 : 56 et 59, CA10 : 187) → **paires de sous-groupes** (pair : fiches
+    légères, impair : fiches complètes des mêmes animations) → animations par numéro. Les banques par catégorie
+    `ZMVM/*` (menus / aperçu, comme MVMT chez Kaiko) et par catcheur `mRR.pac ZMRR/C<n>` (64 catcheurs) ne sont pas
+    touchées par les DLC ;
+  - et **une copie complète de `misc.pac`** dont la table `MOVS/WAZE` a les fiches ajoutées **insérées dans l'ordre
+    alphabétique** (1 936 fiches déplacées entre le disque et le DLC 4) ; l'en-tête (0x430 o) compte : u16 +4 = total
+    (2 379 → 2 426), **u16 à 0x08 + 2k = fiches dont le bit de catégorie k (octets 0-15) est levé** (vérifié pour 119
+    bits sur 128 ; les 9 autres ont un écart constant, sans doute des fiches vides) ;
+  - `DLC.pac RGRP/MAGG` enfants 10 (noms) et 11 (notes japonaises) : fiches de 104 o **triées par numéro
+    d'animation** (u16 petit-boutiste, u16 genre, 0F/FF…, nom à +8) ; le DLC 4 en ajoute une par prise (796 → 824 avec
+    les DLC 3-4). **Ajoutées aussi** (2026-10-27) : celles de WWE '13 (son `DLC.pac` en a 954), insérées à leur place.
+  - **Le jeu charge toutes les banques `/ZMOT/CA00` à `CA19` qui existent** (boucle à 0x822B665C, `sub_827D98D8` =
+    « l'entrée existe ? », sinon `/ZMBS/CA%02d` selon `sub_82A30AA8`) : notre banque est CA(NN+6) mais **jamais sous
+    CA11** (disque CA01-08, DLC 3-4 CA09-10), ce qui règle le cas « aucun DLC installé ».
+  Code : Mod Maker `newmoves13.h` (prises de WWE '13 dont WWE '12 n'a pas le numéro : fiche WAZE avec +0x98.. = FF,
+  animations légère / complète prises dans `mot00/mot01.pac ZMOT/CA*` de WWE '13) → `superstar/moves/<n>.waze`,
+  `_low.yanm`, `_high.yanm`, et leurs cases dans `moves=` ; jeu : `superstar_pack.h` (copie du `misc.pac` le plus récent
+  avec les fiches insérées et les compteurs, `m_dlcNN.pac` dans le genre de pac de `chEtc.pac`, tête 177 + n° de banque : 188 pour CA11 ; avant 180 + NN = 185, un groupe de CA03 du disque, les prises ajoutées ne se jouaient pas, corrigé le 2026-11-08), les
+  prises qu'un DLC installé a déjà sont sautées. **Vérifié hors jeu avec le vrai `Build`** : Mankind de WWE '13 → 8 prises
+  (Mandible Claw, Stump Puller Piledriver, Cactus Elbow, Mankind Clothesline…) insérées à leur place, total +8 ; avec le
+  DLC 4 installé, 3 seulement (les 5 autres sont les siennes). Sheamus → Beast Bite.
+  **À vérifier en jeu** : que le jeu charge bien `ZMOT/CA(NN+6)` de notre pack (et pas seulement pour les packs 3/4 :
+  sans DLC installé notre pack est le n° 1, sa banque serait CA07, un nom du disque !), que la prise se joue en match,
+  ce que fait l'éditeur de moveset sans MAGG, et les fiches des 6 octets de catégorie venues de WWE '13.
+- **Notes publiques de Kaiko lues le 2026-10-27** (téléchargées avec l'accord de l'utilisateur dans le bloc-notes de
+  la session, hors dépôt : `port/docs/MOVE_PACKS.md`, `OTHER_GAMES_ENTRANCES.md`, `docs/ARENA_MOD_MAKER_PLAN.md`,
+  `docs/OTHER_GAMES.md` de KaikoClanworth1/wwe-svr2011-pc) :
+  - **Les 16 premiers octets d'une fiche WAZE = les bits de catégorie qui décident dans quelles cases du moveset la
+    prise peut aller** (d'où les 6 octets qui changent entre WWE '13 et WWE '12 : les prendre d'une prise de WWE '12
+    du même genre).
+  - **Son chargeur de packs de prises (SvR 2011, même famille)** : au démarrage, chaque pack est fusionné dans des
+    **copies** de `m.pac`, `misc.pac` (et `mpsp.pac`) dans un dossier overlay (entrées inchangées recopiées, entrées
+    changées reconstruites et recompressées en BPE ; `stamp.txt` pour ne refaire la fusion que si quelque chose
+    change, ~3 s) ; la liste des pacs du jeu (copies de `plist360.h`) nomme les copies ; comme le répertoire
+    précalculé `plist360.arc` ne connaît que les originaux (entrées agrandies = plantage ou blocage au chargement
+    d'un match), le jeu monte alors les pacs en lisant leur propre table (chez lui `sub_825953B0` au lieu de
+    `sub_82595428` : **adresses de SvR 2011, à retrouver dans WWE '12**). DLC avec leur propre `m_dlcNN.pac` :
+    fusionner aussi dans des copies, servies par liens au montage, catalogues recopiés aux nouvelles places.
+    Pièges : les motions YMBs se gardent par leur place dans la banque (en ajouter après les existantes) ; la fin
+    d'une piste de victime (op 49) nomme la motion suivante.
+  - **Entrées (étape 4) : WWE '13 → WWE '12 devrait être presque une copie** : WWE '12 = `pac/evt/Nyujyo0-9,A.pac`,
+    groupes EVP (script, disposition de SvR 2011 mais positions en cm) et EVZ (pistes YANM + YAT2 à 60 Hz, corps en
+    FK) ; WWE '13 = `pac/evt/Entrance00..08.pac`, **même script en cm et mêmes pistes** (317 entrées, dont des
+    légendes sur des numéros libres) ; PRO : WWE '12 +0x1D4 musique, vidéo, entrée, autre, +0x1DC champion ; WWE '13
+    +0x230. Accessoires : à vérifier dans `evtobj.pac` ; pyro `prtcls.pac` même format ; titantrons de WWE '13 en
+    Bink 2 (déjà convertis par le Mod Maker pour les 2K) ; thèmes Wwise `Music.pck`. SvR 2011 / 2K → WWE '12 : il
+    faudra recibler (méthode `w13_retarget` de Kaiko, à l'envers).
+- **Le chargeur de WWE '12 existe déjà chez nous** (2026-10-27) : le jeu trouve chaque entrée par son répertoire,
+  `sub_827F29F0(répertoire, "/GROUPE/NOM", out)` (out : début en secteurs de 2 Ko, taille en unités de 256 o, numéro
+  de fichier à +12), et `native/wwe12_arena_pages.cpp` le **crochète déjà** pour les arènes ajoutées : des données
+  ajoutées au bout d'une copie servie d'un pac (MatchHD, evtgdhd, LoadHD, evtmov), le répertoire répondant avec leur
+  place. C'est notre équivalent du montage par table propre de Kaiko (`sub_825953B0`), sans toucher au répertoire.
+  → Étape 4 : une entrée de WWE '13 (EVP + EVZ) ajoutée au bout d'une copie servie de `Nyujyo*.pac`, le crochet
+  répondant à ses `/EVPx/0NNN` et `/EVZx/0NNN` (même pour un nom absent du répertoire : à vérifier), la fiche PRO
+  (+0x1D4) pointant sur ce numéro. → Étape 3 : la banque ZMVM touchée (avec la prise ajoutée) au bout d'une copie
+  servie, et la fiche WAZE dans une copie de `misc.pac`. Pièges connus du même fichier : le jeu lit parfois plus que
+  la taille donnée (un bgNN complet est servi), et la vidéo ne marchait pas servie depuis un autre fichier.
+- **Étape 4 codée pour WWE '13 (2026-10-27, commit 204d9f2), PAS ESSAYÉE EN JEU** : NEW SUPERSTAR, étape 2, « Sa
+  propre entrée de WWE '13 » quand WWE '12 n'a pas d'entrée de ce numéro (Mankind 246, Cactus Jack 245, Attitude Era
+  310… ; Cena 139 non : WWE '12 a la sienne) → `superstar/entrance/EVP_n.bin`, `EVZ_n.bin` (et variantes),
+  `entrance_own=n` ; le jeu (`wwe12_arena_pages.cpp`, cvar `wwe12_entrance_mods`) les ajoute au bout de copies servies
+  des `NyujyoN.pac` (`Documents\wwe12\entrance_slots`), et le crochet du répertoire, quand il ne trouve pas
+  `/EVP3/246`, redemande comme une entrée du jeu du même fichier et de même longueur puis donne la place ajoutée ;
+  fiche PRO +0x1D8 = n. À vérifier en jeu : que le jeu demande bien `/EVPx/n` (journal « [entrances] »), l'entrée
+  jouée, la musique (celle de la base pour l'instant), les accessoires et le pyro.
+- **Étape 4, avant (2026-10-27)** : `port/src/modmaker/entrance13.h` extrait une entrée de WWE '13 et ses variantes
+  (`Entrance()`), et dit où WWE '12 la range (`Group12`, `File12` : tranches de numéros relevées sur le disque,
+  Nyujyo0 EVP1 100.., Nyujyo1 EVP2 137.., Nyujyo2 EVP3 179.., Nyujyo3 EVP4 272.., Nyujyo4 EVP5 328.., Nyujyo5 EVPE
+  480.., Nyujyo6 EVPF 512.., Nyujyo7 EVPG 532.., Nyujyo8 EVPH 552.., Nyujyo9 EVPI 600..855, NyujyoA EVPK 50..55 ;
+  variantes 10NNN..14NNN dans le même groupe). Essai hors jeu : **Mankind 246 → 6 scripts « 0FOP » (246, 10246..14246)
+  et 6 jeux de pistes (PACH), à servir comme `/EVP3/246`, `/EVZ3/246`… de `Nyujyo2.pac`** (WWE '12 nomme ses entrées
+  sans zéros, « 179 », et les range non compressées). Reste : le côté jeu (crochet du répertoire, copie servie de
+  Nyujyo2), la page du Mod Maker, la fiche PRO +0x1D4 = 246, et l'essai en jeu. **Vérifié le 2026-10-27** (outil `evtlist`) :
+  les `Entrance00-08.pac` de WWE '13 (xcompressés) **se lisent avec notre `XcompressDecode`** ; WWE '12 a 247
+  entrées (`Nyujyo0-9,A`), WWE '13 305 (sans les variantes 10000+), 207 en commun, **98 entrées de WWE '13 sur des
+  numéros libres dans WWE '12** (104, 114, 124, 145, 147, 152, 166, 177, 212, 238, 245 Cactus Jack, 246 Mankind,
+  247, 271, 294-297, 302-321 Attitude Era, 344-358, 423-427, 450-455, 530, 531, 550, 564-579…). **Entrées communes
+  comparées** (`evtcmp`) : Cena 139, EVP « 0FOP » 89 908 o (WWE '12) / 85 304 o (WWE '13), **93 % des octets
+  identiques** ; EVZ = PACH de 20 / 19 pistes ; Orton 161 : EVP 93 % identiques, EVZ 17 / 18 pistes. Même format
+  confirmé. Prochaine étape : mettre une entrée de WWE '13 sur un numéro libre (ex. Mankind 246) dans une copie de
+  `Nyujyo*.pac` servie par l'overlay, la fiche PRO du catcheur pointant dessus, et la regarder en jeu.
+- **Écrans VS** (demandés le 2026-10-27) : **le défaut des bases partagées est déjà corrigé et vérifié en jeu
+  depuis le 2026-10-26** (`docs/mod_maker.md`, « Écran VS d'une arène ajoutée, défaut de mémoire » : MB21 / MB22 et
+  numéro de scène oublié) ; reste le vrai écran VS des arènes de SvR 2011. les outils de Kaiko sur le bureau ne font que le fond
+  (`arena_port.py` VS_BACKGROUND). `VS_STYLES.md` / `vs_port.py` **ne sont pas dans son dépôt public**
+  (KaikoClanworth1/wwe-svr2011-pc, arbre complet lu le 2026-10-27 avec l'accord de l'utilisateur). Sa méthode est dans
+  `docs/ARENA_MOD_MAKER_PLAN.md` (« New arenas and custom VS screens ») : une arène ajoutée garde le thème VS de sa
+  base (`MatchHD.pac` M<nn>I, DXT5, non tuilées en mémoire, mots de 16 bits inversés) ; **pendant qu'elle est
+  choisie, un fil de fond (`arena_mods.cpp` VsLoop) retrouve ces textures en mémoire par leur contenu et écrit les
+  images du mod dessus ; les originales reviennent quand on choisit une autre arène**. → Piste pour notre défaut des
+  bases partagées (le jeu ne recharge pas l'écran VS si le numéro d'arène ne change pas) : ne plus compter sur le
+  rechargement, réécrire les textures en mémoire au choix de l'arène (nous avons déjà des crochets de textures,
+  `wwe12_buttons.cpp`, et le choix d'arène). À essayer en jeu.
+
+## Vidéos d'entrée des autres jeux : décodeur Bink 2 (2026-10-28, hors jeu)
+
+- `port/src/modmaker/video/bink2_decode.c/.h` + `video/bink2/` : décodeur Bink 2 du patch FFmpeg-devel de Paul B Mahol
+  (2020-03-20, LGPL 2.1+, d'après les recherches de Konstantin Shishkov), fichiers d'origine inchangés, notre lecture de
+  fichier autour (modèle : `bink_decode.c`). **Vérifié hors jeu** : 2K14 (KB2f) 4 vidéos et 2K15 (KB2i) 2 vidéos, toutes
+  les images décodées, image correcte (titantron 156 « Latino Heat » de 2K14). → RAD Video Tools ne serait plus
+  nécessaire pour 2K14-2K17. Pas encore branché dans le Mod Maker, pas commité.
+- **WWE '13 (KB2d) : fait (2026-11-01)**, `video/bink2/bink2d.inc` (notre propre C, écrit d'après le décodeur
+  de WWE '13 lu dans son code recompilé ; aucun code du jeu copié). Différences avec KB2f : quantiseur sur 4 bits par
+  composante, pas de CBP ; AC de 4 blocs ensemble, bande par bande (bit « reste nul », largeur 3 bits, 7 → +2 bits, puis
+  les 4 valeurs et un signe par valeur non nulle) ; DC du résidu bornés 0..2047 ; filtre diagonal de la compensation de
+  mouvement sur le résultat horizontal non arrondi ; post-traitement dans la boucle (lissage des blocs DC seuls, filtre
+  des bords sauf drapeaux 0x4000/0x8000). Vérifié contre le décodeur du jeu exécuté hors ligne (outil de travail hors
+  dépôt) : 31 titantrons, pire image 50,9 dB (écart max 6 niveaux), la plupart > 55 dB. Pas essayé : film avec alpha.
+  Branché : titantrons NNN.bik2 de WWE '13 (NEW SUPERSTAR, page VIDÉOS), ruban et mur de son evtmov.pac.
+- Repli possible : 91 des 271 titantrons de WWE '13 existent dans 2K14 sous le même numéro (KB2f, lisibles).
+
+## Entrée de WWE '13 VUE EN JEU (2026-11-01)
+
+- **Mankind (WWE '13, 246) entre avec sa vraie entrée** (marche, passage dans le ring, pose assise), vu par l'utilisateur.
+- La cause de l'échec depuis le 2026-10-28 : **les entrées des `Nyujyo*.pac` de WWE '12 sont rangées compressées en BPE**
+  (le script de Mark Henry, 63 Ko, y fait 3 Ko), nous servions le script et les pistes décompressés : le jeu les
+  chargeait (journal `[entrances]`) et ne jouait rien (seule la musique du profil). Comme Kaiko (`move_packs.cpp`
+  `BuildEntryPac` : « stored as the group's own entries are: evt's EPK8 entries are BPE-packed »), chaque morceau ajouté
+  est rangé comme l'entrée dont il emprunte la place (`MountEntrances`, `wwe12_arena_pages.cpp`) ; GMEV (`gm.pac`) et
+  PCE6 (`prtcls.pac`) restent tels quels. Travail du 2026-10-28 (GMEV, PCE6, nom de l'entrée à +14 de la réponse du
+  répertoire, cvar `wwe12_dir_log`) repris de `work/entrance13-wip.patch`.
+- Restent (demandés par l'utilisateur) : des os qui posent souci par endroits, la musique de WWE '13, les graphismes
+  (vidéo du titantron : celle de la base passait, Ted DiBiase), puis les autres jeux (2K14-2K17, SvR) d'après les
+  convertisseurs de Kaiko (`wwe13_entrance.py`, `entrance_port.py`, avec crédit).
+- **Jambes (2026-11-01, commit 5dd7f0f, vu en jeu par l'utilisateur : « nickel »)** : les mollets de WWE '13 n'ont pas de rotation, seulement
+  une cible IK (cheville + angle du genou) que WWE '12 ignore (pieds sur les talons). `port/src/modmaker/yanm_ik.h`
+  résout les jambes image par image comme WWE '13 (méthode de Kaiko, `yanm_decode._solve_ik` / `w13_retarget.Pose13`,
+  crédité) et écrit cuisse et mollet en clés rot16 (une sur deux images), POF0 réécrit ; appliqué par
+  `entrance13::Entrance` à l'import. Hors jeu : pied à moins de 3 mm de sa cible (avant : jusqu'à 50 cm).
+
+## Musique et vidéo des entrées des autres jeux (2026-11-01)
+
+- **Musique de WWE '13 (commit 390c009, PAS ENCORE ESSAYÉE EN JEU).** Les thèmes de WWE '12 et de WWE '13 sont des
+  paquets Wwise (`sound\Music.pck`, AKPK), flux en Wwise Vorbis au **même en-tête « fmt »** (66 octets, vorb dedans) ;
+  banques en version 56 (WWE '12) et 65 (WWE '13). Un thème = l'événement `Play_MUS_<n>_0_0` (victoire `_0_1`) ;
+  `sound.pac` GEMD le demande par le numéro de musique du profil (`Play_MUS_%ENTSSMUSICNO%_0_0`). **Les DLC officiels
+  ajoutent leurs thèmes ainsi** : `sound\DLC_NN.pck` dans le pack (le jeu, `sub_82748120`, cherche
+  `<pack>:\sound\DLC_NN.pck` dans chaque pack de DLC et charge la banque `Music_DLC_NN`), plus `pac\sound_dlc_NN.pac`
+  (copie de `sound.pac` dont YAFH/PCKH, enfant 100 + NN, garde l'en-tête de chaque paquet DLC ; le DLC 4 en a déjà
+  un pour un DLC 5 jamais sorti). Fait : `port/src/modmaker/wwise.h` (lecture d'après `wwise.py` de Kaiko, crédité) ;
+  le Mod Maker prend le flux du thème (`superstar/entrance/MUS_<n>.bin`) ; le jeu (`superstar_pack.h`) fait le paquet
+  `sound\DLC_NN.pck` de notre pack WWE12PCMODS (banque `Music_DLC_NN` faite d'après le thème 139 du disque : action,
+  conteneur, son en flux simple (type 1), mélangeur et son parent, comme la banque du DLC 4), le `sound_dlc_NN.pac`
+  avec son enregistrement PCKH, et met le numéro de musique (+0x1D4 / +0x1E0) au numéro de l'entrée. Vérifié hors jeu :
+  le paquet se relit (outil de Kaiko : `Play_MUS_0246_0_0` → le flux) et le flux se décode (1 min 43, en boucle).
+  À voir en jeu : la musique de Mankind à son entrée et à sa victoire ; sinon, pistes : le préchargement (type 2,
+  DIDX/DATA comme les thèmes du disque), l'ordre des banques chargées, le `sound_dlc_NN.pac`.
+- **Vidéo (titantron) (commit c5752b9, pas encore essayée dans le Mod Maker).** Les vidéos de SvR 2007-2011 (Bink 1)
+  et de 2K15-2K17 étaient déjà reprises. Notre lecteur Bink 2 (`video/bink2_decode.c`, LGPL 2.1+) est maintenant dans
+  le Mod Maker : 2K14 (KB2f) et 2K15-2K17 (KB2i) sans outil à installer (RAD / Librempeg en secours). Le KB2d de
+  WWE '13 reste illisible : un catcheur de WWE '13 prend la vidéo du même numéro dans les jeux 2K du joueur (2K17,
+  2K16, 2K15, 2K14 ; Mankind : `ent_0246_0_0.bk2` de 2K16/2K17, 599 images décodées hors jeu).
+- **Reste (demandé par l'utilisateur : entrées, vidéos et musiques de SvR 2007 à 2K17)** :
+  - musiques des 2K (Wwise, banques plus récentes : à lire, puis voir si leur Vorbis passe tel quel) et des SvR
+    (XACT / YAF en XMA : à décoder puis à réécrire en un format que le Wwise de WWE '12 lit, PCM ou ADPCM) ;
+  - entrées (mouvements) des 2K et des SvR : à convertir et recibler (outils de Kaiko : `entrance_port.py`,
+    `svr08_entrance.py`, `svr10_entrance.py`, `w13_retarget.py` à l'envers ; crédit).
+
+- **Musique de WWE '13 ENTENDUE EN JEU (2026-11-01, JUKEBOX : MANKIND)**, après trois corrections :
+  1. l'enregistrement PCKH de notre paquet dans `sound_dlc_NN.pac` doit être un vrai flux zlib (`ZlibRecord`,
+     `superstar_pack.h`) : rangé « stocké » (taille compressée = taille), le jeu ne le lisait pas, ne connaissait pas
+     `DLC_05.pck` (liste de l'IO du son, `sub_82DF44F0`) et la banque `Music_DLC_05` échouait (rappel du chargement
+     `sub_82DEFFF0` : résultat 2) ;
+  2. le Wwise Vorbis de WWE '13 (Wwise plus récent, même « fmt ») fait planter le décodeur de WWE '12 (écriture en 0
+     dans la construction des codebooks) : le Mod Maker décode le thème avec vgmstream (`theme_convert.h`, l'outil du
+     joueur : celui des Mod Maker Tools de Kaiko, à côté du Mod Maker ou dans le PATH ; rien n'est livré) et l'écrit en
+     Wwise PCM (`wwise::PcmStream`, 16 bits gros-boutiste, ~13 Mo pour 1 min 43) ; le jeu n'accepte que du PCM ;
+  3. son PCM en flux simple (type 1, codec 0x00010001), sans préchargement.
+  Les DLC officiels se chargent pareil (banques `Music_DLC_NN` chargées puis rechargées à la connexion du profil).
+  Entendue aussi pendant l'entrée de Mankind en match (2026-11-01). Victoire : pas encore vérifiée.
+
+## Plan : entrées, scènes de victoire, musiques, titantrons et effets de SvR 2007 à 2K17 (2026-11-01)
+
+Demande de l'utilisateur : porter n'importe quelle entrée et scène de victoire de SvR 2007 à 2K17, avec titantrons,
+musiques et effets (pyro). D'après les notes de Kaiko (`OTHER_GAMES_ENTRANCES.md`, ses convertisseurs visent SvR 2011 ;
+le format de WWE '12 est celui de WWE '13 : script EVP en cm, pistes EVZ en YANM à 60 Hz) :
+
+| Jeu | Entrées / victoires | Musique | Titantron | Pyro | Effort |
+|---|---|---|---|---|---|
+| WWE '13 | fait (entrées) ; victoires = `Winning00-03.pac`, même format (EVPA/EVZA 6000+n) | fait (PCM) | via 2K16/2K17 du même numéro ; KB2d sinon (vieux RAD Video Tools à essayer) | fait (PCE6) | victoires : ½ séance |
+| 2K14 | presque une copie : EPAC, chaînes d'id dans les feuilles, queue EVP, extra générique 25500, accessoires | `Game_Sound_M.pck` (carte à trouver), vgmstream → PCM | lu (KB2f) | PCE6 (pas de LPE6) | 1 séance |
+| 2K15-2K17 | EVP à cases de 788 o → 212 (`evp_788_to_212` de Kaiko), YANM v4/v5, blocs mode 4 à sauter, HSPC (2K17), entrées « une prise » de 2K15 | Wwise, vgmstream → PCM | lu (KB2i, déjà dans le Mod Maker) | 2K15 `prtcls.pac`, 2K16-17 `pac/particle/pce6NNNN.pac` | 1-2 séances |
+| SvR 2010 / 2011 | mouvements YMKs : recibler vers le squelette Biped de WWE '12 et écrire des YANM (l'inverse de `w13_retarget` de Kaiko) ; script 2011 → positions × 10 | YAF (XMA2) / Wwise, vgmstream → PCM | Bink 1 (déjà) | 2010 = format 2011 (PCE6) | 2-3 séances |
+| SvR 2007-2009 | idem + leurs scripts 2008 (objets de 28 o, ops propres à 2007) | XACT / YAF (XMA), vgmstream → PCM | Bink 1 (déjà) | ancien format (non portable) | +1 séance |
+
+Ordre proposé : 1) musiques de tous les jeux (même chemin que WWE '13, vgmstream → PCM → notre paquet) ; 2) victoires de
+WWE '13 ; 3) 2K14 ; 4) 2K15-2K17 ; 5) SvR 2010/2011 (le reciblage) ; 6) SvR 2007-2009. Tout est crédité à Kaiko.
+Rappel 1.0 (Main) : rien de non testé dans l'arbre au jeudi 6 novembre au soir.
+
+### Musiques de tous les jeux (2026-11-01, commit suivant)
+
+`port/src/modmaker/theme_source.h` (d'après `superstar_port.py` de Kaiko) trouve le thème d'un catcheur importé :
+WWE '13 (`Music.pck`, PRO +576), 2K14 (`Game_Sound_E_S.pck` + `Game_Sound_M.pck`), 2K15 (+576 u32 = id × 100 +
+variante), 2K16 / 2K17 (+588 u32 = id × 1000 + variante, PRO par index, numéro à DAT +4), SvR 2008-2010
+(`music*.yaf`, record = musique × 100 ; 2009 PRO +0xE4, 2010 +0x178 ; 2008 : le numéro du catcheur, petit). Vérifié
+hors jeu (trouvé et converti) : WWE '13 Mankind, 2K14 Cena, 2K15 Cena, 2K16 Mankind, 2K17 Cena, SvR 2008 n° 11,
+SvR 2009 n° 111, SvR 2010 n° 101. Le Mod Maker (NEW SUPERSTAR, étape 2 : « Sa propre musique d'entrée de <jeu> »)
+l'écrit en PCM dans `superstar/theme.wem` ; le jeu lui donne le numéro de musique de son entrée propre, sinon
+900 + sa place. **Entendu en jeu** : SvR 2010 n° 101 (Stone Cold) sur Edge 07 (JUKEBOX, thème 1004), avec Mankind
+dans le même paquet. Ajoutés ensuite : SvR 2011 (Wwise v46, `Music.pck`, Play_MUS_<n>_0_0 ; vérifié hors jeu n° 101) et SvR 2007 (XACT : `sound.pac` XACT/MUSI + `music/DVD_Music.xwb`, d'après `xact.py` de Kaiko ; vérifié hors jeu n° 2 ; un catcheur sans cue MUSIC_<n> n'a pas de thème). Taille : ~13-36 Mo par thème (PCM).
+- **Import complet vérifié en jeu (2026-11-01)** : MVP de SvR 2010 importé par le Mod Maker (case musique cochée, `superstar/theme.wem` 36 Mo) : sa musique et son titantron de SvR 2010 en jeu, « nickel » pour l'utilisateur.
+
+### Scènes de victoire de WWE '13 (2026-11-01)
+
+`entrance13::Victory` lit `Winning00-03.pac` de WWE '13 (xcompress), entrées `/EVP /`, `/EVZ /` n° 6000 + numéro (Mankind
+6246) ; les mouvements EVZ passent par le même calcul des jambes (yanm_ik.h). Le Mod Maker (NEW SUPERSTAR, étape 2 :
+« Sa propre scène de victoire de WWE '13 ») les écrit dans `superstar/victory/EVP.bin` et `EVZ.bin`. En jeu,
+`MountEntrances` (wwe12_arena_pages.cpp) les ajoute à `pac/evt/Winning0.pac` sous `/EVPA/` et `/EVZA/` n° 6000 + la
+place du catcheur (`superstar_slots.txt`) : le jeu demande 6000 + le numéro du catcheur (sub_82407DC8) en essayant
+chaque lettre de groupe ; réponse par le même emprunt d'entrée (ici /EVPA/6100). **Vue en jeu (2026-11-01)** : Mankind
+(place 108) a gagné, le jeu a demandé /EVPA/6108 et /EVZA/6108, servis, sa scène de WWE '13 s'est jouée. Sa musique
+pendant la victoire : pas encore vérifiée (entendue à l'entrée).
+
+### Entrées et victoires de WWE 2K14 (2026-11-01)
+
+2K14 range ses entrées (`Entrance00-08.pac`) et ses victoires (`Winning00-03.pac`) comme WWE '13 (EPAC xcompressé, lu
+par notre lecteur d'archives) : le Mod Maker les propose pour un catcheur 2K14 (NEW SUPERSTAR, étape 2). Deux
+corrections, trouvées sur Ultimate Warrior (254) :
+- les pistes de 2K14 nomment leur objet « 25000254_A00_def » (WWE '12 / '13 : « 25000 ») : le catcheur n'apparaissait
+  pas ; le texte est coupé après ses 5 chiffres (`entrance13::NameTracks12`) ;
+- les scripts d'entrée de WWE '12 (numéro de base, pas les variantes) finissent par une queue (après `svr08_entrance.py`
+  de Kaiko) : type 1 musique 999 (celle du catcheur) et type 8 vidéo 999 (son titantron). WWE '13 et 2K14 n'en ont pas :
+  entrée sans musique, sans foule et sans titantron (Mankind l'avait reçue à la main). `entrance13::AddTail12` l'ajoute.
+  Trouvé par élimination en jeu (script d'événement, effets, vidéo, caméra, lumières, catcheur, cordes : aucun).
+**Vu en jeu (2026-11-01)** : l'entrée 2K14 de Warrior avec sa musique, la foule et son titantron. Restent : les franges
+de sa tenue qui flottent pendant l'entrée (os de la tenue 2K14 calculés par 2K14 ?), sa scène de victoire (les victoires
+de WWE '12 ont une queue avec la vidéo seule), et ses graphismes d'entrée (bannière, mur : ceux du catcheur de base).
+Entrées 2K14 sans accessoire inconnu de WWE '12 (le meilleur choix pour l'instant) : 109, 119, 130, 136, 144, 160, 197,
+210, 254, 298, 353, 357, 359, 360, 366, 371.
+
+### Vérification de toutes les entrées et victoires de WWE '13 et 2K14 (2026-11-02, hors jeu)
+
+Outil de travail (hors dépôt) : chaque entrée de base (n < 1000) et victoire (6000 + n) : EVP / EVZ / GMEV / PCE6
+présents, et les modèles d'objets du script que WWE '12 ne sait pas charger : **accessoires** (aucune entrée de
+WWE '12 ne les utilise) et **autres catcheurs** (modèles NNNAK d'un catcheur sans fichier `chNNN.pac` dans WWE '12 :
+partenaire, manager).
+
+| Jeu | Entrées OK | Autre catcheur absent | Accessoire inconnu | Échec (entrées spéciales sans nom) |
+|---|---|---|---|---|
+| WWE '13 | 234 | 25 | 14 | 32 |
+| 2K14 | 207 | 90 | 29 | 21 |
+
+Victoires : WWE '13 52 OK, 1 autre catcheur ; 2K14 62 OK, 7 autres catcheurs, 2 accessoires (DiBiase 2751-2752).
+Accessoires d'entrée (exemples) : Kane 2713, Cena 2718-2719, Bret Hart 2077 (+3077 en 2K14), Zack Ryder 2670, Big Boss
+Man 2671/3671, Hunico 2693, Godfather 2600-2602, HHH 2517, Cena '04 2715/2720/2721, Austin 2766, Sgt. Slaughter 2769,
+Yokozuna 2763, Big John Studd 2758, Goldberg 2754.
+- **Objets d'entrée / de victoire (2026-11-02, vu en jeu : le Godfather et ses compagnes)** : `pac\evt\evtobj.pac`
+  `SOBJ/<modèle>` = PACH {0 modèle JBOY, 10 images ; WWE '13 : + enfant 200 de 48 o}, même format dans les trois jeux ;
+  `SOBJ/LIST` = noms (64 o : u16 n°, texte). `entrance13::Objects` prend ceux que WWE '12 n'a pas (`superstar/objects/`),
+  le jeu les ajoute à evtobj.pac (MountEntrances) en empruntant la place d'un objet numéroté (emprunter LIST, compressé
+  BPE, faisait planter).
+- **Objets des prises (vu en jeu : Mr. Socko de Mankind pendant la Mandible Claw, caché le reste du match)** : modèles en
+  plus de la tenue (enfants JBOY 0x10-0xFF ; WWE '13 Mankind « sockko » 0x1c ; WWE '12 ch100 coudières 0x1a/0x1b) ;
+  `port13_star::PortAttire` les reprend, sur le squelette du corps.
+- **Queue des victoires** (`entrance13::AddVictoryTail12`) : celles de WWE '12 finissent par un seul enregistrement,
+  type 8 (vidéo 999, 3 éléments de sorte 3 : 999, 0, 0 ; 0x3C octets, Cena 6139) ; WWE '13 et 2K14 n'en ont pas : ajoutée
+  (pointeurs vérifiés aux mêmes places que chez Cena). **Vu en jeu (2026-11-02)** : victoires de Warrior (2K14) et de
+  Mankind (WWE '13) avec leur musique et la foule.
+- **Thème** : la fiche WWE '13 de Mankind nomme le thème 805 (celui de Mick Foley) ; son numéro 246 a le sien. Le Mod Maker
+  propose tous les thèmes trouvés (`theme_source::Find(..., all)`, liste à côté de « Sa propre musique d'entrée »).
+- **Vidéo d'entrée introuvable** : le jeu cherchait celle de Mankind (108.bik) dans aucun pack, puis `GAME:`, alors que
+  le pack la liste (celle de Warrior, 104, listée après, passait ; cause non trouvée) : image « miroir » (caméra en
+  direct). Les vidéos des catcheurs ajoutés sont aussi servies par-dessus le disque (`Documents\wwe12\pack_movies`).
+  **Vu en jeu** : titantron et musique de Mankind.
+
+### Entrées et victoires de 2K15, 2K16, 2K17 (2026-11-02, d'après le code et les notes de Kaiko, crédité)
+
+- **Rangement** : 2K15 `pac\evt\Entrance00-10.pac` (EVP2 / EVZ, pistes au format de WWE '12) ; 2K16 / 2K17 un pac par
+  scène `pac\evt\NNNNN.pac` (victoire 06NNN, variantes 1xNNN ; 2K17 HSPC, pistes en SHDC refaites en PACH), script de
+  jeu `pac\gimmick\gmevNNNN.pac`, effets `pac\particle\pce6NNNN.pac`, accessoires `pac\prop\NNNN.pac`, **lumières**
+  `pac\evt\light\elNNNNN.pac` (EVL : les pistes de l'objet global, fusionnées dans l'EVZ).
+- **Script** : cases de 788 octets → 212 (mots 0-50 et 195-196), queue de WWE '12 (`entrance13::Evp788To212`).
+- **Pistes** : YANM v5 → 4, blocs mode 4 vidés ; un enregistrement vide (96 o) pour chaque objet sans piste (2K16 n'en
+  a pas pour les figurants).
+- **Effets** : les PCE6 de 2K16 / 2K17 (éléments de 2340 o ; 2K15 2020, WWE '13 1780) font planter WWE '12 (lecture de
+  0x9C dans sub_824DE430, vérifié en jeu en échangeant les fichiers) : ceux de la même entrée dans 2K15 / 2K14 / WWE '13,
+  sinon ceux de la base dans WWE '12.
+- **Numéros** : entrée de la fiche (2K14 PRO +580, 2K15 +584, 2K16 PRO par index +596 ; Sami Zayn 429 → 478, Kevin
+  Owens 578 → 458) ; vidéo d'entrée de la fiche (2K15 +580, 2K16 / 2K17 +592 : (sorte × 1000 + n°) × 100 + variante,
+  sorte 1 = équipe : Rollins 100700 = `tag_0007_0_0.bk2`, le Shield). Numéro d'entrée déjà pris dans WWE '12 ou par un
+  mod : renuméroté (499 → 100 ; 854 faisait planter). Accessoire introuvable : un autre à sa place, caché.
+- **Entrées « d'une seule prise » de 2K15** (~61, tout dans le segment 0 : Sami Zayn 478) : jouées sans la foule ; à
+  découper en segments (à faire).
+- **Vu en jeu** : Seth Rollins (2K15), Kevin Owens (2K16), AJ Styles (2K17) entrent sans planter. Restent : chargement
+  très long de leurs pistes (~30 s), renders des 2K à recadrer (réglages Taille / Hauteur, render d'un autre jeu).
+
+### Graphismes d'entrée, ressorts des tenues (2026-11-01)
+
+- **Graphismes par catcheur dans WWE '12** : `movies\titantron\NNN.bik` (haut 320 × 220 = titantron, bas 320 × 100 =
+  bannière / minitron), et dans `pac\evt\evtmov.pac` `MVSB/M%03d` (ruban autour de l'arène, Bink 1 1024 × 32) et
+  `MVSW/M%03d` (mur, 256 × 256), pour 85 catcheurs. Le jeu (fonction des écrans d'entrée, sub_828D7xxx) demande
+  `sub_82A31578(numéro vidéo, sorte)` : 2 mur, 1 ruban ; sinon ceux de l'arène (mur de l'arène, ruban `MVAB`, sorte 3).
+  Un catcheur ajouté a le numéro vidéo de sa base : il montrait le ruban « TED DIBIASE » ; le crochet de sub_82A31578
+  (wwe12_superstar_mods.cpp) lui répond « non » : ceux de l'arène. **Vu en jeu.** 2K14 : `MVSB` 256 × 128 (KB2f),
+  `MVSW` 256 × 256, pour ~50 catcheurs (pas Warrior). À faire : les proposer dans le Mod Maker (arène / base / son jeu /
+  le vôtre).
+- **Vidéo 2K14** : même disposition que WWE '12 (vidéo en haut, bandes en bas) : convertie à sa taille (320 × 320) au
+  lieu de 512 × 288 (media.h). **Vu en jeu.**
+- **Ressorts des tenues portées** : réglages `60` (SpringHairSetting) et `61` (collisions), texte « Version2 » dans
+  WWE '12, '13 et 2K14 ; colonnes (d'après `w13_char.py` de Kaiko) : rayon, viscosité, gravité, ressort, amortissement,
+  A, longueur, bend, mouvement. Le portage garde maintenant les os `kami_*` que la base n'a pas (ajoutés sous leur
+  parent) et reprend 60 / 61. **Vu en jeu** : cheveux et rubans des bras de Warrior balancent.
+- **Jupettes des bottes de Warrior : résolu (vu en jeu, 2026-11-01).** Trouvé avec RenderDoc (`work/rdc/skirt_*.py` :
+  le jeu applique au sommet la même transformation que la botte, au 1/10 000 près ; image du dessin) : `kami_b10` / `b11`
+  sont les **ficelles des genoux** (pièce 29 du corps), et les **jupettes orange sont dans le modèle des cheveux**
+  (10000, pièce 0 `yCh_trans`, sur les mollets et les pieds). Le squelette des cheveux de la base n'a que les 7 os de la
+  tête : les jupettes allaient à « Bip » (les hanches). Le portage ajoute maintenant au squelette d'un autre modèle que
+  le corps les os du corps qui lui manquent (bassin, cuisses, mollets, pieds : `Reskeleton(..., skeleton)`). Les
+  ficelles des genoux (chaînes de ressorts sur la jambe : WWE '12 ne les suit pas) sont soudées au mollet après avoir
+  été tournées et recentrées sur l'axe du tibia ; leurs lignes de ressorts sont retirées.
+
+## Couverture des movesets (2026-11-05, demande de l'utilisateur pour la 1.1 : « un maximum de prises qui passent »)
+
+Mesuré hors jeu sur tous les catcheurs de chaque jeu (outil d'étude `cover`, hors dépôt) : part des 210 cases de WWE '12
+qui changent d'un catcheur à l'autre remplies par la prise du catcheur, avant → après ; entre parenthèses, part des
+prises d'une case reliée qui trouvent leur prise de WWE '12.
+
+| Jeu | Cases remplies | Prises retrouvées |
+|---|---|---|
+| SvR 2007 | 9 → 15 % | 48 → 57 % |
+| SvR 2008 | 12 → 17 % | 47 → 55 % |
+| SvR 2009 | 20 → 24 % | 56 → 66 % |
+| SvR 2010 | 40 → 46 % | 55 → 65 % |
+| SvR 2011 | 73 → 75 % | 93 → 95 % |
+| WWE '13 | 73 → 74 % | 92 → 93 % (+ les prises ajoutées) |
+| 2K14 | 48 → 73 % | 93 → 95 % |
+| 2K15 | 47 → 72 % | 91 → 93 % |
+| 2K16 | 29 → 52 % | 96 → 96 % |
+
+Ce qui a changé (`moveset_port.h`) : cases reliées aussi par les catcheurs de même nom (SvR 2007-2010 : 17 à 46 catcheurs
+communs avec WWE '12), par les mêmes numéros de prise (WWE '13, 2K), puis hors de l'ordre (les jeux 2K ont déplacé des
+sections) ; noms comparés mot à mot (ordre, « -handed », « to / of / the »), nom plus long ou plus court d'une prise de la
+case ; prise de WWE '12 acceptée si ses bits de catégorie vont dans la case. Contrôle : sur les catcheurs communs, la part
+des prises données qui sont celles de WWE '12 dans cette case ne baisse pas (2K14 51,7 → 52,7 %, 2K16 39,1 → 38,1 %,
+SvR 2008 21 → 26 %) : les cases en plus sont aussi justes que les autres. Restent surtout des prises absentes de WWE '12
+(SvR 2007 : School Boy Pin, Wake Up, Double Stomping...) et les cases que les vieux SvR n'ont pas.
+Dans le Mod Maker (NOUVEAU CATCHEUR, PRISES ET ENTRÉES) : « N prises sur M passent », et pour les autres pourquoi
+(absente de WWE '12, d'un autre genre, sans nom), case par case dans le détail. **Prises ajoutées (WWE '13) : case
+« expérimental », décochée par défaut** (décochée, leurs cases gardent la prise de la base). 2K17 : ses prises ne se
+lisent pas encore (`Load` échoue), à voir.
