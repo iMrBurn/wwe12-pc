@@ -23,7 +23,7 @@ namespace bd::gpu {
 void Occlusion::Begin() {
   auto &s = state();
   std::lock_guard lock(s.mutex);
-  if (!s.ready || !s.device)
+  if (!s.ready || !s.device || !s.occlusion_supported)
     return;
 #if defined(REBLUE_D3D11)
   // WWE '12, D3D11: no UAV in the backend yet, so the sun's lens flare count stays 0.

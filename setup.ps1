@@ -99,6 +99,10 @@ if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume"
 $plumeFault = Join-Path $Root "port\patches\plume-zz-android-devicefault.patch"
 cmd /c "git -C `"$(Join-Path $Root 'recomp\plume')`" apply --reverse --check `"$plumeFault`" 2>nul"
 if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume") apply --whitespace=nowarn $plumeFault }
+
+$plumeSets = Join-Path $Root "port\patches\plume-max-descriptor-sets.patch"
+cmd /c "git -C `"$(Join-Path $Root 'recomp\plume')`" apply --reverse --check `"$plumeSets`" 2>nul"
+if ($LASTEXITCODE -ne 0) { Invoke-Checked git -C (Join-Path $Root "recomp\plume") apply --whitespace=nowarn $plumeSets }
 Get-PinnedRepo "https://github.com/zolaware/reblue-XenosRecomp.git" `
     (Join-Path $Root "recomp\reblue-XenosRecomp") "339af41" `
     (Join-Path $Root "port\patches\xenosrecomp-reblue-wwe12.patch")  # patch reblue + adaptations WWE '12

@@ -362,6 +362,9 @@ struct VideoState {
   std::unique_ptr<plume::RenderBuffer> occlusion_readback[kNumFrames];
   std::unique_ptr<plume::RenderBuffer> occlusion_zero; // UploadBuffer 4B (=0)
   bool occlusion_counting = false; // between D3DQuery_Issue BEGIN and END
+  // false on a Vulkan GPU that binds only 4 descriptor sets (Mali-G57, #68): the layout then
+  // has no set 4, and the sun's lens flare count stays 0 (as on D3D11).
+  bool occlusion_supported = true;
   bool occlusion_result_pending[kNumFrames] =
       {}; // per-slot: counter->readback copy in flight
   u32 occlusion_last_count = 16384; // last sample count (default = visible)

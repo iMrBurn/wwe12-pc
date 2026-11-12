@@ -1,0 +1,22 @@
+--- a/plume_vulkan.cpp
++++ b/plume_vulkan.cpp
+@@ -4323,6 +4323,7 @@
+         capabilities.presentWait = presentWaitSupported;
+         capabilities.displayTiming = supportedOptionalExtensions.find(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME) != supportedOptionalExtensions.end();
+         capabilities.maxTextureSize = physicalDeviceProperties.limits.maxImageDimension2D;
++        capabilities.maxBoundDescriptorSets = physicalDeviceProperties.limits.maxBoundDescriptorSets;
+         capabilities.preferHDR = memoryHeapSize > (512 * 1024 * 1024);
+         capabilities.dynamicDepthBias = true;
+         capabilities.queryPools = true;
+--- a/plume_render_interface_types.h
++++ b/plume_render_interface_types.h
+@@ -1810,6 +1810,9 @@
+         // Framebuffers.
+         uint64_t maxTextureSize = 0;
+ 
++        // Vulkan: most descriptor sets a pipeline layout may bind (0 = unknown / not limited).
++        uint32_t maxBoundDescriptorSets = 0;
++
+         // HDR.
+         bool preferHDR = false;
+ 

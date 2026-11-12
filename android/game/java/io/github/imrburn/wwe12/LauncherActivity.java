@@ -394,6 +394,7 @@ public class LauncherActivity extends Activity {
         LinearLayout dbg = panel(debugPage, "DEBUG (only if asked)");
         dbg.addView(toggle("Release unused render targets (untick to test a freeze)",
                 "svr_release_stale_targets", true));
+        dbg.addView(safeGpuToggle());
         dbg.addView(toggle("Game debug messages in the log (Universe, replays)", "wwe12_game_log", false));
         dbg.addView(toggle("Instant replay after matches (can freeze the game for now)",
                 "wwe12_instant_replay", false));
@@ -632,6 +633,22 @@ public class LauncherActivity extends Activity {
 
     View toggle(String label, final String key) {
         return toggle(label, key, false);
+    }
+
+    // Testers' "safe GPU" mode (#54: Adreno 650 with a recent Turnip stops in a long match): the three
+    // CPU-saving tricks of 1.2 go back to the 1.1 behaviour. Nothing else changes.
+    View safeGpuToggle() {
+        boolean on = "false".equals(config.get("svr_readback_defer_streak", "true"))
+                && "false".equals(config.get("svr_reuse_constant_blocks", "true"));
+        return Ui.switchRow(this, "Safe GPU mode (if the game stops with a graphics device lost)", on,
+                new CompoundButton.OnCheckedChangeListener() {
+                    public void onCheckedChanged(CompoundButton b, boolean safe) {
+                        config.set("svr_readback_defer_streak", safe ? "false" : "true");
+                        config.set("svr_reuse_constant_blocks", safe ? "false" : "true");
+                        config.set("svr_geometry_sample_min", safe ? "32768" : "4096");
+                        config.save();
+                    }
+                });
     }
 
     // def = the game's default when wwe12.toml has no line for the key.

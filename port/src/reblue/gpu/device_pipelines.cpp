@@ -223,19 +223,27 @@ bool BuildPipelineLayout(VideoState &s) {
 
   // Sun occlusion counter UAV, set 4: one set per frame slot, pointed at the
   // lazily created counter by Occlusion::Begin.
+  // A GPU that binds at most 4 sets (Mali-G57 / Helio G100, #68: black screen) gets a layout
+  // without this set; the sun's lens flare count then stays 0.
+  const u32 max_sets = s.device->getCapabilities().maxBoundDescriptorSets;
+  s.occlusion_supported = max_sets == 0 || max_sets >= 5;
+  if (!s.occlusion_supported)
+    BD_WARN("GPU binds only {} descriptor sets: no occlusion counter set (the sun's lens flare stays off)", max_sets);
   plume::RenderDescriptorSetBuilder occlusion_set_builder;
   occlusion_set_builder.begin();
   occlusion_set_builder.addReadWriteByteAddressBuffer(0);
   occlusion_set_builder.end();
-  for (u32 i = 0; i < kNumFrames; ++i) {
-    s.occlusion_descriptor_set[i] =
-        occlusion_set_builder.create(s.device.get());
-    if (!s.occlusion_descriptor_set[i]) {
-      BD_ERROR("Plume createDescriptorSet for occlusion counter failed");
-      return false;
+  if (s.occlusion_supported) {
+    for (u32 i = 0; i < kNumFrames; ++i) {
+      s.occlusion_descriptor_set[i] =
+          occlusion_set_builder.create(s.device.get());
+      if (!s.occlusion_descriptor_set[i]) {
+        BD_ERROR("Plume createDescriptorSet for occlusion counter failed");
+        return false;
+      }
     }
+    layout_builder.addDescriptorSet(occlusion_set_builder);
   }
-  layout_builder.addDescriptorSet(occlusion_set_builder);
 #endif
 
   layout_builder.end();
