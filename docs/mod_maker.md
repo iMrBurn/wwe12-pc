@@ -367,6 +367,11 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   partage en ligne de mods ; agrandir une entrée dans FICHIERS DU JEU (corriger `plist360.arc`).
 - Pour plus tard (noté le 2026-11-04) : personnes des entrées 2K visibles, écrans VS et plaques exacts des arènes
   portées, vidéos de l'arène NXT 2K14 sur les bons écrans, au-delà de 55 catcheurs.
+- Accessoires des entrées SvR portées (laissé tomber le 2026-11-12, l'utilisateur : WWE '12 a déjà Sandman 506) :
+  kendo stick 2108 et bière 2115 de Sandman SvR 2008 invisibles en jeu malgré pistes reprises de WWE '12
+  (`svr_scenes::PropDonors12`), commande 180 et emplacements identiques à la 506. Différence restante : le GMEV
+  (506 : 14 entrées de type 9 en plus, 0xD2-0xDF ; le nôtre vient de SvR 2008). Essai non fait : le GMEV de la 506.
+  Ceintures des entrées 2K (titre 5009 caché sous 2009 / 3009, `belt12.h`) : vu bon en jeu (The Miz 2K14).
 - Le disque du rond central de WM 31 caché par le mur vidéo (laissé de côté) ; Mojo Rawley et Tye Dillinger (DLC 2K17)
   verts dans leurs propres fichiers.
 
