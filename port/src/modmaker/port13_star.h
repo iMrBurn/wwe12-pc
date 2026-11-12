@@ -454,6 +454,41 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
           svrfmt::ArchiveAdd(base, "", "", k.id, out, &e);
       }
   }
+  // Its lights (models 21000-21999, WWE '13 only: Jericho's jacket ch104 attire 4, 21000-21002 "transB_p_001..003",
+  // shown in turn - the jacket's lights blinking; WWE '12 has no such model, a tester saw his jacket dark, 2026-11-12):
+  // the first one's meshes added to the eyelashes' model (20000, the same see-through pass) - the lights on, fixed.
+  {
+    svrfmt::ArcNode *light = nullptr;
+    for (auto &k : w13.kids)
+      if (k.id >= 21000 && k.id <= 21999 && (!light || k.id < light->id))
+        light = &k;
+    svrfmt::ArcNode *lash = child(base, 20000), *body12 = child(base, 0);
+    svrfmt::Model lm, em, bm;
+    std::string e, w;
+    if (light && lash && body12 && svrfmt::JboyRead(svrfmt::Unpack(svrfmt::ArchiveData(*light)), lm, &e) && lm.w12 &&
+        svrfmt::JboyRead(svrfmt::Unpack(svrfmt::ArchiveData(*lash)), em, &e) &&
+        svrfmt::JboyRead(svrfmt::Unpack(svrfmt::ArchiveData(*body12)), bm, &e) &&
+        Reskeleton(lm, em, nullptr, &w, &bm.nodes)) {
+      for (auto &me : lm.meshes)
+        for (auto &p : me.params) {
+          if (p.type != 0x0f || p.value.size() < 4)
+            continue;
+          const int32_t k = int32_t(svrfmt::Be32(p.value.data()));
+          if (k < 0 || size_t(k) >= lm.textures.size())
+            continue;
+          const auto at = std::find(em.textures.begin(), em.textures.end(), lm.textures[size_t(k)]);
+          const uint32_t idx = uint32_t(at - em.textures.begin());
+          if (at == em.textures.end())
+            em.textures.push_back(lm.textures[size_t(k)]);
+          svrfmt::PutBe32(p.value.data(), idx);
+        }
+      em.nodes = lm.nodes;  // (the eyelashes' nodes, and any the lights added after them)
+      if (em.parts.size() > 1)
+        em.parts.back().meshes += uint32_t(lm.meshes.size());
+      em.meshes.insert(em.meshes.end(), lm.meshes.begin(), lm.meshes.end());
+      svrfmt::ArchiveReplace(*lash, svrfmt::JboyWrite(em));
+    }
+  }
   // (the base's extra models it hasn't: hidden, port_svr::HideBaseExtras)
   {
     std::set<uint32_t> brought;

@@ -210,7 +210,22 @@ class Page {
       disc::GameDisc src;
       const disc::GameDisc *g = title ? (src.OpenPath(discs->PathOf(title)) ? &src : nullptr) : &w12;
       svrfmt::Archive a;
-      if (FILE *f = fopen(out, "w")) {
+      // (path "*": every superstar file of the disc, only their children numbered 10000 and more)
+      if (FILE *f = !strcmp(path, "*") && g ? fopen(out, "w") : nullptr) {
+        for (const auto &file : g->List("pac/ch")) {
+          svrfmt::Archive one;
+          if (file.size() < 6 || _strnicmp(file.c_str(), "ch", 2) || !entrance13::detail::OpenPac(*g, "pac/ch/" + file, one))
+            continue;
+          for (auto &k : one.root.kids) {
+            if (!svrfmt::ArchiveExpand(k))
+              continue;
+            for (auto &c : k.kids)
+              if (c.id >= 10000 && c.id != 10000 && c.id != 20000 && c.id != 20002 && c.id < 40000)
+                fprintf(f, "%s %s/%s kid %u\n", file.c_str(), k.group.c_str(), k.name.c_str(), c.id);
+          }
+        }
+        fclose(f);
+      } else if (FILE *f = fopen(out, "w")) {
         if (!g || !entrance13::detail::OpenPac(*g, path, a))
           fprintf(f, "can't open %s\n", path);
         else
