@@ -261,3 +261,32 @@ Les entrées sont classées par sujet, pas par date ; ajouter les nouvelles déc
   540p est proposé dans le launcher et OPTIONS > GRAPHICS. Puce Intel RaptorLake à 720p :
   ~6 ms de travail par image en match, 12 ms dans les menus.
 
+
+## Mods : formats et pièges du moteur (session Mods, 2026-11-12)
+
+- **m.pac** : animations des prises en `ZMOT/CA01-CA08` (packs THQ : CA09, CA10 ; nos mods : CA11+), arbre PACH : tête
+  de groupe → cases (paires : paire = légère BPE, impaire = complète ZLIB) → numéros d'animation. Les 23 entrées `ZMVM`
+  (STAT, GRND, CORN, SPE1, RUN...) sont des **copies de groupes entiers de ZMOT** par situation (mêmes numéros de tête).
+  Des centaines entières (502xx, 370xx, 371xx) sont des cases vides de 128 octets (places réservées). Détails :
+  `docs/prises_svr11.md`, `port/src/modmaker/zmvm_add.h`.
+- **Recherche d'un fichier dans une archive par nom** (`sub_827D98D8` → `sub_827F29F0`, « /ZMVM/STAT », « /STG/0009 ») :
+  la **première** archive montée qui a le nom gagne. Une copie de pac reconstruite en entier plante (l'annuaire garde la
+  place de chaque entrée) : on ajoute à la fin d'une copie servie et on redirige l'entrée.
+- **Fiches de prises** `misc.pac` MOVS/WAZE : 160 octets, nom +0x10, numéro gros-boutiste +0x90 (numéro d'animation =
+  ses deux octets inversés ; centaine = genre de prise : une animation dans une centaine inconnue gèle les catcheurs),
+  genre +0x72-0x73, bits de catégorie 0-15. Les packs THQ insèrent les fiches par ordre de nom (les places décalées
+  ne gênent pas). Paramètres `m3.pac` : 0/3 = {animation, partie, début relatif à la centaine, nombre}, 0/4 = événements.
+  Ajouter des prises venues d'autres jeux a cassé des prises communes (irish whip, Gut Kick) : **coupé par défaut**
+  (`wwe12_added_moves`).
+- **Fiche d'un catcheur** CHAR / PRO : bloc d'entrée à +0x1D4 (répété à +0x1E0, le jeu lit le second) = musique,
+  vidéo, entrée, puis deux entrées de **champion** (+0x1DA, +0x1DC ; Cena 602). Listes de Créer une entrée :
+  `sub_829F9F90`, genre 0 = MOVIE (numéros de vidéo `movies\titantron\NNN.bik`), les autres = entrées.
+- **Entrées** : banque de pistes EVZ, objet 0 = le catcheur ; WWE '12 a 95 pistes par segment dont 34 pour le visage,
+  2K14 aucune (visage figé) → `face12.h` les ajoute. Une piste de 2K14 de genre 0x0004 (clés de 20 octets) est inconnue
+  de l'écrivain `svr11_entrance` : copier les pistes octet pour octet, ne pas les réécrire.
+- **Thèmes portés** : Wwise Vorbis (aoTuV q0.2, 32 kHz stéréo) avec la table de livres de codes du jeu (599 pointeurs à
+  0x8310D1D8) ; le paquet n'accepte que l'en-tête du thème 139 ; un thème PCM de plus de ~20 Mo reste muet.
+- **Sauvegarde et mods** : le jeu remet la copie de la fiche d'un catcheur ajouté seulement si le mod a changé
+  (`records_applied.txt`, comme `moves_applied.txt`), sinon les attributs modifiés en jeu étaient perdus. Les caches
+  du démarrage (`entrance_slots\cache.txt`, `arena_slots\cache.txt`) sont gardés tant que rien ne change sous `mods`
+  (taille et date de chaque fichier, date de compilation).
