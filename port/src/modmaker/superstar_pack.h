@@ -572,14 +572,20 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   }
   if (!model_vol)
     return fail("DLC.pac has no superstar list");
-  // The next free codes, "lettre + U" first (as the packs: AU, BU... VU), then V, W...
-  std::vector<std::string> free_codes;
-  for (char second = 'U'; second <= 'Z' && free_codes.size() < 2 * stars.size(); ++second)
-    for (char first = 'A'; first <= 'Z' && free_codes.size() < 2 * stars.size(); ++first) {
-      const std::string c{first, second};
-      if (!codes.count(c))
-        free_codes.push_back(c);
-    }
+  // The next free codes, "lettre + U" first (as the packs: AU, BU... VU), then V, W... Z, then A... T and the digits
+  // (U-Z alone, 156 codes, two per added superstar, left no code for 101 of them and no pack was made, 2026-11-12)
+  static const std::string kSeconds = "UVWXYZABCDEFGHIJKLMNOPQRST0123456789";
+  const auto free_for = [&](size_t want) {
+    std::vector<std::string> out;
+    for (size_t s2 = 0; s2 < kSeconds.size() && out.size() < want; ++s2)
+      for (char first = 'A'; first <= 'Z' && out.size() < want; ++first) {
+        const std::string c{first, kSeconds[s2]};
+        if (!codes.count(c))
+          out.push_back(c);
+      }
+    return out;
+  };
+  std::vector<std::string> free_codes = free_for(2 * stars.size());
   // The rows of the lists: the added superstars (kind 1), then the new attires (kind 2).
   struct Row {
     int kind, id, sub;
@@ -595,15 +601,8 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           listed.insert(at.entry).second)  // (an added superstar's: in his own file, counted from it)
         rows.push_back({2, at.superstar, at.entry[6] - '0', "ATTIRE " + at.entry});
   }
-  if (free_codes.size() < 2 * rows.size()) {
-    free_codes.clear();
-    for (char second = 'U'; second <= 'Z' && free_codes.size() < 2 * rows.size(); ++second)
-      for (char first = 'A'; first <= 'Z' && free_codes.size() < 2 * rows.size(); ++first) {
-        const std::string c{first, second};
-        if (!codes.count(c))
-          free_codes.push_back(c);
-      }
-  }
+  if (free_codes.size() < 2 * rows.size())
+    free_codes = free_for(2 * rows.size());
   if (free_codes.size() < 2 * rows.size())
     return fail("no codes left");
   char vol_name[8];
