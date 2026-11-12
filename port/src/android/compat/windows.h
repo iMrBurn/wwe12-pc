@@ -85,6 +85,7 @@ inline DWORD WaitForSingleObject(HANDLE, DWORD) { return 0; }
 
 // ---- Keyboard ------------------------------------------------------------------------------
 #define VK_F9 0x78
+#define VK_F11 0x7A
 inline short GetAsyncKeyState(int) { return 0; }
 
 // ---- Memory --------------------------------------------------------------------------------

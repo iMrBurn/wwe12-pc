@@ -587,7 +587,7 @@ std::string InputsKey(const std::vector<std::string> &extra, const fs::path &mod
     const auto time = it->last_write_time(e2).time_since_epoch().count();
     std::string rel = rex::path_to_utf8(fs::relative(it->path(), mods, e2));
     std::replace(rel.begin(), rel.end(), '\\', '/');
-    files.push_back(rel + "|" + std::to_string(size) + "|" + std::to_string(time));
+    files.push_back(rel + "|" + std::to_string(size) + "|" + std::to_string(static_cast<long long>(time)));
   }
   std::sort(files.begin(), files.end());
   for (const auto &f : files)
