@@ -154,7 +154,7 @@ inline std::set<int> TakenEntrances() {
   wchar_t exe[MAX_PATH] = {};
   GetModuleFileNameW(nullptr, exe, MAX_PATH);
   std::error_code ec;
-  for (const char *kind : {"Superstars", "Moves"}) {
+  for (const char *kind : {"Superstars", "Moves", "Entrances"}) {
     for (fs::directory_iterator it(fs::path(exe).parent_path() / "mods" / ".svrmods" / kind, ec), end;
          !ec && it != end; it.increment(ec)) {
       std::ifstream f(it->path() / "manifest.txt");

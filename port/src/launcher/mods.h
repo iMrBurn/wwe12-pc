@@ -306,7 +306,8 @@ class Manager {
         {"moves", "Moves"},          {"backstage", "Backstage"}, {"signs", "Signs"},
         {"media", "Media"},          {"background", "Backgrounds"}, {"matchtype", "MatchTypes"},
         {"textures", "Textures"}, {"files", "Files"},  // (files: ours, the Mod Maker's GAME FILES page)
-        {"menupics", "MenuPictures"}};  // (ours: the Universe's logos / match-up screens / arena photos)
+        {"menupics", "MenuPictures"},  // (ours: the Universe's logos / match-up screens / arena photos)
+        {"entrance", "Entrances"}};    // (ours: an entrance alone, for CREATE AN ENTRANCE: the Mod Maker, 2026-11-12)
     const auto it = kinds.find(Lower(type));
     return it == kinds.end() ? std::string() : it->second;
   }

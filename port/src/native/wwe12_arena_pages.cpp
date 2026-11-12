@@ -838,8 +838,10 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
   };
   // The superstar mods, then the moves mods (type=moves, superstar=NNN: a superstar the game has given another one's
   // entrance and victory scene, the Mod Maker's MOVES & ENTRANCES page, 2026-11-03).
-  std::vector<std::pair<fs::path, bool>> dirs;  // (its folder, a moves mod)
-  for (const char *kind : {"Superstars", "Moves"}) {
+  // (and the entrance mods, type=entrance: an entrance alone, no superstar, only for CREATE AN ENTRANCE's lists under
+  // its name - the Mod Maker's MOVES & ENTRANCES page, "Add an entrance", 2026-11-12)
+  std::vector<std::pair<fs::path, int>> dirs;  // (its folder, its kind: 0 superstar, 1 moves, 2 entrance)
+  for (const char *kind : {"Superstars", "Moves", "Entrances"}) {
     std::vector<fs::path> one;
     for (fs::directory_iterator it(mods / ".svrmods" / kind, ec), end; !ec && it != end; it.increment(ec))
       if (it->is_directory(ec))
@@ -847,11 +849,12 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     ec.clear();
     std::sort(one.begin(), one.end());
     for (const auto &d : one)
-      dirs.push_back({d, kind[0] == 'M'});
+      dirs.push_back({d, kind[0] == 'S' ? 0 : kind[0] == 'M' ? 1 : 2});
   }
   g_mod_entrances.clear();
   g_belt_length.clear();
-  for (const auto &[d, moves_mod] : dirs) {
+  for (const auto &[d, dir_kind] : dirs) {
+    const bool moves_mod = dir_kind == 1, entrance_mod = dir_kind == 2;
     std::vector<uint8_t> m;
     if (fs::exists(d / "disabled", ec) || !ReadHost(d / "manifest.txt", m))
       continue;
@@ -875,7 +878,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
         }
       }
     }
-    const auto slot = moves_mod ? slots.end() : slots.find(rex::path_to_utf8(d.filename()));
+    const auto slot = moves_mod || entrance_mod ? slots.end() : slots.find(rex::path_to_utf8(d.filename()));
     if (slot != slots.end() && slot->second > 0)
       for (const char *kind : {"EVP", "EVZ"}) {
         Part part;
@@ -888,7 +891,8 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     // its own ribbon and wall (superstar\ribbon.bik, wall.bik: Bink 1, 1024 x 32 and 256 x 256, made by the Mod
     // Maker) as evtmov.pac's MVSB / MVSW M<its own video number> (wwe12_superstar_mods.cpp, Wwe12OwnScreen: asked
     // without a leading slash)
-    if (const auto movie = moves_mod ? movies.end() : movies.find(rex::path_to_utf8(d.filename())); movie != movies.end())
+    if (const auto movie = moves_mod || entrance_mod ? movies.end() : movies.find(rex::path_to_utf8(d.filename()));
+        movie != movies.end())
       for (const auto &[group, file] : {std::pair<const char *, const char *>{"MVSB", "ribbon.bik"}, {"MVSW", "wall.bik"}}) {
         Part part;
         if (!ReadHost(d / "superstar" / file, part.data) || part.data.empty())

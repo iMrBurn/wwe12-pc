@@ -277,6 +277,14 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   entrée, puis deux entrées de champion (+0x1DA, +0x1DC) ; WWE '12 600-6xx (Nyujyo9). `star_port` reprend celle que la
   fiche nomme (2K14 +582, 2K15 +586 ; autres jeux pas encore lus), ou une autre de son jeu au choix ; le jeu la met dans
   les deux cases (`PutMoves`) et dans Créer une entrée (« <NOM> CHAMP »).
+- **Entrée seule pour Créer une entrée (1.3, 2026-11-12, vérifié hors jeu, pas encore vu en jeu)** : onglet « Ajouter
+  une entrée » de MOVES & ENTRANCES (`entrance_add.h`). Jeu, puis une entrée de la liste complète du disque (WWE '13 /
+  2K : nom du script, « The_Miz_Champ », 600-6xx = entrées avec ceinture ; SvR 2007-2011 : scripts des Nyujyo*.pac /
+  evt1-2.pac, nommés d'après les catcheurs dont c'est l'entrée), un nom. Mod `type=entrance` (dossier `Entrances`) :
+  `entrance_own=<n° libre>`, `name=`, `superstar/entrance/`, `superstar/objects/`. Le jeu (`MountEntrances`) la sert
+  sous ce numéro et l'ajoute sous son nom aux listes de Créer une entrée ; aucun catcheur modifié. Aide de test :
+  `WWE12_MM_PAGE=6 WWE12_MM_MOVES=139,4 WWE12_MM_ADDENT=<titre hex>,<n°>,<rapport>` (2K14 668, SvR 2011 139, SvR 2008
+  4012 : convertis en 497).
 - **Visages animés (1.3, 2026-11-11, pas encore vu en jeu)** : `face12.h` (via `star_port`, entrée, entrée de champion,
   victoire, tous jeux) : les 34 pistes du visage d'une entrée de WWE '12 (base, sinon Cena 139) copiées octet pour octet
   dans chaque segment du catcheur (`xxxx0000`) qui n'en a pas, coupées à sa durée (61 → 95 pistes sur 2K14).

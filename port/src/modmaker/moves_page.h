@@ -21,6 +21,7 @@
 
 #include "arena_page.h"
 #include "dlc_stars.h"
+#include "entrance_add.h"
 #include "entrance_preview.h"
 #include "game_disc.h"
 #include "game_discs.h"
@@ -63,7 +64,7 @@ class Page {
         for (int i = 0; i < int(stars12_.size()); ++i)
           if (stars12_[size_t(i)].id == id)
             target_ = i, target_by_player_ = true;
-        tab_ = std::clamp(tab, 0, 3);
+        tab_ = std::clamp(tab, 0, 4);
         test_play_ = play;
       }
       // (and WWE12_MM_PORT=<game title hex>,<his number>: the From another game tab on him, step 3)
@@ -96,9 +97,10 @@ class Page {
     }
     // The tabs, as Kaiko's page: the moves, the taunts, the entrance (by hand, with the game's own), and from another
     // game (the assistant). One mod for one superstar holds them all.
-    const char *tabs_fr[] = {"Prises", "Provocations", "Entrée", "Depuis un autre jeu"};
-    const char *tabs_en[] = {"Moves", "Taunts", "Entrance", "From another game"};
-    for (int i = 0; i < 4; ++i) {
+    // (and an entrance alone, for CREATE AN ENTRANCE: entrance_add.h, 2026-11-12)
+    const char *tabs_fr[] = {"Prises", "Provocations", "Entrée", "Depuis un autre jeu", "Ajouter une entrée"};
+    const char *tabs_en[] = {"Moves", "Taunts", "Entrance", "From another game", "Add an entrance"};
+    for (int i = 0; i < 5; ++i) {
       if (i)
         ImGui::SameLine();
       const bool on = tab_ == i;
@@ -110,7 +112,12 @@ class Page {
         ImGui::PopStyleColor();
     }
     ImGui::Separator();
-    if (tab_ == 3)
+    if (tab_ == 4) {
+      std::vector<entrance_preview::Star> stars;
+      for (const auto &st : stars12_)
+        stars.push_back({st.id, st.name});
+      add_.Draw(fr, dev, disc, discs_, mods, stars, want_discs_);
+    } else if (tab_ == 3)
       DrawPort(fr, mods);
     else
       DrawHand(fr, disc, mods);
@@ -1098,7 +1105,8 @@ class Page {
   // by hand
   ID3D11Device *device_ = nullptr;
   game_icons::Icons icons_;  // the games' icons, read from the discs in the background
-  int tab_ = 0;                       // 0 moves, 1 taunts, 2 entrance, 3 from another game
+  int tab_ = 0;                       // 0 moves, 1 taunts, 2 entrance, 3 from another game, 4 add an entrance
+  entrance_add::Page add_;            // an entrance alone, for CREATE AN ENTRANCE
   moves_edit::Catalog cat_;           // the game's moves and its roster's movesets
   moves_edit::MotionIndex motions_;   // where the moves' motions are (Play)
   bool cat_tried_ = false;
