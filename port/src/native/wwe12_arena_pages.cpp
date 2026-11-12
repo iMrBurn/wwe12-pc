@@ -758,6 +758,7 @@ struct BlueEntry {
   std::string rel, group, name;
   std::vector<uint8_t> data;
   bool blue = false;  // (a scene's copy; else an added object)
+  int of = 0;         // (an added object: the game's briefcase it is the blue copy of, 2557 / 2560)
 };
 // A DDS (DXT5) with red and blue swapped in its colours.
 static void SwapRedBlueDxt5(std::vector<uint8_t> &dds) {
@@ -823,6 +824,7 @@ static std::vector<BlueEntry> BlueBriefcases(rex::filesystem::VirtualFileSystem 
     b.group = "SOBJ";
     b.name = std::to_string(next);
     b.data = svrfmt::PachWrite(kids);
+    b.of = n;
     out.push_back(std::move(b));
     to[uint32_t(n)] = uint32_t(next);
     REXLOG_INFO("[mitb] briefcase {} made blue as SOBJ {}", n, next);
@@ -1341,8 +1343,11 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       parts["pac/wuniData.pac"].push_back(std::move(part));
     }
   }
+  std::vector<std::pair<int, std::string>> blue_objects;  // (the game's briefcase, its blue copy's number)
   if (REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2)
     for (auto &b : BlueBriefcases(vfs, mods)) {
+      if (b.of)
+        blue_objects.push_back({b.of, b.name});
       Part part;
       part.group = b.group;
       part.name = b.name;
@@ -1446,6 +1451,15 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       written.push_back({rel, uint64_t(pac.size())});
     }
   }
+  // (the briefcase itself as the match asks it, "/SOBJ/2557" - the cash-in match loads it with /MOT/WEAP and the
+  // scene /EVPD/9000, none of the Season scenes, Univers' log 2026-11-12: its blue copy's place when Wwe12MitbBlue says)
+  for (const auto &[of, copy] : blue_objects)
+    if (const auto e = g_entrances.find("/SOBJ/" + copy); e != g_entrances.end()) {
+      AddedEntrance b = e->second;
+      b.like.clear();
+      g_mitb_blue["/SOBJ/" + std::to_string(of)] = b;
+      g_mitb_blue["SOBJ/" + std::to_string(of)] = b;
+    }
   REXLOG_INFO("[entrances] made again ({} file(s) written, {} ms{})", written.size(), ms(),
               key.empty() ? ", no cache: an added arena's videos" : "");
   if (!key.empty())
