@@ -312,6 +312,13 @@ inline Bytes ZlibEntry(const Bytes &raw) {
 
 }  // namespace detail
 
+// A picture added under a new name (the tables are full: the added arenas' photos, 2026-11-12): put in every bundle
+// that has `like` (Uni_arena_CAR), in its size and format.
+struct Added {
+  std::string name, like;
+  Bytes dds;
+};
+
 // A layout of MnLayHD.pac / MnLaySD.pac wearing the player's pictures: its directory name and its new bytes (the
 // whole EPAC entry, as stored).
 struct Dressed {
@@ -322,7 +329,8 @@ struct Dressed {
 // The layouts of `mnlay` that show these pictures, dressed. `pics`: a slot's first name (or any picture's name) ->
 // any DDS, fitted to each place's size and format (`fill` as its slot says); a slot's picture goes to all its names.
 // `count`: the pictures replaced.
-inline std::vector<Dressed> Dress(const Bytes &mnlay, const std::map<std::string, Bytes> &pics, int *count = nullptr) {
+inline std::vector<Dressed> Dress(const Bytes &mnlay, const std::map<std::string, Bytes> &pics, int *count = nullptr,
+                                  const std::vector<Added> &adds = {}) {
   std::map<std::string, bool> fill;
   std::map<std::string, std::string> from;  // a picture's name -> the key of `pics` giving it
   for (const auto &g : Groups())
@@ -345,7 +353,13 @@ inline std::vector<Dressed> Dress(const Bytes &mnlay, const std::map<std::string
   if (count)
     *count = 0;
   svrfmt::Archive m;
-  if (imgs.empty() || !svrfmt::ArchiveOpen(mnlay, m, nullptr))
+  std::map<std::string, svrfmt::Image> added;
+  for (const auto &a : adds) {
+    svrfmt::Image img;
+    if (svrfmt::DdsDecode(a.dds, img) && img.w > 0 && img.h > 0)
+      added[a.name] = std::move(img);
+  }
+  if ((imgs.empty() && added.empty()) || !svrfmt::ArchiveOpen(mnlay, m, nullptr))
     return out;
   std::vector<std::pair<std::string, std::string>> touched;  // (group, name)
   for (auto &k : m.root.kids) {
@@ -365,6 +379,22 @@ inline std::vector<Dressed> Dress(const Bytes &mnlay, const std::map<std::string
         if (d.empty() || d.size() != x.data.size())
           continue;
         x.data = d;
+        any = true;
+        ++n;
+      }
+      for (const auto &a : adds) {
+        const auto like = std::find_if(t.begin(), t.end(), [&](const auto &x) { return x.name == a.like; });
+        if (like == t.end() || !added.count(a.name) ||
+            std::any_of(t.begin(), t.end(), [&](const auto &x) { return x.name == a.name; }))
+          continue;
+        Bytes d = Like(like->data, added[a.name], true);
+        if (d.empty())
+          continue;
+        svrfmt::BundleTexture nt;
+        nt.name = a.name;
+        nt.ext = like->ext;
+        nt.data = std::move(d);
+        t.push_back(std::move(nt));
         any = true;
         ++n;
       }

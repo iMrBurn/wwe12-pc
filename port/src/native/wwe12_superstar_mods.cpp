@@ -88,6 +88,8 @@ fs::path g_menu_dir;                    // the dressed menu files of this start,
 // -> {first 2 KB sector, size in 256 bytes} in that copy ([0] HD, [1] SD); answered by the file directory
 // (Wwe12MenuPictureEntry, wwe12_arena_pages.cpp).
 std::map<std::string, std::pair<uint32_t, uint32_t>> g_menu_entries[2];
+// The added arenas' photos (1.4): arena mod folder -> {its picture's name "Uni_arena_Mnn", that name in guest memory}
+std::map<std::string, std::pair<std::string, uint32_t>> g_arena_pictures;
 std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the save keeps it (286 bytes)
 // The game's situation sets (m.pac ZMVM, "STAT", "RUN"...) the pack serves with the added moves, under lowercase names
 // (zmvm_add.h), and those names' paths in guest memory for the lookup hook (sub_827D98D8).
@@ -562,6 +564,29 @@ void MenuPictures(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_
       dirs.push_back(it->path());
   ec.clear();
   std::sort(dirs.begin(), dirs.end());
+  // (the added arenas' photos, 1.4: each arena mod's banner, arena\banner.dds, as a new Uni_arena_Mnn of the SHOW EDIT
+  // layouts - their tables are full; Univers' hook on sub_82586428 shows it, Wwe12ArenaPictureName)
+  std::vector<menu_pictures::Added> adds;
+  g_arena_pictures.clear();
+  {
+    std::vector<fs::path> arenas;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Arenas", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec) && !fs::exists(it->path() / "disabled", ec) && fs::exists(it->path() / "arena" / "banner.dds", ec))
+        arenas.push_back(it->path());
+    ec.clear();
+    std::sort(arenas.begin(), arenas.end());
+    for (size_t i = 0; i < arenas.size() && i < 100; ++i) {
+      menu_pictures::Added a;
+      char nm[20];
+      snprintf(nm, sizeof(nm), "Uni_arena_M%02zu", i);
+      a.name = nm;
+      a.like = "Uni_arena_CAR";
+      if (!ReadHost(arenas[i] / "arena" / "banner.dds", a.dds) || a.dds.empty())
+        continue;
+      g_arena_pictures[rex::path_to_utf8(arenas[i].filename())] = {a.name, 0};
+      adds.push_back(std::move(a));
+    }
+  }
   std::map<std::string, Bytes> pics;
   for (const auto &d : dirs)
     for (fs::directory_iterator it(d / "pictures", ec), end; !ec && it != end; it.increment(ec)) {
@@ -569,11 +594,13 @@ void MenuPictures(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_
       if (_stricmp(rex::path_to_utf8(it->path().extension()).c_str(), ".dds") == 0 && ReadHost(it->path(), b))
         pics[rex::path_to_utf8(it->path().stem())] = std::move(b);
     }
-  if (pics.empty())
+  if (pics.empty() && adds.empty())
     return;
   uint64_t key = 0xCBF29CE484222325ull;
   for (const auto &[name, b] : pics)
     key = Fnv(b, Fnv(Bytes(name.begin(), name.end()), key));
+  for (const auto &a : adds)
+    key = Fnv(a.dds, Fnv(Bytes(a.name.begin(), a.name.end()), key));
   const fs::path dir = user_root / "menu_background", cache = user_root / "menu_pictures";
   if (g_menu_dir.empty())
     fs::remove_all(dir, ec);
@@ -612,7 +639,7 @@ void MenuPictures(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_
     if (dressed.empty()) {
       int n = 0;
       const auto t0 = std::chrono::steady_clock::now();
-      dressed = menu_pictures::Dress(game, pics, &n);
+      dressed = menu_pictures::Dress(game, pics, &n, adds);
       std::string idx;
       blob.clear();
       for (const auto &d : dressed) {
@@ -649,6 +676,24 @@ void MenuPictures(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_
 }
 
 }  // namespace
+
+// (wwe12_universe.cpp, 1.4) the photo of added arena `id` (its mod's folder name, Wwe12ArenaId) in the Universe's
+// layouts: the guest address of its name ("Uni_arena_M00", for the game's arena photo table, sub_82586428), 0 if none.
+uint32_t Wwe12ArenaPictureName(const std::string &id) {
+  const auto it = g_arena_pictures.find(id);
+  if (it == g_arena_pictures.end() || g_menu_dir.empty())
+    return 0;
+  if (!it->second.second) {
+    const std::string &n = it->second.first;
+    const uint32_t at = REX_KERNEL_MEMORY()->SystemHeapAlloc(uint32_t(n.size() + 1), 4);
+    if (!at)
+      return 0;
+    for (size_t i = 0; i <= n.size(); ++i)
+      bd::mem::store<uint8_t>(at + uint32_t(i), uint8_t(i < n.size() ? n[i] : 0));
+    it->second.second = at;
+  }
+  return it->second.second;
+}
 
 // (wwe12_arena_pages.cpp, the file directory) a menu pictures mod's layout of MnLayHD.pac / MnLaySD.pac ("/MLYE/USEI"):
 // its place in the served copy, false if none.
