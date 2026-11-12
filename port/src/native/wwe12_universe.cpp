@@ -2055,7 +2055,7 @@ const OptionWords &OWords() {
       {"WWE-WELT-OPTIONEN", "TITELVERTEIDIGUNGEN", "QUALIFIKATIONSMATCHES", "AUS", "AN",
        "Titelverteidigungen in den Wochenshows: %s.",
        "Qualifikationsmatches (Money in the Bank, Elimination Chamber): %s.", "MONEY-IN-THE-BANK-KOFFER",
-       "Money-in-the-Bank-Koffer: %s (2 = einer fÃ¼r RAW, einer fÃ¼r SmackDown).", "VERLETZUNGEN", "Verletzungen: %s."},
+       "Money-in-the-Bank-Koffer: %s (2 = einer f\xC3\xBCr RAW, einer f\xC3\xBCr SmackDown).", "VERLETZUNGEN", "Verletzungen: %s."},
       {"OPCIONES DEL UNIVERSO", "DEFENSAS DE T\xC3\x8DTULO", "COMBATES CLASIFICATORIOS", "NO", "S\xC3\x8D",
        "Defensas de t\xC3\xADtulo en los shows semanales: %s.",
        "Combates clasificatorios (Money in the Bank, Elimination Chamber): %s.", "MALETINES MONEY IN THE BANK",
@@ -2870,6 +2870,7 @@ void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base);  // wwe12_
 
 void Wwe12DiscordUniverseMenu();  // wwe12_discord.cpp (Rich Presence: a Universe match is over)
 void FillGameHolder(u32 u);  // (two Money in the Bank briefcases, below)
+void WeeklyNews(const PPCContext &in, u8 *base);  // (more news, below)
 
 extern "C" REX_FUNC(sub_82545A70) {
   Wwe12DiscordUniverseMenu();
@@ -2878,6 +2879,7 @@ extern "C" REX_FUNC(sub_82545A70) {
   DraftCheck(ctx, base);  // (a draft after the show's last match: its news)
   FlushNews(ctx, base);
   FillGameHolder(Call(ctx, base, __imp__sub_82683A30, 0));  // (two briefcases: one cashed in, the other's again)
+  WeeklyNews(ctx, base);  // (more news: briefcase held long, long reigns, injured; once a day)
   g_universe_menu = ctx.r3.u32;
   g_universe_menu_for_bar = ctx.r3.u32;
   if (Enabled())
@@ -4162,6 +4164,8 @@ extern "C" REX_FUNC(sub_82583B78) {
 
 // The title history: each change of a Universe title's holder, with the week (see StatsFile).
 REX_EXTERN(__imp__sub_82A39FC8);  // a title's holder (title, place, 1)
+void TitleChangeNews(const PPCContext &in, u8 *base, u32 title, u32 holder);  // (more news, below)
+REX_EXTERN(__imp__sub_826D4DC8);  // card entry: a title match?
 extern "C" REX_FUNC(sub_82A3A060) {
   const PPCContext in = ctx;
   const u32 title = ctx.r3.u32, holder = ctx.r4.u32 & 0xFFFF, place = ctx.r5.u32;
@@ -4181,7 +4185,14 @@ extern "C" REX_FUNC(sub_82A3A060) {
         << '\n';
   BD_INFO("[univers] stats: title {} place {}: {} -> {} (day {}, from 0x{:08X})", title, place,
           old_holder, holder, day, u32(in.lr));
+  TitleChangeNews(in, base, title, holder);
 }
+
+// More news (1.4): a cash-in's result, streaks (see MoreNewsText).
+void DefenseNews(const PPCContext &in, u8 *base, u32 record, u32 day);
+void WeeklyNews(const PPCContext &in, u8 *base);
+void CashInNews(u32 id, bool won);
+void StreakNews(const std::vector<std::pair<u32, bool>> &result, u32 day);
 
 // The results of the Universe's matches (played or simulated): all go through
 // sub_826CEF28(view, show, -, match, winner's place, loser's place, 1). The show: 0-9 the weekly
@@ -4484,6 +4495,7 @@ extern "C" REX_FUNC(sub_826CCAB8) {
     if (it != g_last_result.end()) {
       AppendStats({fmt::format("cashin {} {} {}", holder, it->second ? 1 : 0,
                                UniverseDay(ctx, base))});
+      CashInNews(holder, it->second);
       BD_INFO("[univers] Money in the Bank: {} cashed in, {}", holder, it->second ? "won" : "lost");
     } else {
       g_cashed_holder = holder;
@@ -4572,13 +4584,35 @@ bool g_news_begin = false;  // the news being drawn is "qualifying matches begin
 constexpr u8 kDraftMarker = 0x52;
 constexpr u32 kDraftEvent = 100;  // (queued as event 100 + brand)
 u32 g_news_draft = 0;
+// More news of ours (1.4, "a lot more news"): type 5, +14 = 0x53, +15 the kind (kMore*): the kind + 1 while drawn.
+constexpr u8 kMoreMarker = 0x53;
+constexpr u32 kMoreEvent = 200;  // (queued as event 200 + kind)
+enum MoreKind : u32 {
+  kCashInWon, kCashInLost, kStreak5, kStreak10, kStreak15, kLosing5,
+  kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical, kMoreKinds
+};
+// (its argument in the news' +10, u16, which the game neither clears nor reads: a title, title + 256 * another title
+// or title + 256 * a number)
+u32 g_news_more = 0;
+u32 g_news_more_arg = 0;  // the news' +10 while drawn
+std::string g_more_title1, g_more_title2;  // ... its titles' names, and number (set by the drawing hooks)
+u32 g_more_number = 0;
+REXCVAR_DEFINE_BOOL(wwe12_universe_more_news, true, "WWE12",
+                    "Universe: more news (a Money in the Bank cash-in's result, winning streaks of 5, 10 and 15, "
+                    "5 losses in a row).");
 
 u32 NewsEvent(u32 rec) {
   g_news_begin = false;
   g_news_draft = 0;
+  g_news_more = 0;
   if (!rec)
     return 0;
   const u32 type = bd::mem::load<u8>(rec + 12);
+  if (type == kNewsQualified && bd::mem::load<u8>(rec + 14) == kMoreMarker) {
+    g_news_more = std::min<u32>(bd::mem::load<u8>(rec + 15), kMoreKinds - 1) + 1;
+    g_news_more_arg = bd::mem::load<u16>(rec + 10);
+    return 0;
+  }
   if (type == kNewsQualified && bd::mem::load<u8>(rec + 14) == kDraftMarker) {
     g_news_draft = (bd::mem::load<u8>(rec + 15) & 1) + 1;
     return 0;
@@ -4658,6 +4692,178 @@ void QueueNews(u32 event, u32 type, u32 id) {
   std::lock_guard<std::mutex> lock(g_qual_mutex);
   g_pending_news.push_back({event, 0, type, id});  // a = the news' type, b = its Superstar
 }
+void QueueNews(u32 event, u32 type, u32 id, u32 arg) {
+  std::lock_guard<std::mutex> lock(g_qual_mutex);
+  g_pending_news.push_back({event, arg, type, id});  // (year = the more news' argument)
+}
+}  // namespace
+
+void CashInNews(u32 id, bool won) {
+  if (!REXCVAR_GET(wwe12_universe_more_news) || id >= 512)
+    return;
+  QueueNews(kMoreEvent + (won ? kCashInWon : kCashInLost), kNewsQualified, id);
+  BD_INFO("[univers] news: {}'s cash-in {}", id, won ? "won" : "lost");
+}
+
+// The streak of each Superstar of this match, this result included ("res" lines of universe_stats.txt up to today).
+void StreakNews(const std::vector<std::pair<u32, bool>> &result, u32 day) {
+  if (!REXCVAR_GET(wwe12_universe_more_news))
+    return;
+  std::map<u32, std::pair<u32, u32>> streak;  // id -> {wins in a row, losses in a row}
+  for (const auto &[id, won] : result)
+    streak[id] = {0, 0};
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 id = 0, won = 0, d = 0;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "res %u %u %u", &id, &won, &d) != 3 || d > day)
+      continue;
+    const auto it = streak.find(id);
+    if (it == streak.end())
+      continue;
+    it->second = won ? std::make_pair(it->second.first + 1, 0u) : std::make_pair(0u, it->second.second + 1);
+  }
+  for (const auto &[i, w] : result) {
+    auto &[wins, losses] = streak[i];
+    if (w)
+      ++wins, losses = 0;
+    else
+      wins = 0, ++losses;
+    const int kind = w ? (wins == 5 ? kStreak5 : wins == 10 ? kStreak10 : wins == 15 ? kStreak15 : -1)
+                       : (losses == 5 ? kLosing5 : -1);
+    if (kind < 0)
+      continue;
+    QueueNews(kMoreEvent + u32(kind), kNewsQualified, i);
+    BD_INFO("[univers] news: Superstar {} {} {} in a row", i, w ? wins : losses, w ? "wins" : "losses");
+  }
+}
+
+// A "more news" line already written ("news <kind> <a> <b> <c>" in universe_stats.txt): each milestone once.
+bool NewsDone(const std::string &key) {
+  std::ifstream f(StatsFile());
+  std::string line;
+  while (std::getline(f, line))
+    if (line == key)
+      return true;
+  return false;
+}
+
+void NewsOnce(const std::string &key, u32 kind, u32 id, u32 arg) {
+  if (NewsDone(key))
+    return;
+  AppendStats({key});
+  QueueNews(kMoreEvent + kind, kNewsQualified, id, arg);
+  BD_INFO("[univers] news: {} (Superstar {})", key, id);
+}
+
+// Double Gold: the new holder of a title already holds another one (a tag title's two places count).
+void TitleChangeNews(const PPCContext &in, u8 *base, u32 title, u32 holder) {
+  if (!REXCVAR_GET(wwe12_universe_more_news) || holder >= 512 || title >= 23)
+    return;
+  for (u32 other = 0; other < 23; ++other) {
+    if (other == title)
+      continue;
+    for (u32 place = 0; place < 2; ++place)
+      if ((Call(in, base, __imp__sub_82A39FC8, other, place, 1) & 0xFFFF) == holder) {
+        QueueNews(kMoreEvent + kDoubleGold, kNewsQualified, holder, title | (other << 8));
+        BD_INFO("[univers] news: Double Gold, {} holds titles {} and {}", holder, title, other);
+        return;
+      }
+  }
+}
+
+// Fighting Champion: a title match (the card entry's title flag, its byte 1 the title) won by the champion ("defense
+// <title> <id> <day>"); at 6 and 10 defenses in a row of his reign, a news.
+void DefenseNews(const PPCContext &in, u8 *base, u32 record, u32 day) {
+  if (!REXCVAR_GET(wwe12_universe_more_news) || !record || !Call(in, base, __imp__sub_826D4DC8, record))
+    return;
+  const u32 title = bd::mem::load<u8>(record + 1);
+  if (title >= 23)
+    return;
+  const u32 champ = Call(in, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;
+  const auto it = std::find_if(g_last_result.begin(), g_last_result.end(), [&](const auto &r) { return r.first == champ; });
+  if (champ >= 512 || it == g_last_result.end() || !it->second)
+    return;
+  AppendStats({fmt::format("defense {} {} {}", title, champ, day)});
+  u32 since = 0;  // his reign's first day
+  for (const Reign &r : LoadReigns())
+    if (r.title == title && r.place == 0 && r.holder == champ && r.to_day == ~0u)
+      since = r.from_day;
+  u32 n = 0;
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 t = 0, id = 0, d = 0;
+  while (std::getline(f, line))
+    if (std::sscanf(line.c_str(), "defense %u %u %u", &t, &id, &d) == 3 && t == title && id == champ && d >= since &&
+        d <= day)
+      ++n;
+  if (n == 6 || n == 10)
+    NewsOnce(fmt::format("news fighting {} {} {} {}", title, champ, since, n), kFightingChamp, champ, title | (n << 8));
+}
+
+// Once a day, at the Universe menu: a briefcase held for over 3 months (84 days), reigns of 10, 25 and 52 weeks, and
+// now and then a medical update for an injured Superstar (his Universe record's +92 bit 31, as sub_826CEA88 sets it).
+void WeeklyNews(const PPCContext &in, u8 *base) {
+  if (!Enabled() || !REXCVAR_GET(wwe12_universe_more_news) || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u)
+    return;
+  const u32 day = bd::mem::load<u32>(u + kUniverseDay);
+  static u32 s_day = ~0u;
+  if (s_day == day)
+    return;
+  const bool first = s_day == ~0u;  // (the first look after a load: no random news)
+  s_day = day;
+  // the briefcase(s)
+  {
+    std::ifstream f(StatsFile());
+    std::string line;
+    u32 id = 0, d = 0;
+    std::map<u32, u32> won;
+    while (std::getline(f, line))
+      if (std::sscanf(line.c_str(), "mitb %u %u", &id, &d) == 2 && d <= day)
+        won[id] = d;
+    std::vector<u32> holders = BriefcaseHolders(day);
+    const u32 game = bd::mem::load<u16>(u + kBriefcaseHolder);
+    if (game < 512 && std::find(holders.begin(), holders.end(), game) == holders.end())
+      holders.push_back(game);
+    for (const u32 h : holders)
+      if (won.count(h) && day >= won[h] + 84)
+        NewsOnce(fmt::format("news mitbheld {} {}", h, won[h]), kMitbHeld, h, 0);
+  }
+  // long reigns
+  for (const Reign &r : LoadReigns()) {
+    if (r.to_day != ~0u || r.place != 0 || r.holder >= 512 || r.title >= 23 || day < r.from_day)
+      continue;
+    const u32 weeks = (day - r.from_day) / 7;
+    for (const u32 m : {10u, 25u, 52u})
+      if (weeks >= m && weeks < m + 4)
+        NewsOnce(fmt::format("news reign {} {} {} {}", r.title, r.holder, r.from_day, m), kReignWeeks, r.holder,
+                 r.title | (m << 8));
+  }
+  // a medical update, one week in four, for one injured Superstar
+  static std::mt19937 s_random{std::random_device{}()};
+  if (first || std::uniform_int_distribution<int>(0, 3)(s_random) != 0)
+    return;
+  std::vector<u32> injured;
+  for (u32 id = 0; id < 373; ++id) {
+    if (!Call(x, base, __imp__sub_826D3218, id, 1))
+      continue;
+    const int32_t index = int32_t(Call(x, base, __imp__sub_826D3320, id));
+    if (index >= 0 && (bd::mem::load<u32>(u + u32(index) * 112 + 92) & 0x80000000u))
+      injured.push_back(id);
+  }
+  if (injured.empty())
+    return;
+  const u32 who = injured[std::uniform_int_distribution<size_t>(0, injured.size() - 1)(s_random)];
+  QueueNews(kMoreEvent + kMedical, kNewsQualified, who, 0);
+  BD_INFO("[univers] news: medical update for {}", who);
+}
+
+namespace {
 
 // The queued news, added on the game's thread (from the menus' input dispatch).
 void FlushNews(const PPCContext &in, u8 *base) {
@@ -4676,7 +4882,11 @@ void FlushNews(const PPCContext &in, u8 *base) {
     // in the free +14 / +15 (0x51, event)
     bd::mem::store<u16>(record, u16(n.b < 512 ? n.b : 512));
     // the game shows type 5 only (its type 6 is never drawn): both are type 5, +15 bit 7 = "begin"
-    if (n.event >= kDraftEvent) {
+    if (n.event >= kMoreEvent) {
+      bd::mem::store<u8>(record + 14, kMoreMarker);
+      bd::mem::store<u8>(record + 15, u8(n.event - kMoreEvent));
+      bd::mem::store<u16>(record + 10, u16(n.year));
+    } else if (n.event >= kDraftEvent) {
       bd::mem::store<u8>(record + 14, kDraftMarker);
       bd::mem::store<u8>(record + 15, u8(n.event - kDraftEvent));
     } else {
@@ -4692,19 +4902,33 @@ void FlushNews(const PPCContext &in, u8 *base) {
 }  // namespace
 
 // A news drawn: its texts (sub_82559468 the line, sub_82559A08 the title; the news in r4).
+// (a more news: its titles' names and number for its text)
+void MoreNewsNames(const PPCContext &in, u8 *base) {
+  if (!g_news_more)
+    return;
+  const u32 kind = g_news_more - 1, a = g_news_more_arg & 0xFF, b = g_news_more_arg >> 8;
+  g_more_title1 = a < 23 ? TitleName(in, base, a) : std::string();
+  g_more_title2 = kind == kDoubleGold && b < 23 ? TitleName(in, base, b) : std::string();
+  g_more_number = kind == kDoubleGold ? 0 : b;
+}
+
 REX_EXTERN(__imp__sub_82559468);
 extern "C" REX_FUNC(sub_82559468) {
   g_news_event = NewsEvent(ctx.r4.u32);
+  MoreNewsNames(ctx, base);
   __imp__sub_82559468(ctx, base);
   g_news_event = 0;
   g_news_draft = 0;
+  g_news_more = 0;
 }
 REX_EXTERN(__imp__sub_82559A08);
 extern "C" REX_FUNC(sub_82559A08) {
   g_news_event = NewsEvent(ctx.r4.u32);
+  MoreNewsNames(ctx, base);
   __imp__sub_82559A08(ctx, base);
   g_news_event = 0;
   g_news_draft = 0;
+  g_news_more = 0;
 }
 
 // A news's picture: sub_82558FC8(screen S, news) names the six news pictures (elements 390-395, S+1040
@@ -4770,15 +4994,15 @@ namespace {
 // Our news texts (27068 / 27069 type 5, 27070 / 27071 type 6), for the news being drawn.
 u32 DraftNewsText(u32 id) {
   static const char *const kTitle[2][5] = {
-      {"DRAFTED TO RAW!", "DRAFTÃ Ã RAW !", "ZU RAW GEDRAFTET!", "Â¡DRAFTEADO A RAW!",
+      {"DRAFTED TO RAW!", "DRAFT\xC3\x89 \xC3\x80 RAW !", "ZU RAW GEDRAFTET!", "\xC2\xA1" "DRAFTEADO A RAW!",
        "SCELTO DA RAW AL DRAFT!"},
-      {"DRAFTED TO SMACKDOWN!", "DRAFTÃ Ã SMACKDOWN !", "ZU SMACKDOWN GEDRAFTET!",
-       "Â¡DRAFTEADO A SMACKDOWN!", "SCELTO DA SMACKDOWN AL DRAFT!"}};
+      {"DRAFTED TO SMACKDOWN!", "DRAFT\xC3\x89 \xC3\x80 SMACKDOWN !", "ZU SMACKDOWN GEDRAFTET!",
+       "\xC2\xA1" "DRAFTEADO A SMACKDOWN!", "SCELTO DA SMACKDOWN AL DRAFT!"}};
   static const char *const kLine[2][5] = {
       {"%s has been drafted to RAW!", "%s rejoint RAW lors du Draft !", "%s wurde zu RAW gedraftet!",
-       "Â¡%s ha sido elegido para RAW en el Draft!", "%s passa a RAW con il Draft!"},
+       "\xC2\xA1%s ha sido elegido para RAW en el Draft!", "%s passa a RAW con il Draft!"},
       {"%s has been drafted to SmackDown!", "%s rejoint SmackDown lors du Draft !",
-       "%s wurde zu SmackDown gedraftet!", "Â¡%s ha sido elegido para SmackDown en el Draft!",
+       "%s wurde zu SmackDown gedraftet!", "\xC2\xA1%s ha sido elegido para SmackDown en el Draft!",
        "%s passa a SmackDown con il Draft!"}};
   const u32 brand = g_news_draft - 1;
   const bool title = id == 27068 || id == 27070;
@@ -4794,7 +5018,100 @@ u32 DraftNewsText(u32 id) {
   return at;
 }
 
+// The more news' texts (title, line; "%s" = the Superstar), in the 5 languages.
+u32 MoreNewsText(u32 id) {
+  struct Texts {
+    const char *title[5], *line[5];
+  };
+  static const Texts kTexts[kMoreKinds] = {
+      {{"CASHED IN!", "CASH-IN R\xC3\x89USSI !", "CASH-IN ERFOLGREICH!", "\xC2\xA1" "CANJE EXITOSO!",
+        "CASH-IN RIUSCITO!"},
+       {"%s cashed in the Money in the Bank briefcase and won the title!",
+        "%s a encaiss\xC3\xA9 sa mallette Money in the Bank et remporte le titre !",
+        "%s hat den Money-in-the-Bank-Koffer eingel\xC3\xB6st und den Titel gewonnen!",
+        "\xC2\xA1%s canje\xC3\xB3 el malet\xC3\xADn de Money in the Bank y gan\xC3\xB3 el t\xC3\xADtulo!",
+        "%s ha incassato la valigetta del Money in the Bank e ha vinto il titolo!"}},
+      {{"CASH-IN FAILED!", "CASH-IN RAT\xC3\x89 !", "CASH-IN GESCHEITERT!", "\xC2\xA1" "CANJE FALLIDO!",
+        "CASH-IN FALLITO!"},
+       {"%s cashed in the Money in the Bank briefcase but came up short!",
+        "%s a encaiss\xC3\xA9 sa mallette Money in the Bank, mais n'a pas remport\xC3\xA9 le titre !",
+        "%s hat den Money-in-the-Bank-Koffer eingel\xC3\xB6st, aber den Titel verpasst!",
+        "\xC2\xA1%s canje\xC3\xB3 el malet\xC3\xADn de Money in the Bank, pero no gan\xC3\xB3 el t\xC3\xADtulo!",
+        "%s ha incassato la valigetta del Money in the Bank, ma non ha vinto il titolo!"}},
+      // (ideas and English texts by Jay, a player, 2026-11-12)
+      {{"WINNING STREAK", "S\xC3\x89RIE DE VICTOIRES", "SIEGESSERIE", "RACHA GANADORA", "SERIE VINCENTE"},
+       {"%s is on a 5-match winning streak!", "%s encha\xC3\xAEne 5 victoires d'affil\xC3\xA9" "e !",
+        "%s hat 5 Siege in Folge!", "\xC2\xA1%s lleva 5 victorias seguidas!", "%s ha vinto 5 incontri di fila!"}},
+      {{"WINNING STREAK", "S\xC3\x89RIE DE VICTOIRES", "SIEGESSERIE", "RACHA GANADORA", "SERIE VINCENTE"},
+       {"%s is on a 10-match winning streak!", "%s encha\xC3\xAEne 10 victoires d'affil\xC3\xA9" "e !",
+        "%s hat 10 Siege in Folge!", "\xC2\xA1%s lleva 10 victorias seguidas!", "%s ha vinto 10 incontri di fila!"}},
+      {{"UNBEATABLE!", "INVINCIBLE !", "UNBESIEGBAR!", "\xC2\xA1" "INVENCIBLE!", "IMBATTIBILE!"},
+       {"%s is on a 15-match winning streak!", "%s encha\xC3\xAEne 15 victoires d'affil\xC3\xA9" "e !",
+        "%s hat 15 Siege in Folge!", "\xC2\xA1%s lleva 15 victorias seguidas!", "%s ha vinto 15 incontri di fila!"}},
+      {{"ICE COLD", "S\xC3\x89RIE NOIRE", "EISKALT", "MALA RACHA", "PERIODO NERO"},
+       {"%s suffers a 5th straight defeat. Can the slump end?",
+        "%s subit une 5e d\xC3\xA9" "faite d'affil\xC3\xA9" "e. La s\xC3\xA9rie noire va-t-elle s'arr\xC3\xAAter ?",
+        "%s kassiert die 5. Niederlage in Folge. Kommt die Wende?",
+        "%s sufre su 5.\xC2\xAA derrota seguida. \xC2\xBFPodr\xC3\xA1 remontar?",
+        "%s subisce la 5\xC2\xAA sconfitta di fila. Riuscir\xC3\xA0 a riprendersi?"}},
+      {{"MR. MONEY IN THE BANK", "MR. MONEY IN THE BANK", "MR. MONEY IN THE BANK", "MR. MONEY IN THE BANK",
+        "MR. MONEY IN THE BANK"},
+       {"%s has held the briefcase for over 3 months. When will the cash-in come?",
+        "%s d\xC3\xA9tient la mallette depuis plus de 3 mois. Quand viendra l'encaissement ?",
+        "%s hat den Koffer seit \xC3\xBC" "ber 3 Monaten. Wann wird er eingel\xC3\xB6st?",
+        "%s tiene el malet\xC3\xADn desde hace m\xC3\xA1s de 3 meses. \xC2\xBF" "Cu\xC3\xA1ndo lo canjear\xC3\xA1?",
+        "%s ha la valigetta da oltre 3 mesi. Quando la incasser\xC3\xA0?"}},
+      {{"DOUBLE GOLD", "DOUBLE CHAMPION", "DOPPEL-GOLD", "DOBLE ORO", "DOPPIO ORO"},
+       {"%s makes history by holding both the {T} and the {U} simultaneously!",
+        "%s entre dans l'histoire en d\xC3\xA9tenant \xC3\xA0 la fois le {T} et le {U} !",
+        "%s schreibt Geschichte: {T} und {U} gleichzeitig!",
+        "\xC2\xA1%s hace historia con el {T} y el {U} a la vez!",
+        "%s fa la storia con il {T} e il {U} insieme!"}},
+      {{"WHO CAN STOP THEM?", "QUI POURRA L'ARR\xC3\x8ATER ?", "WER KANN DAS STOPPEN?",
+        "\xC2\xBFQUI\xC3\x89N PUEDE PARARLO?", "CHI PU\xC3\x92 FERMARLO?"},
+       {"%s has successfully defended the {T} for {N} total weeks as champion!",
+        "%s d\xC3\xA9" "fend le {T} avec succ\xC3\xA8s depuis {N} semaines !",
+        "%s hat den {T} seit {N} Wochen erfolgreich verteidigt!",
+        "\xC2\xA1%s ha defendido el {T} durante {N} semanas!",
+        "%s ha difeso il {T} per {N} settimane!"}},
+      {{"FIGHTING CHAMPION", "CHAMPION COMBATTANT", "K\xC3\x84MPFENDER CHAMPION", "CAMPE\xC3\x93N LUCHADOR",
+        "CAMPIONE COMBATTENTE"},
+       {"%s has successfully retained the {T} {N} times in a row.",
+        "%s a conserv\xC3\xA9 le {T} {N} fois d'affil\xC3\xA9" "e.",
+        "%s hat den {T} {N}-mal in Folge verteidigt.",
+        "%s ha retenido el {T} {N} veces seguidas.",
+        "%s ha mantenuto il {T} {N} volte di fila."}},
+      {{"MEDICAL UPDATE", "NOUVELLES M\xC3\x89" "DICALES", "MEDIZINISCHES UPDATE", "PARTE M\xC3\x89" "DICO",
+        "AGGIORNAMENTO MEDICO"},
+       {"%s has been spotted training at a performance facility.",
+        "%s a \xC3\xA9t\xC3\xA9 aper\xC3\xA7u en train de s'entra\xC3\xAEner dans un centre de performance.",
+        "%s wurde beim Training in einem Leistungszentrum gesehen.",
+        "%s ha sido visto entrenando en un centro de alto rendimiento.",
+        "%s \xC3\xA8 stato visto allenarsi in un centro di preparazione."}}};
+  const u32 kind = g_news_more - 1;
+  const bool title = id == 27068 || id == 27070;
+  std::string text = title ? kTexts[kind].title[CurrentLang()] : kTexts[kind].line[CurrentLang()];
+  const auto put = [&](const char *key, const std::string &value) {
+    for (size_t at = text.find(key); at != std::string::npos; at = text.find(key, at + value.size()))
+      text.replace(at, std::strlen(key), value);
+  };
+  put("{T}", g_more_title1);
+  put("{U}", g_more_title2);
+  put("{N}", std::to_string(g_more_number));
+  static u32 s_at[2] = {};
+  u32 &at = s_at[title];
+  if (!at)
+    at = REX_KERNEL_MEMORY()->SystemHeapAlloc(512, 0x10);
+  if (!at)
+    return 0;
+  std::memset(bd::mem::at<char>(at), 0, 512);
+  std::memcpy(bd::mem::at<char>(at), text.data(), std::min<size_t>(text.size(), 511));
+  return at;
+}
+
 u32 QualNewsText(u32 id) {
+  if (g_news_more && id >= 27068 && id <= 27071)
+    return MoreNewsText(id);
   if (g_news_draft && id >= 27068 && id <= 27071)
     return DraftNewsText(id);
   const u32 e = g_news_event;
@@ -4852,6 +5169,7 @@ extern "C" REX_FUNC(sub_826CEF28) {
         g_last_result.push_back({id, won});
         if (id == g_cashed_holder) {  // the briefcase was cleared before this match
           lines.push_back(fmt::format("cashin {} {} {}", id, won ? 1 : 0, day));
+          CashInNews(id, won);
           BD_INFO("[univers] Money in the Bank: {} cashed in, {}", id, won ? "won" : "lost");
           g_cashed_holder = 512;
         }
@@ -4870,6 +5188,14 @@ extern "C" REX_FUNC(sub_826CEF28) {
         else
           lines.push_back(fmt::format("mania {} {} {} {}", id, match + 1 == count ? 1 : 0,
                                       won ? 1 : 0, day));
+      }
+      DefenseNews(x, base, record, day);  // (before the game's result: the champion is still the old one)
+      // streaks ("res <id> <won> <day>" for each Superstar of a match with a winner; more news at 5, 10, 15 wins and
+      // 5 losses in a row)
+      if (!rumble && winner < 6 && !g_last_result.empty()) {
+        for (const auto &[id, won] : g_last_result)
+          lines.push_back(fmt::format("res {} {} {}", id, won ? 1 : 0, day));
+        StreakNews(g_last_result, day);
       }
       // a qualifying match of ours: its winner qualifies
       if (REXCVAR_GET(wwe12_universe_qualifiers) && places == 2 && winner < 2 && g_last_result.size() == 2) {
