@@ -96,6 +96,9 @@ REXCVAR_DECLARE(uint32_t, user_language);
 REXCVAR_DEFINE_BOOL(wwe12_universe_qualifiers, false, "WWE12",
                     "Universe: qualifying matches before Money in the Bank and the Elimination Chamber, "
                     "with news.");
+REXCVAR_DEFINE_BOOL(wwe12_universe_injuries, true, "WWE12",
+                    "Universe: Superstars can be injured, out of action for some weeks, a serious injury included "
+                    "(false: nobody is injured; WWE '12 has no other end of career).");
 REXCVAR_DEFINE_INT32(wwe12_universe_mitb_briefcases, 1, "WWE12",
                      "Universe: Money in the Bank briefcases (1 = the game's: one match, one holder; 2 = a match "
                      "for RAW and one for SmackDown at the PPV, two holders, each cashing in as the game's).");
@@ -2038,29 +2041,29 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
 
 struct OptionWords {
   const char *options, *defenses, *qualifiers, *off, *on, *done_defenses, *done_qualifiers, *briefcases,
-      *done_briefcases;
+      *done_briefcases, *injuries, *done_injuries;
 };
 const OptionWords &OWords() {
   static const OptionWords kWords[5] = {
       {"UNIVERSE OPTIONS", "TITLE DEFENSES", "QUALIFYING MATCHES", "OFF", "ON",
        "Title defenses on weekly shows: %s.", "Qualifying matches (Money in the Bank, Elimination "
-       "Chamber): %s.", "MONEY IN THE BANK BRIEFCASES", "Money in the Bank briefcases: %s (2 = one for RAW, one for SmackDown)."},
+       "Chamber): %s.", "MONEY IN THE BANK BRIEFCASES", "Money in the Bank briefcases: %s (2 = one for RAW, one for SmackDown).", "INJURIES", "Injuries: %s."},
       {"OPTIONS DE L'UNIVERS", "D\xC3\x89" "FENSES DE TITRE", "MATCHS DE QUALIFICATION", "NON", "OUI",
        "D\xC3\xA9" "fenses de titre dans les shows : %s.",
        "Matchs de qualification (Money in the Bank, Elimination Chamber) : %s.", "MALLETTES MONEY IN THE BANK",
-       "Mallettes Money in the Bank : %s (2 = une pour RAW, une pour SmackDown)."},
+       "Mallettes Money in the Bank : %s (2 = une pour RAW, une pour SmackDown).", "BLESSURES", "Blessures : %s."},
       {"WWE-WELT-OPTIONEN", "TITELVERTEIDIGUNGEN", "QUALIFIKATIONSMATCHES", "AUS", "AN",
        "Titelverteidigungen in den Wochenshows: %s.",
        "Qualifikationsmatches (Money in the Bank, Elimination Chamber): %s.", "MONEY-IN-THE-BANK-KOFFER",
-       "Money-in-the-Bank-Koffer: %s (2 = einer fÃ¼r RAW, einer fÃ¼r SmackDown)."},
+       "Money-in-the-Bank-Koffer: %s (2 = einer fÃ¼r RAW, einer fÃ¼r SmackDown).", "VERLETZUNGEN", "Verletzungen: %s."},
       {"OPCIONES DEL UNIVERSO", "DEFENSAS DE T\xC3\x8DTULO", "COMBATES CLASIFICATORIOS", "NO", "S\xC3\x8D",
        "Defensas de t\xC3\xADtulo en los shows semanales: %s.",
        "Combates clasificatorios (Money in the Bank, Elimination Chamber): %s.", "MALETINES MONEY IN THE BANK",
-       "Maletines Money in the Bank: %s (2 = uno para RAW, uno para SmackDown)."},
+       "Maletines Money in the Bank: %s (2 = uno para RAW, uno para SmackDown).", "LESIONES", "Lesiones: %s."},
       {"OPZIONI UNIVERSE", "DIFESE DEL TITOLO", "INCONTRI DI QUALIFICAZIONE", "NO", "S\xC3\x8C",
        "Difese del titolo negli show settimanali: %s.",
        "Incontri di qualificazione (Money in the Bank, Elimination Chamber): %s.", "VALIGETTE MONEY IN THE BANK",
-       "Valigette Money in the Bank: %s (2 = una per RAW, una per SmackDown)."}};
+       "Valigette Money in the Bank: %s (2 = una per RAW, una per SmackDown).", "INFORTUNI", "Infortuni: %s."}};
   return kWords[CurrentLang()];
 }
 
@@ -2085,7 +2088,8 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
   const std::string briefcases = REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2 ? "2" : "1";
   Choose(in, base, o.options,
          {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers,
-          std::string(o.briefcases) + ":  " + briefcases},
+          std::string(o.briefcases) + ":  " + briefcases,
+          std::string(o.injuries) + ":  " + (REXCVAR_GET(wwe12_universe_injuries) ? o.on : o.off)},
          [](const PPCContext &in, u8 *base, size_t i) {
            const OptionWords &o = OWords();
            if (i == 0) {
@@ -2098,6 +2102,13 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
                                     k ? (std::to_string(kPct[k]) + " %").c_str() : OWords().off);
                       Inform(in, base, text);
                     });
+           } else if (i == 3) {
+             Choose(in, base, o.injuries, {o.off, o.on}, [](const PPCContext &in, u8 *base, size_t k) {
+               SaveUniverseOption("wwe12_universe_injuries", k ? "true" : "false");
+               char text[256];
+               std::snprintf(text, sizeof(text), OWords().done_injuries, k ? OWords().on : OWords().off);
+               Inform(in, base, text);
+             });
            } else if (i == 2) {
              Choose(in, base, o.briefcases, {"1", "2"}, [](const PPCContext &in, u8 *base, size_t k) {
                SaveUniverseOption("wwe12_universe_mitb_briefcases", k ? "2" : "1");
@@ -4390,6 +4401,22 @@ extern "C" REX_FUNC(sub_82554460) {
   }
   bd::mem::store<u16>(u + kBriefcaseHolder, u16(first));
   bd::mem::store<u8>(u + kBriefcaseHolder + 2, first_flag);
+}
+
+// ---- injuries on / off (1.4, asked by players: "injured Superstars, two ends of career in my Universe") ---------
+//
+// A Superstar is put out of action by sub_826CEA88(view, id, 1): bit 31 of his Universe record's +92 with the week in
+// +96 (sub_826D46E8), and he loses his #1 contender places; 0 brings him back. Callers with 1: a match's result
+// (sub_826C55E0, only when his show keeps more than 15) and a story (sub_826E7A10). With wwe12_universe_injuries off,
+// the 1 is refused (bringing back still works, so the injured of an older save come back as the game decides).
+// (Coded once on 2026-10-27 and removed at the user's request; asked again for 1.4.)
+REX_EXTERN(__imp__sub_826CEA88);  // Universe: put a Superstar out of action / back (view, id, on)
+extern "C" REX_FUNC(sub_826CEA88) {
+  if (Enabled() && !REXCVAR_GET(wwe12_universe_injuries) && ctx.r5.u32 == 1) {
+    BD_INFO("[univers] injuries off: Superstar {} stays in action", ctx.r4.u32);
+    return;
+  }
+  __imp__sub_826CEA88(ctx, base);
 }
 
 // MATCH CARDS' per-frame code (card C, its state C + 4164: 2 = the cash-in box is open). The box's answer
