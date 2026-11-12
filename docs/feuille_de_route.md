@@ -125,7 +125,7 @@ Décision du 2026-11-12 : 1.4 à sortir en une semaine environ ; l'utilisateur c
 - [ ] Améliorer le système de tombé (zone de sortie plus grande, non étudié)
 
 *Univers (Univers + Mods)*
-- [ ] Deux mallettes Money in the Bank (RAW / SmackDown) + embuscade en coulisses (léger ~8 h ; complet 12-20 h)
+- [x] Deux mallettes Money in the Bank (RAW / SmackDown) : version complète, testée par l'utilisateur le 2026-11-12 (65d4548, e6d1471 ; réglage UNIVERSE OPTIONS, `wwe12_universe_mitb_briefcases` = 2). Embuscade en coulisses : pas faite (cinématiques de Create a Story, 20 h et plus). Idée : mallette bleue pour SmackDown (texture, à étudier).
 - [ ] Débloquer Edge, Christian etc. dans l'Univers (3-6 h ; il faut la liste de ceux qui manquent)
 - [ ] Choisir le type d'intervention (bouton Y) : non en 7 jours (20 h et plus)
 - [ ] Backport des cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants : non en 7 jours
