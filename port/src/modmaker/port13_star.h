@@ -433,8 +433,20 @@ inline bool PortAttire(svrfmt::ArcNode &w13, svrfmt::ArcNode &base, Report *rep,
         if (!svrfmt::IsJboy(data) || !svrfmt::JboyRead(data, ms, &e) || !ms.w12)
           continue;
         std::string w;
-        if (!Reskeleton(ms, mb, nullptr, &w, &mb.nodes))
+        // (a model on a skeleton of its own, not the body's - the elbow pads: root, Bip L UpperArm at 0, the pad in
+        // the arm's space -: on the base's model of that number when it has one (WWE '12 The Rock's 0x1a / 0x1b, 9
+        // nodes), else as it is. Put on the body's skeleton it fell to his feet, 2K16 The Rock, 2026-11-12)
+        const bool own_skeleton =
+            std::none_of(ms.nodes.begin(), ms.nodes.end(), [](const svrfmt::Node &n) { return n.name == "Bip Pelvis"; });
+        if (own_skeleton) {
+          svrfmt::Model mx;
+          svrfmt::ArcNode *bx = child(base, k.id);
+          if (bx && svrfmt::JboyRead(svrfmt::Unpack(svrfmt::ArchiveData(*bx)), mx, &e) && !mx.nodes.empty() &&
+              !Reskeleton(ms, mx, nullptr, &w, &mx.nodes))
+            continue;
+        } else if (!Reskeleton(ms, mb, nullptr, &w, &mb.nodes)) {
           continue;
+        }
         const Bytes out = svrfmt::JboyWrite(ms);
         if (svrfmt::ArcNode *b = child(base, k.id))
           svrfmt::ArchiveReplace(*b, out);

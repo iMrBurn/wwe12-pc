@@ -200,6 +200,56 @@ class Page {
         }
       }
     }
+    // (test aid: WWE12_MM_KIDS=<game title hex, 0 WWE '12>,<pac path>,<report file>: each attire's children - ids,
+    // models' names, layout, nodes -, to see a superstar file's extra models)
+    if (const char *t = getenv("WWE12_MM_KIDS"); t && discs && !kids_done_) {
+      kids_done_ = true;
+      unsigned title = 0;
+      char path[200] = {}, out[260] = {};
+      sscanf(t, "%x,%199[^,],%259[^\n]", &title, path, out);
+      disc::GameDisc src;
+      const disc::GameDisc *g = title ? (src.OpenPath(discs->PathOf(title)) ? &src : nullptr) : &w12;
+      svrfmt::Archive a;
+      if (FILE *f = fopen(out, "w")) {
+        if (!g || !entrance13::detail::OpenPac(*g, path, a))
+          fprintf(f, "can't open %s\n", path);
+        else
+          for (auto &k : a.root.kids) {
+            fprintf(f, "entry %s/%s id %u\n", k.group.c_str(), k.name.c_str(), k.id);
+            if (!svrfmt::ArchiveExpand(k))
+              continue;
+            for (auto &c : k.kids) {
+              const Bytes d = svrfmt::Unpack(svrfmt::ArchiveData(c));
+              fprintf(f, "  kid %u (0x%x) %zu bytes", c.id, c.id, d.size());
+              svrfmt::Model m;
+              std::string e;
+              if (svrfmt::IsJboy(d)) {
+                if (svrfmt::JboyRead(d, m, &e)) {
+                  fprintf(f, " JBOY %s w12 %d meshes %zu nodes %zu:", m.name.c_str(), int(m.w12), m.meshes.size(),
+                          m.nodes.size());
+                  const bool all = c.id >= 0x10 && c.id <= 0xFF;
+                  for (size_t i = 0; i < m.nodes.size() && (all || i < 40); ++i)
+                    fprintf(f, " %s:%d(%.1f %.1f %.1f)", m.nodes[i].name.c_str(), m.nodes[i].parent, m.nodes[i].t[0],
+                            m.nodes[i].t[1], m.nodes[i].t[2]);
+                  for (const auto &me : m.meshes) {
+                    fprintf(f, "\n    palette");
+                    for (int p : me.palette)
+                      fprintf(f, " %d", p);
+                    if (!me.verts.empty())
+                      fprintf(f, " first vert %.1f %.1f %.1f", me.verts[0].pos[0], me.verts[0].pos[1], me.verts[0].pos[2]);
+                    if (!all)
+                      break;
+                  }
+                } else {
+                  fprintf(f, " JBOY unreadable: %s", e.c_str());
+                }
+              }
+              fprintf(f, "\n");
+            }
+          }
+        fclose(f);
+      }
+    }
     ImGui::TextWrapped("%s", fr ? "Ajoutez une entrée de vos autres jeux, sans catcheur : elle apparaît dans CRÉER UNE "
                                   "ENTRÉE (Create an Entrance) sous le nom que vous lui donnez, pour n'importe quel "
                                   "catcheur, comme son entrée ou son entrée de champion. Les entrées avec ceinture : "
@@ -408,6 +458,7 @@ class Page {
 
   ID3D11Device *device_ = nullptr;
   int test_step_ = 0;  // (WWE12_MM_ADDENT)
+  bool kids_done_ = false;  // (WWE12_MM_KIDS)
   game_icons::Icons icons_;
   uint32_t game_ = 0;
   std::vector<Item> list_;
