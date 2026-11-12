@@ -129,11 +129,11 @@ Décision du 2026-11-12 : 1.4 à sortir en une semaine environ ; l'utilisateur c
 - [ ] Débloquer Edge, Christian etc. dans l'Univers (3-6 h ; il faut la liste de ceux qui manquent)
 - [ ] Choisir le type d'intervention (bouton Y) : non en 7 jours (20 h et plus)
 - [ ] Backport des cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants : non en 7 jours
-- [ ] Réglage pour couper les blessures et les fins de carrière (1-2 h + 3-5 h)
+- [x] Réglage pour couper les blessures (UNIVERSE OPTIONS > BLESSURES, `wwe12_universe_injuries`, 51a36fe) : gardé tel quel par l'utilisateur le 2026-11-12 sans preuve en jeu (le jeu ne blesse que dans les matchs JOUÉS, membre très abîmé, ou par une histoire ; jamais en simulation : 143 matchs simulés, aucune tentative). WWE '12 n'a pas d'autre fin de carrière que les blessures.
 - [ ] Classement des titres par équipe modifiable (6-10 h)
 - [ ] Rivalités menées jusqu'au PPV, rivalité inter-marques sans match (10-20 h ; léger ~8 h)
 - [ ] Titres de SmackDown dans EDIT SUPERSTAR (R1), si c'est le jeu d'origine (2-5 h)
-- [ ] Photo propre aux arènes ajoutées (3-5 h chez Univers + Mods fournit l'image 256x64)
+- [ ] Photo propre aux arènes ajoutées : codée (Univers 1e7b9e7 + Mods, Wwe12ArenaPictureName), pas testée (il faut une arène de mod installée sur la version de test).
 - [ ] Ajouter des logos et des matchup screens (léger : Mods remplace Add_01..15 et PPVbg_origin01..10 par les images du joueur)
 - [ ] Nouveau show comme NXT (30 h et plus : non)
 - [ ] Beaucoup plus de News (2-3 h par sorte ; 3-4 sortes au choix de l'utilisateur)
