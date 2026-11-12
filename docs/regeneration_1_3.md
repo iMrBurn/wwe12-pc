@@ -1,5 +1,15 @@
 # Régénération du code du jeu (1.3) : registres locaux + « volatile »
 
+> **État au 2026-11-12 : REPORTÉE, « Plus tard », sans version** (décision de l'utilisateur, 2026-11-11). Rien
+> n'est fait. L'étude ci-dessous reste valable pour le jour où on la reprend.
+> - Les corrections de THQ ne dépendent plus d'elle (voie B, nos crochets).
+> - Avant de la lancer, contrôles notés par Gameplay :
+>   1. le code régénéré doit encore écrire `ctx.lr` avant chaque appel. Sinon, les crochets qui reconnaissent
+>      leur appelant par `ctx.lr` (`wwe12_title_update.cpp`, `wwe12_universe.cpp`, `wwe12_move_events.cpp`…)
+>      cessent d'agir, sans rien dire ;
+>   2. les sondes qui lisent les registres de l'appelant dans `ctx` (`sub_822769C8`, r25 / r28 / r31) liraient
+>      des valeurs périmées.
+
 Étude de Rendu, 2026-11-10, **lecture seule** (rien compilé, rien lancé). Pour décision de l'utilisateur.
 Bases : `docs/perf_natif_steam_deck.md` (lignes « Registres du jeu en mémoire » et « Accès mémoire volatile »,
 section 4) et `docs/plan_1_2_codegen_tu.md` (plan de Gameplay, écrit quand la TU devait aussi changer le code).

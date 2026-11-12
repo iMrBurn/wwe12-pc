@@ -1,20 +1,27 @@
 # Les corrections des 2 mises à jour officielles (Title Updates) de WWE '12
 
-> **État au 2026-11-06**
-> - Étude faite (lecture seule, 2026-11-03 / 04). **Rien codé, rien testé en jeu.**
-> - **Décision de l'utilisateur (2026-11-05) : voie B**, c'est-à-dire refaire nous-mêmes les corrections utiles en
->   crochets sur le code du disque, chacune avec son réglage. Pas de code généré depuis le xex de la TU.
-> - **Version visée : 1.2**, en même temps que les registres locaux et le patch `volatile` (une seule
->   régénération). Ordre et contrôles : `docs/plan_1_2_codegen_tu.md`.
-> - À faire en premier (1.2) : reproduire en jeu les gels de finisher (§2.7) et la perte des prises de DLC 3-4
->   (§2.1), puis les correctifs.
+> **État au 2026-11-12** (détail du travail fait : §3 bis)
+> - **Voie B** (décision du 2026-11-05) : nous refaisons nous-mêmes les corrections utiles, en crochets sur le code
+>   du disque, chacune avec son réglage. La **régénération du code est sortie de la 1.3** et passe dans « Plus
+>   tard » (décision du 2026-11-11) : elle n'est plus liée à la TU.
+> - **Corrigé, dans le build du 2026-11-11** (`port/src/native/wwe12_title_update.cpp`) :
+>   - contrôles des numéros de titre < 23 (`wwe12_tu_title_index`) : **vérifié en jeu**, rien d'anormal ;
+>   - CAW comptés dans l'effectif des émissions (`wwe12_tu_caw_roster`) : le chemin « contrat » est **vérifié** ;
+>     EDIT BRAND n'est pas testé. **Non tranché** : un CAW a pu quitter une émission de 15 hommes alors que la
+>     règle TU2 le refuserait. Test arrêté par l'utilisateur ; sans risque (au pire, comportement d'origine).
+> - **Étudié, pas appliqué :** les 3 réglages 40/60/80 → 70/80/90. Lecteur trouvé (`sub_822769C8`, dégâts),
+>   sens encore inconnu ; sonde `wwe12_tu_tune_probe`.
+> - **À faire, tests à la main par l'utilisateur :** gels de finisher (protocole §3 bis), prises DLC 3-4
+>   (CA09/CA10, §2.1).
+> - **Pas trouvé dans le code :** cage HIAC, évasion de tombé en Elimination Chamber, soumissions / IA / contre
+>   majeur de TU2 (notes de patch web non fiables).
 > - L'ancienne §5 « Suite possible » est archivée dans `docs/archives/title_update_corrections_anciennes_parties.md`.
 
 
-Étude du 2026-11-03, session Gameplay, **lecture seule** : aucun correctif écrit, jeu jamais lancé. But : voir ce
-que THQ a corrigé dans le code des mises à jour 1 (TU1) et 2 (TU2), pour le refaire nous-mêmes dans le port (comme
-le correctif des répliques de Lawler, `wwe12_sound_tables.cpp`). Notre port tourne sur le jeu du disque (v0.0.0.4).
-**Rien de ce document n'est corrigé chez nous, sauf mention contraire. Aucun correctif sans le go de l'utilisateur.**
+Étude du 2026-11-03, session Gameplay, faite en lecture seule (jeu jamais lancé). But : voir ce que THQ a corrigé
+dans le code des mises à jour 1 (TU1) et 2 (TU2), pour le refaire nous-mêmes dans le port (comme le correctif des
+répliques de Lawler, `wwe12_sound_tables.cpp`). Notre port tourne sur le jeu du disque (v0.0.0.4).
+**Sections 1 à 4 : ce qui est écrit « Chez nous : non » date de l'étude ; l'état actuel est en tête et en §3 bis.**
 
 ## 1. Méthode
 
@@ -187,7 +194,7 @@ Toutes les adresses ci-dessous sont celles du **jeu du disque** (les nôtres), s
   nouvelles vérifications d'erreur. Pas utile (pas de Xbox Live).
 - **Système (TU2)** : `sub_821B5440`, nouvelle `0x821AC930` (« GameMainThreadEvent »), `sub_821AD1E8` (`D:\`). Ce
   sont les fils d'exécution du jeu.
-  - Proche de notre fil d'exécution à 4 cœurs (`docs/wwe12_chamber_hang.md` cite `sub_821AD1E8`).
+  - Proche de notre fil d'exécution à 4 cœurs (`docs/archives/wwe12_chamber_hang_anciennes_parties_2026-11-12.md` cite `sub_821AD1E8`).
   - Pas compris.
 - **Ceintures (TU1)** : `sub_827B16D0`, `827B30E8` (près de `belt_WorldHeavy`, `belt_WWE`…), une borne 23 retirée.
 - **Création (TU1, structure de 0x52xx-0x58xx octets)** : `sub_825DC108`… `825E4900`, `825ED660`, `825EC580`

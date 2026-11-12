@@ -1,9 +1,10 @@
 # Squash matchs : étude (Limit breaking, 2026-10-28, lecture seule)
 
-> **État au 2026-11-06**
+> **État au 2026-11-12**
 > - Étude faite (cahier des charges corrigé, plan de la sonde STARTING HEALTH). **Rien codé, rien testé en jeu.**
-> - **Version visée : 1.3** (avec les finishers de départ et les stipulations). Avant : décision du 2026-10-31 →
->   1.1, puis repoussé.
+> - **Version visée : 1.4** (« Modes de match et Univers », avec les finishers de départ et les stipulations ;
+>   repoussé de la 1.3 le 2026-11-08). Avant : décision du 2026-10-31 → 1.1, puis repoussé.
+> - La section « Idée à revoir en 1.3 » plus bas vaut donc pour la 1.4.
 > - La première version de l'étude (multiplicateur de dégâts, propositions 1.0 / 1.1) est archivée dans
 >   `docs/archives/squash_anciennes_parties.md`.
 

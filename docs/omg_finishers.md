@@ -1,14 +1,15 @@
 # Moments OMG et choix libre des finishers : étude (2026-10-28)
 
-> **État au 2026-11-06**
+> **État au 2026-11-12**
 > - **Moments OMG : abandonnés** (décision de l'utilisateur). Leur étude est archivée dans
 >   `docs/archives/omg_finishers_anciennes_parties.md`.
-> - **Finishers de départ** (STARTING FINISHERS, comme WWE 2K14) : étudiés (§2), **rien codé, rien testé en jeu**.
->   **Version visée : 1.3** (avec les stipulations et le squash).
+> - **Finishers de départ** (STARTING FINISHERS, 1 / 2 / 3 / infini, comme WWE 2K14) : étudiés (§2), **rien codé,
+>   rien testé en jeu**. **Version visée : 1.4** (« Modes de match et Univers », avec les stipulations et le squash ;
+>   repoussé de la 1.3 le 2026-11-08).
 > - **Choix libre des finishers** (§3) : lecture seulement, pas planifié.
 > - Les mentions « 1.0 » / « 1.1 » plus bas sont les propositions d'origine, dépassées.
-> - Lien : les corrections de THQ sur des finishers qui gèlent (TU2) sont dans `title_update_corrections.md`
->   (1.2, voie B).
+> - Lien : les gels de finisher corrigés par THQ (TU2) sont dans `title_update_corrections.md` (1.3, voie B,
+>   protocole de test en §3 bis).
 
 
 Demande de l'utilisateur (via Main) pour la feuille de route 1.0. **Étude du code et des données seulement** : rien n'a
