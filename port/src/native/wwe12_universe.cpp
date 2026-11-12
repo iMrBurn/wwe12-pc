@@ -4403,7 +4403,10 @@ REX_EXTERN(__imp__sub_8288EEF8);  // message box: its answer
 
 extern "C" REX_FUNC(sub_825572C8) {
   const u32 card = ctx.r3.u32;
-  if (g_second_offer >= 512 || !TwoBriefcases()) {
+  // (the second holder's box: a NO puts the first one back as the game's holder, so the next offer asks him first again)
+  static u32 s_first = 512;
+  if ((g_second_offer >= 512 && s_first >= 512) || !TwoBriefcases()) {
+    s_first = 512;
     __imp__sub_825572C8(ctx, base);
     return;
   }
@@ -4412,12 +4415,23 @@ extern "C" REX_FUNC(sub_825572C8) {
   int32_t answer = -3;
   if (state == 2 && box && bd::mem::load<u32>(box + 1820) == 0)
     answer = int32_t(Call(ctx, base, __imp__sub_8288EEF8, box));
-  const u32 u = answer == 0 ? Call(ctx, base, __imp__sub_82683A30, 0) : 0;
+  const u32 u = answer == 0 || answer == 1 ? Call(ctx, base, __imp__sub_82683A30, 0) : 0;
+  if (g_second_offer >= 512) {  // the second holder's box is open
+    __imp__sub_825572C8(ctx, base);
+    if (answer == 0 && u) {
+      SetGameHolder(u, s_first);
+      BD_INFO("[univers] Money in the Bank: NO for the second holder too, {} is the game's holder again", s_first);
+    }
+    if (answer == 0 || answer == 1 || answer == -2)
+      s_first = 512;
+    return;
+  }
   if (answer == 0 && u) {
     // NO for the first holder: the game would go on to the match at once (test of 2026-11-12), so the box is asked
     // again for the other one instead, before the game reads the NO (the box takes the new question).
     const u32 other = g_second_offer;
     g_second_offer = 512;
+    s_first = bd::mem::load<u16>(u + kBriefcaseHolder);
     SetGameHolder(u, other);
     bd::mem::store<u32>(card + 4096, g_second_title);
     Call(ctx, base, __imp__sub_82554670, card);
