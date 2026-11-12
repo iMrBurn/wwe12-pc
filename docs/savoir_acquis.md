@@ -135,6 +135,19 @@ Les entrées sont classées par sujet, pas par date ; ajouter les nouvelles déc
   Vérifié en jeu : thème choisi, arrêt au match, reprise au menu. Pas encore vérifiés en jeu : thème d'un catcheur DLC
   (82 entrées listées) et le tour « musique des menus du jeu ». Lanceur `tools/dev/lancer_test_jukebox.bat` (données
   isolées `Documents\wwe12_test`).
+  **2026-11-11** : le gestionnaire de musique M = [[0x83231754] + 52]. Le menu principal et chaque retour après un écran de
+  chargement remettent [M+32] = 1, et la mise à jour `sub_8271BFD0` relance la piste 0. Les écrans lancent aussi la
+  musique sur la piste 1 par `sub_821D6368`. Tant qu'un thème joue, le jukebox coupe la piste 0 ou 1 dès qu'elle démarre
+  (`wwe12_jukebox_keep_theme`). État d'une piste par `sub_8271BB00` : 0 ou bit 0x1 / 0x20 = libre, 4 = en chargement,
+  8 = joue ; un arrêt fond le son en ~2 s. Détails : `docs/univers.md` (état en tête).
+- **Fiches des catcheurs et marques (Univers, 2026-11-10)** : fiche = [0x8317FA08] + index × 286, avec index = u16
+  [0x8307B5E0 + numéro × 2], soit numéro − 50, sur 323 fiches. Le numéro est un u16 big-endian à +0x28 : ne jamais le lire
+  sur le seul octet +41. Les catcheurs créés (numéros < 50) sont ailleurs (zone CAW, 1832 octets). Marque : +24..+27,
+  mais l'Univers ne lit et n'écrit que +27. Valeurs : 0 RAW, 1 SmackDown, 6 sans marque ; 2 et 4 existent, sens inconnu.
+  Fiches d'origine : misc.pac /CHAR/DAT (lu par `sub_82DCAA58`). Détails : `docs/univers.md`, en tête et §27.
+- **Commentaire de l'Univers (2026-10-31)** : une table de son de type 12 dont les paires ne sont pas triées par empreinte
+  rendait Lawler muet avec le DLC 04 ; le portage la trie en mémoire (`wwe12_comm_table_fix`). Étude :
+  `docs/commentaire_univers.md`.
 - **Interrupteur « jeu d'origine » (2026-10-22, reporté à la 1.0 : PAS dans l'arbre, sauvé dans
   `work/original-game-1.0.patch`, hors dépôt ; `git apply` pour le reprendre)** : `wwe12_original.h` (`Wwe12OriginalGame()`) +
   `wwe12_original.cpp` (cvar `wwe12_original_game`, défaut false ; le launcher n'écrira que cette clé). À true,

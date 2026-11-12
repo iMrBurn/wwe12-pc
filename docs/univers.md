@@ -1,10 +1,29 @@
 # Mode Univers : état, savoir et historique
 
-Conversation « WWE 12 PC (Univers) ». Code : `port/src/native/wwe12_universe.cpp` (et `wwe12_jukebox.cpp` pour le
-correctif NEXT MATCH). Les parties périmées (premiers plans, listes d'idées, étapes remplacées, étude abandonnée) sont
-dans `docs/archives/univers_anciennes_parties.md` ; rien n'a été supprimé. Les numéros de partie (§) ne changent pas.
+Conversation « WWE 12 PC (Univers) ». Code : `port/src/native/wwe12_universe.cpp` (et `wwe12_jukebox.cpp`, le
+jukebox). Les parties périmées (premiers plans, listes d'idées, étapes remplacées, étude abandonnée, plantage corrigé)
+sont dans `docs/archives/univers_anciennes_parties.md` et `docs/archives/univers_anciennes_parties_2026-11-12.md` ;
+rien n'a été supprimé. Les numéros de partie (§) ne changent pas.
 
-## État au 2026-11-06
+## État au 2026-11-12
+
+**1.2 (publiée le 2026-11-10)** :
+- Un catcheur ajouté garde sa marque après un redémarrage, un match et une remise à zéro de l'Univers. La part de Mods
+  ne recopie plus la marque du pack. Chez nous, RestoreBrands saute les catcheurs ajoutés (`Wwe12AddedSuperstar`).
+- Les news nomment un catcheur ajouté par son propre nom (crochet `sub_82559100`, `wwe12_universe_news_added_names`) :
+  le jeu avait des textes fixes pour 12 numéros (115, 131, 135, 165, 182, 261, 272, 278, 330, 331, 338, 340).
+- Journal des étapes (`wwe12_universe_flow_log`) : lignes « step id N made » de la fabrique `sub_823DCC38`. Ordre
+  après un match joué : 19, 27, 22, 15, 17, « result: », 18, 28, 0. Testé : comportement inchangé.
+
+**1.3 (commits locaux, non poussés)** :
+- Les CAW comptent dans l'effectif des émissions, comme la TU2 : `wwe12_tu_caw_roster`, chez Gameplay
+  (`wwe12_title_update.cpp`). Chez nous, le recomptage d'EDIT BRAND n'exclut plus les CAW, et le compte du départ d'une
+  émission (`sub_826D0598` appelé depuis 0x826D3C84) reçoit r5 = 1 : il compte alors depuis le numéro 0 et non plus 100.
+  Commit 12eb321 : pas encore testé en jeu.
+- Jukebox, testé par l'utilisateur le 2026-11-11 (e587ded, 51e1b5f ; nettoyage 0370c86) : plus de musique du jeu
+  sous un thème. Le menu principal (et chaque retour après un écran de chargement) remet [M+32] = 1 et la mise à jour
+  relance la piste 0. Tant qu'un thème joue, la garde coupe la piste 0 ou 1 dès qu'elle démarre. Avec aucun thème en
+  cours, un écran qui lance la musique (`sub_821D6368`) rend la main au jukebox.
 
 **Fait et testé en jeu** (1.0 et 1.1, poussé) :
 - EDIT UNIVERSE (menu en pages) : EDIT SUPERSTARS (marques, tenues), EDIT TITLES (VACANT titre par titre), EDIT
@@ -28,9 +47,8 @@ catcheurs de RAW ?) ; essai à l'aveugle le 2026-11-04 raté (écran éteint).
 « MOVE » (changer l'ordre des matchs) : malentendu, le joueur voulait des catcheurs animés dans les écrans de choix et
 VS (pas l'Univers, « à voir » pour l'utilisateur).
 
-**1.3** (décision de l'utilisateur du 2026-11-07 : l'ancien « 1.2 » de l'Univers passe en 1.3) : les CAW comptés dans
-l'effectif des shows (comme la TU2 : `sub_82A330D8` répond « pas un CAW » pour les 4 appels de `sub_82583B78`,
-`sub_82599DB0`, `sub_826D3B58` ; notre recomptage ne l'appelle plus ; ½ à 1 séance) ; deux mallettes Money in the Bank
+**Reste pour 1.3 / 1.4** (décision de l'utilisateur du 2026-11-07, puis du 2026-11-08 : Univers en 1.4) : deux
+mallettes Money in the Bank
 (§38, réglage 1 ou 2) ; couper blessures / fins de carrière ; classement des titres par équipe ; rivalités menées au
 PPV ; rivalité inter-marques sans match ; titres de SmackDown dans EDIT SUPERSTAR (si c'est le jeu d'origine) ; photo
 propre des arènes ajoutées (§41) ; ajout de logos / matchup screens (§41) ; surprises du Royal Rumble ; idées de joueurs
@@ -38,14 +56,26 @@ restantes (`docs/suggestions_joueurs.md`).
 
 **Réglages** : `wwe12_universe_edit`, `wwe12_universe_min_roster`, `wwe12_universe_title_defenses`,
 `wwe12_universe_qualifiers`, `wwe12_universe_news_ppv_picture`, `wwe12_universe_added_relations`,
-`wwe12_jukebox_stop_on_load`. Fichiers à côté de la sauvegarde : `universe_shows.txt`, `universe_attires.txt`,
+`wwe12_universe_news_added_names`, `wwe12_universe_flow_log`, `wwe12_universe_added_arenas`,
+`wwe12_universe_draft_news`, `wwe12_universe_probe` (sonde, coupée) ; jukebox : `wwe12_jukebox_stop_on_load`,
+`wwe12_jukebox_keep_theme`, `wwe12_jukebox_log_screens`. Fichiers à côté de la sauvegarde : `universe_shows.txt`, `universe_attires.txt`,
 `universe_contenders.txt`, `universe_stats.txt` (+ `_before_reset`), `universe_reset_hint.txt` ; `relations_cleared.txt`
 (Mods).
 
 **Pièges durables** : un crochet par fonction (une 2e définition casse le lien) ; un « return n » partagé n'a pas
 toujours un objet en r3 (vérifier la vtable) ; la liste des news est vidée par le jeu après le 1er match d'un show ;
 le jeu ne dessine pas le type de news 6 ni une news sans catcheur ; la table des relations est à la vue +12 (pas +4) ;
-tester sur une COPIE de la sauvegarde (`lancer_test_effectif.bat`, ou une copie complète avec les mods).
+tester sur une COPIE de la sauvegarde, dans le seul dossier de test `Documents\wwe12_test`
+(`lancer_test_effectif.bat`, `lancer_test_univers.bat`, `lancer_test_jukebox.bat`).
+
+**Marques (page ROSTERS du launcher, 2026-11-10)** : fiche du catcheur = [0x8317FA08] + index × 286, avec
+index = u16 [0x8307B5E0 + numéro × 2], soit numéro − 50, sur 323 fiches (`sub_82683878`). Le numéro est écrit dans la
+fiche, en u16 big-endian à +0x28 : ne jamais le lire sur le seul octet +41. +24..+27 = marque, mais l'Univers lit et
+écrit SEULEMENT +27 (`sub_826CEC60`, `sub_826D3DC0`, transferts `sub_8258A830` / `sub_8258B5F0`, et le résultat de
+match `sub_826CEF28`, qui met un catcheur hors RAW / SmackDown dans la plus petite des deux). +24..+26 servent aux
+autres modes. Valeurs : 0 RAW, 1 SmackDown, 6 sans marque (Mod Maker), 4 et 2 = autres marques acceptées par le jeu,
+sens inconnu. Effectif d'une émission = catcheurs dont la marque +27 est cochée dans la fiche d'émission
+(U + 27360 + k × 984, +929 + marque, `sub_826CC0B8`) : il n'y a pas d'autre copie de la marque.
 
 ## Sommaire
 
@@ -64,10 +94,10 @@ tester sur une COPIE de la sauvegarde (`lancer_test_effectif.bat`, ou une copie 
   - 4.2 Le déroulement, tel qu'on le voit dans `univers.log`
 - 5. Ce qu'on ne sait pas encore (à faire avant de modifier) (archivé)
 - 6. Ce que ça veut dire pour la suite (étapes 1 à 4) (archivé)
-- 7. Ce que fait WWE '13 (étudié le 2026-10-18, pour s'en inspirer)
+- 7. Ce que fait WWE '13 (étudié le 2026-10-18, pour s'en inspirer) (archivé)
 - 8. Tests en jeu (2026-10-18, sauvegarde de l'utilisateur mise de côté puis remise) (archivé)
-- 9. Comment le jeu crée l'Univers (test « sauvegarde neuve », 2026-10-20)
-- 10. Remise à zéro : ça marche (2026-10-20)
+- 9. Comment le jeu crée l'Univers (test « sauvegarde neuve », 2026-10-20) (archivé)
+- 10. Remise à zéro : ça marche (2026-10-20) (archivé)
 - 11. EDIT UNIVERSE > RESET UNIVERSE dans le jeu (2026-10-20, testé en jeu)
 - 12. VACANT titre par titre, comme SvR 2011 (2026-10-20, testé en jeu en FR)
 - 13. MODIFIER L'UNIVERS façon WWE '13, avec les vrais menus du jeu (2026-10-20, testé en jeu)
@@ -97,7 +127,7 @@ tester sur une COPIE de la sauvegarde (`lancer_test_effectif.bat`, ou une copie 
   - 36 bis. Elimination Chamber, news (suite, 2026-10-27, vu par l'utilisateur)
 - 37. UNIVERSE OPTIONS dans EDIT UNIVERSE (1.0, 2026-11-01, vu par l'utilisateur)
 - 38. Plan 1.1 : deux mallettes Money in the Bank (demande de l'utilisateur, 2026-11-01)
-- 39. Plantage 1.0.0 « 5 matchs RAW + 5 SmackDown » corrigé (2026-11-03, testé sur la copie, candidat 1.0.1)
+- 39. Plantage 1.0.0 « 5 matchs RAW + 5 SmackDown » corrigé (2026-11-03, testé sur la copie, candidat 1.0.1) (archivé)
 - 40. 1.1 : jukebox, news des PPV, relations des catcheurs ajoutés (2026-11-05, vus par l'utilisateur)
 - 41. Arènes ajoutées, logos et matchup screens dans SHOW EDIT (étude puis arènes faites, 2026-11-06)
 - 42. Matchs par show : contenders en double et cartes incomplètes (1.1, 2026-11-06)
@@ -370,96 +400,21 @@ corriger quand on reprendra la sonde.
 
 → partie déplacée dans `docs/archives/univers_anciennes_parties.md` (2026-11-06).
 
-## 7. Ce que fait WWE '13 (étudié le 2026-10-18, pour s'en inspirer)
+## 7. Ce que fait WWE '13 (étudié le 2026-10-18, pour s'en inspirer) (archivé)
 
-Source : la copie de l'utilisateur (recomp WWE '13 de PromethenDev, fichiers du jeu fournis par
-l'utilisateur). **Rien de WWE '13 ne doit aller dans le dépôt ni dans les zips.** On ne reprend pas son
-code (autre exe) : il sert de modèle, même moteur Yuke's.
-
-**Menus Univers de WWE '13** : mêmes numéros de textes que WWE '12 (27000…), les ajouts occupent des
-numéros **vides dans WWE '12** :
-- 27026–27030 : EDIT SUPERSTARS, EDIT ROSTERS, EDIT TEAMS, **EDIT TITLES**, **RESET UNIVERSE** (sous
-  « EDIT UNIVERSE », 27045, qui remplace EDIT SUPERSTAR) ; 27048 FEUD MANAGER ; **27049 STATISTICS**.
-- Édition des titres : 27651/27663/27665/27682/27896 **VACANT**, « No belt is assigned to this
-  category », catégories MAJOR / MINOR / TAG / DIVA (27606–27609).
-- Le nom interne de l'écran est `ResetUniverse` (0x8205FA54 dans l'exe de WWE '13) ; la remise à zéro
-  relit les **valeurs de départ** (`CWWEUniverseStationed::BatPacReaderCallBack_SaveInit`).
-
-**Statistiques de WWE '13** (textes 27824–27849 et 33200–33243) :
-- par catcheur : victoires, **WIN%**, apparitions, temps d'activité ;
-- **titres** : nombre de règnes (TIMES EARNED), **semaines de règne** (WEEKS HELD), anciens champions
-  (PAST CHAMPIONS), nouveau record ;
-- **Money in the Bank** : anciens gagnants, résultat du cash-in, % de victoires après cash-in ;
-- **Royal Rumble** : gagnants, apparitions, adversaires éliminés, temps passé dans le Rumble ;
-- **WrestleMania** : résultats, main events, % de victoires.
-
-**Valeurs de départ de l'Univers dans WWE '12** : `pac/misc.pac`, groupe **BATL/SAVE** (même nom que
-dans WWE '13) ; chargé par la classe à vtable 0x8203E7D8 (`sub_826EC0A8` ouvre « BATL/SAVE »,
-`sub_826EC008` garde les entrées 2 et 3 via `sub_826D69C8` → globales 0x832315E4 / 0x832315E8).
-- entrée 2 « LBTS » : équipes de départ (Kane & Big Show, Santino & Kozlov, Otunga & McGillicutty,
-  Demolition, Road Warriors, Divas of Doom…) ;
-- entrée 3 « HID » ;
-- entrée 4 (PACH de 6) : « WUD » (fiches de départ des catcheurs), « WDR » (relations de départ),
-  émissions (RAW, SmackDown, Superstars), calendrier des 13 PPV (Royal Rumble…), marques (RAW,
-  SmackDown, Diva, Legend, FreeAgent…). Qui lit l'entrée 4 : **pas encore trouvé**.
-
-**Conséquences pour WWE '12** :
-- Les textes des nouvelles entrées peuvent reprendre les numéros libres (27026–27049…) avec les mêmes
-  mots que WWE '13 (patch de string.pac au démarrage, comme menu.pac).
-- Le **suivi des stats** doit être écrit par nous : WWE '12 ne garde ni victoires ni historique (§3.3).
-  Idée : après chaque match Univers (`sub_826C3258`), ajouter une ligne dans un fichier à nous
-  (Documents\wwe12\universe_stats…), et un écran STATISTICS (ImGui au style du jeu, comme GRAPHISMES).
-- **Reset** : vider le bloc (`sub_826D5938`), remettre les champions Univers par défaut, puis laisser le
-  jeu recréer l'Univers à partir de BATL/SAVE (à vérifier en jeu).
+Déplacé le 2026-11-12 dans `docs/archives/univers_anciennes_parties_2026-11-12.md`.
 
 ## 8. Tests en jeu (2026-10-18, sauvegarde de l'utilisateur mise de côté puis remise)
 
 → partie déplacée dans `docs/archives/univers_anciennes_parties.md` (2026-11-06).
 
-## 9. Comment le jeu crée l'Univers (test « sauvegarde neuve », 2026-10-20)
+## 9. Comment le jeu crée l'Univers (test « sauvegarde neuve », 2026-10-20) (archivé)
 
-Test : sauvegarde de l'utilisateur mise de côté (puis remise, empreinte vérifiée), lancement 1 =
-sauvegarde neuve sans entrer dans l'Univers, lancement 2 = première entrée dans l'Univers.
+Déplacé le 2026-11-12 dans `docs/archives/univers_anciennes_parties_2026-11-12.md`.
 
-- **L'Univers est créé avec la sauvegarde**, pas à la première entrée : la sauvegarde neuve contient
-  déjà les points de départ des catcheurs, les cartes, etc. La première entrée ne change que
-  193 octets (dont 12 zones du bloc Univers et quelques octets du bloc 2 vers +0x576C4 / +0x584E3…,
-  sans doute des drapeaux « déjà vu »).
-- Création d'une sauvegarde neuve : `sub_8269E698` → `sub_82699F10` (bloc 1 remis à zéro, dont
-  `sub_826D5938` pour l'Univers), puis un chargeur lit **BATL/SAVE** (`pac/misc.pac`) et appelle pour
-  chaque entrée la fonction de la table à 0x83073240 : {2 → `sub_8269EF80` (équipes LBTS),
-  3 → `sub_82A41578` (HID), **4 → `sub_826BE3C0` (Univers)**}.
-- **`sub_826BE3C0(données, taille)`** = « SaveInit » de l'Univers (même rôle que
-  `CWWEUniverseStationed::BatPacReaderCallBack_SaveInit` de WWE '13) : elle lit les 6 morceaux de
-  l'entrée 4 (0 = WUD fiches de départ, 1 = WDR relations, 2 = émissions [cartes vidées par
-  `sub_826D5228`], 3 = PPV, 4 = 7 réglages, 5 = marques) et les écrit dans le bloc Univers. C'est
-  aussi elle qui imprime « RP Setup,Status,RosterID,No ».
-- Le test « Univers vidé » plantait parce qu'il ne faisait que la première moitié.
+## 10. Remise à zéro : ça marche (2026-10-20) (archivé)
 
-**Recette de la remise à zéro** (à coder) : `sub_826D5938(U)` puis `sub_826BE3C0` avec l'entrée 4 de
-BATL/SAVE (lue depuis misc.pac), puis remettre les champions de la table Univers aux valeurs par
-défaut (table 0x8324E3A8, comme `sub_82A39E08` mais seulement pour la table Univers), enfin laisser le
-jeu enregistrer. À faire hors d'un match, depuis un menu.
-
-## 10. Remise à zéro : ça marche (2026-10-20)
-
-`port/src/native/wwe12_universe.cpp` (cvar `wwe12_universe_dev`, off par défaut ;
-`tools/dev/lancer_test_univers.bat`). Testé en jeu par l'utilisateur, sur sa sauvegarde
-(copiée avant, remise après) : F8 sur un écran Univers → retour au tout début (calendrier,
-cartes, champions), y compris après avoir simulé jusqu'à un PPV.
-
-- Le jeu lit l'Univers de départ en entrant dans l'Univers : `sub_826EC008(this, pack)` reçoit le
-  **pack BATL/SAVE ouvert** (une poignée du lecteur, sur la pile du chargeur, pas des données) ;
-  l'entrée d'id 4 est l'Univers de départ, compressé en BPE. `sub_827D8E30(pack, id)` = index,
-  `sub_827D9528(pack, index)` = copie décompressée (6 756 octets, un PACH de 6 entrées), libérée par
-  `sub_827D2EA0(copie, 0)`. On en garde une copie (mémoire de jeu à nous, SystemHeapAlloc).
-- La remise à zéro : `sub_826D5938(U)`, `sub_826BE3C0(copie, taille)`, champions Univers par défaut
-  (table 0x8324E3A8 → 0x83226508). Lancée depuis le crochet des textes (`sub_821A4400`, fil du
-  jeu) quand le texte demandé est un texte Univers (27000–27999).
-- Sonde : le menu Univers (27041–27047) est construit par `sub_8255EC88` (texte demandé via
-  0x824CA80C ← 0x8255ED44) ; les cartes de matchs par 0x82556A70 ← 0x8255778C.
-- Prochaine étape (2) : un vrai choix « RESET UNIVERSE » (EDIT SUPERSTAR → EDIT UNIVERSE avec un
-  sous-menu, comme WWE '13), avec confirmation, à la place de F8.
+Déplacé le 2026-11-12 dans `docs/archives/univers_anciennes_parties_2026-11-12.md`.
 
 ## 11. EDIT UNIVERSE > RESET UNIVERSE dans le jeu (2026-10-20, testé en jeu)
 
@@ -977,17 +932,9 @@ Comme en 2010/2011 : un match MITB par marque au PPV (show 16) et **deux détent
   5) affichage. Réglage prévu dans UNIVERSE OPTIONS, validé par l'utilisateur : MONEY IN THE BANK = 1 ou 2
   (1 = un match et une mallette, le jeu d'origine, défaut ; 2 = deux matchs au PPV et deux mallettes).
 
-## 39. Plantage 1.0.0 « 5 matchs RAW + 5 SmackDown » corrigé (2026-11-03, testé sur la copie, candidat 1.0.1)
+## 39. Plantage 1.0.0 « 5 matchs RAW + 5 SmackDown » corrigé (2026-11-03, testé sur la copie, candidat 1.0.1) (archivé)
 
-Trace d'un joueur : C0000005 dans la règle de carte `sub_826EF988` (table de règles 0x8203E680, 25 règles, la plupart
-lisent l'entrée +0), appelée par `sub_826EB510`. L'entrée n° 4 (le 5e match, 48 octets, +0 = modèle de match) était
-vide. Le booker hebdo `sub_826F15E8` prend son modèle par `sub_826DC6E8(table, groupe, i)` : notre réécriture ne
-visait que l'appel qui revient à 0x826F1690 ; l'autre choix (table 15 groupe 0, quand `sub_826CD010` répond 1 : les
-shows d'après un PPV) prenait le modèle i tel quel, et ce groupe n'en a que 4, donc NULL. Correctif : tout appel venant
-de `sub_826F15E8` qui dépasse les modèles du groupe prend le dernier (dernier match) ou tourne sur les autres ; filet :
-un match hebdo au-delà du nombre du jeu resté sans modèle est re-booké comme un des matchs du jeu, puis remis à sa
-place (+8). Vu : 2-3 mois simulés à 5/5 avec les qualifs, « template 4 of group 0 -> 3 » sur les RAW / SmackDown
-d'après l'Elimination Chamber, plus de plantage ; le filet ne s'est pas déclenché.
+Déplacé le 2026-11-12 dans `docs/archives/univers_anciennes_parties_2026-11-12.md`.
 
 ## 40. 1.1 : jukebox, news des PPV, relations des catcheurs ajoutés (2026-11-05, vus par l'utilisateur)
 
