@@ -96,6 +96,8 @@ REXCVAR_DECLARE(uint32_t, user_language);
 REXCVAR_DEFINE_BOOL(wwe12_universe_qualifiers, false, "WWE12",
                     "Universe: qualifying matches before Money in the Bank and the Elimination Chamber, "
                     "with news.");
+REXCVAR_DEFINE_BOOL(wwe12_universe_card_probe, false, "WWE12",
+                    "Dev: log every card entry the Universe writes (104 bytes) with its booker record's head.");
 REXCVAR_DEFINE_BOOL(wwe12_universe_injuries, true, "WWE12",
                     "Universe: Superstars can be injured, out of action for some weeks, a serious injury included "
                     "(false: nobody is injured; WWE '12 has no other end of career).");
@@ -5203,6 +5205,12 @@ extern "C" REX_FUNC(sub_826CEF28) {
                                       won ? 1 : 0, day));
       }
       DefenseNews(x, base, record, day);  // (before the game's result: the champion is still the old one)
+      if (REXCVAR_GET(wwe12_universe_card_probe)) {
+        std::string e;
+        for (u32 k = 0; k < 104; ++k)
+          e += fmt::format("{:02X}{}", bd::mem::load<u8>(record + k), k % 4 == 3 ? " " : "");
+        BD_INFO("[univers] card probe: result show {} match {} entry {}", show, match, e);
+      }
       // streaks ("res <id> <won> <day>" for each Superstar of a match with a winner; more news at 5, 10, 15 wins and
       // 5 losses in a row)
       if (!rumble && winner < 6 && !g_last_result.empty()) {
@@ -6709,6 +6717,17 @@ extern "C" REX_FUNC(sub_826EAEB0) {
   if (qualifiers && bd::mem::try_load<u32>(booker) == kBookerPpv)
     PlaceQualified(in, base, booker, booker + 20 + i * 1320);
   __imp__sub_826EAEB0(ctx, base);
+  if (REXCVAR_GET(wwe12_universe_card_probe) && entry && i < 8) {
+    // Dev: the card entry written (104 bytes) and the booker's record head, to find the #1 contender's and the mystery
+    // opponent's marks (news, 1.4)
+    std::string e, r;
+    for (u32 k = 0; k < 104; ++k)
+      e += fmt::format("{:02X}{}", bd::mem::load<u8>(entry + k), k % 4 == 3 ? " " : "");
+    const u32 rec = booker + 20 + i * 1320;
+    for (u32 k = 0; k < 40; k += 4)
+      r += fmt::format(" {:08X}", bd::mem::load<u32>(rec + k));
+    BD_INFO("[univers] card probe: booker {:08X} match {} entry {}| record{}", bd::mem::try_load<u32>(booker), i, e, r);
+  }
   if (qualifiers) {
     const u32 v = bd::mem::try_load<u32>(booker);
     if ((v == kBookerRaw || v == kBookerSmackDown || v == kBookerSuperstars) &&
