@@ -60,6 +60,8 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 
 **Décision de l'utilisateur (2026-11-10, nuit) : prises ajoutées d'autres jeux COUPÉES par défaut** (réglage `wwe12_added_moves`, false ; Mods 189cead, local, non compilé). Preuve sur la copie de test : avec des mods à prises ajoutées, un catcheur envoyé dans les cordes (irish whip) traverse le ring, et les prises d'AJ Styles 2K17 finissent l'adversaire 1 à 2 m trop loin ; colle avec le Gut Kick cassé chez les joueurs (Maria SvR 2009). Cause exacte non trouvée ; essai « comme LA Max » (zmvm_add.h, faeb35f) fait mais non prouvé. L'utilisateur attend l'outil de MrSmith pour reprendre ce sujet. En attendant : refaire le mod en décochant « Prises ajoutées ». À écrire dans les notes de la 1.3 (la 1.2 « Moveset update » a ce défaut connu).
 
+**1.3.0 PC EMPAQUETÉE le 2026-11-12** (VERSION 1.3.0, zip 110 623 182 o, SHA-256 6e71c88d…7b79, `dist/PUBLICATION_v1.3.0/PC`), en attente de la publication par l'utilisateur ; l'APK 1.3 vient après (décision : « PC, APK ensuite »).
+
 **Ajouts 1.3 de l'utilisateur (2026-11-11)** : titantrons AJOUTÉS (pas seulement remplacés) ; vidéos pour ruban et walltron ; entrées spéciales WM / titre portées ; arènes portées retravaillées ; aperçu des entrées dans le Mod Maker (comme SvR 2011) ; bugs : musique du menu sous les thèmes du jukebox et après START, attributs non sauvegardés, quelques modèles et entrées à corriger.
 
 **Reporté de la 1.2 (2026-11-10)**
