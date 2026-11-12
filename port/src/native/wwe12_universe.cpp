@@ -4760,8 +4760,13 @@ void NewsOnce(const std::string &key, u32 kind, u32 id, u32 arg) {
 void TitleChangeNews(const PPCContext &in, u8 *base, u32 title, u32 holder) {
   if (!REXCVAR_GET(wwe12_universe_more_news) || holder >= 512 || title >= 23)
     return;
+  // (only the titles the Universe uses: one that has changed hands in this save. The untracked old titles - ECW, WCW,
+  // Hardcore... - keep their holders forever: tag champions "held" two titles, test of 2026-11-12)
+  std::set<u32> used;
+  for (const Reign &r : LoadReigns())
+    used.insert(r.title);
   for (u32 other = 0; other < 23; ++other) {
-    if (other == title)
+    if (other == title || !used.count(other))
       continue;
     for (u32 place = 0; place < 2; ++place)
       if ((Call(in, base, __imp__sub_82A39FC8, other, place, 1) & 0xFFFF) == holder) {
