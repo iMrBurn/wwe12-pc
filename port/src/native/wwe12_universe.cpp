@@ -4201,6 +4201,8 @@ extern "C" REX_FUNC(sub_82A3A060) {
 // More news (1.4): a cash-in's result, streaks (see MoreNewsText).
 void DefenseNews(const PPCContext &in, u8 *base, u32 record, u32 day);
 void WeeklyNews(const PPCContext &in, u8 *base);
+void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i);
+void ContenderWonNews(u32 record, u32 winner_id);
 void CashInNews(u32 id, bool won);
 void StreakNews(const std::vector<std::pair<u32, bool>> &result, u32 day);
 
@@ -4599,13 +4601,15 @@ constexpr u8 kMoreMarker = 0x53;
 constexpr u32 kMoreEvent = 200;  // (queued as event 200 + kind)
 enum MoreKind : u32 {
   kCashInWon, kCashInLost, kStreak5, kStreak10, kStreak15, kLosing5,
-  kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical, kMoreKinds
+  kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical,
+  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMoreKinds
 };
 // (its argument in the news' +10, u16, which the game neither clears nor reads: a title, title + 256 * another title
 // or title + 256 * a number)
 u32 g_news_more = 0;
 u32 g_news_more_arg = 0;  // the news' +10 while drawn
 std::string g_more_title1, g_more_title2;  // ... its titles' names, and number (set by the drawing hooks)
+std::string g_more_name2, g_more_name3;     // ... and its 2nd / 3rd Superstars' names (+2, +4)
 u32 g_more_number = 0;
 REXCVAR_DEFINE_BOOL(wwe12_universe_more_news, true, "WWE12",
                     "Universe: more news (a Money in the Bank cash-in's result, winning streaks of 5, 10 and 15, "
@@ -4639,6 +4643,7 @@ u32 NewsEvent(u32 rec) {
 
 struct Qualifier {
   u32 event, year, a, b;
+  u32 b2 = 512, b3 = 512;  // (more news: a 2nd and 3rd Superstar, in the news' +2 / +4)
 };
 std::mutex g_qual_mutex;
 std::vector<Qualifier> g_pending_news;  // news to add on the game's thread: {event, type, id}
@@ -4701,6 +4706,12 @@ u32 PendingQualifier(u32 a, u32 b, u32 year) {
 void QueueNews(u32 event, u32 type, u32 id) {
   std::lock_guard<std::mutex> lock(g_qual_mutex);
   g_pending_news.push_back({event, 0, type, id});  // a = the news' type, b = its Superstar
+}
+void QueueNews3(u32 event, u32 id, u32 id2, u32 id3, u32 arg) {
+  std::lock_guard<std::mutex> lock(g_qual_mutex);
+  Qualifier q{event, arg, kNewsQualified, id};
+  q.b2 = id2, q.b3 = id3;
+  g_pending_news.push_back(q);
 }
 void QueueNews(u32 event, u32 type, u32 id, u32 arg) {
   std::lock_guard<std::mutex> lock(g_qual_mutex);
@@ -4878,6 +4889,66 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
   BD_INFO("[univers] news: medical update for {}", who);
 }
 
+// A card entry written (104 bytes: +1 its title, +2 its places, +7 its template's kind, 8 = a #1 contender's match;
+// places at +16 + 12 * p: +0 the Superstar, u16, +3 his side, +7 = 1: shown as "???", a mystery opponent; seen with
+// wwe12_universe_card_probe, 2026-11-12): a news for a #1 contender's match (2 or 3 Superstars) and for a mystery
+// opponent. Each card entry once (the same card can be written again).
+void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
+  if (!REXCVAR_GET(wwe12_universe_more_news))
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  const u32 day = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+  static std::set<u64> s_done;
+  const u64 key = (u64(bd::mem::try_load<u32>(booker)) << 32) ^ (u64(day) << 4) ^ i;
+  const u32 places = std::min<u32>(bd::mem::load<u8>(entry + 2), 8), title = bd::mem::load<u8>(entry + 1);
+  std::vector<std::pair<u32, u32>> who;  // Superstar, side
+  u32 hidden_side = ~0u;
+  for (u32 p = 0; p < places; ++p) {
+    const u32 at = entry + 16 + p * 12, id = bd::mem::load<u16>(at);
+    if (id >= 512)
+      continue;
+    if (bd::mem::load<u8>(at + 7) == 1)
+      hidden_side = bd::mem::load<u8>(at + 3);
+    else
+      who.push_back({id, bd::mem::load<u8>(at + 3)});
+  }
+  if (who.empty() || s_done.count(key))
+    return;
+  if (hidden_side != ~0u) {
+    s_done.insert(key);
+    for (const auto &[id, side] : who)
+      if (side != hidden_side) {
+        QueueNews(kMoreEvent + kMystery, kNewsQualified, id, 0);
+        BD_INFO("[univers] news: mystery opponent for {}", id);
+        break;
+      }
+    return;
+  }
+  if (bd::mem::load<u8>(entry + 7) != 8 || title >= 23)
+    return;
+  s_done.insert(key);
+  if (who.size() == 2)
+    QueueNews3(kMoreEvent + kContenderShowdown, who[0].first, who[1].first, 512, title);
+  else if (who.size() >= 3)
+    QueueNews3(kMoreEvent + kContenderTriple, who[0].first, who[1].first, who[2].first, title);
+  else
+    return;
+  BD_INFO("[univers] news: #1 contender's match for title {} ({} Superstars)", title, who.size());
+}
+
+// The winner of a #1 contender's match (entry +7 = 8) is the title's new #1 contender.
+void ContenderWonNews(u32 record, u32 winner_id) {
+  if (!REXCVAR_GET(wwe12_universe_more_news) || !record || bd::mem::load<u8>(record + 7) != 8 || winner_id >= 512)
+    return;
+  const u32 title = bd::mem::load<u8>(record + 1);
+  if (title >= 23)
+    return;
+  QueueNews(kMoreEvent + kContenderWon, kNewsQualified, winner_id, title);
+  BD_INFO("[univers] news: {} is the new #1 contender for title {}", winner_id, title);
+}
+
 namespace {
 
 // The queued news, added on the game's thread (from the menus' input dispatch).
@@ -4901,6 +4972,8 @@ void FlushNews(const PPCContext &in, u8 *base) {
       bd::mem::store<u8>(record + 14, kMoreMarker);
       bd::mem::store<u8>(record + 15, u8(n.event - kMoreEvent));
       bd::mem::store<u16>(record + 10, u16(n.year));
+      bd::mem::store<u16>(record + 2, u16(n.b2 < 512 ? n.b2 : 512));
+      bd::mem::store<u16>(record + 4, u16(n.b3 < 512 ? n.b3 : 512));
     } else if (n.event >= kDraftEvent) {
       bd::mem::store<u8>(record + 14, kDraftMarker);
       bd::mem::store<u8>(record + 15, u8(n.event - kDraftEvent));
@@ -4918,19 +4991,21 @@ void FlushNews(const PPCContext &in, u8 *base) {
 
 // A news drawn: its texts (sub_82559468 the line, sub_82559A08 the title; the news in r4).
 // (a more news: its titles' names and number for its text)
-void MoreNewsNames(const PPCContext &in, u8 *base) {
+void MoreNewsNames(const PPCContext &in, u8 *base, u32 rec) {
   if (!g_news_more)
     return;
   const u32 kind = g_news_more - 1, a = g_news_more_arg & 0xFF, b = g_news_more_arg >> 8;
   g_more_title1 = a < 23 ? TitleName(in, base, a) : std::string();
   g_more_title2 = kind == kDoubleGold && b < 23 ? TitleName(in, base, b) : std::string();
   g_more_number = kind == kDoubleGold ? 0 : b;
+  g_more_name2 = rec ? NameOf(in, base, bd::mem::load<u16>(rec + 2)) : std::string();
+  g_more_name3 = rec ? NameOf(in, base, bd::mem::load<u16>(rec + 4)) : std::string();
 }
 
 REX_EXTERN(__imp__sub_82559468);
 extern "C" REX_FUNC(sub_82559468) {
   g_news_event = NewsEvent(ctx.r4.u32);
-  MoreNewsNames(ctx, base);
+  MoreNewsNames(ctx, base, ctx.r4.u32);
   __imp__sub_82559468(ctx, base);
   g_news_event = 0;
   g_news_draft = 0;
@@ -4939,7 +5014,7 @@ extern "C" REX_FUNC(sub_82559468) {
 REX_EXTERN(__imp__sub_82559A08);
 extern "C" REX_FUNC(sub_82559A08) {
   g_news_event = NewsEvent(ctx.r4.u32);
-  MoreNewsNames(ctx, base);
+  MoreNewsNames(ctx, base, ctx.r4.u32);
   __imp__sub_82559A08(ctx, base);
   g_news_event = 0;
   g_news_draft = 0;
@@ -5102,7 +5177,34 @@ u32 MoreNewsText(u32 id) {
         "%s a \xC3\xA9t\xC3\xA9 aper\xC3\xA7u en train de s'entra\xC3\xAEner dans un centre de performance.",
         "%s wurde beim Training in einem Leistungszentrum gesehen.",
         "%s ha sido visto entrenando en un centro de alto rendimiento.",
-        "%s \xC3\xA8 stato visto allenarsi in un centro di preparazione."}}};
+        "%s \xC3\xA8 stato visto allenarsi in un centro di preparazione."}},
+      {{"#1 CONTENDER", "N\xC2\xB0" "1 ASPIRANT", "HERAUSFORDERER NR. 1", "CONTENDIENTE N.\xC2\xBA" " 1",
+        "SFIDANTE N. 1"},
+       {"%s is officially the new #1 Contender for the {T}!",
+        "%s est officiellement le nouvel aspirant n\xC2\xB0" "1 au {T} !",
+        "%s ist offiziell der neue Herausforderer Nr. 1 auf den {T}!",
+        "\xC2\xA1%s es oficialmente el nuevo contendiente n.\xC2\xBA" " 1 al {T}!",
+        "%s \xC3\xA8 ufficialmente il nuovo sfidante n. 1 al {T}!"}},
+      {{"TRIPLE THREAT STAKES", "ENJEU EN TRIPLE THREAT", "TRIPLE THREAT MIT EINSATZ", "TRIPLE AMENAZA EN JUEGO",
+        "TRIPLE THREAT DECISIVO"},
+       {"%s, {B} and {C} collide tonight to crown the next #1 Contender!",
+        "%s, {B} et {C} s'affrontent ce soir pour d\xC3\xA9signer le prochain aspirant n\xC2\xB0" "1 !",
+        "%s, {B} und {C} treffen heute Abend aufeinander, um den neuen Herausforderer Nr. 1 zu ermitteln!",
+        "\xC2\xA1%s, {B} y {C} chocan esta noche para coronar al pr\xC3\xB3ximo contendiente n.\xC2\xBA" " 1!",
+        "%s, {B} e {C} si scontrano stasera per decidere il prossimo sfidante n. 1!"}},
+      {{"HIGH-STAKES SHOWDOWN", "CHOC D\xC3\x89" "CISIF", "ENTSCHEIDUNGSDUELL", "DUELO DECISIVO", "SFIDA DECISIVA"},
+       {"%s and {B} collide tonight, with the winner earning a future shot at the {T}!",
+        "%s et {B} s'affrontent ce soir : le vainqueur obtiendra un match pour le {T} !",
+        "%s und {B} treffen heute Abend aufeinander: Der Sieger bekommt eine Chance auf den {T}!",
+        "\xC2\xA1%s y {B} chocan esta noche: el ganador tendr\xC3\xA1 una oportunidad por el {T}!",
+        "%s e {B} si scontrano stasera: il vincitore avr\xC3\xA0 un'occasione per il {T}!"}},
+      {{"MYSTERY OPPONENT", "ADVERSAIRE MYST\xC3\x88RE", "MYSTERI\xC3\x96SER GEGNER", "RIVAL MISTERIOSO",
+        "AVVERSARIO MISTERIOSO"},
+       {"Rumors swirl backstage over who will step up to face %s tonight!",
+        "Les rumeurs vont bon train en coulisses : qui affrontera %s ce soir ?",
+        "Hinter den Kulissen brodeln die Ger\xC3\xBC" "chte: Wer tritt heute Abend gegen %s an?",
+        "\xC2\xA1Los rumores corren entre bastidores sobre qui\xC3\xA9n se enfrentar\xC3\xA1 a %s esta noche!",
+        "Nel backstage girano voci su chi affronter\xC3\xA0 %s stasera!"}}};
   const u32 kind = g_news_more - 1;
   const bool title = id == 27068 || id == 27070;
   std::string text = title ? kTexts[kind].title[CurrentLang()] : kTexts[kind].line[CurrentLang()];
@@ -5113,6 +5215,8 @@ u32 MoreNewsText(u32 id) {
   put("{T}", g_more_title1);
   put("{U}", g_more_title2);
   put("{N}", std::to_string(g_more_number));
+  put("{B}", g_more_name2);
+  put("{C}", g_more_name3);
   static u32 s_at[2] = {};
   u32 &at = s_at[title];
   if (!at)
@@ -5205,6 +5309,8 @@ extern "C" REX_FUNC(sub_826CEF28) {
                                       won ? 1 : 0, day));
       }
       DefenseNews(x, base, record, day);  // (before the game's result: the champion is still the old one)
+      if (winner < 6)
+        ContenderWonNews(record, winner_id);
       if (REXCVAR_GET(wwe12_universe_card_probe)) {
         std::string e;
         for (u32 k = 0; k < 104; ++k)
@@ -6728,6 +6834,8 @@ extern "C" REX_FUNC(sub_826EAEB0) {
       r += fmt::format(" {:08X}", bd::mem::load<u32>(rec + k));
     BD_INFO("[univers] card probe: booker {:08X} match {} entry {}| record{}", bd::mem::try_load<u32>(booker), i, e, r);
   }
+  if (entry && i < 8 && Enabled() && bd::mem::load<u32>(kInUniverseFlag) == 1)
+    CardNews(in, base, booker, entry, i);
   if (qualifiers) {
     const u32 v = bd::mem::try_load<u32>(booker);
     if ((v == kBookerRaw || v == kBookerSmackDown || v == kBookerSuperstars) &&
