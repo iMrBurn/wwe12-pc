@@ -96,6 +96,9 @@ REXCVAR_DECLARE(uint32_t, user_language);
 REXCVAR_DEFINE_BOOL(wwe12_universe_qualifiers, false, "WWE12",
                     "Universe: qualifying matches before Money in the Bank and the Elimination Chamber, "
                     "with news.");
+REXCVAR_DEFINE_INT32(wwe12_universe_mitb_briefcases, 1, "WWE12",
+                     "Universe: Money in the Bank briefcases (1 = the game's: one match, one holder; 2 = a match "
+                     "for RAW and one for SmackDown at the PPV, two holders, each cashing in as the game's).");
 REXCVAR_DEFINE_INT32(wwe12_universe_title_defenses, 0, "WWE12",
                      "Universe: chance (percent) that a weekly match with a champion in it becomes his "
                      "title's defense (0 = the game's own cards).");
@@ -530,6 +533,52 @@ std::filesystem::path StatsFile() {
   if (!state || !state->emulator() || state->emulator()->user_data_root().empty())
     return {};
   return state->emulator()->user_data_root() / "universe_stats.txt";
+}
+
+// ---- two Money in the Bank briefcases: their holders (see "two briefcases" below) -----------------
+//
+// The holders, from universe_stats.txt: the "mitb <id> <day>" lines of the last day a briefcase was won (up to today:
+// the lines of a later day belong to a future an older save left), less those cleared since ("mitbclear <id> <day>",
+// written when the game clears the briefcase for a cash-in). Cached; read again when the day changes or after a line
+// of ours.
+bool g_mitb_dirty = true;
+u32 g_mitb_day = ~0u;
+std::vector<u32> g_mitb_holders;
+
+const std::vector<u32> &BriefcaseHolders(u32 today) {
+  if (!g_mitb_dirty && g_mitb_day == today)
+    return g_mitb_holders;
+  g_mitb_dirty = false;
+  g_mitb_day = today;
+  g_mitb_holders.clear();
+  std::vector<std::pair<u32, u32>> won, cleared;
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 id = 0, day = 0;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "mitbclear %u %u", &id, &day) == 2) {
+      if (day <= today)
+        cleared.push_back({id, day});
+    } else if (std::sscanf(line.c_str(), "mitb %u %u", &id, &day) == 2) {
+      if (day <= today && id < 512)
+        won.push_back({id, day});
+    }
+  }
+  u32 last = 0;
+  bool any = false;
+  for (const auto &[i, d] : won)
+    if (!any || d > last)
+      last = d, any = true;
+  for (const auto &[i, d] : won) {
+    if (!any || d != last || std::find(g_mitb_holders.begin(), g_mitb_holders.end(), i) != g_mitb_holders.end())
+      continue;
+    const bool gone = std::any_of(cleared.begin(), cleared.end(), [&](const auto &c) {
+      return c.first == i && c.second >= last;
+    });
+    if (!gone)
+      g_mitb_holders.push_back(i);
+  }
+  return g_mitb_holders;
 }
 
 struct Reign {
@@ -1982,25 +2031,30 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
 // wwe12_universe_qualifiers (true / false).
 
 struct OptionWords {
-  const char *options, *defenses, *qualifiers, *off, *on, *done_defenses, *done_qualifiers;
+  const char *options, *defenses, *qualifiers, *off, *on, *done_defenses, *done_qualifiers, *briefcases,
+      *done_briefcases;
 };
 const OptionWords &OWords() {
   static const OptionWords kWords[5] = {
       {"UNIVERSE OPTIONS", "TITLE DEFENSES", "QUALIFYING MATCHES", "OFF", "ON",
        "Title defenses on weekly shows: %s.", "Qualifying matches (Money in the Bank, Elimination "
-       "Chamber): %s."},
+       "Chamber): %s.", "MONEY IN THE BANK BRIEFCASES", "Money in the Bank briefcases: %s (2 = one for RAW, one for SmackDown)."},
       {"OPTIONS DE L'UNIVERS", "D\xC3\x89" "FENSES DE TITRE", "MATCHS DE QUALIFICATION", "NON", "OUI",
        "D\xC3\xA9" "fenses de titre dans les shows : %s.",
-       "Matchs de qualification (Money in the Bank, Elimination Chamber) : %s."},
+       "Matchs de qualification (Money in the Bank, Elimination Chamber) : %s.", "MALLETTES MONEY IN THE BANK",
+       "Mallettes Money in the Bank : %s (2 = une pour RAW, une pour SmackDown)."},
       {"WWE-WELT-OPTIONEN", "TITELVERTEIDIGUNGEN", "QUALIFIKATIONSMATCHES", "AUS", "AN",
        "Titelverteidigungen in den Wochenshows: %s.",
-       "Qualifikationsmatches (Money in the Bank, Elimination Chamber): %s."},
+       "Qualifikationsmatches (Money in the Bank, Elimination Chamber): %s.", "MONEY-IN-THE-BANK-KOFFER",
+       "Money-in-the-Bank-Koffer: %s (2 = einer fÃ¼r RAW, einer fÃ¼r SmackDown)."},
       {"OPCIONES DEL UNIVERSO", "DEFENSAS DE T\xC3\x8DTULO", "COMBATES CLASIFICATORIOS", "NO", "S\xC3\x8D",
        "Defensas de t\xC3\xADtulo en los shows semanales: %s.",
-       "Combates clasificatorios (Money in the Bank, Elimination Chamber): %s."},
+       "Combates clasificatorios (Money in the Bank, Elimination Chamber): %s.", "MALETINES MONEY IN THE BANK",
+       "Maletines Money in the Bank: %s (2 = uno para RAW, uno para SmackDown)."},
       {"OPZIONI UNIVERSE", "DIFESE DEL TITOLO", "INCONTRI DI QUALIFICAZIONE", "NO", "S\xC3\x8C",
        "Difese del titolo negli show settimanali: %s.",
-       "Incontri di qualificazione (Money in the Bank, Elimination Chamber): %s."}};
+       "Incontri di qualificazione (Money in the Bank, Elimination Chamber): %s.", "VALIGETTE MONEY IN THE BANK",
+       "Valigette Money in the Bank: %s (2 = una per RAW, una per SmackDown)."}};
   return kWords[CurrentLang()];
 }
 
@@ -2022,8 +2076,10 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
   const int32_t pct = REXCVAR_GET(wwe12_universe_title_defenses);
   const std::string defenses = pct > 0 ? std::to_string(pct) + " %" : o.off;
   const std::string qualifiers = REXCVAR_GET(wwe12_universe_qualifiers) ? o.on : o.off;
+  const std::string briefcases = REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2 ? "2" : "1";
   Choose(in, base, o.options,
-         {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers},
+         {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers,
+          std::string(o.briefcases) + ":  " + briefcases},
          [](const PPCContext &in, u8 *base, size_t i) {
            const OptionWords &o = OWords();
            if (i == 0) {
@@ -2036,6 +2092,14 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
                                     k ? (std::to_string(kPct[k]) + " %").c_str() : OWords().off);
                       Inform(in, base, text);
                     });
+           } else if (i == 2) {
+             Choose(in, base, o.briefcases, {"1", "2"}, [](const PPCContext &in, u8 *base, size_t k) {
+               SaveUniverseOption("wwe12_universe_mitb_briefcases", k ? "2" : "1");
+               g_mitb_dirty = true;
+               char text[256];
+               std::snprintf(text, sizeof(text), OWords().done_briefcases, k ? "2" : "1");
+               Inform(in, base, text);
+             });
            } else {
              Choose(in, base, o.qualifiers, {o.off, o.on},
                     [](const PPCContext &in, u8 *base, size_t k) {
@@ -2788,12 +2852,15 @@ void SetPromptLabel(u32 set, u32 k, u32 from, u32 to);
 void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base);  // wwe12_superstar_mods.cpp
 
 void Wwe12DiscordUniverseMenu();  // wwe12_discord.cpp (Rich Presence: a Universe match is over)
+void FillGameHolder(u32 u);  // (two Money in the Bank briefcases, below)
+
 extern "C" REX_FUNC(sub_82545A70) {
   Wwe12DiscordUniverseMenu();
   // added Superstars without allies or rivals from the start, before any select screen (once each)
   Wwe12ForgetAddedRelations(ctx, base);
   DraftCheck(ctx, base);  // (a draft after the show's last match: its news)
   FlushNews(ctx, base);
+  FillGameHolder(Call(ctx, base, __imp__sub_82683A30, 0));  // (two briefcases: one cashed in, the other's again)
   g_universe_menu = ctx.r3.u32;
   g_universe_menu_for_bar = ctx.r3.u32;
   if (Enabled())
@@ -3332,6 +3399,10 @@ void BuildGlobal(const PPCContext &ctx, u8 *base) {
     t.push_back({w.mitb, "", true});
     t.push_back({std::string(g.holder) + ":  " + (holder < 512 ? NameOf(in, base, holder) : "--"),
                  ""});
+    if (u && REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2)  // (two briefcases: the other holder)
+      for (const u32 other : BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay)))
+        if (other != holder)
+          t.push_back({std::string(g.holder) + ":  " + NameOf(in, base, other), ""});
     u32 cash_ins = 0, cash_wins = 0;
     for (const Event &e : events)
       if (e.kind == "cashin") {
@@ -4141,19 +4212,139 @@ u32 UniverseDay(const PPCContext &in, u8 *base) {
   return u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
 }
 
+// ---- two briefcases (1.4, wwe12_universe_mitb_briefcases = 2) ------------------------------------
+//
+// The game has one holder (U + 51004, its flag byte U + 51006). With two briefcases, the PPV has a Money in the Bank
+// match per brand (MakeSecondMitb below) and both winners hold one: the first winner of the day is set by the game,
+// the second is only written to universe_stats.txt ("mitb <id> <day>", BriefcaseHolders). Everything the game does
+// with its holder is then done for either one:
+// - its "is he the holder?" tests (sub_826CC718 compared with a Superstar: the briefcase at his entrance
+//   sub_826C0910, in the match sub_82DEA688, the stories' role 20 sub_826DB518, sub_826E6238, sub_826D7A40) answer yes
+//   for both (the callers by their return address, the Superstar in their register);
+// - the cash-in offer after a champion's match (sub_82554460, then the prompt sub_82554670, the cash-in match
+//   sub_826EB3B0 and the clear sub_826CCAB8) is asked for the game's holder, then for the other one, who is put in
+//   U + 51004 for it: the game's own cash-in then runs for him. The clear writes "mitbclear"; the one left becomes the
+//   game's holder again at the next offer or Universe menu.
+REX_EXTERN(__imp__sub_826CC718);  // Money in the Bank: the game's holder (view)
+REX_EXTERN(__imp__sub_82554460);  // after a match: may the holder cash in? (menu)
+
+bool TwoBriefcases() { return Enabled() && REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2; }
+
+std::map<u32, u8> g_mitb_flag;  // the flag byte each holder was given (U + 51006)
+
+void SetGameHolder(u32 u, u32 id) {
+  bd::mem::store<u16>(u + kBriefcaseHolder, u16(id));
+  const auto it = g_mitb_flag.find(id);
+  bd::mem::store<u8>(u + kBriefcaseHolder + 2, it != g_mitb_flag.end() ? it->second : 0);
+}
+
+// The game's holder made one of the holders when it has none (a cash-in cleared it).
+void FillGameHolder(u32 u) {
+  if (!u || !TwoBriefcases())
+    return;
+  const u32 now = bd::mem::load<u16>(u + kBriefcaseHolder);
+  const auto &h = BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay));
+  if (now < 512 || h.empty())
+    return;
+  SetGameHolder(u, h.front());
+  BD_INFO("[univers] Money in the Bank: {} holds the game's briefcase again", h.front());
+}
+
 extern "C" REX_FUNC(sub_826CCA90) {
   const u32 id = ctx.r4.u32;
+  const u32 u = bd::mem::load<u32>(ctx.r3.u32 + 4);
   if (Enabled() && id < 512) {
-    BD_INFO("[univers] Money in the Bank: {} holds the briefcase", id);
-    AppendStats({fmt::format("mitb {} {}", id, UniverseDay(ctx, base))});
+    const u32 day = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+    const u32 now = u ? bd::mem::load<u16>(u + kBriefcaseHolder) : 512;
+    // the second briefcase: a briefcase already won today by another
+    bool second = false;
+    if (TwoBriefcases() && u && now < 512 && now != id) {
+      const auto &h = BriefcaseHolders(day);
+      second = std::find(h.begin(), h.end(), now) != h.end() && g_mitb_day == day && [&] {
+        std::ifstream f(StatsFile());
+        std::string line;
+        u32 i = 0, d = 0;
+        while (std::getline(f, line))
+          if (std::sscanf(line.c_str(), "mitb %u %u", &i, &d) == 2 && i == now && d == day)
+            return true;
+        return false;
+      }();
+    }
+    BD_INFO("[univers] Money in the Bank: {} holds the {} briefcase", id, second ? "second" : "game's");
+    AppendStats({fmt::format("mitb {} {}", id, day)});
+    g_mitb_dirty = true;
+    g_mitb_flag[id] = ctx.r5.u8;
+    if (second)
+      return;  // the game's holder stays (the first of the day)
   }
   __imp__sub_826CCA90(ctx, base);
+}
+
+// sub_826CC718(view): the game's holder. For its "is he the holder?" callers, the Superstar asked about is answered
+// when he holds either briefcase.
+extern "C" REX_FUNC(sub_826CC718) {
+  const u32 from = u32(ctx.lr);
+  u32 asked = 512;
+  if (TwoBriefcases()) {
+    switch (from) {
+    case 0x826C0BE8: asked = ctx.r29.u32; break;                          // sub_826C0910 (entrance)
+    case 0x82DEA6B4: asked = ctx.r30.u32; break;                          // sub_82DEA688 (in the match)
+    case 0x826DB618: asked = bd::mem::load<u32>(ctx.r28.u32 + 8); break;  // sub_826DB518 (a story's role 20)
+    case 0x826E6278: asked = ctx.r31.u32; break;                          // sub_826E6238
+    case 0x826D7A94: asked = bd::mem::load<u32>(ctx.r31.u32 + 8); break;  // sub_826D7A40
+    default: break;
+    }
+  }
+  const u32 view = ctx.r3.u32;
+  __imp__sub_826CC718(ctx, base);
+  if (asked >= 512 || ctx.r3.u32 == asked)
+    return;
+  const u32 u = bd::mem::load<u32>(view + 4);
+  if (!u)
+    return;
+  const auto &h = BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay));
+  if (std::find(h.begin(), h.end(), asked) != h.end())
+    ctx.r3.u64 = asked;
+}
+
+// sub_82554460(menu): after a match, may the holder cash in (a champion of title 0, 1, 4 or 5 was in it)? Asked for
+// the game's holder, then for the other one (put in U + 51004 if he may).
+extern "C" REX_FUNC(sub_82554460) {
+  const u32 u = TwoBriefcases() ? Call(ctx, base, __imp__sub_82683A30, 0) : 0;
+  if (!u) {
+    __imp__sub_82554460(ctx, base);
+    return;
+  }
+  FillGameHolder(u);
+  const u32 first = bd::mem::load<u16>(u + kBriefcaseHolder);
+  const u8 first_flag = bd::mem::load<u8>(u + kBriefcaseHolder + 2);
+  PPCContext again = ctx;
+  __imp__sub_82554460(ctx, base);
+  if (ctx.r3.u32)
+    return;
+  const auto h = BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay));
+  for (const u32 other : h) {
+    if (other == first)
+      continue;
+    SetGameHolder(u, other);
+    PPCContext c = again;
+    __imp__sub_82554460(c, base);
+    if (c.r3.u32) {
+      BD_INFO("[univers] Money in the Bank: the second briefcase's holder {} may cash in", other);
+      ctx = c;
+      return;
+    }
+  }
+  bd::mem::store<u16>(u + kBriefcaseHolder, u16(first));
+  bd::mem::store<u8>(u + kBriefcaseHolder + 2, first_flag);
 }
 
 extern "C" REX_FUNC(sub_826CCAB8) {
   const u32 u = bd::mem::load<u32>(ctx.r3.u32 + 4);
   const u32 holder = u ? bd::mem::load<u16>(u + kBriefcaseHolder) : 512;
   if (Enabled() && holder < 512) {
+    AppendStats({fmt::format("mitbclear {} {}", holder, UniverseDay(ctx, base))});
+    g_mitb_dirty = true;
     const auto it = std::find_if(g_last_result.begin(), g_last_result.end(),
                                  [&](const auto &r) { return r.first == holder; });
     if (it != g_last_result.end()) {
@@ -5890,6 +6081,90 @@ bool MarkQualifier(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 re
 }
 }  // namespace
 
+// Two briefcases: the PPV card's Money in the Bank match (the booker's records, before the first is written) gets a
+// twin: another ordinary match of the card (no title, rivalry, WrestleMania build or special match) becomes a copy of
+// it. The game's match takes RAW's men (brand 0), the copy SmackDown's (brand 1): first the qualified ones (qualifying
+// matches on), then those the game had put in it, then other men of the brand who are on no other match of the card,
+// at random. Nothing changes when a brand has too few.
+bool MakeSecondMitb(const PPCContext &in, u8 *base, u32 booker) {
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const auto record = [&](u32 k) { return booker + 20 + k * 1320; };
+  const auto used = [&](u32 k) { return bd::mem::load<u32>(record(k) + 8) == 1; };
+  const auto is_mitb = [&](u32 k) { return Call(x, base, __imp__sub_82A2F998, bd::mem::load<u32>(record(k))) != 0; };
+  u32 m = 8, c = 8, mitbs = 0;
+  for (u32 k = 0; k < 8; ++k)
+    if (used(k) && is_mitb(k)) {
+      ++mitbs;
+      if (m == 8)
+        m = k;
+    }
+  if (m == 8 || mitbs > 1)
+    return false;
+  for (u32 k = 8; k-- > 0;) {  // the lowest ordinary match of the card
+    const u32 r = record(k), type = bd::mem::load<u32>(r);
+    if (k == m || !used(k) || bd::mem::load<u32>(r + 12) || bd::mem::load<u32>(r + 24) ||
+        bd::mem::load<u32>(r + 28) || bd::mem::load<u32>(r + 16) < 2 || Call(x, base, __imp__sub_82A2FA18, type) == 1 ||
+        Call(x, base, __imp__sub_82A2F998, type) || Call(x, base, __imp__sub_82A2FA98, type))
+      continue;
+    c = k;
+    break;
+  }
+  if (c == 8) {
+    BD_INFO("[univers] Money in the Bank: no ordinary match on the PPV card for the second briefcase's match");
+    return false;
+  }
+  const u32 places = std::min<u32>(bd::mem::load<u32>(record(m) + 16), 8);
+  std::set<u32> elsewhere;  // on the card's other matches
+  for (u32 k = 0; k < 8; ++k)
+    if (k != m && k != c && used(k))
+      for (u32 q = 0; q < std::min<u32>(bd::mem::load<u32>(record(k) + 16), 8); ++q)
+        elsewhere.insert(bd::mem::load<u32>(record(k) + 40 + q * 32));
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  std::vector<u32> qualified;
+  if (u && REXCVAR_GET(wwe12_universe_qualifiers)) {
+    g_qual_today = bd::mem::load<u32>(u + kUniverseDay);
+    for (const auto &q : QualLines("qualified", 1, g_qual_today / 336))
+      qualified.push_back(q[0]);
+  }
+  std::vector<u32> in_game;
+  for (u32 q = 0; q < places; ++q)
+    in_game.push_back(bd::mem::load<u32>(record(m) + 40 + q * 32));
+  static std::mt19937 s_random{std::random_device{}()};
+  std::vector<u32> others;
+  for (u32 id = 0; id < 373; ++id)
+    if (Call(x, base, __imp__sub_826D3218, id, 1) && !Call(x, base, __imp__sub_82A32DB8, id) && !elsewhere.count(id))
+      others.push_back(id);
+  std::shuffle(others.begin(), others.end(), s_random);
+  std::vector<u32> picked[2];
+  std::set<u32> taken;
+  for (u32 brand = 0; brand < 2; ++brand)
+    for (const auto *list : {&qualified, &in_game, &others})
+      for (const u32 id : *list) {
+        if (picked[brand].size() >= places || id >= 512 || taken.count(id) || elsewhere.count(id) ||
+            Call(x, base, __imp__sub_826D2B50, id) != brand)
+          continue;
+        picked[brand].push_back(id);
+        taken.insert(id);
+      }
+  if (picked[0].size() < places || picked[1].size() < places) {
+    BD_INFO("[univers] Money in the Bank: too few men for two matches (RAW {}, SmackDown {}, {} places)",
+            picked[0].size(), picked[1].size(), places);
+    return false;
+  }
+  for (u32 o = 0; o < 1320; o += 4)
+    bd::mem::store<u32>(record(c) + o, bd::mem::load<u32>(record(m) + o));
+  std::string raw, sd;
+  for (u32 q = 0; q < places; ++q) {
+    bd::mem::store<u32>(record(m) + 40 + q * 32, picked[0][q]);
+    bd::mem::store<u32>(record(c) + 40 + q * 32, picked[1][q]);
+    raw += fmt::format(" {}", picked[0][q]);
+    sd += fmt::format(" {}", picked[1][q]);
+  }
+  BD_INFO("[univers] Money in the Bank: two matches on the PPV card, {} (RAW:{}) and {} (SmackDown:{})", m, raw, c, sd);
+  return true;
+}
+
 extern "C" REX_FUNC(sub_826EAEB0) {
   const PPCContext in = ctx;
   const u32 booker = ctx.r3.u32, entry = ctx.r4.u32, i = ctx.r5.u32 & 0xFFFF;
@@ -5897,6 +6172,9 @@ extern "C" REX_FUNC(sub_826EAEB0) {
                           bd::mem::load<u32>(kInUniverseFlag) == 1;
   if (qualifiers && i == 0)
     g_placed_events = 0;  // a new card
+  if (i == 0 && entry && TwoBriefcases() && bd::mem::load<u32>(kInUniverseFlag) == 1 &&
+      bd::mem::try_load<u32>(booker) == kBookerPpv && MakeSecondMitb(in, base, booker))
+    g_placed_events |= 1u << 1;  // (the qualified are placed already)
   if (qualifiers && bd::mem::try_load<u32>(booker) == kBookerPpv)
     PlaceQualified(in, base, booker, booker + 20 + i * 1320);
   __imp__sub_826EAEB0(ctx, base);
