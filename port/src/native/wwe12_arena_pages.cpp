@@ -2260,7 +2260,9 @@ extern "C" REX_FUNC(sub_829F9F90) {
   std::string seen;
   for (u32 i = 0; entries && i < count; ++i) {
     const int value = int16_t(bd::mem::load<u16>(entries + i * 6)) + int(first);
-    superstars = superstars || value == 139;
+    // (and the champions' lists, Cena's 602 John_Cena_Champ: the mods' entrances may be a champion's or a multi-champion's
+    // entrance too, as in 2K14's Create an Entrance - the user, 2026-11-12)
+    superstars = superstars || value == 139 || value == 602;
     if (REXCVAR_GET(wwe12_entrance_list_log) && i < 400)
       seen += " " + std::to_string(value) + "/" + std::to_string(int16_t(bd::mem::load<u16>(entries + i * 6 + 2))) + "/" +
               std::to_string(int16_t(bd::mem::load<u16>(entries + i * 6 + 4)));
