@@ -4237,6 +4237,9 @@ REX_EXTERN(__imp__sub_82554460);  // after a match: may the holder cash in? (men
 bool TwoBriefcases() { return Enabled() && REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2; }
 
 std::map<u32, u8> g_mitb_flag;  // the flag byte each holder was given (U + 51006)
+u32 g_second_offer = 512;        // both holders may cash in: the one asked after a NO for the game's holder
+u32 g_second_title = 255;        // ... his title (MATCH CARDS + 4096)
+bool g_reask = false;            // ... the first box is closing: ask him when the message box is free
 
 void SetGameHolder(u32 u, u32 id) {
   bd::mem::store<u16>(u + kBriefcaseHolder, u16(id));
@@ -4344,13 +4347,36 @@ extern "C" REX_FUNC(sub_82554460) {
     return;
   }
   FillGameHolder(u);
+  const u32 card = ctx.r3.u32;
   const u32 first = bd::mem::load<u16>(u + kBriefcaseHolder);
   const u8 first_flag = bd::mem::load<u8>(u + kBriefcaseHolder + 2);
   PPCContext again = ctx;
+  g_second_offer = 512;
   __imp__sub_82554460(ctx, base);
-  if (ctx.r3.u32)
-    return;
   const auto h = BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay));
+  if (ctx.r3.u32) {
+    // Both may cash in: the game asks for its holder; a NO asks for the other one (sub_825572C8 below). His
+    // title (card + 4096, the best one he may cash in on) is found now, then the first one's put back.
+    const u32 title = bd::mem::load<u32>(card + 4096);
+    for (const u32 other : h) {
+      if (other == first)
+        continue;
+      SetGameHolder(u, other);
+      bd::mem::store<u32>(card + 4096, 255);
+      PPCContext c = again;
+      __imp__sub_82554460(c, base);
+      if (c.r3.u32) {
+        g_second_offer = other;
+        g_second_title = bd::mem::load<u32>(card + 4096);
+        BD_INFO("[univers] Money in the Bank: both holders may cash in ({} first, then {})", first, other);
+      }
+      break;
+    }
+    bd::mem::store<u32>(card + 4096, title);
+    bd::mem::store<u16>(u + kBriefcaseHolder, u16(first));
+    bd::mem::store<u8>(u + kBriefcaseHolder + 2, first_flag);
+    return;
+  }
   for (const u32 other : h) {
     if (other == first)
       continue;
@@ -4365,6 +4391,54 @@ extern "C" REX_FUNC(sub_82554460) {
   }
   bd::mem::store<u16>(u + kBriefcaseHolder, u16(first));
   bd::mem::store<u8>(u + kBriefcaseHolder + 2, first_flag);
+}
+
+// MATCH CARDS' per-frame code (card C, its state C + 4164: 2 = the cash-in box is open). The box's answer
+// (sub_8288EEF8(box): 1 = YES, then C + 540 = 1 and the cash-in; 0 = NO, sub_82554200) is read before the game: a NO
+// while the other holder may cash in too puts him in U + 51004 and opens the same box for him (sub_82554670) once the
+// message box is free (C + 528, set by the NO, cleared). So the player picks who cashes in: NO to the first, YES to
+// the second.
+REX_EXTERN(__imp__sub_825572C8);  // MATCH CARDS: per frame (card)
+REX_EXTERN(__imp__sub_82554670);  // MATCH CARDS: the cash-in box (card)
+REX_EXTERN(__imp__sub_8288EEF8);  // message box: its answer
+
+extern "C" REX_FUNC(sub_825572C8) {
+  const u32 card = ctx.r3.u32;
+  if (g_second_offer >= 512 || !TwoBriefcases()) {
+    g_reask = false;
+    __imp__sub_825572C8(ctx, base);
+    return;
+  }
+  const u32 box = bd::mem::load<u32>(0x8324DEF0);
+  if (g_reask) {
+    const u32 u = Call(ctx, base, __imp__sub_82683A30, 0);
+    if (box && u && bd::mem::load<u32>(box + 1820) == 0 && bd::mem::load<u32>(card + 4164) == 7) {
+      g_reask = false;
+      const u32 other = g_second_offer;
+      g_second_offer = 512;
+      SetGameHolder(u, other);
+      bd::mem::store<u32>(card + 4096, g_second_title);
+      bd::mem::store<u32>(card + 528, 0);
+      Call(ctx, base, __imp__sub_82554670, card);
+      bd::mem::store<u32>(card + 4164, 2);
+      BD_INFO("[univers] Money in the Bank: now asking {} (title {})", other, g_second_title);
+      return;
+    }
+    __imp__sub_825572C8(ctx, base);
+    return;
+  }
+  const u32 state = bd::mem::load<u32>(card + 4164);
+  int32_t answer = -3;
+  if (state == 2 && box && bd::mem::load<u32>(box + 1820) == 0)
+    answer = int32_t(Call(ctx, base, __imp__sub_8288EEF8, box));
+  __imp__sub_825572C8(ctx, base);
+  if (answer == 0 && bd::mem::load<u32>(card + 4164) != 2) {
+    BD_INFO("[univers] Money in the Bank: NO for the first holder, {} is asked next", g_second_offer);
+    g_reask = true;
+  } else if (answer == 1 || answer == -2) {
+    BD_INFO("[univers] Money in the Bank: cash-in box answered {} (first holder)", answer);
+    g_second_offer = 512;
+  }
 }
 
 extern "C" REX_FUNC(sub_826CCAB8) {
