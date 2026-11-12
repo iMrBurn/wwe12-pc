@@ -6101,17 +6101,33 @@ bool MakeSecondMitb(const PPCContext &in, u8 *base, u32 booker) {
     }
   if (m == 8 || mitbs > 1)
     return false;
-  for (u32 k = 8; k-- > 0;) {  // the lowest ordinary match of the card
+  // The match that becomes the second one: the first of the card (the opener, not the main event) of the best kind:
+  // 0 an ordinary match, 1 a rivalry's or WrestleMania build's, 2 a title match (not the WWE or World title's).
+  // (The PPV cards are often all titles and rivalries: none of kind 0 at the first test, 2026-11-12.)
+  u32 best = 3;
+  std::string card;
+  for (u32 k = 0; k < 8; ++k) {
     const u32 r = record(k), type = bd::mem::load<u32>(r);
-    if (k == m || !used(k) || bd::mem::load<u32>(r + 12) || bd::mem::load<u32>(r + 24) ||
-        bd::mem::load<u32>(r + 28) || bd::mem::load<u32>(r + 16) < 2 || Call(x, base, __imp__sub_82A2FA18, type) == 1 ||
+    if (!used(k))
+      continue;
+    const u32 title = bd::mem::load<u32>(r + 4);
+    card += fmt::format(" [{}: type {} title {} flag {} wm {} rivalry {} places {}]", k, type, title,
+                        bd::mem::load<u32>(r + 12), bd::mem::load<u32>(r + 24), bd::mem::load<u32>(r + 28),
+                        bd::mem::load<u32>(r + 16));
+    if (k == m || bd::mem::load<u32>(r + 16) < 2 || Call(x, base, __imp__sub_82A2FA18, type) == 1 ||
         Call(x, base, __imp__sub_82A2F998, type) || Call(x, base, __imp__sub_82A2FA98, type))
       continue;
-    c = k;
-    break;
+    const bool titled = bd::mem::load<u32>(r + 12) != 0;
+    const u32 kind = titled ? (title == 0 || title == 1 ? 3 : 2)
+                            : (bd::mem::load<u32>(r + 24) || bd::mem::load<u32>(r + 28) ? 1 : 0);
+    if (kind < best) {
+      best = kind;
+      c = k;
+    }
   }
+  BD_INFO("[univers] Money in the Bank: PPV card{}", card);
   if (c == 8) {
-    BD_INFO("[univers] Money in the Bank: no ordinary match on the PPV card for the second briefcase's match");
+    BD_INFO("[univers] Money in the Bank: no match on the PPV card can become the second briefcase's match");
     return false;
   }
   const u32 places = std::min<u32>(bd::mem::load<u32>(record(m) + 16), 8);
