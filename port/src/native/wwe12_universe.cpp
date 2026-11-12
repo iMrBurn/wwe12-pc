@@ -544,6 +544,8 @@ std::filesystem::path StatsFile() {
 bool g_mitb_dirty = true;
 u32 g_mitb_day = ~0u;
 std::vector<u32> g_mitb_holders;
+std::map<u32, u32> g_mitb_brand;  // a holder's briefcase: the brand of the match he won ("mitbbrand <id> <brand> <day>")
+u32 g_mitb_last_brand = 0;        // the last briefcase won this session
 
 const std::vector<u32> &BriefcaseHolders(u32 today) {
   if (!g_mitb_dirty && g_mitb_day == today)
@@ -555,8 +557,12 @@ const std::vector<u32> &BriefcaseHolders(u32 today) {
   std::ifstream f(StatsFile());
   std::string line;
   u32 id = 0, day = 0;
+  u32 brand = 0;
   while (std::getline(f, line)) {
-    if (std::sscanf(line.c_str(), "mitbclear %u %u", &id, &day) == 2) {
+    if (std::sscanf(line.c_str(), "mitbbrand %u %u %u", &id, &brand, &day) == 3) {
+      if (day <= today)
+        g_mitb_brand[id] = brand;
+    } else if (std::sscanf(line.c_str(), "mitbclear %u %u", &id, &day) == 2) {
       if (day <= today)
         cleared.push_back({id, day});
     } else if (std::sscanf(line.c_str(), "mitb %u %u", &id, &day) == 2) {
@@ -4250,6 +4256,25 @@ void FillGameHolder(u32 u) {
   BD_INFO("[univers] Money in the Bank: {} holds the game's briefcase again", h.front());
 }
 
+// For the Mod Maker's served scenes (wwe12_arena_pages.cpp): should the Money in the Bank scene that is being read
+// show the blue (SmackDown) briefcase? Yes with two briefcases when the game's holder (the one cashing in: he is put
+// in U + 51004 for it) won SmackDown's match; with no holder (the scene of the win itself), the last briefcase won.
+bool Wwe12MitbBlue() {
+  if (!TwoBriefcases())
+    return false;
+  const u32 rec = bd::mem::try_load<u32>(0x8317FA08);
+  if (!rec)
+    return false;
+  const u32 u = rec + 0x3F394;  // (the Universe block, sub_82683A30)
+  const u32 holder = bd::mem::load<u16>(u + kBriefcaseHolder);
+  BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay));  // (reads the brands)
+  const auto it = g_mitb_brand.find(holder);
+  const u32 brand = holder < 512 && it != g_mitb_brand.end() ? it->second : g_mitb_last_brand;
+  BD_INFO("[univers] Money in the Bank scene: holder {}, briefcase of brand {} ({})", holder, brand,
+          brand == 1 ? "blue" : "red");
+  return brand == 1;
+}
+
 extern "C" REX_FUNC(sub_826CCA90) {
   const u32 id = ctx.r4.u32;
   const u32 u = bd::mem::load<u32>(ctx.r3.u32 + 4);
@@ -4270,8 +4295,11 @@ extern "C" REX_FUNC(sub_826CCA90) {
         return false;
       }();
     }
-    BD_INFO("[univers] Money in the Bank: {} holds the {} briefcase", id, second ? "second" : "game's");
-    AppendStats({fmt::format("mitb {} {}", id, day)});
+    // the briefcase's colour: the brand of the match he won (its men were all of one brand), "mitbbrand" line
+    const u32 brand = Call(ctx, base, __imp__sub_826D2B50, id);
+    BD_INFO("[univers] Money in the Bank: {} holds the {} briefcase (brand {})", id, second ? "second" : "game's", brand);
+    AppendStats({fmt::format("mitb {} {}", id, day), fmt::format("mitbbrand {} {} {}", id, brand, day)});
+    g_mitb_last_brand = brand;
     g_mitb_dirty = true;
     g_mitb_flag[id] = ctx.r5.u8;
     if (second)
