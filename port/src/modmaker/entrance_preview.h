@@ -716,8 +716,8 @@ class Window {
     std::map<std::string, arena_view::BonePose> pose;
     if (b)
       for (const auto &t : b->tracks) {
-        if (t.name.empty() || t.name[0] == '#')
-          continue;
+        if (t.name.empty())
+          continue;  // ("#<hash>" names kept: the fingers and the face, matched by hash in arena_view::Fill)
         arena_view::BonePose bp;
         yanm::Sample(t, f, bp.has_rot, bp.rot, bp.has_pos, bp.pos);
         if (t.name == "Bip" && bp.has_pos)

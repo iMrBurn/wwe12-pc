@@ -484,7 +484,16 @@ class View {
       done[i] = 1;  // (set first: a broken table with a loop stops here)
       yanm::V tt = t[i];
       yanm::Q rr = r[i];
-      if (const auto it = pose.find(names[i]); it != pose.end()) {
+      // (a track yanm can't name - the fingers "Bip L Finger42", the face's "r_mayu_00"... - comes as "#<its hash>":
+      // found by the bone's name hashed the same way; skipped, the hands stayed flat in the entrance preview,
+      // 2026-11-12)
+      auto it = pose.find(names[i]);
+      if (it == pose.end()) {
+        char h[16];
+        snprintf(h, sizeof(h), "#%08x", yanm::NameHash(names[i]));
+        it = pose.find(h);
+      }
+      if (it != pose.end()) {
         if (it->second.has_rot)
           rr = it->second.rot;
         if (it->second.has_pos)
