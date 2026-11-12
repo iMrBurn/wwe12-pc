@@ -1970,8 +1970,13 @@ inline bool ConvertEvp(const Bytes &evp11, Bytes &evp12, std::string *why = null
 // SvR 2011 entrance -> WWE '12 entrance. ymks: the tracks (EVT entry, a YMKs bank), evp11: the script (EVP entry),
 // base_evz12: a WWE '12 entrance's tracks (EVZ entry, PACH; WWE '12's entrance 100, the Rock's: the Python tool's
 // template and placeholders come from it). -> evz12 (PACH, one record per script object) and evp12.
+// prop_donors (ours, 2026-11-12): by prop model, a WWE '12 entrance's record of that prop (unpacked) and the name of
+// one of its blocks where it is held - the prop's pose in the hand, used for every block of that prop instead of the
+// base's (whose pose put Sandman's kendo stick and beer out of sight); Kaiko's wwe13_entrance.py prop_donor does the
+// same the other way (WWE '13 -> SvR 2011), with credit.
+using PropDonors = std::map<uint32_t, std::pair<Bytes, std::string>>;
 inline bool Convert(const Bytes &ymks, const Bytes &evp11, const Bytes &base_evz12, Bytes &evz12, Bytes &evp12,
-                    std::string *why = nullptr) {
+                    std::string *why = nullptr, const PropDonors *prop_donors = nullptr) {
   using namespace detail;
   Ctx ctx;
   auto fail = [&](const std::string &w) {
@@ -2065,9 +2070,20 @@ inline bool Convert(const Bytes &ymks, const Bytes &evp11, const Bytes &base_evz
               break;
       }
     }
+    // (ours) a prop a WWE '12 entrance holds too: its record there, its held block for every block
+    std::string donor_block;
+    if (prop_donors && IsType(o, 0x100, 0))
+      if (const auto d = prop_donors->find(o.model); d != prop_donors->end()) {
+        int k = -1;
+        std::vector<BlockRef> bb;
+        if (Header(d->second.first, k, bb)) {
+          bl = &d->second.first, bkind = k, bblocks = std::move(bb);
+          donor_block = d->second.second;
+        }
+      }
     auto base_block = [&](const std::string &nm) -> size_t {
       for (auto &b : bblocks)
-        if (b.name == nm)
+        if (b.name == (donor_block.empty() ? nm : donor_block))
           return b.offset;
       return bblocks.empty() ? 0 : bblocks[0].offset;
     };

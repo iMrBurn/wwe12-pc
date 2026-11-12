@@ -22,7 +22,11 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
+#include <cstring>
+#include <map>
 #include <set>
+#include <tuple>
 #include <string>
 #include <vector>
 
@@ -97,6 +101,101 @@ inline Bytes GmevTo12(const Bytes &old, const Bytes &w12gm) {
   return svrfmt::PachWrite(a);
 }
 
+// The props a SvR 2011 script uses (objects of type 0x100), by model.
+inline std::set<uint32_t> PropsOf(const Bytes &evp) {
+  std::set<uint32_t> out;
+  if (evp.size() < 0x50 || memcmp(evp.data(), "0FOP", 4))
+    return out;
+  const uint32_t n = svrfmt::Be32(&evp[0x40]) & 0xFFFF;
+  const size_t t = size_t(svrfmt::Be32(&evp[0x48])) + 8;
+  for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= evp.size(); ++i) {
+    const size_t q = t + 32 * size_t(i);
+    if (svrfmt::Be32(&evp[q + 8]) == 0x100 && svrfmt::Be32(&evp[q + 12]) == 0)
+      out.insert(svrfmt::Be32(&evp[q + 4]));
+  }
+  return out;
+}
+
+// Prop donors (svr11_entrance::PropDonors) for `models` from WWE '12's own entrances (Nyujyo0-9,A.pac): the first
+// entrance whose script holds one (a segment where it is shown with a parent: slot +0 bits 8-15, slot +208 high half
+// not 9999; else one where it is shown) and whose tracks have that segment's block. Sandman's SvR 2008 kendo stick 2108 and beer 2115: WWE '12's
+// 506 holds both (2026-11-12). Read once per model.
+inline const svr11_entrance::PropDonors &PropDonors12(const disc::GameDisc &w12, const std::set<uint32_t> &models) {
+  static svr11_entrance::PropDonors cache;
+  static std::set<uint32_t> looked;
+  std::set<uint32_t> want;
+  for (uint32_t m : models)
+    if (!looked.count(m))
+      want.insert(m);
+  if (want.empty())
+    return cache;
+  for (uint32_t m : want)
+    looked.insert(m);
+  static const char kFiles[] = "0123456789A";
+  for (size_t fi = 0; fi < 11 && !want.empty(); ++fi) {
+    const std::string file = std::string("pac/evt/Nyujyo") + kFiles[fi] + ".pac";
+    // (model -> entrance number, object, segment) held in this file's scripts
+    std::map<uint32_t, std::tuple<int, uint32_t, uint32_t>> found;
+    svr_old_entrance::detail::Entries(w12, file, [&](const std::string &g, int num, bool got, const Bytes &d = {}) {
+      if (g.rfind("EVP", 0) || num <= 0 || num >= 1000)
+        return false;
+      if (!got)
+        return true;
+      if (d.size() < 0x50 || memcmp(d.data(), "0FOP", 4))
+        return false;
+      const uint32_t n = svrfmt::Be32(&d[0x40]) & 0xFFFF;
+      const size_t t = size_t(svrfmt::Be32(&d[0x48])) + 8;
+      for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= d.size(); ++i) {
+        const size_t q = t + 32 * size_t(i);
+        const uint32_t model = svrfmt::Be32(&d[q + 4]);
+        if (svrfmt::Be32(&d[q + 8]) != 0x100 || !want.count(model) || found.count(model))
+          continue;
+        const uint32_t ns = svrfmt::Be32(&d[q + 24]) >> 16;
+        const size_t bp = size_t(svrfmt::Be32(&d[q + 28])) + 8;
+        // (held, else shown on a track of its own: Sandman's beer 2115 has no parent in WWE '12's 506)
+        int held = -1, shown = -1;
+        for (uint32_t k = 0; k < ns && bp + 212 * size_t(k + 1) <= d.size(); ++k) {
+          const size_t sl = bp + 212 * size_t(k);
+          if (!(svrfmt::Be32(&d[sl]) & 0xFF00))
+            continue;
+          if (held < 0 && (svrfmt::Be32(&d[sl + 208]) >> 16) != 9999)
+            held = int(k);
+          if (shown < 0)
+            shown = int(k);
+        }
+        if (held >= 0 || shown >= 0)
+          found[model] = {num, i, uint32_t(held >= 0 ? held : shown)};
+      }
+      return false;
+    });
+    for (const auto &[model, at] : found) {
+      const auto [num, obj, seg] = at;
+      Bytes evp, evz;
+      if (!detail::Scene(w12, file, num, evp, evz, "EVZ"))
+        continue;
+      std::vector<svrfmt::PachEntry> recs;
+      if (!svrfmt::PachRead(evz, recs))
+        continue;
+      for (const auto &r : recs) {
+        if (r.id != obj)
+          continue;
+        Bytes rec = svrfmt::Unpack(r.data);
+        char name[16];
+        snprintf(name, sizeof(name), "%04u0000", seg);
+        int kind = -1;
+        std::vector<svr11_entrance::detail::BlockRef> bb;
+        if (svr11_entrance::detail::Header(rec, kind, bb) &&
+            std::any_of(bb.begin(), bb.end(), [&](const auto &b) { return b.name == name; })) {
+          cache[model] = {std::move(rec), name};
+          want.erase(model);
+        }
+        break;
+      }
+    }
+  }
+  return cache;
+}
+
 inline bool Convert(const disc::GameDisc &w12, int number, const Bytes &evp11, const Bytes &evt11,
                     std::vector<Part> &out, std::string *why) {
   const Bytes &base = Base12(w12);
@@ -106,7 +205,8 @@ inline bool Convert(const disc::GameDisc &w12, int number, const Bytes &evp11, c
     return false;
   }
   Bytes evz, evp;
-  if (!svr11_entrance::Convert(evt11, evp11, base, evz, evp, why))
+  // (its props held as WWE '12's own entrances hold the same ones, PropDonors12)
+  if (!svr11_entrance::Convert(evt11, evp11, base, evz, evp, why, &PropDonors12(w12, PropsOf(evp11))))
     return false;
   out.push_back({number, "EVP", std::move(evp)});
   out.push_back({number, "EVZ", std::move(evz)});

@@ -188,6 +188,15 @@ class Page {
           for (const auto &q : done_.parts)
             fprintf(f, "  %s %d (%zu bytes)\n", entrance13::ModPath(q).c_str(), q.number, q.data.size());
           fclose(f);
+          // (and the parts themselves beside it, <report>.parts\<kind>_<number>.bin)
+          std::error_code ec;
+          const fs::path dir = fs::path(out).concat(".parts");
+          fs::create_directories(dir, ec);
+          for (const auto &q : done_.parts)
+            if (FILE *g = _wfopen((dir / (q.kind + "_" + std::to_string(q.number) + ".bin")).c_str(), L"wb")) {
+              fwrite(q.data.data(), 1, q.data.size(), g);
+              fclose(g);
+            }
         }
       }
     }
