@@ -5859,8 +5859,10 @@ extern "C" REX_FUNC(sub_826CE6C0) {
 
 constexpr u32 kShowEditVtbl = 0x82027188;
 REX_EXTERN(__imp__sub_82589958);  // SHOW EDIT: made
+u32 g_show_edit_owner = 0;  // SHOW EDIT's owner O (its record copy at O + 320)
 extern "C" REX_FUNC(sub_82589958) {
   g_show_edit_open = true;
+  g_show_edit_owner = ctx.r3.u32;
   if (Enabled())
     SetPromptLabel(4, 1, kGameCancelText, kCancelPlusMatchesText);  // before its bar is made
   __imp__sub_82589958(ctx, base);
@@ -6002,6 +6004,46 @@ extern "C" REX_FUNC(sub_828AC150) {
     Wwe12ArenaPlay(n, stage);
   }
   __imp__sub_828AC150(ctx, base);
+}
+
+// SHOW EDIT's ARENA picture (sub_82586428(out, element, stage): a table of 21 {stage, "Uni_arena_*"}, else
+// Uni_arena_CAR for stages 200-249, else none, set by sub_824CC810(out, element +44, name)): an added arena shows
+// its own photo, made by the Mod Maker from its banner (Wwe12ArenaPictureName, wwe12_superstar_mods.cpp: the guest
+// address of "Uni_arena_Mnn", 0 if none). Which one: the arena just chosen on the ARENA row, or the show's saved one
+// when the stage drawn is its base's.
+uint32_t Wwe12ArenaPictureName(const std::string &id);  // wwe12_superstar_mods.cpp
+REX_EXTERN(__imp__sub_82586428);  // SHOW EDIT: the ARENA picture (out, element, stage)
+REX_EXTERN(__imp__sub_824CC810);  // a layout element: its texture by name (out, texture list, name)
+extern "C" REX_FUNC(sub_82586428) {
+  const u32 out = ctx.r3.u32, element = ctx.r4.u32, stage = ctx.r5.u32;
+  const u32 list = element ? bd::mem::load<u32>(element + 44) : 0;
+  if (list && g_show_edit_open && g_show_edit_owner && REXCVAR_GET(wwe12_universe_added_arenas)) {
+    std::string id;
+    if (g_edit_arena >= 0) {
+      id = Wwe12ArenaId(g_edit_arena);
+    } else if (g_edit_arena == -2) {
+      const u32 show = bd::mem::load<u8>(g_show_edit_owner + 320 + 927);
+      std::lock_guard<std::mutex> lock(g_arenas_lock);
+      LoadShowArenas();
+      const auto it = g_show_arenas.find(show);
+      if (it != g_show_arenas.end())
+        id = it->second;
+    }
+    u32 on = 0;
+    const u32 name = !id.empty() && Wwe12ArenaFind(id, on) >= 0 && on == stage ? Wwe12ArenaPictureName(id) : 0;
+    if (name) {
+      static std::string s_logged;
+      if (s_logged != id) {
+        s_logged = id;
+        BD_INFO("[univers] SHOW EDIT: arena {} shows its own picture {}", id,
+                bd::mem::try_at<const char>(name) ? bd::mem::try_at<const char>(name) : "?");
+      }
+      Call(ctx, base, __imp__sub_824CC810, out, list, name);
+      ctx.r3.u64 = out;
+      return;
+    }
+  }
+  __imp__sub_82586428(ctx, base);
 }
 
 namespace {
