@@ -164,6 +164,16 @@ class View {
             dds[Lower(x.name)] = std::move(x.data);  // (models name them in another case: "mf01" for "MF01")
       }
     }
+    // (a superstar's body, model 0: the extra models on a skeleton of their own - the elbow pads 0x1a / 0x1b: root,
+    // Bip L UpperArm at 0, the pad in the arm's space - are put on its bones by name, as the game does; drawn as stored
+    // they lay at his feet, 2026-11-12)
+    svrfmt::Model body;
+    for (auto &k : stg.kids)
+      if (k.id == 0) {
+        const Bytes d = svrfmt::ArchiveData(k);
+        if (svrfmt::IsJboy(d))
+          svrfmt::JboyRead(d, body, nullptr);
+      }
     for (auto &k : stg.kids) {
       const Bytes data = svrfmt::ArchiveData(k);
       if (!svrfmt::IsJboy(data))
@@ -171,6 +181,8 @@ class View {
       svrfmt::Model m;
       if (!svrfmt::JboyRead(data, m, nullptr))
         continue;
+      if (k.id >= 0x10 && k.id <= 0xFF && !body.nodes.empty())
+        OnBody(m, body);
       const Flags f = flags.count(k.id) ? flags[k.id] : Flags{};
       if (f.animated)
         continue;
@@ -454,6 +466,49 @@ class View {
     for (int r = 0; r < 3; ++r)
       o.m[r][3] = -(o.m[r][0] * a.m[0][3] + o.m[r][1] * a.m[1][3] + o.m[r][2] * a.m[2][3]);
     return o;
+  }
+  // A model's nodes' bind (rest) places in model space.
+  static std::vector<M34> BindWorld(const std::vector<svrfmt::Node> &nodes) {
+    std::vector<M34> w(nodes.size());
+    for (size_t i = 0; i < nodes.size(); ++i) {
+      const M34 local = Trs({nodes[i].t[0], nodes[i].t[1], nodes[i].t[2]},
+                            yanm::Euler(nodes[i].r[0], nodes[i].r[1], nodes[i].r[2]));
+      const int p = nodes[i].parent;
+      w[i] = p >= 0 && size_t(p) < i ? MulM(w[size_t(p)], local) : local;
+    }
+    return w;
+  }
+  // An extra model on a skeleton of its own (no "Bip Pelvis": the elbow pads) moved onto the body's: each vertex by its
+  // first bone, from that bone's rest place in its own skeleton to the body's bone of the same name; its palette the
+  // body's indices, its nodes the body's.
+  static void OnBody(svrfmt::Model &m, const svrfmt::Model &body) {
+    if (std::any_of(m.nodes.begin(), m.nodes.end(), [](const svrfmt::Node &n) { return n.name == "Bip Pelvis"; }))
+      return;
+    const auto own = BindWorld(m.nodes), on = BindWorld(body.nodes);
+    std::vector<int> to(m.nodes.size(), -1);
+    for (size_t i = 0; i < m.nodes.size(); ++i)
+      for (size_t j = 0; j < body.nodes.size() && to[i] < 0; ++j)
+        if (body.nodes[j].name == m.nodes[i].name)
+          to[i] = int(j);
+    for (auto &me : m.meshes) {
+      for (size_t v = 0; v < me.verts.size(); ++v) {
+        const int slot = me.weights.empty() || v >= me.weights[0].size() ? 0 : me.weights[0][v].bones[0];
+        const int node = slot < int(me.palette.size()) ? me.palette[size_t(slot)] - 1 : -1;
+        if (node < 0 || size_t(node) >= to.size() || to[size_t(node)] < 0)
+          continue;
+        const M34 x = MulM(on[size_t(to[size_t(node)])], Inverse(own[size_t(node)]));
+        auto &p = me.verts[v].pos, &n = me.verts[v].normal;
+        const float px = p[0], py = p[1], pz = p[2], nx = n[0], ny = n[1], nz = n[2];
+        for (int r = 0; r < 3; ++r) {
+          p[r] = x.m[r][0] * px + x.m[r][1] * py + x.m[r][2] * pz + x.m[r][3];
+          n[r] = x.m[r][0] * nx + x.m[r][1] * ny + x.m[r][2] * nz;
+        }
+      }
+      for (auto &p : me.palette)
+        if (p > 0 && size_t(p) <= to.size())
+          p = to[size_t(p) - 1] >= 0 ? to[size_t(p) - 1] + 1 : 1;
+    }
+    m.nodes = body.nodes;
   }
   static M34 Trs(const yanm::V &t, const yanm::Q &q) {
     const float x = q[0], y = q[1], z = q[2], w = q[3];
