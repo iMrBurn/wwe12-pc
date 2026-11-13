@@ -7,3 +7,4 @@ std::string Wwe12BenchmarkTakeScript() { return {}; }
 void Wwe12BenchmarkMark(const std::string &) {}
 void Wwe12BenchmarkFrame(double, double, double) {}
 void Wwe12BenchmarkRecordPad(unsigned short, short, short, bool) {}
+void Wwe12BenchmarkMatchStart() {}

@@ -65,6 +65,8 @@ std::atomic<bool> g_pal{false};
 std::atomic<u8 *> g_base{nullptr};
 // 30 fps mode: a match is being loaded (its loading screen's closing drops to 30).
 std::atomic<bool> g_match_pending{false};
+// 30 fps mode: the match was dropped to 30 at its loading screen's end (until the next loading screen).
+std::atomic<bool> g_match_at30{false};
 // The last scene script the game thread asked for since it went back to 60 (none: kNoScript). Per
 // thread: the loader thread asks for the next scene's script early (seen: 219 while 123 started).
 constexpr u32 kNoScript = 0xFFFFFFFFu;
@@ -128,6 +130,17 @@ extern "C" REX_FUNC(sub_82827918) {
     BD_DEBUG("[fps] game set frame rate {}", requested);
   }
   __imp__sub_82827918(ctx, base);
+  // 1.3.1 (#61, not seen yet, a guard): in the 30 fps mode, a SetFrameRate(60) of the game during the
+  // match would undo the drop; drop again (SetFrameRate(30) alone leaves a step at its 60 value).
+  if ((requested == 60 || requested == 50) && Mode() == FrameMode::k30 &&
+      g_match_at30.load(std::memory_order_relaxed)) {
+    const auto r3 = ctx.r3;
+    __imp__sub_82827AB8(ctx, base);
+    ctx.r3 = r3;
+    static std::atomic<u32> s_logged{0};
+    if (s_logged.fetch_add(1, std::memory_order_relaxed) < 10)
+      BD_INFO("[fps] game set frame rate {} in a match; dropped to 30 again (30 fps mode)", requested);
+  }
 }
 
 // "Drop to 30 (25) fps": skipped while the 60 fps mode is kept.
@@ -164,6 +177,7 @@ extern "C" REX_FUNC(sub_82827AB8) {
 // loading run at 60 again (at 30 they felt sluggish, as in Kaiko's SvR 2011 port): the game's own
 // "back to 60", which undoes its "drop to 30" (does nothing when already at 60).
 void Wwe12FpsLoadScreenOpened(PPCContext &ctx, u8 *base) {
+  g_match_at30.store(false, std::memory_order_relaxed);
   g_base.store(base, std::memory_order_relaxed);
   if (Mode() != FrameMode::k30)
     return;
@@ -194,12 +208,20 @@ extern "C" REX_FUNC(sub_82827B58) {
   }
 }
 
-// 1.3, issue #61: the game's match start (sub_822B51A0, wwe12_benchmark.cpp). In the 30 fps mode the
+// 1.3, issue #61: the game's match start (sub_822B51A0). In the 30 fps mode the
 // match's loading screen closing drops to 30 (a match without entrances never ended any, so it stayed
 // at 60); with entrances, the game's own entrance mode and the end of the entrances do the same.
-void Wwe12FpsMatchStarting() {
-  if (Mode() == FrameMode::k30)
+// 1.3.1: the hook itself lives here (it was in wwe12_benchmark.cpp, which Android does not build, so the
+// fix never ran on the phones of #61); the benchmark's own check is called from it.
+void Wwe12BenchmarkMatchStart();  // wwe12_benchmark.cpp (Android: empty stand-in)
+REX_EXTERN(__imp__sub_822B51A0);
+extern "C" REX_FUNC(sub_822B51A0) {
+  if (Mode() == FrameMode::k30) {
     g_match_pending.store(true, std::memory_order_relaxed);
+    BD_INFO("[fps] match starting: drop to 30 when its loading screen closes (30 fps mode)");
+  }
+  Wwe12BenchmarkMatchStart();
+  __imp__sub_822B51A0(ctx, base);
 }
 
 // wwe12_load_turbo.cpp: a loading screen closed (game thread).
@@ -207,6 +229,7 @@ void Wwe12FpsLoadScreenClosed() {
   if (Mode() != FrameMode::k30 || !g_match_pending.exchange(false, std::memory_order_relaxed))
     return;
   DropTo30Now();
+  g_match_at30.store(true, std::memory_order_relaxed);
   BD_INFO("[fps] match loaded: dropped to {} (30 fps mode, entrances or not)",
           g_pal.load(std::memory_order_relaxed) ? 25 : 30);
 }
