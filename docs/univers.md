@@ -1127,3 +1127,14 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   probablement compressé (BPE, comme ailleurs). SvR 2011 n'a pas de groupe `UN` dans `m.pac`. 2K14-2K17 : seulement en
   ISO (`modmaker_discs.txt`), à lire avec les outils de Mods (lecture d'ISO, BPE). `wuniData.pac` de WWE '13 n'a pas
   la même forme (répertoire de 4000 entrées illisible tel quel : autre format ou chiffré).
+- **Actes comparés (2026-11-13, lecteur d'ISO en lecture seule, scripts dans le dossier temporaire de la conversation)** :
+  WWE '12 `m.pac` UN00 = **117 actes** (32100-32127, 32200-32239, 32300-32327, 32400-32468, avec des trous). WWE '13
+  `mot01.pac` UN00 n'en a plus que 2 (32467-32468) ; 2K14 et 2K15 `mot01.pac` UN00 (≈ 80 Ko) aucun. À la place, ces jeux
+  ont des paquets de scènes **`pac/evt/Universe00..03.pac`** (WWE '13) et **`Universe00..09.pac`** (2K15) : leurs scènes
+  d'Univers sont des scripts EVP, comme les entrées et les victoires (que le Mod Maker sait déjà porter). 2K16 / 2K17 :
+  pas de groupe UN dans les `pac/*.pac` du haut (à regarder dans `pac/evt/`).
+- **Piste pour les porter** : dans WWE '12, les actes < 32000 sont des scènes EVP (Season0-6 : 1010-3840 ; RSC0-3 :
+  4000-4399) jouées par le même système d'actes (`sub_826ECE78`). Une scène d'un autre jeu pourrait donc devenir un acte
+  EVP ajouté à une copie servie d'un `Season*.pac` / `RSC*.pac` (mécanisme de Mods, `sub_827F29F0`), lancé par une fiche
+  WCID ajoutée (+468 = son numéro) ou imposé par nous. À vérifier : comment un acte < 32000 trouve son `/EVPx/NNNN`, et
+  si les rôles (CastA-F) se remplissent pareil.
