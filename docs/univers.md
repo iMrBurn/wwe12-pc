@@ -1111,3 +1111,13 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   32307 sont les scènes de cette interférence (genre 1 : CM Punk ni allié ni rival des deux). 2e match (Cena 139
   contre 218, entrées `/EVP2/139`, `/EVP3/218`, victoire `/EVPA/6139`) : 3 cinématiques = les actes 32102, 32323 et
   32432 tirés au hasard (avant, pendant / après le match).
+- **Où sont les actes 32xxx (trouvé le 2026-11-13, sûr)** : dans `pac/m.pac`, groupe **`UN00`** (≈ 7,7 Mo, 30407 × 256
+  octets), que le jeu demande en une fois au chargement du match (« /ZMOT/UN00 found » dans le journal des fichiers).
+  Ses tables PACH ont pour numéros les actes : 32100-32127, 32200-32239, … (une table par liste WCID). Les scènes de
+  l'Univers sont donc des **animations jouées dans l'arène** (rôles + caméra), avec les mouvements propres à chaque
+  catcheur dans `/EMD/00NNNNSS` (NNNN = son numéro, SS = 02, 04, 05, 06 ; vu : 00013102 pour CM Punk, 00010202 pour
+  Triple H, 00026702 pour Swagger). Pas de fichier `/EVPx/` par acte.
+- **Ce que ça ouvre** : (1) l'embuscade peut reprendre un acte existant (une fiche WCID de bagarre en coulisses) imposé
+  au moment de l'interférence ; (2) des scènes d'autres jeux seraient des actes ajoutés à une copie servie de `UN00`
+  (`m.pac`, par l'overlay de Mods) + des fiches ajoutées à une copie de `WCID` (`wuniData.pac`), seulement si le
+  format de WWE '13 est le même (à vérifier : son `m.pac` / `UN00`).
