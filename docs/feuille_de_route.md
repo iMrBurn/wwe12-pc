@@ -136,7 +136,7 @@ Décision du 2026-11-12 : 1.4 à sortir en une semaine environ ; l'utilisateur c
 - [ ] Photo propre aux arènes ajoutées : codée (Univers 1e7b9e7 + Mods, Wwe12ArenaPictureName), pas testée (il faut une arène de mod installée sur la version de test).
 - [ ] Ajouter des logos et des matchup screens (léger : Mods remplace Add_01..15 et PPVbg_origin01..10 par les images du joueur)
 - [ ] Nouveau show comme NXT (30 h et plus : non)
-- [ ] Beaucoup plus de News : 1er lot (Jay) codé, séries et Double Gold vus dans le journal ; #1 contender (match + gagnant), adversaire mystère et fond « grande victoire » testés par l'utilisateur le 2026-11-13 ; partenaire mystère (2 contre 2) codé (8028ed4), pas testé ; restent momentum, classements, WrestleMania, Survivor Series
+- [ ] Beaucoup plus de News : 1er lot (Jay) codé, séries et Double Gold vus dans le journal ; #1 contender (match + gagnant), adversaire mystère et fond « grande victoire » testés par l'utilisateur le 2026-11-13 ; codés, pas testés : partenaire mystère (2 contre 2), momentum haut / bas, sortie du top 5, Past Glory (Rumble), Historic Reign, représentant à WrestleMania, équipes de Survivor Series (b6ffe2c). Pas faits : éliminations du Rumble (non notées par le jeu), qualifications de Survivor Series (gros chantier)
 
 ## 1.5 et après : plateformes et finitions (à décider selon les retours)
 - Launcher : améliorations (`docs/launcher_amelioration.md`, 20 à 28 h : état du jeu, messages, confort Steam Deck à la manette, bouton « Test de performance », finitions) ; pas de refonte du design.
