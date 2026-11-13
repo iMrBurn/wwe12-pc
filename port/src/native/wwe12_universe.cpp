@@ -1590,6 +1590,7 @@ REXCVAR_DEFINE_BOOL(wwe12_universe_nxt, false, "WWE12",
 bool NxtOn() { return REXCVAR_GET(wwe12_universe_nxt); }
 u32 WeeklyShows() { return NxtOn() ? 4 : 3; }
 thread_local bool t_nxt_booking = false;  // (dev log) inside NXT's card call
+bool NxtProbeLive();  // NXT is on and its booker lives (dev logs)
 u32 g_nxt_probe_lines = 0;
 
 struct CalendarWords {
@@ -4147,10 +4148,15 @@ extern "C" REX_FUNC(sub_826CC0B8) {
   const u32 from = u32(ctx.lr);
   const u32 probe_rec = bd::mem::try_load<u32>(ctx.r3.u32), probe_brand = ctx.r4.u32;
   __imp__sub_826CC0B8(ctx, base);
-  if (t_nxt_booking && g_nxt_probe_lines < 40) {
-    ++g_nxt_probe_lines;
-    BD_INFO("[univers] NXT probe: show record {:08X} brand {} -> {} (from {:08X})", probe_rec, probe_brand,
-            ctx.r3.u32, from);
+  if (g_nxt_probe_lines < 60 && NxtProbeLive()) {
+    static std::mutex s_lock;
+    static std::set<u64> s_seen;
+    std::lock_guard<std::mutex> lock(s_lock);
+    if (s_seen.insert((u64(from) << 32) | (u64(probe_rec) << 8) | probe_brand).second) {
+      ++g_nxt_probe_lines;
+      BD_INFO("[univers] NXT probe: show record {:08X} brand {} -> {} (from {:08X})", probe_rec, probe_brand,
+              ctx.r3.u32, from);
+    }
   }
   if (from == kContractCountReturn && ctx.r3.u32 == 0 && g_contract_extra) {
     --g_contract_extra;  // counted as on the show: the count reaches 15 with minimum - 15 fewer
@@ -6156,6 +6162,10 @@ void NxtBrands(const PPCContext &x, u8 *base, u32 u) {
     bd::mem::store<u8>(r + 929 + b, u8(b == u32(nxt)));
   BD_INFO("[univers] NXT: books brand {} ({} Superstars), record {:08X}", nxt, count[nxt], r);
 }
+
+namespace {
+bool NxtProbeLive() { return g_nxt_booker && NxtOn(); }
+}  // namespace
 
 // (dev log) who asks a Superstar's brand while NXT's booker lives (each caller once)
 extern "C" REX_FUNC(sub_826D2B50) {
