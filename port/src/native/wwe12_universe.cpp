@@ -7171,6 +7171,17 @@ extern "C" REX_FUNC(sub_826EAEB0) {
   if (qualifiers && bd::mem::try_load<u32>(booker) == kBookerPpv)
     PlaceQualified(in, base, booker, booker + 20 + i * 1320);
   __imp__sub_826EAEB0(ctx, base);
+  if (entry && i < 8 && g_nxt_booker && booker == g_nxt_booker) {  // NXT's card: who, of which brand
+    PPCContext x = in;
+    x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+    std::string who;
+    for (u32 p = 0; p < std::min<u32>(bd::mem::load<u8>(entry + 2), 8); ++p) {
+      const u32 id = bd::mem::load<u16>(entry + 16 + p * 12);
+      if (id < 512)
+        who += fmt::format(" {}(brand {})", id, Call(x, base, __imp__sub_826D2B50, id));
+    }
+    BD_INFO("[univers] NXT card: match {} record show {}:{}", i, bd::mem::load<u32>(booker + 20 + i * 1320 + 4), who);
+  }
   if (REXCVAR_GET(wwe12_universe_card_probe) && entry && i < 8) {
     // Dev: the card entry written (104 bytes) and the booker's record head, to find the #1 contender's and the mystery
     // opponent's marks (news, 1.4)
