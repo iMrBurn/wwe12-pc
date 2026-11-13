@@ -7485,7 +7485,14 @@ extern "C" REX_FUNC(sub_828D2660) {
     g_inject_who = 512;
   }
   if (REXCVAR_GET(wwe12_universe_scene_table_probe)) {
-    BD_INFO("[univers] scene table: read for kind {} (from {:08X})", ctx.r4.u32, u32(ctx.lr));
+    // (the match setup G = sub_8267CF38() = 0x8317C850: +12456 / +12460 its mode - Universe 0, Create a Story tests 4 -
+    // and the bytes Create a Story's request sets, +321..+325, +331; to compare a Create a Story scene with ours)
+    constexpr u32 kSetup = 0x8317C850;
+    std::string cas;
+    for (u32 o : {321u, 322u, 323u, 324u, 325u, 331u})
+      cas += fmt::format(" +{}={}", o, bd::mem::load<u8>(kSetup + o));
+    BD_INFO("[univers] scene table: read for kind {} (from {:08X}) | setup +12456={} +12460={}{}", ctx.r4.u32,
+            u32(ctx.lr), bd::mem::load<u32>(kSetup + 12456), bd::mem::load<u32>(kSetup + 12460), cas);
     LogSceneTable("read");
   }
   __imp__sub_828D2660(ctx, base);
