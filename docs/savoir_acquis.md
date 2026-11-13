@@ -148,6 +148,11 @@ Les entrées sont classées par sujet, pas par date ; ajouter les nouvelles déc
 - **Commentaire de l'Univers (2026-10-31)** : une table de son de type 12 dont les paires ne sont pas triées par empreinte
   rendait Lawler muet avec le DLC 04 ; le portage la trie en mémoire (`wwe12_comm_table_fix`). Étude :
   `docs/commentaire_univers.md`.
+- **Univers, cartes, news et mallette (2026-11-12)** : une entrée de carte fait 104 octets (+1 titre, +2 places, +7 genre :
+  8 = #1 contender ; places à +16 + 12 × p, +0 catcheur u16, +3 camp, +7 = 1 « ??? »). Une news fait 16 octets (+0..+8
+  cinq catcheurs, 512 = aucun ; +12 type ; +10/+11 et +14/+15 libres, nous y mettons nos marques). Le détenteur de la
+  mallette est U+51004 (`sub_826CC718`) ; la proposition d'encaissement est `sub_82554460`, sa boîte `sub_82554670`,
+  sa réponse `sub_8288EEF8` (1 = OUI). Le jeu ne blesse jamais en simulation. Détails : `docs/univers.md` (en tête).
 - **Interrupteur « jeu d'origine » (2026-10-22, reporté à la 1.0 : PAS dans l'arbre, sauvé dans
   `work/original-game-1.0.patch`, hors dépôt ; `git apply` pour le reprendre)** : `wwe12_original.h` (`Wwe12OriginalGame()`) +
   `wwe12_original.cpp` (cvar `wwe12_original_game`, défaut false ; le launcher n'écrira que cette clé). À true,
