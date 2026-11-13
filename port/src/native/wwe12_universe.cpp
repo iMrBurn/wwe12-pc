@@ -2897,7 +2897,9 @@ void SetPromptLabel(u32 set, u32 k, u32 from, u32 to);
 void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base);  // wwe12_superstar_mods.cpp
 
 void Wwe12DiscordUniverseMenu();  // wwe12_discord.cpp (Rich Presence: a Universe match is over)
-void FillGameHolder(u32 u);  // (two Money in the Bank briefcases, below)
+void FillGameHolder(u32 u);
+void Twists(const PPCContext &x, u8 *base, u32 record, u32 places, u32 winner_side);  // ("ultimate" Universe)
+void ChaosMystery(u32 rec);  // (two Money in the Bank briefcases, below)
 void Show3Experiment(u32 u);  // (dev, at the end of the file)
 void WeeklyNews(const PPCContext &in, u8 *base);  // (more news, below)
 
@@ -4631,6 +4633,10 @@ u32 g_news_draft = 0;
 // More news of ours (1.4, "a lot more news"): type 5, +14 = 0x53, +15 the kind (kMore*): the kind + 1 while drawn.
 constexpr u8 kMoreMarker = 0x53;
 constexpr u32 kMoreEvent = 200;  // (queued as event 200 + kind)
+// The game's own news types, queued as event 1000 + type (no marker: the game draws its own texts): 2 New Rivalry,
+// 8 "Why %s Why?" (a turn to heel), 9 Fan Favorite (a turn to face) (titles 27062 / 27076 / 27074 by the type table
+// 0x82023738, in the order of string.pac's news texts).
+constexpr u32 kNativeEvent = 1000;
 enum MoreKind : u32 {
   kCashInWon, kCashInLost, kStreak5, kStreak10, kStreak15, kLosing5,
   kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical,
@@ -5162,6 +5168,14 @@ void FlushNews(const PPCContext &in, u8 *base) {
     // one Superstar (its picture alone: the news shows a picture for each of +0 .. +8), the event
     // in the free +14 / +15 (0x51, event)
     bd::mem::store<u16>(record, u16(n.b < 512 ? n.b : 512));
+    if (n.event >= kNativeEvent) {  // one of the game's own types
+      bd::mem::store<u16>(record + 2, u16(n.b2 < 512 ? n.b2 : 512));
+      bd::mem::store<u8>(record + 12, u8(n.event - kNativeEvent));
+      Call(x, base, __imp__sub_826D1630, view, record);
+      Call(x, base, __imp__sub_826CE098, view);
+      BD_INFO("[univers] news: the game's type {} (Superstars {}, {})", n.event - kNativeEvent, n.b, n.b2);
+      continue;
+    }
     // the game shows type 5 only (its type 6 is never drawn): both are type 5, +15 bit 7 = "begin"
     if (n.event >= kMoreEvent) {
       bd::mem::store<u8>(record + 14, kMoreMarker);
@@ -5581,6 +5595,8 @@ extern "C" REX_FUNC(sub_826CEF28) {
                                       won ? 1 : 0, day));
       }
       DefenseNews(x, base, record, day);  // (before the game's result: the champion is still the old one)
+      if (!rumble && winner < 6)
+        Twists(x, base, record, places, winner_side);
       if (winner < 6)
         ContenderWonNews(record, winner_id);
       if (REXCVAR_GET(wwe12_universe_card_probe)) {
@@ -6084,9 +6100,12 @@ extern "C" REX_FUNC(sub_826DC6E8) {
 // template) past the game's number still without a template is booked again as one of the game's
 // own matches, which always have one (an empty entry crashes the card rules, sub_826EB510).
 REX_EXTERN(__imp__sub_826F15E8);
+extern thread_local bool t_chaos_story;  // ("ultimate" Universe: a story's match being booked)
 extern "C" REX_FUNC(sub_826F15E8) {
   const PPCContext in = ctx;
+  t_chaos_story = bd::mem::try_load<u32>(in.r3.u32 + 11100 + 4 * (in.r5.u32 & 0xFFFF)) != 0xFFFFFFFFu;
   __imp__sub_826F15E8(ctx, base);
+  t_chaos_story = false;
   const u32 entry = in.r4.u32, i = in.r5.u32 & 0xFFFF;
   const u32 n = t_weekly_matches, d = t_weekly_default;
   if (!n || d < 2 || i < d || !entry || bd::mem::load<u32>(entry))
@@ -7242,6 +7261,8 @@ extern "C" REX_FUNC(sub_826EAEB0) {
     g_placed_events |= 1u << 1;  // (the qualified are placed already)
   if (qualifiers && bd::mem::try_load<u32>(booker) == kBookerPpv)
     PlaceQualified(in, base, booker, booker + 20 + i * 1320);
+  if (entry && i < 8 && bd::mem::load<u32>(kInUniverseFlag) == 1)
+    ChaosMystery(booker + 20 + i * 1320);  // ("ultimate" Universe: a mystery opponent, before the entry is written)
   __imp__sub_826EAEB0(ctx, base);
   if (entry && i < 8 && g_nxt_booker && booker == g_nxt_booker) {  // NXT's card: who, of which brand
     PPCContext x = in;
@@ -8096,4 +8117,232 @@ extern "C" REX_FUNC(sub_824868F8) {
   }
   BD_INFO("[univers] act swap: {} act(s) now play {} ({} blocks, data {:08X})", done, to, blocks,
           bd::mem::load<u32>(b + 8));
+}
+
+// ---- "Ultimate" Universe: a less predictable Universe (user's wish, 2026-11-13; study: docs/univers.md section 46) ----
+//
+// One setting, wwe12_universe_chaos (0 = the game's Universe, 1 a little, 2 a lot, 3 madness), gives each twist its
+// chance; each has its own setting too (-1 = the level's). Nothing changes with 0 (the default).
+//  - cards: the weekly card layout (template group, record +902) drawn at random instead of the next one (sub_826CC020
+//    does +902 += 1 modulo the table's groups: the 32 weekly layouts always came in the same order);
+//  - stipulations: a normal match (category 1) of 1 / 4 / 8 / 9 places may become one of the game's own random
+//    stipulations for that format (sub_826DC758: lists at 0x8203DC18 + format * 8, the ones its category 18 draws
+//    from); never in a story's match;
+//  - contenders: a ranking slot (template code 0 / 16, param n = the n-th of the title's ranking, 1 = the champion)
+//    may take someone lower (n + 1..3) for this card (sub_826EF468, the template's param restored after);
+//  - mystery: a non-title, non-story singles match may hide one of its Superstars as "???" (place +28 = 1, as the
+//    game's mystery opponent, code 23) - with its news (CardNews);
+//  - turns: after a match, a Superstar may turn (character record +29, the face / heel byte that the stories' effects
+//    2 / 3 write; which value is a face is John Cena's), with the game's own news (type 9 Fan Favorite / 8 "Why %s
+//    Why?");
+//  - betrayals: after a lost tag match, a team may break up: the partners become rivals (sub_826CD7F0(view + 8, a, b,
+//    -5), both ways), with the game's New Rivalry news (type 2);
+//  - scenes: the game's own scenes play more often (their chance, sub_826CA4E8, times this %, kept under 100).
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos, 0, "WWE12",
+                     "Universe: how unpredictable (0 = the game's, 1 a little, 2 a lot, 3 madness): card layouts, "
+                     "stipulations, contenders, mystery opponents, turns, betrayals, more scenes.");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_cards, -1, "WWE12",
+                     "Universe: % of weekly cards with a layout at random (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_stips, -1, "WWE12",
+                     "Universe: % of normal matches given a stipulation (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_contenders, -1, "WWE12",
+                     "Universe: % of ranking slots given someone lower (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_mystery, -1, "WWE12",
+                     "Universe: % of singles matches with a mystery opponent (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_turns, -1, "WWE12",
+                     "Universe: % of matches after which a Superstar turns (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_betrayals, -1, "WWE12",
+                     "Universe: % of lost tag matches breaking the team up (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_scenes, -1, "WWE12",
+                     "Universe: the game's scenes' chance times this % (100 = the game's; -1 = the chaos level's).");
+
+REX_EXTERN(__imp__sub_826CC020);
+REX_EXTERN(__imp__sub_826D67A0);
+REX_EXTERN(__imp__sub_826DC738);
+REX_EXTERN(__imp__sub_826DC758);
+REX_EXTERN(__imp__sub_826EF468);
+REX_EXTERN(__imp__sub_826CA4E8);
+REX_EXTERN(__imp__sub_82A32DB0);
+REX_EXTERN(__imp__sub_826CD7F0);
+
+namespace {
+enum ChaosKind { kChaosCards, kChaosStips, kChaosContenders, kChaosMystery, kChaosTurns, kChaosBetrayals, kChaosScenes };
+int ChaosPct(ChaosKind k) {
+  static const int kLevels[4][7] = {{0, 0, 0, 0, 0, 0, 100},
+                                    {35, 10, 15, 6, 3, 10, 150},
+                                    {70, 20, 25, 12, 6, 20, 200},
+                                    {100, 35, 40, 20, 12, 35, 300}};
+  int own = -1;
+  switch (k) {
+    case kChaosCards: own = REXCVAR_GET(wwe12_universe_chaos_cards); break;
+    case kChaosStips: own = REXCVAR_GET(wwe12_universe_chaos_stips); break;
+    case kChaosContenders: own = REXCVAR_GET(wwe12_universe_chaos_contenders); break;
+    case kChaosMystery: own = REXCVAR_GET(wwe12_universe_chaos_mystery); break;
+    case kChaosTurns: own = REXCVAR_GET(wwe12_universe_chaos_turns); break;
+    case kChaosBetrayals: own = REXCVAR_GET(wwe12_universe_chaos_betrayals); break;
+    case kChaosScenes: own = REXCVAR_GET(wwe12_universe_chaos_scenes); break;
+  }
+  if (own >= 0)
+    return own;
+  const int level = std::clamp<int>(REXCVAR_GET(wwe12_universe_chaos), 0, 3);
+  return kLevels[level][k];
+}
+std::mutex g_chaos_lock;
+std::mt19937 g_chaos_rng{std::random_device{}()};
+bool ChaosRoll(ChaosKind k) {
+  const int p = ChaosPct(k);
+  if (p <= 0)
+    return false;
+  std::lock_guard<std::mutex> lock(g_chaos_lock);
+  return int(g_chaos_rng() % 100) < p;
+}
+u32 ChaosRand(u32 n) {
+  std::lock_guard<std::mutex> lock(g_chaos_lock);
+  return n ? u32(g_chaos_rng() % n) : 0;
+}
+}  // namespace
+
+// cards: the next weekly layout at random (r3 -> the show's record: +902 its group, +900 its table)
+extern "C" REX_FUNC(sub_826CC020) {
+  const PPCContext in = ctx;
+  const u32 rec = bd::mem::try_load<u32>(ctx.r3.u32);
+  const u32 before = rec ? bd::mem::load<u16>(rec + 902) : 0;
+  __imp__sub_826CC020(ctx, base);
+  if (!rec || !ChaosRoll(kChaosCards))
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 tables = Call(x, base, __imp__sub_826D67A0, 0);
+  const u32 count = tables ? Call(x, base, __imp__sub_826DC738, tables, bd::mem::load<u16>(rec + 900)) : 0;
+  if (count < 3 || count > 64)
+    return;
+  u32 g = ChaosRand(count);
+  for (int tries = 0; tries < 8 && (g == (before + 1) % count || g == before % count); ++tries)
+    g = ChaosRand(count);  // (another than the game's next and the last)
+  bd::mem::store<u16>(rec + 902, u16(g));
+  BD_INFO("[univers] chaos: next card layout {} of {} (table {})", g, count, bd::mem::load<u16>(rec + 900));
+}
+
+// stipulations: sub_826DC758(category, format) -> the match type; only from the card call sub_826F15E8, not for a
+// story's match (t_chaos_story, set by sub_826F15E8's hook: booker + 11100 + 4 i != -1)
+thread_local bool t_chaos_story = false;
+extern "C" REX_FUNC(sub_826DC758) {
+  const u32 cat = ctx.r3.u32, fmt = ctx.r4.u32, from = u32(ctx.lr);
+  __imp__sub_826DC758(ctx, base);
+  if (cat != 1 || (fmt != 1 && fmt != 4 && fmt != 8 && fmt != 9) || from < 0x826F15E8 || from >= 0x826F1950 ||
+      t_chaos_story || !ChaosRoll(kChaosStips))
+    return;
+  const u32 list = bd::mem::load<u32>(0x8203DC18 + fmt * 8), n = bd::mem::load<u32>(0x8203DC18 + fmt * 8 + 4);
+  if (!list || n < 2 || n > 16)
+    return;
+  const u32 normal = ctx.r3.u32;
+  u32 type = normal;
+  for (int tries = 0; tries < 8 && type == normal; ++tries)
+    type = bd::mem::load<u32>(list + 4 * ChaosRand(n));
+  if (type == normal)
+    return;
+  ctx.r3.u64 = type;
+  BD_INFO("[univers] chaos: a match of format {} made type {} (was {})", fmt, type, normal);
+}
+
+// contenders: sub_826EF468(entry r3: +0 template, record r4, set r5, ...) reads the template's slots (+20 + 4 k:
+// u8 code, u16 param at +2) of code 0 (r5 0) / 16 (r5 != 0)
+extern "C" REX_FUNC(sub_826EF468) {
+  const u32 entry = ctx.r3.u32, tpl = entry ? bd::mem::try_load<u32>(entry) : 0;
+  const u32 want = ctx.r5.u32 ? 16 : 0;
+  std::vector<std::pair<u32, u16>> changed;
+  if (tpl && bd::mem::try_load<u32>(entry + 28) == 0)  // (not a story's match)
+    for (u32 k = 0; k < 6; ++k) {
+      const u32 slot = tpl + 20 + 4 * k;
+      const u8 code = bd::mem::load<u8>(slot);
+      const u16 param = bd::mem::load<u16>(slot + 2);
+      if (code == 0xFF || code != want || param < 2 || param > 20 || !ChaosRoll(kChaosContenders))
+        continue;
+      changed.push_back({slot + 2, param});
+      bd::mem::store<u16>(slot + 2, u16(param + 1 + ChaosRand(3)));
+      BD_INFO("[univers] chaos: ranking slot {} takes #{} instead of #{}", k, bd::mem::load<u16>(slot + 2), param);
+    }
+  __imp__sub_826EF468(ctx, base);
+  for (auto [at, v] : changed)  // (the template is the game's data: back as it was)
+    bd::mem::store<u16>(at, v);
+}
+
+// scenes: a scene's chance (sub_826CA4E8(record + 456, A's +29, B's +29) -> %, only the scene code calls it)
+extern "C" REX_FUNC(sub_826CA4E8) {
+  __imp__sub_826CA4E8(ctx, base);
+  const int x = ChaosPct(kChaosScenes), p = int(ctx.r3.u32);
+  if (x != 100 && p > 0 && p < 100)
+    ctx.r3.u64 = u64(std::clamp(p * x / 100, 1, 99));
+}
+
+// mystery: before the card entry is written (sub_826EAEB0's hook), from the booker's record (1320 bytes: +12 title
+// flag, +16 places, +28 story, places at +40 + 32 k: +0 id, +28 = 1 "???")
+void ChaosMystery(u32 rec) {
+  if (!rec || bd::mem::load<u32>(rec + 12) || bd::mem::load<u32>(rec + 28) || bd::mem::load<u32>(rec + 16) != 2 ||
+      !ChaosRoll(kChaosMystery))
+    return;
+  const u32 k = ChaosRand(2), place = rec + 40 + 32 * k;
+  const u32 id = bd::mem::load<u32>(place);
+  if (id >= 512 || bd::mem::load<u32>(place + 28))
+    return;
+  bd::mem::store<u32>(place + 28, 1);
+  BD_INFO("[univers] chaos: {} is a mystery opponent", id);
+}
+
+// turns and betrayals: after a match's result (sub_826CEF28's hook), from its card entry (places by sub_826D4958)
+void Twists(const PPCContext &x0, u8 *base, u32 record, u32 places, u32 winner_side) {
+  if (ChaosPct(kChaosTurns) <= 0 && ChaosPct(kChaosBetrayals) <= 0)
+    return;
+  PPCContext x = x0;
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  const u32 out = x.r1.u32 + 0x400;
+  struct P {
+    u32 id, side;
+  };
+  std::vector<P> ps;
+  for (u32 p = 0; p < places && p < 8; ++p)
+    if (Call(x, base, __imp__sub_826D4958, record, out, p) && bd::mem::load<u16>(out) < 512)
+      ps.push_back({bd::mem::load<u16>(out), bd::mem::load<u8>(out + 3)});
+  if (ps.size() < 2)
+    return;
+  // a turn: one of them (a loser twice as often), its +29 flipped; the face value is John Cena's (139)
+  if (ChaosRoll(kChaosTurns)) {
+    std::vector<P> pool;
+    for (auto &p : ps)
+      for (int w = p.side == winner_side ? 1 : 2; w > 0; --w)
+        pool.push_back(p);
+    const P who = pool[ChaosRand(u32(pool.size()))];
+    const u32 ch = Call(x, base, __imp__sub_82A32DB0, who.id), cena = Call(x, base, __imp__sub_82A32DB0, 139);
+    if (ch && cena && who.id != 139) {
+      const u8 face = bd::mem::load<u8>(cena + 29), was = bd::mem::load<u8>(ch + 29);
+      if (was <= 1 && face <= 1) {
+        const u8 now = u8(1 - was);
+        const u32 type = now == face ? 9 : 8;
+        bd::mem::store<u8>(ch + 29, now);
+        QueueNews(kNativeEvent + type, type, who.id);
+        BD_INFO("[univers] chaos: {} turns {} (+29 {} -> {}, a face is {})", who.id, now == face ? "face" : "heel",
+                was, now, face);
+      }
+    }
+  }
+  // a betrayal: a tag team that lost (the 2 places of the losing side of a 4-place match) breaks up
+  std::vector<u32> losers;
+  for (auto &p : ps)
+    if (p.side != winner_side)
+      losers.push_back(p.id);
+  if (losers.size() == 2 && ps.size() == 4 && ChaosRoll(kChaosBetrayals)) {
+    const u32 view = x.r1.u32 + 0x100;
+    Call(x, base, __imp__sub_826CDC48, view);
+    const u32 a = losers[0], b = losers[1];
+    Call(x, base, __imp__sub_826CD7F0, view + 8, a, b, u32(-5));
+    Call(x, base, __imp__sub_826CD7F0, view + 8, b, a, u32(-5));
+    Call(x, base, __imp__sub_826CE098, view);
+    {
+      std::lock_guard<std::mutex> lock(g_qual_mutex);
+      Qualifier q{kNativeEvent + 2, 0, 2, a};
+      q.b2 = b;
+      g_pending_news.push_back(q);
+    }
+    BD_INFO("[univers] chaos: {} and {} break up, now rivals", a, b);
+  }
 }
