@@ -112,6 +112,8 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - AJOUTER des logos et des matchup screens (les listes du jeu sont pleines).
 - Nouveau show comme NXT.
 
+**Décision du 2026-11-13 : pas de 1.3.1.** Les correctifs V-sync adaptative coupée par défaut (1787306) et 30 fps sur Android (#61, 35fb76c) partent dans la prochaine version, avec le travail Univers (news, mallettes, blessures, BACK ; NXT derrière `wwe12_universe_nxt`, coupé). Sortie visée : au plus tard le 2026-11-19 ; l'APK sera refaite pour cette version.
+
 **Suivi 1.4 (bloc-notes de l'utilisateur du 2026-11-12, un point à la fois, dans CET ordre ; cocher quand codé + testé par l'utilisateur)**
 
 Décision du 2026-11-12 : 1.4 à sortir en une semaine environ ; l'utilisateur commence par le mode Univers, un point après l'autre, en suivant son bloc-notes. Estimations : Univers et Gameplay (messages du 2026-11-12).
