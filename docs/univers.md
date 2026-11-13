@@ -28,8 +28,8 @@ rien n'a été supprimé. Les numéros de partie (§) ne changent pas.
 - **Plus de news** (`wwe12_universe_more_news`, idées et textes de Jay) : encaissement réussi / raté, séries de 5, 10, 15
   victoires et de 5 défaites (« res » par match), mallette gardée plus de 3 mois, Double Gold (titres qui ont déjà
   changé de mains seulement), règnes de 10 / 25 / 52 semaines, Fighting Champion (6 et 10 défenses), nouvelles médicales,
-  match #1 contender (à 2 ou 3) et son vainqueur, adversaire mystère (« ??? »). Séries et Double Gold vus dans le
-  journal ; #1 contender et mystère pas encore testés. Notre news : type 5, +14 = 0x53, +15 le genre, +10 l'argument
+  match #1 contender (à 2 ou 3) et son vainqueur, adversaire ou partenaire mystère (« ??? »). Séries et Double Gold vus dans le
+  journal ; #1 contender, mystère et fonds testés le 2026-11-13 (résultats : fond « grande victoire » newsBG_04). Notre news : type 5, +14 = 0x53, +15 le genre, +10 l'argument
   (titres, nombre), +2 / +4 d'autres catcheurs ; textes composés au dessin. Le jeu vide NEWS à chaque show.
 - **Fiche de carte** (104 octets, journal `wwe12_universe_card_probe`) : +0 type, +1 titre (FF aucun), +2 places,
   +3 état, +6 en-tête (1-8 MATCH #n, 9 MAIN EVENT, 10 #1 CONTENDER'S MATCH ; +7 n'est pas l'en-tête) ; places à +16 + 12 × p : +0 catcheur (u16), +3 camp,
