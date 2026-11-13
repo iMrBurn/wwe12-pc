@@ -137,7 +137,7 @@ Décision du 2026-11-12 : 1.4 à sortir en une semaine environ ; l'utilisateur c
 - [ ] Titres de SmackDown dans EDIT SUPERSTAR (R1), si c'est le jeu d'origine (2-5 h)
 - [ ] Photo propre aux arènes ajoutées : codée (Univers 1e7b9e7 + Mods, Wwe12ArenaPictureName), pas testée (il faut une arène de mod installée sur la version de test).
 - [ ] Ajouter des logos et des matchup screens (léger : Mods remplace Add_01..15 et PPVbg_origin01..10 par les images du joueur)
-- [ ] Nouveau show comme NXT (30 h et plus : non)
+- [ ] Nouveau show comme NXT : mis de côté le 2026-11-13 (décision de l'utilisateur : pas de titre ni de roster propre, peu d'intérêt). Code derrière `wwe12_universe_nxt`, coupé par défaut (= 1.3.0) ; le choix des catcheurs reste celui de RAW/SmackDown ; état dans docs/univers.md § 45.
 - [x] Beaucoup plus de News : 1er lot (Jay) codé, séries et Double Gold vus dans le journal ; #1 contender (match + gagnant), adversaire mystère et fond « grande victoire » testés par l'utilisateur le 2026-11-13 ; vus sur une année simulée le 2026-11-13 : momentum, sortie du top 5 (une par semaine au plus), longs règnes, mallette gardée 3 mois, Past Glory, représentant à WrestleMania, Fighting Champion, partenaire mystère ; pas encore vus (cas rares) : Historic Reign, équipes de Survivor Series, Double Gold après correctif, nouvelles médicales (pas de blessure en simulation). Pas faits : éliminations du Rumble (non notées par le jeu), qualifications de Survivor Series (gros chantier)
 
 ## 1.5 et après : plateformes et finitions (à décider selon les retours)
