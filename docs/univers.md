@@ -1484,3 +1484,7 @@ vacant (1 seul match). Corrigé : les 4 têtes de série sont prises juste avant
 tous les chemins : X VACATE TITLE et le vidage de TITLE MANAGEMENT `sub_82564DD0`) ; sans 4 prétendants, le titre
 n'est pas rendu vacant. Reste : pendant le tournoi, le classement vide du titre laisse sans catcheur la place
 « champion » des modèles (le match peut sauter).
+2e test : **tournoi vu de bout en bout** (titre WWE vacant, demi-finales 322 c. 102 et 139 c. 53, finale 139 c. 102,
+102 champion au jour 77). Retouches : en-têtes des matchs placés (MATCH #n, finale MAIN EVENT : la finale gardait
+« #1 CONTENDER'S MATCH » du match repris), l'ancien champion n'est plus tête de série ; la boîte à choix en 2 colonnes
+(notre `PlaceManyChoices`) réduit son texte quand les lignes sont longues (UNIVERSE OPTIONS se chevauchait encore).
