@@ -1477,3 +1477,10 @@ Avec l'Univers imprévisible (dès « un peu ») ou leurs réglages (`wwe12_univ
   / attaque seulement après le match : pas faites (il faudrait couper l'intervenant pendant le match, inconnu).
 Relu par un agent ; corrections faites (vacant jamais pour de bon, place « champion » bornée, genre d'intervention
 lié à l'intervenant, pas de question répétée, rotation des paires par jour de carte).
+Test du 2026-11-13 (niveau « beaucoup ») : UNIVERSE OPTIONS à 6 lignes s'affichait sur 2 colonnes qui se
+chevauchent : remis à 5 lignes (RETOUR retiré, B revient). Le titre WWE rendu vacant : **le jeu vide le classement
+du titre avec le champion**, le tournoi n'a trouvé personne (« 0 free contenders ») et RAW est resté avec un titre
+vacant (1 seul match). Corrigé : les 4 têtes de série sont prises juste avant (`sub_82A3A060`, place 0 → personne,
+tous les chemins : X VACATE TITLE et le vidage de TITLE MANAGEMENT `sub_82564DD0`) ; sans 4 prétendants, le titre
+n'est pas rendu vacant. Reste : pendant le tournoi, le classement vide du titre laisse sans catcheur la place
+« champion » des modèles (le match peut sauter).
