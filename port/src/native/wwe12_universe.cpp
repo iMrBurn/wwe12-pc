@@ -7979,12 +7979,19 @@ u32 AddedSceneFor(const PPCContext &in, u8 *base, u32 act, u32 data) {
   AddedScene *sc = same[rng() % same.size()];
   // (scene, act) -> its copies in the game's memory (unpacked, BPE)
   static std::map<std::pair<std::string, u32>, std::array<u32, 3>> s_merged;
+  // (per scene AND act: the act's number is written in the data, below)
   const bool merged = (roles & ~u64(0x3F)) != 0;
-  u32 &guest = merged ? s_merged[{sc->name, act}][0] : sc->guest;
-  u32 &guest_bpe = merged ? s_merged[{sc->name, act}][1] : sc->guest_bpe;
-  u32 &guest_zlib = merged ? s_merged[{sc->name, act}][2] : sc->guest_zlib;
+  u32 &guest = s_merged[{sc->name, act}][0];
+  u32 &guest_bpe = s_merged[{sc->name, act}][1];
+  u32 &guest_zlib = s_merged[{sc->name, act}][2];
   if (!guest || !guest_bpe || !guest_zlib) {
-    const std::vector<u8> bytes = merged ? WithGameObjects(sc->bytes, data) : sc->bytes;
+    std::vector<u8> bytes = merged ? WithGameObjects(sc->bytes, data) : sc->bytes;
+    // The act's number is the record's group name (+0x4C, text): the game keys every block of the registered record
+    // by it (sub_82486648 -> sub_8246FC70: {atoi(+0x4C), x, y}) and looks the played act up by it (sub_8246E900): ours
+    // carried their own number, every lookup missed and the scene was skipped (no "Act=" posted, 2026-11-13).
+    std::fill(bytes.begin() + 0x4C, bytes.begin() + 0x5C, u8(0));
+    const std::string num = std::to_string(act);
+    std::memcpy(bytes.data() + 0x4C, num.data(), num.size());
     const svrfmt::Bytes bpe = svrfmt::BpeEncodeStored(svrfmt::Bytes(bytes.begin(), bytes.end()));
     const std::vector<u8> zl = ZlibStored(bytes);
     guest = GameAlloc(in, base, u32(bytes.size()));
@@ -8046,9 +8053,11 @@ extern "C" REX_FUNC(sub_824868F8) {
         const u32 was = at && at != 0x8317B874 ? bd::mem::try_load<u32>(at) : 0;
         if (!was)
           continue;
-        // the same packing as the game's copy: "ZLIB" (the full act, 2nd of a pair) or "BPE " (the light one)
+        // only the full act's copy ("ZLIB", the 2nd of a pair): the light one ("BPE ") is unpacked without a size check
+        // (sub_827E1428) into a buffer made for the game's light copies (~4 KB): ours whole could overflow it; the game's
+        // light copy is left (a record is rebuilt from the copy it unpacks: each stays consistent)
         const u32 magic = bd::mem::try_load<u32>(was);
-        const u32 mine = magic == 0x5A4C4942 ? ours.zlib : magic == 0x42504520 ? ours.bpe : 0;
+        const u32 mine = magic == 0x5A4C4942 ? ours.zlib : 0;
         BD_INFO("[univers] scene: act {} packed copy {:08X} (magic {:08X}) -> ours {:08X}", act, was, magic, mine);
         if (mine)
           bd::mem::store<u32>(at, mine);
