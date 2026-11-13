@@ -4908,8 +4908,8 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
     }
   }
   // the top 5 of each singles title the Universe uses (its ranking, sub_826D2508: 32-byte rows, +0 the Superstar):
-  // one who drops out of it (and is not its champion) gets a news; 2 a day at most; the first look after a load only
-  // keeps them
+  // one who drops out of it (and is not its champion) gets a news; one a week at most (113 in a year with 2 a day,
+  // test of 2026-11-13); the first look after a load only keeps them
   {
     static std::map<u32, std::vector<u32>> s_top;
     static u32 s_out = 0;
@@ -4918,7 +4918,8 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
     std::set<u32> used;
     for (const Reign &r : LoadReigns(day))
       used.insert(r.title);
-    u32 told = 0;
+    static u32 s_last_news = ~0u;
+    u32 told = s_last_news != ~0u && day < s_last_news + 7 ? 1 : 0;
     for (const u32 title : used) {
       if (!s_out || title >= 23 || Call(x, base, __imp__sub_82A39CE8, title))
         continue;
@@ -4932,10 +4933,11 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
       const u32 champ = Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;
       if (!first && s_top.count(title))
         for (const u32 id : s_top[title])
-          if (id < 512 && id != champ && told < 2 && std::find(top.begin(), top.end(), id) == top.end()) {
+          if (id < 512 && id != champ && told < 1 && std::find(top.begin(), top.end(), id) == top.end()) {
             QueueNews(kMoreEvent + kTop5Out, kNewsQualified, id, title);
             BD_INFO("[univers] news: {} drops out of title {}'s top 5", id, title);
             ++told;
+            s_last_news = day;
           }
       s_top[title] = top;
     }
