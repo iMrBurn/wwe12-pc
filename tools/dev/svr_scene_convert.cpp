@@ -108,6 +108,10 @@ int main(int argc, char **argv) {
   std::vector<BlockOut> blocks;
   for (auto &[yx, m] : tracks) {
     const int y = yx.first, x = yx.second;
+    if (y >= 6 && y < 60) {  // an object (prop...): the game loads the objects of ITS act, not ours: left out
+      std::printf("object track %d left out\n", y);
+      continue;
+    }
     BlockOut b;
     char name[16];
     if (y < 60) {
