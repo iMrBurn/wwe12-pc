@@ -1166,3 +1166,11 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   journal sur `sub_828D2660` (genre, nombre, scènes, catcheurs) et sur `sub_82694D98` / `sub_82694DC0` (appelant), puis
   une scène de Create a Story, une de RTWM et un match d'Univers ; ensuite une entrée imposée (scène 4000, {interférant,
   cible}) avant un match d'Univers : « scene script 4000 » + `/EVPx/4000` lu = la voie est bonne.
+- **Expérience du 2026-11-13 (cvars de dev `wwe12_universe_scene_table_probe`, `wwe12_universe_scene_inject`)** : un
+  match d'Univers ne lit que les genres 1, 8, 10, 11 de la table (jamais 9), et la table est vidée entre l'interférence
+  et le match. Une entrée ajoutée juste avant la première lecture (genre 1, scène 4000, l'interférant en rôle 0) **est
+  prise** : « scene script 4000 asked », le jeu cherche `/EVP0..T/4000` et `/EVZ…/4000`, `/PGEN/4000`, `/GMEV/4000`,
+  `/PCE6/4000` — tout **MISSING** : les paquets RSC (Create a Story) ne sont pas montés dans un match d'Univers → écran
+  noir (le jeu attend la scène). **La voie marche** ; il manque de servir la scène (EVP + EVZ + GMEV + objets) dans un
+  paquet monté pendant l'Univers, par le mécanisme de Mods (copie servie, `sub_827F29F0`). Ensuite : distribution
+  (cible en rôle 1), choix de la scène d'attaque, et le moment (avant le match).
