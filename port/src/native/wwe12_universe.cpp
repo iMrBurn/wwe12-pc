@@ -7460,12 +7460,32 @@ static void LogSceneTable(const char *why) {
 }
 
 static u32 g_inject_who = 512;  // an interference's interferer, waiting for the next table read (the experiment)
+static u32 g_saved_mode[2] = {~0u, ~0u};  // the setup's +12456 / +12460 while our scene plays in Create a Story's mode
+REXCVAR_DEFINE_BOOL(wwe12_universe_scene_inject_mode, false, "WWE12",
+                    "Dev: our injected cut scene plays in Create a Story's mode (setup +12456 = 2, +12460 = 4) until the "
+                    "match's next table read.");
 
 extern "C" REX_FUNC(sub_828D2660) {
   // (the experiment, 2nd try: the table was emptied between the interference and the match, and a Universe match only
   // reads kinds 1, 8, 10, 11 - test of 2026-11-13: the entry goes in right before the first read, with its kind)
   const int32_t inject = REXCVAR_GET(wwe12_universe_scene_inject);
+  constexpr u32 kSetupMode = 0x8317C850;  // sub_8267CF38()
+  if (g_saved_mode[0] != ~0u && ctx.r4.u32 != 1) {  // (the next read after ours: the Universe's mode back)
+    bd::mem::store<u32>(kSetupMode + 12456, g_saved_mode[0]);
+    bd::mem::store<u32>(kSetupMode + 12460, g_saved_mode[1]);
+    BD_INFO("[univers] scene table: Universe mode back ({}, {})", g_saved_mode[0], g_saved_mode[1]);
+    g_saved_mode[0] = g_saved_mode[1] = ~0u;
+  }
   if (inject > 0 && g_inject_who < 512) {
+    // (test of 2026-11-13: a Create a Story scene reads its table with the setup's +12456 = 2, +12460 = 4; the Universe
+    // has 3 and 0)
+    if (REXCVAR_GET(wwe12_universe_scene_inject_mode)) {
+      g_saved_mode[0] = bd::mem::load<u32>(kSetupMode + 12456);
+      g_saved_mode[1] = bd::mem::load<u32>(kSetupMode + 12460);
+      bd::mem::store<u32>(kSetupMode + 12456, 2);
+      bd::mem::store<u32>(kSetupMode + 12460, 4);
+      BD_INFO("[univers] scene table: Create a Story mode for our scene (was {}, {})", g_saved_mode[0], g_saved_mode[1]);
+    }
     const u32 t = SceneTable();
     if (t && bd::mem::load<u32>(t) < 16) {
       PPCContext x = ctx;
