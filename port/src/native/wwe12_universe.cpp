@@ -5046,12 +5046,32 @@ extern "C" REX_FUNC(sub_82558FC8) {
   const PPCContext in = ctx;
   __imp__sub_82558FC8(ctx, base);
   const u32 event = NewsEvent(in.r4.u32);
-  if (!event || !REXCVAR_GET(wwe12_universe_news_ppv_picture))
+  // A more news (1.4): a win or a title's the game's own "big win" picture (types 7 New Champion, 10-12 upset, Royal
+  // Rumble, Money in the Bank: element 393, newsBG_04; table 0x820236A8 read from the image), a medical update the
+  // injuries' (type 15: newsBG_01); the others (before a match, losses) keep the globe. Asked by the user, 2026-11-13.
+  const u32 more = g_news_more;
+  const char *more_bg = nullptr;
+  if (more) {
+    switch (more - 1) {
+    case kCashInWon: case kStreak5: case kStreak10: case kStreak15: case kDoubleGold: case kReignWeeks:
+    case kFightingChamp: case kContenderWon:
+      more_bg = "newsBG_04";
+      break;
+    case kMedical:
+      more_bg = "newsBG_01";
+      break;
+    default:
+      break;
+    }
+  }
+  g_news_more = 0;
+  if ((!event || !REXCVAR_GET(wwe12_universe_news_ppv_picture)) && !more_bg)
     return;
-  static u32 s_names[kEvents + 1] = {};
-  u32 &name = s_names[event];
+  static u32 s_names[kEvents + 3] = {};
+  const u32 slot = more_bg ? (more_bg[9] == '4' ? kEvents + 1 : kEvents + 2) : event;
+  u32 &name = s_names[slot];
   if (!name) {
-    const char *text = event == 1 ? "PPVbg_MinB" : "PPVbg_EC";
+    const char *text = more_bg ? more_bg : event == 1 ? "PPVbg_MinB" : "PPVbg_EC";
     name = REX_KERNEL_MEMORY()->SystemHeapAlloc(32, 0x10);
     if (!name)
       return;
