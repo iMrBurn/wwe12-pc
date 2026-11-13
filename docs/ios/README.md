@@ -59,3 +59,27 @@ Les shaders du jeu sont déjà dans `generated/native/`.
   s'ils gênent, les retirer de la boucle du workflow.
 - Le workflow de Ke619 est sous licence MIT (fichier LICENSE de son dépôt) : crédit conservé dans
   chaque fichier repris.
+
+## État au 2026-11-13 (le texte ci-dessus date des premiers essais)
+
+- **Ça tourne sur iPhone 15 Pro** (IPA 17 testé par le propriétaire : textures et HUD corrects, pas de
+  plantage). Le jeu se lance depuis un lanceur UIKit (`port/src/ios/wwe12_launcher_ios.mm` : Play,
+  Install, DLC, Settings, Controls, Support, Saves, Mods), avec commandes tactiles
+  (`wwe12_touch_ios.mm`).
+- **Build** : le workflow `ios-port` du dépôt PUBLIC (`.github/workflows/ios-port.yml`, minutes gratuites)
+  construit la branche d'où on le lance : `gh workflow run ios-port.yml -R iMrBurn/wwe12-pc --ref <branche>`.
+  Les fichiers privés (`generated/`, `host_shaders/`, icône) viennent du dépôt privé
+  `iMrBurn/wwe12-ios-private` avec le secret `IOS_PRIVATE_TOKEN` ; l'IPA et les logs vont dans une
+  release du dépôt privé (jamais en artefact public). Le jeton gh de la machine n'a pas le droit de
+  modifier les fichiers de workflow : tout changement de workflow se fait depuis l'interface GitHub.
+- **Textures** : MoltenVK affichait des textures noires ou mélangées avec la table bindless de 65536
+  entrées. `gpu/compact_textures.cpp` (actif avec `WWE12_IOS`, ou `-DWWE12_COMPACT_TEXTURES=ON` sur
+  l'exe Vulkan PC) remplit avant chaque dessin une petite table de 128 entrées et réécrit les indices
+  des constantes partagées ; les emplacements restent un registre côté CPU (`SetBindlessTexture`).
+- **Autres réglages iOS** : replay instantané coupé (même gel qu'Android en fin de match), pause du rendu
+  en arrière-plan, cache de pipelines Vulkan dans `Library/Caches`, 3 doigts = journal détaillé d'une
+  image (F9).
+- **Essayés puis abandonnés** : maths exactes de MoltenVK (plante le GPU au chargement d'un match),
+  décodage BC sur CPU forcé (aucun gain), re-liaison du set de textures (aucun gain).
+- **Signature gratuite** : l'app expire au bout de 7 jours ; après réinstallation, refaire confiance au
+  certificat (Réglages > Général > VPN et gestion de l'appareil), VPN coupé.
