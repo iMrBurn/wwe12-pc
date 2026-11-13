@@ -1354,3 +1354,24 @@ semaine au hasard (`sub_826CC020`) ; stipulations au hasard (après `sub_826DC75
 surprises / retours (comme le code 23) ; prétendants inattendus (décaler le rang, `sub_826E1E60`) ; plus d'histoires
 en même temps (`sub_826C83D8`) ; retournements et trahisons après un match (+29, `sub_826CD7F0`) avec news ; 5 scènes
 par match (exclusion 0/1, `sub_826DBA10`) ; scènes dans plus de types de match (`sub_826CA5B8`, risque d'objets).
+
+**Fait (2026-11-13, pas encore vu en jeu) : « Univers imprévisible »** — ligne UNPREDICTABLE UNIVERSE / UNIVERS
+IMPRÉVISIBLE de UNIVERSE OPTIONS (`wwe12_universe_chaos` 0 = le jeu (défaut), 1 un peu, 2 beaucoup, 3 folie ; réglages
+fins `wwe12_universe_chaos_*`, -1 = celui du niveau). Chances par niveau (1 / 2 / 3) :
+- ordre des cartes au hasard 35 / 70 / 100 % (`sub_826CC020`, groupe +902 tiré, ni le suivant ni le dernier) ;
+- stipulation sur un match normal 10 / 20 / 35 % (après `sub_826DC758`, appel de `sub_826F15E8` seulement, pas pour
+  un match d'histoire ; listes du jeu par format) ;
+- prétendant inattendu 15 / 25 / 40 % par créneau de classement (`sub_826EF468` : param + 1..3, remis après) ;
+- adversaire mystère « ??? » 6 / 12 / 20 % des simples sans titre ni histoire (place +28 = 1 avant `sub_826EAEB0`) ;
+- retournement après un match 3 / 6 / 12 % (+29 inversé, valeur « gentil » = celle de John Cena ; news du jeu 9 Fan
+  Favorite / 8 « Why %s Why? », par `FlushNews`, chemin `kNativeEvent`) ;
+- trahison après un match par équipes perdu 10 / 20 / 35 % (relations −5 dans les deux sens, news 2 New Rivalry) ;
+- scènes du jeu × 1,5 / 2 / 3 (`sub_826CA4E8`, plafond 99) ;
+- 2e essai de départ d'histoire 15 / 30 / 50 % des jours (`sub_826C83D8`).
+Avec 0, rien ne change (vérifié dans le code : chaque crochet appelle l'original et ne fait rien si la chance est 0 ;
+scènes × 100 %).
+**À vérifier en jeu (niveau 3, une sauvegarde de test)** : MATCH CARDS de 2-3 semaines (stipulations, « ??? », ordre
+des cartes) ; news après une semaine simulée (retournements, nouvelles rivalités) ; un match joué (plus de scènes) ;
+journal : lignes « [univers] chaos: ». Doutes : sens exact de +29 (gentil / méchant : pris de Cena) ; types de news
+8 / 9 / 2 lus d'après l'ordre des textes ; le drapeau mystère sur un match déjà rempli (le jeu le pose d'ordinaire
+avec un catcheur tiré par le code 23).
