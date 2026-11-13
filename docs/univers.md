@@ -1439,3 +1439,13 @@ Relecture par un agent, corrigée : pas de « ??? » ajouté sur un match de rev
 sauvegarde est chargée (jour qui recule ou saute de plus d'une semaine) ; une news de rivalité par rencontre (paire vue
 cette semaine) ; pas de revanche sans fin (titre repris dans une revanche) ; news de retour quel que soit le résultat.
 Les news de rivalité et les retours demandent `wwe12_universe_more_news` (actif par défaut).
+
+**Test du 2026-11-13 au niveau « folie » (journal + captures de l'utilisateur)** : stipulations, ordre des cartes,
+« ??? », prétendants, 2e histoire, news de rivalité : vus dans le journal, sans plantage. **Une scène ajoutée a
+vraiment joué** (Act=32119 = WWE '13 5002 ; une 2e avec Undertaker), mais corps mal placés (Christian enfoncé dans le
+ring, Undertaker qui flotte) : **l'ordre des personnages du script de WWE '13 n'est pas celui des rôles de WWE '12**
+(5633 : nos rôles 0 / 1 = les 1 / 0 de l'acte 32432). Corrigé dans les fichiers de test en comparant la position de
+départ de « Bip » de chaque rôle avec l'acte de WWE '12 que la scène refait (`reorder_roles.py`, dossier temporaire ;
+49 scènes remises dans l'ordre, 54 déjà bonnes, 3 sans acte) ; à faire aussi dans le futur convertisseur du Mod Maker.
+SmackDown à 2 matchs : deux créneaux de classement poussés sur le même rang (même catcheur deux fois, match jeté) :
+corrigé (un créneau au plus, rang existant et libre, 052a38f).
