@@ -1327,7 +1327,7 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   par relation, 5 catcheur fixe, 7-14 rangs des titres, 15 vainqueur du Rumble (probable), 21/22 même / autre camp
   (+29) à ±2 rangs au hasard, **23 adversaire mystère** (au hasard, pas de match depuis 28 jours, `sub_826EFDA8`),
   24 distribution d'histoire. Filtres chaînés (`sub_826E19E0`), choix uniforme `sub_826E1D68`.
-- Stipulation : `sub_826DC758(cat, fmt)` ; cat 18-20 = au hasard dans 0x8203DB38 + fmt × 8 (simple : 0, 43, 49, 54,
+- Stipulation : `sub_826DC758(cat, fmt)` ; cat 18-20 = au hasard dans la liste {pointeur, nombre} à 0x8203DC18 + fmt × 8 (simple : 0, 43, 49, 54,
   55, 59, 60, 67, 68, 72) ; rand = `sub_827E0268`, jet en % = `sub_826D28D0`.
 
 **Rivalités, relations, scènes** :
@@ -1375,3 +1375,8 @@ des cartes) ; news après une semaine simulée (retournements, nouvelles rivalit
 journal : lignes « [univers] chaos: ». Doutes : sens exact de +29 (gentil / méchant : pris de Cena) ; types de news
 8 / 9 / 2 lus d'après l'ordre des textes ; le drapeau mystère sur un match déjà rempli (le jeu le pose d'ordinaire
 avec un catcheur tiré par le code 23).
+Relecture du code par un agent (2026-11-13), corrigée : copies des scènes ajoutées dans le tas système (le jeu ne les
+libère pas : réutilisables d'un match à l'autre ; des copies dans le tas du jeu auraient été libérées avec lui), plus
+de copie BPE ; fichiers de scène vérifiés au chargement ; prétendants seulement sur les créneaux de code 0 (un code 16
+modifié restait vide), sous verrou (modèle partagé) ; valeur « gentil » de Cena gardée de la 1re lecture ; RETOUR dans
+la liste des niveaux (4 lignes = 2 colonnes). Avec les réglages par défaut, aucun changement trouvé par la relecture.
