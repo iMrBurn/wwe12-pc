@@ -6157,6 +6157,20 @@ void NxtBrands(const PPCContext &x, u8 *base, u32 u) {
   BD_INFO("[univers] NXT: books brand {} ({} Superstars), record {:08X}", nxt, count[nxt], r);
 }
 
+// (dev log) who asks a Superstar's brand while NXT's booker lives (each caller once)
+extern "C" REX_FUNC(sub_826D2B50) {
+  const u32 from = u32(ctx.lr), id = ctx.r3.u32;
+  __imp__sub_826D2B50(ctx, base);
+  if (g_nxt_booker && NxtOn()) {
+    static std::mutex s_lock;
+    static std::set<u32> s_seen;
+    std::lock_guard<std::mutex> lock(s_lock);
+    if (s_seen.size() < 80 && s_seen.insert(from).second)
+      BD_INFO("[univers] NXT probe: brand of {} asked from {:08X} -> {} (nxt booking {})", id, from, ctx.r3.u32,
+              t_nxt_booking);
+  }
+}
+
 // (dev log) the brand filter (vtable 0x8203E3A0, its brand at +8) seen while NXT's card is booked
 REX_EXTERN(__imp__sub_826E11E0);
 extern "C" REX_FUNC(sub_826E11E0) {
