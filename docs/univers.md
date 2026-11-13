@@ -5,7 +5,39 @@ jukebox). Les parties périmées (premiers plans, listes d'idées, étapes rempl
 sont dans `docs/archives/univers_anciennes_parties.md` et `docs/archives/univers_anciennes_parties_2026-11-12.md` ;
 rien n'a été supprimé. Les numéros de partie (§) ne changent pas.
 
-## État au 2026-11-12
+## État au 2026-11-13
+
+**1.4 (commits locaux, non poussés ; liste « Suivi 1.4 » de `docs/feuille_de_route.md`)** :
+- **Deux mallettes Money in the Bank** (UNIVERSE OPTIONS > MALLETTES = 2, `wwe12_universe_mitb_briefcases`, défaut 1 =
+  le jeu) : testé par l'utilisateur. Au PPV, le match MITB du jeu prend les hommes de RAW et une copie de son fiche
+  remplace un match ordinaire (sinon une rivalité, sinon un titre mineur) pour SmackDown (`MakeSecondMitb`, au 1er
+  `sub_826EAEB0` de la carte du booker PPV 0x8203EB44). Le 2e détenteur n'existe que dans `universe_stats.txt`
+  (« mitb / mitbbrand / mitbclear » : `BriefcaseHolders`). Tout ce que le jeu fait avec SON détenteur (U+51004) marche
+  pour les deux : tests « est-il le détenteur ? » (`sub_826CC718` selon l'adresse de retour : 0x826C0BE8 r29,
+  0x82DEA6B4 r30, 0x826DB618 [r28+8], 0x826E6278 r31, 0x826D7A94 [r31+8]) ; proposition d'encaissement
+  (`sub_82554460`) demandée pour l'autre en le mettant dans U+51004. Choix de qui encaisse : un NON au premier remplace
+  la question par celle du second (`sub_825572C8`, état 2 de MATCH CARDS, réponse `sub_8288EEF8` : 1 = OUI, 0 = NON) ;
+  deux NON remettent le premier. Mallette bleue pour SmackDown : Mods sert la copie bleue de SOBJ 2557 (et des scènes
+  MitB) quand `Wwe12MitbBlue()` le dit ; le match d'encaissement charge « /SOBJ/2557 » directement. Pas d'entrée avec
+  la mallette (WWE '12 n'en a pas ; celles de 2K18+ ne sont pas lisibles par nos outils).
+- **Blessures** (UNIVERSE OPTIONS > BLESSURES, `wwe12_universe_injuries`) : refus de `sub_826CEA88(vue, id, 1)`. Gardé
+  sans preuve en jeu : le jeu ne blesse que dans les matchs JOUÉS (`sub_826C55E0` sort si simulé) ou par une histoire.
+  WWE '12 n'a pas d'autre « fin de carrière ».
+- **Photo des arènes ajoutées** dans SHOW EDIT (crochet `sub_82586428`, nom donné par `Wwe12ArenaPictureName` de Mods) :
+  codée, pas testée (il faut une arène de mod installée).
+- **Plus de news** (`wwe12_universe_more_news`, idées et textes de Jay) : encaissement réussi / raté, séries de 5, 10, 15
+  victoires et de 5 défaites (« res » par match), mallette gardée plus de 3 mois, Double Gold (titres qui ont déjà
+  changé de mains seulement), règnes de 10 / 25 / 52 semaines, Fighting Champion (6 et 10 défenses), nouvelles médicales,
+  match #1 contender (à 2 ou 3) et son vainqueur, adversaire mystère (« ??? »). Séries et Double Gold vus dans le
+  journal ; #1 contender et mystère pas encore testés. Notre news : type 5, +14 = 0x53, +15 le genre, +10 l'argument
+  (titres, nombre), +2 / +4 d'autres catcheurs ; textes composés au dessin. Le jeu vide NEWS à chaque show.
+- **Fiche de carte** (104 octets, journal `wwe12_universe_card_probe`) : +0 type, +1 titre (FF aucun), +2 places,
+  +3 état, +7 genre du modèle (8 = #1 contender, 4 = main event) ; places à +16 + 12 × p : +0 catcheur (u16), +3 camp,
+  +7 = 1 caché (« ??? »).
+- UNIVERSE OPTIONS : 5 lignes avec RETOUR (à 4 lignes le jeu dispose la boîte en 2 colonnes qui se chevauchent).
+- Accents des news du draft corrigés (UTF-8 relu en Latin-1 par nos scripts : toujours écrire les textes en \x).
+
+**1.3 (publiée)** : les CAW comptés dans les effectifs (12eb321, avec Gameplay) ; jukebox sans musique du jeu dessous.
 
 **1.2 (publiée le 2026-11-10)** :
 - Un catcheur ajouté garde sa marque après un redémarrage, un match et une remise à zéro de l'Univers. La part de Mods
@@ -15,11 +47,11 @@ rien n'a été supprimé. Les numéros de partie (§) ne changent pas.
 - Journal des étapes (`wwe12_universe_flow_log`) : lignes « step id N made » de la fabrique `sub_823DCC38`. Ordre
   après un match joué : 19, 27, 22, 15, 17, « result: », 18, 28, 0. Testé : comportement inchangé.
 
-**1.3 (commits locaux, non poussés)** :
+**1.3 (publiée, détails)** :
 - Les CAW comptent dans l'effectif des émissions, comme la TU2 : `wwe12_tu_caw_roster`, chez Gameplay
   (`wwe12_title_update.cpp`). Chez nous, le recomptage d'EDIT BRAND n'exclut plus les CAW, et le compte du départ d'une
   émission (`sub_826D0598` appelé depuis 0x826D3C84) reçoit r5 = 1 : il compte alors depuis le numéro 0 et non plus 100.
-  Commit 12eb321 : pas encore testé en jeu.
+  Commit 12eb321.
 - Jukebox, testé par l'utilisateur le 2026-11-11 (e587ded, 51e1b5f ; nettoyage 0370c86) : plus de musique du jeu
   sous un thème. Le menu principal (et chaque retour après un écran de chargement) remet [M+32] = 1 et la mise à jour
   relance la piste 0. Tant qu'un thème joue, la garde coupe la piste 0 ou 1 dès qu'elle démarre. Avec aucun thème en
