@@ -122,7 +122,7 @@ GuestTexture *BuildBCMirrorRaw(const BCMirrorDesc &d,
     delete t;
     return nullptr;
   }
-  s.texture_descriptor_set->setTexture(slot, t->texture,
+  SetBindlessTexture(s, slot, t->texture,
                                        plume::RenderTextureLayout::SHADER_READ,
                                        t->textureView.get());
   s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);

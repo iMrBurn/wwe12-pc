@@ -73,6 +73,7 @@ void BeginCommandList(VideoState &s) {
 #if defined(REBLUE_D3D11)
   D3D11ForgetSlots();
 #endif
+  CompactForgetBinding();
 #if defined(REXGLUE_ENABLE_PROFILING) && defined(REBLUE_D3D12)
   SetGPUProfilerCommandList(
       static_cast<plume::D3D12CommandList *>(s.command_list)->d3d);
@@ -237,6 +238,7 @@ void AdvanceAndWaitReused(VideoState &s) {
     }
 #endif
   }
+  CompactResetFrame(slot);
   ResetFrame(slot);
 }
 

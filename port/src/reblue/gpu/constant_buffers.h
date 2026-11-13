@@ -18,6 +18,8 @@
 
 #include <plume_render_interface.h>
 
+#include "gpu/bindless_allocator.h"
+
 namespace bd::gpu {
 
 // Mirror of the SharedConstants cbuffer (b2, space4). Layout matches the
@@ -120,6 +122,14 @@ void D3D11BindSlots(SharedConstants &c);
 void D3D11BindHostSlot(u32 texture_index, u32 sampler_index);
 void D3D11ForgetSlots();
 #endif
+// Compact texture tables (gpu/compact_textures.cpp, BD_COMPACT_TEXTURES): before a draw the texture
+// indices of the shared block are rewritten to positions of a small per-draw table, which is bound.
+// CompactBindHost does it for a pass of the port's own (one texture): it binds and returns the
+// index to put in the push constants. CompactResetFrame / CompactForgetBinding keep the pools.
+void CompactBindDraw(SharedConstants &c);
+u32 CompactBindHost(plume::RenderCommandList *list, u32 slot, bool main_layout = true);
+void CompactResetFrame(u32 slot);
+void CompactForgetBinding();
 
 // alignment defaults to 4 (the upload buffer is WRITE_COMBINE), and CBV callers
 // pass 256.

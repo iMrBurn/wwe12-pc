@@ -19,6 +19,18 @@
 
 namespace bd::gpu {
 
+void SetBindlessTexture(VideoState &s, u32 slot, const plume::RenderTexture *texture,
+                        plume::RenderTextureLayout layout, const plume::RenderTextureView *view) {
+#if BD_COMPACT_TEXTURES
+  (void)layout;
+  if (slot < s.bindless_registry.size()) {
+    s.bindless_registry[slot] = {texture, view};
+  }
+#else
+  s.texture_descriptor_set->setTexture(slot, texture, layout, view);
+#endif
+}
+
 u32 AllocateSlot(VideoState &s) {
   return BindlessAllocateSlot(s.descriptor_slot_used,
                               kNullTextureDescriptorCount,
@@ -44,8 +56,8 @@ void ParkDescriptorSlotLocked(VideoState &s, u32 slot, u32 null_index) {
 void DrainDescriptorSlotsLocked(VideoState &s, u32 slot) {
   for (const auto &d : s.descriptor_graveyard[slot]) {
     if (s.texture_descriptor_set) {
-      s.texture_descriptor_set->setTexture(
-          d.slot, s.null_textures[d.null_index].get(),
+      SetBindlessTexture(
+          s, d.slot, s.null_textures[d.null_index].get(),
           plume::RenderTextureLayout::SHADER_READ,
           s.null_texture_views[d.null_index].get());
   s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
@@ -109,9 +121,9 @@ u32 BindTextureSRVLocked(VideoState &s, GuestTexture *tex) {
              kBindlessTextureCount);
     return kInvalidDescriptorIndex;
   }
-  s.texture_descriptor_set->setTexture(slot, tex->texture,
-                                       plume::RenderTextureLayout::SHADER_READ,
-                                       tex->textureView.get());
+  SetBindlessTexture(s, slot, tex->texture,
+                     plume::RenderTextureLayout::SHADER_READ,
+                     tex->textureView.get());
   s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
   tex->descriptorIndex = slot;
   return slot;

@@ -377,12 +377,17 @@ void RecordPresentPass(VideoState &s, GuestTexture *rt,
   constexpr float kPresentDisplayCorrection = 1.0f;
 #endif
   s.command_list->setPipeline(s.gamma_correction_pipeline.get());
+#if BD_COMPACT_TEXTURES
+  const u32 gamma_src_index = CompactBindHost(s.command_list, gamma_src_desc);
+#else
+  const u32 gamma_src_index = gamma_src_desc;
+#endif
   struct PresentPushConstants {
     u32 descriptor_index;
     u32 descriptor_index_2;
     float gamma;
     float display_correction;
-  } pc{gamma_src_desc, UpscaleSharpness(rt, fit_w), s.guest_gamma * kPresentGamma,
+  } pc{gamma_src_index, UpscaleSharpness(rt, fit_w), s.guest_gamma * kPresentGamma,
        kPresentDisplayCorrection};
 #if defined(REBLUE_D3D11)
   D3D11BindHostSlot(gamma_src_desc, 0);

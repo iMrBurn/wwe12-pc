@@ -34,7 +34,7 @@ namespace bd::gpu {
 namespace {
 // Boundless D3D12 ranges become UINT_MAX in the root sig, so only consistency
 // with reblue's shared heaps matters, not the exact value.
-constexpr u32 kSharedTextureSlots = 65536;
+constexpr u32 kSharedTextureSlots = BD_COMPACT_TEXTURES ? kCompactTextureCount : 65536;
 constexpr u32 kSharedSamplerSlots = 1024;
 
 const plume::RenderInputSlot
@@ -127,7 +127,7 @@ bool ImGuiOverlayDrawer::UploadRGBA8Texture(
     BD_ERROR("ImGui overlay: bindless texture slot pool exhausted");
     return false;
   }
-  bd::gpu::state().texture_descriptor_set->setTexture(
+  bd::gpu::SetBindlessTexture(bd::gpu::state(),
       slot, tex.get(), plume::RenderTextureLayout::SHADER_READ, view.get());
 
   plume::RenderTextureBarrier pre(tex.get(),
@@ -370,6 +370,9 @@ void ImGuiOverlayDrawer::Draw(const rex::ui::ImmediateDraw &draw) {
   u32 slots[2] = {tex_slot, samp_slot};
 #if defined(REBLUE_D3D11)
   D3D11BindHostSlot(tex_slot, samp_slot);
+#endif
+#if BD_COMPACT_TEXTURES
+  slots[0] = CompactBindHost(cmd_, tex_slot, false);  // its own layout: one texture set
 #endif
   cmd_->setGraphicsPushConstants(1, slots, 0, sizeof(slots)); // PIXEL range 1
 

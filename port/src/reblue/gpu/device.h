@@ -404,6 +404,13 @@ struct VideoState {
   // allocation starts after kNullTextureDescriptorCount.
   std::unique_ptr<plume::RenderDescriptorSet> texture_descriptor_set;
   std::vector<bool> descriptor_slot_used;
+  // Compact textures: what each slot holds (texture_descriptor_set is then only a table of the
+  // three null textures, bound when nothing else is).
+  struct BindlessEntry {
+    const plume::RenderTexture *texture = nullptr;
+    const plume::RenderTextureView *view = nullptr;
+  };
+  std::vector<BindlessEntry> bindless_registry;
   std::unique_ptr<plume::RenderTexture>
       null_textures[kNullTextureDescriptorCount];
   std::unique_ptr<plume::RenderTextureView>
@@ -530,6 +537,10 @@ void NoteSwapChainWindow(plume::RenderWindow window);  // present.cpp: window to
 #endif
 u32 AllocateSlot(VideoState &s);
 u32 BindTextureSRVLocked(VideoState &s, GuestTexture *tex);
+// Writes what a bindless slot holds: the shader-visible table, or with compact textures only the
+// registry (the table the shaders see is filled per draw from it, gpu/compact_textures.cpp).
+void SetBindlessTexture(VideoState &s, u32 slot, const plume::RenderTexture *texture,
+                        plume::RenderTextureLayout layout, const plume::RenderTextureView *view);
 void ReleaseTextureSRVLocked(VideoState &s, GuestTexture *tex);
 void RetireTextureBindingsLocked(VideoState &s, GuestTexture *dead);
 // Null-rewrite and free every slot parked in descriptor_graveyard[slot].

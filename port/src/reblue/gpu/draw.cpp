@@ -564,7 +564,7 @@ bool Video::FlushRenderStateLocked(u32 device_guest) {
     }
   }
 
-#if defined(WWE12_IOS)
+#if defined(WWE12_IOS) && !BD_COMPACT_TEXTURES
   // MoltenVK makes the textures of a bound descriptor set resident when the set is bound: one written
   // after that (a nameplate, a video frame, a render target read back) reads as black or faults the GPU
   // until the next bind. Bind the sets again when the table changed since the last bind.
