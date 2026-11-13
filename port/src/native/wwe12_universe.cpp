@@ -1589,6 +1589,8 @@ REXCVAR_DEFINE_BOOL(wwe12_universe_nxt, false, "WWE12",
                     "PER SHOW). Unfinished: off by default.");
 bool NxtOn() { return REXCVAR_GET(wwe12_universe_nxt); }
 u32 WeeklyShows() { return NxtOn() ? 4 : 3; }
+thread_local bool t_nxt_booking = false;  // (dev log) inside NXT's card call
+u32 g_nxt_probe_lines = 0;
 
 struct CalendarWords {
   const char *calendar, *weekly, *ppvs, *days[6], *no_show, *move, *remove, *host, *raw, *smackdown,
@@ -4143,7 +4145,13 @@ extern "C" REX_FUNC(sub_826D0598) {
 
 extern "C" REX_FUNC(sub_826CC0B8) {
   const u32 from = u32(ctx.lr);
+  const u32 probe_rec = bd::mem::try_load<u32>(ctx.r3.u32), probe_brand = ctx.r4.u32;
   __imp__sub_826CC0B8(ctx, base);
+  if (t_nxt_booking && g_nxt_probe_lines < 40) {
+    ++g_nxt_probe_lines;
+    BD_INFO("[univers] NXT probe: show record {:08X} brand {} -> {} (from {:08X})", probe_rec, probe_brand,
+            ctx.r3.u32, from);
+  }
   if (from == kContractCountReturn && ctx.r3.u32 == 0 && g_contract_extra) {
     --g_contract_extra;  // counted as on the show: the count reaches 15 with minimum - 15 fewer
     ctx.r3.u64 = 1;
@@ -6146,7 +6154,27 @@ void NxtBrands(const PPCContext &x, u8 *base, u32 u) {
     return;
   for (u32 b = 0; b < 13; ++b)
     bd::mem::store<u8>(r + 929 + b, u8(b == u32(nxt)));
-  BD_INFO("[univers] NXT: books brand {} ({} Superstars)", nxt, count[nxt]);
+  BD_INFO("[univers] NXT: books brand {} ({} Superstars), record {:08X}", nxt, count[nxt], r);
+}
+
+// (dev log) the brand filter (vtable 0x8203E3A0, its brand at +8) seen while NXT's card is booked
+REX_EXTERN(__imp__sub_826E11E0);
+extern "C" REX_FUNC(sub_826E11E0) {
+  const u32 brand = bd::mem::try_load<u32>(ctx.r3.u32 + 8);
+  __imp__sub_826E11E0(ctx, base);
+  if (t_nxt_booking && g_nxt_probe_lines < 40) {
+    ++g_nxt_probe_lines;
+    BD_INFO("[univers] NXT probe: brand filter {} -> {} (from {:08X})", brand, ctx.r3.u32, u32(ctx.lr));
+  }
+}
+REX_EXTERN(__imp__sub_826E1230);
+extern "C" REX_FUNC(sub_826E1230) {
+  const u32 show = bd::mem::try_load<u32>(ctx.r3.u32 + 8);
+  __imp__sub_826E1230(ctx, base);
+  if (t_nxt_booking && g_nxt_probe_lines < 40) {
+    ++g_nxt_probe_lines;
+    BD_INFO("[univers] NXT probe: show filter {} -> {} (from {:08X})", show, ctx.r3.u32, u32(ctx.lr));
+  }
 }
 
 REX_EXTERN(__imp__sub_826F1CF0);
@@ -6155,7 +6183,12 @@ extern "C" REX_FUNC(sub_826F1CF0) {
     ctx.r6.u64 = 3;
     BD_INFO("[univers] NXT: card booked as show 3");
   }
+  const bool nxt = g_nxt_booker && ctx.r3.u32 == g_nxt_booker;
+  t_nxt_booking = nxt;
+  if (nxt)
+    g_nxt_probe_lines = 0;
   __imp__sub_826F1CF0(ctx, base);
+  t_nxt_booking = false;
 }
 REX_EXTERN(__imp__sub_826EB218);
 REX_EXTERN(__imp__sub_826D0840);
@@ -6177,6 +6210,8 @@ extern "C" REX_FUNC(sub_826EB218) {
   __imp__sub_826EB218(ctx, base);
   t_making_nxt = false;
   const u32 booker = ctx.r3.u32;
+  if (g_nxt_booker == booker)
+    g_nxt_booker = 0;  // (the same address is reused by the next show's booker)
   if (!booker || bd::mem::try_load<u32>(booker) != kBookerRaw)
     return;
   if (show == 3) {
