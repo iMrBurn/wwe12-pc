@@ -85,6 +85,7 @@
 #include <rex/runtime.h>
 
 #include "../launcher/toml_file.h"
+#include "../modmaker/svrfmt/pac.h"
 #include "core/logging.h"
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
@@ -7765,6 +7766,19 @@ REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_from, 0, "WWE12",
                      "Dev: Universe act (32100-32468) that plays another one (wwe12_universe_act_swap_to); 1 = every act with as "
                      "many blocks; 0 = off.");
 REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_to, 0, "WWE12", "Dev: the act played instead (see _from).");
+// Dev (tests): a Universe match always plays its scenes (the roll of each scene record, sub_826D28D0(percent) called
+// from sub_826D9978 at 0x826D9AEC, made a success).
+REXCVAR_DEFINE_BOOL(wwe12_universe_always_scenes, false, "WWE12",
+                    "Dev: every Universe match plays its scenes (for tests of added scenes).");
+REX_EXTERN(__imp__sub_826D28D0);
+extern "C" REX_FUNC(sub_826D28D0) {
+  const u32 from = u32(ctx.lr);
+  __imp__sub_826D28D0(ctx, base);
+  if (from == 0x826D9AF0 && REXCVAR_GET(wwe12_universe_always_scenes) && ctx.r3.u32 != 1) {
+    ctx.r3.u64 = 1;
+    BD_INFO("[univers] always scenes: a scene's roll made a success");
+  }
+}
 // (the UN00 reader being run; dev log: what a genre-1 reader registers, the first ids once per reader)
 thread_local u32 t_act_reader = 0, t_act_logged = 0;
 // ---- More Universe scenes: other games' scenes played at random among the game's own (user's 1.4 list) -------------
@@ -7785,8 +7799,10 @@ struct AddedScene {
   u64 roles = 0;  // (RolesOf)
   std::string name;
   std::vector<u8> bytes;
-  u32 guest = 0;
+  u32 guest = 0, guest_bpe = 0;  // its copies in the game's memory: unpacked, and as a (stored) BPE entry
 };
+// the acts replaced by the reader being run: (act, our BPE entry), for the second copy (sub_824868F8's hook)
+thread_local std::vector<std::pair<u32, u32>> t_replaced;
 std::mutex g_added_lock;
 std::vector<AddedScene> g_added;
 bool g_added_loaded = false;
@@ -7915,15 +7931,22 @@ u32 AddedSceneFor(u32 act, u32 data) {
     return 0;
   }
   AddedScene *sc = same[rng() % same.size()];
-  static std::map<std::pair<std::string, u32>, u32> s_merged;  // (scene, act) -> its copy in the game's memory
-  u32 &guest = (roles & ~u64(0x3F)) ? s_merged[{sc->name, act}] : sc->guest;
-  if (!guest) {
-    const std::vector<u8> bytes = (roles & ~u64(0x3F)) ? WithGameObjects(sc->bytes, data) : sc->bytes;
+  // (scene, act) -> its copies in the game's memory (unpacked, BPE)
+  static std::map<std::pair<std::string, u32>, std::pair<u32, u32>> s_merged;
+  const bool merged = (roles & ~u64(0x3F)) != 0;
+  u32 &guest = merged ? s_merged[{sc->name, act}].first : sc->guest;
+  u32 &guest_bpe = merged ? s_merged[{sc->name, act}].second : sc->guest_bpe;
+  if (!guest || !guest_bpe) {
+    const std::vector<u8> bytes = merged ? WithGameObjects(sc->bytes, data) : sc->bytes;
+    const svrfmt::Bytes bpe = svrfmt::BpeEncodeStored(svrfmt::Bytes(bytes.begin(), bytes.end()));
     guest = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(bytes.size()), 0x20);
-    if (!guest)
+    guest_bpe = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(bpe.size()), 0x20);
+    if (!guest || !guest_bpe)
       return 0;
     std::memcpy(bd::mem::at<u8>(guest), bytes.data(), bytes.size());
+    std::memcpy(bd::mem::at<u8>(guest_bpe), bpe.data(), bpe.size());
   }
+  t_replaced.push_back({act, guest_bpe});
   BD_INFO("[univers] scene: act {} (roles {:X}) plays the added scene {}{}", act, roles, sc->name,
           (roles & ~u64(0x3F)) ? " (with the act's objects)" : "");
   return guest;
@@ -7947,14 +7970,39 @@ extern "C" REX_FUNC(sub_82486648) {
 REX_EXTERN(__imp__sub_824868F8);
 REX_EXTERN(__imp__sub_8246E8C8);
 REX_EXTERN(__imp__sub_8246E000);
+REX_EXTERN(__imp__sub_8246E078);
+REX_EXTERN(__imp__sub_8246E0F0);
 extern "C" REX_FUNC(sub_824868F8) {
   const PPCContext in = ctx;
   const u32 reader = ctx.r3.u32;
   const u32 genre = bd::mem::try_load<u32>(reader + 60);
   t_act_reader = genre == 1 ? reader : 0;
   t_act_logged = 0;
+  t_replaced.clear();
   __imp__sub_824868F8(ctx, base);
   t_act_reader = 0;
+  // the game keeps a second copy of each act, packed as read (sub_8246E078 / sub_8246E0F0(bank, act): its pointer,
+  // bank +4 / +8 arrays; filled after sub_82486648), and plays from it: ours there too (a stored BPE entry)
+  if (!t_replaced.empty()) {
+    PPCContext x = in;
+    x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+    const u32 manager = bd::mem::load<u32>(0x8317B870);
+    for (auto [act, bpe] : t_replaced) {
+      const u32 bank = manager ? Call(x, base, __imp__sub_8246E8C8, manager, act, 0, 0xFF) : 0;
+      if (!bank)
+        continue;
+      for (auto fn : {__imp__sub_8246E078, __imp__sub_8246E0F0}) {
+        const u32 at = Call(x, base, fn, bank, act);
+        const u32 was = at && at != 0x8317B874 ? bd::mem::try_load<u32>(at) : 0;
+        if (!was)
+          continue;
+        const u32 magic = bd::mem::try_load<u32>(was);
+        BD_INFO("[univers] scene: act {} packed copy {:08X} (magic {:08X}) -> ours {:08X}", act, was, magic, bpe);
+        bd::mem::store<u32>(at, bpe);
+      }
+    }
+    t_replaced.clear();
+  }
   const int32_t from = REXCVAR_GET(wwe12_universe_act_swap_from), to = REXCVAR_GET(wwe12_universe_act_swap_to);
   if (genre != 1 || !(from == 1 || (from >= 32000 && from <= 32999)) || to < 32000 || to > 32999 || from == to)
     return;
