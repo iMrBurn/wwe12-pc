@@ -1309,3 +1309,48 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   à chercher dans les étapes des modèles (`sub_826DC758`, `sub_826EFF28` / `sub_826EFDA8`, filtres vtable 0x8203E3A0
   marque +8 / 0x8203E3A8 show +8, `sub_829C9848` = poser le +8). Les journaux « NXT probe » / « NXT card » ne
   tournent qu'avec le réglage.
+
+## 46. Étude « Univers ultime » (2026-11-13, lecture du code par 3 agents, rien d'essayé en jeu)
+
+**Booking d'un show** (sûr sauf mention) :
+- Job `sub_826EB510` : contexte de 45836 octets (`sub_826E1E30` : +0 libre / pris pour 373 catcheurs, +1492 classements
+  des titres 964 octets × titre, 30 × 32 octets, nombre à +960 ; +23664 2e jeu, sans doute équipes), une entrée de
+  travail de 48 octets par match (vtbl[4]), repos des catcheurs d'une carte des 7 derniers jours, matchs édités gardés
+  (booker +11132), puis la **table de règles 0x8203E680** (25 × {mode, règle par match, règle de carte}), validité
+  `sub_826EAAF8`. Fiches de 1320 octets à booker + 20 + i × 1320 (+0 type, +4 titre, places à +40 + k × 32).
+- Modèles MTDT : 17 tables « WMT » pointées en **0x83231590** (`sub_826D6800`), groupes de 508 octets, fiches de 84 :
+  +4 genre (titre par `sub_826EA830` ; **match de titre seulement pour les genres 9-15**, `sub_826EF8D8` : les shows de
+  la semaine n'en ont jamais), +8 catégorie, +12 format (1 simple, 4 équipes, 8 triple, 9 fatal 4, 13 six, 15 Rumble),
+  +20 dix créneaux {u8 code, u8, u16 param}. Tables 0-12 PPV, 13 semaine (32 × 4), 14 Superstars, 15 draft, 16 histoires.
+- Le groupe de la semaine **n'est pas tiré au hasard** : `sub_826CC020` fait +902 += 1 (les 32 cartes dans l'ordre).
+- Codes des créneaux : 0 champion / n-ième du classement, 1/2 vainqueur / perdant d'un match passé, 3/4 et 19/20 choix
+  par relation, 5 catcheur fixe, 7-14 rangs des titres, 15 vainqueur du Rumble (probable), 21/22 même / autre camp
+  (+29) à ±2 rangs au hasard, **23 adversaire mystère** (au hasard, pas de match depuis 28 jours, `sub_826EFDA8`),
+  24 distribution d'histoire. Filtres chaînés (`sub_826E19E0`), choix uniforme `sub_826E1D68`.
+- Stipulation : `sub_826DC758(cat, fmt)` ; cat 18-20 = au hasard dans 0x8203DB38 + fmt × 8 (simple : 0, 43, 49, 54,
+  55, 59, 60, 67, 68, 72) ; rand = `sub_827E0268`, jet en % = `sub_826D28D0`.
+
+**Rivalités, relations, scènes** :
+- Pas d'objet « rivalité » : une **histoire** (16 places, `sub_826CCFA8(vue, i)`) + les relations. Départ chaque jour
+  `sub_826C83D8` → `sub_826E9338` (au hasard parmi les possibles) → `sub_826E8010` ; suite après un match
+  `sub_826E8CC0` (issue 0-3, acte suivant, news, 6 effets : relation ±1, octet +29 du catcheur = 0/1 (probable :
+  gentil / méchant), former / casser une équipe) ; annulation `sub_826E8F60`.
+- Relations : 180 fiches de 40 octets (5 alliés, 5 rivaux), valeur −5..+5 (`sub_826CBCE8`), changée pas à pas par
+  `sub_826CD7F0` ; mise à jour hebdomadaire `sub_826C8690` (deltas des scènes jouées).
+- Fiche WCID (564 octets) : +2 n°, +166 priorité, +192 + 24 × r rôles (+6 points de classement, +8 + 2k relation),
+  +336 six conditions (`sub_826DA208`, codes 0-127), +408..+450 filtres de type de match (`sub_826CA5B8`), +456/+457
+  rôles du tirage, **+458..+461 chance en % selon (+29 de A, +29 de B)** (`sub_826CA4E8`), +464..+466 fiche de
+  remplacement, +468 acte. **Une scène par moment** (0 avant, 1 interférence, 2 juste après la cloche, 3/4 après ;
+  0 et 1 s'excluent) : 4 au plus par match. Choix : `sub_826C1578` (histoires d'abord, interférence, puis scènes au
+  hasard seulement si rien d'autre).
+
+**Scènes ajoutées sautées : cause trouvée** — le n° d'acte est écrit DANS les données (+0x4C, texte) et sert de clé
+à chaque bloc (`sub_82486648` → `sub_8246FC70`, recherche `sub_8246E900`) : nos données gardaient leur propre n°.
+Corrigé (d3dae20) : le n° de l'acte remplacé est écrit ; copie légère laissée au jeu (décompressée sans contrôle de
+taille, `sub_827E1428`). Pas encore revu en jeu.
+
+**Leviers repérés (du moins risqué au plus risqué)** : chance des scènes × k (`sub_826CA4E8`, < 100) ; groupe de la
+semaine au hasard (`sub_826CC020`) ; stipulations au hasard (après `sub_826DC758`, listes valides par format) ;
+surprises / retours (comme le code 23) ; prétendants inattendus (décaler le rang, `sub_826E1E60`) ; plus d'histoires
+en même temps (`sub_826C83D8`) ; retournements et trahisons après un match (+29, `sub_826CD7F0`) avec news ; 5 scènes
+par match (exclusion 0/1, `sub_826DBA10`) ; scènes dans plus de types de match (`sub_826CA5B8`, risque d'objets).
