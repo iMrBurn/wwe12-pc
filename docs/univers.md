@@ -1380,3 +1380,42 @@ libère pas : réutilisables d'un match à l'autre ; des copies dans le tas du j
 de copie BPE ; fichiers de scène vérifiés au chargement ; prétendants seulement sur les créneaux de code 0 (un code 16
 modifié restait vide), sous verrou (modèle partagé) ; valeur « gentil » de Cena gardée de la 1re lecture ; RETOUR dans
 la liste des niveaux (4 lignes = 2 colonnes). Avec les réglages par défaut, aucun changement trouvé par la relecture.
+
+## 47. L'Univers de WWE '13 et des 2K (2026-11-13, lecture de leurs données et textes par 2 agents, rien en jeu)
+
+On ne lit pas le CODE de ces jeux (il faudrait les recompiler comme WWE '12) : seulement leurs fichiers, sur les disques
+du joueur. Sorties et scripts dans le dossier temporaire de la conversation (`w13study/`, `k2study/`).
+
+**WWE '13** (sûr pour les formats, petit-boutiste comme WWE '12) :
+- `wuniData.pac` (EPK8 xcompressé, groupe WWEU) : UWBL, MTDT, STYT, STRE ; plus de WCID.
+- **UWBL = WCID** : 171 fiches de 4628 octets dont les ~466 premiers octets ont la disposition de WCID (rôles +192,
+  conditions +336, chances +458, acte +468). 137 fiches = les mêmes (liste, n°) que WWE '12, mêmes chances, **seul
+  l'acte change : 32100 → scène EVP 5000, 32101 → 5001…** : les scènes de WWE '13 sont les **mêmes moments** que les
+  actes de WWE '12, refaits en EVP (correspondance exacte : `w13study/wcid_w12_vs_uwbl_w13.txt`). Listes : 0 = 5000-5022,
+  1 (interférence) = 5200-5213, 2 = 5400-5415, 3 (après) = 5600-5661. 34 fiches nouvelles, surtout vers des scènes WSD
+  4xxx (bibliothèque Create a Story de WWE '13, pas converties). Les 106 scènes converties sont maintenant nommées
+  d'après l'acte de WWE '12 qu'elles refont (fichiers de test `<acte>_w13_<scène>.bin`).
+- **MTDT** : même fiche de 84 octets, groupes de 10 places (844 octets) ; semaine 20 groupes × 5 matchs (80 fiches
+  nouvelles), PPV 3 × 7, 16 thèmes de PPV (tables 16-31) ; codes de place 25-42 nouveaux. +16 = en-tête de carte
+  (27139 + valeur) probable.
+- STYT : autre format (206 × 6584 octets), pas importable sans convertisseur.
+- Textes : pas de nouveau genre de news ; nouveautés : STORY OPTIONS (histoires par genre), CONTENDERSHIP par catcheur,
+  ALLIES / RIVALS (FEUD MANAGER), INJURIES, PPV personnalisés (thèmes INFERNO / ENDURANCE / OUTNUMBERED / BREAKING POINT,
+  co-organisation, jour de diffusion), choix pendant une scène (« Shake his hand / Turn on him »).
+
+**2K14-2K17** (textes, sûr ; ce que fait le moteur : deviné) :
+- 2K14 : créateur de rivalités (durée, PPV final), pages rivalités en cours / passées, STORY OPTIONS, édition des shows,
+  thèmes de PPV (King of the Ring…), en-têtes PRE-SHOW / HIGHLIGHT / RIVALRY MATCH, **~130 news de rivalité** (contre ~20).
+- 2K15 : Story Collection (~880 histoires), rivalités spéciales (Rumble, Streak, Survivor Series), relations niveau 1-5,
+  ~530 news.
+- 2K16 : effets de statut (HOT / COLD STREAK, MOMENTUM, CONQUEROR…), traits de personnalité, blessures par partie du
+  corps en 3 niveaux, news de blessure (champion / prétendant blessé, remplacé).
+- 2K17 (360) : EDIT RIVALRY, news de classement ; pas de promos sur 360.
+- Absent partout : notes / audiences des shows, budget, retraites.
+
+**Classement pour WWE '12 (intérêt / effort, deviné)** : 1) news de rivalité hebdomadaires (8-14 h) ; 2) clause de
+revanche et arc de titre (6-10 h) ; 3) retours surprise / débuts en « ??? » (6-10 h, s'appuie sur le mystère) ;
+4) en-têtes HIGHLIGHT / RIVALRY MATCH (RESERVE_03-06 libres, 3-6 h) ; 5) séries chaudes / froides (10-20 h) ;
+6) blessures graves avec semaines d'absence, champion blessé (15-25 h) ; 7) STORY OPTIONS (6-10 h) ; 8) thèmes de PPV
+(8-12 h) ; 9) cartes de la semaine de WWE '13 en données (4-6 h + Mod Maker) ; plus tard : créateur de rivalités
+(25-40 h), shows / rosters personnalisés (20 h+). Toute donnée d'un autre jeu doit être lue chez le joueur (Mod Maker).
