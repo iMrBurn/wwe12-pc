@@ -1138,3 +1138,11 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   EVP ajouté à une copie servie d'un `Season*.pac` / `RSC*.pac` (mécanisme de Mods, `sub_827F29F0`), lancé par une fiche
   WCID ajoutée (+468 = son numéro) ou imposé par nous. À vérifier : comment un acte < 32000 trouve son `/EVPx/NNNN`, et
   si les rôles (CastA-F) se remplissent pareil.
+- **Suite (2026-11-13)** : un nom de scène EVP se cherche dans **tous** les groupes montés, `/EVP0/N` à `/EVPD/N`
+  (journal des fichiers : le jeu essaie EVP0, EVP1… jusqu'au groupe qui l'a) ; un acte EVP ajouté n'a donc besoin que
+  d'un numéro libre dans un paquet servi. Les fiches WCID ne mènent qu'aux actes UN00 (32xxx) ou à rien : 71 des 262
+  fiches ont l'acte 0 (pas de scène ; autre effet, sans doute relation ou attribut). Les scènes EVP des saisons
+  (Season*, RSC*) viennent donc d'un autre chemin, sans doute les histoires (STYT, liste d'actes de `sub_826ECE78`) ;
+  aucune n'a été vue dans le test du 2026-11-13. Prochain test utile : jouer des semaines avec une rivalité, la sonde
+  et le journal des fichiers allumés, jusqu'à une scène de saison (« Act=1xxx-4xxx » + `/EVPx/` lu) ; il dira quel
+  chemin la lance et avec quels rôles.
