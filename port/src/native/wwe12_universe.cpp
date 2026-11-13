@@ -2939,6 +2939,8 @@ void UltimateBookingAfter(const PPCContext &in, u8 *base, u32 booker, u32 entry,
 void UltimateDaily(const PPCContext &x, u8 *base, u32 u, u32 day, bool first);
 void UltimateReturnPlayed(u32 id);
 bool UltimateRivalryHeader(const PPCContext &x, u8 *base, u32 a, u32 b);
+bool UltimateWantsVs();      // the rivalry news are on (the "vs" lines are written)
+bool UltimateHeaderOn();     // the RIVALRY MATCH header is on
 void Show3Experiment(u32 u);  // (dev, at the end of the file)
 void WeeklyNews(const PPCContext &in, u8 *base);  // (more news, below)
 
@@ -5690,12 +5692,14 @@ extern "C" REX_FUNC(sub_826CEF28) {
         StreakNews(g_last_result, day);
         // ("ultimate" Universe) a singles match's two Superstars and its winner: "vs <a> <b> <winner> <day>" (the
         // rivalry news), and a surprise return's news
-        if (g_last_result.size() == 2)
+        if (g_last_result.size() == 2 && UltimateWantsVs())  // (nothing written while it is off)
           lines.push_back(fmt::format("vs {} {} {} {}", g_last_result[0].first, g_last_result[1].first,
                                       g_last_result[0].second ? g_last_result[0].first : g_last_result[1].first, day));
+      }
+      // (any result, a draw too: the surprise return's news comes with his match)
+      if (!rumble)
         for (const auto &[id, won] : g_last_result)
           UltimateReturnPlayed(id);
-      }
       // a qualifying match of ours: its winner qualifies
       if (REXCVAR_GET(wwe12_universe_qualifiers) && places == 2 && winner < 2 && g_last_result.size() == 2) {
         const u32 a = g_last_result[0].first, b = g_last_result[1].first, year = day / 336;
@@ -7476,7 +7480,11 @@ extern "C" REX_FUNC(sub_82554B68) {
         bd::mem::store<u32>(header0 + 200, game);
   }
   // ("ultimate" Universe) a singles match between rivals: "RIVALRY MATCH" (as WWE 2K14's header)
-  if (!Call(x, base, __imp__sub_826D4DC8, copy) && Call(x, base, __imp__sub_826D4F90, copy) == 2) {
+  // (not over another header than MATCH #n / MAIN EVENT, entry +6 1-9; not when a place is a hidden "???", entry
+  // place +6 = 1: it would give the mystery away)
+  if (UltimateHeaderOn() && bd::mem::load<u8>(copy + 6) >= 1 && bd::mem::load<u8>(copy + 6) <= 9 &&
+      bd::mem::load<u8>(copy + 16 + 6) != 1 && bd::mem::load<u8>(copy + 16 + 12 + 6) != 1 &&
+      !Call(x, base, __imp__sub_826D4DC8, copy) && Call(x, base, __imp__sub_826D4F90, copy) == 2) {
     const u32 out = x.r1.u32 + 0x100;
     Call(x, base, __imp__sub_826D4958, copy, out, 0);
     const u32 a = bd::mem::load<u16>(out);
@@ -8506,10 +8514,11 @@ extern "C" REX_FUNC(sub_826C83D8) {
 //    story nor WrestleMania build becomes theirs and the title's), with its news; once ("rematch" line);
 //  - RIVALRY MATCH: MATCH CARDS names a singles match between rivals (level 2 or more) so (sub_82554B68's hook).
 REXCVAR_DEFINE_INT32(wwe12_universe_rivalry_news, -1, "WWE12",
-                     "Universe: weekly rivalry news (-1 = on with the unpredictable Universe, 0 off, 1 on).");
+                     "Universe: weekly rivalry news (-1 = on with the unpredictable Universe, 0 off, 1 on; needs "
+                     "wwe12_universe_more_news, on by default).");
 REXCVAR_DEFINE_INT32(wwe12_universe_surprise_returns, -1, "WWE12",
                      "Universe: a Superstar back from injury returns as a mystery opponent (-1 = with the "
-                     "unpredictable Universe, 0 off, 1 on).");
+                     "unpredictable Universe, 0 off, 1 on; needs wwe12_universe_more_news, on by default).");
 REXCVAR_DEFINE_INT32(wwe12_universe_rematches, -1, "WWE12",
                      "Universe: a dethroned champion gets a title rematch on the next weekly card (-1 = with the "
                      "unpredictable Universe, 0 off, 1 on).");
@@ -8548,6 +8557,7 @@ struct Rematch {
 std::vector<Rematch> PendingRematches(const PPCContext &x, u8 *base, u32 day) {
   std::map<u32, std::array<u32, 3>> last;  // title -> {new, old, day}
   std::set<std::string> done;
+  std::vector<std::array<u32, 3>> asked;  // the rematch lines: {title, former, the reign's first day}
   std::ifstream f(StatsFile());
   std::string line;
   u32 t = 0, place = 0, holder = 0, old = 0, d = 0;
@@ -8555,8 +8565,10 @@ std::vector<Rematch> PendingRematches(const PPCContext &x, u8 *base, u32 day) {
     if (std::sscanf(line.c_str(), "title %u %u %u %u %u", &t, &place, &holder, &old, &d) == 5 && place == 0 &&
         d <= day)
       last[t] = {holder, old, d};
-    else if (std::sscanf(line.c_str(), "rematch %u %u %u", &t, &old, &d) == 3)
+    else if (std::sscanf(line.c_str(), "rematch %u %u %u", &t, &old, &d) == 3) {
       done.insert(fmt::format("{} {} {}", t, old, d));
+      asked.push_back({t, old, d});
+    }
   }
   std::vector<Rematch> out;
   for (const auto &[title, v] : last) {
@@ -8564,6 +8576,12 @@ std::vector<Rematch> PendingRematches(const PPCContext &x, u8 *base, u32 day) {
     if (title >= 23 || champ >= 512 || former >= 512 || champ == former || day > since + 21 ||
         done.count(fmt::format("{} {} {}", title, former, since)) || Call(x, base, __imp__sub_82A39CE8, title) ||
         (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) != champ)
+      continue;
+    // (a title won back in a rematch gives the loser no rematch of his own: no endless back and forth)
+    const bool won_back = std::any_of(asked.begin(), asked.end(), [&](const std::array<u32, 3> &r) {
+      return r[0] == title && r[1] == champ && since >= r[2];
+    });
+    if (won_back)
       continue;
     out.push_back({title, former, champ});
   }
@@ -8588,6 +8606,9 @@ bool UltimateRivalryHeader(const PPCContext &x0, u8 *base, u32 a, u32 b) {
   return rivals;
 }
 
+bool UltimateWantsVs() { return UltimateOn(REXCVAR_GET(wwe12_universe_rivalry_news)); }
+bool UltimateHeaderOn() { return UltimateOn(REXCVAR_GET(wwe12_universe_rivalry_header)); }
+
 void UltimateReturnPlayed(u32 id) {
   std::lock_guard<std::mutex> lock(g_ultimate_lock);
   if (!g_returned.erase(id))
@@ -8599,6 +8620,16 @@ void UltimateReturnPlayed(u32 id) {
 // Once a day (WeeklyNews, at the Universe menu or after a result): returns from injury, and the week's rivalry news
 void UltimateDaily(const PPCContext &x0, u8 *base, u32 u, u32 day, bool first) {
   PPCContext x = x0;
+  // another save loaded (the day back, or more than a week on): what was seen belongs to the other save
+  static u32 s_last_day = ~0u;
+  static u32 s_week = ~0u;
+  if (s_last_day != ~0u && (day < s_last_day || day > s_last_day + 7)) {
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);
+    g_last_injured.clear(), g_returning.clear(), g_returned.clear();
+    g_injured_known = false;
+    s_week = ~0u;
+  }
+  s_last_day = day;
   x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
   // returns: injured yesterday, not today
   if (UltimateOn(REXCVAR_GET(wwe12_universe_surprise_returns))) {
@@ -8626,18 +8657,17 @@ void UltimateDaily(const PPCContext &x0, u8 *base, u32 u, u32 day, bool first) {
   // rivalry news: once a week
   if (first || !UltimateOn(REXCVAR_GET(wwe12_universe_rivalry_news)))
     return;
-  static u32 s_week = ~0u;
   if (s_week == day / 7)
     return;
   s_week = day / 7;
-  std::vector<std::array<u32, 3>> met;  // {a, b, winner} of the last 28 days, oldest first
+  std::vector<std::array<u32, 4>> met;  // {a, b, winner, day} of the last 28 days, oldest first
   {
     std::ifstream f(StatsFile());
     std::string line;
     u32 a = 0, b = 0, w = 0, d = 0;
     while (std::getline(f, line))
       if (std::sscanf(line.c_str(), "vs %u %u %u %u", &a, &b, &w, &d) == 4 && d <= day && d + 28 >= day)
-        met.push_back({a, b, w});
+        met.push_back({a, b, w, d});
   }
   if (met.empty())
     return;
@@ -8656,9 +8686,12 @@ void UltimateDaily(const PPCContext &x0, u8 *base, u32 u, u32 day, bool first) {
     if (RivalLevel(x, base, table, a, b) < 2 && RivalLevel(x, base, table, b, a) < 2)
       continue;
     std::vector<u32> winners;
+    u32 latest = 0;
     for (const auto &k : met)
       if (std::min(k[0], k[1]) == a && std::max(k[0], k[1]) == b)
-        winners.push_back(k[2]);
+        winners.push_back(k[2]), latest = std::max(latest, k[3]);
+    if (latest + 7 < day)
+      continue;  // (only a pair that met this week: one news per meeting, not one a week for a month)
     const u32 wa = u32(std::count(winners.begin(), winners.end(), a)),
               wb = u32(std::count(winners.begin(), winners.end(), b));
     if (wa >= 3 && wb == 0)
@@ -8752,7 +8785,7 @@ bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
       QueueNews3(kMoreEvent + kRematch, r.former, r.champion, 512, r.title);
       BD_INFO("[univers] ultimate: rematch for title {}: {} against champion {} (match {})", r.title, r.former,
               r.champion, i);
-      return false;
+      return true;
     }
   }
   // a surprise return: one waiting, of this show (its brand among the show's, record +929 + brand)
@@ -8773,7 +8806,7 @@ bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
       bd::mem::store<u32>(place + 28, 1);
       g_returned.insert(id);
       g_returning.erase(g_returning.begin() + long(n));
-      return false;
+      return true;
     }
   }
   return false;
