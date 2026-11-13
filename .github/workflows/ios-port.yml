@@ -105,7 +105,7 @@ jobs:
           done
           # plume: re:Blue's, then Android, D3D12, D3D11 (the D3D ones add Windows backends and the
           # read-back / texture-slot changes our renderer calls)
-          for n in plume-reblue plume-android plume-android-driver plume-android-cache plume-d3d12 plume-d3d11; do
+          for n in plume-reblue plume-android plume-android-driver plume-android-cache plume-max-descriptor-sets plume-d3d12 plume-d3d11; do
             echo "plume <- $n.patch"
             git -C port-src/recomp/plume apply --whitespace=nowarn "$P/$n.patch"
           done
