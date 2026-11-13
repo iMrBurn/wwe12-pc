@@ -1146,3 +1146,23 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   aucune n'a été vue dans le test du 2026-11-13. Prochain test utile : jouer des semaines avec une rivalité, la sonde
   et le journal des fichiers allumés, jusqu'à une scène de saison (« Act=1xxx-4xxx » + `/EVPx/` lu) ; il dira quel
   chemin la lance et avec quels rôles.
+- **Scènes EVP : qui les lance (étude du code, 2026-11-13, pas vérifié en jeu)** : l'Univers **ne joue jamais** de
+  scène Season / RSC (probable). Season0-6 = cinématiques de Road to WrestleMania (1010, 1810 vues en RTWM), RSC0-3 = la
+  bibliothèque de scènes de Create a Story (4000 = scène par défaut de `sub_8275A958`). Elles passent par la **table
+  des demandes de cinématiques** de la préparation du match (sûr pour la forme) : `*(0x8317C84C) + 7984 + 960` =
+  u32 nombre + 16 entrées de 144 octets {+0 genre (moment), +4 aux (souvent l'arène), +8 u32 scène[16], +72 castId[6]
+  (0xC800 = personne), +96 [6] rôle, +120 [6] -1}. Aides : remise à zéro `sub_82694FC0`, +1 `sub_82694E28`, genre
+  `sub_82694D58`, aux `sub_82694D78`, scène `sub_82694D98(table, i, n)`, catcheur `sub_82694DC0(table, i, id, rôle, x)`.
+  Écrite par le Lua de RTWM (« CutScene » `sub_823D4960`, genre 9 ; « CutSceneLoad » `sub_823D62C8`), Create a Story
+  (`sub_8275A958`, genre 1) et la tâche de flux 9 (`sub_82676CC0` : genre 9, puis `sub_828CBCF8` sur le gestionnaire de
+  scènes `*0x8324DF2C`). Lue par `sub_828D2660(this, genre)` (genres 1, 8-11, 13) ; scripts chargés par `sub_828E2DC0`
+  → `sub_825B85B8`. `sub_826ECE78` et STYT n'y touchent pas : les actes UN00 sont des mouvements posés par
+  `sub_8247AD50(modèle, acte, sous-acte, piste)`, distribution = 6 u16 à slot+14 de `sub_826BE198()` (`sub_826C0570`).
+- **Ce que ça donne** : une embuscade = ajouter une entrée (genre 9, une scène d'attaque RSC, distribution
+  {interférant, cible}) dans cette table quand mgr+5052 est posé, si le gestionnaire de scènes tourne dans un match
+  d'Univers (inconnu : l'Univers met ctx+12460 = 0, Create a Story teste 4) ; 8-15 h (+5-10 h s'il faut pousser une
+  tâche de flux 9 entre la carte et le match). Une scène portée = la même chose avec un numéro libre servi dans une copie
+  d'un RSC*.pac ; 15-25 h plus la vérification du format des `Universe*.pac` de WWE '13. **Plus petite expérience** :
+  journal sur `sub_828D2660` (genre, nombre, scènes, catcheurs) et sur `sub_82694D98` / `sub_82694DC0` (appelant), puis
+  une scène de Create a Story, une de RTWM et un match d'Univers ; ensuite une entrée imposée (scène 4000, {interférant,
+  cible}) avant un match d'Univers : « scene script 4000 » + `/EVPx/4000` lu = la voie est bonne.
