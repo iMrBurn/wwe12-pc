@@ -4889,10 +4889,12 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
   BD_INFO("[univers] news: medical update for {}", who);
 }
 
-// A card entry written (104 bytes: +1 its title, +2 its places, +7 its template's kind, 8 = a #1 contender's match;
-// places at +16 + 12 * p: +0 the Superstar, u16, +3 his side, +7 = 1: shown as "???", a mystery opponent; seen with
-// wwe12_universe_card_probe, 2026-11-12): a news for a #1 contender's match (2 or 3 Superstars) and for a mystery
+// A card entry written (104 bytes: +1 its title, +2 its places, +6 its header: 1-8 MATCH #n, 9 MAIN EVENT, 10 #1
+// CONTENDER'S MATCH (texts 27098 + n - 1); places at +16 + 12 * p: +0 the Superstar, u16, +3 his side, +6 = 1: shown
+// as "???", a mystery opponent; seen with wwe12_universe_card_probe, 2026-11-12/13. (+7 is not the header: a "MATCH #1"
+// with +7 = 8 had its news as a #1 contender's match, test of 2026-11-13.)): a news for a #1 contender's match (2 or 3 Superstars) and for a mystery
 // opponent. Each card entry once (the same card can be written again).
+constexpr u32 kContenderHeader = 10;  // a card entry's +6: "#1 CONTENDER'S MATCH"
 void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
   if (!REXCVAR_GET(wwe12_universe_more_news))
     return;
@@ -4909,7 +4911,7 @@ void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
     const u32 at = entry + 16 + p * 12, id = bd::mem::load<u16>(at);
     if (id >= 512)
       continue;
-    if (bd::mem::load<u8>(at + 7) == 1)
+    if (bd::mem::load<u8>(at + 6) == 1)
       hidden_side = bd::mem::load<u8>(at + 3);
     else
       who.push_back({id, bd::mem::load<u8>(at + 3)});
@@ -4926,9 +4928,17 @@ void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
       }
     return;
   }
-  if (bd::mem::load<u8>(entry + 7) != 8 || title >= 23)
+  if (bd::mem::load<u8>(entry + 6) != kContenderHeader || title >= 23)
     return;
   s_done.insert(key);
+  // (the news' picture shows its first Superstar's brand logo: one of the show's brand first - a SmackDown logo on a
+  // RAW #1 contender's match, test of 2026-11-13)
+  const u32 vtbl = bd::mem::try_load<u32>(booker);
+  const u32 show_brand = vtbl == kBookerRaw ? 0 : vtbl == kBookerSmackDown ? 1 : ~0u;
+  if (show_brand != ~0u)
+    std::stable_partition(who.begin(), who.end(), [&](const auto &w) {
+      return Call(x, base, __imp__sub_826D2B50, w.first) == show_brand;
+    });
   if (who.size() == 2)
     QueueNews3(kMoreEvent + kContenderShowdown, who[0].first, who[1].first, 512, title);
   else if (who.size() >= 3)
@@ -4938,9 +4948,10 @@ void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
   BD_INFO("[univers] news: #1 contender's match for title {} ({} Superstars)", title, who.size());
 }
 
-// The winner of a #1 contender's match (entry +7 = 8) is the title's new #1 contender.
+// The winner of a #1 contender's match (entry +6 = 10) is the title's new #1 contender.
 void ContenderWonNews(u32 record, u32 winner_id) {
-  if (!REXCVAR_GET(wwe12_universe_more_news) || !record || bd::mem::load<u8>(record + 7) != 8 || winner_id >= 512)
+  if (!REXCVAR_GET(wwe12_universe_more_news) || !record || bd::mem::load<u8>(record + 6) != kContenderHeader ||
+      winner_id >= 512)
     return;
   const u32 title = bd::mem::load<u8>(record + 1);
   if (title >= 23)

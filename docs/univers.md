@@ -32,8 +32,8 @@ rien n'a été supprimé. Les numéros de partie (§) ne changent pas.
   journal ; #1 contender et mystère pas encore testés. Notre news : type 5, +14 = 0x53, +15 le genre, +10 l'argument
   (titres, nombre), +2 / +4 d'autres catcheurs ; textes composés au dessin. Le jeu vide NEWS à chaque show.
 - **Fiche de carte** (104 octets, journal `wwe12_universe_card_probe`) : +0 type, +1 titre (FF aucun), +2 places,
-  +3 état, +7 genre du modèle (8 = #1 contender, 4 = main event) ; places à +16 + 12 × p : +0 catcheur (u16), +3 camp,
-  +7 = 1 caché (« ??? »).
+  +3 état, +6 en-tête (1-8 MATCH #n, 9 MAIN EVENT, 10 #1 CONTENDER'S MATCH ; +7 n'est pas l'en-tête) ; places à +16 + 12 × p : +0 catcheur (u16), +3 camp,
+  +6 = 1 caché (« ??? »).
 - UNIVERSE OPTIONS : 5 lignes avec RETOUR (à 4 lignes le jeu dispose la boîte en 2 colonnes qui se chevauchent).
 - Accents des news du draft corrigés (UTF-8 relu en Latin-1 par nos scripts : toujours écrire les textes en \x).
 
