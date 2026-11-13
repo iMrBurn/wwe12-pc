@@ -2932,6 +2932,13 @@ void Wwe12DiscordUniverseMenu();  // wwe12_discord.cpp (Rich Presence: a Univers
 void FillGameHolder(u32 u);
 void Twists(const PPCContext &x, u8 *base, u32 record, u32 places, u32 winner_side);  // ("ultimate" Universe)
 void ChaosMystery(u32 rec);  // (two Money in the Bank briefcases, below)
+// ("ultimate" Universe, 2026-11-13, at the end of the file: rivalry news, surprise returns, rematch clause, RIVALRY
+// MATCH header)
+bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i);  // (true: a match changed)
+void UltimateBookingAfter(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i);
+void UltimateDaily(const PPCContext &x, u8 *base, u32 u, u32 day, bool first);
+void UltimateReturnPlayed(u32 id);
+bool UltimateRivalryHeader(const PPCContext &x, u8 *base, u32 a, u32 b);
 void Show3Experiment(u32 u);  // (dev, at the end of the file)
 void WeeklyNews(const PPCContext &in, u8 *base);  // (more news, below)
 
@@ -4673,7 +4680,9 @@ enum MoreKind : u32 {
   kCashInWon, kCashInLost, kStreak5, kStreak10, kStreak15, kLosing5,
   kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical,
   kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMomentumHigh, kMomentumLow, kTop5Out,
-  kPastGlory, kHistoricReign, kWrestleManiaRep, kTeamsFinalized, kMoreKinds
+  kPastGlory, kHistoricReign, kWrestleManiaRep, kTeamsFinalized,
+  kRivalFeud, kRivalDominant, kRivalPayback, kRematch, kSurpriseReturn,  // ("ultimate" Universe, 2026-11-13)
+  kMoreKinds
 };
 // (its argument in the news' +10, u16, which the game neither clears nor reads: a title, title + 256 * another title
 // or title + 256 * a number)
@@ -5010,6 +5019,8 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
       s_top[title] = top;
     }
   }
+  // ("ultimate" Universe) returns from injury noticed, and the week's rivalry news
+  UltimateDaily(x, base, u, day, first);
   // a medical update, one week in four, for one injured Superstar
   static std::mt19937 s_random{std::random_device{}()};
   if (first || std::uniform_int_distribution<int>(0, 3)(s_random) != 0)
@@ -5521,7 +5532,41 @@ u32 MoreNewsText(u32 id) {
         "Les \xC3\xA9quipes de RAW et SmackDown sont bouclé" "es avant le choc \xC3\xA0 \xC3\xA9limination de dimanche.",
         "Die Teams von RAW und SmackDown stehen vor dem Elimination-Duell am Sonntag fest.",
         "Los equipos de RAW y SmackDown est\xC3\xA1n definidos antes del duelo de eliminaci\xC3\xB3n del domingo.",
-        "Le squadre di RAW e SmackDown sono pronte per la sfida a eliminazione di domenica."}}};
+        "Le squadre di RAW e SmackDown sono pronte per la sfida a eliminazione di domenica."}},
+      // ("ultimate" Universe, 2026-11-13; after WWE 2K14's rivalry news)
+      {{"BAD BLOOD", "LA GUERRE CONTINUE", "B\xC3\x96SES BLUT", "MALA SANGRE", "SANGUE CATTIVO"},
+       {"%s and {B} can't stand each other. This rivalry is far from over!",
+        "%s et {B} ne se supportent plus. Cette rivalit\xC3\xA9 est loin d'\xC3\xAAtre termin\xC3\xA9" "e !",
+        "%s und {B} k\xC3\xB6nnen sich nicht ausstehen. Diese Rivalit\xC3\xA4t ist noch lange nicht vorbei!",
+        "\xC2\xA1%s y {B} no se soportan. Esta rivalidad est\xC3\xA1 lejos de terminar!",
+        "%s e {B} non si sopportano. Questa rivalit\xC3\xA0 \xC3\xA8 tutt'altro che finita!"}},
+      {{"DOMINATION", "DOMINATION", "DOMINANZ", "DOMINACI\xC3\x93N", "DOMINIO"},
+       {"%s has beaten {B} {N} times this month. Does {B} have an answer?",
+        "%s a battu {B} {N} fois ce mois-ci. {B} a-t-il encore une r\xC3\xA9ponse ?",
+        "%s hat {B} diesen Monat {N}-mal besiegt. Hat {B} noch eine Antwort?",
+        "%s ha vencido a {B} {N} veces este mes. \xC2\xBFTiene {B} alguna respuesta?",
+        "%s ha battuto {B} {N} volte questo mese. {B} ha ancora una risposta?"}},
+      {{"PAYBACK!", "LA REVANCHE !", "DIE REVANCHE!", "\xC2\xA1" "VENGANZA!", "LA RIVINCITA!"},
+       {"%s got revenge on {B}! This rivalry just got even hotter.",
+        "%s a pris sa revanche sur {B} ! Cette rivalit\xC3\xA9 s'enflamme encore.",
+        "%s hat sich an {B} ger\xC3\xA4" "cht! Diese Rivalit\xC3\xA4t wird immer hei\xC3\x9F" "er.",
+        "\xC2\xA1%s se veng\xC3\xB3 de {B}! Esta rivalidad est\xC3\xA1 m\xC3\xA1s caliente que nunca.",
+        "%s si \xC3\xA8 vendicato di {B}! Questa rivalit\xC3\xA0 si fa sempre pi\xC3\xB9 accesa."}},
+      {{"REMATCH CLAUSE", "CLAUSE DE REVANCHE", "REVANCHE-KLAUSEL", "CL\xC3\x81USULA DE REVANCHA",
+        "CLAUSOLA DELLA RIVINCITA"},
+       {"%s invokes the rematch clause: the {T} is on the line against {B}!",
+        "%s fait valoir sa clause de revanche : le {T} est en jeu face \xC3\xA0 {B} !",
+        "%s l\xC3\xB6st die Revanche-Klausel ein: Der {T} steht gegen {B} auf dem Spiel!",
+        "\xC2\xA1%s invoca su cl\xC3\xA1usula de revancha: el {T} est\xC3\xA1 en juego contra {B}!",
+        "%s fa valere la clausola della rivincita: il {T} \xC3\xA8 in palio contro {B}!"}},
+      {{"SURPRISE RETURN!", "RETOUR SURPRISE !", "\xC3\x9C" "BERRASCHENDE R\xC3\x9C" "CKKEHR!", "\xC2\xA1" "REGRESO SORPRESA!",
+        "RITORNO A SORPRESA!"},
+       // (one "%s" only: the game fills one)
+       {"%s is back! The crowd erupts for a surprise return after injury!",
+        "%s est de retour ! La foule explose pour ce retour surprise apr\xC3\xA8s blessure !",
+        "%s ist zur\xC3\xBC" "ck! Die Halle tobt bei dieser \xC3\xBC" "berraschenden R\xC3\xBC" "ckkehr nach der Verletzung!",
+        "\xC2\xA1%s ha vuelto! \xC2\xA1" "El p\xC3\xBA" "blico estalla con este regreso sorpresa tras su lesi\xC3\xB3n!",
+        "%s \xC3\xA8 tornato! Il pubblico esplode per questo ritorno a sorpresa dopo l'infortunio!"}}};
   const u32 kind = g_news_more - 1;
   const bool title = id == 27068 || id == 27070;
   std::string text = title ? kTexts[kind].title[CurrentLang()] : kTexts[kind].line[CurrentLang()];
@@ -5643,6 +5688,13 @@ extern "C" REX_FUNC(sub_826CEF28) {
         for (const auto &[id, won] : g_last_result)
           lines.push_back(fmt::format("res {} {} {}", id, won ? 1 : 0, day));
         StreakNews(g_last_result, day);
+        // ("ultimate" Universe) a singles match's two Superstars and its winner: "vs <a> <b> <winner> <day>" (the
+        // rivalry news), and a surprise return's news
+        if (g_last_result.size() == 2)
+          lines.push_back(fmt::format("vs {} {} {} {}", g_last_result[0].first, g_last_result[1].first,
+                                      g_last_result[0].second ? g_last_result[0].first : g_last_result[1].first, day));
+        for (const auto &[id, won] : g_last_result)
+          UltimateReturnPlayed(id);
       }
       // a qualifying match of ours: its winner qualifies
       if (REXCVAR_GET(wwe12_universe_qualifiers) && places == 2 && winner < 2 && g_last_result.size() == 2) {
@@ -7293,9 +7345,15 @@ extern "C" REX_FUNC(sub_826EAEB0) {
     g_placed_events |= 1u << 1;  // (the qualified are placed already)
   if (qualifiers && bd::mem::try_load<u32>(booker) == kBookerPpv)
     PlaceQualified(in, base, booker, booker + 20 + i * 1320);
-  if (entry && i < 8 && bd::mem::load<u32>(kInUniverseFlag) == 1)
-    ChaosMystery(booker + 20 + i * 1320);  // ("ultimate" Universe: a mystery opponent, before the entry is written)
+  {
+    // ("ultimate" Universe, before the entry is written: a rematch, a surprise return, a mystery opponent)
+    const bool ours = entry && i < 8 && bd::mem::load<u32>(kInUniverseFlag) == 1;
+    if (ours && !UltimateBooking(in, base, booker, i))
+      ChaosMystery(booker + 20 + i * 1320);
+  }
   __imp__sub_826EAEB0(ctx, base);
+  if (entry && i < 8 && bd::mem::load<u32>(kInUniverseFlag) == 1)
+    UltimateBookingAfter(in, base, booker, entry, i);  // (the rematch made a title match)
   if (entry && i < 8 && g_nxt_booker && booker == g_nxt_booker) {  // NXT's card: who, of which brand
     PPCContext x = in;
     x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
@@ -7416,6 +7474,35 @@ extern "C" REX_FUNC(sub_82554B68) {
     if (shown && std::find(std::begin(s_ours), std::end(s_ours), shown) != std::end(s_ours))
       if (const u32 game = GameText(x, base, 27400 + bd::mem::load<u8>(copy)))
         bd::mem::store<u32>(header0 + 200, game);
+  }
+  // ("ultimate" Universe) a singles match between rivals: "RIVALRY MATCH" (as WWE 2K14's header)
+  if (!Call(x, base, __imp__sub_826D4DC8, copy) && Call(x, base, __imp__sub_826D4F90, copy) == 2) {
+    const u32 out = x.r1.u32 + 0x100;
+    Call(x, base, __imp__sub_826D4958, copy, out, 0);
+    const u32 a = bd::mem::load<u16>(out);
+    Call(x, base, __imp__sub_826D4958, copy, out, 1);
+    const u32 b = bd::mem::load<u16>(out);
+    const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+    const bool qualifier = REXCVAR_GET(wwe12_universe_qualifiers) && u &&
+                           PendingQualifier(a, b, bd::mem::load<u32>(u + kUniverseDay) / 336);
+    const u32 layout = bd::mem::load<u32>(c + 292);
+    if (!qualifier && layout && a < 512 && b < 512 && UltimateRivalryHeader(x, base, a, b))
+      if (const u32 header = Call(x, base, __imp__sub_824C5458, layout, 30)) {
+        static const char *const kRivalry[5] = {"RIVALRY MATCH", "MATCH DE RIVALIT\xC3\x89", "RIVALIT\xC3\x84TS-MATCH",
+                                                "COMBATE DE RIVALIDAD", "INCONTRO DI RIVALIT\xC3\x80"};
+        static u32 s_text = 0;
+        if (!s_text)
+          s_text = REX_KERNEL_MEMORY()->SystemHeapAlloc(96, 0x10);
+        if (s_text) {
+          const char *t = kRivalry[CurrentLang()];
+          std::memset(bd::mem::at<char>(s_text), 0, 96);
+          std::memcpy(bd::mem::at<char>(s_text), t, std::min<size_t>(std::strlen(t), 95));
+          bd::mem::store<u32>(header + 200, s_text);
+          s_ours[1] = s_text;
+          bd::mem::store<u32>(header + 228, bd::mem::load<u32>(header + 228) & ~0x10u);
+          return;
+        }
+      }
   }
   if (REXCVAR_GET(wwe12_universe_qualifiers) && !Call(x, base, __imp__sub_826D4DC8, copy) &&
       Call(x, base, __imp__sub_826D4F90, copy) == 2) {
@@ -8401,4 +8488,306 @@ extern "C" REX_FUNC(sub_826C83D8) {
   PPCContext again = in;
   __imp__sub_826C83D8(again, base);
   BD_INFO("[univers] chaos: a second try at starting a story today");
+}
+
+// ---- "Ultimate" Universe, part 2: rivalry news, surprise returns, rematch clause, RIVALRY MATCH header -------------
+// (after WWE 2K14's rivalry news and WWE '13 / 2K's rematch and return ideas, docs/univers.md section 47). On with the
+// unpredictable Universe from "a little" (wwe12_universe_chaos >= 1), or each by its own setting (-1 = the level's,
+// 0 off, 1 on). Nothing changes when off.
+//  - rivalry news, once a week: a pair of rivals (relations record +20..+36, the rival slot k = a level k + 1; level 2
+//    or more) who met in singles in the last 28 days ("vs" lines of universe_stats.txt, written after each singles
+//    result): one beat the other 3 times or more (DOMINATION), the last meeting's winner had lost the one before
+//    (PAYBACK), or else they met (BAD BLOOD); one news a week at most, once per pair and week;
+//  - surprise returns: a Superstar whose injury ends (Universe record +92 bit 31 cleared) comes back on his show's next
+//    weekly card as a mystery opponent ("???", place +28) of a singles match without title nor story, in place of
+//    one of its two Superstars; when his match is played, SURPRISE RETURN! (28 days to find a place, then forgotten);
+//  - rematch clause: a singles title (not a tag one) changed hands in the last 21 days ("title" lines): the former
+//    champion gets one title match against the new one on the show's next weekly card (a singles match without title,
+//    story nor WrestleMania build becomes theirs and the title's), with its news; once ("rematch" line);
+//  - RIVALRY MATCH: MATCH CARDS names a singles match between rivals (level 2 or more) so (sub_82554B68's hook).
+REXCVAR_DEFINE_INT32(wwe12_universe_rivalry_news, -1, "WWE12",
+                     "Universe: weekly rivalry news (-1 = on with the unpredictable Universe, 0 off, 1 on).");
+REXCVAR_DEFINE_INT32(wwe12_universe_surprise_returns, -1, "WWE12",
+                     "Universe: a Superstar back from injury returns as a mystery opponent (-1 = with the "
+                     "unpredictable Universe, 0 off, 1 on).");
+REXCVAR_DEFINE_INT32(wwe12_universe_rematches, -1, "WWE12",
+                     "Universe: a dethroned champion gets a title rematch on the next weekly card (-1 = with the "
+                     "unpredictable Universe, 0 off, 1 on).");
+REXCVAR_DEFINE_INT32(wwe12_universe_rivalry_header, -1, "WWE12",
+                     "Universe: RIVALRY MATCH header for a singles match between rivals (-1 = with the unpredictable "
+                     "Universe, 0 off, 1 on).");
+
+REX_EXTERN(__imp__sub_826D2B50);
+
+namespace {
+bool UltimateOn(int32_t own) { return own >= 0 ? own > 0 : REXCVAR_GET(wwe12_universe_chaos) >= 1; }
+
+// The rival level of b for a (0: none; 1..5, 5 the strongest), from a's relations record (+20 + 4 k: the rival
+// slot k, level k + 1)
+u32 RivalLevel(const PPCContext &x, u8 *base, u32 table, u32 a, u32 b) {
+  const u32 rec = table && a < 373 ? Call(x, base, __imp__sub_826D4F98, table, a) : 0;
+  for (u32 k = 0; rec && k < 5; ++k)
+    if (bd::mem::load<u32>(rec + 20 + 4 * k) == b)
+      return k + 1;
+  return 0;
+}
+
+struct Returning {
+  u32 id, since;
+};
+std::mutex g_ultimate_lock;
+std::vector<Returning> g_returning;  // back from injury, not yet on a card
+std::set<u32> g_returned;            // placed on a card, news when the match is played
+std::set<u32> g_last_injured;
+bool g_injured_known = false;
+
+// the pending rematches: {title, former champion, new champion}, from the "title" and "rematch" lines
+struct Rematch {
+  u32 title, former, champion;
+};
+std::vector<Rematch> PendingRematches(const PPCContext &x, u8 *base, u32 day) {
+  std::map<u32, std::array<u32, 3>> last;  // title -> {new, old, day}
+  std::set<std::string> done;
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 t = 0, place = 0, holder = 0, old = 0, d = 0;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "title %u %u %u %u %u", &t, &place, &holder, &old, &d) == 5 && place == 0 &&
+        d <= day)
+      last[t] = {holder, old, d};
+    else if (std::sscanf(line.c_str(), "rematch %u %u %u", &t, &old, &d) == 3)
+      done.insert(fmt::format("{} {} {}", t, old, d));
+  }
+  std::vector<Rematch> out;
+  for (const auto &[title, v] : last) {
+    const u32 champ = v[0], former = v[1], since = v[2];
+    if (title >= 23 || champ >= 512 || former >= 512 || champ == former || day > since + 21 ||
+        done.count(fmt::format("{} {} {}", title, former, since)) || Call(x, base, __imp__sub_82A39CE8, title) ||
+        (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) != champ)
+      continue;
+    out.push_back({title, former, champ});
+  }
+  return out;
+}
+
+thread_local u32 t_rematch_title = 0xFF;  // the title of the rematch just placed in record i (for the entry)
+thread_local u32 t_rematch_since = 0;
+}  // namespace
+
+// a singles match between rivals (level 2 or more, either way)?
+bool UltimateRivalryHeader(const PPCContext &x0, u8 *base, u32 a, u32 b) {
+  if (!UltimateOn(REXCVAR_GET(wwe12_universe_rivalry_header)))
+    return false;
+  PPCContext x = x0;
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x400;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 table = bd::mem::load<u32>(view + 12);
+  const bool rivals = RivalLevel(x, base, table, a, b) >= 2 || RivalLevel(x, base, table, b, a) >= 2;
+  Call(x, base, __imp__sub_826CE098, view);
+  return rivals;
+}
+
+void UltimateReturnPlayed(u32 id) {
+  std::lock_guard<std::mutex> lock(g_ultimate_lock);
+  if (!g_returned.erase(id))
+    return;
+  QueueNews(kMoreEvent + kSurpriseReturn, kNewsQualified, id, 0xFF);
+  BD_INFO("[univers] ultimate: {}'s surprise return played", id);
+}
+
+// Once a day (WeeklyNews, at the Universe menu or after a result): returns from injury, and the week's rivalry news
+void UltimateDaily(const PPCContext &x0, u8 *base, u32 u, u32 day, bool first) {
+  PPCContext x = x0;
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  // returns: injured yesterday, not today
+  if (UltimateOn(REXCVAR_GET(wwe12_universe_surprise_returns))) {
+    std::set<u32> now;
+    for (u32 id = 0; id < 373; ++id) {
+      if (!Call(x, base, __imp__sub_826D3218, id, 1))
+        continue;
+      const int32_t index = int32_t(Call(x, base, __imp__sub_826D3320, id));
+      if (index >= 0 && (bd::mem::load<u32>(u + u32(index) * 112 + 92) & 0x80000000u))
+        now.insert(id);
+    }
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);
+    if (g_injured_known && !first)
+      for (const u32 id : g_last_injured)
+        if (!now.count(id)) {
+          g_returning.push_back({id, day});
+          BD_INFO("[univers] ultimate: {} is back from injury, waits for a surprise return", id);
+        }
+    g_returning.erase(std::remove_if(g_returning.begin(), g_returning.end(),
+                                     [&](const Returning &r) { return day > r.since + 28; }),
+                      g_returning.end());
+    g_last_injured = now;
+    g_injured_known = true;
+  }
+  // rivalry news: once a week
+  if (first || !UltimateOn(REXCVAR_GET(wwe12_universe_rivalry_news)))
+    return;
+  static u32 s_week = ~0u;
+  if (s_week == day / 7)
+    return;
+  s_week = day / 7;
+  std::vector<std::array<u32, 3>> met;  // {a, b, winner} of the last 28 days, oldest first
+  {
+    std::ifstream f(StatsFile());
+    std::string line;
+    u32 a = 0, b = 0, w = 0, d = 0;
+    while (std::getline(f, line))
+      if (std::sscanf(line.c_str(), "vs %u %u %u %u", &a, &b, &w, &d) == 4 && d <= day && d + 28 >= day)
+        met.push_back({a, b, w});
+  }
+  if (met.empty())
+    return;
+  const u32 view = x.r1.u32 + 0x400;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 table = bd::mem::load<u32>(view + 12);
+  struct Pick {
+    u32 kind, a, b, n;
+  };
+  std::vector<Pick> picks;
+  std::set<std::pair<u32, u32>> seen;
+  for (const auto &m : met) {
+    const u32 a = std::min(m[0], m[1]), b = std::max(m[0], m[1]);
+    if (!seen.insert({a, b}).second)
+      continue;
+    if (RivalLevel(x, base, table, a, b) < 2 && RivalLevel(x, base, table, b, a) < 2)
+      continue;
+    std::vector<u32> winners;
+    for (const auto &k : met)
+      if (std::min(k[0], k[1]) == a && std::max(k[0], k[1]) == b)
+        winners.push_back(k[2]);
+    const u32 wa = u32(std::count(winners.begin(), winners.end(), a)),
+              wb = u32(std::count(winners.begin(), winners.end(), b));
+    if (wa >= 3 && wb == 0)
+      picks.push_back({kRivalDominant, a, b, wa});
+    else if (wb >= 3 && wa == 0)
+      picks.push_back({kRivalDominant, b, a, wb});
+    else if (winners.size() >= 2 && winners.back() != winners[winners.size() - 2])
+      picks.push_back({kRivalPayback, winners.back(), winners.back() == a ? b : a, 0});
+    else
+      picks.push_back({kRivalFeud, a, b, 0});
+  }
+  Call(x, base, __imp__sub_826CE098, view);
+  if (picks.empty())
+    return;
+  // the strongest kind first (domination, payback, bad blood), at random among the same kind
+  std::stable_sort(picks.begin(), picks.end(), [](const Pick &p, const Pick &q) {
+    const auto rank = [](u32 k) { return k == kRivalDominant ? 0 : k == kRivalPayback ? 1 : 2; };
+    return rank(p.kind) < rank(q.kind);
+  });
+  size_t same = 0;
+  while (same < picks.size() && picks[same].kind == picks[0].kind)
+    ++same;
+  static std::mt19937 s_pick{std::random_device{}()};
+  const Pick p = picks[std::uniform_int_distribution<size_t>(0, same - 1)(s_pick)];
+  const std::string key = fmt::format("news rival {} {} {} {}", p.kind, p.a, p.b, day / 7);
+  if (NewsDone(key))
+    return;
+  AppendStats({key});
+  QueueNews3(kMoreEvent + p.kind, p.a, p.b, 512, 0xFF | (p.n << 8));
+  BD_INFO("[univers] ultimate: rivalry news {} for {} and {}", p.kind, p.a, p.b);
+}
+
+// Before a weekly card's record i is written: a rematch, else a surprise return, in a singles match without title,
+// story nor WrestleMania build (record +12, +28, +24; places at +40 + 32 k, +0 the Superstar, +28 = 1 "???")
+bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
+  t_rematch_title = 0xFF;
+  const u32 vtbl = bd::mem::try_load<u32>(booker);
+  const int show = vtbl == kBookerRaw ? 0 : vtbl == kBookerSmackDown ? 1 : vtbl == kBookerSuperstars ? 2 : -1;
+  if (show < 0)
+    return false;
+  const bool rematches = UltimateOn(REXCVAR_GET(wwe12_universe_rematches)),
+             returns = UltimateOn(REXCVAR_GET(wwe12_universe_surprise_returns));
+  if (!rematches && !returns)
+    return false;
+  const u32 rec = booker + 20 + i * 1320;
+  if (bd::mem::load<u32>(rec + 16) != 2 || bd::mem::load<u32>(rec + 12) || bd::mem::load<u32>(rec + 28) ||
+      bd::mem::load<u32>(rec + 24))
+    return false;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u)
+    return false;
+  const u32 day = bd::mem::load<u32>(u + kUniverseDay);
+  const auto on_card = [&](u32 id) {
+    for (u32 j = 0; j < 8; ++j) {
+      const u32 r = booker + 20 + j * 1320;
+      const u32 n = std::min<u32>(bd::mem::load<u32>(r + 16), 8);
+      for (u32 k = 0; k < n; ++k)
+        if (bd::mem::load<u32>(r + 40 + 32 * k) == id)
+          return true;
+    }
+    return false;
+  };
+  const auto injured = [&](u32 id) {
+    const int32_t index = int32_t(Call(x, base, __imp__sub_826D3320, id));
+    return index < 0 || (bd::mem::load<u32>(u + u32(index) * 112 + 92) & 0x80000000u) != 0;
+  };
+  // a rematch: this show's title (booker +4 .. +16), the former champion and the new one both free
+  if (rematches) {
+    for (const Rematch &r : PendingRematches(x, base, day)) {
+      bool ours = false;
+      for (u32 t = 0; t < 4; ++t)
+        ours = ours || bd::mem::load<u32>(booker + 4 + 4 * t) == r.title;
+      if (!ours || on_card(r.former) || on_card(r.champion) || injured(r.former) || injured(r.champion))
+        continue;
+      bd::mem::store<u32>(rec + 40, r.champion);
+      bd::mem::store<u32>(rec + 40 + 32, r.former);
+      bd::mem::store<u32>(rec + 40 + 28, 0);
+      bd::mem::store<u32>(rec + 40 + 32 + 28, 0);
+      t_rematch_title = r.title;
+      // (the reign's first day, for the "rematch" line)
+      std::ifstream f(StatsFile());
+      std::string line;
+      u32 t = 0, place = 0, holder = 0, old = 0, d = 0;
+      while (std::getline(f, line))
+        if (std::sscanf(line.c_str(), "title %u %u %u %u %u", &t, &place, &holder, &old, &d) == 5 && t == r.title &&
+            place == 0 && d <= day)
+          t_rematch_since = d;
+      AppendStats({fmt::format("rematch {} {} {}", r.title, r.former, t_rematch_since)});
+      QueueNews3(kMoreEvent + kRematch, r.former, r.champion, 512, r.title);
+      BD_INFO("[univers] ultimate: rematch for title {}: {} against champion {} (match {})", r.title, r.former,
+              r.champion, i);
+      return false;
+    }
+  }
+  // a surprise return: one waiting, of this show (its brand among the show's, record +929 + brand)
+  if (returns) {
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);
+    for (size_t n = 0; n < g_returning.size(); ++n) {
+      const u32 id = g_returning[n].id;
+      const u32 brand = Call(x, base, __imp__sub_826D2B50, id);
+      if (brand >= 13 || bd::mem::load<u8>(u + kShowRecords + u32(show) * kShowRecordSize + 929 + brand) != 1 ||
+          on_card(id) || injured(id))
+        continue;
+      const u32 k = ChaosRand(2), place = rec + 40 + 32 * k;
+      if (bd::mem::load<u32>(place) >= 512)
+        continue;
+      BD_INFO("[univers] ultimate: {} returns as {}'s mystery opponent (match {})", id,
+              bd::mem::load<u32>(rec + 40 + 32 * (1 - k)), i);
+      bd::mem::store<u32>(place, id);
+      bd::mem::store<u32>(place + 28, 1);
+      g_returned.insert(id);
+      g_returning.erase(g_returning.begin() + long(n));
+      return false;
+    }
+  }
+  return false;
+}
+
+// After the entry is written: the rematch is the title's match (as our title defenses do)
+void UltimateBookingAfter(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
+  if (t_rematch_title >= 23)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  Call(x, base, __imp__sub_826D4DD8, entry, 1);
+  bd::mem::store<u8>(entry + 1, u8(t_rematch_title));
+  BD_INFO("[univers] ultimate: match {} of the card is title {}'s rematch", i, t_rematch_title);
+  t_rematch_title = 0xFF;
+  (void)booker;
 }
