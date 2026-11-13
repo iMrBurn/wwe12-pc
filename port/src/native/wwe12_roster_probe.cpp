@@ -6,7 +6,12 @@
 // bytes behind it are logged once ("[roster]").
 
 #include <cstdint>
+#include <map>
 #include <set>
+#include <string>
+#include <vector>
+
+#include <fmt/format.h>
 
 #include <rex/cvar.h>
 
@@ -54,6 +59,32 @@ extern "C" REX_FUNC(sub_82567068) {
       const uint16_t index = bd::mem::load<uint16_t>(0x8307B5E0 + i * 2);
       const uint32_t b247 = index != 512 && roster ? bd::mem::load<uint8_t>(roster + index * 286u + 247) : 0xFF;
       REXLOG_INFO("[roster] slot {}: roster index {}, unlocked byte {}, owned {}", i, index, b247, OwnedState(i));
+    }
+    // (1.4, 101 added superstars: 37 never reached this tile test. The select screen shows one tile per "person"
+    // (CHAR/DAT +0x100; the save's copy, 4 bytes shorter, at +0xFC?): every record's, those sharing one marked)
+    for (uint32_t at : {0xFCu, 0x100u}) {  // (the offset not sure: both)
+      if (!roster)
+        break;
+      std::map<uint32_t, std::vector<uint32_t>> by_person;
+      for (uint32_t i = 0; i < 373; ++i) {
+        const uint16_t index = bd::mem::load<uint16_t>(0x8307B5E0 + i * 2);
+        if (index >= 512)
+          continue;
+        const uint32_t r = roster + index * 286u;
+        const uint32_t p = bd::mem::load<uint8_t>(r + at) | bd::mem::load<uint8_t>(r + at + 1) << 8;
+        by_person[p].push_back(i);
+      }
+      std::string all, shared;
+      for (const auto &[p, ids] : by_person) {
+        all += fmt::format(" {:x}:{}", p, ids.front());
+        if (ids.size() > 1) {
+          shared += fmt::format(" {:x}=", p);
+          for (uint32_t id : ids)
+            shared += std::to_string(id) + ",";
+        }
+      }
+      REXLOG_INFO("[roster] persons at +{:X} (person:first id):{}", at, all);
+      REXLOG_INFO("[roster] persons at +{:X} shared by several:{}", at, shared);
     }
   }
   if (!g_logged.insert(id * 2 + (result ? 1 : 0)).second)
