@@ -97,6 +97,8 @@ REXCVAR_DECLARE(uint32_t, user_language);
 // ("ultimate" Universe, tournaments for a vacant title, at the end of the file)
 bool UltimateTournamentsOn();
 void UltimateTitleVacated(const PPCContext &in, uint8_t *base, uint32_t title);
+// before a show's single title is vacated: false when refused (no tournament possible); its seeds kept for after
+bool UltimateBeforeVacate(const PPCContext &in, uint8_t *base, uint32_t title);
 void UltimateTournamentResult(uint32_t a, uint32_t b, uint32_t winner);
 bool UltimateTourneySemi(const PPCContext &x, uint8_t *base, uint32_t a, uint32_t b, uint32_t day);
 bool UltimateVacantTitle(const PPCContext &x, uint8_t *base, uint32_t title);
@@ -2150,13 +2152,9 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
          {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers,
           std::string(o.briefcases) + ":  " + briefcases,
           std::string(o.injuries) + ":  " + (REXCVAR_GET(wwe12_universe_injuries) ? o.on : o.off),
-          std::string(o.chaos) + ":  " + o.levels[std::clamp<int>(REXCVAR_GET(wwe12_universe_chaos), 0, 3)],
-          // (a 5th line: with 4 the game lays the box out in two columns and the long lines overlap, test of
-          // 2026-11-12; from 5 on, our one-column list)
-          [] {
-            static const char *const kBack[5] = {"BACK", "RETOUR", "ZUR\xC3\x9C" "CK", "VOLVER", "INDIETRO"};
-            return std::string(kBack[CurrentLang()]);
-          }()},
+          // (5 lines: one column; 4 or 6 make the game lay the box out in two columns whose long lines overlap,
+          // tests of 2026-11-12 and 2026-11-13; B goes back)
+          std::string(o.chaos) + ":  " + o.levels[std::clamp<int>(REXCVAR_GET(wwe12_universe_chaos), 0, 3)]},
          [](const PPCContext &in, u8 *base, size_t i) {
            const OptionWords &o = OWords();
            if (i == 0) {
@@ -2169,8 +2167,6 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
                                     k ? (std::to_string(kPct[k]) + " %").c_str() : OWords().off);
                       Inform(in, base, text);
                     });
-           } else if (i == 5) {
-             // BACK: nothing
            } else if (i == 4) {
              const OptionWords &w = OWords();
              static const char *const kBack[5] = {"BACK", "RETOUR", "ZURÜ" "CK", "VOLVER", "INDIETRO"};
@@ -4279,6 +4275,10 @@ extern "C" REX_FUNC(sub_82A3A060) {
                         place < 2;
   const u32 old_holder = universe ? Call(in, base, __imp__sub_82A39FC8, title, place, 1) & 0xFFFF
                                   : 0;
+  // ("ultimate" Universe) a show's title vacated: its tournament's seeds now, while its ranking is there (the game
+  // empties it with the champion: none found after, test of 2026-11-13); refused when no tournament is possible
+  if (universe && holder == kNobody && old_holder != kNobody && place == 0 && !UltimateBeforeVacate(in, base, title))
+    return;
   __imp__sub_82A3A060(ctx, base);
   if (!universe || old_holder == holder)
     return;
@@ -8940,6 +8940,39 @@ bool UltimateTourneyPossible(const PPCContext &in, u8 *base, u32 title) {
   return u && title < 23 && TourneySeeds(x, base, u, title).size() >= 4;
 }
 
+namespace {
+thread_local u32 t_seed_title = 0xFF;
+thread_local std::vector<u32> t_seeds;  // taken before the title was vacated
+bool ShowTitle(const PPCContext &x, u8 *base, u32 u, u32 title) {
+  if (title >= 23 || Call(x, base, __imp__sub_82A39CE8, title))
+    return false;  // (a tag title: no tournament)
+  for (u32 show = 0; show < 3; ++show)
+    if (bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + title) != 0)
+      return true;
+  return false;
+}
+}  // namespace
+
+bool UltimateBeforeVacate(const PPCContext &in, u8 *base, u32 title) {
+  t_seed_title = 0xFF;
+  t_seeds.clear();
+  if (!UltimateTournamentsOn() || title >= 23)
+    return true;  // (as the game)
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u || !ShowTitle(x, base, u, title))
+    return true;  // (a title no show uses: as the game)
+  std::vector<u32> seeds = TourneySeeds(x, base, u, title);
+  if (seeds.size() < 4) {
+    BD_INFO("[univers] tournament: title {} not vacated, only {} free contenders", title, seeds.size());
+    return false;
+  }
+  t_seed_title = title;
+  t_seeds = std::move(seeds);
+  return true;
+}
+
 // a title's place 0 became nobody: a tournament, for a weekly show's title (fewer than 4 free contenders, or called
 // again for a tournament given up: the ranking's first takes the title, it never stays vacant)
 void UltimateTitleVacated(const PPCContext &in, u8 *base, u32 title) {
@@ -8956,7 +8989,8 @@ void UltimateTitleVacated(const PPCContext &in, u8 *base, u32 title) {
   if (!used)
     return;
   const u32 day = bd::mem::load<u32>(u + kUniverseDay);
-  const std::vector<u32> seeds = TourneySeeds(x, base, u, title);
+  const std::vector<u32> seeds = t_seed_title == title ? t_seeds : TourneySeeds(x, base, u, title);
+  t_seed_title = 0xFF;
   if (seeds.size() < 4) {
     BD_INFO("[univers] tournament: title {} vacant, only {} free contenders: no tournament", title, seeds.size());
     if (!seeds.empty())
