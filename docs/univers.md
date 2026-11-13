@@ -1206,3 +1206,14 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   contenu renuméroté ? lesquelles manquent dans WWE '12 ?). Si le contenu est le même format, des scènes de SvR 2011
   absentes de WWE '12 pourraient devenir de nouveaux actes UN00 (copie servie de `m.pac`) + de nouvelles fiches WCID
   (copie servie de `wuniData.pac`) : ce sont des scènes du système de WWE '12, donc sans le verrou des scènes EVP.
+- **Comparaison (2026-11-13)** : une scène SvR 2011 (`wunimot.pac` UNVS/NNNN) = PACH {0 : « YMKs » (le jeu de mouvements,
+  BPE en petit-boutiste : `yukes_bpe.expand(..., False)`, ≈ 64 Ko), 10 : « WCP » (192 octets, les réglages de la scène,
+  comme une fiche WCID)}. Un acte de WWE '12 (`m.pac` UN00) = « ZLIB » + zlib → un autre format de mouvements (os
+  nommés, « root »). Pas comparables tels quels : il faudrait convertir les mouvements YMK de SvR vers le format de
+  WWE '12 (le Mod Maker convertit déjà des prises de SvR) ; on ne sait donc pas encore lesquelles des 134 scènes de
+  SvR 2011 manquent dans les 117 de WWE '12.
+- **WWE '13 / 2K** : `pac/evt/Universe00-03.pac` (WWE '13, 19 Mo en tout), `Universe00-09.pac` (2K14 : 01-03 vus ; 2K15),
+  au format xcompressé EPK8 (signature 0F F5 12 ED, comme leurs Entrance / Winning) que le Mod Maker sait déjà ouvrir
+  (`entrance13.h`, `svrfmt/xcompress`). 2K16 / 2K17 : une scène par paquet (`pac/evt/NNNNN.pac`). Ce sont des scènes
+  EVP : pour les jouer dans l'Univers de WWE '12, il faut d'abord régler l'affichage des scènes EVP dans un match
+  d'Univers (les 4 essais ci-dessus).
