@@ -1197,3 +1197,12 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   (le mode reste celui de Create a Story pour la suite du flux). Il faut donc remettre le mode Univers plus tôt
   (juste après le lancement de la scène, pas à la lecture suivante) ou repérer comment Create a Story revient à son menu.
   Note : avec `wwe12_dir_log`, le journal tourne à 5 Mo (`*.1.log`, `*.2.log`).
+- **SvR 2011 (2026-11-13, corrigé : il a bien un Univers)** : ses scènes d'Univers sont dans `pac/evt/wunimot.pac`
+  (19 Mo), groupe **`UNVS`**, 134 entrées nommées `%04d` = chiffre de liste + numéro (0001-0020, 1007-1043, 2001-2035,
+  3001-3068, plus 9000 et 9100) : c'est exactement le format « UNVS/%1d%03d » encore présent dans l'exe de WWE '12,
+  dont le `wunimot.pac` est presque vide (groupe `UNIV` vide). WWE '12 a déplacé ses scènes dans `m.pac` UN00 (117
+  actes 32xxx = 32000 + liste × 100 + n, les listes décalées d'une unité). Contenants différents : SvR = PACH + BPE,
+  WWE '12 = « ZLIB » (zlib). Aucune scène identique octet pour octet ; à comparer une fois décompressées (même
+  contenu renuméroté ? lesquelles manquent dans WWE '12 ?). Si le contenu est le même format, des scènes de SvR 2011
+  absentes de WWE '12 pourraient devenir de nouveaux actes UN00 (copie servie de `m.pac`) + de nouvelles fiches WCID
+  (copie servie de `wuniData.pac`) : ce sont des scènes du système de WWE '12, donc sans le verrou des scènes EVP.
