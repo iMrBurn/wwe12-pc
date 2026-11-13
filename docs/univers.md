@@ -1268,6 +1268,18 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   Test : l'acte 32456 a joué la scène SvR 32448, « c'était bien » ; dans un match TLC, les tables / échelles restaient
   sur le ring et les catcheurs les traversaient un peu. Les données du jeu ne partent pas dans le zip : pour les
   joueurs, la conversion devra se faire chez eux depuis leur SvR 2011 (Mod Maker), à faire.
+- **Plus de scènes, suite (2026-11-13, pas encore vu en jeu)** : (1) une scène ajoutée remplace aussi un acte du jeu qui a
+  des objets (y 6-59 : accessoires, arbitre…) : les blocs d'objets de l'acte du jeu sont ajoutés aux nôtres
+  (`WithGameObjects`), seuls les rôles 0-5 doivent être les mêmes ; (2) les 13 scènes SvR à objets sont converties sans
+  leurs objets (47 en tout) ; (3) **WWE '13** : `pac/evt/Universe00-03.pac` (xcompressés, `tools/dev/evt_dump.cpp`) =
+  **106 scènes** EVP + EVZ (5000-5022 attaques, 5200-5213, 5400-5415 managers / trahisons, 5600-5661 après-match,
+  chaises, ceintures, félicitations…), toutes **sur le ring ou autour**, avec des plans (blocs `%04d%04d` = plan × 5,
+  sous-caméra) : `tools/dev/w13_scene_convert.cpp` en fait des actes WWE '12 (personnages → rôles 0-5 dans l'ordre du
+  script, caméra 0-2 → 60-62, plans mis bout à bout : rotations gardées, positions refaites en absolu puis requantifiées,
+  jambes IK cuites ; objets, cordes, objet global et événements laissés, sauf la fin de caméra 254). 106 / 106
+  converties ; rangées par nom : félicitations / poignées de main / après-match → liste 3 (324xx), le reste → liste 0
+  (321xx) (à vérifier : quelle liste = quel moment). Fichiers de test : `Documents/wwe12_test/universe_scenes` (153,
+  28 Mo). 2K14-2K17 : pas encore regardés (formats proches pour 2K14 ; 2K15+ créneaux de 788 octets).
 
 ## 45. NXT, 4e show de la semaine (2026-11-13, `wwe12_universe_nxt`, coupé par défaut, pas fini)
 
