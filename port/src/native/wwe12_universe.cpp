@@ -7791,6 +7791,8 @@ thread_local u32 t_act_reader = 0, t_act_logged = 0;
 REXCVAR_DEFINE_BOOL(wwe12_universe_more_scenes, false, "WWE12",
                     "Universe: other games' scenes (universe_scenes folder) played at random instead of the game's "
                     "(same moment, same number of Superstars). Experimental.");
+REXCVAR_DEFINE_STRING(wwe12_universe_more_scenes_only, "", "WWE12",
+                      "Dev: only the added scenes whose file name has this text (tests).");
 REXCVAR_DEFINE_INT32(wwe12_universe_more_scenes_chance, 50, "WWE12",
                      "Universe: the chance (percent) that a scene of the game is replaced by an added one.");
 namespace {
@@ -7938,7 +7940,20 @@ std::vector<u8> WithGameObjects(const std::vector<u8> &ours, u32 data) {
   return out;
 }
 
-u32 AddedSceneFor(u32 act, u32 data) {
+// Game memory from the game's own heap (as sub_82486648 allocates: sub_827D2950() ? sub_827D2548(size, 2) :
+// sub_827D3600(16-byte units, 2)): the motion code reads its packed copies there (ours in the system heap, 0x30...,
+// were skipped, 2026-11-13). Kept for the session.
+REX_EXTERN(__imp__sub_827D2950);
+REX_EXTERN(__imp__sub_827D2548);
+REX_EXTERN(__imp__sub_827D3600);
+u32 GameAlloc(const PPCContext &in, u8 *base, u32 size) {
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  return Call(x, base, __imp__sub_827D2950, 0) ? Call(x, base, __imp__sub_827D2548, size, 2)
+                                                 : Call(x, base, __imp__sub_827D3600, (size + 15) >> 4, 2);
+}
+
+u32 AddedSceneFor(const PPCContext &in, u8 *base, u32 act, u32 data) {
   if (!REXCVAR_GET(wwe12_universe_more_scenes) || act < 32000 || act > 32999 || !data)
     return 0;
   std::lock_guard<std::mutex> lock(g_added_lock);
@@ -7953,7 +7968,8 @@ u32 AddedSceneFor(u32 act, u32 data) {
   // ours: the same Superstars (roles 0-5); the game's objects (6-59) are added to ours (WithGameObjects)
   std::vector<AddedScene *> same;
   for (auto &sc : g_added)
-    if (sc.list == act / 100 % 10 && sc.roles == (roles & 0x3F) && !(sc.roles & ~u64(0x3F)))
+    if (sc.list == act / 100 % 10 && sc.roles == (roles & 0x3F) && !(sc.roles & ~u64(0x3F)) &&
+        sc.name.find(REXCVAR_GET(wwe12_universe_more_scenes_only)) != std::string::npos)
       same.push_back(&sc);
   static std::mt19937 rng{std::random_device{}()};
   if (same.empty() || int(rng() % 100) >= REXCVAR_GET(wwe12_universe_more_scenes_chance)) {
@@ -7971,9 +7987,9 @@ u32 AddedSceneFor(u32 act, u32 data) {
     const std::vector<u8> bytes = merged ? WithGameObjects(sc->bytes, data) : sc->bytes;
     const svrfmt::Bytes bpe = svrfmt::BpeEncodeStored(svrfmt::Bytes(bytes.begin(), bytes.end()));
     const std::vector<u8> zl = ZlibStored(bytes);
-    guest = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(bytes.size()), 0x20);
-    guest_bpe = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(bpe.size()), 0x20);
-    guest_zlib = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(zl.size()), 0x20);
+    guest = GameAlloc(in, base, u32(bytes.size()));
+    guest_bpe = GameAlloc(in, base, u32(bpe.size()));
+    guest_zlib = GameAlloc(in, base, u32(zl.size()));
     if (!guest || !guest_bpe || !guest_zlib)
       return 0;
     std::memcpy(bd::mem::at<u8>(guest), bytes.data(), bytes.size());
@@ -7991,7 +8007,7 @@ REX_EXTERN(__imp__sub_82486648);
 extern "C" REX_FUNC(sub_82486648) {
   const u32 rec = ctx.r3.u32, data = ctx.r4.u32;
   if (t_act_reader)
-    if (const u32 ours = AddedSceneFor(bd::mem::load<u16>(rec), data))
+    if (const u32 ours = AddedSceneFor(ctx, base, bd::mem::load<u16>(rec), data))
       ctx.r4.u64 = ours;
   __imp__sub_82486648(ctx, base);
   if (t_act_reader && REXCVAR_GET(wwe12_universe_act_swap_to) && t_act_logged < 12) {
