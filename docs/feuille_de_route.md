@@ -148,6 +148,7 @@ Décision du 2026-11-12 : 1.4 à sortir en une semaine environ ; l'utilisateur c
 - Shaders qui font saccader à la première fois (en 1.1 : préparés en arrière-plan ; reste à voir ce qui saccade encore, voir l'issue #53 : surtout le processeur).
 
 ## Plus tard (sans date)
+- **Univers + Create a Story** (souhait de l'utilisateur, 2026-11-13) : jouer dans l'Univers les scènes de Create a Story (embuscade en coulisses, choix du type d'intervention), puis des scènes portées des autres jeux (WWE '13, 2K14-2K17, avec Mods) et, à terme, des histoires façon Story Collection (2K15+). Base trouvée : la table des demandes de cinématiques du match (`docs/univers.md` §44) ; une scène imposée est bien chargée dans un match d'Univers, mais le jeu se fige ensuite (cible, décor de Create a Story ou scripts manquants : à creuser). Plusieurs jours, avec Mods.
 - **Bloc-notes de l'utilisateur, 2026-11-11 : EN 1.3 (décision de l'utilisateur le 2026-11-11, voir aussi la section 1.3)** :
   - Mod Maker : ajouter des titantrons (et pas seulement remplacer) ; vidéos pour le ruban et le walltron ; faire porter des entrées spéciales WM / titre ; retravailler les arènes portées ; aperçu des entrées dans le Mod Maker comme SvR 2011.
   - Bugs : avec les thèmes du jukebox activés, on entend la musique normale du menu en dessous, et elle repart juste après START à l'écran-titre (le thème du jukebox s'arrête) ; les attributs ne se sauvegardent pas ; corriger quelques modèles et entrées.
