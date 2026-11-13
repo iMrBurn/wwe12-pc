@@ -1449,3 +1449,9 @@ départ de « Bip » de chaque rôle avec l'acte de WWE '12 que la scène refait
 49 scènes remises dans l'ordre, 54 déjà bonnes, 3 sans acte) ; à faire aussi dans le futur convertisseur du Mod Maker.
 SmackDown à 2 matchs : deux créneaux de classement poussés sur le même rang (même catcheur deux fois, match jeté) :
 corrigé (un créneau au plus, rang existant et libre, 052a38f).
+Revu en jeu après la remise en ordre : catcheurs debout et bien orientés, mais **décalés** (WWE '13 5012, qui refait
+l'acte 32115, jouée à la place de 32102 : Morrison frappe dans le vide loin de The Miz) : le jeu place les catcheurs au
+départ de l'acte qu'il a choisi. Désormais une scène ajoutée ne remplace **que l'acte qu'elle refait** (numéro du
+fichier) ; `wwe12_universe_more_scenes_any_act` (dev) rend l'ancienne façon. Conséquence : les scènes SvR 2011
+absentes de WWE '12 (sans acte équivalent) ne passent plus ; les scènes de WWE '13 (106, toutes des remakes) et les 13
+SvR « changées » (même numéro) restent.
