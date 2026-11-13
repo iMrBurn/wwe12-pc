@@ -591,7 +591,7 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
       BD_ERROR("Back-buffer SRV bind failed: bindless heap full");
       return false;
     }
-    s.texture_descriptor_set->setTexture(
+    SetBindlessTexture(s, 
         slot, bb->texture, plume::RenderTextureLayout::SHADER_READ,
         bb->textureView.get());
   s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
@@ -643,7 +643,7 @@ void Video::SyncBackBufferSizeLocked() {
     return;
   }
   if (bb->descriptorIndex != kInvalidDescriptorIndex) {
-    s.texture_descriptor_set->setTexture(
+    SetBindlessTexture(s, 
         bb->descriptorIndex, bb->texture,
         plume::RenderTextureLayout::SHADER_READ, bb->textureView.get());
   s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
@@ -819,7 +819,7 @@ GuestTexture *GetOrCreateDebugTexture() {
     delete t;
     return nullptr;
   }
-  s.texture_descriptor_set->setTexture(slot, t->texture,
+  SetBindlessTexture(s, slot, t->texture,
                                        plume::RenderTextureLayout::SHADER_READ,
                                        t->textureView.get());
   s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);

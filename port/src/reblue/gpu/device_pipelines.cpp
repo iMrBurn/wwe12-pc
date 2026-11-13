@@ -126,8 +126,16 @@ bool BuildPipelineLayout(VideoState &s) {
 
   plume::RenderDescriptorSetBuilder tex_set_builder;
   tex_set_builder.begin();
+#if BD_COMPACT_TEXTURES
+  // The shaders see a small table (filled per draw, compact_textures.cpp); this set only holds the
+  // three null textures and is bound when a list starts.
+  tex_set_builder.addTexture(0, kCompactTextureCount);
+  tex_set_builder.end(true, kCompactTextureCount);
+  s.bindless_registry.assign(kBindlessTextureCount, {});
+#else
   tex_set_builder.addTexture(0, kBindlessTextureCount);
   tex_set_builder.end(true, kBindlessTextureCount);
+#endif
 
   s.texture_descriptor_set = tex_set_builder.create(s.device.get());
   if (!s.texture_descriptor_set) {

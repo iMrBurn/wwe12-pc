@@ -17,14 +17,23 @@ namespace bd::gpu {
 
 // Heap capacities. Every CreateTexture registers a texture slot, so that heap
 // must be large.
-#if defined(WWE12_IOS)
-// MoltenVK turns each of the three 65536-entry texture arrays into a Metal argument buffer; the
-// iPhone shows scrambled / black HUD textures with that table (the SvR 2011 iOS port had the same
-// symptoms until it moved to a small per-draw table). A smaller table is the cheap first test.
-constexpr u32 kBindlessTextureCount = 16384;
-#else
 constexpr u32 kBindlessTextureCount = 65536;
+
+// Compact texture tables (Vulkan only; iPhone, or WWE12_COMPACT_TEXTURES to try it elsewhere):
+// MoltenVK turns the 65536-entry texture arrays into Metal argument buffers and shows black or
+// scrambled HUD textures with them (the SvR 2011 iOS port had the same symptoms until it moved to a
+// small table filled for each draw). Here the slots stay a CPU-side registry (slot -> texture), the
+// shader-visible table has kCompactTextureCount entries, and gpu/compact_textures.cpp fills one for
+// the textures each draw names and rewrites the indices of the shared constants to match.
+#if (defined(WWE12_IOS) || defined(WWE12_COMPACT_TEXTURES)) && !defined(REBLUE_D3D11) && \
+    !defined(REBLUE_D3D12)
+#define BD_COMPACT_TEXTURES 1
+#else
+#define BD_COMPACT_TEXTURES 0
 #endif
+// 3 null entries + at most 3 x 32 textures named by one draw (16 slots in each of 3 kinds, pixel and
+// vertex halves), rounded up.
+constexpr u32 kCompactTextureCount = 128;
 constexpr u32 kBindlessSamplerCount = 1024;
 
 // First free slot in used[start_index..end), marked used, returned. on_full

@@ -204,6 +204,12 @@ function(wwe12_add_native_renderer target)
         target_sources(${target} PRIVATE "${WWE12_MINIZ_DIR}/miniz.c" "${WWE12_LINKED_SHADER_CACHE}")
     else()
         set(host_shaders ${WWE12_HOST_SHADER_HEADERS})
+        # Compact texture tables (gpu/compact_textures.cpp): always on for the iPhone (WWE12_IOS);
+        # this builds them into the Vulkan exe to compare (they are never on by default elsewhere).
+        option(WWE12_COMPACT_TEXTURES "Vulkan: compact per-draw texture tables" OFF)
+        if(WWE12_COMPACT_TEXTURES)
+            target_compile_definitions(${target} PRIVATE WWE12_COMPACT_TEXTURES=1)
+        endif()
         # re:Blue's DXIL linker serves the D3D12 exe only.
         list(FILTER sources EXCLUDE REGEX "/gpu/shaders/(shader_linker|dxc_link)\\.(cpp|h)$")
     endif()

@@ -625,6 +625,9 @@ ConstantAllocation UploadSharedConstants(u32 device_guest) {
 #if defined(REBLUE_D3D11)
   D3D11BindSlots(s.shared);
 #endif
+#if BD_COMPACT_TEXTURES
+  CompactBindDraw(s.shared);
+#endif
   if (s.sharedBound &&
       std::memcmp(&s.shared, &s.lastUploaded, sizeof(SharedConstants)) == 0) {
     return {};

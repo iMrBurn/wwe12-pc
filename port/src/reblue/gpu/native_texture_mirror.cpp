@@ -668,7 +668,7 @@ void ApplyFetchSwizzle(GuestTexture *tex, const xe::xe_gpu_texture_fetch_t &fetc
   tex->textureView = std::move(view);
   auto &s = state();
   if (tex->descriptorIndex != kInvalidDescriptorIndex && s.texture_descriptor_set)
-    s.texture_descriptor_set->setTexture(tex->descriptorIndex, tex->texture,
+    SetBindlessTexture(s, tex->descriptorIndex, tex->texture,
                                          plume::RenderTextureLayout::SHADER_READ,
                                          tex->textureView.get());
   s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);

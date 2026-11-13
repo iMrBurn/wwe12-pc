@@ -233,7 +233,11 @@ bool CopySurfaceToTextureLocked(VideoState &s, GuestTexture *src,
       return false;
     }
     s.command_list->setPipeline(pipeline);
+#if BD_COMPACT_TEXTURES
+    const u32 descriptor_index = CompactBindHost(s.command_list, src->descriptorIndex);
+#else
     const u32 descriptor_index = src->descriptorIndex;
+#endif
 
     u32 box_ratio = 0u;
     if (!depth_dst && src->sampleCount == plume::RenderSampleCount::COUNT_1 &&
