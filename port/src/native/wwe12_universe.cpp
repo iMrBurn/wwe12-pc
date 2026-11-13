@@ -7939,6 +7939,9 @@ thread_local u32 t_act_reader = 0, t_act_logged = 0;
 REXCVAR_DEFINE_BOOL(wwe12_universe_more_scenes, false, "WWE12",
                     "Universe: other games' scenes (universe_scenes folder) played at random instead of the game's "
                     "(same moment, same number of Superstars). Experimental.");
+REXCVAR_DEFINE_BOOL(wwe12_universe_more_scenes_any_act, false, "WWE12",
+                    "Dev: an added scene may replace any act of its moment and roles (false: only the act it redoes; "
+                    "another act places the Superstars elsewhere).");
 REXCVAR_DEFINE_STRING(wwe12_universe_more_scenes_only, "", "WWE12",
                       "Dev: only the added scenes whose file name has this text (tests).");
 REXCVAR_DEFINE_INT32(wwe12_universe_more_scenes_chance, 50, "WWE12",
@@ -8110,10 +8113,14 @@ u32 AddedSceneFor(const PPCContext &in, u8 *base, u32 act, u32 data) {
     const char *c = bd::mem::try_at<const char>(data + 0x70 + 0x28 * i + 4);
     return c ? std::string(c, 8) : std::string();
   });
-  // ours: the same Superstars (roles 0-5); the game's objects (6-59) are added to ours (WithGameObjects)
+  // ours: the same Superstars (roles 0-5); the game's objects (6-59) are added to ours (WithGameObjects). And only a
+  // scene made for THIS act (its file's number: WWE '13's remake of it): the game places the Superstars where this
+  // act starts, another act's motion played from there was off (Morrison hitting the air far from The Miz, test of
+  // 2026-11-13). wwe12_universe_more_scenes_any_act = true: any act of the same moment and roles (the first way).
   std::vector<AddedScene *> same;
   for (auto &sc : g_added)
     if (sc.list == act / 100 % 10 && sc.roles == (roles & 0x3F) && !(sc.roles & ~u64(0x3F)) &&
+        (sc.act == act || REXCVAR_GET(wwe12_universe_more_scenes_any_act)) &&
         sc.name.find(REXCVAR_GET(wwe12_universe_more_scenes_only)) != std::string::npos)
       same.push_back(&sc);
   static std::mt19937 rng{std::random_device{}()};
