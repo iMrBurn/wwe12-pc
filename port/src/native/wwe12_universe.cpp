@@ -2002,7 +2002,7 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
                         Inform(in, base, Format(CWords().done_day, name, CWords().days[to]) + bumped);
                       });
              } else if (what == 1) {
-               ChooseMatchCount(in, base, show, name);
+               ChooseMatchCount(in, base, MatchSlot(show), name);
              } else {
                PutShow(u, show, 6);
                RedrawSchedule(in, base, screen);
