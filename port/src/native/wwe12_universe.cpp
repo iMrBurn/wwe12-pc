@@ -7455,7 +7455,25 @@ static void LogSceneTable(const char *why) {
   }
 }
 
+static u32 g_inject_who = 512;  // an interference's interferer, waiting for the next table read (the experiment)
+
 extern "C" REX_FUNC(sub_828D2660) {
+  // (the experiment, 2nd try: the table was emptied between the interference and the match, and a Universe match only
+  // reads kinds 1, 8, 10, 11 - test of 2026-11-13: the entry goes in right before the first read, with its kind)
+  const int32_t inject = REXCVAR_GET(wwe12_universe_scene_inject);
+  if (inject > 0 && g_inject_who < 512) {
+    const u32 t = SceneTable();
+    if (t && bd::mem::load<u32>(t) < 16) {
+      PPCContext x = ctx;
+      x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+      Call(x, base, __imp__sub_82694D58, t, ctx.r4.u32);
+      Call(x, base, __imp__sub_82694D98, t, 0, u32(inject));
+      Call(x, base, __imp__sub_82694DC0, t, 0, g_inject_who, 0, 0);
+      Call(x, base, __imp__sub_82694E28, t);
+      BD_INFO("[univers] scene table: scene {} asked for kind {} with {}", inject, ctx.r4.u32, g_inject_who);
+    }
+    g_inject_who = 512;
+  }
   if (REXCVAR_GET(wwe12_universe_scene_table_probe)) {
     BD_INFO("[univers] scene table: read for kind {} (from {:08X})", ctx.r4.u32, u32(ctx.lr));
     LogSceneTable("read");
@@ -7472,18 +7490,8 @@ extern "C" REX_FUNC(sub_82694E28) {
 extern "C" REX_FUNC(sub_826BB878) {
   const PPCContext in = ctx;
   __imp__sub_826BB878(ctx, base);
-  const int32_t scene = REXCVAR_GET(wwe12_universe_scene_inject);
-  const u32 t = SceneTable();
-  if (scene <= 0 || !t || bd::mem::load<u32>(t) >= 16)
-    return;
-  const u32 who = in.r4.u32;
-  PPCContext x = in;
-  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
-  Call(x, base, __imp__sub_82694D58, t, 9);
-  Call(x, base, __imp__sub_82694D98, t, 0, u32(scene));
-  Call(x, base, __imp__sub_82694DC0, t, 0, who, 0, 0);
-  Call(x, base, __imp__sub_82694E28, t);
-  BD_INFO("[univers] scene table: interference by {}: scene {} asked (kind 9), {} entries", who, scene,
-          bd::mem::load<u32>(t));
-  LogSceneTable("injected");
+  if (REXCVAR_GET(wwe12_universe_scene_inject) > 0) {
+    g_inject_who = in.r4.u32;
+    BD_INFO("[univers] scene table: interference by {}: a scene will be asked at the next read", g_inject_who);
+  }
 }
