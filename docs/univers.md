@@ -1217,3 +1217,21 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   (`entrance13.h`, `svrfmt/xcompress`). 2K16 / 2K17 : une scène par paquet (`pac/evt/NNNNN.pac`). Ce sont des scènes
   EVP : pour les jouer dans l'Univers de WWE '12, il faut d'abord régler l'affichage des scènes EVP dans un match
   d'Univers (les 4 essais ci-dessus).
+
+## 45. NXT, 4e show de la semaine (2026-11-13, `wwe12_universe_nxt`, coupé par défaut, pas fini)
+
+- Le jeu a un show 3 caché « NXT » (fiche U + 27360 + 3 × 984 : marques 0 et 1, logo 3, matchup 3, modèles de match
+  table 14 groupe 1 = vide). Mis un jour de semaine (U + 0xDE00), il a sa carte et son logo (vu en jeu).
+- Avec le réglage : NXT dans EDIT CALENDAR, SCHEDULE (Y) et MATCHES PER SHOW (clé 3 de universe_shows.txt).
+  Réglage coupé = exactement la 1.3.0 (les crochets passent la main au jeu).
+- Le booker : la fabrique `sub_826EB218` donne aux shows 3-9 le booker de RAW, qui a « show 0 » écrit en dur à deux
+  endroits : son constructeur `sub_826F1308(this, 0)` (titres du show) et sa carte `sub_826F1DA8` → `sub_826F1CF0(r6 = 0)`
+  → `sub_826F15E8(.., show, vue)`. Nos crochets donnent 3 aux deux pour le booker de NXT (repéré à sa création, le
+  même adresse est ensuite réutilisée par les autres bookers : remis à zéro à chaque création). La fiche de NXT reçoit
+  la marque `wwe12_universe_nxt_brand` (2 = NXT, 13 catcheurs dans la copie) et les modèles de match de RAW (table 14
+  vide : plantage vu, lecture d'un modèle NULL).
+- Reste faux : la carte prend toujours des paires de catcheurs RAW / SmackDown (marques 0 / 1). La fiche de NXT est
+  bien lue avec la marque 2 (sonde `sub_826CC0B8`, fiche 831C6410), mais le choix des catcheurs ne passe pas par elle :
+  à chercher dans les étapes des modèles (`sub_826DC758`, `sub_826EFF28` / `sub_826EFDA8`, filtres vtable 0x8203E3A0
+  marque +8 / 0x8203E3A8 show +8, `sub_829C9848` = poser le +8). Les journaux « NXT probe » / « NXT card » ne
+  tournent qu'avec le réglage.
