@@ -1097,3 +1097,13 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   4-6 h, faire perdre la cible 4-8 h : seul levier connu = le vainqueur forcé d'un match SIMULÉ, `sub_826C9050`
   mode 2). Scènes portées au même moment et aux mêmes rôles : WWE '13 2-4 jours si ses formats sont ceux de WWE '12,
   2K14-2K17 des semaines. Story Collection (2K15+) : un système entier à créer.
+
+**Test du 2026-11-13 (sonde `wwe12_universe_scene_probe` + `wwe12_game_log` + `wwe12_dir_log`)** :
+- Interférence (sûr) : l'interférant 131, genre 1 → fiches WCID mises en file : liste 1 n° 48 (id 49), liste 2 n° 43
+  (id 44), liste 3 n° 89 (id 90). Puis « Timing[1][49]:CutScene Start » et « Act=32203 », « Timing[2][44] » et
+  « Act=32307 ». Donc **+468 de la fiche WCID = le numéro d'acte** joué, et le Timing est [liste][id de la fiche].
+- Scènes au hasard (sûr) : Timing[0][33] Act=32102, Timing[2][29] Act=32323, Timing[4][46] Act=32432 (la liste 4 est
+  lue comme la 3, `sub_826D66F0`). Actes 321xx = liste 0, 322xx = 1, 323xx = 2, 324xx = 3.
+- Ces actes ne lisent **aucun** `/EVPx/NNNN` (journal des fichiers vide pendant eux), contrairement aux entrées
+  (`/EVP2/139`) et aux victoires (`/EVPA/6139`) : les actes 32xxx viennent d'ailleurs (wuniData.pac ou un paquet déjà
+  chargé ; « UNVS/%04d » reste à relier). C'est la prochaine inconnue avant tout portage de scènes.

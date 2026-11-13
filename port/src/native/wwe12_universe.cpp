@@ -7405,7 +7405,10 @@ extern "C" REX_FUNC(sub_826BF660) {
 }
 
 extern "C" REX_FUNC(sub_826DF6D8) {
-  if (REXCVAR_GET(wwe12_universe_scene_probe))
+  static u32 s_last[3] = {};  // (called every frame while it waits: logged when it changes)
+  const u32 now[3] = {ctx.r3.u32, ctx.r4.u32, u32(ctx.lr)};
+  if (REXCVAR_GET(wwe12_universe_scene_probe) && std::memcmp(now, s_last, sizeof now) != 0 &&
+      (std::memcpy(s_last, now, sizeof now), true))
     BD_INFO("[univers] scene probe: cut scene start r3 {:08X} r4 {:08X} r5 {:08X} r6 {:08X} (from {:08X})", ctx.r3.u32,
             ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, u32(ctx.lr));
   __imp__sub_826DF6D8(ctx, base);
