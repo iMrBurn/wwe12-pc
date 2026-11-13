@@ -7799,10 +7799,40 @@ struct AddedScene {
   u64 roles = 0;  // (RolesOf)
   std::string name;
   std::vector<u8> bytes;
-  u32 guest = 0, guest_bpe = 0;  // its copies in the game's memory: unpacked, and as a (stored) BPE entry
+  u32 guest = 0, guest_bpe = 0, guest_zlib = 0;  // its copies in the game's memory: unpacked, BPE / ZLIB entries
 };
-// the acts replaced by the reader being run: (act, our BPE entry), for the second copy (sub_824868F8's hook)
-thread_local std::vector<std::pair<u32, u32>> t_replaced;
+struct PackedCopies {
+  u32 bpe = 0, zlib = 0;
+};
+// the acts replaced by the reader being run, for their packed copies (sub_824868F8's hook)
+thread_local std::vector<std::pair<u32, PackedCopies>> t_replaced;
+
+// A "ZLIB" entry as the game's (m.pac: "ZLIB", u32 LE 0x1230, u32 LE packed size, u32 LE size, a zlib stream), the
+// stream made of stored deflate blocks (no compression; the game only inflates it).
+std::vector<u8> ZlibStored(const std::vector<u8> &raw) {
+  std::vector<u8> z = {0x78, 0x01};
+  size_t at = 0;
+  do {
+    const size_t n = std::min<size_t>(65535, raw.size() - at);
+    const bool last = at + n >= raw.size();
+    z.push_back(last ? 1 : 0);
+    z.push_back(u8(n)), z.push_back(u8(n >> 8)), z.push_back(u8(~n)), z.push_back(u8(~n >> 8));
+    z.insert(z.end(), raw.begin() + long(at), raw.begin() + long(at + n));
+    at += n;
+  } while (at < raw.size());
+  u32 a = 1, b = 0;
+  for (u8 c : raw)
+    a = (a + c) % 65521, b = (b + a) % 65521;
+  const u32 adler = (b << 16) | a;
+  for (int i = 3; i >= 0; --i)
+    z.push_back(u8(adler >> (8 * i)));
+  std::vector<u8> out = {'Z', 'L', 'I', 'B'};
+  for (u32 v : {0x1230u, u32(z.size()), u32(raw.size())})
+    for (int i = 0; i < 4; ++i)
+      out.push_back(u8(v >> (8 * i)));
+  out.insert(out.end(), z.begin(), z.end());
+  return out;
+}
 std::mutex g_added_lock;
 std::vector<AddedScene> g_added;
 bool g_added_loaded = false;
@@ -7932,21 +7962,25 @@ u32 AddedSceneFor(u32 act, u32 data) {
   }
   AddedScene *sc = same[rng() % same.size()];
   // (scene, act) -> its copies in the game's memory (unpacked, BPE)
-  static std::map<std::pair<std::string, u32>, std::pair<u32, u32>> s_merged;
+  static std::map<std::pair<std::string, u32>, std::array<u32, 3>> s_merged;
   const bool merged = (roles & ~u64(0x3F)) != 0;
-  u32 &guest = merged ? s_merged[{sc->name, act}].first : sc->guest;
-  u32 &guest_bpe = merged ? s_merged[{sc->name, act}].second : sc->guest_bpe;
-  if (!guest || !guest_bpe) {
+  u32 &guest = merged ? s_merged[{sc->name, act}][0] : sc->guest;
+  u32 &guest_bpe = merged ? s_merged[{sc->name, act}][1] : sc->guest_bpe;
+  u32 &guest_zlib = merged ? s_merged[{sc->name, act}][2] : sc->guest_zlib;
+  if (!guest || !guest_bpe || !guest_zlib) {
     const std::vector<u8> bytes = merged ? WithGameObjects(sc->bytes, data) : sc->bytes;
     const svrfmt::Bytes bpe = svrfmt::BpeEncodeStored(svrfmt::Bytes(bytes.begin(), bytes.end()));
+    const std::vector<u8> zl = ZlibStored(bytes);
     guest = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(bytes.size()), 0x20);
     guest_bpe = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(bpe.size()), 0x20);
-    if (!guest || !guest_bpe)
+    guest_zlib = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(zl.size()), 0x20);
+    if (!guest || !guest_bpe || !guest_zlib)
       return 0;
     std::memcpy(bd::mem::at<u8>(guest), bytes.data(), bytes.size());
     std::memcpy(bd::mem::at<u8>(guest_bpe), bpe.data(), bpe.size());
+    std::memcpy(bd::mem::at<u8>(guest_zlib), zl.data(), zl.size());
   }
-  t_replaced.push_back({act, guest_bpe});
+  t_replaced.push_back({act, {guest_bpe, guest_zlib}});
   BD_INFO("[univers] scene: act {} (roles {:X}) plays the added scene {}{}", act, roles, sc->name,
           (roles & ~u64(0x3F)) ? " (with the act's objects)" : "");
   return guest;
@@ -7987,7 +8021,7 @@ extern "C" REX_FUNC(sub_824868F8) {
     PPCContext x = in;
     x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
     const u32 manager = bd::mem::load<u32>(0x8317B870);
-    for (auto [act, bpe] : t_replaced) {
+    for (auto [act, ours] : t_replaced) {
       const u32 bank = manager ? Call(x, base, __imp__sub_8246E8C8, manager, act, 0, 0xFF) : 0;
       if (!bank)
         continue;
@@ -7996,9 +8030,12 @@ extern "C" REX_FUNC(sub_824868F8) {
         const u32 was = at && at != 0x8317B874 ? bd::mem::try_load<u32>(at) : 0;
         if (!was)
           continue;
+        // the same packing as the game's copy: "ZLIB" (the full act, 2nd of a pair) or "BPE " (the light one)
         const u32 magic = bd::mem::try_load<u32>(was);
-        BD_INFO("[univers] scene: act {} packed copy {:08X} (magic {:08X}) -> ours {:08X}", act, was, magic, bpe);
-        bd::mem::store<u32>(at, bpe);
+        const u32 mine = magic == 0x5A4C4942 ? ours.zlib : magic == 0x42504520 ? ours.bpe : 0;
+        BD_INFO("[univers] scene: act {} packed copy {:08X} (magic {:08X}) -> ours {:08X}", act, was, magic, mine);
+        if (mine)
+          bd::mem::store<u32>(at, mine);
       }
     }
     t_replaced.clear();
