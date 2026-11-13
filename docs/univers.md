@@ -1488,3 +1488,10 @@ n'est pas rendu vacant. Reste : pendant le tournoi, le classement vide du titre 
 102 champion au jour 77). Retouches : en-têtes des matchs placés (MATCH #n, finale MAIN EVENT : la finale gardait
 « #1 CONTENDER'S MATCH » du match repris), l'ancien champion n'est plus tête de série ; la boîte à choix en 2 colonnes
 (notre `PlaceManyChoices`) réduit son texte quand les lignes sont longues (UNIVERSE OPTIONS se chevauchait encore).
+**Titre vacant au choix (2026-11-13, demande de l'utilisateur : « pas obligé de faire un tournoi, comme dans les 2K »)** :
+avec l'Univers imprévisible, VACATE TITLE marche pour un titre simple d'un show (même sans 4 prétendants) ; au retour
+sur le menu de l'Univers (fin de TITLE MANAGEMENT), la boîte demande « Le titre est vacant. Comment désigner le
+prochain champion ? » : TOURNOI À 4 ou LAISSER VACANT (moins de 4 prétendants : vacant, message). Vacant : le titre
+se gagne dans un match de titre (PPV) ou se redonne dans EDIT TITLES ; les matchs de titre du jeu ne sont retirés
+que pendant un tournoi ouvert. Tournoi abandonné (42 jours) : un nouveau si 4 sont libres, sinon « tourneyend » et le
+titre reste vacant.
