@@ -1257,6 +1257,17 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   rôle (catcheur, bloc YANM « modèle » mode 2), 60 / 61 / 62 = caméra (2-3 pistes chacun). SvR 2011 a 60, 61 et 66 :
   la correspondance caméra 62 ↔ 66 est à trouver. Les essais en jeu seront nombreux (chaque erreur de conversion se
   voit seulement à l'écran).
+- **Scènes de SvR 2011 jouées dans WWE '12 (2026-11-13, vu en jeu par l'utilisateur)** : `wwe12_universe_more_scenes`
+  (coupé par défaut) + `wwe12_universe_more_scenes_chance` (%). Les scènes converties sont des fichiers
+  `<données>/universe_scenes/<acte>.bin` (enregistrement d'acte décompressé, fait par `tools/dev/svr_scene_convert.cpp`
+  avec `svr11_entrance.h` : corps BodyBlock sur le modèle de l'entrée 100 de Nyujyo0.pac, caméras CameraBlock
+  renommées « Camera<n> », caméra 66 de SvR → 62, caméras manquantes recopiées, en-tête de l'acte 32100). Quand le
+  lecteur UN00 inscrit un acte du jeu (`sub_82486648`), ses données sont remplacées au hasard par une scène à nous de la
+  même liste (centaine de l'acte) et **exactement les mêmes rôles** (blocs y < 60 ; les objets y ≥ 6 comptent).
+  34 scènes converties (sur 47 : 9 avec des objets pas gérés, 4 laissées car leur objet 6 serait pris pour un corps).
+  Test : l'acte 32456 a joué la scène SvR 32448, « c'était bien » ; dans un match TLC, les tables / échelles restaient
+  sur le ring et les catcheurs les traversaient un peu. Les données du jeu ne partent pas dans le zip : pour les
+  joueurs, la conversion devra se faire chez eux depuis leur SvR 2011 (Mod Maker), à faire.
 
 ## 45. NXT, 4e show de la semaine (2026-11-13, `wwe12_universe_nxt`, coupé par défaut, pas fini)
 
