@@ -1169,8 +1169,9 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
 - **Expérience du 2026-11-13 (cvars de dev `wwe12_universe_scene_table_probe`, `wwe12_universe_scene_inject`)** : un
   match d'Univers ne lit que les genres 1, 8, 10, 11 de la table (jamais 9), et la table est vidée entre l'interférence
   et le match. Une entrée ajoutée juste avant la première lecture (genre 1, scène 4000, l'interférant en rôle 0) **est
-  prise** : « scene script 4000 asked », le jeu cherche `/EVP0..T/4000` et `/EVZ…/4000`, `/PGEN/4000`, `/GMEV/4000`,
-  `/PCE6/4000` — tout **MISSING** : les paquets RSC (Create a Story) ne sont pas montés dans un match d'Univers → écran
-  noir (le jeu attend la scène). **La voie marche** ; il manque de servir la scène (EVP + EVZ + GMEV + objets) dans un
-  paquet monté pendant l'Univers, par le mécanisme de Mods (copie servie, `sub_827F29F0`). Ensuite : distribution
-  (cible en rôle 1), choix de la scène d'attaque, et le moment (avant le match).
+  prise** : « scene script 4000 asked », et le jeu **trouve** `/EVPU/4000` et `/EVZU/4000` (RSC0 est monté) ; il ne
+  trouve pas `/PGEN/4000`, `/GMEV/4000`, `/PCE6/4000` ni `/EVZU/65535`, puis **écran noir** (jeu figé, arrêté).
+  **La voie marche jusqu'au chargement de la scène** ; le blocage vient de ce qui manque autour (son décor / plateau de
+  Create a Story, un 2e rôle vide — la cible n'était pas donnée —, ou les scripts PGEN / GMEV). Ensuite : donner la
+  cible en rôle 1, comparer avec l'entrée qu'écrit Create a Story pour la même scène (`sub_8275A958`, aux et rôles),
+  et choisir une scène d'attaque qui se joue dans l'arène.
