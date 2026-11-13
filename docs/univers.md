@@ -1280,6 +1280,17 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   converties ; rangées par nom : félicitations / poignées de main / après-match → liste 3 (324xx), le reste → liste 0
   (321xx) (à vérifier : quelle liste = quel moment). Fichiers de test : `Documents/wwe12_test/universe_scenes` (153,
   28 Mo). 2K14-2K17 : pas encore regardés (formats proches pour 2K14 ; 2K15+ créneaux de 788 octets).
+- **Arrêt le 2026-11-13 (décision de l'utilisateur : « autant laisser le jeu comme il est »)** : tout reste coupé par
+  défaut (`wwe12_universe_more_scenes`, `wwe12_universe_always_scenes`, `wwe12_universe_more_scenes_only`) ; sans eux, le
+  jeu est celui de base. Dernier état : nos scènes sont bien inscrites (données décompressées pour `sub_82486648`, copies
+  emballées remplacées : « ZLIB » à blocs stockés pour la complète, BPE stocké pour la légère, mémoire du tas du jeu),
+  mais le jeu **saute** la cinématique (« CutScene Start » puis aucun « Act=… », match aussitôt) ; l'action a quand même
+  lieu (un catcheur au sol au début du match). La première « réussite » (acte 32456 → SvR 32448) n'en était pas une :
+  le jeu avait joué un autre acte (32464). Prochain essai prévu, pas fait : scènes témoins (`*_w12ref.bin` = actes de
+  WWE '12 eux-mêmes, `--wwe12_universe_more_scenes_only=w12ref`) dans un match de carte sans entrées (les matchs avec
+  entrées ne chargent aucune scène) : s'ils sautent aussi, c'est le chemin (copie légère / table de `sub_82486648` /
+  lecture à la demande), sinon la conversion. Une copie légère (« light », paire = BPE) est la même forme que la
+  complète avec des blocs réduits (32100 : 3904 contre 34240 octets).
 
 ## 45. NXT, 4e show de la semaine (2026-11-13, `wwe12_universe_nxt`, coupé par défaut, pas fini)
 
