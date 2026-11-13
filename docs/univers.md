@@ -1455,3 +1455,25 @@ départ de l'acte qu'il a choisi. Désormais une scène ajoutée ne remplace **q
 fichier) ; `wwe12_universe_more_scenes_any_act` (dev) rend l'ancienne façon. Conséquence : les scènes SvR 2011
 absentes de WWE '12 (sans acte équivalent) ne passent plus ; les scènes de WWE '13 (106, toutes des remakes) et les 13
 SvR « changées » (même numéro) restent.
+
+## 48. Tournoi pour un titre vacant, booking, type d'intervention (2026-11-13, pas encore vus en jeu)
+
+Avec l'Univers imprévisible (dès « un peu ») ou leurs réglages (`wwe12_universe_tournaments`,
+`wwe12_universe_chaos_rivals`, `wwe12_universe_interference_choice`, -1 = suivre le niveau) :
+- **Tournoi** : TITLE MANAGEMENT > X VACATE TITLE marche pour un titre simple d'un show s'il y a 4 prétendants libres
+  (classement du titre, `sub_826D2508`) ; la place 0 qui devient « personne » (`sub_82A3A060`) lance le tournoi :
+  demi-finales 1 c. 4 et 2 c. 3 sur la prochaine carte du show (en-tête TOURNOI : DEMI-FINALE), puis finale = match du
+  titre ; news TOURNOI ANNONCÉ / FINALE DU TOURNOI. Pendant ce temps : la place « champion » des modèles (code 0,
+  param 1) prend le 1er rang libre (dans le classement), les matchs de titre du jeu pour ce titre ne sont plus des
+  matchs de titre. Abandonné après 42 jours : nouveau tournoi, ou le 1er du classement couronné (jamais vacant pour
+  de bon). Lignes « tourney titre jour a b c d », « tourneysf titre jour vainqueur ».
+- **Booking** : un simple sans titre ni histoire peut devenir un match entre rivaux (un rival libre du même show et du
+  même genre, le plus fort d'abord, 30 / 50 / 70 %) ; un show ne remet pas le même simple que sur sa carte précédente
+  (sauf rivaux : un autre catcheur libre du show et du genre au hasard).
+- **Type d'intervention** : après OUI à « intervenir ? » (boîte oui / non du jeu, texte 27916), la même boîte demande
+  « Attaquer les deux adversaires ? » (OUI = genre 0) sinon « Aider ton allié ? » (OUI = genre 2, NON = genre 1,
+  distraire l'arbitre) ; le genre est imposé dans `sub_826BCD40` par ses deux lectures de relation (`sub_826CBCE8`),
+  seulement pour l'intervenant choisi (mgr +5056) ; le jeu joue ses propres scènes et son comportement. Embuscade seule
+  / attaque seulement après le match : pas faites (il faudrait couper l'intervenant pendant le match, inconnu).
+Relu par un agent ; corrections faites (vacant jamais pour de bon, place « champion » bornée, genre d'intervention
+lié à l'intervenant, pas de question répétée, rotation des paires par jour de carte).
