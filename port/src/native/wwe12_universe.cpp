@@ -1583,7 +1583,12 @@ constexpr u32 kNoShow = 0xFF;
 // Weekly shows offered: RAW, SmackDown, Superstars and the game's hidden show 3 "NXT" (brands 0 and 1, its own logo;
 // booked by the RAW booker, as the factory gives shows 3-9; tested 2026-11-13 with the dev cvar
 // wwe12_universe_show3_day: its cards are made and shown like the others).
-constexpr u32 kWeeklyShows = 4;
+// Off (default, until NXT is finished): EXACTLY 1.3.0 - NXT is not offered anywhere and our NXT hooks do nothing.
+REXCVAR_DEFINE_BOOL(wwe12_universe_nxt, false, "WWE12",
+                    "Universe: NXT (the game's hidden show 3) as a 4th weekly show (EDIT CALENDAR, SCHEDULE, MATCHES "
+                    "PER SHOW). Unfinished: off by default.");
+bool NxtOn() { return REXCVAR_GET(wwe12_universe_nxt); }
+u32 WeeklyShows() { return NxtOn() ? 4 : 3; }
 
 struct CalendarWords {
   const char *calendar, *weekly, *ppvs, *days[6], *no_show, *move, *remove, *host, *raw, *smackdown,
@@ -1682,7 +1687,7 @@ void PickWeeklyShow(const PPCContext &in, u8 *base) {
   if (!u)
     return;
   std::vector<std::string> shows;
-  for (u32 k = 0; k < kWeeklyShows; ++k)
+  for (u32 k = 0; k < WeeklyShows(); ++k)
     shows.push_back(ShowName(u, k));
   Choose(in, base, w.pick_show, shows, [](const PPCContext &in, u8 *base, size_t show) {
     const CalendarWords &w = CWords();
@@ -1912,7 +1917,9 @@ void EditMatches(const PPCContext &in, u8 *base) {
   if (!u)
     return;
   LoadMatchCounts();
-  std::vector<std::string> shows = {ShowName(u, 0), ShowName(u, 1), ShowName(u, 2), w.all_ppvs, ShowName(u, 3)};
+  std::vector<std::string> shows = {ShowName(u, 0), ShowName(u, 1), ShowName(u, 2), w.all_ppvs};
+  if (NxtOn())
+    shows.push_back(ShowName(u, 3));
   Choose(in, base, w.matches, shows, [shows](const PPCContext &in, u8 *base, size_t which) {
     ChooseMatchCount(in, base, u32(which), shows[which]);
   });
@@ -1969,9 +1976,9 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
   g_screen = screen;
   if (weekday < 6) {
     const u8 show = bd::mem::load<u8>(u + kWeekTable + weekday);
-    if (show >= kWeeklyShows) {  // empty (or a show we don't schedule): put one here
+    if (show >= WeeklyShows()) {  // empty (or a show we don't schedule): put one here
       std::vector<std::string> shows;
-      for (u32 k = 0; k < kWeeklyShows; ++k)
+      for (u32 k = 0; k < WeeklyShows(); ++k)
         shows.push_back(ShowName(u, k) + "  (" + ShowDay(u, k) + ")");
       Choose(in, base, std::string(w.days[weekday]) + "\n" + sw.put, shows,
              [screen, weekday](const PPCContext &in, u8 *base, size_t k) {
@@ -6154,6 +6161,11 @@ REX_EXTERN(__imp__sub_826EB218);
 REX_EXTERN(__imp__sub_826D0840);
 thread_local bool t_making_nxt = false;  // sub_826EB218 is making NXT's booker
 extern "C" REX_FUNC(sub_826EB218) {
+  if (!NxtOn()) {
+    g_nxt_booker = 0;
+    __imp__sub_826EB218(ctx, base);
+    return;
+  }
   PPCContext x = ctx;
   x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
   const u32 view = x.r1.u32 + 0x800;
@@ -6856,7 +6868,7 @@ bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen) {
     return false;
   const u32 record = screen - 28 + 320;
   const u32 show = bd::mem::load<u8>(record + 927);
-  const u32 which = show < 3 ? show : show == 3 ? kNxtSlot : show >= 10 && show <= 22 ? 3 : 5;
+  const u32 which = show < 3 ? show : show == 3 && NxtOn() ? kNxtSlot : show >= 10 && show <= 22 ? 3 : 5;
   if (which > kNxtSlot)
     return false;
   bd::mem::store<u32>(screen + 64, 0);
