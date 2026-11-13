@@ -597,14 +597,15 @@ struct Reign {
 };
 
 // The title history, from the file: every reign, in order.
-std::vector<Reign> LoadReigns() {
+// (up_to: lines of a later day are left out: they belong to a future that an older save, loaded again, left)
+std::vector<Reign> LoadReigns(u32 up_to = ~0u) {
   std::vector<Reign> reigns;
   std::ifstream f(StatsFile());
   std::string line;
   while (std::getline(f, line)) {
     u32 title, place, holder, old_holder, day;
     if (std::sscanf(line.c_str(), "title %u %u %u %u %u", &title, &place, &holder, &old_holder,
-                    &day) != 5)
+                    &day) != 5 || day > up_to)
       continue;
     for (Reign &r : reigns)
       if (r.title == title && r.place == place && r.to_day == ~0u)
@@ -4814,7 +4815,7 @@ void DefenseNews(const PPCContext &in, u8 *base, u32 record, u32 day) {
     return;
   AppendStats({fmt::format("defense {} {} {}", title, champ, day)});
   u32 since = 0;  // his reign's first day
-  for (const Reign &r : LoadReigns())
+  for (const Reign &r : LoadReigns(day))
     if (r.title == title && r.place == 0 && r.holder == champ && r.to_day == ~0u)
       since = r.from_day;
   u32 n = 0;
@@ -4829,7 +4830,7 @@ void DefenseNews(const PPCContext &in, u8 *base, u32 record, u32 day) {
     NewsOnce(fmt::format("news fighting {} {} {} {}", title, champ, since, n), kFightingChamp, champ, title | (n << 8));
   // Historic Reign: this reign ties the title's most defenses in one reign (4 or more), once a reign
   u32 best = 0;
-  for (const Reign &r : LoadReigns()) {
+  for (const Reign &r : LoadReigns(day)) {
     if (r.title != title || r.place != 0 || r.to_day == ~0u)
       continue;
     u32 c = 0;
@@ -4878,7 +4879,7 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
         NewsOnce(fmt::format("news mitbheld {} {}", h, won[h]), kMitbHeld, h, 0);
   }
   // long reigns
-  for (const Reign &r : LoadReigns()) {
+  for (const Reign &r : LoadReigns(day)) {
     if (r.to_day != ~0u || r.place != 0 || r.holder >= 512 || r.title >= 23 || day < r.from_day)
       continue;
     const u32 weeks = (day - r.from_day) / 7;
@@ -4915,7 +4916,7 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
     if (!s_out)
       s_out = REX_KERNEL_MEMORY()->SystemHeapAlloc(180 * 32, 0x10);
     std::set<u32> used;
-    for (const Reign &r : LoadReigns())
+    for (const Reign &r : LoadReigns(day))
       used.insert(r.title);
     u32 told = 0;
     for (const u32 title : used) {
@@ -5592,6 +5593,7 @@ extern "C" REX_FUNC(sub_826C8690) {
   const PPCContext in = ctx;
   __imp__sub_826C8690(ctx, base);
   DraftCheck(in, base);
+  WeeklyNews(in, base);  // (also here: shows simulated from MATCH CARDS never pass by the Universe menu, test of 2026-11-13)
   FlushNews(in, base);
 }
 
