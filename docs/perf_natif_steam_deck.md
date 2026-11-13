@@ -22,6 +22,11 @@ LUT de gamma, foule réglable, présentation « mailbox ».
 **Plus tard, sans version** (décision du 2026-11-11) : la régénération du code (registres locaux + `volatile`),
 étude dans `docs/regeneration_1_3.md` ; réécritures natives de fonctions chaudes (section Natif ci-dessous).
 
+**1.3.1** : V-sync adaptative coupée par défaut (`svr_adaptive_vsync = false`) : elle jugeait une image « en retard »
+par rapport au rafraîchissement de l'écran, pas à la cadence du jeu ; à 30 i/s (cinématiques, entrées, mode 30) et sur
+un écran 120/144 Hz, chaque image était montrée sans V-sync : déchirure (#63, #70). Pour la remettre plus tard :
+comparer au temps d'image visé par le jeu (struct 0x8324CE28), et pas de FIFO_RELAXED en Vulkan.
+
 **Ouvert** : cause du gel du démarrage rapide sous 8 fils ; V-sync adaptative pas testée en D3D12 / D3D11 ; aucun
 journal de Steam Deck reçu (plan de test ci-dessous) ; petits PC sur batterie limités par le processeur
 (#53, #62 : réponse = brancher le PC ou mode 30).

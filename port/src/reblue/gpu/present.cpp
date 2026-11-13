@@ -56,7 +56,12 @@ bool Wwe12LoadTurboSkipPresent();  // native/wwe12_load_turbo.cpp
 // the next one (shown 33 ms after the one before: a visible hitch on PCs that sit just under 60). A late
 // frame is now shown at once (a tear line, on that frame only). Vulkan: the FIFO_RELAXED present mode
 // (does exactly that, when the driver offers it); DirectX 12 / 11: that one present without V-sync.
-REXCVAR_DEFINE_BOOL(svr_adaptive_vsync, true, "SvR",
+// 1.3.1: OFF by default. "Late" is judged against the screen's refresh, not the game's own pace: at 30
+// fps (cutscenes, entrances, the 30 fps mode) every frame spans 2 refreshes, and on a 120/144 Hz screen
+// every 60 fps frame is "late" too, so each one was shown without V-sync: steady tearing (#63, #70).
+// To bring it back, the test must compare with the game's target frame time (0x8324CE28), and Vulkan
+// can't use FIFO_RELAXED for that (it tears whenever its queue is empty at a vblank).
+REXCVAR_DEFINE_BOOL(svr_adaptive_vsync, false, "SvR",
                     "With V-sync on, a frame that comes too late is shown at once (may tear) instead "
                     "of waiting for the next screen refresh.");
 
