@@ -7413,3 +7413,77 @@ extern "C" REX_FUNC(sub_826DF6D8) {
             ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, u32(ctx.lr));
   __imp__sub_826DF6D8(ctx, base);
 }
+
+// ---- Dev: the match setup's cut scene request table (docs/univers.md §44) ------------------------------------------
+//
+// T = *(0x8317C84C) + 7984 + 960: u32 count, then 16 entries of 144 bytes {+0 kind, +4 aux, +8 u32 scene[16], +72 cast
+// [6] (0xC800 none), +96 role [6], +120 [6]}. The game's helpers fill the entry at index count (sub_82694D58(T, kind),
+// sub_82694D98(T, i, scene), sub_82694DC0(T, i, id, role, x)) then count it (sub_82694E28). sub_828D2660(player, kind)
+// copies one kind's entries into the scene player. wwe12_universe_scene_table_probe logs both; with
+// wwe12_universe_scene_inject = N, an interference (sub_826BB878) also asks scene N, kind 9, with the interferer as
+// role 0 - the experiment of §44 (does a Create a Story scene play in a Universe match?).
+REXCVAR_DEFINE_BOOL(wwe12_universe_scene_table_probe, false, "WWE12",
+                    "Dev: log the match setup's cut scene requests (written and read).");
+REXCVAR_DEFINE_INT32(wwe12_universe_scene_inject, 0, "WWE12",
+                     "Dev: with an interference in a Universe match, also ask this cut scene (0 = off).");
+REX_EXTERN(__imp__sub_828D2660);
+REX_EXTERN(__imp__sub_82694E28);
+REX_EXTERN(__imp__sub_826BB878);
+REX_EXTERN(__imp__sub_82694D58);
+REX_EXTERN(__imp__sub_82694D98);
+REX_EXTERN(__imp__sub_82694DC0);
+
+static u32 SceneTable() {
+  const u32 p = bd::mem::try_load<u32>(0x8317C84C);
+  return p ? p + 7984 + 960 : 0;
+}
+
+static void LogSceneTable(const char *why) {
+  const u32 t = SceneTable();
+  if (!t)
+    return;
+  const u32 n = std::min<u32>(bd::mem::load<u32>(t), 16);
+  for (u32 i = 0; i < n; ++i) {
+    const u32 e = t + 4 + i * 144;
+    std::string sc, cast;
+    for (u32 k = 0; k < 4; ++k)
+      sc += fmt::format(" {}", int32_t(bd::mem::load<u32>(e + 8 + k * 4)));
+    for (u32 k = 0; k < 6; ++k)
+      cast += fmt::format(" {:X}/{}", bd::mem::load<u32>(e + 72 + k * 4), int32_t(bd::mem::load<u32>(e + 96 + k * 4)));
+    BD_INFO("[univers] scene table ({}): entry {} kind {} aux {:08X} scenes{} cast{}", why, i, bd::mem::load<u32>(e),
+            bd::mem::load<u32>(e + 4), sc, cast);
+  }
+}
+
+extern "C" REX_FUNC(sub_828D2660) {
+  if (REXCVAR_GET(wwe12_universe_scene_table_probe)) {
+    BD_INFO("[univers] scene table: read for kind {} (from {:08X})", ctx.r4.u32, u32(ctx.lr));
+    LogSceneTable("read");
+  }
+  __imp__sub_828D2660(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_82694E28) {
+  if (REXCVAR_GET(wwe12_universe_scene_table_probe))
+    BD_INFO("[univers] scene table: entry {} added (from {:08X})", bd::mem::load<u32>(ctx.r3.u32), u32(ctx.lr));
+  __imp__sub_82694E28(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_826BB878) {
+  const PPCContext in = ctx;
+  __imp__sub_826BB878(ctx, base);
+  const int32_t scene = REXCVAR_GET(wwe12_universe_scene_inject);
+  const u32 t = SceneTable();
+  if (scene <= 0 || !t || bd::mem::load<u32>(t) >= 16)
+    return;
+  const u32 who = in.r4.u32;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  Call(x, base, __imp__sub_82694D58, t, 9);
+  Call(x, base, __imp__sub_82694D98, t, 0, u32(scene));
+  Call(x, base, __imp__sub_82694DC0, t, 0, who, 0, 0);
+  Call(x, base, __imp__sub_82694E28, t);
+  BD_INFO("[univers] scene table: interference by {}: scene {} asked (kind 9), {} entries", who, scene,
+          bd::mem::load<u32>(t));
+  LogSceneTable("injected");
+}
