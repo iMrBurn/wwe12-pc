@@ -7765,6 +7765,19 @@ REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_from, 0, "WWE12",
                      "Dev: Universe act (32100-32468) that plays another one (wwe12_universe_act_swap_to); 1 = every act with as "
                      "many blocks; 0 = off.");
 REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_to, 0, "WWE12", "Dev: the act played instead (see _from).");
+// (dev log) what a genre-1 reader registers: the record's id, its blocks, the first ids once per reader
+thread_local u32 t_act_reader = 0, t_act_logged = 0;
+REX_EXTERN(__imp__sub_82486648);
+extern "C" REX_FUNC(sub_82486648) {
+  const u32 rec = ctx.r3.u32, data = ctx.r4.u32;
+  __imp__sub_82486648(ctx, base);
+  if (t_act_reader && REXCVAR_GET(wwe12_universe_act_swap_to) && t_act_logged < 12) {
+    ++t_act_logged;
+    BD_INFO("[univers] act reader {:08X}: record {:08X} id {} blocks {} data {:08X} (header {:08X} {:08X})", t_act_reader,
+            rec, bd::mem::load<u16>(rec), bd::mem::load<u16>(rec + 2), data, bd::mem::try_load<u32>(data),
+            bd::mem::try_load<u32>(data + 0x4C));
+  }
+}
 REX_EXTERN(__imp__sub_824868F8);
 REX_EXTERN(__imp__sub_8246E8C8);
 REX_EXTERN(__imp__sub_8246E000);
@@ -7772,7 +7785,10 @@ extern "C" REX_FUNC(sub_824868F8) {
   const PPCContext in = ctx;
   const u32 reader = ctx.r3.u32;
   const u32 genre = bd::mem::try_load<u32>(reader + 60);
+  t_act_reader = genre == 1 ? reader : 0;
+  t_act_logged = 0;
   __imp__sub_824868F8(ctx, base);
+  t_act_reader = 0;
   const int32_t from = REXCVAR_GET(wwe12_universe_act_swap_from), to = REXCVAR_GET(wwe12_universe_act_swap_to);
   if (genre != 1 || !(from == 1 || (from >= 32000 && from <= 32999)) || to < 32000 || to > 32999 || from == to)
     return;
