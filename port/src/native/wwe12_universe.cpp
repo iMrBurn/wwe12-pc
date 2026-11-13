@@ -6672,6 +6672,7 @@ extern "C" REX_FUNC(sub_826CBE70) {
 
 // A Universe match's stage (sub_826BBE30: the show's record holder in r31): the show's added arena put on its base's stage,
 // or the game's arena (an added one chosen before, in an exhibition or another show, no longer plays there).
+u32 g_universe_stage = 1;  // the stage of the Universe match being set up (the scene experiment's aux)
 extern "C" REX_FUNC(sub_828AC150) {
   if (ctx.lr == 0x826BBE88 && REXCVAR_GET(wwe12_universe_added_arenas)) {
     // (r31: what sub_826CCD90 gives, a holder whose +0 is the record, as sub_826CBE50 / sub_826CBFB8 read it)
@@ -6698,6 +6699,7 @@ extern "C" REX_FUNC(sub_828AC150) {
       }
     }
     Wwe12ArenaPlay(n, stage);
+    g_universe_stage = stage;  // (the scene experiment's aux)
   }
   __imp__sub_828AC150(ctx, base);
 }
@@ -7432,6 +7434,8 @@ REX_EXTERN(__imp__sub_826BB878);
 REX_EXTERN(__imp__sub_82694D58);
 REX_EXTERN(__imp__sub_82694D98);
 REX_EXTERN(__imp__sub_82694DC0);
+REX_EXTERN(__imp__sub_82694D78);  // cut scene request: aux (the stage)
+REX_EXTERN(__imp__sub_82A342B0);  // a cast id for a cut scene (id, 0, 1)
 
 static u32 SceneTable() {
   const u32 p = bd::mem::try_load<u32>(0x8317C84C);
@@ -7466,9 +7470,15 @@ extern "C" REX_FUNC(sub_828D2660) {
     if (t && bd::mem::load<u32>(t) < 16) {
       PPCContext x = ctx;
       x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+      // (as Create a Story's own request, sub_8275A958: aux = the stage, the 6 roles i with x = -1, each cast an
+      // encoded id from sub_82A342B0(id, 0, 1) - 512 gives 0xC800 - not a raw number; 1st try froze, 2026-11-13)
       Call(x, base, __imp__sub_82694D58, t, ctx.r4.u32);
       Call(x, base, __imp__sub_82694D98, t, 0, u32(inject));
-      Call(x, base, __imp__sub_82694DC0, t, 0, g_inject_who, 0, 0);
+      Call(x, base, __imp__sub_82694D78, t, g_universe_stage);
+      for (u32 role = 0; role < 6; ++role) {
+        const u32 cast = Call(x, base, __imp__sub_82A342B0, role == 0 ? g_inject_who : 512, 0, 1);
+        Call(x, base, __imp__sub_82694DC0, t, role, cast, role, 0xFFFFFFFFu);
+      }
       Call(x, base, __imp__sub_82694E28, t);
       BD_INFO("[univers] scene table: scene {} asked for kind {} with {}", inject, ctx.r4.u32, g_inject_who);
     }
