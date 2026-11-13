@@ -100,6 +100,7 @@ void UltimateTitleVacated(const PPCContext &in, uint8_t *base, uint32_t title);
 void UltimateTournamentResult(uint32_t a, uint32_t b, uint32_t winner);
 bool UltimateTourneySemi(const PPCContext &x, uint8_t *base, uint32_t a, uint32_t b, uint32_t day);
 bool UltimateVacantTitle(const PPCContext &x, uint8_t *base, uint32_t title);
+bool UltimateTourneyPossible(const PPCContext &in, uint8_t *base, uint32_t title);
 // (the interference's type chosen by the player: the box's question while it asks ours, at the end of the file)
 uint32_t InterferenceQuestionText(uint32_t id);
 bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card);
@@ -1335,7 +1336,8 @@ extern "C" REX_FUNC(sub_82565390) {
     // (with tournaments on, a show's title may be vacated: a tournament crowns the next champion)
     // (a tag title: no tournament, still refused)
     if (title < kTitleCount && TitleUsedByAShow(ctx, base, title) &&
-        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title))) {
+        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title) ||
+         !UltimateTourneyPossible(ctx, base, title))) {  // (4 free contenders, or it would stay vacant)
       BD_INFO("[univers] titles: VACATE refused, a show uses title {}", title);
       Call(ctx, base, __imp__sub_8254E680, kTitleUsedText);
       return;
@@ -8455,6 +8457,8 @@ extern "C" REX_FUNC(sub_826EF468) {
       if (bd::mem::load<u8>(tpl + 20 + 4 * k) == 0)
         asked.insert(bd::mem::load<u16>(tpl + 20 + 4 * k + 2));
     std::vector<std::pair<u32, u16>> changed;
+    const u32 context = bd::mem::try_load<u32>(entry + 40), vt = bd::mem::try_load<u32>(entry + 12);
+    const u32 count = context && vt < 23 ? bd::mem::try_load<u32>(context + 1492 + 964 * vt + 960) : 0;
     for (u32 k = 0; k < 10; ++k) {
       const u32 slot = tpl + 20 + 4 * k;
       if (bd::mem::load<u8>(slot) != 0 || bd::mem::load<u16>(slot + 2) != 1)
@@ -8462,6 +8466,8 @@ extern "C" REX_FUNC(sub_826EF468) {
       u16 to = 2;
       while (asked.count(to) && to < 30)
         ++to;
+      if (to > count)
+        continue;  // (a rank the ranking hasn't: the place would stay empty, the match dropped)
       asked.insert(to);
       changed.push_back({slot + 2, 1});
       bd::mem::store<u16>(slot + 2, to);
@@ -8731,6 +8737,21 @@ void UltimateDaily(const PPCContext &x0, u8 *base, u32 u, u32 day, bool first) {
     s_week = ~0u;
   }
   s_last_day = day;
+  // a tournament given up (42 days) while its title is still vacant: another one, or the ranking's first crowned
+  if (UltimateTournamentsOn() && !first) {
+    std::map<u32, u32> latest;  // title -> its last tournament's day
+    std::ifstream f(StatsFile());
+    std::string line;
+    u32 t = 0, d = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+    while (std::getline(f, line))
+      if (std::sscanf(line.c_str(), "tourney %u %u %u %u %u %u", &t, &d, &s1, &s2, &s3, &s4) == 6 && d <= day)
+        latest[t] = d;
+    for (const auto &[title, since] : latest)
+      if (title < 23 && day > since + 42 && (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) == kNobody) {
+        BD_INFO("[univers] tournament: title {}'s tournament given up, a new start", title);
+        UltimateTitleVacated(x, base, title);
+      }
+  }
   x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
   // returns: injured yesterday, not today
   if (UltimateOn(REXCVAR_GET(wwe12_universe_surprise_returns))) {
@@ -8864,10 +8885,11 @@ std::vector<Tourney> OpenTourneys(const PPCContext &x, u8 *base, u32 today) {
     }
   }
   std::vector<Tourney> open;
-  for (auto &n : all) {
-    const bool newer = std::any_of(all.begin(), all.end(), [&](const Tourney &m) {
-      return m.title == n.title && m.day > n.day;
-    });
+  for (size_t i = 0; i < all.size(); ++i) {
+    const Tourney &n = all[i];
+    bool newer = false;  // (a later line for the same title: this one is over)
+    for (size_t j = i + 1; j < all.size(); ++j)
+      newer = newer || all[j].title == n.title;
     if (!newer && n.title < 23 && today <= n.day + 42 &&
         (Call(x, base, __imp__sub_82A39FC8, n.title, 0, 1) & 0xFFFF) == kNobody)
       open.push_back(n);
@@ -8884,26 +8906,14 @@ bool SemiDecided(const Tourney &n, int p) {
 
 bool UltimateTournamentsOn() { return UltimateOn(REXCVAR_GET(wwe12_universe_tournaments)); }
 
-// a title's place 0 became nobody: a tournament, for a weekly show's title
-void UltimateTitleVacated(const PPCContext &in, u8 *base, u32 title) {
-  if (!UltimateTournamentsOn() || title >= 23 || bd::mem::load<u32>(kInUniverseFlag) != 1)
-    return;
-  PPCContext x = in;
-  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
-  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
-  if (!u || Call(x, base, __imp__sub_82A39CE8, title))  // (a tag title: not here)
-    return;
-  bool used = false;
-  for (u32 show = 0; show < 3; ++show)
-    used = used || bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + title) != 0;
-  if (!used)
-    return;
-  const u32 day = bd::mem::load<u32>(u + kUniverseDay);
+namespace {
+// the title's ranking's first four free Superstars (in use, not injured)
+std::vector<u32> TourneySeeds(const PPCContext &x, u8 *base, u32 u, u32 title) {
   static u32 s_rank = 0;
   if (!s_rank)
     s_rank = REX_KERNEL_MEMORY()->SystemHeapAlloc(180 * 32, 0x10);
   if (!s_rank)
-    return;
+    return {};
   const u32 view = x.r1.u32 + 0x800;
   Call(x, base, __imp__sub_826CDC48, view);
   const u32 n = std::min<u32>(Call(x, base, __imp__sub_826D2508, view, title, s_rank, 180), 180);
@@ -8918,8 +8928,39 @@ void UltimateTitleVacated(const PPCContext &in, u8 *base, u32 title) {
       continue;  // (injured)
     seeds.push_back(id);
   }
+  return seeds;
+}
+}  // namespace
+
+// can a weekly show's single title be vacated (a tournament possible: 4 free contenders)? (VACATE TITLE's check)
+bool UltimateTourneyPossible(const PPCContext &in, u8 *base, u32 title) {
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  return u && title < 23 && TourneySeeds(x, base, u, title).size() >= 4;
+}
+
+// a title's place 0 became nobody: a tournament, for a weekly show's title (fewer than 4 free contenders, or called
+// again for a tournament given up: the ranking's first takes the title, it never stays vacant)
+void UltimateTitleVacated(const PPCContext &in, u8 *base, u32 title) {
+  if (!UltimateTournamentsOn() || title >= 23 || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u || Call(x, base, __imp__sub_82A39CE8, title))  // (a tag title: not here)
+    return;
+  bool used = false;
+  for (u32 show = 0; show < 3; ++show)
+    used = used || bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + title) != 0;
+  if (!used)
+    return;
+  const u32 day = bd::mem::load<u32>(u + kUniverseDay);
+  const std::vector<u32> seeds = TourneySeeds(x, base, u, title);
   if (seeds.size() < 4) {
     BD_INFO("[univers] tournament: title {} vacant, only {} free contenders: no tournament", title, seeds.size());
+    if (!seeds.empty())
+      Call(x, base, __imp__sub_82A3A060, title, seeds[0], 0);  // (the ranking's first: never vacant for good)
     return;
   }
   AppendStats({fmt::format("tourney {} {} {} {} {} {}", title, day, seeds[0], seeds[1], seeds[2], seeds[3])});
@@ -9061,9 +9102,13 @@ bool BookingTweaks(const PPCContext &x0, u8 *base, u32 u, u32 show, u32 rec, u32
       }
     }
   }
-  if (!changed && !rivals) {
-    std::lock_guard<std::mutex> lock(g_ultimate_lock);
-    if (g_last_pairs[int(show)].count({std::min(a, b), std::max(a, b)})) {
+  bool again = false;
+  {
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);  // (not held while the pool is built)
+    again = g_last_pairs[int(show)].count({std::min(a, b), std::max(a, b)}) != 0;
+  }
+  if (!changed && !rivals && REXCVAR_GET(wwe12_universe_chaos) >= 1) {
+    if (again) {
       std::vector<u32> pool;
       for (u32 id = 0; id < 373; ++id)
         if (free_for(id, a))
@@ -9099,10 +9144,24 @@ bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
   const bool rematches = UltimateOn(REXCVAR_GET(wwe12_universe_rematches)),
              returns = UltimateOn(REXCVAR_GET(wwe12_universe_surprise_returns));
   // (a show's card starts: last card's singles pairs kept, for "not the same match two weeks running")
-  if (i == 0) {
+  {
+    // (a new card's day: rotate; the same day booked again: kept; an earlier day: another save, forgotten)
+    static std::map<int, u32> s_card_day;
+    const u32 uu = i == 0 ? Call(in, base, __imp__sub_82683A30, 0) : 0;
+    const u32 today = uu ? bd::mem::load<u32>(uu + kUniverseDay) : 0;
     std::lock_guard<std::mutex> lock(g_ultimate_lock);
-    g_last_pairs[show] = g_this_pairs[show];
-    g_this_pairs[show].clear();
+    if (i == 0 && uu) {
+      auto it = s_card_day.find(show);
+      if (it == s_card_day.end() || today < it->second) {
+        g_last_pairs[show].clear(), g_this_pairs[show].clear();
+      } else if (today != it->second) {
+        g_last_pairs[show] = g_this_pairs[show];
+        g_this_pairs[show].clear();
+      } else {
+        g_this_pairs[show].clear();  // (the same card booked again)
+      }
+      s_card_day[show] = today;
+    }
   }
   if (!rematches && !returns && !UltimateTournamentsOn() && ChaosPct(kChaosRivals) <= 0 &&
       REXCVAR_GET(wwe12_universe_chaos) <= 0)
@@ -9189,6 +9248,16 @@ bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
 
 // After the entry is written: the rematch is the title's match (as our title defenses do)
 void UltimateBookingAfter(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
+  // a title match of the game's for a title a tournament decides (vacant): not a title match (the final crowns)
+  if (t_rematch_title >= 23 && UltimateTournamentsOn()) {
+    PPCContext y = in;
+    y.r1.u32 = (y.r1.u32 - 0x400) & ~0xFu;
+    if (Call(y, base, __imp__sub_826D4DC8, entry) && UltimateVacantTitle(y, base, bd::mem::load<u8>(entry + 1))) {
+      Call(y, base, __imp__sub_826D4DD8, entry, 0);
+      BD_INFO("[univers] tournament: match {} is no more title {}'s match (vacant, a tournament decides)", i,
+              bd::mem::load<u8>(entry + 1));
+    }
+  }
   if (t_rematch_title >= 23)
     return;
   PPCContext x = in;
@@ -9223,6 +9292,8 @@ REX_EXTERN(__imp__sub_826CBCE8);  // relations: a's value of b (-5..+5)
 namespace {
 std::atomic<int> g_if_stage{0};   // 0: none, 1: "attack both?" asked, 2: "help your ally?" asked
 std::atomic<int> g_if_kind{-1};   // the kind chosen, for the next sub_826BCD40
+std::atomic<u32> g_if_who{512};   // its interferer (the pick, card + 4152), the kind applies to him only
+std::atomic<bool> g_if_done{false};  // the last answer used: no question again until the box state is left
 thread_local int t_if_reads = -1;  // inside sub_826BCD40 with a kind forced: the relation reads done
 }  // namespace
 
@@ -9254,13 +9325,25 @@ uint32_t InterferenceQuestionText(uint32_t id) {
 // answer)
 bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card) {
   if (!UltimateOn(REXCVAR_GET(wwe12_universe_interference_choice)) || bd::mem::load<u32>(kInUniverseFlag) != 1) {
-    g_if_stage = 0;
+    g_if_stage = 0, g_if_kind = -1, g_if_who = 512, g_if_done = false;
     return false;
   }
-  if (bd::mem::load<u32>(card + 4164) != 3) {
-    g_if_stage = 0;  // (another state: our questions are over)
+  const u32 state = bd::mem::load<u32>(card + 4164);
+  // the kind waits for its interferer: picked (card + 4148 = 1, + 4152 the id), or the pick given up (state 0)
+  if (g_if_kind.load() >= 0 && g_if_who.load() >= 512 && state != 3 && state != 4) {
+    if (bd::mem::load<u32>(card + 4148) == 1 && bd::mem::load<u32>(card + 4152) < 512) {
+      g_if_who = bd::mem::load<u32>(card + 4152);
+      BD_INFO("[univers] interference: kind {} for {}", g_if_kind.load(), g_if_who.load());
+    } else {
+      g_if_kind = -1;
+    }
+  }
+  if (state != 3) {
+    g_if_stage = 0, g_if_done = false;  // (another state: our questions are over)
     return false;
   }
+  if (g_if_done.load())
+    return false;  // (our last answer is the game's: not asked again)
   const u32 box = bd::mem::load<u32>(0x8324DEF0);
   if (!box || bd::mem::load<u32>(box + 1820) != 0 || bd::mem::load<u32>(box + 1804) != 2)
     return false;  // (still open, or not a yes / no box)
@@ -9280,7 +9363,7 @@ bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card) {
   };
   if (stage == 0) {
     if (answer == 1) {  // YES to the game's question: ours
-      g_if_kind = -1;
+      g_if_kind = -1, g_if_who = 512;
       ask(1);
       return true;
     }
@@ -9289,7 +9372,7 @@ bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card) {
   if (stage == 1) {
     if (answer == 1) {
       g_if_kind = 0;
-      g_if_stage = 0;
+      g_if_stage = 0, g_if_done = true;
       BD_INFO("[univers] interference: attack both opponents (kind 0)");
       return false;  // (the game reads this YES: the interferer's pick)
     }
@@ -9298,7 +9381,7 @@ bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card) {
   }
   // stage 2
   g_if_kind = answer == 1 ? 2 : 1;
-  g_if_stage = 0;
+  g_if_stage = 0, g_if_done = true;
   if (answer != 1)
     bd::mem::store<u32>(box + 72, 0);  // (the game reads YES)
   BD_INFO("[univers] interference: {} (kind {})", answer == 1 ? "help an ally" : "hold the referee", g_if_kind.load());
@@ -9317,13 +9400,15 @@ extern "C" REX_FUNC(sub_826CBCE8) {
 
 // around sub_826BCD40 (its hook): the chosen kind, once
 void InterferenceKindBegin() {
-  if (g_if_kind.load() >= 0)
+  // (only for the interferer it was chosen for: mgr *0x83231548 + 5056)
+  const u32 mgr = bd::mem::try_load<u32>(0x83231548);
+  if (g_if_kind.load() >= 0 && g_if_who.load() < 512 && mgr && bd::mem::load<u32>(mgr + 5056) == g_if_who.load())
     t_if_reads = 0;
 }
 void InterferenceKindEnd() {
   if (t_if_reads >= 0) {
     BD_INFO("[univers] interference: kind {} forced", g_if_kind.load());
-    g_if_kind = -1;
+    g_if_kind = -1, g_if_who = 512;
   }
   t_if_reads = -1;
 }
