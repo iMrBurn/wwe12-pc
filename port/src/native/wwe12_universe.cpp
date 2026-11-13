@@ -8389,15 +8389,27 @@ extern "C" REX_FUNC(sub_826EF468) {
   }
   std::lock_guard<std::mutex> lock(g_contender_lock);
   std::vector<std::pair<u32, u16>> changed;
-  for (u32 k = 0; k < 10; ++k) {
+  // one slot at most, to a rank the title's ranking has (context entry +40, title +12: its count at context + 1492 +
+  // 964 * title + 960) and that no other ranking slot of the match asks: two slots on the same rank gave the same
+  // Superstar twice, the match was dropped (a 2-match SmackDown, test of 2026-11-13)
+  const u32 context = bd::mem::try_load<u32>(entry + 40), title = bd::mem::try_load<u32>(entry + 12);
+  const u32 count = context && title < 23 ? bd::mem::try_load<u32>(context + 1492 + 964 * title + 960) : 0;
+  std::set<u16> asked;
+  for (u32 k = 0; k < 10; ++k)
+    if (bd::mem::load<u8>(tpl + 20 + 4 * k) == 0)
+      asked.insert(bd::mem::load<u16>(tpl + 20 + 4 * k + 2));
+  for (u32 k = 0; k < 10 && changed.empty(); ++k) {
     const u32 slot = tpl + 20 + 4 * k;
     const u8 code = bd::mem::load<u8>(slot);
     const u16 param = bd::mem::load<u16>(slot + 2);
     if (code != 0 || param < 2 || param > 20 || !ChaosRoll(kChaosContenders))
       continue;
+    const u16 to = u16(param + 1 + ChaosRand(3));
+    if (to > count || to > 30 || asked.count(to))
+      continue;
     changed.push_back({slot + 2, param});
-    bd::mem::store<u16>(slot + 2, u16(param + 1 + ChaosRand(3)));
-    BD_INFO("[univers] chaos: ranking slot {} takes #{} instead of #{}", k, bd::mem::load<u16>(slot + 2), param);
+    bd::mem::store<u16>(slot + 2, to);
+    BD_INFO("[univers] chaos: ranking slot {} takes #{} instead of #{} (of {})", k, to, param, count);
   }
   __imp__sub_826EF468(ctx, base);
   for (auto [at, v] : changed)  // (the template is the game's data: back as it was)
