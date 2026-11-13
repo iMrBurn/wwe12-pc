@@ -1433,3 +1433,9 @@ revanche et arc de titre (6-10 h) ; 3) retours surprise / débuts en « ??? » (
   le nouveau pour le titre sur la prochaine carte du show (un simple sans titre ni histoire repris), news CLAUSE DE
   REVANCHE, une fois (ligne « rematch titre ancien jour ») ;
 - MATCH DE RIVALITÉ : en-tête de MATCH CARDS pour un simple entre rivaux (niveau 2+).
+Relecture par un agent, corrigée : pas de « ??? » ajouté sur un match de revanche ou de retour ; lignes « vs »
+écrites seulement si les news de rivalité sont actives (réglages coupés = rien d'écrit) ; MATCH DE RIVALITÉ seulement
+à la place de MATCH #n / MAIN EVENT (entrée +6 1-9) et jamais sur un adversaire caché ; état oublié quand une autre
+sauvegarde est chargée (jour qui recule ou saute de plus d'une semaine) ; une news de rivalité par rencontre (paire vue
+cette semaine) ; pas de revanche sans fin (titre repris dans une revanche) ; news de retour quel que soit le résultat.
+Les news de rivalité et les retours demandent `wwe12_universe_more_news` (actif par défaut).
