@@ -8165,7 +8165,9 @@ extern "C" REX_FUNC(sub_824868F8) {
 //    Why?");
 //  - betrayals: after a lost tag match, a team may break up: the partners become rivals (sub_826CD7F0(view + 8, a, b,
 //    -5), both ways), with the game's New Rivalry news (type 2);
-//  - scenes: the game's own scenes play more often (their chance, sub_826CA4E8, times this %, kept under 100).
+//  - scenes: the game's own scenes play more often (their chance, sub_826CA4E8, times this %, kept under 100);
+//  - stories: a second try at starting a story the same day (sub_826C83D8, called daily by sub_826C9018: the game
+//    picks one of the possible stories at random, sub_826E9338, and starts it; 16 places).
 // (wwe12_universe_chaos: with UNIVERSE OPTIONS, above)
 REXCVAR_DEFINE_INT32(wwe12_universe_chaos_cards, -1, "WWE12",
                      "Universe: % of weekly cards with a layout at random (-1 = the chaos level's).");
@@ -8182,7 +8184,10 @@ REXCVAR_DEFINE_INT32(wwe12_universe_chaos_betrayals, -1, "WWE12",
 REXCVAR_DEFINE_INT32(wwe12_universe_chaos_scenes, -1, "WWE12",
                      "Universe: the game's scenes' chance times this % (100 = the game's; -1 = the chaos level's).");
 
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_stories, -1, "WWE12",
+                     "Universe: % of days with a second try at starting a story (-1 = the chaos level's).");
 REX_EXTERN(__imp__sub_826CC020);
+REX_EXTERN(__imp__sub_826C83D8);
 REX_EXTERN(__imp__sub_826D67A0);
 REX_EXTERN(__imp__sub_826DC738);
 REX_EXTERN(__imp__sub_826DC758);
@@ -8192,12 +8197,14 @@ REX_EXTERN(__imp__sub_82A32DB0);
 REX_EXTERN(__imp__sub_826CD7F0);
 
 namespace {
-enum ChaosKind { kChaosCards, kChaosStips, kChaosContenders, kChaosMystery, kChaosTurns, kChaosBetrayals, kChaosScenes };
+enum ChaosKind {
+  kChaosCards, kChaosStips, kChaosContenders, kChaosMystery, kChaosTurns, kChaosBetrayals, kChaosScenes, kChaosStories
+};
 int ChaosPct(ChaosKind k) {
-  static const int kLevels[4][7] = {{0, 0, 0, 0, 0, 0, 100},
-                                    {35, 10, 15, 6, 3, 10, 150},
-                                    {70, 20, 25, 12, 6, 20, 200},
-                                    {100, 35, 40, 20, 12, 35, 300}};
+  static const int kLevels[4][8] = {{0, 0, 0, 0, 0, 0, 100, 0},
+                                    {35, 10, 15, 6, 3, 10, 150, 15},
+                                    {70, 20, 25, 12, 6, 20, 200, 30},
+                                    {100, 35, 40, 20, 12, 35, 300, 50}};
   int own = -1;
   switch (k) {
     case kChaosCards: own = REXCVAR_GET(wwe12_universe_chaos_cards); break;
@@ -8207,6 +8214,7 @@ int ChaosPct(ChaosKind k) {
     case kChaosTurns: own = REXCVAR_GET(wwe12_universe_chaos_turns); break;
     case kChaosBetrayals: own = REXCVAR_GET(wwe12_universe_chaos_betrayals); break;
     case kChaosScenes: own = REXCVAR_GET(wwe12_universe_chaos_scenes); break;
+    case kChaosStories: own = REXCVAR_GET(wwe12_universe_chaos_stories); break;
   }
   if (own >= 0)
     return own;
@@ -8371,4 +8379,15 @@ void Twists(const PPCContext &x0, u8 *base, u32 record, u32 places, u32 winner_s
     }
     BD_INFO("[univers] chaos: {} and {} break up, now rivals", a, b);
   }
+}
+
+// stories: a second try at starting one (the game picks it, its cast and its place)
+extern "C" REX_FUNC(sub_826C83D8) {
+  const PPCContext in = ctx;
+  __imp__sub_826C83D8(ctx, base);
+  if (!ChaosRoll(kChaosStories))
+    return;
+  PPCContext again = in;
+  __imp__sub_826C83D8(again, base);
+  BD_INFO("[univers] chaos: a second try at starting a story today");
 }
