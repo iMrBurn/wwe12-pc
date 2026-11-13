@@ -322,6 +322,21 @@ UIColor* Rgb(int r, int g, int b) { return [UIColor colorWithRed:r / 255.0 green
 
 @end
 
+// A three-finger tap in the game asks for the detailed log of the next frame (F9 on the PC): the draw
+// calls, textures and shaders of one picture, to find what a broken HUD element is drawn with.
+extern "C" volatile int Wwe12IosKeyF9;
+
+@interface WWE12DiagTap : NSObject
+- (void)tapped:(UITapGestureRecognizer*)gesture;
+@end
+@implementation WWE12DiagTap
+- (void)tapped:(UITapGestureRecognizer*)gesture {
+  Wwe12IosKeyF9 = 1;
+}
+@end
+
+extern "C" volatile int Wwe12IosLauncherActive;  // wwe12_launcher_ios.mm
+
 namespace {
 
 WWE12TouchView* g_view = nil;
@@ -329,20 +344,52 @@ WWE12TouchView* g_view = nil;
 UIWindow* FindGameWindow() {
   for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
     if (![scene isKindOfClass:UIWindowScene.class]) continue;
-    UIWindow* w = ((UIWindowScene*)scene).windows.firstObject;
-    if (w) return w;
+    for (UIWindow* w in ((UIWindowScene*)scene).windows) {
+      if (!w.hidden) return w;  // the launcher's window is hidden once Play is pressed
+    }
   }
   return nil;
 }
 
 void Tick() {
+  // The launcher (wwe12_launcher_ios.mm) runs before the game: its buttons must get the touches.
+  if (Wwe12IosLauncherActive) {
+    if (g_view) {
+      [g_view removeFromSuperview];
+      g_view = nil;
+    }
+    return;
+  }
+  // Launcher > Controls: the buttons can be hidden, and their opacity set (50 % = as drawn).
+  NSNumber* shown = [NSUserDefaults.standardUserDefaults objectForKey:@"touch_controls"];
+  if (shown && ![shown boolValue]) {
+    if (g_view) {
+      [g_view removeFromSuperview];
+      g_view = nil;
+    }
+    return;
+  }
   UIWindow* w = FindGameWindow();
   if (!w) return;  // the game has not made its window yet
+  static UIWindow* diag_window = nil;
+  static WWE12DiagTap* diag_target = nil;
+  if (diag_window != w) {
+    diag_window = w;
+    if (!diag_target) diag_target = [[WWE12DiagTap alloc] init];
+    UITapGestureRecognizer* tap = [[UITapGestureRecognizer alloc] initWithTarget:diag_target action:@selector(tapped:)];
+    tap.numberOfTouchesRequired = 3;
+    tap.cancelsTouchesInView = NO;
+    tap.delaysTouchesBegan = NO;
+    tap.delaysTouchesEnded = NO;
+    [w addGestureRecognizer:tap];
+  }
   if (!g_view || g_view.superview != w) {
     g_view = [[WWE12TouchView alloc] initWithFrame:w.bounds];
     [w addSubview:g_view];
   }
   [w bringSubviewToFront:g_view];
+  NSNumber* opacity = [NSUserDefaults.standardUserDefaults objectForKey:@"touch_opacity"];
+  g_view.alpha = opacity ? MIN(1.0, [opacity doubleValue] / 50.0) : 1.0;
   [g_view tick];
 }
 

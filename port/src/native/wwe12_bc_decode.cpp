@@ -11,6 +11,8 @@
 
 #include "wwe12_bc_decode.h"
 
+// Tried on the iPhone (2026-11-01) and dropped: the HUD / entrance bugs stayed the same and the 4-8x
+// texture memory ended in a GPU page fault after a minute of play.
 REXCVAR_DEFINE_BOOL(wwe12_bc_decode, false, "WWE12",
                     "Decode BC (DXT) textures to RGBA8 on the CPU even when the GPU supports them "
                     "(for tests; GPUs without BC, like Mali, get it on their own).");

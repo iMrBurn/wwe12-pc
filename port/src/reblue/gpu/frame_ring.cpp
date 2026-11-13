@@ -60,6 +60,7 @@ void BeginCommandList(VideoState &s) {
   s.command_list->setGraphicsDescriptorSet(s.texture_descriptor_set.get(), 1);
   s.command_list->setGraphicsDescriptorSet(s.texture_descriptor_set.get(), 2);
   s.command_list->setGraphicsDescriptorSet(s.sampler_descriptor_set.get(), 3);
+  s.texture_set_bound = s.texture_set_writes.load(std::memory_order_relaxed);
   s.command_list_open = true;
   s.dirtyStates.vertexStreamFirst = 0;
   s.dirtyStates.vertexStreamLast = 15;

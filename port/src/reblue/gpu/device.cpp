@@ -594,6 +594,7 @@ bool Video::CreateHostDevice(rex::ui::Window *window) {
     s.texture_descriptor_set->setTexture(
         slot, bb->texture, plume::RenderTextureLayout::SHADER_READ,
         bb->textureView.get());
+  s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
     bb->descriptorIndex = slot;
 
     s.back_buffer_surface = bb;
@@ -645,6 +646,7 @@ void Video::SyncBackBufferSizeLocked() {
     s.texture_descriptor_set->setTexture(
         bb->descriptorIndex, bb->texture,
         plume::RenderTextureLayout::SHADER_READ, bb->textureView.get());
+  s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
   }
   s.viewport.width = static_cast<float>(w);
   s.viewport.height = static_cast<float>(h);
@@ -820,6 +822,7 @@ GuestTexture *GetOrCreateDebugTexture() {
   s.texture_descriptor_set->setTexture(slot, t->texture,
                                        plume::RenderTextureLayout::SHADER_READ,
                                        t->textureView.get());
+  s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
   t->descriptorIndex = slot;
 
   plume::RenderTextureBarrier to_rt(t->texture,

@@ -6,7 +6,7 @@ index 261398d..228c940 100644
  extern "C" void *wwe12_custom_vulkan_driver() __attribute__((weak));
  #endif
  
-+#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(__APPLE__)
 +#   include <atomic>
 +#   include <cstdio>
 +#   include <cstdlib>

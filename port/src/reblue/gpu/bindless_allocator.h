@@ -17,7 +17,14 @@ namespace bd::gpu {
 
 // Heap capacities. Every CreateTexture registers a texture slot, so that heap
 // must be large.
+#if defined(WWE12_IOS)
+// MoltenVK turns each of the three 65536-entry texture arrays into a Metal argument buffer; the
+// iPhone shows scrambled / black HUD textures with that table (the SvR 2011 iOS port had the same
+// symptoms until it moved to a small per-draw table). A smaller table is the cheap first test.
+constexpr u32 kBindlessTextureCount = 16384;
+#else
 constexpr u32 kBindlessTextureCount = 65536;
+#endif
 constexpr u32 kBindlessSamplerCount = 1024;
 
 // First free slot in used[start_index..end), marked used, returned. on_full

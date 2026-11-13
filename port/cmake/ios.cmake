@@ -13,7 +13,11 @@ target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/wwe12_ios.cpp"
 # On-screen controller (UIKit view over the game, virtual SDL gamepad).
 target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/wwe12_touch_ios.mm")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/ios/wwe12_touch_ios.mm" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-target_link_libraries(wwe12 PRIVATE "-framework UIKit" "-framework QuartzCore" "-framework CoreGraphics")
+# Launcher shown before the game (Play / Install / DLC), adapted from Ke619's SvR 2011 iOS port (MIT).
+target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/wwe12_launcher_ios.mm")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/ios/wwe12_launcher_ios.mm" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+target_link_libraries(wwe12 PRIVATE "-framework UIKit" "-framework QuartzCore" "-framework CoreGraphics"
+    "-framework UniformTypeIdentifiers")
 target_compile_definitions(wwe12 PRIVATE WWE12_IOS=1)
 
 # The stand-in for <windows.h> and the MSVC runtime functions are the Android ones (the header
@@ -29,3 +33,8 @@ target_compile_options(wwe12 PRIVATE
 
 # encoding.cpp converts texts with iconv (libiconv ships with the iOS SDK, not linked by default).
 target_link_libraries(wwe12 PRIVATE iconv)
+
+# After a match the instant replay can freeze the game, the victory scene never comes (the same
+# bug as on Android, seen on the iPhone 2026-11-01): the replay is off by default there, so it is
+# here (android/wwe12_replay.cpp: the game's own switch set to 0 at startup).
+target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_replay.cpp")

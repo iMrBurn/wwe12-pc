@@ -125,6 +125,7 @@ GuestTexture *BuildBCMirrorRaw(const BCMirrorDesc &d,
   s.texture_descriptor_set->setTexture(slot, t->texture,
                                        plume::RenderTextureLayout::SHADER_READ,
                                        t->textureView.get());
+  s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
   t->descriptorIndex = slot;
 
   plume::RenderTextureBarrier pre(t->texture,

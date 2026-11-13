@@ -671,6 +671,7 @@ void ApplyFetchSwizzle(GuestTexture *tex, const xe::xe_gpu_texture_fetch_t &fetc
     s.texture_descriptor_set->setTexture(tex->descriptorIndex, tex->texture,
                                          plume::RenderTextureLayout::SHADER_READ,
                                          tex->textureView.get());
+  s.texture_set_writes.fetch_add(1, std::memory_order_relaxed);
   static std::unordered_map<u32, bool> logged;
   if (logged.emplace(swizzle, true).second)
     BD_INFO("native texture va=0x{:08X}: fetch swizzle 0x{:03X} applied (fmt=0x{:X})", guest_va,
