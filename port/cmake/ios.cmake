@@ -7,9 +7,12 @@
 # tools, the D3D census) leave the target; src/ios/wwe12_ios.cpp replaces what they provided.
 get_target_property(_wwe12_sources wwe12 SOURCES)
 list(FILTER _wwe12_sources EXCLUDE REGEX
-    "/(crash_trace|wwe12_memscan|wwe12_autocap|d3d_census)\\.cpp$")
+    "/(crash_trace|wwe12_memscan|wwe12_autocap|d3d_census|wwe12_benchmark)\\.cpp$")
 set_property(TARGET wwe12 PROPERTY SOURCES ${_wwe12_sources})
 target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/wwe12_ios.cpp")
+# The PC's built-in benchmark (Windows timers, cpuid, relaunch of the exe) is not built here: the same
+# empty versions as Android keep the remote pad and the frame statistics linking.
+target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_benchmark_stub.cpp")
 # On-screen controller (UIKit view over the game, virtual SDL gamepad).
 target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/wwe12_touch_ios.mm")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/ios/wwe12_touch_ios.mm" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
