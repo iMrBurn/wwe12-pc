@@ -8327,6 +8327,9 @@ REXCVAR_DEFINE_INT32(wwe12_universe_chaos_betrayals, -1, "WWE12",
 REXCVAR_DEFINE_INT32(wwe12_universe_chaos_scenes, -1, "WWE12",
                      "Universe: the game's scenes' chance times this % (100 = the game's; -1 = the chaos level's).");
 
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_rivals, -1, "WWE12",
+                     "Universe: % of singles matches given a rival as opponent (-1 = the chaos level's); with the "
+                     "unpredictable Universe on, a show's singles match is not the same as last week's either.");
 REXCVAR_DEFINE_INT32(wwe12_universe_chaos_stories, -1, "WWE12",
                      "Universe: % of days with a second try at starting a story (-1 = the chaos level's).");
 REX_EXTERN(__imp__sub_826CC020);
@@ -8341,13 +8344,14 @@ REX_EXTERN(__imp__sub_826CD7F0);
 
 namespace {
 enum ChaosKind {
-  kChaosCards, kChaosStips, kChaosContenders, kChaosMystery, kChaosTurns, kChaosBetrayals, kChaosScenes, kChaosStories
+  kChaosCards, kChaosStips, kChaosContenders, kChaosMystery, kChaosTurns, kChaosBetrayals, kChaosScenes, kChaosStories,
+  kChaosRivals
 };
 int ChaosPct(ChaosKind k) {
-  static const int kLevels[4][8] = {{0, 0, 0, 0, 0, 0, 100, 0},
-                                    {35, 10, 15, 6, 3, 10, 150, 15},
-                                    {70, 20, 25, 12, 6, 20, 200, 30},
-                                    {100, 35, 40, 20, 12, 35, 300, 50}};
+  static const int kLevels[4][9] = {{0, 0, 0, 0, 0, 0, 100, 0, 0},
+                                    {35, 10, 15, 6, 3, 10, 150, 15, 30},
+                                    {70, 20, 25, 12, 6, 20, 200, 30, 50},
+                                    {100, 35, 40, 20, 12, 35, 300, 50, 70}};
   int own = -1;
   switch (k) {
     case kChaosCards: own = REXCVAR_GET(wwe12_universe_chaos_cards); break;
@@ -8358,6 +8362,7 @@ int ChaosPct(ChaosKind k) {
     case kChaosBetrayals: own = REXCVAR_GET(wwe12_universe_chaos_betrayals); break;
     case kChaosScenes: own = REXCVAR_GET(wwe12_universe_chaos_scenes); break;
     case kChaosStories: own = REXCVAR_GET(wwe12_universe_chaos_stories); break;
+    case kChaosRivals: own = REXCVAR_GET(wwe12_universe_chaos_rivals); break;
   }
   if (own >= 0)
     return own;
@@ -9000,6 +9005,76 @@ bool UltimateVacantTitle(const PPCContext &x, u8 *base, u32 title) {
   return UltimateTournamentsOn() && title < 23 && (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) == kNobody;
 }
 
+namespace {
+std::map<int, std::set<std::pair<u32, u32>>> g_last_pairs, g_this_pairs;  // a show's singles pairs: last card, this one
+
+// A singles record (places at +40 / +72): with kChaosRivals' chance, one of them gets a free rival of his show and
+// gender as opponent (relations record +20 + 4 k, the strongest first); else, a pair that met on the show's last card
+// (and are not rivals) gets another opponent for one of them, a free Superstar of the show and gender at random.
+bool BookingTweaks(const PPCContext &x0, u8 *base, u32 u, u32 show, u32 rec, u32 i,
+                   const std::function<bool(u32)> &on_card, const std::function<bool(u32)> &injured) {
+  if (REXCVAR_GET(wwe12_universe_chaos) <= 0 && ChaosPct(kChaosRivals) <= 0)
+    return false;
+  PPCContext x = x0;
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  const u32 a = bd::mem::load<u32>(rec + 40), b = bd::mem::load<u32>(rec + 72);
+  if (a >= 512 || b >= 512)
+    return false;
+  const auto of_show = [&](u32 id) {
+    const u32 brand = Call(x, base, __imp__sub_826D2B50, id);
+    return brand < 13 && bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 929 + brand) == 1;
+  };
+  const auto woman = [&](u32 id) { return Call(x, base, __imp__sub_82A32DB8, id) != 0; };
+  const auto free_for = [&](u32 id, u32 like) {
+    return id < 373 && id != a && id != b && Call(x, base, __imp__sub_826D3218, id, 1) && of_show(id) &&
+           !on_card(id) && !injured(id) && woman(id) == woman(like);
+  };
+  const u32 view = x.r1.u32 + 0x400;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 table = bd::mem::load<u32>(view + 12);
+  const bool rivals = RivalLevel(x, base, table, a, b) || RivalLevel(x, base, table, b, a);
+  bool changed = false;
+  u32 na = a, nb = b;
+  if (!rivals && ChaosRoll(kChaosRivals)) {
+    const bool first = ChaosRand(2) == 0;
+    const u32 who = first ? a : b;  // keeps his place; his opponent becomes his rival
+    const u32 r = table ? Call(x, base, __imp__sub_826D4F98, table, who) : 0;
+    for (int k = 4; r && k >= 0 && !changed; --k) {
+      const u32 rival = bd::mem::load<u32>(r + 20 + 4 * u32(k));
+      if (rival < 512 && free_for(rival, who)) {
+        (first ? nb : na) = rival;
+        changed = true;
+        BD_INFO("[univers] booking: match {}: {} faces his rival {}", i, who, rival);
+      }
+    }
+  }
+  if (!changed && !rivals) {
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);
+    if (g_last_pairs[int(show)].count({std::min(a, b), std::max(a, b)})) {
+      std::vector<u32> pool;
+      for (u32 id = 0; id < 373; ++id)
+        if (free_for(id, a))
+          pool.push_back(id);
+      if (!pool.empty()) {
+        nb = pool[ChaosRand(u32(pool.size()))];
+        changed = true;
+        BD_INFO("[univers] booking: match {}: {} v {} again, {} instead", i, a, b, nb);
+      }
+    }
+  }
+  Call(x, base, __imp__sub_826CE098, view);
+  if (changed) {
+    bd::mem::store<u32>(rec + 40, na);
+    bd::mem::store<u32>(rec + 72, nb);
+    bd::mem::store<u32>(rec + 40 + 28, 0);
+    bd::mem::store<u32>(rec + 72 + 28, 0);
+  }
+  std::lock_guard<std::mutex> lock(g_ultimate_lock);
+  g_this_pairs[int(show)].insert({std::min(na, nb), std::max(na, nb)});
+  return changed;
+}
+}  // namespace
+
 // Before a weekly card's record i is written: a rematch, else a surprise return, in a singles match without title,
 // story nor WrestleMania build (record +12, +28, +24; places at +40 + 32 k, +0 the Superstar, +28 = 1 "???")
 bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
@@ -9010,7 +9085,14 @@ bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
     return false;
   const bool rematches = UltimateOn(REXCVAR_GET(wwe12_universe_rematches)),
              returns = UltimateOn(REXCVAR_GET(wwe12_universe_surprise_returns));
-  if (!rematches && !returns && !UltimateTournamentsOn())
+  // (a show's card starts: last card's singles pairs kept, for "not the same match two weeks running")
+  if (i == 0) {
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);
+    g_last_pairs[show] = g_this_pairs[show];
+    g_this_pairs[show].clear();
+  }
+  if (!rematches && !returns && !UltimateTournamentsOn() && ChaosPct(kChaosRivals) <= 0 &&
+      REXCVAR_GET(wwe12_universe_chaos) <= 0)
     return false;
   const u32 rec = booker + 20 + i * 1320;
   if (bd::mem::load<u32>(rec + 16) != 2 || bd::mem::load<u32>(rec + 12) || bd::mem::load<u32>(rec + 28) ||
@@ -9088,7 +9170,8 @@ bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
       return true;
     }
   }
-  return false;
+  // booking (with the unpredictable Universe): a rival as the opponent, else not last week's same match
+  return BookingTweaks(x, base, u, u32(show), rec, i, on_card, injured);
 }
 
 // After the entry is written: the rematch is the title's match (as our title defenses do)
