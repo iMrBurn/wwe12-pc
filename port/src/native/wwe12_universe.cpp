@@ -7351,3 +7351,62 @@ void DraftCheck(const PPCContext &in, u8 *base) {
 }
 }  // namespace
 
+// ---- Dev: the Universe's scenes (wwe12_universe_scene_probe, docs/univers.md §44) ---------------------------------
+//
+// To tie a WCID scene record (wuniData.pac: 4 lists of 564-byte records, list base + 8 + n * 564; +2 its number, +468
+// a u16 of 32100+...) to the act played and its /EVPx/NNNN script: sub_826DC408(buf, list, n) queues a record (its
+// return), sub_826BCD40 picks the interference's kind (manager *0x83231548: +5052 on, +5056 the interferer, +5064 the
+// kind), sub_826BF660 fills its roles, sub_826DF6D8 starts a cut scene. With wwe12_game_log (acts) and wwe12_dir_log
+// (the scripts read) on as well.
+REXCVAR_DEFINE_BOOL(wwe12_universe_scene_probe, false, "WWE12",
+                    "Dev: log the Universe's scene records queued, the interference's kind and the cut scenes started.");
+REX_EXTERN(__imp__sub_826DC408);
+REX_EXTERN(__imp__sub_826BCD40);
+REX_EXTERN(__imp__sub_826BF660);
+REX_EXTERN(__imp__sub_826DF6D8);
+REX_EXTERN(__imp__sub_826D66F0);  // WCID: a list's base
+
+extern "C" REX_FUNC(sub_826DC408) {
+  const u32 buf = ctx.r3.u32, list = ctx.r4.u32, n = ctx.r5.u32;
+  const PPCContext in = ctx;
+  __imp__sub_826DC408(ctx, base);
+  if (!REXCVAR_GET(wwe12_universe_scene_probe))
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 lb = Call(x, base, __imp__sub_826D66F0, list);
+  u32 id = 0, v468 = 0;
+  if (lb && n < bd::mem::load<u16>(lb + 4)) {
+    const u32 rec = lb + 8 + n * 564;
+    id = bd::mem::load<u16>(rec + 2);
+    v468 = bd::mem::load<u16>(rec + 468);
+  }
+  BD_INFO("[univers] scene probe: WCID list {} n {} (record id {}, +468 {}) -> {} (buf {:08X}, from {:08X})", list, n,
+          id, v468, ctx.r3.u32, buf, u32(in.lr));
+}
+
+extern "C" REX_FUNC(sub_826BCD40) {
+  const u32 from = u32(ctx.lr);
+  __imp__sub_826BCD40(ctx, base);
+  if (!REXCVAR_GET(wwe12_universe_scene_probe))
+    return;
+  const u32 mgr = bd::mem::try_load<u32>(0x83231548);
+  if (mgr)
+    BD_INFO("[univers] scene probe: interference on {} by {} kind {} (from {:08X})", bd::mem::load<u32>(mgr + 5052),
+            bd::mem::load<u32>(mgr + 5056), bd::mem::load<u32>(mgr + 5064), from);
+}
+
+extern "C" REX_FUNC(sub_826BF660) {
+  const PPCContext in = ctx;
+  __imp__sub_826BF660(ctx, base);
+  if (REXCVAR_GET(wwe12_universe_scene_probe))
+    BD_INFO("[univers] scene probe: roles of {:08X} filled (r4 {:08X} r5 {:08X} r6 {:08X}) -> {}", in.r3.u32, in.r4.u32,
+            in.r5.u32, in.r6.u32, ctx.r3.u32);
+}
+
+extern "C" REX_FUNC(sub_826DF6D8) {
+  if (REXCVAR_GET(wwe12_universe_scene_probe))
+    BD_INFO("[univers] scene probe: cut scene start r3 {:08X} r4 {:08X} r5 {:08X} r6 {:08X} (from {:08X})", ctx.r3.u32,
+            ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, u32(ctx.lr));
+  __imp__sub_826DF6D8(ctx, base);
+}
