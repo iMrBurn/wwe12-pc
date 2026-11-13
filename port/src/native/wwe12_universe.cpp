@@ -6125,10 +6125,25 @@ void NxtBrands(const PPCContext &x, u8 *base, u32 u) {
       if (count[b])
         BD_INFO("[univers] NXT: brand {} has {} Superstars (ids{} ...)", b, count[b], first[b]);
   }
+  // Its match templates: table record +900 (u16, sub_826CBFE8; tables at 0x82231590, sub_826D6800, 17), group +902
+  // (low byte, sub_826CC000); sub_826DC6E8(table, group, i) gives NULL past them, and the booker then reads a NULL
+  // template (crash seen 2026-11-13 on NXT's first card). Without templates, NXT takes RAW's.
+  const u32 r = u + kShowRecords + 3 * kShowRecordSize, raw = u + kShowRecords;
+  const auto templates = [](u32 rec) {
+    const u32 table = bd::mem::load<u16>(rec + 900), group = bd::mem::load<u16>(rec + 902) & 0xFF;
+    const u32 t = table < 17 ? bd::mem::load<u32>(0x82231590 + table * 4) : 0;
+    return t && group < bd::mem::load<u32>(t + 4) ? u32(bd::mem::load<u16>(t + 8 + group * 508 + 2)) : 0u;
+  };
+  BD_INFO("[univers] NXT: templates table {} group {} ({}), RAW's table {} group {} ({})", bd::mem::load<u16>(r + 900),
+          bd::mem::load<u16>(r + 902), templates(r), bd::mem::load<u16>(raw + 900), bd::mem::load<u16>(raw + 902),
+          templates(raw));
+  if (templates(r) < 4) {
+    bd::mem::store<u16>(r + 900, bd::mem::load<u16>(raw + 900));
+    bd::mem::store<u16>(r + 902, bd::mem::load<u16>(raw + 902));
+  }
   const int32_t nxt = REXCVAR_GET(wwe12_universe_nxt_brand);
   if (nxt < 0 || nxt >= 13 || count[nxt] < 4)
     return;
-  const u32 r = u + kShowRecords + 3 * kShowRecordSize;
   for (u32 b = 0; b < 13; ++b)
     bd::mem::store<u8>(r + 929 + b, u8(b == u32(nxt)));
   BD_INFO("[univers] NXT: books brand {} ({} Superstars)", nxt, count[nxt]);
