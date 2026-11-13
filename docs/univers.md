@@ -1217,6 +1217,23 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   (`entrance13.h`, `svrfmt/xcompress`). 2K16 / 2K17 : une scène par paquet (`pac/evt/NNNNN.pac`). Ce sont des scènes
   EVP : pour les jouer dans l'Univers de WWE '12, il faut d'abord régler l'affichage des scènes EVP dans un match
   d'Univers (les 4 essais ci-dessus).
+- **SvR 2011 contre WWE '12, scène par scène (2026-11-13, hors jeu)** : chaque scène UNVS de SvR porte dans sa banque
+  YMKs (id des pistes) son **numéro d'acte**, à la même règle que WWE '12 (UNVS 0001 = acte 32100). Comparaison par
+  acteurs (pistes 0-59 ; la caméra est 66 dans SvR, 60-62 dans WWE '12) et durée (2 × images à 30 Hz contre la
+  dernière clé YANM à 60 Hz, ±4) :
+  - **85 scènes identiques** (même acte, mêmes acteurs, même durée) : rien à gagner ;
+  - **13 actes changés** (même numéro, autre scène dans WWE '12) : 0001, 0008, 1043, 2007, 2009, 2011, 2029, 3001,
+    3009, 3027, 3030, 3039, 3042 ;
+  - **34 scènes absentes de WWE '12** (acte retiré) : 0010 (5 acteurs, 20 s) ; **1019-1042** (20 scènes de liste 1,
+    toutes de 10 s, 2 à 4 catcheurs) ; **2021-2035** (11 scènes courtes de liste 2, 3-7 s, 1 catcheur, parfois un objet
+    6) ; 3024 (4 catcheurs, 20 s), 3044 (4, 8 s), 3051 (2, 8 s). Aucune n'est un acte de WWE '12 renuméroté.
+  - WWE '12 a 30 actes que SvR n'a pas (32120-32127, 32200-32206, 32303-32304, 32407, 32421-32424, 32455-32468).
+  Donc jusqu'à **47 scènes de SvR 2011** à porter. Ce qu'elles montrent reste à voir (le joueur les reconnaîtra).
+  Pour en porter une : convertir sa banque YMKs en acte WWE '12 (en-tête + un bloc YANM par objet, caméra 66 → 60-62 ;
+  le Mod Maker le fait déjà pour les entrées SvR, `svr11_entrance.h` BodyBlock / CameraBlock), l'ajouter à une copie
+  servie de `m.pac` UN00 sous un numéro libre, et ajouter une fiche WCID (564 octets) faite d'après sa WCP (192 octets,
+  autre format) dans une copie servie de `wuniData.pac`. Outils : `svrscn.py`, `durs.py` (dossier temporaire de la
+  conversation, `yanm_decode.py` de Kaiko).
 
 ## 45. NXT, 4e show de la semaine (2026-11-13, `wwe12_universe_nxt`, coupé par défaut, pas fini)
 
