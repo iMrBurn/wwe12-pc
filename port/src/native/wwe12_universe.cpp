@@ -1036,6 +1036,12 @@ void PlaceManyChoices() {
   // the left (D2 white, D3 red), the rest on the right (D4 white, D5 red)
   const u32 left = (lines + 1) / 2;
   std::string white[2], red[2];
+  size_t longest[2] = {0, 0};  // (each column's longest line: long ones side by side overlap, UNIVERSE OPTIONS)
+  for (u32 k = 0; k < lines; ++k) {
+    const char *t = g_many_text[k] ? bd::mem::try_at<const char>(g_many_text[k]) : nullptr;
+    const size_t n = t ? std::strlen(t) : 0;
+    longest[k < left ? 0 : 1] = std::max(longest[k < left ? 0 : 1], n);
+  }
   for (u32 k = 0; k < lines; ++k) {
     const char *t = g_many_text[k] ? bd::mem::try_at<const char>(g_many_text[k]) : nullptr;
     const std::string line = t ? t : "";
@@ -1065,7 +1071,10 @@ void PlaceManyChoices() {
     std::memcpy(bd::mem::at<char>(str), text.data(), std::min<size_t>(text.size(), 511));
     std::memcpy(bd::mem::at<u8>(at), g_many[0].bytes, 240);  // the first line as laid out
     bd::mem::store<float>(at + 4, col ? 75.0f : -75.0f);
-    const float scale = left > 3 ? 0.82f : 0.9f;
+    float scale = left > 3 ? 0.82f : 0.9f;
+    // two lines side by side fit up to about 40 characters together at 0.9: smaller beyond (not under 0.55)
+    if (longest[0] + longest[1] > 40)
+      scale = std::max(0.55f, scale * 40.0f / float(longest[0] + longest[1]));
     bd::mem::store<float>(at + 8, -2.0f);
     bd::mem::store<float>(at + 12, scale);
     bd::mem::store<float>(at + 16, scale);
@@ -8696,6 +8705,7 @@ std::vector<Rematch> PendingRematches(const PPCContext &x, u8 *base, u32 day) {
 }
 
 thread_local u32 t_rematch_title = 0xFF;  // the title of the rematch just placed in record i (for the entry)
+thread_local int t_tourney_match = 0;     // 1: a semi-final just placed, 2: the final (the entry's header, +6)
 thread_local u32 t_rematch_since = 0;
 }  // namespace
 
@@ -8919,7 +8929,7 @@ std::vector<u32> TourneySeeds(const PPCContext &x, u8 *base, u32 u, u32 title) {
   const u32 n = std::min<u32>(Call(x, base, __imp__sub_826D2508, view, title, s_rank, 180), 180);
   Call(x, base, __imp__sub_826CE098, view);
   std::vector<u32> seeds;
-  for (u32 k = 0; k < n && seeds.size() < 4; ++k) {
+  for (u32 k = 0; k < n && seeds.size() < 5; ++k) {  // (5: one may be the champion who loses it)
     const u32 id = bd::mem::load<u32>(s_rank + k * 32);
     if (id >= 512 || !Call(x, base, __imp__sub_826D3218, id, 1))
       continue;
@@ -8964,6 +8974,11 @@ bool UltimateBeforeVacate(const PPCContext &in, u8 *base, u32 title) {
   if (!u || !ShowTitle(x, base, u, title))
     return true;  // (a title no show uses: as the game)
   std::vector<u32> seeds = TourneySeeds(x, base, u, title);
+  // (the champion who loses it is not in its tournament)
+  const u32 champ = Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;
+  seeds.erase(std::remove(seeds.begin(), seeds.end(), champ), seeds.end());
+  if (seeds.size() > 4)
+    seeds.resize(4);
   if (seeds.size() < 4) {
     BD_INFO("[univers] tournament: title {} not vacated, only {} free contenders", title, seeds.size());
     return false;
@@ -9058,6 +9073,7 @@ bool TourneyBooking(const PPCContext &x, u8 *base, u32 booker, u32 rec, u32 day,
     bd::mem::store<u32>(rec + 40 + 32, b);
     bd::mem::store<u32>(rec + 40 + 28, 0);
     bd::mem::store<u32>(rec + 40 + 32 + 28, 0);
+    t_tourney_match = n.winners.size() >= 2 ? 2 : 1;
     if (n.winners.size() >= 2) {
       t_rematch_title = n.title;  // (the final: the title's match)
       const std::string key = fmt::format("news tourneyfinal {} {}", n.title, n.day);
@@ -9292,6 +9308,11 @@ void UltimateBookingAfter(const PPCContext &in, u8 *base, u32 booker, u32 entry,
               bd::mem::load<u8>(entry + 1));
     }
   }
+  // a match we placed keeps no header of the one it took over ("#1 CONTENDER'S MATCH"...): MATCH #n, the
+  // tournament's final MAIN EVENT (entry +6: 1-8 MATCH #n, 9 MAIN EVENT)
+  if (t_tourney_match || t_rematch_title < 23)
+    bd::mem::store<u8>(entry + 6, u8(t_tourney_match == 2 ? 9 : std::min<u32>(i + 1, 8)));
+  t_tourney_match = 0;
   if (t_rematch_title >= 23)
     return;
   PPCContext x = in;
