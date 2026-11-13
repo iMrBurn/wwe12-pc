@@ -1419,3 +1419,17 @@ revanche et arc de titre (6-10 h) ; 3) retours surprise / débuts en « ??? » (
 6) blessures graves avec semaines d'absence, champion blessé (15-25 h) ; 7) STORY OPTIONS (6-10 h) ; 8) thèmes de PPV
 (8-12 h) ; 9) cartes de la semaine de WWE '13 en données (4-6 h + Mod Maker) ; plus tard : créateur de rivalités
 (25-40 h), shows / rosters personnalisés (20 h+). Toute donnée d'un autre jeu doit être lue chez le joueur (Mod Maker).
+
+**Fait ensuite (2026-11-13, pas vu en jeu), avec l'Univers imprévisible dès « un peu » (réglages propres :
+`wwe12_universe_rivalry_news`, `_surprise_returns`, `_rematches`, `_rivalry_header`, -1 = suivre le niveau)** :
+- news de rivalité, une par semaine au plus : deux rivaux (niveau 2+, fiche de relations +20..+36) qui se sont
+  affrontés en simple depuis 28 jours (nouvelles lignes « vs a b gagnant jour » écrites après chaque simple) :
+  DOMINATION (3 victoires ou plus sans défaite), LA REVANCHE (le dernier vainqueur avait perdu la fois d'avant), sinon
+  LA GUERRE CONTINUE ;
+- retour surprise : un blessé guéri (Universe +92 bit 31 effacé d'un jour à l'autre) remplace un des deux catcheurs
+  d'un simple sans titre ni histoire de la prochaine carte de son show, caché en « ??? » ; news RETOUR SURPRISE quand
+  le match est joué (28 jours pour trouver sa place) ;
+- clause de revanche : un titre simple perdu depuis 21 jours au plus (lignes « title ») : l'ancien champion affronte
+  le nouveau pour le titre sur la prochaine carte du show (un simple sans titre ni histoire repris), news CLAUSE DE
+  REVANCHE, une fois (ligne « rematch titre ancien jour ») ;
+- MATCH DE RIVALITÉ : en-tête de MATCH CARDS pour un simple entre rivaux (niveau 2+).
