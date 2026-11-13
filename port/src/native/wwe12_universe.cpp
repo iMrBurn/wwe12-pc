@@ -2151,8 +2151,12 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
              // BACK: nothing
            } else if (i == 4) {
              const OptionWords &w = OWords();
-             Choose(in, base, w.chaos, {w.levels[0], w.levels[1], w.levels[2], w.levels[3]},
+             static const char *const kBack[5] = {"BACK", "RETOUR", "ZURÜ" "CK", "VOLVER", "INDIETRO"};
+             // (a 5th line, BACK: with 4 the game lays the box out in two columns)
+             Choose(in, base, w.chaos, {w.levels[0], w.levels[1], w.levels[2], w.levels[3], kBack[CurrentLang()]},
                     [](const PPCContext &in, u8 *base, size_t k) {
+                      if (k > 3)
+                        return;
                       SaveUniverseOption("wwe12_universe_chaos", std::to_string(k));
                       char text[512];
                       std::snprintf(text, sizeof(text), OWords().done_chaos, OWords().levels[k]);
@@ -7850,7 +7854,6 @@ struct AddedScene {
   u64 roles = 0;  // (RolesOf)
   std::string name;
   std::vector<u8> bytes;
-  u32 guest = 0, guest_bpe = 0, guest_zlib = 0;  // its copies in the game's memory: unpacked, BPE / ZLIB entries
 };
 struct PackedCopies {
   u32 bpe = 0, zlib = 0;
@@ -7901,6 +7904,7 @@ u64 RolesOf(u32 blocks, Name name_of) {
   return roles;
 }
 
+u32 Be32At(const u8 *p);
 void LoadAddedScenes() {
   if (g_added_loaded)
     return;
@@ -7924,6 +7928,16 @@ void LoadAddedScenes() {
     const u32 n = (u32(b[0x48]) << 24) | (u32(b[0x49]) << 16) | (u32(b[0x4A]) << 8) | b[0x4B];
     if (0x70 + 0x28 * size_t(n) > sc.bytes.size())
       continue;
+    // every block inside the file (a bad file must not make us, or the game, read past its end)
+    bool inside = 0x70 + 0x28 * size_t(n) <= Be32At(b + 0x0C);
+    for (u32 i = 0; inside && i < n; ++i) {
+      const u8 *e = b + 0x70 + 0x28 * i;
+      inside = size_t(Be32At(b + 0x0C)) + Be32At(e + 0x24) + size_t((e[2] << 8) | e[3]) * 32 <= sc.bytes.size();
+    }
+    if (!inside) {
+      BD_WARN("[univers] added scene {}: a block out of the file, left out", sc.name);
+      continue;
+    }
     sc.roles = RolesOf(n, [&](u32 i) { return std::string((const char *)b + 0x70 + 0x28 * i + 4, 8); });
     sc.list = sc.act / 100 % 10;
     BD_INFO("[univers] added scene {}: list {}, roles {:X}, {} bytes", sc.name, sc.list, sc.roles, sc.bytes.size());
@@ -7989,19 +8003,6 @@ std::vector<u8> WithGameObjects(const std::vector<u8> &ours, u32 data) {
   return out;
 }
 
-// Game memory from the game's own heap (as sub_82486648 allocates: sub_827D2950() ? sub_827D2548(size, 2) :
-// sub_827D3600(16-byte units, 2)): the motion code reads its packed copies there (ours in the system heap, 0x30...,
-// were skipped, 2026-11-13). Kept for the session.
-REX_EXTERN(__imp__sub_827D2950);
-REX_EXTERN(__imp__sub_827D2548);
-REX_EXTERN(__imp__sub_827D3600);
-u32 GameAlloc(const PPCContext &in, u8 *base, u32 size) {
-  PPCContext x = in;
-  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
-  return Call(x, base, __imp__sub_827D2950, 0) ? Call(x, base, __imp__sub_827D2548, size, 2)
-                                                 : Call(x, base, __imp__sub_827D3600, (size + 15) >> 4, 2);
-}
-
 u32 AddedSceneFor(const PPCContext &in, u8 *base, u32 act, u32 data) {
   if (!REXCVAR_GET(wwe12_universe_more_scenes) || act < 32000 || act > 32999 || !data)
     return 0;
@@ -8026,14 +8027,15 @@ u32 AddedSceneFor(const PPCContext &in, u8 *base, u32 act, u32 data) {
     return 0;
   }
   AddedScene *sc = same[rng() % same.size()];
-  // (scene, act) -> its copies in the game's memory (unpacked, BPE)
-  static std::map<std::pair<std::string, u32>, std::array<u32, 3>> s_merged;
-  // (per scene AND act: the act's number is written in the data, below)
+  // (scene, act) -> its copies in the guest's memory (unpacked, ZLIB), per scene AND act (the act's number is written
+  // in the data, below). In the system heap, kept for the session: the game never frees them (the unpacked one is
+  // only read by sub_82486648; the packed copies normally sit in the reader's pool, freed as a whole), so they can be
+  // reused match after match - copies from the game's heap would be freed / reset with it (review of 2026-11-13).
+  static std::map<std::pair<std::string, u32>, std::array<u32, 2>> s_copies;
   const bool merged = (roles & ~u64(0x3F)) != 0;
-  u32 &guest = s_merged[{sc->name, act}][0];
-  u32 &guest_bpe = s_merged[{sc->name, act}][1];
-  u32 &guest_zlib = s_merged[{sc->name, act}][2];
-  if (!guest || !guest_bpe || !guest_zlib) {
+  u32 &guest = s_copies[{sc->name, act}][0];
+  u32 &guest_zlib = s_copies[{sc->name, act}][1];
+  if (!guest || !guest_zlib) {
     std::vector<u8> bytes = merged ? WithGameObjects(sc->bytes, data) : sc->bytes;
     // The act's number is the record's group name (+0x4C, text): the game keys every block of the registered record
     // by it (sub_82486648 -> sub_8246FC70: {atoi(+0x4C), x, y}) and looks the played act up by it (sub_8246E900): ours
@@ -8041,18 +8043,18 @@ u32 AddedSceneFor(const PPCContext &in, u8 *base, u32 act, u32 data) {
     std::fill(bytes.begin() + 0x4C, bytes.begin() + 0x5C, u8(0));
     const std::string num = std::to_string(act);
     std::memcpy(bytes.data() + 0x4C, num.data(), num.size());
-    const svrfmt::Bytes bpe = svrfmt::BpeEncodeStored(svrfmt::Bytes(bytes.begin(), bytes.end()));
     const std::vector<u8> zl = ZlibStored(bytes);
-    guest = GameAlloc(in, base, u32(bytes.size()));
-    guest_bpe = GameAlloc(in, base, u32(bpe.size()));
-    guest_zlib = GameAlloc(in, base, u32(zl.size()));
-    if (!guest || !guest_bpe || !guest_zlib)
+    if (!guest)
+      guest = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(bytes.size()), 0x20);
+    if (!guest_zlib)
+      guest_zlib = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(zl.size()), 0x20);
+    if (!guest || !guest_zlib)
       return 0;
     std::memcpy(bd::mem::at<u8>(guest), bytes.data(), bytes.size());
-    std::memcpy(bd::mem::at<u8>(guest_bpe), bpe.data(), bpe.size());
     std::memcpy(bd::mem::at<u8>(guest_zlib), zl.data(), zl.size());
   }
-  t_replaced.push_back({act, {guest_bpe, guest_zlib}});
+  (void)in, (void)base;
+  t_replaced.push_back({act, {0, guest_zlib}});
   BD_INFO("[univers] scene: act {} (roles {:X}) plays the added scene {}{}", act, roles, sc->name,
           (roles & ~u64(0x3F)) ? " (with the act's objects)" : "");
   return guest;
@@ -8280,22 +8282,28 @@ extern "C" REX_FUNC(sub_826DC758) {
 }
 
 // contenders: sub_826EF468(entry r3: +0 template, record r4, set r5, ...) reads the template's slots (+20 + 4 k:
-// u8 code, u16 param at +2) of code 0 (r5 0) / 16 (r5 != 0)
+// u8 code, u16 param at +2; 10 slots) of code 0 (r5 0) / 16 (r5 != 0). Only code 0 here: with r5 != 0 and r6 == 1 a
+// code-16 slot is filled only when its param is 2 (a changed one would stay empty, review of 2026-11-13). The
+// template is the game's shared data: changed and restored under a lock (two booking jobs would mix the restores).
+std::mutex g_contender_lock;
 extern "C" REX_FUNC(sub_826EF468) {
   const u32 entry = ctx.r3.u32, tpl = entry ? bd::mem::try_load<u32>(entry) : 0;
-  const u32 want = ctx.r5.u32 ? 16 : 0;
+  if (ctx.r5.u32 || !tpl || bd::mem::try_load<u32>(entry + 28) != 0 || ChaosPct(kChaosContenders) <= 0) {
+    __imp__sub_826EF468(ctx, base);  // (a story's match, set 16, or off: as the game)
+    return;
+  }
+  std::lock_guard<std::mutex> lock(g_contender_lock);
   std::vector<std::pair<u32, u16>> changed;
-  if (tpl && bd::mem::try_load<u32>(entry + 28) == 0)  // (not a story's match)
-    for (u32 k = 0; k < 6; ++k) {
-      const u32 slot = tpl + 20 + 4 * k;
-      const u8 code = bd::mem::load<u8>(slot);
-      const u16 param = bd::mem::load<u16>(slot + 2);
-      if (code == 0xFF || code != want || param < 2 || param > 20 || !ChaosRoll(kChaosContenders))
-        continue;
-      changed.push_back({slot + 2, param});
-      bd::mem::store<u16>(slot + 2, u16(param + 1 + ChaosRand(3)));
-      BD_INFO("[univers] chaos: ranking slot {} takes #{} instead of #{}", k, bd::mem::load<u16>(slot + 2), param);
-    }
+  for (u32 k = 0; k < 10; ++k) {
+    const u32 slot = tpl + 20 + 4 * k;
+    const u8 code = bd::mem::load<u8>(slot);
+    const u16 param = bd::mem::load<u16>(slot + 2);
+    if (code != 0 || param < 2 || param > 20 || !ChaosRoll(kChaosContenders))
+      continue;
+    changed.push_back({slot + 2, param});
+    bd::mem::store<u16>(slot + 2, u16(param + 1 + ChaosRand(3)));
+    BD_INFO("[univers] chaos: ranking slot {} takes #{} instead of #{}", k, bd::mem::load<u16>(slot + 2), param);
+  }
   __imp__sub_826EF468(ctx, base);
   for (auto [at, v] : changed)  // (the template is the game's data: back as it was)
     bd::mem::store<u16>(at, v);
@@ -8347,8 +8355,11 @@ void Twists(const PPCContext &x0, u8 *base, u32 record, u32 places, u32 winner_s
         pool.push_back(p);
     const P who = pool[ChaosRand(u32(pool.size()))];
     const u32 ch = Call(x, base, __imp__sub_82A32DB0, who.id), cena = Call(x, base, __imp__sub_82A32DB0, 139);
-    if (ch && cena && who.id != 139) {
-      const u8 face = bd::mem::load<u8>(cena + 29), was = bd::mem::load<u8>(ch + 29);
+    static int s_face = -1;  // (Cena's value the first time: kept if he turns himself later)
+    if (s_face < 0 && cena && bd::mem::load<u8>(cena + 29) <= 1)
+      s_face = bd::mem::load<u8>(cena + 29);
+    if (ch && s_face >= 0 && who.id != 139) {
+      const u8 face = u8(s_face), was = bd::mem::load<u8>(ch + 29);
       if (was <= 1 && face <= 1) {
         const u8 now = u8(1 - was);
         const u32 type = now == face ? 9 : 8;
