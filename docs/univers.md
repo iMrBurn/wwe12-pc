@@ -1234,6 +1234,19 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   servie de `m.pac` UN00 sous un numéro libre, et ajouter une fiche WCID (564 octets) faite d'après sa WCP (192 octets,
   autre format) dans une copie servie de `wuniData.pac`. Outils : `svrscn.py`, `durs.py` (dossier temporaire de la
   conversation, `yanm_decode.py` de Kaiko).
+- **Chargement des actes UN00 (étude du code, 2026-11-13, pas vérifié en jeu)** : `sub_826EDAF0` (et `sub_822B6A70`)
+  cherche « /ZMOT/UN00 » (chaîne 0x82005EE8, `sub_827D98D8`), crée un objet de lecture `sub_82486470(obj, gestionnaire
+  de mouvements = sub_8246DF00(*(0x8317B870)), allocateur sub_8267D450(), genre 1)` (vtable 0x820189C0) puis lance la
+  lecture (`sub_827DB078`). À la fin de la lecture, `sub_824868F8(obj)` parcourt l'arbre PACH et **inscrit chaque acte
+  dans le gestionnaire** : case `sub_8246E8C8(gest, n°, r20, r22)`, fiche `sub_8246E000(case, n°)`, puis
+  `sub_82486648(fiche, données décompressées, obj+48, obj+52)` (fiche +8 = données, +2 = nombre de blocs, +4 = table
+  tirée des blocs). Le jeu ne relit donc pas le PACH ensuite : une scène ajoutée doit être **inscrite** de la même
+  façon, juste après `sub_824868F8` (crochet), avec ses données dans la mémoire du jeu. Une demande d'acte :
+  `sub_8247AD50(modèle, acte, sous-acte, piste)` → `sub_8247A7E8` ; le mouvement est cherché par un appel virtuel
+  (+92) du gestionnaire (`sub_82475770`).
+- **Coût estimé pour une 1re scène SvR jouée** : inscrire un acte (crochet, 1-2 jours, à vérifier en échangeant
+  deux actes de WWE '12) ; convertir sa banque YMKs en acte (2-3 jours, d'après `svr11_entrance.h`) ; la fiche WCID qui
+  la fait jouer (1 jour). Pas faisable proprement avant le 2026-11-19 ; à reprendre après.
 
 ## 45. NXT, 4e show de la semaine (2026-11-13, `wwe12_universe_nxt`, coupé par défaut, pas fini)
 
