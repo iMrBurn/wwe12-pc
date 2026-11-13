@@ -6152,23 +6152,38 @@ extern "C" REX_FUNC(sub_826F1CF0) {
 }
 REX_EXTERN(__imp__sub_826EB218);
 REX_EXTERN(__imp__sub_826D0840);
+thread_local bool t_making_nxt = false;  // sub_826EB218 is making NXT's booker
 extern "C" REX_FUNC(sub_826EB218) {
-  __imp__sub_826EB218(ctx, base);
-  const u32 booker = ctx.r3.u32;
-  if (!booker || bd::mem::try_load<u32>(booker) != kBookerRaw)
-    return;
   PPCContext x = ctx;
   x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
   const u32 view = x.r1.u32 + 0x800;
   Call(x, base, __imp__sub_826CDC48, view);
   const u32 show = Call(x, base, __imp__sub_826D0840, view);
+  if (show == 3)
+    NxtBrands(x, base, Call(x, base, __imp__sub_82683A30, 0));  // before the booker reads the record
+  t_making_nxt = show == 3;
+  __imp__sub_826EB218(ctx, base);
+  t_making_nxt = false;
+  const u32 booker = ctx.r3.u32;
+  if (!booker || bd::mem::try_load<u32>(booker) != kBookerRaw)
+    return;
   if (show == 3) {
     g_nxt_booker = booker;
-    NxtBrands(x, base, Call(x, base, __imp__sub_82683A30, 0));
     BD_INFO("[univers] NXT: booker {:08X}", booker);
   } else if (g_nxt_booker == booker) {
     g_nxt_booker = 0;
   }
+}
+
+// The booker's constructor reads its show's roster with the show number written in the code (RAW sub_826F1950:
+// sub_826F1308(this, 0); SmackDown 1): NXT's booker reads show 3's (NXT's card had RAW's Superstars, 2026-11-13).
+REX_EXTERN(__imp__sub_826F1308);
+extern "C" REX_FUNC(sub_826F1308) {
+  if (t_making_nxt && ctx.r4.u32 == 0) {
+    ctx.r4.u64 = 3;
+    BD_INFO("[univers] NXT: booker reads show 3's roster");
+  }
+  __imp__sub_826F1308(ctx, base);
 }
 
 REX_EXTERN(__imp__sub_826F19E0);
