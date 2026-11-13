@@ -1572,14 +1572,18 @@ void Chosen(const PPCContext &in, u8 *base, u32 answer) {
 // ---- the Universe's schedule (as WWE 2K14's EDIT CALENDAR) -----------------------------------------
 //
 // U + 0xDE00: 7 bytes, a weekday each (Monday first) = the weekly show airing then (0 RAW, 1
-// SmackDown, 2 Superstars, 0xFF none); Sunday is never read there (PPVs). Only shows 0-2 have a
-// booker (sub_826EB218), so only they can be scheduled. U + 0xDDD0: 48 bytes, month * 4 + week = the
+// SmackDown, 2 Superstars, 3 NXT, 0xFF none); Sunday is never read there (PPVs). Shows 0-2 have their own
+// booker (sub_826EB218), NXT uses the RAW one. U + 0xDDD0: 48 bytes, month * 4 + week = the
 // PPV (10-22) or 0xFF. Show records: U + 27360 + k * 984 (+832 name; +929 + b: uses brand b,
 // 0 RAW, 1 SmackDown). WWE '12's own SHOW EDIT only flips a show between Monday and Friday (and its
 // label follows the show, not the table).
 
 constexpr u32 kWeekTable = 0xDE00, kPpvTable = 0xDDD0, kShowRecords = 27360, kShowRecordSize = 984;
 constexpr u32 kNoShow = 0xFF;
+// Weekly shows offered: RAW, SmackDown, Superstars and the game's hidden show 3 "NXT" (brands 0 and 1, its own logo;
+// booked by the RAW booker, as the factory gives shows 3-9; tested 2026-11-13 with the dev cvar
+// wwe12_universe_show3_day: its cards are made and shown like the others).
+constexpr u32 kWeeklyShows = 4;
 
 struct CalendarWords {
   const char *calendar, *weekly, *ppvs, *days[6], *no_show, *move, *remove, *host, *raw, *smackdown,
@@ -1678,7 +1682,7 @@ void PickWeeklyShow(const PPCContext &in, u8 *base) {
   if (!u)
     return;
   std::vector<std::string> shows;
-  for (u32 k = 0; k < 3; ++k)
+  for (u32 k = 0; k < kWeeklyShows; ++k)
     shows.push_back(ShowName(u, k));
   Choose(in, base, w.pick_show, shows, [](const PPCContext &in, u8 *base, size_t show) {
     const CalendarWords &w = CWords();
@@ -1842,7 +1846,9 @@ void EditCalendar(const PPCContext &in, u8 *base) {
 // number (universe_shows.txt: "matches <0 RAW / 1 SmackDown / 2 Superstars / 10 PPVs> <n>").
 
 constexpr u32 kBookerRaw = 0x8203EB08, kBookerSmackDown = 0x8203EB1C, kBookerSuperstars = 0x8203EB30;
-std::atomic<u32> g_matches[4] = {0, 0, 0, 0};  // RAW, SmackDown, Superstars, PPVs (0: the game's)
+std::atomic<u32> g_matches[5] = {0, 0, 0, 0, 0};  // RAW, SmackDown, Superstars, PPVs, NXT (0: the game's)
+constexpr u32 kNxtSlot = 4;
+u32 MatchSlot(u32 key) { return key >= 10 ? 3 : key == 3 ? kNxtSlot : std::min<u32>(key, 2); }
 std::atomic<bool> g_matches_loaded{false};
 
 std::filesystem::path ShowsFile() {
@@ -1860,7 +1866,7 @@ void LoadMatchCounts() {
   while (std::getline(f, line)) {
     u32 key = 0, n = 0;
     if (std::sscanf(line.c_str(), "matches %u %u", &key, &n) == 2 && n <= 8)
-      g_matches[key >= 10 ? 3 : std::min<u32>(key, 2)] = n;
+      g_matches[MatchSlot(key)] = n;
   }
 }
 
@@ -1869,13 +1875,13 @@ void SaveMatchCounts() {
   if (file.empty())
     return;
   std::ofstream f(file);
-  const u32 keys[4] = {0, 1, 2, 10};
-  for (u32 i = 0; i < 4; ++i)
+  const u32 keys[5] = {0, 1, 2, 10, 3};
+  for (u32 i = 0; i < 5; ++i)
     if (g_matches[i])
       f << "matches " << keys[i] << ' ' << g_matches[i] << '\n';
 }
 
-// The number of matches of one kind of show (0 RAW, 1 SmackDown, 2 Superstars, 3 the PPVs).
+// The number of matches of one kind of show (0 RAW, 1 SmackDown, 2 Superstars, 3 the PPVs, 4 NXT).
 void ChooseMatchCount(const PPCContext &in, u8 *base, u32 which, const std::string &name,
                       std::function<void(const PPCContext &, u8 *)> after = {}) {
   const CalendarWords &w = CWords();
@@ -1906,7 +1912,7 @@ void EditMatches(const PPCContext &in, u8 *base) {
   if (!u)
     return;
   LoadMatchCounts();
-  std::vector<std::string> shows = {ShowName(u, 0), ShowName(u, 1), ShowName(u, 2), w.all_ppvs};
+  std::vector<std::string> shows = {ShowName(u, 0), ShowName(u, 1), ShowName(u, 2), w.all_ppvs, ShowName(u, 3)};
   Choose(in, base, w.matches, shows, [shows](const PPCContext &in, u8 *base, size_t which) {
     ChooseMatchCount(in, base, u32(which), shows[which]);
   });
@@ -1963,9 +1969,9 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
   g_screen = screen;
   if (weekday < 6) {
     const u8 show = bd::mem::load<u8>(u + kWeekTable + weekday);
-    if (show > 2) {  // empty (or a show without a booker): put one here
+    if (show >= kWeeklyShows) {  // empty (or a show we don't schedule): put one here
       std::vector<std::string> shows;
-      for (u32 k = 0; k < 3; ++k)
+      for (u32 k = 0; k < kWeeklyShows; ++k)
         shows.push_back(ShowName(u, k) + "  (" + ShowDay(u, k) + ")");
       Choose(in, base, std::string(w.days[weekday]) + "\n" + sw.put, shows,
              [screen, weekday](const PPCContext &in, u8 *base, size_t k) {
@@ -6086,14 +6092,38 @@ struct Rested {
 };
 thread_local std::vector<Rested> t_rested;  // this card's rested Superstars (cleared when a card starts)
 
+// NXT (show 3) is booked by a RAW booker: the booker made for it is remembered so it gets its own number of matches.
+// sub_826EB218 makes the booker of today's show (sub_826D0840 on a Universe view, as it does).
+u32 g_nxt_booker = 0;
+REX_EXTERN(__imp__sub_826EB218);
+REX_EXTERN(__imp__sub_826D0840);
+extern "C" REX_FUNC(sub_826EB218) {
+  __imp__sub_826EB218(ctx, base);
+  const u32 booker = ctx.r3.u32;
+  if (!booker || bd::mem::try_load<u32>(booker) != kBookerRaw)
+    return;
+  PPCContext x = ctx;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x800;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 show = Call(x, base, __imp__sub_826D0840, view);
+  if (show == 3) {
+    g_nxt_booker = booker;
+    BD_INFO("[univers] NXT: booker {:08X}", booker);
+  } else if (g_nxt_booker == booker) {
+    g_nxt_booker = 0;
+  }
+}
+
 REX_EXTERN(__imp__sub_826F19E0);
 extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
   // a "return 4" shared with other code (a match calls it with r3 = 0 / 1: crash seen 2026-10-27
   // when it was read unchecked): only a booker's r3 is a pointer to one of their vtables
   const u32 vtbl = bd::mem::try_load<u32>(ctx.r3.u32);
+  const bool nxt = vtbl == kBookerRaw && ctx.r3.u32 == g_nxt_booker;
   __imp__sub_826F19E0(ctx, base);
   if (Enabled() && (vtbl == kBookerRaw || vtbl == kBookerSmackDown)) {
-    const u32 slot = vtbl == kBookerRaw ? 0 : 1;
+    const u32 slot = vtbl == kBookerRaw ? (nxt ? kNxtSlot : 0) : 1;
     t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(slot, ctx.r3.u32);
     t_weekly_matches = g_matches[slot] ? ctx.r3.u32 : 0;
@@ -6755,8 +6785,8 @@ bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen) {
     return false;
   const u32 record = screen - 28 + 320;
   const u32 show = bd::mem::load<u8>(record + 927);
-  const u32 which = show < 3 ? show : show >= 10 && show <= 22 ? 3 : 4;
-  if (which > 3)
+  const u32 which = show < 3 ? show : show == 3 ? kNxtSlot : show >= 10 && show <= 22 ? 3 : 5;
+  if (which > kNxtSlot)
     return false;
   bd::mem::store<u32>(screen + 64, 0);
   const char *n = bd::mem::try_at<const char>(record + 832);
