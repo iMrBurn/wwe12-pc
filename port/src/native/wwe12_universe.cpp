@@ -4602,7 +4602,7 @@ constexpr u32 kMoreEvent = 200;  // (queued as event 200 + kind)
 enum MoreKind : u32 {
   kCashInWon, kCashInLost, kStreak5, kStreak10, kStreak15, kLosing5,
   kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical,
-  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMoreKinds
+  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMoreKinds
 };
 // (its argument in the news' +10, u16, which the game neither clears nor reads: a title, title + 256 * another title
 // or title + 256 * a number)
@@ -4919,7 +4919,14 @@ void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
   if (who.empty() || s_done.count(key))
     return;
   if (hidden_side != ~0u) {
+    // (a tag match: the hidden one is the partner of a Superstar on his side, test of 2026-11-13)
     s_done.insert(key);
+    for (const auto &[id, side] : who)
+      if (side == hidden_side) {
+        QueueNews(kMoreEvent + kMysteryPartner, kNewsQualified, id, 0);
+        BD_INFO("[univers] news: mystery partner for {}", id);
+        return;
+      }
     for (const auto &[id, side] : who)
       if (side != hidden_side) {
         QueueNews(kMoreEvent + kMystery, kNewsQualified, id, 0);
@@ -5235,7 +5242,14 @@ u32 MoreNewsText(u32 id) {
         "Les rumeurs vont bon train en coulisses : qui affrontera %s ce soir ?",
         "Hinter den Kulissen brodeln die Ger\xC3\xBC" "chte: Wer tritt heute Abend gegen %s an?",
         "\xC2\xA1Los rumores corren entre bastidores sobre qui\xC3\xA9n se enfrentar\xC3\xA1 a %s esta noche!",
-        "Nel backstage girano voci su chi affronter\xC3\xA0 %s stasera!"}}};
+        "Nel backstage girano voci su chi affronter\xC3\xA0 %s stasera!"}},
+      {{"MYSTERY PARTNER", "PARTENAIRE MYST\xC3\x88RE", "MYSTERI\xC3\x96SER PARTNER", "COMPA\xC3\x91" "ERO MISTERIOSO",
+        "PARTNER MISTERIOSO"},
+       {"Rumors swirl backstage over who will team with %s tonight!",
+        "Les rumeurs vont bon train en coulisses : qui fera \xC3\xA9quipe avec %s ce soir ?",
+        "Hinter den Kulissen brodeln die Ger\xC3\xBC" "chte: Wer bildet heute Abend ein Team mit %s?",
+        "\xC2\xA1Los rumores corren entre bastidores sobre qui\xC3\xA9n har\xC3\xA1 equipo con %s esta noche!",
+        "Nel backstage girano voci su chi far\xC3\xA0 coppia con %s stasera!"}}};
   const u32 kind = g_news_more - 1;
   const bool title = id == 27068 || id == 27070;
   std::string text = title ? kTexts[kind].title[CurrentLang()] : kTexts[kind].line[CurrentLang()];
