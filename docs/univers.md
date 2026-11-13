@@ -1175,3 +1175,10 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   Create a Story, un 2e rôle vide — la cible n'était pas donnée —, ou les scripts PGEN / GMEV). Ensuite : donner la
   cible en rôle 1, comparer avec l'entrée qu'écrit Create a Story pour la même scène (`sub_8275A958`, aux et rôles),
   et choisir une scène d'attaque qui se joue dans l'arène.
+- **2e essai (2026-11-13)** : la demande remplie comme Create a Story (aux = l'arène du match, 6 rôles, catcheurs codés
+  par `sub_82A342B0(id, 0, 1)` : 512 donne 0xC800, l'interférant en rôle 0). La scène se charge plus loin
+  (`/ETEX/0200`, `/CUTR/MINI`, `/SOBJ/3574` et `/SOBJ/5002` trouvés, `/EVPU/4000`, `/EVZU/4000`), « scene script 4000 »,
+  passage à 30 i/s, le jeu dessine encore (32 images/s) mais l'**écran reste noir** (jeu arrêté). Hypothèse : une scène
+  de Create a Story a besoin de son propre lieu (coulisses : un autre plateau que l'arène du match) et de ses acteurs
+  chargés ; à voir avec Mods et un journal de la préparation de Create a Story (quel `/STG/` et quels modèles elle
+  charge). L'expérience reste coupée (cvars de dev à 0).
