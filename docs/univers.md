@@ -1247,6 +1247,16 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
 - **Coût estimé pour une 1re scène SvR jouée** : inscrire un acte (crochet, 1-2 jours, à vérifier en échangeant
   deux actes de WWE '12) ; convertir sa banque YMKs en acte (2-3 jours, d'après `svr11_entrance.h`) ; la fiche WCID qui
   la fait jouer (1 jour). Pas faisable proprement avant le 2026-11-19 ; à reprendre après.
+- **Test du 2026-11-13 (`wwe12_universe_act_swap_from/_to`, journal du lecteur)** : le lecteur UN00 (genre 1) ne
+  charge **que les actes choisis pour le match** (5 vus : 32411, 32432, 32323, 32209, 32124), inscrits par
+  `sub_82486648(fiche, données décompressées)` ; les autres numéros n'existent pas dans le gestionnaire (d'où « act
+  32121 not found »). Donc pour jouer une scène à nous : remplacer, dans `sub_82486648`, les données d'un acte choisi
+  par les nôtres (en mémoire du jeu ; le jeu libère les siennes ensuite), ou faire choisir un numéro nouveau (fiche
+  WCID + lecture d'un PACH servi). Forme d'un acte : un enregistrement (en-tête 0x50 + 0x28 × blocs, genre +0x20 = 3
+  ou 149), un bloc par piste nommé `%04d%04d` (x, y) comme les entrées converties par `svr11_entrance.h` : y 0-59 = un
+  rôle (catcheur, bloc YANM « modèle » mode 2), 60 / 61 / 62 = caméra (2-3 pistes chacun). SvR 2011 a 60, 61 et 66 :
+  la correspondance caméra 62 ↔ 66 est à trouver. Les essais en jeu seront nombreux (chaque erreur de conversion se
+  voit seulement à l'écran).
 
 ## 45. NXT, 4e show de la semaine (2026-11-13, `wwe12_universe_nxt`, coupé par défaut, pas fini)
 
