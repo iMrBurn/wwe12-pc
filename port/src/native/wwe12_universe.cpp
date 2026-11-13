@@ -103,6 +103,8 @@ void UltimateTournamentResult(uint32_t a, uint32_t b, uint32_t winner);
 bool UltimateTourneySemi(const PPCContext &x, uint8_t *base, uint32_t a, uint32_t b, uint32_t day);
 bool UltimateVacantTitle(const PPCContext &x, uint8_t *base, uint32_t title);
 bool UltimateTourneyPossible(const PPCContext &in, uint8_t *base, uint32_t title);
+// back on the Universe menu after TITLE MANAGEMENT: a vacated show title's question (tournament or vacant)
+void UltimateAskVacant(const PPCContext &in, uint8_t *base);
 // (the interference's type chosen by the player: the box's question while it asks ours, at the end of the file)
 uint32_t InterferenceQuestionText(uint32_t id);
 bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card);
@@ -1345,10 +1347,10 @@ extern "C" REX_FUNC(sub_82565390) {
     const u32 row = bd::mem::load<u32>(screen + 28) + bd::mem::load<u32>(screen + 2520);
     const u32 title = row < 64 ? bd::mem::load<u32>(screen + 380 + row * 24) : kTitleCount;
     // (with tournaments on, a show's title may be vacated: a tournament crowns the next champion)
-    // (a tag title: no tournament, still refused)
+    // (with the unpredictable Universe a single show title may be vacant, a tournament or not, asked after; a tag
+    // title: still refused)
     if (title < kTitleCount && TitleUsedByAShow(ctx, base, title) &&
-        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title) ||
-         !UltimateTourneyPossible(ctx, base, title))) {  // (4 free contenders, or it would stay vacant)
+        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title))) {
       BD_INFO("[univers] titles: VACATE refused, a show uses title {}", title);
       Call(ctx, base, __imp__sub_8254E680, kTitleUsedText);
       return;
@@ -6008,6 +6010,7 @@ extern "C" REX_FUNC(sub_824D3458) {
       CloseTitles(ctx, base);
       bd::mem::store<u32>(g_screen + 224, 1);
       g_step = Step::kIdle;
+      UltimateAskVacant(ctx, base);  // ("ultimate" Universe: a show title vacated: tournament or vacant?)
     }
   } else if (g_step != Step::kIdle && ctx.r3.u32 == g_screen) {
     if (g_step == Step::kMenu || g_step == Step::kAttire || g_step == Step::kChoose) {
@@ -8753,11 +8756,16 @@ void UltimateDaily(const PPCContext &x0, u8 *base, u32 u, u32 day, bool first) {
     std::ifstream f(StatsFile());
     std::string line;
     u32 t = 0, d = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
-    while (std::getline(f, line))
+    std::set<u32> ended;
+    while (std::getline(f, line)) {
       if (std::sscanf(line.c_str(), "tourney %u %u %u %u %u %u", &t, &d, &s1, &s2, &s3, &s4) == 6 && d <= day)
-        latest[t] = d;
+        latest[t] = d, ended.erase(t);
+      else if (std::sscanf(line.c_str(), "tourneyend %u %u", &t, &d) == 2 && d <= day)
+        ended.insert(t);
+    }
     for (const auto &[title, since] : latest)
-      if (title < 23 && day > since + 42 && (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) == kNobody) {
+      if (title < 23 && !ended.count(title) && day > since + 42 &&
+          (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) == kNobody) {
         BD_INFO("[univers] tournament: title {}'s tournament given up, a new start", title);
         UltimateTitleVacated(x, base, title);
       }
@@ -8979,14 +8987,25 @@ bool UltimateBeforeVacate(const PPCContext &in, u8 *base, u32 title) {
   seeds.erase(std::remove(seeds.begin(), seeds.end(), champ), seeds.end());
   if (seeds.size() > 4)
     seeds.resize(4);
-  if (seeds.size() < 4) {
-    BD_INFO("[univers] tournament: title {} not vacated, only {} free contenders", title, seeds.size());
-    return false;
-  }
-  t_seed_title = title;
+  t_seed_title = title;  // (the player's vacate: asked after, tournament or vacant; fewer than 4: vacant)
   t_seeds = std::move(seeds);
   return true;
 }
+
+namespace {
+struct VacantAsk {
+  u32 title;
+  std::vector<u32> seeds;
+};
+std::mutex g_vacant_lock;
+std::vector<VacantAsk> g_vacant_ask;  // show titles the player vacated, for the question
+
+void StartTourney(u32 title, u32 day, const std::vector<u32> &seeds) {
+  AppendStats({fmt::format("tourney {} {} {} {} {} {}", title, day, seeds[0], seeds[1], seeds[2], seeds[3])});
+  QueueNews3(kMoreEvent + kTourneyStart, seeds[0], seeds[1], seeds[2], title);
+  BD_INFO("[univers] tournament: title {} vacant, seeds {} {} {} {}", title, seeds[0], seeds[1], seeds[2], seeds[3]);
+}
+}  // namespace
 
 // a title's place 0 became nobody: a tournament, for a weekly show's title (fewer than 4 free contenders, or called
 // again for a tournament given up: the ranking's first takes the title, it never stays vacant)
@@ -9004,17 +9023,67 @@ void UltimateTitleVacated(const PPCContext &in, u8 *base, u32 title) {
   if (!used)
     return;
   const u32 day = bd::mem::load<u32>(u + kUniverseDay);
-  const std::vector<u32> seeds = t_seed_title == title ? t_seeds : TourneySeeds(x, base, u, title);
-  t_seed_title = 0xFF;
-  if (seeds.size() < 4) {
-    BD_INFO("[univers] tournament: title {} vacant, only {} free contenders: no tournament", title, seeds.size());
-    if (!seeds.empty())
-      Call(x, base, __imp__sub_82A3A060, title, seeds[0], 0);  // (the ranking's first: never vacant for good)
+  if (t_seed_title == title) {  // the player's: the question when back on the Universe menu
+    std::lock_guard<std::mutex> lock(g_vacant_lock);
+    g_vacant_ask.push_back({title, t_seeds});
+    t_seed_title = 0xFF;
+    BD_INFO("[univers] tournament: title {} vacated by the player, {} contenders: to ask", title,
+            g_vacant_ask.back().seeds.size());
     return;
   }
-  AppendStats({fmt::format("tourney {} {} {} {} {} {}", title, day, seeds[0], seeds[1], seeds[2], seeds[3])});
-  QueueNews3(kMoreEvent + kTourneyStart, seeds[0], seeds[1], seeds[2], title);
-  BD_INFO("[univers] tournament: title {} vacant, seeds {} {} {} {}", title, seeds[0], seeds[1], seeds[2], seeds[3]);
+  // (a tournament given up: another one if 4 are free, else the title stays vacant - "tourneyend" ends the retries)
+  const std::vector<u32> seeds = TourneySeeds(x, base, u, title);
+  if (seeds.size() < 4) {
+    AppendStats({fmt::format("tourneyend {} {}", title, day)});
+    BD_INFO("[univers] tournament: title {} stays vacant, only {} free contenders", title, seeds.size());
+    return;
+  }
+  StartTourney(title, day, seeds);
+}
+
+void UltimateAskVacant(const PPCContext &in, u8 *base) {
+  VacantAsk v;
+  {
+    std::lock_guard<std::mutex> lock(g_vacant_lock);
+    if (g_vacant_ask.empty())
+      return;
+    v = g_vacant_ask.front();
+    g_vacant_ask.erase(g_vacant_ask.begin());
+  }
+  static const char *const kAsk[5] = {"The %s is vacant.\nHow will the next champion be decided?",
+                                      "Le %s est vacant.\nComment d\xC3\xA9signer le prochain champion ?",
+                                      "Der %s ist vakant.\nWie wird der n\xC3\xA4" "chste Champion bestimmt?",
+                                      "El %s est\xC3\xA1 vacante.\n\xC2\xBF" "C\xC3\xB3mo se decidir\xC3\xA1 el pr\xC3\xB3ximo "
+                                      "campe\xC3\xB3n?",
+                                      "Il %s \xC3\xA8 vacante.\nCome si decider\xC3\xA0 il prossimo campione?"};
+  static const char *const kTourney[5] = {"4-MAN TOURNAMENT", "TOURNOI \xC3\x80 4", "TURNIER MIT 4",
+                                          "TORNEO DE 4", "TORNEO A 4"};
+  static const char *const kVacant[5] = {"LEAVE IT VACANT", "LAISSER VACANT", "VAKANT LASSEN", "DEJARLO VACANTE",
+                                         "LASCIARLO VACANTE"};
+  static const char *const kFew[5] = {"The %s stays vacant (fewer than 4 free contenders for a tournament).",
+                                      "Le %s reste vacant (moins de 4 pr\xC3\xA9tendants libres pour un tournoi).",
+                                      "Der %s bleibt vakant (weniger als 4 freie Herausforderer f\xC3\xBCr ein Turnier).",
+                                      "El %s queda vacante (menos de 4 aspirantes libres para un torneo).",
+                                      "Il %s resta vacante (meno di 4 sfidanti liberi per un torneo)."};
+  const std::string name = TitleName(in, base, v.title);
+  const int lang = int(CurrentLang());
+  char text[512];
+  if (v.seeds.size() < 4) {
+    std::snprintf(text, sizeof(text), kFew[lang], name.c_str());
+    Inform(in, base, text);
+    return;
+  }
+  std::snprintf(text, sizeof(text), kAsk[lang], name.c_str());
+  Choose(in, base, text, {kTourney[lang], kVacant[lang]}, [v](const PPCContext &in, u8 *base, size_t k) {
+    if (k == 0) {
+      const u32 u = Call(in, base, __imp__sub_82683A30, 0);
+      if (u)
+        StartTourney(v.title, bd::mem::load<u32>(u + kUniverseDay), v.seeds);
+    } else {
+      BD_INFO("[univers] tournament: title {} left vacant by the player", v.title);
+    }
+    UltimateAskVacant(in, base);  // (another vacated title)
+  });
 }
 
 // a singles result: a semi-final's winner
@@ -9302,7 +9371,13 @@ void UltimateBookingAfter(const PPCContext &in, u8 *base, u32 booker, u32 entry,
   if (t_rematch_title >= 23 && UltimateTournamentsOn()) {
     PPCContext y = in;
     y.r1.u32 = (y.r1.u32 - 0x400) & ~0xFu;
-    if (Call(y, base, __imp__sub_826D4DC8, entry) && UltimateVacantTitle(y, base, bd::mem::load<u8>(entry + 1))) {
+    const u32 tt = bd::mem::load<u8>(entry + 1);
+    const u32 uu = Call(y, base, __imp__sub_82683A30, 0);
+    bool open = false;  // (only during its tournament: a vacant title without one is won in its title match, as 2K)
+    if (uu && Call(y, base, __imp__sub_826D4DC8, entry) && UltimateVacantTitle(y, base, tt))
+      for (const Tourney &n : OpenTourneys(y, base, bd::mem::load<u32>(uu + kUniverseDay)))
+        open = open || n.title == tt;
+    if (open) {
       Call(y, base, __imp__sub_826D4DD8, entry, 0);
       BD_INFO("[univers] tournament: match {} is no more title {}'s match (vacant, a tournament decides)", i,
               bd::mem::load<u8>(entry + 1));
