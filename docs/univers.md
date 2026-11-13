@@ -1107,3 +1107,7 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
 - Ces actes ne lisent **aucun** `/EVPx/NNNN` (journal des fichiers vide pendant eux), contrairement aux entrées
   (`/EVP2/139`) et aux victoires (`/EVPA/6139`) : les actes 32xxx viennent d'ailleurs (wuniData.pac ou un paquet déjà
   chargé ; « UNVS/%04d » reste à relier). C'est la prochaine inconnue avant tout portage de scènes.
+- Ce que l'utilisateur a vu : 1er match Triple H contre Swagger, interférence avec CM Punk (131) → les actes 32203 et
+  32307 sont les scènes de cette interférence (genre 1 : CM Punk ni allié ni rival des deux). 2e match (Cena 139
+  contre 218, entrées `/EVP2/139`, `/EVP3/218`, victoire `/EVPA/6139`) : 3 cinématiques = les actes 32102, 32323 et
+  32432 tirés au hasard (avant, pendant / après le match).
