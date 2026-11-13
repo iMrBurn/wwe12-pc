@@ -1193,7 +1193,7 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
 - **4e essai (2026-11-13)** : une scène de Create a Story jouée normalement lit sa table avec la préparation du match
   (`sub_8267CF38()` = 0x8317C850) à +12456 = 2 et +12460 = 4 (puis 7 / 3 ensuite) ; l'Univers, lui, a 2 et 0 au même
   moment. Notre scène imposée avec +12456 = 2 et +12460 = 4 (`wwe12_universe_scene_inject_mode`) est lue, la scène 4000
-  se charge (« scene script 4000 ») et le jeu ne fige plus, mais **il enchaîne sur le calendrier de Create a Story**
+  se charge (« scene script 4000 ») et le jeu ne fige plus, mais rien ne s'affiche (dit l'utilisateur) et **il enchaîne sur le calendrier de Create a Story**
   (le mode reste celui de Create a Story pour la suite du flux). Il faut donc remettre le mode Univers plus tôt
   (juste après le lancement de la scène, pas à la lecture suivante) ou repérer comment Create a Story revient à son menu.
   Note : avec `wwe12_dir_log`, le journal tourne à 5 Mo (`*.1.log`, `*.2.log`).
