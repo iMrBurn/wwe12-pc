@@ -7765,11 +7765,116 @@ REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_from, 0, "WWE12",
                      "Dev: Universe act (32100-32468) that plays another one (wwe12_universe_act_swap_to); 1 = every act with as "
                      "many blocks; 0 = off.");
 REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_to, 0, "WWE12", "Dev: the act played instead (see _from).");
-// (dev log) what a genre-1 reader registers: the record's id, its blocks, the first ids once per reader
+// (the UN00 reader being run; dev log: what a genre-1 reader registers, the first ids once per reader)
 thread_local u32 t_act_reader = 0, t_act_logged = 0;
+// ---- More Universe scenes: other games' scenes played at random among the game's own (user's 1.4 list) -------------
+//
+// Scenes converted to WWE '12 acts (tools/dev/svr_scene_convert.cpp: SvR 2011's UNVS scenes) are files
+// <user data>/universe_scenes/<act>.bin (an unpacked act record). When the match's reader registers one of the game's
+// acts (sub_82486648(record, unpacked data), UN00 = acts 32000-32999), the data is, by chance, one of ours of the same
+// list (the act's hundreds: 321xx, 322xx, 323xx, 324xx = the moment of the show) with the same roles (blocks y < 60):
+// the game's own choice of moment and cast, another scene. Ours are copied once into the game's memory and kept.
+REXCVAR_DEFINE_BOOL(wwe12_universe_more_scenes, false, "WWE12",
+                    "Universe: other games' scenes (universe_scenes folder) played at random instead of the game's "
+                    "(same moment, same number of Superstars). Experimental.");
+REXCVAR_DEFINE_INT32(wwe12_universe_more_scenes_chance, 50, "WWE12",
+                     "Universe: the chance (percent) that a scene of the game is replaced by an added one.");
+namespace {
+struct AddedScene {
+  u32 act = 0, list = 0;
+  u64 roles = 0;  // (RolesOf)
+  std::string name;
+  std::vector<u8> bytes;
+  u32 guest = 0;
+};
+std::mutex g_added_lock;
+std::vector<AddedScene> g_added;
+bool g_added_loaded = false;
+
+// an act record's roles: its blocks named %04d%04d with y < 60 (Superstars 0-5, objects above), as bits
+template <class Name>
+u64 RolesOf(u32 blocks, Name name_of) {
+  u64 roles = 0;
+  for (u32 i = 0; i < blocks && i < 64; ++i) {
+    const std::string nm = name_of(i);
+    const int y = nm.size() == 8 ? std::atoi(nm.substr(4).c_str()) : 99;
+    if (y < 60)
+      roles |= u64(1) << y;
+  }
+  return roles;
+}
+
+void LoadAddedScenes() {
+  if (g_added_loaded)
+    return;
+  g_added_loaded = true;
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator() || state->emulator()->user_data_root().empty())
+    return;
+  const std::filesystem::path dir = state->emulator()->user_data_root() / "universe_scenes";
+  std::error_code ec;
+  for (auto &e : std::filesystem::directory_iterator(dir, ec)) {
+    if (e.path().extension() != ".bin")
+      continue;
+    std::ifstream f(e.path(), std::ios::binary);
+    AddedScene sc;
+    sc.bytes.assign(std::istreambuf_iterator<char>(f), {});
+    sc.name = e.path().stem().string();
+    sc.act = u32(std::atoi(sc.name.c_str()));
+    if (sc.bytes.size() < 0x70 || sc.act < 32000 || sc.act > 32999)
+      continue;
+    const u8 *b = sc.bytes.data();
+    const u32 n = (u32(b[0x48]) << 24) | (u32(b[0x49]) << 16) | (u32(b[0x4A]) << 8) | b[0x4B];
+    if (0x70 + 0x28 * size_t(n) > sc.bytes.size())
+      continue;
+    sc.roles = RolesOf(n, [&](u32 i) { return std::string((const char *)b + 0x70 + 0x28 * i + 4, 8); });
+    sc.list = sc.act / 100 % 10;
+    BD_INFO("[univers] added scene {}: list {}, roles {:X}, {} bytes", sc.name, sc.list, sc.roles, sc.bytes.size());
+    g_added.push_back(std::move(sc));
+  }
+  BD_INFO("[univers] {} added scene(s) in {}", g_added.size(), dir.string());
+}
+
+// The data to register instead of the game's act `act` (data: its unpacked record), or 0.
+u32 AddedSceneFor(u32 act, u32 data) {
+  if (!REXCVAR_GET(wwe12_universe_more_scenes) || act < 32000 || act > 32999 || !data)
+    return 0;
+  std::lock_guard<std::mutex> lock(g_added_lock);
+  LoadAddedScenes();
+  if (g_added.empty())
+    return 0;
+  const u32 n = bd::mem::try_load<u32>(data + 0x48);
+  const u64 roles = RolesOf(n, [&](u32 i) {
+    const char *c = bd::mem::try_at<const char>(data + 0x70 + 0x28 * i + 4);
+    return c ? std::string(c, 8) : std::string();
+  });
+  std::vector<AddedScene *> same;
+  for (auto &sc : g_added)
+    if (sc.list == act / 100 % 10 && sc.roles == roles)
+      same.push_back(&sc);
+  static std::mt19937 rng{std::random_device{}()};
+  if (same.empty() || int(rng() % 100) >= REXCVAR_GET(wwe12_universe_more_scenes_chance)) {
+    BD_INFO("[univers] scene: act {} (roles {:X}) kept ({} added of its kind)", act, roles, same.size());
+    return 0;
+  }
+  AddedScene *sc = same[rng() % same.size()];
+  if (!sc->guest) {
+    sc->guest = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(sc->bytes.size()), 0x20);
+    if (!sc->guest)
+      return 0;
+    std::memcpy(bd::mem::at<u8>(sc->guest), sc->bytes.data(), sc->bytes.size());
+  }
+  BD_INFO("[univers] scene: act {} (roles {:X}) plays the added scene {}", act, roles, sc->name);
+  return sc->guest;
+}
+}  // namespace
+
 REX_EXTERN(__imp__sub_82486648);
 extern "C" REX_FUNC(sub_82486648) {
   const u32 rec = ctx.r3.u32, data = ctx.r4.u32;
+  if (t_act_reader)
+    if (const u32 ours = AddedSceneFor(bd::mem::load<u16>(rec), data))
+      ctx.r4.u64 = ours;
   __imp__sub_82486648(ctx, base);
   if (t_act_reader && REXCVAR_GET(wwe12_universe_act_swap_to) && t_act_logged < 12) {
     ++t_act_logged;
