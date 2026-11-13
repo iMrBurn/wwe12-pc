@@ -2881,6 +2881,7 @@ void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base);  // wwe12_
 
 void Wwe12DiscordUniverseMenu();  // wwe12_discord.cpp (Rich Presence: a Universe match is over)
 void FillGameHolder(u32 u);  // (two Money in the Bank briefcases, below)
+void Show3Experiment(u32 u);  // (dev, at the end of the file)
 void WeeklyNews(const PPCContext &in, u8 *base);  // (more news, below)
 
 extern "C" REX_FUNC(sub_82545A70) {
@@ -2891,6 +2892,7 @@ extern "C" REX_FUNC(sub_82545A70) {
   FlushNews(ctx, base);
   FillGameHolder(Call(ctx, base, __imp__sub_82683A30, 0));  // (two briefcases: one cashed in, the other's again)
   WeeklyNews(ctx, base);  // (more news: briefcase held long, long reigns, injured; once a day)
+  Show3Experiment(Call(ctx, base, __imp__sub_82683A30, 0));  // (dev: a 4th weekly show)
   g_universe_menu = ctx.r3.u32;
   g_universe_menu_for_bar = ctx.r3.u32;
   if (Enabled())
@@ -7530,5 +7532,40 @@ extern "C" REX_FUNC(sub_826BB878) {
   if (REXCVAR_GET(wwe12_universe_scene_inject) > 0) {
     g_inject_who = in.r4.u32;
     BD_INFO("[univers] scene table: interference by {}: a scene will be asked at the next read", g_inject_who);
+  }
+}
+
+// ---- Dev: a 4th weekly show (NXT idea, 1.4 list) ------------------------------------------------------------------
+//
+// The game has 10 weekly show records (U + 27360 + k * 984, k 0-9; +832 the name, +927 the show, +929 + b its brands)
+// but only shows 0-2 are scheduled. Its booker factory sub_826EB218 gives show 0 and shows 3-9 the RAW booker
+// (sub_826F1950), 1 SmackDown's (sub_826F1998), 2 Superstars' (sub_826F19E8), 10-22 the PPV one. With
+// wwe12_universe_show3_day = d (1 = Monday ... 6 = Saturday), an empty weekday d gets show 3 when the Universe menu
+// opens, and the 10 weekly records are logged: does the game make a card for it, and what does it show?
+REXCVAR_DEFINE_INT32(wwe12_universe_show3_day, 0, "WWE12",
+                     "Dev: put the weekly show 3 on this weekday (1 Monday .. 6 Saturday, 0 = off) to see what the game "
+                     "does with a 4th show.");
+void Show3Experiment(u32 u) {
+  const int32_t d = REXCVAR_GET(wwe12_universe_show3_day);
+  if (!u || d < 1 || d > 6)
+    return;
+  static bool s_logged = false;
+  if (!s_logged) {
+    s_logged = true;
+    for (u32 k = 0; k < 10; ++k) {
+      const u32 r = u + 27360 + k * 984;
+      std::string brands;
+      for (u32 b = 0; b < 13; ++b)
+        brands += bd::mem::load<u8>(r + 929 + b) ? fmt::format(" {}", b) : "";
+      const char *n = bd::mem::try_at<const char>(r + 832);
+      BD_INFO("[univers] show {}: name '{}' +927={} brands{} +896 logo {} +897 matchup {} +928 {:02X}", k,
+              n ? std::string(n, strnlen(n, 31)) : "?", bd::mem::load<u8>(r + 927), brands, bd::mem::load<u8>(r + 896),
+              bd::mem::load<u8>(r + 897), bd::mem::load<u8>(r + 928));
+    }
+  }
+  const u32 at = u + 0xDE00 + u32(d - 1);
+  if (bd::mem::load<u8>(at) == 0xFF) {
+    bd::mem::store<u8>(at, 3);
+    BD_INFO("[univers] show 3 put on weekday {}", d);
   }
 }
