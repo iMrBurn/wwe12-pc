@@ -4602,14 +4602,14 @@ constexpr u32 kMoreEvent = 200;  // (queued as event 200 + kind)
 enum MoreKind : u32 {
   kCashInWon, kCashInLost, kStreak5, kStreak10, kStreak15, kLosing5,
   kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical,
-  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMoreKinds
+  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMomentumHigh, kMomentumLow, kMoreKinds
 };
 // (its argument in the news' +10, u16, which the game neither clears nor reads: a title, title + 256 * another title
 // or title + 256 * a number)
 u32 g_news_more = 0;
 u32 g_news_more_arg = 0;  // the news' +10 while drawn
 std::string g_more_title1, g_more_title2;  // ... its titles' names, and number (set by the drawing hooks)
-std::string g_more_name2, g_more_name3;     // ... and its 2nd / 3rd Superstars' names (+2, +4)
+std::string g_more_name2, g_more_name3, g_more_brand;     // ... and its 2nd / 3rd Superstars' names (+2, +4)
 u32 g_more_number = 0;
 REXCVAR_DEFINE_BOOL(wwe12_universe_more_news, true, "WWE12",
                     "Universe: more news (a Money in the Bank cash-in's result, winning streaks of 5, 10 and 15, "
@@ -4955,6 +4955,33 @@ void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
   BD_INFO("[univers] news: #1 contender's match for title {} ({} Superstars)", title, who.size());
 }
 
+// Momentum (-50 .. 50, a Superstar's Universe record +102, set by sub_826D4710(record, value) only): a news when it
+// rises to 40 or more (Unstoppable Force) or falls to -30 or less (Locker Room Doubts), texts by Jay. The record is
+// U + index * 112 (index: sub_826D3320(id)).
+REX_EXTERN(__imp__sub_826D4710);
+extern "C" REX_FUNC(sub_826D4710) {
+  const u32 rec = ctx.r3.u32;
+  const int32_t before = rec ? int8_t(bd::mem::load<u8>(rec + 102)) : 0, after = std::clamp<int32_t>(ctx.r4.s32, -50, 50);
+  const PPCContext in = ctx;
+  __imp__sub_826D4710(ctx, base);
+  const int kind = before < 40 && after >= 40 ? int(kMomentumHigh) : before > -30 && after <= -30 ? int(kMomentumLow) : -1;
+  if (kind < 0 || !Enabled() || !REXCVAR_GET(wwe12_universe_more_news) || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u || rec < u || (rec - u) % 112)
+    return;
+  const int32_t index = int32_t((rec - u) / 112);
+  for (u32 id = 0; id < 512; ++id)
+    if (int32_t(Call(x, base, __imp__sub_826D3320, id)) == index) {
+      const u32 brand = Call(x, base, __imp__sub_826D2B50, id);
+      QueueNews(kMoreEvent + u32(kind), kNewsQualified, id, brand < 2 ? brand : 255);
+      BD_INFO("[univers] news: momentum of {} {} -> {}", id, before, after);
+      return;
+    }
+}
+
 // The winner of a #1 contender's match (entry +6 = 10) is the title's new #1 contender.
 void ContenderWonNews(u32 record, u32 winner_id) {
   if (!REXCVAR_GET(wwe12_universe_more_news) || !record || bd::mem::load<u8>(record + 6) != kContenderHeader ||
@@ -5013,7 +5040,9 @@ void MoreNewsNames(const PPCContext &in, u8 *base, u32 rec) {
   if (!g_news_more)
     return;
   const u32 kind = g_news_more - 1, a = g_news_more_arg & 0xFF, b = g_news_more_arg >> 8;
-  g_more_title1 = a < 23 ? TitleName(in, base, a) : std::string();
+  const bool momentum = kind == kMomentumHigh || kind == kMomentumLow;
+  g_more_title1 = a < 23 && !momentum ? TitleName(in, base, a) : std::string();
+  g_more_brand = !momentum ? std::string() : a == 0 ? "RAW" : a == 1 ? "SmackDown" : "WWE";
   g_more_title2 = kind == kDoubleGold && b < 23 ? TitleName(in, base, b) : std::string();
   g_more_number = kind == kDoubleGold ? 0 : b;
   g_more_name2 = rec ? NameOf(in, base, bd::mem::load<u16>(rec + 2)) : std::string();
@@ -5249,7 +5278,21 @@ u32 MoreNewsText(u32 id) {
         "Les rumeurs vont bon train en coulisses : qui fera \xC3\xA9quipe avec %s ce soir ?",
         "Hinter den Kulissen brodeln die Ger\xC3\xBC" "chte: Wer bildet heute Abend ein Team mit %s?",
         "\xC2\xA1Los rumores corren entre bastidores sobre qui\xC3\xA9n har\xC3\xA1 equipo con %s esta noche!",
-        "Nel backstage girano voci su chi far\xC3\xA0 coppia con %s stasera!"}}};
+        "Nel backstage girano voci su chi far\xC3\xA0 coppia con %s stasera!"}},
+      {{"UNSTOPPABLE FORCE", "FORCE IRR\xC3\x89SISTIBLE", "UNAUFHALTSAME KRAFT", "FUERZA IMPARABLE", "FORZA INARRESTABILE"},
+       {"%s's momentum is at an all-time high: critics call this the most dangerous competitor on {R} right now.",
+        "Le momentum de %s est au plus haut : les critiques y voient le concurrent le plus dangereux de {R} en ce moment.",
+        "Das Momentum von %s ist auf einem Rekordhoch: Kritiker sehen hier den gef\xC3\xA4hrlichsten Konkurrenten bei {R}.",
+        "El impulso de %s est\xC3\xA1 en su punto m\xC3\xA1s alto: la cr\xC3\xADtica lo ve como el rival m\xC3\xA1s peligroso "
+        "de {R} ahora mismo.",
+        "Il momentum di %s \xC3\xA8 al massimo: la critica lo considera il rivale pi\xC3\xB9 pericoloso di {R} in questo momento."}},
+      {{"LOCKER ROOM DOUBTS", "DOUTES EN COULISSES", "ZWEIFEL IN DER KABINE", "DUDAS EN EL VESTUARIO",
+        "DUBBI NELLO SPOGLIATOIO"},
+       {"Whispers backstage question whether %s can bounce back from the current downward spiral.",
+        "En coulisses, on se demande si %s pourra se relever de sa mauvaise pente actuelle.",
+        "Hinter den Kulissen wird gefl\xC3\xBCstert, ob %s aus der aktuellen Abw\xC3\xA4rtsspirale herausfindet.",
+        "Entre bastidores se preguntan si %s podr\xC3\xA1 salir de su mala racha actual.",
+        "Nel backstage ci si chiede se %s riuscir\xC3\xA0 a riprendersi dalla sua spirale negativa."}}};
   const u32 kind = g_news_more - 1;
   const bool title = id == 27068 || id == 27070;
   std::string text = title ? kTexts[kind].title[CurrentLang()] : kTexts[kind].line[CurrentLang()];
@@ -5261,6 +5304,7 @@ u32 MoreNewsText(u32 id) {
   put("{U}", g_more_title2);
   put("{N}", std::to_string(g_more_number));
   put("{B}", g_more_name2);
+  put("{R}", g_more_brand);
   put("{C}", g_more_name3);
   static u32 s_at[2] = {};
   u32 &at = s_at[title];
