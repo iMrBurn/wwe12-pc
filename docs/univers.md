@@ -1121,3 +1121,9 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   au moment de l'interférence ; (2) des scènes d'autres jeux seraient des actes ajoutés à une copie servie de `UN00`
   (`m.pac`, par l'overlay de Mods) + des fiches ajoutées à une copie de `WCID` (`wuniData.pac`), seulement si le
   format de WWE '13 est le même (à vérifier : son `m.pac` / `UN00`).
+- **Les autres jeux (2026-11-13)** : WWE '13 (dossier extrait `Desktop\WWE13-Recomp-x64\WWE 13`) range ses actes dans
+  `pac/mot01.pac` (archive EPK8, entrées de 16 octets), groupe `UN00`, même en-tête que WWE '12 (« PACH 2, 0x4F… ») mais
+  bien plus petit (61 unités contre 30407) ; une seule table PACH lisible en clair (actes 32467-32468), le reste
+  probablement compressé (BPE, comme ailleurs). SvR 2011 n'a pas de groupe `UN` dans `m.pac`. 2K14-2K17 : seulement en
+  ISO (`modmaker_discs.txt`), à lire avec les outils de Mods (lecture d'ISO, BPE). `wuniData.pac` de WWE '13 n'a pas
+  la même forme (répertoire de 4000 entrées illisible tel quel : autre format ou chiffré).
