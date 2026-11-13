@@ -100,6 +100,11 @@ void UltimateTitleVacated(const PPCContext &in, uint8_t *base, uint32_t title);
 void UltimateTournamentResult(uint32_t a, uint32_t b, uint32_t winner);
 bool UltimateTourneySemi(const PPCContext &x, uint8_t *base, uint32_t a, uint32_t b, uint32_t day);
 bool UltimateVacantTitle(const PPCContext &x, uint8_t *base, uint32_t title);
+// (the interference's type chosen by the player: the box's question while it asks ours, at the end of the file)
+uint32_t InterferenceQuestionText(uint32_t id);
+bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card);
+void InterferenceKindBegin();
+void InterferenceKindEnd();
 
 REXCVAR_DEFINE_BOOL(wwe12_universe_qualifiers, false, "WWE12",
                     "Universe: qualifying matches before Money in the Bank and the Elimination Chamber, "
@@ -1198,6 +1203,10 @@ extern "C" REX_FUNC(sub_821A4400) {
   }
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
+  if (const u32 text = InterferenceQuestionText(id)) {  // (the interference box asking our question)
+    ctx.r3.u64 = text;
+    return;
+  }
   if (const u32 text = Enabled() ? QualNewsText(id) : 0) {
     ctx.r3.u64 = text;
     return;
@@ -4541,6 +4550,8 @@ REX_EXTERN(__imp__sub_8288EEF8);  // message box: its answer
 
 extern "C" REX_FUNC(sub_825572C8) {
   const u32 card = ctx.r3.u32;
+  if (InterferenceChoice(ctx, base, card))
+    return;  // (our question asked again in the interference box)
   // (the second holder's box: a NO puts the first one back as the game's holder, so the next offer asks him first again)
   static u32 s_first = 512;
   if ((g_second_offer >= 512 && s_first >= 512) || !TwoBriefcases()) {
@@ -7762,7 +7773,9 @@ extern "C" REX_FUNC(sub_826DC408) {
 
 extern "C" REX_FUNC(sub_826BCD40) {
   const u32 from = u32(ctx.lr);
+  InterferenceKindBegin();  // (the interference's type chosen by the player)
   __imp__sub_826BCD40(ctx, base);
+  InterferenceKindEnd();
   if (!REXCVAR_GET(wwe12_universe_scene_probe))
     return;
   const u32 mgr = bd::mem::try_load<u32>(0x83231548);
@@ -9185,4 +9198,132 @@ void UltimateBookingAfter(const PPCContext &in, u8 *base, u32 booker, u32 entry,
   BD_INFO("[univers] ultimate: match {} of the card is title {}'s rematch", i, t_rematch_title);
   t_rematch_title = 0xFF;
   (void)booker;
+}
+
+// ---- The interference's type, chosen by the player (user's 1.4 list, 2026-11-13) ----------------------------------
+// MATCH CARDS' interference box (Y on an entry that allows it: sub_82555788(card) opens the game's yes / no message box
+// *0x8324DEF0 with text 27916 "Would you like to interfere in this Match?", card + 4164 = 3; its per-frame code
+// sub_825572C8 reads the answer once the box is closed, sub_8288EEF8(box): YES -> the interferer's pick). After a
+// YES, the same box asks two questions of ours (text 27916 is ours while they are asked, sub_821A4400's hook):
+// "Attack both opponents?" YES = the game's kind 0 (rival of both: an attack before the match, then on both); else
+// "Help your ally?" YES = kind 2 (ally of both: helps until an opponent is down), NO = kind 1 (neither: holds the
+// referee). The game then goes on with its YES (a NO to the second question is turned into its YES: box + 72 = 0, as
+// sub_8288EEF8 answers box + 72 ^ 1 for a yes / no box), and the kind is forced where the game computes it
+// (sub_826BCD40 from the interferer's relations with the two opponents, sub_826CBCE8 read twice, table 0x8203D5C8:
+// -1 / -1 = 0, 0 = 1, +1 / +1 = 2): those two reads give the chosen relation, so the game queues its own scenes and
+// runs its own in-match behaviour for that kind. On with the unpredictable Universe (or its own setting).
+REXCVAR_DEFINE_INT32(wwe12_universe_interference_choice, -1, "WWE12",
+                     "Universe: after YES to an interference, choose its type (attack both / help an ally / hold the "
+                     "referee) (-1 = with the unpredictable Universe, 0 off, 1 on).");
+REX_EXTERN(__imp__sub_82555788);  // MATCH CARDS: the interference box (card)
+REX_EXTERN(__imp__sub_8254E340);  // screen manager: ready (state 3's first test)
+REX_EXTERN(__imp__sub_8254E1A8);  // screen manager: ready (its second test)
+REX_EXTERN(__imp__sub_826CBCE8);  // relations: a's value of b (-5..+5)
+
+namespace {
+std::atomic<int> g_if_stage{0};   // 0: none, 1: "attack both?" asked, 2: "help your ally?" asked
+std::atomic<int> g_if_kind{-1};   // the kind chosen, for the next sub_826BCD40
+thread_local int t_if_reads = -1;  // inside sub_826BCD40 with a kind forced: the relation reads done
+}  // namespace
+
+uint32_t InterferenceQuestionText(uint32_t id) {
+  const int stage = g_if_stage.load();
+  if (id != 27916 || stage <= 0)
+    return 0;
+  static const char *const kAsk[2][5] = {
+      {"Attack both opponents?\n(NO: other choices)", "Attaquer les deux adversaires ?\n(NON : autres choix)",
+       "Beide Gegner angreifen?\n(NEIN: andere M\xC3\xB6glichkeiten)",
+       "\xC2\xBF" "Atacar a los dos rivales?\n(NO: otras opciones)", "Attaccare entrambi gli avversari?\n(NO: altre scelte)"},
+      {"Help your ally?\n(NO: distract the referee)", "Aider ton alli\xC3\xA9 ?\n(NON : distraire l'arbitre)",
+       "Deinem Verb\xC3\xBCndeten helfen?\n(NEIN: den Ringrichter ablenken)",
+       "\xC2\xBF" "Ayudar a tu aliado?\n(NO: distraer al \xC3\xA1rbitro)",
+       "Aiutare il tuo alleato?\n(NO: distrarre l'arbitro)"}};
+  static u32 s_at[2] = {};
+  u32 &at = s_at[stage - 1];
+  if (!at)
+    at = REX_KERNEL_MEMORY()->SystemHeapAlloc(256, 0x10);
+  if (!at)
+    return 0;
+  const char *t = kAsk[stage - 1][CurrentLang()];
+  std::memset(bd::mem::at<char>(at), 0, 256);
+  std::memcpy(bd::mem::at<char>(at), t, std::min<size_t>(std::strlen(t), 255));
+  return at;
+}
+
+// MATCH CARDS per frame (before the game's own): true when our next question was asked (the game must not read this
+// answer)
+bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card) {
+  if (!UltimateOn(REXCVAR_GET(wwe12_universe_interference_choice)) || bd::mem::load<u32>(kInUniverseFlag) != 1) {
+    g_if_stage = 0;
+    return false;
+  }
+  if (bd::mem::load<u32>(card + 4164) != 3) {
+    g_if_stage = 0;  // (another state: our questions are over)
+    return false;
+  }
+  const u32 box = bd::mem::load<u32>(0x8324DEF0);
+  if (!box || bd::mem::load<u32>(box + 1820) != 0 || bd::mem::load<u32>(box + 1804) != 2)
+    return false;  // (still open, or not a yes / no box)
+  // the game's own conditions before it reads the answer (state 3 at 0x825574FC): the screen manager ready
+  // (sub_8254E340 / sub_8254E1A8 of *0x8317C5C4) and its countdown card + 4144 run out
+  const u32 screens = bd::mem::load<u32>(0x8317C5C4);
+  if (!screens || !Call(ctx, base, __imp__sub_8254E340, screens) || !Call(ctx, base, __imp__sub_8254E1A8, screens) ||
+      int32_t(bd::mem::load<u32>(card + 4144)) > 0)
+    return false;
+  const u32 answer = Call(ctx, base, __imp__sub_8288EEF8, box);
+  const int stage = g_if_stage.load();
+  const auto ask = [&](int next) {
+    g_if_stage = next;
+    Call(ctx, base, __imp__sub_82555788, card);
+    bd::mem::store<u32>(card + 4164, 3);
+    BD_INFO("[univers] interference: question {} asked", next);
+  };
+  if (stage == 0) {
+    if (answer == 1) {  // YES to the game's question: ours
+      g_if_kind = -1;
+      ask(1);
+      return true;
+    }
+    return false;
+  }
+  if (stage == 1) {
+    if (answer == 1) {
+      g_if_kind = 0;
+      g_if_stage = 0;
+      BD_INFO("[univers] interference: attack both opponents (kind 0)");
+      return false;  // (the game reads this YES: the interferer's pick)
+    }
+    ask(2);
+    return true;
+  }
+  // stage 2
+  g_if_kind = answer == 1 ? 2 : 1;
+  g_if_stage = 0;
+  if (answer != 1)
+    bd::mem::store<u32>(box + 72, 0);  // (the game reads YES)
+  BD_INFO("[univers] interference: {} (kind {})", answer == 1 ? "help an ally" : "hold the referee", g_if_kind.load());
+  return false;
+}
+
+// the relation reads of sub_826BCD40 (its first two: the interferer with each opponent) give the chosen kind's value
+extern "C" REX_FUNC(sub_826CBCE8) {
+  __imp__sub_826CBCE8(ctx, base);
+  if (t_if_reads < 0 || t_if_reads >= 2)
+    return;
+  ++t_if_reads;
+  const int kind = g_if_kind.load();
+  ctx.r3.u64 = u64(int64_t(kind == 0 ? -3 : kind == 2 ? 3 : 0));
+}
+
+// around sub_826BCD40 (its hook): the chosen kind, once
+void InterferenceKindBegin() {
+  if (g_if_kind.load() >= 0)
+    t_if_reads = 0;
+}
+void InterferenceKindEnd() {
+  if (t_if_reads >= 0) {
+    BD_INFO("[univers] interference: kind {} forced", g_if_kind.load());
+    g_if_kind = -1;
+  }
+  t_if_reads = -1;
 }
