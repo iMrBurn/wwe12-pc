@@ -1182,3 +1182,11 @@ Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'i
   de Create a Story a besoin de son propre lieu (coulisses : un autre plateau que l'arène du match) et de ses acteurs
   chargés ; à voir avec Mods et un journal de la préparation de Create a Story (quel `/STG/` et quels modèles elle
   charge). L'expérience reste coupée (cvars de dev à 0).
+- **3e essai (2026-11-13, scène 4315 de RSC3, celle de la mallette, sur le ring)** : même résultat. L'entrée est lue
+  (genre 1, aux 1, rôle 0 = 0x332E pour CM Punk 131, rôles 1-5 = 0xC800), tout se charge (`/EVPX/4315`, `/EVZX/4315`,
+  objets 2281, 2053, 5002), « scene script 4315 », puis écran noir. Ce n'est donc pas (seulement) le lieu. Pistes
+  restantes : (1) le joueur de scènes ne tourne peut-être qu'en mode Create a Story (`sub_8275A958` pose aussi l'objet
+  `sub_8267CF38()` +321..+325, +331 et vide +6200..+6600 ; Create a Story teste ctx+12460 == 4, l'Univers le met à 0) ;
+  (2) les rôles 1-5 vides alors que la scène en attend ; (3) le moment : le genre 1 est lu au tout début du match.
+  Prochaine étape conseillée : un journal de ces champs pendant une scène de Create a Story jouée normalement, à
+  comparer avec l'Univers. Expérience laissée coupée (cvars de dev).
