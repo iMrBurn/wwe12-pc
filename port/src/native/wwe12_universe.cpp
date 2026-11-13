@@ -94,6 +94,13 @@
 
 REXCVAR_DECLARE(uint32_t, user_language);
 
+// ("ultimate" Universe, tournaments for a vacant title, at the end of the file)
+bool UltimateTournamentsOn();
+void UltimateTitleVacated(const PPCContext &in, uint8_t *base, uint32_t title);
+void UltimateTournamentResult(uint32_t a, uint32_t b, uint32_t winner);
+bool UltimateTourneySemi(const PPCContext &x, uint8_t *base, uint32_t a, uint32_t b, uint32_t day);
+bool UltimateVacantTitle(const PPCContext &x, uint8_t *base, uint32_t title);
+
 REXCVAR_DEFINE_BOOL(wwe12_universe_qualifiers, false, "WWE12",
                     "Universe: qualifying matches before Money in the Bank and the Elimination Chamber, "
                     "with news.");
@@ -1310,12 +1317,16 @@ void VacateTitle(const PPCContext &in, u8 *base, u32 title) {
 // [+28] + [+2520] (cursor + scroll), its title at +380 + row * 24. In the Universe, a title a
 // weekly show uses stays: the game's message box says why.
 REX_EXTERN(__imp__sub_82565390);
+REX_EXTERN(__imp__sub_82A39CE8);  // title: tag team?
 extern "C" REX_FUNC(sub_82565390) {
   const u32 screen = ctx.r3.u32;
   if (Enabled() && bd::mem::load<u32>(kInUniverseFlag) == 1) {
     const u32 row = bd::mem::load<u32>(screen + 28) + bd::mem::load<u32>(screen + 2520);
     const u32 title = row < 64 ? bd::mem::load<u32>(screen + 380 + row * 24) : kTitleCount;
-    if (title < kTitleCount && TitleUsedByAShow(ctx, base, title)) {
+    // (with tournaments on, a show's title may be vacated: a tournament crowns the next champion)
+    // (a tag title: no tournament, still refused)
+    if (title < kTitleCount && TitleUsedByAShow(ctx, base, title) &&
+        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title))) {
       BD_INFO("[univers] titles: VACATE refused, a show uses title {}", title);
       Call(ctx, base, __imp__sub_8254E680, kTitleUsedText);
       return;
@@ -4270,6 +4281,8 @@ extern "C" REX_FUNC(sub_82A3A060) {
   BD_INFO("[univers] stats: title {} place {}: {} -> {} (day {}, from 0x{:08X})", title, place,
           old_holder, holder, day, u32(in.lr));
   TitleChangeNews(in, base, title, holder);
+  if (holder == kNobody && place == 0)
+    UltimateTitleVacated(in, base, title);  // ("ultimate" Universe: a tournament for a show's title)
 }
 
 // More news (1.4): a cash-in's result, streaks (see MoreNewsText).
@@ -4684,6 +4697,7 @@ enum MoreKind : u32 {
   kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMomentumHigh, kMomentumLow, kTop5Out,
   kPastGlory, kHistoricReign, kWrestleManiaRep, kTeamsFinalized,
   kRivalFeud, kRivalDominant, kRivalPayback, kRematch, kSurpriseReturn,  // ("ultimate" Universe, 2026-11-13)
+  kTourneyStart, kTourneyFinal,
   kMoreKinds
 };
 // (its argument in the news' +10, u16, which the game neither clears nor reads: a title, title + 256 * another title
@@ -5568,7 +5582,22 @@ u32 MoreNewsText(u32 id) {
         "%s est de retour ! La foule explose pour ce retour surprise apr\xC3\xA8s blessure !",
         "%s ist zur\xC3\xBC" "ck! Die Halle tobt bei dieser \xC3\xBC" "berraschenden R\xC3\xBC" "ckkehr nach der Verletzung!",
         "\xC2\xA1%s ha vuelto! \xC2\xA1" "El p\xC3\xBA" "blico estalla con este regreso sorpresa tras su lesi\xC3\xB3n!",
-        "%s \xC3\xA8 tornato! Il pubblico esplode per questo ritorno a sorpresa dopo l'infortunio!"}}};
+        "%s \xC3\xA8 tornato! Il pubblico esplode per questo ritorno a sorpresa dopo l'infortunio!"}},
+      {{"TOURNAMENT ANNOUNCED", "TOURNOI ANNONC\xC3\x89", "TURNIER ANGEK\xC3\x9CNDIGT", "TORNEO ANUNCIADO",
+        "TORNEO ANNUNCIATO"},
+       {"The {T} is vacant! %s, {B}, {C} and one more contender enter a tournament to crown a new champion.",
+        "Le {T} est vacant ! %s, {B}, {C} et un dernier pr\xC3\xA9tendant entrent dans un tournoi pour couronner "
+        "un nouveau champion.",
+        "Der {T} ist vakant! %s, {B}, {C} und ein weiterer Herausforderer k\xC3\xA4mpfen in einem Turnier um "
+        "den Titel.",
+        "\xC2\xA1" "El {T} est\xC3\xA1 vacante! %s, {B}, {C} y otro aspirante disputan un torneo por el t\xC3\xADtulo.",
+        "Il {T} \xC3\xA8 vacante! %s, {B}, {C} e un altro sfidante si contendono il titolo in un torneo."}},
+      {{"TOURNAMENT FINAL", "FINALE DU TOURNOI", "TURNIERFINALE", "FINAL DEL TORNEO", "FINALE DEL TORNEO"},
+       {"%s and {B} have reached the final: the vacant {T} is on the line!",
+        "%s et {B} sont en finale : le {T} vacant est en jeu !",
+        "%s und {B} stehen im Finale: Der vakante {T} steht auf dem Spiel!",
+        "\xC2\xA1%s y {B} llegan a la final: el {T} vacante est\xC3\xA1 en juego!",
+        "%s e {B} sono in finale: il {T} vacante \xC3\xA8 in palio!"}}};
   const u32 kind = g_news_more - 1;
   const bool title = id == 27068 || id == 27070;
   std::string text = title ? kTexts[kind].title[CurrentLang()] : kTexts[kind].line[CurrentLang()];
@@ -5692,6 +5721,9 @@ extern "C" REX_FUNC(sub_826CEF28) {
         StreakNews(g_last_result, day);
         // ("ultimate" Universe) a singles match's two Superstars and its winner: "vs <a> <b> <winner> <day>" (the
         // rivalry news), and a surprise return's news
+        if (g_last_result.size() == 2)  // a tournament's semi-final?
+          UltimateTournamentResult(g_last_result[0].first, g_last_result[1].first,
+                                   g_last_result[0].second ? g_last_result[0].first : g_last_result[1].first);
         if (g_last_result.size() == 2 && UltimateWantsVs())  // (nothing written while it is off)
           lines.push_back(fmt::format("vs {} {} {} {}", g_last_result[0].first, g_last_result[1].first,
                                       g_last_result[0].second ? g_last_result[0].first : g_last_result[1].first, day));
@@ -7482,7 +7514,8 @@ extern "C" REX_FUNC(sub_82554B68) {
   // ("ultimate" Universe) a singles match between rivals: "RIVALRY MATCH" (as WWE 2K14's header)
   // (not over another header than MATCH #n / MAIN EVENT, entry +6 1-9; not when a place is a hidden "???", entry
   // place +6 = 1: it would give the mystery away)
-  if (UltimateHeaderOn() && bd::mem::load<u8>(copy + 6) >= 1 && bd::mem::load<u8>(copy + 6) <= 9 &&
+  if ((UltimateHeaderOn() || UltimateTournamentsOn()) && bd::mem::load<u8>(copy + 6) >= 1 &&
+      bd::mem::load<u8>(copy + 6) <= 9 &&
       bd::mem::load<u8>(copy + 16 + 6) != 1 && bd::mem::load<u8>(copy + 16 + 12 + 6) != 1 &&
       !Call(x, base, __imp__sub_826D4DC8, copy) && Call(x, base, __imp__sub_826D4F90, copy) == 2) {
     const u32 out = x.r1.u32 + 0x100;
@@ -7494,10 +7527,16 @@ extern "C" REX_FUNC(sub_82554B68) {
     const bool qualifier = REXCVAR_GET(wwe12_universe_qualifiers) && u &&
                            PendingQualifier(a, b, bd::mem::load<u32>(u + kUniverseDay) / 336);
     const u32 layout = bd::mem::load<u32>(c + 292);
-    if (!qualifier && layout && a < 512 && b < 512 && UltimateRivalryHeader(x, base, a, b))
+    const bool semi = !qualifier && u && a < 512 && b < 512 &&
+                      UltimateTourneySemi(x, base, a, b, bd::mem::load<u32>(u + kUniverseDay));
+    if (!qualifier && layout && a < 512 && b < 512 && (semi || UltimateRivalryHeader(x, base, a, b)))
       if (const u32 header = Call(x, base, __imp__sub_824C5458, layout, 30)) {
-        static const char *const kRivalry[5] = {"RIVALRY MATCH", "MATCH DE RIVALIT\xC3\x89", "RIVALIT\xC3\x84TS-MATCH",
-                                                "COMBATE DE RIVALIDAD", "INCONTRO DI RIVALIT\xC3\x80"};
+        static const char *const kSemi[5] = {"TOURNAMENT SEMI-FINAL", "TOURNOI : DEMI-FINALE", "TURNIER: HALBFINALE",
+                                             "TORNEO: SEMIFINAL", "TORNEO: SEMIFINALE"};
+        static const char *const kRivalryOnly[5] = {"RIVALRY MATCH", "MATCH DE RIVALIT\xC3\x89",
+                                                    "RIVALIT\xC3\x84TS-MATCH", "COMBATE DE RIVALIDAD",
+                                                    "INCONTRO DI RIVALIT\xC3\x80"};
+        const char *const *kRivalry = semi ? kSemi : kRivalryOnly;
         static u32 s_text = 0;
         if (!s_text)
           s_text = REX_KERNEL_MEMORY()->SystemHeapAlloc(96, 0x10);
@@ -8390,6 +8429,31 @@ extern "C" REX_FUNC(sub_826DC758) {
 std::mutex g_contender_lock;
 extern "C" REX_FUNC(sub_826EF468) {
   const u32 entry = ctx.r3.u32, tpl = entry ? bd::mem::try_load<u32>(entry) : 0;
+  // a vacant title (tournament on): its "champion" slot (code 0, param 1) asks the first free rank instead
+  if (!ctx.r5.u32 && tpl && UltimateVacantTitle(ctx, base, bd::mem::try_load<u32>(entry + 12))) {
+    std::lock_guard<std::mutex> lock(g_contender_lock);
+    std::set<u16> asked;
+    for (u32 k = 0; k < 10; ++k)
+      if (bd::mem::load<u8>(tpl + 20 + 4 * k) == 0)
+        asked.insert(bd::mem::load<u16>(tpl + 20 + 4 * k + 2));
+    std::vector<std::pair<u32, u16>> changed;
+    for (u32 k = 0; k < 10; ++k) {
+      const u32 slot = tpl + 20 + 4 * k;
+      if (bd::mem::load<u8>(slot) != 0 || bd::mem::load<u16>(slot + 2) != 1)
+        continue;
+      u16 to = 2;
+      while (asked.count(to) && to < 30)
+        ++to;
+      asked.insert(to);
+      changed.push_back({slot + 2, 1});
+      bd::mem::store<u16>(slot + 2, to);
+      BD_INFO("[univers] tournament: vacant title {}: the champion's slot takes #{}", bd::mem::load<u32>(entry + 12), to);
+    }
+    __imp__sub_826EF468(ctx, base);
+    for (auto [at, v] : changed)
+      bd::mem::store<u16>(at, v);
+    return;
+  }
   if (ctx.r5.u32 || !tpl || bd::mem::try_load<u32>(entry + 28) != 0 || ChaosPct(kChaosContenders) <= 0) {
     __imp__sub_826EF468(ctx, base);  // (a story's match, set 16, or off: as the game)
     return;
@@ -8743,6 +8807,199 @@ void UltimateDaily(const PPCContext &x0, u8 *base, u32 u, u32 day, bool first) {
   BD_INFO("[univers] ultimate: rivalry news {} for {} and {}", p.kind, p.a, p.b);
 }
 
+
+// ---- "Ultimate" Universe, part 3: a tournament for a vacant title (user's 1.4 list, 2026-11-13) -------------------
+// With tournaments on (wwe12_universe_tournaments, -1 = with the unpredictable Universe), a weekly show's title may be
+// vacated (TITLE MANAGEMENT's VACATE TITLE, refused before: the champion's places stayed empty), and the title's
+// place 0 becoming nobody (sub_82A3A060's hook) starts a 4-man tournament: the title's ranking's first four free
+// Superstars (sub_826D2508), semi-finals 1 v 4 and 2 v 3 on the show's next weekly card (singles matches without title
+// nor story taken over, header TOURNAMENT SEMI-FINAL), then the final, the title's match, between the two winners
+// (a draw or an unplayed semi-final: booked again). The final's winner takes the title as in any title match. While
+// the title is vacant, a card's "champion" slot (template code 0, param 1) asks the ranking's #1 instead. Lines of
+// universe_stats.txt: "tourney <title> <day> <a> <b> <c> <d>", "tourneysf <title> <day> <winner>"; given up after 42
+// days. News: TOURNAMENT ANNOUNCED, TOURNAMENT FINAL.
+REXCVAR_DEFINE_INT32(wwe12_universe_tournaments, -1, "WWE12",
+                     "Universe: a vacant show title is decided by a 4-man tournament (-1 = with the unpredictable "
+                     "Universe, 0 off, 1 on).");
+
+namespace {
+struct Tourney {
+  u32 title = 0xFF, day = 0;
+  std::array<u32, 4> seed{512, 512, 512, 512};
+  std::vector<u32> winners;  // semi-final winners, in order
+};
+// the open tournaments (the title still vacant, 42 days at most)
+std::vector<Tourney> OpenTourneys(const PPCContext &x, u8 *base, u32 today) {
+  std::vector<Tourney> all;
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 t = 0, d = 0, a = 0, b = 0, c = 0, e = 0;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "tourney %u %u %u %u %u %u", &t, &d, &a, &b, &c, &e) == 6 && d <= today) {
+      Tourney n;
+      n.title = t, n.day = d, n.seed = {a, b, c, e};
+      all.push_back(n);
+    } else if (std::sscanf(line.c_str(), "tourneysf %u %u %u", &t, &d, &a) == 3) {
+      for (auto &n : all)
+        if (n.title == t && n.day == d && std::find(n.winners.begin(), n.winners.end(), a) == n.winners.end())
+          n.winners.push_back(a);
+    }
+  }
+  std::vector<Tourney> open;
+  for (auto &n : all) {
+    const bool newer = std::any_of(all.begin(), all.end(), [&](const Tourney &m) {
+      return m.title == n.title && m.day > n.day;
+    });
+    if (!newer && n.title < 23 && today <= n.day + 42 &&
+        (Call(x, base, __imp__sub_82A39FC8, n.title, 0, 1) & 0xFFFF) == kNobody)
+      open.push_back(n);
+  }
+  return open;
+}
+// the semi-final pair p (0: 1 v 4, 1: 2 v 3), decided?
+bool SemiDecided(const Tourney &n, int p) {
+  const u32 a = n.seed[p ? 1 : 0], b = n.seed[p ? 2 : 3];
+  return std::find(n.winners.begin(), n.winners.end(), a) != n.winners.end() ||
+         std::find(n.winners.begin(), n.winners.end(), b) != n.winners.end();
+}
+}  // namespace
+
+bool UltimateTournamentsOn() { return UltimateOn(REXCVAR_GET(wwe12_universe_tournaments)); }
+
+// a title's place 0 became nobody: a tournament, for a weekly show's title
+void UltimateTitleVacated(const PPCContext &in, u8 *base, u32 title) {
+  if (!UltimateTournamentsOn() || title >= 23 || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u || Call(x, base, __imp__sub_82A39CE8, title))  // (a tag title: not here)
+    return;
+  bool used = false;
+  for (u32 show = 0; show < 3; ++show)
+    used = used || bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + title) != 0;
+  if (!used)
+    return;
+  const u32 day = bd::mem::load<u32>(u + kUniverseDay);
+  static u32 s_rank = 0;
+  if (!s_rank)
+    s_rank = REX_KERNEL_MEMORY()->SystemHeapAlloc(180 * 32, 0x10);
+  if (!s_rank)
+    return;
+  const u32 view = x.r1.u32 + 0x800;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 n = std::min<u32>(Call(x, base, __imp__sub_826D2508, view, title, s_rank, 180), 180);
+  Call(x, base, __imp__sub_826CE098, view);
+  std::vector<u32> seeds;
+  for (u32 k = 0; k < n && seeds.size() < 4; ++k) {
+    const u32 id = bd::mem::load<u32>(s_rank + k * 32);
+    if (id >= 512 || !Call(x, base, __imp__sub_826D3218, id, 1))
+      continue;
+    const int32_t index = int32_t(Call(x, base, __imp__sub_826D3320, id));
+    if (index < 0 || (bd::mem::load<u32>(u + u32(index) * 112 + 92) & 0x80000000u))
+      continue;  // (injured)
+    seeds.push_back(id);
+  }
+  if (seeds.size() < 4) {
+    BD_INFO("[univers] tournament: title {} vacant, only {} free contenders: no tournament", title, seeds.size());
+    return;
+  }
+  AppendStats({fmt::format("tourney {} {} {} {} {} {}", title, day, seeds[0], seeds[1], seeds[2], seeds[3])});
+  QueueNews3(kMoreEvent + kTourneyStart, seeds[0], seeds[1], seeds[2], title);
+  BD_INFO("[univers] tournament: title {} vacant, seeds {} {} {} {}", title, seeds[0], seeds[1], seeds[2], seeds[3]);
+}
+
+// a singles result: a semi-final's winner
+void UltimateTournamentResult(u32 a, u32 b, u32 winner) {
+  if (!UltimateTournamentsOn() || winner >= 512)
+    return;
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 t = 0, d = 0, s[4] = {}, w = 0;
+  std::vector<std::pair<u32, u32>> found;  // {title, day} of the semi-finals this pair is
+  std::set<std::string> done;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "tourney %u %u %u %u %u %u", &t, &d, &s[0], &s[1], &s[2], &s[3]) == 6) {
+      const bool sf1 = (a == s[0] && b == s[3]) || (a == s[3] && b == s[0]);
+      const bool sf2 = (a == s[1] && b == s[2]) || (a == s[2] && b == s[1]);
+      if (sf1 || sf2)
+        found.push_back({t, d});
+    } else if (std::sscanf(line.c_str(), "tourneysf %u %u %u", &t, &d, &w) == 3) {
+      done.insert(fmt::format("{} {} {}", t, d, w));
+    }
+  }
+  for (auto [title, day] : found) {
+    if (done.count(fmt::format("{} {} {}", title, day, a)) || done.count(fmt::format("{} {} {}", title, day, b)))
+      continue;
+    AppendStats({fmt::format("tourneysf {} {} {}", title, day, winner)});
+    BD_INFO("[univers] tournament: title {}: {} wins a semi-final", title, winner);
+  }
+}
+
+namespace {
+// Before a weekly card's record i is written (UltimateBooking): a semi-final or the final of an open tournament of
+// this booker's titles; true when placed (t_rematch_title then names the final's title, made the title's match after)
+bool TourneyBooking(const PPCContext &x, u8 *base, u32 booker, u32 rec, u32 day,
+                    const std::function<bool(u32)> &on_card, const std::function<bool(u32)> &injured) {
+  if (!UltimateTournamentsOn())
+    return false;
+  for (const Tourney &n : OpenTourneys(x, base, day)) {
+    bool ours = false;
+    for (u32 t = 0; t < 4; ++t)
+      ours = ours || bd::mem::load<u32>(booker + 4 + 4 * t) == n.title;
+    if (!ours)
+      continue;
+    u32 a = 512, b = 512;
+    if (n.winners.size() >= 2) {  // the final
+      a = n.winners[0], b = n.winners[1];
+    } else {
+      for (int p = 0; p < 2 && a >= 512; ++p) {
+        const u32 s1 = n.seed[p ? 1 : 0], s2 = n.seed[p ? 2 : 3];
+        if (!SemiDecided(n, p) && !on_card(s1) && !on_card(s2) && !injured(s1) && !injured(s2))
+          a = s1, b = s2;
+      }
+    }
+    if (a >= 512 || b >= 512 || on_card(a) || on_card(b) || injured(a) || injured(b))
+      continue;
+    bd::mem::store<u32>(rec + 40, a);
+    bd::mem::store<u32>(rec + 40 + 32, b);
+    bd::mem::store<u32>(rec + 40 + 28, 0);
+    bd::mem::store<u32>(rec + 40 + 32 + 28, 0);
+    if (n.winners.size() >= 2) {
+      t_rematch_title = n.title;  // (the final: the title's match)
+      const std::string key = fmt::format("news tourneyfinal {} {}", n.title, n.day);
+      if (!NewsDone(key)) {
+        AppendStats({key});
+        QueueNews3(kMoreEvent + kTourneyFinal, a, b, 512, n.title);
+      }
+    }
+    BD_INFO("[univers] tournament: title {} {}: {} v {}", n.title, n.winners.size() >= 2 ? "final" : "semi-final",
+            a, b);
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+// a pair of a semi-final of an open tournament (MATCH CARDS' header)?
+bool UltimateTourneySemi(const PPCContext &x, u8 *base, u32 a, u32 b, u32 day) {
+  if (!UltimateTournamentsOn())
+    return false;
+  for (const Tourney &n : OpenTourneys(x, base, day))
+    for (int p = 0; p < 2; ++p) {
+      const u32 s1 = n.seed[p ? 1 : 0], s2 = n.seed[p ? 2 : 3];
+      if (((a == s1 && b == s2) || (a == s2 && b == s1)) && !SemiDecided(n, p))
+        return true;
+    }
+  return false;
+}
+
+// a vacant title's "champion" slot (template code 0, param 1) asks the ranking's #1 (sub_826EF468's hook)
+bool UltimateVacantTitle(const PPCContext &x, u8 *base, u32 title) {
+  return UltimateTournamentsOn() && title < 23 && (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) == kNobody;
+}
+
 // Before a weekly card's record i is written: a rematch, else a surprise return, in a singles match without title,
 // story nor WrestleMania build (record +12, +28, +24; places at +40 + 32 k, +0 the Superstar, +28 = 1 "???")
 bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
@@ -8753,7 +9010,7 @@ bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
     return false;
   const bool rematches = UltimateOn(REXCVAR_GET(wwe12_universe_rematches)),
              returns = UltimateOn(REXCVAR_GET(wwe12_universe_surprise_returns));
-  if (!rematches && !returns)
+  if (!rematches && !returns && !UltimateTournamentsOn())
     return false;
   const u32 rec = booker + 20 + i * 1320;
   if (bd::mem::load<u32>(rec + 16) != 2 || bd::mem::load<u32>(rec + 12) || bd::mem::load<u32>(rec + 28) ||
@@ -8779,6 +9036,9 @@ bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
     const int32_t index = int32_t(Call(x, base, __imp__sub_826D3320, id));
     return index < 0 || (bd::mem::load<u32>(u + u32(index) * 112 + 92) & 0x80000000u) != 0;
   };
+  // a vacant title's tournament first
+  if (TourneyBooking(x, base, booker, rec, day, on_card, injured))
+    return true;
   // a rematch: this show's title (booker +4 .. +16), the former champion and the new one both free
   if (rematches) {
     for (const Rematch &r : PendingRematches(x, base, day)) {
