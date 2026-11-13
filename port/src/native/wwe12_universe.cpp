@@ -4202,6 +4202,7 @@ extern "C" REX_FUNC(sub_82A3A060) {
 void DefenseNews(const PPCContext &in, u8 *base, u32 record, u32 day);
 void WeeklyNews(const PPCContext &in, u8 *base);
 void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i);
+bool PpvCardNews(const PPCContext &x, u8 *base, u32 u, u32 day, const std::vector<std::pair<u32, u32>> &who);
 void ContenderWonNews(u32 record, u32 winner_id);
 void CashInNews(u32 id, bool won);
 void StreakNews(const std::vector<std::pair<u32, bool>> &result, u32 day);
@@ -4602,7 +4603,8 @@ constexpr u32 kMoreEvent = 200;  // (queued as event 200 + kind)
 enum MoreKind : u32 {
   kCashInWon, kCashInLost, kStreak5, kStreak10, kStreak15, kLosing5,
   kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical,
-  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMomentumHigh, kMomentumLow, kTop5Out, kMoreKinds
+  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMomentumHigh, kMomentumLow, kTop5Out,
+  kPastGlory, kHistoricReign, kWrestleManiaRep, kTeamsFinalized, kMoreKinds
 };
 // (its argument in the news' +10, u16, which the game neither clears nor reads: a title, title + 256 * another title
 // or title + 256 * a number)
@@ -4825,6 +4827,21 @@ void DefenseNews(const PPCContext &in, u8 *base, u32 record, u32 day) {
       ++n;
   if (n == 6 || n == 10)
     NewsOnce(fmt::format("news fighting {} {} {} {}", title, champ, since, n), kFightingChamp, champ, title | (n << 8));
+  // Historic Reign: this reign ties the title's most defenses in one reign (4 or more), once a reign
+  u32 best = 0;
+  for (const Reign &r : LoadReigns()) {
+    if (r.title != title || r.place != 0 || r.to_day == ~0u)
+      continue;
+    u32 c = 0;
+    std::ifstream g(StatsFile());
+    while (std::getline(g, line))
+      if (std::sscanf(line.c_str(), "defense %u %u %u", &t, &id, &d) == 3 && t == title && id == r.holder &&
+          d >= r.from_day && d < r.to_day)
+        ++c;
+    best = std::max(best, c);
+  }
+  if (best >= 4 && n == best)
+    NewsOnce(fmt::format("news historic {} {} {}", title, champ, since), kHistoricReign, champ, title);
 }
 
 // Once a day, at the Universe menu: a briefcase held for over 3 months (84 days), reigns of 10, 25 and 52 weeks, and
@@ -4869,6 +4886,25 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
       if (weeks >= m && weeks < m + 4)
         NewsOnce(fmt::format("news reign {} {} {} {}", r.title, r.holder, r.from_day, m), kReignWeeks, r.holder,
                  r.title | (m << 8));
+  }
+  // Past Glory: in the week before the Royal Rumble (PPV 10), a former winner still on the roster ("rumble <id> 1")
+  {
+    const u32 now = (day / 28) % 12 * 4 + (day / 7) % 4, rumble = PpvSlot(u, 10);
+    if (rumble < 48 && (rumble == now || rumble == (now + 1) % 48)) {
+      std::ifstream f(StatsFile());
+      std::string line;
+      u32 id = 0, won = 0, d = 0;
+      std::vector<u32> winners;
+      while (std::getline(f, line))
+        if (std::sscanf(line.c_str(), "rumble %u %u %u", &id, &won, &d) == 3 && won && d < day &&
+            std::find(winners.begin(), winners.end(), id) == winners.end() && Call(x, base, __imp__sub_826D3218, id, 1))
+          winners.push_back(id);
+      if (!winners.empty()) {
+        static std::mt19937 s_pick{std::random_device{}()};
+        const u32 who = winners[std::uniform_int_distribution<size_t>(0, winners.size() - 1)(s_pick)];
+        NewsOnce(fmt::format("news pastglory {}", day / 336), kPastGlory, who, 0);
+      }
+    }
   }
   // the top 5 of each singles title the Universe uses (its ranking, sub_826D2508: 32-byte rows, +0 the Superstar):
   // one who drops out of it (and is not its champion) gets a news; 2 a day at most; the first look after a load only
@@ -4951,6 +4987,10 @@ void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
   }
   if (who.empty() || s_done.count(key))
     return;
+  if (bd::mem::try_load<u32>(booker) == 0x8203EB44 /* the PPV booker */ && u && PpvCardNews(x, base, u, day, who)) {
+    s_done.insert(key);
+    return;
+  }
   if (hidden_side != ~0u) {
     // (a tag match: the hidden one is the partner of a Superstar on his side, test of 2026-11-13)
     s_done.insert(key);
@@ -5015,6 +5055,50 @@ extern "C" REX_FUNC(sub_826D4710) {
     }
 }
 
+// A PPV card's match (CardNews): at WrestleMania (PPV 12), a match between two brands (each side all of one brand) gets
+// "X will represent BRAND at WrestleMania" for its first Superstar (2 such news a card at most); at Survivor Series
+// (PPV 21), a match of 6 or more between RAW and SmackDown gets "Teams Finalized" with both captains. Which PPV: the
+// one of this week or the next in the calendar (U + 0xDDD0). True: a news was made.
+bool PpvCardNews(const PPCContext &x, u8 *base, u32 u, u32 day, const std::vector<std::pair<u32, u32>> &who) {
+  const u32 now = (day / 28) % 12 * 4 + (day / 7) % 4;
+  const auto soon = [&](u32 ppv) {
+    const u32 slot = PpvSlot(u, ppv);
+    return slot < 48 && (slot == now || slot == (now + 1) % 48);
+  };
+  const bool mania = soon(12), series = soon(21);
+  if (!mania && !series)
+    return false;
+  std::map<u32, std::set<u32>> brands;  // side -> brands
+  std::map<u32, u32> first;             // side -> its first Superstar
+  for (const auto &[id, side] : who) {
+    brands[side].insert(Call(x, base, __imp__sub_826D2B50, id));
+    first.emplace(side, id);
+  }
+  if (brands.size() != 2)
+    return false;
+  const auto a = brands.begin(), b = std::next(brands.begin());
+  if (a->second.size() != 1 || b->second.size() != 1 || *a->second.begin() == *b->second.begin() ||
+      *a->second.begin() > 1 || *b->second.begin() > 1)
+    return false;
+  if (series && who.size() >= 6) {
+    QueueNews3(kMoreEvent + kTeamsFinalized, first[a->first], first[b->first], 512, 0);
+    BD_INFO("[univers] news: Survivor Series teams finalized");
+    return true;
+  }
+  static u32 s_mania_day = ~0u, s_mania_count = 0;
+  if (!mania)
+    return false;
+  if (s_mania_day != day)
+    s_mania_day = day, s_mania_count = 0;
+  if (s_mania_count >= 2)
+    return false;
+  ++s_mania_count;
+  const u32 id = first[a->first];
+  QueueNews(kMoreEvent + kWrestleManiaRep, kNewsQualified, id, *a->second.begin());
+  BD_INFO("[univers] news: {} represents brand {} at WrestleMania", id, *a->second.begin());
+  return true;
+}
+
 // The winner of a #1 contender's match (entry +6 = 10) is the title's new #1 contender.
 void ContenderWonNews(u32 record, u32 winner_id) {
   if (!REXCVAR_GET(wwe12_universe_more_news) || !record || bd::mem::load<u8>(record + 6) != kContenderHeader ||
@@ -5073,7 +5157,7 @@ void MoreNewsNames(const PPCContext &in, u8 *base, u32 rec) {
   if (!g_news_more)
     return;
   const u32 kind = g_news_more - 1, a = g_news_more_arg & 0xFF, b = g_news_more_arg >> 8;
-  const bool momentum = kind == kMomentumHigh || kind == kMomentumLow;
+  const bool momentum = kind == kMomentumHigh || kind == kMomentumLow || kind == kWrestleManiaRep;  // (a brand)
   g_more_title1 = a < 23 && !momentum ? TitleName(in, base, a) : std::string();
   g_more_brand = !momentum ? std::string() : a == 0 ? "RAW" : a == 1 ? "SmackDown" : "WWE";
   g_more_title2 = kind == kDoubleGold && b < 23 ? TitleName(in, base, b) : std::string();
@@ -5332,7 +5416,33 @@ u32 MoreNewsText(u32 id) {
         "%s sort du top 5 du classement pour le {T}.",
         "%s f\xC3\xA4llt aus den Top 5 der Rangliste f\xC3\xBCr den {T}.",
         "%s sale del top 5 del ranking por el {T}.",
-        "%s esce dalla top 5 della classifica per il {T}."}}};
+        "%s esce dalla top 5 della classifica per il {T}."}},
+      {{"PAST GLORY", "GLOIRE PASS\xC3\x89" "E", "VERGANGENER RUHM", "GLORIA PASADA", "GLORIA PASSATA"},
+       {"Former Royal Rumble winner %s aims to repeat history as the Rumble approaches.",
+        "Ancien vainqueur du Royal Rumble, %s veut r\xC3\xA9\xC3\xA9" "crire l'histoire \xC3\xA0 l'approche du Rumble.",
+        "Der fr\xC3\xBChere Royal-Rumble-Sieger %s will vor dem Rumble Geschichte wiederholen.",
+        "El exganador del Royal Rumble %s quiere repetir la historia ahora que se acerca el Rumble.",
+        "L'ex vincitore della Royal Rumble %s punta a ripetere la storia con il Rumble alle porte."}},
+      {{"HISTORIC REIGN", "R\xC3\x88GNE HISTORIQUE", "HISTORISCHE REGENTSCHAFT", "REINADO HIST\xC3\x93RICO",
+        "REGNO STORICO"},
+       {"%s approaches the all-time defense record for the {T}.",
+        "%s approche le record de d\xC3\xA9" "fenses de l'histoire pour le {T}.",
+        "%s n\xC3\xA4hert sich dem Allzeit-Rekord an Titelverteidigungen f\xC3\xBCr den {T}.",
+        "%s se acerca al r\xC3\xA9" "cord hist\xC3\xB3rico de defensas del {T}.",
+        "%s si avvicina al record storico di difese del {T}."}},
+      {{"WRESTLEMANIA", "WRESTLEMANIA", "WRESTLEMANIA", "WRESTLEMANIA", "WRESTLEMANIA"},
+       {"%s will officially represent {R} at WrestleMania!",
+        "%s repr\xC3\xA9sentera officiellement {R} \xC3\xA0 WrestleMania !",
+        "%s wird {R} offiziell bei WrestleMania vertreten!",
+        "\xC2\xA1%s representar\xC3\xA1 oficialmente a {R} en WrestleMania!",
+        "%s rappresenter\xC3\xA0 ufficialmente {R} a WrestleMania!"}},
+      {{"TEAMS FINALIZED", "\xC3\x89QUIPES COMPL\xC3\x88TES", "TEAMS STEHEN FEST", "EQUIPOS DEFINIDOS",
+        "SQUADRE AL COMPLETO"},
+       {"RAW and SmackDown squads are locked in ahead of Sunday's elimination showdown.",
+        "Les \xC3\xA9quipes de RAW et SmackDown sont bouclé" "es avant le choc \xC3\xA0 \xC3\xA9limination de dimanche.",
+        "Die Teams von RAW und SmackDown stehen vor dem Elimination-Duell am Sonntag fest.",
+        "Los equipos de RAW y SmackDown est\xC3\xA1n definidos antes del duelo de eliminaci\xC3\xB3n del domingo.",
+        "Le squadre di RAW e SmackDown sono pronte per la sfida a eliminazione di domenica."}}};
   const u32 kind = g_news_more - 1;
   const bool title = id == 27068 || id == 27070;
   std::string text = title ? kTexts[kind].title[CurrentLang()] : kTexts[kind].line[CurrentLang()];
