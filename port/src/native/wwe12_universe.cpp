@@ -6578,7 +6578,124 @@ const char *RandomText() {
 }
 }  // namespace
 
+// ---- choose the title at stake (user's request, 2026-11-13) --------------------------------------
+//
+// LB on MATCH CARDS, on a match still to play: "Choose the title at stake", the show's titles (its
+// record's +904 bytes; a PPV, whose record has none: every title a weekly show uses) that fit the
+// match (a tag title: teams of two; another: one Superstar a side), then NO TITLE. The answer is the
+// card entry's title flag and byte 1 (sub_826D4DD8 / +1, as the title defenses of ours), also put in
+// the card screen's copy of it (C + 3248 + row * 104), so the header shows the title at once. The
+// winner takes the title as in any title match, the champion in it or not.
+REXCVAR_DEFINE_BOOL(wwe12_universe_choose_title, true, "WWE12",
+                    "Universe: LB on MATCH CARDS chooses the title at stake in a match (or none).");
+REX_EXTERN(__imp__sub_826D4DD8);  // card entry: title match on / off
+
+namespace {
+std::vector<u32> g_title_choices;  // the box's lines: a title each (the last: none)
+
+const char *ChooseTitleText() {
+  static const char *const kText[5] = {
+      "TITLE AT STAKE\nChoose the title for this match:", "TITRE EN JEU\nChoisissez le titre mis en jeu :",
+      "TITEL\nW\xC3\xA4hle den Titel dieses Matches:", "T\xC3\x8DTULO EN JUEGO\nElige el t\xC3\xADtulo del combate:",
+      "TITOLO IN PALIO\nScegli il titolo dell'incontro:"};
+  return kText[CurrentLang()];
+}
+const char *NoTitleText() {
+  static const char *const kText[5] = {"NO TITLE", "AUCUN TITRE", "KEIN TITEL", "SIN T\xC3\x8DTULO",
+                                       "NESSUN TITOLO"};
+  return kText[CurrentLang()];
+}
+
+bool TitleButton(const PPCContext &in, u8 *base, u32 screen) {
+  if (!REXCVAR_GET(wwe12_universe_choose_title) || !(bd::mem::load<u32>(screen + 64) & kLB))
+    return false;
+  const u32 card = screen - 28;
+  const u32 row = bd::mem::load<u32>(card + 552);
+  if (row >= 8)
+    return false;
+  const u32 match = bd::mem::load<u32>(card + 4100 + 4 * row);
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x800, out = x.r1.u32 + 0x400;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 show = Call(x, base, __imp__sub_826D0840, view);
+  const u32 entry = Call(x, base, __imp__sub_826CCC38, view, show);
+  const u32 list = entry ? bd::mem::load<u32>(entry + 4) : 0;
+  const u32 record = list && match < 8 ? list + match * 104 : 0;
+  std::vector<std::string> options;
+  g_title_choices.clear();
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (record && u && bd::mem::load<u8>(record + 3) == 1 &&
+      Call(x, base, __imp__sub_82A2FA18, bd::mem::load<u8>(record)) != 1) {  // to play, no Royal Rumble
+    const u32 places = std::min<u32>(Call(x, base, __imp__sub_826D4F90, record), 40);
+    std::map<u32, u32> team_size;
+    for (u32 p = 0; p < places; ++p)
+      if (Call(x, base, __imp__sub_826D4958, record, out, p) && bd::mem::load<u16>(out) < 512)
+        ++team_size[bd::mem::load<u8>(out + 3)];
+    u32 smallest = 99, largest = 0;
+    for (auto [team, n] : team_size)
+      smallest = std::min(smallest, n), largest = std::max(largest, n);
+    const bool singles = team_size.size() >= 2 && largest == 1;
+    const bool tags = team_size.size() >= 2 && smallest == 2 && largest == 2;
+    const bool show_has = show < 10 && [&] {
+      for (u32 t = 0; t < 23; ++t)
+        if (bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + t))
+          return true;
+      return false;
+    }();
+    for (u32 t = 0; t < 23; ++t) {
+      bool used = false;
+      if (show_has)
+        used = bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + t) != 0;
+      else
+        for (u32 s = 0; s < 10 && !used; ++s)
+          used = bd::mem::load<u8>(u + kShowRecords + s * kShowRecordSize + 904 + t) != 0;
+      if (!used)
+        continue;
+      const bool tag = Call(x, base, __imp__sub_82A39CE8, t) != 0;
+      if (tag ? !tags : !singles)
+        continue;
+      g_title_choices.push_back(t);
+      options.push_back(TitleName(in, base, t));
+    }
+  }
+  Call(x, base, __imp__sub_826CE098, view);
+  if (!record || bd::mem::load<u8>(record + 3) != 1)
+    return false;
+  bd::mem::store<u32>(screen + 64, 0);
+  options.push_back(NoTitleText());
+  g_title_choices.push_back(0xFF);
+  g_screen = screen;
+  BD_INFO("[univers] choose title: show {} match {} ({} titles)", show, match, options.size() - 1);
+  Choose(in, base, ChooseTitleText(), options, [card, row, show, match](const PPCContext &in, u8 *base, size_t i) {
+    const u32 title = i < g_title_choices.size() ? g_title_choices[i] : 0xFF;
+    PPCContext x = in;
+    x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+    const u32 view = x.r1.u32 + 0x800;
+    Call(x, base, __imp__sub_826CDC48, view);
+    const u32 entry = Call(x, base, __imp__sub_826CCC38, view, show);
+    const u32 list = entry ? bd::mem::load<u32>(entry + 4) : 0;
+    if (list && match < 8) {
+      const u32 record = list + match * 104;
+      Call(x, base, __imp__sub_826D4DD8, record, title < 23 ? 1 : 0);
+      if (title < 23)
+        bd::mem::store<u8>(record + 1, u8(title));
+      const u32 copy = card + 3248 + row * 104;  // the card screen's copy (its header)
+      Call(x, base, __imp__sub_826D4DD8, copy, title < 23 ? 1 : 0);
+      if (title < 23)
+        bd::mem::store<u8>(copy + 1, u8(title));
+    }
+    Call(x, base, __imp__sub_826CE098, view);
+    BD_INFO("[univers] choose title: show {} match {} -> title {}", show, match, int(title == 0xFF ? -1 : int(title)));
+  });
+  return true;
+}
+}  // namespace
+
 bool CardButtons(const PPCContext &in, u8 *base, u32 screen) {
+  if (Enabled() && g_step == Step::kIdle && bd::mem::try_load<u32>(screen) == kCardScreenVtbl &&
+      bd::mem::load<u32>(kInUniverseFlag) == 1 && TitleButton(in, base, screen))
+    return true;
   if (!Enabled() || g_step != Step::kIdle || bd::mem::try_load<u32>(screen) != kCardScreenVtbl ||
       bd::mem::load<u32>(kInUniverseFlag) != 1 || !(bd::mem::load<u32>(screen + 64) & kX))
     return false;
