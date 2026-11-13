@@ -1886,7 +1886,7 @@ void ChooseMatchCount(const PPCContext &in, u8 *base, u32 which, const std::stri
                       std::function<void(const PPCContext &, u8 *)> after = {}) {
   const CalendarWords &w = CWords();
   LoadMatchCounts();
-  static const u32 kDefault[4] = {4, 4, 3, 6};
+  static const u32 kDefault[5] = {4, 4, 3, 6, 4};
   const auto now = [which](u32 n) {
     return n ? std::to_string(n)
              : std::string(CWords().default_count) + " " + std::to_string(kDefault[which]);
@@ -6094,7 +6094,54 @@ thread_local std::vector<Rested> t_rested;  // this card's rested Superstars (cl
 
 // NXT (show 3) is booked by a RAW booker: the booker made for it is remembered so it gets its own number of matches.
 // sub_826EB218 makes the booker of today's show (sub_826D0840 on a Universe view, as it does).
+// The booker's vtbl[4] books the card with its show number written in the code (sub_826F1DA8: r6 = 0 RAW, 1DB0 = 1,
+// 1DB8 = 2, then sub_826F1CF0 -> sub_826F15E8(this, ?, ?, show, view)): NXT's card was RAW's (RAW's brand and titles,
+// seen 2026-11-13). sub_826F1CF0 is given show 3 for NXT's booker. NXT's record lists brands 0 and 1 in the game's
+// data (+929 + b): it gets the NXT brand instead (wwe12_universe_nxt_brand) when that brand has Superstars.
+REXCVAR_DEFINE_INT32(wwe12_universe_nxt_brand, 2, "WWE12",
+                     "Universe: the brand whose Superstars NXT books (-1 = the game's data: RAW and SmackDown).");
 u32 g_nxt_booker = 0;
+REX_EXTERN(__imp__sub_826D3218);
+REX_EXTERN(__imp__sub_82A32DB8);
+REX_EXTERN(__imp__sub_826D2B50);
+void NxtBrands(const PPCContext &x, u8 *base, u32 u) {
+  if (!u)
+    return;
+  u32 count[13] = {};
+  std::string first[13];
+  for (u32 id = 0; id < 373; ++id) {
+    if (!Call(x, base, __imp__sub_826D3218, id, 1) || Call(x, base, __imp__sub_82A32DB8, id))
+      continue;
+    const u32 brand = Call(x, base, __imp__sub_826D2B50, id);
+    if (brand >= 13)
+      continue;
+    if (count[brand]++ < 4)
+      first[brand] += fmt::format(" {}", id);
+  }
+  static bool s_logged = false;
+  if (!s_logged) {
+    s_logged = true;
+    for (u32 b = 0; b < 13; ++b)
+      if (count[b])
+        BD_INFO("[univers] NXT: brand {} has {} Superstars (ids{} ...)", b, count[b], first[b]);
+  }
+  const int32_t nxt = REXCVAR_GET(wwe12_universe_nxt_brand);
+  if (nxt < 0 || nxt >= 13 || count[nxt] < 4)
+    return;
+  const u32 r = u + kShowRecords + 3 * kShowRecordSize;
+  for (u32 b = 0; b < 13; ++b)
+    bd::mem::store<u8>(r + 929 + b, u8(b == u32(nxt)));
+  BD_INFO("[univers] NXT: books brand {} ({} Superstars)", nxt, count[nxt]);
+}
+
+REX_EXTERN(__imp__sub_826F1CF0);
+extern "C" REX_FUNC(sub_826F1CF0) {
+  if (g_nxt_booker && ctx.r3.u32 == g_nxt_booker && ctx.r6.u32 == 0) {
+    ctx.r6.u64 = 3;
+    BD_INFO("[univers] NXT: card booked as show 3");
+  }
+  __imp__sub_826F1CF0(ctx, base);
+}
 REX_EXTERN(__imp__sub_826EB218);
 REX_EXTERN(__imp__sub_826D0840);
 extern "C" REX_FUNC(sub_826EB218) {
@@ -6109,6 +6156,7 @@ extern "C" REX_FUNC(sub_826EB218) {
   const u32 show = Call(x, base, __imp__sub_826D0840, view);
   if (show == 3) {
     g_nxt_booker = booker;
+    NxtBrands(x, base, Call(x, base, __imp__sub_82683A30, 0));
     BD_INFO("[univers] NXT: booker {:08X}", booker);
   } else if (g_nxt_booker == booker) {
     g_nxt_booker = 0;
