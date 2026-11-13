@@ -2059,31 +2059,49 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
 // wwe12_universe_title_defenses (0 / 10 / 25 / 50 / 100, percent; 0 = the game's own cards) and
 // wwe12_universe_qualifiers (true / false).
 
+// The "ultimate" Universe's level (its code at the end of the file; a row of UNIVERSE OPTIONS)
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos, 0, "WWE12",
+                     "Universe: how unpredictable (0 = the game's, 1 a little, 2 a lot, 3 madness): card layouts, "
+                     "stipulations, contenders, mystery opponents, turns, betrayals, more scenes.");
 struct OptionWords {
   const char *options, *defenses, *qualifiers, *off, *on, *done_defenses, *done_qualifiers, *briefcases,
-      *done_briefcases, *injuries, *done_injuries;
+      *done_briefcases, *injuries, *done_injuries, *chaos, *done_chaos, *levels[4];
 };
 const OptionWords &OWords() {
   static const OptionWords kWords[5] = {
       {"UNIVERSE OPTIONS", "TITLE DEFENSES", "QUALIFYING MATCHES", "OFF", "ON",
        "Title defenses on weekly shows: %s.", "Qualifying matches (Money in the Bank, Elimination "
-       "Chamber): %s.", "MONEY IN THE BANK BRIEFCASES", "Money in the Bank briefcases: %s (2 = one for RAW, one for SmackDown).", "INJURIES", "Injuries: %s."},
+       "Chamber): %s.", "MONEY IN THE BANK BRIEFCASES", "Money in the Bank briefcases: %s (2 = one for RAW, one for SmackDown).", "INJURIES", "Injuries: %s.",
+       "UNPREDICTABLE UNIVERSE", "Unpredictable Universe: %s.\nRandom card layouts and stipulations, surprise "
+       "contenders, mystery opponents, turns, betrayals, more scenes.", {"OFF (THE GAME'S)", "A LITTLE", "A LOT", "MADNESS"}},
       {"OPTIONS DE L'UNIVERS", "D\xC3\x89" "FENSES DE TITRE", "MATCHS DE QUALIFICATION", "NON", "OUI",
        "D\xC3\xA9" "fenses de titre dans les shows : %s.",
        "Matchs de qualification (Money in the Bank, Elimination Chamber) : %s.", "MALLETTES MONEY IN THE BANK",
-       "Mallettes Money in the Bank : %s (2 = une pour RAW, une pour SmackDown).", "BLESSURES", "Blessures : %s."},
+       "Mallettes Money in the Bank : %s (2 = une pour RAW, une pour SmackDown).", "BLESSURES", "Blessures : %s.",
+       "UNIVERS IMPR\xC3\x89VISIBLE", "Univers impr\xC3\xA9visible : %s.\nCartes et stipulations au hasard, "
+       "pr\xC3\xA9tendants surprise, adversaires myst\xC3\xA8re, retournements, trahisons, plus de sc\xC3\xA8nes.",
+       {"NON (LE JEU)", "UN PEU", "BEAUCOUP", "FOLIE"}},
       {"WWE-WELT-OPTIONEN", "TITELVERTEIDIGUNGEN", "QUALIFIKATIONSMATCHES", "AUS", "AN",
        "Titelverteidigungen in den Wochenshows: %s.",
        "Qualifikationsmatches (Money in the Bank, Elimination Chamber): %s.", "MONEY-IN-THE-BANK-KOFFER",
-       "Money-in-the-Bank-Koffer: %s (2 = einer f\xC3\xBCr RAW, einer f\xC3\xBCr SmackDown).", "VERLETZUNGEN", "Verletzungen: %s."},
+       "Money-in-the-Bank-Koffer: %s (2 = einer f\xC3\xBCr RAW, einer f\xC3\xBCr SmackDown).", "VERLETZUNGEN", "Verletzungen: %s.",
+       "UNVORHERSEHBARE WWE-WELT", "Unvorhersehbare WWE-Welt: %s.\nZuf\xC3\xA4llige Matchkarten und Stipulationen, "
+       "\xC3\xBC" "berraschende Herausforderer, geheime Gegner, Turns, Verrat, mehr Szenen.",
+       {"AUS (DAS SPIEL)", "EIN WENIG", "VIEL", "WAHNSINN"}},
       {"OPCIONES DEL UNIVERSO", "DEFENSAS DE T\xC3\x8DTULO", "COMBATES CLASIFICATORIOS", "NO", "S\xC3\x8D",
        "Defensas de t\xC3\xADtulo en los shows semanales: %s.",
        "Combates clasificatorios (Money in the Bank, Elimination Chamber): %s.", "MALETINES MONEY IN THE BANK",
-       "Maletines Money in the Bank: %s (2 = uno para RAW, uno para SmackDown).", "LESIONES", "Lesiones: %s."},
+       "Maletines Money in the Bank: %s (2 = uno para RAW, uno para SmackDown).", "LESIONES", "Lesiones: %s.",
+       "UNIVERSO IMPREVISIBLE", "Universo imprevisible: %s.\nCarteleras y estipulaciones al azar, aspirantes "
+       "sorpresa, rivales misteriosos, cambios de bando, traiciones, m\xC3\xA1s escenas.",
+       {"NO (EL JUEGO)", "UN POCO", "MUCHO", "LOCURA"}},
       {"OPZIONI UNIVERSE", "DIFESE DEL TITOLO", "INCONTRI DI QUALIFICAZIONE", "NO", "S\xC3\x8C",
        "Difese del titolo negli show settimanali: %s.",
        "Incontri di qualificazione (Money in the Bank, Elimination Chamber): %s.", "VALIGETTE MONEY IN THE BANK",
-       "Valigette Money in the Bank: %s (2 = una per RAW, una per SmackDown).", "INFORTUNI", "Infortuni: %s."}};
+       "Valigette Money in the Bank: %s (2 = una per RAW, una per SmackDown).", "INFORTUNI", "Infortuni: %s.",
+       "UNIVERSE IMPREVEDIBILE", "Universe imprevedibile: %s.\nCard e stipulazioni a caso, sfidanti a sorpresa, "
+       "avversari misteriosi, turn, tradimenti, pi\xC3\xB9 scene.",
+       {"NO (IL GIOCO)", "UN PO'", "MOLTO", "FOLLIA"}}};
   return kWords[CurrentLang()];
 }
 
@@ -2110,6 +2128,7 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
          {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers,
           std::string(o.briefcases) + ":  " + briefcases,
           std::string(o.injuries) + ":  " + (REXCVAR_GET(wwe12_universe_injuries) ? o.on : o.off),
+          std::string(o.chaos) + ":  " + o.levels[std::clamp<int>(REXCVAR_GET(wwe12_universe_chaos), 0, 3)],
           // (a 5th line: with 4 the game lays the box out in two columns and the long lines overlap, test of
           // 2026-11-12; from 5 on, our one-column list)
           [] {
@@ -2128,8 +2147,17 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
                                     k ? (std::to_string(kPct[k]) + " %").c_str() : OWords().off);
                       Inform(in, base, text);
                     });
-           } else if (i == 4) {
+           } else if (i == 5) {
              // BACK: nothing
+           } else if (i == 4) {
+             const OptionWords &w = OWords();
+             Choose(in, base, w.chaos, {w.levels[0], w.levels[1], w.levels[2], w.levels[3]},
+                    [](const PPCContext &in, u8 *base, size_t k) {
+                      SaveUniverseOption("wwe12_universe_chaos", std::to_string(k));
+                      char text[512];
+                      std::snprintf(text, sizeof(text), OWords().done_chaos, OWords().levels[k]);
+                      Inform(in, base, text);
+                    });
            } else if (i == 3) {
              Choose(in, base, o.injuries, {o.off, o.on}, [](const PPCContext &in, u8 *base, size_t k) {
                SaveUniverseOption("wwe12_universe_injuries", k ? "true" : "false");
@@ -8138,9 +8166,7 @@ extern "C" REX_FUNC(sub_824868F8) {
 //  - betrayals: after a lost tag match, a team may break up: the partners become rivals (sub_826CD7F0(view + 8, a, b,
 //    -5), both ways), with the game's New Rivalry news (type 2);
 //  - scenes: the game's own scenes play more often (their chance, sub_826CA4E8, times this %, kept under 100).
-REXCVAR_DEFINE_INT32(wwe12_universe_chaos, 0, "WWE12",
-                     "Universe: how unpredictable (0 = the game's, 1 a little, 2 a lot, 3 madness): card layouts, "
-                     "stipulations, contenders, mystery opponents, turns, betrayals, more scenes.");
+// (wwe12_universe_chaos: with UNIVERSE OPTIONS, above)
 REXCVAR_DEFINE_INT32(wwe12_universe_chaos_cards, -1, "WWE12",
                      "Universe: % of weekly cards with a layout at random (-1 = the chaos level's).");
 REXCVAR_DEFINE_INT32(wwe12_universe_chaos_stips, -1, "WWE12",
