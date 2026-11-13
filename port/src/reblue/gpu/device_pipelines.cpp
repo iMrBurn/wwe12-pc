@@ -233,7 +233,11 @@ bool BuildPipelineLayout(VideoState &s) {
   // lazily created counter by Occlusion::Begin.
   // A GPU that binds at most 4 sets (Mali-G57 / Helio G100, #68: black screen) gets a layout
   // without this set; the sun's lens flare count then stays 0.
+#if defined(WWE12_IOS)
+  const u32 max_sets = 0;  // iOS builds do not apply plume-max-descriptor-sets (MoltenVK binds plenty of sets)
+#else
   const u32 max_sets = s.device->getCapabilities().maxBoundDescriptorSets;
+#endif
   s.occlusion_supported = max_sets == 0 || max_sets >= 5;
   if (!s.occlusion_supported)
     BD_WARN("GPU binds only {} descriptor sets: no occlusion counter set (the sun's lens flare stays off)", max_sets);
