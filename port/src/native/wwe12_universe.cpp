@@ -4602,7 +4602,7 @@ constexpr u32 kMoreEvent = 200;  // (queued as event 200 + kind)
 enum MoreKind : u32 {
   kCashInWon, kCashInLost, kStreak5, kStreak10, kStreak15, kLosing5,
   kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical,
-  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMomentumHigh, kMomentumLow, kMoreKinds
+  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMomentumHigh, kMomentumLow, kTop5Out, kMoreKinds
 };
 // (its argument in the news' +10, u16, which the game neither clears nor reads: a title, title + 256 * another title
 // or title + 256 * a number)
@@ -4833,7 +4833,7 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
   if (!Enabled() || !REXCVAR_GET(wwe12_universe_more_news) || bd::mem::load<u32>(kInUniverseFlag) != 1)
     return;
   PPCContext x = in;
-  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;  // (a Universe view at x.r1 + 0x800, the calls below it)
   const u32 u = Call(x, base, __imp__sub_82683A30, 0);
   if (!u)
     return;
@@ -4869,6 +4869,39 @@ void WeeklyNews(const PPCContext &in, u8 *base) {
       if (weeks >= m && weeks < m + 4)
         NewsOnce(fmt::format("news reign {} {} {} {}", r.title, r.holder, r.from_day, m), kReignWeeks, r.holder,
                  r.title | (m << 8));
+  }
+  // the top 5 of each singles title the Universe uses (its ranking, sub_826D2508: 32-byte rows, +0 the Superstar):
+  // one who drops out of it (and is not its champion) gets a news; 2 a day at most; the first look after a load only
+  // keeps them
+  {
+    static std::map<u32, std::vector<u32>> s_top;
+    static u32 s_out = 0;
+    if (!s_out)
+      s_out = REX_KERNEL_MEMORY()->SystemHeapAlloc(180 * 32, 0x10);
+    std::set<u32> used;
+    for (const Reign &r : LoadReigns())
+      used.insert(r.title);
+    u32 told = 0;
+    for (const u32 title : used) {
+      if (!s_out || title >= 23 || Call(x, base, __imp__sub_82A39CE8, title))
+        continue;
+      const u32 view = x.r1.u32 + 0x800;
+      Call(x, base, __imp__sub_826CDC48, view);
+      const u32 n = std::min<u32>(Call(x, base, __imp__sub_826D2508, view, title, s_out, 180), 5);
+      Call(x, base, __imp__sub_826CE098, view);
+      std::vector<u32> top;
+      for (u32 k = 0; k < n; ++k)
+        top.push_back(bd::mem::load<u32>(s_out + k * 32));
+      const u32 champ = Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;
+      if (!first && s_top.count(title))
+        for (const u32 id : s_top[title])
+          if (id < 512 && id != champ && told < 2 && std::find(top.begin(), top.end(), id) == top.end()) {
+            QueueNews(kMoreEvent + kTop5Out, kNewsQualified, id, title);
+            BD_INFO("[univers] news: {} drops out of title {}'s top 5", id, title);
+            ++told;
+          }
+      s_top[title] = top;
+    }
   }
   // a medical update, one week in four, for one injured Superstar
   static std::mt19937 s_random{std::random_device{}()};
@@ -5292,7 +5325,14 @@ u32 MoreNewsText(u32 id) {
         "En coulisses, on se demande si %s pourra se relever de sa mauvaise pente actuelle.",
         "Hinter den Kulissen wird gefl\xC3\xBCstert, ob %s aus der aktuellen Abw\xC3\xA4rtsspirale herausfindet.",
         "Entre bastidores se preguntan si %s podr\xC3\xA1 salir de su mala racha actual.",
-        "Nel backstage ci si chiede se %s riuscir\xC3\xA0 a riprendersi dalla sua spirale negativa."}}};
+        "Nel backstage ci si chiede se %s riuscir\xC3\xA0 a riprendersi dalla sua spirale negativa."}},
+      {{"TITLE PICTURE SHIFTS", "LA COURSE AU TITRE CHANGE", "DAS TITELRENNEN \xC3\x84NDERT SICH",
+        "CAMBIOS EN LA LUCHA POR EL T\xC3\x8DTULO", "CAMBIA LA CORSA AL TITOLO"},
+       {"%s drops out of the top 5 rankings for the {T}.",
+        "%s sort du top 5 du classement pour le {T}.",
+        "%s f\xC3\xA4llt aus den Top 5 der Rangliste f\xC3\xBCr den {T}.",
+        "%s sale del top 5 del ranking por el {T}.",
+        "%s esce dalla top 5 della classifica per il {T}."}}};
   const u32 kind = g_news_more - 1;
   const bool title = id == 27068 || id == 27070;
   std::string text = title ? kTexts[kind].title[CurrentLang()] : kTexts[kind].line[CurrentLang()];
