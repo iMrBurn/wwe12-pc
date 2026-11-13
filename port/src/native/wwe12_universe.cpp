@@ -7752,3 +7752,56 @@ void Show3Experiment(u32 u) {
     BD_INFO("[univers] show 3 put on weekday {}", d);
   }
 }
+
+// ---- Dev: Universe acts (UN00) swapped, first step towards other games' scenes (docs/univers.md section 44) ----------
+//
+// The acts of pac/m.pac ZMOT/UN00 are read once per match; at the end of the read sub_824868F8(reader) registers each
+// one in the motion manager *(0x8317B870): bank = sub_8246E8C8(manager, act, r20, r22) (manager + 16 * index), act
+// record = sub_8246E000(bank, act) (12 bytes: +0 u16 the act, +2 u16 blocks, +4 their table, +8 the data), filled by
+// sub_82486648. The UN00 reader has genre 1 (reader +60, sub_82486470). With wwe12_universe_act_swap_from = A and _to =
+// B, act A's record takes B's (+2..+11) right after the registration: when the game plays A it should play B. A test
+// of the way a scene can be put in (an existing number reused), before converting SvR 2011's.
+REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_from, 0, "WWE12",
+                     "Dev: Universe act (32100-32468) that plays another one (wwe12_universe_act_swap_to); 1 = every act with as "
+                     "many blocks; 0 = off.");
+REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_to, 0, "WWE12", "Dev: the act played instead (see _from).");
+REX_EXTERN(__imp__sub_824868F8);
+REX_EXTERN(__imp__sub_8246E8C8);
+REX_EXTERN(__imp__sub_8246E000);
+extern "C" REX_FUNC(sub_824868F8) {
+  const PPCContext in = ctx;
+  const u32 reader = ctx.r3.u32;
+  const u32 genre = bd::mem::try_load<u32>(reader + 60);
+  __imp__sub_824868F8(ctx, base);
+  const int32_t from = REXCVAR_GET(wwe12_universe_act_swap_from), to = REXCVAR_GET(wwe12_universe_act_swap_to);
+  if (genre != 1 || !(from == 1 || (from >= 32000 && from <= 32999)) || to < 32000 || to > 32999 || from == to)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 manager = bd::mem::load<u32>(0x8317B870);
+  if (!manager)
+    return;
+  const auto record = [&](u32 act) {
+    const u32 bank = Call(x, base, __imp__sub_8246E8C8, manager, act, 0, 0xFF);
+    const u32 r = bank ? Call(x, base, __imp__sub_8246E000, bank, act) : 0u;
+    return r && bd::mem::load<u16>(r) == act ? r : 0u;
+  };
+  const u32 b = record(u32(to));
+  if (!b) {
+    BD_INFO("[univers] act swap: act {} not found", to);
+    return;
+  }
+  const u32 blocks = bd::mem::load<u16>(b + 2);
+  u32 done = 0;
+  for (u32 act = from == 1 ? 32100 : u32(from); act <= (from == 1 ? 32499u : u32(from)); ++act) {
+    const u32 a = act == u32(to) ? 0 : record(act);
+    if (!a || (from == 1 && bd::mem::load<u16>(a + 2) != blocks))
+      continue;  // (all: only the acts with as many blocks, the same cast and camera)
+    bd::mem::store<u16>(a + 2, bd::mem::load<u16>(b + 2));
+    bd::mem::store<u32>(a + 4, bd::mem::load<u32>(b + 4));
+    bd::mem::store<u32>(a + 8, bd::mem::load<u32>(b + 8));
+    ++done;
+  }
+  BD_INFO("[univers] act swap: {} act(s) now play {} ({} blocks, data {:08X})", done, to, blocks,
+          bd::mem::load<u32>(b + 8));
+}
