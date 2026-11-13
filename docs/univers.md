@@ -1058,3 +1058,42 @@ l'ouverture du menu Univers, seulement un jour de draft (`sub_826CD010(vue, sub_
 catcheur passé à RAW / SmackDown reçoit une news de type 5 (+14 = 0x52, +15 la marque), textes en 5 langues
 (« DRAFTED TO RAW! » / « %s has been drafted to RAW! »). Réglage `wwe12_universe_draft_news` (true). Vu : Cody Rhodes
 → RAW, Triple H → SmackDown dans NEWS (le jeu vide la liste à chaque show : chaque show du draft montre les siens).
+
+## 44. Interférence et scènes de l'Univers : étude (2026-11-13, lecture seule, pas vérifié en jeu)
+
+Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'intervention, cinématiques des autres jeux.
+Étude par un agent, sur le code recompilé et `image.bin` ; certitude indiquée.
+- **Carte** (sûr) : bits 4-5 de l'octet +4 de l'entrée de carte (104 octets) = mode (`sub_826D4EC8` pose,
+  `sub_826D4E68` lit, `sub_826D4F28` teste 1). Mode 1 posé par `sub_826C63D8` / `sub_826C3A18` / `sub_826C1C38` :
+  « interférence possible » (en-tête de la ligne : texte 27519 au lieu du type de match, `sub_82554B68`, probable) ;
+  mode 2 vient du modèle MTDT (+24 = 1, `sub_826EAEB0`), texte 27520 (probable : « regarder en vainqueur du Rumble »).
+  La boîte Oui / Non elle-même n'est pas trouvée.
+- **Réponse** (sûr) : l'objet de préparation du match `[x+52]` +48 (veut interférer), +52 (l'interférant, choisi par le
+  joueur, qui le joue) → `sub_82546E48` les copie en this+144 / +148 → `sub_82547460` → `sub_826BB878(mgr, id)` :
+  mgr+5052 = 1, mgr+5056 = l'interférant (mgr = *0x83231548).
+- **Genre d'interférence** (sûr) : `sub_826BCD40` (depuis `sub_826C1578` ← `sub_826C3090`) lit la relation de
+  l'interférant avec les 2 adversaires (`sub_826CBCE8`, 5 alliés / 5 rivaux) ; table 0x8203D5C8 : rival des deux = 0,
+  allié des deux = 2, sinon 1 ; mode 2 = 3 ; écrit en mgr+5064, puis met en file des scènes WCID par `sub_826DC408(buf,
+  liste, n°)` (genre 0 : liste 0 n° 29-31 au hasard, liste 2 n° 44, liste 3 n° 89 ; genre 1 : 48, 43, 89 ; genre 2 :
+  47, 44, 94 / 95 ; genre 3 : 49, 45, 97). Avec 5052 posé, les scènes au hasard (`sub_826DBA10`, `sub_826DBCE0`) sont
+  sautées.
+- **L'entrée en cours de match** (sûr) : `sub_826C93A0` (depuis `sub_823B9B58`, `sub_823F3508`) teste mgr+5052 et
+  construit PlayableIFCtrl (`sub_826C98B0`, genre de mgr+5064 par `sub_826BC578`) ; départ `sub_826C99A0`, suivi des
+  PV `sub_826C9D88`, arbitre / deux finishers `sub_826C9F40`.
+- **WCID** (sûr pour la forme, probable pour le sens) : table des scènes de situation, dans `wuniData.pac` (BPE, « WCI »
+  + nombre) : 4 listes de 40, 55, 52, 114 fiches de 564 octets (pointeurs à 0x83231558 ; probablement les moments
+  où une scène se joue). Fiche : +0 liste, +2 n° (index + 1), +192..+312 six rôles de 24 octets (CastA-F), +468 un u16
+  (32100+, 32200+… selon la liste, sens inconnu). `sub_826DC408` → `sub_826BF660` → `sub_826BD970` remplit les rôles
+  (catcheurs choisis par `sub_826DB8F0` / `sub_826DAC88`) dans une case de 596 octets en mgr+16 (+296 = 6 × 20).
+- **Histoires** : STYT (136 × 1452 octets) ; liste d'actes {u16 acte, u8 sous-acte, u8 piste} jouée par `sub_826ECE78`
+  (journal « Act=… ») ; départ d'une scène `sub_826DF6D8` (« Timing[%d][%2d]:CutScene Start »). Actes : RSC0-3 =
+  4000-4399, Season0-6 = 1010-3840, Winning = 6050-9xxx.
+- **Inconnu** : comment une fiche WCID ou un acte devient le nom `/EVPx/NNNN` (les chaînes « UNVS/%1d%03d » et
+  « UNVS/%04d » n'ont pas de référence directe trouvée).
+- **Prochaine expérience** (la plus petite) : `wwe12_game_log` + trois lignes de journal (`sub_826DC408` : liste, n°,
+  retour, +2 / +468 ; `sub_826BCD40` : le genre ; `sub_826BF660` : les 6 rôles), puis un match de carte avec
+  interférence et un sans : on relie fiche WCID → acte → scène.
+- **Estimations** (de l'agent) : embuscade en coulisses 15-25 h (choix 3 h, trouver la scène 3-5 h, imposer les acteurs
+  4-6 h, faire perdre la cible 4-8 h : seul levier connu = le vainqueur forcé d'un match SIMULÉ, `sub_826C9050`
+  mode 2). Scènes portées au même moment et aux mêmes rôles : WWE '13 2-4 jours si ses formats sont ceux de WWE '12,
+  2K14-2K17 des semaines. Story Collection (2K15+) : un système entier à créer.
