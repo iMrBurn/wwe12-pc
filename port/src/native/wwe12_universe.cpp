@@ -7836,6 +7836,62 @@ void LoadAddedScenes() {
 }
 
 // The data to register instead of the game's act `act` (data: its unpacked record), or 0.
+u32 Be32At(const u8 *p) { return (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | p[3]; }
+void PutBe32At(u8 *p, u32 v) { p[0] = u8(v >> 24), p[1] = u8(v >> 16), p[2] = u8(v >> 8), p[3] = u8(v); }
+
+// Our scene with the game's act's objects (blocks y 6-59: props, the referee...) added as they are: their motion is the
+// game's scene's, our Superstars and cameras are ours. A record: header 0x70 (+0 0x50 + 0x28 n, +4 the blocks' size,
+// +0x0C the first block, +0x48 n), the table (0x28 per block: +2 u16 size / 32, +4 the name, +0x24 the offset from the
+// first block), the blocks (on 32-byte boundaries). The table is kept sorted by name, as the game's.
+std::vector<u8> WithGameObjects(const std::vector<u8> &ours, u32 data) {
+  const u8 *g = bd::mem::at<u8>(data);
+  const u32 gn = Be32At(g + 0x48), gfirst = Be32At(g + 0x0C);
+  const u32 on = Be32At(ours.data() + 0x48), ofirst = Be32At(ours.data() + 0x0C), obody = Be32At(ours.data() + 4);
+  struct Ent {
+    std::array<u8, 0x28> e;
+    std::string name;
+    const u8 *block;
+    u32 size;
+  };
+  std::vector<Ent> ents;
+  for (u32 i = 0; i < on; ++i) {
+    Ent x;
+    std::memcpy(x.e.data(), ours.data() + 0x70 + 0x28 * i, 0x28);
+    x.name.assign((const char *)x.e.data() + 4, 8);
+    x.block = ours.data() + ofirst + Be32At(x.e.data() + 0x24);
+    x.size = u32((x.e[2] << 8) | x.e[3]) * 32;
+    ents.push_back(x);
+  }
+  for (u32 i = 0; i < gn && i < 64; ++i) {
+    Ent x;
+    std::memcpy(x.e.data(), g + 0x70 + 0x28 * i, 0x28);
+    x.name.assign((const char *)x.e.data() + 4, 8);
+    const int y = std::atoi(x.name.substr(4).c_str());
+    if (y < 6 || y >= 60)
+      continue;
+    x.block = g + gfirst + Be32At(x.e.data() + 0x24);
+    x.size = u32((x.e[2] << 8) | x.e[3]) * 32;
+    ents.push_back(x);
+  }
+  std::sort(ents.begin(), ents.end(), [](const Ent &a, const Ent &b) { return a.name < b.name; });
+  const u32 n = u32(ents.size()), first = (0x70 + 0x28 * n + 0x1F) & ~0x1Fu;
+  std::vector<u8> out(first, 0);
+  std::memcpy(out.data(), ours.data(), 0x70);
+  u32 body = 0;
+  for (u32 i = 0; i < n; ++i) {
+    PutBe32At(ents[i].e.data() + 0x24, body);
+    std::memcpy(out.data() + 0x70 + 0x28 * i, ents[i].e.data(), 0x28);
+    out.insert(out.end(), ents[i].block, ents[i].block + ents[i].size);
+    body += ents[i].size;
+  }
+  PutBe32At(out.data(), 0x50 + 0x28 * n);
+  PutBe32At(out.data() + 4, body);
+  PutBe32At(out.data() + 0x0C, first);
+  PutBe32At(out.data() + 0x48, n);
+  (void)obody;
+  return out;
+}
+
 u32 AddedSceneFor(u32 act, u32 data) {
   if (!REXCVAR_GET(wwe12_universe_more_scenes) || act < 32000 || act > 32999 || !data)
     return 0;
@@ -7848,9 +7904,10 @@ u32 AddedSceneFor(u32 act, u32 data) {
     const char *c = bd::mem::try_at<const char>(data + 0x70 + 0x28 * i + 4);
     return c ? std::string(c, 8) : std::string();
   });
+  // ours: the same Superstars (roles 0-5); the game's objects (6-59) are added to ours (WithGameObjects)
   std::vector<AddedScene *> same;
   for (auto &sc : g_added)
-    if (sc.list == act / 100 % 10 && sc.roles == roles)
+    if (sc.list == act / 100 % 10 && sc.roles == (roles & 0x3F) && !(sc.roles & ~u64(0x3F)))
       same.push_back(&sc);
   static std::mt19937 rng{std::random_device{}()};
   if (same.empty() || int(rng() % 100) >= REXCVAR_GET(wwe12_universe_more_scenes_chance)) {
@@ -7858,14 +7915,18 @@ u32 AddedSceneFor(u32 act, u32 data) {
     return 0;
   }
   AddedScene *sc = same[rng() % same.size()];
-  if (!sc->guest) {
-    sc->guest = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(sc->bytes.size()), 0x20);
-    if (!sc->guest)
+  static std::map<std::pair<std::string, u32>, u32> s_merged;  // (scene, act) -> its copy in the game's memory
+  u32 &guest = (roles & ~u64(0x3F)) ? s_merged[{sc->name, act}] : sc->guest;
+  if (!guest) {
+    const std::vector<u8> bytes = (roles & ~u64(0x3F)) ? WithGameObjects(sc->bytes, data) : sc->bytes;
+    guest = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(bytes.size()), 0x20);
+    if (!guest)
       return 0;
-    std::memcpy(bd::mem::at<u8>(sc->guest), sc->bytes.data(), sc->bytes.size());
+    std::memcpy(bd::mem::at<u8>(guest), bytes.data(), bytes.size());
   }
-  BD_INFO("[univers] scene: act {} (roles {:X}) plays the added scene {}", act, roles, sc->name);
-  return sc->guest;
+  BD_INFO("[univers] scene: act {} (roles {:X}) plays the added scene {}{}", act, roles, sc->name,
+          (roles & ~u64(0x3F)) ? " (with the act's objects)" : "");
+  return guest;
 }
 }  // namespace
 
