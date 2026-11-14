@@ -12,6 +12,8 @@
 
 REXCVAR_DEFINE_BOOL(wwe12_pin_trap, false, "WWE12",
                     "Dev: log the code that writes a pin's count (hardware breakpoints on two words).");
+REXCVAR_DEFINE_INT32(wwe12_watch_addr, 0, "WWE12",
+                     "Dev: a guest address (as a decimal number) whose 4-byte writes are logged with their code (DR2).");
 
 #if defined(__ANDROID__)
 void Wwe12PinTrapStart() {}  // (dev, Windows only)
@@ -39,7 +41,7 @@ constexpr u32 kActors = 0x8317B770;
 constexpr int kMax = 128;
 
 u64 g_exe = 0;
-std::atomic<u64> g_host[2];  // host addresses watched by DR0 / DR1
+std::atomic<u64> g_host[3];  // host addresses watched by DR0 / DR1 / DR2
 std::atomic<int> g_n{0};
 u64 g_rip[kMax];
 u32 g_value[kMax];
@@ -67,10 +69,10 @@ LONG CALLBACK Handler(EXCEPTION_POINTERS *ep) {
   if (ep->ExceptionRecord->ExceptionCode != STATUS_SINGLE_STEP)
     return EXCEPTION_CONTINUE_SEARCH;
   CONTEXT *c = ep->ContextRecord;
-  const u64 hit = c->Dr6 & 3;
+  const u64 hit = c->Dr6 & 7;
   if (!hit)
     return EXCEPTION_CONTINUE_SEARCH;
-  const int slot = (hit & 1) ? 0 : 1;
+  const int slot = (hit & 1) ? 0 : (hit & 2) ? 1 : 2;
   const u64 h = g_host[slot].load();
   const u64 rip = c->Rip - g_exe;
   const u32 value = h ? _byteswap_ulong(*reinterpret_cast<volatile u32 *>(h)) : 0;
@@ -92,7 +94,7 @@ LONG CALLBACK Handler(EXCEPTION_POINTERS *ep) {
 }
 
 // Debug registers of every thread but this one: DR0 / DR1 = the two words (0 = off), writes, 4 bytes.
-void SetAll(u64 a0, u64 a1) {
+void SetAll(u64 a0, u64 a1, u64 a2) {
   const DWORD self = GetCurrentThreadId(), pid = GetCurrentProcessId();
   HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
   if (snap == INVALID_HANDLE_VALUE)
@@ -111,11 +113,14 @@ void SetAll(u64 a0, u64 a1) {
       if (GetThreadContext(t, &c)) {
         c.Dr0 = a0;
         c.Dr1 = a1;
-        u64 dr7 = c.Dr7 & ~u64(0xFF00000F);
+        c.Dr2 = a2;
+        u64 dr7 = c.Dr7 & ~u64(0xFFF0003F);
         if (a0)
           dr7 |= 1 | (u64(0b01) << 16) | (u64(0b11) << 18);  // L0, write, 4 bytes
         if (a1)
           dr7 |= 4 | (u64(0b01) << 20) | (u64(0b11) << 22);  // L1, write, 4 bytes
+        if (a2)
+          dr7 |= 16 | (u64(0b01) << 24) | (u64(0b11) << 26);  // L2, write, 4 bytes
         c.Dr7 = dr7;
         SetThreadContext(t, &c);
       }
@@ -128,7 +133,7 @@ void SetAll(u64 a0, u64 a1) {
 
 void Poll() {
   int flushed = 0;
-  u64 set[2] = {};
+  u64 set[3] = {};
   auto t_last = std::chrono::steady_clock::now();
   for (;;) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -138,25 +143,30 @@ void Poll() {
       for (u64 o : g_chain[flushed])
         if (o)
           chain += fmt::format(" {:X}", o);
-      BD_INFO("[compte] catcheur {} : compte = {} ecrit par wwe12.exe+{:X} pile:{}", g_slot[flushed],
+      BD_INFO("[compte] {} : valeur {} ecrite par wwe12.exe+{:X} pile:{}",
+              g_slot[flushed] == 2 ? std::string("adresse surveillee") : fmt::format("compte du catcheur {}", g_slot[flushed]),
               g_value[flushed], g_rip[flushed], chain);
     }
-    u64 want[2] = {};
+    u64 want[3] = {};
     for (u32 i = 0; i < 2; ++i) {
       const u32 actor = bd::mem::try_load<u32>(kActors + i * 4);
       u8 *host = actor ? bd::mem::try_at<u8>(actor + 2760) : nullptr;
       want[i] = host ? u64(host) : 0;
     }
+    if (const int32_t w = REXCVAR_GET(wwe12_watch_addr)) {
+      u8 *host = bd::mem::try_at<u8>(u32(w));
+      want[2] = host ? u64(host) : 0;
+    }
     // (again every 2 s too: threads created since then)
     const auto now = std::chrono::steady_clock::now();
-    if (want[0] != set[0] || want[1] != set[1] || now - t_last > std::chrono::seconds(2)) {
-      if (want[0] != set[0] || want[1] != set[1])
-        BD_INFO("[compte] points d'arret sur {:X} / {:X}", want[0], want[1]);
-      g_host[0] = want[0];
-      g_host[1] = want[1];
-      SetAll(want[0], want[1]);
-      set[0] = want[0];
-      set[1] = want[1];
+    if (want[0] != set[0] || want[1] != set[1] || want[2] != set[2] || now - t_last > std::chrono::seconds(2)) {
+      if (want[0] != set[0] || want[1] != set[1] || want[2] != set[2])
+        BD_INFO("[compte] points d'arret sur {:X} / {:X} / {:X}", want[0], want[1], want[2]);
+      for (int k = 0; k < 3; ++k) {
+        g_host[k] = want[k];
+        set[k] = want[k];
+      }
+      SetAll(want[0], want[1], want[2]);
       t_last = now;
     }
   }
