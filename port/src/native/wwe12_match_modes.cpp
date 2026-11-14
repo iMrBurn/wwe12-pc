@@ -2,25 +2,27 @@
 // that found what they use. All off by default.
 //
 // Found (code read 2026-10-28 / 2026-11-14, probe test of the user 2026-11-14, test_finishers.log):
-// - Finisher gauge: the 'CHP ' component of an actor ([actor+3436], sub_827D5C28), object = component + 24,
-//   [obj+32] = the actor. obj+152 = gauge (float, 1 = full = finisher ready). Read by sub_82246DE0 (often, on
-//   the game thread), written by sub_82246E48(obj, f1) (a plain store outside online play). +188 = -1 while the
-//   gauge is not full (the per-frame update sub_8224BB58 handles the full state; a full gauge left unused is lost
-//   after a while: seen by the user). A finisher done: sub_82349910(actor) sets the gauge to 0.05 (call returning
-//   to 0x82349960) and +188 = -1; actor+2776 counts finishers (sub_8224B008, max sub_82248000: 3 for some, else 1)
-//   and goes back down later. sub_82349648 is a per-frame check, not "a finisher done".
+// - Momentum gauge: the 'CHP ' component of an actor ([actor+3436], sub_827D5C28), object = component + 24,
+//   [obj+32] = the actor. obj+152 = gauge (float, 1 = full). A FULL GAUGE IS THE SIGNATURE, not the finisher
+//   (the user's test: a full gauge at the start gave "my signature"). Read by sub_82246DE0 (often, on the game
+//   thread), written by sub_82246E48(obj, f1). When full, sub_8224BB58 (per frame) sets +188 = 1200 and counts it
+//   down; at 0 the gauge goes to 0 (setter call returning to 0x8224BEAC) and the signature becomes a finisher
+//   (sub_8224B008: actor+2776 + 1). A signature done: sub_82349910 sets the gauge to 0.05 (call returning to
+//   0x82349960), +2776 + 1 as well.
+// - Stored finishers: actor+2776 (0 = none; sub_822480F0 = "has a finisher"; gained up to sub_82248000: 3 for
+//   some superstars, else 1). Set to 0 by sub_82349980 and when a match starts (sub_8222B9xx); it went down one
+//   by one as finishers were done in the first test.
 // - Health: 4 u16 at [actor+3364] + 56, in this order: head, body, arms, legs (the script command SetHP,
 //   sub_823D5298, writes all four). Full = 120 in an exhibition (a Royal Rumble entrant: 110); they go down with
 //   the hits on each place and below 0 (65535...) when worn out.
 //
 // Starting finishers (wwe12_starting_finishers: 0 = off, 1-3 = that many, 4 = infinite): each superstar of a
-// match starts with a full gauge; after a finisher, while some are left (or always, infinite), the gauge is set
-// full again instead of 0.05, and the finisher count actor+2776 is put back to 0. A full gauge the game takes
-// away after a while (sub_822483F0) is given back while some are left.
+// match starts with that many stored finishers (actor+2776; the gauge is left alone). Each time the game takes
+// one away (a finisher done), the ones still owed are put back; infinite keeps at least one.
 // Squash (wwe12_squash: 0 = off, 1 = the 2nd superstar is the jobber, 2 = the 1st): 1 on 1 matches only; the
-// jobber's four health values start at wwe12_squash_health percent of full, the other one with a full gauge.
-// A new superstar in a place (actor pointer changed), or any after a loading screen, is a new start: set at his first gauge read,
-// and his health set again for 5 s if the game puts it back to full.
+// jobber's four health values start at wwe12_squash_health percent of full, the other one with a stored finisher.
+// A new superstar in a place (actor pointer changed), or one that looks fresh after a loading screen, is a new
+// start: set at his first gauge read, and the jobber's health set again for 5 s if the game puts it back to full.
 
 #include <rex/cvar.h>
 
@@ -60,8 +62,8 @@ namespace {
 
 constexpr u32 kActors = 0x8317B770;
 constexpr int kStars = 6;
-constexpr u32 kFinisherDone = 0x82349960;  // sub_82349910's call to the gauge setter (0.05 after a finisher)
 constexpr int kInfinite = 4;
+constexpr u32 kStock = 2776;  // actor+2776: stored finishers (0 = none; sub_822480F0 = "has a finisher")
 
 using Clock = std::chrono::steady_clock;
 
@@ -70,6 +72,8 @@ std::atomic<u32> g_obj[kStars];
 u32 g_actor[kStars] = {};            // the actor each place was started for
 bool g_recheck[kStars] = {};         // a loading screen since: the same actor may be a new match
 int g_left[kStars] = {};             // finishers still given (starting finishers)
+u32 g_seen[kStars] = {};             // actor+2776 at the last read
+Clock::time_point g_started_at[kStars];
 u16 g_squash_hp[kStars] = {};        // jobber's target health (0 = none)
 u16 g_squash_full[kStars] = {};
 Clock::time_point g_squash_until[kStars];
@@ -100,14 +104,6 @@ float F(u32 at) {
   return f;
 }
 
-void SetGauge(const PPCContext &in, u8 *base, u32 obj, double v) {
-  PPCContext c = in;
-  c.r1.u64 = (in.r1.u32 - 512) & ~15u;
-  c.r3.u64 = obj;
-  c.f1.f64 = v;
-  __imp__sub_82246E48(c, base);
-}
-
 int Finishers() { return std::clamp<int32_t>(REXCVAR_GET(wwe12_starting_finishers), 0, kInfinite); }
 
 void SetHealth(u32 actor, u16 v) {
@@ -118,36 +114,58 @@ void SetHealth(u32 actor, u16 v) {
 }
 
 // A superstar's first gauge read in his place: the match modes' start.
-void Start(const PPCContext &ctx, u8 *base, int i, u32 actor, u32 obj) {
+void Start(int i, u32 actor) {
   g_actor[i] = actor;
   g_left[i] = Finishers();
   g_squash_hp[i] = 0;
-  bool full = g_left[i] > 0;
+  int give = g_left[i] == kInfinite ? 1 : g_left[i];
   const int squash = REXCVAR_GET(wwe12_squash);
-  if (squash == 1 || squash == 2) {
-    if (Stars() == 2 && i < 2) {
-      const int jobber = squash == 1 ? 1 : 0;
-      if (i == jobber) {
-        const u32 dmg = bd::mem::try_load<u32>(actor + 3364);
-        const u16 now = dmg ? bd::mem::try_load<u16>(dmg + 56) : 0;
-        const u16 hp_full = now > 0 && now < 1000 ? now : 120;
-        const int pct = std::clamp<int32_t>(REXCVAR_GET(wwe12_squash_health), 5, 90);
-        g_squash_full[i] = hp_full;
-        g_squash_hp[i] = u16(std::max(1, hp_full * pct / 100));
-        g_squash_until[i] = Clock::now() + std::chrono::seconds(5);
-        SetHealth(actor, g_squash_hp[i]);
-        BD_INFO("[match] squash : catcheur {} commence a {} sur {} de vie", i, g_squash_hp[i], hp_full);
-      } else {
-        full = true;
-        BD_INFO("[match] squash : catcheur {} commence avec son finisher", i);
-      }
+  if ((squash == 1 || squash == 2) && Stars() == 2 && i < 2) {
+    const int jobber = squash == 1 ? 1 : 0;
+    if (i == jobber) {
+      const u32 dmg = bd::mem::try_load<u32>(actor + 3364);
+      const u16 now = dmg ? bd::mem::try_load<u16>(dmg + 56) : 0;
+      const u16 hp_full = now > 0 && now < 1000 ? now : 120;
+      const int pct = std::clamp<int32_t>(REXCVAR_GET(wwe12_squash_health), 5, 90);
+      g_squash_full[i] = hp_full;
+      g_squash_hp[i] = u16(std::max(1, hp_full * pct / 100));
+      g_squash_until[i] = Clock::now() + std::chrono::seconds(5);
+      SetHealth(actor, g_squash_hp[i]);
+      BD_INFO("[match] squash : catcheur {} commence a {} sur {} de vie", i, g_squash_hp[i], hp_full);
+    } else {
+      give = std::max(give, 1);
+      BD_INFO("[match] squash : catcheur {} commence avec un finisher", i);
     }
   }
-  if (full && F(obj + 152) < 1.f)
-    SetGauge(ctx, base, obj, 1.0);
-  if (g_left[i] > 0)
-    BD_INFO("[match] catcheur {} : {} finisher(s) au depart", i, g_left[i] == kInfinite ? std::string("infini")
-                                                                                      : std::to_string(g_left[i]));
+  if (give > 0) {
+    bd::mem::store<u32>(actor + kStock, u32(give));
+    BD_INFO("[match] catcheur {} : {} finisher(s) au depart", i,
+            g_left[i] == kInfinite ? std::string("infini") : std::to_string(give));
+  }
+  g_seen[i] = u32(std::max(give, 0));
+  g_started_at[i] = Clock::now();
+}
+
+// Every gauge read of a started superstar: his stored finishers kept as owed (a use takes them to 0 or down by one).
+void Keep(int i, u32 actor) {
+  const u32 now = bd::mem::try_load<u32>(actor + kStock);
+  if (now < g_seen[i] && g_left[i] > 0 && Clock::now() < g_started_at[i] + std::chrono::seconds(3)) {
+    bd::mem::store<u32>(actor + kStock, g_seen[i]);  // the game's own match start cleared them: not a finisher done
+    return;
+  }
+  if (now < g_seen[i] && g_left[i] > 0) {
+    if (g_left[i] != kInfinite)
+      --g_left[i];  // one finisher used
+    const u32 owed = g_left[i] == kInfinite ? 1u : u32(g_left[i]);
+    if (now < owed) {
+      bd::mem::store<u32>(actor + kStock, owed);
+      BD_INFO("[match] catcheur {} : finisher utilise, {} encore", i,
+              g_left[i] == kInfinite ? std::string("infini") : std::to_string(owed));
+      g_seen[i] = owed;
+      return;
+    }
+  }
+  g_seen[i] = now;
 }
 
 // ---- probe (reads only) ----
@@ -216,9 +234,12 @@ extern "C" REX_FUNC(sub_82246DE0) {
               bd::mem::try_load<u16>(dmg + 56) >= 100 && bd::mem::try_load<u16>(dmg + 56) < 1000;
     }
     g_recheck[i] = false;
-    if (fresh)
-      Start(ctx, base, i, actor, obj);
-    else if (g_squash_hp[i] && Clock::now() < g_squash_until[i]) {
+    if (fresh) {
+      Start(i, actor);
+    } else {
+      Keep(i, actor);
+    }
+    if (!fresh && g_squash_hp[i] && Clock::now() < g_squash_until[i]) {
       const u32 dmg = bd::mem::try_load<u32>(actor + 3364);
       if (dmg && bd::mem::try_load<u16>(dmg + 56) == g_squash_full[i]) {
         SetHealth(actor, g_squash_hp[i]);  // the game put the health back to full at the bell
@@ -233,41 +254,18 @@ extern "C" REX_FUNC(sub_82246E48) {
   const u32 obj = ctx.r3.u32, from = u32(ctx.lr);
   const double v = ctx.f1.f64;
   const float before = obj ? F(obj + 152) : 0.f;
-  int i = -1;
-  if (from == kFinisherDone && obj) {
-    const u32 actor = bd::mem::try_load<u32>(obj + 32);
-    i = StarOf(actor);
-    if (i >= 0 && actor == g_actor[i] && g_left[i] > 0) {
-      if (g_left[i] != kInfinite)
-        --g_left[i];
-      if (g_left[i] > 0) {
-        ctx.f1.f64 = 1.0;  // one more finisher: the gauge stays full
-        bd::mem::store<u32>(actor + 2776, 0);
-        BD_INFO("[match] catcheur {} : finisher fait, jauge gardee pleine (reste {})", i,
-                g_left[i] == kInfinite ? std::string("infini") : std::to_string(g_left[i]));
-      }
-    }
-  }
   __imp__sub_82246E48(ctx, base);
   static std::atomic<int> n{0};
   if (Probe() && std::abs(v - before) > 0.05 && n.fetch_add(1) < 300)
-    BD_INFO("[finisher] catcheur {} : jauge {:.2f} -> {:.2f} (appel {:08X})", i, before, ctx.f1.f64, from);
+    BD_INFO("[finisher] catcheur {} : jauge {:.2f} -> {:.2f} (appel {:08X})",
+            StarOf(obj ? bd::mem::try_load<u32>(obj + 32) : 0), before, v, from);
 }
 
 extern "C" REX_FUNC(sub_822483F0) {
-  const u32 obj = ctx.r3.u32;
-  const u32 actor = obj ? bd::mem::try_load<u32>(obj + 32) : 0;
-  const int i = StarOf(actor);
-  const bool was_full = obj && F(obj + 152) >= 1.f;
   if (Probe())
-    BD_INFO("[finisher] catcheur {} : jauge videe (appel {:08X})", i, u32(ctx.lr));
-  const PPCContext in = ctx;
+    BD_INFO("[finisher] catcheur {} : jauge videe (appel {:08X})",
+            StarOf(ctx.r3.u32 ? bd::mem::try_load<u32>(ctx.r3.u32 + 32) : 0), u32(ctx.lr));
   __imp__sub_822483F0(ctx, base);
-  if (i >= 0 && actor == g_actor[i] && g_left[i] > 0 && was_full) {
-    SetGauge(in, base, obj, 1.0);  // a finisher still owed: not taken away
-    BD_INFO("[match] catcheur {} : finisher garde (reste {})", i,
-            g_left[i] == kInfinite ? std::string("infini") : std::to_string(g_left[i]));
-  }
 }
 
 extern "C" REX_FUNC(sub_8224B008) {
