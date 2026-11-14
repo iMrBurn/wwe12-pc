@@ -47,6 +47,7 @@ REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
 #include <mutex>
 #include <random>
 #include <string>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -485,6 +486,9 @@ REXCVAR_DEFINE_BOOL(wwe12_select_finishers, false, "WWE12",
 // select shows: the attire panel's title, CHANGE ATTIRE (text 280), gets the place's finishers.
 constexpr u32 kChangeAttireText = 280;
 thread_local bool g_bar_text = false;  // the text being completed is the bar's (else the panel's title)
+thread_local u32 g_asked = 0;          // the id being completed
+std::atomic<u32> g_banner_id{0};       // the text id of "ADD MANAGER" (the banner of a superstar without other attires)
+std::set<u32> g_logged_ids, g_banner_tried;  // (game thread)
 u32 Wwe12MatchModesGameText(u32 id) {
   if (!g_select.load())
     return 0;
@@ -497,12 +501,17 @@ u32 Wwe12MatchModesGameText(u32 id) {
       BD_INFO("[selection] texte demande pendant la selection : {}", id);
     }
   }
-  if (id == kOurLabel && g_patched_label) {
-    g_bar_text = true;
-    return g_patched_label;
-  }
   g_bar_text = false;
-  return id == kChangeAttireText ? id : 0;
+  g_asked = id;
+  if (id == kChangeAttireText || id == g_banner_id.load())
+    return id;
+  // (probe: every text the select asks goes through Wwe12MatchModesText once, to log it)
+  if (Probe() && g_logged_ids.count(id) == 0)
+    return id;
+  // the "X ADD MANAGER" banner of a superstar without other attires: found by its text (once) when unknown
+  if (!g_banner_id.load() && g_banner_tried.count(id) == 0)
+    return id;
+  return 0;
 }
 
 // The game's text (guest address) completed with the place's value.
@@ -510,6 +519,17 @@ u32 Wwe12MatchModesText(u32 game) {
   const char *g = game ? bd::mem::try_at<const char>(game) : nullptr;
   if (!g)
     return game;
+  const u32 asked = g_asked;
+  if (asked != kChangeAttireText && asked != g_banner_id.load()) {
+    if (Probe() && g_logged_ids.insert(asked).second)
+      BD_INFO("[selection] texte {} = \"{}\"", asked, g);
+    if (!g_banner_id.load() && g_banner_tried.insert(asked).second && std::strstr(g, "MANAGER")) {
+      g_banner_id = asked;
+      BD_INFO("[selection] bandeau MANAGER = texte {}", asked);
+    }
+    if (asked != g_banner_id.load())
+      return game;
+  }
   static u32 s_bar = 0;
   u32 &buf = g_bar_text ? s_bar : g_text;
   if (!buf)
@@ -554,7 +574,7 @@ extern "C" REX_FUNC(sub_828942C0) {
     ResetChoices();  // the select opens: every place starts at the setting
   if (!select)
     g_select = false;
-  PatchBar(n, select);
+  PatchBar(n, false);  // (the bottom bar is not used any more: the user did not like it there)
   if (Probe() && (n != g_bar_set.exchange(n) || from != g_bar_from.exchange(from)))
     BD_INFO("[selection] barre de boutons {} (appel {:08X}) place {} | {}", n, from, Place(), Places());
   __imp__sub_828942C0(ctx, base);
