@@ -497,7 +497,11 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
 REX_EXTERN(__imp__sub_8246E3B0);
 extern "C" REX_FUNC(sub_8246E3B0) {
   const u32 bitmap = ctx.r4.u32, slot = ctx.r5.u32;
-  if (REXCVAR_GET(wwe12_iquit_wwe13_motions) && bitmap && slot >= 11 && slot <= 22) {
+  static std::atomic<int> s_calls{0};
+  if (s_calls.fetch_add(1) < 60)  // (test of 2026-11-14: no line with slots 11-22; every call logged)
+    BD_INFO("[iquit] repertoire des motions : case {} (appel {:08X}, deja faite {})", slot, u32(ctx.lr),
+            bd::mem::try_load<u32>(ctx.r3.u32 + (slot + 188) * 4) != 0);
+  if (REXCVAR_GET(wwe12_iquit_wwe13_motions) && bitmap && slot >= 8) {
     for (u32 n = 13140; n < 13200; ++n) {
       const u32 w = bitmap + (n >> 5) * 4;
       bd::mem::store<u32>(w, bd::mem::try_load<u32>(w) | (1u << (n & 31)));
