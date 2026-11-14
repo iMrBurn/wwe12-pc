@@ -504,7 +504,10 @@ extern "C" REX_FUNC(sub_8246E3B0) {
   // (test of 2026-11-14: only slots 0, 1 and 24+ are built here, from sub_822B5EC8; the queue's lookup with the byte
   // 255 tries slot 1 (the general motions: a global bitmap + 15250-15258, without 2000-2099 / 20000-20999), then
   // 11-22: slot 1 it is)
-  if (REXCVAR_GET(wwe12_iquit_wwe13_motions) && bitmap && (slot == 1 || slot >= 8)) {
+  // Only slot 1 (the cases 24+ are only tried with their own group byte: useless here), and only when an I Quit
+  // match is being loaded: other matches stay untouched (user's test of 2026-11-14: a wake-up taunt left the man on
+  // the ground; until it is understood, nothing of ours in normal matches).
+  if (REXCVAR_GET(wwe12_iquit_wwe13_motions) && bitmap && slot == 1 && Wwe12IQuitMatch()) {
     for (u32 n = 13140; n < 13200; ++n) {
       const u32 w = bitmap + (n >> 5) * 4;
       bd::mem::store<u32>(w, bd::mem::try_load<u32>(w) | (1u << (n & 31)));
