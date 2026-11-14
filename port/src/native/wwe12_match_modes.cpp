@@ -44,7 +44,9 @@ REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <map>
 #include <mutex>
+#include <tuple>
 #include <random>
 #include <string>
 #include <set>
@@ -718,4 +720,52 @@ void Wwe12PinProbeStart() {
       std::thread(PinDumpLoop).detach();
       BD_INFO("[tombe] sonde active (pin_dump.bin)");
     });
+}
+
+// ---- pin probe 2: the conditions the moves check during a pin (wwe12_pin_probe) ----
+// While the referee counts (state 190 / 191 / 207 / 202), logs each change of sub_821A8400(actor, which, count)
+// (a superstar's state code read by the moves' event conditions) per actor and argument, and each motion event
+// walk of sub_824A5458 (wwe12_move_events.cpp calls Wwe12PinEventLog) with its result.
+
+REX_EXTERN(__imp__sub_821A8400);
+
+namespace {
+bool Counting() {
+  const u32 ref = bd::mem::try_load<u32>(kActors + 6 * 4);
+  const u32 st = ref ? bd::mem::try_load<u32>(ref + 680) : 0;
+  const u16 s = st ? bd::mem::try_load<u16>(st) : 0;
+  return s == 190 || s == 191 || s == 207 || s == 202;
+}
+}  // namespace
+
+extern "C" REX_FUNC(sub_821A8400) {
+  const u32 actor = ctx.r3.u32, which = ctx.r4.u32, count = ctx.r5.u32, from = u32(ctx.lr);
+  __imp__sub_821A8400(ctx, base);
+  if (!REXCVAR_GET(wwe12_pin_probe) || !Counting())
+    return;
+  static std::mutex m;
+  static std::map<std::tuple<u32, u32, u32>, u32> last;
+  const int i = StarOf(actor);
+  std::lock_guard<std::mutex> l(m);
+  auto key = std::make_tuple(actor, which, from);
+  auto it = last.find(key);
+  if (it == last.end() || it->second != ctx.r3.u32) {
+    last[key] = ctx.r3.u32;
+    BD_INFO("[tombe] etat sub_821A8400 catcheur {} which {} count {} -> {} (appel {:08X})", i, which, count,
+            ctx.r3.u32, from);
+  }
+}
+
+void Wwe12PinEventLog(u32 motion, u32 r6, u32 r7, int32_t frame, u32 types) {
+  if (!REXCVAR_GET(wwe12_pin_probe) || !Counting())
+    return;
+  static std::mutex m;
+  static std::map<u32, int32_t> last;
+  std::lock_guard<std::mutex> l(m);
+  auto it = last.find(motion);
+  if (it == last.end() || it->second != frame) {
+    last[motion] = frame;
+    BD_INFO("[tombe] evenements motion {:08X} (types {:08X}) r6 catcheur {} r7 catcheur {} -> image {}", motion, types,
+            StarOf(r6), StarOf(r7), frame);
+  }
 }

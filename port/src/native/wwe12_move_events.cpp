@@ -30,6 +30,7 @@ REX_EXTERN(__imp__sub_824A3E40);  // event value of a motion for a type
 REX_EXTERN(__imp__sub_821A8400);  // a superstar's state (r3 superstar, r4 0/1, r5 count)
 
 void Wwe12DownProbeStart();  // wwe12_down_probe.cpp
+void Wwe12PinEventLog(u32 motion, u32 r6, u32 r7, int32_t frame, u32 types);  // wwe12_match_modes.cpp (dev)
 
 namespace {
 
@@ -63,7 +64,15 @@ extern "C" REX_FUNC(sub_824A5458) {
   std::call_once(probe, Wwe12DownProbeStart);
   const u32 motion = ctx.r3.u32;
   if (!REXCVAR_GET(wwe12_move_event_fix) || ctx.r7.u32 != 0 || motion == 0) {
+    const u32 r6 = ctx.r6.u32, r7 = ctx.r7.u32;
     __imp__sub_824A5458(ctx, base);
+    if (motion) {  // (dev: the pin study)
+      u32 types = 0;
+      const u32 ev = bd::mem::try_load<u32>(motion + 12), n = bd::mem::try_load<u8>(motion + 5);
+      for (u32 i = 0; i < n && i < 32 && ev; ++i)
+        types |= 1u << (bd::mem::try_load<u8>(ev + i * 4) & 31);
+      Wwe12PinEventLog(motion, r6, r7, ctx.r3.s32, types);
+    }
     return;
   }
   const u32 events = bd::mem::load<u32>(motion + 12);
