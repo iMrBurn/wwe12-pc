@@ -588,7 +588,14 @@ u32 Wwe12MatchModesText(u32 game) {
   if (!g)
     return game;
   const u32 asked = g_asked;
-  const bool ready_banner = REXCVAR_GET(wwe12_select_finishers) && std::strncmp(g, " READY", 6) == 0;
+  // (" READY   ADD MANAGER", "READY"...: spaces skipped; not the "READY TITLE" button)
+  const char *t = g;
+  while (*t == ' ')
+    ++t;
+  const bool ready_banner = REXCVAR_GET(wwe12_select_finishers) && std::strncmp(t, "READY", 5) == 0 &&
+                            std::strncmp(t, "READY TITLE", 11) != 0;
+  if (Probe() && ready_banner && g_logged_ids.insert(asked).second)
+    BD_INFO("[selection] banniere {} = \"{}\" : finishers ajoutes", asked, g);
   if (!Ours(asked) && !ready_banner) {
     if (Probe() && g_logged_ids.insert(asked).second)
       BD_INFO("[selection] texte {} = \"{}\"", asked, g);
