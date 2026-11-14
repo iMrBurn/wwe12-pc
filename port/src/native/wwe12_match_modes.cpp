@@ -814,8 +814,8 @@ void Wwe12PinEventLog(u32 motion, u32 r6, u32 r7, int32_t frame, u32 types) {
 // ---- I QUIT as a new match of ONE ON ONE (1.4) ----
 //
 // The menus' table (menu.pac MFLO/0000) is parsed by sub_82DE92F8(menus, table, size): header +4 = the records,
-// +8 = those shown, then 0x74-byte big-endian records from +0xC ({+0x18 label, +0x30 page, +0x34 id, +0x50 parent,
-// +0x54 kind (5 = a choice, 7 = the last choice of its page), +0x58 flags, +0x6C link}). As Kaiko does it for SvR
+// +8 = those shown, then 0x74-byte big-endian records from +0x28 (fields below; ONE ON ONE's matches are records
+// 36-46, parent 8, page 6). As Kaiko does it for SvR
 // 2011, a copy is handed to the parser with one record added: I QUIT (our text 43900) after the last match of
 // PLAY > ONE ON ONE (parent 8), a copy of its SUBMISSION record (label 41049), so no other row moves. The game
 // turns a menu row into a match with sub_82449898(menu, row r4, &a, &b): the I QUIT row has no case there, so the
@@ -827,6 +827,9 @@ REX_EXTERN(__imp__sub_82449898);
 namespace {
 constexpr u32 kIQuitLabel = 43900;
 constexpr u32 kRecord = 0x74;
+constexpr u32 kHeader = 0x28;  // records from +0x28 (the parsed copy; menu.pac's other copy has a 12-byte header)
+// a record's fields (big-endian u32): label, page, id, parent, kind (5 a choice, 7 the page's last), link (0x7D0 a match)
+constexpr u32 kLabel = 0x00, kPage = 0x18, kId = 0x1C, kParent = 0x38, kKind = 0x3C, kLink = 0x54;
 std::atomic<bool> g_iquit{false};   // the match being set up is an I Quit
 std::atomic<int> g_iquit_row{-1};   // the I QUIT row's index in its menu, once known
 int g_submission_row = -1;          // SUBMISSION's index among the ONE ON ONE rows
@@ -837,20 +840,20 @@ extern "C" REX_FUNC(sub_82DE92F8) {
   const u32 total = table ? bd::mem::try_load<u32>(table + 4) : 0, shown = table ? bd::mem::try_load<u32>(table + 8) : 0;
   if (REXCVAR_GET(wwe12_iquit))
     BD_INFO("[iquit] table des menus {:08X} : {} lignes, {} affichees, {} octets", table, total, shown, size);
-  // (only the shown records are read: the header's total runs past the table's end)
-  if (!REXCVAR_GET(wwe12_iquit) || !table || shown == 0 || shown > total || size < 12 + shown * kRecord) {
+  // (only the shown records are read: the header's total may run past the table's end)
+  if (!REXCVAR_GET(wwe12_iquit) || !table || shown == 0 || shown > total || size < kHeader + shown * kRecord) {
     __imp__sub_82DE92F8(ctx, base);
     return;
   }
-  auto rec = [&](u32 i) { return table + 12 + i * kRecord; };
+  auto rec = [&](u32 i) { return table + kHeader + i * kRecord; };
   int sub = -1, last = -1, row = 0, sub_row = -1;
   u32 max_id = 0;
   for (u32 i = 0; i < shown; ++i) {
     const u32 r = rec(i);
-    max_id = std::max(max_id, bd::mem::try_load<u32>(r + 0x34));
-    if (bd::mem::try_load<u32>(r + 0x50) != 8 || bd::mem::try_load<u32>(r + 0x6C) != 0x7D0)
+    max_id = std::max(max_id, bd::mem::try_load<u32>(r + kId));
+    if (bd::mem::try_load<u32>(r + kParent) != 8 || bd::mem::try_load<u32>(r + kLink) != 0x7D0)
       continue;
-    if (bd::mem::try_load<u32>(r + 0x18) == 41049) {
+    if (bd::mem::try_load<u32>(r + kLabel) == 41049) {
       sub = int(i);
       sub_row = row;
     }
@@ -858,6 +861,7 @@ extern "C" REX_FUNC(sub_82DE92F8) {
     ++row;
   }
   if (sub < 0 || last < 0) {
+    BD_INFO("[iquit] ONE ON ONE / SUBMISSION introuvables : rien ajoute");
     __imp__sub_82DE92F8(ctx, base);
     return;
   }
@@ -866,15 +870,15 @@ extern "C" REX_FUNC(sub_82DE92F8) {
     __imp__sub_82DE92F8(ctx, base);
     return;
   }
-  const u32 at = 12 + u32(last + 1) * kRecord;  // the new record's offset
+  const u32 at = kHeader + u32(last + 1) * kRecord;  // the new record's offset
   std::memcpy(bd::mem::at<u8>(copy), bd::mem::at<u8>(table), at);
   std::memcpy(bd::mem::at<u8>(copy + at), bd::mem::at<u8>(rec(u32(sub))), kRecord);
   std::memcpy(bd::mem::at<u8>(copy + at + kRecord), bd::mem::at<u8>(table + at), size - at);
   const u32 added = copy + at;
-  bd::mem::store<u32>(added + 0x18, kIQuitLabel);
-  bd::mem::store<u32>(added + 0x34, max_id + 1);
-  bd::mem::store<u32>(added + 0x54, 7);                  // the page's last choice now
-  bd::mem::store<u32>(copy + 12 + u32(last) * kRecord + 0x54, 5);  // (the old last one: a choice)
+  bd::mem::store<u32>(added + kLabel, kIQuitLabel);
+  bd::mem::store<u32>(added + kId, max_id + 1);
+  bd::mem::store<u32>(added + kKind, 7);                                 // the page's last choice now
+  bd::mem::store<u32>(copy + kHeader + u32(last) * kRecord + kKind, 5);  // (the old last one: a choice)
   bd::mem::store<u32>(copy + 4, total + 1);
   bd::mem::store<u32>(copy + 8, shown + 1);
   g_iquit_row = row;  // (after the page's last match)
