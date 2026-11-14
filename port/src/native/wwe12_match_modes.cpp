@@ -504,18 +504,21 @@ std::set<u32> g_logged_ids;            // (game thread)
 // The texts completed with the finishers: the attire panel's title (280 CHANGE ATTIRE), and for a superstar without
 // other attires the banner under his picture (273 " READY   ADD MANAGER", 287 " READY   ADVANCED"; probe test).
 bool Ours(u32 id) { return id == 280 || id == 273 || id == 287; }
-// I QUIT (1.4): with wwe12_iquit, the SUBMISSION match is an I Quit match: its name (match type text 27467 =
-// 27400 + 67) and its ends (2945 GIVEUP, 2950 SUBMISSION, "BY WAY OF" texts 2942-2950) read "I QUIT".
+// I QUIT (1.4): with wwe12_iquit, ONE ON ONE has an I QUIT row (below): a SUBMISSION match (no pinfall, no
+// count-out, no rope breaks: the match record of 2026-11-14) whose name (match type text 27467 = 27400 + 67) and
+// ends (2945 GIVEUP, 2950 SUBMISSION, "BY WAY OF" texts 2942-2950) read "I QUIT".
 REXCVAR_DEFINE_BOOL(wwe12_iquit, false, "WWE12",
-                    "I Quit match: the SUBMISSION match becomes an I Quit match (as WWE '13): won by giving up only.");
+                    "I Quit match: PLAY > ONE ON ONE gets an I QUIT match (as WWE '13): won by giving up only.");
 constexpr u32 kSubmissionType = 67;
+bool IQuitMatch();  // below: the match set up is an I Quit one
 bool IQuitText(u32 id) {
   if (!REXCVAR_GET(wwe12_iquit))
     return false;
-  if (id == 27400 + kSubmissionType)
-    return true;
-  // (the ends only in a SUBMISSION match: a normal match won by submission keeps its text)
-  return (id == 2945 || id == 2950) && bd::mem::try_load<u8>(0x8317C850) == kSubmissionType;
+  if (id == 43900)
+    return true;  // the I QUIT row's label
+  // the match's name and its end ("BY WAY OF"), in an I Quit match only
+  return IQuitMatch() && (id == 27400 + kSubmissionType || id == 2945 || id == 2950) &&
+         bd::mem::try_load<u8>(0x8317C850) == kSubmissionType;
 }
 thread_local bool g_iquit_text = false;  // the text being completed is an I QUIT one
 
@@ -807,3 +810,118 @@ void Wwe12PinEventLog(u32 motion, u32 r6, u32 r7, int32_t frame, u32 types) {
             StarOf(r6), StarOf(r7), frame);
   }
 }
+
+// ---- I QUIT as a new match of ONE ON ONE (1.4) ----
+//
+// The menus' table (menu.pac MFLO/0000) is parsed by sub_82DE92F8(menus, table, size): header +4 = the records,
+// +8 = those shown, then 0x74-byte big-endian records from +0xC ({+0x18 label, +0x30 page, +0x34 id, +0x50 parent,
+// +0x54 kind (5 = a choice, 7 = the last choice of its page), +0x58 flags, +0x6C link}). As Kaiko does it for SvR
+// 2011, a copy is handed to the parser with one record added: I QUIT (our text 43900) after the last match of
+// PLAY > ONE ON ONE (parent 8), a copy of its SUBMISSION record (label 41049), so no other row moves. The game
+// turns a menu row into a match with sub_82449898(menu, row r4, &a, &b): the I QUIT row has no case there, so the
+// hook asks for the SUBMISSION row instead and marks the match as an I Quit one (g_iquit).
+
+REX_EXTERN(__imp__sub_82DE92F8);
+REX_EXTERN(__imp__sub_82449898);
+
+namespace {
+constexpr u32 kIQuitLabel = 43900;
+constexpr u32 kRecord = 0x74;
+std::atomic<bool> g_iquit{false};   // the match being set up is an I Quit
+std::atomic<int> g_iquit_row{-1};   // the I QUIT row's index in its menu, once known
+int g_submission_row = -1;          // SUBMISSION's index among the ONE ON ONE rows
+}  // namespace
+
+extern "C" REX_FUNC(sub_82DE92F8) {
+  const u32 table = ctx.r4.u32, size = ctx.r5.u32;
+  const u32 total = table ? bd::mem::try_load<u32>(table + 4) : 0, shown = table ? bd::mem::try_load<u32>(table + 8) : 0;
+  if (!REXCVAR_GET(wwe12_iquit) || !table || total == 0 || total > 4096 || size < 12 + total * kRecord) {
+    __imp__sub_82DE92F8(ctx, base);
+    return;
+  }
+  auto rec = [&](u32 i) { return table + 12 + i * kRecord; };
+  int sub = -1, last = -1, row = 0, sub_row = -1;
+  u32 max_id = 0;
+  for (u32 i = 0; i < shown; ++i) {
+    const u32 r = rec(i);
+    max_id = std::max(max_id, bd::mem::try_load<u32>(r + 0x34));
+    if (bd::mem::try_load<u32>(r + 0x50) != 8 || bd::mem::try_load<u32>(r + 0x6C) != 0x7D0)
+      continue;
+    if (bd::mem::try_load<u32>(r + 0x18) == 41049) {
+      sub = int(i);
+      sub_row = row;
+    }
+    last = int(i);
+    ++row;
+  }
+  if (sub < 0 || last < 0) {
+    __imp__sub_82DE92F8(ctx, base);
+    return;
+  }
+  const u32 copy = REX_KERNEL_MEMORY()->SystemHeapAlloc(size + kRecord, 0x10);
+  if (!copy) {
+    __imp__sub_82DE92F8(ctx, base);
+    return;
+  }
+  const u32 at = 12 + u32(last + 1) * kRecord;  // the new record's offset
+  std::memcpy(bd::mem::at<u8>(copy), bd::mem::at<u8>(table), at);
+  std::memcpy(bd::mem::at<u8>(copy + at), bd::mem::at<u8>(rec(u32(sub))), kRecord);
+  std::memcpy(bd::mem::at<u8>(copy + at + kRecord), bd::mem::at<u8>(table + at), size - at);
+  const u32 added = copy + at;
+  bd::mem::store<u32>(added + 0x18, kIQuitLabel);
+  bd::mem::store<u32>(added + 0x34, max_id + 1);
+  bd::mem::store<u32>(added + 0x54, 7);                  // the page's last choice now
+  bd::mem::store<u32>(copy + 12 + u32(last) * kRecord + 0x54, 5);  // (the old last one: a choice)
+  bd::mem::store<u32>(copy + 4, total + 1);
+  bd::mem::store<u32>(copy + 8, shown + 1);
+  g_iquit_row = row;  // (after the page's last match)
+  g_submission_row = sub_row;
+  BD_INFO("[iquit] ligne I QUIT ajoutee (ligne {} de ONE ON ONE, SUBMISSION = ligne {}, id {})", row, sub_row,
+          max_id + 1);
+  ctx.r4.u64 = copy;
+  ctx.r5.u64 = size + kRecord;
+  __imp__sub_82DE92F8(ctx, base);
+}
+
+// (the row's match from the game into a and b, on a scratch stack: r10 = 128, r11 = -1 when the row has no case)
+void RowMatch(const PPCContext &in, u8 *base, u32 row, u32 &a, u32 &b) {
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 512) & ~15u;
+  const u32 scratch = c.r1.u32 + 256;
+  bd::mem::store<u32>(scratch, 128);
+  bd::mem::store<u32>(scratch + 4, 0xFFFFFFFF);
+  c.r4.u64 = row;
+  c.r5.u64 = scratch;
+  c.r6.u64 = scratch + 4;
+  __imp__sub_82449898(c, base);
+  a = bd::mem::load<u32>(scratch);
+  b = bd::mem::load<u32>(scratch + 4);
+}
+
+extern "C" REX_FUNC(sub_82449898) {
+  const u32 menu = ctx.r3.u32, row = ctx.r4.u32, out_a = ctx.r5.u32, out_b = ctx.r6.u32, from = u32(ctx.lr);
+  const int iq = g_iquit_row.load();
+  // The I QUIT row has no case of its own: when this row gives nothing and SUBMISSION's row gives a match on the
+  // same page (ONE ON ONE), the SUBMISSION match is used, marked as an I Quit.
+  bool asked_iquit = false;
+  if (iq >= 0 && int(row) == iq && g_submission_row >= 0) {
+    u32 a = 0, b = 0, sa = 0, sb = 0;
+    RowMatch(ctx, base, row, a, b);
+    RowMatch(ctx, base, u32(g_submission_row), sa, sb);
+    if (a == 128 && b == 0xFFFFFFFF && !(sa == 128 && sb == 0xFFFFFFFF)) {
+      asked_iquit = true;
+      ctx.r4.u64 = u32(g_submission_row);
+    }
+  }
+  __imp__sub_82449898(ctx, base);
+  const u32 a = out_a ? bd::mem::try_load<u32>(out_a) : 0, b = out_b ? bd::mem::try_load<u32>(out_b) : 0;
+  if (Probe())
+    BD_INFO("[iquit] ligne de menu : page {} ligne {}{} -> {} / {} (appel {:08X})", bd::mem::try_load<u32>(menu + 48),
+            row, asked_iquit ? " (I QUIT)" : "", a, b, from);
+  if (asked_iquit)
+    g_iquit = true;
+  else if (out_a || out_b)
+    g_iquit = false;  // another match chosen
+}
+
+bool IQuitMatch() { return g_iquit.load(); }
