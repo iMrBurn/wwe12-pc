@@ -6,25 +6,23 @@
 // sub_825641B0 / sub_825642C0, the end sub_82565A30 / sub_825657C0). Time below is in WWE '13's ticks (1/60 s).
 //
 // - Asking (Lua Navi_Grapple + CheckIQuitAskHim): the pin button (B) next to an opponent lying face up, face down or
-//   hurting on the ground, both on the same side of the ropes; no distance check. The attacker calls the referee
-//   (motion 13210 / 13211), the referee kneels with his microphone (13200, loop 13201), the asked man answers
-//   (13208 face up / 13209 face down).
+//   hurting on the ground, both on the same side of the ropes; no distance check. The referee asks.
 // - The gauge (only the asked man plays it): a bar 0-124, a cursor starting at 0 going left and right at 6.5 units a
 //   tick (difficulty 1; 5 / 6.5 / 8.5 / 10 by difficulty). The "NO" zone: width = health % x 0.40 (6-93), its centre
 //   62 +- 62 at random, away from the cursor. A pressed in the zone (+-1): he resists. A outside: the cursor freezes
 //   30 ticks and the zone moves. 10 s without resisting: he QUITS. "I QUIT" whitens one step a second (9 steps).
 // - The computer asked presses after a reaction delay once the cursor enters the zone, without checking again (a late
 //   press misses and takes the 30 ticks).
-// - The threat (Lua SetMotionAppeal, IQuit_CheckMakeAThreat): a taunt while the referee asks, within 400 cm: the
-//   attacker threatens (13230-13234 by the taunt's direction) and the gauge shakes 200 ticks (70 x (1 - t/200)^2);
-//   nothing else changes. Once at a time.
-// - A strike on the asked man (the game's own ground strike; WWE '13 plays 13220): the ask goes on as long as he
-//   stays on the ground; if he gets up, the ask stops without an answer.
-// - Resisted: he plays 13205 (face up) / 13206 (face down), the referee 13207, then stands up; the attacker can ask
-//   again. Quit: the match ends I QUIT (GiveUp: the game's own submission end, sub_82261320 reason 2).
-// The WWE '13 motions exist only in the player's own game, ported by the Mod Maker from his WWE '13 disc
-// (13200-13234 -> 13150-13184, mods\.svrmods\Motions\iquit_*_wwe13); without them (wwe12_iquit_wwe13_motions off)
-// the referee uses WWE '12's asking motion 203.
+// - The threat (Lua SetMotionAppeal, IQuit_CheckMakeAThreat): a taunt while the referee asks: the gauge shakes
+//   200 ticks (70 x (1 - t/200)^2); nothing else changes. Once at a time.
+// - A strike on the asked man: the ask goes on as long as he stays on the ground; if he gets up, the ask stops
+//   without an answer.
+// - Resisted: the referee stands up; the attacker can ask again. Quit: the match ends I QUIT (GiveUp: the game's own
+//   submission end, sub_82261320 reason 2).
+// The user's decision (2026-11-14): WWE '13's I Quit "the WWE '12 way": only WWE '12's own motions. The referee asks
+// with his submission-check motion 203 (wwe12_iquit_ref_anim), stands with 20152; the threat is the game's own taunt,
+// the strike the game's own ground strike, the asked man stays in his own motion on the ground. (WWE '13's motions,
+// ported for a test, broke the game's motion pack: a wake-up taunt left the man on the ground. Gone.)
 //
 // The match is the SUBMISSION one marked I Quit (wwe12_match_modes.cpp: its own ONE ON ONE row; no pinfall, no
 // count-out, no rope breaks); the judge (sub_82263440) ends it with the submission reason, whose texts read "I QUIT".
@@ -35,11 +33,8 @@
 
 REXCVAR_DEFINE_BOOL(wwe12_iquit_ask, true, "WWE12",
                     "I Quit match: B next to a downed opponent calls the referee and starts the I QUIT gauge (as WWE '13).");
-REXCVAR_DEFINE_BOOL(wwe12_iquit_wwe13_motions, false, "WWE12",
-                    "I Quit match: play WWE '13's motions (ported by the Mod Maker from the player's own WWE '13 as "
-                    "13150-13184).");
-REXCVAR_DEFINE_INT32(wwe12_iquit_ref_override, 0, "WWE12",
-                     "Dev (Mod Maker test): one motion for the referee instead of WWE '13's 13150 / 13151 / 13157 (0 = off).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim, 203, "WWE12",
+                     "I Quit match: the referee's motion when he asks (a WWE '12 motion: 203 = his submission check).");
 REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gauge's difficulty as WWE '13 (0-3).");
 
 #include <algorithm>
@@ -80,8 +75,6 @@ constexpr double kThreatTicks = 200;
 constexpr double kCallTicks = 60;      // the attacker calls, the referee kneels (then the gauge)
 constexpr double kAnswerTicks = 90;    // the answer shown
 
-// the WWE '13 motions as ported by the Mod Maker (132NN -> 131(NN + 50))
-constexpr u32 W13(u32 m) { return m - 50; }
 constexpr u32 kRefIdle = 20152;  // WWE '12's referee standing (seen in the probes)
 
 std::atomic<u16> g_pad[4];
@@ -104,12 +97,11 @@ bool g_was_in_zone = false;
 Clock::time_point g_last, g_sub_start, g_down_since[6], g_cpu_next_ask;
 std::mt19937 g_rng{std::random_device{}()};
 
-bool Motions13() { return REXCVAR_GET(wwe12_iquit_wwe13_motions); }
 
-// the referee's motion: WWE '13's, or the Mod Maker's test motion
-u32 RefMotion(u32 m) {
-  const int o = REXCVAR_GET(wwe12_iquit_ref_override);
-  return o > 0 && o < 65535 ? u32(o) : W13(m);
+// the referee's asking motion (a WWE '12 one)
+u32 RefAsk() {
+  const int o = REXCVAR_GET(wwe12_iquit_ref_anim);
+  return o > 0 && o < 65535 ? u32(o) : 203;
 }
 
 u32 Actor(int i) { return bd::mem::try_load<u32>(kActors + u32(i) * 4); }
@@ -127,14 +119,12 @@ bool IsOneOf(u16 a, std::initializer_list<u32> list) {
 }
 
 // Lying down or hurting on the ground (animations seen in the probes of 2026-11-14: 0 / 1 lying face up / down,
-// 20 / 21 getting up, 440-480 the ground pain and the slow getting up after a big move); and our own asked / answer
-// motions (he is still on the ground in them).
+// 20 / 21 getting up, 440-480 the ground pain and the slow getting up after a big move).
 bool Down(u32 actor) {
   const u16 a = Anim(actor);
-  return a <= 30 || (a >= 440 && a <= 480) ||
-         IsOneOf(a, {W13(13205), W13(13206), W13(13208), W13(13209)});
+  return a <= 30 || (a >= 440 && a <= 480);
 }
-bool FaceDown(u32 actor) { return Anim(actor) == 1 || Anim(actor) == W13(13209) || Anim(actor) == W13(13206); }
+bool FaceDown(u32 actor) { return Anim(actor) == 1; }
 
 // The pad of a place (the select object's places: +44, 255 = the computer).
 // (in a match the select object no longer says it: user's test of 2026-11-14, both superstars read as the computer.
@@ -245,13 +235,8 @@ void StartAsk(const PPCContext &in, u8 *base, int attacker, int victim) {
   g_cpu_press_at = -1;
   g_was_in_zone = false;
   g_phase = kCall;
-  // the attacker calls the referee (13210 / 13211), the referee kneels with his microphone (13200)
-  if (Motions13()) {
-    PlayAnim(in, base, att, W13(std::uniform_int_distribution<int>(0, 1)(g_rng) ? 13211 : 13210));
-    PlayAnim(in, base, ref, RefMotion(13200));
-  } else {
-    PlayAnim(in, base, ref, 203);
-  }
+  (void)att;
+  PlayAnim(in, base, ref, RefAsk());  // the referee asks
   g_we_asked = true;
   BD_INFO("[iquit] le catcheur {} appelle l'arbitre pour le catcheur {} ({}{})", attacker, victim,
           g_face_down ? "sur le ventre" : "sur le dos", g_cpu_victim ? ", ordinateur" : "");
@@ -272,10 +257,7 @@ void StartGauge(const PPCContext &in, u8 *base) {
   g_ticks = 0;
   g_phase = kGauge;
   ShowGauge();
-  if (Motions13()) {
-    PlayAnim(in, base, vic, W13(g_face_down ? 13209 : 13208));
-    PlayAnim(in, base, ref, RefMotion(13201));
-  }
+  (void)ref;
   BD_INFO("[iquit] la jauge : vie {:.0f} %, zone {:.0f} de large en {:.0f}, vitesse {}", health * 100, g_width.load(),
           g_centre.load(), g_speed);
 }
@@ -288,10 +270,8 @@ void Answer(const PPCContext &in, u8 *base, int result) {
   const u32 vic = Actor(g_victim), ref = Actor(kReferee);
   if (result == 1) {
     BD_INFO("[iquit] le catcheur {} resiste (NO)", g_victim);
-    if (Motions13()) {
-      PlayAnim(in, base, vic, W13(g_face_down ? 13206 : 13205));
-      PlayAnim(in, base, ref, RefMotion(13207));
-    }
+    (void)vic;
+    (void)ref;
   } else {
     GiveUp(in, base);
   }
@@ -300,7 +280,7 @@ void Answer(const PPCContext &in, u8 *base, int result) {
 void EndAsk(const PPCContext &in, u8 *base) {
   g_phase = kIdle;
   const u32 ref = Actor(kReferee);
-  if (ref && IsOneOf(Anim(ref), {203, W13(13200), W13(13201), W13(13207), RefMotion(13200)}))
+  if (ref && IsOneOf(Anim(ref), {203, RefAsk()}))
     PlayAnim(in, base, ref, kRefIdle);  // (the referee stands up again)
 }
 
@@ -322,7 +302,7 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
     const bool attacker = g_attacker >= 0 && PadOf(g_attacker) == int(user);
     if (attacker && g_phase.load() == kGauge && (newly & kPadDpad))
       g_taunt = newly & kPadDpad;
-    return u16(kPadA | kPadB | (attacker ? kPadDpad : 0));
+    return u16(kPadA | kPadB);  // (the attacker's D-pad: the game's own taunt, our threat too)
   }
   for (int a = 0; a < 2; ++a)
     if (PadOf(a) == int(user) && !Down(Actor(a)) && Down(Actor(1 - a))) {
@@ -381,8 +361,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     if (taunt && g_threat < 0) {
       g_threat = 0;
       const int n = (taunt & kDpadUp) ? 1 : (taunt & kDpadRight) ? 2 : (taunt & kDpadDown) ? 3 : 4;
-      if (Motions13())
-        PlayAnim(ctx, base, att, W13(13229 + u32(n)));
+      (void)n;
       BD_INFO("[iquit] le catcheur {} menace son adversaire", g_attacker);
     }
     if (g_threat >= 0) {
@@ -483,40 +462,6 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     ShowGauge();
   else if (!hint)
     g_hint = false;
-}
-
-// ---- the WWE '13 motions: known to the game's motion directory ----
-// Why they stayed frozen (2026-11-14, read in the generated code + the Mod Maker's trace): a motion played by number
-// is queued (sub_821D7480) and the queue's reader (sub_821D7C80) drops any number that has no record in the motion
-// directory [0x8217B870]; a superstar's records (directory slot k + 11) are built by sub_8246E3B0(directory, bitmap,
-// slot) from a 65536-bit bitmap (bit n = word n / 32, 1 << n % 32; sub_821B4610) that sub_823B4628 fills with his
-// moveset's motions and a fixed list (10125, 13100-13135 the referee's). Then the archives are walked
-// (sub_824868F8, /ZMOT/CA00-CA09) and only the entries whose number has a record are read. Here: the Mod Maker's
-// numbers 13140-13199 are added to the bitmap of every superstar / referee slot (11-22), so the game reads them from
-// the Mod Maker's archive and the queue finds them.
-REX_EXTERN(__imp__sub_8246E3B0);
-extern "C" REX_FUNC(sub_8246E3B0) {
-  const u32 bitmap = ctx.r4.u32, slot = ctx.r5.u32;
-  static std::atomic<int> s_calls{0};
-  if (s_calls.fetch_add(1) < 60)  // (test of 2026-11-14: no line with slots 11-22; every call logged)
-    BD_INFO("[iquit] repertoire des motions : case {} (appel {:08X}, deja faite {})", slot, u32(ctx.lr),
-            bd::mem::try_load<u32>(ctx.r3.u32 + (slot + 188) * 4) != 0);
-  // (test of 2026-11-14: only slots 0, 1 and 24+ are built here, from sub_822B5EC8; the queue's lookup with the byte
-  // 255 tries slot 1 (the general motions: a global bitmap + 15250-15258, without 2000-2099 / 20000-20999), then
-  // 11-22: slot 1 it is)
-  // Only slot 1 (the cases 24+ are only tried with their own group byte: useless here), and only when an I Quit
-  // match is being loaded: other matches stay untouched (user's test of 2026-11-14: a wake-up taunt left the man on
-  // the ground; until it is understood, nothing of ours in normal matches).
-  if (REXCVAR_GET(wwe12_iquit_wwe13_motions) && bitmap && slot == 1 && Wwe12IQuitMatch()) {
-    for (u32 n = 13140; n < 13200; ++n) {
-      const u32 w = bitmap + (n >> 5) * 4;
-      bd::mem::store<u32>(w, bd::mem::try_load<u32>(w) | (1u << (n & 31)));
-    }
-    static std::atomic<int> s_logged{0};
-    if (s_logged.fetch_add(1) < 12)
-      BD_INFO("[iquit] motions 13140-13199 ajoutees au repertoire (case {})", slot);
-  }
-  __imp__sub_8246E3B0(ctx, base);
 }
 
 // ---- the gauge, drawn over the game ----
