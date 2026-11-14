@@ -479,7 +479,7 @@ void ResetChoices() {
 }
 }  // namespace
 
-REXCVAR_DEFINE_BOOL(wwe12_select_finishers, false, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_select_finishers, true, "WWE12",
                     "Character select: LT / RT choose each superstar's starting finishers (as WWE 2K14).");
 
 // The string hook of the Universe line asks: is this id ours? The game's text to complete, else 0. While the
