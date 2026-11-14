@@ -66,6 +66,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
@@ -146,6 +147,7 @@ bool Wwe12MenuPictureEntry(const std::string &name, bool sd, uint32_t &sector, u
 // (wwe12_universe.cpp, 1.4: two Money in the Bank briefcases; whether the scene being read shows SmackDown's, blue)
 REXCVAR_DECLARE(int32_t, wwe12_universe_mitb_briefcases);
 bool Wwe12MitbBlue();
+bool Wwe12ZmotOurs(const std::string &name);  // wwe12_superstar_mods.cpp: a game's motion bank the pack serves a copy of
 uint32_t Wwe12EnteringSuperstar(const PPCContext &ctx, uint8_t *base);
 
 // A ribbon / wall movie the game can play: Bink, 180 frames or more, 1.8 MB at most (the game's own: all 180 frames,
@@ -2260,7 +2262,38 @@ extern "C" REX_FUNC(sub_827F29F0) {
       for (size_t i = 0; i <= own.size(); ++i)
         bd::mem::store<u8>(name + u32(i), u8(own[i]));
   }
+  // A game's motion bank with a motions mod's motions ("/ZMOT/CA07", the I Quit referee's group 33): the pack's copy,
+  // "/ZMOT/ca07", asked in its place. The game asks each bank twice: once by sub_827D98D8 (answered with ours by its
+  // hook) and once straight here, which gave the game's: the referee played the numbers and nothing moved (2026-11-14).
+  bool zmot_ours = false;
+  char zmot_was[4] = {};
+  if (name && bd::mem::load<u8>(name) == '/' && bd::mem::load<u8>(name + 1) == 'Z' && bd::mem::load<u8>(name + 2) == 'M' &&
+      bd::mem::load<u8>(name + 3) == 'O' && bd::mem::load<u8>(name + 4) == 'T' && bd::mem::load<u8>(name + 5) == '/') {
+    const std::string asked = bd::mem::str(name);
+    if (asked.size() == 10 && Wwe12ZmotOurs(asked.substr(6))) {
+      zmot_ours = true;
+      for (u32 i = 0; i < 4; ++i) {
+        zmot_was[i] = char(bd::mem::load<u8>(name + 6 + i));
+        bd::mem::store<u8>(name + 6 + i, u8(std::tolower(static_cast<unsigned char>(zmot_was[i]))));
+      }
+    }
+  }
   __imp__sub_827F29F0(ctx, base);
+  if (zmot_ours) {
+    if (ctx.r3.u32 == 0) {  // (ours not there after all: the game's)
+      for (u32 i = 0; i < 4; ++i)
+        bd::mem::store<u8>(name + 6 + i, u8(zmot_was[i]));
+      ctx.r3.u32 = directory, ctx.r4.u32 = name, ctx.r5.u32 = out;
+      __imp__sub_827F29F0(ctx, base);
+    } else {
+      const u32 found = ctx.r3.u32;
+      if (REXCVAR_GET(wwe12_dir_log))
+        REXLOG_INFO("[dir] {} -> ours", bd::mem::str(name));
+      for (u32 i = 0; i < 4; ++i)
+        bd::mem::store<u8>(name + 6 + i, u8(zmot_was[i]));
+      ctx.r3.u32 = found;
+    }
+  }
   if (REXCVAR_GET(wwe12_dir_log) && name)
     REXLOG_INFO("[dir] {} {} out {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}", bd::mem::str(name), ctx.r3.u32 ? "found" : "MISSING",
                 out ? bd::mem::load<u32>(out) : 0, out ? bd::mem::load<u32>(out + 4) : 0, out ? bd::mem::load<u32>(out + 8) : 0,

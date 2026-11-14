@@ -2057,6 +2057,11 @@ extern "C" REX_FUNC(sub_82A31578) {
     ctx.r3.u64 = 1;
 }
 
+bool Wwe12ZmotOurs(const std::string &name) {
+  std::lock_guard<std::mutex> lock(g_zmvm_mutex);
+  return g_zmot_ours.count(name) != 0;
+}
+
 // The game's archive lookup by path: sub_827D98D8(path r3, out r4) -> the entry or 0 (sub_827F29F0: the first mounted
 // archive that has the name). A situation set the pack serves with the added moves (zmvm_add.h: "/ZMVM/stat" for the
 // game's "/ZMVM/STAT") is asked for by its lowercase name first, so ours is taken whatever order the archives are in;
