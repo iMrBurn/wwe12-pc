@@ -81,6 +81,7 @@ using Clock = std::chrono::steady_clock;
 
 // game thread only (the gauge hooks), except g_obj read by the probe
 std::atomic<u32> g_obj[kStars];
+std::atomic<u32> g_pad_presses{0};  // A / B / X / Y presses of pad 0 (pin probe; counted in Wwe12MatchPad)
 u32 g_actor[kStars] = {};            // the actor each place was started for
 bool g_recheck[kStars] = {};         // a loading screen since: the same actor may be a new match
 int g_left[kStars] = {};             // finishers still given (starting finishers)
@@ -579,8 +580,15 @@ extern "C" REX_FUNC(sub_828942C0) {
 // From the XInputGetState hook (wwe12_intros.cpp), every pad: buttons and triggers (0-255).
 void Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
   static u8 s_down[4] = {};
+  static u16 s_buttons[4] = {};
   if (user >= 4)
     return;
+  if (user == 0) {  // (pin probe: face button presses, 0x1000 A, 0x2000 B, 0x4000 X, 0x8000 Y)
+    const u16 newly = u16(buttons & ~s_buttons[0] & 0xF000);
+    for (u16 m = newly; m; m &= u16(m - 1))
+      g_pad_presses.fetch_add(1);
+  }
+  s_buttons[user] = buttons;
   const u8 now = u8((lt > 128 ? 1 : 0) | (rt > 128 ? 2 : 0));
   const u8 pressed = u8(now & ~s_down[user]);
   s_down[user] = now;
@@ -626,6 +634,23 @@ REXCVAR_DEFINE_BOOL(wwe12_pin_probe, false, "WWE12",
 #include <cstdio>
 
 namespace {
+
+// The components of an actor ([actor+3436]: node +4 tag, +16 next, +20 child chain, +24 object), as
+// sub_827D5C28 walks them.
+void Components(u32 head, std::vector<std::pair<u32, u32>> &out) {
+  std::vector<u32> todo{head};
+  std::set<u32> seen;
+  while (!todo.empty() && out.size() < 24) {
+    const u32 node = todo.back();
+    todo.pop_back();
+    if (!node || !seen.insert(node).second)
+      continue;
+    out.push_back({bd::mem::try_load<u32>(node + 4), bd::mem::try_load<u32>(node + 24)});
+    todo.push_back(bd::mem::try_load<u32>(node + 16));
+    todo.push_back(bd::mem::try_load<u32>(node + 20));
+  }
+}
+
 void PinDumpLoop() {
   std::FILE *f = std::fopen("pin_dump.bin", "wb");
   if (!f)
@@ -633,6 +658,7 @@ void PinDumpLoop() {
   const auto t0 = Clock::now();
   u16 last[3] = {0xFFFF, 0xFFFF, 0xFFFF};
   std::vector<u8> buf;
+  std::string comps_logged[2];
   for (;;) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     const u32 ms = u32(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - t0).count());
@@ -644,8 +670,9 @@ void PinDumpLoop() {
       continue;
     buf.clear();
     auto put32 = [&](u32 v) { for (int b = 0; b < 4; ++b) buf.push_back(u8(v >> (8 * b))); };
-    put32(0x504E4450);  // "PDNP"
+    put32(0x32444E50);  // "PND2"
     put32(ms);
+    put32(g_pad_presses.load());
     for (int k = 0; k < 3; ++k) {
       const u32 actor = bd::mem::try_load<u32>(kActors + slots[k] * 4);
       const u32 st = actor ? bd::mem::try_load<u32>(actor + 680) : 0;
@@ -657,12 +684,24 @@ void PinDumpLoop() {
                 last[k], state);
         last[k] = state;
       }
-      const u32 obj = k < 2 ? g_obj[k].load() : 0;
-      const u32 dmg = actor ? bd::mem::try_load<u32>(actor + 3364) : 0;
-      const std::pair<u32, u32> parts[3] = {{actor, 4096}, {obj, 512}, {dmg, 256}};
-      for (const auto &[at, size] : parts)
-        for (u32 o = 0; o < size; o += 4)
-          put32(at ? bd::mem::try_load<u32>(at + o) : 0);
+      for (u32 o = 0; o < 4096; o += 4)
+        put32(actor ? bd::mem::try_load<u32>(actor + o) : 0);
+      std::vector<std::pair<u32, u32>> comps;
+      if (actor && k < 2)
+        Components(bd::mem::try_load<u32>(actor + 3436), comps);
+      put32(u32(comps.size()));
+      std::string names;
+      for (const auto &[tag, obj] : comps) {
+        put32(tag);
+        put32(obj);
+        for (u32 o = 0; o < 1024; o += 4)
+          put32(obj ? bd::mem::try_load<u32>(obj + o) : 0);
+        names += fmt::format(" {:c}{:c}{:c}{:c}@{:08X}", char(tag >> 24), char(tag >> 16), char(tag >> 8), char(tag), obj);
+      }
+      if (k < 2 && names != comps_logged[k]) {
+        comps_logged[k] = names;
+        BD_INFO("[tombe] composants du catcheur {} :{}", k, names);
+      }
     }
     std::fwrite(buf.data(), 1, buf.size(), f);
     std::fflush(f);
