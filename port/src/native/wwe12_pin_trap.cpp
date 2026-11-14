@@ -16,7 +16,7 @@ REXCVAR_DEFINE_INT32(wwe12_watch_addr, 0, "WWE12",
                      "Dev: a guest address (as a decimal number) whose 4-byte writes are logged with their code (DR2).");
 REXCVAR_DEFINE_BOOL(wwe12_watch_select, false, "WWE12",
                     "Dev: DR2 on the character select's place 0 state ([S+268], 2 = attire panel): who writes it.");
-u32 Wwe12SelectScene(int place);  // wwe12_match_modes.cpp
+uint32_t Wwe12SelectScene(int place);  // wwe12_match_modes.cpp
 
 #if defined(__ANDROID__)
 void Wwe12PinTrapStart() {}  // (dev, Windows only)
