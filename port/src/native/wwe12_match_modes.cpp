@@ -194,6 +194,12 @@ void GiveStock(int i, u32 actor, int give) {
 }
 
 void Start(int i, u32 actor) {
+  if (i == 0 && Probe()) {  // (I Quit study: the match record's rules, 104 bytes at 0x8317C850)
+    std::string bytes;
+    for (u32 k = 0; k < 104; ++k)
+      bytes += fmt::format("{}{:02X}", k % 8 ? "" : " ", bd::mem::try_load<u8>(0x8317C850 + k));
+    BD_INFO("[match] fiche du match (type {}) :{}", bd::mem::try_load<u8>(0x8317C850), bytes);
+  }
   g_actor[i] = actor;
   g_left[i] = ChosenFinishers(i);
   g_squash_hp[i] = 0;
@@ -498,7 +504,27 @@ std::set<u32> g_logged_ids;            // (game thread)
 // The texts completed with the finishers: the attire panel's title (280 CHANGE ATTIRE), and for a superstar without
 // other attires the banner under his picture (273 " READY   ADD MANAGER", 287 " READY   ADVANCED"; probe test).
 bool Ours(u32 id) { return id == 280 || id == 273 || id == 287; }
+// I QUIT (1.4): with wwe12_iquit, the SUBMISSION match is an I Quit match: its name (match type text 27467 =
+// 27400 + 67) and its ends (2945 GIVEUP, 2950 SUBMISSION, "BY WAY OF" texts 2942-2950) read "I QUIT".
+REXCVAR_DEFINE_BOOL(wwe12_iquit, false, "WWE12",
+                    "I Quit match: the SUBMISSION match becomes an I Quit match (as WWE '13): won by giving up only.");
+constexpr u32 kSubmissionType = 67;
+bool IQuitText(u32 id) {
+  if (!REXCVAR_GET(wwe12_iquit))
+    return false;
+  if (id == 27400 + kSubmissionType)
+    return true;
+  // (the ends only in a SUBMISSION match: a normal match won by submission keeps its text)
+  return (id == 2945 || id == 2950) && bd::mem::try_load<u8>(0x8317C850) == kSubmissionType;
+}
+thread_local bool g_iquit_text = false;  // the text being completed is an I QUIT one
+
 u32 Wwe12MatchModesGameText(u32 id) {
+  g_iquit_text = false;
+  if (IQuitText(id)) {
+    g_iquit_text = true;
+    return id;
+  }
   if (!g_select.load())
     return 0;
   if (Probe()) {
@@ -522,6 +548,16 @@ u32 Wwe12MatchModesGameText(u32 id) {
 
 // The game's text (guest address) completed with the place's value.
 u32 Wwe12MatchModesText(u32 game) {
+  if (g_iquit_text) {
+    g_iquit_text = false;
+    static u32 s_iquit = 0;
+    if (!s_iquit) {
+      s_iquit = REX_KERNEL_MEMORY()->SystemHeapAlloc(16, 0x10);
+      if (s_iquit)
+        std::memcpy(bd::mem::at<char>(s_iquit), "I QUIT", 7);
+    }
+    return s_iquit ? s_iquit : game;
+  }
   const char *g = game ? bd::mem::try_at<const char>(game) : nullptr;
   if (!g)
     return game;
