@@ -214,8 +214,15 @@ void RollZone() {
   g_centre = std::clamp(c, w * 0.5f, kBar - w * 0.5f);
 }
 
-// the computer asked: a reaction delay (ticks) once the cursor enters the zone
-double CpuDelay() { return std::uniform_int_distribution<int>(2, 12)(g_rng); }
+// the computer asked: a reaction delay (ticks) once the cursor enters the zone. WWE '13 takes it from its generic AI
+// reaction table (not found); here it grows as he gets worn out, so a hurt computer misses and can quit (user's test
+// of 2026-11-14: with 2-12 ticks the computer resisted every time, at 67 % health too).
+float g_cpu_health = 1.f;
+double CpuDelay() {
+  const double tired = 1.0 - std::clamp<double>(g_cpu_health, 0.0, 1.0);
+  return std::uniform_int_distribution<int>(2, 8)(g_rng) +
+         std::uniform_real_distribution<double>(0.0, 40.0 * tired)(g_rng);
+}
 
 void StartAsk(const PPCContext &in, u8 *base, int attacker, int victim) {
   g_attacker = attacker;
@@ -249,6 +256,7 @@ void StartGauge(const PPCContext &in, u8 *base) {
   static constexpr float kWidthK[4] = {50.f, 40.f, 30.f, 30.f};
   const int d = std::clamp(int(REXCVAR_GET(wwe12_iquit_difficulty)), 0, 3);
   const float health = HealthRatio(vic);
+  g_cpu_health = health;
   g_speed = kSpeed[d];
   g_width = std::clamp(health * 100.f * 0.01f * kWidthK[d], 6.f, 93.f);
   g_cursor = 0.f;
