@@ -383,7 +383,8 @@ extern "C" REX_FUNC(sub_82248000) {
 //
 // Found (probe test 2026-11-14): the character select asks the button bar 11 (also 9, 42, 2, 525 by state) from
 // sub_825697xx (call returning to 0x82569864). Its scene object S (methods such as sub_8259E5B0, r3 = S) has
-// [S+284] = the place being chosen (0-5), [S+272] its grid; the select object M = *0x8324DEFC has the places
+// [S+284] = the place being chosen (0-5), [S+272] its grid; S is built for each place by sub_825A1200(S, grid,
+// place); the select object M = *0x8324DEFC has the places
 // (M + [M+15960] * 1596 + 124 + i * 244: +0 id, +16 attire, +44 pad, 255 = CPU). The pads come through the
 // XInputGetState hook of wwe12_intros.cpp (Wwe12MatchPad: X_INPUT_STATE +6 / +7 = LT / RT, 0-255).
 // While the select shows: LT / RT on any pad change the value of the place being chosen (game's rules, 1, 2,
@@ -434,7 +435,6 @@ const char *ValueName(int v) {
 }
 
 void ResetChoices() {
-  g_scene = 0;  // (the last select's object)
   const int v = Finishers();
   for (auto &c : g_choice)
     c = v;
@@ -469,17 +469,36 @@ u32 Wwe12MatchModesText(u32 game) {
   if (!g)
     return game;
   if (!g_text)
-    g_text = REX_KERNEL_MEMORY()->SystemHeapAlloc(160, 0x10);
+    g_text = REX_KERNEL_MEMORY()->SystemHeapAlloc(256, 0x10);
   if (!g_text)
     return game;
   const int p = Place();
   static std::atomic<int> n{0};
   if (Probe() && n.fetch_add(1) < 20)
     BD_INFO("[selection] titre du cadre complete (place {})", p);
-  const std::string text = std::string(g) + "  |  FINISHERS: " + ValueName(p >= 0 ? g_choice[p].load() : 0);
-  std::memset(bd::mem::at<char>(g_text), 0, 160);
-  std::memcpy(bd::mem::at<char>(g_text), text.data(), std::min<size_t>(text.size(), 159));
+  std::string text = std::string(g) + "  |  FINISHERS: " + ValueName(p >= 0 ? g_choice[p].load() : 0);
+  if (Probe()) {  // the game's button icons (private characters U+E000-E00F), to find LT / RT
+    text += "  ";
+    for (int k = 0; k < 16; ++k) {
+      text += fmt::format("{:X}", k);
+      text += char(0xEE);
+      text += char(0x80);
+      text += char(0x80 + k);
+    }
+  }
+  std::memset(bd::mem::at<char>(g_text), 0, 256);
+  std::memcpy(bd::mem::at<char>(g_text), text.data(), std::min<size_t>(text.size(), 255));
   return g_text;
+}
+
+// sub_825A1200(S, grid, place): the select builds a scene object for each place it asks (S+284 = place).
+REX_EXTERN(__imp__sub_825A1200);
+extern "C" REX_FUNC(sub_825A1200) {
+  const u32 s = ctx.r3.u32, place = ctx.r5.u32;
+  __imp__sub_825A1200(ctx, base);
+  g_scene = s;
+  if (Probe())
+    BD_INFO("[selection] nouvel objet de choix {:08X} pour la place {}", s, place);
 }
 
 extern "C" REX_FUNC(sub_8259E5B0) {
