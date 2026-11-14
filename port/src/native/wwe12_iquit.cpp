@@ -67,6 +67,7 @@ std::atomic<float> g_cursor{0.f}, g_zone0{0.4f}, g_zone1{0.55f}, g_white{0.f};
 std::atomic<int> g_result{0};  // 0 running, 1 resisted ("NON"), 2 gave up (shown 1.5 s)
 std::atomic<int> g_ask{0};     // a human's B next to a downed opponent: his place + 1
 std::atomic<int> g_taunt{0};   // a human's taunt next to a downed opponent: his place + 1
+std::atomic<bool> g_hint{false};  // the "B ASK HIM" prompt is shown
 std::atomic<bool> g_sub{false};  // a submission of the game itself in the I Quit match: "I QUIT" shown over it
 int g_pressure = 0;            // threats since the victim went down (WWE '13's MakeAThreat): a harder gauge
 int g_threat_by = -1;          // a threat is made: the referee asks again at g_threat_at
@@ -223,6 +224,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch()) {
     g_on = false;
     g_sub = false;
+    g_hint = false;
     g_pressure = 0;
     g_threat_by = -1;
     return;
@@ -317,16 +319,20 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       return;
     }
   }
-  if (now < g_cooldown) {
+  if (now < g_cooldown || g_threat_by >= 0) {
     g_ask = 0;
+    g_hint = false;
     return;
   }
   // who can ask whom: two superstars, one lying down
+  bool hint = false;  // a human standing over his downed opponent: "B ASK HIM" shown
   for (int a = 0; a < 2; ++a) {
     const int v = 1 - a;
     const u32 att = Actor(a), vic = Actor(v);
     if (!att || !vic || Down(att))
       continue;
+    if (Down(vic) && PadOf(a) >= 0)
+      hint = true;
     if (!Down(vic)) {
       g_down_since[v] = now;
       if (g_threat_by < 0)
@@ -342,11 +348,16 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       g_ask = 0;
       if (cpu_asks)
         g_cpu_next_ask = now + std::chrono::seconds(15);
+      g_hint = false;
       Start(ctx, base, a, v);
       return;
     }
   }
   g_ask = 0;  // (a B the game did not see but that asked no one now)
+  if (hint && !g_hint.exchange(true))
+    ShowGauge();
+  else if (!hint)
+    g_hint = false;
 }
 
 // ---- the gauge, drawn over the game ----
@@ -364,13 +375,31 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
   void OnClose() override { g_shown = false; }
   void OnDraw(ImGuiIO &io) override {
     const bool sub_only = !g_on.load() && g_sub.load();
-    if (!g_on.load() && !sub_only) {
+    const bool hint_only = !g_on.load() && !sub_only && g_hint.load();
+    if (!g_on.load() && !sub_only && !hint_only) {
       Close();  // (no dialog left: the drawer stops drawing ImGui every frame)
       return;
     }
     const float k = std::max(0.6f, io.DisplaySize.y / 1080.0f);
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImFont *font = ImGui::GetFont();
+    if (hint_only) {
+      // the button prompt (WWE '13 shows one): a red B and "ASK HIM", low in the middle of the screen
+      const char *ask = "ASK HIM";
+      const float as = 30.f * k, r = 17.f * k;
+      const ImVec2 asz = font->CalcTextSizeA(as, FLT_MAX, 0.f, ask);
+      const float total = 2 * r + 10 * k + asz.x;
+      const float bx = io.DisplaySize.x * 0.5f - total * 0.5f + r, by = io.DisplaySize.y * 0.80f;
+      dl->AddCircleFilled(ImVec2(bx + 2 * k, by + 2 * k), r, IM_COL32(0, 0, 0, 160));
+      dl->AddCircleFilled(ImVec2(bx, by), r, IM_COL32(205, 30, 30, 255));
+      dl->AddCircle(ImVec2(bx, by), r, IM_COL32(255, 255, 255, 220), 0, 2 * k);
+      const ImVec2 bsz = font->CalcTextSizeA(as * 0.85f, FLT_MAX, 0.f, "B");
+      dl->AddText(font, as * 0.85f, ImVec2(bx - bsz.x * 0.5f, by - bsz.y * 0.5f), IM_COL32(255, 255, 255, 255), "B");
+      const float tx = bx + r + 10 * k, ty = by - asz.y * 0.5f;
+      dl->AddText(font, as, ImVec2(tx + 2 * k, ty + 2 * k), IM_COL32(0, 0, 0, 200), ask);
+      dl->AddText(font, as, ImVec2(tx, ty), IM_COL32(255, 255, 255, 255), ask);
+      return;
+    }
     const float w = 400.f * k, h = 26.f * k;
     const float x = io.DisplaySize.x * 0.5f - w * 0.5f, y = io.DisplaySize.y * 0.58f;
     // "I QUIT", whiter and whiter
