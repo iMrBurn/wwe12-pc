@@ -401,7 +401,8 @@ namespace {
 constexpr u32 kSelectBarCall = 0x82569864;
 std::atomic<u32> g_bar_set{0}, g_bar_from{0};
 std::atomic<bool> g_select{false};      // the character select shows (its bar was the last asked)
-std::atomic<u32> g_scene{0};            // its scene object S
+std::atomic<u32> g_scene{0};            // its scene object S (the active one, when known)
+std::atomic<u32> g_scenes[kStars];      // the scene objects by place
 std::atomic<int> g_choice[kStars];      // per place: 0 = game's rules, 1-3, 4 = infinite
 std::atomic<bool> g_chosen{false};      // the values come from the select (else the setting)
 u32 g_text = 0;                         // our text (guest)
@@ -476,16 +477,10 @@ u32 Wwe12MatchModesText(u32 game) {
   static std::atomic<int> n{0};
   if (Probe() && n.fetch_add(1) < 20)
     BD_INFO("[selection] titre du cadre complete (place {})", p);
-  std::string text = std::string(g) + "  |  FINISHERS: " + ValueName(p >= 0 ? g_choice[p].load() : 0);
-  if (Probe()) {  // the game's button icons (private characters U+E000-E00F), to find LT / RT
-    text += "  ";
-    for (int k = 0; k < 16; ++k) {
-      text += fmt::format("{:X}", k);
-      text += char(0xEE);
-      text += char(0x80);
-      text += char(0x80 + k);
-    }
-  }
+  // LT / RT icons: the game's private characters U+E00C / U+E00F (found 2026-11-14: E000 START, E001 BACK,
+  // E002-E006 d-pad, E007 Y, E008 B, E009 A, E00A X, E00B LB, E00C LT, E00D LS, E00E RB, E00F RT).
+  const std::string text = std::string(g) + "    FINISHERS: " +
+                           ValueName(p >= 0 ? g_choice[p].load() : 0) + " ";
   std::memset(bd::mem::at<char>(g_text), 0, 256);
   std::memcpy(bd::mem::at<char>(g_text), text.data(), std::min<size_t>(text.size(), 255));
   return g_text;
@@ -496,7 +491,8 @@ REX_EXTERN(__imp__sub_825A1200);
 extern "C" REX_FUNC(sub_825A1200) {
   const u32 s = ctx.r3.u32, place = ctx.r5.u32;
   __imp__sub_825A1200(ctx, base);
-  g_scene = s;
+  if (place < kStars)
+    g_scenes[place] = s;  // (all six are built at once when the select opens: which one is active is found below)
   if (Probe())
     BD_INFO("[selection] nouvel objet de choix {:08X} pour la place {}", s, place);
 }
@@ -535,6 +531,18 @@ void Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
     BD_INFO("[selection] LT/RT : place inconnue (objet {:08X})", g_scene.load());
     return;
   }
+  if (Probe())
+    for (int k = 0; k < kStars; ++k) {
+      const u32 sc = g_scenes[k].load();
+      if (!sc)
+        continue;
+      std::string w;
+      for (u32 o = 256; o <= 340; o += 4)
+        w += fmt::format(" {}:{:X}", o, bd::mem::try_load<u32>(sc + o));
+      for (u32 o : {6460u, 6724u, 6740u, 25056u, 25060u, 25064u, 25084u, 25088u, 25188u, 25200u, 27088u, 27092u})
+        w += fmt::format(" {}:{:X}", o, bd::mem::try_load<u32>(sc + o));
+      BD_INFO("[selection] objet place {} {:08X}{}", k, sc, w);
+    }
   int v = g_choice[p].load() + ((pressed & 2) ? 1 : -1);
   v = (v + 5) % 5;
   g_choice[p] = v;
