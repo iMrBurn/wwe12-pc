@@ -175,3 +175,10 @@ Trouvé avec les sondes (`wwe12_match_modes.cpp` : `wwe12_pin_probe`, `pin_dump.
 - Affichage possible sans toucher au jeu : notre calque ImGui (comme le compteur d'images, `wwe12_display.cpp`).
 - Reste : trouver la zone / la décision, puis piloter la sortie (fournir au jeu un « A tenu puis relâché » au bon
   moment quand notre jauge est réussie), et la jauge elle-même.
+- Suite du 2026-11-14 (point d'arrêt matériel sur le compte, `wwe12_pin_trap`, sans plantage) : le compte
+  `[acteur+2760]` est écrit 1, 2, 3 par `sub_82474C88` (le processeur des commandes des mouvements, appelé par
+  `sub_82477E38`) : **le compte vient des commandes de l'animation du tombé** (couvertures 1380-1385), comme les
+  commandes 80+ des lignes de m3.pac. Remise à 0 par `sub_82214B40` (changement d'animation). La sortie est donc
+  très probablement une commande ou une condition de l'animation du tombé qui lit l'entrée du catcheur tombé :
+  à chercher dans les données du mouvement (domaine de la session Mods, format m3.pac) ou en journalisant les
+  commandes de `sub_82474C88` pendant un tombé.
