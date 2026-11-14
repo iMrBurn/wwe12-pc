@@ -501,7 +501,10 @@ extern "C" REX_FUNC(sub_8246E3B0) {
   if (s_calls.fetch_add(1) < 60)  // (test of 2026-11-14: no line with slots 11-22; every call logged)
     BD_INFO("[iquit] repertoire des motions : case {} (appel {:08X}, deja faite {})", slot, u32(ctx.lr),
             bd::mem::try_load<u32>(ctx.r3.u32 + (slot + 188) * 4) != 0);
-  if (REXCVAR_GET(wwe12_iquit_wwe13_motions) && bitmap && slot >= 8) {
+  // (test of 2026-11-14: only slots 0, 1 and 24+ are built here, from sub_822B5EC8; the queue's lookup with the byte
+  // 255 tries slot 1 (the general motions: a global bitmap + 15250-15258, without 2000-2099 / 20000-20999), then
+  // 11-22: slot 1 it is)
+  if (REXCVAR_GET(wwe12_iquit_wwe13_motions) && bitmap && (slot == 1 || slot >= 8)) {
     for (u32 n = 13140; n < 13200; ++n) {
       const u32 w = bitmap + (n >> 5) * 4;
       bd::mem::store<u32>(w, bd::mem::try_load<u32>(w) | (1u << (n & 31)));
