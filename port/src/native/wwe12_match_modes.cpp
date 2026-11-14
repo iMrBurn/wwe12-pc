@@ -64,6 +64,7 @@ REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
 int64_t Wwe12MsSinceLoadScreen();  // wwe12_load_turbo.cpp
 void Wwe12PinProbeStart();         // below
 void Wwe12PinTrapStart();          // wwe12_pin_trap.cpp (dev)
+void Wwe12IQuitTick(const PPCContext &ctx, u8 *base);  // wwe12_iquit.cpp
 
 REX_EXTERN(__imp__sub_82684910);  // a superstar's record (roster id)
 REX_EXTERN(__imp__sub_82A339B0);  // a record's overall
@@ -319,6 +320,8 @@ extern "C" REX_FUNC(sub_82246DE0) {
     g_obj[i] = obj;
     Wwe12PinProbeStart();
     Wwe12PinTrapStart();
+    if (i == 0)
+      Wwe12IQuitTick(ctx, base);  // (the I QUIT mini-game, once per frame)
     if (Probe())
       std::call_once(g_probe_started, [] {
         std::thread(Poll).detach();
@@ -637,7 +640,10 @@ extern "C" REX_FUNC(sub_828942C0) {
 }
 
 // From the XInputGetState hook (wwe12_intros.cpp), every pad: buttons and triggers (0-255).
+void Wwe12IQuitPad(u32 user, u16 buttons);  // wwe12_iquit.cpp
+
 void Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
+  Wwe12IQuitPad(user, buttons);
   static u8 s_down[4] = {};
   static u16 s_buttons[4] = {};
   if (user >= 4)
@@ -948,6 +954,7 @@ extern "C" REX_FUNC(sub_82449898) {
 }
 
 bool IQuitMatch() { return g_iquit.load(); }
+bool Wwe12IQuitMatch() { return g_iquit.load() && bd::mem::try_load<u8>(0x8317C850) == kSubmissionType; }
 
 // The menus' "decide" (wwe12_quit.cpp, sub_8253C3F0): the chosen entry's id, parent and label. A choice among PLAY's
 // match lists (ONE ON ONE = parent 8, the others 9-14) says whether the match set up is an I Quit.
