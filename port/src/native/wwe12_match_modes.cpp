@@ -636,6 +636,26 @@ extern "C" REX_FUNC(sub_8259E5B0) {
   if (g_scene.exchange(s) != s && Probe())
     BD_INFO("[selection] objet de l'ecran {:08X}, place {}", s, bd::mem::try_load<u32>(s + 284));
   __imp__sub_8259E5B0(ctx, base);
+  // (probe, 2026-11-14: a superstar with one attire goes from his picture to READY without the attire panel; the
+  // words 256-340 of each place's object are logged when they change, to find the step it skips)
+  if (Probe()) {
+    static u32 s_last[kStars][22];
+    for (int k = 0; k < kStars; ++k) {
+      const u32 sc = g_scenes[k].load();
+      if (!sc)
+        continue;
+      std::string w;
+      for (u32 i = 0; i < 22; ++i) {
+        const u32 v = bd::mem::try_load<u32>(sc + 256 + i * 4);
+        if (v != s_last[k][i]) {
+          w += fmt::format(" {}:{:X}->{:X}", 256 + i * 4, s_last[k][i], v);
+          s_last[k][i] = v;
+        }
+      }
+      if (!w.empty())
+        BD_INFO("[selection] place {} change{}", k, w);
+    }
+  }
 }
 
 extern "C" REX_FUNC(sub_828942C0) {
