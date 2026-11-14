@@ -373,3 +373,62 @@ extern "C" REX_FUNC(sub_82248000) {
   if (i >= 0 && last[i].exchange(ctx.r3.u32 + 1) != ctx.r3.u32 + 1)
     BD_INFO("[finisher] catcheur {} : finishers par jauge pleine = {}", i, ctx.r3.u32);
 }
+
+// ---- probe of the character select (1.4: starting finishers chosen there, as WWE 2K14) ----
+// Logs (wwe12_match_probe): each button-bar set a screen asks for (sub_828942C0(n): n and the caller), the
+// select object M's six places (*0x8324DEFC + [M+15960] * 1596 + 124 + i * 244: +0 id, +16 attire, +44 pad)
+// when they change, the attire choice (sub_825AE158, a method of the attire box, vtable 0x82029190) and the
+// triggers of each pad (Wwe12MatchPad, from the XInputGetState hook of wwe12_intros.cpp).
+
+REX_EXTERN(__imp__sub_828942C0);
+REX_EXTERN(__imp__sub_825AE158);
+
+namespace {
+std::atomic<u32> g_bar_set{0}, g_bar_from{0}, g_bar_screen{0};
+
+std::string Places() {
+  const u32 m = bd::mem::try_load<u32>(0x8324DEFC);
+  if (!m)
+    return "-";
+  const u32 sel = m + bd::mem::try_load<u32>(m + 15960) * 1596 + 124;
+  std::string out = fmt::format("M {:08X} [+15960] {}:", m, bd::mem::try_load<u32>(m + 15960));
+  for (u32 i = 0; i < 6; ++i) {
+    const u32 pl = sel + i * 244;
+    out += fmt::format(" | {} id {} tenue {} manette {}", i, bd::mem::try_load<u32>(pl), bd::mem::try_load<u32>(pl + 16),
+                       bd::mem::try_load<u8>(pl + 44));
+  }
+  return out;
+}
+}  // namespace
+
+extern "C" REX_FUNC(sub_828942C0) {
+  if (Probe()) {
+    const u32 n = ctx.r3.u32, from = u32(ctx.lr), screen = ctx.r31.u32;
+    if (n != g_bar_set.exchange(n) || from != g_bar_from.exchange(from)) {
+      g_bar_screen = screen;
+      BD_INFO("[selection] barre de boutons {} (appel {:08X}, r31 {:08X} vtable {:08X}) | {}", n, from, screen,
+              bd::mem::try_load<u32>(screen), Places());
+    }
+  }
+  __imp__sub_828942C0(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_825AE158) {
+  if (Probe())
+    BD_INFO("[selection] tenue choisie : ecran {:08X} r4 {} r5 {} r6 {} (appel {:08X}) | {}", ctx.r3.u32, ctx.r4.u32,
+            ctx.r5.u32, ctx.r6.u32, u32(ctx.lr), Places());
+  __imp__sub_825AE158(ctx, base);
+}
+
+// From the XInputGetState hook (wwe12_intros.cpp), every pad: buttons and triggers (0-255).
+void Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
+  static u8 s_down[4] = {};
+  if (user >= 4 || !Probe())
+    return;
+  const u8 now = u8((lt > 128 ? 1 : 0) | (rt > 128 ? 2 : 0));
+  const u8 pressed = u8(now & ~s_down[user]);
+  s_down[user] = now;
+  if (pressed)
+    BD_INFO("[selection] manette {} : {} (boutons {:04X}) ; derniere barre {} appel {:08X} | {}", user,
+            pressed & 1 ? "LT" : "RT", buttons, g_bar_set.load(), g_bar_from.load(), Places());
+}
