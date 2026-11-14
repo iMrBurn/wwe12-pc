@@ -162,14 +162,24 @@ void Start(const PPCContext &in, u8 *base, int attacker, int victim) {
 
 }  // namespace
 
-// From the XInputGetState hook (through wwe12_match_modes.cpp): every pad's buttons.
-void Wwe12IQuitPad(u32 user, u16 buttons) {
+// From the XInputGetState hook (through wwe12_match_modes.cpp): every pad's buttons. Returns the buttons the game
+// must not see: in an I Quit match, B next to a downed opponent is ours (the game would start a submission: user's
+// test of 2026-11-14), and A / B during the gauge.
+u16 Wwe12IQuitPad(u32 user, u16 buttons) {
   if (user >= 4)
-    return;
+    return 0;
   const u16 before = g_pad[user].exchange(buttons);
   const u16 newly = u16(buttons & ~before);
   if (newly)
     g_pressed[user].fetch_or(newly);
+  if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch())
+    return 0;
+  if (g_on.load())
+    return u16(kPadA | kPadB);
+  for (int a = 0; a < 2; ++a)
+    if (PadOf(a) == int(user) && !Down(Actor(a)) && Down(Actor(1 - a)))
+      return kPadB;
+  return 0;
 }
 
 // Once per game frame during a match (wwe12_match_modes.cpp, from the gauge hook of the first superstar).

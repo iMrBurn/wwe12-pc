@@ -640,14 +640,14 @@ extern "C" REX_FUNC(sub_828942C0) {
 }
 
 // From the XInputGetState hook (wwe12_intros.cpp), every pad: buttons and triggers (0-255).
-void Wwe12IQuitPad(u32 user, u16 buttons);  // wwe12_iquit.cpp
+u16 Wwe12IQuitPad(u32 user, u16 buttons);  // wwe12_iquit.cpp: the buttons it hides from the game
 
-void Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
-  Wwe12IQuitPad(user, buttons);
+u16 Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
+  const u16 hide = Wwe12IQuitPad(user, buttons);
   static u8 s_down[4] = {};
   static u16 s_buttons[4] = {};
   if (user >= 4)
-    return;
+    return hide;
   if (user == 0) {  // (pin probe: face button presses, 0x1000 A, 0x2000 B, 0x4000 X, 0x8000 Y)
     const u16 newly = u16(buttons & ~s_buttons[0] & 0xF000);
     for (u16 m = newly; m; m &= u16(m - 1))
@@ -658,11 +658,11 @@ void Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
   const u8 pressed = u8(now & ~s_down[user]);
   s_down[user] = now;
   if (!pressed || !g_select.load())
-    return;
+    return hide;
   const int p = Place();
   if (p < 0) {
     BD_INFO("[selection] LT/RT : place inconnue (objet {:08X})", g_scene.load());
-    return;
+    return hide;
   }
   if (Probe())
     for (int k = 0; k < kStars; ++k) {
@@ -680,6 +680,7 @@ void Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
   v = (v + 5) % 5;
   g_choice[p] = v;
   BD_INFO("[selection] place {} : finishers {} (manette {}) | {}", p, ValueName(v), user, Places());
+  return hide;
 }
 
 // Start(): the value of the superstar's place when the select chose it.
