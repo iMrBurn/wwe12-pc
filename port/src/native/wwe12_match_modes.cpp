@@ -932,3 +932,13 @@ extern "C" REX_FUNC(sub_82449898) {
 }
 
 bool IQuitMatch() { return g_iquit.load(); }
+
+// The menus' "decide" (wwe12_quit.cpp, sub_8253C3F0): the chosen entry's id, parent and label. A choice among PLAY's
+// match lists (ONE ON ONE = parent 8, the others 9-14) says whether the match set up is an I Quit.
+void Wwe12MatchDecide(uint32_t id, uint32_t parent, uint32_t label) {
+  if (parent < 8 || parent > 14)
+    return;
+  const bool iq = label == kIQuitLabel;
+  if (g_iquit.exchange(iq) != iq || iq)
+    BD_INFO("[iquit] choix du menu : id {} parent {} texte {} -> {}", id, parent, label, iq ? "I QUIT" : "autre match");
+}
