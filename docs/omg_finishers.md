@@ -156,3 +156,22 @@ d'autres prises de WAZE et corriger les compteurs de l'en-tête, dans une copie 
 **Proposition** : 1.0 = la vérification en jeu (CUSTOM MOVE-SET permet déjà de changer les finishers de tous ? à dire
 aux joueurs dans la FAQ si oui) + « toute prise peut être finisher » limité aux prises debout de face, réglage
 désactivé par défaut tant qu'il n'est pas testé. 1.1 = les autres positions et les dégâts.
+
+## 4. Second système de tombé (étude 1.4, 2026-11-14, session Gameplay) — EN COURS, rien de branché
+
+Demande de l'utilisateur : en plus du tombé d'origine, une jauge façon WWE 2K25 (un curseur passe une fois de gauche
+à droite, 3 essais, un à chaque compte de l'arbitre), en option désactivée par défaut.
+
+Trouvé avec les sondes (`wwe12_match_modes.cpp` : `wwe12_pin_probe`, `pin_dump.bin` ; `wwe12_pin_trap.cpp` ;
+`wwe12_down_probe`) :
+- un tombé est une « prise » des deux catcheurs (50361 couverture standard, 1382, 50410…) ;
+- arbitre : état 190 / 191 pendant le compte, 207 / 202 quand le compte s'arrête ; `[acteur+2760]` = le compte
+  (0 à 3), `[acteur+2464]` = le temps restant du tombé (676 → 0) ;
+- sortie : le catcheur passe à l'animation 473 (`sub_82226EB0` ← `sub_8222D768` ← … ← `sub_8222E7A0`) ;
+- jauge d'origine : on TIENT A et on relâche dans une petite zone ; pendant le tombé d'un humain, son composant
+  'COPE' a +244 = 64, +256 = 3, et +292 compte les images où A est tenu. Ce compteur est celui, générique, de
+  l'objet d'entrée (`sub_8225BF30`, son +128). **La zone (où relâcher) et le test de la sortie ne sont pas encore
+  trouvés** ; le piège PAGE_GUARD (`wwe12_pin_trap`) a fait planter le jeu (outil de dev seulement).
+- Affichage possible sans toucher au jeu : notre calque ImGui (comme le compteur d'images, `wwe12_display.cpp`).
+- Reste : trouver la zone / la décision, puis piloter la sortie (fournir au jeu un « A tenu puis relâché » au bon
+  moment quand notre jauge est réussie), et la jauge elle-même.
