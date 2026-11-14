@@ -507,6 +507,10 @@ std::set<u32> g_logged_ids;            // (game thread)
 // The texts completed with the finishers: the attire panel's title (280 CHANGE ATTIRE), and for a superstar without
 // other attires the banner under his picture (273 " READY   ADD MANAGER", 287 " READY   ADVANCED"; probe test).
 bool Ours(u32 id) { return id == 280 || id == 273 || id == 287; }
+// The "1P" / "COM" tag over each superstar (40357 / 40355, and the other players' 40356-40360): shown in every match
+// type (the user's test of 2026-11-14: outside a normal 1 on 1 the attire panel and the READY banners never show).
+bool PlayerTag(u32 id) { return id >= 40355 && id <= 40360; }
+thread_local int g_draw_place = -1;  // the place whose object is being updated (sub_8259E5B0), -1 outside
 // I QUIT (1.4): with wwe12_iquit, ONE ON ONE has an I QUIT row (below): a SUBMISSION match (no pinfall, no
 // count-out, no rope breaks: the match record of 2026-11-14) whose name (match type text 27467 = 27400 + 67) and
 // ends (2945 GIVEUP, 2950 SUBMISSION, "BY WAY OF" texts 2942-2950) read "I QUIT".
@@ -553,7 +557,7 @@ u32 Wwe12MatchModesGameText(u32 id) {
   }
   g_bar_text = false;
   g_asked = id;
-  if (Ours(id))
+  if (Ours(id) || PlayerTag(id))
     return id;
   // other banners under the picture (user's test of 2026-11-14: Mason Ryan, David Otunga had none of the three):
   // every text of the select is looked at, those reading " READY..." get the finishers too
@@ -588,6 +592,23 @@ u32 Wwe12MatchModesText(u32 game) {
   if (!g)
     return game;
   const u32 asked = g_asked;
+  if (PlayerTag(asked) && REXCVAR_GET(wwe12_select_finishers)) {
+    // "1P  FINISHERS: 2": the place being drawn, else (drawn elsewhere) the place being chosen
+    const int p = g_draw_place >= 0 && g_draw_place < kStars ? g_draw_place : Place();
+    static u32 s_tag[kStars] = {};
+    u32 &tb = s_tag[std::clamp(p, 0, kStars - 1)];
+    if (!tb)
+      tb = REX_KERNEL_MEMORY()->SystemHeapAlloc(64, 0x10);
+    if (!tb)
+      return game;
+    const std::string text = std::string(g) + "  FINISHERS: " + ValueName(g_choice[p].load());
+    std::memset(bd::mem::at<char>(tb), 0, 64);
+    std::memcpy(bd::mem::at<char>(tb), text.data(), std::min<size_t>(text.size(), 63));
+    static std::atomic<int> s_n{0};
+    if (Probe() && s_n.fetch_add(1) < 12)
+      BD_INFO("[selection] etiquette {} \"{}\" place {} (dessin {})", asked, g, p, g_draw_place);
+    return tb;
+  }
   // (" READY   ADD MANAGER", "READY"...: spaces skipped; not the "READY TITLE" button)
   const char *t = g;
   while (*t == ' ')
@@ -635,7 +656,9 @@ extern "C" REX_FUNC(sub_8259E5B0) {
   const u32 s = ctx.r3.u32;
   if (g_scene.exchange(s) != s && Probe())
     BD_INFO("[selection] objet de l'ecran {:08X}, place {}", s, bd::mem::try_load<u32>(s + 284));
+  g_draw_place = int(bd::mem::try_load<u32>(s + 284));
   __imp__sub_8259E5B0(ctx, base);
+  g_draw_place = -1;
   // (probe, 2026-11-14: a superstar with one attire goes from his picture to READY without the attire panel; the
   // words 256-340 of each place's object are logged when they change, to find the step it skips)
   if (Probe()) {
