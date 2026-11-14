@@ -204,7 +204,7 @@ struct Moveset {
 };
 
 // A motion alone (a motions mod, mods\.svrmods\Motions\<mod>\<number>.high and .m3): a motion the game hasn't, under
-// a number of its own, played by our code (the WWE '13 I Quit referee: wwe12_iquit_ref_anim, 1.4).
+// a number of its own, played by our code (the WWE '13 I Quit: wwe12_iquit_wwe13_motions, 1.4).
 struct ExtraMotion {
   int motion = 0;  // its number (a free one of its kind's hundred)
   Bytes high;      // its full record (YANM), plain or BPE

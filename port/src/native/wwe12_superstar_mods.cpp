@@ -1235,7 +1235,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         xdirs.push_back(it->path());
     ec.clear();
     std::sort(xdirs.begin(), xdirs.end());
-    std::set<int> taken;
+    std::set<std::pair<std::string, int>> taken;  // (bank, motion): one bank's copy and the added bank may both have it
     for (const auto &d : xdirs) {
       if (fs::exists(d / "disabled", ec))
         continue;
@@ -1260,7 +1260,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
           continue;
         superstar_pack::ExtraMotion x;
         x.motion = atoi(rex::path_to_utf8(f.stem()).c_str());
-        if (x.motion <= 0 || x.motion > 0xFFFF || !taken.insert(x.motion).second || !ReadHost(f, x.high))
+        if (x.motion <= 0 || x.motion > 0xFFFF || !taken.insert({into_bank, x.motion}).second || !ReadHost(f, x.high))
           continue;
         ReadHost(f.parent_path() / (f.stem().wstring() + L".m3"), x.m3);
         x.bank = into_bank;
@@ -2109,8 +2109,14 @@ extern "C" REX_FUNC(sub_827D98D8) {
     const uint64_t r4 = ctx.r4.u64;
     ctx.r3.u64 = ours;
     __imp__sub_827D98D8(ctx, base);
-    if (ctx.r3.u32)
+    if (ctx.r3.u32) {
+      static std::set<uint32_t> told;  // (once each: which of ours the game took)
+      std::lock_guard<std::mutex> lock(g_zmvm_mutex);
+      if (told.insert(ours).second)
+        REXLOG_INFO("[superstar mods] {} asked: ours ({})", bd::mem::str(path), bd::mem::str(ours));
       return;
+    }
+    REXLOG_WARN("[superstar mods] {} asked: ours ({}) not found, the game's", bd::mem::str(path), bd::mem::str(ours));
     ctx.r3.u64 = path, ctx.r4.u64 = r4;
   }
   __imp__sub_827D98D8(ctx, base);
