@@ -51,6 +51,8 @@ REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
 
 #include <fmt/format.h>
 
+#include <rex/runtime.h>
+
 #include "svr_hook.h"
 #include "core/logging.h"
 #include "core/memory_helpers.h"
@@ -111,6 +113,8 @@ float F(u32 at) {
   std::memcpy(&f, &v, 4);
   return f;
 }
+
+int ChosenFinishers(int i);  // below (the character select)
 
 int Finishers() { return std::clamp<int32_t>(REXCVAR_GET(wwe12_starting_finishers), 0, kInfinite); }
 
@@ -184,7 +188,7 @@ void GiveStock(int i, u32 actor, int give) {
 
 void Start(int i, u32 actor) {
   g_actor[i] = actor;
-  g_left[i] = Finishers();
+  g_left[i] = ChosenFinishers(i);
   g_squash_hp[i] = 0;
   g_hold[i] = 0;
   if (i < 2)
@@ -374,61 +378,161 @@ extern "C" REX_FUNC(sub_82248000) {
     BD_INFO("[finisher] catcheur {} : finishers par jauge pleine = {}", i, ctx.r3.u32);
 }
 
-// ---- probe of the character select (1.4: starting finishers chosen there, as WWE 2K14) ----
-// Logs (wwe12_match_probe): each button-bar set a screen asks for (sub_828942C0(n): n and the caller), the
-// select object M's six places (*0x8324DEFC + [M+15960] * 1596 + 124 + i * 244: +0 id, +16 attire, +44 pad)
-// when they change, the attire choice (sub_825AE158, a method of the attire box, vtable 0x82029190) and the
-// triggers of each pad (Wwe12MatchPad, from the XInputGetState hook of wwe12_intros.cpp).
+// ---- the character select: starting finishers chosen per superstar with LT / RT (as WWE 2K14) ----
+//
+// Found (probe test 2026-11-14): the character select asks the button bar 11 (also 9, 42, 2, 525 by state) from
+// sub_825697xx (call returning to 0x82569864). Its scene object S (methods such as sub_8259E5B0, r3 = S) has
+// [S+284] = the place being chosen (0-5), [S+272] its grid; the select object M = *0x8324DEFC has the places
+// (M + [M+15960] * 1596 + 124 + i * 244: +0 id, +16 attire, +44 pad, 255 = CPU). The pads come through the
+// XInputGetState hook of wwe12_intros.cpp (Wwe12MatchPad: X_INPUT_STATE +6 / +7 = LT / RT, 0-255).
+// While the select shows: LT / RT on any pad change the value of the place being chosen (game's rules, 1, 2,
+// 3, infinite), shown at the end of the button bar's last label ("...   LT/RT FINISHERS: 2": our text id 27060,
+// filled by the Universe line's string hook through Wwe12MatchModesGameText / Wwe12MatchModesText). Values start
+// at wwe12_starting_finishers each time the select opens; the match gives place i's value to the superstar in
+// place i. wwe12_select_finishers = false turns the select's part off.
 
 REX_EXTERN(__imp__sub_828942C0);
-REX_EXTERN(__imp__sub_825AE158);
+REX_EXTERN(__imp__sub_8259E5B0);
 
 namespace {
-std::atomic<u32> g_bar_set{0}, g_bar_from{0}, g_bar_screen{0};
+constexpr u32 kSelectBarCall = 0x82569864;
+constexpr u32 kOurLabel = 27060;
+std::atomic<u32> g_bar_set{0}, g_bar_from{0};
+std::atomic<bool> g_select{false};      // the character select shows (its bar was the last asked)
+std::atomic<u32> g_scene{0};            // its scene object S
+std::atomic<int> g_choice[kStars];      // per place: 0 = game's rules, 1-3, 4 = infinite
+std::atomic<bool> g_chosen{false};      // the values come from the select (else the setting)
+u32 g_patched_entry = 0;                // bar entry whose label is ours (guest address of its u16), 0 = none
+u16 g_patched_label = 0;                // the game's label there
+u32 g_text = 0;                         // our text (guest)
 
 std::string Places() {
   const u32 m = bd::mem::try_load<u32>(0x8324DEFC);
   if (!m)
     return "-";
   const u32 sel = m + bd::mem::try_load<u32>(m + 15960) * 1596 + 124;
-  std::string out = fmt::format("M {:08X} [+15960] {}:", m, bd::mem::try_load<u32>(m + 15960));
+  std::string out = fmt::format("[+15960] {}:", bd::mem::try_load<u32>(m + 15960));
   for (u32 i = 0; i < 6; ++i) {
     const u32 pl = sel + i * 244;
-    out += fmt::format(" | {} id {} tenue {} manette {}", i, bd::mem::try_load<u32>(pl), bd::mem::try_load<u32>(pl + 16),
-                       bd::mem::try_load<u8>(pl + 44));
+    out += fmt::format(" | {} id {} manette {}", i, bd::mem::try_load<u32>(pl), bd::mem::try_load<u8>(pl + 44));
   }
   return out;
 }
-}  // namespace
 
-extern "C" REX_FUNC(sub_828942C0) {
-  if (Probe()) {
-    const u32 n = ctx.r3.u32, from = u32(ctx.lr), screen = ctx.r31.u32;
-    if (n != g_bar_set.exchange(n) || from != g_bar_from.exchange(from)) {
-      g_bar_screen = screen;
-      BD_INFO("[selection] barre de boutons {} (appel {:08X}, r31 {:08X} vtable {:08X}) | {}", n, from, screen,
-              bd::mem::try_load<u32>(screen), Places());
-    }
-  }
-  __imp__sub_828942C0(ctx, base);
+int Place() {
+  const u32 s = g_scene.load();
+  const u32 p = s ? bd::mem::try_load<u32>(s + 284) : 0xFFFFFFFF;
+  return p < kStars ? int(p) : -1;
 }
 
-extern "C" REX_FUNC(sub_825AE158) {
-  if (Probe())
-    BD_INFO("[selection] tenue choisie : ecran {:08X} r4 {} r5 {} r6 {} (appel {:08X}) | {}", ctx.r3.u32, ctx.r4.u32,
-            ctx.r5.u32, ctx.r6.u32, u32(ctx.lr), Places());
-  __imp__sub_825AE158(ctx, base);
+const char *ValueName(int v) {
+  static const char *const k[5] = {"NORMAL", "1", "2", "3", "INF"};
+  return k[std::clamp(v, 0, 4)];
+}
+
+// The bar entry of set n (H = *0x8324DF18, 20-byte entries at [H+48], count [H+52], set id u16 at +12, three
+// {button u16, label u16} places): our label in its last used place while the select shows.
+void PatchBar(u32 n, bool on) {
+  if (g_patched_entry) {
+    bd::mem::store<u16>(g_patched_entry, g_patched_label);
+    g_patched_entry = 0;
+  }
+  if (!on)
+    return;
+  const u32 h = bd::mem::try_load<u32>(0x8324DF18);
+  const u32 list = h ? bd::mem::try_load<u32>(h + 48) : 0, count = h ? bd::mem::try_load<u32>(h + 52) : 0;
+  for (u32 k = 0; list && k < count && k < 2048; ++k) {
+    const u32 e = list + k * 20;
+    if (bd::mem::try_load<u16>(e + 12) != n)
+      continue;
+    for (int place = 2; place >= 0; --place) {
+      const u32 at = e + u32(place) * 4 + 2;
+      const u16 label = bd::mem::try_load<u16>(at);
+      if (label && label != 0xFFFF) {
+        g_patched_entry = at;
+        g_patched_label = label;
+        bd::mem::store<u16>(at, u16(kOurLabel));
+        return;
+      }
+    }
+    return;
+  }
+}
+
+void ResetChoices() {
+  const int v = Finishers();
+  for (auto &c : g_choice)
+    c = v;
+  g_chosen = true;
+}
+}  // namespace
+
+REXCVAR_DEFINE_BOOL(wwe12_select_finishers, false, "WWE12",
+                    "Character select: LT / RT choose each superstar's starting finishers (as WWE 2K14).");
+
+// The string hook of the Universe line asks: is this id ours? The game's text to complete, else 0.
+u32 Wwe12MatchModesGameText(u32 id) {
+  return id == kOurLabel && g_patched_label ? g_patched_label : 0;
+}
+
+// The game's text (guest address) completed with the place's value.
+u32 Wwe12MatchModesText(u32 game) {
+  const char *g = game ? bd::mem::try_at<const char>(game) : nullptr;
+  if (!g)
+    return game;
+  if (!g_text)
+    g_text = REX_KERNEL_MEMORY()->SystemHeapAlloc(160, 0x10);
+  if (!g_text)
+    return game;
+  const int p = Place();
+  const std::string text = std::string(g) + "   LT/RT FINISHERS: " + ValueName(p >= 0 ? g_choice[p].load() : 0);
+  std::memset(bd::mem::at<char>(g_text), 0, 160);
+  std::memcpy(bd::mem::at<char>(g_text), text.data(), std::min<size_t>(text.size(), 159));
+  return g_text;
+}
+
+extern "C" REX_FUNC(sub_8259E5B0) {
+  const u32 s = ctx.r3.u32;
+  if (g_scene.exchange(s) != s && Probe())
+    BD_INFO("[selection] objet de l'ecran {:08X}, place {}", s, bd::mem::try_load<u32>(s + 284));
+  __imp__sub_8259E5B0(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_828942C0) {
+  const u32 n = ctx.r3.u32, from = u32(ctx.lr);
+  const bool select = from == kSelectBarCall && REXCVAR_GET(wwe12_select_finishers);
+  if (select && !g_select.exchange(true))
+    ResetChoices();  // the select opens: every place starts at the setting
+  if (!select)
+    g_select = false;
+  PatchBar(n, select);
+  if (Probe() && (n != g_bar_set.exchange(n) || from != g_bar_from.exchange(from)))
+    BD_INFO("[selection] barre de boutons {} (appel {:08X}) place {} | {}", n, from, Place(), Places());
+  __imp__sub_828942C0(ctx, base);
 }
 
 // From the XInputGetState hook (wwe12_intros.cpp), every pad: buttons and triggers (0-255).
 void Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
   static u8 s_down[4] = {};
-  if (user >= 4 || !Probe())
+  if (user >= 4)
     return;
   const u8 now = u8((lt > 128 ? 1 : 0) | (rt > 128 ? 2 : 0));
   const u8 pressed = u8(now & ~s_down[user]);
   s_down[user] = now;
-  if (pressed)
-    BD_INFO("[selection] manette {} : {} (boutons {:04X}) ; derniere barre {} appel {:08X} | {}", user,
-            pressed & 1 ? "LT" : "RT", buttons, g_bar_set.load(), g_bar_from.load(), Places());
+  if (!pressed || !g_select.load())
+    return;
+  const int p = Place();
+  if (p < 0) {
+    BD_INFO("[selection] LT/RT : place inconnue (objet {:08X})", g_scene.load());
+    return;
+  }
+  int v = g_choice[p].load() + ((pressed & 2) ? 1 : -1);
+  v = (v + 5) % 5;
+  g_choice[p] = v;
+  BD_INFO("[selection] place {} : finishers {} (manette {}) | {}", p, ValueName(v), user, Places());
 }
+
+// Start(): the value of the superstar's place when the select chose it.
+namespace {
+int ChosenFinishers(int i) { return g_chosen.load() && i >= 0 && i < kStars ? g_choice[i].load() : Finishers(); }
+}  // namespace
