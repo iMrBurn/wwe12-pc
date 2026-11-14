@@ -24,6 +24,7 @@ REXCVAR_DEFINE_BOOL(wwe12_iquit_ask, true, "WWE12",
                     "I Quit match: B next to a downed opponent calls the referee and starts the I QUIT gauge (as WWE '13).");
 
 #include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -60,7 +61,7 @@ std::atomic<float> g_cursor{0.f}, g_zone0{0.4f}, g_zone1{0.55f}, g_white{0.f};
 std::atomic<int> g_result{0};  // 0 running, 1 resisted ("NON"), 2 gave up (shown 1.5 s)
 std::atomic<int> g_ask{0};     // a human's B next to a downed opponent: his place + 1
 int g_attacker = -1, g_victim = -1;
-Clock::time_point g_start, g_end_shown, g_cooldown, g_down_since[6];
+Clock::time_point g_start, g_end_shown, g_cooldown, g_down_since[6], g_cpu_next_ask;
 float g_speed = 1.0f;
 bool g_cpu_victim = false;
 double g_cpu_stop_at = 0;
@@ -82,13 +83,21 @@ bool Down(u32 actor) {
 }
 
 // The pad of a place (the select object's places: +44, 255 = the computer).
+// (in a match the select object no longer says it: user's test of 2026-11-14, both superstars read as the computer.
+// Then, as in a 1 on 1 exhibition against the computer, the first superstar is the first pad's.)
 int PadOf(int place) {
   const u32 m = bd::mem::try_load<u32>(0x8324DEFC);
-  if (!m)
-    return -1;
-  const u32 sel = m + bd::mem::try_load<u32>(m + 15960) * 1596 + 124;
-  const u8 pad = bd::mem::try_load<u8>(sel + u32(place) * 244 + 44);
-  return pad < 4 ? int(pad) : -1;
+  int pads[2] = {-1, -1};
+  if (m) {
+    const u32 sel = m + bd::mem::try_load<u32>(m + 15960) * 1596 + 124;
+    for (int k = 0; k < 2; ++k) {
+      const u8 pad = bd::mem::try_load<u8>(sel + u32(k) * 244 + 44);
+      pads[k] = pad < 4 ? int(pad) : -1;
+    }
+  }
+  if (pads[0] < 0 && pads[1] < 0)
+    pads[0] = 0;
+  return place < 2 ? pads[place] : -1;
 }
 
 float HealthRatio(u32 actor) {
@@ -153,7 +162,7 @@ void Start(const PPCContext &in, u8 *base, int attacker, int victim) {
   g_white = 0.f;
   g_result = 0;
   g_cpu_victim = PadOf(victim) < 0;
-  g_cpu_resists = std::uniform_real_distribution<float>(0.f, 1.f)(g_rng) < std::clamp(health * 1.1f, 0.1f, 0.9f);
+  g_cpu_resists = std::uniform_real_distribution<float>(0.f, 1.f)(g_rng) < std::clamp(health * std::sqrt(health), 0.05f, 0.9f);  // (63 % health: resists half the time)
   g_cpu_stop_at = std::uniform_real_distribution<double>(1.0, kTime - 0.5)(g_rng);
   g_on = true;
   ShowGauge();
@@ -254,9 +263,13 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     }
     const int pad = PadOf(a);
     const bool human_asks = pad >= 0 && g_ask.load() == a + 1;
-    const bool cpu_asks = pad < 0 && now - g_down_since[v] > std::chrono::seconds(3);
+    // the computer asks a worn-out opponent (under 70 % health) who has been down 3 s, at most every 15 s
+    const bool cpu_asks = pad < 0 && now - g_down_since[v] > std::chrono::seconds(3) && now > g_cpu_next_ask &&
+                          HealthRatio(vic) < 0.7f;
     if (human_asks || cpu_asks) {
       g_ask = 0;
+      if (cpu_asks)
+        g_cpu_next_ask = now + std::chrono::seconds(15);
       Start(ctx, base, a, v);
       return;
     }
