@@ -19,7 +19,9 @@
 // Starting finishers (wwe12_starting_finishers: 0 = off, 1-3 = that many, 4 = infinite): each superstar of a
 // match starts with that many stored finishers (actor+2776; the gauge is left alone). Each time the game takes
 // one away (a finisher done), the ones still owed are put back; infinite keeps at least one.
-// Squash (wwe12_squash: 0 = off, 1 = the 2nd superstar is the jobber, 2 = the 1st): 1 on 1 matches only; the
+// Squash: a 1 on 1 match is one with the chance wwe12_squash_chance (0-100 %, as WWE 2K19's slider; the superstar
+// with the lower overall is the jobber), or always with wwe12_squash (1 = the 2nd superstar is the jobber, 2 = the
+// 1st; for tests). The
 // jobber's four health values start at wwe12_squash_health percent of full, the other one with a stored finisher.
 // A new superstar in a place (actor pointer changed), or one that looks fresh after a loading screen, is a new
 // start: set at his first gauge read, and the jobber's health set again for 5 s if the game puts it back to full.
@@ -30,6 +32,8 @@ REXCVAR_DEFINE_INT32(wwe12_starting_finishers, 0, "WWE12",
                      "Finishers every superstar has at the start of a match: 0 = the game's rules, 1-3, 4 = infinite.");
 REXCVAR_DEFINE_INT32(wwe12_squash, 0, "WWE12",
                      "Squash match (1 on 1): 0 = off, 1 = the second superstar is the jobber (low health), 2 = the first.");
+REXCVAR_DEFINE_INT32(wwe12_squash_chance, 0, "WWE12",
+                     "Squash match: chance (0-100 %) that a 1 on 1 match is a squash; the superstar with the lower overall is the jobber.");
 REXCVAR_DEFINE_INT32(wwe12_squash_health, 20, "WWE12",
                      "Squash match: the jobber's starting health, in percent of full (5-90).");
 REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
@@ -41,6 +45,7 @@ REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
 #include <cmath>
 #include <cstring>
 #include <mutex>
+#include <random>
 #include <string>
 #include <thread>
 
@@ -52,6 +57,8 @@ REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
 
 int64_t Wwe12MsSinceLoadScreen();  // wwe12_load_turbo.cpp
 
+REX_EXTERN(__imp__sub_82684910);  // a superstar's record (roster id)
+REX_EXTERN(__imp__sub_82A339B0);  // a record's overall
 REX_EXTERN(__imp__sub_82246DE0);  // gauge of a CHP object
 REX_EXTERN(__imp__sub_82246E48);  // set the gauge (obj, f1)
 REX_EXTERN(__imp__sub_8224B008);  // finisher count +1 (obj)
@@ -74,6 +81,7 @@ bool g_recheck[kStars] = {};         // a loading screen since: the same actor m
 int g_left[kStars] = {};             // finishers still given (starting finishers)
 u32 g_seen[kStars] = {};             // actor+2776 at the last read
 Clock::time_point g_started_at[kStars];
+u32 g_hold[kStars] = {};             // stored finishers given at the start, held 3 s against the game's reset
 u16 g_squash_hp[kStars] = {};        // jobber's target health (0 = none)
 u16 g_squash_full[kStars] = {};
 Clock::time_point g_squash_until[kStars];
@@ -114,43 +122,115 @@ void SetHealth(u32 actor, u16 v) {
 }
 
 // A superstar's first gauge read in his place: the match modes' start.
+u32 GuestCall(void (*fn)(PPCContext &, u8 *), const PPCContext &in, u8 *base, u32 r3) {
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 512) & ~15u;
+  c.r3.u64 = r3;
+  fn(c, base);
+  return c.r3.u32;
+}
+
+// A superstar's overall (RosterLib GetOverAll: roster id = [actor+80] / 100, sub_82684910, sub_82A339B0).
+int Overall(const PPCContext &ctx, u8 *base, u32 actor) {
+  const u32 id = bd::mem::try_load<u32>(actor + 80) / 100;
+  if (id >= 373)
+    return -1;
+  const u32 rec = GuestCall(__imp__sub_82684910, ctx, base, id);
+  return rec ? int(GuestCall(__imp__sub_82A339B0, ctx, base, rec)) : -1;
+}
+
+// The squash of this 1 on 1 match: decided once per pair of superstars. -1 = not a squash, else the jobber's place.
+u64 g_squash_pair = 0;
+int g_squash_jobber = -1;
+std::mt19937 g_rng{std::random_device{}()};
+
+int Jobber(const PPCContext &ctx, u8 *base) {
+  if (Stars() != 2)
+    return -1;
+  const u32 a0 = bd::mem::try_load<u32>(kActors), a1 = bd::mem::try_load<u32>(kActors + 4);
+  if (!a0 || !a1)
+    return -1;
+  const u64 pair = (u64(a0) << 32) | a1;
+  if (pair == g_squash_pair)
+    return g_squash_jobber;
+  g_squash_pair = pair;
+  g_squash_jobber = -1;
+  const int forced = REXCVAR_GET(wwe12_squash);
+  if (forced == 1 || forced == 2) {
+    g_squash_jobber = forced == 1 ? 1 : 0;
+    return g_squash_jobber;
+  }
+  const int chance = std::clamp<int32_t>(REXCVAR_GET(wwe12_squash_chance), 0, 100);
+  if (chance <= 0)
+    return -1;
+  const int roll = std::uniform_int_distribution<int>(1, 100)(g_rng);
+  const int o0 = Overall(ctx, base, a0), o1 = Overall(ctx, base, a1);
+  if (roll > chance) {
+    BD_INFO("[match] squash : pas cette fois (tirage {} sur {} %)", roll, chance);
+    return -1;
+  }
+  g_squash_jobber = o0 < o1 ? 0 : o1 < o0 ? 1 : std::uniform_int_distribution<int>(0, 1)(g_rng);
+  BD_INFO("[match] squash ! (tirage {} sur {} %) notes {} / {} : catcheur {} est le jobber", roll, chance, o0, o1,
+          g_squash_jobber);
+  return g_squash_jobber;
+}
+
+void GiveStock(int i, u32 actor, int give) {
+  bd::mem::store<u32>(actor + kStock, u32(give));
+  g_seen[i] = u32(give);
+  g_hold[i] = u32(give);
+  g_started_at[i] = Clock::now();
+}
+
 void Start(int i, u32 actor) {
   g_actor[i] = actor;
   g_left[i] = Finishers();
   g_squash_hp[i] = 0;
-  int give = g_left[i] == kInfinite ? 1 : g_left[i];
-  const int squash = REXCVAR_GET(wwe12_squash);
-  if ((squash == 1 || squash == 2) && Stars() == 2 && i < 2) {
-    const int jobber = squash == 1 ? 1 : 0;
-    if (i == jobber) {
-      const u32 dmg = bd::mem::try_load<u32>(actor + 3364);
-      const u16 now = dmg ? bd::mem::try_load<u16>(dmg + 56) : 0;
-      const u16 hp_full = now > 0 && now < 1000 ? now : 120;
-      const int pct = std::clamp<int32_t>(REXCVAR_GET(wwe12_squash_health), 5, 90);
-      g_squash_full[i] = hp_full;
-      g_squash_hp[i] = u16(std::max(1, hp_full * pct / 100));
-      g_squash_until[i] = Clock::now() + std::chrono::seconds(5);
-      SetHealth(actor, g_squash_hp[i]);
-      BD_INFO("[match] squash : catcheur {} commence a {} sur {} de vie", i, g_squash_hp[i], hp_full);
-    } else {
-      give = std::max(give, 1);
-      BD_INFO("[match] squash : catcheur {} commence avec un finisher", i);
-    }
-  }
-  if (give > 0) {
-    bd::mem::store<u32>(actor + kStock, u32(give));
-    BD_INFO("[match] catcheur {} : {} finisher(s) au depart", i,
-            g_left[i] == kInfinite ? std::string("infini") : std::to_string(give));
-  }
-  g_seen[i] = u32(std::max(give, 0));
+  g_hold[i] = 0;
+  if (i < 2)
+    g_squash_pair = 0;  // a new 1 on 1: its squash is decided again
+  g_seen[i] = bd::mem::try_load<u32>(actor + kStock);
   g_started_at[i] = Clock::now();
+  if (g_left[i] > 0) {
+    GiveStock(i, actor, g_left[i] == kInfinite ? 1 : g_left[i]);
+    BD_INFO("[match] catcheur {} : {} finisher(s) au depart", i,
+            g_left[i] == kInfinite ? std::string("infini") : std::to_string(g_left[i]));
+  }
+}
+
+// Once both superstars of a 1 on 1 are started: the squash, if this match is one.
+void ApplySquash(const PPCContext &ctx, u8 *base) {
+  const u32 a0 = bd::mem::try_load<u32>(kActors), a1 = bd::mem::try_load<u32>(kActors + 4);
+  if (Stars() != 2 || !a0 || !a1 || g_actor[0] != a0 || g_actor[1] != a1)
+    return;
+  if (((u64(a0) << 32) | a1) == g_squash_pair)
+    return;
+  const int jobber = Jobber(ctx, base);
+  if (jobber < 0)
+    return;
+  const int dom = 1 - jobber;
+  const u32 actor = jobber ? a1 : a0;
+  const u32 dmg = bd::mem::try_load<u32>(actor + 3364);
+  const u16 now = dmg ? bd::mem::try_load<u16>(dmg + 56) : 0;
+  const u16 hp_full = now > 0 && now < 1000 ? now : 120;
+  const int pct = std::clamp<int32_t>(REXCVAR_GET(wwe12_squash_health), 5, 90);
+  g_squash_full[jobber] = hp_full;
+  g_squash_hp[jobber] = u16(std::max(1, hp_full * pct / 100));
+  g_squash_until[jobber] = Clock::now() + std::chrono::seconds(5);
+  SetHealth(actor, g_squash_hp[jobber]);
+  BD_INFO("[match] squash : catcheur {} commence a {} sur {} de vie", jobber, g_squash_hp[jobber], hp_full);
+  const u32 dom_actor = dom ? a1 : a0;
+  if (bd::mem::try_load<u32>(dom_actor + kStock) == 0) {
+    GiveStock(dom, dom_actor, 1);
+    BD_INFO("[match] squash : catcheur {} commence avec un finisher", dom);
+  }
 }
 
 // Every gauge read of a started superstar: his stored finishers kept as owed (a use takes them to 0 or down by one).
 void Keep(int i, u32 actor) {
   const u32 now = bd::mem::try_load<u32>(actor + kStock);
-  if (now < g_seen[i] && g_left[i] > 0 && Clock::now() < g_started_at[i] + std::chrono::seconds(3)) {
-    bd::mem::store<u32>(actor + kStock, g_seen[i]);  // the game's own match start cleared them: not a finisher done
+  if (g_hold[i] && now < g_hold[i] && Clock::now() < g_started_at[i] + std::chrono::seconds(3)) {
+    bd::mem::store<u32>(actor + kStock, g_hold[i]);  // the game's own match start cleared them: not a finisher done
     return;
   }
   if (now < g_seen[i] && g_left[i] > 0) {
@@ -239,6 +319,8 @@ extern "C" REX_FUNC(sub_82246DE0) {
     } else {
       Keep(i, actor);
     }
+    if (i < 2)
+      ApplySquash(ctx, base);
     if (!fresh && g_squash_hp[i] && Clock::now() < g_squash_until[i]) {
       const u32 dmg = bd::mem::try_load<u32>(actor + 3364);
       if (dmg && bd::mem::try_load<u16>(dmg + 56) == g_squash_full[i]) {
