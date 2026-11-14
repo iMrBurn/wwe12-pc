@@ -835,7 +835,10 @@ int g_submission_row = -1;          // SUBMISSION's index among the ONE ON ONE r
 extern "C" REX_FUNC(sub_82DE92F8) {
   const u32 table = ctx.r4.u32, size = ctx.r5.u32;
   const u32 total = table ? bd::mem::try_load<u32>(table + 4) : 0, shown = table ? bd::mem::try_load<u32>(table + 8) : 0;
-  if (!REXCVAR_GET(wwe12_iquit) || !table || total == 0 || total > 4096 || size < 12 + total * kRecord) {
+  if (REXCVAR_GET(wwe12_iquit))
+    BD_INFO("[iquit] table des menus {:08X} : {} lignes, {} affichees, {} octets", table, total, shown, size);
+  // (only the shown records are read: the header's total runs past the table's end)
+  if (!REXCVAR_GET(wwe12_iquit) || !table || shown == 0 || shown > total || size < 12 + shown * kRecord) {
     __imp__sub_82DE92F8(ctx, base);
     return;
   }
