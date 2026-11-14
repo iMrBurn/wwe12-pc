@@ -13,6 +13,9 @@ REXCVAR_DEFINE_BOOL(wwe12_motion_trace, false, "WWE12",
                     "Dev: log how motions 203 and 13100-13199 are queued and looked up (Mod Maker's I Quit motions).");
 
 #include <atomic>
+#include <string>
+
+#include <fmt/format.h>
 
 #include "svr_hook.h"
 #include "core/logging.h"
@@ -26,7 +29,7 @@ REX_EXTERN(__imp__sub_821A5230);
 namespace {
 bool Watched(u32 n) {
   n &= 0xFFFF;
-  return REXCVAR_GET(wwe12_motion_trace) && (n == 203 || (n >= 13100 && n < 13200));
+  return REXCVAR_GET(wwe12_motion_trace) && (n == 203 || n == 20152 || (n >= 13100 && n < 13200));
 }
 std::atomic<int> g_lines{0};
 bool More() { return g_lines.fetch_add(1) < 400; }
@@ -46,11 +49,27 @@ void Banks(u32 mgr) {
 }
 }  // namespace
 
+// The queue's two lists (queue +96 A, +112 B: +0 entries of 16 bytes {u16 number, u8, u8 counter, ..., +8 state},
+// +8 count; sub_821D7480 answers 4 when the number is in A, 3 in B, 2 already queued, 1 queued now; read 2026-11-14)
+std::string InLists(u32 q, u32 n) {
+  std::string out;
+  for (u32 l : {96u, 112u}) {
+    const u32 ent = bd::mem::try_load<u32>(q + l), cnt = bd::mem::try_load<u32>(q + l + 8);
+    for (u32 i = 0; i < cnt && i < 256 && ent; ++i)
+      if (bd::mem::try_load<u16>(ent + i * 16) == u16(n))
+        out += fmt::format(" liste {} : etat {} octets {} {} mots {:08X} {:08X}", l == 96 ? 'A' : 'B',
+                           bd::mem::try_load<u32>(ent + i * 16 + 8), bd::mem::try_load<u8>(ent + i * 16 + 2),
+                           bd::mem::try_load<u8>(ent + i * 16 + 3), bd::mem::try_load<u32>(ent + i * 16 + 4),
+                           bd::mem::try_load<u32>(ent + i * 16 + 12));
+  }
+  return out;
+}
+
 extern "C" REX_FUNC(sub_821D7480) {
-  const u32 n = ctx.r4.u32, r5 = ctx.r5.u32;
+  const u32 q = ctx.r3.u32, n = ctx.r4.u32, r5 = ctx.r5.u32;
   __imp__sub_821D7480(ctx, base);
   if (Watched(n) && More())
-    BD_INFO("[motion] file : numero {} r5 {} -> {}", n & 0xFFFF, r5 & 0xFF, ctx.r3.u32);
+    BD_INFO("[motion] file : numero {} r5 {} -> {}{}", n & 0xFFFF, r5 & 0xFF, ctx.r3.u32, InLists(q, n & 0xFFFF));
 }
 
 extern "C" REX_FUNC(sub_821A5350) {
