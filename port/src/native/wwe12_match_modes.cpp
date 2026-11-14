@@ -487,8 +487,10 @@ REXCVAR_DEFINE_BOOL(wwe12_select_finishers, false, "WWE12",
 constexpr u32 kChangeAttireText = 280;
 thread_local bool g_bar_text = false;  // the text being completed is the bar's (else the panel's title)
 thread_local u32 g_asked = 0;          // the id being completed
-std::atomic<u32> g_banner_id{0};       // the text id of "ADD MANAGER" (the banner of a superstar without other attires)
-std::set<u32> g_logged_ids, g_banner_tried;  // (game thread)
+std::set<u32> g_logged_ids;            // (game thread)
+// The texts completed with the finishers: the attire panel's title (280 CHANGE ATTIRE), and for a superstar without
+// other attires the banner under his picture (273 " READY   ADD MANAGER", 287 " READY   ADVANCED"; probe test).
+bool Ours(u32 id) { return id == 280 || id == 273 || id == 287; }
 u32 Wwe12MatchModesGameText(u32 id) {
   if (!g_select.load())
     return 0;
@@ -503,13 +505,10 @@ u32 Wwe12MatchModesGameText(u32 id) {
   }
   g_bar_text = false;
   g_asked = id;
-  if (id == kChangeAttireText || id == g_banner_id.load())
+  if (Ours(id))
     return id;
   // (probe: every text the select asks goes through Wwe12MatchModesText once, to log it)
   if (Probe() && g_logged_ids.count(id) == 0)
-    return id;
-  // the "X ADD MANAGER" banner of a superstar without other attires: found by its text (once) when unknown
-  if (!g_banner_id.load() && g_banner_tried.count(id) == 0)
     return id;
   return 0;
 }
@@ -520,15 +519,10 @@ u32 Wwe12MatchModesText(u32 game) {
   if (!g)
     return game;
   const u32 asked = g_asked;
-  if (asked != kChangeAttireText && asked != g_banner_id.load()) {
+  if (!Ours(asked)) {
     if (Probe() && g_logged_ids.insert(asked).second)
       BD_INFO("[selection] texte {} = \"{}\"", asked, g);
-    if (!g_banner_id.load() && g_banner_tried.insert(asked).second && std::strstr(g, "MANAGER")) {
-      g_banner_id = asked;
-      BD_INFO("[selection] bandeau MANAGER = texte {}", asked);
-    }
-    if (asked != g_banner_id.load())
-      return game;
+    return game;
   }
   static u32 s_bar = 0;
   u32 &buf = g_bar_text ? s_bar : g_text;
