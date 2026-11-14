@@ -14,6 +14,9 @@ REXCVAR_DEFINE_BOOL(wwe12_pin_trap, false, "WWE12",
                     "Dev: log the code that writes a pin's count (hardware breakpoints on two words).");
 REXCVAR_DEFINE_INT32(wwe12_watch_addr, 0, "WWE12",
                      "Dev: a guest address (as a decimal number) whose 4-byte writes are logged with their code (DR2).");
+REXCVAR_DEFINE_BOOL(wwe12_watch_select, false, "WWE12",
+                    "Dev: DR2 on the character select's place 0 state ([S+268], 2 = attire panel): who writes it.");
+u32 Wwe12SelectScene(int place);  // wwe12_match_modes.cpp
 
 #if defined(__ANDROID__)
 void Wwe12PinTrapStart() {}  // (dev, Windows only)
@@ -153,7 +156,11 @@ void Poll() {
       u8 *host = actor ? bd::mem::try_at<u8>(actor + 2760) : nullptr;
       want[i] = host ? u64(host) : 0;
     }
-    if (const int32_t w = REXCVAR_GET(wwe12_watch_addr)) {
+    if (REXCVAR_GET(wwe12_watch_select)) {
+      const u32 sc = Wwe12SelectScene(0);
+      u8 *host = sc ? bd::mem::try_at<u8>(sc + 268) : nullptr;
+      want[2] = host ? u64(host) : 0;
+    } else if (const int32_t w = REXCVAR_GET(wwe12_watch_addr)) {
       u8 *host = bd::mem::try_at<u8>(u32(w));
       want[2] = host ? u64(host) : 0;
     }

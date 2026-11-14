@@ -64,6 +64,7 @@ REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
 int64_t Wwe12MsSinceLoadScreen();  // wwe12_load_turbo.cpp
 void Wwe12PinProbeStart();         // below
 void Wwe12PinTrapStart();          // wwe12_pin_trap.cpp (dev)
+u32 Wwe12SelectScene(int place);
 void Wwe12IQuitTick(const PPCContext &ctx, u8 *base);  // wwe12_iquit.cpp
 
 REX_EXTERN(__imp__sub_82684910);  // a superstar's record (roster id)
@@ -627,6 +628,7 @@ extern "C" REX_FUNC(sub_825A1200) {
   __imp__sub_825A1200(ctx, base);
   if (place < kStars)
     g_scenes[place] = s;  // (all six are built at once when the select opens: which one is active is found below)
+  Wwe12PinTrapStart();  // (dev, wwe12_pin_trap + wwe12_watch_select: who writes the place's state)
   if (Probe())
     BD_INFO("[selection] nouvel objet de choix {:08X} pour la place {}", s, place);
 }
@@ -1005,3 +1007,6 @@ void Wwe12MatchDecide(uint32_t id, uint32_t parent, uint32_t label) {
   if (g_iquit.exchange(iq) != iq || iq)
     BD_INFO("[iquit] choix du menu : id {} parent {} texte {} -> {}", id, parent, label, iq ? "I QUIT" : "autre match");
 }
+
+// (dev, wwe12_pin_trap.cpp's wwe12_watch_select) the character select's scene object of a place, 0 when unknown
+u32 Wwe12SelectScene(int place) { return place >= 0 && place < kStars ? g_scenes[place].load() : 0; }
