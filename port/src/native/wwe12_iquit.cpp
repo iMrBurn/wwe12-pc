@@ -14,9 +14,8 @@
 // - the gauge is drawn over the game with ImGui, in the look of the Royal Rumble's bottom rope elimination
 //   gauge: a black bar, a red zone, a cursor going left and right, "I QUIT" whiter and whiter, "NON" under the
 //   zone. A human stops the cursor with A; the computer resists with a chance that falls with its health;
-// - failed (or the time out): he gives up, as the game's own give-up does it (sub_82265180, probe 2026-11-14):
-//   victim +999 = 7, +1000 = who made him give up, +2784 = 0, sub_8227B208(victim), +2094 = 1. The match's
-//   judge (sub_82263440) then ends the match with the give-up reason; its texts read "I QUIT".
+// - failed (or the time out): he gives up, as the game's own submission give-up does it (GiveUp below). The match's
+//   judge (sub_82263440) then ends the match with the submission reason; its texts read "I QUIT".
 
 #include <rex/cvar.h>
 
@@ -25,6 +24,10 @@ REXCVAR_DEFINE_BOOL(wwe12_iquit_ask, true, "WWE12",
 REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim, 203, "WWE12",
                      "I Quit match: the referee's animation when he asks (203 = WWE '12's; a WWE '13 microphone motion imported "
                      "by the Mod Maker from the player's own disc can be set here).");
+
+REXCVAR_DEFINE_INT32(wwe12_iquit_victim_anim, 0, "WWE12",
+                     "I Quit match: the asked superstar's animation while the referee asks (0 = none; the victim's part of a "
+                     "WWE '13 two-person motion, imported by the Mod Maker, can be set here).");
 
 #include <algorithm>
 #include <cmath>
@@ -45,7 +48,7 @@ REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim, 203, "WWE12",
 bool Wwe12IQuitMatch();  // wwe12_match_modes.cpp: an I Quit match is set up
 
 REX_EXTERN(__imp__sub_8247AD18);  // play an animation on an actor
-REX_EXTERN(__imp__sub_8227B208);  // (a superstar who gives up)
+REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner)
 
 namespace {
 
@@ -137,20 +140,22 @@ void PlayAnim(const PPCContext &in, u8 *base, u32 actor, u32 anim) {
   __imp__sub_8247AD18(c, base);
 }
 
+// The game's own submission give-up (sub_82229320 -> sub_82261320(victim, 2, winner), read 2026-11-14): victim +999 =
+// 2 (the judge sub_82263440 turns it into the end reason 6, the submission one, through its table at 0x82005080:
+// 1->2, 2->6, 3->1, 4->5, 6->8, 7->3 DQ, 20->10), +1000 = the winner, his stats and the bell. (7 was the referee's
+// 5 count, a DQ: user's test of 2026-11-14 ended "by way of DQ".)
 void GiveUp(const PPCContext &in, u8 *base) {
   const u32 victim = Actor(g_victim);
   if (!victim)
     return;
   if (bd::mem::try_load<u8>(victim + 999) == 21)
     return;
-  bd::mem::store<u8>(victim + 1000, u8(g_attacker));
-  bd::mem::store<u8>(victim + 999, 7);
-  bd::mem::store<u32>(victim + 2784, 0);
   PPCContext c = in;
   c.r1.u64 = (in.r1.u32 - 512) & ~15u;
   c.r3.u64 = victim;
-  __imp__sub_8227B208(c, base);
-  bd::mem::store<u8>(victim + 2094, 1);
+  c.r4.u64 = 2;
+  c.r5.u64 = u32(g_attacker);
+  __imp__sub_82261320(c, base);
   BD_INFO("[iquit] catcheur {} abandonne : I QUIT (gagnant {})", g_victim, g_attacker);
 }
 
@@ -179,6 +184,9 @@ void Start(const PPCContext &in, u8 *base, int attacker, int victim) {
     PlayAnim(in, base, ref, u32(REXCVAR_GET(wwe12_iquit_ref_anim)));
     g_we_asked = true;
   }
+  if (const int va = REXCVAR_GET(wwe12_iquit_victim_anim))
+    if (const u32 vic = Actor(victim))
+      PlayAnim(in, base, vic, u32(va));
   BD_INFO("[iquit] l'arbitre demande au catcheur {} (vie {:.0f} %, zone {:.2f}-{:.2f}, menaces {}{})", victim,
           health * 100, z0, z0 + width, g_pressure, g_cpu_victim ? ", ordinateur" : "");
 }
@@ -230,6 +238,10 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
         if (const u32 ref = Actor(kReferee))
           if (Anim(ref) == u16(REXCVAR_GET(wwe12_iquit_ref_anim)))
             PlayAnim(ctx, base, ref, 20152);  // (the referee stands up again: his idle, seen in the probes)
+        if (const int va = REXCVAR_GET(wwe12_iquit_victim_anim))
+          if (const u32 vic = Actor(g_victim))
+            if (g_result == 1 && Anim(vic) == u16(va))
+              PlayAnim(ctx, base, vic, 0);  // (he said NO: back to lying on the mat)
       }
       return;
     }
