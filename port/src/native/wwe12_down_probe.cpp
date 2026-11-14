@@ -67,7 +67,7 @@ std::atomic<u16> g_before{0};
 u64 g_exe = 0;
 thread_local u64 t_rearm = 0;
 thread_local u64 t_rip = 0;
-constexpr int kMax = 64;
+constexpr int kMax = 512;  // (512 since the pin study, 2026-11-14)
 std::atomic<int> g_n{0};
 u64 g_rip[kMax];
 u16 g_val[kMax];
