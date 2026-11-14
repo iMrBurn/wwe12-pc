@@ -485,6 +485,30 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     g_hint = false;
 }
 
+// ---- the WWE '13 motions: known to the game's motion directory ----
+// Why they stayed frozen (2026-11-14, read in the generated code + the Mod Maker's trace): a motion played by number
+// is queued (sub_821D7480) and the queue's reader (sub_821D7C80) drops any number that has no record in the motion
+// directory [0x8217B870]; a superstar's records (directory slot k + 11) are built by sub_8246E3B0(directory, bitmap,
+// slot) from a 65536-bit bitmap (bit n = word n / 32, 1 << n % 32; sub_821B4610) that sub_823B4628 fills with his
+// moveset's motions and a fixed list (10125, 13100-13135 the referee's). Then the archives are walked
+// (sub_824868F8, /ZMOT/CA00-CA09) and only the entries whose number has a record are read. Here: the Mod Maker's
+// numbers 13140-13199 are added to the bitmap of every superstar / referee slot (11-22), so the game reads them from
+// the Mod Maker's archive and the queue finds them.
+REX_EXTERN(__imp__sub_8246E3B0);
+extern "C" REX_FUNC(sub_8246E3B0) {
+  const u32 bitmap = ctx.r4.u32, slot = ctx.r5.u32;
+  if (REXCVAR_GET(wwe12_iquit_wwe13_motions) && bitmap && slot >= 11 && slot <= 22) {
+    for (u32 n = 13140; n < 13200; ++n) {
+      const u32 w = bitmap + (n >> 5) * 4;
+      bd::mem::store<u32>(w, bd::mem::try_load<u32>(w) | (1u << (n & 31)));
+    }
+    static std::atomic<int> s_logged{0};
+    if (s_logged.fetch_add(1) < 12)
+      BD_INFO("[iquit] motions 13140-13199 ajoutees au repertoire (case {})", slot);
+  }
+  __imp__sub_8246E3B0(ctx, base);
+}
+
 // ---- the gauge, drawn over the game ----
 
 namespace {
