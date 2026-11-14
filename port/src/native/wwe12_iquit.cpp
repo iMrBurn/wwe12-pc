@@ -22,6 +22,9 @@
 
 REXCVAR_DEFINE_BOOL(wwe12_iquit_ask, true, "WWE12",
                     "I Quit match: B next to a downed opponent calls the referee and starts the I QUIT gauge (as WWE '13).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim, 203, "WWE12",
+                     "I Quit match: the referee's animation when he asks (203 = WWE '12's; a WWE '13 microphone motion imported "
+                     "by the Mod Maker from the player's own disc can be set here).");
 
 #include <algorithm>
 #include <cmath>
@@ -49,7 +52,7 @@ namespace {
 using Clock = std::chrono::steady_clock;
 constexpr u32 kActors = 0x8317B770;
 constexpr int kReferee = 6;
-constexpr u16 kPadA = 0x1000, kPadB = 0x2000;
+constexpr u16 kPadA = 0x1000, kPadB = 0x2000, kPadDpad = 0x000F;  // (the D-pad: the taunts)
 constexpr double kTime = 5.0;  // seconds to stop the cursor
 
 std::atomic<u16> g_pad[4];
@@ -60,6 +63,12 @@ std::atomic<bool> g_on{false};
 std::atomic<float> g_cursor{0.f}, g_zone0{0.4f}, g_zone1{0.55f}, g_white{0.f};
 std::atomic<int> g_result{0};  // 0 running, 1 resisted ("NON"), 2 gave up (shown 1.5 s)
 std::atomic<int> g_ask{0};     // a human's B next to a downed opponent: his place + 1
+std::atomic<int> g_taunt{0};   // a human's taunt next to a downed opponent: his place + 1
+std::atomic<bool> g_sub{false};  // a submission of the game itself in the I Quit match: "I QUIT" shown over it
+int g_pressure = 0;            // threats since the victim went down (WWE '13's MakeAThreat): a harder gauge
+int g_threat_by = -1;          // a threat is made: the referee asks again at g_threat_at
+Clock::time_point g_threat_at, g_refused_at, g_sub_start;
+bool g_we_asked = false;       // the referee's asking animation is ours (not a submission of the game)
 int g_attacker = -1, g_victim = -1;
 Clock::time_point g_start, g_end_shown, g_cooldown, g_down_since[6], g_cpu_next_ask;
 float g_speed = 1.0f;
@@ -153,23 +162,25 @@ void Start(const PPCContext &in, u8 *base, int attacker, int victim) {
   g_start = Clock::now();
   const float health = HealthRatio(Actor(victim));
   // a wide zone and a slow cursor when he is fresh, small and fast when he is worn out
-  const float width = 0.08f + 0.22f * health;
+  const float width = std::max(0.05f, 0.08f + 0.22f * health - 0.04f * float(g_pressure));
   const float z0 = std::uniform_real_distribution<float>(0.15f, 0.85f - width)(g_rng);
   g_zone0 = z0;
   g_zone1 = z0 + width;
-  g_speed = 0.7f + 1.1f * (1.f - health);
+  g_speed = 0.7f + 1.1f * (1.f - health) + 0.25f * float(g_pressure);
   g_cursor = 0.f;
   g_white = 0.f;
   g_result = 0;
   g_cpu_victim = PadOf(victim) < 0;
-  g_cpu_resists = std::uniform_real_distribution<float>(0.f, 1.f)(g_rng) < std::clamp(health * std::sqrt(health), 0.05f, 0.9f);  // (63 % health: resists half the time)
+  g_cpu_resists = std::uniform_real_distribution<float>(0.f, 1.f)(g_rng) < std::clamp(health * std::sqrt(health) - 0.15f * float(g_pressure), 0.05f, 0.9f);  // (63 % health: resists half the time)
   g_cpu_stop_at = std::uniform_real_distribution<double>(1.0, kTime - 0.5)(g_rng);
   g_on = true;
   ShowGauge();
-  if (const u32 ref = Actor(kReferee))
-    PlayAnim(in, base, ref, 203);
-  BD_INFO("[iquit] l'arbitre demande au catcheur {} (vie {:.0f} %, zone {:.2f}-{:.2f}{})", victim, health * 100, z0,
-          z0 + width, g_cpu_victim ? ", ordinateur" : "");
+  if (const u32 ref = Actor(kReferee)) {
+    PlayAnim(in, base, ref, u32(REXCVAR_GET(wwe12_iquit_ref_anim)));
+    g_we_asked = true;
+  }
+  BD_INFO("[iquit] l'arbitre demande au catcheur {} (vie {:.0f} %, zone {:.2f}-{:.2f}, menaces {}{})", victim,
+          health * 100, z0, z0 + width, g_pressure, g_cpu_victim ? ", ordinateur" : "");
 }
 
 }  // namespace
@@ -190,6 +201,8 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
     return u16(kPadA | kPadB);
   for (int a = 0; a < 2; ++a)
     if (PadOf(a) == int(user) && !Down(Actor(a)) && Down(Actor(1 - a))) {
+      if (newly & kPadDpad)
+        g_taunt = a + 1;  // (the game plays the taunt itself; a threat if the referee has just asked)
       if (newly & kPadB)
         g_ask = a + 1;  // (asked now, next to him: the tick starts the mini-game)
       return kPadB;
@@ -201,6 +214,9 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
 void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch()) {
     g_on = false;
+    g_sub = false;
+    g_pressure = 0;
+    g_threat_by = -1;
     return;
   }
   u16 pressed[4];
@@ -212,7 +228,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       if (now > g_end_shown) {
         g_on = false;
         if (const u32 ref = Actor(kReferee))
-          if (Anim(ref) == 203)
+          if (Anim(ref) == u16(REXCVAR_GET(wwe12_iquit_ref_anim)))
             PlayAnim(ctx, base, ref, 20152);  // (the referee stands up again: his idle, seen in the probes)
       }
       return;
@@ -240,12 +256,54 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       g_result = resisted ? 1 : 2;
       g_end_shown = now + std::chrono::milliseconds(1500);
       g_cooldown = now + std::chrono::seconds(4);
-      if (resisted)
+      if (resisted) {
         BD_INFO("[iquit] le catcheur {} resiste (NON)", g_victim);
-      else
+        g_refused_at = now;
+        // a computer facing a human who said NO threatens him (WWE '13: a taunt, then the referee asks again)
+        if (PadOf(g_attacker) < 0 && !g_cpu_victim && std::uniform_int_distribution<int>(0, 1)(g_rng)) {
+          g_threat_by = g_attacker;
+          g_threat_at = now + std::chrono::milliseconds(4000);
+          g_pressure = std::min(3, g_pressure + 1);
+          BD_INFO("[iquit] l'ordinateur menace le catcheur {} (menaces {})", g_victim, g_pressure);
+        }
+      } else {
         GiveUp(ctx, base);
+      }
     }
     return;
+  }
+  // a submission of the game itself (the referee asks with his own animation, not ours): "I QUIT" over it
+  {
+    const u32 ref = Actor(kReferee);
+    const bool asking = ref && Anim(ref) == 203;
+    if (!asking)
+      g_we_asked = false;
+    if (asking && !g_we_asked) {
+      if (!g_sub.exchange(true)) {
+        g_sub_start = now;
+        ShowGauge();
+      }
+      g_white = float(std::min(1.0, std::chrono::duration<double>(now - g_sub_start).count() / 8.0));
+    } else {
+      g_sub = false;
+    }
+  }
+  // a taunt next to the downed opponent just after he said NO: a threat, the referee asks again, harder
+  const int taunt = g_taunt.exchange(0);
+  if (taunt && g_threat_by < 0 && now - g_refused_at < std::chrono::seconds(8)) {
+    g_threat_by = taunt - 1;
+    g_threat_at = now + std::chrono::milliseconds(2500);  // (the taunt plays first)
+    g_pressure = std::min(3, g_pressure + 1);
+    BD_INFO("[iquit] le catcheur {} menace son adversaire (menaces {})", g_threat_by, g_pressure);
+  }
+  if (g_threat_by >= 0 && now >= g_threat_at) {
+    const int a = g_threat_by, v = 1 - a;
+    g_threat_by = -1;
+    if (Actor(a) && Actor(v) && !Down(Actor(a)) && Down(Actor(v))) {
+      g_ask = 0;
+      Start(ctx, base, a, v);
+      return;
+    }
   }
   if (now < g_cooldown) {
     g_ask = 0;
@@ -259,6 +317,8 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       continue;
     if (!Down(vic)) {
       g_down_since[v] = now;
+      if (g_threat_by < 0)
+        g_pressure = 0;  // (back on his feet: the threats start again from nothing)
       continue;
     }
     const int pad = PadOf(a);
@@ -291,7 +351,8 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
  protected:
   void OnClose() override { g_shown = false; }
   void OnDraw(ImGuiIO &io) override {
-    if (!g_on.load()) {
+    const bool sub_only = !g_on.load() && g_sub.load();
+    if (!g_on.load() && !sub_only) {
       Close();  // (no dialog left: the drawer stops drawing ImGui every frame)
       return;
     }
@@ -309,6 +370,8 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
     dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f + 2 * k, y - tsz.y - 6 * k + 2 * k), IM_COL32(0, 0, 0, 200),
                 title);
     dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f, y - tsz.y - 6 * k), IM_COL32(g, g, g, 255), title);
+    if (sub_only)
+      return;  // (a submission of the game: its own meter, our title over it)
     // the bar, its red zone and the cursor
     dl->AddRectFilled(ImVec2(x - 4 * k, y - 4 * k), ImVec2(x + w + 4 * k, y + h + 4 * k), IM_COL32(230, 230, 230, 255),
                       3 * k);
