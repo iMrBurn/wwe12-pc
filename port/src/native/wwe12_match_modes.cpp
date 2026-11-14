@@ -555,6 +555,10 @@ u32 Wwe12MatchModesGameText(u32 id) {
   g_asked = id;
   if (Ours(id))
     return id;
+  // other banners under the picture (user's test of 2026-11-14: Mason Ryan, David Otunga had none of the three):
+  // every text of the select is looked at, those reading " READY..." get the finishers too
+  if (REXCVAR_GET(wwe12_select_finishers))
+    return id;
   // (probe: every text the select asks goes through Wwe12MatchModesText once, to log it)
   if (Probe() && g_logged_ids.count(id) == 0)
     return id;
@@ -584,7 +588,8 @@ u32 Wwe12MatchModesText(u32 game) {
   if (!g)
     return game;
   const u32 asked = g_asked;
-  if (!Ours(asked)) {
+  const bool ready_banner = REXCVAR_GET(wwe12_select_finishers) && std::strncmp(g, " READY", 6) == 0;
+  if (!Ours(asked) && !ready_banner) {
     if (Probe() && g_logged_ids.insert(asked).second)
       BD_INFO("[selection] texte {} = \"{}\"", asked, g);
     return game;

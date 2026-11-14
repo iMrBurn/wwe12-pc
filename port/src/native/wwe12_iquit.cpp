@@ -38,6 +38,8 @@ REXCVAR_DEFINE_BOOL(wwe12_iquit_ask, true, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_iquit_wwe13_motions, false, "WWE12",
                     "I Quit match: play WWE '13's motions (ported by the Mod Maker from the player's own WWE '13 as "
                     "13150-13184).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_ref_override, 0, "WWE12",
+                     "Dev (Mod Maker test): one motion for the referee instead of WWE '13's 13150 / 13151 / 13157 (0 = off).");
 REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gauge's difficulty as WWE '13 (0-3).");
 
 #include <algorithm>
@@ -103,6 +105,12 @@ Clock::time_point g_last, g_sub_start, g_down_since[6], g_cpu_next_ask;
 std::mt19937 g_rng{std::random_device{}()};
 
 bool Motions13() { return REXCVAR_GET(wwe12_iquit_wwe13_motions); }
+
+// the referee's motion: WWE '13's, or the Mod Maker's test motion
+u32 RefMotion(u32 m) {
+  const int o = REXCVAR_GET(wwe12_iquit_ref_override);
+  return o > 0 && o < 65535 ? u32(o) : W13(m);
+}
 
 u32 Actor(int i) { return bd::mem::try_load<u32>(kActors + u32(i) * 4); }
 
@@ -240,7 +248,7 @@ void StartAsk(const PPCContext &in, u8 *base, int attacker, int victim) {
   // the attacker calls the referee (13210 / 13211), the referee kneels with his microphone (13200)
   if (Motions13()) {
     PlayAnim(in, base, att, W13(std::uniform_int_distribution<int>(0, 1)(g_rng) ? 13211 : 13210));
-    PlayAnim(in, base, ref, W13(13200));
+    PlayAnim(in, base, ref, RefMotion(13200));
   } else {
     PlayAnim(in, base, ref, 203);
   }
@@ -266,7 +274,7 @@ void StartGauge(const PPCContext &in, u8 *base) {
   ShowGauge();
   if (Motions13()) {
     PlayAnim(in, base, vic, W13(g_face_down ? 13209 : 13208));
-    PlayAnim(in, base, ref, W13(13201));
+    PlayAnim(in, base, ref, RefMotion(13201));
   }
   BD_INFO("[iquit] la jauge : vie {:.0f} %, zone {:.0f} de large en {:.0f}, vitesse {}", health * 100, g_width.load(),
           g_centre.load(), g_speed);
@@ -282,7 +290,7 @@ void Answer(const PPCContext &in, u8 *base, int result) {
     BD_INFO("[iquit] le catcheur {} resiste (NO)", g_victim);
     if (Motions13()) {
       PlayAnim(in, base, vic, W13(g_face_down ? 13206 : 13205));
-      PlayAnim(in, base, ref, W13(13207));
+      PlayAnim(in, base, ref, RefMotion(13207));
     }
   } else {
     GiveUp(in, base);
@@ -292,7 +300,7 @@ void Answer(const PPCContext &in, u8 *base, int result) {
 void EndAsk(const PPCContext &in, u8 *base) {
   g_phase = kIdle;
   const u32 ref = Actor(kReferee);
-  if (ref && IsOneOf(Anim(ref), {203, W13(13200), W13(13201), W13(13207)}))
+  if (ref && IsOneOf(Anim(ref), {203, W13(13200), W13(13201), W13(13207), RefMotion(13200)}))
     PlayAnim(in, base, ref, kRefIdle);  // (the referee stands up again)
 }
 
