@@ -520,12 +520,21 @@ bool IQuitText(u32 id) {
   return IQuitMatch() && (id == 27400 + kSubmissionType || id == 2945 || id == 2950) &&
          bd::mem::try_load<u8>(0x8317C850) == kSubmissionType;
 }
-thread_local bool g_iquit_text = false;  // the text being completed is an I QUIT one
+thread_local bool g_iquit_text = false;   // the text being completed is an I QUIT one
+thread_local bool g_iquit_check = false;  // (any text, in an I Quit match: "SUBMISSION" becomes "I QUIT")
 
 u32 Wwe12MatchModesGameText(u32 id) {
   g_iquit_text = false;
+  g_iquit_check = false;
   if (IQuitText(id)) {
     g_iquit_text = true;
+    return id;
+  }
+  // An I Quit match chosen: every text of the game reading "SUBMISSION" (the match card, the result's "BY WAY OF"
+  // ...) reads "I QUIT" (Wwe12MatchModesText looks at the game's text).
+  // (not the SUBMISSION row of the ONE ON ONE list, 41049: it stays itself next to I QUIT)
+  if (REXCVAR_GET(wwe12_iquit) && IQuitMatch() && !g_select.load() && id != 41049) {
+    g_iquit_check = true;
     return id;
   }
   if (!g_select.load())
@@ -551,6 +560,13 @@ u32 Wwe12MatchModesGameText(u32 id) {
 
 // The game's text (guest address) completed with the place's value.
 u32 Wwe12MatchModesText(u32 game) {
+  if (g_iquit_check) {
+    g_iquit_check = false;
+    const char *g = game ? bd::mem::try_at<const char>(game) : nullptr;
+    if (!g || std::strcmp(g, "SUBMISSION") != 0)
+      return game;
+    g_iquit_text = true;
+  }
   if (g_iquit_text) {
     g_iquit_text = false;
     static u32 s_iquit = 0;
