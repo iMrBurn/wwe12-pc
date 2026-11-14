@@ -175,6 +175,12 @@ void PlayAnim(const PPCContext &in, u8 *base, u32 actor, u32 anim) {
   std::memcpy(&f, &bits, 4);
   c.f1.f64 = f;
   __imp__sub_8247AD18(c, base);
+  // (for the Mod Maker: the motion queue sub_821D7480 / sub_821A55B8 reads the actor's bytes *[+684] and *[+688]
+  // and [+92] with the number; logged to find the group a superstar's motions are read from)
+  const u32 p684 = bd::mem::try_load<u32>(actor + 684), p688 = bd::mem::try_load<u32>(actor + 688);
+  BD_INFO("[iquit] motion {} sur {:08X} : +92 {} *+684 {} *+688 {} -> anim {}", anim, actor,
+          bd::mem::try_load<u32>(actor + 92), p684 ? bd::mem::try_load<u8>(p684) : 255,
+          p688 ? bd::mem::try_load<u8>(p688) : 255, Anim(actor));
 }
 
 // The game's own submission give-up (sub_82229320 -> sub_82261320(victim, 2, winner), read 2026-11-14): victim +999 =
@@ -345,7 +351,8 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       return;
     }
     // he got up (a strike that lifts him, a roll away...): the ask stops without an answer (WWE '13 result 3)
-    if (!vic || !att || !Down(vic)) {
+    // (65535: no motion read, e.g. a WWE '13 motion the game did not find: user's test of 2026-11-14 stopped there)
+    if (!vic || !att || (!Down(vic) && Anim(vic) != 0xFFFF)) {
       BD_INFO("[iquit] le catcheur {} n'est plus au sol (anim {}) : plus de question", g_victim, Anim(vic));
       EndAsk(ctx, base);
       return;
