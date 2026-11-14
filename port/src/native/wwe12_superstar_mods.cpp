@@ -95,6 +95,8 @@ std::map<uint32_t, Bytes> g_records;    // added superstar -> its record as the 
 // (zmvm_add.h), and those names' paths in guest memory for the lookup hook (sub_827D98D8).
 std::mutex g_zmvm_mutex;
 std::set<std::string> g_zmvm_ours;
+std::set<std::string> g_zmot_ours;  // the game's motion banks the pack serves a copy of (motions mods, "/ZMOT/ca07")
+std::map<std::string, uint32_t> g_zmot_path_at;
 std::map<std::string, uint32_t> g_zmvm_path_at;
 fs::path g_relations_file;  // Documents/wwe12/relations_cleared.txt: the added superstars whose Universe relations went
 std::map<uint32_t, Bytes> g_moves;      // ... its moves and entrance (CHAR / PRO) as the save keeps them (1068 bytes)
@@ -1237,6 +1239,20 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     for (const auto &d : xdirs) {
       if (fs::exists(d / "disabled", ec))
         continue;
+      // (manifest "into=CA07/33": the game's bank and motion group they go into, superstar_pack::ExtraMotion)
+      std::string into_bank;
+      int into_group = -1;
+      {
+        Bytes mf;
+        if (ReadHost(d / "manifest.txt", mf)) {
+          const std::string into = Value(std::string(mf.begin(), mf.end()), "into");
+          const size_t slash = into.find('/');
+          if (slash != std::string::npos && slash > 0) {
+            into_bank = into.substr(0, slash);
+            into_group = atoi(into.c_str() + slash + 1);
+          }
+        }
+      }
       size_t n = 0;
       for (fs::directory_iterator it(d, ec), end; !ec && it != end; it.increment(ec)) {
         const fs::path f = it->path();
@@ -1247,11 +1263,14 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
         if (x.motion <= 0 || x.motion > 0xFFFF || !taken.insert(x.motion).second || !ReadHost(f, x.high))
           continue;
         ReadHost(f.parent_path() / (f.stem().wstring() + L".m3"), x.m3);
+        x.bank = into_bank;
+        x.group = into_group;
         motions.push_back(std::move(x));
         ++n;
       }
       ec.clear();
-      REXLOG_INFO("[superstar mods] motions mod {}: {} motion(s)", rex::path_to_utf8(d.filename()), n);
+      REXLOG_INFO("[superstar mods] motions mod {}: {} motion(s){}", rex::path_to_utf8(d.filename()), n,
+                  into_bank.empty() ? std::string() : " into " + into_bank + " group " + std::to_string(into_group));
     }
   }
   if (list.empty() && attires.empty() && media.empty() && signs.empty() && movesets.empty() && motions.empty()) {
@@ -1591,7 +1610,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   // (the added moves beside their templates in the game's situation sets too: m.pac read in parts, zmvm_add.h)
   std::string zmvm_log;
   if (std::any_of(movesets.begin(), movesets.end(), [](const auto &mv) { return !mv.new_moves.empty(); }) ||
-      std::any_of(stars.begin(), stars.end(), [](const auto &st) { return !st.new_moves.empty(); })) {
+      std::any_of(stars.begin(), stars.end(), [](const auto &st) { return !st.new_moves.empty(); }) ||
+      std::any_of(motions.begin(), motions.end(), [](const auto &x) { return !x.bank.empty(); })) {
     rex::filesystem::Entry *m_entry = vfs ? vfs->ResolvePath("game:\\pac\\m.pac") : nullptr;
     if (m_entry && m_entry->size() > 0x8000) {
       in.m_pac_size = m_entry->size();
@@ -1615,10 +1635,20 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   {
     std::lock_guard<std::mutex> lock(g_zmvm_mutex);
     g_zmvm_ours.clear();
+    g_zmot_ours.clear();
     for (const auto &f : files) {
       svrfmt::Epac e;
       if (f.path.rfind("pac/m_dlc", 0) != 0 || !svrfmt::EpacRead(f.data, e))
         continue;
+      for (const auto &g : e.groups)
+        if (g.type == "ZMOT")
+          for (const auto &en : g.entries)
+            if (!en.name.empty() && std::islower(static_cast<unsigned char>(en.name[0]))) {
+              std::string up = en.name.substr(0, 4);
+              for (auto &c : up)
+                c = char(std::toupper(static_cast<unsigned char>(c)));
+              g_zmot_ours.insert(up);
+            }
       for (const auto &g : e.groups)
         if (g.type == "ZMVM")
           for (const auto &en : g.entries) {
@@ -1630,6 +1660,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
             g_zmvm_ours.insert(up);
           }
     }
+    for (const auto &b : g_zmot_ours)
+      REXLOG_INFO("[superstar mods] the game's bank /ZMOT/{} served with the motions mods' motions", b);
     if (!g_zmvm_ours.empty())
       REXLOG_INFO("[superstar mods] {} situation set(s) of the game served with the added moves", g_zmvm_ours.size());
   }
@@ -2035,6 +2067,25 @@ extern "C" REX_FUNC(sub_827D98D8) {
   uint32_t ours = 0;
   if (path) {
     const char *p = bd::mem::at<char>(path);
+    const bool zmot = p[0] == '/' && p[1] == 'Z' && p[2] == 'M' && p[3] == 'O' && p[4] == 'T' && p[5] == '/';
+    if (zmot) {  // (a game's bank with a motions mod's motions in a group: ours, "/ZMOT/ca07")
+      std::string name;
+      for (int i = 6; i < 12 && p[i]; ++i)
+        name += p[i];
+      std::lock_guard<std::mutex> lock(g_zmvm_mutex);
+      if (g_zmot_ours.count(name)) {
+        uint32_t &at = g_zmot_path_at[name];
+        if (!at) {
+          std::string low = "/ZMOT/" + name;
+          for (size_t i = 6; i < low.size(); ++i)
+            low[i] = char(std::tolower(static_cast<unsigned char>(low[i])));
+          at = REX_KERNEL_MEMORY()->SystemHeapAlloc(uint32_t(low.size() + 1), 4);
+          if (at)
+            memcpy(bd::mem::at<char>(at), low.c_str(), low.size() + 1);
+        }
+        ours = at;
+      }
+    }
     if (p[0] == '/' && p[1] == 'Z' && p[2] == 'M' && p[3] == 'V' && p[4] == 'M' && p[5] == '/') {
       std::string name;
       for (int i = 6; i < 12 && p[i]; ++i)

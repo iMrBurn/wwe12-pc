@@ -209,6 +209,13 @@ struct ExtraMotion {
   int motion = 0;  // its number (a free one of its kind's hundred)
   Bytes high;      // its full record (YANM), plain or BPE
   Bytes m3;        // its m3.pac rows (m3_params row set), else empty
+  // Where it goes: a motion group of the game's own banks (the mod's manifest "into=CA07/33": m.pac ZMOT/CA07, top 33,
+  // the referee's 131xx), else (empty) the added moves' bank. The game plays a motion by number from a queue
+  // (sub_8247AD18 -> sub_82478AE8) that finds the referee's only in his group: an exact copy of the game's 13100 in the
+  // added bank (CA11, top 188) left the referee still (2026-11-14). The bank is served whole, a copy under its
+  // lowercase name ("/ZMOT/ca07"), asked first by the archive lookup hook (wwe12_superstar_mods.cpp).
+  std::string bank;
+  int group = -1;
 };
 
 struct Inputs {
@@ -1172,9 +1179,84 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   if (!in.extra_motions.empty()) {
     std::vector<svrfmt::PachEntry> extra;
     std::vector<std::pair<int, m3_params::Rows>> extra_rows;
+    // (into a game's group first: its bank copied, the motions added to the group's light and full lists)
+    std::vector<svrfmt::EpacEntry> bank_copies;
+    std::set<const ExtraMotion *> in_bank;
+    std::map<std::string, std::vector<const ExtraMotion *>> by_bank;
+    for (const ExtraMotion &x : in.extra_motions)
+      if (!x.bank.empty() && x.group >= 0 && x.motion > 0 && x.motion <= 0xFFFF && !x.high.empty())
+        by_bank[x.bank].push_back(&x);
+    Bytes mhead;
+    std::vector<svrfmt::EpacRow> mrows;
+    if (!by_bank.empty() && in.m_pac &&
+        in.m_pac(0, uint32_t(std::min<uint64_t>(in.m_pac_size, 0x8000)), mhead) &&
+        svrfmt::EpacTable(mhead, in.m_pac_size, mrows))
+      for (const auto &[bank, list] : by_bank) {
+        const auto row = std::find_if(mrows.begin(), mrows.end(), [&](const auto &r) {
+          std::string n = r.name;
+          while (!n.empty() && (n.back() == ' ' || n.back() == 0))
+            n.pop_back();
+          return r.group.rfind("ZMOT", 0) == 0 && n == bank;
+        });
+        Bytes raw;
+        std::vector<svrfmt::PachEntry> tops;
+        if (row == mrows.end() || !in.m_pac(row->offset, row->size, raw) || !svrfmt::PachRead(svrfmt::Unpack(raw), tops))
+          continue;
+        bool any = false;
+        for (auto &t : tops) {
+          std::vector<svrfmt::PachEntry> kids;
+          if (!svrfmt::PachRead(svrfmt::Unpack(t.data), kids) || kids.size() < 2)
+            continue;
+          bool here = false;
+          for (size_t k = 0; k + 1 < kids.size(); k += 2) {  // (the first pair: light, full)
+            std::vector<svrfmt::PachEntry> lo, hi;
+            if (!svrfmt::PachRead(svrfmt::Unpack(kids[k].data), lo) || !svrfmt::PachRead(svrfmt::Unpack(kids[k + 1].data), hi))
+              break;
+            for (const ExtraMotion *x : list) {
+              if (int(t.id) != x->group || in_bank.count(x) ||
+                  std::any_of(lo.begin(), lo.end(), [&](const auto &e) { return int(e.id) == x->motion; }))
+                continue;
+              const Bytes high = svrfmt::IsBpe(x->high) ? svrfmt::Unpack(x->high) : x->high;
+              lo.push_back({uint32_t(x->motion), svrfmt::BpeEncode(high)});
+              hi.push_back({uint32_t(x->motion), high});
+              in_bank.insert(x);
+              here = true;
+            }
+            if (here) {
+              auto by_id = [](const auto &a, const auto &b) { return a.id < b.id; };
+              std::sort(lo.begin(), lo.end(), by_id);
+              std::sort(hi.begin(), hi.end(), by_id);
+              const Bytes l = svrfmt::PachWrite(lo), h = svrfmt::PachWrite(hi);
+              kids[k].data = svrfmt::IsBpe(kids[k].data) ? svrfmt::BpeEncode(l) : l;
+              kids[k + 1].data = svrfmt::IsBpe(kids[k + 1].data) ? svrfmt::BpeEncode(h) : h;
+            }
+            break;
+          }
+          if (here) {
+            const Bytes pk = svrfmt::PachWrite(kids);
+            t.data = svrfmt::IsBpe(t.data) ? svrfmt::BpeEncode(pk) : pk;
+            any = true;
+          }
+        }
+        if (!any)
+          continue;
+        svrfmt::EpacEntry e;
+        e.name = bank;
+        for (auto &c : e.name)
+          c = char(std::tolower(static_cast<unsigned char>(c)));
+        const Bytes pt = svrfmt::PachWrite(tops);
+        e.data = svrfmt::IsBpe(raw) ? svrfmt::BpeEncode(pt) : pt;
+        bank_copies.push_back(std::move(e));
+      }
     for (const ExtraMotion &x : in.extra_motions) {
       if (x.motion <= 0 || x.motion > 0xFFFF || x.high.empty())
         continue;
+      if (in_bank.count(&x)) {  // (its rows all the same)
+        m3_params::Rows r;
+        if (!x.m3.empty() && m3_params::Read(x.m3, r) && !r.empty())
+          extra_rows.push_back({x.motion, std::move(r)});
+        continue;
+      }
       const Bytes high = svrfmt::IsBpe(x.high) ? svrfmt::Unpack(x.high) : x.high;
       extra.push_back({0, svrfmt::PachWrite({{uint32_t(x.motion), svrfmt::BpeEncode(high)}})});  // (as the moves': 4b)
       extra.push_back({0, svrfmt::PachWrite({{uint32_t(x.motion), high}})});
@@ -1221,6 +1303,34 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         moves_out = svrfmt::EpacWrite(out);
         made = true;
       }
+    }
+    if (!bank_copies.empty()) {
+      svrfmt::Epac with;
+      if (!moves_out.empty() && svrfmt::EpacRead(moves_out, with)) {
+        for (auto &g : with.groups)
+          if (g.type == "ZMOT") {
+            for (auto &b : bank_copies)
+              g.entries.push_back(std::move(b));
+            break;
+          }
+        moves_out = svrfmt::EpacWrite(with);
+      } else if (moves_out.empty()) {
+        svrfmt::Epac like;
+        if (svrfmt::EpacRead(in.chetc, like) && !like.groups.empty()) {
+          with.header = like.header;
+          with.epk8 = like.epk8;
+          with.wide = like.wide;
+          with.toc_extra = like.toc_extra;
+          svrfmt::EpacGroup g;
+          g.type = "ZMOT";
+          g.number = like.groups[0].number;
+          g.extra = 0;
+          g.entries = std::move(bank_copies);
+          with.groups.push_back(std::move(g));
+          moves_out = svrfmt::EpacWrite(with);
+        }
+      }
+      made = !moves_out.empty();
     }
     if (made && !extra_rows.empty()) {
       const Bytes &base_m3 = m3_out.empty() ? in.m3 : m3_out;
