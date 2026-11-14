@@ -29,7 +29,20 @@ REXCVAR_DEFINE_INT32(wwe12_iquit_victim_anim, 0, "WWE12",
                      "I Quit match: the asked superstar's animation while the referee asks (0 = none; the victim's part of a "
                      "WWE '13 two-person motion, imported by the Mod Maker, can be set here).");
 
+// The WWE '13 motions (ported by the Mod Maker from the player's own WWE '13, 13200-13234 -> 13150-13184; 0 = none):
+// the ask (13200 start, 13201 loop, 13202 end: the referee with his microphone and the asked man), the threat
+// (MakeAThreat) and the down strike while he is asked (GetDownStrikeAnim: 13220 / 13221).
+REXCVAR_DEFINE_INT32(wwe12_iquit_ref_loop, 0, "WWE12", "I Quit: the referee's loop while he asks (0 = none).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_ref_end, 0, "WWE12", "I Quit: the referee's animation at the answer (0 = none).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_victim_loop, 0, "WWE12", "I Quit: the asked man's loop (0 = none).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_threat_anim, 0, "WWE12", "I Quit: the attacker's threat animation (0 = the game's taunt).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_strike_anim, 0, "WWE12",
+                     "I Quit: the attacker's strike on the asked man (0 = the game's own ground strike).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_struck_anim, 0, "WWE12", "I Quit: the asked man struck (0 = none).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_loop_delay, 1200, "WWE12", "I Quit: milliseconds from the ask's start to its loop.");
+
 #include <algorithm>
+#include <initializer_list>
 #include <cmath>
 #include <atomic>
 #include <chrono>
@@ -72,7 +85,18 @@ std::atomic<bool> g_sub{false};  // a submission of the game itself in the I Qui
 int g_pressure = 0;            // threats since the victim went down (WWE '13's MakeAThreat): a harder gauge
 int g_threat_by = -1;          // a threat is made: the referee asks again at g_threat_at
 Clock::time_point g_threat_at, g_refused_at, g_sub_start;
-bool g_we_asked = false;       // the referee's asking animation is ours (not a submission of the game)
+bool g_we_asked = false;
+std::atomic<bool> g_threat_window{false};  // just after a NO: a taunt is a threat (the pad thread hides it if ours)
+Clock::time_point g_loop_at, g_threat_anim_at;
+bool g_looped = false;
+
+int Cv(int v) { return v > 0 && v < 65535 ? v : 0; }
+bool IsOneOf(u16 a, std::initializer_list<int> list) {
+  for (int v : list)
+    if (v > 0 && a == u16(v))
+      return true;
+  return false;
+}       // the referee's asking animation is ours (not a submission of the game)
 int g_attacker = -1, g_victim = -1;
 Clock::time_point g_start, g_end_shown, g_cooldown, g_down_since[6], g_cpu_next_ask;
 float g_speed = 1.0f;
@@ -188,6 +212,8 @@ void Start(const PPCContext &in, u8 *base, int attacker, int victim) {
   if (const int va = REXCVAR_GET(wwe12_iquit_victim_anim))
     if (const u32 vic = Actor(victim))
       PlayAnim(in, base, vic, u32(va));
+  g_loop_at = g_start + std::chrono::milliseconds(std::max(0, int(REXCVAR_GET(wwe12_iquit_loop_delay))));
+  g_looped = false;
   BD_INFO("[iquit] l'arbitre demande au catcheur {} (vie {:.0f} %, zone {:.2f}-{:.2f}, menaces {}{})", victim,
           health * 100, z0, z0 + width, g_pressure, g_cpu_victim ? ", ordinateur" : "");
 }
@@ -207,14 +233,15 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
   if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch())
     return 0;
   if (g_on.load())
-    return u16(kPadA | kPadB);
+    return u16(kPadA | kPadB | (Cv(REXCVAR_GET(wwe12_iquit_strike_anim)) ? kPadX : 0));
   for (int a = 0; a < 2; ++a)
     if (PadOf(a) == int(user) && !Down(Actor(a)) && Down(Actor(1 - a))) {
       if (newly & kPadDpad)
-        g_taunt = a + 1;  // (the game plays the taunt itself; a threat if the referee has just asked)
+        g_taunt = a + 1;  // (a threat if the referee has just asked; else the game plays its taunt)
       if (newly & kPadB)
         g_ask = a + 1;  // (asked now, next to him: the tick starts the mini-game)
-      return kPadB;
+      const bool our_threat = g_threat_window.load() && Cv(REXCVAR_GET(wwe12_iquit_threat_anim));
+      return u16(kPadB | (our_threat ? kPadDpad : 0));
     }
   return 0;
 }
@@ -238,12 +265,14 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       if (now > g_end_shown) {
         g_on = false;
         if (const u32 ref = Actor(kReferee))
-          if (Anim(ref) == u16(REXCVAR_GET(wwe12_iquit_ref_anim)))
+          if (IsOneOf(Anim(ref), {REXCVAR_GET(wwe12_iquit_ref_anim), REXCVAR_GET(wwe12_iquit_ref_loop),
+                                  REXCVAR_GET(wwe12_iquit_ref_end)}))
             PlayAnim(ctx, base, ref, 20152);  // (the referee stands up again: his idle, seen in the probes)
-        if (const int va = REXCVAR_GET(wwe12_iquit_victim_anim))
-          if (const u32 vic = Actor(g_victim))
-            if (g_result == 1 && Anim(vic) == u16(va))
-              PlayAnim(ctx, base, vic, 0);  // (he said NO: back to lying on the mat)
+        if (const u32 vic = Actor(g_victim))
+          if (g_result == 1 && IsOneOf(Anim(vic), {REXCVAR_GET(wwe12_iquit_victim_anim),
+                                                   REXCVAR_GET(wwe12_iquit_victim_loop),
+                                                   REXCVAR_GET(wwe12_iquit_struck_anim)}))
+            PlayAnim(ctx, base, vic, 0);  // (he said NO: back to lying on the mat)
       }
       return;
     }
@@ -253,6 +282,15 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     const float cursor = float((int(phase) % 2) ? 1.0 - frac : frac);
     g_cursor = cursor;
     g_white = float(std::min(1.0, t / kTime));
+    if (!g_looped && now >= g_loop_at) {  // the ask goes on: its loop (WWE '13 13201)
+      g_looped = true;
+      if (const int l = Cv(REXCVAR_GET(wwe12_iquit_ref_loop)))
+        if (const u32 ref = Actor(kReferee))
+          PlayAnim(ctx, base, ref, u32(l));
+      if (const int l = Cv(REXCVAR_GET(wwe12_iquit_victim_loop)))
+        if (const u32 vic = Actor(g_victim))
+          PlayAnim(ctx, base, vic, u32(l));
+    }
     // the attacker strikes the downed man while the referee asks (WWE '13: GetDownStrikeAnim, 13220): the gauge
     // gets harder (a human attacker's X; the game plays the ground strike itself)
     if (const int ap = PadOf(g_attacker); ap >= 0 && (pressed[ap] & kPadX)) {
@@ -265,6 +303,15 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       // (the cursor keeps its place: the same phase at the new speed; "I QUIT" whitens a bit faster)
       g_start = now - std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(t * old_speed / g_speed));
       g_cpu_resists = g_cpu_resists && std::uniform_int_distribution<int>(0, 3)(g_rng) != 0;
+      if (const int sa = Cv(REXCVAR_GET(wwe12_iquit_strike_anim))) {
+        if (const u32 att = Actor(g_attacker))
+          PlayAnim(ctx, base, att, u32(sa));
+        if (const int va = Cv(REXCVAR_GET(wwe12_iquit_struck_anim)))
+          if (const u32 vic = Actor(g_victim))
+            PlayAnim(ctx, base, vic, u32(va));
+        g_loop_at = now + std::chrono::milliseconds(1000);  // (then back to the ask's loop)
+        g_looped = false;
+      }
       BD_INFO("[iquit] le catcheur {} frappe pendant la question : zone {:.2f}-{:.2f}", g_attacker, mid - half,
               mid + half);
     }
@@ -284,16 +331,21 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       const bool resisted = stopped && c >= g_zone0.load() && c <= g_zone1.load();
       g_result = resisted ? 1 : 2;
       g_end_shown = now + std::chrono::milliseconds(1500);
+      if (const int e = Cv(REXCVAR_GET(wwe12_iquit_ref_end)))
+        if (const u32 ref = Actor(kReferee))
+          PlayAnim(ctx, base, ref, u32(e));
       g_cooldown = now + std::chrono::seconds(4);
       if (resisted) {
         BD_INFO("[iquit] le catcheur {} resiste (NON)", g_victim);
         g_refused_at = now;
+        g_threat_window = true;
         // a computer facing a human who said NO threatens him (WWE '13: a taunt, then the referee asks again)
         if (PadOf(g_attacker) < 0 && !g_cpu_victim && std::uniform_int_distribution<int>(0, 1)(g_rng)) {
           g_threat_by = g_attacker;
           g_threat_at = now + std::chrono::milliseconds(4000);
           g_pressure = std::min(3, g_pressure + 1);
           BD_INFO("[iquit] l'ordinateur menace le catcheur {} (menaces {})", g_victim, g_pressure);
+          g_threat_anim_at = now + std::chrono::milliseconds(1600);  // (after the answer is shown a moment)
         }
       } else {
         GiveUp(ctx, base);
@@ -318,12 +370,22 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     }
   }
   // a taunt next to the downed opponent just after he said NO: a threat, the referee asks again, harder
+  if (now - g_refused_at >= std::chrono::seconds(8))
+    g_threat_window = false;
   const int taunt = g_taunt.exchange(0);
-  if (taunt && g_threat_by < 0 && now - g_refused_at < std::chrono::seconds(8)) {
+  if (taunt && g_threat_by < 0 && g_threat_window.load()) {
+    g_threat_window = false;
     g_threat_by = taunt - 1;
-    g_threat_at = now + std::chrono::milliseconds(2500);  // (the taunt plays first)
+    g_threat_at = now + std::chrono::milliseconds(2500);  // (the threat plays first)
     g_pressure = std::min(3, g_pressure + 1);
+    g_threat_anim_at = now;
     BD_INFO("[iquit] le catcheur {} menace son adversaire (menaces {})", g_threat_by, g_pressure);
+  }
+  if (g_threat_by >= 0 && g_threat_anim_at != Clock::time_point{} && now >= g_threat_anim_at) {
+    g_threat_anim_at = {};
+    if (const int ta = Cv(REXCVAR_GET(wwe12_iquit_threat_anim)))  // (WWE '13 MakeAThreat)
+      if (const u32 att = Actor(g_threat_by))
+        PlayAnim(ctx, base, att, u32(ta));
   }
   if (g_threat_by >= 0 && now >= g_threat_at) {
     const int a = g_threat_by, v = 1 - a;
