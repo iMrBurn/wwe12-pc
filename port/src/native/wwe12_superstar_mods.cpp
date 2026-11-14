@@ -1223,7 +1223,38 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     }
   }
   MenuPictures(vfs, user_root, mods);
-  if (list.empty() && attires.empty() && media.empty() && signs.empty() && movesets.empty()) {
+  // Motions mods (1.4: the WWE '13 I Quit referee, type=motions): motions alone, <number>.high (YANM full record) and
+  // <number>.m3 (its rows), made by the player's own tool from his own disc; into the pack's bank (superstar_pack 4b'').
+  std::vector<superstar_pack::ExtraMotion> motions;
+  {
+    std::vector<fs::path> xdirs;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Motions", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec))
+        xdirs.push_back(it->path());
+    ec.clear();
+    std::sort(xdirs.begin(), xdirs.end());
+    std::set<int> taken;
+    for (const auto &d : xdirs) {
+      if (fs::exists(d / "disabled", ec))
+        continue;
+      size_t n = 0;
+      for (fs::directory_iterator it(d, ec), end; !ec && it != end; it.increment(ec)) {
+        const fs::path f = it->path();
+        if (f.extension() != ".high")
+          continue;
+        superstar_pack::ExtraMotion x;
+        x.motion = atoi(rex::path_to_utf8(f.stem()).c_str());
+        if (x.motion <= 0 || x.motion > 0xFFFF || !taken.insert(x.motion).second || !ReadHost(f, x.high))
+          continue;
+        ReadHost(f.parent_path() / (f.stem().wstring() + L".m3"), x.m3);
+        motions.push_back(std::move(x));
+        ++n;
+      }
+      ec.clear();
+      REXLOG_INFO("[superstar mods] motions mod {}: {} motion(s)", rex::path_to_utf8(d.filename()), n);
+    }
+  }
+  if (list.empty() && attires.empty() && media.empty() && signs.empty() && movesets.empty() && motions.empty()) {
     AddRestores(GameChEtc(vfs, content));
     RemovePack(content, headers);
     return;
@@ -1466,7 +1497,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     }
     fs::remove(user_root / "mods_warning.txt", e2);
   }
-  if (stars.empty() && attires.empty() && media.empty() && signs.empty() && movesets.empty()) {
+  if (stars.empty() && attires.empty() && media.empty() && signs.empty() && movesets.empty() && motions.empty()) {
     g_moves.clear();
     AddRestores(in.chetc);
     RemovePack(content, headers);
@@ -1536,6 +1567,8 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
     if (std::any_of(movesets.begin(), movesets.end(), [&](const auto &mv) { return with_m3(mv.new_moves); }) ||
         std::any_of(stars.begin(), stars.end(), [&](const auto &st) { return with_m3(st.new_moves); }))
       latest("pac/m3.pac", in.m3);
+    if (in.m3.empty() && std::any_of(motions.begin(), motions.end(), [](const auto &x) { return !x.m3.empty(); }))
+      latest("pac/m3.pac", in.m3);
     auto with_mv = [](const std::vector<superstar_pack::NewMove> &v) {
       return std::any_of(v.begin(), v.end(), [](const auto &m) { return !m.mvmot.empty(); });
     };
@@ -1569,6 +1602,7 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
   // (two mods' different added moves on one number: the later one renumbered within its kind of move)
   if (const int n = superstar_pack::SpreadNewMoves(stars, movesets, in.misc, in.m3); n > 0)
     REXLOG_INFO("[superstar mods] {} added move(s) renumbered: another mod's move had the number", n);
+  in.extra_motions = std::move(motions);
   if (!superstar_pack::Build(in, stars, files, &why, attires, media, signs, movesets)) {
     REXLOG_WARN("[superstar mods] pack not made: {}", why);
     return;

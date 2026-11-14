@@ -203,6 +203,14 @@ struct Moveset {
   std::vector<NewMove> new_moves;          // his moves WWE '12 hasn't, as Star::new_moves
 };
 
+// A motion alone (a motions mod, mods\.svrmods\Motions\<mod>\<number>.high and .m3): a motion the game hasn't, under
+// a number of its own, played by our code (the WWE '13 I Quit referee: wwe12_iquit_ref_anim, 1.4).
+struct ExtraMotion {
+  int motion = 0;  // its number (a free one of its kind's hundred)
+  Bytes high;      // its full record (YANM), plain or BPE
+  Bytes m3;        // its m3.pac rows (m3_params row set), else empty
+};
+
 struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)
@@ -222,6 +230,7 @@ struct Inputs {
   zmvm_add::Reader m_pac;
   uint64_t m_pac_size = 0;
   std::string *zmvm_log = nullptr;
+  std::vector<ExtraMotion> extra_motions;  // motions mods' motions (4b'')
 };
 
 struct File {
@@ -1157,6 +1166,69 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         }
       }
     }
+  }
+  // 4b''. Motions alone (motions mods, Inputs::extra_motions: the WWE '13 I Quit referee, 1.4): into the same bank as
+  // the added moves (made here if none), their rows into the m3.pac copy; no move record, nothing in the move lists.
+  if (!in.extra_motions.empty()) {
+    std::vector<svrfmt::PachEntry> extra;
+    std::vector<std::pair<int, m3_params::Rows>> extra_rows;
+    for (const ExtraMotion &x : in.extra_motions) {
+      if (x.motion <= 0 || x.motion > 0xFFFF || x.high.empty())
+        continue;
+      const Bytes high = svrfmt::IsBpe(x.high) ? svrfmt::Unpack(x.high) : x.high;
+      extra.push_back({0, svrfmt::PachWrite({{uint32_t(x.motion), svrfmt::BpeEncode(high)}})});  // (as the moves': 4b)
+      extra.push_back({0, svrfmt::PachWrite({{uint32_t(x.motion), high}})});
+      m3_params::Rows r;
+      if (!x.m3.empty() && m3_params::Read(x.m3, r) && !r.empty())
+        extra_rows.push_back({x.motion, std::move(r)});
+    }
+    svrfmt::Epac out;
+    bool made = false;
+    if (!extra.empty() && !moves_out.empty() && svrfmt::EpacRead(moves_out, out)) {
+      for (auto &g : out.groups)  // (the added moves' bank: its top's pairs, ours after them)
+        if (g.type == "ZMOT" && !g.entries.empty()) {
+          std::vector<svrfmt::PachEntry> tops, pairs;
+          if (!svrfmt::PachRead(svrfmt::Unpack(g.entries[0].data), tops) || tops.empty() ||
+              !svrfmt::PachRead(svrfmt::Unpack(tops[0].data), pairs))
+            break;
+          for (auto &p : extra)
+            pairs.push_back({uint32_t(pairs.size()), std::move(p.data)});
+          tops[0].data = svrfmt::PachWrite(pairs);
+          g.entries[0].data = svrfmt::PachWrite(tops);
+          made = true;
+          break;
+        }
+      if (made)
+        moves_out = svrfmt::EpacWrite(out);
+    } else if (!extra.empty() && moves_out.empty()) {
+      svrfmt::Epac like;
+      if (svrfmt::EpacRead(in.chetc, like) && !like.groups.empty()) {
+        for (size_t i = 0; i < extra.size(); ++i)
+          extra[i].id = uint32_t(i);
+        const int ca = std::min(19, std::max(pack, 5) + 6);  // (as 4b: the bank's name and top id)
+        char bank[8];
+        snprintf(bank, sizeof(bank), "CA%02d", ca);
+        out.header = like.header;
+        out.epk8 = like.epk8;
+        out.wide = like.wide;
+        out.toc_extra = like.toc_extra;
+        svrfmt::EpacGroup g;
+        g.type = "ZMOT";
+        g.number = like.groups[0].number;
+        g.extra = 0;
+        g.entries.push_back({bank, svrfmt::PachWrite({{uint32_t(177 + ca), svrfmt::PachWrite(extra)}}), 0});
+        out.groups.push_back(std::move(g));
+        moves_out = svrfmt::EpacWrite(out);
+        made = true;
+      }
+    }
+    if (made && !extra_rows.empty()) {
+      const Bytes &base_m3 = m3_out.empty() ? in.m3 : m3_out;
+      if (!base_m3.empty())
+        m3_out = m3_params::Insert(base_m3, extra_rows);
+    }
+    if (why && !made)
+      *why += (why->empty() ? "" : "; ") + std::string("the motions mods' motions could not be added");
   }
   // 4b'. The attires' own names: their text numbers (Attire::label_id) in their slot of the COS lines below.
   std::map<std::string, uint32_t> label_ids;  // attire entry -> its text's number (the first mod's)
