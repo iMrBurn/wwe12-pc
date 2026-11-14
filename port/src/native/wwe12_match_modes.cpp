@@ -61,6 +61,7 @@ REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
 
 int64_t Wwe12MsSinceLoadScreen();  // wwe12_load_turbo.cpp
 void Wwe12PinProbeStart();         // below
+void Wwe12PinTrapStart();          // wwe12_pin_trap.cpp (dev)
 
 REX_EXTERN(__imp__sub_82684910);  // a superstar's record (roster id)
 REX_EXTERN(__imp__sub_82A339B0);  // a record's overall
@@ -309,6 +310,7 @@ extern "C" REX_FUNC(sub_82246DE0) {
   if (i >= 0) {
     g_obj[i] = obj;
     Wwe12PinProbeStart();
+    Wwe12PinTrapStart();
     if (Probe())
       std::call_once(g_probe_started, [] {
         std::thread(Poll).detach();
