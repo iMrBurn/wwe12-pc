@@ -881,6 +881,12 @@ void Wwe12PinEventLog(u32 motion, u32 r6, u32 r7, int32_t frame, u32 types) {
 REX_EXTERN(__imp__sub_82DE92F8);
 REX_EXTERN(__imp__sub_82449898);
 
+REXCVAR_DEFINE_INT32(wwe12_rule_from, -1, "WWE12",
+                     "Dev (Special Referee study): a menu row giving this match rule plays wwe12_rule_to instead (-1 = off).");
+REXCVAR_DEFINE_INT32(wwe12_rule_to, 83, "WWE12", "Dev: the rule played instead (83 = SPECIAL REFEREE).");
+REXCVAR_DEFINE_INT32(wwe12_rule_to_b, 180, "WWE12",
+                     "Dev: its second number (180 = the one the game's own unused row gives with 83; -1 = kept).");
+
 namespace {
 constexpr u32 kIQuitLabel = 43900;
 constexpr u32 kRecord = 0x74;
@@ -986,6 +992,15 @@ extern "C" REX_FUNC(sub_82449898) {
     g_iquit = true;
   else if (out_a || out_b)
     g_iquit = false;  // another match chosen
+  // (dev, Special Referee study: the match of a row played with another rule, from the menu on - so the select and
+  // the participants are built from that rule's own record; 83's third place is the referee's kind)
+  if (const int rf = REXCVAR_GET(wwe12_rule_from); rf >= 0 && out_a && int(a) == rf) {
+    bd::mem::store<u32>(out_a, u32(REXCVAR_GET(wwe12_rule_to)));
+    if (out_b && REXCVAR_GET(wwe12_rule_to_b) >= 0)
+      bd::mem::store<u32>(out_b, u32(REXCVAR_GET(wwe12_rule_to_b)));
+    BD_INFO("[regle] page {} ligne {} : regle {} / {} -> {} / {} (appel {:08X})", bd::mem::try_load<u32>(menu + 48), row,
+            a, b, bd::mem::try_load<u32>(out_a), out_b ? bd::mem::try_load<u32>(out_b) : 0, from);
+  }
 }
 
 bool IQuitMatch() { return g_iquit.load(); }
