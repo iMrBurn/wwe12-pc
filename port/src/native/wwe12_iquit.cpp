@@ -55,7 +55,7 @@ namespace {
 using Clock = std::chrono::steady_clock;
 constexpr u32 kActors = 0x8317B770;
 constexpr int kReferee = 6;
-constexpr u16 kPadA = 0x1000, kPadB = 0x2000, kPadDpad = 0x000F;  // (the D-pad: the taunts)
+constexpr u16 kPadA = 0x1000, kPadB = 0x2000, kPadDpad = 0x000F, kPadX = 0x4000;  // (the D-pad: the taunts; X: strikes)
 constexpr double kTime = 5.0;  // seconds to stop the cursor
 
 std::atomic<u16> g_pad[4];
@@ -253,6 +253,21 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     const float cursor = float((int(phase) % 2) ? 1.0 - frac : frac);
     g_cursor = cursor;
     g_white = float(std::min(1.0, t / kTime));
+    // the attacker strikes the downed man while the referee asks (WWE '13: GetDownStrikeAnim, 13220): the gauge
+    // gets harder (a human attacker's X; the game plays the ground strike itself)
+    if (const int ap = PadOf(g_attacker); ap >= 0 && (pressed[ap] & kPadX)) {
+      const float z0 = g_zone0.load(), z1 = g_zone1.load(), mid = (z0 + z1) / 2;
+      const float half = std::max(0.02f, (z1 - z0) * 0.5f * 0.8f);
+      g_zone0 = mid - half;
+      g_zone1 = mid + half;
+      const float old_speed = g_speed;
+      g_speed = std::min(3.5f, g_speed * 1.15f);
+      // (the cursor keeps its place: the same phase at the new speed; "I QUIT" whitens a bit faster)
+      g_start = now - std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(t * old_speed / g_speed));
+      g_cpu_resists = g_cpu_resists && std::uniform_int_distribution<int>(0, 3)(g_rng) != 0;
+      BD_INFO("[iquit] le catcheur {} frappe pendant la question : zone {:.2f}-{:.2f}", g_attacker, mid - half,
+              mid + half);
+    }
     bool stopped = false;
     if (g_cpu_victim) {
       if (t >= g_cpu_stop_at) {
