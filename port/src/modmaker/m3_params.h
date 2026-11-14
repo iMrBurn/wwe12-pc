@@ -9,11 +9,16 @@
 //        the motion's hundred (the game sums the counts of the rows before, by hundred: no base stored anywhere);
 //   0/4  4-byte events {u16 kind, u16 frame (60 Hz)}, in 0/3's order;
 //   0/6  36-byte rows (a part, a counter branch 0x5A-0x5C...), the motion again at +20 in some;
-//   0/7  20-byte rows (one a part);
+//   0/7  20-byte rows (one a part); +4, +5, +6 = the lengths (4-byte slots) of its three lists in 0/8;
+//   0/8  the lists of 0/7's rows, one after the other in 0/7's order, slots {u8 kind, u8 0, u16 frame}: no start is
+//        stored anywhere, a row's lists sit after every list of the rows before (the disc and the packs: the sum of
+//        the lengths = the slots of 0/8, exactly). A 0/7 row added without its slots moves the lists of EVERY motion
+//        after it (2026-11-14: 25 referee motions in hundred 131 = 13 slots, a wake-up taunt left the man down in a
+//        normal match). Insert keeps the two in step: the row set's own slots ("0/8"), else the lengths set to 0;
 //   5    "SMB" (sounds), a 28-byte header (u16 +6 a count) then 20-byte rows {motion, 0, u16 from, u16 to (frames),
 //        ..., u16 +18 = its row number from 1};
 //   0/2  20-byte rows (Suplex 3: one, naming its counter branch 0x5A; the packs' moves: none). A copy of Suplex 3
-//        without it stopped half-way through in game (2026-11-08: suspected, not proved); 0/8: not keyed by motion (not understood), left out.
+//        without it stopped half-way through in game (2026-11-08: suspected, not proved).
 // A motion's rows travel as a "row set" (Extract, a mod's superstar\moves\<number>.m3) and go into a copy of the
 // latest m3.pac under the added move's motion (Insert). The hundred of a motion number is its kind of move: 570xx are
 // the apron moves (Hotshot, Apron Suplex...), 500xx-504xx the front grapples (the packs put theirs in 504xx). A copy of
@@ -148,9 +153,26 @@ struct OtherPrm {
   }
 };
 
+// The slots a 0/7 row owns in 0/8 (its three lengths).
+inline size_t Slots7(const Bytes &d, size_t o) { return size_t(d[o + 4]) + d[o + 5] + d[o + 6]; }
+// 0/7 and 0/8 in step: the lengths of every row add up to 0/8's slots (true of the disc and of the game's packs).
+inline bool ListsInStep(const Bytes &t7, const Bytes &t8) {
+  size_t sum = 0;
+  for (size_t o = 0; o + 20 <= t7.size(); o += 20)
+    sum += Slots7(t7, o);
+  return sum * 4 == t8.size();
+}
+// The kinds of list slot WWE '12's own motions use (its disc's 0/8; WWE '13 has more: 23, 25-28, 76-78, 83, 100-104,
+// and a second byte WWE '12 never sets).
+inline bool KnownListKind(int kind) {
+  return (kind >= 0 && kind <= 22) || kind == 24 || (kind >= 30 && kind <= 47) || (kind >= 50 && kind <= 58) ||
+         (kind >= 60 && kind <= 75) || (kind >= 80 && kind <= 82) || kind == 84;
+}
+
 }  // namespace detail
 
 // A motion's rows: per table its rows (0/3's starts made relative to the set's own events), and its 0/4 events.
+// "0/8": the list slots of its 0/7 rows (4 bytes each, in the rows' order), when the set carries them.
 struct Rows {
   std::map<std::string, std::vector<Bytes>> rows;
   std::vector<Bytes> events;  // 0/4, 4 bytes each
@@ -195,6 +217,21 @@ inline Rows Extract(const Bytes &m3, int motion, double k = 1.0) {
       out.rows[t.name].push_back(std::move(r));
     }
   }
+  // its 0/7 rows' lists in 0/8 (after every list of the rows before)
+  const Bytes t7 = p.Get("0/7"), t8 = p.Get("0/8");
+  if (ListsInStep(t7, t8)) {
+    size_t at = 0;
+    for (size_t o = 0; o + 20 <= t7.size(); o += 20) {
+      const size_t n = Slots7(t7, o);
+      if (U16(t7, o) == motion)
+        for (size_t i = 0; i < n; ++i) {
+          Bytes s(t8.begin() + long((at + i) * 4), t8.begin() + long((at + i + 1) * 4));
+          Put16(s, 2, frame(U16(s, 2)));
+          out.rows["0/8"].push_back(std::move(s));
+        }
+      at += n;
+    }
+  }
   return out;
 }
 
@@ -230,6 +267,7 @@ inline Rows FromOther(const Bytes &m3, int motion, double k = 1.0) {
         {"0/5", "0/15", {1, 0, 3, 2}},
         {"0/6", "0/16", {1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
                          28, 29, 30, 31}},
+        {"0/7", "0/17", {0, 1, 3, 2}},  // (the lists' slots: kind, a byte, the frame; WWE '13's two copies compared)
     };
     // (all from one side: 2K16 has tables named 0/10 and 0/11 too, holding something else)
     const bool both = !p.Get("0/14").empty() && !p.Get("0/15").empty();
@@ -288,6 +326,50 @@ inline Rows FromOther(const Bytes &m3, int motion, double k = 1.0) {
       }
       out.rows[m.to].push_back(std::move(r));
     }
+  }
+  // 0/7's lists (WWE '12's 0/8): the source's 0/17, a row's lists after every list of the rows before. The source's
+  // rows own more lists than WWE '12's three (WWE '13: five, lengths at +4..+8; the count found as the one whose sum
+  // is the table): the first three taken, their slots of kinds WWE '12 hasn't left out (as the events'), the lengths
+  // follow. No table that adds up: no lists, the lengths 0 (a length without its slots moves every later motion's).
+  if (const auto it7 = out.rows.find("0/7"); it7 != out.rows.end()) {
+    const Bytes &t16 = tab["0/16"], &t17 = tab["0/17"];
+    size_t fields = 0;
+    for (size_t n = 3; n <= 8 && !fields && !t17.empty(); ++n) {
+      size_t sum = 0;
+      for (size_t o = 0; o + 32 <= t16.size(); o += 32)
+        for (size_t i = 0; i < n; ++i)
+          sum += t16[o + 4 + i];
+      if (sum * 4 == t17.size())
+        fields = n;
+    }
+    std::vector<Bytes> slots;
+    size_t at = 0, row = 0;
+    for (size_t o = 0; o + 32 <= t16.size() && fields; o += 32) {
+      const bool mine = U16(t16, o) == motion && row < it7->second.size();
+      for (size_t i = 0; i < fields; ++i) {
+        const size_t n = t16[o + 4 + i];
+        if (mine && i < 3) {
+          int kept = 0;
+          for (size_t s = 0; s < n; ++s) {
+            Bytes sl(t17.begin() + long((at + s) * 4), t17.begin() + long((at + s + 1) * 4));
+            if (sl[1] != 0 || !KnownListKind(sl[0]))
+              continue;
+            Put16(sl, 2, frame(U16(sl, 2)));
+            slots.push_back(std::move(sl));
+            ++kept;
+          }
+          it7->second[row][4 + i] = uint8_t(kept);
+        }
+        at += n;
+      }
+      if (mine)
+        ++row;
+    }
+    if (!fields)
+      for (auto &r : it7->second)
+        r[4] = r[5] = r[6] = 0;
+    else if (!slots.empty())
+      out.rows["0/8"] = std::move(slots);
   }
   // 0/3 and its events: 0/14 {motion, part, start, 0, count, 0}, its events at the running sum of the counts before
   const Bytes &t14 = tab["0/14"], &t15 = tab["0/15"];
@@ -402,6 +484,8 @@ inline Bytes Insert(const Bytes &m3, const std::vector<std::pair<int, Rows>> &ad
   for (const auto &tab : Keyed())
     t[tab.name] = p.Get(tab.name);
   t["0/4"] = p.Get("0/4");
+  t["0/8"] = p.Get("0/8");
+  const bool in_step = ListsInStep(t["0/7"], t["0/8"]);
   for (const auto &[motion, rs] : adds) {
     bool have = false;
     for (size_t o = 0; o + 8 <= t["0/3"].size(); o += 8)
@@ -453,6 +537,29 @@ inline Bytes Insert(const Bytes &m3, const std::vector<std::pair<int, Rows>> &ad
         const size_t pos = std::min(t4.size(), size_t(before) * 4);
         t4.insert(t4.begin() + long(pos), ev.begin(), ev.end());
       }
+      if (std::string(tab.name) == "0/7") {
+        // its lists into 0/8, after every list of the rows before; a set without its slots (a mod made before
+        // 2026-11-14), or with another number of them: the rows without lists, 0/8 as it was
+        size_t before = 0, need = 0;
+        for (size_t q = 0; q < at; q += 20)
+          before += Slots7(d, q);
+        for (const auto &r : rows)
+          need += Slots7(r, 0);
+        const auto l = rs.rows.find("0/8");
+        Bytes &t8 = t["0/8"];
+        if (in_step && need && l != rs.rows.end() && l->second.size() == need && before * 4 <= t8.size()) {
+          Bytes sl;
+          for (const auto &s : l->second) {
+            if (s.size() != 4)
+              return {};
+            sl.insert(sl.end(), s.begin(), s.end());
+          }
+          t8.insert(t8.begin() + long(before * 4), sl.begin(), sl.end());
+        } else {
+          for (auto &r : rows)
+            r[4] = r[5] = r[6] = 0;
+        }
+      }
       Bytes flat;
       for (const auto &r : rows)
         flat.insert(flat.end(), r.begin(), r.end());
@@ -464,6 +571,8 @@ inline Bytes Insert(const Bytes &m3, const std::vector<std::pair<int, Rows>> &ad
       }
     }
   }
+  if (in_step && !ListsInStep(t["0/7"], t["0/8"]))
+    return {};  // (never a file whose lists are out of step: the game would read every later motion's wrong)
   for (auto &[name, d] : t)
     p.Set(name, d);
   return p.Save();

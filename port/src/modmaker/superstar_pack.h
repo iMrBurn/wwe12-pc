@@ -204,7 +204,10 @@ struct Moveset {
 };
 
 // A motion alone (a motions mod, mods\.svrmods\Motions\<mod>\<number>.high and .m3): a motion the game hasn't, under
-// a number of its own, played by our code (the WWE '13 I Quit: wwe12_iquit_wwe13_motions, 1.4).
+// a number of its own, played by our code (tried for the WWE '13 I Quit, 2026-11-14: never played and its m3 rows
+// broke wake-up taunts; the I Quit uses WWE '12's own motions since. Both causes found the same evening, offline:
+// the full record must be a "ZLIB" one in a game's group (4b''), and the 0/7 rows came without their lists in 0/8
+// (m3_params.h). Not seen in game yet: not to be shipped without a normal match + wake-up taunt check).
 struct ExtraMotion {
   int motion = 0;  // its number (a free one of its kind's hundred)
   Bytes high;      // its full record (YANM), plain or BPE
@@ -1217,8 +1220,11 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
                   std::any_of(lo.begin(), lo.end(), [&](const auto &e) { return int(e.id) == x->motion; }))
                 continue;
               const Bytes high = svrfmt::IsBpe(x->high) ? svrfmt::Unpack(x->high) : x->high;
+              // (the group's full records are "ZLIB" ones: the motion queue's loader, sub_821D7E78 -> sub_827E1248,
+              // takes nothing else - a plain record stayed "asked" for ever, the motion never played, 2026-11-14)
+              const bool zlib = !hi.empty() && hi[0].data.size() >= 4 && !memcmp(hi[0].data.data(), "ZLIB", 4);
               lo.push_back({uint32_t(x->motion), svrfmt::BpeEncode(high)});
-              hi.push_back({uint32_t(x->motion), high});
+              hi.push_back({uint32_t(x->motion), zlib ? ZlibRecord(high) : high});
               in_bank.insert(x);
               here = true;
             }
