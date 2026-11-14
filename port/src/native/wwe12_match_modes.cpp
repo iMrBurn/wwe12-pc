@@ -510,7 +510,7 @@ bool Ours(u32 id) { return id == 280 || id == 273 || id == 287; }
 // I QUIT (1.4): with wwe12_iquit, ONE ON ONE has an I QUIT row (below): a SUBMISSION match (no pinfall, no
 // count-out, no rope breaks: the match record of 2026-11-14) whose name (match type text 27467 = 27400 + 67) and
 // ends (2945 GIVEUP, 2950 SUBMISSION, "BY WAY OF" texts 2942-2950) read "I QUIT".
-REXCVAR_DEFINE_BOOL(wwe12_iquit, false, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_iquit, true, "WWE12",
                     "I Quit match: PLAY > ONE ON ONE gets an I QUIT match (as WWE '13): won by giving up only.");
 constexpr u32 kSubmissionType = 67;
 bool IQuitMatch();  // below: the match set up is an I Quit one
@@ -992,7 +992,14 @@ bool Wwe12IQuitMatch() { return g_iquit.load() && bd::mem::try_load<u8>(0x8317C8
 // The menus' "decide" (wwe12_quit.cpp, sub_8253C3F0): the chosen entry's id, parent and label. A choice among PLAY's
 // match lists (ONE ON ONE = parent 8, the others 9-14) says whether the match set up is an I Quit.
 void Wwe12MatchDecide(uint32_t id, uint32_t parent, uint32_t label) {
-  if (parent < 8 || parent > 14)
+  // a choice in a higher menu (PLAY, the main menu: Universe, Road to WrestleMania...): no I Quit match any more (else
+  // a submission match of the Universe after an I Quit exhibition would be one)
+  if (parent < 8) {
+    if (g_iquit.exchange(false))
+      BD_INFO("[iquit] choix du menu {} (parent {}) : plus de match I Quit", id, parent);
+    return;
+  }
+  if (parent > 14)
     return;
   const bool iq = label == kIQuitLabel;
   if (g_iquit.exchange(iq) != iq || iq)

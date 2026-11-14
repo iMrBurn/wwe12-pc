@@ -183,3 +183,8 @@ gpu_allow_invalid_fetch_constants = true
 d3d12_readback_memexport = true
 vulkan_readback_memexport = true
 async_shader_compilation = false
+
+# PLAY > ONE ON ONE gets an I QUIT match (as WWE '13): won only when the opponent gives up. Press B next to
+# your downed opponent to call the referee; the asked superstar stops the cursor in the red "NO" zone with A
+# before the time runs out, or quits. false = no I QUIT row (the game's own list).
+wwe12_iquit = true
