@@ -60,6 +60,7 @@ REXCVAR_DEFINE_BOOL(wwe12_match_probe, false, "WWE12",
 #include "core/memory_helpers.h"
 
 int64_t Wwe12MsSinceLoadScreen();  // wwe12_load_turbo.cpp
+void Wwe12PinProbeStart();         // below
 
 REX_EXTERN(__imp__sub_82684910);  // a superstar's record (roster id)
 REX_EXTERN(__imp__sub_82A339B0);  // a record's overall
@@ -306,6 +307,7 @@ extern "C" REX_FUNC(sub_82246DE0) {
   const int i = StarOf(actor);
   if (i >= 0) {
     g_obj[i] = obj;
+    Wwe12PinProbeStart();
     if (Probe())
       std::call_once(g_probe_started, [] {
         std::thread(Poll).detach();
@@ -611,3 +613,68 @@ void Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt) {
 namespace {
 int ChosenFinishers(int i) { return g_chosen.load() && i >= 0 && i < kStars ? g_choice[i].load() : Finishers(); }
 }  // namespace
+
+// ---- pin probe (1.4, a second pin system: study) ----
+// wwe12_pin_probe: every 100 ms, a record to pin_dump.bin (current folder): time (ms), then for the actors 0, 1
+// and the referee (actor list place 6) their actor pointer, state ([actor+680] u16) and 4 KiB of the actor, 512
+// bytes of his CHP object and 256 of [actor+3364]. Read offline (what changes during a pin, the count, the kick-out).
+// "[tombe]" lines: each state change of these three.
+
+REXCVAR_DEFINE_BOOL(wwe12_pin_probe, false, "WWE12",
+                    "Study of the pins: dumps the superstars and the referee to pin_dump.bin (dev, slow file).");
+
+#include <cstdio>
+
+namespace {
+void PinDumpLoop() {
+  std::FILE *f = std::fopen("pin_dump.bin", "wb");
+  if (!f)
+    return;
+  const auto t0 = Clock::now();
+  u16 last[3] = {0xFFFF, 0xFFFF, 0xFFFF};
+  std::vector<u8> buf;
+  for (;;) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    const u32 ms = u32(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - t0).count());
+    const u32 slots[3] = {0, 1, 6};
+    bool any = false;
+    for (int k = 0; k < 3; ++k)
+      any |= bd::mem::try_load<u32>(kActors + slots[k] * 4) != 0;
+    if (!any)
+      continue;
+    buf.clear();
+    auto put32 = [&](u32 v) { for (int b = 0; b < 4; ++b) buf.push_back(u8(v >> (8 * b))); };
+    put32(0x504E4450);  // "PDNP"
+    put32(ms);
+    for (int k = 0; k < 3; ++k) {
+      const u32 actor = bd::mem::try_load<u32>(kActors + slots[k] * 4);
+      const u32 st = actor ? bd::mem::try_load<u32>(actor + 680) : 0;
+      const u16 state = st ? bd::mem::try_load<u16>(st) : 0xFFFF;
+      put32(actor);
+      put32(state);
+      if (state != last[k]) {
+        BD_INFO("[tombe] {} {} : etat {} -> {}", ms, k == 2 ? std::string("arbitre") : fmt::format("catcheur {}", k),
+                last[k], state);
+        last[k] = state;
+      }
+      const u32 obj = k < 2 ? g_obj[k].load() : 0;
+      const u32 dmg = actor ? bd::mem::try_load<u32>(actor + 3364) : 0;
+      const std::pair<u32, u32> parts[3] = {{actor, 4096}, {obj, 512}, {dmg, 256}};
+      for (const auto &[at, size] : parts)
+        for (u32 o = 0; o < size; o += 4)
+          put32(at ? bd::mem::try_load<u32>(at + o) : 0);
+    }
+    std::fwrite(buf.data(), 1, buf.size(), f);
+    std::fflush(f);
+  }
+}
+}  // namespace
+
+void Wwe12PinProbeStart() {
+  static std::once_flag once;
+  if (REXCVAR_GET(wwe12_pin_probe))
+    std::call_once(once, [] {
+      std::thread(PinDumpLoop).detach();
+      BD_INFO("[tombe] sonde active (pin_dump.bin)");
+    });
+}
