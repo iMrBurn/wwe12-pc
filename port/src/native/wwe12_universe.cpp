@@ -1146,7 +1146,18 @@ bool g_show_edit_open = false;
 // = 0: no title's ranking open).
 constexpr u32 kBackPlusStatsText = 27056;
 
+// Gameplay's texts (wwe12_match_modes.cpp: the character select's "FINISHERS: n"): the game's text it
+// asks for, then its completed copy.
+u32 Wwe12MatchModesGameText(u32 id);  // 0 = not Gameplay's; else the game's text to complete
+u32 Wwe12MatchModesText(u32 game);    // the completed text's guest address (or game as is)
+
 extern "C" REX_FUNC(sub_821A4400) {
+  if (const u32 mm = Wwe12MatchModesGameText(ctx.r4.u32)) {
+    ctx.r4.u64 = mm;
+    __imp__sub_821A4400(ctx, base);
+    ctx.r3.u64 = Wwe12MatchModesText(ctx.r3.u32);
+    return;
+  }
   if (g_save_label && ctx.r4.u32 == g_save_label)
     ctx.r4.u64 = kGameSaveText;
   const u32 asked = ctx.r4.u32;
