@@ -438,7 +438,7 @@ int Place() {
 }
 
 const char *ValueName(int v) {
-  static const char *const k[5] = {"NORMAL", "1", "2", "3", "INF"};
+  static const char *const k[5] = {"NONE", "1", "2", "3", "INFINITE"};
   return k[std::clamp(v, 0, 4)];
 }
 
