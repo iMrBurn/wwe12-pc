@@ -27,6 +27,8 @@ REXCVAR_DEFINE_BOOL(wwe12_down_probe, false, "WWE12",
 #endif
 #include <windows.h>
 #include <atomic>
+#include <mutex>
+#include <set>
 #include <algorithm>
 #include <chrono>
 #include <string>
@@ -265,7 +267,22 @@ extern "C" REX_FUNC(sub_824AE820) {
 // the object's method is sub_824AE820.
 REX_EXTERN(__imp__sub_824ACFF0);
 
+bool Wwe12PinCounting();  // wwe12_match_modes.cpp: the pin probe is on and the referee counts
+
 extern "C" REX_FUNC(sub_824ACFF0) {
+  // (pin study, 2026-11-14) every command run while the referee counts, once per distinct bytes
+  if (ctx.r4.u32 && ctx.r5.u32 && Wwe12PinCounting()) {
+    static std::mutex m;
+    static std::set<std::string> seen;
+    std::string bytes;
+    for (u32 i = 0; i < 24; ++i)
+      bytes += fmt::format(" {:02X}", bd::mem::try_load<u8>(ctx.r5.u32 + i));
+    const u32 vt = bd::mem::try_load<u32>(ctx.r4.u32);
+    std::lock_guard<std::mutex> l(m);
+    if (seen.size() < 300 && seen.insert(bytes).second)
+      BD_INFO("[tombe] commande {} objet {:08X} (vt {:08X}, methode {:08X}) octets:{}",
+              bd::mem::try_load<u16>(ctx.r5.u32), ctx.r4.u32, vt, bd::mem::try_load<u32>(vt + 28), bytes);
+  }
   static std::atomic<int> logged{0};
   if (REXCVAR_GET(wwe12_down_probe) && ctx.r4.u32 && ctx.r5.u32) {
     const u32 vt = bd::mem::try_load<u32>(ctx.r4.u32);

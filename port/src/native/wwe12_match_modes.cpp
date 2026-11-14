@@ -756,6 +756,8 @@ extern "C" REX_FUNC(sub_821A8400) {
   }
 }
 
+bool Wwe12PinCounting() { return REXCVAR_GET(wwe12_pin_probe) && Counting(); }
+
 void Wwe12PinEventLog(u32 motion, u32 r6, u32 r7, int32_t frame, u32 types) {
   if (!REXCVAR_GET(wwe12_pin_probe) || !Counting())
     return;
