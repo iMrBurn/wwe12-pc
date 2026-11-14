@@ -58,6 +58,7 @@ std::atomic<u16> g_pressed[4];  // new presses since the last tick (cleared ther
 std::atomic<bool> g_on{false};
 std::atomic<float> g_cursor{0.f}, g_zone0{0.4f}, g_zone1{0.55f}, g_white{0.f};
 std::atomic<int> g_result{0};  // 0 running, 1 resisted ("NON"), 2 gave up (shown 1.5 s)
+std::atomic<int> g_ask{0};     // a human's B next to a downed opponent: his place + 1
 int g_attacker = -1, g_victim = -1;
 Clock::time_point g_start, g_end_shown, g_cooldown, g_down_since[6];
 float g_speed = 1.0f;
@@ -73,9 +74,11 @@ u16 Anim(u32 actor) {
   return st ? bd::mem::try_load<u16>(st) : 0xFFFF;
 }
 
+// Lying down or hurting on the ground (animations seen in the probes of 2026-11-14: 0 / 1 lying face up / down,
+// 20 / 21 getting up, 440-480 the ground pain and the slow getting up after a big move).
 bool Down(u32 actor) {
   const u16 a = Anim(actor);
-  return a == 0 || a == 1;
+  return a <= 30 || (a >= 440 && a <= 480);
 }
 
 // The pad of a place (the select object's places: +44, 255 = the computer).
@@ -177,8 +180,11 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
   if (g_on.load())
     return u16(kPadA | kPadB);
   for (int a = 0; a < 2; ++a)
-    if (PadOf(a) == int(user) && !Down(Actor(a)) && Down(Actor(1 - a)))
+    if (PadOf(a) == int(user) && !Down(Actor(a)) && Down(Actor(1 - a))) {
+      if (newly & kPadB)
+        g_ask = a + 1;  // (asked now, next to him: the tick starts the mini-game)
       return kPadB;
+    }
   return 0;
 }
 
@@ -194,8 +200,12 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   const auto now = Clock::now();
   if (g_on) {
     if (g_result != 0) {
-      if (now > g_end_shown)
+      if (now > g_end_shown) {
         g_on = false;
+        if (const u32 ref = Actor(kReferee))
+          if (Anim(ref) == 203)
+            PlayAnim(ctx, base, ref, 20152);  // (the referee stands up again: his idle, seen in the probes)
+      }
       return;
     }
     const double t = std::chrono::duration<double>(now - g_start).count();
@@ -228,8 +238,10 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     }
     return;
   }
-  if (now < g_cooldown)
+  if (now < g_cooldown) {
+    g_ask = 0;
     return;
+  }
   // who can ask whom: two superstars, one lying down
   for (int a = 0; a < 2; ++a) {
     const int v = 1 - a;
@@ -241,13 +253,15 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       continue;
     }
     const int pad = PadOf(a);
-    const bool human_asks = pad >= 0 && (pressed[pad] & kPadB);
+    const bool human_asks = pad >= 0 && g_ask.load() == a + 1;
     const bool cpu_asks = pad < 0 && now - g_down_since[v] > std::chrono::seconds(3);
     if (human_asks || cpu_asks) {
+      g_ask = 0;
       Start(ctx, base, a, v);
       return;
     }
   }
+  g_ask = 0;  // (a B the game did not see but that asked no one now)
 }
 
 // ---- the gauge, drawn over the game ----
