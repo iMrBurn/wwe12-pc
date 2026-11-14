@@ -420,14 +420,16 @@ std::string Places() {
   return out;
 }
 
-// The place being chosen: [S+284] once the scene object is known (it is first seen when a superstar is picked),
-// place 0 before (the first pick).
+// The place being chosen: the select builds the six places' objects at once (sub_825A1200), and the one being
+// chosen has [S+268] = 2 (0 for the others; probe test 2026-11-14: also +6460 = 7, +6724 = 3; a place already
+// chosen: +6460 = 17). Place 0 if none is found.
 int Place() {
-  const u32 s = g_scene.load();
-  if (!s)
-    return 0;
-  const u32 p = bd::mem::try_load<u32>(s + 284);
-  return p < kStars ? int(p) : -1;
+  for (int k = 0; k < kStars; ++k) {
+    const u32 sc = g_scenes[k].load();
+    if (sc && bd::mem::try_load<u32>(sc + 268) == 2 && bd::mem::try_load<u32>(sc + 284) == u32(k))
+      return k;
+  }
+  return 0;
 }
 
 const char *ValueName(int v) {
