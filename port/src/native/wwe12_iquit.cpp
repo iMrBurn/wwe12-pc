@@ -596,7 +596,10 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
     if (attacker && g_phase.load() == kGauge && (newly & kPadDpad))
       g_taunt = newly & kPadDpad;
     // (the attacker's D-pad: the game's own taunt, our threat too; with WWE '13's motions the threat has its own)
-    return u16(kPadA | kPadB | (attacker && Motions13() ? kPadDpad : 0));
+    // Once he has said "NO" the D-pad is the game's again: hidden through the 290 ticks of his answer, it took the
+    // wake-up taunt away for five seconds after every ask (user, 2026-11-15: "no wake-up taunt in an I Quit match").
+    const bool said_no = g_phase.load() == kAnswer && g_result.load() == 1;
+    return u16(kPadA | kPadB | (attacker && Motions13() && !said_no ? kPadDpad : 0));
   }
   for (int a = 0; a < 2; ++a)
     if (PadOf(a) == int(user) && g_near[a].load() && !Down(Actor(a)) && Down(Actor(1 - a))) {
@@ -644,6 +647,18 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     if (a != g_ref_seen) {
       BD_INFO("[iquit] arbitre : motion {} -> {} (phase {})", g_ref_seen, a, phase);
       g_ref_seen = a;
+    }
+  }
+  {  // (each change of a superstar's motion, the first 600: what a taunt or an ask really gave him)
+    static u16 s_seen[2] = {0xFFFF, 0xFFFF};
+    static int s_lines = 0;
+    for (int p = 0; p < 2; ++p) {
+      const u16 a = Actor(p) ? Anim(Actor(p)) : 0xFFFF;
+      if (a != s_seen[p] && s_lines < 600) {
+        ++s_lines;
+        BD_INFO("[iquit] catcheur {} : motion {} -> {} (phase {})", p, s_seen[p], a, phase);
+      }
+      s_seen[p] = a;
     }
   }
   if (phase != kIdle) {
