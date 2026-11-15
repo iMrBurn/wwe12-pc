@@ -313,6 +313,12 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   Les squelettes de 2K17 (ch575) et de WWE '12 (ch139) ont la même main (Bip R Hand, mêmes os). Pistes restantes :
   ce que fait le jeu des clés 0x0004 (cubiques, 20 octets, tangentes non converties) et de la piste « base » quand
   l'objet a un parent (mot 52) — à lire dans le code du jeu ; ou des captures RenderDoc de la matrice du micro.
+  **Réglé ensuite le même jour (vu en jeu, « on va dire que c'est bon »)**, `detail::TurnMic` / `detail::MicTracks`,
+  micros 142 et 159 seulement (les autres objets 2K sous 1000 restent cachés) : modèle tourné d'un demi-tour autour de
+  y (x, z négatifs) et glissé de 3 cm en x ; clés de rotation de « base » × Rx(π) ; décalage de « root » remplacé par
+  celui de WWE '12 : (10,0 ; 1,09 ; -4,8) pour la main d'Enzo (R[2][2] de la rotation de « root » < 0), (8,3 ; 1,09 ;
+  -0,4) pour l'autre (Cass) ; rotation de « root » gardée. Réglé à l'œil sur l'aperçu (début de l'entrée) : quand la
+  rotation de « root » change de main plus tard (Enzo, image 622 du segment 15), non vérifié.
 - **Visages animés (1.3, 2026-11-11, pas encore vu en jeu)** : `face12.h` (via `star_port`, entrée, entrée de champion,
   victoire, tous jeux) : les 34 pistes du visage d'une entrée de WWE '12 (base, sinon Cena 139) copiées octet pour octet
   dans chaque segment du catcheur (`xxxx0000`) qui n'en a pas, coupées à sa durée (61 → 95 pistes sur 2K14).

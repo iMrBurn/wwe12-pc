@@ -945,12 +945,173 @@ inline std::vector<Part> Objects(const disc::GameDisc &src, const disc::GameDisc
   return out;
 }
 
+namespace detail {
+
+// A 2K16 / 2K17 hand microphone as WWE '12 holds it (tuned in the game with the user, 2026-11-15, Enzo and Cass's
+// entrance on Heath Slater and Justin Gabriel, Create an Entrance's preview; ten tries). Ported as it was, it was held
+// head down and off the hand: WWE '12 reads its tracks as 2K17 doesn't. What made it right:
+//  - the model turned half a turn about its y (x, z negated) and slid 3 cm along its length (x) - TurnMic;
+//  - its "base" track's rotation keys (0x0004, a half turn about x in 2K17) without that half turn: R * Rx(pi);
+//  - its "root" track's offset in the hand (0x0100) WWE '12's: (10.0, 1.09, -4.8) for the hand that holds it as
+//    Enzo does (root rotation's R[2][2] < 0), (8.3, 1.09, -0.4) for the other (Cass); the root rotation kept - MicTracks.
+inline void TurnMic(Bytes &m) {
+  auto f = [&](size_t o) {
+    float v;
+    uint32_t u = Be32(m, o);
+    memcpy(&v, &u, 4);
+    return v;
+  };
+  auto put = [&](size_t o, float v) {
+    uint32_t u;
+    memcpy(&u, &v, 4);
+    for (int k = 0; k < 4; ++k)
+      m[o + size_t(k)] = uint8_t(u >> (24 - 8 * k));
+  };
+  auto turn = [&](size_t o, bool slide) {  // x, z negated (+ the slide)
+    if (o + 12 > m.size())
+      return;
+    put(o, -f(o) + (slide ? 3.0f : 0.0f));
+    put(o + 8, -f(o + 8));
+  };
+  constexpr size_t kPof = 8, kMesh = 184;
+  const size_t table = kPof + Be32(m, 0x1C);
+  for (uint32_t i = 0; i < Be32(m, 0x18); ++i) {
+    const size_t rec = table + kMesh * i;
+    if (rec + kMesh > m.size())
+      break;
+    const uint32_t count = Be32(m, rec);
+    const size_t arrays = kPof + Be32(m, rec + 0x68), vtx = kPof + Be32(m, arrays);
+    for (uint32_t v = 0; v < count && vtx + 28 * size_t(v + 1) <= m.size(); ++v) {
+      turn(vtx + 28 * size_t(v), true);        // position
+      turn(vtx + 28 * size_t(v) + 12, false);  // normal
+    }
+    turn(rec + 0xA8, true);  // its sphere
+  }
+  const size_t nodes = kPof + Be32(m, 0x28);
+  for (uint32_t j = 0; j < Be32(m, 0x20); ++j)
+    turn(nodes + 80 * size_t(j) + 64, true);
+}
+
+// The microphone's track records (objects `objects` of a track bank `evz`), see above.
+inline void MicTracks(Bytes &evz, const std::set<uint32_t> &objects) {
+  using yanm::ik::detail::Put32;
+  constexpr uint32_t kBase = 0x0C5879E5, kRoot = 0x0E5BF7F4;  // ("base", "root")
+  constexpr float kPi = 3.14159265f, kS16 = 3.14159265f / 32768;
+  auto Be16 = [](const Bytes &d, size_t o) { return uint16_t(d[o] << 8 | d[o + 1]); };
+  auto S16 = [&](const Bytes &d, size_t o) { return int16_t(Be16(d, o)); };
+  auto Put16 = [](Bytes &d, size_t o, int v) { d[o] = uint8_t(uint16_t(v) >> 8), d[o + 1] = uint8_t(v); };
+  auto PutF = [&](Bytes &d, size_t o, float v) {
+    uint32_t u;
+    memcpy(&u, &v, 4);
+    Put32(d, o, u);
+  };
+  using M = std::array<float, 9>;
+  auto mul = [](const M &a, const M &b) {
+    M r{};
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j)
+        for (int k = 0; k < 3; ++k)
+          r[size_t(3 * i + j)] += a[size_t(3 * i + k)] * b[size_t(3 * k + j)];
+    return r;
+  };
+  auto euler = [&](float x, float y, float z) {  // R = Rz Ry Rx
+    const M rx{1, 0, 0, 0, std::cos(x), -std::sin(x), 0, std::sin(x), std::cos(x)};
+    const M ry{std::cos(y), 0, std::sin(y), 0, 1, 0, -std::sin(y), 0, std::cos(y)};
+    const M rz{std::cos(z), -std::sin(z), 0, std::sin(z), std::cos(z), 0, 0, 0, 1};
+    return mul(mul(rz, ry), rx);
+  };
+  auto q16 = [&](float a) { return std::clamp(int(std::lround(a / kS16)), -32768, 32767); };
+  std::vector<svrfmt::PachEntry> leaves;
+  if (!svrfmt::PachRead(evz, leaves))
+    return;
+  bool any = false;
+  for (auto &e : leaves) {
+    if (!objects.count(e.id))
+      continue;
+    Bytes l = svrfmt::Unpack(e.data);
+    if (l.size() < 0x70)
+      continue;
+    const uint32_t first = Be32(l, 0x0C), count = Be32(l, 0x48);
+    for (uint32_t b = 0; b < count && 0x70 + 0x28 * size_t(b + 1) <= l.size(); ++b) {
+      const size_t y = size_t(first) + Be32(l, 0x70 + 0x28 * size_t(b) + 0x24), base = y + 8;
+      if (base + 8 > l.size() || memcmp(&l[y], "YANM", 4) || l[base + 1] != 0)
+        continue;
+      const uint16_t cnt = Be16(l, base + 2);
+      size_t o = base + Be32(l, base + 4);
+      for (uint16_t k = 0; k < cnt && o + 8 <= l.size(); ++k) {
+        const uint16_t F = Be16(l, o), sz = Be16(l, o + 2);
+        const uint32_t h = Be32(l, o + 4);
+        size_t rot = 0, pos = 0;  // (the streams' descriptors)
+        for (const auto &p : yanm::detail::Layout(F, nullptr)) {
+          if (p.bit == 0x0004)
+            rot = o + 8 + p.off;
+          else if (p.bit == 0x0100)
+            pos = o + 8 + p.off;
+        }
+        if ((h == kBase || h == kRoot) && rot) {
+          const size_t at = base + Be32(l, rot);
+          const uint32_t n = Be32(l, rot + 4);
+          std::vector<std::pair<int, bool>> hand;  // (root: each key's frame, Enzo's hand)
+          int t = 0;
+          for (uint32_t i = 0; i < n && at + 20 * size_t(i + 1) <= l.size(); ++i) {
+            const size_t q = at + 20 * size_t(i);
+            t += S16(l, q);
+            const M r = euler(S16(l, q + 2) * kS16, S16(l, q + 4) * kS16, S16(l, q + 6) * kS16);
+            if (h == kRoot) {
+              hand.push_back({t, r[8] < 0});
+              continue;
+            }
+            const M rr = mul(r, M{1, 0, 0, 0, -1, 0, 0, 0, -1});  // * Rx(pi)
+            const float ey = std::asin(std::clamp(-rr[6], -1.0f, 1.0f));
+            Put16(l, q + 2, q16(std::atan2(rr[7], rr[8])));
+            Put16(l, q + 4, q16(ey));
+            Put16(l, q + 6, q16(std::atan2(rr[3], rr[0])));
+          }
+          if (h == kRoot && pos && pos + 24 <= l.size() && !hand.empty()) {
+            // the offset: Enzo's hand's as the base, the other's as deltas of 1 mm
+            const float a[3] = {10.0f, 1.09f, -4.8f}, c[3] = {8.3f, 1.09f, -0.4f};
+            const size_t pat = base + Be32(l, pos);
+            const uint32_t pn = Be32(l, pos + 4);
+            PutF(l, pos + 8, 0.1f);
+            for (int i = 0; i < 3; ++i)
+              PutF(l, pos + 12 + 4 * size_t(i), a[i]);
+            int acc[3] = {0, 0, 0}, pt = 0;
+            for (uint32_t i = 0; i < pn && pat + 8 * size_t(i + 1) <= l.size(); ++i) {
+              const size_t q = pat + 8 * size_t(i);
+              pt += Be16(l, q + 6);
+              bool enzo = hand.front().second;
+              for (const auto &[ht, e2] : hand)
+                if (ht <= pt)
+                  enzo = e2;
+              for (int c3 = 0; c3 < 3; ++c3) {
+                const int want = enzo ? 0 : int(std::lround((c[c3] - a[c3]) / 0.1f));
+                Put16(l, q + 2 * size_t(c3), want - acc[c3]);
+                acc[c3] = want;
+              }
+            }
+          }
+          any = true;
+        }
+        if (!sz)
+          break;
+        o += sz;
+      }
+    }
+    e.data = std::move(l);
+  }
+  if (any)
+    evz = svrfmt::PachWrite(leaves);
+}
+
+}  // namespace detail
+
 // 2K16 / 2K17's hand props numbered under 1000 (2K17 Enzo Amore's microphone 142, Enzo and Cass's 159: the user and
 // Jay on Discord, 2026-11-15, "no microphone"): WWE '12 has no such numbers in evtobj.pac (its SOBJ are 2001-5020), so
 // they were hidden. Each is pac\prop\NNNN.pac, an HSPC holding one SHDC with the same children as a SOBJ (0 the JBOY
 // model, 10 its pictures, 200, 2000), "ZLIB"-packed: made a SOBJ (PACH of 0, 10 and 200 as BPE) numbered 9000 + NNN
-// (free in WWE '12), and `parts`' scripts given that number. Returns those SOBJ (Part "SOBJ", number = the model).
-// NOT YET SEEN IN THE GAME (2026-11-15).
+// (free in WWE '12), and `parts`' scripts given that number. The microphones (142, 159) turned and placed in the hand
+// as WWE '12 holds them (detail::TurnMic, detail::MicTracks: seen right in the game, 2026-11-15); other props under
+// 1000 stay hidden (HideMissing), their placement isn't known.
 inline std::vector<Part> Props2K(const disc::GameDisc &src, std::vector<Part> &parts) {
   using detail::Be32;
   using yanm::ik::detail::Put32;
@@ -961,7 +1122,7 @@ inline std::vector<Part> Props2K(const disc::GameDisc &src, std::vector<Part> &p
       const uint32_t n = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
       for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= p.data.size(); ++i)
         if (const uint32_t m = Be32(p.data, t + 32 * size_t(i) + 4); Be32(p.data, t + 32 * size_t(i) + 8) == 0x100 &&
-                                                                      m > 0 && m < 1000)
+                                                                      (m == 142 || m == 159))
           want.insert(m);
     }
   std::vector<Part> out;
@@ -989,7 +1150,10 @@ inline std::vector<Part> Props2K(const disc::GameDisc &src, std::vector<Part> &p
       Bytes d = svrfmt::ArchiveData(k);
       if (d.empty())
         continue;
-      model = model || (k.id == 0 && svrfmt::IsJboy(d));
+      if (k.id == 0 && svrfmt::IsJboy(d)) {
+        model = true;
+        detail::TurnMic(d);
+      }
       leaves.push_back({k.id, svrfmt::BpeEncodeStored(d)});
     }
     if (!model)
@@ -998,9 +1162,16 @@ inline std::vector<Part> Props2K(const disc::GameDisc &src, std::vector<Part> &p
     for (auto &p : parts)
       if (p.kind == "EVP" && p.data.size() >= 0x50) {
         const uint32_t n = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
+        std::set<uint32_t> objects;
         for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= p.data.size(); ++i)
-          if (Be32(p.data, t + 32 * size_t(i) + 8) == 0x100 && Be32(p.data, t + 32 * size_t(i) + 4) == m)
+          if (Be32(p.data, t + 32 * size_t(i) + 8) == 0x100 && Be32(p.data, t + 32 * size_t(i) + 4) == m) {
             Put32(p.data, t + 32 * size_t(i) + 4, kAt + m);
+            objects.insert(i);
+          }
+        // (their track records: object i's is leaf i of the track bank of the same number)
+        for (auto &z : parts)
+          if (z.kind == "EVZ" && z.number == p.number && !objects.empty())
+            detail::MicTracks(z.data, objects);
       }
   }
   return out;
