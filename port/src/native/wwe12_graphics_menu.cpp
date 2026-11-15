@@ -684,9 +684,14 @@ uint32_t Wwe12NativeGraphicsGuestText(uint32_t id) {
   return at;
 }
 
+// (session Gameplay, 1.4: BALANCING > DAMAGE with the match modes' rows, wwe12_damage_page.cpp)
+void Wwe12DamagePageLoad(PPCContext &ctx);
+bool Wwe12DamagePageNative(bool update, PPCContext &ctx, u8 *base);
+
 // luaL_loadbuffer (L, buffer, size, name): our page script instead of IN-GAME OPTIONS's.
 REX_EXTERN(__imp__sub_827E9418);
 extern "C" REX_FUNC(sub_827E9418) {
+  Wwe12DamagePageLoad(ctx);  // (Gameplay: the DAMAGE page's script, its own size; nothing else changes here)
   g_jukebox_open = false;
   if (g_pending_tab == kWwe12JukeboxPage && ctx.r5.u32 == kIngameOptionsScriptSize &&
       bd::mem::try_load<u8>(ctx.r4.u32) == 0x1B) {
@@ -729,6 +734,8 @@ extern "C" REX_FUNC(sub_827E9418) {
 // yOption.InitInGameOptions(n): for our pages, the rows' values from the cvars.
 REX_EXTERN(__imp__sub_82DEDD70);
 extern "C" REX_FUNC(sub_82DEDD70) {
+  if (Wwe12DamagePageNative(false, ctx, base))  // (Gameplay: InitInGameOptions(130) of the DAMAGE page)
+    return;
   const int tab = NativePageArg(ctx, base);
   if (tab < 0 || tab != g_native_tab) {
     __imp__sub_82DEDD70(ctx, base);
@@ -756,6 +763,8 @@ extern "C" REX_FUNC(sub_82DEDD70) {
 // yOption.UpdateInGameOptions(n): for our pages, the chosen values applied and saved.
 REX_EXTERN(__imp__sub_82DEC528);
 extern "C" REX_FUNC(sub_82DEC528) {
+  if (Wwe12DamagePageNative(true, ctx, base))  // (Gameplay: UpdateInGameOptions(130) of the DAMAGE page)
+    return;
   const int tab = NativePageArg(ctx, base);
   if (tab < 0 || tab != g_native_tab) {
     __imp__sub_82DEC528(ctx, base);
