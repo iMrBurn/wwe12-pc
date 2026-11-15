@@ -29,7 +29,7 @@ REX_EXTERN(__imp__sub_821A5230);
 namespace {
 bool Watched(u32 n) {
   n &= 0xFFFF;
-  return REXCVAR_GET(wwe12_motion_trace) && (n == 203 || n == 20152 || (n >= 13100 && n < 13200));
+  return REXCVAR_GET(wwe12_motion_trace) && n >= 13100 && n < 13200;  // (203 and 20152, the working ones, filled the log)
 }
 std::atomic<int> g_lines{0};
 bool More() { return g_lines.fetch_add(1) < 400; }
@@ -103,9 +103,24 @@ extern "C" REX_FUNC(sub_821D7E78) {
   const u32 e = bd::mem::try_load<u32>(list) + idx * 16;
   const u32 n = bd::mem::try_load<u16>(e);
   __imp__sub_821D7E78(ctx, base);
-  if (Watched(n) && n >= 13100 && n < 13200 && More())
+  if (Watched(n) && n != 203 && n != 20152 && More())
     BD_INFO("[motion] chargement : numero {} (liste {:08X}, place {}) -> etat {} compteur {}", n, list, idx,
             bd::mem::try_load<u32>(e + 8), bd::mem::try_load<u16>(e + 4));
+}
+
+// A played motion looked up in a list (list, key {u16 number, u8 x, u8 y}): found or not, and the number the list's
+// records carry (their own text at +0x4C: a record under another number is never found).
+REX_EXTERN(__imp__sub_821D7150);
+extern "C" REX_FUNC(sub_821D7150) {
+  const u32 key = ctx.r4.u32;
+  const u32 n = bd::mem::try_load<u16>(key);
+  __imp__sub_821D7150(ctx, base);
+  if (Watched(n)) {
+    static std::atomic<int> s_found{0}, s_missed{0};
+    if ((ctx.r3.u32 ? s_found : s_missed).fetch_add(1) < 12)
+      BD_INFO("[motion] lecture : numero {} ({}, {}) -> {}", n, bd::mem::try_load<u8>(key + 2),
+              bd::mem::try_load<u8>(key + 3), ctx.r3.u32 ? "trouvee" : "pas dans cette liste");
+  }
 }
 
 extern "C" REX_FUNC(sub_821D7480) {
@@ -113,7 +128,7 @@ extern "C" REX_FUNC(sub_821D7480) {
   __imp__sub_821D7480(ctx, base);
   if (Watched(n) && More())
     BD_INFO("[motion] file : numero {} r5 {} -> {}{}", n & 0xFFFF, r5 & 0xFF, ctx.r3.u32, InLists(q, n & 0xFFFF));
-  if (Watched(n) && (n & 0xFFFF) >= 13100 && (n & 0xFFFF) < 13200)
+  if (Watched(n) && (n & 0xFFFF) != 203 && (n & 0xFFFF) != 20152)
     Directory(n & 0xFFFF);
 }
 

@@ -37,6 +37,8 @@ REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim, 203, "WWE12",
                      "I Quit match: the referee's motion when he asks (a WWE '12 motion: 203 = his submission check).");
 REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim_cycle, 0, "WWE12",
                      "Dev: each ask plays the next of this many motions from wwe12_iquit_ref_anim on (0 = always the same).");
+REXCVAR_DEFINE_STRING(wwe12_iquit_ref_anim_list, "", "WWE12",
+                      "Dev: each ask plays the next motion of this list (numbers with commas), instead of the above.");
 REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gauge's difficulty as WWE '13 (0-3).");
 
 #include <algorithm>
@@ -47,6 +49,8 @@ REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gaug
 #include <functional>
 #include <initializer_list>
 #include <random>
+#include <string>
+#include <vector>
 
 #include <imgui.h>
 #include <rex/ui/imgui_dialog.h>
@@ -105,6 +109,22 @@ int g_asks = 0;
 u16 g_ref_seen = 0xFFFF;
 u32 RefAsk() {
   const int o = REXCVAR_GET(wwe12_iquit_ref_anim), cycle = REXCVAR_GET(wwe12_iquit_ref_anim_cycle);
+  {
+    static const std::vector<u32> list = [] {
+      std::vector<u32> out;
+      const std::string text = REXCVAR_GET(wwe12_iquit_ref_anim_list);
+      for (size_t at = 0; at < text.size();) {
+        const size_t end = std::min(text.find(',', at), text.size());
+        const int v = atoi(text.substr(at, end - at).c_str());
+        if (v > 0 && v < 65535)
+          out.push_back(u32(v));
+        at = end + 1;
+      }
+      return out;
+    }();
+    if (!list.empty())
+      return list[size_t(std::max(g_asks - 1, 0)) % list.size()];
+  }
   if (o <= 0 || o >= 65535)
     return 203;
   return u32(o) + (cycle > 1 && g_asks > 0 ? u32((g_asks - 1) % cycle) : 0);
@@ -345,7 +365,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   g_last = now;
 
   const int phase = g_phase.load();
-  if (REXCVAR_GET(wwe12_iquit_ref_anim_cycle) > 0) {  // (dev: every change of the referee's motion)
+  if (REXCVAR_GET(wwe12_iquit_ref_anim_cycle) > 0 || !REXCVAR_GET(wwe12_iquit_ref_anim_list).empty()) {  // (dev: every change of the referee's motion)
     const u16 a = Anim(Actor(kReferee));
     if (a != g_ref_seen) {
       BD_INFO("[iquit] arbitre : motion {} -> {} (phase {})", g_ref_seen, a, phase);

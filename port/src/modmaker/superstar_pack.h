@@ -221,6 +221,20 @@ struct ExtraMotion {
   int group = -1;
 };
 
+// A motion record under `motion`: its number as text at +0x4C. The game keys every block of a record by that text
+// (sub_82486648 -> sub_8246FC70: {atoi(+0x4C), block name}) and looks a played motion up by it (sub_821D7150): a
+// record carrying another number is read, listed and never found - the referee stayed still with three motions that
+// kept their source's numbers, a copy of the game's own 13106 among them (user's tests of 2026-11-15; the Universe's
+// added scenes met the same on 2026-11-13). The game writes five digits ("00203", "13106").
+inline Bytes NumberedMotion(Bytes y, int motion) {
+  if (y.size() > 0x58) {
+    char text[16] = {};
+    snprintf(text, sizeof(text), "%05d", motion);
+    memcpy(&y[0x4C], text, 12);
+  }
+  return y;
+}
+
 struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)
@@ -1219,7 +1233,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
               if (int(t.id) != x->group || in_bank.count(x) ||
                   std::any_of(lo.begin(), lo.end(), [&](const auto &e) { return int(e.id) == x->motion; }))
                 continue;
-              const Bytes high = svrfmt::IsBpe(x->high) ? svrfmt::Unpack(x->high) : x->high;
+              const Bytes high = NumberedMotion(svrfmt::IsBpe(x->high) ? svrfmt::Unpack(x->high) : x->high, x->motion);
               // (the group's full records are "ZLIB" ones: the motion queue's loader, sub_821D7E78 -> sub_827E1248,
               // takes nothing else - a plain record stayed "asked" for ever, the motion never played, 2026-11-14)
               const bool zlib = !hi.empty() && hi[0].data.size() >= 4 && !memcmp(hi[0].data.data(), "ZLIB", 4);
@@ -1263,7 +1277,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           extra_rows.push_back({x.motion, std::move(r)});
         continue;
       }
-      const Bytes high = svrfmt::IsBpe(x.high) ? svrfmt::Unpack(x.high) : x.high;
+      const Bytes high = NumberedMotion(svrfmt::IsBpe(x.high) ? svrfmt::Unpack(x.high) : x.high, x.motion);
       extra.push_back({0, svrfmt::PachWrite({{uint32_t(x.motion), svrfmt::BpeEncode(high)}})});  // (as the moves': 4b)
       extra.push_back({0, svrfmt::PachWrite({{uint32_t(x.motion), high}})});
       m3_params::Rows r;
