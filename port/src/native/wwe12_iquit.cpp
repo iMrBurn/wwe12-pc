@@ -654,6 +654,34 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     Spots(ctx, base, g_attacker, g_victim);
   else if (g_hint.load() && g_hint_place >= 0)
     Spots(ctx, base, g_hint_place, 1 - g_hint_place);
+  {  // Study for "the referee walks to the downed man" (WWE '13's referee is sent there by his own AI, state 9,
+     // when the attacker plays 13210 / 13211; ours asks from where he stands). Read in the code, 2026-11-15: an
+     // actor's position is the three floats at [actor + 768] (copied at actor + 752 / 756 / 760), its heading the
+     // float at actor + 740, wrapped by the constants at 0x82000A94 / 0x82000A98. Logged twice a second, the first
+     // 900 lines: the referee's position, heading and body matrix, and both superstars' positions - to learn the
+     // heading's unit and sense and how the game itself walks him to a hold.
+    static Clock::time_point s_next;
+    static int s_lines = 0;
+    const u32 ref = Actor(kReferee);
+    if (ref && s_lines < 900 && now >= s_next) {
+      s_next = now + std::chrono::milliseconds(500);
+      ++s_lines;
+      const u32 pos = bd::mem::try_load<u32>(ref + 768), m = bd::mem::try_load<u32>(ref + 120);
+      std::string line = fmt::format("pos {:.0f} {:.0f} {:.0f} cap {:.3f} (bornes {:.3f} {:.3f}) motion {}", pos ? LoadF(pos) : 0.f,
+                                     pos ? LoadF(pos + 4) : 0.f, pos ? LoadF(pos + 8) : 0.f, LoadF(ref + 740),
+                                     LoadF(0x82000A94), LoadF(0x82000A98), Anim(ref));
+      if (m)
+        line += fmt::format(" | corps X {:.2f} {:.2f} {:.2f} Y {:.2f} {:.2f} {:.2f} Z {:.2f} {:.2f} {:.2f} en {:.0f} {:.0f} {:.0f}",
+                            LoadF(m), LoadF(m + 4), LoadF(m + 8), LoadF(m + 16), LoadF(m + 20), LoadF(m + 24),
+                            LoadF(m + 32), LoadF(m + 36), LoadF(m + 40), LoadF(m + 48), LoadF(m + 52), LoadF(m + 56));
+      for (int p = 0; p < 2; ++p)
+        if (const u32 a = Actor(p))
+          if (const u32 ap = bd::mem::try_load<u32>(a + 768))
+            line += fmt::format(" | catcheur {} pos {:.0f} {:.0f} {:.0f} cap {:.3f} motion {}", p, LoadF(ap), LoadF(ap + 4),
+                                LoadF(ap + 8), LoadF(a + 740), Anim(a));
+      BD_INFO("[iquit] etude arbitre : {}", line);
+    }
+  }
   {  // (every change of the referee's motion, the first 1500: what he does with a weapon left in the ring)
     static int s_ref_lines = 0;
     const u16 a = Actor(kReferee) ? Anim(Actor(kReferee)) : 0xFFFF;
@@ -949,6 +977,16 @@ extern "C" REX_FUNC(sub_82527010) {
   if (HoldRules() && HoldObject())
     return;
   __imp__sub_82527010(ctx, base);
+}
+
+// ---- study: who gives the referee his motions (the callers of "play a motion" for him, in an I Quit match) ----
+extern "C" REX_FUNC(sub_8247AD18) {
+  if (Wwe12IQuitMatch() && ctx.r3.u32 && ctx.r3.u32 == Actor(kReferee)) {
+    static std::atomic<int> s_lines{0};
+    if (s_lines.fetch_add(1) < 500)
+      BD_INFO("[iquit] etude arbitre : motion {} bloc {} {} demandee par {:08X}", ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, u32(ctx.lr));
+  }
+  __imp__sub_8247AD18(ctx, base);
 }
 
 // ---- no disqualification in an I Quit match ----
