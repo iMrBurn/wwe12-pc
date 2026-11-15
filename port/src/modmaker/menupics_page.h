@@ -1,7 +1,7 @@
 // UNIVERSE PICTURES page: the Universe's show logos, brand logos, match-up screen pictures and arena photos replaced by
 // the player's pictures (type=menupics, pictures/<slot>.dds; menu_pictures.h). Each slot shows the game's picture
 // (read from the player's own game files) and takes a picture file in its place; the game fits it to every place that
-// shows it at each start (src/native/wwe12_superstar_mods.cpp). Adding new ones is for 1.2 (the game's tables are full).
+// shows it at each start (src/native/wwe12_superstar_mods.cpp). Adding new ones: not done (the game's tables are full).
 #pragma once
 
 #include <algorithm>

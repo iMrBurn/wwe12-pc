@@ -853,9 +853,6 @@ class Page {
   }
 
   std::string MovesWhy(bool fr) const {
-    if (star_port::SvrOld(game_))
-      return fr ? std::string("les prises de ") + star_port::GameName(game_) + " ne sont pas encore lues"
-                : std::string(star_port::GameName(game_)) + "'s moves aren't read yet";
     if (parts_.moves.rows.empty() && !parts_.moves_why.empty())
       return (fr ? "pas lues : " : "not read: ") + parts_.moves_why;
     return fr ? "aucune trouvée dans WWE '12" : "none found in WWE '12";

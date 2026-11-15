@@ -500,7 +500,7 @@ const Guide kGuides[] = {
       "(.fbx: Mixamo, VRChat, Blender...), or the base. His portrait: his game's, a picture of yours, or the base's.",
       "2. Base: a WWE '12 superstar who lends what the new one lacks. A superstar WWE '12 also has is his own base.",
       "What comes from his own game, when it has it: his entrance (SvR 2007 to 2011, WWE '13, 2K14 to 2K17), his "
-      "victory scene, his music, his ratings and height, his moves (SvR 2011, WWE '13). Step 2 says what he brings.",
+      "victory scene, his music, his ratings and height, his moves (all those games). Step 2 says what he brings.",
       "3. Name, 4. Entrance video: the base's, his own (SvR 2008 to 2011, WWE 2K15 to 2K17 with RAD Video Tools, see "
       "MY GAME DISCS), or one of yours (any video or picture).",
       "5. Look at him in 3D, then 6. Finish: a new superstar, or An attire of <base> (in place of one of his attires); "
@@ -513,7 +513,7 @@ const Guide kGuides[] = {
       "2. Base : un catcheur de WWE '12 qui prête ce qui manque au nouveau. Un catcheur qui existe aussi dans WWE '12 "
       "est sa propre base.",
       "Ce qui vient de son jeu, quand il l'a : son entrée (SvR 2007 à 2011, WWE '13, 2K14 à 2K17), sa scène de "
-      "victoire, sa musique, ses notes et sa taille, ses prises (SvR 2011, WWE '13). L'étape 2 dit ce qu'il apporte.",
+      "victoire, sa musique, ses notes et sa taille, ses prises (tous ces jeux). L'étape 2 dit ce qu'il apporte.",
       "3. Nom, 4. Vidéo d'entrée : celle de la base, la sienne (SvR 2008 à 2011, WWE 2K15 à 2K17 avec RAD Video Tools, "
       "voir MES DISQUES), ou une à vous (vidéo ou image).",
       "5. Regardez-le en 3D, puis 6. Terminer : un nouveau catcheur, ou Une tenue de <base> (à la place d'une de ses "
@@ -526,8 +526,8 @@ const Guide kGuides[] = {
       "scene and theme.",
       "1. Game: the big tiles are your games; one without its disc sends you to MY GAME DISCS to add it.",
       "2. Superstar: search him in that game's list.",
-      "3. What to take: each thing says whether his game has it (SvR 2007 to 2010: no moves yet). Untick what you don't "
-      "want; the moves table shows each slot.",
+      "3. What to take: each thing says whether his game has it. Untick what you don't want; the moves table shows "
+      "each slot (a move WWE '12 hasn't keeps the superstar's own).",
       "4. For whom: the WWE '12 superstar who gets them (the one of the same name is proposed).",
       "5. Finish: the mod is made and installed. In the game, from the next start; turn it off in the launcher (MODS "
       "page) and he has his own back.",
@@ -537,13 +537,36 @@ const Guide kGuides[] = {
       "sa scène de victoire et sa musique.",
       "1. Jeu : les grandes cases sont vos jeux ; un jeu sans son disque vous envoie dans MES DISQUES pour l'ajouter.",
       "2. Catcheur : cherchez-le dans la liste de ce jeu.",
-      "3. Ce qu'on prend : chaque chose dit si son jeu l'a (SvR 2007 à 2010 : pas encore de prises). Décochez ce que vous "
-      "ne voulez pas ; le tableau des prises montre chaque case.",
+      "3. Ce qu'on prend : chaque chose dit si son jeu l'a. Décochez ce que vous ne voulez pas ; le tableau des prises "
+      "montre chaque case (une prise que WWE '12 n'a pas garde celle du catcheur).",
       "4. Pour qui : le catcheur de WWE '12 qui les reçoit (celui du même nom est proposé).",
       "5. Terminer : le mod est créé et installé. Dans le jeu, au lancement suivant ; coupez-le dans le launcher (page "
       "MODS) et il retrouve les siennes.",
       "Tant que le mod est actif, ses prises changées dans le jeu reviennent à celles du mod à chaque lancement. Deux mods "
       "pour le même catcheur : le dernier de la liste est utilisé."}},
+    {"An entrance alone (Create an Entrance)",
+     "Une entrée seule (Créer une entrée)",
+     {"MOVES & ENTRANCES, tab Add an entrance: an entrance of your other games, without porting a superstar.",
+      "1. The game (SvR 2007 to 2011, WWE '13, 2K14 to 2K17), 2. the entrance in its full list (search a name; the "
+      "entrances with a belt: search \"champ\"), 3. its name, then Finish.",
+      "In the game: CREATIONS > Create an Entrance, under the name you gave it, for any superstar, as his entrance or "
+      "his champion's. No superstar of the game is changed.",
+      "A champion's entrance shows one belt for each title the superstar holds (not two of the same)."},
+     {"PRISES & ENTRÉES, onglet Ajouter une entrée : une entrée de vos autres jeux, sans porter de catcheur.",
+      "1. Le jeu (SvR 2007 à 2011, WWE '13, 2K14 à 2K17), 2. l'entrée dans sa liste complète (cherchez un nom ; les "
+      "entrées avec ceinture : cherchez « champ »), 3. son nom, puis Terminer.",
+      "Dans le jeu : CRÉATIONS > Créer une entrée, sous le nom donné, pour n'importe quel catcheur, comme son entrée ou "
+      "son entrée de champion. Aucun catcheur du jeu n'est modifié.",
+      "Une entrée de champion montre une ceinture par titre que le catcheur détient (pas deux fois la même)."}},
+    {"Universe logos and pictures",
+     "Logos et images de l'Univers",
+     {"UNIVERSE LOGOS: the Universe's show and brand logos, match-up pictures and arena photos (SHOW EDIT).",
+      "Pick one, give your picture (PNG, JPG...), then make the pack: the game puts it everywhere it shows it.",
+      "They can't be added yet (the game's lists are full): replace the ones you don't use."},
+     {"LOGOS UNIVERS : les logos des shows et des marques, les images des affiches de match et les photos d'arène de "
+      "l'Univers (SHOW EDIT).",
+      "Choisissez-en un, donnez votre image (PNG, JPG...), puis créez le pack : le jeu la met partout où il la montre.",
+      "On ne peut pas encore en ajouter (les listes du jeu sont pleines) : remplacez ceux dont vous ne vous servez pas."}},
     {"A new arena (from another game)",
      "Une nouvelle arène (d'un autre jeu)",
      {"ARENAS, tab New arena.",
@@ -688,11 +711,16 @@ const Guide kGuides[] = {
       "Texture : une image que le jeu pose sur un modèle 3D (un visage, une tenue, un tablier de ring)."}},
     {"Not yet",
      "Pas encore",
-     {"The moves WWE '12 hasn't (a ported superstar's own finishers): those slots keep their base's move.",
+     {"The moves WWE '12 hasn't (a ported superstar's own finishers): those slots keep their base's move. Adding them "
+      "changed other moves for everyone, so it is off (wwe12_added_moves = true in wwe12.toml to try, at your own risk).",
+      "New match types (I Quit, Special Referee...): they are made in the game itself, not by mods.",
       "The props of SvR entrances and victory scenes WWE '12 hasn't (hidden).",
       "Adding a fifth attire to a superstar of the game: replacing one works (a WWE '13 port brings up to 4 of its own).",
       "Moving hair and cloth on imported models (they follow the head and body)."},
-     {"Les prises que WWE '12 n'a pas (les finishers propres d'un catcheur porté) : ces cases gardent celle de la base.",
+     {"Les prises que WWE '12 n'a pas (les finishers propres d'un catcheur porté) : ces cases gardent celle de la base. "
+      "Les ajouter changeait d'autres prises pour tout le monde, c'est donc coupé (wwe12_added_moves = true dans "
+      "wwe12.toml pour essayer, à vos risques).",
+      "Les nouveaux types de match (I Quit, Special Referee...) : ils se font dans le jeu lui-même, pas par des mods.",
       "Les accessoires des entrées et des scènes de victoire SvR que WWE '12 n'a pas (cachés).",
       "Ajouter une 5e tenue à un catcheur du jeu : en remplacer une marche (un catcheur porté de WWE '13 garde jusqu'à 4 "
       "tenues à lui).",
