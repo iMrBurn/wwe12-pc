@@ -290,6 +290,13 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   sous ce numéro et l'ajoute sous son nom aux listes de Créer une entrée ; aucun catcheur modifié. Aide de test :
   `WWE12_MM_PAGE=6 WWE12_MM_MOVES=139,4 WWE12_MM_ADDENT=<titre hex>,<n°>,<rapport>` (2K14 668, SvR 2011 139, SvR 2008
   4012 : convertis en 497).
+  Listes de Créer une entrée (journal `wwe12_entrance_list_log`, 2026-11-15) : sorte 0 vidéos, 1 musiques, 2 entrées
+  seules (139…), 16 entrées seules + champion (600-618 puis les 139…), 17 multi-champion (600-614), **3 entrées tag
+  team (700-756)**. Le crochet n'ajoute les entrées des mods qu'aux listes qui ont 139 ou 602 : une entrée tag team
+  portée (Enzo & Cass, retour de Jay) arrivait donc en solo. **Corrigé (2026-11-15, pas encore vu en jeu)** : une
+  entrée 700-769 de WWE '13 / 2K (`star_port::TagEntrance` ; 770-799 = trios, laissés en solo) est servie sous un
+  numéro libre de 757 à 769 (Nyujyo9) et le crochet la met seulement dans la liste tag team (celle qui a des 700-769).
+  Les entrées d'équipe faites avant sont à refaire.
 - **Visages animés (1.3, 2026-11-11, pas encore vu en jeu)** : `face12.h` (via `star_port`, entrée, entrée de champion,
   victoire, tous jeux) : les 34 pistes du visage d'une entrée de WWE '12 (base, sinon Cena 139) copiées octet pour octet
   dans chaque segment du catcheur (`xxxx0000`) qui n'en a pas, coupées à sa durée (61 → 95 pistes sur 2K14).

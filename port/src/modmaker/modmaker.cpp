@@ -551,13 +551,17 @@ const Guide kGuides[] = {
       "entrances with a belt: search \"champ\"), 3. its name, then Finish.",
       "In the game: CREATIONS > Create an Entrance, under the name you gave it, for any superstar, as his entrance or "
       "his champion's. No superstar of the game is changed.",
-      "A champion's entrance shows one belt for each title the superstar holds (not two of the same)."},
+      "A champion's entrance shows one belt for each title the superstar holds (not two of the same).",
+      "A tag team's entrance (WWE '13, 2K: numbers 700 to 769, \"Enzo_and_Cassidy\") goes in the tag team list, for a "
+      "team. One made before this update: make it again."},
      {"PRISES & ENTRÉES, onglet Ajouter une entrée : une entrée de vos autres jeux, sans porter de catcheur.",
       "1. Le jeu (SvR 2007 à 2011, WWE '13, 2K14 à 2K17), 2. l'entrée dans sa liste complète (cherchez un nom ; les "
       "entrées avec ceinture : cherchez « champ »), 3. son nom, puis Terminer.",
       "Dans le jeu : CRÉATIONS > Créer une entrée, sous le nom donné, pour n'importe quel catcheur, comme son entrée ou "
       "son entrée de champion. Aucun catcheur du jeu n'est modifié.",
-      "Une entrée de champion montre une ceinture par titre que le catcheur détient (pas deux fois la même)."}},
+      "Une entrée de champion montre une ceinture par titre que le catcheur détient (pas deux fois la même).",
+      "Une entrée d'équipe (WWE '13, 2K : numéros 700 à 769, « Enzo_and_Cassidy ») va dans la liste des équipes, pour "
+      "une équipe. Faite avant cette mise à jour : refaites-la."}},
     {"Universe logos and pictures",
      "Logos et images de l'Univers",
      {"UNIVERSE LOGOS: the Universe's show and brand logos, match-up pictures and arena photos (SHOW EDIT).",

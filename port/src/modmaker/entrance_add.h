@@ -109,7 +109,7 @@ inline Ported Port(const disc::GameDisc &w12, const game_discs::Discs &discs, ui
   }
   if (star_port::Scenes(game)) {  // (as a champion's entrance picked on a page)
     star_port::Parts p;
-    if (!star_port::PortChamp(w12, discs, src, game, from, 0, -1, music, p)) {
+    if (!star_port::PortChamp(w12, discs, src, game, from, 0, -1, music, p, star_port::TagEntrance(from))) {
       r.why = "it could not be made WWE '12's (or no free number)";
       return r;
     }

@@ -221,10 +221,16 @@ inline std::vector<std::pair<int, std::string>> EntranceList(const disc::GameDis
   return {out.begin(), out.end()};
 }
 
+// A tag team's entrance in WWE '13 / 2K14-2K17 (700-769: 0705_Enzo_and_Cassidy, 0745_The_Usos; 770-799 are trios,
+// which WWE '12 hasn't): WWE '12's own are 700-756, the TAG TEAM list of CREATE AN ENTRANCE (kind 3).
+inline bool TagEntrance(int number) { return number % 1000 >= 700 && number % 1000 < 770; }
+
 // His champion's entrance: entrance `from` of `game` (src) as WWE '12's, served under a free number other than his own
 // entrance's (`own`): into out.champ, champ_number, champ_from (champ_name left to the caller). False if it can't be.
+// `tag`: a tag team's entrance (Create an Entrance's tag ones), served under a free one of 757-769 instead, after
+// WWE '12's own tag team entrances (the game puts those in its TAG TEAM list, Jay on Discord 2026-11-15).
 inline bool PortChamp(const disc::GameDisc &w12, const game_discs::Discs &discs, const disc::GameDisc &src, uint32_t game,
-                      int from, int own, int base12, Music12 &music, Parts &out) {
+                      int from, int own, int base12, Music12 &music, Parts &out, bool tag = false) {
   out.champ.clear();
   out.champ_number = out.champ_from = 0;
   if (from <= 0 || !Scenes(game) || Svr(game) || !entrance13::Entrance(src, from, out.champ, nullptr))
@@ -258,7 +264,7 @@ inline bool PortChamp(const disc::GameDisc &w12, const game_discs::Discs &discs,
   // (a free number, as his own entrance's: 499 down, none the game, a mod or his own entrance has)
   const std::set<int> taken = TakenEntrances();
   int to = 0;
-  for (int n = 499; n >= 100 && !to; --n)
+  for (int n = tag ? 769 : 499; n >= (tag ? 757 : 100) && !to; --n)
     if (n != own && n != from && !taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(w12, n) &&
         !music.Has(w12, n))
       to = n;

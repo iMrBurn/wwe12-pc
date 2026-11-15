@@ -2485,13 +2485,15 @@ extern "C" REX_FUNC(sub_829F9F90) {
   if (!table || kind > 64)
     return;
   const u32 count = bd::mem::load<u16>(table + (kind + 100) * 2), entries = bd::mem::load<u32>(table + (kind + 31) * 4);
-  bool superstars = false;
+  bool superstars = false, teams = false;
   std::string seen;
   for (u32 i = 0; entries && i < count; ++i) {
     const int value = int16_t(bd::mem::load<u16>(entries + i * 6)) + int(first);
     // (and the champions' lists, Cena's 602 John_Cena_Champ: the mods' entrances may be a champion's or a multi-champion's
     // entrance too, as in 2K14's Create an Entrance - the user, 2026-11-12)
     superstars = superstars || value == 139 || value == 602;
+    // (the TAG TEAM list, kind 3: WWE '12's tag team entrances, 700-756 - logged 2026-11-15)
+    teams = teams || (kind != 0 && value >= 700 && value < 770);
     if (REXCVAR_GET(wwe12_entrance_list_log) && i < 400)
       seen += " " + std::to_string(value) + "/" + std::to_string(int16_t(bd::mem::load<u16>(entries + i * 6 + 2))) + "/" +
               std::to_string(int16_t(bd::mem::load<u16>(entries + i * 6 + 4)));
@@ -2507,9 +2509,14 @@ extern "C" REX_FUNC(sub_829F9F90) {
     adds = Wwe12StarVideos();
     adds.insert(adds.end(), Wwe12AddedVideos().begin(), Wwe12AddedVideos().end());
   } else {
-    adds = g_mod_entrances;
+    // (a mod's tag team entrance, served as 757-769 - the Mod Maker's star_port::TagEntrance -, in the TAG TEAM list
+    // only; the others in the superstars' and champions' lists. Jay on Discord, 2026-11-15: Enzo and Cass's came in
+    // the single ones)
+    for (const auto &e : g_mod_entrances)
+      if ((e.first % 1000 >= 700 && e.first % 1000 < 770) == teams)
+        adds.push_back(e);
   }
-  if (!superstars || adds.empty() || !REXCVAR_GET(wwe12_entrance_list))
+  if ((!superstars && !teams) || adds.empty() || !REXCVAR_GET(wwe12_entrance_list))
     return;
   static std::map<std::string, u32> texts;
   for (const auto &[number, label] : adds) {
