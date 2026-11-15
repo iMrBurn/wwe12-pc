@@ -680,7 +680,7 @@ void EndAsk(const PPCContext &in, u8 *base) {
 // From the XInputGetState hook (through wwe12_match_modes.cpp): every pad's buttons. Returns the buttons the game
 // must not see: in an I Quit match, B next to a downed opponent is ours (the game would start a submission: user's
 // test of 2026-11-14); during the ask, A / B, and the attacker's D-pad (his threat).
-u16 Wwe12IQuitPad(u32 user, u16 buttons) {
+static u16 IQuitPad(u32 user, u16 buttons) {
   if (user >= 4)
     return 0;
   const u16 before = g_pad[user].exchange(buttons);
@@ -708,7 +708,10 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
   return 0;
 }
 
-// From the hook of sub_8267CF38 (wwe12_kind_probe.cpp), the function every reader of the match's record calls.
+u16 Wwe12SrefPad(u32 user, u16 buttons);  // wwe12_sref.cpp: the Special Guest Referee's count button
+u16 Wwe12IQuitPad(u32 user, u16 buttons) { return u16(IQuitPad(user, buttons) | Wwe12SrefPad(user, buttons)); }
+
+// From the hook of sub_8267CF38 (wwe12_kind_probe.cpp, DEV builds only) and from the tick.
 void Wwe12IQuitRules() {
   // The game's own microphone, loaded and parked for this match (RefPlay). Asked for as soon as I QUIT is the match
   // chosen in the menu: the model list is made while the match loads, when the record is not the match's yet (user's
@@ -730,7 +733,9 @@ void Wwe12IQuitRules() {
 }
 
 // Once per game frame during a match (wwe12_match_modes.cpp, from the gauge hook of the first superstar).
+void Wwe12SrefTick(const PPCContext &ctx, u8 *base);  // wwe12_sref.cpp
 void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
+  Wwe12SrefTick(ctx, base);
   if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch()) {
     g_phase = kIdle;
     g_sub = false;
