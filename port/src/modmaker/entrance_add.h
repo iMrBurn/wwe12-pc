@@ -114,10 +114,10 @@ inline std::map<std::pair<int, uint32_t>, uint32_t> PropsOf(const std::vector<en
   return out;
 }
 
-// A tag team's entrance: its partner (object 4, a person) shown as a WWE '12 superstar. In a match the game puts the
-// team's partner there, whatever its model; CREATE AN ENTRANCE's preview shows that model, and a 2K17 one (Colin
-// Cassidy, 57402) isn't WWE '12's: only the superstar edited was shown (the user, 2026-11-15). WWE '12's General_Tag_A
-// has Big Show, 12502, there. Returns how many scripts.
+// A tag team's entrance: its partner (object 4, a person) as in WWE '12's own. The game puts the team's partner there
+// (the preview of WWE '12's Road Warriors showed the edited team's partner, 2026-11-15); a 2K17 model (Colin Cassidy,
+// 57402) given WWE '12's General_Tag_A one, Big Show 12502, and its slots made the superstar's (below). Returns how
+// many scripts.
 inline int Partner12(std::vector<entrance13::Part> &parts) {
   using entrance13::detail::Be32;
   using yanm::ik::detail::Put32;
@@ -127,8 +127,20 @@ inline int Partner12(std::vector<entrance13::Part> &parts) {
       continue;
     const uint32_t n = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
     const size_t q = t + 32 * 4;
-    if (n > 4 && q + 32 <= p.data.size() && Be32(p.data, q + 8) == 0x01000000 && Be32(p.data, q + 4) != 12502) {
+    if (n > 4 && q + 32 <= p.data.size() && Be32(p.data, q + 8) == 0x01000000) {
       Put32(p.data, q + 4, 12502);
+      // (and its slots as the superstar's, object 0: People12 gave it the spot of a single entrance's person, slot 0
+      // off and placed - only the superstar edited was in the preview, the user 2026-11-15; WWE '12's Legion_of_Doom
+      // has both alike: slot flags +2, words 3-52 zero)
+      const uint32_t ns = Be32(p.data, q + 24) >> 16, bp = Be32(p.data, q + 28) + 8;
+      const uint32_t ns0 = Be32(p.data, t + 24) >> 16, bp0 = Be32(p.data, t + 28) + 8;
+      for (uint32_t s = 0; s < ns && s < ns0; ++s) {
+        const size_t to = bp + 212 * size_t(s), from = bp0 + 212 * size_t(s);
+        if (to + 212 > p.data.size() || from + 212 > p.data.size())
+          break;
+        std::copy(p.data.begin() + long(from + 2), p.data.begin() + long(from + 4), p.data.begin() + long(to + 2));
+        std::copy(p.data.begin() + long(from + 12), p.data.begin() + long(from + 212), p.data.begin() + long(to + 12));
+      }
       ++changed;
     }
   }
