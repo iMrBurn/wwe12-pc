@@ -38,6 +38,7 @@ REXCVAR_DEFINE_BOOL(wwe12_sref, false, "WWE12",
 REX_EXTERN(__imp__sub_8247AD18);  // play a motion on an actor
 REX_EXTERN(__imp__sub_827A1BF0);  // the character select's layout of a rule
 REX_EXTERN(__imp__sub_82A39AC0);  // a match set up from a rule (setup manager, rule, its options or 0)
+REX_EXTERN(__imp__sub_828AE798);  // the character select set up for a rule (select, rule, options or 0, r6, r7)
 
 REXCVAR_DEFINE_INT32(wwe12_sref_from, 13, "WWE12",
                      "Dev: with wwe12_sref, a match set up with this rule (13 = TRIPLE THREAT) is a Special Guest Referee one.");
@@ -105,19 +106,34 @@ void Layout() {
 }
 }  // namespace
 
-// The match set up from a rule. PLAY's rows do not go through sub_82449898 (user's test of 2026-11-15, 22:10: that
-// hook never ran, a plain TRIPLE THREAT was set up): every setup comes here, so the rule is changed here.
-extern "C" REX_FUNC(sub_82A39AC0) {
-  if (On()) {
-    const u32 rule = ctx.r4.u32;
-    const bool ours = int(rule) == REXCVAR_GET(wwe12_sref_from);
-    BD_INFO("[sref] match prepare avec la regle {}{} (options {:08X}, appel {:08X})", rule, ours ? " -> 83" : "", ctx.r5.u32,
-            u32(ctx.lr));
-    if (ours) {
-      Layout();
-      ctx.r4.u64 = kRule;
-    }
+// The character select set up for a match's rule, from the menus (sub_82548818: PLAY's rows). The select keeps the
+// rule (its entry + 0, the record at + 1592, the layout + 1588, the people + 92) and hands it to the match's setup
+// (sub_828AD3A0 -> sub_82A39AC0) once everyone is chosen. Changed there only (user's test of 2026-11-15, 22:13), the
+// match had the kind 83 but three fighters and the normal referee: the places had been made from TRIPLE THREAT's
+// rule. So the rule is changed here, before the places are made, with rule 83's own options (r5 = 0).
+extern "C" REX_FUNC(sub_828AE798) {
+  const u32 select = ctx.r3.u32, rule = ctx.r4.u32;
+  const bool ours = On() && int(rule) == REXCVAR_GET(wwe12_sref_from);
+  if (On())
+    BD_INFO("[sref] ecran de choix prepare pour la regle {}{} (options {:08X}, appel {:08X})", rule, ours ? " -> 83" : "",
+            ctx.r5.u32, u32(ctx.lr));
+  if (ours) {
+    Layout();
+    ctx.r4.u64 = kRule;
+    ctx.r5.u64 = 0;
   }
+  __imp__sub_828AE798(ctx, base);
+  if (ours) {
+    const u32 e = select + bd::mem::try_load<u32>(select + 15960) * 1596;
+    BD_INFO("[sref] ecran de choix : regle {} gabarit {} personnes {}", bd::mem::try_load<u32>(e), bd::mem::try_load<u32>(e + 1588),
+            bd::mem::try_load<u32>(e + 92));
+  }
+}
+
+// (the match set up from the select's rule: logged)
+extern "C" REX_FUNC(sub_82A39AC0) {
+  if (On())
+    BD_INFO("[sref] match prepare avec la regle {} (options {:08X}, appel {:08X})", ctx.r4.u32, ctx.r5.u32, u32(ctx.lr));
   __imp__sub_82A39AC0(ctx, base);
 }
 
