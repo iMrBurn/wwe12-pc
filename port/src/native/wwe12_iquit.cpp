@@ -127,6 +127,10 @@ std::atomic<float> g_spot[2][2] = {{-1.f, -1.f}, {-1.f, -1.f}};
 std::atomic<float> g_threat_left{0.f};  // the running threat: what is left of it, 0-1
 int g_attacker = -1, g_victim = -1;
 int g_hint_place = -1;  // the human standing over his downed opponent (the "B ASK" prompt is his)
+// place a stands next to his downed opponent (the tick measures it; the pad hook reads it): only then can he ask
+// (user, 2026-11-15: "B ASK" showed from anywhere in the ring; WWE '13 asks from grappling distance, 200 cm)
+std::atomic<bool> g_near[2];
+constexpr float kAskDistance = 170.f;
 bool g_face_down = false, g_cpu_victim = false, g_we_asked = false;
 double g_ticks = 0, g_phase_ticks = 0, g_lockout = 0, g_threat = -1, g_cpu_press_at = -1;
 float g_speed = 6.5f, g_dir = 1.f;
@@ -523,7 +527,7 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
     return u16(kPadA | kPadB | (attacker && Motions13() ? kPadDpad : 0));
   }
   for (int a = 0; a < 2; ++a)
-    if (PadOf(a) == int(user) && !Down(Actor(a)) && Down(Actor(1 - a))) {
+    if (PadOf(a) == int(user) && g_near[a].load() && !Down(Actor(a)) && Down(Actor(1 - a))) {
       if (newly & kPadB)
         g_ask = a + 1;  // (asked now, next to him: the tick starts the mini-game)
       return kPadB;
@@ -673,25 +677,34 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   for (int a = 0; a < 2; ++a) {
     const int v = 1 - a;
     const u32 att = Actor(a), vic = Actor(v);
+    g_near[a] = false;
     if (!att || !vic || Down(att))
       continue;
     if (!Down(vic)) {
       g_down_since[v] = now;
       continue;
     }
+    // next to him: their bodies' bones less than kAskDistance apart on the mat
+    float pa[3], pv[3];
+    const bool beside = Bone(att, 120, pa) && Bone(vic, 120, pv) &&
+                      std::hypot(pa[0] - pv[0], pa[2] - pv[2]) < kAskDistance;
+    g_near[a] = beside;
+    if (!beside)
+      continue;
     const int pad = PadOf(a);
     if (pad >= 0) {
       hint = true;
       g_hint_place = a;
     }
     const bool human_asks = pad >= 0 && g_ask.load() == a + 1;
-    // the computer asks a worn-out opponent (under 70 % health) who has been down 3 s, at most every 15 s
-    const bool cpu_asks = pad < 0 && now - g_down_since[v] > std::chrono::seconds(3) && now > g_cpu_next_ask &&
-                          HealthRatio(vic) < 0.7f;
+    // the computer asks an opponent it stands over once he has been down a second, if he is hurt at all (under 85 %
+    // health), at most every 10 s (user, 2026-11-15: it never asked - a human is up again before the 3 s it waited)
+    const bool cpu_asks = pad < 0 && now - g_down_since[v] > std::chrono::seconds(1) && now > g_cpu_next_ask &&
+                          HealthRatio(vic) < 0.85f;
     if (human_asks || cpu_asks) {
       g_ask = 0;
       if (cpu_asks)
-        g_cpu_next_ask = now + std::chrono::seconds(15);
+        g_cpu_next_ask = now + std::chrono::seconds(10);
       g_hint = false;
       StartAsk(ctx, base, a, v);
       return;
@@ -702,6 +715,20 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     ShowGauge();
   else if (!hint)
     g_hint = false;
+}
+
+// ---- no disqualification in an I Quit match ----
+// The match's end for a superstar is sub_82261320(victim, reason, winner); reason 7 is the referee's five count, the
+// disqualification (the judge sub_82263440 makes it the end "by way of DQ"). An I Quit match only ends when a man
+// says it: chairs and the rest are fair (user, 2026-11-15). The referee may still count; his count ends nothing.
+extern "C" REX_FUNC(sub_82261320) {
+  if (ctx.r4.u32 == 7 && Wwe12IQuitMatch()) {
+    static std::atomic<int> s_logged{0};
+    if (s_logged.fetch_add(1) < 8)
+      BD_INFO("[iquit] disqualification ignoree (match I QUIT)");
+    return;
+  }
+  __imp__sub_82261320(ctx, base);
 }
 
 // ---- a guard for the game's replay recorder ----
