@@ -82,7 +82,7 @@ LONG CALLBACK Handler(EXCEPTION_POINTERS *ep) {
   bool seen = false;
   const int n = std::min(g_n.load(), kMax);
   for (int i = 0; i < n && !seen; ++i)
-    seen = g_rip[i] == rip && g_value[i] == value;
+    seen = slot != 2 && g_rip[i] == rip && g_value[i] == value;  // (DR2: every write, in order)
   if (!seen) {
     const int i = g_n.fetch_add(1);
     if (i < kMax) {
