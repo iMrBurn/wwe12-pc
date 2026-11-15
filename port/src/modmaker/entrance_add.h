@@ -96,7 +96,44 @@ struct Ported {
   std::vector<entrance13::Part> objects;  // the objects WWE '12 hasn't (WWE '13 / 2K)
   int number = 0;                          // the number it is served under
   std::string why;                         // why it couldn't be, else ""
+  std::vector<uint32_t> hidden;            // its props WWE '12 can't load, hidden (entrance13::HideMissing)
 };
+
+// The props (objects of type 0x100) of `parts`' scripts: script number and object index -> model.
+inline std::map<std::pair<int, uint32_t>, uint32_t> PropsOf(const std::vector<entrance13::Part> &parts) {
+  using entrance13::detail::Be32;
+  std::map<std::pair<int, uint32_t>, uint32_t> out;
+  for (const auto &p : parts) {
+    if (p.kind != "EVP" || p.data.size() < 0x50)
+      continue;
+    const uint32_t n = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
+    for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= p.data.size(); ++i)
+      if (Be32(p.data, t + 32 * size_t(i) + 8) == 0x100)
+        out[{p.number, i}] = Be32(p.data, t + 32 * size_t(i) + 4);
+  }
+  return out;
+}
+
+// A tag team's entrance: its partner (object 4, a person) shown as a WWE '12 superstar. In a match the game puts the
+// team's partner there, whatever its model; CREATE AN ENTRANCE's preview shows that model, and a 2K17 one (Colin
+// Cassidy, 57402) isn't WWE '12's: only the superstar edited was shown (the user, 2026-11-15). WWE '12's General_Tag_A
+// has Big Show, 12502, there. Returns how many scripts.
+inline int Partner12(std::vector<entrance13::Part> &parts) {
+  using entrance13::detail::Be32;
+  using yanm::ik::detail::Put32;
+  int changed = 0;
+  for (auto &p : parts) {
+    if (p.kind != "EVP" || p.data.size() < 0x50)
+      continue;
+    const uint32_t n = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
+    const size_t q = t + 32 * 4;
+    if (n > 4 && q + 32 <= p.data.size() && Be32(p.data, q + 8) == 0x01000000 && Be32(p.data, q + 4) != 12502) {
+      Put32(p.data, q + 4, 12502);
+      ++changed;
+    }
+  }
+  return changed;
+}
 
 // Entrance `from` of `game` as WWE '12's, under a free number.
 inline Ported Port(const disc::GameDisc &w12, const game_discs::Discs &discs, uint32_t game, int from,
@@ -113,7 +150,21 @@ inline Ported Port(const disc::GameDisc &w12, const game_discs::Discs &discs, ui
       r.why = "it could not be made WWE '12's (or no free number)";
       return r;
     }
+    const auto props = PropsOf(p.champ);
     star_port::FinishChamp(w12, src, p);
+    {
+      // (by model: FinishChamp reorders objects 12 on, WaitingFirst12)
+      std::multiset<uint32_t> after;
+      for (const auto &[at, model] : PropsOf(p.champ))
+        after.insert(model);
+      for (const auto &[at, model] : props)
+        if (const auto it = after.find(model); it != after.end())
+          after.erase(it);
+        else
+          r.hidden.push_back(model);
+    }
+    if (star_port::TagEntrance(from))
+      Partner12(p.champ);
     r.parts = std::move(p.champ);
     r.objects = std::move(p.objects);
     r.number = p.champ_number;
@@ -183,8 +234,11 @@ class Page {
           fprintf(f, "game %08X: %zu entrances\n", title, list_.size());
           for (const auto &it : list_)
             fprintf(f, "  %d %s\n", it.number, it.name.c_str());
-          fprintf(f, "picked %d, name \"%s\": served as %d, why \"%s\", %zu parts, %zu objects\n", pick_, name_,
+          fprintf(f, "picked %d, name \"%s\": served as %d, why \"%s\", %zu parts, %zu objects, hidden props:", pick_, name_,
                   done_.number, done_.why.c_str(), done_.parts.size(), done_.objects.size());
+          for (uint32_t m : done_.hidden)
+            fprintf(f, " %u", m);
+          fprintf(f, "\n");
           for (const auto &q : done_.parts)
             fprintf(f, "  %s %d (%zu bytes)\n", entrance13::ModPath(q).c_str(), q.number, q.data.size());
           fclose(f);

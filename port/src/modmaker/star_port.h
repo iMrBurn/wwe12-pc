@@ -580,8 +580,14 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     both.insert(both.end(), out.victory.begin(), out.victory.end());
     both.insert(both.end(), out.champ.begin(), out.champ.end());  // (and its champion's entrance's)
     // (SvR 2007-2011's props are another format: none brought, the ones WWE '12 hasn't hidden)
-    if (scenes)
+    if (scenes) {
       out.objects = entrance13::Objects(src, w12, both);
+      // (and 2K16 / 2K17's hand props under 1000, a microphone..., made SOBJ 9000 + NNN: entrance13::Props2K)
+      for (auto *parts : {&out.entrance, &out.victory, &out.champ})
+        for (auto &o : entrance13::Props2K(src, *parts))
+          if (std::none_of(out.objects.begin(), out.objects.end(), [&](const auto &x) { return x.number == o.number; }))
+            out.objects.push_back(std::move(o));
+    }
     // (the props neither WWE '12 nor the mod has: an existing one, hidden)
     entrance13::HideMissing(out.entrance, w12, out.objects);
     entrance13::HideMissing(out.victory, w12, out.objects);
@@ -622,6 +628,9 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
 // the missing ones hidden, the ring announcer and waiting people made WWE '12's - as Collect does for his own.
 inline void FinishChamp(const disc::GameDisc &w12, const disc::GameDisc &src, Parts &out) {
   for (auto &o : entrance13::Objects(src, w12, out.champ))
+    if (std::none_of(out.objects.begin(), out.objects.end(), [&](const auto &x) { return x.number == o.number; }))
+      out.objects.push_back(std::move(o));
+  for (auto &o : entrance13::Props2K(src, out.champ))  // (2K16 / 2K17's hand props: a microphone...)
     if (std::none_of(out.objects.begin(), out.objects.end(), [&](const auto &x) { return x.number == o.number; }))
       out.objects.push_back(std::move(o));
   entrance13::HideMissing(out.champ, w12, out.objects);

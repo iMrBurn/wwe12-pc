@@ -945,6 +945,67 @@ inline std::vector<Part> Objects(const disc::GameDisc &src, const disc::GameDisc
   return out;
 }
 
+// 2K16 / 2K17's hand props numbered under 1000 (2K17 Enzo Amore's microphone 142, Enzo and Cass's 159: the user and
+// Jay on Discord, 2026-11-15, "no microphone"): WWE '12 has no such numbers in evtobj.pac (its SOBJ are 2001-5020), so
+// they were hidden. Each is pac\prop\NNNN.pac, an HSPC holding one SHDC with the same children as a SOBJ (0 the JBOY
+// model, 10 its pictures, 200, 2000), "ZLIB"-packed: made a SOBJ (PACH of 0, 10 and 200 as BPE) numbered 9000 + NNN
+// (free in WWE '12), and `parts`' scripts given that number. Returns those SOBJ (Part "SOBJ", number = the model).
+// NOT YET SEEN IN THE GAME (2026-11-15).
+inline std::vector<Part> Props2K(const disc::GameDisc &src, std::vector<Part> &parts) {
+  using detail::Be32;
+  using yanm::ik::detail::Put32;
+  constexpr uint32_t kAt = 9000;
+  std::set<uint32_t> want;
+  for (const auto &p : parts)
+    if (p.kind == "EVP" && p.data.size() >= 0x50) {
+      const uint32_t n = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
+      for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= p.data.size(); ++i)
+        if (const uint32_t m = Be32(p.data, t + 32 * size_t(i) + 4); Be32(p.data, t + 32 * size_t(i) + 8) == 0x100 &&
+                                                                      m > 0 && m < 1000)
+          want.insert(m);
+    }
+  std::vector<Part> out;
+  for (uint32_t m : want) {
+    char f[32];
+    snprintf(f, sizeof(f), "pac/prop/%04u.pac", m);
+    Bytes b;
+    if (!src.Read(f, b))
+      continue;
+    if (svrfmt::IsXcompress(b)) {
+      Bytes o;
+      if (!svrfmt::XcompressDecode(b, o))
+        continue;
+      b.swap(o);
+    }
+    svrfmt::Archive a;
+    if (!svrfmt::ArchiveOpen(b, a, nullptr) || a.root.kind != svrfmt::ArcKind::Hspc || a.root.kids.size() != 1 ||
+        !svrfmt::ArchiveExpand(a.root.kids[0]))
+      continue;
+    std::vector<svrfmt::PachEntry> leaves;
+    bool model = false;
+    for (const auto &k : a.root.kids[0].kids) {
+      if (k.id != 0 && k.id != 10 && k.id != 200)
+        continue;
+      Bytes d = svrfmt::ArchiveData(k);
+      if (d.empty())
+        continue;
+      model = model || (k.id == 0 && svrfmt::IsJboy(d));
+      leaves.push_back({k.id, svrfmt::BpeEncodeStored(d)});
+    }
+    if (!model)
+      continue;
+    out.push_back({int(kAt + m), "SOBJ", svrfmt::PachWrite(leaves)});
+    for (auto &p : parts)
+      if (p.kind == "EVP" && p.data.size() >= 0x50) {
+        const uint32_t n = Be32(p.data, 0x40) & 0xFFFF, t = Be32(p.data, 0x48) + 8;
+        for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= p.data.size(); ++i)
+          if (Be32(p.data, t + 32 * size_t(i) + 8) == 0x100 && Be32(p.data, t + 32 * size_t(i) + 4) == m)
+            Put32(p.data, t + 32 * size_t(i) + 4, kAt + m);
+      }
+  }
+  return out;
+}
+
 // The props of `parts`' scripts that WWE '12 can't load (no SOBJ in its evtobj.pac, none brought by the mod: 2K17
 // AJ Styles' 159, a 2K weapon "WOBJ", and the game crashed in his entrance, 2026-11-02): an existing prop (2001) in
 // their place, every slot off (slot word 0, bits 8-15). Props: object type +8 = 0x100. Returns how many.
