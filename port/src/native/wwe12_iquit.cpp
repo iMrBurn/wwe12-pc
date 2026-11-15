@@ -43,6 +43,8 @@ REXCVAR_DEFINE_BOOL(wwe12_iquit_wwe13_motions, true, "WWE12",
                     "I Quit match: WWE '13's own motions and images (in the exe since 2026-11-15, 132NN as 131(NN + 50); "
                     "false: WWE '12's motions and our drawing).");
 REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gauge's difficulty as WWE '13 (0-3).");
+REXCVAR_DEFINE_BOOL(wwe12_iquit_mic, true, "WWE12",
+                    "I Quit match: the referee holds the game's microphone while he asks (as WWE '13).");
 
 #include <algorithm>
 #include <atomic>
@@ -82,6 +84,10 @@ REX_EXTERN(__imp__sub_82229320);  // the game's tap-out (victim, winner)
 REX_EXTERN(__imp__sub_82323FD0);  // a hold: "he taps" (pressure at its top)
 REX_EXTERN(__imp__sub_82527010);  // the struggle's own meter and prompts, drawn
 REX_EXTERN(__imp__sub_8225C4D8);  // an actor's pad word delivered (pad object, word): the stick that walks him
+REX_EXTERN(__imp__sub_82254518);  // a parked object of a type made live again (-1, type, 0, 0): the object, 0 if none
+REX_EXTERN(__imp__sub_8221FAD0);  // play a motion on an actor and on the object he holds (actor, motion, block x)
+REX_EXTERN(__imp__sub_82250258);  // park an object (hidden, kept for later)
+REX_EXTERN(__imp__sub_82251388);  // an object's motion is over: what it does next (let go, lie on the mat...)
 
 namespace {
 
@@ -372,6 +378,65 @@ bool Ready(const PPCContext &in, u8 *base, u32 motion) {
   }
   return false;
 }
+// The referee's microphone (WWE '13: he holds one while he asks). Read in both games' code and files, 2026-11-15:
+// WWE '13's is its object type 143, made and parked when an I Quit match starts, then given by "play a motion on the
+// actor and on the object he holds": the object plays the SAME motion, block (x, 1) - the prop's own track, which
+// WWE '13's referee motions carry (ours too: 13150-13152 have (0,1) (1,1) (2,1) (10,1)). WWE '12 has the very same
+// machinery and a microphone of its own, object type 142 (pac/bg/bgEtc.pac, WPON packs: models "2038_0x", texture
+// "wwe_mic"; WWE '13's 143 is the same model with two parts less), used by its story scenes. The game loads and
+// parks one when the match record's byte + 12097 is set (two readers only: the model list sub_821F5B70 and the
+// match-start spawner sub_822EE080) - set for an I Quit match in Wwe12IQuitRules. So no WWE '13 model is needed.
+// Objects: 72 pointers at 0x83113630; object + 80 its type, + 1760 its slot, + 3236 parked, + 96 its holder; an
+// actor's + 2536 = the slot he holds (-1: nothing).
+constexpr u32 kObjects = 0x83113630, kMicType = 142;
+u32 Mic() {
+  for (u32 i = 0; i < 72; ++i)
+    if (const u32 o = bd::mem::try_load<u32>(kObjects + i * 4))
+      if (bd::mem::try_load<u32>(o + 80) == kMicType)
+        return o;
+  return 0;
+}
+// The referee's block of his question, with the microphone in his hand when the match has one.
+void RefPlay(const PPCContext &in, u8 *base, u32 ref, u32 anim, u32 x) {
+  u32 mic = REXCVAR_GET(wwe12_iquit_mic) ? Mic() : 0;
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 1024) & ~15u;
+  if (mic && bd::mem::try_load<u32>(mic + 3236) != 0) {  // parked: made live again (in its own slot)
+    c.r3.s64 = -1;
+    c.r4.u64 = kMicType;
+    c.r5.u64 = 0;
+    c.r6.u64 = 0;
+    __imp__sub_82254518(c, base);
+    mic = c.r3.u32;
+    BD_INFO("[iquit] micro : sorti ({:08X})", mic);
+  }
+  const u32 slot = mic ? bd::mem::try_load<u32>(mic + 1760) : 0xFFFFFFFFu;
+  if (!mic || slot >= 72 || bd::mem::try_load<u32>(kObjects + slot * 4) != mic) {
+    PlayAnim(in, base, ref, anim, x, 0);
+    return;
+  }
+  bd::mem::store<u32>(ref + 2536, slot);
+  c = in;
+  c.r1.u64 = (in.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = ref;
+  c.r4.u64 = anim;
+  c.r5.u64 = x;
+  __imp__sub_8221FAD0(c, base);
+}
+// His question is over: the microphone parked again.
+void MicAway(const PPCContext &in, u8 *base) {
+  const u32 ref = Actor(kReferee), mic = Mic();
+  if (!ref || !mic || bd::mem::try_load<u32>(mic + 3236) != 0)
+    return;
+  if (bd::mem::try_load<u32>(ref + 2536) == bd::mem::try_load<u32>(mic + 1760))
+    bd::mem::store<u32>(ref + 2536, 0xFFFFFFFFu);
+  bd::mem::store<u32>(mic + 96, 0);
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = mic;
+  __imp__sub_82250258(c, base);
+  BD_INFO("[iquit] micro : range");
+}
 struct OurMotion {
   u32 ours = 0;     // the motion we gave him (0: none)
   u32 to = 0;       // ... and the one he takes back when it is over (0: left to the game)
@@ -406,7 +471,10 @@ void MotionsTick(const PPCContext &ctx, u8 *base, double dt) {
       continue;
     const u32 actor = Actor(i == 2 ? kReferee : i);
     if (actor && Ready(ctx, base, w.anim)) {
-      PlayAnim(ctx, base, actor, w.anim, w.x, 0);
+      if (i == 2)
+        RefPlay(ctx, base, actor, w.anim, w.x);
+      else
+        PlayAnim(ctx, base, actor, w.anim, w.x, 0);
       if (i == 2)
         g_ref_t = 0;
       else
@@ -426,10 +494,12 @@ void MotionsTick(const PPCContext &ctx, u8 *base, double dt) {
     const double len = kLen[g_ref_x == 0 ? 0 : g_ref_x == 1 ? 1 : g_ref_x == 2 ? 2 : 3];
     if (!ref || Anim(ref) != u16(W13(13201))) {
       g_ref_x = -1;  // (the game took him back)
+      MicAway(ctx, base);
     } else if (g_ref_t >= len) {
       if (g_ref_x <= 1) {
         RefBlock(ctx, base, 1);  // in, then the loop again and again
       } else {
+        MicAway(ctx, base);
         PlayAnim(ctx, base, ref, kRefIdle);  // gone out: he stands
         g_ref_x = -1;
       }
@@ -631,6 +701,9 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
 void Wwe12IQuitRules() {
   if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch())
     return;
+  // (and the game's own microphone, loaded and parked for this match: RefPlay)
+  if (REXCVAR_GET(wwe12_iquit_mic) && REXCVAR_GET(wwe12_iquit_wwe13_motions) && bd::mem::load<u8>(0x8317C850 + 12097) == 0)
+    bd::mem::store<u8>(0x8317C850 + 12097, 1);
   for (u32 k : {3u, 10u, 27u, 63u})
     if (bd::mem::load<u8>(0x8317C850 + k) != 0) {
       bd::mem::store<u8>(0x8317C850 + k, 0);
@@ -1036,6 +1109,20 @@ extern "C" REX_FUNC(sub_82527010) {
   if (HoldRules() && HoldObject())
     return;
   __imp__sub_82527010(ctx, base);
+}
+
+// ---- the referee's microphone stays in his hand between the blocks of his question ----
+// When an object's motion is over the game lets it go (holder + 2536 = -1) and plays its "on the mat" motion: the
+// question is four blocks played one after the other, so that would drop the microphone at each. While he asks,
+// the microphone he holds is left as it is; MicAway parks it at the end.
+extern "C" REX_FUNC(sub_82251388) {
+  const u32 obj = ctx.r3.u32;
+  if (obj && bd::mem::try_load<u32>(obj + 80) == kMicType && Wwe12IQuitMatch() && (g_ref_x >= 0 || g_wait[2].anim)) {
+    const u32 ref = Actor(kReferee);
+    if (ref && bd::mem::try_load<u32>(obj + 96) == ref)
+      return;
+  }
+  __imp__sub_82251388(ctx, base);
 }
 
 // ---- the referee walks to the asked man: his pad's stick pushed toward the spot ----
