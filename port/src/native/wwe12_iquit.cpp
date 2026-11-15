@@ -614,7 +614,7 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
 void Wwe12IQuitRules() {
   if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch())
     return;
-  for (u32 k : {3u, 10u, 29u, 63u})
+  for (u32 k : {3u, 10u, 27u, 63u})
     if (bd::mem::load<u8>(0x8317C850 + k) != 0) {
       bd::mem::store<u8>(0x8317C850 + k, 0);
       BD_INFO("[iquit] regle du match + {} mise a 0 (comme EXTREME RULES)", k);
@@ -632,7 +632,10 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   // An I Quit match has EXTREME RULES' rules (user, 2026-11-15: the referee still took the chair away and counted,
   // as in a match with disqualifications). The match's record (104 bytes at 0x8317C850, read live by the game)
   // of a ONE ON ONE > EXTREME RULES match differs from the submission match's and the normal one's by four bytes
-  // that are 1 there and 0 in it (the user's own matches, logged the same day): + 3, + 10, + 29, + 63. Set here.
+  // that are 1 there and 0 in it (the user's own matches, logged the same day): + 3, + 10, + 27, + 63. Set here.
+  // (+ 27, not + 29 as first written: a miscount - the pause menu's MATCH RULES still said "DQ ON" and the referee
+  // took a table away, user's test of 2026-11-15. EXTREME RULES' record, logged that day:
+  // 4D01000000000001 0000000000000000 0000000000000000 0001000000000000 0001020000000100 0000010000000200 ...)
   // (2026-11-15, later: set once a frame, the referee still took a table away - so now set before every read of
   // the record, Wwe12IQuitRules below, in case something copies the rules while the match loads.)
   Wwe12IQuitRules();
@@ -659,6 +662,24 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       BD_INFO("[iquit] arbitre : motion {} -> {} (phase {})", g_ref_seen, a, phase);
     }
     g_ref_seen = a;
+  }
+  // The wake-up taunt on a worn-out man. Seen in the user's two tests of 2026-11-15 (motions logged): the taunt
+  // (motions 37000-37999, a stored finisher) lifts the downed man 0.65 s after it starts (his motion 0 -> 20, held)
+  // when his health is above 0, and never once his head's health is under 0 - which a match that only ends on
+  // "I QUIT" reaches every time, a normal match hardly. So, while a superstar with a stored finisher taunts over
+  // his downed opponent, that opponent's health under 0 is put back to 1. (Likely the cause, not proved in the
+  // game's code.)
+  for (int a = 0; a < 2; ++a) {
+    const u32 att = Actor(a), vic = Actor(1 - a);
+    if (!att || !vic || Anim(att) < 37000 || Anim(att) > 37999 || !Down(vic) || bd::mem::try_load<u32>(att + 2776) == 0)
+      continue;
+    const u32 dmg = bd::mem::try_load<u32>(vic + 3364);
+    for (u32 k = 0; dmg && k < 4; ++k)
+      if (int16_t(bd::mem::try_load<u16>(dmg + 56 + k * 2)) < 1) {
+        BD_INFO("[iquit] provocation au releve : sante {} du catcheur {} remise a 1 (etait {})", k, 1 - a,
+                int16_t(bd::mem::try_load<u16>(dmg + 56 + k * 2)));
+        bd::mem::store<u16>(dmg + 56 + k * 2, 1);
+      }
   }
   {  // (each change of a superstar's motion, the first 4000: what a taunt or an ask really gave him)
     static u16 s_seen[2] = {0xFFFF, 0xFFFF};
