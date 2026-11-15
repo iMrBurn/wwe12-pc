@@ -104,6 +104,9 @@ std::atomic<int> g_taunt{0};       // a human attacker's taunt during the ask: t
 std::atomic<bool> g_hint{false};   // the "B ASK HIM" prompt is shown
 std::atomic<bool> g_sub{false};    // a submission of the game itself in the I Quit match: "I QUIT" shown over it
 std::atomic<bool> g_asked_human{false}, g_asker_human{false};  // (for the overlay's prompts: a pad plays him)
+// where the attacker (0) and the asked man (1) stand on screen, 0-1 across and down; < 0: not known
+std::atomic<float> g_spot[2][2] = {{-1.f, -1.f}, {-1.f, -1.f}};
+std::atomic<float> g_threat_left{0.f};  // the running threat: what is left of it, 0-1
 int g_attacker = -1, g_victim = -1;
 bool g_face_down = false, g_cpu_victim = false, g_we_asked = false;
 double g_ticks = 0, g_phase_ticks = 0, g_lockout = 0, g_threat = -1, g_cpu_press_at = -1;
@@ -421,6 +424,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       g_threat += dt;
       const double f = 1.0 - g_threat / kThreatTicks;
       g_shake = g_threat < kThreatTicks ? float(70.0 * f * f * std::sin(g_threat * 1.3)) : 0.f;
+      g_threat_left = float(std::clamp(f, 0.0, 1.0));
       if (g_threat >= kThreatTicks)
         g_threat = -1;
     }
@@ -655,6 +659,75 @@ rex::ui::ImGuiDrawer *g_drawer = nullptr;
 std::function<void(std::function<void()>)> g_post;  // runs a function on the UI thread
 std::atomic<bool> g_shown{false};                    // the gauge's dialog exists (UI thread owns it)
 
+// WWE '13's I Quit HUD, laid out on the game itself (the user's captures of 2026-11-15): the gauge floats over the
+// asked man - a dark bar in a white slanted frame, a fifth of the screen wide, the red zone, a thin white cursor,
+// "I QUIT" over it whitening with the seconds, the "NO" mark under the zone; the prompts sit at the attacker's feet
+// ("B ASK"; the D-pad and "INTIMIDATE" under a blue bar that empties while a threat lasts); when he quits, the red
+// "I QUIT" in the middle of the screen. Sizes in WWE '13's own 720 lines. Where a superstar stands on screen comes
+// from g_spot (not known yet: fixed places meanwhile).
+void Draw13(ImGuiIO &io, ImDrawList *dl, int phase, bool sub_only, bool hint_only) {
+  const float k7 = io.DisplaySize.y / 720.0f, W = io.DisplaySize.x, H = io.DisplaySize.y;
+  auto spot = [&](int who, float fx, float fy) {  // a superstar's feet on screen, else a fixed place
+    const float sx = g_spot[who][0].load(), sy = g_spot[who][1].load();
+    return sx >= 0.f ? ImVec2(sx * W, sy * H) : ImVec2(fx * W, fy * H);
+  };
+  if (hint_only || ((phase == kGauge || phase == kCall) && g_asker_human.load())) {
+    const ImVec2 at = spot(0, 0.50f, 0.90f);
+    float px = at.x - 40.f * k7;
+    const float py = at.y + 14.f * k7;
+    if (hint_only) {
+      px += Img(dl, kImgB, px, py, float(g_img[kImgB].h) * k7) + 5.f * k7;
+      Img(dl, kImgAsk, px, py, float(g_img[kImgAsk].h) * k7);
+    } else if (phase == kGauge && !g_result.load()) {
+      // the threat's blue bar (it empties while the threat lasts), the D-pad and "INTIMIDATE" under it
+      const float bw = 118.f * k7, bh = 9.f * k7, by = py - 20.f * k7, left = g_threat_left.load();
+      dl->AddRectFilled(ImVec2(px - 2 * k7, by - 2 * k7), ImVec2(px + bw + 2 * k7, by + bh + 2 * k7),
+                        IM_COL32(235, 235, 235, 255));
+      dl->AddRectFilled(ImVec2(px, by), ImVec2(px + bw, by + bh), IM_COL32(15, 15, 20, 255));
+      dl->AddRectFilled(ImVec2(px, by), ImVec2(px + bw * (left > 0.f ? left : 1.f), by + bh), IM_COL32(40, 90, 220, 255));
+      px += Img(dl, kImgDpad, px, py, float(g_img[kImgDpad].h) * k7) + 5.f * k7;
+      Img(dl, kImgThreat, px, py, float(g_img[kImgThreat].h) * k7);
+    }
+  }
+  if (hint_only || phase == kCall)
+    return;
+  const float shake = g_shake.load() * k7 * 0.5f;  // (the threat shakes the gauge)
+  const ImVec2 over = spot(1, 0.50f, 0.74f);       // the asked man: the gauge a little above him
+  const float w = 272.f * k7, h = 15.f * k7, slant = 6.f * k7;
+  const float x = std::clamp(over.x - w * 0.5f, 20.f * k7, W - w - 20.f * k7) + shake;
+  const float y = std::clamp(over.y - 96.f * k7, 60.f * k7, H - 80.f * k7) + shake * 0.3f;
+  // "I QUIT" over the bar, whiter and whiter
+  const float white = g_white.load();
+  const int g = int(150 + 105 * white);
+  const float th = float(g_img[kImgQuitGrey].h) * k7 * 1.25f;
+  Img(dl, kImgQuitGrey, x + w * 0.5f - Wide(kImgQuitGrey, th) * 0.5f, y - th * 0.5f - 5.f * k7, th, IM_COL32(g, g, g, 255));
+  if (!sub_only) {
+    // the bar: a white slanted frame, dark inside, the red zone, the thin white cursor
+    const ImVec2 f0(x - 3 * k7 + slant, y - 3 * k7), f1(x + w + 3 * k7 + slant, y - 3 * k7),
+        f2(x + w + 3 * k7 - slant, y + h + 3 * k7), f3(x - 3 * k7 - slant, y + h + 3 * k7);
+    dl->AddQuadFilled(f0, f1, f2, f3, IM_COL32(235, 235, 235, 255));
+    dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h), IM_COL32(18, 18, 22, 255));
+    const float zc = g_centre.load() / kBar, zw = g_width.load() / kBar;
+    const float z0 = x + w * std::max(0.f, zc - zw * 0.5f), z1 = x + w * std::min(1.f, zc + zw * 0.5f);
+    dl->AddRectFilled(ImVec2(z0, y + 2 * k7), ImVec2(z1, y + h - 2 * k7), IM_COL32(225, 25, 25, 255));
+    const float cx = x + w * (g_cursor.load() / kBar);
+    dl->AddRectFilled(ImVec2(cx - 1.5f * k7, y - 1 * k7), ImVec2(cx + 1.5f * k7, y + h + 1 * k7),
+                      IM_COL32(255, 255, 255, 255));
+    const float mh = float(g_img[kImgNoMark].h) * k7;
+    Img(dl, kImgNoMark, (z0 + z1) * 0.5f - Wide(kImgNoMark, mh) * 0.5f, y + h + 4.f * k7 + mh * 0.5f, mh);
+    if (g_asked_human.load() && !g_result.load()) {  // the asked man's own prompt: A and "NO!"
+      const float py = y + h + 4.f * k7 + mh + 16.f * k7;
+      const float aw = Img(dl, kImgA, x + w * 0.5f - 40.f * k7, py, float(g_img[kImgA].h) * k7);
+      Img(dl, kImgNo, x + w * 0.5f - 40.f * k7 + aw + 5.f * k7, py, float(g_img[kImgNo].h) * k7);
+    }
+  }
+  if (g_result.load() == 4) {  // he quits: the red "I QUIT" in the middle of the screen
+    const float rh = float(g_img[kImgQuitRed].h) * k7 * 1.35f, gl = float(g_img[kImgGlow].h) * k7 * 4.f;
+    Img(dl, kImgGlow, W * 0.5f - Wide(kImgGlow, gl) * 0.5f, H * 0.51f, gl, IM_COL32(255, 255, 255, 110));
+    Img(dl, kImgQuitRed, W * 0.5f - Wide(kImgQuitRed, rh) * 0.5f, H * 0.51f, rh);
+  }
+}
+
 class IQuitOverlay final : public rex::ui::ImGuiDialog {
  public:
   explicit IQuitOverlay(rex::ui::ImGuiDrawer *drawer) : ImGuiDialog(drawer) {}
@@ -675,12 +748,8 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
     const float k = std::max(0.6f, io.DisplaySize.y / 1080.0f);
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImFont *font = ImGui::GetFont();
-    const float k7 = io.DisplaySize.y / 720.0f;  // (WWE '13's images are made for 720 lines)
-    if (hint_only && g_hud) {
-      // WWE '13's own prompt, where the game shows its button prompts ("Y FINISHER"): the B button and "ASK HIM"
-      const float px = io.DisplaySize.x * 0.335f, py = io.DisplaySize.y * 0.902f;
-      const float bw = Img(dl, kImgB, px, py, float(g_img[kImgB].h) * k7);
-      Img(dl, kImgAsk, px + bw + 6.f * k7, py, float(g_img[kImgAsk].h) * k7);
+    if (g_hud) {
+      Draw13(io, dl, phase, sub_only, hint_only);
       return;
     }
     if (hint_only) {
@@ -706,21 +775,12 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
     // "I QUIT", whiter and whiter (one step a second)
     const float white = g_white.load();
     const int g = int(90 + 165 * white);
-    if (g_hud) {
-      // WWE '13's "I QUIT": the grey one, the red one showing through as the seconds go
-      const float th = float(g_img[kImgQuitRed].h) * k7, tw = Wide(kImgQuitRed, th);
-      const float tx = x + w * 0.5f - tw * 0.5f, ty = y - th * 0.5f - 8.f * k7;
-      const float gh = tw * float(g_img[kImgQuitGrey].h) / float(std::max(g_img[kImgQuitGrey].w, 1));
-      Img(dl, kImgQuitGrey, tx, ty, gh);
-      Img(dl, kImgQuitRed, tx, ty, th, IM_COL32(255, 255, 255, int(255 * white)));
-    } else {
-      const char *title = "I QUIT";
-      const float ts = 34.f * k;
-      const ImVec2 tsz = font->CalcTextSizeA(ts, FLT_MAX, 0.f, title);
-      dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f + 2 * k, y - tsz.y - 6 * k + 2 * k),
-                  IM_COL32(0, 0, 0, 200), title);
-      dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f, y - tsz.y - 6 * k), IM_COL32(g, g, g, 255), title);
-    }
+    const char *title = "I QUIT";
+    const float ts = 34.f * k;
+    const ImVec2 tsz = font->CalcTextSizeA(ts, FLT_MAX, 0.f, title);
+    dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f + 2 * k, y - tsz.y - 6 * k + 2 * k), IM_COL32(0, 0, 0, 200),
+                title);
+    dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f, y - tsz.y - 6 * k), IM_COL32(g, g, g, 255), title);
     if (sub_only)
       return;  // (a submission of the game: its own meter, our title over it)
     // the bar (0-124), the "NO" zone and the cursor
@@ -732,35 +792,6 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
     dl->AddRectFilled(ImVec2(z0, y + 3 * k), ImVec2(z1, y + h - 3 * k), IM_COL32(210, 20, 20, 255));
     const float cx = x + w * (g_cursor.load() / kBar);
     dl->AddRectFilled(ImVec2(cx - 3 * k, y - 6 * k), ImVec2(cx + 3 * k, y + h + 6 * k), IM_COL32(255, 255, 255, 255));
-    if (g_hud) {
-      // WWE '13's "NO" mark under the zone; the asked man's prompt (A, "NO!") and the attacker's (D-pad, "THREATEN")
-      const float mh = float(g_img[kImgNoMark].h) * k7;
-      Img(dl, kImgNoMark, (z0 + z1) * 0.5f - Wide(kImgNoMark, mh) * 0.5f, y + h + 6.f * k7 + mh * 0.5f, mh);
-      const float py = y + h + 6.f * k7 + mh + 22.f * k7;
-      if (g_asked_human.load() && !g_result.load()) {
-        const float aw = Img(dl, kImgA, x, py, float(g_img[kImgA].h) * k7);
-        Img(dl, kImgNo, x + aw + 6.f * k7, py, float(g_img[kImgNo].h) * k7);
-      }
-      if (g_asker_human.load() && !g_result.load()) {
-        const float lh = float(g_img[kImgThreat].h) * k7, dh = float(g_img[kImgDpad].h) * k7;
-        const float total = Wide(kImgDpad, dh) + 6.f * k7 + Wide(kImgThreat, lh);
-        const float dw = Img(dl, kImgDpad, x + w - total, py, dh);
-        Img(dl, kImgThreat, x + w - total + dw + 6.f * k7, py, lh);
-      }
-      if (const int r = g_result.load()) {
-        // the answer: "NO!" twice its size, or the red "I QUIT" with its glow
-        const float cx0 = io.DisplaySize.x * 0.5f, cy0 = py + 44.f * k7;
-        if (r == 1) {
-          const float rh = float(g_img[kImgNo].h) * k7 * 2.f;
-          Img(dl, kImgNo, cx0 - Wide(kImgNo, rh) * 0.5f, cy0, rh);
-        } else {
-          const float gl = float(g_img[kImgGlow].h) * k7 * 3.f, rh = float(g_img[kImgQuitRed].h) * k7 * 1.5f;
-          Img(dl, kImgGlow, cx0 - Wide(kImgGlow, gl) * 0.5f, cy0, gl, IM_COL32(255, 255, 255, 150));
-          Img(dl, kImgQuitRed, cx0 - Wide(kImgQuitRed, rh) * 0.5f, cy0, rh);
-        }
-      }
-      return;
-    }
     const char *non = "NO";
     const float ns = 26.f * k;
     const ImVec2 nsz = font->CalcTextSizeA(ns, FLT_MAX, 0.f, non);
