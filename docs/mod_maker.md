@@ -300,6 +300,13 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   dans la liste tag team et les deux entrent en match ; l'aperçu de Créer une entrée ne montre que le catcheur modifié
   (celui de Hardy Boyz montre aussi le partenaire ; objets 0 et 4 pourtant comme WWE '12 : laissé). Le micro d'Enzo est
   un objet 2K17 que WWE '12 ne lit pas : caché par `HideMissing` (même cause que les micros / tunnel du retour de Jay).
+  **Suite (2026-11-15, vu en jeu)** : partenaire visible dans l'aperçu (ses cases = celles de l'objet 0, comme
+  Legion_of_Doom ; `People12` lui donnait la place d'un figurant d'entrée solo, case 0 éteinte). Micros 2K16 / 2K17
+  (`pac/prop/NNNN.pac`, HSPC → SHDC {0 JBOY, 10, 200, 2000}) faits SOBJ 9000 + NNN (`entrance13::Props2K`) : visibles
+  en main, mais **à l'envers et mal placés**. Constats : le modèle 159 de 2K17 a le même repère que le micro tenu de
+  WWE '12 (3038, R_Truth__Classic, parent objet 0, mêmes mots de case) ; les deux ont une piste YANM v4 mode 0 à 3
+  canaux (25012 / 25016-17). La différence est donc dans les valeurs de la piste (repère de la main 2K ≠ WWE '12 ?) :
+  à comparer canal par canal. 2755 (dans beaucoup d'entrées 2K17) : pas dans `pac/prop`, inconnu.
 - **Visages animés (1.3, 2026-11-11, pas encore vu en jeu)** : `face12.h` (via `star_port`, entrée, entrée de champion,
   victoire, tous jeux) : les 34 pistes du visage d'une entrée de WWE '12 (base, sinon Cena 139) copiées octet pour octet
   dans chaque segment du catcheur (`xxxx0000`) qui n'en a pas, coupées à sa durée (61 → 95 pistes sur 2K14).
