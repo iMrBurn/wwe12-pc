@@ -76,6 +76,7 @@ bool Wwe12IQuitMatch();  // wwe12_match_modes.cpp: an I Quit match is set up
 REX_EXTERN(__imp__sub_8247AD18);  // play an animation on an actor
 REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner)
 REX_EXTERN(__imp__sub_82520B90);  // a world point to the screen (float[4] in and out), the game's own
+REX_EXTERN(__imp__sub_821D7480);  // the motion queue: ask for a motion (queue, number, byte); 4 = in its list
 REX_EXTERN(__imp__sub_82324418);  // a submission hold's decision, each frame of the struggle
 REX_EXTERN(__imp__sub_82229320);  // the game's tap-out (victim, winner)
 REX_EXTERN(__imp__sub_82323FD0);  // a hold: "he taps" (pressure at its top)
@@ -334,28 +335,77 @@ void Spots(const PPCContext &in, u8 *base, int attacker, int victim) {
 // ---- WWE '13's motions: the referee's blocks, and a superstar's motion of ours with what he goes back to ----
 int g_ref_x = -1;    // the referee's block of 13201 (-1: not in it)
 double g_ref_t = 0;  // ticks in it
-void RefBlock(const PPCContext &in, u8 *base, int x) {
-  PlayAnim(in, base, Actor(kReferee), W13(13201), u32(x), 0);
-  g_ref_x = x;
-  g_ref_t = 0;
+// A motion is asked from the game's queue first and played only once the queue has read it. (Played the frame it
+// was asked, the game looked it up in a list whose record was half made: a read at 0x00000F66 in sub_821D7150 when
+// the asked man said "NO" with 13205 - user's test of 2026-11-15. The game's own code asks ahead too.)
+// The queue is [0x831137E8] + 56; its lists at + 96 and + 112: 16-byte entries {u16 number, ..., + 8 state}, 4 = read.
+bool Ready(const PPCContext &in, u8 *base, u32 motion) {
+  const u32 holder = bd::mem::try_load<u32>(0x831137E8);
+  if (!holder)
+    return false;
+  const u32 q = holder + 56;
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 512) & ~15u;
+  c.r3.u64 = q;
+  c.r4.u64 = motion;
+  c.r5.u64 = 255;
+  __imp__sub_821D7480(c, base);  // (asks for it, or keeps it wanted)
+  for (u32 list : {96u, 112u}) {
+    const u32 entries = bd::mem::try_load<u32>(q + list), count = bd::mem::try_load<u32>(q + list + 8);
+    for (u32 i = 0; entries && i < count && i < 64; ++i)
+      if (bd::mem::try_load<u16>(entries + i * 16) == u16(motion))
+        return bd::mem::try_load<u32>(entries + i * 16 + 8) == 4;
+  }
+  return false;
 }
 struct OurMotion {
   u32 ours = 0;     // the motion we gave him (0: none)
   u32 to = 0;       // ... and the one he takes back when it is over (0: left to the game)
   double left = 0;  // ticks
 } g_ours[2];
+// what waits for the queue: the two superstars' (0, 1) and the referee's (2)
+struct Waiting {
+  u32 anim = 0, x = 0, to = 0;
+  double ticks = 0, waited = 0;
+} g_wait[3];
+void RefBlock(const PPCContext &in, u8 *base, int x) {
+  (void)in, (void)base;
+  g_wait[2] = {W13(13201), u32(x), 0, 0, 0};
+  g_ref_x = x;
+  g_ref_t = 0;
+}
 void PlayFor(const PPCContext &in, u8 *base, int place, u32 anim, u32 x, double ticks, u32 to) {
+  (void)in, (void)base;
   if (place < 0 || place > 1)
     return;
-  PlayAnim(in, base, Actor(place), anim, x, 0);
-  g_ours[place] = {anim, to, ticks};
+  g_wait[place] = {anim, x, to, ticks, 0};
+  g_ours[place] = {};
 }
 bool Idle(u32 actor) {
   const u16 a = Anim(actor);
   return a >= 20000 && a <= 20598;
 }
 void MotionsTick(const PPCContext &ctx, u8 *base, double dt) {
-  if (g_ref_x >= 0) {
+  for (int i = 0; i < 3; ++i) {
+    Waiting &w = g_wait[i];
+    if (!w.anim)
+      continue;
+    const u32 actor = Actor(i == 2 ? kReferee : i);
+    if (actor && Ready(ctx, base, w.anim)) {
+      PlayAnim(ctx, base, actor, w.anim, w.x, 0);
+      if (i == 2)
+        g_ref_t = 0;
+      else
+        g_ours[i] = {w.anim, w.to, w.ticks};
+      w = {};
+    } else if (!actor || (w.waited += dt) > 240) {
+      BD_INFO("[iquit] motion {} pas prete apres 4 s : laissee", w.anim);
+      if (i == 2)
+        g_ref_x = -1;
+      w = {};
+    }
+  }
+  if (g_ref_x >= 0 && !g_wait[2].anim) {
     const u32 ref = Actor(kReferee);
     g_ref_t += dt;
     static constexpr double kLen[4] = {112, 165, 211, 291};
@@ -481,7 +531,7 @@ void StartGauge(const PPCContext &in, u8 *base) {
   ShowGauge();
   (void)ref;
   if (Motions13() && !g_hold)
-    PlayAnim(in, base, vic, W13(g_face_down ? 13209 : 13208));  // the asked man, held until he answers
+    PlayFor(in, base, g_victim, W13(g_face_down ? 13209 : 13208), 0, 1.0e9, 0);  // the asked man, held until he answers
   BD_INFO("[iquit] la jauge : vie {:.0f} %, zone {:.0f} de large en {:.0f}, vitesse {}", health * 100, g_width.load(),
           g_centre.load(), g_speed);
 }
@@ -510,8 +560,7 @@ void Answer(const PPCContext &in, u8 *base, int result) {
         PlayFor(in, base, g_attacker, W13(13207), 0, 429, Anim(att));
     }
   } else if (Motions13()) {
-    PlayAnim(in, base, vic, W13(g_face_down ? 13206 : 13205), 10, 0);  // "I QUIT": the match ends after it
-    g_ours[g_victim & 1] = {};
+    PlayFor(in, base, g_victim, W13(g_face_down ? 13206 : 13205), 10, 1.0e9, 0);  // "I QUIT": the match ends after it
   } else {
     GiveUp(in, base);
   }
@@ -629,6 +678,8 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     }
     // the gauge
     g_ticks += dt;
+    if (Motions13() && !g_hold)
+      Ready(ctx, base, W13(g_face_down ? 13206 : 13205));  // (his answer's motion, asked ahead)
     g_white = float(std::min(9.0, std::floor(g_ticks / 60.0)) / 9.0);
     // the threat: the attacker's taunt (a human's D-pad; the computer once, at random) while the referee asks
     int taunt = g_taunt.exchange(0);
