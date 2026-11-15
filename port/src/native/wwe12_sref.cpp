@@ -37,6 +37,10 @@ REXCVAR_DEFINE_BOOL(wwe12_sref, false, "WWE12",
 
 REX_EXTERN(__imp__sub_8247AD18);  // play a motion on an actor
 REX_EXTERN(__imp__sub_827A1BF0);  // the character select's layout of a rule
+REX_EXTERN(__imp__sub_82A39AC0);  // a match set up from a rule (setup manager, rule, its options or 0)
+
+REXCVAR_DEFINE_INT32(wwe12_sref_from, 13, "WWE12",
+                     "Dev: with wwe12_sref, a match set up with this rule (13 = TRIPLE THREAT) is a Special Guest Referee one.");
 
 namespace {
 constexpr u32 kMatch = 0x8317C850, kActors = 0x8317B770, kJudgePtr = 0x83174054, kRulesPtr = 0x8324E238;
@@ -87,18 +91,39 @@ void Play(const PPCContext &in, u8 *base, u32 actor, u32 anim, u32 x) {
 }  // namespace
 
 // The character select's layout: rule 83's record says ONE ON ONE's (two places). TRIPLE THREAT's given to it.
+namespace {
+void Layout() {
+  const u32 rules = bd::mem::try_load<u32>(kRulesPtr);
+  if (!rules)
+    return;
+  const u32 mine = rules + kRule * kRuleSize + 52, his = rules + 13 * kRuleSize + 52;
+  const u32 want = bd::mem::try_load<u32>(his);
+  if (bd::mem::try_load<u32>(mine) != want) {
+    BD_INFO("[sref] ecran de choix : fiche 83 + 52 = {} -> {} (celle du TRIPLE THREAT)", bd::mem::try_load<u32>(mine), want);
+    bd::mem::store<u32>(mine, want);
+  }
+}
+}  // namespace
+
+// The match set up from a rule. PLAY's rows do not go through sub_82449898 (user's test of 2026-11-15, 22:10: that
+// hook never ran, a plain TRIPLE THREAT was set up): every setup comes here, so the rule is changed here.
+extern "C" REX_FUNC(sub_82A39AC0) {
+  if (On()) {
+    const u32 rule = ctx.r4.u32;
+    const bool ours = int(rule) == REXCVAR_GET(wwe12_sref_from);
+    BD_INFO("[sref] match prepare avec la regle {}{} (options {:08X}, appel {:08X})", rule, ours ? " -> 83" : "", ctx.r5.u32,
+            u32(ctx.lr));
+    if (ours) {
+      Layout();
+      ctx.r4.u64 = kRule;
+    }
+  }
+  __imp__sub_82A39AC0(ctx, base);
+}
+
 extern "C" REX_FUNC(sub_827A1BF0) {
   if (On()) {
-    const u32 rules = bd::mem::try_load<u32>(kRulesPtr);
-    if (rules) {
-      const u32 mine = rules + kRule * kRuleSize + 52, his = rules + 13 * kRuleSize + 52;
-      const u32 want = bd::mem::try_load<u32>(his);
-      if (bd::mem::try_load<u32>(mine) != want) {
-        BD_INFO("[sref] ecran de choix : fiche 83 + 52 = {} -> {} (celle du TRIPLE THREAT)", bd::mem::try_load<u32>(mine),
-                want);
-        bd::mem::store<u32>(mine, want);
-      }
-    }
+    Layout();
     static std::atomic<int> s_lines{0};
     if (s_lines.fetch_add(1) < 30)
       BD_INFO("[sref] ecran de choix : gabarit demande pour la regle {}", ctx.r5.s32);
