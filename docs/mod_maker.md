@@ -307,6 +307,12 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   WWE '12 (3038, R_Truth__Classic, parent objet 0, mêmes mots de case) ; les deux ont une piste YANM v4 mode 0 à 3
   canaux (25012 / 25016-17). La différence est donc dans les valeurs de la piste (repère de la main 2K ≠ WWE '12 ?) :
   à comparer canal par canal. 2755 (dans beaucoup d'entrées 2K17) : pas dans `pac/prop`, inconnu.
+  Essais en jeu du 2026-11-15 (entrée Enzo & Cass, aperçu ; fichiers modifiés à la main, Mod Maker inchangé), **aucun
+  bon** : piste « root » (hachage 0E5BF7F4) retirée ; modèle retourné Ry(180) ou Rz(180) ; « root » conjuguée ;
+  « base » mise à Ry(180) comme R-Truth (avec 159 et avec 3038) ; angles des clés 0x0004 relus dans l'ordre X-Y-Z.
+  Les squelettes de 2K17 (ch575) et de WWE '12 (ch139) ont la même main (Bip R Hand, mêmes os). Pistes restantes :
+  ce que fait le jeu des clés 0x0004 (cubiques, 20 octets, tangentes non converties) et de la piste « base » quand
+  l'objet a un parent (mot 52) — à lire dans le code du jeu ; ou des captures RenderDoc de la matrice du micro.
 - **Visages animés (1.3, 2026-11-11, pas encore vu en jeu)** : `face12.h` (via `star_port`, entrée, entrée de champion,
   victoire, tous jeux) : les 34 pistes du visage d'une entrée de WWE '12 (base, sinon Cena 139) copiées octet pour octet
   dans chaque segment du catcheur (`xxxx0000`) qui n'en a pas, coupées à sa durée (61 → 95 pistes sur 2K14).
