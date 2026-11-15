@@ -65,11 +65,56 @@ std::string InLists(u32 q, u32 n) {
   return out;
 }
 
+// The motion directory [0x8317B870] (read 2026-11-14/15: slots of 16 bytes {+0 entries of 12 bytes sorted by number
+// {u16 number, u16 variants, u32 their table}, +4 the full records' pointers, +8 the light ones', +12 count}; the
+// queue's reader, sub_821D7C80 -> sub_8246EB78, drops a number whose entry has no variant in slots 1 and 11-22):
+// where a number stands in it, and its full record's first bytes (the loader, sub_821D7E78, wants "ZLIB").
+void Directory(u32 n) {
+  static std::atomic<int> s_lines{0};
+  if (s_lines.fetch_add(1) >= 24)
+    return;
+  const u32 dir = bd::mem::try_load<u32>(0x8317B870);
+  std::string out;
+  for (u32 slot : {0u, 1u, 2u, 11u, 12u, 13u, 14u, 15u, 16u, 17u, 18u, 19u, 20u, 21u, 22u}) {
+    const u32 s = dir + slot * 16, tab = dir ? bd::mem::try_load<u32>(s) : 0, cnt = tab ? bd::mem::try_load<u32>(s + 12) : 0;
+    if (!cnt)
+      continue;
+    out += fmt::format(" | case {} ({} numeros)", slot, cnt);
+    for (u32 i = 0; i < cnt && i < 65536; ++i) {
+      const u32 e = tab + i * 12;
+      if (bd::mem::try_load<u16>(e) != u16(n))
+        continue;
+      const u32 fulls = bd::mem::try_load<u32>(s + 4), lights = bd::mem::try_load<u32>(s + 8);
+      const u32 full = fulls ? bd::mem::try_load<u32>(fulls + i * 4) : 0, light = lights ? bd::mem::try_load<u32>(lights + i * 4) : 0;
+      out += fmt::format(" : n {} variantes {} table {:08X} complete {:08X} ({:08X}) legere {:08X} ({:08X})", i,
+                         bd::mem::try_load<u16>(e + 2), bd::mem::try_load<u32>(e + 4), full,
+                         full ? bd::mem::try_load<u32>(full) : 0, light, light ? bd::mem::try_load<u32>(light) : 0);
+      break;
+    }
+  }
+  BD_INFO("[motion] repertoire {:08X}, numero {}{}", dir, n, out);
+}
+
+// The loader of one list entry (queue, list, flag, index): the entry's state after it (1 asked, 2 being read,
+// 3 read, 5 given up).
+REX_EXTERN(__imp__sub_821D7E78);
+extern "C" REX_FUNC(sub_821D7E78) {
+  const u32 list = ctx.r4.u32, idx = ctx.r6.u32;
+  const u32 e = bd::mem::try_load<u32>(list) + idx * 16;
+  const u32 n = bd::mem::try_load<u16>(e);
+  __imp__sub_821D7E78(ctx, base);
+  if (Watched(n) && n >= 13100 && n < 13200 && More())
+    BD_INFO("[motion] chargement : numero {} (liste {:08X}, place {}) -> etat {} compteur {}", n, list, idx,
+            bd::mem::try_load<u32>(e + 8), bd::mem::try_load<u16>(e + 4));
+}
+
 extern "C" REX_FUNC(sub_821D7480) {
   const u32 q = ctx.r3.u32, n = ctx.r4.u32, r5 = ctx.r5.u32;
   __imp__sub_821D7480(ctx, base);
   if (Watched(n) && More())
     BD_INFO("[motion] file : numero {} r5 {} -> {}{}", n & 0xFFFF, r5 & 0xFF, ctx.r3.u32, InLists(q, n & 0xFFFF));
+  if (Watched(n) && (n & 0xFFFF) >= 13100 && (n & 0xFFFF) < 13200)
+    Directory(n & 0xFFFF);
 }
 
 extern "C" REX_FUNC(sub_821A5350) {

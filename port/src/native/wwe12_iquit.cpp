@@ -472,6 +472,35 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     g_hint = false;
 }
 
+// ---- motions added by a motions mod (WWE '13's, ported by the Mod Maker): known to the game's motion directory ----
+// A motion played by number is queued (sub_821D7480) and the queue's reader (sub_821D7C80) drops any number without a
+// record in the motion directory [0x8317B870]. In a match the directory's general slot (1) is built by
+// sub_8246E3B0(directory, bitmap, slot) from a 65536-bit bitmap (bit n = word n / 32, 1 << n % 32) of the numbers the
+// game wants; the archives are then walked and only those numbers read. (The superstars' slots 11-22 and their fixed
+// list 13100-13135 are not built in a match: 13120, in that list, was dropped all the same, user's test of
+// 2026-11-15.) Here the free numbers of the referee's hundred, 13115-13199, are added to slot 1's bitmap: a number
+// no file has just stays an entry without a record, as the game's own do.
+REXCVAR_DEFINE_BOOL(wwe12_iquit_added_motions, false, "WWE12",
+                    "I Quit match: let the game load motions 13115-13199 added by a motions mod (WWE '13's, test).");
+REX_EXTERN(__imp__sub_8246E3B0);
+extern "C" REX_FUNC(sub_8246E3B0) {
+  const u32 bitmap = ctx.r4.u32, slot = ctx.r5.u32;
+  if (REXCVAR_GET(wwe12_iquit_added_motions)) {
+    const bool made = bd::mem::try_load<u32>(ctx.r3.u32 + (slot + 188) * 4) != 0;
+    static std::atomic<int> s_calls{0};
+    if (s_calls.fetch_add(1) < 60)
+      BD_INFO("[iquit] repertoire des motions : case {} (appel {:08X}, deja faite {})", slot, u32(ctx.lr), made);
+    if (bitmap && slot == 1 && !made) {
+      for (u32 n = 13115; n < 13200; ++n) {
+        const u32 w = bitmap + (n >> 5) * 4;
+        bd::mem::store<u32>(w, bd::mem::try_load<u32>(w) | (1u << (n & 31)));
+      }
+      BD_INFO("[iquit] motions 13115-13199 ajoutees au repertoire (case 1)");
+    }
+  }
+  __imp__sub_8246E3B0(ctx, base);
+}
+
 // ---- the gauge, drawn over the game ----
 
 namespace {
