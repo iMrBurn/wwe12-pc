@@ -296,7 +296,10 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   portée (Enzo & Cass, retour de Jay) arrivait donc en solo. **Corrigé (2026-11-15, pas encore vu en jeu)** : une
   entrée 700-769 de WWE '13 / 2K (`star_port::TagEntrance` ; 770-799 = trios, laissés en solo) est servie sous un
   numéro libre de 757 à 769 (Nyujyo9) et le crochet la met seulement dans la liste tag team (celle qui a des 700-769).
-  Les entrées d'équipe faites avant sont à refaire.
+  Les entrées d'équipe faites avant sont à refaire. **Vu en jeu le 2026-11-15** (Enzo & Cass 2K17, servie en 769) :
+  dans la liste tag team et les deux entrent en match ; l'aperçu de Créer une entrée ne montre que le catcheur modifié
+  (celui de Hardy Boyz montre aussi le partenaire ; objets 0 et 4 pourtant comme WWE '12 : laissé). Le micro d'Enzo est
+  un objet 2K17 que WWE '12 ne lit pas : caché par `HideMissing` (même cause que les micros / tunnel du retour de Jay).
 - **Visages animés (1.3, 2026-11-11, pas encore vu en jeu)** : `face12.h` (via `star_port`, entrée, entrée de champion,
   victoire, tous jeux) : les 34 pistes du visage d'une entrée de WWE '12 (base, sinon Cena 139) copiées octet pour octet
   dans chaque segment du catcheur (`xxxx0000`) qui n'en a pas, coupées à sa durée (61 → 95 pistes sur 2K14).
