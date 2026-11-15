@@ -615,6 +615,15 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     g_hint = false;
     return;
   }
+  // An I Quit match has EXTREME RULES' rules (user, 2026-11-15: the referee still took the chair away and counted,
+  // as in a match with disqualifications). The match's record (104 bytes at 0x8317C850, read live by the game)
+  // of a ONE ON ONE > EXTREME RULES match differs from the submission match's and the normal one's by four bytes
+  // that are 1 there and 0 in it (the user's own matches, logged the same day): + 3, + 10, + 29, + 63. Set here.
+  for (u32 k : {3u, 10u, 29u, 63u})
+    if (bd::mem::try_load<u8>(0x8317C850 + k) != 0) {
+      bd::mem::store<u8>(0x8317C850 + k, 0);
+      BD_INFO("[iquit] regle du match + {} mise a 0 (comme EXTREME RULES)", k);
+    }
   u16 pressed[4];
   for (int p = 0; p < 4; ++p)
     pressed[p] = g_pressed[p].exchange(0);
