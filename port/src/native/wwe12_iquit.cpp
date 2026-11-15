@@ -75,6 +75,7 @@ bool Wwe12IQuitMatch();  // wwe12_match_modes.cpp: an I Quit match is set up
 
 REX_EXTERN(__imp__sub_8247AD18);  // play an animation on an actor
 REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner)
+REX_EXTERN(__imp__sub_82520B90);  // a world point to the screen (float[4] in and out), the game's own
 
 namespace {
 
@@ -125,6 +126,7 @@ std::atomic<bool> g_asked_human{false}, g_asker_human{false};  // (for the overl
 std::atomic<float> g_spot[2][2] = {{-1.f, -1.f}, {-1.f, -1.f}};
 std::atomic<float> g_threat_left{0.f};  // the running threat: what is left of it, 0-1
 int g_attacker = -1, g_victim = -1;
+int g_hint_place = -1;  // the human standing over his downed opponent (the "B ASK" prompt is his)
 bool g_face_down = false, g_cpu_victim = false, g_we_asked = false;
 double g_ticks = 0, g_phase_ticks = 0, g_lockout = 0, g_threat = -1, g_cpu_press_at = -1;
 float g_speed = 6.5f, g_dir = 1.f;
@@ -238,6 +240,75 @@ void PlayAnim(const PPCContext &in, u8 *base, u32 actor, u32 anim, u32 x = 0, u3
   BD_INFO("[iquit] motion {} bloc {} sur {:08X} : +92 {} *+684 {} *+688 {} -> anim {}", anim, x, actor,
           bd::mem::try_load<u32>(actor + 92), p684 ? bd::mem::try_load<u8>(p684) : 255,
           p688 ? bd::mem::try_load<u8>(p688) : 255, Anim(actor));
+}
+
+// ---- where a superstar stands on screen (for the overlay: WWE '13 hangs its I Quit HUD on the superstars) ----
+// Read in the generated code, 2026-11-15: sub_82520B90(float[4] v) turns a world point (x, y, z; w set to 1) into
+// back-buffer pixels (x right, y down; v[3] = clip w, > 0 in front of the camera) with the calling thread's
+// view-projection, the size at [0x83248D08] + 300 / + 304. The game's own finisher icon at the feet (sub_8251DB38)
+// takes x and z half-way between the bones at actor + 196 and + 180 and the lowest y (the world's y points down) of
+// the bones at + 176, + 192, + 132, + 148, + 164, + 144; a bone = a pointer to a 4 x 4 matrix, its place at + 48.
+// WWE '13 hangs the I Quit gauge on the body's bone (actor + 120 here), 100 pixels higher on screen.
+float LoadF(u32 at) {
+  const u32 bits = bd::mem::try_load<u32>(at);
+  float f;
+  std::memcpy(&f, &bits, 4);
+  return f;
+}
+bool Bone(u32 actor, u32 offset, float out[3]) {
+  const u32 m = actor ? bd::mem::try_load<u32>(actor + offset) : 0;
+  if (!m)
+    return false;
+  for (u32 i = 0; i < 3; ++i)
+    out[i] = LoadF(m + 48 + i * 4);
+  return std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]);
+}
+bool OnScreen(const PPCContext &in, u8 *base, const float world[3], float &sx, float &sy) {
+  const u32 g = bd::mem::try_load<u32>(0x83248D08);
+  const u32 w = g ? bd::mem::try_load<u32>(g + 300) : 0, h = g ? bd::mem::try_load<u32>(g + 304) : 0;
+  if (!w || !h || w > 16384 || h > 16384)
+    return false;
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 512) & ~15u;
+  const u32 v = c.r1.u32 + 256;
+  for (u32 i = 0; i < 3; ++i) {
+    u32 bits;
+    std::memcpy(&bits, &world[i], 4);
+    bd::mem::store<u32>(v + i * 4, bits);
+  }
+  bd::mem::store<u32>(v + 12, 0x3F800000u);
+  c.r3.u64 = v;
+  __imp__sub_82520B90(c, base);
+  const float x = LoadF(v), y = LoadF(v + 4), cw = LoadF(v + 12);
+  if (!(cw > 0.f) || !std::isfinite(x) || !std::isfinite(y))
+    return false;
+  sx = x / float(w), sy = y / float(h);
+  return sx > -0.5f && sx < 1.5f && sy > -0.5f && sy < 1.5f;
+}
+// the attacker's feet and the asked man's body on screen, for the overlay (-1: not known, it keeps its fixed places)
+void Spots(const PPCContext &in, u8 *base, int attacker, int victim) {
+  float sx = -1.f, sy = -1.f, a[3], b[3], world[3];
+  const u32 att = attacker >= 0 ? Actor(attacker) : 0, vic = victim >= 0 ? Actor(victim) : 0;
+  bool ok = Bone(att, 196, a) && Bone(att, 180, b);
+  if (ok) {
+    world[0] = (a[0] + b[0]) * 0.5f, world[2] = (a[2] + b[2]) * 0.5f, world[1] = -1.0e9f;
+    for (u32 o : {176u, 192u, 132u, 148u, 164u, 144u})
+      if (Bone(att, o, a))
+        world[1] = std::max(world[1], a[1]);
+    ok = world[1] > -1.0e8f && OnScreen(in, base, world, sx, sy);
+  }
+  g_spot[0][0] = ok ? sx : -1.f, g_spot[0][1] = ok ? sy : -1.f;
+  ok = Bone(vic, 120, world) && OnScreen(in, base, world, sx, sy);
+  g_spot[1][0] = ok ? sx : -1.f, g_spot[1][1] = ok ? sy : -1.f;
+  static Clock::time_point s_next;
+  if (Clock::now() >= s_next) {  // (one line a second: where they are, and how far the referee is from the asked man)
+    s_next = Clock::now() + std::chrono::seconds(1);
+    float r[3] = {}, m[3] = {};
+    const bool both = Bone(Actor(kReferee), 120, r) && Bone(vic, 120, m);
+    BD_INFO("[iquit] a l'ecran : attaquant {:.3f} {:.3f}, interroge {:.3f} {:.3f} ; arbitre a {:.0f} de lui", g_spot[0][0].load(),
+            g_spot[0][1].load(), g_spot[1][0].load(), g_spot[1][1].load(),
+            both ? std::sqrt((r[0] - m[0]) * (r[0] - m[0]) + (r[2] - m[2]) * (r[2] - m[2])) : -1.f);
+  }
 }
 
 // ---- WWE '13's motions: the referee's blocks, and a superstar's motion of ours with what he goes back to ----
@@ -478,6 +549,10 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
 
   MotionsTick(ctx, base, dt);
   const int phase = g_phase.load();
+  if (phase != kIdle)
+    Spots(ctx, base, g_attacker, g_victim);
+  else if (g_hint.load() && g_hint_place >= 0)
+    Spots(ctx, base, g_hint_place, 1 - g_hint_place);
   if (REXCVAR_GET(wwe12_iquit_ref_anim_cycle) > 0 || !REXCVAR_GET(wwe12_iquit_ref_anim_list).empty()) {  // (dev: every change of the referee's motion)
     const u16 a = Anim(Actor(kReferee));
     if (a != g_ref_seen) {
@@ -605,8 +680,10 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       continue;
     }
     const int pad = PadOf(a);
-    if (pad >= 0)
+    if (pad >= 0) {
       hint = true;
+      g_hint_place = a;
+    }
     const bool human_asks = pad >= 0 && g_ask.load() == a + 1;
     // the computer asks a worn-out opponent (under 70 % health) who has been down 3 s, at most every 15 s
     const bool cpu_asks = pad < 0 && now - g_down_since[v] > std::chrono::seconds(3) && now > g_cpu_next_ask &&
@@ -801,7 +878,7 @@ void Draw13(ImGuiIO &io, ImDrawList *dl, int phase, bool sub_only, bool hint_onl
   const ImVec2 over = spot(1, 0.50f, 0.74f);       // the asked man: the gauge a little above him
   const float w = 272.f * k7, h = 15.f * k7, slant = 6.f * k7;
   const float x = std::clamp(over.x - w * 0.5f, 20.f * k7, W - w - 20.f * k7) + shake;
-  const float y = std::clamp(over.y - 96.f * k7, 60.f * k7, H - 80.f * k7) + shake * 0.3f;
+  const float y = std::clamp(over.y - 100.f * k7, 60.f * k7, H - 80.f * k7) + shake * 0.3f;
   // "I QUIT" over the bar, whiter and whiter
   const float white = g_white.load();
   const int g = int(150 + 105 * white);
