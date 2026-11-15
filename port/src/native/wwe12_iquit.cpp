@@ -610,6 +610,17 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
   return 0;
 }
 
+// From the hook of sub_8267CF38 (wwe12_kind_probe.cpp), the function every reader of the match's record calls.
+void Wwe12IQuitRules() {
+  if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch())
+    return;
+  for (u32 k : {3u, 10u, 29u, 63u})
+    if (bd::mem::load<u8>(0x8317C850 + k) != 0) {
+      bd::mem::store<u8>(0x8317C850 + k, 0);
+      BD_INFO("[iquit] regle du match + {} mise a 0 (comme EXTREME RULES)", k);
+    }
+}
+
 // Once per game frame during a match (wwe12_match_modes.cpp, from the gauge hook of the first superstar).
 void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch()) {
@@ -622,11 +633,9 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   // as in a match with disqualifications). The match's record (104 bytes at 0x8317C850, read live by the game)
   // of a ONE ON ONE > EXTREME RULES match differs from the submission match's and the normal one's by four bytes
   // that are 1 there and 0 in it (the user's own matches, logged the same day): + 3, + 10, + 29, + 63. Set here.
-  for (u32 k : {3u, 10u, 29u, 63u})
-    if (bd::mem::try_load<u8>(0x8317C850 + k) != 0) {
-      bd::mem::store<u8>(0x8317C850 + k, 0);
-      BD_INFO("[iquit] regle du match + {} mise a 0 (comme EXTREME RULES)", k);
-    }
+  // (2026-11-15, later: set once a frame, the referee still took a table away - so now set before every read of
+  // the record, Wwe12IQuitRules below, in case something copies the rules while the match loads.)
+  Wwe12IQuitRules();
   u16 pressed[4];
   for (int p = 0; p < 4; ++p)
     pressed[p] = g_pressed[p].exchange(0);
@@ -642,19 +651,21 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     Spots(ctx, base, g_attacker, g_victim);
   else if (g_hint.load() && g_hint_place >= 0)
     Spots(ctx, base, g_hint_place, 1 - g_hint_place);
-  if (REXCVAR_GET(wwe12_iquit_ref_anim_cycle) > 0 || !REXCVAR_GET(wwe12_iquit_ref_anim_list).empty()) {  // (dev: every change of the referee's motion)
-    const u16 a = Anim(Actor(kReferee));
-    if (a != g_ref_seen) {
+  {  // (every change of the referee's motion, the first 1500: what he does with a weapon left in the ring)
+    static int s_ref_lines = 0;
+    const u16 a = Actor(kReferee) ? Anim(Actor(kReferee)) : 0xFFFF;
+    if (a != g_ref_seen && s_ref_lines < 1500) {
+      ++s_ref_lines;
       BD_INFO("[iquit] arbitre : motion {} -> {} (phase {})", g_ref_seen, a, phase);
-      g_ref_seen = a;
     }
+    g_ref_seen = a;
   }
-  {  // (each change of a superstar's motion, the first 600: what a taunt or an ask really gave him)
+  {  // (each change of a superstar's motion, the first 4000: what a taunt or an ask really gave him)
     static u16 s_seen[2] = {0xFFFF, 0xFFFF};
     static int s_lines = 0;
     for (int p = 0; p < 2; ++p) {
       const u16 a = Actor(p) ? Anim(Actor(p)) : 0xFFFF;
-      if (a != s_seen[p] && s_lines < 600) {
+      if (a != s_seen[p] && s_lines < 4000) {
         ++s_lines;
         BD_INFO("[iquit] catcheur {} : motion {} -> {} (phase {})", p, s_seen[p], a, phase);
       }
