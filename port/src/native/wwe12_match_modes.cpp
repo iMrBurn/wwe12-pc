@@ -527,9 +527,18 @@ bool IQuitText(u32 id) {
 thread_local bool g_iquit_text = false;   // the text being completed is an I QUIT one
 thread_local bool g_iquit_check = false;  // (any text, in an I Quit match: "SUBMISSION" becomes "I QUIT")
 
+std::string Wwe12DamagePageText(uint32_t id);  // wwe12_damage_page.cpp: BALANCING > DAMAGE's labels
+thread_local std::string g_damage_text;      // the label being served
+thread_local u32 g_damage_id = 0;
+
 u32 Wwe12MatchModesGameText(u32 id) {
   g_iquit_text = false;
   g_iquit_check = false;
+  g_damage_text = Wwe12DamagePageText(id);
+  if (!g_damage_text.empty()) {
+    g_damage_id = id;
+    return id;
+  }
   if (IQuitText(id)) {
     g_iquit_text = true;
     return id;
@@ -568,6 +577,18 @@ u32 Wwe12MatchModesGameText(u32 id) {
 
 // The game's text (guest address) completed with the place's value.
 u32 Wwe12MatchModesText(u32 game) {
+  if (!g_damage_text.empty()) {
+    static u32 s_buf = 0;
+    if (!s_buf)
+      s_buf = REX_KERNEL_MEMORY()->SystemHeapAlloc(5 * 64, 0x10);
+    if (!s_buf)
+      return game;
+    const u32 slot = s_buf + (g_damage_id - 44100) % 5 * 64;  // (one 64-byte slot per label id 44100-44104)
+    std::memset(bd::mem::at<char>(slot), 0, 64);
+    std::memcpy(bd::mem::at<char>(slot), g_damage_text.data(), std::min<size_t>(g_damage_text.size(), 63));
+    g_damage_text.clear();
+    return slot;
+  }
   if (g_iquit_check) {
     g_iquit_check = false;
     const char *g = game ? bd::mem::try_at<const char>(game) : nullptr;
