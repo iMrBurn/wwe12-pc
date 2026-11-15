@@ -1541,6 +1541,22 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       WriteHost(user_root / "mods_warning.txt", Bytes(text.begin(), text.end()));
       g_records.clear();  // (the kept pack's records are the save's already; its videos keep their numbers)
       g_moves.clear();
+      // The kept pack's motion banks are still ours to serve (user's test of 2026-11-15: a superstar mod taken out by
+      // another test left the pack "kept", this function returned here, and every I Quit motion of the pack - still
+      // in it, checked - was "not ready" in the match: no bank was sent to our copy any more).
+      {
+        std::lock_guard<std::mutex> lock(g_zmvm_mutex);
+        g_zmot_ours.clear();
+        for (const auto &m : motions) {
+          std::string up = m.bank.substr(0, 4);
+          for (auto &c : up)
+            c = char(std::toupper(static_cast<unsigned char>(c)));
+          if (!up.empty())
+            g_zmot_ours.insert(up);
+        }
+        for (const auto &b : g_zmot_ours)
+          REXLOG_INFO("[superstar mods] the game's bank /ZMOT/{} served with the motions mods' motions (kept pack)", b);
+      }
       return;
     }
     fs::remove(user_root / "mods_warning.txt", e2);
