@@ -135,6 +135,13 @@ int g_hint_place = -1;  // the human standing over his downed opponent (the "B A
 // breaks the hold, ten seconds without it and he quits. g_hold: our gauge runs for a hold; g_hold_answer: its answer
 // (1 "NO", 4 "I QUIT") for the hold's own decision function to take.
 bool g_hold = false;
+// The tick's last run (ms of the steady clock). The match's pause stops the tick: then the pads are the menu's again
+// and the overlay shows nothing (user, 2026-11-15: stuck in the pause menu during the gauge - A and B were ours).
+std::atomic<long long> g_tick_ms{0};
+long long NowMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+bool Paused() { return NowMs() - g_tick_ms.load() > 250; }
 std::atomic<int> g_hold_answer{0};
 // place a stands next to his downed opponent (the tick measures it; the pad hook reads it): only then can he ask
 // (user, 2026-11-15: "B ASK" showed from anywhere in the ring; WWE '13 asks from grappling distance, 200 cm)
@@ -533,7 +540,7 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
   const u16 newly = u16(buttons & ~before);
   if (newly)
     g_pressed[user].fetch_or(newly);
-  if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch())
+  if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch() || Paused())
     return 0;
   if (g_phase.load() != kIdle) {
     const bool attacker = g_attacker >= 0 && PadOf(g_attacker) == int(user);
@@ -566,6 +573,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   // WWE '13's ticks (1/60 s) from the real time (the game runs at 30 or 60)
   const double dt = std::clamp(std::chrono::duration<double>(now - g_last).count() * 60.0, 0.0, 4.0);
   g_last = now;
+  g_tick_ms = NowMs();
 
   MotionsTick(ctx, base, dt);
   const int phase = g_phase.load();
@@ -1093,6 +1101,8 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
  protected:
   void OnClose() override { g_shown = false; }
   void OnDraw(ImGuiIO &io) override {
+    if (Paused() && (g_phase.load() != kIdle || g_hint.load() || g_sub.load()))
+      return;  // (the pause menu: nothing of ours over it; the gauge is back with the match)
     const int phase = g_phase.load();
     const bool gauge = phase == kGauge || phase == kAnswer;
     const bool sub_only = phase == kIdle && g_sub.load();
