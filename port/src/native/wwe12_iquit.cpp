@@ -35,6 +35,8 @@ REXCVAR_DEFINE_BOOL(wwe12_iquit_ask, true, "WWE12",
                     "I Quit match: B next to a downed opponent calls the referee and starts the I QUIT gauge (as WWE '13).");
 REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim, 203, "WWE12",
                      "I Quit match: the referee's motion when he asks (a WWE '12 motion: 203 = his submission check).");
+REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim_cycle, 0, "WWE12",
+                     "Dev: each ask plays the next of this many motions from wwe12_iquit_ref_anim on (0 = always the same).");
 REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gauge's difficulty as WWE '13 (0-3).");
 
 #include <algorithm>
@@ -98,10 +100,14 @@ Clock::time_point g_last, g_sub_start, g_down_since[6], g_cpu_next_ask;
 std::mt19937 g_rng{std::random_device{}()};
 
 
-// the referee's asking motion (a WWE '12 one)
+// the referee's asking motion (a WWE '12 one; dev: the asks take turns over wwe12_iquit_ref_anim_cycle motions)
+int g_asks = 0;
+u16 g_ref_seen = 0xFFFF;
 u32 RefAsk() {
-  const int o = REXCVAR_GET(wwe12_iquit_ref_anim);
-  return o > 0 && o < 65535 ? u32(o) : 203;
+  const int o = REXCVAR_GET(wwe12_iquit_ref_anim), cycle = REXCVAR_GET(wwe12_iquit_ref_anim_cycle);
+  if (o <= 0 || o >= 65535)
+    return 203;
+  return u32(o) + (cycle > 1 && g_asks > 0 ? u32((g_asks - 1) % cycle) : 0);
 }
 
 u32 Actor(int i) { return bd::mem::try_load<u32>(kActors + u32(i) * 4); }
@@ -243,6 +249,7 @@ void StartAsk(const PPCContext &in, u8 *base, int attacker, int victim) {
   g_was_in_zone = false;
   g_phase = kCall;
   (void)att;
+  ++g_asks;
   PlayAnim(in, base, ref, RefAsk());  // the referee asks
   g_we_asked = true;
   BD_INFO("[iquit] le catcheur {} appelle l'arbitre pour le catcheur {} ({}{})", attacker, victim,
@@ -338,6 +345,13 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   g_last = now;
 
   const int phase = g_phase.load();
+  if (REXCVAR_GET(wwe12_iquit_ref_anim_cycle) > 0) {  // (dev: every change of the referee's motion)
+    const u16 a = Anim(Actor(kReferee));
+    if (a != g_ref_seen) {
+      BD_INFO("[iquit] arbitre : motion {} -> {} (phase {})", g_ref_seen, a, phase);
+      g_ref_seen = a;
+    }
+  }
   if (phase != kIdle) {
     g_phase_ticks += dt;
     const u32 vic = Actor(g_victim), att = Actor(g_attacker);
