@@ -81,6 +81,7 @@ REX_EXTERN(__imp__sub_82324418);  // a submission hold's decision, each frame of
 REX_EXTERN(__imp__sub_82229320);  // the game's tap-out (victim, winner)
 REX_EXTERN(__imp__sub_82323FD0);  // a hold: "he taps" (pressure at its top)
 REX_EXTERN(__imp__sub_82527010);  // the struggle's own meter and prompts, drawn
+REX_EXTERN(__imp__sub_8225C4D8);  // an actor's pad word delivered (pad object, word): the stick that walks him
 
 namespace {
 
@@ -334,6 +335,19 @@ void Spots(const PPCContext &in, u8 *base, int attacker, int victim) {
 
 // ---- WWE '13's motions: the referee's blocks, and a superstar's motion of ours with what he goes back to ----
 int g_ref_x = -1;    // the referee's block of 13201 (-1: not in it)
+// The referee walks to the asked man before he asks (WWE '13: he comes and kneels next to him; WWE '12's own referee
+// stops two metres from a hold and never comes closer - measured in the user's match of 2026-11-15).
+// Read in the code the same day: a computer-driven actor walks through a virtual pad. Each frame the pad update
+// (sub_8225BD20) asks the actor's AI for a pad word and delivers it with sub_8225C4D8(pad object, word); the word's
+// second byte is the stick, 0x80 | direction << 4 (eight directions, decoded by sub_82259848), its low half the
+// buttons. The AI's own "walk toward" (sub_82994230 -> sub_8298BCC0) makes it so: the world angle from the actor to
+// the point (sub_827D6BC8: atan2(-dz, dx) minus the constant at 0x82000ADC), in eighths of a turn, minus the camera's
+// angle (u16 at AI info + 162, 4096 a turn; info = [[[actor + 3384] + 76]]), looked up in the table at 0x8307B34C and
+// renumbered by sub_8298FB98. Here: while he must walk, the referee's word is replaced by that stick toward the spot.
+std::atomic<bool> g_ref_walk{false};                  // he is walking to the asked man
+std::atomic<float> g_ref_to_x{0.f}, g_ref_to_z{0.f};  // ... to this spot
+std::atomic<int> g_ref_pad_seen{0};                   // (his pad words delivered while he walks: 0 = no such pad)
+double g_ref_walk_t = 0, g_ref_walk_best = 0, g_ref_walk_best_t = 0;
 double g_ref_t = 0;  // ticks in it
 // A motion is asked from the game's queue first and played only once the queue has read it. (Played the frame it
 // was asked, the game looked it up in a list whose record was half made: a read at 0x00000F66 in sub_821D7150 when
@@ -504,7 +518,9 @@ void StartAsk(const PPCContext &in, u8 *base, int attacker, int victim) {
   if (Motions13()) {
     // WWE '13: the attacker calls the referee, the referee comes in with his question
     PlayFor(in, base, attacker, W13(13210), 0, 86, Idle(att) ? Anim(att) : 0);
-    RefBlock(in, base, 0);
+    g_ref_walk_t = 0, g_ref_walk_best = 1.0e9, g_ref_walk_best_t = 0;
+    g_ref_pad_seen = 0;
+    g_ref_walk = true;  // (the tick walks him there, then starts his question)
   } else {
     PlayAnim(in, base, ref, RefAsk());  // the referee asks
   }
@@ -568,6 +584,7 @@ void Answer(const PPCContext &in, u8 *base, int result) {
 
 void EndAsk(const PPCContext &in, u8 *base) {
   g_phase = kIdle;
+  g_ref_walk = false;
   const u32 ref = Actor(kReferee);
   if (g_ref_x == 0 || g_ref_x == 1) {  // WWE '13: the referee goes out (MotionsTick stands him up after it)
     RefBlock(in, base, g_result.load() == 4 ? 10 : 2);
@@ -753,6 +770,48 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     if (!g_hold && (!vic || !att || (!Down(vic) && Anim(vic) != 0xFFFF))) {
       BD_INFO("[iquit] le catcheur {} n'est plus au sol (anim {}) : plus de question", g_victim, Anim(vic));
       EndAsk(ctx, base);
+      return;
+    }
+    if (phase == kCall && g_ref_walk.load()) {
+      // The spot: 70 beside the asked man's chest, across his body's line (chest to head), on the referee's side.
+      const u32 ref = Actor(kReferee);
+      const u32 rp = ref ? bd::mem::try_load<u32>(ref + 768) : 0;
+      float chest[3], head[3];
+      bool arrived = !rp || !Bone(vic, 120, chest);
+      if (!arrived) {
+        const float rx = LoadF(rp), rz = LoadF(rp + 8);
+        float ax = 1.f, az = 0.f;
+        if (Bone(vic, 132, head) && std::hypot(head[0] - chest[0], head[2] - chest[2]) > 1.f) {
+          const float l = std::hypot(head[0] - chest[0], head[2] - chest[2]);
+          ax = -(head[2] - chest[2]) / l, az = (head[0] - chest[0]) / l;  // (across his line)
+        }
+        if ((rx - chest[0]) * ax + (rz - chest[2]) * az < 0)
+          ax = -ax, az = -az;
+        const float tx = chest[0] + ax * 70.f, tz = chest[2] + az * 70.f;
+        g_ref_to_x = tx, g_ref_to_z = tz;
+        const double d = std::hypot(tx - rx, tz - rz);
+        g_ref_walk_t += dt;
+        if (d < g_ref_walk_best - 3.0)
+          g_ref_walk_best = d, g_ref_walk_best_t = g_ref_walk_t;
+        // there, or held back (the ropes: the man is outside), or 5 s gone, or no pad of his to push
+        const char *why = d < 22.0                                             ? "arrive"
+                          : g_ref_walk_t - g_ref_walk_best_t > 40              ? "retenu"
+                          : g_ref_walk_t > 300                                 ? "trop long"
+                          : (g_ref_walk_t > 20 && g_ref_pad_seen.load() == 0) ? "pas de manette"
+                                                                               : nullptr;
+        if (why) {
+          arrived = true;
+          BD_INFO("[iquit] l'arbitre : {} a {:.0f} de sa place apres {:.0f} ticks ({} mots de manette)", why, d,
+                  g_ref_walk_t, g_ref_pad_seen.load());
+          // he faces the man (an actor faces (-sin h, -cos h): measured the same day)
+          bd::mem::store<float>(ref + 740, std::atan2(-(chest[0] - rx), -(chest[2] - rz)));
+        }
+      }
+      if (arrived) {
+        g_ref_walk = false;
+        RefBlock(ctx, base, 0);
+        g_phase_ticks = 0;  // (his question's way in, then the gauge)
+      }
       return;
     }
     if (phase == kCall) {
@@ -977,6 +1036,44 @@ extern "C" REX_FUNC(sub_82527010) {
   if (HoldRules() && HoldObject())
     return;
   __imp__sub_82527010(ctx, base);
+}
+
+// ---- the referee walks to the asked man: his pad's stick pushed toward the spot ----
+extern "C" REX_FUNC(sub_8225C4D8) {
+  const u32 pad = ctx.r3.u32;
+  if (g_ref_walk.load() && pad) {
+    const u32 ref = Actor(kReferee);
+    if (ref && bd::mem::try_load<u32>(pad + 116) == ref) {
+      g_ref_pad_seen.fetch_add(1);
+      const u32 rp = bd::mem::try_load<u32>(ref + 768);
+      u32 info = 0;
+      for (u32 a : {ref, Actor(1), Actor(0)}) {  // (the camera's angle: his own AI's, else a superstar's)
+        const u32 ai = a ? bd::mem::try_load<u32>(a + 3384) : 0, w = ai ? bd::mem::try_load<u32>(ai + 76) : 0;
+        info = w ? bd::mem::try_load<u32>(w) : 0;
+        if (info)
+          break;
+      }
+      if (rp) {
+        const float dx = g_ref_to_x.load() - LoadF(rp), dz = g_ref_to_z.load() - LoadF(rp + 8);
+        const float a = std::atan2(-dz, dx) - LoadF(0x82000ADC) + 4.f * 6.2831853f;
+        const u32 dir8 = (((u32(a * LoadF(0x82002E4C)) & 0xFFF) + 256) >> 9) & 7;
+        const u32 cam = info ? bd::mem::try_load<u16>(info + 162) : 0;
+        const u32 rel = u32(int32_t((dir8 << 9) - cam + 256) >> 9) & 7;
+        const u32 v = bd::mem::try_load<u32>(0x8307B34C + rel * 4);
+        static constexpr u32 kCode[8] = {2, 1, 8, 3, 7, 4, 5, 6};  // sub_8298FB98, for v = 2..9
+        if (v >= 2 && v <= 9) {
+          const u32 k = (kCode[v - 2] - 1) & 7;
+          ctx.r4.u64 = (0x80u | (k << 4)) << 16;
+        }
+        static std::atomic<int> s_lines{0};
+        if (s_lines.fetch_add(1) < 40)
+          BD_INFO("[iquit] l'arbitre marche : vers {:.0f} {:.0f} (ecart {:.0f} {:.0f}), huitieme {} camera {} -> {} table {} "
+                  "mot {:08X}",
+                  g_ref_to_x.load(), g_ref_to_z.load(), dx, dz, dir8, cam, rel, v, ctx.r4.u32);
+      }
+    }
+  }
+  __imp__sub_8225C4D8(ctx, base);
 }
 
 // ---- study: who gives the referee his motions (the callers of "play a motion" for him, in an I Quit match) ----
