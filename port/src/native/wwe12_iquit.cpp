@@ -89,6 +89,8 @@ REX_EXTERN(__imp__sub_82254518);  // a parked object of a type made live again (
 REX_EXTERN(__imp__sub_8221FAD0);  // play a motion on an actor and on the object he holds (actor, motion, block x)
 REX_EXTERN(__imp__sub_82250258);  // park an object (hidden, kept for later)
 REX_EXTERN(__imp__sub_82251388);  // an object's motion is over: what it does next (let go, lie on the mat...)
+REX_EXTERN(__imp__sub_821F5B70);  // a match's list of object models to load (142 with the record's byte + 12097)
+REX_EXTERN(__imp__sub_822EE080);  // a match's objects made at its start (a parked 142 with that byte)
 
 namespace {
 
@@ -1125,6 +1127,30 @@ extern "C" REX_FUNC(sub_82527010) {
   if (HoldRules() && HoldObject())
     return;
   __imp__sub_82527010(ctx, base);
+}
+
+// ---- the microphone asked from the game, at the two places that read the request ----
+// (Set from the hook of sub_8267CF38 only, the request was not there when these two ran - user's test of 2026-11-15,
+// 20:59: "demande au jeu" logged at the bell, no object 142 in the match. So it is set right before each.)
+namespace {
+void AskMic(const char *where) {
+  if (!REXCVAR_GET(wwe12_iquit_ask) || !REXCVAR_GET(wwe12_iquit_mic) || !REXCVAR_GET(wwe12_iquit_wwe13_motions) || !IQuitMatch())
+    return;
+  const u8 before = bd::mem::try_load<u8>(0x8317C850 + 12097);
+  bd::mem::store<u8>(0x8317C850 + 12097, 1);
+  BD_INFO("[iquit] micro : demande ({}), fiche du match type {}, drapeau avant {}", where, bd::mem::try_load<u8>(0x8317C850),
+          before);
+}
+}  // namespace
+extern "C" REX_FUNC(sub_821F5B70) {
+  AskMic("liste des modeles");
+  __imp__sub_821F5B70(ctx, base);
+}
+extern "C" REX_FUNC(sub_822EE080) {
+  AskMic("objets du match");
+  __imp__sub_822EE080(ctx, base);
+  if (IQuitMatch())
+    BD_INFO("[iquit] micro : apres la creation des objets, objet {:08X}", Mic());
 }
 
 // ---- the referee's microphone stays in his hand between the blocks of his question ----
