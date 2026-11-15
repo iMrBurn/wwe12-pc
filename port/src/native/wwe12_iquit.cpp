@@ -704,6 +704,35 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     g_hint = false;
 }
 
+// ---- a guard for the game's replay recorder ----
+// Each frame its thread (sub_829597D8 -> sub_82959CC0 -> ... -> sub_829741E0) asks every superstar's current
+// motion for an event (sub_82967DA8: the set at [[[actor + 3396] + 68] + 36] - a count at + 2, a table at + 4, its
+// data at + 8 - walked by sub_824A3AB8). The first WWE '13 motion a superstar played (the attacker's call, whose row
+// named a motion WWE '12 hasn't) handed it a set that was no set: a read at 0x07FD020C, the game gone (user's test
+// of 2026-11-15). The row is put right when the pack is built (m3_params::Insert); here a set whose pointers are no
+// guest addresses is answered "no event" instead of being walked.
+REX_EXTERN(__imp__sub_82967DA8);
+extern "C" REX_FUNC(sub_82967DA8) {
+  const auto in_guest = [](u32 p) { return p >= 0x30000000u && p < 0xF0000000u; };
+  const u32 actor = ctx.r4.u32;
+  const u32 part = in_guest(actor) ? bd::mem::try_load<u32>(actor + 3396) : 0;
+  const u32 motion = in_guest(part) ? bd::mem::try_load<u32>(part + 68) : 0;
+  const u32 set = in_guest(motion) ? bd::mem::try_load<u32>(motion + 36) : 0;
+  const bool bad = !in_guest(motion) ||
+                   (set && (!in_guest(set) || (bd::mem::try_load<u16>(set + 2) &&
+                                               (!in_guest(bd::mem::try_load<u32>(set + 4)) ||
+                                                !in_guest(bd::mem::try_load<u32>(set + 8))))));
+  if (bad) {
+    static std::atomic<int> s_logged{0};
+    if (s_logged.fetch_add(1) < 8)
+      BD_INFO("[iquit] ralenti : evenements illisibles pour l'acteur {:08X} (motion {}, objet {:08X}, jeu {:08X}) : ignores",
+              actor, in_guest(actor) ? Anim(actor) : 0xFFFF, motion, set);
+    ctx.r3.u64 = 0;
+    return;
+  }
+  __imp__sub_82967DA8(ctx, base);
+}
+
 // ---- motions added by a motions mod (WWE '13's, ported by the Mod Maker): known to the game's motion directory ----
 // A motion played by number is queued (sub_821D7480) and the queue's reader (sub_821D7C80) drops any number without a
 // record in the motion directory [0x8317B870]. In a match the directory's general slot (1) is built by

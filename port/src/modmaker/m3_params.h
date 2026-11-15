@@ -475,11 +475,27 @@ inline bool Read(const Bytes &b, Rows &r) {
 // m3 with `rows` added under `motion` (its rows in each table, in motion order; 0/3 starts and 0/4 events placed in
 // its hundred, the later rows of that hundred moved on; table 5's row numbers and count kept right). Each motion once:
 // one already there is left as it is. Empty on failure.
-inline Bytes Insert(const Bytes &m3, const std::vector<std::pair<int, Rows>> &adds) {
+// `together`: the sets come from one source and may name each other (0/6 +20, 0/1 +24: WWE '13's 13210 names 13211):
+// a row naming another set's source number gets that set's new number. (A motions mod's sets. Left as it was, the
+// row named a motion WWE '12 hasn't: the first WWE '13 motion a superstar played crashed the game's replay recorder,
+// which read the named motion's events - sub_82967DA8, user's test of 2026-11-15.) Not for sets made from WWE '12's
+// own rows, whose other numbers are the game's.
+inline Bytes Insert(const Bytes &m3, const std::vector<std::pair<int, Rows>> &adds, bool together = false) {
   using namespace detail;
   Prm p;
   if (!p.Open(m3))
     return {};
+  std::map<int, int> renumbered;  // a set's source number -> its new one
+  if (together)
+    for (const auto &[motion, rs] : adds)
+      for (const auto &tab : Keyed()) {
+        const auto it = rs.rows.find(tab.name);
+        if (it != rs.rows.end() && !it->second.empty() && it->second[0].size() >= 2) {
+          if (U16(it->second[0], 0) != motion)
+            renumbered[U16(it->second[0], 0)] = motion;
+          break;
+        }
+      }
   std::map<std::string, Bytes> t;
   for (const auto &tab : Keyed())
     t[tab.name] = p.Get(tab.name);
@@ -512,6 +528,8 @@ inline Bytes Insert(const Bytes &m3, const std::vector<std::pair<int, Rows>> &ad
         Put16(r, 0, motion);
         if (tab.self && U16(r, tab.self) != 0 && U16(r, tab.self) == U16(it->second[0], 0))
           Put16(r, tab.self, motion);
+        else if (tab.self && renumbered.count(U16(r, tab.self)))
+          Put16(r, tab.self, renumbered[U16(r, tab.self)]);
       }
       if (std::string(tab.name) == "0/3") {
         // where its events go: after every event of the rows before (the counts in order); its starts from the

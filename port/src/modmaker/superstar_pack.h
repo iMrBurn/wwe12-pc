@@ -1355,7 +1355,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     if (made && !extra_rows.empty()) {
       const Bytes &base_m3 = m3_out.empty() ? in.m3 : m3_out;
       if (!base_m3.empty())
-        m3_out = m3_params::Insert(base_m3, extra_rows);
+        m3_out = m3_params::Insert(base_m3, extra_rows, true);  // (a motions mod: its sets may name each other)
     }
     if (why && !made)
       *why += (why->empty() ? "" : "; ") + std::string("the motions mods' motions could not be added");
