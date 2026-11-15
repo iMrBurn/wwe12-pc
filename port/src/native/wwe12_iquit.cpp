@@ -39,9 +39,9 @@ REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim_cycle, 0, "WWE12",
                      "Dev: each ask plays the next of this many motions from wwe12_iquit_ref_anim on (0 = always the same).");
 REXCVAR_DEFINE_STRING(wwe12_iquit_ref_anim_list, "", "WWE12",
                       "Dev: each ask plays the next motion of this list (numbers with commas), instead of the above.");
-REXCVAR_DEFINE_BOOL(wwe12_iquit_wwe13_motions, false, "WWE12",
-                    "I Quit match: play WWE '13's own motions (a motions mod made from the player's WWE '13: 132NN as "
-                    "131(NN + 50)).");
+REXCVAR_DEFINE_BOOL(wwe12_iquit_wwe13_motions, true, "WWE12",
+                    "I Quit match: WWE '13's own motions and images (in the exe since 2026-11-15, 132NN as 131(NN + 50); "
+                    "false: WWE '12's motions and our drawing).");
 REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gauge's difficulty as WWE '13 (0-3).");
 
 #include <algorithm>
@@ -976,6 +976,46 @@ extern "C" REX_FUNC(sub_8246E3B0) {
   __imp__sub_8246E3B0(ctx, base);
 }
 
+// ---- WWE '13's I Quit files in the exe ----
+// Resource 102 (port/res/iquit13.bin, tools/pack_iquit13.py): the 17 motions (<number>.high / .m3) and the HUD
+// images (hud/<language>/<name>.dds). The user's decision of 2026-11-15: the I Quit match as WWE '13's for every
+// player, no mod needed - WWE '13's data in the exe, the DMCA risk his (as the PS3 button icons). A motions mod
+// with the same numbers, or a hud folder of its own, goes first.
+const std::vector<std::pair<std::string, std::vector<uint8_t>>> &Wwe12IQuit13Files() {
+  static const std::vector<std::pair<std::string, std::vector<uint8_t>>> files = [] {
+    std::vector<std::pair<std::string, std::vector<uint8_t>>> out;
+#ifdef _WIN32
+    HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(102), MAKEINTRESOURCEW(10));  // 10 = RT_RCDATA
+    HGLOBAL mem = res ? LoadResource(nullptr, res) : nullptr;
+    const uint8_t *d = mem ? static_cast<const uint8_t *>(LockResource(mem)) : nullptr;
+    const size_t size = res ? SizeofResource(nullptr, res) : 0;
+    if (d && size >= 8 && !std::memcmp(d, "IQ13", 4)) {
+      uint32_t count;
+      std::memcpy(&count, d + 4, 4);
+      size_t o = 8;
+      for (uint32_t i = 0; i < count && o + 2 <= size; ++i) {
+        uint16_t nlen;
+        std::memcpy(&nlen, d + o, 2);
+        o += 2;
+        if (o + nlen + 4 > size)
+          break;
+        std::string name(reinterpret_cast<const char *>(d + o), nlen);
+        o += nlen;
+        uint32_t len;
+        std::memcpy(&len, d + o, 4);
+        o += 4;
+        if (o + len > size)
+          break;
+        out.emplace_back(std::move(name), std::vector<uint8_t>(d + o, d + o + len));
+        o += len;
+      }
+    }
+#endif
+    return out;
+  }();
+  return files;
+}
+
 // ---- WWE '13's own I Quit images (the player's own, from his WWE '13) ----
 // WWE '13 keeps its I Quit HUD in pac\game2dHD.pac, one set per language (G?2D/BASE, child 16): "I QUIT" red and
 // grey, a glow, the A button and "NO!", the D-pad and "THREATEN", the B button and "ASK HIM", the "NO" mark of the
@@ -1029,13 +1069,22 @@ void Wwe12IQuitFonts(ImFontAtlas *atlas) {
       if (dir.empty() && fs::exists(it->path() / "hud" / l / "3_1.dds", ec))
         dir = it->path() / "hud" / l;
   }
-  if (dir.empty())
+  const bool builtin = dir.empty();
+  if (builtin && (!REXCVAR_GET(wwe12_iquit_wwe13_motions) || Wwe12IQuit13Files().empty()))
     return;
   // each image cut to what it shows (the textures are padded: the B button sits at the right of a 256 x 32 one)
   std::vector<svrfmt::Image> cut(kImgCount);
   for (int i = 0; i < kImgCount; ++i) {
-    std::ifstream f(dir / (std::string(kImgFile[i]) + ".dds"), std::ios::binary);
-    const svrfmt::Bytes dds((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    svrfmt::Bytes dds;
+    if (builtin) {
+      for (const char *l : {lang, "en"})
+        for (const auto &[name, data] : Wwe12IQuit13Files())
+          if (dds.empty() && name == std::string("hud/") + l + "/" + kImgFile[i] + ".dds")
+            dds = data;
+    } else {
+      std::ifstream f(dir / (std::string(kImgFile[i]) + ".dds"), std::ios::binary);
+      dds.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    }
     svrfmt::Image im;
     if (dds.empty() || !svrfmt::DdsDecode(dds, im) || im.w <= 0 || im.h <= 0 || im.rgba.size() < size_t(im.w) * im.h * 4)
       return;
@@ -1075,7 +1124,8 @@ void Wwe12IQuitFonts(ImFontAtlas *atlas) {
   }
   g_atlas = atlas;
   g_hud = true;
-  BD_INFO("[iquit] images de WWE '13 chargees ({}), atlas {} x {}", rex::path_to_utf8(dir), tw, th);
+  BD_INFO("[iquit] images de WWE '13 chargees ({}), atlas {} x {}", builtin ? std::string("de l'exe, ") + lang : rex::path_to_utf8(dir),
+          tw, th);
 }
 
 // ---- the gauge, drawn over the game ----

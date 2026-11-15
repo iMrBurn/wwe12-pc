@@ -59,6 +59,10 @@
 #include "../modmaker/superstar_pack.h"
 #include "../modmaker/svrfmt/jboy.h"
 
+REXCVAR_DECLARE(bool, wwe12_iquit);                // wwe12_match_modes.cpp
+REXCVAR_DECLARE(bool, wwe12_iquit_wwe13_motions);  // wwe12_iquit.cpp
+// WWE '13's I Quit files in the exe (wwe12_iquit.cpp): name, bytes
+const std::vector<std::pair<std::string, std::vector<uint8_t>>> &Wwe12IQuit13Files();
 REXCVAR_DEFINE_BOOL(wwe12_superstar_mods, true, "WWE12",
                     "Added superstars (superstar mods) as a DLC pack made at startup.");
 REXCVAR_DEFINE_BOOL(wwe12_added_moves, false, "WWE12",
@@ -1272,6 +1276,31 @@ void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::
       REXLOG_INFO("[superstar mods] motions mod {}: {} motion(s){}", rex::path_to_utf8(d.filename()), n,
                   into_bank.empty() ? std::string() : " into " + into_bank + " group " + std::to_string(into_group));
     }
+  }
+  // WWE '13's I Quit motions, in the exe (wwe12_iquit.cpp, resource 102): for every player, unless a motions mod
+  // already brings a number or the option is off. Into the referee's group of the game's bank, as that mod.
+  if (REXCVAR_GET(wwe12_iquit) && REXCVAR_GET(wwe12_iquit_wwe13_motions)) {
+    size_t n = 0;
+    for (const auto &[name, data] : Wwe12IQuit13Files()) {
+      if (name.size() < 6 || name.find('/') != std::string::npos || name.substr(name.size() - 5) != ".high")
+        continue;
+      superstar_pack::ExtraMotion x;
+      x.motion = atoi(name.c_str());
+      if (x.motion <= 0 || x.motion > 0xFFFF ||
+          std::any_of(motions.begin(), motions.end(), [&](const auto &m) { return m.motion == x.motion; }))
+        continue;
+      x.high = data;
+      const std::string m3 = name.substr(0, name.size() - 5) + ".m3";
+      for (const auto &[other, rows] : Wwe12IQuit13Files())
+        if (other == m3)
+          x.m3 = rows;
+      x.bank = "CA07";
+      x.group = 33;
+      motions.push_back(std::move(x));
+      ++n;
+    }
+    if (n)
+      REXLOG_INFO("[superstar mods] I Quit: {} motion(s) of the exe into CA07 group 33", n);
   }
   if (list.empty() && attires.empty() && media.empty() && signs.empty() && movesets.empty() && motions.empty()) {
     AddRestores(GameChEtc(vfs, content));
