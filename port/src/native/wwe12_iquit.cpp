@@ -48,13 +48,21 @@ REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gaug
 #include <cstring>
 #include <functional>
 #include <initializer_list>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <random>
 #include <string>
 #include <vector>
 
 #include <imgui.h>
+#include <rex/filesystem.h>
 #include <rex/ui/imgui_dialog.h>
 #include <rex/ui/imgui_drawer.h>
+
+#include "../modmaker/svrfmt/texture.h"
+
+REXCVAR_DECLARE(uint32_t, user_language);
 
 #include "svr_hook.h"
 #include "core/logging.h"
@@ -95,6 +103,7 @@ std::atomic<int> g_ask{0};         // a human's B next to a downed opponent: his
 std::atomic<int> g_taunt{0};       // a human attacker's taunt during the ask: the D-pad bit
 std::atomic<bool> g_hint{false};   // the "B ASK HIM" prompt is shown
 std::atomic<bool> g_sub{false};    // a submission of the game itself in the I Quit match: "I QUIT" shown over it
+std::atomic<bool> g_asked_human{false}, g_asker_human{false};  // (for the overlay's prompts: a pad plays him)
 int g_attacker = -1, g_victim = -1;
 bool g_face_down = false, g_cpu_victim = false, g_we_asked = false;
 double g_ticks = 0, g_phase_ticks = 0, g_lockout = 0, g_threat = -1, g_cpu_press_at = -1;
@@ -256,6 +265,8 @@ void StartAsk(const PPCContext &in, u8 *base, int attacker, int victim) {
   const u32 att = Actor(attacker), vic = Actor(victim), ref = Actor(kReferee);
   g_face_down = FaceDown(vic);
   g_cpu_victim = PadOf(victim) < 0;
+  g_asked_human = !g_cpu_victim;
+  g_asker_human = PadOf(attacker) >= 0;
   g_phase_ticks = 0;
   g_ticks = 0;
   g_result = 0;
@@ -535,6 +546,108 @@ extern "C" REX_FUNC(sub_8246E3B0) {
   __imp__sub_8246E3B0(ctx, base);
 }
 
+// ---- WWE '13's own I Quit images (the player's own, from his WWE '13) ----
+// WWE '13 keeps its I Quit HUD in pac\game2dHD.pac, one set per language (G?2D/BASE, child 16): "I QUIT" red and
+// grey, a glow, the A button and "NO!", the D-pad and "THREATEN", the B button and "ASK HIM", the "NO" mark of the
+// gauge. A motions mod carries them as hud\<en|fr|de|it|es>\<name>.dds (name = the texture's place in child 16).
+// They ride in the overlay's font atlas (rects added in the font set-up, the atlas built, the pixels copied in -
+// checked against the SDK's ImGui outside the game, 2026-11-15): no texture of ours to make while the game draws.
+// Without them the overlay keeps its own drawing.
+namespace {
+enum { kImgQuitRed, kImgQuitGrey, kImgGlow, kImgA, kImgNo, kImgDpad, kImgThreat, kImgB, kImgAsk, kImgNoMark, kImgCount };
+constexpr const char *kImgFile[kImgCount] = {"0_0", "0_1", "0_2", "1_0", "1_1", "2_0", "2_1", "3_0", "3_1", "90_0"};
+struct HudImg {
+  ImFontAtlasRectId id = -1;
+  int w = 0, h = 0;
+};
+HudImg g_img[kImgCount];
+ImFontAtlas *g_atlas = nullptr;
+bool g_hud = false;
+
+// an image `high` pixels high, its left edge at x and its middle at y; its width (0: no image)
+float Img(ImDrawList *dl, int i, float x, float y, float high, ImU32 colour = IM_COL32_WHITE) {
+  ImFontAtlasRect r;
+  if (!g_hud || !g_atlas->GetCustomRect(g_img[i].id, &r) || g_img[i].h <= 0)
+    return 0.f;
+  const float wide = high * float(g_img[i].w) / float(g_img[i].h);
+  dl->AddImage(g_atlas->TexRef, ImVec2(x, y - high * 0.5f), ImVec2(x + wide, y + high * 0.5f), r.uv0, r.uv1, colour);
+  return wide;
+}
+float Wide(int i, float high) { return g_hud && g_img[i].h > 0 ? high * float(g_img[i].w) / float(g_img[i].h) : 0.f; }
+}  // namespace
+
+// From the app's font set-up (wwe12_app.h, OnConfigureFonts): before the overlay's atlas is built.
+void Wwe12IQuitFonts(ImFontAtlas *atlas) {
+  namespace fs = std::filesystem;
+  if (!atlas)
+    return;
+  const char *lang = "en";
+  switch (REXCVAR_GET(user_language)) {
+    case 3: lang = "de"; break;
+    case 4: lang = "fr"; break;
+    case 5: lang = "es"; break;
+    case 6: lang = "it"; break;
+    default: break;
+  }
+  std::error_code ec;
+  fs::path dir;
+  for (fs::directory_iterator it(rex::filesystem::GetExecutableFolder() / "mods" / ".svrmods" / "Motions", ec), end;
+       !ec && it != end && dir.empty(); it.increment(ec)) {
+    if (!it->is_directory(ec) || fs::exists(it->path() / "disabled", ec))
+      continue;
+    for (const char *l : {lang, "en"})
+      if (dir.empty() && fs::exists(it->path() / "hud" / l / "3_1.dds", ec))
+        dir = it->path() / "hud" / l;
+  }
+  if (dir.empty())
+    return;
+  // each image cut to what it shows (the textures are padded: the B button sits at the right of a 256 x 32 one)
+  std::vector<svrfmt::Image> cut(kImgCount);
+  for (int i = 0; i < kImgCount; ++i) {
+    std::ifstream f(dir / (std::string(kImgFile[i]) + ".dds"), std::ios::binary);
+    const svrfmt::Bytes dds((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    svrfmt::Image im;
+    if (dds.empty() || !svrfmt::DdsDecode(dds, im) || im.w <= 0 || im.h <= 0 || im.rgba.size() < size_t(im.w) * im.h * 4)
+      return;
+    int x0 = im.w, y0 = im.h, x1 = -1, y1 = -1;
+    for (int y = 0; y < im.h; ++y)
+      for (int x = 0; x < im.w; ++x)
+        if (im.rgba[(size_t(y) * im.w + x) * 4 + 3] > 8)
+          x0 = std::min(x0, x), x1 = std::max(x1, x), y0 = std::min(y0, y), y1 = std::max(y1, y);
+    if (x1 < x0 || y1 < y0)
+      return;
+    svrfmt::Image &c = cut[size_t(i)];
+    c.w = x1 - x0 + 1, c.h = y1 - y0 + 1;
+    c.rgba.resize(size_t(c.w) * c.h * 4);
+    for (int y = 0; y < c.h; ++y)
+      std::memcpy(&c.rgba[size_t(y) * c.w * 4], &im.rgba[(size_t(y0 + y) * im.w + x0) * 4], size_t(c.w) * 4);
+  }
+  for (int i = 0; i < kImgCount; ++i) {
+    g_img[i].w = cut[size_t(i)].w, g_img[i].h = cut[size_t(i)].h;
+    g_img[i].id = atlas->AddCustomRect(g_img[i].w + 2, g_img[i].h + 2);  // (a clear pixel all round: no bleeding)
+    if (g_img[i].id < 0)
+      return;
+  }
+  unsigned char *px = nullptr;
+  int tw = 0, th = 0;
+  atlas->GetTexDataAsRGBA32(&px, &tw, &th);  // (builds the atlas: the rects have their place)
+  if (!px)
+    return;
+  for (int i = 0; i < kImgCount; ++i) {
+    ImFontAtlasRect r;
+    if (!atlas->GetCustomRect(g_img[i].id, &r) || r.x + r.w > tw || r.y + r.h > th)
+      return;
+    for (int y = 0; y < r.h; ++y)
+      std::memset(px + (size_t(r.y + y) * tw + r.x) * 4, 0, size_t(r.w) * 4);
+    for (int y = 0; y < g_img[i].h; ++y)
+      std::memcpy(px + (size_t(r.y + 1 + y) * tw + r.x + 1) * 4, &cut[size_t(i)].rgba[size_t(y) * g_img[i].w * 4],
+                  size_t(g_img[i].w) * 4);
+  }
+  g_atlas = atlas;
+  g_hud = true;
+  BD_INFO("[iquit] images de WWE '13 chargees ({}), atlas {} x {}", rex::path_to_utf8(dir), tw, th);
+}
+
 // ---- the gauge, drawn over the game ----
 
 namespace {
@@ -562,6 +675,14 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
     const float k = std::max(0.6f, io.DisplaySize.y / 1080.0f);
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImFont *font = ImGui::GetFont();
+    const float k7 = io.DisplaySize.y / 720.0f;  // (WWE '13's images are made for 720 lines)
+    if (hint_only && g_hud) {
+      // WWE '13's own prompt, where the game shows its button prompts ("Y FINISHER"): the B button and "ASK HIM"
+      const float px = io.DisplaySize.x * 0.335f, py = io.DisplaySize.y * 0.902f;
+      const float bw = Img(dl, kImgB, px, py, float(g_img[kImgB].h) * k7);
+      Img(dl, kImgAsk, px + bw + 6.f * k7, py, float(g_img[kImgAsk].h) * k7);
+      return;
+    }
     if (hint_only) {
       // the button prompt: a red B and "ASK HIM", low in the middle of the screen
       const char *ask = "ASK HIM";
@@ -585,12 +706,21 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
     // "I QUIT", whiter and whiter (one step a second)
     const float white = g_white.load();
     const int g = int(90 + 165 * white);
-    const char *title = "I QUIT";
-    const float ts = 34.f * k;
-    const ImVec2 tsz = font->CalcTextSizeA(ts, FLT_MAX, 0.f, title);
-    dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f + 2 * k, y - tsz.y - 6 * k + 2 * k), IM_COL32(0, 0, 0, 200),
-                title);
-    dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f, y - tsz.y - 6 * k), IM_COL32(g, g, g, 255), title);
+    if (g_hud) {
+      // WWE '13's "I QUIT": the grey one, the red one showing through as the seconds go
+      const float th = float(g_img[kImgQuitRed].h) * k7, tw = Wide(kImgQuitRed, th);
+      const float tx = x + w * 0.5f - tw * 0.5f, ty = y - th * 0.5f - 8.f * k7;
+      const float gh = tw * float(g_img[kImgQuitGrey].h) / float(std::max(g_img[kImgQuitGrey].w, 1));
+      Img(dl, kImgQuitGrey, tx, ty, gh);
+      Img(dl, kImgQuitRed, tx, ty, th, IM_COL32(255, 255, 255, int(255 * white)));
+    } else {
+      const char *title = "I QUIT";
+      const float ts = 34.f * k;
+      const ImVec2 tsz = font->CalcTextSizeA(ts, FLT_MAX, 0.f, title);
+      dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f + 2 * k, y - tsz.y - 6 * k + 2 * k),
+                  IM_COL32(0, 0, 0, 200), title);
+      dl->AddText(font, ts, ImVec2(x + w * 0.5f - tsz.x * 0.5f, y - tsz.y - 6 * k), IM_COL32(g, g, g, 255), title);
+    }
     if (sub_only)
       return;  // (a submission of the game: its own meter, our title over it)
     // the bar (0-124), the "NO" zone and the cursor
@@ -602,6 +732,35 @@ class IQuitOverlay final : public rex::ui::ImGuiDialog {
     dl->AddRectFilled(ImVec2(z0, y + 3 * k), ImVec2(z1, y + h - 3 * k), IM_COL32(210, 20, 20, 255));
     const float cx = x + w * (g_cursor.load() / kBar);
     dl->AddRectFilled(ImVec2(cx - 3 * k, y - 6 * k), ImVec2(cx + 3 * k, y + h + 6 * k), IM_COL32(255, 255, 255, 255));
+    if (g_hud) {
+      // WWE '13's "NO" mark under the zone; the asked man's prompt (A, "NO!") and the attacker's (D-pad, "THREATEN")
+      const float mh = float(g_img[kImgNoMark].h) * k7;
+      Img(dl, kImgNoMark, (z0 + z1) * 0.5f - Wide(kImgNoMark, mh) * 0.5f, y + h + 6.f * k7 + mh * 0.5f, mh);
+      const float py = y + h + 6.f * k7 + mh + 22.f * k7;
+      if (g_asked_human.load() && !g_result.load()) {
+        const float aw = Img(dl, kImgA, x, py, float(g_img[kImgA].h) * k7);
+        Img(dl, kImgNo, x + aw + 6.f * k7, py, float(g_img[kImgNo].h) * k7);
+      }
+      if (g_asker_human.load() && !g_result.load()) {
+        const float lh = float(g_img[kImgThreat].h) * k7, dh = float(g_img[kImgDpad].h) * k7;
+        const float total = Wide(kImgDpad, dh) + 6.f * k7 + Wide(kImgThreat, lh);
+        const float dw = Img(dl, kImgDpad, x + w - total, py, dh);
+        Img(dl, kImgThreat, x + w - total + dw + 6.f * k7, py, lh);
+      }
+      if (const int r = g_result.load()) {
+        // the answer: "NO!" twice its size, or the red "I QUIT" with its glow
+        const float cx0 = io.DisplaySize.x * 0.5f, cy0 = py + 44.f * k7;
+        if (r == 1) {
+          const float rh = float(g_img[kImgNo].h) * k7 * 2.f;
+          Img(dl, kImgNo, cx0 - Wide(kImgNo, rh) * 0.5f, cy0, rh);
+        } else {
+          const float gl = float(g_img[kImgGlow].h) * k7 * 3.f, rh = float(g_img[kImgQuitRed].h) * k7 * 1.5f;
+          Img(dl, kImgGlow, cx0 - Wide(kImgGlow, gl) * 0.5f, cy0, gl, IM_COL32(255, 255, 255, 150));
+          Img(dl, kImgQuitRed, cx0 - Wide(kImgQuitRed, rh) * 0.5f, cy0, rh);
+        }
+      }
+      return;
+    }
     const char *non = "NO";
     const float ns = 26.f * k;
     const ImVec2 nsz = font->CalcTextSizeA(ns, FLT_MAX, 0.f, non);

@@ -27,6 +27,7 @@
 #include "native/wwe12_display.h"
 // I QUIT gauge (native/wwe12_iquit.cpp): the drawer and a way to the UI thread
 void Wwe12IQuitOverlayInit(rex::ui::ImGuiDrawer* drawer, std::function<void(std::function<void()>)> post);
+void Wwe12IQuitFonts(ImFontAtlas* atlas);  // WWE '13's own I Quit images in the overlay's atlas (wwe12_iquit.cpp)
 #include "native/wwe12_graphics_menu.h"
 #include "native/wwe12_jukebox.h"
 #include <rex/input/input_system.h>
@@ -291,6 +292,9 @@ class Wwe12App : public rex::ReXApp {
     // mods : un menu.pac posé dans mods\ garde la priorité.
     Wwe12MountMenuPatch(fs, game_device, user_data_root_);
   }
+
+  // The overlay's font atlas, before it is built: the I Quit images of a motions mod ride in it.
+  void OnConfigureFonts(ImFontAtlas* atlas) override { Wwe12IQuitFonts(atlas); }
 
 #if defined(SVR_NATIVE_RENDERER)
   // Le device plume dessine les overlays ImGui au moment du Present.
