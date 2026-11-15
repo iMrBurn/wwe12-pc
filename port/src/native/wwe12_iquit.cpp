@@ -74,6 +74,7 @@ REXCVAR_DECLARE(uint32_t, user_language);
 #include "core/memory_helpers.h"
 
 bool Wwe12IQuitMatch();  // wwe12_match_modes.cpp: an I Quit match is set up
+bool IQuitMatch();       // wwe12_match_modes.cpp: I QUIT was the match chosen in the menu (true while it loads too)
 
 REX_EXTERN(__imp__sub_8247AD18);  // play an animation on an actor
 REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner)
@@ -591,6 +592,14 @@ void StartAsk(const PPCContext &in, u8 *base, int attacker, int victim) {
     g_ref_walk_t = 0, g_ref_walk_best = 1.0e9, g_ref_walk_best_t = 0;
     g_ref_pad_seen = 0;
     g_ref_walk = true;  // (the tick walks him there, then starts his question)
+    {
+      std::string types;
+      for (u32 i = 0; i < 72; ++i)
+        if (const u32 o = bd::mem::try_load<u32>(kObjects + i * 4))
+          types += fmt::format(" {}{}", bd::mem::try_load<u32>(o + 80), bd::mem::try_load<u32>(o + 3236) ? "p" : "");
+      BD_INFO("[iquit] micro : drapeau {} objet {:08X} ; objets du match (p = range) :{}", bd::mem::try_load<u8>(0x8317C850 + 12097),
+              Mic(), types);
+    }
   } else {
     PlayAnim(in, base, ref, RefAsk());  // the referee asks
   }
@@ -699,11 +708,18 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
 
 // From the hook of sub_8267CF38 (wwe12_kind_probe.cpp), the function every reader of the match's record calls.
 void Wwe12IQuitRules() {
+  // The game's own microphone, loaded and parked for this match (RefPlay). Asked for as soon as I QUIT is the match
+  // chosen in the menu: the model list is made while the match loads, when the record is not the match's yet (user's
+  // test of 2026-11-15, 19:02: the rules below were only set at the bell, and no microphone had been made).
+  if (REXCVAR_GET(wwe12_iquit_ask) && REXCVAR_GET(wwe12_iquit_mic) && REXCVAR_GET(wwe12_iquit_wwe13_motions) && IQuitMatch() &&
+      bd::mem::load<u8>(0x8317C850 + 12097) == 0) {
+    bd::mem::store<u8>(0x8317C850 + 12097, 1);
+    static std::atomic<int> s_lines{0};
+    if (s_lines.fetch_add(1) < 40)
+      BD_INFO("[iquit] micro : demande au jeu (fiche du match type {})", bd::mem::load<u8>(0x8317C850));
+  }
   if (!REXCVAR_GET(wwe12_iquit_ask) || !Wwe12IQuitMatch())
     return;
-  // (and the game's own microphone, loaded and parked for this match: RefPlay)
-  if (REXCVAR_GET(wwe12_iquit_mic) && REXCVAR_GET(wwe12_iquit_wwe13_motions) && bd::mem::load<u8>(0x8317C850 + 12097) == 0)
-    bd::mem::store<u8>(0x8317C850 + 12097, 1);
   for (u32 k : {3u, 10u, 27u, 63u})
     if (bd::mem::load<u8>(0x8317C850 + k) != 0) {
       bd::mem::store<u8>(0x8317C850 + k, 0);
@@ -867,8 +883,8 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
         if (d < g_ref_walk_best - 3.0)
           g_ref_walk_best = d, g_ref_walk_best_t = g_ref_walk_t;
         // there, or held back (the ropes: the man is outside), or 5 s gone, or no pad of his to push
-        const char *why = d < 22.0                                             ? "arrive"
-                          : g_ref_walk_t - g_ref_walk_best_t > 40              ? "retenu"
+        const char *why = d < 30.0                                             ? "arrive"
+                          : g_ref_walk_t - g_ref_walk_best_t > 18              ? "retenu"
                           : g_ref_walk_t > 300                                 ? "trop long"
                           : (g_ref_walk_t > 20 && g_ref_pad_seen.load() == 0) ? "pas de manette"
                                                                                : nullptr;
