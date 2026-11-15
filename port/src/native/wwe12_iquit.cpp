@@ -76,6 +76,10 @@ bool Wwe12IQuitMatch();  // wwe12_match_modes.cpp: an I Quit match is set up
 REX_EXTERN(__imp__sub_8247AD18);  // play an animation on an actor
 REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner)
 REX_EXTERN(__imp__sub_82520B90);  // a world point to the screen (float[4] in and out), the game's own
+REX_EXTERN(__imp__sub_82324418);  // a submission hold's decision, each frame of the struggle
+REX_EXTERN(__imp__sub_82229320);  // the game's tap-out (victim, winner)
+REX_EXTERN(__imp__sub_82323FD0);  // a hold: "he taps" (pressure at its top)
+REX_EXTERN(__imp__sub_82527010);  // the struggle's own meter and prompts, drawn
 
 namespace {
 
@@ -127,6 +131,11 @@ std::atomic<float> g_spot[2][2] = {{-1.f, -1.f}, {-1.f, -1.f}};
 std::atomic<float> g_threat_left{0.f};  // the running threat: what is left of it, 0-1
 int g_attacker = -1, g_victim = -1;
 int g_hint_place = -1;  // the human standing over his downed opponent (the "B ASK" prompt is his)
+// A submission hold in an I Quit match (WWE '13's second mode): the held man plays the gauge in the hold; "NO"
+// breaks the hold, ten seconds without it and he quits. g_hold: our gauge runs for a hold; g_hold_answer: its answer
+// (1 "NO", 4 "I QUIT") for the hold's own decision function to take.
+bool g_hold = false;
+std::atomic<int> g_hold_answer{0};
 // place a stands next to his downed opponent (the tick measures it; the pad hook reads it): only then can he ask
 // (user, 2026-11-15: "B ASK" showed from anywhere in the ring; WWE '13 asks from grappling distance, 200 cm)
 std::atomic<bool> g_near[2];
@@ -464,7 +473,7 @@ void StartGauge(const PPCContext &in, u8 *base) {
   g_phase = kGauge;
   ShowGauge();
   (void)ref;
-  if (Motions13())
+  if (Motions13() && !g_hold)
     PlayAnim(in, base, vic, W13(g_face_down ? 13209 : 13208));  // the asked man, held until he answers
   BD_INFO("[iquit] la jauge : vie {:.0f} %, zone {:.0f} de large en {:.0f}, vitesse {}", health * 100, g_width.load(),
           g_centre.load(), g_speed);
@@ -477,6 +486,13 @@ void Answer(const PPCContext &in, u8 *base, int result) {
   g_shake = 0.f;
   const u32 vic = Actor(g_victim), ref = Actor(kReferee);
   (void)ref;
+  if (g_hold) {
+    g_hold_answer = result;
+    BD_INFO("[iquit] prise : le catcheur {} {}", g_victim, result == 1 ? "resiste (NO), la prise casse" : "abandonne (I QUIT)");
+    if (result == 4)
+      GiveUp(in, base);
+    return;
+  }
   if (result == 1) {
     BD_INFO("[iquit] le catcheur {} resiste (NO)", g_victim);
     if (Motions13()) {
@@ -567,6 +583,21 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   if (phase != kIdle) {
     g_phase_ticks += dt;
     const u32 vic = Actor(g_victim), att = Actor(g_attacker);
+    if (g_hold) {
+      // a hold: over with the answer shown, or as soon as the hold itself is (released, the ropes, a hit)
+      u32 hold = 0;
+      for (int i = 0; i < 2 && !hold; ++i)
+        hold = Actor(i) ? bd::mem::try_load<u32>(Actor(i) + 3404) : 0;
+      const bool struggle = hold && bd::mem::try_load<u32>(hold + 32) == 2;
+      if ((phase == kAnswer && g_phase_ticks >= kAnswerTicks) || (phase != kAnswer && !struggle && g_ticks > 10)) {
+        g_phase = kIdle;
+        g_hold = false;
+        g_hold_answer = 0;
+        return;
+      }
+      if (phase == kAnswer)
+        return;
+    }
     if (phase == kAnswer) {
       const bool quit = g_result.load() == 4;
       if (g_phase_ticks >= (Motions13() ? (quit ? kQuitTicks13 : kNoTicks13) : kAnswerTicks)) {
@@ -578,7 +609,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     }
     // he got up (a strike that lifts him, a roll away...): the ask stops without an answer (WWE '13 result 3)
     // (65535: no motion read, e.g. a WWE '13 motion the game did not find: user's test of 2026-11-14 stopped there)
-    if (!vic || !att || (!Down(vic) && Anim(vic) != 0xFFFF)) {
+    if (!g_hold && (!vic || !att || (!Down(vic) && Anim(vic) != 0xFFFF))) {
       BD_INFO("[iquit] le catcheur {} n'est plus au sol (anim {}) : plus de question", g_victim, Anim(vic));
       EndAsk(ctx, base);
       return;
@@ -599,7 +630,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     if (taunt && g_threat < 0) {
       g_threat = 0;
       const int n = (taunt & kDpadUp) ? 1 : (taunt & kDpadRight) ? 2 : (taunt & kDpadDown) ? 3 : 4;
-      if (Motions13()) {
+      if (Motions13() && !g_hold) {  // (in a hold he keeps the hold: the gauge shakes, no motion)
         static constexpr double kLen[4] = {211, 231, 231, 281};
         PlayFor(ctx, base, g_attacker, W13(13229 + u32(n)), 0, kLen[n - 1], Idle(att) ? Anim(att) : 0);
       }
@@ -715,6 +746,94 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     ShowGauge();
   else if (!hint)
     g_hint = false;
+}
+
+// ---- a submission hold in an I Quit match: the gauge in the hold ----
+// Read in the generated code, 2026-11-15: a hold is one object ('BPMG', at [attacker + 3404]): + 36 the attacker,
+// + 40 the held man, + 32 its state (2 = the struggle), + 92 why it ends (0 it goes on, 7 he breaks free, 4 he
+// taps, 6 released / interrupted), + 112 the frames the attacker did nothing (5 s: released). Each frame of the
+// struggle sub_823260C8 zeroes + 92, calls sub_82324418 to decide and acts on + 92 at once. Here, in an I Quit
+// match: our gauge starts with the struggle; the game's own "he breaks free" and "he taps" are taken out, ours put
+// in ("NO" = 7; "I QUIT" = 4, the match ended by GiveUp); the idle counter kept at 0 so the hold lasts the ten
+// seconds. The game's tap-out (sub_82229320, sub_82323FD0) answers nothing while a hold runs, and the struggle's
+// own meter and prompts (sub_82527010) are not drawn.
+namespace {
+u32 HoldObject() {
+  for (int i = 0; i < 2; ++i)
+    if (const u32 a = Actor(i))
+      if (const u32 o = bd::mem::try_load<u32>(a + 3404))
+        return o;
+  return 0;
+}
+bool HoldRules() { return REXCVAR_GET(wwe12_iquit_ask) && Wwe12IQuitMatch(); }
+}  // namespace
+
+extern "C" REX_FUNC(sub_82324418) {
+  const u32 obj = ctx.r3.u32;
+  __imp__sub_82324418(ctx, base);
+  if (!HoldRules() || !obj)
+    return;
+  const u32 att = bd::mem::try_load<u32>(obj + 36), def = bd::mem::try_load<u32>(obj + 40);
+  const int pa = att && att == Actor(0) ? 0 : att && att == Actor(1) ? 1 : -1;
+  const int pv = def && def == Actor(0) ? 0 : def && def == Actor(1) ? 1 : -1;
+  if (pa < 0 || pv < 0 || pa == pv)
+    return;
+  bd::mem::store<u32>(obj + 112, 0);  // (the attacker is not "doing nothing": the gauge decides)
+  if (!g_hold && g_phase.load() == kIdle) {
+    g_hold = true;
+    g_hold_answer = 0;
+    g_attacker = pa;
+    g_victim = pv;
+    g_face_down = false;
+    g_cpu_victim = PadOf(pv) < 0;
+    g_asked_human = !g_cpu_victim;
+    g_asker_human = PadOf(pa) >= 0;
+    g_phase_ticks = 0;
+    g_result = 0;
+    g_white = 0.f;
+    g_shake = 0.f;
+    g_threat = -1;
+    g_lockout = 0;
+    g_cpu_press_at = -1;
+    g_was_in_zone = false;
+    g_hint = false;
+    BD_INFO("[iquit] prise de soumission : le catcheur {} tient le catcheur {} (motion {})", pa, pv,
+            bd::mem::try_load<u32>(obj + 44));
+    StartGauge(ctx, base);
+  }
+  if (!g_hold)
+    return;
+  u32 reason = bd::mem::try_load<u32>(obj + 92);
+  const int answer = g_hold_answer.exchange(0);
+  if (answer == 1)
+    reason = 7;
+  else if (answer == 4)
+    reason = 4;
+  else if (reason == 4 || reason == 7)
+    reason = 0;  // (the game's own tap or escape: not in an I Quit match)
+  bd::mem::store<u32>(obj + 92, reason);
+}
+
+extern "C" REX_FUNC(sub_82229320) {
+  if (HoldRules() && HoldObject()) {
+    static std::atomic<int> s_logged{0};
+    if (s_logged.fetch_add(1) < 8)
+      BD_INFO("[iquit] abandon du jeu ignore pendant une prise (la jauge decide)");
+    return;
+  }
+  __imp__sub_82229320(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_82323FD0) {
+  __imp__sub_82323FD0(ctx, base);
+  if (HoldRules())
+    ctx.r3.u64 = 0;
+}
+
+extern "C" REX_FUNC(sub_82527010) {
+  if (HoldRules() && HoldObject())
+    return;
+  __imp__sub_82527010(ctx, base);
 }
 
 // ---- no disqualification in an I Quit match ----
