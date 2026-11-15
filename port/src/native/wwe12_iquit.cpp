@@ -39,6 +39,9 @@ REXCVAR_DEFINE_INT32(wwe12_iquit_ref_anim_cycle, 0, "WWE12",
                      "Dev: each ask plays the next of this many motions from wwe12_iquit_ref_anim on (0 = always the same).");
 REXCVAR_DEFINE_STRING(wwe12_iquit_ref_anim_list, "", "WWE12",
                       "Dev: each ask plays the next motion of this list (numbers with commas), instead of the above.");
+REXCVAR_DEFINE_BOOL(wwe12_iquit_wwe13_motions, false, "WWE12",
+                    "I Quit match: play WWE '13's own motions (a motions mod made from the player's WWE '13: 132NN as "
+                    "131(NN + 50)).");
 REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gauge's difficulty as WWE '13 (0-3).");
 
 #include <algorithm>
@@ -88,6 +91,20 @@ constexpr double kLockout = 30;        // ticks frozen after a press outside the
 constexpr double kThreatTicks = 200;
 constexpr double kCallTicks = 60;      // the attacker calls, the referee kneels (then the gauge)
 constexpr double kAnswerTicks = 90;    // the answer shown
+// WWE '13's motions as the motions mod numbers them (132NN -> 131(NN + 50)), and what WWE '13 does with them (read
+// in its code, 2026-11-15; its mini-game 'IQMG' and the states IQuitMiniGame*):
+// - the attacker calls the referee: 13210 (86 frames);
+// - the referee asks a downed man with 13201: block 0 comes in (112 frames), 1 is the loop (165), 2 goes out after
+//   a "NO" or when the ask stops (211), 10 after "I QUIT" (291). (His microphone is a prop WWE '12 hasn't: none.
+//   Blocks 100-110 are a second layer WWE '13 blends in by the hand's distance: left out.)
+// - the asked man, once the referee is in his loop: 13208 lying face up, 13209 face down, held until the answer;
+// - "NO": he plays 13205 (face up, 406 frames) / 13206 (face down, 377), block 0; the attacker 13207 (429) if he
+//   stands idle (motions 20000-20598); 290 frames later the referee goes out;
+// - "I QUIT": he plays block 10 of 13205 / 13206; 265 frames later the referee goes out with block 10 and the match
+//   ends;
+// - the threat: the attacker plays 13229 + the taunt's direction (13230-13233: 211, 231, 231, 281 frames).
+constexpr u32 W13(u32 m) { return m - 50; }
+constexpr double kCallTicks13 = 112, kNoTicks13 = 290, kQuitTicks13 = 265;
 
 constexpr u32 kRefIdle = 20152;  // WWE '12's referee standing (seen in the probes)
 
@@ -115,6 +132,8 @@ bool g_was_in_zone = false;
 Clock::time_point g_last, g_sub_start, g_down_since[6], g_cpu_next_ask;
 std::mt19937 g_rng{std::random_device{}()};
 
+
+bool Motions13() { return REXCVAR_GET(wwe12_iquit_wwe13_motions); }
 
 // the referee's asking motion (a WWE '12 one; dev: the asks take turns over wwe12_iquit_ref_anim_cycle motions)
 int g_asks = 0;
@@ -160,9 +179,10 @@ bool IsOneOf(u16 a, std::initializer_list<u32> list) {
 // 20 / 21 getting up, 440-480 the ground pain and the slow getting up after a big move).
 bool Down(u32 actor) {
   const u16 a = Anim(actor);
-  return a <= 30 || (a >= 440 && a <= 480);
+  // (and WWE '13's asked / answering motions: he is still on the ground in them)
+  return a <= 30 || (a >= 440 && a <= 480) || IsOneOf(a, {W13(13205), W13(13206), W13(13208), W13(13209)});
 }
-bool FaceDown(u32 actor) { return Anim(actor) == 1; }
+bool FaceDown(u32 actor) { return IsOneOf(Anim(actor), {1, W13(13209), W13(13206)}); }
 
 // The pad of a place (the select object's places: +44, 255 = the computer).
 // (in a match the select object no longer says it: user's test of 2026-11-14, both superstars read as the computer.
@@ -195,15 +215,16 @@ float HealthRatio(u32 actor) {
   return sum / 4.f;
 }
 
-void PlayAnim(const PPCContext &in, u8 *base, u32 actor, u32 anim) {
-  if (!actor || !anim)
+// (x, y: the motion's block - a record's blocks are keyed {number, x, y})
+void PlayAnim(const PPCContext &in, u8 *base, u32 actor, u32 anim, u32 x = 0, u32 y = 0) {
+  if (!actor)
     return;
   PPCContext c = in;
   c.r1.u64 = (in.r1.u32 - 512) & ~15u;
   c.r3.u64 = actor;
   c.r4.u64 = anim;
-  c.r5.u64 = 0;
-  c.r6.u64 = 0;
+  c.r5.u64 = x;
+  c.r6.u64 = y;
   c.r8.u64 = 1;
   c.r9.u64 = 0;
   const u32 bits = bd::mem::try_load<u32>(0x82000AD8);  // (the float the game passes, lfs f1,2776 of 0x82000000)
@@ -214,9 +235,65 @@ void PlayAnim(const PPCContext &in, u8 *base, u32 actor, u32 anim) {
   // (for the Mod Maker: the motion queue sub_821D7480 / sub_821A55B8 reads the actor's bytes *[+684] and *[+688]
   // and [+92] with the number; logged to find the group a superstar's motions are read from)
   const u32 p684 = bd::mem::try_load<u32>(actor + 684), p688 = bd::mem::try_load<u32>(actor + 688);
-  BD_INFO("[iquit] motion {} sur {:08X} : +92 {} *+684 {} *+688 {} -> anim {}", anim, actor,
+  BD_INFO("[iquit] motion {} bloc {} sur {:08X} : +92 {} *+684 {} *+688 {} -> anim {}", anim, x, actor,
           bd::mem::try_load<u32>(actor + 92), p684 ? bd::mem::try_load<u8>(p684) : 255,
           p688 ? bd::mem::try_load<u8>(p688) : 255, Anim(actor));
+}
+
+// ---- WWE '13's motions: the referee's blocks, and a superstar's motion of ours with what he goes back to ----
+int g_ref_x = -1;    // the referee's block of 13201 (-1: not in it)
+double g_ref_t = 0;  // ticks in it
+void RefBlock(const PPCContext &in, u8 *base, int x) {
+  PlayAnim(in, base, Actor(kReferee), W13(13201), u32(x), 0);
+  g_ref_x = x;
+  g_ref_t = 0;
+}
+struct OurMotion {
+  u32 ours = 0;     // the motion we gave him (0: none)
+  u32 to = 0;       // ... and the one he takes back when it is over (0: left to the game)
+  double left = 0;  // ticks
+} g_ours[2];
+void PlayFor(const PPCContext &in, u8 *base, int place, u32 anim, u32 x, double ticks, u32 to) {
+  if (place < 0 || place > 1)
+    return;
+  PlayAnim(in, base, Actor(place), anim, x, 0);
+  g_ours[place] = {anim, to, ticks};
+}
+bool Idle(u32 actor) {
+  const u16 a = Anim(actor);
+  return a >= 20000 && a <= 20598;
+}
+void MotionsTick(const PPCContext &ctx, u8 *base, double dt) {
+  if (g_ref_x >= 0) {
+    const u32 ref = Actor(kReferee);
+    g_ref_t += dt;
+    static constexpr double kLen[4] = {112, 165, 211, 291};
+    const double len = kLen[g_ref_x == 0 ? 0 : g_ref_x == 1 ? 1 : g_ref_x == 2 ? 2 : 3];
+    if (!ref || Anim(ref) != u16(W13(13201))) {
+      g_ref_x = -1;  // (the game took him back)
+    } else if (g_ref_t >= len) {
+      if (g_ref_x <= 1) {
+        RefBlock(ctx, base, 1);  // in, then the loop again and again
+      } else {
+        PlayAnim(ctx, base, ref, kRefIdle);  // gone out: he stands
+        g_ref_x = -1;
+      }
+    }
+  }
+  for (int p = 0; p < 2; ++p) {
+    OurMotion &m = g_ours[p];
+    if (!m.ours)
+      continue;
+    const u32 a = Actor(p);
+    m.left -= dt;
+    if (!a || Anim(a) != u16(m.ours)) {
+      m = {};  // (the game gave him another motion)
+    } else if (m.left <= 0) {
+      if (m.to || m.ours == W13(13205) || m.ours == W13(13206))
+        PlayAnim(ctx, base, a, m.to);  // (0 / 1: lying on the mat again)
+      m = {};
+    }
+  }
 }
 
 // The game's own submission give-up (sub_82229320 -> sub_82261320(victim, 2, winner), read 2026-11-14): victim +999 =
@@ -282,9 +359,14 @@ void StartAsk(const PPCContext &in, u8 *base, int attacker, int victim) {
   g_cpu_press_at = -1;
   g_was_in_zone = false;
   g_phase = kCall;
-  (void)att;
   ++g_asks;
-  PlayAnim(in, base, ref, RefAsk());  // the referee asks
+  if (Motions13()) {
+    // WWE '13: the attacker calls the referee, the referee comes in with his question
+    PlayFor(in, base, attacker, W13(13210), 0, 86, Idle(att) ? Anim(att) : 0);
+    RefBlock(in, base, 0);
+  } else {
+    PlayAnim(in, base, ref, RefAsk());  // the referee asks
+  }
   g_we_asked = true;
   BD_INFO("[iquit] le catcheur {} appelle l'arbitre pour le catcheur {} ({}{})", attacker, victim,
           g_face_down ? "sur le ventre" : "sur le dos", g_cpu_victim ? ", ordinateur" : "");
@@ -307,6 +389,8 @@ void StartGauge(const PPCContext &in, u8 *base) {
   g_phase = kGauge;
   ShowGauge();
   (void)ref;
+  if (Motions13())
+    PlayAnim(in, base, vic, W13(g_face_down ? 13209 : 13208));  // the asked man, held until he answers
   BD_INFO("[iquit] la jauge : vie {:.0f} %, zone {:.0f} de large en {:.0f}, vitesse {}", health * 100, g_width.load(),
           g_centre.load(), g_speed);
 }
@@ -317,10 +401,19 @@ void Answer(const PPCContext &in, u8 *base, int result) {
   g_phase_ticks = 0;
   g_shake = 0.f;
   const u32 vic = Actor(g_victim), ref = Actor(kReferee);
+  (void)ref;
   if (result == 1) {
     BD_INFO("[iquit] le catcheur {} resiste (NO)", g_victim);
-    (void)vic;
-    (void)ref;
+    if (Motions13()) {
+      // "NO": his answer, then lying again; the attacker's reaction if he stands idle
+      PlayFor(in, base, g_victim, W13(g_face_down ? 13206 : 13205), 0, g_face_down ? 377 : 406, g_face_down ? 1 : 0);
+      const u32 att = Actor(g_attacker);
+      if (Idle(att))
+        PlayFor(in, base, g_attacker, W13(13207), 0, 429, Anim(att));
+    }
+  } else if (Motions13()) {
+    PlayAnim(in, base, vic, W13(g_face_down ? 13206 : 13205), 10, 0);  // "I QUIT": the match ends after it
+    g_ours[g_victim & 1] = {};
   } else {
     GiveUp(in, base);
   }
@@ -329,6 +422,10 @@ void Answer(const PPCContext &in, u8 *base, int result) {
 void EndAsk(const PPCContext &in, u8 *base) {
   g_phase = kIdle;
   const u32 ref = Actor(kReferee);
+  if (g_ref_x == 0 || g_ref_x == 1) {  // WWE '13: the referee goes out (MotionsTick stands him up after it)
+    RefBlock(in, base, g_result.load() == 4 ? 10 : 2);
+    return;
+  }
   if (ref && IsOneOf(Anim(ref), {203, RefAsk()}))
     PlayAnim(in, base, ref, kRefIdle);  // (the referee stands up again)
 }
@@ -351,7 +448,8 @@ u16 Wwe12IQuitPad(u32 user, u16 buttons) {
     const bool attacker = g_attacker >= 0 && PadOf(g_attacker) == int(user);
     if (attacker && g_phase.load() == kGauge && (newly & kPadDpad))
       g_taunt = newly & kPadDpad;
-    return u16(kPadA | kPadB);  // (the attacker's D-pad: the game's own taunt, our threat too)
+    // (the attacker's D-pad: the game's own taunt, our threat too; with WWE '13's motions the threat has its own)
+    return u16(kPadA | kPadB | (attacker && Motions13() ? kPadDpad : 0));
   }
   for (int a = 0; a < 2; ++a)
     if (PadOf(a) == int(user) && !Down(Actor(a)) && Down(Actor(1 - a))) {
@@ -378,6 +476,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
   const double dt = std::clamp(std::chrono::duration<double>(now - g_last).count() * 60.0, 0.0, 4.0);
   g_last = now;
 
+  MotionsTick(ctx, base, dt);
   const int phase = g_phase.load();
   if (REXCVAR_GET(wwe12_iquit_ref_anim_cycle) > 0 || !REXCVAR_GET(wwe12_iquit_ref_anim_list).empty()) {  // (dev: every change of the referee's motion)
     const u16 a = Anim(Actor(kReferee));
@@ -390,8 +489,12 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     g_phase_ticks += dt;
     const u32 vic = Actor(g_victim), att = Actor(g_attacker);
     if (phase == kAnswer) {
-      if (g_phase_ticks >= kAnswerTicks)
+      const bool quit = g_result.load() == 4;
+      if (g_phase_ticks >= (Motions13() ? (quit ? kQuitTicks13 : kNoTicks13) : kAnswerTicks)) {
+        if (quit && Motions13())
+          GiveUp(ctx, base);  // (WWE '13: the match ends once he has said it)
         EndAsk(ctx, base);
+      }
       return;
     }
     // he got up (a strike that lifts him, a roll away...): the ask stops without an answer (WWE '13 result 3)
@@ -402,7 +505,7 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
       return;
     }
     if (phase == kCall) {
-      if (g_phase_ticks >= kCallTicks)
+      if (g_phase_ticks >= (Motions13() ? kCallTicks13 : kCallTicks))
         StartGauge(ctx, base);
       return;
     }
@@ -417,7 +520,10 @@ void Wwe12IQuitTick(const PPCContext &ctx, u8 *base) {
     if (taunt && g_threat < 0) {
       g_threat = 0;
       const int n = (taunt & kDpadUp) ? 1 : (taunt & kDpadRight) ? 2 : (taunt & kDpadDown) ? 3 : 4;
-      (void)n;
+      if (Motions13()) {
+        static constexpr double kLen[4] = {211, 231, 231, 281};
+        PlayFor(ctx, base, g_attacker, W13(13229 + u32(n)), 0, kLen[n - 1], Idle(att) ? Anim(att) : 0);
+      }
       BD_INFO("[iquit] le catcheur {} menace son adversaire", g_attacker);
     }
     if (g_threat >= 0) {
@@ -534,7 +640,7 @@ REXCVAR_DEFINE_BOOL(wwe12_iquit_added_motions, false, "WWE12",
 REX_EXTERN(__imp__sub_8246E3B0);
 extern "C" REX_FUNC(sub_8246E3B0) {
   const u32 bitmap = ctx.r4.u32, slot = ctx.r5.u32;
-  if (REXCVAR_GET(wwe12_iquit_added_motions)) {
+  if (REXCVAR_GET(wwe12_iquit_added_motions) || REXCVAR_GET(wwe12_iquit_wwe13_motions)) {
     const bool made = bd::mem::try_load<u32>(ctx.r3.u32 + (slot + 188) * 4) != 0;
     static std::atomic<int> s_calls{0};
     if (s_calls.fetch_add(1) < 60)
