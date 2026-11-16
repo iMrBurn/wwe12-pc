@@ -42,43 +42,55 @@ whose graphics driver supports Vulkan with `bufferDeviceAddress` and `descriptor
 app tells you if yours does not; a custom Turnip driver can help on Snapdragon phones) and a
 recent Android. Touch controls or a controller. See the [FAQ](docs/FAQ.md).
 
-## Status (v1.1.0)
+## Status (v1.3.0)
 
-- Menus, matches (1 to 6 wrestlers) and entrances render natively at 60 fps on Windows
-  (Vulkan, DirectX 12 and DirectX 11 renderers). Entrances and cutscenes run at 30 fps like on
-  Xbox 360, or at 60 fps with an option.
+Latest release: **1.3.0** (PC and Android). Version 1.4 is in progress (see the roadmap below).
+
+- **Rendering**: menus, matches (1 to 6 wrestlers) and entrances run on Windows with Vulkan,
+  DirectX 12 and DirectX 11 renderers (see "What native means here" above). Three fixed frame
+  modes in OPTIONS > GRAPHICS > ADVANCED: the console's own rates, **60 fps in entrances and
+  victory scenes**, or **30 fps in matches** (experimental).
+- **Faster loading** than on the console (in our tests a match loads in about 1.5 s instead of
+  4 s, and the end of the entrances in about 1.9 s instead of 4.5 s), start-up videos skipped,
+  graphics shaders prepared in the background to avoid stutters. A **benchmark** test is in
+  the launcher.
 - **Launcher** (`WWE12 Launcher.exe`): settings, controls (controller navigation), mods,
   **saves** (backups, restore, **import of your Xbox 360 saves**), diagnostic info for bug
   reports, a Steam Deck / small-PC profile, optional Discord status, and **one-click updates**.
 - **In-game graphics settings** (OPTIONS > GRAPHICS): internal resolution from 540p to 4K,
-  texture filtering, crowd, shadows, depth of field, vertical sync, 60 fps entrances.
-- **Match loading about twice as fast** as on the console, start-up videos skipped, graphics
-  shaders prepared in the background to avoid stutters.
+  texture filtering, crowd, shadows, depth of field, vertical sync, frame-rate mode, console
+  picture (gamma) option.
+- **Title Update fixes** done by our own hooks (no Title Update data is shipped), a jukebox
+  with custom themes, keyboard typing in text screens.
 - **Android version** (Snapdragon with a Vulkan driver that has the needed features; Mali
-  phones are experimental): full game, on-screen buttons, performance presets, wide-screen fill.
+  phones are experimental): full game, on-screen buttons, performance presets, wide-screen
+  fill, a "Safe GPU mode" in the launcher DEBUG page.
 - **WWE '12 Mod Maker** (`WWE12 Mod Maker.exe`): add wrestlers (ported from SmackDown vs. Raw
-  2007 to 2011 and WWE '13 / 2K games), arenas, entrances, moves, attires, media, and replace the
-  Universe menu pictures. Added wrestlers and arenas work in Universe mode. See
-  [docs/mod_maker.md](docs/mod_maker.md).
+  2007 to 2011 and WWE '13 / 2K games), arenas, entrances (with a 3D preview), moves, attires,
+  media, theme music, and replace the Universe menu pictures. Added wrestlers and arenas work
+  in Universe mode. Moves ported from other games are off by default
+  (`wwe12_added_moves`). See [docs/mod_maker.md](docs/mod_maker.md).
 - DLC support (see below). All five languages of the European release.
 - Custom attires (Superstar Threads), eyes and teeth, blood, post-match replays and MATCH
   HIGHLIGHTS, controller vibration.
-- **Custom theme music for created wrestlers** (mp3, m4a, aac, wav, flac in the `music`
-  folder), keyboard typing in text screens, a jukebox.
 - **WWE Universe**: reset your Universe (with a save backup), vacate a title, attire choice,
   manual rankings, full contender lists, SAVE a match without playing it, playable added arenas,
-  draft news.
-- A `mods` folder: files in it replace the game's own (HD titantron videos, textures…).
+  more news, injuries and Money in the Bank options.
+- A `mods` folder: files in it replace the game's own (HD titantron videos, textures...).
 - Xbox and PlayStation controllers, and the keyboard, alone, with a controller or as player 2.
 - Display options: borderless window, FPS counter (F2), frame limit, CPU priority.
 
-Known issues: see each release's notes. The main ones: a short stutter and a one-frame flicker
-at the start of a match on some PCs, a gamma that is not the console's (a console / PC choice is
-planned), and some Adreno 6xx Android phones whose driver lacks needed features.
+Known issues: see each release's notes. The main ones: the adaptive V-sync of 1.3.0 can feel
+less smooth or tear on some screens (add `svr_adaptive_vsync = false` to `wwe12.toml`; it is off by
+default in the next version), the 30 fps mode needs the next Android APK to start with the match
+on Android, some Adreno 6xx Android phones whose driver lacks needed features, black stripes on
+some Mali phones with custom attires, and a limit of about 100 added wrestlers (only 64 are
+shown on the character select screen).
 
-Roadmap (no dates): **1.2 "Moveset update"** (moves from SmackDown vs. Raw 2007-2011 and WWE 2K14
-to 2K17 in the Mod Maker, a Moves & Entrances page, gamma option, bug fixes), then the title
-update corrections and speed work, match modes and a richer Universe. Details in
+Roadmap (no dates): **1.4** brings new match options (starting finishers, squash matches, the
+I QUIT match), a richer Universe and Mod Maker additions; a Special Guest Referee match is being
+worked on. Later: a truly native renderer (the game's graphics layer is still the Xbox 360 one),
+more arenas and entrances from other games. Details in
 [docs/feuille_de_route.md](docs/feuille_de_route.md) (in French).
 
 ## Reporting a bug
