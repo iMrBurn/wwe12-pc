@@ -95,6 +95,7 @@ void Wwe12OverlayPost(std::function<void()> f);  // wwe12_iquit.cpp: on the UI t
 // wwe12_iquit.cpp: WWE '13's images (0 the shirt, 1 the bar's frame, 2 its back, 3 its fill) and the motions' queue
 bool Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float wide, float high, ImU32 colour, float part);
 bool Wwe12MotionReady(const PPCContext &in, u8 *base, u32 motion);
+float Wwe12HudRefPrompt(ImDrawList *dl, int button, int row, float x, float y, float high);
 
 REXCVAR_DEFINE_BOOL(wwe12_sref_replacement, true, "WWE12",
                     "Special Guest Referee: the game's own referee waits out of sight and takes over when the gauge is "
@@ -185,7 +186,11 @@ int64_t g_strike[6][3] = {};
 std::atomic<u32> g_foul_by{0};
 std::atomic<int64_t> g_foul_ms{0};
 std::atomic<bool> g_want_y{false};
-std::atomic<bool> g_a_game{false};  // A is the game's (a grapple): a fighter within reach, no hold, no count
+std::atomic<bool> g_a_game{false};
+std::atomic<int64_t> g_live_ms{0};  // the tick's last run (the match runs)
+std::atomic<bool> g_b{false};
+u16 g_ref_idle = 20150;             // the referee's standing motion, as last seen
+double g_hold_gone = 0;             // how long no hold has been seen while he checks  // A is the game's (a grapple): a fighter within reach, no hold, no count
 u32 g_fin_given = 0, g_fin_before = 0;  // a finisher given for a full gauge (WWE '13's "special skill": 0.75)
 std::atomic<int> g_prompt{0};
 void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, int64_t now);
@@ -793,6 +798,12 @@ u16 Wwe12SrefPad(u32 user, u16 buttons) {
   const u16 before = g_prev[user].exchange(buttons);
   if (!On() || !Match() || g_pad.load() != int(user))
     return 0;
+  // (the match stands still - the pause menu, a replay: its buttons are the game's. User's test of 2026-11-16: A did
+  // not work in the pause menu.)
+  if (NowMs() - g_live_ms.load() > 250)
+    return 0;
+  if (buttons & ~before & 0x2000)
+    g_b = true;  // (B: he stops checking a hold, as WWE '13's cancel)
   if (buttons & ~before & 0x8000)
     g_y = true;  // (Y: a disqualification pronounced, the screw job)
   const u32 st = g_state.load();
@@ -865,7 +876,13 @@ class SrefOverlay final : public rex::ui::ImGuiDialog {
         Wwe12HudRefImg(dl, 0, cx + 36 * u, cy - 10 * u, 20 * u, 20 * u, IM_COL32_WHITE, 1.f);
         static const char *const kPrompt[5] = {"", "A  COUNT", "A  CHECK THE SUBMISSION", "Y  DISQUALIFY", "Y  SCREW JOB"};
         const int p = g_prompt.load();
-        if (p > 0 && p < 5) {
+        // (WWE '13's own: the button and the word, in the player's language - COUNT, CHECK, DQ, SCREW JOB)
+        static constexpr int kButton[5] = {0, 1, 1, 0, 0}, kRow[5] = {0, 1, 0, 3, 4};
+        if (p > 0 && p < 5 && Wwe12HudRefPrompt(nullptr, kButton[p], -1, 0, 0, 0) > 0.f) {
+          const float h = 16 * u, w = Wwe12HudRefPrompt(nullptr, kButton[p], -1, 0, 0, h) + h * 0.1f +
+                                      h * 0.95f * 256.f / 25.6f * 0.45f;  // (about: the word's ink is left aligned)
+          Wwe12HudRefPrompt(dl, kButton[p], kRow[p], cx - w * 0.5f, cy + 18 * u, h);
+        } else if (p > 0 && p < 5) {
           const float ms = 15.f * u;
           const ImVec2 sz = font->CalcTextSizeA(ms, FLT_MAX, 0.f, kPrompt[p]);
           dl->AddText(font, ms, ImVec2(cx - sz.x * 0.5f + 1 * u, cy + 11 * u), IM_COL32(0, 0, 0, 230), kPrompt[p]);
@@ -996,10 +1013,14 @@ int Step(const PPCContext &ctx, u8 *base, Timed &m, double dt) {  // 0 none, 1 r
   m.left -= dt;
   if (m.left > 0)
     return 1;
+  if (m.left > -0.25)
+    return 1;  // (a quarter of a second for the game to give him his next motion)
   const u32 actor = m.actor, to = m.to;
   m = {};
   if (to)
     Play(ctx, base, actor, to, 0);
+  else if (actor == Referee() && Anim(actor) >= 13115 && Anim(actor) < 13150)
+    Play(ctx, base, actor, g_ref_idle, 0);  // (still in it: standing again)
   return 2;
 }
 void Start(Timed &m, u32 actor, u32 anim, u32 x, double frames, u32 to) {
@@ -1127,7 +1148,8 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
         Start(g_rm, ref, m, 10, len[3], 0);
         g_check_block = 10;
         EndMatch(ctx, base, g_held, 2, IndexOf(g_by));
-      } else if (g_check_block <= 1 && !hold && !g_rm.waiting) {
+      } else if (g_check_block <= 1 && !g_rm.waiting && ((g_hold_gone = hold ? 0.0 : g_hold_gone + dt) > 0.5 ||
+                                                        g_b.exchange(false))) {
         Start(g_rm, ref, m, 2, len[2], 0);
         g_check_block = 2;
       } else if (rs == 2 || rs == 0) {
@@ -1142,7 +1164,11 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
   } else {
     const bool a = !counting && g_press.exchange(false);
     const bool y = g_y.exchange(false);
+    g_b = false;
+    g_hold_gone = 0;
     const bool free = IdleAnim(anim);
+    if (anim >= 20000 && anim <= 20598)
+      g_ref_idle = anim;
     if (y && dq_open && (free || anim <= 1)) {
       int winner = -1;
       for (u32 k = 0; k < 6 && winner < 0; ++k)
@@ -1485,6 +1511,23 @@ extern "C" REX_FUNC(sub_823B5D18) {
   __imp__sub_823B5D18(ctx, base);
 }
 
+// Each actor's pad word, every frame (from wwe12_iquit.cpp's hook of sub_8225C4D8): the game's referee who waits is
+// kept out of sight from the first frame on - the tick only runs once the match's HUD is drawn (user's test of
+// 2026-11-16: before the bell he was seen half in the ring's middle).
+void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
+  if (!actor || !On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out != kOutNone || actor != Actor(6))
+    return;
+  if (bd::mem::try_load<u32>(actor + 3428) == 1 && bd::mem::try_load<u32>(actor + 3384) != 0 && Referee() &&
+      Referee() != actor) {
+    SetRole(ctx, base, 6, 40, 6);
+    BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6, premiere image)", actor);
+  }
+  if (Parked(actor) || (bd::mem::try_load<u32>(actor + 3428) == 1 && Referee() && Referee() != actor)) {
+    Shown(ctx, base, actor, false);
+    Place(actor, 0.f, -120.f, 3200.f);
+  }
+}
+
 // Every actor drawn and updated again, two frames after the match is put in place (and at other times): the game's
 // referee who waits is parked if he is not yet (his brain is made by now) and hidden again. (The tick does the
 // same, but it only runs once the match's HUD is drawn.)
@@ -1544,6 +1587,7 @@ SREF_AS_FIGHTER(sub_8222EBF0)
 
 // Once per game frame during a match (from wwe12_iquit.cpp's tick).
 void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
+  g_live_ms = NowMs();
   if (!On() || !Match()) {
     g_pad = -1;
     g_step = 0;

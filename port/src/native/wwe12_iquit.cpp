@@ -1173,8 +1173,11 @@ extern "C" REX_FUNC(sub_82251388) {
 }
 
 // ---- the referee walks to the asked man: his pad's stick pushed toward the spot ----
+void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor);  // wwe12_sref.cpp
 extern "C" REX_FUNC(sub_8225C4D8) {
   const u32 pad = ctx.r3.u32;
+  if (pad)
+    Wwe12SrefActorFrame(ctx, base, bd::mem::try_load<u32>(pad + 116));
   if (g_ref_walk.load() && pad) {
     const u32 ref = Actor(kReferee);
     if (ref && bd::mem::try_load<u32>(pad + 116) == ref) {
@@ -1326,7 +1329,8 @@ const std::vector<std::pair<std::string, std::vector<uint8_t>>> &Wwe12IQuit13Fil
         // (the Special Guest Referee's files - its motions 13115-13149, its HUD parts "0_90_..." - only with that
         // mode on: without it the pack built from these files is the I Quit's alone, the one players have had)
         const int number = atoi(name.c_str());
-        const bool sref = (number >= 13115 && number < 13150) || name.find("/0_90_") != std::string::npos;
+        const bool sref = (number >= 13115 && number < 13150) || name.find("/0_90_") != std::string::npos ||
+                          name.find("/0_38_") != std::string::npos;
         if (!sref || Wwe12SrefWanted())
           out.emplace_back(std::move(name), std::vector<uint8_t>(d + o, d + o + len));
         o += len;
@@ -1350,11 +1354,12 @@ namespace {
 // bar's frame; optional, a motions mod's own hud folder may not have them)
 enum {
   kImgQuitRed, kImgQuitGrey, kImgGlow, kImgA, kImgNo, kImgDpad, kImgThreat, kImgB, kImgAsk, kImgNoMark,
-  kImgRefShirt, kImgRefFrame, kImgRefBack, kImgRefFill, kImgCount
+  kImgRefShirt, kImgRefFrame, kImgRefBack, kImgRefFill, kImgRefY, kImgRefA, kImgRefWords, kImgCount
 };
 constexpr int kImgNeeded = kImgRefShirt;  // (the images before this one: all or nothing)
 constexpr const char *kImgFile[kImgCount] = {"0_0", "0_1", "0_2", "1_0", "1_1", "2_0", "2_1", "3_0", "3_1", "90_0",
-                                             "0_90_122", "0_90_47", "0_90_48", "0_90_125"};
+                                             "0_90_122", "0_90_47", "0_90_48", "0_90_125", "0_38_0", "0_38_1",
+                                             "0_38_2"};
 struct HudImg {
   ImFontAtlasRectId id = -1;
   int w = 0, h = 0;
@@ -1421,7 +1426,9 @@ void Wwe12IQuitFonts(ImFontAtlas *atlas) {
       return;
     }
     int x0 = im.w, y0 = im.h, x1 = -1, y1 = -1;
-    for (int y = 0; y < im.h; ++y)
+    if (i == kImgRefWords)  // (five words one under the other, 1/5 of its height each: kept whole)
+      x0 = 0, y0 = 0, x1 = im.w - 1, y1 = im.h - 1;
+    for (int y = 0; y < im.h && i != kImgRefWords; ++y)
       for (int x = 0; x < im.w; ++x)
         if (im.rgba[(size_t(y) * im.w + x) * 4 + 3] > 8)
           x0 = std::min(x0, x), x1 = std::max(x1, x), y0 = std::min(y0, y), y1 = std::max(y1, y);
@@ -1645,6 +1652,23 @@ bool Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float wide, flo
     dl->AddImage(g_atlas->TexRef, ImVec2(x, y), ImVec2(x + wide * part, y + high), r.uv0,
                  ImVec2(r.uv0.x + (r.uv1.x - r.uv0.x) * part, r.uv1.y), colour);
   return true;
+}
+// (WWE '13's referee prompts: the button (0 Y, 1 A) and the word of a row (0 CHECK, 1 COUNT, 2 SUBMIT, 3 DQ,
+// 4 SCREW JOB - in the player's language), `high` pixels high, the left edge at x and the middle at y; the width
+// drawn, 0 if there is no such image)
+float Wwe12HudRefPrompt(ImDrawList *dl, int button, int row, float x, float y, float high) {
+  float w = Img(dl, button == 0 ? kImgRefY : kImgRefA, x, y, high);
+  ImFontAtlasRect r;
+  if (!w || !g_hud || g_img[kImgRefWords].id < 0 || !g_atlas->GetCustomRect(g_img[kImgRefWords].id, &r) || row < 0 || row > 4)
+    return w;
+  // (the rect has a clear pixel all round: the image is inside it)
+  const float u0 = r.uv0.x + (r.uv1.x - r.uv0.x) / float(r.w), u1 = r.uv1.x - (r.uv1.x - r.uv0.x) / float(r.w);
+  const float vt = r.uv0.y + (r.uv1.y - r.uv0.y) / float(r.h), vb = r.uv1.y - (r.uv1.y - r.uv0.y) / float(r.h);
+  const float v0 = vt + (vb - vt) * float(row) / 5.f, v1 = vt + (vb - vt) * float(row + 1) / 5.f;
+  const float wh = high * 0.95f, ww = wh * float(g_img[kImgRefWords].w) / (float(g_img[kImgRefWords].h) / 5.f);
+  dl->AddImage(g_atlas->TexRef, ImVec2(x + w + high * 0.1f, y - wh * 0.5f), ImVec2(x + w + high * 0.1f + ww, y + wh * 0.5f),
+               ImVec2(u0, v0), ImVec2(u1, v1));
+  return w + ww;
 }
 // (a motion asked from the game's queue, and whether the queue has read it: as Ready above)
 bool Wwe12MotionReady(const PPCContext &in, u8 *base, u32 motion) { return Ready(in, base, motion); }
