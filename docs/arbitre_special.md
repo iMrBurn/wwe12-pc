@@ -139,7 +139,11 @@ Durées (images à 60 Hz) : 2020 = 183 ; 2021 = 191 ; 2022 = 261 ; 2023 = 241 ; 
 
 1. Création : crochet de `sub_82A37378` : pour l'appel, genre de la place de l'arbitre spécial (M+684+2244×i) = 0
    et M+45 = 1, puis remis. Le participant 40 est alors créé (rôle 1, ordinateur) : il lui FAUT le rôle 1 à la
-   création, sinon son IA (`CMIF`, acteur +3384) n'est pas construite (`sub_822143D0` : pas pour les rôles 4 / 6).
+   création, sinon son IA (composant `CMIF`) n'est pas construite (`sub_822143D0` : pas pour les rôles 4 / 6).
+   **Piège (2026-11-16)** : l'IA n'est PAS à acteur +3384 (écrit par d'autres fonctions, resté à 0 alors que l'IA
+   existait : relais refusé à chaque test). Le bon test = chercher le composant `'CMIF'` (0x434D4946) dans la liste
+   des composants de l'acteur à +3436 (comme `sub_827D5C28`) ; l'IA est à son +24. Fonction `Brain()` de
+   `wwe12_sref.cpp`.
 2. Le garer avant le premier `sub_823B5D18` (remise en place du match) : acteur[6] +3428 = 6, participant 40 +8 = 6,
    fiche de création `[0x8322DD44] + 528 + 80 × 6 + 6` = 6 ; chaque tick : `sub_822CF850(mgr, 6, 0)` (dessin),
    `sub_822CE3F0(mgr, 6, 0, 0)` (mise à jour), mgr = `[0x8317434C]`, drapeau +0 = 0 sur acteur +1360 et +1028,

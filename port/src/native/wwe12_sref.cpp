@@ -1367,7 +1367,7 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
 // In WWE '12 (read the same day):
 // - the match's setup drops the normal referee when a place of the kind 1 holds a superstar (sub_82A37378). For
 //   that call the special referee's place has the kind 0, so the normal referee is made as in any match - with the
-//   role 1, which he needs when he is made: the actor's brain ('CMIF', actor + 3384) is not built for the roles
+//   role 1, which he needs when he is made: the actor's brain (his component 'CMIF', see Brain) is not built for the roles
 //   4 and 6 (sub_822143D0);
 // - he is then parked: the role 6 (never a target, not counted, his pad silent) in his actor, his participant
 //   record (40) and his creation record (slot 6) - before the match is put in place (sub_823B5D18), which gives the
@@ -1376,6 +1376,30 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
 // - the hand-over: he is shown in the ring's middle playing 2043, then has the role 1 and is the computer's; the
 //   special referee has the role 0 and + 998 = 4 (out of the pins), and walks away once outside the ring.
 namespace {
+// The actor's brain: his component 'CMIF' (the game's own look-up, sub_827D5C28 on the actor's components at + 3436, read
+// here without its cache write; sub_822143D0 makes it only when there is none, then stores it with sub_8247B038).
+// Not actor + 3384 (written by other code: it stayed 0 for the referee who had his brain - user's test of 2026-11-16,
+// 17:25, the hand-over refused for that).
+u32 Brain(u32 actor) {
+  const u32 tag = 0x434D4946;  // 'CMIF'
+  const u32 list = actor ? bd::mem::try_load<u32>(actor + 3436) : 0;
+  if (!list)
+    return 0;
+  u32 found = 0;
+  if (const u32 c = bd::mem::try_load<u32>(list + 12); c && bd::mem::try_load<u32>(c + 4) == tag)
+    found = c;
+  for (u32 c = bd::mem::try_load<u32>(list + 20), k = 0; !found && c && k < 256; c = bd::mem::try_load<u32>(c + 20), ++k)
+    if (bd::mem::try_load<u32>(c + 4) == tag)
+      found = c;
+  for (u32 c = list, k = 0; !found && c && k < 256; c = bd::mem::try_load<u32>(c + 16), ++k)
+    if (bd::mem::try_load<u32>(c + 4) == tag)
+      found = c;
+  if (!found)
+    return 0;
+  const u32 brain = bd::mem::try_load<u32>(found + 24);
+  return brain ? brain : found;
+}
+
 u32 SlotOf(u32 index) {  // the manager's slot of an actors' table index
   const u32 mgr = bd::mem::try_load<u32>(0x8317434C);
   for (u32 s2 = 0; mgr && s2 < 16; ++s2)
@@ -1663,7 +1687,7 @@ void HandOver(const PPCContext &ctx, u8 *base) {
   s_prev = now;
   // parked: his brain made (he had the role 1 until here), then the role 6, unseen, far up the ramp
   if (g_out == kOutNone || g_out == kOutWait || g_out == kOut2050) {
-    if (bd::mem::try_load<u32>(n + 3428) == 1 && bd::mem::try_load<u32>(n + 3384) != 0 && Referee() && Referee() != n) {
+    if (bd::mem::try_load<u32>(n + 3428) == 1 && Brain(n) != 0 && Referee() && Referee() != n) {
       SetRole(ctx, base, 6, 40, 6);
       BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6)", n);
     }
@@ -1804,7 +1828,7 @@ extern "C" REX_FUNC(sub_82A37378) {
 extern "C" REX_FUNC(sub_823B5D18) {
   if (On() && Match() && REXCVAR_GET(wwe12_sref_replacement)) {
     const u32 n = Actor(6);
-    if (n && bd::mem::try_load<u32>(n + 3384) != 0) {
+    if (n && Brain(n) != 0) {
       if (g_out == kOutDone && g_ex) {  // (a rematch after a hand-over)
         const int index = IndexOf(g_ex);
         if (index >= 0)
@@ -1841,6 +1865,15 @@ extern "C" REX_FUNC(sub_823B7DB8) {
 void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
   if (!actor || !On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out >= kOutScene)
     return;
+  {
+    static u32 s_role = 99;
+    const u32 n6 = Actor(6), r6 = n6 ? bd::mem::try_load<u32>(n6 + 3428) : 99;
+    if (r6 != s_role) {
+      BD_INFO("[sref] l'arbitre du jeu : role {} -> {} (vu par la lecture de manette ; cerveau {:08X})", s_role, r6,
+              Brain(n6));
+      s_role = r6;
+    }
+  }
   {  // (study: the two who wait, twice a second, 80 lines)
     static int64_t s_last = 0;
     static int s_lines = 0;
@@ -1855,7 +1888,7 @@ void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
         if (a)
           line += fmt::format(" | acteur {} : role {} dessine {} mis a jour {} motion {} position {:.0f} {:.0f} cerveau {:08X}", k,
                               bd::mem::try_load<u32>(a + 3428), bd::mem::try_load<u32>(a + 1752),
-                              bd::mem::try_load<u32>(a + 1736), Anim(a), x, z, bd::mem::try_load<u32>(a + 3384));
+                              bd::mem::try_load<u32>(a + 1736), Anim(a), x, z, Brain(a));
       }
       BD_INFO("[sref] en attente :{}", line);
     }
@@ -1907,15 +1940,15 @@ extern "C" REX_FUNC(sub_822CF768) {
 REX_EXTERN(__imp__sub_822143D0);
 extern "C" REX_FUNC(sub_822143D0) {
   const u32 n = Actor(6);
-  const bool keep = On() && Match() && REXCVAR_GET(wwe12_sref_replacement) && n && ctx.r3.u32 == n + 1696 &&
-                    bd::mem::try_load<u32>(n + 3428) == 6 && g_out < kOutScene;
-  if (keep)
+  const bool his = On() && Match() && REXCVAR_GET(wwe12_sref_replacement) && n && ctx.r3.u32 == n + 1696 && g_out < kOutScene;
+  const u32 role = his ? bd::mem::try_load<u32>(n + 3428) : 0, from = u32(ctx.lr);
+  if (his && role == 6)
     bd::mem::store<u32>(n + 3428, 1);
   __imp__sub_822143D0(ctx, base);
-  if (keep) {
+  if (his && role == 6)
     bd::mem::store<u32>(n + 3428, 6);
-    BD_INFO("[sref] l'arbitre du jeu : son cerveau refait ({:08X})", bd::mem::try_load<u32>(n + 3384));
-  }
+  if (his)
+    BD_INFO("[sref] l'arbitre du jeu : sa mise en place (appel {:08X}, role {}), cerveau {:08X}", from, role, Brain(n));
 }
 
 // The game's referee who waits is never drawn nor updated while he waits: every call of the game that turns an
@@ -1944,7 +1977,7 @@ extern "C" REX_FUNC(sub_822CF850) {
   __imp__sub_822CF850(ctx, base);
 }
 extern "C" REX_FUNC(sub_822CE3F0) {
-  if (ctx.r5.u32 != 0 && WaitingSlot(ctx.r3.u32, ctx.r4.u32) && bd::mem::try_load<u32>(Actor(6) + 3384) != 0)
+  if (ctx.r5.u32 != 0 && WaitingSlot(ctx.r3.u32, ctx.r4.u32) && Brain(Actor(6)) != 0)
     ctx.r5.u64 = 0;
   __imp__sub_822CE3F0(ctx, base);
 }
@@ -2021,10 +2054,10 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   {  // (the game's referee parked - the role 6 - once his brain is made and the bell's set-up is over)
     const u32 n = Actor(6);
     if (REXCVAR_GET(wwe12_sref_replacement) && g_out == kOutNone && n && bd::mem::try_load<u32>(n + 3428) == 1 &&
-        bd::mem::try_load<u32>(n + 3384) != 0 && Referee() && Referee() != n) {
+        Brain(n) != 0 && Referee() && Referee() != n) {
       SetRole(ctx, base, 6, 40, 6);
       BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6, apres la cloche ; cerveau {:08X})", n,
-              bd::mem::try_load<u32>(n + 3384));
+              Brain(n));
     }
   }
   HandOver(ctx, base);
@@ -2036,7 +2069,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       float nx = 0, nz = 0;
       Spot(n, nx, nz);
       const u32 q = n ? bd::mem::try_load<u32>(n + 768) : 0;
-      const u32 cmif = n ? bd::mem::try_load<u32>(n + 3384) : 0;
+      const u32 cmif = Brain(n);
       BD_INFO("[sref] arbitre du jeu : motion {} position {:.0f} {:.0f} {:.0f} role {} dessine {} cerveau {:08X} ordi {} | juge etat {} "
               "+112 {} | ancien : motion {} zone {} position", Anim(n), nx, q ? LoadF(q + 4) : 0.f, nz,
               n ? bd::mem::try_load<u32>(n + 3428) : 99, n ? bd::mem::try_load<u32>(n + 1752) : 99, cmif,
@@ -2209,7 +2242,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     // its + 112 to 0 the next frame); his + 998 = 4 keeps him out of the pins (sub_82261C28 wants 0 on both men).
     // The role is also put in his participant record and his creation record, which the game copies back at times.
     if ((g_gauge.load() <= 0.f || g_faults >= 30) && REXCVAR_GET(wwe12_sref_replacement) && Parked(Actor(6)) &&
-        bd::mem::try_load<u32>(Actor(6) + 3384) != 0) {
+        Brain(Actor(6)) != 0) {
       if (g_out == kOutNone) {
         g_out = kOutWait;
         g_out_t = 0;
