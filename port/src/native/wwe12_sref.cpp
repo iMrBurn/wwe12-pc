@@ -70,6 +70,9 @@ REXCVAR_DECLARE(std::string, user_data_root);
 REX_EXTERN(__imp__sub_8247AD18);  // play a motion on an actor
 REX_EXTERN(__imp__sub_822143D0);  // an actor's set-up (r3 = actor + 1696; makes his brain 'CMIF' for the role 1)
 REX_EXTERN(__imp__sub_8247C670);  // an actor back in his free motion (1350: the one his brain acts from)
+REX_EXTERN(__imp__sub_8247C590);  // an actor's free motion's key (actor, key out)
+REX_EXTERN(__imp__sub_82479730);  // a motion key put on one of an actor's channels (actor, key, channel, f1)
+REX_EXTERN(__imp__sub_8232E200);  // an actor's navigation ('oNav') made if he has none
 REX_EXTERN(__imp__sub_827A1BF0);  // the character select's layout of a rule
 REX_EXTERN(__imp__sub_82A39AC0);  // a match set up from a rule (setup manager, rule, its options or 0)
 REX_EXTERN(__imp__sub_828AE798);  // the character select set up for a rule (select, rule, options or 0, r6, r7)
@@ -1495,6 +1498,47 @@ void Free(const PPCContext &ctx, u8 *base, u32 actor) {
   bd::mem::store<u32>(actor + 1096, 0);
   bd::mem::store<u32>(actor + 1428, 0);
 }
+// A man put in place as the game does for every man when a match is put in place (sub_823B5C58): his two motion
+// layers' weights reset ([+3396] + 68 / + 76: + 272 / + 276 = 0, + 292 |= 3), his free motion on his channels 0 and 2,
+// his navigation ('oNav', sub_8232E200 via sub_8232E3A8). The game's referee after the hand-over and his climb stood
+// still in the ring every time (user's tests of 2026-11-16), his brain's flag + 1096 kept at 1: a man the game never
+// put in place since he was parked. On the main thread only (sub_8232E200 may make a component).
+std::string Channels(u32 a) {  // (his three channels' motions, for the log)
+  return fmt::format("{} {} {}", bd::mem::try_load<u16>(a + 216), bd::mem::try_load<u16>(a + 264), bd::mem::try_load<u16>(a + 312));
+}
+void PutInPlace(const PPCContext &ctx, u8 *base, u32 a) {
+  if (!a)
+    return;
+  const std::string before = Channels(a);
+  if (const u32 t = bd::mem::try_load<u32>(a + 3396))
+    for (u32 off : {68u, 76u})
+      if (const u32 o = bd::mem::try_load<u32>(t + off)) {
+        bd::mem::store<u32>(o + 272, 0);
+        bd::mem::store<u32>(o + 276, 0);
+        bd::mem::store<u32>(o + 292, bd::mem::try_load<u32>(o + 292) | 3);
+      }
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  const u32 key = c.r1.u32 + 256;
+  bd::mem::store<u32>(key, 0);
+  c.r3.u64 = a, c.r4.u64 = key;
+  __imp__sub_8247C590(c, base);
+  for (u32 ch : {0u, 2u}) {
+    c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    c.r3.u64 = a, c.r4.u64 = key, c.r5.u64 = 0, c.r6.u64 = ch;
+    c.f1.f64 = 0.0;
+    __imp__sub_82479730(c, base);
+  }
+  c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = a;
+  __imp__sub_8232E200(c, base);
+  bd::mem::store<u32>(a + 1096, 0);
+  bd::mem::store<u32>(a + 1428, 0);
+  BD_INFO("[sref] {:08X} remis en place comme au debut d'un match : motion {} (cle {:08X}), canaux {} -> {}", a, Anim(a),
+          bd::mem::try_load<u32>(key), before, Channels(a));
+}
 // (the special referee's participant number: his actors' index, as the game maps them for the six places)
 u32 ParticipantOf(const PPCContext &ctx, u8 *base, u32 index) {
   PPCContext c = ctx;
@@ -2308,8 +2352,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
             const float k = 270.f / std::max(std::fabs(nx), std::fabs(nz));
             Place(n, nx * k, -203.f, nz * k);
             bd::mem::store<u8>(n + 996, 0);
-            Free(ctx, base, n);
           }
+          PutInPlace(ctx, base, n);
           BD_INFO("[sref] l'arbitre du jeu : montee {} finie (motion {}, a {:.0f} {:.0f}, {})", g_climb_anim, anim, nx, nz,
                   in_ring ? "dans le ring" : "pas entre : passe derriere les cordes");
         }
@@ -2374,7 +2418,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
           bd::mem::store<u8>(n + 998, 1);
           Place(n, 0.f, -203.f, 200.f);
           bd::mem::store<u8>(n + 996, 0);
-          Free(ctx, base, n);
+          PutInPlace(ctx, base, n);
           BD_INFO("[sref] l'arbitre du jeu n'entre pas dans le ring (a {:.0f} {:.0f}) : mis dans le ring", nx, nz);
         }
       }

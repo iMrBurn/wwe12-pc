@@ -219,3 +219,9 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   +998 = 4 (pas de décompte ni de tombé sur lui) le temps de monter, boutons pressés une image sur deux ; rôle 1 à
   nouveau une fois dans le ring et la motion 7xx finie ; sinon un petit pas derrière les cordes au bout de 3 s.
   La course n'est pas trouvée (aucune course dans ce relevé).
+- Tests du 2026-11-16 20:27-20:47 : entrée dans le ring = chaîne du jeu 712 (sur le tablier, 2 s) → 750 (3,4 s) →
+  7010 → marche ; la laisser finir (12 s max). Dans le ring l'arbitre reste planté, +1428/+1096 remis à 1 par le jeu
+  aussitôt effacés (l'effacer ne sert à rien). Essai : le remettre en place comme le jeu le fait pour chaque homme à
+  la mise en place d'un match (`sub_823B5C58` : poids des deux couches de motion `[+3396]+68/+76` remis, motion
+  libre sur les canaux 0 et 2 (`sub_82479730`, canaux à +216 + 48 × n), navigation `oNav` (`sub_8232E200`)) :
+  `PutInPlace()`, sur le fil principal, après sa montée dans le ring.
