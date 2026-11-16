@@ -59,6 +59,14 @@ REX_EXTERN(__imp__sub_82A36150);  // a place's kind set in the match's setup (se
 REX_EXTERN(__imp__sub_823C9458);  // the played referee starts his count for the judge's state (actor): 1 if started
 REX_EXTERN(__imp__sub_823C97B0);  // an actor's "action 2" button (the referee: sub_823C9458 first)
 REX_EXTERN(__imp__sub_822605A0);  // the counts a pin needs (judge): 3, or 2
+REX_EXTERN(__imp__sub_82A3F828);  // the match's entrances built from an order record (ranks by side, + 0: six s32)
+REX_EXTERN(__imp__sub_823F8270);  // a place's participant number
+REX_EXTERN(__imp__sub_8267CD30);  // a participant's record (number): + 8 kind, + 13 side, + 16 superstar (51200 none)
+REX_EXTERN(__imp__sub_82596848);  // the character select: a place's "COM" / "1P" label, once chosen (place panel)
+REX_EXTERN(__imp__sub_825962D0);  // the same while choosing
+
+REXCVAR_DEFINE_BOOL(wwe12_sref_entrance, true, "WWE12",
+                    "Special Guest Referee: the referee has his entrance, the first one (as WWE '13).");
 
 REXCVAR_DEFINE_INT32(wwe12_sref_from, -1, "WWE12",
                      "Dev: with wwe12_sref, a match set up with this rule (13 = TRIPLE THREAT) is a Special Guest Referee one.");
@@ -283,6 +291,81 @@ void PutBE(u8 *p, u32 v) {
 }  // namespace
 
 bool Wwe12SrefOn() { return On(); }
+
+// ---- the referee's entrance ----
+// The entrances are built by sub_82A3F828(order) from the participants (sub_82A3F0D8: a fighter - kind 0 - is a
+// member of his side's entrance, kinds 2 and 7 its manager, any other kind is left out: the referee had none).
+// The order record's first six words are each side's rank (-1: none). As WWE '13 (sub_82292268, read 2026-11-16):
+// the referee's side has the rank 0 - he comes first - and the others follow in the participants' order; he is a
+// fighter's kind for the time of the call. Only for a match of ours being set up (the select's commit calls this
+// after the kinds are set; the game's two other callers run their own setups).
+extern "C" REX_FUNC(sub_82A3F828) {
+  const u32 order = ctx.r3.u32;
+  u32 ref = 0;
+  if (On() && Match() && REXCVAR_GET(wwe12_sref_entrance) && order) {
+    u32 part[6] = {};
+    for (u32 n = 0; n < 6; ++n) {
+      PPCContext c = ctx;
+      c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+      c.r3.u64 = n;
+      __imp__sub_823F8270(c, base);
+      __imp__sub_8267CD30(c, base);
+      part[n] = c.r3.u32;
+      if (!ref && part[n] && bd::mem::try_load<u32>(part[n] + 8) == 1 && bd::mem::try_load<u32>(part[n] + 16) != 51200)
+        ref = part[n];
+    }
+    const u32 side = ref ? bd::mem::try_load<u8>(ref + 13) : 255;
+    if (ref && side < 6) {
+      int rank[6] = {-1, -1, -1, -1, -1, -1};
+      rank[side] = 0;
+      int next = 1;
+      for (u32 n = 0; n < 6; ++n) {
+        if (!part[n] || part[n] == ref || bd::mem::try_load<u32>(part[n] + 16) == 51200)
+          continue;
+        const u32 s = bd::mem::try_load<u8>(part[n] + 13);
+        if (s < 6 && rank[s] < 0)
+          rank[s] = next++;
+      }
+      std::string was, now;
+      for (u32 k = 0; k < 6; ++k) {
+        was += fmt::format(" {}", int32_t(bd::mem::try_load<u32>(order + k * 4)));
+        now += fmt::format(" {}", rank[k]);
+        bd::mem::store<u32>(order + k * 4, u32(rank[k]));
+      }
+      BD_INFO("[sref] entrees : l'arbitre (cote {}) entre le premier ; rangs par cote{} ->{}", side, was, now);
+      bd::mem::store<u32>(ref + 8, 0);
+    } else {
+      ref = 0;
+    }
+  }
+  __imp__sub_82A3F828(ctx, base);
+  if (ref)
+    bd::mem::store<u32>(ref + 8, 1);
+}
+
+// ---- the character select: the referee's place reads SPECIAL REFEREE ----
+// A place's label ("COM", "1P"... texts 40355, 40357 + pad) is set by the place panel's two functions (r3 = the
+// panel, its + 284 the place), through the game's text getter. For the place after the fighters of a select of
+// ours, that text is the game's own "SPECIAL REFEREE" (40775), in the player's language (asked from
+// wwe12_match_modes.cpp's text hook while one of the two functions runs).
+namespace {
+thread_local bool t_label = false;
+bool RefPanel(u32 panel) {
+  return On() && panel && g_cur >= 0 && g_cur < int(g_rows.size()) &&
+         bd::mem::try_load<u32>(panel + 284) == g_rows[size_t(g_cur)].fighters;
+}
+}  // namespace
+extern "C" REX_FUNC(sub_82596848) {
+  t_label = RefPanel(ctx.r3.u32);
+  __imp__sub_82596848(ctx, base);
+  t_label = false;
+}
+extern "C" REX_FUNC(sub_825962D0) {
+  t_label = RefPanel(ctx.r3.u32);
+  __imp__sub_825962D0(ctx, base);
+  t_label = false;
+}
+bool Wwe12SrefLabel(uint32_t id) { return t_label && (id == 40355 || (id >= 40357 && id <= 40360)); }
 
 void Wwe12SrefMenu(PPCContext &ctx) {
   if (!On())

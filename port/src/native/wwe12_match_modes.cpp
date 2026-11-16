@@ -532,6 +532,7 @@ thread_local std::string g_damage_text;      // the label being served
 thread_local u32 g_damage_id = 0;
 bool Wwe12DamagePageOpen();                   // our DAMAGE page is being set up
 
+bool Wwe12SrefLabel(uint32_t id);  // wwe12_sref.cpp: this text is the label of the referee's place being set now
 u32 Wwe12MatchModesGameText(u32 id) {
   g_iquit_text = false;
   g_iquit_check = false;
@@ -545,6 +546,12 @@ u32 Wwe12MatchModesGameText(u32 id) {
   if (id == 41145 && Wwe12DamagePageOpen()) {
     g_asked = id;  // (Wwe12MatchModesText then gives the game's text back as is)
     return 41146;
+  }
+  // (the Special Guest Referee's place in the character select: its "COM" / "1P" label reads the game's own
+  // SPECIAL REFEREE, 40775 - as above, the game's text given back as it is)
+  if (Wwe12SrefLabel(id)) {
+    g_asked = id;
+    return 40775;
   }
   if (IQuitText(id)) {
     g_iquit_text = true;
