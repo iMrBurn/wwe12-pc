@@ -2131,6 +2131,22 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       BD_INFO("[sref] l'arbitre du jeu n'entre pas dans le ring (a {:.0f} {:.0f}) : mis dans le ring", nx, nz);
     }
   }
+  if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1) {
+    static int64_t s_wait = 0;
+    const u32 j = bd::mem::try_load<u32>(kJudgePtr);
+    const u32 st = j ? bd::mem::try_load<u32>(j + 92) : 0, cnt = j ? bd::mem::try_load<u32>(j + 100) : 0;
+    if ((st == 1 || st == 3) && cnt == 0) {
+      if (!s_wait)
+        s_wait = NowMs();
+      if (NowMs() - s_wait > 5000) {
+        SetRole(ctx, base, 6, 40, 6);
+        s_wait = 0;
+        BD_INFO("[sref] l'arbitre du jeu ne compte pas (etat du juge {}, 5 s a 0) : le juge compte seul", st);
+      }
+    } else {
+      s_wait = 0;
+    }
+  }
   // (the man who was the referee: once he is outside the ring he walks away, the game's own behaviour for a man out
   // of the match - sub_82371C78, as its free state does for + 998 = 4 and the area byte + 996 = 1 or 16)
   if (g_ex)
