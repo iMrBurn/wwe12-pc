@@ -1178,6 +1178,7 @@ extern "C" REX_FUNC(sub_82251388) {
 
 // ---- the referee walks to the asked man: his pad's stick pushed toward the spot ----
 void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor);  // wwe12_sref.cpp
+bool Wwe12SrefWalkWord(u32 actor, u32 *word);  // wwe12_sref.cpp: the Special Guest Referee's replacement walking in
 extern "C" REX_FUNC(sub_8225C4D8) {
   const u32 pad = ctx.r3.u32;
   if (pad)
@@ -1213,6 +1214,11 @@ extern "C" REX_FUNC(sub_8225C4D8) {
                   g_ref_to_x.load(), g_ref_to_z.load(), dx, dz, dir8, cam, rel, v, ctx.r4.u32);
       }
     }
+  }
+  if (pad) {
+    u32 word = 0;
+    if (Wwe12SrefWalkWord(bd::mem::try_load<u32>(pad + 116), &word))
+      ctx.r4.u64 = word;
   }
   __imp__sub_8225C4D8(ctx, base);
 }

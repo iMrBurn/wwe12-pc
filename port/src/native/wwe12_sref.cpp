@@ -228,6 +228,15 @@ bool g_scene_ran = false;
 // sub_82254518) waited for the main thread, which waited for it - the game froze (user's test of 2026-11-16, 18:03).
 // The replacement - its scene, its objects, its motions - is done on the main thread only.
 std::atomic<std::thread::id> g_main_tid{};
+// The game's referee walks from the stage into the ring after the scene, as in WWE '13. WWE '12's referee never leaves the
+// ring in a match, his brain does not walk him outside it (user's tests of 2026-11-16: still on the stage, at the ramp's
+// foot); the game itself walks men through a virtual pad - the leaving walk 'RRTR' (sub_82371D10 -> sub_8225C4D8) took
+// the old referee out through the ropes (his motion 717) and up the ramp, test of 19:57 - and so does our I Quit referee
+// (wwe12_iquit.cpp). Here his pad's stick: toward the ramp's foot, then toward the ring.
+std::atomic<bool> g_walk{false};
+std::atomic<int> g_walk_phase{0};  // 0: to the ramp's foot, 1: into the ring
+std::atomic<int> g_walk_seen{0};   // (his pad words given the stick)
+float WalkTargetZ(int phase) { return phase == 0 ? 430.f : 120.f; }
 bool OnMainThread() { return g_main_tid.load() == std::this_thread::get_id(); }
 int g_gm_place = -1;  // the General Manager's place (and actor number), -1: none
 bool g_gone = false;
@@ -1840,6 +1849,9 @@ void HandOver(const PPCContext &ctx, u8 *base) {
     g_pad = -1;
     g_out = kOutDone;
     g_watch_ms = now;
+    g_walk_phase = g_scene_ran ? 0 : 1;
+    g_walk_seen = 0;
+    g_walk = true;
     BD_INFO("[sref] remplacement : l'arbitre du jeu a le role 1, l'ancien arbitre le role 0 (hors des tombes)");
   }
 }
@@ -1939,6 +1951,36 @@ void RefDiag(const char *who, u32 a) {
           b ? bd::mem::try_load<u32>(b + 64) : 0, sw);
 }
 }  // namespace
+
+// The stick of the walking referee's pad word (see g_walk); false: the word is left as it is.
+bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
+  if (!g_walk.load() || !actor || actor != Actor(6) || !On() || !Match())
+    return false;
+  const u32 rp = bd::mem::try_load<u32>(actor + 768);
+  if (!rp)
+    return false;
+  u32 info = 0;
+  for (u32 a : {actor, Actor(1), Actor(0)}) {  // (the camera's angle, as wwe12_iquit.cpp reads it)
+    const u32 ai = a ? bd::mem::try_load<u32>(a + 3384) : 0, w = ai ? bd::mem::try_load<u32>(ai + 76) : 0;
+    info = w ? bd::mem::try_load<u32>(w) : 0;
+    if (info)
+      break;
+  }
+  const float dx = 0.f - LoadF(rp), dz = WalkTargetZ(g_walk_phase.load()) - LoadF(rp + 8);
+  const float a = std::atan2(-dz, dx) - LoadF(0x82000ADC) + 4.f * 6.2831853f;
+  const u32 dir8 = (((u32(a * LoadF(0x82002E4C)) & 0xFFF) + 256) >> 9) & 7;
+  const u32 cam = info ? bd::mem::try_load<u16>(info + 162) : 0;
+  const u32 rel = u32(int32_t((dir8 << 9) - cam + 256) >> 9) & 7;
+  const u32 v = bd::mem::try_load<u32>(0x8307B34C + rel * 4);
+  static constexpr u32 kCode[8] = {2, 1, 8, 3, 7, 4, 5, 6};  // sub_8298FB98, for v = 2..9
+  if (v < 2 || v > 9)
+    return false;
+  *word = (0x80u | (((kCode[v - 2] - 1) & 7) << 4)) << 16;
+  if (g_walk_seen.fetch_add(1) < 30)
+    BD_INFO("[sref] l'arbitre du jeu marche (etape {}) : a {:.0f} {:.0f} {:.0f}, ecart {:.0f} {:.0f}, mot {:08X}",
+            g_walk_phase.load(), LoadF(rp), LoadF(rp + 4), LoadF(rp + 8), dx, dz, *word);
+  return true;
+}
 
 void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
   g_main_tid = std::this_thread::get_id();
@@ -2221,26 +2263,46 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     const int64_t since = NowMs() - g_watch_ms;
     if (in_ring && s_help < 3) {
       s_help = 3;
+      g_walk = false;
       BD_INFO("[sref] l'arbitre du jeu est dans le ring ({:.1f} s apres le relais)", since / 1000.0);
-    } else if (!in_ring && s_help == 0 && since > 12000) {
-      s_help = 1;
-      float y = -60.f, ax, az;
-      for (u32 k : {7u, 8u})
-        if (const u32 a = Actor(k); a && Spot(a, ax, az))
-          if (const u32 aq = bd::mem::try_load<u32>(a + 768); aq && std::isfinite(LoadF(aq + 4))) {
-            y = LoadF(aq + 4);
-            break;
-          }
-      Place(n, 0.f, y, 560.f);
-      bd::mem::store<u8>(n + 996, 1);
-      Free(ctx, base, n);
-      BD_INFO("[sref] l'arbitre du jeu ne descend pas (a {:.0f} {:.0f}) : mis au pied de la rampe", nx, nz);
-    } else if (!in_ring && s_help == 1 && since > 20000) {
-      s_help = 2;
-      Place(n, 0.f, -203.f, 200.f);
-      bd::mem::store<u8>(n + 996, 0);
-      Free(ctx, base, n);
-      BD_INFO("[sref] l'arbitre du jeu n'entre pas dans le ring (a {:.0f} {:.0f}) : mis dans le ring", nx, nz);
+    } else if (!in_ring && s_help < 2) {
+      // (his walk: the ramp's foot reached -> into the ring; no progress for 5 s -> helped one step; 30 s -> the ring)
+      static float s_best = 1e9f;
+      static int64_t s_best_ms = 0, s_best_for = 0;
+      const int phase = g_walk_phase.load();
+      const float d = std::hypot(nx, nz - WalkTargetZ(phase));
+      if (s_best_for != g_watch_ms)
+        s_best_for = g_watch_ms, s_best = 1e9f, s_best_ms = NowMs();
+      if (d < s_best - 20.f)
+        s_best = d, s_best_ms = NowMs();
+      if (phase == 0 && d < 90.f) {
+        g_walk_phase = 1;
+        s_best = 1e9f, s_best_ms = NowMs();
+        BD_INFO("[sref] l'arbitre du jeu est au pied de la rampe ({:.1f} s) : il monte dans le ring", since / 1000.0);
+      } else if (NowMs() - s_best_ms > 5000 || since > 30000) {
+        if (phase == 0 && since <= 30000) {
+          float y = -60.f, ax, az;
+          for (u32 k : {7u, 8u})
+            if (const u32 a = Actor(k); a && Spot(a, ax, az))
+              if (const u32 aq = bd::mem::try_load<u32>(a + 768); aq && std::isfinite(LoadF(aq + 4))) {
+                y = LoadF(aq + 4);
+                break;
+              }
+          Place(n, 0.f, y, 430.f);
+          bd::mem::store<u8>(n + 996, 1);
+          Free(ctx, base, n);
+          g_walk_phase = 1;
+          s_best = 1e9f, s_best_ms = NowMs();
+          BD_INFO("[sref] l'arbitre du jeu n'avance plus (a {:.0f} {:.0f}) : mis au pied de la rampe", nx, nz);
+        } else {
+          s_help = 2;
+          g_walk = false;
+          Place(n, 0.f, -203.f, 200.f);
+          bd::mem::store<u8>(n + 996, 0);
+          Free(ctx, base, n);
+          BD_INFO("[sref] l'arbitre du jeu n'entre pas dans le ring (a {:.0f} {:.0f}) : mis dans le ring", nx, nz);
+        }
+      }
     }
   }
   if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1) {
@@ -2357,6 +2419,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       g_nm = {};
       g_out = kOutNone;
       g_scene_ran = false;
+      g_walk = false;
       g_gone = false;
       g_foul_by = 0;
       g_hold_grace = 3.0;

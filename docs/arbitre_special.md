@@ -201,3 +201,10 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   0 (parfois 1 / 2 un instant) sur l'arbitre normal, **1 en permanence** sur le nôtre et sur l'ancien arbitre, tous
   deux après des motions à nous (`sub_8247AD18` avec r8 = 1). `Free()` le remet à 0. Si ça suffit, l'arbitre
   descend seul de la scène (comme WWE '13) ; sinon aides à 12 s (pied de la rampe) et 20 s (dans le ring).
+- Test du 2026-11-16 19:57 : l'ancien arbitre sort seul du ring (motion 717, entre les cordes) et remonte la rampe
+  quand on lui donne la marche 'RRTR' dès le relais, dans le ring. Cette marche pilote l'acteur par une **manette
+  virtuelle** (`sub_82371D10` → `sub_8225C4D8(pad, mot)`), comme la marche de l'arbitre du I Quit (`wwe12_iquit.cpp`,
+  vue marcher en jeu le 2026-11-15). Le relevé en match normal : l'arbitre marche dans la motion 20152 (bloc 0), +1096
+  y passe à 1 de temps en temps (ce n'est donc pas un blocage). L'arbitre du jeu descend maintenant de la scène par
+  cette manette (`Wwe12SrefWalkWord`) : vers le pied de la rampe (0, 430), puis vers le ring (0, 120) ; aides : pas de
+  progrès 5 s → pied de la rampe, 30 s → dans le ring.
