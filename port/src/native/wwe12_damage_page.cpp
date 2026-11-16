@@ -147,7 +147,7 @@ std::string Wwe12DamagePageText(uint32_t id) {
     static const char *const k[5] = {"NORMAL", "1", "2", "3", "INFINITE"};
     return std::string("STARTING FINISHERS   ") + k[std::clamp(live(2), 0, 4)];
   }
-  case 3: return "FINISHER DAMAGE";  // (the game's two rows: finishers' and objects' damage, user 2026-11-16)
-  default: return "OBJECT DAMAGE";
+  case 3: return "FINISHER STRENGTH";  // (the game's two rows, as named on its own page: user's screenshot 2026-11-16)
+  default: return "FOREIGN OBJECT STRENGTH";
   }
 }
