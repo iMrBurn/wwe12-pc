@@ -40,6 +40,7 @@ REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, true, "WWE12",
 #include <algorithm>
 #include <atomic>
 #include <cfloat>
+#include <cmath>
 #include <chrono>
 #include <cstring>
 #include <functional>
@@ -80,6 +81,7 @@ REXCVAR_DEFINE_BOOL(wwe12_sref_gauge, true, "WWE12",
 REX_EXTERN(__imp__sub_822A7600);  // an attack's hit resolved (attack object: + 256 attacker, + 272 victim, + 288 guarded)
 REX_EXTERN(__imp__sub_82371C78);  // an actor leaves the match's area (the game's own behaviour for a man out of the match)
 REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner's number)
+REX_EXTERN(__imp__sub_82520B90);  // a world point to the screen (float[4] in and out), the game's own
 rex::ui::ImGuiDrawer *Wwe12OverlayDrawer();           // wwe12_iquit.cpp
 void Wwe12OverlayPost(std::function<void()> f);  // wwe12_iquit.cpp: on the UI thread
 
@@ -144,6 +146,45 @@ u32 g_duty = 0xFFFFFFFF, g_last_block = 255, g_ex = 0;
 int g_faults = 0;
 int64_t g_prev_ms = 0;
 void ShowHud();  // below: the gauge's drawing, made on the UI thread
+// Where the referee is on screen (as wwe12_iquit.cpp: sub_82520B90 turns a world point into back-buffer pixels with
+// the calling thread's view; a bone = a pointer to a 4 x 4 matrix, its place at + 48; the body's bone at actor + 120).
+std::atomic<float> g_sx{-1.f}, g_sy{-1.f};
+float LoadF(u32 at) {
+  const u32 bits = bd::mem::try_load<u32>(at);
+  float f;
+  std::memcpy(&f, &bits, 4);
+  return f;
+}
+bool Bone(u32 actor, u32 offset, float out[3]) {
+  const u32 m = actor ? bd::mem::try_load<u32>(actor + offset) : 0;
+  if (!m)
+    return false;
+  for (u32 i = 0; i < 3; ++i)
+    out[i] = LoadF(m + 48 + i * 4);
+  return std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]);
+}
+bool OnScreen(const PPCContext &in, u8 *base, const float world[3], float &sx, float &sy) {
+  const u32 g = bd::mem::try_load<u32>(0x83248D08);
+  const u32 w = g ? bd::mem::try_load<u32>(g + 300) : 0, h = g ? bd::mem::try_load<u32>(g + 304) : 0;
+  if (!w || !h || w > 16384 || h > 16384)
+    return false;
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 512) & ~15u;
+  const u32 v = c.r1.u32 + 256;
+  for (u32 i = 0; i < 3; ++i) {
+    u32 bits;
+    std::memcpy(&bits, &world[i], 4);
+    bd::mem::store<u32>(v + i * 4, bits);
+  }
+  bd::mem::store<u32>(v + 12, 0x3F800000u);
+  c.r3.u64 = v;
+  __imp__sub_82520B90(c, base);
+  const float x = LoadF(v), y = LoadF(v + 4), cw = LoadF(v + 12);
+  if (!(cw > 0.f) || !std::isfinite(x) || !std::isfinite(y))
+    return false;
+  sx = x / float(w), sy = y / float(h);
+  return sx > -0.2f && sx < 1.2f && sy > -0.2f && sy < 1.2f;
+}
 void Cost(float c, const char *why) {
   const float v = std::clamp(g_gauge.load() - c, 0.f, 1.f);
   g_gauge = v;
@@ -231,6 +272,8 @@ bool Patch(const Row &row) {
   bd::mem::store<u32>(rec + 24, bd::mem::load<u32>(src + 24));
   // (no managers' places in these matches: the layouts of that many people have none - the record's + 79)
   bd::mem::store<u8>(rec + 79, 0);
+  // (the match's name on the card before the match: the game's SPECIAL REFEREE, rule 83's + 56)
+  bd::mem::store<u32>(rec + 56, bd::mem::load<u32>(rules + kRule * kRuleSize + 56));
   const u32 p = rec + 2 + 3 * row.fighters;
   bd::mem::store<u8>(p, u8(first + 1));
   bd::mem::store<u8>(p + 1, u8(team + 1));
@@ -415,6 +458,10 @@ bool Wwe12SrefLabel(uint32_t id) { return t_label && (id == 40355 || (id >= 4035
 void Wwe12SrefMenu(PPCContext &ctx) {
   if (!On())
     return;
+  // (the menus are read again when a match is over: the rule's record is the game's own again - a demo or a
+  // Universe match started without a choice in these menus must not find the referee's place in it)
+  Restore();
+  g_sel = -1;
   const u32 table = ctx.r4.u32, size = ctx.r5.u32;
   if (!table || size < kHead + kRec)
     return;
@@ -475,7 +522,9 @@ void Wwe12SrefMenu(PPCContext &ctx) {
   };
   std::vector<Group> groups = {
       {41009, 2, false,
-       {{child(one, 41041), 41041, kRule},  // NORMAL MATCH: the game's own SPECIAL REFEREE rule
+       // NORMAL MATCH: ONE ON ONE's own rule, with its disqualifications and count-out (user, 2026-11-16: "en 1v1
+       // il devrait y avoir les regles classiques" - the game's SPECIAL REFEREE rule 83, played first, has none)
+       {{child(one, 41041), 41041, 0xFFFFFFFF},
         {child(one, 41054), 41054, 0xFFFFFFFF},
         {child(one, 41045), 41045, 0xFFFFFFFF},
         {child(one, 41046), 41046, 0xFFFFFFFF},
@@ -631,7 +680,14 @@ class SrefOverlay final : public rex::ui::ImGuiDialog {
     const float k = std::max(0.6f, io.DisplaySize.y / 1080.0f);
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImFont *font = ImGui::GetFont();
-    const float w = 260 * k, h = 16 * k, x = io.DisplaySize.x * 0.5f - w * 0.5f, y = io.DisplaySize.y * 0.905f;
+    // (on the referee, above his body, when he is on screen; else at the bottom of the screen)
+    const float px = g_sx.load(), py = g_sy.load();
+    const bool on_him = px >= 0.f && py >= 0.f && !g_ejected.load();
+    const float w = (on_him ? 150 : 260) * k, h = (on_him ? 10 : 16) * k;
+    const float x = on_him ? std::clamp(px * io.DisplaySize.x - w * 0.5f, 8 * k, io.DisplaySize.x - w - 50 * k)
+                           : io.DisplaySize.x * 0.5f - w * 0.5f;
+    const float y = on_him ? std::clamp(py * io.DisplaySize.y - 170 * k, 40 * k, io.DisplaySize.y - 40 * k)
+                           : io.DisplaySize.y * 0.905f;
     if (g_ejected.load()) {
       if (now - g_ejected_ms.load() > 6000) {
         g_hud_want = false;
@@ -650,7 +706,7 @@ class SrefOverlay final : public rex::ui::ImGuiDialog {
     const ImU32 fill = v >= 1.f ? IM_COL32(255, 205, 40, 255) : v < 0.2f ? IM_COL32(220, 40, 40, 255) : IM_COL32(40, 90, 220, 255);
     dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w * v, y + h), fill);
     // the striped shirt
-    const float sx = x + w + 10 * k, sw = 30 * k, sh = 30 * k, sy = y + h * 0.5f - sh * 0.5f;
+    const float sx = x + w + 8 * k, sw = (on_him ? 20 : 30) * k, sh = sw, sy = y + h * 0.5f - sh * 0.5f;
     dl->AddRectFilled(ImVec2(sx - 2 * k, sy - 2 * k), ImVec2(sx + sw + 2 * k, sy + sh + 2 * k), IM_COL32(15, 15, 20, 255), 3 * k);
     dl->AddRectFilled(ImVec2(sx, sy), ImVec2(sx + sw, sy + sh), IM_COL32(245, 245, 245, 255));
     for (int i = 0; i < 3; ++i)
@@ -803,11 +859,19 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     if (!g_draining && bd::mem::try_load<u32>(ref + 2536) == 0xFFFFFFFFu)
       v += float(dt / 150.0);
     g_gauge = std::clamp(v, 0.f, 1.f);
-    if (state == 1 && anim == 190 && block0 == 2 && g_last_block != 2)
-      Cost(0.2f, "compte de tombe abandonne");
+    // (WWE '13 takes 0.2 for a pin count he gives up himself, with its cancel button. Here the count's "given up"
+    // block is only played by the game - a kick-out, a rope break: charged, it was a fault he had not made, user's
+    // test of 2026-11-16. No cancel button of ours yet, so no fault.)
     g_last_block = anim == 190 ? block0 : 255;
     if (g_hit.exchange(false))
       Cost(0.1f, "son coup touche un catcheur");
+    {  // (where he is on screen: the bar follows him, as WWE '13's)
+      float body[3], sx = -1.f, sy = -1.f;
+      if (!Bone(ref, 120, body) || !OnScreen(ctx, base, body, sx, sy))
+        sx = sy = -1.f;
+      g_sx = sx;
+      g_sy = sy;
+    }
     g_hud_want = true;
     g_tick_ms = now;
     if (!g_hud_shown.exchange(true))

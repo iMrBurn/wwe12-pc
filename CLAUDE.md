@@ -18,8 +18,10 @@ releases sont en anglais (plus FR/DE/ES/IT pour les readmes de `port/dist`).
   jeu), les icônes de boutons de la version PS3 (`port/res/ps3_buttons.bin`, dans le dépôt et dans
   l'exe, décision du 2026-10-17 en connaissant le risque DMCA) et les animations et images du I Quit de
   WWE '13 (`port/res/iquit13.bin`, dans le dépôt et dans l'exe, décision du 2026-11-15 : « on s'en fout du
-  DMCA, je prends le risque », pour que tous les joueurs aient le mode sans mod). Aucune autre donnée sans
-  son accord explicite.
+  DMCA, je prends le risque », pour que tous les joueurs aient le mode sans mod), ainsi que ce dont le
+  Special Guest Referee a besoin dans WWE '13 (animations, images ; décision du 2026-11-16 : « je t'autorise
+  à prendre tout ce que t'as besoin dans wwe 13 pour mettre dans le 12 (comme pour le i quit) »). Aucune
+  autre donnée sans son accord explicite.
 - **Rien n'est poussé sur GitHub sans le « go » explicite de l'utilisateur.** Les releases sont créées
   par l'utilisateur sur le site ; `gh` est installé et sert à lire / répondre aux issues (réponses simples
 déléguées à la Main par l'utilisateur), jamais à publier une release sans son go.
