@@ -1839,7 +1839,33 @@ extern "C" REX_FUNC(sub_823B7DB8) {
 // kept out of sight from the first frame on - the tick only runs once the match's HUD is drawn (user's test of
 // 2026-11-16: before the bell he was seen half in the ring's middle).
 void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
-  if (!actor || !On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out != kOutNone || actor != Actor(6))
+  if (!actor || !On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out >= kOutScene)
+    return;
+  {  // (study: the two who wait, twice a second, 80 lines)
+    static int64_t s_last = 0;
+    static int s_lines = 0;
+    if (NowMs() - s_last >= 500 && s_lines < 80) {
+      s_last = NowMs();
+      ++s_lines;
+      std::string line;
+      for (int k : {6, g_gm_place}) {
+        const u32 a = k >= 0 ? Actor(u32(k)) : 0;
+        float x = 0, z = 0;
+        Spot(a, x, z);
+        if (a)
+          line += fmt::format(" | acteur {} : role {} dessine {} mis a jour {} motion {} position {:.0f} {:.0f} cerveau {:08X}", k,
+                              bd::mem::try_load<u32>(a + 3428), bd::mem::try_load<u32>(a + 1752),
+                              bd::mem::try_load<u32>(a + 1736), Anim(a), x, z, bd::mem::try_load<u32>(a + 3384));
+      }
+      BD_INFO("[sref] en attente :{}", line);
+    }
+  }
+  if (g_gm_place >= 0 && actor == Actor(u32(g_gm_place))) {
+    Shown(ctx, base, actor, false);
+    Place(actor, 0.f, -120.f, 3200.f);
+    return;
+  }
+  if (g_out != kOutNone || actor != Actor(6))
     return;
   if (bd::mem::try_load<u32>(actor + 3428) == 1 && bd::mem::try_load<u32>(actor + 3384) != 0 && Referee() &&
       Referee() != actor) {
@@ -1849,6 +1875,23 @@ void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
   if (Parked(actor) || (bd::mem::try_load<u32>(actor + 3428) == 1 && Referee() && Referee() != actor)) {
     Shown(ctx, base, actor, false);
     Place(actor, 0.f, -120.f, 3200.f);
+  }
+}
+
+// The actor's set-up (it makes his brain, 'CMIF', for a role other than 4 / 6; it runs again at the bell - user's test
+// of 2026-11-16, 17:13: the waiting referee's brain made at the first frame, gone after the bell, the hand-over then
+// refused). The game's referee who waits has the role 1 for the time of it.
+REX_EXTERN(__imp__sub_822143D0);
+extern "C" REX_FUNC(sub_822143D0) {
+  const u32 n = Actor(6);
+  const bool keep = On() && Match() && REXCVAR_GET(wwe12_sref_replacement) && n && ctx.r3.u32 == n + 1696 &&
+                    bd::mem::try_load<u32>(n + 3428) == 6 && g_out < kOutScene;
+  if (keep)
+    bd::mem::store<u32>(n + 3428, 1);
+  __imp__sub_822143D0(ctx, base);
+  if (keep) {
+    bd::mem::store<u32>(n + 3428, 6);
+    BD_INFO("[sref] l'arbitre du jeu : son cerveau refait ({:08X})", bd::mem::try_load<u32>(n + 3384));
   }
 }
 
@@ -1869,8 +1912,12 @@ bool WaitingSlot(u32 mgr, u32 slot) {
 }
 }  // namespace
 extern "C" REX_FUNC(sub_822CF850) {
-  if (ctx.r5.u32 != 0 && WaitingSlot(ctx.r3.u32, ctx.r4.u32))
+  if (ctx.r5.u32 != 0 && WaitingSlot(ctx.r3.u32, ctx.r4.u32)) {
+    static int s_lines = 0;
+    if (s_lines++ < 40)
+      BD_INFO("[sref] dessin de la case {} refuse (appel {:08X})", ctx.r4.u32, u32(ctx.lr));
     ctx.r5.u64 = 0;
+  }
   __imp__sub_822CF850(ctx, base);
 }
 extern "C" REX_FUNC(sub_822CE3F0) {
@@ -1897,6 +1944,11 @@ extern "C" REX_FUNC(sub_823B8F38) {
     Shown(ctx, base, n, false);
     Place(n, 0.f, -120.f, 3200.f);
   }
+  if (g_gm_place >= 0)
+    if (const u32 gm = Actor(u32(g_gm_place))) {
+      Shown(ctx, base, gm, false);
+      Place(gm, 0.f, -120.f, 3200.f);
+    }
 }
 
 // ---- he fights as a superstar (as WWE '13: a hit on him is a hit, his grapples are grapples) ----
