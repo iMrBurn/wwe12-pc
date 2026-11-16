@@ -1825,6 +1825,15 @@ void HandOver(const PPCContext &ctx, u8 *base) {
       g_ex_ms = now;
       g_ex = s3;
       g_left = false;
+      if (bd::mem::try_load<u8>(s3 + 1015) == 0) {  // (his walk away, from the ring, as the game's free state does)
+        bd::mem::store<u32>(s3 + 2568, 0);
+        c = ctx;
+        c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+        c.r3.u64 = s3;
+        __imp__sub_82371C78(c, base);
+        g_left = true;
+        BD_INFO("[sref] remplacement : l'ancien arbitre s'en va a pied depuis le ring (RRTR)");
+      }
     }
     g_ejected = true;
     g_ejected_ms = now;
@@ -1933,6 +1942,23 @@ void RefDiag(const char *who, u32 a) {
 
 void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
   g_main_tid = std::this_thread::get_id();
+  if (actor && (actor == Actor(6) || actor == Actor(0)) && On() && !Match()) {  // (study: motions, ordinary match)
+    static u32 s_key[2] = {};
+    static int s_lines = 0;
+    const int k = actor == Actor(6) ? 1 : 0;
+    const u32 blk = bd::mem::try_load<u32>(actor + 684);
+    const u32 key = (u32(Anim(actor)) << 16) ^ (blk ? bd::mem::try_load<u32>(blk) : 0);
+    if (key != s_key[k] && s_lines < 400) {
+      s_key[k] = key;
+      ++s_lines;
+      float ax = 0, az = 0;
+      Spot(actor, ax, az);
+      BD_INFO("[sref] etude motions {} : motion {} bloc {:08X} a {:.0f} {:.0f} {:.0f} cap {:.2f} zone {} +1096 {}",
+              k ? "arbitre" : "joueur", Anim(actor), blk ? bd::mem::try_load<u32>(blk) : 0, ax,
+              LoadF(bd::mem::try_load<u32>(actor + 768) + 4), az, LoadF(actor + 740), bd::mem::try_load<u8>(actor + 996),
+              bd::mem::try_load<u32>(actor + 1096));
+    }
+  }
   if (actor && actor == Actor(6) && On() && !Match()) {  // (study: the reference, an ordinary match's referee)
     static int64_t s_last = 0;
     static int s_lines = 0;
@@ -2237,7 +2263,10 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   // of the match - sub_82371C78, as its free state does for + 998 = 4 and the area byte + 996 = 1 or 16)
   if (g_ex)
     g_tick_ms = NowMs();
-  if (main_thread && g_ex && g_out == kOutDone && !g_left && NowMs() - g_ex_ms > 12000 && !g_gone) {
+  float ex_x = 0, ex_z = 0;
+  const bool ex_in_ring = g_ex && Spot(g_ex, ex_x, ex_z) && std::fabs(ex_x) < 300.f && std::fabs(ex_z) < 300.f &&
+                          LoadF(bd::mem::try_load<u32>(g_ex + 768) + 4) < -150.f;
+  if (main_thread && g_ex && g_out == kOutDone && ex_in_ring && NowMs() - g_ex_ms > 12000 && !g_gone) {
     // (three seconds after the hand-over and still in the ring: put outside it, on the ramp's side, at the height of
     // the people who stand at ringside - the game's own leaving walk then takes him up the ramp, and the game hides
     // him at its end. Taken far away at once, the camera, which follows the player's man, showed the stands' dark.)
