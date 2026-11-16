@@ -268,6 +268,8 @@ void PutBE(u8 *p, u32 v) {
 }
 }  // namespace
 
+bool Wwe12SrefOn() { return On(); }
+
 void Wwe12SrefMenu(PPCContext &ctx) {
   if (!On())
     return;

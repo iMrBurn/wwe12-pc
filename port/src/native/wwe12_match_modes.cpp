@@ -928,6 +928,7 @@ int g_submission_row = -1;          // SUBMISSION's index among the ONE ON ONE r
 
 void Wwe12SrefMenu(PPCContext &ctx);  // wwe12_sref.cpp: SPECIALTY > SPECIAL REFEREE (the table handed on may be a longer copy)
 bool Wwe12SrefDecide(uint32_t id, uint32_t parent, uint32_t label);  // wwe12_sref.cpp: a row of it chosen?
+bool Wwe12SrefOn();                   // wwe12_sref.cpp: the mode is on (cvar wwe12_sref)
 
 extern "C" REX_FUNC(sub_82DE92F8) {
   Wwe12SrefMenu(ctx);
@@ -955,8 +956,9 @@ extern "C" REX_FUNC(sub_82DE92F8) {
     last = int(i);
     ++row;
   }
-  // (the new row's id: above every record's, the hidden ones' and the SPECIAL REFEREE rows' after the shown ones too)
-  for (u32 i = shown; i < total && kHeader + (i + 1) * kRecord <= size; ++i)
+  // (with the SPECIAL REFEREE rows added after the shown ones, the new row's id goes above theirs too; without them
+  // nothing changes: the id stays the one I QUIT has had since it was made, max of the shown ones + 1)
+  for (u32 i = shown; Wwe12SrefOn() && i < total && kHeader + (i + 1) * kRecord <= size; ++i)
     max_id = std::max(max_id, bd::mem::try_load<u32>(rec(i) + kId));
   if (sub < 0 || last < 0) {
     BD_INFO("[iquit] ONE ON ONE / SUBMISSION introuvables : rien ajoute");
