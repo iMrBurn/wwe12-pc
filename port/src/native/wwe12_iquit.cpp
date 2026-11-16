@@ -1297,6 +1297,7 @@ extern "C" REX_FUNC(sub_8246E3B0) {
 // images (hud/<language>/<name>.dds). The user's decision of 2026-11-15: the I Quit match as WWE '13's for every
 // player, no mod needed - WWE '13's data in the exe, the DMCA risk his (as the PS3 button icons). A motions mod
 // with the same numbers, or a hud folder of its own, goes first.
+bool Wwe12SrefWanted();  // wwe12_sref.cpp: the cvar wwe12_sref
 const std::vector<std::pair<std::string, std::vector<uint8_t>>> &Wwe12IQuit13Files() {
   static const std::vector<std::pair<std::string, std::vector<uint8_t>>> files = [] {
     std::vector<std::pair<std::string, std::vector<uint8_t>>> out;
@@ -1322,7 +1323,12 @@ const std::vector<std::pair<std::string, std::vector<uint8_t>>> &Wwe12IQuit13Fil
         o += 4;
         if (o + len > size)
           break;
-        out.emplace_back(std::move(name), std::vector<uint8_t>(d + o, d + o + len));
+        // (the Special Guest Referee's files - its motions 13115-13149, its HUD parts "0_90_..." - only with that
+        // mode on: without it the pack built from these files is the I Quit's alone, the one players have had)
+        const int number = atoi(name.c_str());
+        const bool sref = (number >= 13115 && number < 13150) || name.find("/0_90_") != std::string::npos;
+        if (!sref || Wwe12SrefWanted())
+          out.emplace_back(std::move(name), std::vector<uint8_t>(d + o, d + o + len));
         o += len;
       }
     }

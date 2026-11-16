@@ -430,6 +430,7 @@ void PutBE(u8 *p, u32 v) {
 }  // namespace
 
 bool Wwe12SrefOn() { return On(); }
+bool Wwe12SrefWanted() { return REXCVAR_GET(wwe12_sref); }  // (asked before the game's memory is there)
 
 // ---- the referee's entrance ----
 // The entrances are built by sub_82A3F828(order) from the participants (sub_82A3F0D8: a fighter - kind 0 - is a
