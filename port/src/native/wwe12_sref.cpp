@@ -254,7 +254,15 @@ extern "C" REX_FUNC(sub_82A39AC0) {
 // records added: a sub-menu is a copy of the game's FREE BRAWL sub-menu record, a stipulation a copy of the game's
 // own row of that match, found by its text and its parent - so each plays what the game's row plays. A page's
 // records follow each other and end with a "last" one (kind bit 2); a record's + 22 is its depth, + 64 bit 0
-// (of its first 16 bits) hides it. SPECIAL REFEREE goes after SPECIALTY's last row, so no row of the game moves.
+// (of its first 16 bits) hides it.
+// The game finds an entry from its id by a binary search (sub_82DE8718, and the same search inlined elsewhere): the
+// ids must go up along the table, as the game's do (a record's id is its index). A page's records must also follow
+// each other (its page table: first entry and count, sub_82DE8F88). So a row added inside a page cannot have a new
+// id (user's test of 2026-11-16: SPECIAL REFEREE after SPECIALTY's last row with the id 226 - B did not go back
+// from its sub-menu, its parent was not found). It takes the id of the row before it instead, a match row that has
+// no sub-menu of its own (CHAMPIONSHIP SCRAMBLE): the search then finds one of the two, both on SPECIALTY's page,
+// and the sub-menus are found from their parent's id as before. Our pages go at the table's end, ids above all.
+// SPECIAL REFEREE is SPECIALTY's second row, as in WWE '13.
 namespace {
 constexpr u32 kRec = 0x74, kHead = 0x28;
 constexpr u32 kLabel = 0x00, kDepth = 0x16, kPage = 0x18, kId = 0x1C, kParent = 0x38, kKind = 0x3C, kHide = 0x40, kLink = 0x54,
@@ -308,11 +316,14 @@ void Wwe12SrefMenu(PPCContext &ctx) {
     return;
   const u32 sid = BE(rec(u32(spec)) + kId);
   const int brawl = find(41053, sid);  // (a sub-menu's record, the model of ours)
-  int last = -1;                       // SPECIALTY's last row
-  for (u32 i = 0; i < n; ++i)
-    if (!hidden(i) && BE(rec(i) + kParent) == sid)
+  int last = -1;                       // the row SPECIAL REFEREE goes after: SPECIALTY's first match row, not its last
+  for (u32 i = 0; i < n && last < 0; ++i)
+    if (!hidden(i) && BE(rec(i) + kParent) == sid && BE(rec(i) + kLink) == 0x7D0 && BE(rec(i) + kKind) == 5)
       last = int(i);
-  if (brawl < 0 || last < 0 || !(BE(rec(u32(last)) + kKind) & 2)) {
+  for (u32 i = 0; i < n && last >= 0; ++i)
+    if (BE(rec(i) + kParent) == BE(rec(u32(last)) + kId))
+      last = -1;  // (it has rows of its own: its id cannot be shared)
+  if (brawl < 0 || last < 0) {
     BD_INFO("[sref] menu : SPECIALTY introuvable ou inattendu, rien ajoute");
     return;
   }
@@ -353,7 +364,7 @@ void Wwe12SrefMenu(PPCContext &ctx) {
   if (groups.empty())
     return;
 
-  std::vector<u8> out(t, t + kHead + (u32(last) + 1) * kRec);  // up to SPECIALTY's last row
+  std::vector<u8> out(t, t + kHead + (u32(last) + 1) * kRec);  // up to the row before ours
   std::vector<u8> tail(t + kHead + (u32(last) + 1) * kRec, t + size);
   u32 added = 0;
   auto add = [&](std::vector<u8> &to, int from, u32 label, u32 id, u32 parent, u32 page, u32 depth, u32 kind) {
@@ -371,10 +382,9 @@ void Wwe12SrefMenu(PPCContext &ctx) {
     return at;
   };
   const u32 depth = rec(u32(last))[kDepth];
-  // SPECIAL REFEREE, SPECIALTY's last row now (the old last one: a row like the others)
-  PutBE(out.data() + kHead + u32(last) * kRec + kKind, BE(rec(u32(last)) + kKind) & ~2u);
-  const u32 sr = ++max_id;
-  add(out, brawl, 40775, sr, sid, BE(rec(u32(last)) + kPage), depth, 3);
+  // SPECIAL REFEREE, with the id of the row before it (see above)
+  const u32 sr = BE(rec(u32(last)) + kId);
+  add(out, brawl, 40775, sr, sid, BE(rec(u32(last)) + kPage), depth, 1);
   // (the rest of the game's table, then our pages at its end)
   out.insert(out.end(), tail.begin(), tail.begin() + (n - u32(last) - 1) * kRec);
   const size_t extra = tail.size() - (n - u32(last) - 1) * kRec;  // (bytes after the last record, kept at the end)

@@ -956,10 +956,6 @@ extern "C" REX_FUNC(sub_82DE92F8) {
     last = int(i);
     ++row;
   }
-  // (with the SPECIAL REFEREE rows added after the shown ones, the new row's id goes above theirs too; without them
-  // nothing changes: the id stays the one I QUIT has had since it was made, max of the shown ones + 1)
-  for (u32 i = shown; Wwe12SrefOn() && i < total && kHeader + (i + 1) * kRecord <= size; ++i)
-    max_id = std::max(max_id, bd::mem::try_load<u32>(rec(i) + kId));
   if (sub < 0 || last < 0) {
     BD_INFO("[iquit] ONE ON ONE / SUBMISSION introuvables : rien ajoute");
     __imp__sub_82DE92F8(ctx, base);
@@ -976,7 +972,12 @@ extern "C" REX_FUNC(sub_82DE92F8) {
   std::memcpy(bd::mem::at<u8>(copy + at + kRecord), bd::mem::at<u8>(table + at), size - at);
   const u32 added = copy + at;
   bd::mem::store<u32>(added + kLabel, kIQuitLabel);
-  bd::mem::store<u32>(added + kId, max_id + 1);
+  // The game finds an entry from its id by a binary search: the ids must go up along the table. A new id here,
+  // in the table's middle, hides the entries after it from that search (read 2026-11-16 with the Special Guest
+  // Referee's menu: B did not go back from a sub-menu whose parent was not found). With that mode on, I QUIT takes
+  // the id of the row before it (the page's last match): the search finds one of the two, on the same page.
+  // (Without it the id stays the one I QUIT has had since it was made: to be changed once tested, see docs.)
+  bd::mem::store<u32>(added + kId, Wwe12SrefOn() ? bd::mem::try_load<u32>(rec(u32(last)) + kId) : max_id + 1);
   bd::mem::store<u32>(added + kKind, 7);                                 // the page's last choice now
   bd::mem::store<u32>(copy + kHeader + u32(last) * kRecord + kKind, 5);  // (the old last one: a choice)
   bd::mem::store<u32>(copy + 4, total + 1);
