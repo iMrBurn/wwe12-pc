@@ -1611,6 +1611,13 @@ void Wwe12IQuitOverlayInit(rex::ui::ImGuiDrawer *drawer, std::function<void(std:
   g_post = std::move(post);
 }
 
+// (the same drawer and UI thread for the Special Guest Referee's gauge, wwe12_sref.cpp)
+rex::ui::ImGuiDrawer *Wwe12OverlayDrawer() { return g_drawer; }
+void Wwe12OverlayPost(std::function<void()> f) {
+  if (g_post)
+    g_post(std::move(f));
+}
+
 namespace {
 void ShowGauge() {
   if (!g_drawer || !g_post || g_shown.exchange(true))

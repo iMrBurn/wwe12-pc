@@ -39,9 +39,16 @@ REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, true, "WWE12",
 
 #include <algorithm>
 #include <atomic>
+#include <cfloat>
+#include <chrono>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
+
+#include <imgui.h>
+#include <rex/ui/imgui_dialog.h>
+#include <rex/ui/imgui_drawer.h>
 
 #include <rex/runtime.h>
 
@@ -67,6 +74,14 @@ REX_EXTERN(__imp__sub_825962D0);  // the same while choosing
 
 REXCVAR_DEFINE_BOOL(wwe12_sref_entrance, true, "WWE12",
                     "Special Guest Referee: the referee has his entrance, the first one (as WWE '13).");
+REXCVAR_DEFINE_BOOL(wwe12_sref_gauge, true, "WWE12",
+                    "Special Guest Referee: his gauge (as WWE '13: down when he does not do his work or hits a superstar; "
+                    "empty, he is the referee no more; full, Y during a hold is the screw job).");
+REX_EXTERN(__imp__sub_822A7600);  // an attack's hit resolved (attack object: + 256 attacker, + 272 victim, + 288 guarded)
+REX_EXTERN(__imp__sub_82371C78);  // an actor leaves the match's area (the game's own behaviour for a man out of the match)
+REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner's number)
+rex::ui::ImGuiDrawer *Wwe12OverlayDrawer();           // wwe12_iquit.cpp
+void Wwe12OverlayPost(std::function<void()> f);  // wwe12_iquit.cpp: on the UI thread
 
 REXCVAR_DEFINE_INT32(wwe12_sref_from, -1, "WWE12",
                      "Dev: with wwe12_sref, a match set up with this rule (13 = TRIPLE THREAT) is a Special Guest Referee one.");
@@ -105,6 +120,36 @@ u8 g_saved[kRuleSize] = {};        // (its own bytes)
 
 bool On() { return REXCVAR_GET(wwe12_sref) && bd::mem::ready(); }
 bool Match() { return g_committed.load(); }
+
+// ---- the gauge (WWE '13's 'SREF' component, read in its code 2026-11-16) ----
+// 0.5 at the bell, between 0 and 1. A duty he does not do (the judge waits for a count and he is not in the count's
+// motion) drains it after a grace time: 3 s for a pin (motion 190), 5 s for the ring-out and the down counts (191)
+// and the 5 count (200), then 0.02 a second. A pin count he gives up (motion 190's block 2 while the pin holds):
+// 0.2. His attack on a fighter that connects: 0.1. It comes back by 1 / 150 a second while nothing drains it and he
+// carries nothing. Empty, or thirty faults: he is the referee no more. Full: the screw job (Y during a hold - the
+// man applying it wins). Not WWE '13's: the cautions, the DQ he pronounces, the normal referee who replaces him
+// (their motions 2020-2051 are not in WWE '12; here the judge counts alone once he is out, as in a match without
+// a referee, and he cannot pin anyone).
+using Clock = std::chrono::steady_clock;
+int64_t NowMs() { return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count(); }
+std::atomic<float> g_gauge{0.5f};
+std::atomic<bool> g_hud_want{false}, g_hud_shown{false}, g_ejected{false};
+std::atomic<int64_t> g_tick_ms{0}, g_ejected_ms{0};
+std::atomic<bool> g_hit{false}, g_y{false};
+std::atomic<int64_t> g_hit_ms{0};
+std::atomic<u32> g_hit_victim{0};
+bool g_started = false, g_draining = false, g_left = false;
+double g_grace = 0;
+u32 g_duty = 0xFFFFFFFF, g_last_block = 255, g_ex = 0;
+int g_faults = 0;
+int64_t g_prev_ms = 0;
+void ShowHud();  // below: the gauge's drawing, made on the UI thread
+void Cost(float c, const char *why) {
+  const float v = std::clamp(g_gauge.load() - c, 0.f, 1.f);
+  g_gauge = v;
+  ++g_faults;
+  BD_INFO("[sref] jauge : - {:.2f} ({}) -> {:.2f}, {} fautes", c, why, v, g_faults);
+}
 u32 Actor(u32 i) { return bd::mem::try_load<u32>(kActors + i * 4); }
 u16 Anim(u32 actor) {
   const u32 st = actor ? bd::mem::try_load<u32>(actor + 680) : 0;
@@ -554,6 +599,8 @@ u16 Wwe12SrefPad(u32 user, u16 buttons) {
   if (user >= 4)
     return 0;
   const u16 before = g_prev[user].exchange(buttons);
+  if (On() && Match() && g_pad.load() == int(user) && (buttons & ~before & 0x8000))
+    g_y = true;  // (Y: the screw job, when the gauge is full)
   if (!On() || !REXCVAR_GET(wwe12_sref_own_count) || !Match() || g_pad.load() != int(user))
     return 0;
   const u32 st = g_state.load();
@@ -564,12 +611,115 @@ u16 Wwe12SrefPad(u32 user, u16 buttons) {
   return kPadA;
 }
 
+// ---- the gauge on the screen ----
+// A bar at the bottom of the screen, WWE '13's blue, a striped shirt at its end (drawn here: no image of WWE '13).
+namespace {
+class SrefOverlay final : public rex::ui::ImGuiDialog {
+ public:
+  explicit SrefOverlay(rex::ui::ImGuiDrawer *drawer) : ImGuiDialog(drawer) {}
+
+ protected:
+  void OnClose() override { g_hud_shown = false; }
+  void OnDraw(ImGuiIO &io) override {
+    const int64_t now = NowMs(), idle = now - g_tick_ms.load();
+    if (!g_hud_want.load() || idle > 5000) {
+      Close();  // (no match of ours: the drawer stops drawing ImGui every frame)
+      return;
+    }
+    if (idle > 250)
+      return;  // (the pause menu, a replay: nothing of ours over them)
+    const float k = std::max(0.6f, io.DisplaySize.y / 1080.0f);
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    ImFont *font = ImGui::GetFont();
+    const float w = 260 * k, h = 16 * k, x = io.DisplaySize.x * 0.5f - w * 0.5f, y = io.DisplaySize.y * 0.905f;
+    if (g_ejected.load()) {
+      if (now - g_ejected_ms.load() > 6000) {
+        g_hud_want = false;
+        return;
+      }
+      const char *msg = "YOU ARE NO LONGER THE REFEREE";
+      const float ms = 30.f * k;
+      const ImVec2 sz = font->CalcTextSizeA(ms, FLT_MAX, 0.f, msg);
+      dl->AddText(font, ms, ImVec2(io.DisplaySize.x * 0.5f - sz.x * 0.5f + 2 * k, y - 10 * k + 2 * k), IM_COL32(0, 0, 0, 220), msg);
+      dl->AddText(font, ms, ImVec2(io.DisplaySize.x * 0.5f - sz.x * 0.5f, y - 10 * k), IM_COL32(255, 70, 70, 255), msg);
+      return;
+    }
+    const float v = std::clamp(g_gauge.load(), 0.f, 1.f);
+    dl->AddRectFilled(ImVec2(x - 3 * k, y - 3 * k), ImVec2(x + w + 3 * k, y + h + 3 * k), IM_COL32(225, 225, 225, 255), 3 * k);
+    dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h), IM_COL32(15, 15, 20, 255));
+    const ImU32 fill = v >= 1.f ? IM_COL32(255, 205, 40, 255) : v < 0.2f ? IM_COL32(220, 40, 40, 255) : IM_COL32(40, 90, 220, 255);
+    dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w * v, y + h), fill);
+    // the striped shirt
+    const float sx = x + w + 10 * k, sw = 30 * k, sh = 30 * k, sy = y + h * 0.5f - sh * 0.5f;
+    dl->AddRectFilled(ImVec2(sx - 2 * k, sy - 2 * k), ImVec2(sx + sw + 2 * k, sy + sh + 2 * k), IM_COL32(15, 15, 20, 255), 3 * k);
+    dl->AddRectFilled(ImVec2(sx, sy), ImVec2(sx + sw, sy + sh), IM_COL32(245, 245, 245, 255));
+    for (int i = 0; i < 3; ++i)
+      dl->AddRectFilled(ImVec2(sx + sw * (0.1f + 0.3f * float(i)), sy), ImVec2(sx + sw * (0.25f + 0.3f * float(i)), sy + sh),
+                        IM_COL32(15, 15, 20, 255));
+    if (v >= 1.f) {
+      const char *msg = "Y  SCREW JOB (DURING A SUBMISSION)";
+      const float ms = 20.f * k;
+      const ImVec2 sz = font->CalcTextSizeA(ms, FLT_MAX, 0.f, msg);
+      dl->AddText(font, ms, ImVec2(io.DisplaySize.x * 0.5f - sz.x * 0.5f + 1 * k, y - 28 * k + 1 * k), IM_COL32(0, 0, 0, 220), msg);
+      dl->AddText(font, ms, ImVec2(io.DisplaySize.x * 0.5f - sz.x * 0.5f, y - 28 * k), IM_COL32(255, 220, 90, 255), msg);
+    }
+  }
+};
+void ShowHud() {
+  if (rex::ui::ImGuiDrawer *d = Wwe12OverlayDrawer())
+    new SrefOverlay(d);  // deletes itself when no match of ours runs
+  else
+    g_hud_shown = false;
+}
+}  // namespace
+
+// ---- his attack on a fighter that connects ----
+// The collision callback sub_822A8360 resolves a hit with sub_822A7600(attack object) at 0x822A8E14, then tests
+// the object's + 288 (0: not guarded, not reversed) - where WWE '13 charges the gauge (its sub_82634AC0).
+extern "C" REX_FUNC(sub_822A7600) {
+  const u32 obj = ctx.r3.u32, from = u32(ctx.lr);
+  __imp__sub_822A7600(ctx, base);
+  if (!On() || !Match() || from != 0x822A8E18 || !obj || ctx.r3.u32 == 0 || g_pad.load() < 0)
+    return;
+  const u32 by = bd::mem::try_load<u32>(obj + 256), hit = bd::mem::try_load<u32>(obj + 272);
+  if (!by || !hit || by == hit || bd::mem::try_load<u32>(obj + 288) != 0 || by != Referee() ||
+      bd::mem::try_load<u32>(hit + 3428) != 0)
+    return;
+  const int64_t now = NowMs();
+  if (g_hit_victim.exchange(hit) == hit && now - g_hit_ms.load() < 700)
+    return;  // (the same blow seen again)
+  g_hit_ms = now;
+  g_hit = true;
+}
+
 // Once per game frame during a match (from wwe12_iquit.cpp's tick).
 void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   if (!On() || !Match()) {
     g_pad = -1;
     g_step = 0;
+    g_started = false;
+    g_hud_want = false;
+    g_ejected = false;
+    g_ex = 0;
     return;
+  }
+  // (the man who was the referee: once he is outside the ring he walks away, the game's own behaviour for a man out
+  // of the match - sub_82371C78, as its free state does for + 998 = 4 and the area byte + 996 = 1 or 16)
+  if (g_ex)
+    g_tick_ms = NowMs();
+  if (g_ex && !g_left) {
+    const u32 area = bd::mem::try_load<u8>(g_ex + 996);
+    bool here = false;
+    for (u32 k = 0; k < 6; ++k)
+      here = here || Actor(k) == g_ex;
+    if (here && (area == 1 || area == 16)) {
+      PPCContext e = ctx;
+      e.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+      e.r3.u64 = g_ex;
+      __imp__sub_82371C78(e, base);
+      g_left = true;
+      BD_INFO("[sref] l'ancien arbitre est sorti du ring (zone {}) : il s'en va", area);
+    }
   }
   const u32 judge = bd::mem::try_load<u32>(kJudgePtr), ref = Referee();
   const u32 state = judge ? bd::mem::try_load<u32>(judge + 92) : 0, count = judge ? bd::mem::try_load<u32>(judge + 100) : 0;
@@ -606,9 +756,121 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     return;
   }
   const u32 pad = bd::mem::try_load<u32>(ref + 1760);
-  g_pad = pad < 4 ? int(pad) : 0;  // (not a pad's number: the first pad, until the log says what it holds)
+  g_pad = pad < 4 ? int(pad) : -1;  // (seen 2026-11-16: 0 for the first pad, 6 for a man of the computer's)
   if (g_t < 100000)
     ++g_t;
+  // the gauge (a played referee only)
+  if (REXCVAR_GET(wwe12_sref_gauge) && pad < 4) {
+    const int64_t now = NowMs();
+    const double dt = std::clamp(double(now - g_prev_ms) / 1000.0, 0.0, 0.1);
+    g_prev_ms = now;
+    if (!g_started) {
+      g_started = true;
+      g_gauge = 0.5f;
+      g_faults = 0;
+      g_draining = false;
+      g_duty = 0xFFFFFFFF;
+      g_hit = false;
+      g_y = false;
+      BD_INFO("[sref] jauge : debut du match, 0.50");
+    }
+    const u16 anim = Anim(ref);
+    const u32 sub0 = bd::mem::try_load<u32>(ref + 684);
+    const u32 block0 = sub0 ? bd::mem::try_load<u8>(sub0) : 255;
+    const bool duty = state == 1 || state == 3 || state == 4 || state == 5;
+    const bool doing = (state == 1 && anim == 190) || ((state == 4 || state == 5) && anim == 191) || (state == 3 && anim == 200);
+    if (state != g_duty) {
+      g_duty = state;
+      g_grace = state == 1 ? 3.0 : 5.0;
+      g_draining = false;
+    }
+    float v = g_gauge.load();
+    if (duty && !doing) {
+      g_grace -= dt;
+      if (g_grace <= 0) {
+        if (!g_draining) {
+          g_draining = true;
+          ++g_faults;
+          BD_INFO("[sref] jauge : il ne fait pas son travail (etat du juge {}), elle baisse ; {} fautes", state, g_faults);
+        }
+        v -= float(0.02 * dt);
+      }
+    } else {
+      g_draining = false;
+      if (duty && state != 1)
+        g_grace = 5.0;
+    }
+    if (!g_draining && bd::mem::try_load<u32>(ref + 2536) == 0xFFFFFFFFu)
+      v += float(dt / 150.0);
+    g_gauge = std::clamp(v, 0.f, 1.f);
+    if (state == 1 && anim == 190 && block0 == 2 && g_last_block != 2)
+      Cost(0.2f, "compte de tombe abandonne");
+    g_last_block = anim == 190 ? block0 : 255;
+    if (g_hit.exchange(false))
+      Cost(0.1f, "son coup touche un catcheur");
+    g_hud_want = true;
+    g_tick_ms = now;
+    if (!g_hud_shown.exchange(true))
+      Wwe12OverlayPost([] { ShowHud(); });
+    // full: the screw job, Y while a hold is on (the hold: 'BPMG' at [a man + 3404], + 32 = 2 the struggle, + 36
+    // the man applying it, + 40 the man in it)
+    if (g_y.exchange(false) && g_gauge.load() >= 1.f) {
+      for (u32 i = 0; i < 6; ++i) {
+        const u32 a = Actor(i), h = a ? bd::mem::try_load<u32>(a + 3404) : 0;
+        if (!h || bd::mem::try_load<u32>(h + 32) != 2)
+          continue;
+        const u32 by = bd::mem::try_load<u32>(h + 36), held = bd::mem::try_load<u32>(h + 40);
+        int winner = -1;
+        for (u32 k = 0; k < 6; ++k)
+          if (Actor(k) == by)
+            winner = int(k);
+        if (!held || winner < 0 || held == ref || by == ref)
+          continue;
+        BD_INFO("[sref] screw job : le catcheur {} gagne par soumission ({:08X} dans la prise)", winner, held);
+        PPCContext e = ctx;
+        e.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+        e.r3.u64 = held;
+        e.r4.u64 = 2;
+        e.r5.u64 = u32(winner);
+        __imp__sub_82261320(e, base);
+        for (u32 w = 0; w < 6; ++w)
+          bd::mem::store<u32>(0x8317B7A4 + w * 4, 0);  // (the request to the referee, if one was filed)
+        g_gauge = 0.5f;
+        break;
+      }
+    }
+    // empty: he is the referee no more. Without a man of the role 1 the judge counts by itself (sub_82265710 sets
+    // its + 112 to 0 the next frame); his + 998 = 4 keeps him out of the pins (sub_82261C28 wants 0 on both men).
+    // The role is also put in his participant record and his creation record, which the game copies back at times.
+    if (g_gauge.load() <= 0.f || g_faults >= 30) {
+      u32 index = 0;
+      for (u32 k = 0; k < 6; ++k)
+        if (Actor(k) == ref)
+          index = k;
+      bd::mem::store<u32>(ref + 3428, 0);
+      bd::mem::store<u8>(ref + 998, 4);
+      {
+        PPCContext e = ctx;
+        e.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+        e.r3.u64 = index;
+        __imp__sub_823F8270(e, base);
+        __imp__sub_8267CD30(e, base);
+        if (e.r3.u32 && bd::mem::try_load<u32>(e.r3.u32 + 8) == 1)
+          bd::mem::store<u32>(e.r3.u32 + 8, 0);
+      }
+      if (const u32 made = bd::mem::try_load<u32>(0x8322DD44))
+        if (bd::mem::try_load<u8>(made + 528 + 80 * index + 6) == 1)
+          bd::mem::store<u8>(made + 528 + 80 * index + 6, 0);
+      g_ejected = true;
+      g_ejected_ms = now;
+      g_ex = ref;
+      g_left = false;
+      g_pad = -1;
+      BD_INFO("[sref] jauge vide ({:.2f}, {} fautes) : l'acteur {} n'est plus l'arbitre, le juge compte seul", g_gauge.load(),
+              g_faults, index);
+      return;
+    }
+  }
   if (!g_press.exchange(false) || !REXCVAR_GET(wwe12_sref_own_count))
     return;
   if (state != 1 && state != 3 && state != 4 && state != 5)
