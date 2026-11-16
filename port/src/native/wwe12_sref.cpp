@@ -192,6 +192,8 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
 // (the normal referee waiting, and the hand-over: below)
 enum { kOutNone, kOutWait, kOut2050, kOutArrive, kOutDone };
 int g_out = kOutNone;
+int64_t g_ex_ms = 0;
+bool g_gone = false;
 double g_out_t = 0;
 Timed g_nm;  // the normal referee's motion of ours
 void HandOver(const PPCContext &ctx, u8 *base);
@@ -1041,7 +1043,6 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
                        IndexOf(offender) >= 0 && bd::mem::try_load<u32>(offender + 3428) == 0;
   const int rs = Step(ctx, base, g_rm, dt);
   Step(ctx, base, g_tm, dt);
-  const u32 idle = 20152;  // (the motion after ours: standing)
 
   if (g_act != kActNone) {
     g_act_t += dt;
@@ -1055,7 +1056,8 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
         u32 hb = 0, hh = 0;
         const bool in_hold = Hold(ref, hb, hh) && (hb == g_target || hh == g_target);
         BD_INFO("[sref] avertissement : le catcheur {} joue la motion {}", idx, Anim(g_target));
-        if (idx >= 0 && !DownAnim(Anim(g_target)) && !in_hold && Anim(g_target) < 13000) {
+        const u16 ta = Anim(g_target);
+        if (idx >= 0 && !DownAnim(ta) && !in_hold && !(ta >= 13115 && ta < 13150) && !(ta >= 190 && ta <= 220)) {
           int live = 0, spare = -1;
           for (int k = 0; k < 3; ++k) {
             if (g_strike[idx][k] > now)
@@ -1067,7 +1069,7 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
             g_strike[idx][spare] = now + 60000;
             ++live;
           }
-          const u32 back = Anim(g_target);
+          // (after his reaction the game gives him his next motion itself: replaying his earlier one froze him)
           float rx, rz, tx, tz;
           bool behind = false;
           if (Spot(ref, rx, rz) && Spot(g_target, tx, tz)) {
@@ -1076,12 +1078,12 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
           }
           if (live >= 3) {
             Face(g_target, ref);
-            Start(g_tm, g_target, W(2024), 0, 287, back);
+            Start(g_tm, g_target, W(2024), 0, 287, 0);
             g_argue = true;
             g_argue_t = 0;
             BD_INFO("[sref] avertissement : le catcheur {} conteste (3e avertissement)", idx);
           } else {
-            Start(g_tm, g_target, W(behind ? 2021 : 2022), 0, behind ? 191 : 261, back);
+            Start(g_tm, g_target, W(behind ? 2021 : 2022), 0, behind ? 191 : 261, 0);
             Cost(0.1f, "avertissement a un catcheur dans son droit");
             BD_INFO("[sref] avertissement : le catcheur {} obeit ({} avertissement(s))", idx, live);
           }
@@ -1092,7 +1094,7 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
       if (g_argue && !g_answered) {
         g_argue_t += dt;
         if (g_argue_t >= 1.0 && (rs == 0 || rs == 2 || g_rm.anim == W(2020))) {
-          Start(g_rm, ref, W(2026), 0, 152, idle);
+          Start(g_rm, ref, W(2026), 0, 152, 0);
           g_answered = true;
           Cost(0.5f, "il repond au catcheur qui conteste");
           if (const int idx = IndexOf(g_target); idx >= 0)
@@ -1126,7 +1128,7 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
         g_check_block = 10;
         EndMatch(ctx, base, g_held, 2, IndexOf(g_by));
       } else if (g_check_block <= 1 && !hold && !g_rm.waiting) {
-        Start(g_rm, ref, m, 2, len[2], idle);
+        Start(g_rm, ref, m, 2, len[2], 0);
         g_check_block = 2;
       } else if (rs == 2 || rs == 0) {
         if (g_check_block <= 1) {
@@ -1148,14 +1150,14 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
           winner = int(k);
       BD_INFO("[sref] disqualification prononcee : l'acteur {} perd, le catcheur {} gagne", IndexOf(offender), winner);
       Start(g_rm, ref, W(anim == 0 ? 2041 : anim == 1 ? 2042 : 2040), 0, anim == 0 ? 621 : anim == 1 ? 536 : 231,
-            anim <= 1 ? 0 : idle);
+            0);
       g_act = kActDq;
       g_act_t = 0;
       g_foul_by = 0;
       EndMatch(ctx, base, offender, 7, winner);
     } else if (y && hold && g_gauge.load() >= 1.f && free) {
       g_by = by, g_held = held;
-      Start(g_rm, ref, W(2029), 0, 306, idle);
+      Start(g_rm, ref, W(2029), 0, 306, 0);
       g_act = kActScrew;
       g_act_t = 0;
       g_resolved = false;
@@ -1187,11 +1189,11 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
       if (target) {
         g_target = target;
         Face(ref, target);
-        Start(g_rm, ref, W(2020), 0, 183, idle);
+        Start(g_rm, ref, W(2020), 0, 183, 0);
         g_act = kActCaution;
         BD_INFO("[sref] avertissement au catcheur {} (a {:.0f})", IndexOf(target), std::sqrt(best));
       } else {
-        Start(g_rm, ref, W(2049), 0, 151, idle);
+        Start(g_rm, ref, W(2049), 0, 151, 0);
         g_act = kActNothing;
       }
     }
@@ -1362,7 +1364,7 @@ void HandOver(const PPCContext &ctx, u8 *base) {
     if (s3 && IdleAnim(Anim(s3)) && !g_rm.anim) {
       g_act = kActNone;
       g_tm = {};
-      Start(g_rm, s3, W(2050), 0, 251, 20152);
+      Start(g_rm, s3, W(2050), 0, 251, 0);
       g_out = kOut2050;
       g_out_t = 0;
       g_ex = 0;
@@ -1378,11 +1380,22 @@ void HandOver(const PPCContext &ctx, u8 *base) {
     bd::mem::store<u32>(n + 1360 + 16, 1);
     std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
     bd::mem::store<u8>(n + 998, 1);
-    Place(n, 0.f, -120.f, 0.f);
+    {  // (at the special referee's own height: standing on the mat. At -120 he was sunk in it, user's test.)
+      float y = -203.f;
+      if (s3)
+        if (const u32 q = bd::mem::try_load<u32>(s3 + 768); q && std::isfinite(LoadF(q + 4)))
+          y = LoadF(q + 4);
+      float sx0 = 0.f, sz0 = 0.f;
+      Spot(s3, sx0, sz0);
+      // (a step from him, toward the ring's middle)
+      const float d = std::sqrt(sx0 * sx0 + sz0 * sz0);
+      const float k = d > 90.f ? (d - 90.f) / d : 0.f;
+      Place(n, sx0 * k, y, sz0 * k);
+    }
     bd::mem::store<u32>(n + 740, 0);
-    Start(g_nm, n, W(2043), 0, 621, 20152);
+    Start(g_nm, n, W(2043), 0, 621, 0);
     if (s3)
-      Start(g_rm, s3, W(2051), 0, 331, 20152);
+      Start(g_rm, s3, W(2051), 0, 331, 0);
     g_out = kOutArrive;
     g_out_t = 0;
     BD_INFO("[sref] remplacement : l'arbitre du jeu arrive (2043), l'arbitre special joue 2051");
@@ -1405,6 +1418,12 @@ void HandOver(const PPCContext &ctx, u8 *base) {
         SetRole(ctx, base, u32(index), ParticipantOf(ctx, base, u32(index)), 0);
       bd::mem::store<u8>(s3 + 998, 4);
       bd::mem::store<u32>(s3 + 3140, 0);
+      bd::mem::store<u32>(s3 + 2568, 1);
+      PPCContext c = ctx;
+      c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+      c.r3.u64 = s3, c.r4.u64 = 1;
+      __imp__sub_82212140(c, base);  // (the computer's now: the player has no man of his any more)
+      g_ex_ms = now;
       g_ex = s3;
       g_left = false;
     }
@@ -1539,7 +1558,19 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   // of the match - sub_82371C78, as its free state does for + 998 = 4 and the area byte + 996 = 1 or 16)
   if (g_ex)
     g_tick_ms = NowMs();
-  if (g_ex && !g_left) {
+  if (g_ex && g_out == kOutDone && NowMs() - g_ex_ms > 10000 && !g_gone) {
+    // (still here ten seconds after the hand-over: out of sight, as the game leaves its men who went away)
+    g_gone = true;
+    bd::mem::store<u32>(g_ex + 2568, 0);
+    Shown(ctx, base, g_ex, false);
+    Place(g_ex, 0.f, -120.f, 3200.f);
+    BD_INFO("[sref] l'ancien arbitre est parti (hors de vue)");
+  }
+  if (g_gone && g_ex) {
+    Shown(ctx, base, g_ex, false);
+    Place(g_ex, 0.f, -120.f, 3200.f);
+  }
+  if (g_ex && !g_left && !g_gone) {
     const u32 area = bd::mem::try_load<u8>(g_ex + 996);
     bool here = false;
     for (u32 k = 0; k < 6; ++k)
@@ -1548,6 +1579,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       PPCContext e = ctx;
       e.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
       e.r3.u64 = g_ex;
+      bd::mem::store<u32>(g_ex + 2568, 0);
       __imp__sub_82371C78(e, base);
       g_left = true;
       BD_INFO("[sref] l'ancien arbitre est sorti du ring (zone {}) : il s'en va", area);
@@ -1609,6 +1641,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       g_tm = {};
       g_nm = {};
       g_out = kOutNone;
+      g_gone = false;
       g_foul_by = 0;
       g_hold_grace = 3.0;
       g_hold_drain = false;
