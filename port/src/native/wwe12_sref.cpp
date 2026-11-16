@@ -225,6 +225,8 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
 enum { kOutNone, kOutWait, kOut2050, kOutScene, kOutArrive, kOutDone };
 int g_out = kOutNone;
 int64_t g_ex_ms = 0, g_watch_ms = 0;
+u32 g_sref_man = 0;  // the special referee when his replacement began
+bool g_judge_alone = false;  // the game's referee set aside for a count the judge made alone
 bool g_scene_ran = false;
 // The game's main thread (the one that reads each actor's pad word and updates every actor's components). The tick also
 // runs on a worker thread, inside a brain's update: an object taken out of its park there (the scene's microphone,
@@ -475,8 +477,7 @@ extern "C" REX_FUNC(sub_82A36150) {
   }
   const u32 m = ctx.r3.u32, gm_place = ctx.r4.u32 + 1;
   __imp__sub_82A36150(ctx, base);
-  g_gm_place = -1;
-  const int gm = GmNumber();
+  const int gm = ref_place ? GmNumber() : 0;
   if (ref_place && gm > 0 && gm < 373 && gm_place < 6 && REXCVAR_GET(wwe12_sref_scene) && REXCVAR_GET(wwe12_sref_replacement)) {
     PPCContext c = ctx;
     c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
@@ -495,8 +496,12 @@ extern "C" REX_FUNC(sub_82A36150) {
 
 // The match set up from a rule: ours only when it comes from the select's commit (sub_828AD3A0, its call returns
 // to 0x828AD3D0) of a select set up for a row of ours - never a Universe's or a story's match.
+namespace {
+void ResetMatchState();  // (below, after the scene's code)
+}
 extern "C" REX_FUNC(sub_82A39AC0) {
   if (On()) {
+    ResetMatchState();
     g_committed = false;
     g_arm = g_cur >= 0 && u32(ctx.lr) == 0x828AD3D0 && g_cur < int(g_rows.size()) && g_rows[size_t(g_cur)].rule == ctx.r4.u32;
     BD_INFO("[sref] match prepare avec la regle {} (options {:08X}, appel {:08X}){}", ctx.r4.u32, ctx.r5.u32, u32(ctx.lr),
@@ -567,8 +572,9 @@ extern "C" REX_FUNC(sub_82A3F828) {
       rank[side] = 0;
       int next = 1;
       for (u32 n = 0; n < 6; ++n) {
-        if (!part[n] || part[n] == ref || bd::mem::try_load<u32>(part[n] + 16) == 51200)
-          continue;
+        if (!part[n] || part[n] == ref || bd::mem::try_load<u32>(part[n] + 16) == 51200 ||
+            bd::mem::try_load<u32>(part[n] + 8) == 6)
+          continue;  // (nor the General Manager, who waits out of sight)
         const u32 s = bd::mem::try_load<u8>(part[n] + 13);
         if (s < 6 && rank[s] < 0)
           rank[s] = next++;
@@ -1281,8 +1287,18 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
       g_ref_idle = anim;
     if (y && dq_open && (free || anim <= 1)) {
       int winner = -1;
+      const auto side = [&](u32 k) {  // (his side: his participant record's + 13)
+        PPCContext c = ctx;
+        c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+        c.r3.u64 = k;
+        __imp__sub_823F8270(c, base);
+        __imp__sub_8267CD30(c, base);
+        return c.r3.u32 ? int(bd::mem::try_load<u8>(c.r3.u32 + 13)) : -1;
+      };
+      const int off_index = IndexOf(offender), off_side = off_index >= 0 ? side(u32(off_index)) : -1;
       for (u32 k = 0; k < 6 && winner < 0; ++k)
-        if (const u32 o = Actor(k); o && o != offender && o != ref && bd::mem::try_load<u32>(o + 3428) == 0)
+        if (const u32 o = Actor(k); o && o != offender && o != ref && bd::mem::try_load<u32>(o + 3428) == 0 &&
+                                     (off_side < 0 || side(k) != off_side))
           winner = int(k);
       BD_INFO("[sref] disqualification prononcee : l'acteur {} perd, le catcheur {} gagne", IndexOf(offender), winner);
       Start(g_rm, ref, W(anim == 0 ? 2041 : anim == 1 ? 2042 : 2040), 0, anim == 0 ? 621 : anim == 1 ? 536 : 231,
@@ -1768,6 +1784,45 @@ bool SceneTick(const PPCContext &ctx, u8 *base, u32 n, u32 s3, double dt) {
 }
 }  // namespace
 
+// A new match set up (or a rematch): what the last one's replacement left is undone. The motion camera keeps the node
+// names it reads (+ 4224 / + 4496): WWE '13's are put back to the game's if a match ended during the scene (the
+// review of 2026-11-16: every later match's bell camera would read "Camera001"). The scene's objects belong to the
+// last match: only forgotten.
+void ResetMatchState() {
+  if (g_scene_cam) {
+    if (const u32 cam = bd::mem::try_load<u32>(0x8317B8C4)) {
+      bd::mem::store<u32>(cam + 4224, g_cam_h1);
+      bd::mem::store<u32>(cam + 4496, g_cam_h2);
+    }
+    g_scene_cam = false;
+  }
+  if (g_out != kOutNone || g_ex || g_walk.load() || g_climb.load())
+    BD_INFO("[sref] nouveau match : le remplacement du match d'avant est oublie (etape {})", g_out);
+  g_scene = false;
+  g_scene_on = false;
+  g_scene_ran = false;
+  g_scene_t = 0;
+  g_gm = 0, g_mic = 0;
+  g_gm_place = -1;
+  g_out = kOutNone;
+  g_out_t = 0;
+  g_walk = false;
+  g_climb = false;
+  g_ex = 0;
+  g_sref_man = 0;
+  g_gone = false;
+  g_left = false;
+  g_ejected = false;
+  g_watch_ms = 0;
+  g_started = false;
+  g_rm = {};
+  g_tm = {};
+  g_nm = {};
+  g_act = kActNone;
+  g_pad = -1;
+  g_judge_alone = false;
+}
+
 void HandOver(const PPCContext &ctx, u8 *base) {
   if (!REXCVAR_GET(wwe12_sref_replacement))
     return;
@@ -1793,7 +1848,7 @@ void HandOver(const PPCContext &ctx, u8 *base) {
   if (g_out == kOutNone || g_out == kOutDone)
     return;
   g_tick_ms = now;
-  const u32 s3 = g_ex ? g_ex : Referee();
+  const u32 s3 = g_ex ? g_ex : Referee() ? Referee() : g_sref_man;
   Step(ctx, base, g_nm, dt);
   if (s3)
     Step(ctx, base, g_rm, dt);
@@ -1939,14 +1994,25 @@ extern "C" REX_FUNC(sub_823B5D18) {
   if (On() && Match() && REXCVAR_GET(wwe12_sref_replacement)) {
     const u32 n = Actor(6);
     if (n) {
-      if (g_out == kOutDone && g_ex) {  // (a rematch after a hand-over)
-        const int index = IndexOf(g_ex);
-        if (index >= 0)
+      // (a rematch, the last match's replacement begun or done - not while the match runs: its tick ran within 1 s)
+      BD_INFO("[sref] le match est remis en place (etape {}, dernier tick il y a {} ms)", g_out, NowMs() - g_live_ms.load());
+      if (g_out != kOutNone && NowMs() - g_live_ms.load() > 1000) {
+        const u32 man = g_sref_man ? g_sref_man : g_ex;
+        const int index = man ? IndexOf(man) : -1;
+        if (index >= 0) {
           SetRole(ctx, base, u32(index), ParticipantOf(ctx, base, u32(index)), 1);
-        g_ex = 0;
-        g_out = kOutNone;
-        g_started = false;
-        g_ejected = false;
+          bd::mem::store<u8>(man + 998, 1);
+          bd::mem::store<u32>(man + 3140, 1);
+          bd::mem::store<u32>(man + 2568, 0);
+          if (bd::mem::try_load<u32>(man + 1760) < 4) {  // (a player's man: no more the computer's)
+            PPCContext c = ctx;
+            c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+            c.r3.u64 = man, c.r4.u64 = 0;
+            __imp__sub_82212140(c, base);
+          }
+        }
+        BD_INFO("[sref] revanche : l'arbitre special (acteur {}) l'est a nouveau", index);
+        ResetMatchState();
       }
       if (g_out == kOutNone && Referee() && Referee() != n)
         SetRole(ctx, base, 6, 40, 6);
@@ -2349,7 +2415,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
           g_climb = false;
           g_walk = false;
           if (!in_ring) {
-            const float k = 270.f / std::max(std::fabs(nx), std::fabs(nz));
+            const float k = 270.f / std::max(1.f, std::max(std::fabs(nx), std::fabs(nz)));
             Place(n, nx * k, -203.f, nz * k);
             bd::mem::store<u8>(n + 996, 0);
           }
@@ -2424,9 +2490,19 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       }
     }
   }
+  if (main_thread && g_judge_alone && g_out == kOutDone && Actor(6)) {  // (the count over: the referee again)
+    const u32 j = bd::mem::try_load<u32>(kJudgePtr);
+    if (j && bd::mem::try_load<u32>(j + 92) == 0) {
+      g_judge_alone = false;
+      SetRole(ctx, base, 6, 40, 1);
+      BD_INFO("[sref] le compte du juge est fini : l'arbitre du jeu l'est a nouveau");
+    }
+  }
   if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1 &&
       !g_walk.load() && !g_climb.load()) {
-    static int64_t s_wait = 0;
+    static int64_t s_wait = 0, s_wait_for = 0;
+    if (s_wait_for != g_watch_ms)
+      s_wait_for = g_watch_ms, s_wait = 0;
     const u32 j = bd::mem::try_load<u32>(kJudgePtr);
     const u32 st = j ? bd::mem::try_load<u32>(j + 92) : 0, cnt = j ? bd::mem::try_load<u32>(j + 100) : 0;
     if ((st == 1 || st == 3) && cnt == 0) {
@@ -2435,6 +2511,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       if (NowMs() - s_wait > 3000) {
         SetRole(ctx, base, 6, 40, 6);
         s_wait = 0;
+        g_judge_alone = true;
         BD_INFO("[sref] l'arbitre du jeu ne compte pas (etat du juge {}, 3 s a 0) : le juge compte seul", st);
       }
     } else {
@@ -2495,7 +2572,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     line += fmt::format(" | juge +112 = {}", judge ? bd::mem::try_load<u32>(judge + 112) : 99);
     if (ref)
       line += fmt::format(" | arbitre +998 = {} +2560 = {}", bd::mem::try_load<u8>(ref + 998), bd::mem::try_load<u32>(ref + 2560));
-    if (line != g_last_roles) {
+    if (main_thread && line != g_last_roles) {  // (a std::string: written by one thread only)
       BD_INFO("[sref] acteurs (role / manette) :{}", line);
       g_last_roles = line;
     }
@@ -2617,6 +2694,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
         g_out = kOutWait;
         g_out_t = 0;
         g_ejected_ms = now;
+        g_sref_man = ref;
         BD_INFO("[sref] jauge vide ({:.2f}, {} fautes) : l'arbitre du jeu va le remplacer", g_gauge.load(), g_faults);
       }
     } else if (g_gauge.load() <= 0.f || g_faults >= 30) {
