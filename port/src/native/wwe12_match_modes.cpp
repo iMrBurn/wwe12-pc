@@ -926,7 +926,11 @@ std::atomic<int> g_iquit_row{-1};   // the I QUIT row's index in its menu, once 
 int g_submission_row = -1;          // SUBMISSION's index among the ONE ON ONE rows
 }  // namespace
 
+void Wwe12SrefMenu(PPCContext &ctx);  // wwe12_sref.cpp: SPECIALTY > SPECIAL REFEREE (the table handed on may be a longer copy)
+bool Wwe12SrefDecide(uint32_t id, uint32_t parent, uint32_t label);  // wwe12_sref.cpp: a row of it chosen?
+
 extern "C" REX_FUNC(sub_82DE92F8) {
+  Wwe12SrefMenu(ctx);
   const u32 table = ctx.r4.u32, size = ctx.r5.u32;
   const u32 total = table ? bd::mem::try_load<u32>(table + 4) : 0, shown = table ? bd::mem::try_load<u32>(table + 8) : 0;
   if (REXCVAR_GET(wwe12_iquit))
@@ -951,6 +955,9 @@ extern "C" REX_FUNC(sub_82DE92F8) {
     last = int(i);
     ++row;
   }
+  // (the new row's id: above every record's, the hidden ones' and the SPECIAL REFEREE rows' after the shown ones too)
+  for (u32 i = shown; i < total && kHeader + (i + 1) * kRecord <= size; ++i)
+    max_id = std::max(max_id, bd::mem::try_load<u32>(rec(i) + kId));
   if (sub < 0 || last < 0) {
     BD_INFO("[iquit] ONE ON ONE / SUBMISSION introuvables : rien ajoute");
     __imp__sub_82DE92F8(ctx, base);
@@ -1037,6 +1044,10 @@ bool Wwe12IQuitMatch() { return g_iquit.load() && bd::mem::try_load<u8>(0x8317C8
 // The menus' "decide" (wwe12_quit.cpp, sub_8253C3F0): the chosen entry's id, parent and label. A choice among PLAY's
 // match lists (ONE ON ONE = parent 8, the others 9-14) says whether the match set up is an I Quit.
 void Wwe12MatchDecide(uint32_t id, uint32_t parent, uint32_t label) {
+  if (Wwe12SrefDecide(id, parent, label)) {  // (a refereed match: not an I Quit one, whatever was chosen before)
+    g_iquit = false;
+    return;
+  }
   // a choice in a higher menu (PLAY, the main menu: Universe, Road to WrestleMania...): no I Quit match any more (else
   // a submission match of the Universe after an I Quit exhibition would be one)
   if (parent < 8) {

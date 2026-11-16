@@ -37,9 +37,13 @@ REXCVAR_DEFINE_BOOL(wwe12_sref, false, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, true, "WWE12",
                     "Special Guest Referee: A counts (the game's own count functions, called for the A button).");
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <string>
+#include <vector>
+
+#include <rex/runtime.h>
 
 #include <fmt/format.h>
 
@@ -56,7 +60,7 @@ REX_EXTERN(__imp__sub_823C9458);  // the played referee starts his count for the
 REX_EXTERN(__imp__sub_823C97B0);  // an actor's "action 2" button (the referee: sub_823C9458 first)
 REX_EXTERN(__imp__sub_822605A0);  // the counts a pin needs (judge): 3, or 2
 
-REXCVAR_DEFINE_INT32(wwe12_sref_from, 13, "WWE12",
+REXCVAR_DEFINE_INT32(wwe12_sref_from, -1, "WWE12",
                      "Dev: with wwe12_sref, a match set up with this rule (13 = TRIPLE THREAT) is a Special Guest Referee one.");
 
 namespace {
@@ -74,8 +78,25 @@ u32 g_last_state = 0xFFFFFFFF, g_last_count = 0xFFFFFFFF;
 u16 g_last_anim = 0xFFFF;
 std::string g_last_roles;
 
+// The menu's rows of ours (SPECIALTY > SPECIAL REFEREE > a match > a stipulation), made by Wwe12SrefMenu.
+// A row is a copy of the game's own row of that match, so it plays that match's rule; the rule's record is given
+// one more place, the referee's, while the row is the chosen one (ONE ON ONE > NORMAL MATCH plays rule 83 itself).
+struct Row {
+  u32 id = 0, rule = 0, fighters = 0;
+  bool tag = false;
+};
+std::vector<Row> g_rows;           // (written when the menus' table is parsed, read from the game's thread)
+std::vector<u32> g_nodes;          // our sub-menus' ids
+std::vector<u32> g_game_rows;      // the game's own match rows' ids
+std::atomic<int> g_sel{-1};        // the row chosen in the menu (-1: another match)
+int g_cur = -1;                    // the row the character select was set up for
+bool g_arm = false;                // the match's setup running now comes from that select
+std::atomic<bool> g_committed{false};  // the match set up is one of ours
+u32 g_patched = 0xFFFFFFFF;        // the rule whose record has the referee's place now
+u8 g_saved[kRuleSize] = {};        // (its own bytes)
+
 bool On() { return REXCVAR_GET(wwe12_sref) && bd::mem::ready(); }
-bool Match() { return bd::mem::try_load<u8>(kMatch) == kRule; }
+bool Match() { return g_committed.load(); }
 u32 Actor(u32 i) { return bd::mem::try_load<u32>(kActors + i * 4); }
 u16 Anim(u32 actor) {
   const u32 st = actor ? bd::mem::try_load<u32>(actor + 680) : 0;
@@ -122,22 +143,76 @@ void Layout() {
 }
 }  // namespace
 
+// A rule's record given the referee's place: one more person, his place of the kind 1 on a side of his own, and the
+// character select's layout of that many people. Counts and layouts are copied from the game's own rules of that
+// size (13: three, 14: four, 38: five men each for himself; 5: a tag match and a fifth person), so nothing depends
+// on how the record is laid out in memory. Put back when another match is chosen.
+namespace {
+void Restore() {
+  const u32 rules = bd::mem::try_load<u32>(kRulesPtr);
+  if (g_patched == 0xFFFFFFFF || !rules)
+    return;
+  std::memcpy(bd::mem::at<u8>(rules + g_patched * kRuleSize), g_saved, kRuleSize);
+  BD_INFO("[sref] regle {} remise comme avant", g_patched);
+  g_patched = 0xFFFFFFFF;
+}
+bool Patch(const Row &row) {
+  const u32 rules = bd::mem::try_load<u32>(kRulesPtr);
+  if (!rules || row.rule >= 119 || row.fighters < 2 || row.fighters > 4)
+    return false;
+  const u32 rec = rules + row.rule * kRuleSize;
+  const u32 like = row.fighters == 2 ? 13 : row.fighters == 3 ? 14 : row.tag ? 5 : 38;  // a rule of that many people
+  const u32 src = rules + like * kRuleSize;
+  std::memcpy(g_saved, bd::mem::at<u8>(rec), kRuleSize);
+  g_patched = row.rule;
+  u8 first = 0, team = 0;
+  for (u32 k = 0; k < row.fighters; ++k) {
+    first = std::max(first, bd::mem::load<u8>(rec + 2 + 3 * k));
+    team = std::max(team, bd::mem::load<u8>(rec + 3 + 3 * k));
+  }
+  bd::mem::store<u16>(rec, bd::mem::load<u16>(src));            // the people
+  bd::mem::store<u32>(rec + 52, bd::mem::load<u32>(src + 52));  // the select's layout
+  const u32 p = rec + 2 + 3 * row.fighters;
+  bd::mem::store<u8>(p, u8(first + 1));
+  bd::mem::store<u8>(p + 1, u8(team + 1));
+  bd::mem::store<u8>(p + 2, 1);
+  BD_INFO("[sref] regle {} : {} combattants + l'arbitre (place {}, cote {}), gabarit {}", row.rule, row.fighters, first + 1,
+          team + 1, bd::mem::load<u32>(rec + 52));
+  return true;
+}
+}  // namespace
+
 // The character select set up for a match's rule, from the menus (sub_82548818: PLAY's rows). The select keeps the
 // rule (its entry + 0, the record at + 1592, the layout + 1588, the people + 92) and hands it to the match's setup
-// (sub_828AD3A0 -> sub_82A39AC0) once everyone is chosen. Changed there only (user's test of 2026-11-15, 22:13), the
-// match had the kind 83 but three fighters and the normal referee: the places had been made from TRIPLE THREAT's
-// rule. So the rule is changed here, before the places are made, with rule 83's own options (r5 = 0).
+// (sub_828AD3A0 -> sub_82A39AC0) once everyone is chosen. So the rule is made a refereed one here, before the
+// places are made (user's tests of 2026-11-15: changed later, the places were the fighters' only).
 extern "C" REX_FUNC(sub_828AE798) {
   const u32 select = ctx.r3.u32, rule = ctx.r4.u32;
-  const bool ours = On() && int(rule) == REXCVAR_GET(wwe12_sref_from);
-  if (On())
-    BD_INFO("[sref] ecran de choix prepare pour la regle {}{} (options {:08X}, appel {:08X})", rule, ours ? " -> 83" : "",
-            ctx.r5.u32, u32(ctx.lr));
-  if (ours) {
-    Layout();
-    ctx.r4.u64 = kRule;
-    ctx.r5.u64 = 0;
+  if (!On()) {
+    __imp__sub_828AE798(ctx, base);
+    return;
   }
+  Restore();
+  g_cur = -1;
+  const int sel = g_sel.load();
+  bool ours = false;
+  if (sel >= 0 && sel < int(g_rows.size()) && g_rows[size_t(sel)].rule == rule) {
+    const Row &row = g_rows[size_t(sel)];
+    ours = rule == kRule ? true : Patch(row);
+    if (ours)
+      g_cur = sel;
+  } else if (int(rule) == REXCVAR_GET(wwe12_sref_from)) {  // (dev: a game's row played as rule 83)
+    g_rows.push_back(Row{0, kRule, 2, false});
+    g_cur = int(g_rows.size()) - 1;
+    ctx.r4.u64 = kRule;
+    ours = true;
+  }
+  if (ours && ctx.r4.u32 == kRule) {
+    Layout();
+    ctx.r5.u64 = 0;  // (rule 83's own options)
+  }
+  BD_INFO("[sref] ecran de choix prepare pour la regle {}{} (options {:08X}, appel {:08X})", rule,
+          ours ? " : avec un arbitre special" : "", ctx.r5.u32, u32(ctx.lr));
   __imp__sub_828AE798(ctx, base);
   if (ours) {
     const u32 e = select + bd::mem::try_load<u32>(select + 15960) * 1596;
@@ -146,23 +221,220 @@ extern "C" REX_FUNC(sub_828AE798) {
   }
 }
 
-// A place's kind. The rule's own kinds (83: the third place 1, the referee) are set by sub_82A39AC0, but the select
-// then sets each chosen place's kind itself (sub_828AD3A0: 0 a fighter, 2 a manager, 3...), so the third man was a
-// fighter and the normal referee was made (user's test of 2026-11-15, 22:17: roles 0 0 0, referee in slot 6).
-// In a rule-83 setup the third place keeps the kind 1; the game then makes no normal referee (sub_82A37378).
+// A place's kind. The rule's own kinds (the referee's place: 1) are set by sub_82A39AC0, but the select then sets
+// each chosen place's kind itself (sub_828AD3A0: 0 a fighter, 2 a manager, 3...), so the referee was a fighter and
+// the normal referee was made (user's test of 2026-11-15, 22:17: roles 0 0 0, referee in slot 6).
+// In a setup of ours the place after the fighters keeps the kind 1; the game then makes no normal referee
+// (sub_82A37378). Seen working on 2026-11-16 (rule 83: role 1, no actor 6, the judge's + 112 = 2).
 extern "C" REX_FUNC(sub_82A36150) {
-  if (On() && ctx.r3.u32 && bd::mem::try_load<u32>(ctx.r3.u32 + 8) == kRule && ctx.r4.u32 == 2 && ctx.r5.u32 == 0) {
+  if (On() && g_arm && g_cur >= 0 && g_cur < int(g_rows.size()) && ctx.r4.u32 == g_rows[size_t(g_cur)].fighters &&
+      ctx.r5.u32 == 0) {
     ctx.r5.u64 = 1;
-    BD_INFO("[sref] la 3e place : genre 0 -> 1 (l'arbitre), appel {:08X}", u32(ctx.lr));
+    g_committed = true;
+    BD_INFO("[sref] la place {} : genre 0 -> 1 (l'arbitre), appel {:08X}", ctx.r4.u32, u32(ctx.lr));
   }
   __imp__sub_82A36150(ctx, base);
 }
 
-// (the match set up from the select's rule: logged)
+// The match set up from a rule: ours only when it comes from the select's commit (sub_828AD3A0, its call returns
+// to 0x828AD3D0) of a select set up for a row of ours - never a Universe's or a story's match.
 extern "C" REX_FUNC(sub_82A39AC0) {
-  if (On())
-    BD_INFO("[sref] match prepare avec la regle {} (options {:08X}, appel {:08X})", ctx.r4.u32, ctx.r5.u32, u32(ctx.lr));
+  if (On()) {
+    g_committed = false;
+    g_arm = g_cur >= 0 && u32(ctx.lr) == 0x828AD3D0 && g_cur < int(g_rows.size()) && g_rows[size_t(g_cur)].rule == ctx.r4.u32;
+    BD_INFO("[sref] match prepare avec la regle {} (options {:08X}, appel {:08X}){}", ctx.r4.u32, ctx.r5.u32, u32(ctx.lr),
+            g_arm ? " : avec un arbitre special" : "");
+  }
   __imp__sub_82A39AC0(ctx, base);
+}
+
+// ---- the menu: SPECIALTY > SPECIAL REFEREE > ONE ON ONE / TWO ON TWO / TRIPLE THREAT / FATAL 4-WAY > stipulations ----
+// (as WWE '13's own menu, user's captures of 2026-11-16). The menus' table (wwe12_match_modes.cpp: 0x74-byte
+// big-endian records from + 0x28; header + 4 the records, + 8 those shown) is handed to the game's parser with our
+// records added: a sub-menu is a copy of the game's FREE BRAWL sub-menu record, a stipulation a copy of the game's
+// own row of that match, found by its text and its parent - so each plays what the game's row plays. A page's
+// records follow each other and end with a "last" one (kind bit 2); a record's + 22 is its depth, + 64 bit 0
+// (of its first 16 bits) hides it. SPECIAL REFEREE goes after SPECIALTY's last row, so no row of the game moves.
+namespace {
+constexpr u32 kRec = 0x74, kHead = 0x28;
+constexpr u32 kLabel = 0x00, kDepth = 0x16, kPage = 0x18, kId = 0x1C, kParent = 0x38, kKind = 0x3C, kHide = 0x40, kLink = 0x54,
+              kRowRule = 0x5C;
+u32 BE(const u8 *p) { return (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | p[3]; }
+void PutBE(u8 *p, u32 v) {
+  p[0] = u8(v >> 24);
+  p[1] = u8(v >> 16);
+  p[2] = u8(v >> 8);
+  p[3] = u8(v);
+}
+}  // namespace
+
+void Wwe12SrefMenu(PPCContext &ctx) {
+  if (!On())
+    return;
+  const u32 table = ctx.r4.u32, size = ctx.r5.u32;
+  if (!table || size < kHead + kRec)
+    return;
+  const u8 *t = bd::mem::at<u8>(table);
+  const u32 total = BE(t + 4), shown = BE(t + 8);
+  const u32 n = std::min(total, (size - kHead) / kRec);
+  if (!n || shown > total)
+    return;
+  auto rec = [&](u32 i) { return t + kHead + i * kRec; };
+  auto hidden = [&](u32 i) { return (rec(i)[kHide + 1] & 1) != 0; };
+  auto find = [&](u32 label, u32 parent) {
+    for (u32 i = 0; i < n; ++i)
+      if (!hidden(i) && BE(rec(i) + kLabel) == label && BE(rec(i) + kParent) == parent)
+        return int(i);
+    return -1;
+  };
+  u32 max_id = 0, max_page = 0;
+  int play = -1;
+  std::vector<u32> game_rows;
+  for (u32 i = 0; i < n; ++i) {
+    if (!hidden(i) && BE(rec(i) + kLink) == 0x7D0)
+      game_rows.push_back(BE(rec(i) + kId));
+    max_id = std::max(max_id, BE(rec(i) + kId));
+    max_page = std::max(max_page, BE(rec(i) + kPage));
+    if (play < 0 && !hidden(i) && BE(rec(i) + kLabel) == 41001)
+      play = int(i);
+  }
+  if (play < 0)
+    return;
+  const u32 pid = BE(rec(u32(play)) + kId);
+  const int spec = find(41187, pid);
+  if (spec < 0)
+    return;
+  const u32 sid = BE(rec(u32(spec)) + kId);
+  const int brawl = find(41053, sid);  // (a sub-menu's record, the model of ours)
+  int last = -1;                       // SPECIALTY's last row
+  for (u32 i = 0; i < n; ++i)
+    if (!hidden(i) && BE(rec(i) + kParent) == sid)
+      last = int(i);
+  if (brawl < 0 || last < 0 || !(BE(rec(u32(last)) + kKind) & 2)) {
+    BD_INFO("[sref] menu : SPECIALTY introuvable ou inattendu, rien ajoute");
+    return;
+  }
+  auto child = [&](int parent_rec, u32 label) { return parent_rec < 0 ? -1 : find(label, BE(rec(u32(parent_rec)) + kId)); };
+  const int one = find(41009, pid), two = find(41010, pid), three = find(41011, pid), four = find(41012, pid);
+  const int tornado = child(two, 41056);
+  struct Leaf {
+    int from;        // the game's row copied
+    u32 label, rule; // (rule 0xFFFFFFFF: the row's own)
+  };
+  struct Group {
+    u32 label, fighters;
+    bool tag;
+    std::vector<Leaf> leaves;
+  };
+  std::vector<Group> groups = {
+      {41009, 2, false,
+       {{child(one, 41041), 41041, kRule},  // NORMAL MATCH: the game's own SPECIAL REFEREE rule
+        {child(one, 41054), 41054, 0xFFFFFFFF},
+        {child(one, 41045), 41045, 0xFFFFFFFF},
+        {child(one, 41046), 41046, 0xFFFFFFFF},
+        {child(one, 41048), 41048, 0xFFFFFFFF},
+        {child(one, 41049), 41049, 0xFFFFFFFF}}},
+      {41010, 4, true,
+       {{child(two, 41055), 41133, 0xFFFFFFFF},  // TAG TEAM, shown as NORMAL
+        {child(tornado, 41065), 41065, 0xFFFFFFFF},
+        {child(tornado, 41059), 41059, 0xFFFFFFFF}}},
+      {41011, 3, false,
+       {{child(three, 41066), 41066, 0xFFFFFFFF}, {child(three, 41073), 41073, 0xFFFFFFFF}, {child(three, 41068), 41068, 0xFFFFFFFF}}},
+      {41012, 4, false,
+       {{child(four, 41074), 41074, 0xFFFFFFFF}, {child(four, 41082), 41082, 0xFFFFFFFF}, {child(four, 41077), 41077, 0xFFFFFFFF}}},
+  };
+  for (Group &g : groups)
+    g.leaves.erase(std::remove_if(g.leaves.begin(), g.leaves.end(),
+                                  [&](const Leaf &l) { return l.from < 0 || BE(rec(u32(l.from)) + kLink) != 0x7D0; }),
+                   g.leaves.end());
+  groups.erase(std::remove_if(groups.begin(), groups.end(), [](const Group &g) { return g.leaves.empty(); }), groups.end());
+  if (groups.empty())
+    return;
+
+  std::vector<u8> out(t, t + kHead + (u32(last) + 1) * kRec);  // up to SPECIALTY's last row
+  std::vector<u8> tail(t + kHead + (u32(last) + 1) * kRec, t + size);
+  u32 added = 0;
+  auto add = [&](std::vector<u8> &to, int from, u32 label, u32 id, u32 parent, u32 page, u32 depth, u32 kind) {
+    const size_t at = to.size();
+    to.insert(to.end(), rec(u32(from)), rec(u32(from)) + kRec);
+    u8 *r = to.data() + at;
+    PutBE(r + kLabel, label);
+    PutBE(r + kId, id);
+    PutBE(r + kParent, parent);
+    PutBE(r + kPage, page);
+    PutBE(r + kKind, kind);
+    r[kDepth] = u8(depth);
+    r[kHide + 1] &= u8(~1u);
+    ++added;
+    return at;
+  };
+  const u32 depth = rec(u32(last))[kDepth];
+  // SPECIAL REFEREE, SPECIALTY's last row now (the old last one: a row like the others)
+  PutBE(out.data() + kHead + u32(last) * kRec + kKind, BE(rec(u32(last)) + kKind) & ~2u);
+  const u32 sr = ++max_id;
+  add(out, brawl, 40775, sr, sid, BE(rec(u32(last)) + kPage), depth, 3);
+  // (the rest of the game's table, then our pages at its end)
+  out.insert(out.end(), tail.begin(), tail.begin() + (n - u32(last) - 1) * kRec);
+  const size_t extra = tail.size() - (n - u32(last) - 1) * kRec;  // (bytes after the last record, kept at the end)
+  std::vector<Row> rows;
+  std::vector<u32> nodes = {sr};
+  const u32 types_page = ++max_page;
+  std::vector<u32> ids;
+  for (size_t g = 0; g < groups.size(); ++g) {
+    ids.push_back(++max_id);
+    nodes.push_back(ids.back());
+    add(out, brawl, groups[g].label, ids.back(), sr, types_page, depth + 1, g + 1 == groups.size() ? 3 : 1);
+  }
+  for (size_t g = 0; g < groups.size(); ++g) {
+    const u32 page = ++max_page;
+    for (size_t k = 0; k < groups[g].leaves.size(); ++k) {
+      const Leaf &l = groups[g].leaves[k];
+      const u32 id = ++max_id;
+      const size_t at = add(out, l.from, l.label, id, ids[g], page, depth + 2, k + 1 == groups[g].leaves.size() ? 7 : 5);
+      if (l.rule != 0xFFFFFFFF)
+        PutBE(out.data() + at + kRowRule, l.rule);
+      rows.push_back(Row{id, BE(out.data() + at + kRowRule), groups[g].fighters, groups[g].tag});
+    }
+  }
+  out.insert(out.end(), tail.end() - extra, tail.end());
+  PutBE(out.data() + 4, total + added);
+  PutBE(out.data() + 8, shown + added);
+  const u32 copy = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(out.size()), 0x10);
+  if (!copy)
+    return;
+  std::memcpy(bd::mem::at<u8>(copy), out.data(), out.size());
+  g_rows = rows;
+  g_nodes = nodes;
+  g_game_rows = game_rows;
+  g_sel = -1;
+  std::string list;
+  for (const Row &r : rows)
+    list += fmt::format(" {}:{}/{}", r.id, r.rule, r.fighters);
+  BD_INFO("[sref] menu : SPECIAL REFEREE ajoute a SPECIALTY (id {}, {} lignes ajoutees, pages {} a {}) ; lignes id:regle/combattants :{}",
+          sr, added, types_page, max_page, list);
+  ctx.r4.u64 = copy;
+  ctx.r5.u64 = u32(out.size());
+}
+
+// The menus' "decide" (through wwe12_match_modes.cpp): the chosen entry's id. A row of ours: the match is a refereed
+// one (true). Another match's row of the game, or a choice in a higher menu: the rule's record put back.
+// (Other "decides" - a screen's own choices on the way to the match - change nothing.)
+bool Wwe12SrefDecide(uint32_t id, uint32_t parent, uint32_t label) {
+  if (!On())
+    return false;
+  for (size_t i = 0; i < g_rows.size(); ++i)
+    if (g_rows[i].id == id && id != 0) {
+      g_sel = int(i);
+      BD_INFO("[sref] choix du menu : ligne {} (parent {}, texte {}) -> regle {} avec un arbitre special, {} combattants", id,
+              parent, label, g_rows[i].rule, g_rows[i].fighters);
+      return true;
+    }
+  if (parent >= 8 && std::find(g_game_rows.begin(), g_game_rows.end(), id) == g_game_rows.end())
+    return false;
+  if (g_sel.exchange(-1) >= 0)
+    BD_INFO("[sref] choix du menu {} (parent {}) : plus de match avec un arbitre special", id, parent);
+  Restore();
+  return false;
 }
 
 extern "C" REX_FUNC(sub_827A1BF0) {
