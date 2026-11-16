@@ -1340,8 +1340,15 @@ const std::vector<std::pair<std::string, std::vector<uint8_t>>> &Wwe12IQuit13Fil
 // checked against the SDK's ImGui outside the game, 2026-11-15): no texture of ours to make while the game draws.
 // Without them the overlay keeps its own drawing.
 namespace {
-enum { kImgQuitRed, kImgQuitGrey, kImgGlow, kImgA, kImgNo, kImgDpad, kImgThreat, kImgB, kImgAsk, kImgNoMark, kImgCount };
-constexpr const char *kImgFile[kImgCount] = {"0_0", "0_1", "0_2", "1_0", "1_1", "2_0", "2_1", "3_0", "3_1", "90_0"};
+// (the last two: the Special Guest Referee's gauge, WWE '13's main HUD - child 0, sub 90: the striped shirt and a
+// bar's frame; optional, a motions mod's own hud folder may not have them)
+enum {
+  kImgQuitRed, kImgQuitGrey, kImgGlow, kImgA, kImgNo, kImgDpad, kImgThreat, kImgB, kImgAsk, kImgNoMark,
+  kImgRefShirt, kImgRefFrame, kImgCount
+};
+constexpr int kImgNeeded = kImgRefShirt;  // (the images before this one: all or nothing)
+constexpr const char *kImgFile[kImgCount] = {"0_0", "0_1", "0_2", "1_0", "1_1", "2_0", "2_1", "3_0", "3_1", "90_0",
+                                             "0_90_122", "0_90_58"};
 struct HudImg {
   ImFontAtlasRectId id = -1;
   int w = 0, h = 0;
@@ -1353,7 +1360,7 @@ bool g_hud = false;
 // an image `high` pixels high, its left edge at x and its middle at y; its width (0: no image)
 float Img(ImDrawList *dl, int i, float x, float y, float high, ImU32 colour = IM_COL32_WHITE) {
   ImFontAtlasRect r;
-  if (!g_hud || !g_atlas->GetCustomRect(g_img[i].id, &r) || g_img[i].h <= 0)
+  if (!g_hud || g_img[i].id < 0 || !g_atlas->GetCustomRect(g_img[i].id, &r) || g_img[i].h <= 0)
     return 0.f;
   const float wide = high * float(g_img[i].w) / float(g_img[i].h);
   dl->AddImage(g_atlas->TexRef, ImVec2(x, y - high * 0.5f), ImVec2(x + wide, y + high * 0.5f), r.uv0, r.uv1, colour);
@@ -1402,15 +1409,21 @@ void Wwe12IQuitFonts(ImFontAtlas *atlas) {
       dds.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     }
     svrfmt::Image im;
-    if (dds.empty() || !svrfmt::DdsDecode(dds, im) || im.w <= 0 || im.h <= 0 || im.rgba.size() < size_t(im.w) * im.h * 4)
+    if (dds.empty() || !svrfmt::DdsDecode(dds, im) || im.w <= 0 || im.h <= 0 || im.rgba.size() < size_t(im.w) * im.h * 4) {
+      if (i >= kImgNeeded)
+        continue;
       return;
+    }
     int x0 = im.w, y0 = im.h, x1 = -1, y1 = -1;
     for (int y = 0; y < im.h; ++y)
       for (int x = 0; x < im.w; ++x)
         if (im.rgba[(size_t(y) * im.w + x) * 4 + 3] > 8)
           x0 = std::min(x0, x), x1 = std::max(x1, x), y0 = std::min(y0, y), y1 = std::max(y1, y);
-    if (x1 < x0 || y1 < y0)
+    if (x1 < x0 || y1 < y0) {
+      if (i >= kImgNeeded)
+        continue;
       return;
+    }
     svrfmt::Image &c = cut[size_t(i)];
     c.w = x1 - x0 + 1, c.h = y1 - y0 + 1;
     c.rgba.resize(size_t(c.w) * c.h * 4);
@@ -1419,6 +1432,8 @@ void Wwe12IQuitFonts(ImFontAtlas *atlas) {
   }
   for (int i = 0; i < kImgCount; ++i) {
     g_img[i].w = cut[size_t(i)].w, g_img[i].h = cut[size_t(i)].h;
+    if (g_img[i].w <= 0 || g_img[i].h <= 0)
+      continue;  // (an optional image that is not there)
     g_img[i].id = atlas->AddCustomRect(g_img[i].w + 2, g_img[i].h + 2);  // (a clear pixel all round: no bleeding)
     if (g_img[i].id < 0)
       return;
@@ -1430,6 +1445,8 @@ void Wwe12IQuitFonts(ImFontAtlas *atlas) {
     return;
   for (int i = 0; i < kImgCount; ++i) {
     ImFontAtlasRect r;
+    if (g_img[i].id < 0)
+      continue;
     if (!atlas->GetCustomRect(g_img[i].id, &r) || r.x + r.w > tw || r.y + r.h > th)
       return;
     for (int y = 0; y < r.h; ++y)
@@ -1611,6 +1628,13 @@ void Wwe12IQuitOverlayInit(rex::ui::ImGuiDrawer *drawer, std::function<void(std:
   g_post = std::move(post);
 }
 
+// (the Special Guest Referee's images, for wwe12_sref.cpp: 0 the shirt, 1 the bar's frame; as Img - 0: no image)
+float Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float high) {
+  return which == 0 || which == 1 ? Img(dl, which == 0 ? kImgRefShirt : kImgRefFrame, x, y, high) : 0.f;
+}
+float Wwe12HudRefWide(int which, float high) {
+  return which == 0 || which == 1 ? Wide(which == 0 ? kImgRefShirt : kImgRefFrame, high) : 0.f;
+}
 // (the same drawer and UI thread for the Special Guest Referee's gauge, wwe12_sref.cpp)
 rex::ui::ImGuiDrawer *Wwe12OverlayDrawer() { return g_drawer; }
 void Wwe12OverlayPost(std::function<void()> f) {

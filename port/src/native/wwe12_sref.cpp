@@ -91,6 +91,8 @@ REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim,
 REX_EXTERN(__imp__sub_82520B90);  // a world point to the screen (float[4] in and out), the game's own
 rex::ui::ImGuiDrawer *Wwe12OverlayDrawer();           // wwe12_iquit.cpp
 void Wwe12OverlayPost(std::function<void()> f);  // wwe12_iquit.cpp: on the UI thread
+float Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float high);  // wwe12_iquit.cpp: 0 shirt, 1 frame
+float Wwe12HudRefWide(int which, float high);
 
 REXCVAR_DEFINE_INT32(wwe12_sref_from, -1, "WWE12",
                      "Dev: with wwe12_sref, a match set up with this rule (13 = TRIPLE THREAT) is a Special Guest Referee one.");
@@ -794,6 +796,30 @@ class SrefOverlay final : public rex::ui::ImGuiDialog {
       return;
     }
     const float v = std::clamp(g_gauge.load(), 0.f, 1.f);
+    // WWE '13's own images when the exe has them (its main HUD's bar frame and the referee's striped shirt, in
+    // iquit13.bin since 2026-11-16 - the user's decision): the fill, a plain colour as WWE '13 tints its own, shows
+    // through the frame's window (5 % to 96.5 % of its width, 24 % to 78 % of its height).
+    {
+      const float fh = (on_him ? 30 : 44) * k, fw = Wwe12HudRefWide(1, fh);
+      if (fw > 0.f) {
+        const float cx = on_him ? px * io.DisplaySize.x : io.DisplaySize.x * 0.5f;
+        const float fx = std::clamp(cx - fw * 0.5f, 8 * k, io.DisplaySize.x - fw - 60 * k), fy = y + fh * 0.5f;
+        const float ix0 = fx + fw * 0.05f, ix1 = fx + fw * 0.965f, iy0 = y + fh * 0.24f, iy1 = y + fh * 0.78f;
+        const ImU32 fill = v >= 1.f ? IM_COL32(255, 205, 40, 255) : v < 0.2f ? IM_COL32(220, 40, 40, 255) : IM_COL32(40, 110, 235, 255);
+        dl->AddRectFilled(ImVec2(ix0, iy0), ImVec2(ix1, iy1), IM_COL32(10, 10, 14, 230));
+        dl->AddRectFilled(ImVec2(ix0, iy0), ImVec2(ix0 + (ix1 - ix0) * v, iy1), fill);
+        Wwe12HudRefImg(dl, 1, fx, fy, fh);
+        Wwe12HudRefImg(dl, 0, fx + fw - 4 * k, fy, fh * 1.5f);
+        if (v >= 1.f) {
+          const char *msg = "Y  SCREW JOB";
+          const float ms = 18.f * k;
+          const ImVec2 sz = font->CalcTextSizeA(ms, FLT_MAX, 0.f, msg);
+          dl->AddText(font, ms, ImVec2(fx + fw * 0.5f - sz.x * 0.5f + 1 * k, y + fh + 3 * k), IM_COL32(0, 0, 0, 220), msg);
+          dl->AddText(font, ms, ImVec2(fx + fw * 0.5f - sz.x * 0.5f, y + fh + 2 * k), IM_COL32(255, 220, 90, 255), msg);
+        }
+        return;
+      }
+    }
     dl->AddRectFilled(ImVec2(x - 3 * k, y - 3 * k), ImVec2(x + w + 3 * k, y + h + 3 * k), IM_COL32(225, 225, 225, 255), 3 * k);
     dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h), IM_COL32(15, 15, 20, 255));
     const ImU32 fill = v >= 1.f ? IM_COL32(255, 205, 40, 255) : v < 0.2f ? IM_COL32(220, 40, 40, 255) : IM_COL32(40, 90, 220, 255);
