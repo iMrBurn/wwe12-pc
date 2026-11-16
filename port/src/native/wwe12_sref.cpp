@@ -25,6 +25,13 @@
 REXCVAR_DEFINE_BOOL(wwe12_sref, false, "WWE12",
                     "Special Guest Referee (rule 83): the superstar who referees counts with A (as WWE '13). Dev for now.");
 
+// The game still has the played referee's count (read 2026-11-16): an actor with the role 1 whose pad presses the
+// "action 2" button goes to sub_823C97B0 (from his free state, sub_8234FD30), which starts the count's motion for
+// the judge's state (sub_823C9458: 190 / 200 / 191 / 202); the next counts come from motion 190's own handler
+// (sub_8233F660: the button again, block 1, then block 3 for the last). So by default nothing is played from here.
+REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, false, "WWE12",
+                    "Dev: the referee's count played by our code on A (false: the game's own, kept from the older games).");
+
 #include <atomic>
 #include <cstring>
 #include <string>
@@ -166,7 +173,7 @@ u16 Wwe12SrefPad(u32 user, u16 buttons) {
   if (user >= 4)
     return 0;
   const u16 before = g_prev[user].exchange(buttons);
-  if (!On() || !Match() || g_pad.load() != int(user))
+  if (!On() || !REXCVAR_GET(wwe12_sref_own_count) || !Match() || g_pad.load() != int(user))
     return 0;
   const u32 st = g_state.load();
   if (st != 1 && st != 3 && st != 4)
@@ -194,6 +201,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       line += a ? fmt::format(" {}:r{}/p{}", i, bd::mem::try_load<u32>(a + 3428), bd::mem::try_load<u32>(a + 1760)) : " -";
     }
     line += fmt::format(" | juge +112 = {}", judge ? bd::mem::try_load<u32>(judge + 112) : 99);
+    if (ref)
+      line += fmt::format(" | arbitre +998 = {} +2560 = {}", bd::mem::try_load<u8>(ref + 998), bd::mem::try_load<u32>(ref + 2560));
     if (line != g_last_roles) {
       BD_INFO("[sref] acteurs (role / manette) :{}", line);
       g_last_roles = line;
@@ -221,7 +230,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     ++g_t;
   if (state != 1)
     g_step = 0;
-  if (!g_press.exchange(false))
+  if (!g_press.exchange(false) || !REXCVAR_GET(wwe12_sref_own_count))
     return;
   if (state == 1) {  // a pin: down, then a press a count
     if (g_step == 0) {
