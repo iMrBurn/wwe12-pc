@@ -67,6 +67,7 @@ REXCVAR_DECLARE(std::string, user_data_root);
 #include "svr_hook.h"
 
 REX_EXTERN(__imp__sub_8247AD18);  // play a motion on an actor
+REX_EXTERN(__imp__sub_822143D0);  // an actor's set-up (r3 = actor + 1696; makes his brain 'CMIF' for the role 1)
 REX_EXTERN(__imp__sub_827A1BF0);  // the character select's layout of a rule
 REX_EXTERN(__imp__sub_82A39AC0);  // a match set up from a rule (setup manager, rule, its options or 0)
 REX_EXTERN(__imp__sub_828AE798);  // the character select set up for a rule (select, rule, options or 0, r6, r7)
@@ -1687,7 +1688,7 @@ void HandOver(const PPCContext &ctx, u8 *base) {
   s_prev = now;
   // parked: his brain made (he had the role 1 until here), then the role 6, unseen, far up the ramp
   if (g_out == kOutNone || g_out == kOutWait || g_out == kOut2050) {
-    if (bd::mem::try_load<u32>(n + 3428) == 1 && Brain(n) != 0 && Referee() && Referee() != n) {
+    if (bd::mem::try_load<u32>(n + 3428) == 1 && Referee() && Referee() != n) {
       SetRole(ctx, base, 6, 40, 6);
       BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6)", n);
     }
@@ -1763,6 +1764,13 @@ void HandOver(const PPCContext &ctx, u8 *base) {
       BD_INFO("[sref] remplacement : l'arbitre du jeu arrive par la rampe (hauteur {:.0f})", y);
     }
     SetRole(ctx, base, 6, 40, 1);
+    if (Brain(n) == 0) {  // (lost at the bell's last set-up: made again now, with the role 1)
+      PPCContext c = ctx;
+      c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+      c.r3.u64 = n + 1696;
+      __imp__sub_822143D0(c, base);
+      BD_INFO("[sref] remplacement : le cerveau de l'arbitre du jeu refait ({:08X})", Brain(n));
+    }
     {
       PPCContext c = ctx;
       c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
@@ -1828,7 +1836,7 @@ extern "C" REX_FUNC(sub_82A37378) {
 extern "C" REX_FUNC(sub_823B5D18) {
   if (On() && Match() && REXCVAR_GET(wwe12_sref_replacement)) {
     const u32 n = Actor(6);
-    if (n && Brain(n) != 0) {
+    if (n) {
       if (g_out == kOutDone && g_ex) {  // (a rematch after a hand-over)
         const int index = IndexOf(g_ex);
         if (index >= 0)
@@ -2054,7 +2062,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   {  // (the game's referee parked - the role 6 - once his brain is made and the bell's set-up is over)
     const u32 n = Actor(6);
     if (REXCVAR_GET(wwe12_sref_replacement) && g_out == kOutNone && n && bd::mem::try_load<u32>(n + 3428) == 1 &&
-        Brain(n) != 0 && Referee() && Referee() != n) {
+        Referee() && Referee() != n) {
       SetRole(ctx, base, 6, 40, 6);
       BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6, apres la cloche ; cerveau {:08X})", n,
               Brain(n));
@@ -2241,8 +2249,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     // empty: he is the referee no more. Without a man of the role 1 the judge counts by itself (sub_82265710 sets
     // its + 112 to 0 the next frame); his + 998 = 4 keeps him out of the pins (sub_82261C28 wants 0 on both men).
     // The role is also put in his participant record and his creation record, which the game copies back at times.
-    if ((g_gauge.load() <= 0.f || g_faults >= 30) && REXCVAR_GET(wwe12_sref_replacement) && Parked(Actor(6)) &&
-        Brain(Actor(6)) != 0) {
+    if ((g_gauge.load() <= 0.f || g_faults >= 30) && REXCVAR_GET(wwe12_sref_replacement) && Parked(Actor(6))) {
       if (g_out == kOutNone) {
         g_out = kOutWait;
         g_out_t = 0;
