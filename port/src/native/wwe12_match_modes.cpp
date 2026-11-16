@@ -530,13 +530,21 @@ thread_local bool g_iquit_check = false;  // (any text, in an I Quit match: "SUB
 std::string Wwe12DamagePageText(uint32_t id);  // wwe12_damage_page.cpp: BALANCING > DAMAGE's labels
 thread_local std::string g_damage_text;      // the label being served
 thread_local u32 g_damage_id = 0;
+bool Wwe12DamagePageOpen();                   // our DAMAGE page is shown
+thread_local bool g_damage_check = false;    // (a text of the frame we borrow: its subtitle "A.I. REVERSALS")
 
 u32 Wwe12MatchModesGameText(u32 id) {
   g_iquit_text = false;
   g_iquit_check = false;
   g_damage_text = Wwe12DamagePageText(id);
+  g_damage_check = false;
   if (!g_damage_text.empty()) {
     g_damage_id = id;
+    return id;
+  }
+  if (Wwe12DamagePageOpen()) {
+    g_damage_check = true;  // (every text while the page shows: its subtitle is replaced, Wwe12MatchModesText)
+    g_asked = id;
     return id;
   }
   if (IQuitText(id)) {
@@ -577,6 +585,24 @@ u32 Wwe12MatchModesGameText(u32 id) {
 
 // The game's text (guest address) completed with the place's value.
 u32 Wwe12MatchModesText(u32 game) {
+  if (g_damage_check) {
+    // The borrowed frame DrawAIReversal's subtitle reads "A.I. REVERSALS": "DAMAGE" on our page (user's test of
+    // 2026-11-16). (English text matched; its id is logged to serve the game's own DAMAGE text later.)
+    g_damage_check = false;
+    const char *g = game ? bd::mem::try_at<const char>(game) : nullptr;
+    if (!g || std::strstr(g, "REVERSAL") == nullptr)
+      return game;
+    static std::atomic<int> s_n{0};
+    if (s_n.fetch_add(1) < 4)
+      BD_INFO("[damage page] sous-titre {} \"{}\" -> DAMAGE", g_asked, g);
+    static u32 s_title = 0;
+    if (!s_title) {
+      s_title = REX_KERNEL_MEMORY()->SystemHeapAlloc(16, 0x10);
+      if (s_title)
+        std::memcpy(bd::mem::at<char>(s_title), "DAMAGE", 7);
+    }
+    return s_title ? s_title : game;
+  }
   if (!g_damage_text.empty()) {
     static u32 s_buf = 0;
     if (!s_buf)

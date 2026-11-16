@@ -132,6 +132,8 @@ bool Wwe12DamagePageNative(bool update, PPCContext &ctx, u8 *base) {
   return true;
 }
 
+bool Wwe12DamagePageOpen() { return g_open && REXCVAR_GET(wwe12_damage_page); }
+
 // The labels (wwe12_match_modes.cpp's text hook): "" = not ours.
 std::string Wwe12DamagePageText(uint32_t id) {
   if (id < kLabel || id > kLabel + 4 || !REXCVAR_GET(wwe12_damage_page))
@@ -145,7 +147,7 @@ std::string Wwe12DamagePageText(uint32_t id) {
     static const char *const k[5] = {"NORMAL", "1", "2", "3", "INFINITE"};
     return std::string("STARTING FINISHERS   ") + k[std::clamp(live(2), 0, 4)];
   }
-  case 3: return "DAMAGE: PLAYERS";  // (the game's two rows: their names, user's screenshot pending)
-  default: return "DAMAGE: CPU";
+  case 3: return "FINISHER DAMAGE";  // (the game's two rows: finishers' and objects' damage, user 2026-11-16)
+  default: return "OBJECT DAMAGE";
   }
 }
