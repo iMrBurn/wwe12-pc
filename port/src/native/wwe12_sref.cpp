@@ -72,6 +72,13 @@ REX_EXTERN(__imp__sub_823F8270);  // a place's participant number
 REX_EXTERN(__imp__sub_8267CD30);  // a participant's record (number): + 8 kind, + 13 side, + 16 superstar (51200 none)
 REX_EXTERN(__imp__sub_82596848);  // the character select: a place's "COM" / "1P" label, once chosen (place panel)
 REX_EXTERN(__imp__sub_825962D0);  // the same while choosing
+REX_EXTERN(__imp__sub_8256CEB0);  // the character select's screen laid out from its template (screen)
+REX_EXTERN(__imp__sub_82568C78);  // a pad's move between the places (screen, place, origin, direction, table r7, ...)
+REX_EXTERN(__imp__sub_82573BA0);  // the match card: a place's portrait in a slot (card, place r4, card kind r5, widgets)
+
+REXCVAR_DEFINE_BOOL(wwe12_sref_middle, true, "WWE12",
+                    "Special Guest Referee, 1 on 1: the referee in the middle of the character select and of the match card "
+                    "(as WWE '13).");
 
 REXCVAR_DEFINE_BOOL(wwe12_sref_entrance, true, "WWE12",
                     "Special Guest Referee: the referee has his entrance, the first one (as WWE '13).");
@@ -454,6 +461,85 @@ extern "C" REX_FUNC(sub_825962D0) {
   t_label = false;
 }
 bool Wwe12SrefLabel(uint32_t id) { return t_label && (id == 40355 || (id >= 40357 && id <= 40360)); }
+
+// ---- 1 on 1: the referee in the middle (as WWE '13's select and match card; user, 2026-11-16) ----
+// The fighters stay the places 0 and 1 and the referee the place 2: the HUD (slots by actor number) and several
+// functions of the match take the actors 0 and 1 as the two fighters (read 2026-11-16). Only what is shown moves.
+// - The select's screen is laid out by sub_8256CEB0 from a template: 0x82025030 + 324 x the select entry's layout
+//   (+ 1588); a template = a 12-byte header and six 52-byte place blocks. Layout 6 (three people): the place 0 in
+//   the centre, 1 on the left, 2 on the right. A copy of it with the blocks turned (place 0 left, 1 right, 2 centre)
+//   is given for the time of that call, through a layout number that leads to our copy; the screen keeps the
+//   pointer (its + 30268), which its other readers use too.
+// - The pads' moves (sub_82568C78, table in r7: 7 places x 4 directions; tables of three people at 0x82024D38 for
+//   the pads 0-1 and 0x82024D54 for 2-3) are the game's own with the places renamed the same way.
+// - The match card (sub_82573BA0(card, place, 33 = the three-people card, ...)): the places 1 and 2 swapped.
+namespace {
+constexpr u32 kTemplates = 0x82025030, kTemplate = 324, kLayout3 = 6;
+u32 g_template = 0, g_moves = 0;  // our copies (guest memory)
+bool Middle() {
+  return On() && REXCVAR_GET(wwe12_sref_middle) && g_cur >= 0 && g_cur < int(g_rows.size()) &&
+         g_rows[size_t(g_cur)].fighters == 2;
+}
+}  // namespace
+
+extern "C" REX_FUNC(sub_8256CEB0) {
+  const u32 screen = ctx.r3.u32, m = bd::mem::try_load<u32>(0x8324DEFC);
+  const u32 e = m ? m + bd::mem::try_load<u32>(m + 15960) * 1596 : 0;
+  if (!Middle() || !screen || !e || bd::mem::try_load<u32>(screen + 30264) != 0 || bd::mem::try_load<u32>(e + 1588) != kLayout3) {
+    __imp__sub_8256CEB0(ctx, base);
+    return;
+  }
+  if (!g_template) {
+    const u32 raw = REX_KERNEL_MEMORY()->SystemHeapAlloc(kTemplate * 3, 0x10);
+    if (raw) {
+      // (an address the game's "templates + 324 x layout" reaches)
+      const u32 at = raw + (kTemplate - (raw - kTemplates) % kTemplate) % kTemplate;
+      const u8 *src = bd::mem::at<u8>(kTemplates + kLayout3 * kTemplate);
+      u8 *dst = bd::mem::at<u8>(at);
+      std::memcpy(dst, src, kTemplate);
+      std::memcpy(dst + 12 + 52 * 0, src + 12 + 52 * 1, 52);  // the place 0: on the left
+      std::memcpy(dst + 12 + 52 * 1, src + 12 + 52 * 2, 52);  // the place 1: on the right
+      std::memcpy(dst + 12 + 52 * 2, src + 12 + 52 * 0, 52);  // the place 2, the referee: in the centre
+      g_template = at;
+    }
+  }
+  if (!g_template) {
+    __imp__sub_8256CEB0(ctx, base);
+    return;
+  }
+  bd::mem::store<u32>(e + 1588, (g_template - kTemplates) / kTemplate);
+  __imp__sub_8256CEB0(ctx, base);
+  bd::mem::store<u32>(e + 1588, kLayout3);
+  static std::atomic<int> s_lines{0};
+  if (s_lines.fetch_add(1) < 10)
+    BD_INFO("[sref] ecran de choix : l'arbitre au milieu (gabarit {:08X}, l'ecran garde {:08X})", g_template,
+            bd::mem::try_load<u32>(screen + 30268));
+}
+
+extern "C" REX_FUNC(sub_82568C78) {
+  if (Middle() && (ctx.r7.u32 == 0x82024D38 || ctx.r7.u32 == 0x82024D54)) {
+    if (!g_moves) {
+      g_moves = REX_KERNEL_MEMORY()->SystemHeapAlloc(64, 0x10);
+      if (g_moves) {
+        static const int8_t kA[28] = {2, 6, 1, 1, 2, 6, 0, 0, 6, 0, 0, 1, -1, -1, -1, -1, -1, -1,
+                                      -1, -1, -1, -1, -1, -1, 0, 2, -1, -1};
+        static const int8_t kB[28] = {2, 6, 1, 1, 2, 6, 0, 0, 6, 1, 0, 1, -1, -1, -1, -1, -1, -1,
+                                      -1, -1, -1, -1, -1, -1, 1, 2, -1, -1};
+        std::memcpy(bd::mem::at<u8>(g_moves), kA, 28);
+        std::memcpy(bd::mem::at<u8>(g_moves + 32), kB, 28);
+      }
+    }
+    if (g_moves)
+      ctx.r7.u64 = ctx.r7.u32 == 0x82024D38 ? g_moves : g_moves + 32;
+  }
+  __imp__sub_82568C78(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_82573BA0) {
+  if (Middle() && ctx.r5.u32 == 33 && (ctx.r4.u32 == 1 || ctx.r4.u32 == 2))
+    ctx.r4.u64 = 3 - ctx.r4.u32;
+  __imp__sub_82573BA0(ctx, base);
+}
 
 void Wwe12SrefMenu(PPCContext &ctx) {
   if (!On())
