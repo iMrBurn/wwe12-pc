@@ -1775,14 +1775,14 @@ void HandOver(const PPCContext &ctx, u8 *base) {
         bd::mem::store<u32>(n + 1360 + o, 0);
       bd::mem::store<u32>(n + 1360 + 16, 1);
       std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
-      if (!g_scene_ran)
-        Place(n, 0.f, y, 560.f);  // (after the scene he is on the stage, where 2043 left him: he walks down)
+      // (at the ramp's foot, outside the ring - also after the scene: from the stage, where 2043 leaves him, his brain
+      // does not walk him down, user's test of 2026-11-16, 18:08)
+      Place(n, 0.f, y, 560.f);
       const float h = 0.f;  // (facing - z: the ring. An actor faces (-sin h, -cos h).)
       u32 bits;
       std::memcpy(&bits, &h, 4);
       bd::mem::store<u32>(n + 740, bits);
-      if (!g_scene_ran)
-        bd::mem::store<u8>(n + 996, 1);  // (outside the ring)
+      bd::mem::store<u8>(n + 996, 1);  // (outside the ring)
       BD_INFO("[sref] remplacement : l'arbitre du jeu arrive par la rampe (hauteur {:.0f})", y);
     }
     SetRole(ctx, base, 6, 40, 1);
@@ -2110,7 +2110,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
               j ? bd::mem::try_load<u32>(j + 112) : 99, g_ex ? Anim(g_ex) : 0, g_ex ? bd::mem::try_load<u8>(g_ex + 996) : 0);
     }
   }
-  if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && Referee() == Actor(6)) {
+  if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1) {
     static int s_help = 0;
     static int64_t s_for = 0;
     if (s_for != g_watch_ms)
@@ -2123,20 +2123,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     if (in_ring && s_help < 3) {
       s_help = 3;
       BD_INFO("[sref] l'arbitre du jeu est dans le ring ({:.1f} s apres le relais)", since / 1000.0);
-    } else if (!in_ring && s_help == 0 && since > 15000) {
-      s_help = 1;
-      float y = -60.f, ax, az;
-      for (u32 k : {7u, 8u})
-        if (const u32 a = Actor(k); a && Spot(a, ax, az))
-          if (const u32 aq = bd::mem::try_load<u32>(a + 768); aq && std::isfinite(LoadF(aq + 4))) {
-            y = LoadF(aq + 4);
-            break;
-          }
-      Place(n, 0.f, y, 420.f);
-      bd::mem::store<u8>(n + 996, 1);
-      Free(ctx, base, n);
-      BD_INFO("[sref] l'arbitre du jeu n'arrive pas (a {:.0f} {:.0f}) : mis au pied de la rampe", nx, nz);
-    } else if (!in_ring && s_help == 1 && since > 30000) {
+    } else if (!in_ring && s_help == 0 && since > 5000) {
       s_help = 2;
       Place(n, 0.f, -203.f, 200.f);
       bd::mem::store<u8>(n + 996, 0);
