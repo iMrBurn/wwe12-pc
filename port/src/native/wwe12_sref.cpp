@@ -878,7 +878,7 @@ class SrefOverlay final : public rex::ui::ImGuiDialog {
         const int p = g_prompt.load();
         // (WWE '13's own: the button and the word, in the player's language - COUNT, CHECK, DQ, SCREW JOB)
         static constexpr int kButton[5] = {0, 1, 1, 0, 0}, kRow[5] = {0, 1, 0, 3, 4};
-        if (p > 0 && p < 5 && Wwe12HudRefPrompt(nullptr, kButton[p], -1, 0, 0, 0) > 0.f) {
+        if (p > 0 && p < 5 && Wwe12HudRefPrompt(nullptr, kButton[p], -1, 0, 0, 1.f) > 0.f) {
           const float h = 16 * u, w = Wwe12HudRefPrompt(nullptr, kButton[p], -1, 0, 0, h) + h * 0.1f +
                                       h * 0.95f * 256.f / 25.6f * 0.45f;  // (about: the word's ink is left aligned)
           Wwe12HudRefPrompt(dl, kButton[p], kRow[p], cx - w * 0.5f, cy + 18 * u, h);

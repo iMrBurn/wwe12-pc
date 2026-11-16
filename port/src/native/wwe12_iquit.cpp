@@ -1657,7 +1657,11 @@ bool Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float wide, flo
 // 4 SCREW JOB - in the player's language), `high` pixels high, the left edge at x and the middle at y; the width
 // drawn, 0 if there is no such image)
 float Wwe12HudRefPrompt(ImDrawList *dl, int button, int row, float x, float y, float high) {
-  float w = Img(dl, button == 0 ? kImgRefY : kImgRefA, x, y, high);
+  // (dl null: only the width - Img draws. The game crashed on it the first time a prompt showed, user's test of
+  // 2026-11-16: a submission's CHECK, its crash dump in rexruntime from Wwe12HudRefPrompt.)
+  float w = dl ? Img(dl, button == 0 ? kImgRefY : kImgRefA, x, y, high) : Wide(button == 0 ? kImgRefY : kImgRefA, high);
+  if (!dl)
+    return w;
   ImFontAtlasRect r;
   if (!w || !g_hud || g_img[kImgRefWords].id < 0 || !g_atlas->GetCustomRect(g_img[kImgRefWords].id, &r) || row < 0 || row > 4)
     return w;
