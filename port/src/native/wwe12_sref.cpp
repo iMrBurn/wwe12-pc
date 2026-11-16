@@ -1458,6 +1458,11 @@ void HandOver(const PPCContext &ctx, u8 *base) {
         SetRole(ctx, base, u32(index), ParticipantOf(ctx, base, u32(index)), 0);
       bd::mem::store<u8>(s3 + 998, 4);
       bd::mem::store<u32>(s3 + 3140, 0);
+      // (still in 2051's last frame: the game gave him nothing after it - he stayed so, even outside the ring, user's
+      // test of 2026-11-16: standing again)
+      if (Anim(s3) >= 13115 && Anim(s3) < 13150)
+        Play(ctx, base, s3, g_ref_idle, 0);
+      g_rm = {};
       bd::mem::store<u32>(s3 + 2568, 1);
       PPCContext c = ctx;
       c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
@@ -1514,16 +1519,23 @@ extern "C" REX_FUNC(sub_823B5D18) {
       }
       if (g_out == kOutNone && Referee() && Referee() != n)
         SetRole(ctx, base, 6, 40, 6);
-    } else if (n && bd::mem::try_load<u32>(n + 3428) == 1 && Referee() && Referee() != n) {
-      // (his brain is not made yet: the role 6 for this call only, so the special referee has the start place;
-      // the role 1 again after it, which the brain's making wants)
-      bd::mem::store<u32>(n + 3428, 6);
-      __imp__sub_823B5D18(ctx, base);
-      bd::mem::store<u32>(n + 3428, 1);
-      return;
     }
   }
   __imp__sub_823B5D18(ctx, base);
+}
+
+// The start places' sort (by role: the last man of the role 1 gets the referee's place): the game's referee who
+// waits has the role 6 for the time of it, so the special referee is the one at the referee's place.
+REX_EXTERN(__imp__sub_823B7DB8);
+extern "C" REX_FUNC(sub_823B7DB8) {
+  const u32 n = Actor(6);
+  const bool swap = On() && Match() && REXCVAR_GET(wwe12_sref_replacement) && (g_out == kOutNone || g_out == kOutWait) && n &&
+                    bd::mem::try_load<u32>(n + 3428) == 1 && Referee() && Referee() != n;
+  if (swap)
+    bd::mem::store<u32>(n + 3428, 6);
+  __imp__sub_823B7DB8(ctx, base);
+  if (swap)
+    bd::mem::store<u32>(n + 3428, 1);
 }
 
 // Each actor's pad word, every frame (from wwe12_iquit.cpp's hook of sub_8225C4D8): the game's referee who waits is
@@ -1543,6 +1555,31 @@ void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
   }
 }
 
+// The game's referee who waits is never drawn nor updated while he waits: every call of the game that turns an
+// actor's drawing (sub_822CF850) or update (sub_822CE3F0) on for his slot is turned into "off". (User's tests of
+// 2026-11-16: before the bell he was seen in the ring - the game shows its actors from several places, the
+// entrance scenes among them, before any frame of ours runs. WWE '13 hides its waiting referee the same way, at
+// each putting in place of the match, sub_8254C820.) Our own calls (the hand-over) go to the game's directly.
+namespace {
+bool WaitingSlot(u32 mgr, u32 slot) {
+  if (!On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out == kOutArrive || g_out == kOutDone || !mgr ||
+      slot >= 16)
+    return false;
+  const u32 index = bd::mem::try_load<u32>(mgr + (slot + 32) * 4);
+  return index == 6 && Actor(6) && Actor(6) != Referee();
+}
+}  // namespace
+extern "C" REX_FUNC(sub_822CF850) {
+  if (ctx.r5.u32 != 0 && WaitingSlot(ctx.r3.u32, ctx.r4.u32))
+    ctx.r5.u64 = 0;
+  __imp__sub_822CF850(ctx, base);
+}
+extern "C" REX_FUNC(sub_822CE3F0) {
+  if (ctx.r5.u32 != 0 && WaitingSlot(ctx.r3.u32, ctx.r4.u32) && bd::mem::try_load<u32>(Actor(6) + 3384) != 0)
+    ctx.r5.u64 = 0;
+  __imp__sub_822CE3F0(ctx, base);
+}
+
 // Every actor drawn and updated again, two frames after the match is put in place (and at other times): the game's
 // referee who waits is parked if he is not yet (his brain is made by now) and hidden again. (The tick does the
 // same, but it only runs once the match's HUD is drawn.)
@@ -1557,9 +1594,8 @@ extern "C" REX_FUNC(sub_823B8F38) {
     SetRole(ctx, base, 6, 40, 6);
     BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6, mise en place)", n);
   }
-  if (Parked(n)) {
+  if (Parked(n) || (bd::mem::try_load<u32>(n + 3428) == 1 && Referee() && Referee() != n)) {
     Shown(ctx, base, n, false);
-    bd::mem::store<u8>(n + 998, 1);
     Place(n, 0.f, -120.f, 3200.f);
   }
 }
@@ -1792,7 +1828,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     // empty: he is the referee no more. Without a man of the role 1 the judge counts by itself (sub_82265710 sets
     // its + 112 to 0 the next frame); his + 998 = 4 keeps him out of the pins (sub_82261C28 wants 0 on both men).
     // The role is also put in his participant record and his creation record, which the game copies back at times.
-    if ((g_gauge.load() <= 0.f || g_faults >= 30) && REXCVAR_GET(wwe12_sref_replacement) && Parked(Actor(6))) {
+    if ((g_gauge.load() <= 0.f || g_faults >= 30) && REXCVAR_GET(wwe12_sref_replacement) && Parked(Actor(6)) &&
+        bd::mem::try_load<u32>(Actor(6) + 3384) != 0) {
       if (g_out == kOutNone) {
         g_out = kOutWait;
         g_out_t = 0;
