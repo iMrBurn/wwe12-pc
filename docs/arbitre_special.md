@@ -180,3 +180,7 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   par `sub_82371C78` (remplace son composant de commande `+3444` par la marche de départ).
 - Caméra de 2043 : ses hauteurs sont sous le sol (plan A -59.5) ; WWE '13 soulève toute la scène de 180 cm (la scène) :
   origine de la caméra à y = -300 comme les corps.
+- `sub_822143D0` recopie d'abord le rôle de la fiche du participant (`sub_8267CD30` +8) dans l'acteur +3428 :
+  pour que l'arbitre garé (rôle 6) garde son cerveau à la dernière mise en place de la cloche, il faut le rôle 1 dans
+  les **trois** fiches (`SetRole`) le temps de l'appel. **Ne jamais rappeler `sub_822143D0` en plein match** : le
+  test de 17:58 a planté juste après (appel virtuel pur dans la mise à jour des composants, `sub_827D5380`).

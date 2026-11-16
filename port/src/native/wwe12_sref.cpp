@@ -1779,24 +1779,9 @@ void HandOver(const PPCContext &ctx, u8 *base) {
       BD_INFO("[sref] remplacement : l'arbitre du jeu arrive par la rampe (hauteur {:.0f})", y);
     }
     SetRole(ctx, base, 6, 40, 1);
-    if (Brain(n) == 0) {  // (lost at the bell's last set-up: made again now, with the role 1)
-      // (the set-up also puts him at (0, 33, 0) - under the ring: user's test of 2026-11-16, 17:45 - his place and
-      // heading are kept)
-      float keep[3] = {};
-      const u32 q = bd::mem::try_load<u32>(n + 768);
-      for (u32 i = 0; q && i < 3; ++i)
-        keep[i] = LoadF(q + i * 4);
-      const u32 head = bd::mem::try_load<u32>(n + 740);
-      PPCContext c = ctx;
-      c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
-      c.r3.u64 = n + 1696;
-      __imp__sub_822143D0(c, base);
-      if (q)
-        Place(n, keep[0], keep[1], keep[2]);
-      bd::mem::store<u32>(n + 740, head);
-      BD_INFO("[sref] remplacement : le cerveau de l'arbitre du jeu refait ({:08X}), place gardee {:.0f} {:.0f} {:.0f}", Brain(n),
-              keep[0], keep[1], keep[2]);
-    }
+    // (his brain is made at the bell, see sub_822143D0's hook; never his set-up here, in the middle of the match: the
+    // game stopped on a broken component just after - user's test of 2026-11-16, 17:58)
+    BD_INFO("[sref] remplacement : cerveau de l'arbitre du jeu {:08X}", Brain(n));
     Free(ctx, base, n);
     {
       PPCContext c = ctx;
@@ -1977,11 +1962,14 @@ extern "C" REX_FUNC(sub_822143D0) {
   const u32 n = Actor(6);
   const bool his = On() && Match() && REXCVAR_GET(wwe12_sref_replacement) && n && ctx.r3.u32 == n + 1696 && g_out < kOutScene;
   const u32 role = his ? bd::mem::try_load<u32>(n + 3428) : 0, from = u32(ctx.lr);
+  // (the set-up copies the role from his participant record first - sub_8267CD30's + 8 into actor + 3428 - so the
+  // role 1 is put in all three records for the time of it: with the role 6 there his brain was not made at the
+  // bell's last set-up, user's tests of 2026-11-16)
   if (his && role == 6)
-    bd::mem::store<u32>(n + 3428, 1);
+    SetRole(ctx, base, 6, 40, 1);
   __imp__sub_822143D0(ctx, base);
   if (his && role == 6)
-    bd::mem::store<u32>(n + 3428, 6);
+    SetRole(ctx, base, 6, 40, 6);
   if (his)
     BD_INFO("[sref] l'arbitre du jeu : sa mise en place (appel {:08X}, role {}), cerveau {:08X}", from, role, Brain(n));
 }
@@ -2311,7 +2299,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     // empty: he is the referee no more. Without a man of the role 1 the judge counts by itself (sub_82265710 sets
     // its + 112 to 0 the next frame); his + 998 = 4 keeps him out of the pins (sub_82261C28 wants 0 on both men).
     // The role is also put in his participant record and his creation record, which the game copies back at times.
-    if ((g_gauge.load() <= 0.f || g_faults >= 30) && REXCVAR_GET(wwe12_sref_replacement) && Parked(Actor(6))) {
+    if ((g_gauge.load() <= 0.f || g_faults >= 30) && REXCVAR_GET(wwe12_sref_replacement) && Parked(Actor(6)) &&
+        Brain(Actor(6)) != 0) {
       if (g_out == kOutNone) {
         g_out = kOutWait;
         g_out_t = 0;
