@@ -54,6 +54,11 @@ REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, true, "WWE12",
 
 #include <rex/runtime.h>
 #include <rex/ppc/func.h>
+#include <rex/filesystem.h>
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+REXCVAR_DECLARE(std::string, user_data_root);
 
 #include <fmt/format.h>
 
@@ -117,6 +122,11 @@ REX_EXTERN(__imp__sub_82481ED0);  // a camera's active state (camera, on)
 REX_EXTERN(__imp__sub_82478510);  // a motion's block found in a motions container (container, motion, x, y)
 REX_EXTERN(__imp__sub_82254518);  // a parked object of a type made live again (-1, type, 0, 0)
 REX_EXTERN(__imp__sub_82250258);  // an object parked
+REX_EXTERN(__imp__sub_82A37AB0);  // a place of the match's setup given a superstar (setup, place, superstar, pad, attire, ...)
+REXCVAR_DEFINE_INT32(wwe12_sref_gm, 0, "WWE12",
+                     "Special Guest Referee: the superstar number of the General Manager of the stage scene (WWE '13's John "
+                     "Laurinaitis, added by the Mod Maker); 0 = found by his name among the added superstars "
+                     "(superstar_slots.txt), else the first man at ringside plays him.");
 REXCVAR_DEFINE_BOOL(wwe12_sref_actions, true, "WWE12",
                     "Special Guest Referee: his actions as WWE '13, with its motions (A: caution a superstar / check a "
                     "submission; Y: pronounce a disqualification / the screw job).");
@@ -210,6 +220,7 @@ enum { kOutNone, kOutWait, kOut2050, kOutScene, kOutArrive, kOutDone };
 int g_out = kOutNone;
 int64_t g_ex_ms = 0, g_watch_ms = 0;
 bool g_scene_ran = false;
+int g_gm_place = -1;  // the General Manager's place (and actor number), -1: none
 bool g_gone = false;
 double g_out_t = 0;
 Timed g_nm;  // the normal referee's motion of ours
@@ -400,14 +411,55 @@ extern "C" REX_FUNC(sub_828AE798) {
 // the normal referee was made (user's test of 2026-11-15, 22:17: roles 0 0 0, referee in slot 6).
 // In a setup of ours the place after the fighters keeps the kind 1; the game then makes no normal referee
 // (sub_82A37378). Seen working on 2026-11-16 (rule 83: role 1, no actor 6, the judge's + 112 = 2).
+// The General Manager's superstar number: the setting, else the added superstar whose mod's name holds "laurinaitis"
+// (the Mod Maker's superstar mods get their numbers in <user data>\superstar_slots.txt: "superstar_<name>=<number>").
+namespace {
+int GmNumber() {
+  if (const int n = REXCVAR_GET(wwe12_sref_gm); n > 0)
+    return n;
+  std::filesystem::path root = REXCVAR_GET(user_data_root);
+  if (root.empty())
+    root = rex::filesystem::GetUserFolder() / "wwe12";
+  std::ifstream f(root / "superstar_slots.txt");
+  std::string line;
+  while (std::getline(f, line)) {
+    std::string low = line;
+    for (char &ch : low)
+      ch = char(std::tolower(static_cast<unsigned char>(ch)));
+    const size_t eq = low.rfind('=');
+    if (eq != std::string::npos && low.substr(0, eq).find("laurinaitis") != std::string::npos)
+      return atoi(low.c_str() + eq + 1);
+  }
+  return 0;
+}
+}  // namespace
+
 extern "C" REX_FUNC(sub_82A36150) {
-  if (On() && g_arm && g_cur >= 0 && g_cur < int(g_rows.size()) && ctx.r4.u32 == g_rows[size_t(g_cur)].fighters &&
-      ctx.r5.u32 == 0) {
+  const bool ref_place = On() && g_arm && g_cur >= 0 && g_cur < int(g_rows.size()) &&
+                         ctx.r4.u32 == g_rows[size_t(g_cur)].fighters && ctx.r5.u32 == 0;
+  if (ref_place) {
     ctx.r5.u64 = 1;
     g_committed = true;
     BD_INFO("[sref] la place {} : genre 0 -> 1 (l'arbitre), appel {:08X}", ctx.r4.u32, u32(ctx.lr));
   }
+  const u32 m = ctx.r3.u32, gm_place = ctx.r4.u32 + 1;
   __imp__sub_82A36150(ctx, base);
+  g_gm_place = -1;
+  const int gm = GmNumber();
+  if (ref_place && gm > 0 && gm < 373 && gm_place < 6 && REXCVAR_GET(wwe12_sref_scene) && REXCVAR_GET(wwe12_sref_replacement)) {
+    PPCContext c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    c.r3.u64 = m, c.r4.u64 = gm_place, c.r5.u64 = u32(gm), c.r6.s64 = -1, c.r7.u64 = 0, c.r8.u64 = 2, c.r9.u64 = 1,
+    c.r10.u64 = 1;
+    __imp__sub_82A37AB0(c, base);
+    c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    c.r3.u64 = m, c.r4.u64 = gm_place, c.r5.u64 = 6;
+    __imp__sub_82A36150(c, base);
+    g_gm_place = int(gm_place);
+    BD_INFO("[sref] le manager general (catcheur {}) a la place {}, genre 6 : il attend hors de vue jusqu'a la scene", gm,
+            gm_place);
+  }
 }
 
 // The match set up from a rule: ours only when it comes from the select's commit (sub_828AD3A0, its call returns
@@ -1473,8 +1525,9 @@ bool SceneStart(const PPCContext &ctx, u8 *base, u32 n) {
     return false;
   const u32 m = W(2043);
   const bool b0 = BlockThere(ctx, base, m, 0, 0), b1 = BlockThere(ctx, base, m, 0, 1), cam60 = BlockThere(ctx, base, m, 0, 60);
-  g_gm = Actor(7);
-  BD_INFO("[sref] scene : motion {} trouvee : corps {} / {}, camera {} ; manager general (acteur 7) {:08X}", m, b0, b1, cam60, g_gm);
+  g_gm = g_gm_place >= 0 ? Actor(u32(g_gm_place)) : Actor(7);
+  BD_INFO("[sref] scene : motion {} trouvee : corps {} / {}, camera {} ; manager general (acteur {}) {:08X}", m, b0, b1, cam60,
+          g_gm_place >= 0 ? g_gm_place : 7, g_gm);
   if (!b0 || !b1 || !cam60 || !g_gm)
     return false;
   // the General Manager's body: the first man at ringside, his place kept
@@ -1496,6 +1549,13 @@ bool SceneStart(const PPCContext &ctx, u8 *base, u32 n) {
     bd::mem::store<u32>(n + 1360 + o, 0);
   bd::mem::store<u32>(n + 1360 + 16, 1);
   std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
+  if (g_gm_place >= 0) {  // (our General Manager, unseen until now)
+    Shown(ctx, base, g_gm, true);
+    for (u32 o : {8u, 88u, 144u})
+      bd::mem::store<u32>(g_gm + 1360 + o, 0);
+    bd::mem::store<u32>(g_gm + 1360 + 16, 1);
+    std::memcpy(bd::mem::at<u8>(g_gm + 1028), bd::mem::at<u8>(g_gm + 1360), 332);
+  }
   PlayBlock(ctx, base, n, m, 0, 0);
   PlayBlock(ctx, base, g_gm, m, 0, 1);
   // his microphone (loaded and parked for these matches, the I Quit's way)
@@ -1563,8 +1623,11 @@ bool SceneTick(const PPCContext &ctx, u8 *base, u32 n, u32 s3, double dt) {
   if (g_scene_t < 500.0 / 60.0)
     return false;
   CameraBack(ctx, base);
-  // the General Manager back at ringside, the microphone parked
-  if (g_gm) {
+  // the General Manager back at ringside (or out of sight again, ours), the microphone parked
+  if (g_gm && g_gm_place >= 0) {
+    Shown(ctx, base, g_gm, false);
+    Place(g_gm, 0.f, -120.f, 3200.f);
+  } else if (g_gm) {
     Place(g_gm, g_gm_pos[0], g_gm_pos[1], g_gm_pos[2]);
     u32 b;
     std::memcpy(&b, &g_gm_head, 4);
@@ -1796,11 +1859,13 @@ void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
 // each putting in place of the match, sub_8254C820.) Our own calls (the hand-over) go to the game's directly.
 namespace {
 bool WaitingSlot(u32 mgr, u32 slot) {
-  if (!On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out >= kOutScene || !mgr ||
+  if (!On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || (g_out >= kOutScene && g_gm_place < 0) || !mgr ||
       slot >= 16)
     return false;
   const u32 index = bd::mem::try_load<u32>(mgr + (slot + 32) * 4);
-  return index == 6 && Actor(6) && Actor(6) != Referee();
+  if (g_gm_place >= 0 && index == u32(g_gm_place) && Actor(index) && g_out != kOutScene)
+    return true;  // (the General Manager: seen only in the scene)
+  return index == 6 && g_out < kOutScene && Actor(6) && Actor(6) != Referee();
 }
 }  // namespace
 extern "C" REX_FUNC(sub_822CF850) {
