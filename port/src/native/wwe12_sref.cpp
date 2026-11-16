@@ -68,6 +68,7 @@ REXCVAR_DECLARE(std::string, user_data_root);
 
 REX_EXTERN(__imp__sub_8247AD18);  // play a motion on an actor
 REX_EXTERN(__imp__sub_822143D0);  // an actor's set-up (r3 = actor + 1696; makes his brain 'CMIF' for the role 1)
+REX_EXTERN(__imp__sub_8247C670);  // an actor back in his free motion (1350: the one his brain acts from)
 REX_EXTERN(__imp__sub_827A1BF0);  // the character select's layout of a rule
 REX_EXTERN(__imp__sub_82A39AC0);  // a match set up from a rule (setup manager, rule, its options or 0)
 REX_EXTERN(__imp__sub_828AE798);  // the character select set up for a rule (select, rule, options or 0, r6, r7)
@@ -1452,6 +1453,17 @@ void Place(u32 actor, float x, float y, float z) {
       bd::mem::store<u32>(p + i * 4, bits);
   }
 }
+// An actor back in his free motion (sub_8247C670: the motion 1350, his walking / standing set). His brain ('CMIF',
+// sub_8232E3B0) acts only from it: after a motion of ours he stays still until he is in it again (user's test of
+// 2026-11-16, 17:45: the old referee left in the referee's idle 20150, the game's referee in 446 - both stood still).
+void Free(const PPCContext &ctx, u8 *base, u32 actor) {
+  if (!actor)
+    return;
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = actor;
+  __imp__sub_8247C670(c, base);
+}
 // (the special referee's participant number: his actors' index, as the game maps them for the six places)
 u32 ParticipantOf(const PPCContext &ctx, u8 *base, u32 index) {
   PPCContext c = ctx;
@@ -1613,7 +1625,10 @@ bool SceneStart(const PPCContext &ctx, u8 *base, u32 n) {
     bd::mem::store<u32>(key, m);
     bd::mem::store<u32>(key + 4, 0);
     bd::mem::store<u32>(key + 8, 60);
-    const float p[5] = {0.f, -120.f, 0.f, 0.f, 0.f};
+    // (lifted with the stage, as the bodies are: in 2043 the camera's heights are 0.6 m under the floor (shot A) and
+    // 0.1 m over it (shot B), the people's hips 1.2 m over it - WWE '13 lifts the whole scene by the stage's 180 cm.
+    // Not lifted, the camera was under the stage: user's test of 2026-11-16, 17:45, "la camera visait mal".)
+    const float p[5] = {0.f, RampY(2380.f) - 120.f, 0.f, 0.f, 0.f};
     for (u32 i = 0; i < 5; ++i) {
       u32 b;
       std::memcpy(&b, &p[i], 4);
@@ -1765,12 +1780,24 @@ void HandOver(const PPCContext &ctx, u8 *base) {
     }
     SetRole(ctx, base, 6, 40, 1);
     if (Brain(n) == 0) {  // (lost at the bell's last set-up: made again now, with the role 1)
+      // (the set-up also puts him at (0, 33, 0) - under the ring: user's test of 2026-11-16, 17:45 - his place and
+      // heading are kept)
+      float keep[3] = {};
+      const u32 q = bd::mem::try_load<u32>(n + 768);
+      for (u32 i = 0; q && i < 3; ++i)
+        keep[i] = LoadF(q + i * 4);
+      const u32 head = bd::mem::try_load<u32>(n + 740);
       PPCContext c = ctx;
       c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
       c.r3.u64 = n + 1696;
       __imp__sub_822143D0(c, base);
-      BD_INFO("[sref] remplacement : le cerveau de l'arbitre du jeu refait ({:08X})", Brain(n));
+      if (q)
+        Place(n, keep[0], keep[1], keep[2]);
+      bd::mem::store<u32>(n + 740, head);
+      BD_INFO("[sref] remplacement : le cerveau de l'arbitre du jeu refait ({:08X}), place gardee {:.0f} {:.0f} {:.0f}", Brain(n),
+              keep[0], keep[1], keep[2]);
     }
+    Free(ctx, base, n);
     {
       PPCContext c = ctx;
       c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
@@ -1789,9 +1816,9 @@ void HandOver(const PPCContext &ctx, u8 *base) {
       bd::mem::store<u32>(s3 + 3140, 0);
       // (still in 2051's last frame: the game gave him nothing after it - he stayed so, even outside the ring, user's
       // test of 2026-11-16: standing again)
-      if (Anim(s3) >= 13115 && Anim(s3) < 13150)
-        Play(ctx, base, s3, g_ref_idle, 0);
       g_rm = {};
+      Free(ctx, base, s3);
+      BD_INFO("[sref] remplacement : l'ancien arbitre dans sa motion libre ({}), cerveau {:08X}", Anim(s3), Brain(s3));
       bd::mem::store<u32>(s3 + 2568, 1);
       PPCContext c = ctx;
       c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
@@ -2085,6 +2112,40 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
               j ? bd::mem::try_load<u32>(j + 112) : 99, g_ex ? Anim(g_ex) : 0, g_ex ? bd::mem::try_load<u8>(g_ex + 996) : 0);
     }
   }
+  if (g_out == kOutDone && g_watch_ms && Actor(6) && Referee() == Actor(6)) {
+    static int s_help = 0;
+    static int64_t s_for = 0;
+    if (s_for != g_watch_ms)
+      s_for = g_watch_ms, s_help = 0;
+    const u32 n = Actor(6), q = bd::mem::try_load<u32>(n + 768);
+    float nx = 0, nz = 0;
+    Spot(n, nx, nz);
+    const bool in_ring = q && std::fabs(nx) < 300.f && std::fabs(nz) < 300.f && LoadF(q + 4) < -150.f;
+    const int64_t since = NowMs() - g_watch_ms;
+    if (in_ring && s_help < 3) {
+      s_help = 3;
+      BD_INFO("[sref] l'arbitre du jeu est dans le ring ({:.1f} s apres le relais)", since / 1000.0);
+    } else if (!in_ring && s_help == 0 && since > 15000) {
+      s_help = 1;
+      float y = -60.f, ax, az;
+      for (u32 k : {7u, 8u})
+        if (const u32 a = Actor(k); a && Spot(a, ax, az))
+          if (const u32 aq = bd::mem::try_load<u32>(a + 768); aq && std::isfinite(LoadF(aq + 4))) {
+            y = LoadF(aq + 4);
+            break;
+          }
+      Place(n, 0.f, y, 420.f);
+      bd::mem::store<u8>(n + 996, 1);
+      Free(ctx, base, n);
+      BD_INFO("[sref] l'arbitre du jeu n'arrive pas (a {:.0f} {:.0f}) : mis au pied de la rampe", nx, nz);
+    } else if (!in_ring && s_help == 1 && since > 30000) {
+      s_help = 2;
+      Place(n, 0.f, -203.f, 200.f);
+      bd::mem::store<u8>(n + 996, 0);
+      Free(ctx, base, n);
+      BD_INFO("[sref] l'arbitre du jeu n'entre pas dans le ring (a {:.0f} {:.0f}) : mis dans le ring", nx, nz);
+    }
+  }
   // (the man who was the referee: once he is outside the ring he walks away, the game's own behaviour for a man out
   // of the match - sub_82371C78, as its free state does for + 998 = 4 and the area byte + 996 = 1 or 16)
   if (g_ex)
@@ -2104,6 +2165,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     Spot(g_ex, ex, ez);
     Place(g_ex, std::clamp(ex, -150.f, 150.f), have ? y : -60.f, 430.f);
     bd::mem::store<u8>(g_ex + 996, 1);  // (outside the ring)
+    Free(ctx, base, g_ex);
     BD_INFO("[sref] l'ancien arbitre est mis hors du ring cote rampe (hauteur {:.0f}{})", have ? y : -60.f,
             have ? "" : ", estimee");
   }

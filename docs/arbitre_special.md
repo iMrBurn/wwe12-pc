@@ -169,3 +169,14 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
 - Pas fait : bousculade avant l'avertissement de près (2027 / 2028), arme lâchée, ruptures de corde accordées par
   l'arbitre, abandon qui ne compte que s'il vérifie, ses provocations (2045-2048), images des invites (enfant 38),
   coups reçus comme un catcheur, arbitre spécial joué par l'ordinateur.
+
+## Pièges trouvés au test du 2026-11-16 (17:45)
+
+- Le cerveau d'un acteur (`CMIF`, mise à jour `sub_8232E3B0`) n'agit que si l'acteur est dans sa **motion libre 1350**
+  (`[acteur+680]` → n° de motion). Après une motion à nous (2051, idle d'arbitre 20150, 446…) il reste figé :
+  `sub_8247C670(acteur)` le remet dans sa motion libre (fonction `Free()`).
+- `sub_822143D0` (mise en place d'un acteur) le replace en (0, 33, 0), sous le ring : garder sa place et son cap autour.
+- Sortie d'un homme hors du match : `+2568` ≠ 0 et but du cerveau `+2140` = 0 → but 7 → `sub_8234FD30`, qui finit
+  par `sub_82371C78` (remplace son composant de commande `+3444` par la marche de départ).
+- Caméra de 2043 : ses hauteurs sont sous le sol (plan A -59.5) ; WWE '13 soulève toute la scène de 180 cm (la scène) :
+  origine de la caméra à y = -300 comme les corps.
