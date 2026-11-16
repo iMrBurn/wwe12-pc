@@ -213,3 +213,9 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   devient catcheur (rôle 0, +998 = 0) le temps de monter (le jeu choisit la motion, comme la sortie 717 d'Orton), puis
   arbitre à nouveau. Micro : tenu par le manager général (objet +96 = lui). Jauge cachée pendant la scène.
   À faire : la course (WWE '13 : l'arbitre court) - le bouton de course de la manette virtuelle n'est pas encore trouvé.
+- Étude du 2026-11-16 20:17 (manette de l'ordinateur) : mot = stick dans le 3e octet (0x80 | direction << 4),
+  boutons dans les 16 bits bas. Remonter dans le ring : au bord, stick vers le ring + boutons **0x1400**, le jeu joue
+  716 (entre les cordes). La motion de marche 20150 sert aussi aux catcheurs. L'arbitre au bord du ring : rôle 0 et
+  +998 = 4 (pas de décompte ni de tombé sur lui) le temps de monter, boutons pressés une image sur deux ; rôle 1 à
+  nouveau une fois dans le ring et la motion 7xx finie ; sinon un petit pas derrière les cordes au bout de 3 s.
+  La course n'est pas trouvée (aucune course dans ce relevé).
