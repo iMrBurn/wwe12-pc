@@ -536,8 +536,15 @@ extern "C" REX_FUNC(sub_82568C78) {
 }
 
 extern "C" REX_FUNC(sub_82573BA0) {
-  if (Middle() && ctx.r5.u32 == 33 && (ctx.r4.u32 == 1 || ctx.r4.u32 == 2))
+  // (r6 = the slot's widget: 39 the left one, 45 the middle, 51 the right - sub_82573CC8's card of three people.
+  // First written with a test on r5, which is not the card's kind: the referee stayed on the right, user's test of
+  // 2026-11-16.)
+  if (Middle() && (ctx.r6.u32 == 45 || ctx.r6.u32 == 51) && (ctx.r4.u32 == 1 || ctx.r4.u32 == 2)) {
+    static std::atomic<int> s_lines{0};
+    if (s_lines.fetch_add(1) < 10)
+      BD_INFO("[sref] carte du match : la case {} montre la place {}", ctx.r6.u32, 3 - ctx.r4.u32);
     ctx.r4.u64 = 3 - ctx.r4.u32;
+  }
   __imp__sub_82573BA0(ctx, base);
 }
 
@@ -772,7 +779,7 @@ class SrefOverlay final : public rex::ui::ImGuiDialog {
     const float w = (on_him ? 150 : 260) * k, h = (on_him ? 10 : 16) * k;
     const float x = on_him ? std::clamp(px * io.DisplaySize.x - w * 0.5f, 8 * k, io.DisplaySize.x - w - 50 * k)
                            : io.DisplaySize.x * 0.5f - w * 0.5f;
-    const float y = on_him ? std::clamp(py * io.DisplaySize.y - 170 * k, 40 * k, io.DisplaySize.y - 40 * k)
+    const float y = on_him ? std::clamp(py * io.DisplaySize.y + 16 * k, 40 * k, io.DisplaySize.y - 40 * k)
                            : io.DisplaySize.y * 0.905f;
     if (g_ejected.load()) {
       if (now - g_ejected_ms.load() > 6000) {
@@ -952,8 +959,18 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     if (g_hit.exchange(false))
       Cost(0.1f, "son coup touche un catcheur");
     {  // (where he is on screen: the bar follows him, as WWE '13's)
-      float body[3], sx = -1.f, sy = -1.f;
-      if (!Bone(ref, 120, body) || !OnScreen(ctx, base, body, sx, sy))
+      // (under him, at his feet, as WWE '13 - user, 2026-11-16; the feet as the game's own icon there takes them:
+      // half-way between the bones at + 196 and + 180, the lowest of six bones - the world's y points down)
+      float a[3], b[3], feet[3], sx = -1.f, sy = -1.f;
+      bool ok = Bone(ref, 196, a) && Bone(ref, 180, b);
+      if (ok) {
+        feet[0] = (a[0] + b[0]) * 0.5f, feet[2] = (a[2] + b[2]) * 0.5f, feet[1] = -1.0e9f;
+        for (u32 o : {176u, 192u, 132u, 148u, 164u, 144u})
+          if (Bone(ref, o, a))
+            feet[1] = std::max(feet[1], a[1]);
+        ok = feet[1] > -1.0e8f && OnScreen(ctx, base, feet, sx, sy);
+      }
+      if (!ok)
         sx = sy = -1.f;
       g_sx = sx;
       g_sy = sy;
