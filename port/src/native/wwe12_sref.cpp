@@ -237,12 +237,15 @@ std::atomic<bool> g_scene_on{false};  // (the stage scene is played: nothing of 
 std::atomic<bool> g_walk{false};
 std::atomic<int> g_walk_phase{0};  // 0: to the ramp's foot, 1: into the ring
 std::atomic<int> g_walk_seen{0};   // (his pad words given the stick)
-// Into the ring (study of 2026-11-16, 20:17, the computer's man climbing back in): at the apron his pad word was the
-// stick toward the ring with the buttons 0x1400, and the game played 716 (through the ropes). A referee's A is his
-// count; so at the apron ours is a fighter for the time of it (role 0, + 998 = 4: out of the count-outs and the pins,
-// as the old referee who walked out - the fighter's role with + 998 0 began a count-out on him, test of 20:13).
+// Into the ring: at the apron the computer's man got in through the ropes with the motion 716, started from about
+// 366 cm out, facing the ring (study of 2026-11-16, 20:17; the game picks 712 / 714 / 716 by the man's build - the
+// pairs 712-713, 714-715, 716-717 its preload table loads, sub_8261DAA8, the second of each the way out: the old
+// referee left by 717). The pad's way (stick + buttons 0x1400, even as a fighter) did not take our referee in (test
+// of 20:22): the motion is played on him here, the first of 712 / 714 / 716 the game has ready.
 std::atomic<bool> g_climb{false};
 std::atomic<u32> g_climb_frames{0};
+u32 g_climb_anim = 0;
+int64_t g_climb_ms = 0;
 float WalkTargetZ(int phase) { return phase == 0 ? 430.f : 120.f; }
 bool OnMainThread() { return g_main_tid.load() == std::this_thread::get_id(); }
 int g_gm_place = -1;  // the General Manager's place (and actor number), -1: none
@@ -1994,7 +1997,9 @@ bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
       break;
   }
   const int phase = g_walk_phase.load();
-  const float dx = 0.f - LoadF(rp), dz = (phase >= 2 ? 0.f : WalkTargetZ(phase)) - LoadF(rp + 8);
+  if (phase >= 2)
+    return false;  // (at the apron: his climb is a motion of ours, no stick)
+  const float dx = 0.f - LoadF(rp), dz = WalkTargetZ(phase) - LoadF(rp + 8);
   const float a = std::atan2(-dz, dx) - LoadF(0x82000ADC) + 4.f * 6.2831853f;
   const u32 dir8 = (((u32(a * LoadF(0x82002E4C)) & 0xFFF) + 256) >> 9) & 7;
   const u32 cam = info ? bd::mem::try_load<u16>(info + 162) : 0;
@@ -2004,8 +2009,6 @@ bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
   if (v < 2 || v > 9)
     return false;
   *word = (0x80u | (((kCode[v - 2] - 1) & 7) << 4)) << 16;
-  if (phase >= 2 && (g_climb_frames.fetch_add(1) & 1) == 0)
-    *word |= 0x1400u;  // (the word: 0x00E01400 = stick E0 in its third byte, buttons 0x1400 in its low half)
   if (g_walk_seen.fetch_add(1) < 30)
     BD_INFO("[sref] l'arbitre du jeu marche (etape {}) : a {:.0f} {:.0f} {:.0f}, ecart {:.0f} {:.0f}, mot {:08X}",
             g_walk_phase.load(), LoadF(rp), LoadF(rp + 4), LoadF(rp + 8), dx, dz, *word);
@@ -2293,35 +2296,38 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     const bool in_ring = q && std::fabs(nx) < 300.f && std::fabs(nz) < 300.f && LoadF(q + 4) < -150.f;
     const int64_t since = NowMs() - g_watch_ms;
     {
-      static int64_t s_apron_ms = 0;
       const u16 anim = Anim(n);
-      const bool ring_motion = anim >= 700 && anim < 720;  // (712-717: in and out through the ropes)
-      if (g_climb.load() && in_ring && !ring_motion) {  // (in, his climb over: the referee again)
-        g_climb = false;
-        g_walk = false;
-        SetRole(ctx, base, 6, 40, 1);
-        bd::mem::store<u8>(n + 998, 1);
-        BD_INFO("[sref] l'arbitre du jeu est monte dans le ring (motion {}) : l'arbitre a nouveau", anim);
+      if (g_climb.load()) {
+        // (his climb: over once the game gave him another motion, or after 3 s; still outside then: a short step)
+        if ((anim != g_climb_anim && NowMs() - g_climb_ms > 300) || NowMs() - g_climb_ms > 3000) {
+          g_climb = false;
+          g_walk = false;
+          if (!in_ring) {
+            const float k = 270.f / std::max(std::fabs(nx), std::fabs(nz));
+            Place(n, nx * k, -203.f, nz * k);
+            bd::mem::store<u8>(n + 996, 0);
+          }
+          Free(ctx, base, n);
+          BD_INFO("[sref] l'arbitre du jeu : montee {} finie (motion {}, a {:.0f} {:.0f}, {})", g_climb_anim, anim, nx, nz,
+                  in_ring ? "dans le ring" : "pas entre : passe derriere les cordes");
+        }
       } else if (!in_ring && g_walk.load() && g_walk_phase.load() == 1 && std::fabs(nx) < 420.f && std::fabs(nz) < 420.f) {
         g_walk_phase = 2;
-        g_climb_frames = 0;
+        u32 m = 0;
+        for (u32 c : {712u, 714u, 716u})
+          if (!m && Wwe12MotionReady(ctx, base, c))
+            m = c;
+        // (facing the ring's middle: an actor faces (-sin h, -cos h))
+        const float h = std::atan2(nx, nz);
+        u32 bits;
+        std::memcpy(&bits, &h, 4);
+        bd::mem::store<u32>(n + 740, bits);
         g_climb = true;
-        s_apron_ms = NowMs();
-        SetRole(ctx, base, 6, 40, 0);
-        bd::mem::store<u8>(n + 998, 4);
-        BD_INFO("[sref] l'arbitre du jeu au bord du ring (a {:.0f} {:.0f}) : il monte (manette + boutons 0x1400)", nx, nz);
-      } else if (g_climb.load() && !in_ring && !ring_motion && s_apron_ms && NowMs() - s_apron_ms > 3000) {
-        // (not climbed in 3 s: a short step behind the ropes, the referee again)
-        s_apron_ms = 0;
-        g_climb = false;
-        g_walk = false;
-        SetRole(ctx, base, 6, 40, 1);
-        bd::mem::store<u8>(n + 998, 1);
-        const float k = 270.f / std::max(std::fabs(nx), std::fabs(nz));
-        Place(n, nx * k, -203.f, nz * k);
-        bd::mem::store<u8>(n + 996, 0);
-        Free(ctx, base, n);
-        BD_INFO("[sref] l'arbitre du jeu ne monte pas (a {:.0f} {:.0f}, motion {}) : passe derriere les cordes", nx, nz, anim);
+        g_climb_ms = NowMs();
+        g_climb_anim = m;
+        if (m)
+          Play(ctx, base, n, m, 0);
+        BD_INFO("[sref] l'arbitre du jeu au bord du ring (a {:.0f} {:.0f}) : il monte, motion {}", nx, nz, m);
       }
     }
     if (in_ring && s_help < 3 && !g_climb.load()) {
@@ -2341,6 +2347,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       if (phase == 0 && d < 90.f) {
         g_walk_phase = 1;
         s_best = 1e9f, s_best_ms = NowMs();
+        for (u32 m : {712u, 714u, 716u})
+          Wwe12MotionReady(ctx, base, m);  // (asked ahead: ready at the apron)
         BD_INFO("[sref] l'arbitre du jeu est au pied de la rampe ({:.1f} s) : il monte dans le ring", since / 1000.0);
       } else if (NowMs() - s_best_ms > 5000 || since > 30000) {
         if (phase == 0 && since <= 30000) {
