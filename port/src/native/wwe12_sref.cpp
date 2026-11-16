@@ -2301,7 +2301,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
         // (his climb: over once the game gave him another motion, or after 3 s; still outside then: a short step)
         // (712 onto the apron, 750, 7010 through the ropes... - test of 20:42: over once he walks again, 2015x)
         const bool in_chain = !(anim >= 20150 && anim < 20160);
-        if ((!in_chain && NowMs() - g_climb_ms > 300) || NowMs() - g_climb_ms > 6000) {
+        if ((!in_chain && NowMs() - g_climb_ms > 300) || NowMs() - g_climb_ms > 12000) {  // (712 2 s, 750 3.4 s, 7010...: test of 20:47)
           g_climb = false;
           g_walk = false;
           if (!in_ring) {
@@ -2378,25 +2378,6 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
           BD_INFO("[sref] l'arbitre du jeu n'entre pas dans le ring (a {:.0f} {:.0f}) : mis dans le ring", nx, nz);
         }
       }
-    }
-  }
-  if (main_thread && g_out == kOutDone && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1 && !g_climb.load()) {
-    static int64_t s_stuck = 0;
-    static int s_lines = 0;
-    const u32 n = Actor(6);
-    const u16 anim = Anim(n);
-    if (anim >= 20150 && anim < 20160 && (bd::mem::try_load<u32>(n + 1428) != 0 || bd::mem::try_load<u32>(n + 1096) != 0)) {
-      if (!s_stuck)
-        s_stuck = NowMs();
-      if (NowMs() - s_stuck > 1500) {
-        bd::mem::store<u32>(n + 1428, 0);
-        bd::mem::store<u32>(n + 1096, 0);
-        s_stuck = 0;
-        if (s_lines++ < 20)
-          BD_INFO("[sref] l'arbitre du jeu : drapeau +1428 / +1096 remis a 0 (1,5 s a 1 dans sa motion {})", anim);
-      }
-    } else {
-      s_stuck = 0;
     }
   }
   if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1 &&
