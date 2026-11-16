@@ -39,6 +39,7 @@ REX_EXTERN(__imp__sub_8247AD18);  // play a motion on an actor
 REX_EXTERN(__imp__sub_827A1BF0);  // the character select's layout of a rule
 REX_EXTERN(__imp__sub_82A39AC0);  // a match set up from a rule (setup manager, rule, its options or 0)
 REX_EXTERN(__imp__sub_828AE798);  // the character select set up for a rule (select, rule, options or 0, r6, r7)
+REX_EXTERN(__imp__sub_82A36150);  // a place's kind set in the match's setup (setup manager, place, kind)
 
 REXCVAR_DEFINE_INT32(wwe12_sref_from, 13, "WWE12",
                      "Dev: with wwe12_sref, a match set up with this rule (13 = TRIPLE THREAT) is a Special Guest Referee one.");
@@ -128,6 +129,18 @@ extern "C" REX_FUNC(sub_828AE798) {
     BD_INFO("[sref] ecran de choix : regle {} gabarit {} personnes {}", bd::mem::try_load<u32>(e), bd::mem::try_load<u32>(e + 1588),
             bd::mem::try_load<u32>(e + 92));
   }
+}
+
+// A place's kind. The rule's own kinds (83: the third place 1, the referee) are set by sub_82A39AC0, but the select
+// then sets each chosen place's kind itself (sub_828AD3A0: 0 a fighter, 2 a manager, 3...), so the third man was a
+// fighter and the normal referee was made (user's test of 2026-11-15, 22:17: roles 0 0 0, referee in slot 6).
+// In a rule-83 setup the third place keeps the kind 1; the game then makes no normal referee (sub_82A37378).
+extern "C" REX_FUNC(sub_82A36150) {
+  if (On() && ctx.r3.u32 && bd::mem::try_load<u32>(ctx.r3.u32 + 8) == kRule && ctx.r4.u32 == 2 && ctx.r5.u32 == 0) {
+    ctx.r5.u64 = 1;
+    BD_INFO("[sref] la 3e place : genre 0 -> 1 (l'arbitre), appel {:08X}", u32(ctx.lr));
+  }
+  __imp__sub_82A36150(ctx, base);
 }
 
 // (the match set up from the select's rule: logged)
