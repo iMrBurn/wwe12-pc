@@ -2299,7 +2299,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       const u16 anim = Anim(n);
       if (g_climb.load()) {
         // (his climb: over once the game gave him another motion, or after 3 s; still outside then: a short step)
-        const bool in_chain = anim >= 700 && anim < 800;  // (712, then 750, ...: the game's way in)
+        // (712 onto the apron, 750, 7010 through the ropes... - test of 20:42: over once he walks again, 2015x)
+        const bool in_chain = !(anim >= 20150 && anim < 20160);
         if ((!in_chain && NowMs() - g_climb_ms > 300) || NowMs() - g_climb_ms > 6000) {
           g_climb = false;
           g_walk = false;
@@ -2398,7 +2399,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       s_stuck = 0;
     }
   }
-  if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1) {
+  if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1 &&
+      !g_walk.load() && !g_climb.load()) {
     static int64_t s_wait = 0;
     const u32 j = bd::mem::try_load<u32>(kJudgePtr);
     const u32 st = j ? bd::mem::try_load<u32>(j + 92) : 0, cnt = j ? bd::mem::try_load<u32>(j + 100) : 0;
