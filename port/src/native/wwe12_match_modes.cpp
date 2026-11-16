@@ -973,19 +973,21 @@ extern "C" REX_FUNC(sub_82DE92F8) {
   const u32 added = copy + at;
   bd::mem::store<u32>(added + kLabel, kIQuitLabel);
   // The game finds an entry from its id by a binary search: the ids must go up along the table. A new id here,
-  // in the table's middle, hides the entries after it from that search (read 2026-11-16 with the Special Guest
-  // Referee's menu: B did not go back from a sub-menu whose parent was not found). With that mode on, I QUIT takes
-  // the id of the row before it (the page's last match): the search finds one of the two, on the same page.
-  // (Without it the id stays the one I QUIT has had since it was made: to be changed once tested, see docs.)
-  bd::mem::store<u32>(added + kId, Wwe12SrefOn() ? bd::mem::try_load<u32>(rec(u32(last)) + kId) : max_id + 1);
+  // in the table's middle, hides the entries after it from that search: with I QUIT's first id (the shown ones'
+  // max + 1) B did not go back from TWO ON TWO > TORNADO TAG or ELIMINATION TAG (ids 47 to 52 were not found;
+  // simulated on the game's table, then seen by the user on 2026-11-16). So I QUIT takes the id of the row before
+  // it (the page's last match, a row with no sub-menu): the search finds one of the two, on the same page.
+  // (Seen by the user the same day: B goes back again, I QUIT is still in ONE ON ONE. I QUIT is known by its text.)
+  const u32 iquit_id = bd::mem::try_load<u32>(rec(u32(last)) + kId);
+  bd::mem::store<u32>(added + kId, iquit_id);
   bd::mem::store<u32>(added + kKind, 7);                                 // the page's last choice now
   bd::mem::store<u32>(copy + kHeader + u32(last) * kRecord + kKind, 5);  // (the old last one: a choice)
   bd::mem::store<u32>(copy + 4, total + 1);
   bd::mem::store<u32>(copy + 8, shown + 1);
   g_iquit_row = row;  // (after the page's last match)
   g_submission_row = sub_row;
-  BD_INFO("[iquit] ligne I QUIT ajoutee (ligne {} de ONE ON ONE, SUBMISSION = ligne {}, id {})", row, sub_row,
-          max_id + 1);
+  BD_INFO("[iquit] ligne I QUIT ajoutee (ligne {} de ONE ON ONE, SUBMISSION = ligne {}, id {} comme la ligne d'avant)", row,
+          sub_row, iquit_id);
   ctx.r4.u64 = copy;
   ctx.r5.u64 = size + kRecord;
   __imp__sub_82DE92F8(ctx, base);
