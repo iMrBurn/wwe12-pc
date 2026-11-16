@@ -1889,8 +1889,53 @@ extern "C" REX_FUNC(sub_823B7DB8) {
 // Each actor's pad word, every frame (from wwe12_iquit.cpp's hook of sub_8225C4D8): the game's referee who waits is
 // kept out of sight from the first frame on - the tick only runs once the match's HUD is drawn (user's test of
 // 2026-11-16: before the bell he was seen half in the ring's middle).
+namespace {
+u32 Comp(u32 actor, u32 tag) {  // an actor's component (sub_827D5C28 on actor + 3436 / 3440 / 3444), its object (+ 24)
+  for (u32 off : {3436u, 3440u, 3444u}) {
+    const u32 list = actor ? bd::mem::try_load<u32>(actor + off) : 0;
+    for (u32 c = list, k = 0; c && k < 256; c = bd::mem::try_load<u32>(c + 16), ++k)
+      if (bd::mem::try_load<u32>(c + 4) == tag)
+        return bd::mem::try_load<u32>(c + 24);
+    for (u32 c = list ? bd::mem::try_load<u32>(list + 20) : 0, k = 0; c && k < 256; c = bd::mem::try_load<u32>(c + 20), ++k)
+      if (bd::mem::try_load<u32>(c + 4) == tag)
+        return bd::mem::try_load<u32>(c + 24);
+  }
+  return 0;
+}
+void RefDiag(const char *who, u32 a) {
+  if (!a)
+    return;
+  const u32 b = Brain(a);
+  std::string sw;
+  for (u32 tag : {0x43415348u, 0x5245464Cu, 0x47524156u, 0x4E617669u})  // CASH REFL GRAV Navi
+    if (const u32 o = Comp(a, tag))
+      sw += fmt::format(" {:c}{:c}{:c}{:c}+10={}", char(tag >> 24), char(tag >> 16), char(tag >> 8), char(tag), bd::mem::try_load<u16>(o + 10));
+    else
+      sw += fmt::format(" {:c}{:c}{:c}{:c}:aucun", char(tag >> 24), char(tag >> 16), char(tag >> 8), char(tag));
+  float x = 0, z = 0;
+  Spot(a, x, z);
+  BD_INFO("[sref] etude {} : role {} motion {} a {:.0f} {:.0f} | +1736 {} +1752 {} +1044 {} +1096 {} +1880 {} +2155 {} +2140 {} "
+          "+998 {} +996 {} +3140 {} +1760 {} | cerveau {:08X} +36 {} +40 {} +44 {} +64 {} |{}",
+          who, bd::mem::try_load<u32>(a + 3428), Anim(a), x, z, bd::mem::try_load<u32>(a + 1736), bd::mem::try_load<u32>(a + 1752),
+          bd::mem::try_load<u32>(a + 1044), bd::mem::try_load<u32>(a + 1096), bd::mem::try_load<u32>(a + 1880),
+          bd::mem::try_load<u8>(a + 2155), bd::mem::try_load<u32>(a + 2140), bd::mem::try_load<u8>(a + 998),
+          bd::mem::try_load<u8>(a + 996), bd::mem::try_load<u32>(a + 3140), bd::mem::try_load<u32>(a + 1760), b,
+          b ? bd::mem::try_load<u32>(b + 36) : 0, b ? bd::mem::try_load<u32>(b + 40) : 0, b ? bd::mem::try_load<u32>(b + 44) : 0,
+          b ? bd::mem::try_load<u32>(b + 64) : 0, sw);
+}
+}  // namespace
+
 void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
   g_main_tid = std::this_thread::get_id();
+  if (actor && actor == Actor(6) && On() && !Match()) {  // (study: the reference, an ordinary match's referee)
+    static int64_t s_last = 0;
+    static int s_lines = 0;
+    if (NowMs() - s_last >= 1000 && s_lines < 40) {
+      s_last = NowMs();
+      ++s_lines;
+      RefDiag("arbitre d'un match normal", actor);
+    }
+  }
   if (!actor || !On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out >= kOutScene)
     return;
   {
@@ -2116,6 +2161,10 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     static int64_t s_last = 0;
     if (NowMs() - s_last >= 1000) {
       s_last = NowMs();
+      if (NowMs() - g_watch_ms < 20000) {
+        RefDiag("l'arbitre du jeu apres le relais", Actor(6));
+        RefDiag("l'ancien arbitre", g_ex);
+      }
       const u32 n = Actor(6), j = bd::mem::try_load<u32>(kJudgePtr);
       float nx = 0, nz = 0;
       Spot(n, nx, nz);
