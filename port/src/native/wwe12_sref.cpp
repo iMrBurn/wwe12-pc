@@ -96,6 +96,15 @@ void Wwe12OverlayPost(std::function<void()> f);  // wwe12_iquit.cpp: on the UI t
 bool Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float wide, float high, ImU32 colour, float part);
 bool Wwe12MotionReady(const PPCContext &in, u8 *base, u32 motion);
 
+REXCVAR_DEFINE_BOOL(wwe12_sref_replacement, true, "WWE12",
+                    "Special Guest Referee: the game's own referee waits out of sight and takes over when the gauge is "
+                    "empty (as WWE '13).");
+REX_EXTERN(__imp__sub_82A37378);  // the match's setup: the normal referee kept or not (setup manager)
+REX_EXTERN(__imp__sub_823B5D18);  // the match put back in place (its actors' flags by role)
+REX_EXTERN(__imp__sub_822CF850);  // an actor drawn or not (actors' manager [0x8317434C], its slot, on)
+REX_EXTERN(__imp__sub_822CE3F0);  // an actor updated or not (manager, slot, on, 0)
+REX_EXTERN(__imp__sub_82212140);  // an actor the computer's (actor, on)
+REX_EXTERN(__imp__sub_823B8F38);  // every actor drawn and updated again (after the match is put in place)
 REXCVAR_DEFINE_BOOL(wwe12_sref_actions, true, "WWE12",
                     "Special Guest Referee: his actions as WWE '13, with its motions (A: caution a superstar / check a "
                     "submission; Y: pronounce a disqualification / the screw job).");
@@ -178,6 +187,15 @@ std::atomic<int64_t> g_foul_ms{0};
 std::atomic<bool> g_want_y{false};
 std::atomic<int> g_prompt{0};
 void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, int64_t now);
+// (the normal referee waiting, and the hand-over: below)
+enum { kOutNone, kOutWait, kOut2050, kOutArrive, kOutDone };
+int g_out = kOutNone;
+double g_out_t = 0;
+Timed g_nm;  // the normal referee's motion of ours
+void HandOver(const PPCContext &ctx, u8 *base);
+void SetRole(const PPCContext &ctx, u8 *base, u32 index, u32 participant, u32 role);
+void Shown(const PPCContext &ctx, u8 *base, u32 actor, bool on);
+bool Parked(u32 n) { return n && bd::mem::try_load<u32>(n + 3428) == 6; }
 void ShowHud();  // below: the gauge's drawing, made on the UI thread
 // Where the referee is on screen (as wwe12_iquit.cpp: sub_82520B90 turns a world point into back-buffer pixels with
 // the calling thread's view; a bone = a pointer to a 4 x 4 matrix, its place at + 48; the body's bone at actor + 120).
@@ -1192,6 +1210,241 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
 }
 }  // namespace
 
+// ---- the game's own referee waits, and takes over when the gauge is empty (WWE '13's 'SRLV', read 2026-11-16) ----
+// WWE '13 makes a spare referee at the match's setup, parks him with the role 6 and hides him; when the special
+// referee's gauge is empty: he plays 2050; 180 frames later the spare one appears in the ring's middle playing 2043
+// while he plays 2051; when 2043 is over the spare one has the role 1 and he the role 0, and must leave.
+// In WWE '12 (read the same day):
+// - the match's setup drops the normal referee when a place of the kind 1 holds a superstar (sub_82A37378). For
+//   that call the special referee's place has the kind 0, so the normal referee is made as in any match - with the
+//   role 1, which he needs when he is made: the actor's brain ('CMIF', actor + 3384) is not built for the roles
+//   4 and 6 (sub_822143D0);
+// - he is then parked: the role 6 (never a target, not counted, his pad silent) in his actor, his participant
+//   record (40) and his creation record (slot 6) - before the match is put in place (sub_823B5D18), which gives the
+//   referee's start place to the last man of the role 1 - and each tick not drawn, not updated, "not there"
+//   (his flags' first word) and far up the ramp, where the game leaves the men who went away;
+// - the hand-over: he is shown in the ring's middle playing 2043, then has the role 1 and is the computer's; the
+//   special referee has the role 0 and + 998 = 4 (out of the pins), and walks away once outside the ring.
+namespace {
+u32 SlotOf(u32 index) {  // the manager's slot of an actors' table index
+  const u32 mgr = bd::mem::try_load<u32>(0x8317434C);
+  for (u32 s2 = 0; mgr && s2 < 16; ++s2)
+    if (bd::mem::try_load<u32>(mgr + (s2 + 32) * 4) == index)
+      return s2;
+  return 0xFFFFFFFF;
+}
+void Shown(const PPCContext &ctx, u8 *base, u32 actor, bool on) {
+  const int index = [&] {
+    for (u32 k = 0; k < 9; ++k)
+      if (actor && Actor(k) == actor)
+        return int(k);
+    return -1;
+  }();
+  const u32 mgr = bd::mem::try_load<u32>(0x8317434C), slot = index >= 0 ? SlotOf(u32(index)) : 0xFFFFFFFF;
+  if (!mgr || slot == 0xFFFFFFFF)
+    return;
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = mgr, c.r4.u64 = slot, c.r5.u64 = on ? 1 : 0;
+  __imp__sub_822CF850(c, base);
+  c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = mgr, c.r4.u64 = slot, c.r5.u64 = on ? 1 : 0, c.r6.u64 = 0;
+  __imp__sub_822CE3F0(c, base);
+  bd::mem::store<u32>(actor + 1360, on ? 1 : 0);  // ("there" or not, for targeting)
+  bd::mem::store<u32>(actor + 1028, on ? 1 : 0);
+}
+void SetRole(const PPCContext &ctx, u8 *base, u32 index, u32 participant, u32 role) {
+  if (const u32 a = Actor(index))
+    bd::mem::store<u32>(a + 3428, role);
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = participant;
+  __imp__sub_8267CD30(c, base);
+  if (c.r3.u32)
+    bd::mem::store<u32>(c.r3.u32 + 8, role);
+  if (const u32 made = bd::mem::try_load<u32>(0x8322DD44))
+    bd::mem::store<u8>(made + 528 + 80 * index + 6, u8(role));
+}
+void Place(u32 actor, float x, float y, float z) {
+  const float v[3] = {x, y, z};
+  const u32 p = bd::mem::try_load<u32>(actor + 768);
+  for (u32 i = 0; i < 3; ++i) {
+    u32 bits;
+    std::memcpy(&bits, &v[i], 4);
+    bd::mem::store<u32>(actor + 752 + i * 4, bits);
+    if (p)
+      bd::mem::store<u32>(p + i * 4, bits);
+  }
+}
+// (the special referee's participant number: his actors' index, as the game maps them for the six places)
+u32 ParticipantOf(const PPCContext &ctx, u8 *base, u32 index) {
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = index;
+  __imp__sub_823F8270(c, base);
+  return c.r3.u32;
+}
+
+void HandOver(const PPCContext &ctx, u8 *base) {
+  if (!REXCVAR_GET(wwe12_sref_replacement))
+    return;
+  const u32 n = Actor(6);
+  if (!n)
+    return;
+  const int64_t now = NowMs();
+  static int64_t s_prev = 0;
+  const double dt = std::clamp(double(now - s_prev) / 1000.0, 0.0, 0.1);
+  s_prev = now;
+  // parked: his brain made (he had the role 1 until here), then the role 6, unseen, far up the ramp
+  if (g_out == kOutNone || g_out == kOutWait || g_out == kOut2050) {
+    if (bd::mem::try_load<u32>(n + 3428) == 1 && bd::mem::try_load<u32>(n + 3384) != 0 && Referee() && Referee() != n) {
+      SetRole(ctx, base, 6, 40, 6);
+      BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6)", n);
+    }
+    if (Parked(n)) {
+      Shown(ctx, base, n, false);
+      bd::mem::store<u8>(n + 998, 1);
+      Place(n, 0.f, -120.f, 3200.f);
+    }
+  }
+  if (g_out == kOutNone || g_out == kOutDone)
+    return;
+  g_tick_ms = now;
+  const u32 s3 = g_ex ? g_ex : Referee();
+  const int sn = Step(ctx, base, g_nm, dt);
+  if (s3)
+    Step(ctx, base, g_rm, dt);
+  g_out_t += dt;
+  if (g_out == kOutWait) {  // (once he stands free: 2050)
+    if (s3 && IdleAnim(Anim(s3)) && !g_rm.anim) {
+      g_act = kActNone;
+      g_tm = {};
+      Start(g_rm, s3, W(2050), 0, 251, 20152);
+      g_out = kOut2050;
+      g_out_t = 0;
+      g_ex = 0;
+      BD_INFO("[sref] remplacement : l'arbitre special joue 2050");
+    } else if (g_out_t > 20.0) {
+      g_out_t = 0;  // (still busy: tried again)
+    }
+  } else if (g_out == kOut2050 && g_out_t >= 3.0) {  // (180 frames: the game's referee comes)
+    SetRole(ctx, base, 6, 40, 6);
+    Shown(ctx, base, n, true);
+    for (u32 o : {8u, 88u, 144u})
+      bd::mem::store<u32>(n + 1360 + o, 0);
+    bd::mem::store<u32>(n + 1360 + 16, 1);
+    std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
+    bd::mem::store<u8>(n + 998, 1);
+    Place(n, 0.f, -120.f, 0.f);
+    bd::mem::store<u32>(n + 740, 0);
+    Start(g_nm, n, W(2043), 0, 621, 20152);
+    if (s3)
+      Start(g_rm, s3, W(2051), 0, 331, 20152);
+    g_out = kOutArrive;
+    g_out_t = 0;
+    BD_INFO("[sref] remplacement : l'arbitre du jeu arrive (2043), l'arbitre special joue 2051");
+  } else if (g_out == kOutArrive && (sn == 2 || sn == 3 || sn == 0 || g_out_t > 12.0) && !g_nm.waiting) {
+    // the hand-over
+    SetRole(ctx, base, 6, 40, 1);
+    {
+      PPCContext c = ctx;
+      c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+      c.r3.u64 = n, c.r4.u64 = 1;
+      __imp__sub_82212140(c, base);
+    }
+    Shown(ctx, base, n, true);
+    bd::mem::store<u32>(n + 3140, 1);
+    bd::mem::store<u32>(n + 2536, 0xFFFFFFFFu);
+    bd::mem::store<u8>(n + 998, 1);
+    if (s3) {
+      const int index = IndexOf(s3);
+      if (index >= 0)
+        SetRole(ctx, base, u32(index), ParticipantOf(ctx, base, u32(index)), 0);
+      bd::mem::store<u8>(s3 + 998, 4);
+      bd::mem::store<u32>(s3 + 3140, 0);
+      g_ex = s3;
+      g_left = false;
+    }
+    g_ejected = true;
+    g_ejected_ms = now;
+    g_pad = -1;
+    g_out = kOutDone;
+    BD_INFO("[sref] remplacement : l'arbitre du jeu a le role 1, l'ancien arbitre le role 0 (hors des tombes)");
+  }
+}
+}  // namespace
+
+// The match's setup: the normal referee is dropped when a place of the kind 1 holds a superstar. In a match of ours
+// that place is a fighter's for the time of this call, and "a referee in this match" (the setup's + 45) is set.
+extern "C" REX_FUNC(sub_82A37378) {
+  const u32 m = ctx.r3.u32;
+  u32 place = 0xFFFFFFFF;
+  if (On() && Match() && REXCVAR_GET(wwe12_sref_replacement) && m)
+    for (u32 i = 0; i < 6 && place == 0xFFFFFFFF; ++i)
+      if (bd::mem::try_load<u32>(m + 684 + 2244 * i) == 1 && bd::mem::try_load<u32>(m + 692 + 2244 * i) != 51200)
+        place = i;
+  if (place != 0xFFFFFFFF) {
+    bd::mem::store<u32>(m + 684 + 2244 * place, 0);
+    bd::mem::store<u8>(m + 45, 1);
+    BD_INFO("[sref] l'arbitre du jeu est garde pour ce match (il attendra hors de vue ; arbitre special a la place {})", place);
+  }
+  __imp__sub_82A37378(ctx, base);
+  if (place != 0xFFFFFFFF)
+    bd::mem::store<u32>(m + 684 + 2244 * place, 1);
+}
+
+// The match put in place (at its start, at a rematch): the roles as at the bell - the game's referee parked, the
+// special one the referee again - before the game reads them (the referee's start place goes to the last man of
+// the role 1).
+extern "C" REX_FUNC(sub_823B5D18) {
+  if (On() && Match() && REXCVAR_GET(wwe12_sref_replacement)) {
+    const u32 n = Actor(6);
+    if (n && bd::mem::try_load<u32>(n + 3384) != 0) {
+      if (g_out == kOutDone && g_ex) {  // (a rematch after a hand-over)
+        const int index = IndexOf(g_ex);
+        if (index >= 0)
+          SetRole(ctx, base, u32(index), ParticipantOf(ctx, base, u32(index)), 1);
+        g_ex = 0;
+        g_out = kOutNone;
+        g_started = false;
+        g_ejected = false;
+      }
+      if (g_out == kOutNone && Referee() && Referee() != n)
+        SetRole(ctx, base, 6, 40, 6);
+    } else if (n && bd::mem::try_load<u32>(n + 3428) == 1 && Referee() && Referee() != n) {
+      // (his brain is not made yet: the role 6 for this call only, so the special referee has the start place;
+      // the role 1 again after it, which the brain's making wants)
+      bd::mem::store<u32>(n + 3428, 6);
+      __imp__sub_823B5D18(ctx, base);
+      bd::mem::store<u32>(n + 3428, 1);
+      return;
+    }
+  }
+  __imp__sub_823B5D18(ctx, base);
+}
+
+// Every actor drawn and updated again, two frames after the match is put in place (and at other times): the game's
+// referee who waits is parked if he is not yet (his brain is made by now) and hidden again. (The tick does the
+// same, but it only runs once the match's HUD is drawn.)
+extern "C" REX_FUNC(sub_823B8F38) {
+  __imp__sub_823B8F38(ctx, base);
+  if (!On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out != kOutNone)
+    return;
+  const u32 n = Actor(6);
+  if (!n)
+    return;
+  if (bd::mem::try_load<u32>(n + 3428) == 1 && bd::mem::try_load<u32>(n + 3384) != 0 && Referee() && Referee() != n) {
+    SetRole(ctx, base, 6, 40, 6);
+    BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6, mise en place)", n);
+  }
+  if (Parked(n)) {
+    Shown(ctx, base, n, false);
+    bd::mem::store<u8>(n + 998, 1);
+    Place(n, 0.f, -120.f, 3200.f);
+  }
+}
+
 // Once per game frame during a match (from wwe12_iquit.cpp's tick).
 void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   if (!On() || !Match()) {
@@ -1203,6 +1456,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     g_ex = 0;
     return;
   }
+  HandOver(ctx, base);
   // (the man who was the referee: once he is outside the ring he walks away, the game's own behaviour for a man out
   // of the match - sub_82371C78, as its free state does for + 998 = 4 and the area byte + 996 = 1 or 16)
   if (g_ex)
@@ -1275,6 +1529,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       g_act = kActNone;
       g_rm = {};
       g_tm = {};
+      g_nm = {};
+      g_out = kOutNone;
       g_foul_by = 0;
       g_hold_grace = 3.0;
       g_hold_drain = false;
@@ -1337,12 +1593,19 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     g_tick_ms = now;
     if (!g_hud_shown.exchange(true))
       Wwe12OverlayPost([] { ShowHud(); });
-    if (REXCVAR_GET(wwe12_sref_actions))
+    if (REXCVAR_GET(wwe12_sref_actions) && g_out == kOutNone)
       RefActions(ctx, base, ref, state, dt, now);
     // empty: he is the referee no more. Without a man of the role 1 the judge counts by itself (sub_82265710 sets
     // its + 112 to 0 the next frame); his + 998 = 4 keeps him out of the pins (sub_82261C28 wants 0 on both men).
     // The role is also put in his participant record and his creation record, which the game copies back at times.
-    if (g_gauge.load() <= 0.f || g_faults >= 30) {
+    if ((g_gauge.load() <= 0.f || g_faults >= 30) && REXCVAR_GET(wwe12_sref_replacement) && Parked(Actor(6))) {
+      if (g_out == kOutNone) {
+        g_out = kOutWait;
+        g_out_t = 0;
+        g_ejected_ms = now;
+        BD_INFO("[sref] jauge vide ({:.2f}, {} fautes) : l'arbitre du jeu va le remplacer", g_gauge.load(), g_faults);
+      }
+    } else if (g_gauge.load() <= 0.f || g_faults >= 30) {
       u32 index = 0;
       for (u32 k = 0; k < 6; ++k)
         if (Actor(k) == ref)

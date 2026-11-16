@@ -150,3 +150,18 @@ Durées (images à 60 Hz) : 2020 = 183 ; 2021 = 191 ; 2022 = 261 ; 2023 = 241 ; 
    cordes tout seul. Bord du ring ±313, tapis y = -120, rampe vers +z.
 Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +160 → +996 (zone), +1172 → +1780,
 +1268 → +2536 (objet tenu), +2564 → +3140, +1408 → +2568, drapeaux +808 / +532 → +1360 / +1028.
+
+## Écrit le 2026-11-16 après-midi, PAS encore vu en jeu
+
+- `wwe12_sref_actions` : `RefActions` (A hors compte : vérification de soumission 2037 / 2038, avertissement 2020
+  avec réponse du catcheur 2021 / 2022 / 2024 et réplique 2026, sinon 2049 ; Y : DQ prononcée 2040-2042 dans les 5 s
+  après qu'un catcheur a frappé l'arbitre, screw job 2029). Les animations sont demandées à la file du jeu avant
+  d'être jouées (`Wwe12MotionReady`), puis tenues leur durée (`Step` / `Start`).
+- `wwe12_sref_replacement` : crochets `sub_82A37378` (l'arbitre du jeu gardé), `sub_823B5D18` et `sub_823B8F38`
+  (garé au rôle 6, caché), `HandOver` (jauge vide : 2050, 3 s, puis l'arbitre du jeu montré au milieu du ring avec
+  2043 pendant que l'arbitre spécial joue 2051, puis échange des rôles ; l'ancien arbitre a +998 = 4 et s'en va
+  une fois hors du ring).
+- Jauge : pièces de WWE '13 (cadre 47, fond 48, remplissage 125 teinté, maillot 122), sous les pieds.
+- Pas fait : bousculade avant l'avertissement de près (2027 / 2028), arme lâchée, ruptures de corde accordées par
+  l'arbitre, abandon qui ne compte que s'il vérifie, ses provocations (2045-2048), images des invites (enfant 38),
+  coups reçus comme un catcheur, arbitre spécial joué par l'ordinateur.
