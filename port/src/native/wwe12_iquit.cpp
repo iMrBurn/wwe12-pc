@@ -1344,11 +1344,11 @@ namespace {
 // bar's frame; optional, a motions mod's own hud folder may not have them)
 enum {
   kImgQuitRed, kImgQuitGrey, kImgGlow, kImgA, kImgNo, kImgDpad, kImgThreat, kImgB, kImgAsk, kImgNoMark,
-  kImgRefShirt, kImgRefFrame, kImgCount
+  kImgRefShirt, kImgRefFrame, kImgRefBack, kImgRefFill, kImgCount
 };
 constexpr int kImgNeeded = kImgRefShirt;  // (the images before this one: all or nothing)
 constexpr const char *kImgFile[kImgCount] = {"0_0", "0_1", "0_2", "1_0", "1_1", "2_0", "2_1", "3_0", "3_1", "90_0",
-                                             "0_90_122", "0_90_58"};
+                                             "0_90_122", "0_90_47", "0_90_48", "0_90_125"};
 struct HudImg {
   ImFontAtlasRectId id = -1;
   int w = 0, h = 0;
@@ -1628,13 +1628,20 @@ void Wwe12IQuitOverlayInit(rex::ui::ImGuiDrawer *drawer, std::function<void(std:
   g_post = std::move(post);
 }
 
-// (the Special Guest Referee's images, for wwe12_sref.cpp: 0 the shirt, 1 the bar's frame; as Img - 0: no image)
-float Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float high) {
-  return which == 0 || which == 1 ? Img(dl, which == 0 ? kImgRefShirt : kImgRefFrame, x, y, high) : 0.f;
+// (the Special Guest Referee's images, for wwe12_sref.cpp: 0 the shirt, 1 the bar's frame, 2 its back, 3 its fill;
+// drawn into the box x, y, wide, high, in a colour, the first `part` of its width only; false: no such image)
+bool Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float wide, float high, ImU32 colour, float part) {
+  static constexpr int kOf[4] = {kImgRefShirt, kImgRefFrame, kImgRefBack, kImgRefFill};
+  ImFontAtlasRect r;
+  if (which < 0 || which > 3 || !g_hud || g_img[kOf[which]].id < 0 || !g_atlas->GetCustomRect(g_img[kOf[which]].id, &r))
+    return false;
+  if (dl && part > 0.f)
+    dl->AddImage(g_atlas->TexRef, ImVec2(x, y), ImVec2(x + wide * part, y + high), r.uv0,
+                 ImVec2(r.uv0.x + (r.uv1.x - r.uv0.x) * part, r.uv1.y), colour);
+  return true;
 }
-float Wwe12HudRefWide(int which, float high) {
-  return which == 0 || which == 1 ? Wide(which == 0 ? kImgRefShirt : kImgRefFrame, high) : 0.f;
-}
+// (a motion asked from the game's queue, and whether the queue has read it: as Ready above)
+bool Wwe12MotionReady(const PPCContext &in, u8 *base, u32 motion) { return Ready(in, base, motion); }
 // (the same drawer and UI thread for the Special Guest Referee's gauge, wwe12_sref.cpp)
 rex::ui::ImGuiDrawer *Wwe12OverlayDrawer() { return g_drawer; }
 void Wwe12OverlayPost(std::function<void()> f) {

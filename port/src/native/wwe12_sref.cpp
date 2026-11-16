@@ -44,6 +44,7 @@ REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, true, "WWE12",
 #include <chrono>
 #include <cstring>
 #include <functional>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -91,8 +92,13 @@ REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim,
 REX_EXTERN(__imp__sub_82520B90);  // a world point to the screen (float[4] in and out), the game's own
 rex::ui::ImGuiDrawer *Wwe12OverlayDrawer();           // wwe12_iquit.cpp
 void Wwe12OverlayPost(std::function<void()> f);  // wwe12_iquit.cpp: on the UI thread
-float Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float high);  // wwe12_iquit.cpp: 0 shirt, 1 frame
-float Wwe12HudRefWide(int which, float high);
+// wwe12_iquit.cpp: WWE '13's images (0 the shirt, 1 the bar's frame, 2 its back, 3 its fill) and the motions' queue
+bool Wwe12HudRefImg(ImDrawList *dl, int which, float x, float y, float wide, float high, ImU32 colour, float part);
+bool Wwe12MotionReady(const PPCContext &in, u8 *base, u32 motion);
+
+REXCVAR_DEFINE_BOOL(wwe12_sref_actions, true, "WWE12",
+                    "Special Guest Referee: his actions as WWE '13, with its motions (A: caution a superstar / check a "
+                    "submission; Y: pronounce a disqualification / the screw job).");
 
 REXCVAR_DEFINE_INT32(wwe12_sref_from, -1, "WWE12",
                      "Dev: with wwe12_sref, a match set up with this rule (13 = TRIPLE THREAT) is a Special Guest Referee one.");
@@ -154,6 +160,24 @@ double g_grace = 0;
 u32 g_duty = 0xFFFFFFFF, g_last_block = 255, g_ex = 0;
 int g_faults = 0;
 int64_t g_prev_ms = 0;
+// (his actions' state: RefActions, below)
+enum { kActNone, kActCaution, kActNothing, kActCheck, kActScrew, kActDq };
+struct Timed {
+  u32 actor = 0, anim = 0, x = 0, to = 0;
+  double left = 0, waited = 0;
+  bool waiting = false;
+};
+Timed g_rm, g_tm;  // the referee's motion of ours, the cautioned fighter's
+int g_act = kActNone, g_check_block = -1;
+double g_act_t = 0, g_argue_t = 0, g_hold_grace = 3.0;
+bool g_resolved = false, g_argue = false, g_answered = false, g_hold_drain = false;
+u32 g_target = 0, g_by = 0, g_held = 0, g_check_anim = 0;
+int64_t g_strike[6][3] = {};
+std::atomic<u32> g_foul_by{0};
+std::atomic<int64_t> g_foul_ms{0};
+std::atomic<bool> g_want_y{false};
+std::atomic<int> g_prompt{0};
+void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, int64_t now);
 void ShowHud();  // below: the gauge's drawing, made on the UI thread
 // Where the referee is on screen (as wwe12_iquit.cpp: sub_82520B90 turns a world point into back-buffer pixels with
 // the calling thread's view; a bone = a pointer to a 4 x 4 matrix, its place at + 48; the body's bone at actor + 120).
@@ -743,16 +767,17 @@ u16 Wwe12SrefPad(u32 user, u16 buttons) {
   if (user >= 4)
     return 0;
   const u16 before = g_prev[user].exchange(buttons);
-  if (On() && Match() && g_pad.load() == int(user) && (buttons & ~before & 0x8000))
-    g_y = true;  // (Y: the screw job, when the gauge is full)
-  if (!On() || !REXCVAR_GET(wwe12_sref_own_count) || !Match() || g_pad.load() != int(user))
+  if (!On() || !Match() || g_pad.load() != int(user))
     return 0;
+  if (buttons & ~before & 0x8000)
+    g_y = true;  // (Y: a disqualification pronounced, the screw job)
   const u32 st = g_state.load();
-  if (st != 1 && st != 3 && st != 4 && st != 5)
-    return 0;
-  if (buttons & ~before & kPadA)
+  const bool counting = st == 1 || st == 3 || st == 4 || st == 5;
+  // (WWE '13: the special referee's grapple button is always a referee's action, never a grapple of his own)
+  const bool ours = counting ? REXCVAR_GET(wwe12_sref_own_count) : REXCVAR_GET(wwe12_sref_actions);
+  if (ours && (buttons & ~before & kPadA))
     g_press = true;
-  return kPadA;
+  return u16((ours ? kPadA : 0) | (g_want_y.load() ? 0x8000 : 0));
 }
 
 // ---- the gauge on the screen ----
@@ -796,26 +821,30 @@ class SrefOverlay final : public rex::ui::ImGuiDialog {
       return;
     }
     const float v = std::clamp(g_gauge.load(), 0.f, 1.f);
-    // WWE '13's own images when the exe has them (its main HUD's bar frame and the referee's striped shirt, in
-    // iquit13.bin since 2026-11-16 - the user's decision): the fill, a plain colour as WWE '13 tints its own, shows
-    // through the frame's window (5 % to 96.5 % of its width, 24 % to 78 % of its height).
+    // WWE '13's own parts when the exe has them (its main HUD: iquit13.bin since 2026-11-16, the user's decision),
+    // laid out as its sub_823381E0 does at 720p: the back 68 x 6 and the frame 88 x 16 on the same centre, the fill
+    // (tinted 10, 80, 190) from the back's left edge, the striped shirt 20 x 20 at + 46. Full: the fill pulses blue
+    // and white; a quarter or less: red and white. Under it, what his buttons do now.
     {
-      const float fh = (on_him ? 30 : 44) * k, fw = Wwe12HudRefWide(1, fh);
-      if (fw > 0.f) {
-        const float cx = on_him ? px * io.DisplaySize.x : io.DisplaySize.x * 0.5f;
-        const float fx = std::clamp(cx - fw * 0.5f, 8 * k, io.DisplaySize.x - fw - 60 * k), fy = y + fh * 0.5f;
-        const float ix0 = fx + fw * 0.05f, ix1 = fx + fw * 0.965f, iy0 = y + fh * 0.24f, iy1 = y + fh * 0.78f;
-        const ImU32 fill = v >= 1.f ? IM_COL32(255, 205, 40, 255) : v < 0.2f ? IM_COL32(220, 40, 40, 255) : IM_COL32(40, 110, 235, 255);
-        dl->AddRectFilled(ImVec2(ix0, iy0), ImVec2(ix1, iy1), IM_COL32(10, 10, 14, 230));
-        dl->AddRectFilled(ImVec2(ix0, iy0), ImVec2(ix0 + (ix1 - ix0) * v, iy1), fill);
-        Wwe12HudRefImg(dl, 1, fx, fy, fh);
-        Wwe12HudRefImg(dl, 0, fx + fw - 4 * k, fy, fh * 1.5f);
-        if (v >= 1.f) {
-          const char *msg = "Y  SCREW JOB";
-          const float ms = 18.f * k;
-          const ImVec2 sz = font->CalcTextSizeA(ms, FLT_MAX, 0.f, msg);
-          dl->AddText(font, ms, ImVec2(fx + fw * 0.5f - sz.x * 0.5f + 1 * k, y + fh + 3 * k), IM_COL32(0, 0, 0, 220), msg);
-          dl->AddText(font, ms, ImVec2(fx + fw * 0.5f - sz.x * 0.5f, y + fh + 2 * k), IM_COL32(255, 220, 90, 255), msg);
+      const float u = io.DisplaySize.y / 720.f * 1.35f;
+      const float cx = std::clamp(on_him ? px * io.DisplaySize.x : io.DisplaySize.x * 0.5f, 60 * u, io.DisplaySize.x - 70 * u);
+      const float cy = y + 8 * u;
+      if (Wwe12HudRefImg(nullptr, 1, 0, 0, 0, 0, 0, 0.f)) {
+        const bool pulse = (now / 200) % 2 == 0;
+        const ImU32 fill = v >= 1.f ? (pulse ? IM_COL32(10, 80, 190, 255) : IM_COL32(255, 255, 255, 255))
+                           : v <= 0.25f ? (pulse ? IM_COL32(234, 10, 6, 255) : IM_COL32(255, 255, 255, 255))
+                                        : IM_COL32(10, 80, 190, 255);
+        Wwe12HudRefImg(dl, 2, cx - 34 * u, cy - 3 * u, 68 * u, 6 * u, IM_COL32_WHITE, 1.f);
+        Wwe12HudRefImg(dl, 3, cx - 34 * u, cy - 3 * u, 68 * u, 6 * u, fill, v);
+        Wwe12HudRefImg(dl, 1, cx - 44 * u, cy - 8 * u, 88 * u, 16 * u, IM_COL32_WHITE, 1.f);
+        Wwe12HudRefImg(dl, 0, cx + 36 * u, cy - 10 * u, 20 * u, 20 * u, IM_COL32_WHITE, 1.f);
+        static const char *const kPrompt[5] = {"", "A  COUNT", "A  CHECK THE SUBMISSION", "Y  DISQUALIFY", "Y  SCREW JOB"};
+        const int p = g_prompt.load();
+        if (p > 0 && p < 5) {
+          const float ms = 15.f * u;
+          const ImVec2 sz = font->CalcTextSizeA(ms, FLT_MAX, 0.f, kPrompt[p]);
+          dl->AddText(font, ms, ImVec2(cx - sz.x * 0.5f + 1 * u, cy + 11 * u), IM_COL32(0, 0, 0, 230), kPrompt[p]);
+          dl->AddText(font, ms, ImVec2(cx - sz.x * 0.5f, cy + 10 * u), IM_COL32(255, 235, 150, 255), kPrompt[p]);
         }
         return;
       }
@@ -857,15 +886,311 @@ extern "C" REX_FUNC(sub_822A7600) {
   if (!On() || !Match() || from != 0x822A8E18 || !obj || ctx.r3.u32 == 0 || g_pad.load() < 0)
     return;
   const u32 by = bd::mem::try_load<u32>(obj + 256), hit = bd::mem::try_load<u32>(obj + 272);
-  if (!by || !hit || by == hit || bd::mem::try_load<u32>(obj + 288) != 0 || by != Referee() ||
-      bd::mem::try_load<u32>(hit + 3428) != 0)
+  if (!by || !hit || by == hit || bd::mem::try_load<u32>(obj + 288) != 0)
     return;
+  const u32 referee = Referee();
   const int64_t now = NowMs();
+  // (a fighter's blow on the referee: a foul, his to pronounce - WWE '13's sub_825B5198)
+  if (hit == referee && bd::mem::try_load<u32>(by + 3428) == 0) {
+    if (g_foul_by.exchange(by) != by || now - g_foul_ms.load() > 5000)
+      BD_INFO("[sref] faute : l'acteur {:08X} frappe l'arbitre", by);
+    g_foul_ms = now;
+    return;
+  }
+  if (by != referee || bd::mem::try_load<u32>(hit + 3428) != 0)
+    return;
   if (g_hit_victim.exchange(hit) == hit && now - g_hit_ms.load() < 700)
     return;  // (the same blow seen again)
   g_hit_ms = now;
   g_hit = true;
 }
+
+// ---- his actions, as WWE '13 (its script's Function_PadAction_SpecialRefree and natives, read 2026-11-16) ----
+// WWE '13's motion 20NN is here 13115 + NN - 20 (iquit13.bin). Times are WWE '13's frames at 60 a second.
+// A, the judge waiting for nothing:
+//   - a hold is on: he checks it (2037 for a standing hold, 2038 on the mat: block 0, then 1 again and again, 2
+//     when the hold is over). A tap-out while he checks: block 10 and the match is over. (When he does not check,
+//     WWE '12's own referee code still takes the tap - WWE '13 would not: to be done.)
+//   - a fighter within reach and 0.1 of gauge: the caution, 2020. One second in, if the fighter stands free: a
+//     strike against him (three, a minute each). The third: he argues (2024) and the referee answers a second later
+//     (2026, 0.5 of gauge, the strikes gone); else he complies (2021 with the referee behind him, else 2022), and
+//     it costs 0.1 since he was in his right (in a match without partners every fighter is).
+//   - else: 2049, nothing to do.
+// Y: a fighter hit him within the last five seconds and the match has disqualifications: he pronounces it (2040;
+//   lying on his back 2041, on his front 2042) and the match is over. A hold is on and the gauge is full: the screw
+//   job, 2029 - at its frame 100 the man applying the hold wins by submission.
+// Not WWE '13's yet: the shove before a caution from close (2027 / 2028, two men), the weapon dropped, the rope
+// breaks he grants, his taunts 2045-2048.
+namespace {
+constexpr u32 W(u32 n) { return 13115 + (n - 2020); }
+bool IdleAnim(u16 a) { return (a >= 20000 && a <= 20598) || a == 210; }
+bool DownAnim(u16 a) { return a <= 30 || (a >= 440 && a <= 480); }
+bool Spot(u32 actor, float &x, float &z) {
+  const u32 p = actor ? bd::mem::try_load<u32>(actor + 768) : 0;
+  if (!p)
+    return false;
+  x = LoadF(p), z = LoadF(p + 8);
+  return std::isfinite(x) && std::isfinite(z);
+}
+void Face(u32 actor, u32 to) {  // (an actor faces (-sin h, -cos h): seen in the I Quit's study)
+  float ax, az, bx, bz;
+  if (!Spot(actor, ax, az) || !Spot(to, bx, bz))
+    return;
+  const float h = std::atan2(-(bx - ax), -(bz - az));
+  u32 bits;
+  std::memcpy(&bits, &h, 4);
+  bd::mem::store<u32>(actor + 740, bits);
+}
+int IndexOf(u32 actor) {
+  for (u32 k = 0; k < 6; ++k)
+    if (actor && Actor(k) == actor)
+      return int(k);
+  return -1;
+}
+// a motion of ours on an actor: asked from the queue, played once read, then for its length; `to` after it
+int Step(const PPCContext &ctx, u8 *base, Timed &m, double dt) {  // 0 none, 1 running, 2 just over, 3 lost
+  if (!m.anim)
+    return 0;
+  if (m.waiting) {
+    if (Wwe12MotionReady(ctx, base, m.anim)) {
+      Play(ctx, base, m.actor, m.anim, m.x);
+      m.waiting = false;
+      return 1;
+    }
+    if ((m.waited += dt) > 4.0) {
+      BD_INFO("[sref] motion {} pas prete apres 4 s : laissee", m.anim);
+      m = {};
+      return 3;
+    }
+    return 1;
+  }
+  if (Anim(m.actor) != u16(m.anim)) {  // (the game gave him another motion: a blow, a move)
+    m = {};
+    return 3;
+  }
+  m.left -= dt;
+  if (m.left > 0)
+    return 1;
+  const u32 actor = m.actor, to = m.to;
+  m = {};
+  if (to)
+    Play(ctx, base, actor, to, 0);
+  return 2;
+}
+void Start(Timed &m, u32 actor, u32 anim, u32 x, double frames, u32 to) {
+  m = {};
+  m.actor = actor, m.anim = anim, m.x = x, m.to = to, m.left = frames / 60.0, m.waiting = true;
+}
+bool Hold(u32 ref, u32 &by, u32 &held) {
+  for (u32 i = 0; i < 6; ++i) {
+    const u32 a = Actor(i), h = a ? bd::mem::try_load<u32>(a + 3404) : 0;
+    if (!h || bd::mem::try_load<u32>(h + 32) != 2)
+      continue;
+    by = bd::mem::try_load<u32>(h + 36), held = bd::mem::try_load<u32>(h + 40);
+    if (by && held && by != ref && held != ref && IndexOf(by) >= 0 && IndexOf(held) >= 0)
+      return true;
+  }
+  return false;
+}
+void EndMatch(const PPCContext &ctx, u8 *base, u32 loser, u32 reason, int winner) {
+  PPCContext e = ctx;
+  e.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  e.r3.u64 = loser;
+  e.r4.u64 = reason;
+  e.r5.u64 = u32(winner);
+  __imp__sub_82261320(e, base);
+  for (u32 w = 0; w < 6; ++w)
+    bd::mem::store<u32>(0x8317B7A4 + w * 4, 0);  // (the request to the referee, if one was filed)
+}
+
+void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, int64_t now) {
+  {  // (every motion of ours kept asked, one a tick: read before it is wanted)
+    static constexpr u32 kAll[] = {2020, 2021, 2022, 2024, 2026, 2029, 2037, 2038, 2040, 2041, 2042, 2049, 2050, 2051, 2043};
+    static size_t s_next = 0;
+    Wwe12MotionReady(ctx, base, W(kAll[s_next++ % std::size(kAll)]));
+  }
+  const u16 anim = Anim(ref);
+  u32 by = 0, held = 0;
+  const bool hold = Hold(ref, by, held);
+  const bool counting = state == 1 || state == 3 || state == 4 || state == 5;
+  const u32 offender = g_foul_by.load();
+  const bool dq_open = offender && now - g_foul_ms.load() < 5000 && bd::mem::try_load<u8>(kMatch + 27) != 0 &&
+                       IndexOf(offender) >= 0 && bd::mem::try_load<u32>(offender + 3428) == 0;
+  const int rs = Step(ctx, base, g_rm, dt);
+  Step(ctx, base, g_tm, dt);
+  const u32 idle = 20152;  // (the motion after ours: standing)
+
+  if (g_act != kActNone) {
+    g_act_t += dt;
+    if (rs == 3) {
+      BD_INFO("[sref] action {} interrompue (motion {})", g_act, anim);
+      g_act = kActNone;
+    } else if (g_act == kActCaution) {
+      if (!g_resolved && g_rm.anim == W(2020) && !g_rm.waiting && g_act_t >= 1.0) {
+        g_resolved = true;
+        const int idx = IndexOf(g_target);
+        if (idx >= 0 && IdleAnim(Anim(g_target))) {
+          int live = 0, spare = -1;
+          for (int k = 0; k < 3; ++k) {
+            if (g_strike[idx][k] > now)
+              ++live;
+            else if (spare < 0)
+              spare = k;
+          }
+          if (spare >= 0) {
+            g_strike[idx][spare] = now + 60000;
+            ++live;
+          }
+          const u32 back = Anim(g_target);
+          float rx, rz, tx, tz;
+          bool behind = false;
+          if (Spot(ref, rx, rz) && Spot(g_target, tx, tz)) {
+            const float h = LoadF(g_target + 740);
+            behind = (-std::sin(h)) * (rx - tx) + (-std::cos(h)) * (rz - tz) < 0.f;
+          }
+          if (live >= 3) {
+            Face(g_target, ref);
+            Start(g_tm, g_target, W(2024), 0, 287, back);
+            g_argue = true;
+            g_argue_t = 0;
+            BD_INFO("[sref] avertissement : le catcheur {} conteste (3e avertissement)", idx);
+          } else {
+            Start(g_tm, g_target, W(behind ? 2021 : 2022), 0, behind ? 191 : 261, back);
+            Cost(0.1f, "avertissement a un catcheur dans son droit");
+            BD_INFO("[sref] avertissement : le catcheur {} obeit ({} avertissement(s))", idx, live);
+          }
+        } else {
+          BD_INFO("[sref] avertissement : le catcheur n'est pas libre, rien");
+        }
+      }
+      if (g_argue && !g_answered) {
+        g_argue_t += dt;
+        if (g_argue_t >= 1.0 && (rs == 0 || rs == 2 || g_rm.anim == W(2020))) {
+          Start(g_rm, ref, W(2026), 0, 152, idle);
+          g_answered = true;
+          Cost(0.5f, "il repond au catcheur qui conteste");
+          if (const int idx = IndexOf(g_target); idx >= 0)
+            std::memset(g_strike[idx], 0, sizeof(g_strike[idx]));
+        }
+      } else if (rs == 2 || rs == 0) {
+        g_act = kActNone;
+      }
+    } else if (g_act == kActNothing || g_act == kActDq) {
+      if (rs == 2 || rs == 0)
+        g_act = kActNone;
+    } else if (g_act == kActScrew) {
+      if (!g_resolved && !g_rm.waiting && g_act_t >= 100.0 / 60.0) {
+        g_resolved = true;
+        const int winner = IndexOf(g_by);
+        if (winner >= 0 && IndexOf(g_held) >= 0) {
+          BD_INFO("[sref] screw job : le catcheur {} gagne par soumission", winner);
+          EndMatch(ctx, base, g_held, 2, winner);
+        }
+      }
+      if (rs == 2 || rs == 0)
+        g_act = kActNone;
+    } else if (g_act == kActCheck) {
+      static constexpr double kLen[2][4] = {{36, 461, 36, 261}, {113, 318, 141, 246}};  // 2037, 2038: blocks 0, 1, 2, 10
+      const u32 m = g_check_anim;
+      const double *len = kLen[m == W(2038) ? 1 : 0];
+      const bool tap = bd::mem::try_load<u32>(0x8317B7A4) == 3;
+      if (g_check_block <= 1 && tap && IndexOf(g_held) >= 0 && IndexOf(g_by) >= 0) {
+        BD_INFO("[sref] soumission : abandon accepte, le catcheur {} gagne", IndexOf(g_by));
+        Start(g_rm, ref, m, 10, len[3], 0);
+        g_check_block = 10;
+        EndMatch(ctx, base, g_held, 2, IndexOf(g_by));
+      } else if (g_check_block <= 1 && !hold && !g_rm.waiting) {
+        Start(g_rm, ref, m, 2, len[2], idle);
+        g_check_block = 2;
+      } else if (rs == 2 || rs == 0) {
+        if (g_check_block <= 1) {
+          Start(g_rm, ref, m, 1, len[1], 0);  // (in, then the loop again and again)
+          g_check_block = 1;
+        } else {
+          g_act = kActNone;
+        }
+      }
+    }
+  } else {
+    const bool a = !counting && g_press.exchange(false);
+    const bool y = g_y.exchange(false);
+    const bool free = IdleAnim(anim);
+    if (y && dq_open && (free || anim <= 1)) {
+      int winner = -1;
+      for (u32 k = 0; k < 6 && winner < 0; ++k)
+        if (const u32 o = Actor(k); o && o != offender && o != ref && bd::mem::try_load<u32>(o + 3428) == 0)
+          winner = int(k);
+      BD_INFO("[sref] disqualification prononcee : l'acteur {} perd, le catcheur {} gagne", IndexOf(offender), winner);
+      Start(g_rm, ref, W(anim == 0 ? 2041 : anim == 1 ? 2042 : 2040), 0, anim == 0 ? 621 : anim == 1 ? 536 : 231,
+            anim <= 1 ? 0 : idle);
+      g_act = kActDq;
+      g_act_t = 0;
+      g_foul_by = 0;
+      EndMatch(ctx, base, offender, 7, winner);
+    } else if (y && hold && g_gauge.load() >= 1.f && free) {
+      g_by = by, g_held = held;
+      Start(g_rm, ref, W(2029), 0, 306, idle);
+      g_act = kActScrew;
+      g_act_t = 0;
+      g_resolved = false;
+      BD_INFO("[sref] screw job : commence");
+    } else if (a && free && hold) {
+      g_by = by, g_held = held;
+      g_check_anim = W(DownAnim(Anim(held)) ? 2038 : 2037);
+      Face(ref, held);
+      Start(g_rm, ref, g_check_anim, 0, g_check_anim == W(2038) ? 113 : 36, 0);
+      g_check_block = 0;
+      g_act = kActCheck;
+      g_act_t = 0;
+      BD_INFO("[sref] soumission : il verifie (motion {})", g_check_anim);
+    } else if (a && free) {
+      u32 target = 0;
+      float best = 450.f * 450.f, rx, rz;
+      if (g_gauge.load() >= 0.1f && Spot(ref, rx, rz))
+        for (u32 k = 0; k < 6; ++k) {
+          const u32 o = Actor(k);
+          float ox, oz;
+          if (!o || o == ref || bd::mem::try_load<u32>(o + 3428) != 0 || !Spot(o, ox, oz))
+            continue;
+          const float d = (ox - rx) * (ox - rx) + (oz - rz) * (oz - rz);
+          if (d < best)
+            best = d, target = o;
+        }
+      g_act_t = 0;
+      g_resolved = g_argue = g_answered = false;
+      if (target) {
+        g_target = target;
+        Face(ref, target);
+        Start(g_rm, ref, W(2020), 0, 183, idle);
+        g_act = kActCaution;
+        BD_INFO("[sref] avertissement au catcheur {} (a {:.0f})", IndexOf(target), std::sqrt(best));
+      } else {
+        Start(g_rm, ref, W(2049), 0, 151, idle);
+        g_act = kActNothing;
+      }
+    }
+  }
+  // the hold he does not check: three seconds, then the gauge drains
+  if (hold && g_act != kActCheck && g_act != kActScrew) {
+    g_hold_grace -= dt;
+    if (g_hold_grace <= 0) {
+      if (!g_hold_drain) {
+        g_hold_drain = true;
+        ++g_faults;
+        BD_INFO("[sref] jauge : il ne verifie pas la soumission, elle baisse ; {} fautes", g_faults);
+      }
+      g_gauge = std::clamp(g_gauge.load() - float(0.02 * dt), 0.f, 1.f);
+    }
+  } else {
+    g_hold_drain = false;
+    if (!hold)
+      g_hold_grace = 3.0;
+  }
+  const bool in_count = anim == 190 || anim == 191 || anim == 200;
+  g_want_y = dq_open || (hold && g_gauge.load() >= 1.f);
+  g_prompt = dq_open ? 3 : hold && g_gauge.load() >= 1.f ? 4 : hold && g_act != kActCheck ? 2 : counting && !in_count ? 1 : 0;
+}
+}  // namespace
 
 // Once per game frame during a match (from wwe12_iquit.cpp's tick).
 void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
@@ -947,6 +1272,13 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       g_duty = 0xFFFFFFFF;
       g_hit = false;
       g_y = false;
+      g_act = kActNone;
+      g_rm = {};
+      g_tm = {};
+      g_foul_by = 0;
+      g_hold_grace = 3.0;
+      g_hold_drain = false;
+      std::memset(g_strike, 0, sizeof(g_strike));
       BD_INFO("[sref] jauge : debut du match, 0.50");
     }
     const u16 anim = Anim(ref);
@@ -975,7 +1307,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       if (duty && state != 1)
         g_grace = 5.0;
     }
-    if (!g_draining && bd::mem::try_load<u32>(ref + 2536) == 0xFFFFFFFFu)
+    if (!g_draining && !g_hold_drain && bd::mem::try_load<u32>(ref + 2536) == 0xFFFFFFFFu)
       v += float(dt / 150.0);
     g_gauge = std::clamp(v, 0.f, 1.f);
     // (WWE '13 takes 0.2 for a pin count he gives up himself, with its cancel button. Here the count's "given up"
@@ -1005,33 +1337,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     g_tick_ms = now;
     if (!g_hud_shown.exchange(true))
       Wwe12OverlayPost([] { ShowHud(); });
-    // full: the screw job, Y while a hold is on (the hold: 'BPMG' at [a man + 3404], + 32 = 2 the struggle, + 36
-    // the man applying it, + 40 the man in it)
-    if (g_y.exchange(false) && g_gauge.load() >= 1.f) {
-      for (u32 i = 0; i < 6; ++i) {
-        const u32 a = Actor(i), h = a ? bd::mem::try_load<u32>(a + 3404) : 0;
-        if (!h || bd::mem::try_load<u32>(h + 32) != 2)
-          continue;
-        const u32 by = bd::mem::try_load<u32>(h + 36), held = bd::mem::try_load<u32>(h + 40);
-        int winner = -1;
-        for (u32 k = 0; k < 6; ++k)
-          if (Actor(k) == by)
-            winner = int(k);
-        if (!held || winner < 0 || held == ref || by == ref)
-          continue;
-        BD_INFO("[sref] screw job : le catcheur {} gagne par soumission ({:08X} dans la prise)", winner, held);
-        PPCContext e = ctx;
-        e.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
-        e.r3.u64 = held;
-        e.r4.u64 = 2;
-        e.r5.u64 = u32(winner);
-        __imp__sub_82261320(e, base);
-        for (u32 w = 0; w < 6; ++w)
-          bd::mem::store<u32>(0x8317B7A4 + w * 4, 0);  // (the request to the referee, if one was filed)
-        g_gauge = 0.5f;
-        break;
-      }
-    }
+    if (REXCVAR_GET(wwe12_sref_actions))
+      RefActions(ctx, base, ref, state, dt, now);
     // empty: he is the referee no more. Without a man of the role 1 the judge counts by itself (sub_82265710 sets
     // its + 112 to 0 the next frame); his + 998 = 4 keeps him out of the pins (sub_82261C28 wants 0 on both men).
     // The role is also put in his participant record and his creation record, which the game copies back at times.
