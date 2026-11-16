@@ -1138,8 +1138,12 @@ extern "C" REX_FUNC(sub_82527010) {
 // (Set from the hook of sub_8267CF38 only, the request was not there when these two ran - user's test of 2026-11-15,
 // 20:59: "demande au jeu" logged at the bell, no object 142 in the match. So it is set right before each.)
 namespace {
+}  // namespace
+bool Wwe12SrefWantsMic();  // wwe12_sref.cpp: a Special Guest Referee match (its General Manager's microphone)
+namespace {
 void AskMic(const char *where) {
-  if (!REXCVAR_GET(wwe12_iquit_ask) || !REXCVAR_GET(wwe12_iquit_mic) || !REXCVAR_GET(wwe12_iquit_wwe13_motions) || !IQuitMatch())
+  if (!Wwe12SrefWantsMic() &&
+      (!REXCVAR_GET(wwe12_iquit_ask) || !REXCVAR_GET(wwe12_iquit_mic) || !REXCVAR_GET(wwe12_iquit_wwe13_motions) || !IQuitMatch()))
     return;
   const u8 before = bd::mem::try_load<u8>(0x8317C850 + 12097);
   bd::mem::store<u8>(0x8317C850 + 12097, 1);

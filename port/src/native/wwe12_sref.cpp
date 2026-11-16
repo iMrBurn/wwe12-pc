@@ -53,6 +53,7 @@ REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, true, "WWE12",
 #include <rex/ui/imgui_drawer.h>
 
 #include <rex/runtime.h>
+#include <rex/ppc/func.h>
 
 #include <fmt/format.h>
 
@@ -106,6 +107,16 @@ REX_EXTERN(__imp__sub_822CF850);  // an actor drawn or not (actors' manager [0x8
 REX_EXTERN(__imp__sub_822CE3F0);  // an actor updated or not (manager, slot, on, 0)
 REX_EXTERN(__imp__sub_82212140);  // an actor the computer's (actor, on)
 REX_EXTERN(__imp__sub_823B8F38);  // every actor drawn and updated again (after the match is put in place)
+REXCVAR_DEFINE_BOOL(wwe12_sref_scene, true, "WWE12",
+                    "Special Guest Referee: WWE '13's scene on the entrance stage when he is replaced (its motion 2043 "
+                    "and its camera).");
+REX_EXTERN(__imp__sub_82482388);  // a motion's camera started (motions container, &key, &position, 0, 1)
+REX_EXTERN(__imp__sub_8247EE60);  // the camera director's current camera (director, id)
+REX_EXTERN(__imp__sub_821CCFE0);  // a camera of the director by id
+REX_EXTERN(__imp__sub_82481ED0);  // a camera's active state (camera, on)
+REX_EXTERN(__imp__sub_82478510);  // a motion's block found in a motions container (container, motion, x, y)
+REX_EXTERN(__imp__sub_82254518);  // a parked object of a type made live again (-1, type, 0, 0)
+REX_EXTERN(__imp__sub_82250258);  // an object parked
 REXCVAR_DEFINE_BOOL(wwe12_sref_actions, true, "WWE12",
                     "Special Guest Referee: his actions as WWE '13, with its motions (A: caution a superstar / check a "
                     "submission; Y: pronounce a disqualification / the screw job).");
@@ -195,9 +206,10 @@ u32 g_fin_given = 0, g_fin_before = 0;  // a finisher given for a full gauge (WW
 std::atomic<int> g_prompt{0};
 void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, int64_t now);
 // (the normal referee waiting, and the hand-over: below)
-enum { kOutNone, kOutWait, kOut2050, kOutArrive, kOutDone };
+enum { kOutNone, kOutWait, kOut2050, kOutScene, kOutArrive, kOutDone };
 int g_out = kOutNone;
 int64_t g_ex_ms = 0, g_watch_ms = 0;
+bool g_scene_ran = false;
 bool g_gone = false;
 double g_out_t = 0;
 Timed g_nm;  // the normal referee's motion of ours
@@ -440,6 +452,9 @@ void PutBE(u8 *p, u32 v) {
 
 bool Wwe12SrefOn() { return On(); }
 bool Wwe12SrefWanted() { return REXCVAR_GET(wwe12_sref); }  // (asked before the game's memory is there)
+bool Wwe12SrefWantsMic() {
+  return On() && REXCVAR_GET(wwe12_sref_replacement) && REXCVAR_GET(wwe12_sref_scene) && (Match() || g_cur >= 0);
+}
 
 // ---- the referee's entrance ----
 // The entrances are built by sub_82A3F828(order) from the participants (sub_82A3F0D8: a fighter - kind 0 - is a
@@ -1369,6 +1384,210 @@ u32 ParticipantOf(const PPCContext &ctx, u8 *base, u32 index) {
   return c.r3.u32;
 }
 
+// ---- WWE '13's scene on the entrance stage (its motion 2043, here 13138; read in its code and data 2026-11-16, and in
+// the user's video of it) ----
+// 2043 is a scene of three: block (0, 0) the referee who comes, (0, 1) the General Manager (WWE '13's character 300,
+// John Laurinaitis), (0, 2) his microphone (object 142), and block (0, 60) its camera ("Camera001" / "fov.Camera001":
+// an eye with its rotation, and its field of view). All are played from (0, -120, 0), heading 0: the stage's place is
+// in the motion (about 25 m along + z). WWE '13 lifts the bodies with the ramp as they go (its 'CERI': the ramp from
+// z 900 to 2380, up to 180 cm). Its camera: shot A until frame 100, shot B to 380, then the match's camera again;
+// the bodies' end at frame 500. WWE '12 plays a motion's camera as the bell's camera does (sub_823EC6F8): the motion
+// camera ([0x8317B8C4], id 1) reads the two nodes whose names' hashes are at its + 4224 and + 4496 ("Camera01" by
+// default): WWE '13's names are put there for the scene, then the game's again.
+// Not done yet: WWE '13's voice line; the General Manager himself - his body here is the first man at ringside (the
+// game's actor 7), put back after.
+namespace {
+bool g_scene = false, g_scene_cam = false;
+double g_scene_t = 0;
+u32 g_gm = 0, g_mic = 0, g_cam_h1 = 0, g_cam_h2 = 0;
+float g_gm_pos[3] = {}, g_gm_head = 0;
+u16 g_gm_anim = 0;
+void Call(const PPCContext &in, u8 *base, u32 fn, u32 r3) {  // a function of the game by its address (a virtual)
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = r3;
+  if (PPCFunc *f = rex::runtime::ResolveIndirectFunction(fn))
+    f(c, base);
+}
+void PlayBlock(const PPCContext &in, u8 *base, u32 who, u32 motion, u32 x, u32 y) {
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 512) & ~15u;
+  c.r3.u64 = who, c.r4.u64 = motion, c.r5.u64 = x, c.r6.u64 = y, c.r8.u64 = 1, c.r9.u64 = 0;
+  const u32 bits = bd::mem::try_load<u32>(0x82000AD8);
+  float f;
+  std::memcpy(&f, &bits, 4);
+  c.f1.f64 = f;
+  __imp__sub_8247AD18(c, base);
+}
+bool BlockThere(const PPCContext &in, u8 *base, u32 motion, u32 x, u32 y) {
+  PPCContext c = in;
+  c.r1.u64 = (in.r1.u32 - 512) & ~15u;
+  c.r3.u64 = bd::mem::try_load<u32>(0x8317B760), c.r4.u64 = motion, c.r5.u64 = x, c.r6.u64 = y;
+  if (!c.r3.u32)
+    return false;
+  __imp__sub_82478510(c, base);
+  return c.r3.u32 != 0;
+}
+float RampY(float z) {  // (WWE '13's CERI: the ramp from z 900 to 2380, 180 cm up - the world's y points down)
+  return z <= 900.f ? 0.f : z >= 2380.f ? -180.f : -180.f * (z - 900.f) / 1480.f;
+}
+void Lift(u32 a) {
+  const u32 q = a ? bd::mem::try_load<u32>(a + 768) : 0;
+  if (!q)
+    return;
+  const float y = RampY(LoadF(q + 8)) - 120.f;
+  u32 bits;
+  std::memcpy(&bits, &y, 4);
+  bd::mem::store<u32>(q + 4, bits);
+  bd::mem::store<u32>(a + 756, bits);
+}
+void CameraBack(const PPCContext &ctx, u8 *base) {
+  if (!g_scene_cam)
+    return;
+  g_scene_cam = false;
+  const u32 cam = bd::mem::try_load<u32>(0x8317B8C4), dir = bd::mem::try_load<u32>(0x8317B8C0);
+  if (cam) {
+    Call(ctx, base, bd::mem::try_load<u32>(bd::mem::try_load<u32>(cam) + 8), cam);  // (stop)
+    bd::mem::store<u32>(cam + 4224, g_cam_h1);
+    bd::mem::store<u32>(cam + 4496, g_cam_h2);
+  }
+  if (dir) {
+    PPCContext c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    c.r3.u64 = dir, c.r4.u64 = 1;
+    __imp__sub_821CCFE0(c, base);
+    if (c.r3.u32) {
+      c.r4.u64 = 0;
+      __imp__sub_82481ED0(c, base);
+    }
+    c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    c.r3.u64 = dir, c.r4.u64 = 0;
+    __imp__sub_8247EE60(c, base);
+    Call(ctx, base, bd::mem::try_load<u32>(bd::mem::try_load<u32>(dir) + 4), dir);  // (update)
+  }
+  BD_INFO("[sref] scene : la camera du match reprend");
+}
+bool SceneStart(const PPCContext &ctx, u8 *base, u32 n) {
+  if (!REXCVAR_GET(wwe12_sref_scene))
+    return false;
+  const u32 m = W(2043);
+  const bool b0 = BlockThere(ctx, base, m, 0, 0), b1 = BlockThere(ctx, base, m, 0, 1), cam60 = BlockThere(ctx, base, m, 0, 60);
+  g_gm = Actor(7);
+  BD_INFO("[sref] scene : motion {} trouvee : corps {} / {}, camera {} ; manager general (acteur 7) {:08X}", m, b0, b1, cam60, g_gm);
+  if (!b0 || !b1 || !cam60 || !g_gm)
+    return false;
+  // the General Manager's body: the first man at ringside, his place kept
+  if (const u32 q = bd::mem::try_load<u32>(g_gm + 768))
+    for (u32 i = 0; i < 3; ++i)
+      g_gm_pos[i] = LoadF(q + i * 4);
+  g_gm_head = LoadF(g_gm + 740);
+  g_gm_anim = Anim(g_gm);
+  // the two bodies at the scene's origin
+  const float zero = 0.f;
+  u32 zb;
+  std::memcpy(&zb, &zero, 4);
+  for (u32 a : {n, g_gm}) {
+    Place(a, 0.f, -120.f, 0.f);
+    bd::mem::store<u32>(a + 740, zb);
+  }
+  Shown(ctx, base, n, true);
+  for (u32 o : {8u, 88u, 144u})
+    bd::mem::store<u32>(n + 1360 + o, 0);
+  bd::mem::store<u32>(n + 1360 + 16, 1);
+  std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
+  PlayBlock(ctx, base, n, m, 0, 0);
+  PlayBlock(ctx, base, g_gm, m, 0, 1);
+  // his microphone (loaded and parked for these matches, the I Quit's way)
+  g_mic = 0;
+  for (u32 i = 0; i < 72 && !g_mic; ++i)
+    if (const u32 o = bd::mem::try_load<u32>(0x83113630 + i * 4); o && bd::mem::try_load<u32>(o + 80) == 142)
+      g_mic = o;
+  if (g_mic && bd::mem::try_load<u32>(g_mic + 3236) != 0) {
+    PPCContext c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    c.r3.s64 = -1, c.r4.u64 = 142, c.r5.u64 = 0, c.r6.u64 = 0;
+    __imp__sub_82254518(c, base);
+    g_mic = c.r3.u32;
+  }
+  if (g_mic) {
+    Place(g_mic, 0.f, -120.f, 0.f);
+    bd::mem::store<u32>(g_mic + 740, zb);
+    bd::mem::store<u32>(g_mic + 96, n);
+    PlayBlock(ctx, base, g_mic, m, 0, 2);
+  }
+  // its camera
+  const u32 cam = bd::mem::try_load<u32>(0x8317B8C4), dir = bd::mem::try_load<u32>(0x8317B8C0);
+  if (cam && dir) {
+    g_cam_h1 = bd::mem::try_load<u32>(cam + 4224), g_cam_h2 = bd::mem::try_load<u32>(cam + 4496);
+    bd::mem::store<u32>(cam + 4224, 0x6FEFAF1E);  // ("Camera001")
+    bd::mem::store<u32>(cam + 4496, 0x69825289);  // ("fov.Camera001")
+    PPCContext c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    const u32 key = c.r1.u32 + 256, pos = key + 16;
+    bd::mem::store<u32>(key, m);
+    bd::mem::store<u32>(key + 4, 0);
+    bd::mem::store<u32>(key + 8, 60);
+    const float p[5] = {0.f, -120.f, 0.f, 0.f, 0.f};
+    for (u32 i = 0; i < 5; ++i) {
+      u32 b;
+      std::memcpy(&b, &p[i], 4);
+      bd::mem::store<u32>(pos + i * 4, b);
+    }
+    c.r3.u64 = bd::mem::try_load<u32>(0x8317B760), c.r4.u64 = key, c.r5.u64 = pos, c.r6.u64 = 0, c.r7.u64 = 1;
+    __imp__sub_82482388(c, base);
+    c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    c.r3.u64 = dir, c.r4.u64 = 1;
+    __imp__sub_8247EE60(c, base);
+    g_scene_cam = true;
+  }
+  g_scene = true;
+  g_scene_t = 0;
+  BD_INFO("[sref] scene : commence (arbitre {:08X}, manager {:08X} motion {}, micro {:08X}, camera {})", n, g_gm, Anim(g_gm),
+          g_mic, g_scene_cam);
+  return true;
+}
+// the scene going on; true once it is over
+bool SceneTick(const PPCContext &ctx, u8 *base, u32 n, u32 s3, double dt) {
+  g_scene_t += dt;
+  const u32 m = W(2043);
+  for (u32 a : {n, g_gm, g_mic})
+    if (a && Anim(a) == u16(m))
+      Lift(a);
+  if (g_scene_cam && g_scene_t >= 380.0 / 60.0) {
+    CameraBack(ctx, base);
+    if (s3)
+      Start(g_rm, s3, W(2051), 0, 331, 0);
+  }
+  if (g_scene_t < 500.0 / 60.0)
+    return false;
+  CameraBack(ctx, base);
+  // the General Manager back at ringside, the microphone parked
+  if (g_gm) {
+    Place(g_gm, g_gm_pos[0], g_gm_pos[1], g_gm_pos[2]);
+    u32 b;
+    std::memcpy(&b, &g_gm_head, 4);
+    bd::mem::store<u32>(g_gm + 740, b);
+    if (g_gm_anim && g_gm_anim != 0xFFFF)
+      PlayBlock(ctx, base, g_gm, g_gm_anim, 0, 0);
+  }
+  if (g_mic && bd::mem::try_load<u32>(g_mic + 3236) == 0) {
+    bd::mem::store<u32>(g_mic + 96, 0);
+    PPCContext c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    c.r3.u64 = g_mic;
+    __imp__sub_82250258(c, base);
+  }
+  g_scene = false;
+  BD_INFO("[sref] scene : finie (l'arbitre est sur la scene, z {:.0f})", [&] {
+    float x, z;
+    return Spot(n, x, z) ? z : 0.f;
+  }());
+  return true;
+}
+}  // namespace
+
 void HandOver(const PPCContext &ctx, u8 *base) {
   if (!REXCVAR_GET(wwe12_sref_replacement))
     return;
@@ -1414,12 +1633,22 @@ void HandOver(const PPCContext &ctx, u8 *base) {
   } else if (g_out == kOut2050 && g_out_t >= 3.0) {  // (180 frames: WWE '13's scene, then his 2051)
     // (WWE '13, filmed by the user on 2026-11-16: after 2050 a scene on the entrance stage - its General Manager at
     // the microphone, a referee beside him - then back in the ring the man who was the referee plays 2051 and leaves
-    // the ring by himself, and the referee comes from the stage to the ring. The scene: to be done.)
-    if (s3)
-      Start(g_rm, s3, W(2051), 0, 331, 0);
-    g_out = kOutArrive;
+    // the ring by himself, and the referee comes from the stage to the ring.)
+    g_scene_ran = SceneStart(ctx, base, n);
+    if (g_scene_ran) {
+      g_out = kOutScene;
+    } else {
+      if (s3)
+        Start(g_rm, s3, W(2051), 0, 331, 0);
+      g_out = kOutArrive;
+      BD_INFO("[sref] remplacement : pas de scene, l'arbitre special joue 2051");
+    }
     g_out_t = 0;
-    BD_INFO("[sref] remplacement : l'arbitre special joue 2051");
+  } else if (g_out == kOutScene) {
+    if (SceneTick(ctx, base, n, s3, dt)) {
+      g_out = kOutArrive;
+      g_out_t = 100;  // (the hand-over now: 2051 was played during the scene)
+    }
   } else if (g_out == kOutArrive && g_out_t > 5.5) {  // (2051 is 331 frames)
     // the hand-over. The game's referee: at the ramp's foot, outside the ring (ring's edge 313; the ramp is on the
     // + z side), at the height of the people who stand at ringside (actors 7, 8), facing the ring - his brain then
@@ -1436,12 +1665,14 @@ void HandOver(const PPCContext &ctx, u8 *base) {
         bd::mem::store<u32>(n + 1360 + o, 0);
       bd::mem::store<u32>(n + 1360 + 16, 1);
       std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
-      Place(n, 0.f, y, 560.f);
+      if (!g_scene_ran)
+        Place(n, 0.f, y, 560.f);  // (after the scene he is on the stage, where 2043 left him: he walks down)
       const float h = 0.f;  // (facing - z: the ring. An actor faces (-sin h, -cos h).)
       u32 bits;
       std::memcpy(&bits, &h, 4);
       bd::mem::store<u32>(n + 740, bits);
-      bd::mem::store<u8>(n + 996, 1);  // (outside the ring)
+      if (!g_scene_ran)
+        bd::mem::store<u8>(n + 996, 1);  // (outside the ring)
       BD_INFO("[sref] remplacement : l'arbitre du jeu arrive par la rampe (hauteur {:.0f})", y);
     }
     SetRole(ctx, base, 6, 40, 1);
@@ -1565,7 +1796,7 @@ void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
 // each putting in place of the match, sub_8254C820.) Our own calls (the hand-over) go to the game's directly.
 namespace {
 bool WaitingSlot(u32 mgr, u32 slot) {
-  if (!On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out == kOutArrive || g_out == kOutDone || !mgr ||
+  if (!On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out >= kOutScene || !mgr ||
       slot >= 16)
     return false;
   const u32 index = bd::mem::try_load<u32>(mgr + (slot + 32) * 4);
@@ -1761,6 +1992,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       g_tm = {};
       g_nm = {};
       g_out = kOutNone;
+      g_scene_ran = false;
       g_gone = false;
       g_foul_by = 0;
       g_hold_grace = 3.0;
