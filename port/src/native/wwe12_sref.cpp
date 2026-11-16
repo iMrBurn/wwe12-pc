@@ -2299,15 +2299,16 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       const u16 anim = Anim(n);
       if (g_climb.load()) {
         // (his climb: over once the game gave him another motion, or after 3 s; still outside then: a short step)
-        if ((anim != g_climb_anim && NowMs() - g_climb_ms > 300) || NowMs() - g_climb_ms > 3000) {
+        const bool in_chain = anim >= 700 && anim < 800;  // (712, then 750, ...: the game's way in)
+        if ((!in_chain && NowMs() - g_climb_ms > 300) || NowMs() - g_climb_ms > 6000) {
           g_climb = false;
           g_walk = false;
           if (!in_ring) {
             const float k = 270.f / std::max(std::fabs(nx), std::fabs(nz));
             Place(n, nx * k, -203.f, nz * k);
             bd::mem::store<u8>(n + 996, 0);
+            Free(ctx, base, n);
           }
-          Free(ctx, base, n);
           BD_INFO("[sref] l'arbitre du jeu : montee {} finie (motion {}, a {:.0f} {:.0f}, {})", g_climb_anim, anim, nx, nz,
                   in_ring ? "dans le ring" : "pas entre : passe derriere les cordes");
         }
@@ -2378,6 +2379,25 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       }
     }
   }
+  if (main_thread && g_out == kOutDone && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1 && !g_climb.load()) {
+    static int64_t s_stuck = 0;
+    static int s_lines = 0;
+    const u32 n = Actor(6);
+    const u16 anim = Anim(n);
+    if (anim >= 20150 && anim < 20160 && (bd::mem::try_load<u32>(n + 1428) != 0 || bd::mem::try_load<u32>(n + 1096) != 0)) {
+      if (!s_stuck)
+        s_stuck = NowMs();
+      if (NowMs() - s_stuck > 1500) {
+        bd::mem::store<u32>(n + 1428, 0);
+        bd::mem::store<u32>(n + 1096, 0);
+        s_stuck = 0;
+        if (s_lines++ < 20)
+          BD_INFO("[sref] l'arbitre du jeu : drapeau +1428 / +1096 remis a 0 (1,5 s a 1 dans sa motion {})", anim);
+      }
+    } else {
+      s_stuck = 0;
+    }
+  }
   if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1) {
     static int64_t s_wait = 0;
     const u32 j = bd::mem::try_load<u32>(kJudgePtr);
@@ -2385,10 +2405,10 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     if ((st == 1 || st == 3) && cnt == 0) {
       if (!s_wait)
         s_wait = NowMs();
-      if (NowMs() - s_wait > 5000) {
+      if (NowMs() - s_wait > 3000) {
         SetRole(ctx, base, 6, 40, 6);
         s_wait = 0;
-        BD_INFO("[sref] l'arbitre du jeu ne compte pas (etat du juge {}, 5 s a 0) : le juge compte seul", st);
+        BD_INFO("[sref] l'arbitre du jeu ne compte pas (etat du juge {}, 3 s a 0) : le juge compte seul", st);
       }
     } else {
       s_wait = 0;
