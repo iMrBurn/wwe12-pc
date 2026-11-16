@@ -196,3 +196,8 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   depuis `sub_82386168`), mais elle joue des motions de catcheur 8000-8015 et lit la manette : pas pour un arbitre.
   Piste retenue : une marche scriptée (position et cap à chaque image, motion de marche de l'arbitre) ; le journal
   « l'arbitre du jeu : motion … bloc … » relève les motions qu'il joue en montant dans le ring.
+- Étude du 2026-11-16 (18:38 match normal / 18:40 après le relais) : tout est pareil entre l'arbitre d'un match
+  normal (qui marche) et le nôtre (immobile), sauf le drapeau **acteur +1096** (+68 du bloc +1028, copie +1428) :
+  0 (parfois 1 / 2 un instant) sur l'arbitre normal, **1 en permanence** sur le nôtre et sur l'ancien arbitre, tous
+  deux après des motions à nous (`sub_8247AD18` avec r8 = 1). `Free()` le remet à 0. Si ça suffit, l'arbitre
+  descend seul de la scène (comme WWE '13) ; sinon aides à 12 s (pied de la rampe) et 20 s (dans le ring).

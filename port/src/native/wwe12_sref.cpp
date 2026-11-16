@@ -1470,6 +1470,11 @@ void Free(const PPCContext &ctx, u8 *base, u32 actor) {
   c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
   c.r3.u64 = actor;
   __imp__sub_8247C670(c, base);
+  // (his flags' + 68 - actor + 1096, and its copy + 1428 - stays 1 after a motion of ours, which plays with the
+  // flag r8 = 1; it is 0 on an ordinary match's referee, who walks, and was 1 on ours and on the old one, who both
+  // stood still a whole minute: the study of 2026-11-16, 18:38 / 18:40)
+  bd::mem::store<u32>(actor + 1096, 0);
+  bd::mem::store<u32>(actor + 1428, 0);
 }
 // (the special referee's participant number: his actors' index, as the game maps them for the six places)
 u32 ParticipantOf(const PPCContext &ctx, u8 *base, u32 index) {
@@ -1775,9 +1780,10 @@ void HandOver(const PPCContext &ctx, u8 *base) {
         bd::mem::store<u32>(n + 1360 + o, 0);
       bd::mem::store<u32>(n + 1360 + 16, 1);
       std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
-      // (at the ramp's foot, outside the ring - also after the scene: from the stage, where 2043 leaves him, his brain
-      // does not walk him down, user's test of 2026-11-16, 18:08)
-      Place(n, 0.f, y, 560.f);
+      // (without the scene: at the ramp's foot, outside the ring. After it he is on the stage, where 2043 leaves him,
+      // and walks down as in WWE '13 - helped if not, see the tick)
+      if (!g_scene_ran)
+        Place(n, 0.f, y, 560.f);
       const float h = 0.f;  // (facing - z: the ring. An actor faces (-sin h, -cos h).)
       u32 bits;
       std::memcpy(&bits, &h, 4);
@@ -2190,7 +2196,20 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     if (in_ring && s_help < 3) {
       s_help = 3;
       BD_INFO("[sref] l'arbitre du jeu est dans le ring ({:.1f} s apres le relais)", since / 1000.0);
-    } else if (!in_ring && s_help == 0 && since > 5000) {
+    } else if (!in_ring && s_help == 0 && since > 12000) {
+      s_help = 1;
+      float y = -60.f, ax, az;
+      for (u32 k : {7u, 8u})
+        if (const u32 a = Actor(k); a && Spot(a, ax, az))
+          if (const u32 aq = bd::mem::try_load<u32>(a + 768); aq && std::isfinite(LoadF(aq + 4))) {
+            y = LoadF(aq + 4);
+            break;
+          }
+      Place(n, 0.f, y, 560.f);
+      bd::mem::store<u8>(n + 996, 1);
+      Free(ctx, base, n);
+      BD_INFO("[sref] l'arbitre du jeu ne descend pas (a {:.0f} {:.0f}) : mis au pied de la rampe", nx, nz);
+    } else if (!in_ring && s_help == 1 && since > 20000) {
       s_help = 2;
       Place(n, 0.f, -203.f, 200.f);
       bd::mem::store<u8>(n + 996, 0);
