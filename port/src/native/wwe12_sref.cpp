@@ -1867,15 +1867,38 @@ void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
   }
   if (g_out != kOutNone || actor != Actor(6))
     return;
-  if (bd::mem::try_load<u32>(actor + 3428) == 1 && bd::mem::try_load<u32>(actor + 3384) != 0 && Referee() &&
-      Referee() != actor) {
-    SetRole(ctx, base, 6, 40, 6);
-    BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6, premiere image)", actor);
-  }
   if (Parked(actor) || (bd::mem::try_load<u32>(actor + 3428) == 1 && Referee() && Referee() != actor)) {
     Shown(ctx, base, actor, false);
     Place(actor, 0.f, -120.f, 3200.f);
   }
+}
+
+namespace {
+void KeepOutOfSight(const PPCContext &ctx, u8 *base, u32 actor) {
+  if (!actor || !On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement))
+    return;
+  const u32 n = Actor(6);
+  const bool waiting_ref = actor == n && g_out < kOutScene && Referee() && Referee() != n;
+  const bool waiting_gm = g_gm_place >= 0 && actor == Actor(u32(g_gm_place)) && g_out != kOutScene;
+  if (!waiting_ref && !waiting_gm)
+    return;
+  if (bd::mem::try_load<u32>(actor + 1752) != 0 || bd::mem::try_load<u32>(actor + 1736) != 0)
+    Shown(ctx, base, actor, false);
+  Place(actor, 0.f, -120.f, 3200.f);
+}
+}  // namespace
+REX_EXTERN(__imp__sub_8225BD20);
+extern "C" REX_FUNC(sub_8225BD20) {
+  if (ctx.r3.u32)
+    KeepOutOfSight(ctx, base, bd::mem::try_load<u32>(ctx.r3.u32 + 84));
+  __imp__sub_8225BD20(ctx, base);
+}
+REX_EXTERN(__imp__sub_822CF768);
+extern "C" REX_FUNC(sub_822CF768) {
+  __imp__sub_822CF768(ctx, base);
+  KeepOutOfSight(ctx, base, Actor(6));
+  if (g_gm_place >= 0)
+    KeepOutOfSight(ctx, base, Actor(u32(g_gm_place)));
 }
 
 // The actor's set-up (it makes his brain, 'CMIF', for a role other than 4 / 6; it runs again at the bell - user's test
@@ -1936,10 +1959,6 @@ extern "C" REX_FUNC(sub_823B8F38) {
   const u32 n = Actor(6);
   if (!n)
     return;
-  if (bd::mem::try_load<u32>(n + 3428) == 1 && bd::mem::try_load<u32>(n + 3384) != 0 && Referee() && Referee() != n) {
-    SetRole(ctx, base, 6, 40, 6);
-    BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6, mise en place)", n);
-  }
   if (Parked(n) || (bd::mem::try_load<u32>(n + 3428) == 1 && Referee() && Referee() != n)) {
     Shown(ctx, base, n, false);
     Place(n, 0.f, -120.f, 3200.f);
@@ -1998,6 +2017,15 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     g_ejected = false;
     g_ex = 0;
     return;
+  }
+  {  // (the game's referee parked - the role 6 - once his brain is made and the bell's set-up is over)
+    const u32 n = Actor(6);
+    if (REXCVAR_GET(wwe12_sref_replacement) && g_out == kOutNone && n && bd::mem::try_load<u32>(n + 3428) == 1 &&
+        bd::mem::try_load<u32>(n + 3384) != 0 && Referee() && Referee() != n) {
+      SetRole(ctx, base, 6, 40, 6);
+      BD_INFO("[sref] l'arbitre du jeu ({:08X}) attend hors de vue (role 6, apres la cloche ; cerveau {:08X})", n,
+              bd::mem::try_load<u32>(n + 3384));
+    }
   }
   HandOver(ctx, base);
   if (g_out == kOutDone && g_watch_ms && NowMs() - g_watch_ms < 30000) {
