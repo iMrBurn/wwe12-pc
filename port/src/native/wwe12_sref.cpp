@@ -876,15 +876,25 @@ class SrefOverlay final : public rex::ui::ImGuiDialog {
         Wwe12HudRefImg(dl, 3, cx - 34 * u, cy - 3 * u, 68 * u, 6 * u, fill, v);
         Wwe12HudRefImg(dl, 1, cx - 44 * u, cy - 8 * u, 88 * u, 16 * u, IM_COL32_WHITE, 1.f);
         Wwe12HudRefImg(dl, 0, cx + 36 * u, cy - 10 * u, 20 * u, 20 * u, IM_COL32_WHITE, 1.f);
-        static const char *const kPrompt[5] = {"", "A  COUNT", "A  CHECK THE SUBMISSION", "Y  DISQUALIFY", "Y  SCREW JOB"};
+        static const char *const kPrompt[6] = {"",           "A  COUNT",     "A  CHECK THE SUBMISSION",
+                                               "Y  DISQUALIFY", "Y  SCREW JOB", "Y  FINISHER"};
         const int p = g_prompt.load();
         // (WWE '13's own: the button and the word, in the player's language - COUNT, CHECK, DQ, SCREW JOB)
         static constexpr int kButton[5] = {0, 1, 1, 0, 0}, kRow[5] = {0, 1, 0, 3, 4};
-        if (p > 0 && p < 5 && Wwe12HudRefPrompt(nullptr, kButton[p], -1, 0, 0, 1.f) > 0.f) {
+        if (p == 5 && Wwe12HudRefPrompt(nullptr, 0, -1, 0, 0, 1.f) > 0.f) {
+          // (WWE '13's words have no FINISHER: its Y button, then the word in white with a dark shadow, as its own)
+          const float h = 16 * u, bw = Wwe12HudRefPrompt(nullptr, 0, -1, 0, 0, h), ms = 17.f * u;
+          const ImVec2 sz = font->CalcTextSizeA(ms, FLT_MAX, 0.f, "FINISHER");
+          const float x0 = cx - (bw + h * 0.2f + sz.x) * 0.5f, yy = cy + 18 * u;
+          Wwe12HudRefPrompt(dl, 0, -1, x0, yy, h);
+          for (float d : {2.f, 1.f})
+            dl->AddText(font, ms, ImVec2(x0 + bw + h * 0.2f + d * u, yy - sz.y * 0.5f + d * u), IM_COL32(0, 0, 0, 200), "FINISHER");
+          dl->AddText(font, ms, ImVec2(x0 + bw + h * 0.2f, yy - sz.y * 0.5f), IM_COL32(255, 255, 255, 255), "FINISHER");
+        } else if (p > 0 && p < 5 && Wwe12HudRefPrompt(nullptr, kButton[p], -1, 0, 0, 1.f) > 0.f) {
           const float h = 16 * u, w = Wwe12HudRefPrompt(nullptr, kButton[p], -1, 0, 0, h) + h * 0.1f +
                                       h * 0.95f * 256.f / 25.6f * 0.45f;  // (about: the word's ink is left aligned)
           Wwe12HudRefPrompt(dl, kButton[p], kRow[p], cx - w * 0.5f, cy + 18 * u, h);
-        } else if (p > 0 && p < 5) {
+        } else if (p > 0 && p < 6) {
           const float ms = 15.f * u;
           const ImVec2 sz = font->CalcTextSizeA(ms, FLT_MAX, 0.f, kPrompt[p]);
           dl->AddText(font, ms, ImVec2(cx - sz.x * 0.5f + 1 * u, cy + 11 * u), IM_COL32(0, 0, 0, 230), kPrompt[p]);
@@ -1278,7 +1288,8 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
     }
   }
   g_want_y = dq_open || (hold && g_gauge.load() >= 1.f);
-  g_prompt = dq_open ? 3 : hold && g_gauge.load() >= 1.f ? 4 : hold && g_act != kActCheck ? 2 : counting && !in_count ? 1 : 0;
+  g_prompt = dq_open ? 3 : hold && g_gauge.load() >= 1.f ? 4 : hold && g_act != kActCheck ? 2 : counting && !in_count ? 1
+             : g_fin_given && bd::mem::try_load<u32>(ref + 2776) >= g_fin_given ? 5 : 0;
 }
 }  // namespace
 
@@ -1421,13 +1432,14 @@ void HandOver(const PPCContext &ctx, u8 *base) {
       Place(n, sx0 * k, y, sz0 * k);
     }
     bd::mem::store<u32>(n + 740, 0);
-    Start(g_nm, n, W(2043), 0, 621, 0);
+    Face(n, s3);
+    Start(g_nm, n, 210, 0, 60, 0);
     if (s3)
       Start(g_rm, s3, W(2051), 0, 331, 0);
     g_out = kOutArrive;
     g_out_t = 0;
-    BD_INFO("[sref] remplacement : l'arbitre du jeu arrive (2043), l'arbitre special joue 2051");
-  } else if (g_out == kOutArrive && (sn == 2 || sn == 3 || sn == 0 || g_out_t > 12.0) && !g_nm.waiting) {
+    BD_INFO("[sref] remplacement : l'arbitre du jeu arrive a cote de lui (210), l'arbitre special joue 2051");
+  } else if (g_out == kOutArrive && g_out_t > 5.5 && !g_nm.waiting) {  // (2051 is 331 frames)
     // the hand-over
     SetRole(ctx, base, 6, 40, 1);
     {
