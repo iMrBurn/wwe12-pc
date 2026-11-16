@@ -23,6 +23,7 @@ REXCVAR_DECLARE(int32_t, wwe12_squash_health);
 REXCVAR_DECLARE(int32_t, wwe12_starting_finishers);
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -46,7 +47,8 @@ constexpr int kPageArg = 130;
 constexpr u32 kOurs = 20;  // first word of our rows in the page array
 constexpr u32 kLabel = 44100;
 
-bool g_open = false;  // our DAMAGE page is the page shown
+bool g_open = false;  // our DAMAGE page is the page shown (until another script loads)
+std::chrono::steady_clock::time_point g_loaded;  // when our script was loaded
 
 u32 PageArray() {
   const u32 index = bd::mem::try_load<u32>(0x8306B718);
@@ -97,6 +99,7 @@ void Wwe12DamagePageLoad(PPCContext &ctx) {
   ctx.r4.u64 = s_buffer;
   ctx.r5.u64 = sizeof(kDamagePage);
   g_open = true;
+  g_loaded = std::chrono::steady_clock::now();
   BD_INFO("[damage page] BALANCING > DAMAGE with the match modes ({} bytes)", sizeof(kDamagePage));
 }
 
@@ -132,7 +135,13 @@ bool Wwe12DamagePageNative(bool update, PPCContext &ctx, u8 *base) {
   return true;
 }
 
-bool Wwe12DamagePageOpen() { return g_open && REXCVAR_GET(wwe12_damage_page); }
+// The page's layout is being set up: its borrowed subtitle is asked then, in the 2 s after our script loaded.
+// (user's test of 2026-11-16: while the whole page stayed "open", the BALANCING list's A.I. REVERSALS read DAMAGE
+// and every text of the menus went through us, OPTIONS > JUKEBOX lost its label)
+bool Wwe12DamagePageOpen() {
+  return g_open && REXCVAR_GET(wwe12_damage_page) &&
+         std::chrono::steady_clock::now() - g_loaded < std::chrono::seconds(2);
+}
 
 // The labels (wwe12_match_modes.cpp's text hook): "" = not ours.
 std::string Wwe12DamagePageText(uint32_t id) {
