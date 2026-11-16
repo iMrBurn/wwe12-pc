@@ -197,7 +197,7 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
 // (the normal referee waiting, and the hand-over: below)
 enum { kOutNone, kOutWait, kOut2050, kOutArrive, kOutDone };
 int g_out = kOutNone;
-int64_t g_ex_ms = 0;
+int64_t g_ex_ms = 0, g_watch_ms = 0;
 bool g_gone = false;
 double g_out_t = 0;
 Timed g_nm;  // the normal referee's motion of ours
@@ -810,7 +810,9 @@ u16 Wwe12SrefPad(u32 user, u16 buttons) {
   const bool counting = st == 1 || st == 3 || st == 4 || st == 5;
   // (WWE '13: the special referee's grapple button is always a referee's action, never a grapple of his own)
   // (WWE '13: from close to a fighter, 200 cm or less, his grapple button is a real grapple - the tick says when)
-  const bool ours = counting ? REXCVAR_GET(wwe12_sref_own_count) : REXCVAR_GET(wwe12_sref_actions) && !g_a_game.load();
+  const bool ours = g_out != kOutNone ? true
+                    : counting      ? REXCVAR_GET(wwe12_sref_own_count)
+                                    : REXCVAR_GET(wwe12_sref_actions) && !g_a_game.load();
   if (ours && (buttons & ~before & kPadA))
     g_press = true;
   return u16((ours ? kPadA : 0) | (g_want_y.load() ? 0x8000 : 0));
@@ -1407,10 +1409,10 @@ void HandOver(const PPCContext &ctx, u8 *base) {
     std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
     bd::mem::store<u8>(n + 998, 1);
     {  // (at the special referee's own height: standing on the mat. At -120 he was sunk in it, user's test.)
-      float y = -203.f;
-      if (s3)
-        if (const u32 q = bd::mem::try_load<u32>(s3 + 768); q && std::isfinite(LoadF(q + 4)))
-          y = LoadF(q + 4);
+      // (a man standing on the mat: the root at -203, measured in the I Quit's study. The special referee's own
+      // height was taken first - he kneels in 2050: the game's referee was put under the mat, unseen, user's video
+      // of 2026-11-16; at -120, the first try, he was sunk in it)
+      const float y = -203.f;
       float sx0 = 0.f, sz0 = 0.f;
       Spot(s3, sx0, sz0);
       // (a step from him, toward the ring's middle)
@@ -1457,6 +1459,7 @@ void HandOver(const PPCContext &ctx, u8 *base) {
     g_ejected_ms = now;
     g_pad = -1;
     g_out = kOutDone;
+    g_watch_ms = now;
     BD_INFO("[sref] remplacement : l'arbitre du jeu a le role 1, l'ancien arbitre le role 0 (hors des tombes)");
   }
 }
@@ -1598,23 +1601,45 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     return;
   }
   HandOver(ctx, base);
+  if (g_out == kOutDone && g_watch_ms && NowMs() - g_watch_ms < 30000) {
+    static int64_t s_last = 0;
+    if (NowMs() - s_last >= 1000) {
+      s_last = NowMs();
+      const u32 n = Actor(6), j = bd::mem::try_load<u32>(kJudgePtr);
+      float nx = 0, nz = 0;
+      Spot(n, nx, nz);
+      const u32 q = n ? bd::mem::try_load<u32>(n + 768) : 0;
+      const u32 cmif = n ? bd::mem::try_load<u32>(n + 3384) : 0;
+      BD_INFO("[sref] arbitre du jeu : motion {} position {:.0f} {:.0f} {:.0f} role {} dessine {} cerveau {:08X} ordi {} | juge etat {} "
+              "+112 {} | ancien : motion {} zone {} position", Anim(n), nx, q ? LoadF(q + 4) : 0.f, nz,
+              n ? bd::mem::try_load<u32>(n + 3428) : 99, n ? bd::mem::try_load<u32>(n + 1752) : 99, cmif,
+              cmif ? bd::mem::try_load<u32>(cmif + 64) : 99, j ? bd::mem::try_load<u32>(j + 92) : 99,
+              j ? bd::mem::try_load<u32>(j + 112) : 99, g_ex ? Anim(g_ex) : 0, g_ex ? bd::mem::try_load<u8>(g_ex + 996) : 0);
+    }
+  }
   // (the man who was the referee: once he is outside the ring he walks away, the game's own behaviour for a man out
   // of the match - sub_82371C78, as its free state does for + 998 = 4 and the area byte + 996 = 1 or 16)
   if (g_ex)
     g_tick_ms = NowMs();
-  if (g_ex && g_out == kOutDone && NowMs() - g_ex_ms > 10000 && !g_gone) {
-    // (still here ten seconds after the hand-over: out of sight, as the game leaves its men who went away)
+  if (g_ex && g_out == kOutDone && !g_left && NowMs() - g_ex_ms > 3000 && !g_gone) {
+    // (three seconds after the hand-over and still in the ring: put outside it, on the ramp's side, at the height of
+    // the people who stand at ringside - the game's own leaving walk then takes him up the ramp, and the game hides
+    // him at its end. Taken far away at once, the camera, which follows the player's man, showed the stands' dark.)
     g_gone = true;
-    bd::mem::store<u32>(g_ex + 2568, 0);
-    Shown(ctx, base, g_ex, false);
-    Place(g_ex, 0.f, -120.f, 3200.f);
-    BD_INFO("[sref] l'ancien arbitre est parti (hors de vue)");
+    float y = 0.f, ax, az;
+    bool have = false;
+    for (u32 k : {7u, 8u})
+      if (const u32 a = Actor(k); !have && a && Spot(a, ax, az))
+        if (const u32 q = bd::mem::try_load<u32>(a + 768); q && std::isfinite(LoadF(q + 4)))
+          y = LoadF(q + 4), have = true;
+    float ex, ez;
+    Spot(g_ex, ex, ez);
+    Place(g_ex, std::clamp(ex, -150.f, 150.f), have ? y : -60.f, 430.f);
+    bd::mem::store<u8>(g_ex + 996, 1);  // (outside the ring)
+    BD_INFO("[sref] l'ancien arbitre est mis hors du ring cote rampe (hauteur {:.0f}{})", have ? y : -60.f,
+            have ? "" : ", estimee");
   }
-  if (g_gone && g_ex) {
-    Shown(ctx, base, g_ex, false);
-    Place(g_ex, 0.f, -120.f, 3200.f);
-  }
-  if (g_ex && !g_left && !g_gone) {
+  if (g_ex && !g_left) {
     const u32 area = bd::mem::try_load<u8>(g_ex + 996);
     bool here = false;
     for (u32 k = 0; k < 6; ++k)
@@ -1791,7 +1816,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       return;
     }
   }
-  if (!g_press.exchange(false) || !REXCVAR_GET(wwe12_sref_own_count))
+  if (!g_press.exchange(false) || !REXCVAR_GET(wwe12_sref_own_count) || g_out != kOutNone)
     return;
   if (state != 1 && state != 3 && state != 4 && state != 5)
     return;
