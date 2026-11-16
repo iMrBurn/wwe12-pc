@@ -172,12 +172,18 @@ bool Patch(const Row &row) {
   }
   bd::mem::store<u16>(rec, bd::mem::load<u16>(src));            // the people
   bd::mem::store<u32>(rec + 52, bd::mem::load<u32>(src + 52));  // the select's layout
+  // The pads' moves between the places come from the record's + 24 (sub_8256D298: one of eight tables at 0x82024CF8,
+  // by people: 1 two, 3 three, 5 four, 7 five men, 8 a tag match and a fifth). Left as the rule's own, the new
+  // place could not be entered (user's test of 2026-11-16: TRIPLE THREAT + referee, the fourth place out of reach).
+  bd::mem::store<u32>(rec + 24, bd::mem::load<u32>(src + 24));
+  // (no managers' places in these matches: the layouts of that many people have none - the record's + 79)
+  bd::mem::store<u8>(rec + 79, 0);
   const u32 p = rec + 2 + 3 * row.fighters;
   bd::mem::store<u8>(p, u8(first + 1));
   bd::mem::store<u8>(p + 1, u8(team + 1));
   bd::mem::store<u8>(p + 2, 1);
-  BD_INFO("[sref] regle {} : {} combattants + l'arbitre (place {}, cote {}), gabarit {}", row.rule, row.fighters, first + 1,
-          team + 1, bd::mem::load<u32>(rec + 52));
+  BD_INFO("[sref] regle {} : {} combattants + l'arbitre (place {}, cote {}), gabarit {}, table des manettes {}", row.rule,
+          row.fighters, first + 1, team + 1, bd::mem::load<u32>(rec + 52), bd::mem::load<u32>(rec + 24));
   return true;
 }
 }  // namespace
