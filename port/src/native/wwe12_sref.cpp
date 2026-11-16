@@ -185,6 +185,8 @@ int64_t g_strike[6][3] = {};
 std::atomic<u32> g_foul_by{0};
 std::atomic<int64_t> g_foul_ms{0};
 std::atomic<bool> g_want_y{false};
+std::atomic<bool> g_a_game{false};  // A is the game's (a grapple): a fighter within reach, no hold, no count
+u32 g_fin_given = 0, g_fin_before = 0;  // a finisher given for a full gauge (WWE '13's "special skill": 0.75)
 std::atomic<int> g_prompt{0};
 void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, int64_t now);
 // (the normal referee waiting, and the hand-over: below)
@@ -581,14 +583,15 @@ extern "C" REX_FUNC(sub_82568C78) {
 }
 
 extern "C" REX_FUNC(sub_82573BA0) {
-  // (r6 = the slot's widget: 39 the left one, 45 the middle, 51 the right - sub_82573CC8's card of three people.
-  // First written with a test on r5, which is not the card's kind: the referee stayed on the right, user's test of
-  // 2026-11-16.)
-  if (Middle() && (ctx.r6.u32 == 45 || ctx.r6.u32 == 51) && (ctx.r4.u32 == 1 || ctx.r4.u32 == 2)) {
+  // (r6 = the slot's widget of sub_82573CC8's card of three people, r4 = the place it shows. Seen on screen
+  // (user's tests of 2026-11-16): widget 39 is the MIDDLE slot (the game puts the place 0 there), 45 the left one,
+  // 51 the right one. So the referee (place 2) goes to 39, the place 0 to 45 and the place 1 stays on the right.)
+  if (Middle() && ctx.r4.u32 <= 2 && (ctx.r6.u32 == 39 || ctx.r6.u32 == 45 || ctx.r6.u32 == 51)) {
+    const u32 want = ctx.r6.u32 == 39 ? 2 : ctx.r6.u32 == 45 ? 0 : 1;
     static std::atomic<int> s_lines{0};
     if (s_lines.fetch_add(1) < 10)
-      BD_INFO("[sref] carte du match : la case {} montre la place {}", ctx.r6.u32, 3 - ctx.r4.u32);
-    ctx.r4.u64 = 3 - ctx.r4.u32;
+      BD_INFO("[sref] carte du match : la case {} montre la place {} (au lieu de {})", ctx.r6.u32, want, ctx.r4.u32);
+    ctx.r4.u64 = want;
   }
   __imp__sub_82573BA0(ctx, base);
 }
@@ -793,7 +796,8 @@ u16 Wwe12SrefPad(u32 user, u16 buttons) {
   const u32 st = g_state.load();
   const bool counting = st == 1 || st == 3 || st == 4 || st == 5;
   // (WWE '13: the special referee's grapple button is always a referee's action, never a grapple of his own)
-  const bool ours = counting ? REXCVAR_GET(wwe12_sref_own_count) : REXCVAR_GET(wwe12_sref_actions);
+  // (WWE '13: from close to a fighter, 200 cm or less, his grapple button is a real grapple - the tick says when)
+  const bool ours = counting ? REXCVAR_GET(wwe12_sref_own_count) : REXCVAR_GET(wwe12_sref_actions) && !g_a_game.load();
   if (ours && (buttons & ~before & kPadA))
     g_press = true;
   return u16((ours ? kPadA : 0) | (g_want_y.load() ? 0x8000 : 0));
@@ -1048,7 +1052,10 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
       if (!g_resolved && g_rm.anim == W(2020) && !g_rm.waiting && g_act_t >= 1.0) {
         g_resolved = true;
         const int idx = IndexOf(g_target);
-        if (idx >= 0 && IdleAnim(Anim(g_target))) {
+        u32 hb = 0, hh = 0;
+        const bool in_hold = Hold(ref, hb, hh) && (hb == g_target || hh == g_target);
+        BD_INFO("[sref] avertissement : le catcheur {} joue la motion {}", idx, Anim(g_target));
+        if (idx >= 0 && !DownAnim(Anim(g_target)) && !in_hold && Anim(g_target) < 13000) {
           int live = 0, spare = -1;
           for (int k = 0; k < 3; ++k) {
             if (g_strike[idx][k] > now)
@@ -1206,6 +1213,40 @@ void RefActions(const PPCContext &ctx, u8 *base, u32 ref, u32 state, double dt, 
       g_hold_grace = 3.0;
   }
   const bool in_count = anim == 190 || anim == 191 || anim == 200;
+  {  // a fighter within a grapple's reach: A is the game's
+    bool close_by = false;
+    float rx, rz;
+    if (!hold && !counting && g_act == kActNone && Spot(ref, rx, rz))
+      for (u32 k = 0; k < 6 && !close_by; ++k) {
+        const u32 o = Actor(k);
+        float ox, oz;
+        close_by = o && o != ref && bd::mem::try_load<u32>(o + 3428) == 0 && Spot(o, ox, oz) &&
+               (ox - rx) * (ox - rx) + (oz - rz) * (oz - rz) < 170.f * 170.f;
+      }
+    if (close_by != g_a_game.load()) {
+      static int s_lines = 0;
+      if (s_lines++ < 200)
+        BD_INFO("[sref] A : {}", close_by ? "un catcheur a portee, la prise du jeu" : "l'action de l'arbitre");
+    }
+    g_a_game = close_by;
+  }
+  // his finisher, as WWE '13's "special skill": with a full gauge he has one (the game's finisher button, Y), and
+  // doing it costs 0.75. (A role-1 man gains no momentum: his stored finishers, actor + 2776, are only ours.)
+  {
+    const u32 have = bd::mem::try_load<u32>(ref + 2776);
+    if (g_fin_given && have < g_fin_given) {
+      g_fin_given = 0;
+      Cost(0.75f, "son finisher");
+    } else if (!g_fin_given && g_gauge.load() >= 1.f && !hold && !dq_open) {
+      g_fin_before = have;
+      g_fin_given = have + 1;
+      bd::mem::store<u32>(ref + 2776, g_fin_given);
+      BD_INFO("[sref] jauge pleine : un finisher pour l'arbitre (Y)");
+    } else if (g_fin_given && g_gauge.load() < 1.f && have == g_fin_given) {
+      bd::mem::store<u32>(ref + 2776, g_fin_before);
+      g_fin_given = 0;
+    }
+  }
   g_want_y = dq_open || (hold && g_gauge.load() >= 1.f);
   g_prompt = dq_open ? 3 : hold && g_gauge.load() >= 1.f ? 4 : hold && g_act != kActCheck ? 2 : counting && !in_count ? 1 : 0;
 }
@@ -1446,6 +1487,42 @@ extern "C" REX_FUNC(sub_823B8F38) {
   }
 }
 
+// ---- he fights as a superstar (as WWE '13: a hit on him is a hit, his grapples are grapples) ----
+// WWE '12 treats a man of the role 1 as the referee in its hits, grapples and damage (read 2026-11-16, the role-1
+// tests that WWE '13 skips for its special referee with sub_82537D20): a strike on him is the referee's bump
+// (sub_8228C610, sub_8228BE40: motions 220 / 1386), a grapple on him the referee's reaction (sub_821D3F58), his
+// damage the referee's (sub_8224B790), a grapple from him refused or not resolved (sub_821D1E08, sub_8222EBF0;
+// sub_82230B50). For the time of these calls he has the role 0; the judge, the counts and the rest still see 1.
+namespace {
+struct AsFighter {
+  u32 ref = 0;
+  AsFighter() {
+    if (On() && Match() && g_out == kOutNone && REXCVAR_GET(wwe12_sref_actions)) {
+      ref = Referee();
+      if (ref)
+        bd::mem::store<u32>(ref + 3428, 0);
+    }
+  }
+  ~AsFighter() {
+    if (ref)
+      bd::mem::store<u32>(ref + 3428, 1);
+  }
+};
+}  // namespace
+#define SREF_AS_FIGHTER(addr)                 \
+  REX_EXTERN(__imp__##addr);                  \
+  extern "C" REX_FUNC(addr) {                 \
+    AsFighter as_fighter;                     \
+    __imp__##addr(ctx, base);                 \
+  }
+SREF_AS_FIGHTER(sub_8228C610)
+SREF_AS_FIGHTER(sub_8228BE40)
+SREF_AS_FIGHTER(sub_821D3F58)
+SREF_AS_FIGHTER(sub_8224B790)
+SREF_AS_FIGHTER(sub_821D1E08)
+SREF_AS_FIGHTER(sub_8222EBF0)
+#undef SREF_AS_FIGHTER
+
 // Once per game frame during a match (from wwe12_iquit.cpp's tick).
 void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   if (!On() || !Match()) {
@@ -1535,6 +1612,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       g_foul_by = 0;
       g_hold_grace = 3.0;
       g_hold_drain = false;
+      g_fin_given = 0;
+      g_a_game = false;
       std::memset(g_strike, 0, sizeof(g_strike));
       BD_INFO("[sref] jauge : debut du match, 0.50");
     }
