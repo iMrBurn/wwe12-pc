@@ -1955,6 +1955,24 @@ void RefDiag(const char *who, u32 a) {
 }
 }  // namespace
 
+// Study (ordinary matches): the computer's man's pad words, from wwe12_iquit.cpp's hook of sub_8225C4D8.
+void Wwe12SrefPadStudy(u32 actor, u32 word) {
+  if (!actor || actor != Actor(1) || !On() || Match())
+    return;
+  static u32 s_last = 0xFFFFFFFF;
+  static u16 s_anim = 0xFFFF;
+  static int s_lines = 0;
+  const u16 anim = Anim(actor);
+  if ((word == s_last && anim == s_anim) || s_lines >= 900)
+    return;
+  s_last = word, s_anim = anim;
+  ++s_lines;
+  float x = 0, z = 0;
+  Spot(actor, x, z);
+  BD_INFO("[sref] etude manette ordi : mot {:08X} motion {} a {:.0f} {:.0f} {:.0f} zone {}", word, anim, x,
+          LoadF(bd::mem::try_load<u32>(actor + 768) + 4), z, bd::mem::try_load<u8>(actor + 996));
+}
+
 // The stick of the walking referee's pad word (see g_walk); false: the word is left as it is.
 bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
   if (!g_walk.load() || !actor || actor != Actor(6) || !On() || !Match())
@@ -2272,10 +2290,22 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       Free(ctx, base, n);
       BD_INFO("[sref] l'arbitre du jeu est entre dans le ring : l'arbitre a nouveau (role 1)");
     }
-    if (!in_ring && g_walk.load() && g_walk_phase.load() == 1 && !climbing && std::fabs(nx) < 450.f && std::fabs(nz) < 450.f) {
-      SetRole(ctx, base, 6, 40, 0);
-      bd::mem::store<u8>(n + 998, 0);
-      BD_INFO("[sref] l'arbitre du jeu est au bord du ring (a {:.0f} {:.0f}) : il y monte comme un catcheur (role 0)", nx, nz);
+    {
+      static int64_t s_apron_ms = 0;
+      if (!in_ring && g_walk.load() && g_walk_phase.load() == 1 && std::fabs(nx) < 420.f && std::fabs(nz) < 420.f) {
+        if (!s_apron_ms)
+          s_apron_ms = NowMs();
+        if (NowMs() - s_apron_ms > 1500) {
+          s_apron_ms = 0;
+          const float k = 270.f / std::max(std::fabs(nx), std::fabs(nz));
+          Place(n, nx * k, -203.f, nz * k);
+          bd::mem::store<u8>(n + 996, 0);
+          Free(ctx, base, n);
+          BD_INFO("[sref] l'arbitre du jeu au bord du ring (a {:.0f} {:.0f}) : passe derriere les cordes", nx, nz);
+        }
+      } else {
+        s_apron_ms = 0;
+      }
     }
     if (in_ring && s_help < 3) {
       s_help = 3;
