@@ -5,6 +5,12 @@ A native Windows port of **WWE '12** (Yuke's/THQ, 2011) from its **Xbox 360** ve
 **native Vulkan renderer** adapted from [nefariousjosiah](https://github.com/nefariousjosiah)'s
 SmackDown vs. Raw ports (itself built on [re:Blue](https://github.com/zolaware/reblue)).
 
+> **What "native" means here.** The game's code is statically recompiled to run natively on the CPU, and the
+> picture is drawn by a native Vulkan / DirectX 12 / DirectX 11 renderer. The rendering backend, however, still
+> follows the Xbox 360 GPU (Xenos) model: the game's own graphics layer still writes Xbox 360 command packets
+> (PM4), which the renderer reads and translates. It is not a rewrite of the game's graphics layer. (Thanks to
+> JunPorts for pointing out that the wording needed to say so.)
+
 > This repository contains **no game data**. You need your own copy of the Xbox 360 game.
 
 *Français : portage PC natif de WWE '12 (version Xbox 360). Aucune donnée du jeu n'est fournie :

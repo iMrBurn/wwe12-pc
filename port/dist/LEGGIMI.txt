@@ -4,6 +4,10 @@ WWE '12 PC - port nativo non ufficiale
 Questo port fa girare WWE '12 (Xbox 360) in modo nativo su PC. NON contiene alcun dato del gioco:
 serve la tua copia del gioco per Xbox 360.
 
+«Nativo» qui: il codice del gioco è ricompilato staticamente e l'immagine è disegnata da un renderer nativo
+Vulkan / DirectX 12 / DirectX 11, ma il rendering segue ancora il modello del chip grafico della Xbox 360
+(Xenos): il livello grafico del gioco scrive ancora comandi Xbox 360 che il renderer traduce.
+
 
 Installazione
 -------------
