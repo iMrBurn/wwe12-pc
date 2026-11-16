@@ -1395,7 +1395,7 @@ void HandOver(const PPCContext &ctx, u8 *base) {
     return;
   g_tick_ms = now;
   const u32 s3 = g_ex ? g_ex : Referee();
-  const int sn = Step(ctx, base, g_nm, dt);
+  Step(ctx, base, g_nm, dt);
   if (s3)
     Step(ctx, base, g_rm, dt);
   g_out_t += dt;
@@ -1411,36 +1411,39 @@ void HandOver(const PPCContext &ctx, u8 *base) {
     } else if (g_out_t > 20.0) {
       g_out_t = 0;  // (still busy: tried again)
     }
-  } else if (g_out == kOut2050 && g_out_t >= 3.0) {  // (180 frames: the game's referee comes)
-    SetRole(ctx, base, 6, 40, 6);
-    Shown(ctx, base, n, true);
-    for (u32 o : {8u, 88u, 144u})
-      bd::mem::store<u32>(n + 1360 + o, 0);
-    bd::mem::store<u32>(n + 1360 + 16, 1);
-    std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
-    bd::mem::store<u8>(n + 998, 1);
-    {  // (at the special referee's own height: standing on the mat. At -120 he was sunk in it, user's test.)
-      // (a man standing on the mat: the root at -203, measured in the I Quit's study. The special referee's own
-      // height was taken first - he kneels in 2050: the game's referee was put under the mat, unseen, user's video
-      // of 2026-11-16; at -120, the first try, he was sunk in it)
-      const float y = -203.f;
-      float sx0 = 0.f, sz0 = 0.f;
-      Spot(s3, sx0, sz0);
-      // (a step from him, toward the ring's middle)
-      const float d = std::sqrt(sx0 * sx0 + sz0 * sz0);
-      const float k = d > 90.f ? (d - 90.f) / d : 0.f;
-      Place(n, sx0 * k, y, sz0 * k);
-    }
-    bd::mem::store<u32>(n + 740, 0);
-    Face(n, s3);
-    Start(g_nm, n, 210, 0, 60, 0);
+  } else if (g_out == kOut2050 && g_out_t >= 3.0) {  // (180 frames: WWE '13's scene, then his 2051)
+    // (WWE '13, filmed by the user on 2026-11-16: after 2050 a scene on the entrance stage - its General Manager at
+    // the microphone, a referee beside him - then back in the ring the man who was the referee plays 2051 and leaves
+    // the ring by himself, and the referee comes from the stage to the ring. The scene: to be done.)
     if (s3)
       Start(g_rm, s3, W(2051), 0, 331, 0);
     g_out = kOutArrive;
     g_out_t = 0;
-    BD_INFO("[sref] remplacement : l'arbitre du jeu arrive a cote de lui (210), l'arbitre special joue 2051");
-  } else if (g_out == kOutArrive && g_out_t > 5.5 && !g_nm.waiting) {  // (2051 is 331 frames)
-    // the hand-over
+    BD_INFO("[sref] remplacement : l'arbitre special joue 2051");
+  } else if (g_out == kOutArrive && g_out_t > 5.5) {  // (2051 is 331 frames)
+    // the hand-over. The game's referee: at the ramp's foot, outside the ring (ring's edge 313; the ramp is on the
+    // + z side), at the height of the people who stand at ringside (actors 7, 8), facing the ring - his brain then
+    // takes him into the ring, as the referee comes from the stage in WWE '13.
+    {
+      float y = -60.f, ax, az;
+      for (u32 k : {7u, 8u})
+        if (const u32 a = Actor(k); a && Spot(a, ax, az))
+          if (const u32 q = bd::mem::try_load<u32>(a + 768); q && std::isfinite(LoadF(q + 4))) {
+            y = LoadF(q + 4);
+            break;
+          }
+      for (u32 o : {8u, 88u, 144u})
+        bd::mem::store<u32>(n + 1360 + o, 0);
+      bd::mem::store<u32>(n + 1360 + 16, 1);
+      std::memcpy(bd::mem::at<u8>(n + 1028), bd::mem::at<u8>(n + 1360), 332);
+      Place(n, 0.f, y, 560.f);
+      const float h = 0.f;  // (facing - z: the ring. An actor faces (-sin h, -cos h).)
+      u32 bits;
+      std::memcpy(&bits, &h, 4);
+      bd::mem::store<u32>(n + 740, bits);
+      bd::mem::store<u8>(n + 996, 1);  // (outside the ring)
+      BD_INFO("[sref] remplacement : l'arbitre du jeu arrive par la rampe (hauteur {:.0f})", y);
+    }
     SetRole(ctx, base, 6, 40, 1);
     {
       PPCContext c = ctx;
@@ -1669,7 +1672,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   // of the match - sub_82371C78, as its free state does for + 998 = 4 and the area byte + 996 = 1 or 16)
   if (g_ex)
     g_tick_ms = NowMs();
-  if (g_ex && g_out == kOutDone && !g_left && NowMs() - g_ex_ms > 3000 && !g_gone) {
+  if (g_ex && g_out == kOutDone && !g_left && NowMs() - g_ex_ms > 12000 && !g_gone) {
     // (three seconds after the hand-over and still in the ring: put outside it, on the ramp's side, at the height of
     // the people who stand at ringside - the game's own leaving walk then takes him up the ramp, and the game hides
     // him at its end. Taken far away at once, the camera, which follows the player's man, showed the stands' dark.)
