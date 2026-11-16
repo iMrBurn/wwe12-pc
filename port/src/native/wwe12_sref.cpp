@@ -2094,7 +2094,25 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   const bool main_thread = OnMainThread();
   if (main_thread)
     HandOver(ctx, base);
-  if (g_out == kOutDone && g_watch_ms && NowMs() - g_watch_ms < 30000) {
+  if (g_out == kOutDone && g_watch_ms && NowMs() - g_watch_ms < 60000) {
+    // (study, for the walk down the ramp as in WWE '13: the motions - and their blocks - the game's referee plays on his
+    // way into the ring, and the old one on his way out)
+    static u32 s_key[2] = {};
+    int k = 0;
+    for (u32 a : {Actor(6), g_ex}) {
+      const u32 st = a ? bd::mem::try_load<u32>(a + 680) : 0, blk = a ? bd::mem::try_load<u32>(a + 684) : 0;
+      const u32 key = (u32(Anim(a)) << 16) ^ (blk ? bd::mem::try_load<u32>(blk) : 0) ^ (st ? 1u : 0u);
+      if (a && key != s_key[k]) {
+        s_key[k] = key;
+        float ax = 0, az = 0;
+        Spot(a, ax, az);
+        const u32 q = bd::mem::try_load<u32>(a + 768);
+        BD_INFO("[sref] {} : motion {} bloc {:08X} a {:.0f} {:.0f} {:.0f} cap {:.2f} zone {}", k ? "l'ancien arbitre" : "l'arbitre du jeu",
+                Anim(a), blk ? bd::mem::try_load<u32>(blk) : 0, ax, q ? LoadF(q + 4) : 0.f, az, LoadF(a + 740),
+                bd::mem::try_load<u8>(a + 996));
+      }
+      ++k;
+    }
     static int64_t s_last = 0;
     if (NowMs() - s_last >= 1000) {
       s_last = NowMs();

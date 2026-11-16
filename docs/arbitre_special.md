@@ -191,3 +191,8 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   principal (`OnMainThread()`). **À vérifier aussi pour le micro du I Quit** (`RefPlay`, même appel).
 - Vérifié au test de 18:03 : l'arbitre garé garde son cerveau après la mise en place de la cloche (rôle 1 dans les
   trois fiches).
+- Descente de la rampe comme WWE '13 (à faire) : depuis la scène, le cerveau du vrai arbitre ne le fait pas marcher
+  (test 18:08, 30 s immobile à z 2477). Le jeu a une entrée « Royal Rumble » (`'RREn'`, créée par `sub_823317D8(acteur)`
+  depuis `sub_82386168`), mais elle joue des motions de catcheur 8000-8015 et lit la manette : pas pour un arbitre.
+  Piste retenue : une marche scriptée (position et cap à chaque image, motion de marche de l'arbitre) ; le journal
+  « l'arbitre du jeu : motion … bloc … » relève les motions qu'il joue en montant dans le ring.
