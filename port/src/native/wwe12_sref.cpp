@@ -55,6 +55,7 @@ REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, true, "WWE12",
 #include <rex/runtime.h>
 #include <rex/ppc/func.h>
 #include <rex/filesystem.h>
+#include <thread>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -222,6 +223,12 @@ enum { kOutNone, kOutWait, kOut2050, kOutScene, kOutArrive, kOutDone };
 int g_out = kOutNone;
 int64_t g_ex_ms = 0, g_watch_ms = 0;
 bool g_scene_ran = false;
+// The game's main thread (the one that reads each actor's pad word and updates every actor's components). The tick also
+// runs on a worker thread, inside a brain's update: an object taken out of its park there (the scene's microphone,
+// sub_82254518) waited for the main thread, which waited for it - the game froze (user's test of 2026-11-16, 18:03).
+// The replacement - its scene, its objects, its motions - is done on the main thread only.
+std::atomic<std::thread::id> g_main_tid{};
+bool OnMainThread() { return g_main_tid.load() == std::this_thread::get_id(); }
 int g_gm_place = -1;  // the General Manager's place (and actor number), -1: none
 bool g_gone = false;
 double g_out_t = 0;
@@ -1883,6 +1890,7 @@ extern "C" REX_FUNC(sub_823B7DB8) {
 // kept out of sight from the first frame on - the tick only runs once the match's HUD is drawn (user's test of
 // 2026-11-16: before the bell he was seen half in the ring's middle).
 void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
+  g_main_tid = std::this_thread::get_id();
   if (!actor || !On() || !Match() || !REXCVAR_GET(wwe12_sref_replacement) || g_out >= kOutScene)
     return;
   {
@@ -2083,7 +2091,9 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
               Brain(n));
     }
   }
-  HandOver(ctx, base);
+  const bool main_thread = OnMainThread();
+  if (main_thread)
+    HandOver(ctx, base);
   if (g_out == kOutDone && g_watch_ms && NowMs() - g_watch_ms < 30000) {
     static int64_t s_last = 0;
     if (NowMs() - s_last >= 1000) {
@@ -2100,7 +2110,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
               j ? bd::mem::try_load<u32>(j + 112) : 99, g_ex ? Anim(g_ex) : 0, g_ex ? bd::mem::try_load<u8>(g_ex + 996) : 0);
     }
   }
-  if (g_out == kOutDone && g_watch_ms && Actor(6) && Referee() == Actor(6)) {
+  if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && Referee() == Actor(6)) {
     static int s_help = 0;
     static int64_t s_for = 0;
     if (s_for != g_watch_ms)
@@ -2138,7 +2148,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   // of the match - sub_82371C78, as its free state does for + 998 = 4 and the area byte + 996 = 1 or 16)
   if (g_ex)
     g_tick_ms = NowMs();
-  if (g_ex && g_out == kOutDone && !g_left && NowMs() - g_ex_ms > 12000 && !g_gone) {
+  if (main_thread && g_ex && g_out == kOutDone && !g_left && NowMs() - g_ex_ms > 12000 && !g_gone) {
     // (three seconds after the hand-over and still in the ring: put outside it, on the ramp's side, at the height of
     // the people who stand at ringside - the game's own leaving walk then takes him up the ramp, and the game hides
     // him at its end. Taken far away at once, the camera, which follows the player's man, showed the stands' dark.)
@@ -2157,7 +2167,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     BD_INFO("[sref] l'ancien arbitre est mis hors du ring cote rampe (hauteur {:.0f}{})", have ? y : -60.f,
             have ? "" : ", estimee");
   }
-  if (g_ex && !g_left) {
+  if (main_thread && g_ex && !g_left) {
     const u32 area = bd::mem::try_load<u8>(g_ex + 996);
     bool here = false;
     for (u32 k = 0; k < 6; ++k)

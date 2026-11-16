@@ -184,3 +184,10 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   pour que l'arbitre garé (rôle 6) garde son cerveau à la dernière mise en place de la cloche, il faut le rôle 1 dans
   les **trois** fiches (`SetRole`) le temps de l'appel. **Ne jamais rappeler `sub_822143D0` en plein match** : le
   test de 17:58 a planté juste après (appel virtuel pur dans la mise à jour des composants, `sub_827D5380`).
+- Le tick (`Wwe12SrefTick`, depuis `sub_82246DE0`) tourne sur **deux fils** : le fil principal (celui de la lecture
+  des manettes `sub_8225C4D8` et de la mise à jour des composants `sub_827D5380`) et un fil de travail, au milieu de
+  la mise à jour d'un cerveau. Sortir un objet de sa réserve (`sub_82254518`, le micro) depuis le fil de travail a
+  bloqué le jeu (18:03 : les deux fils s'attendaient). Le relais (scène, objets, motions) ne se fait que sur le fil
+  principal (`OnMainThread()`). **À vérifier aussi pour le micro du I Quit** (`RefPlay`, même appel).
+- Vérifié au test de 18:03 : l'arbitre garé garde son cerveau après la mise en place de la cloche (rôle 1 dans les
+  trois fiches).
