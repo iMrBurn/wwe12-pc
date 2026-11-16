@@ -96,3 +96,57 @@ défaut** tant que tout n'est pas vu en jeu). Lanceur de test : `tools/dev/lance
   toujours prouver le chemin d'appel réel (journal des appelants) avant de demander un essai.
 - `wwe12_kind_probe.cpp` n'est compilé qu'avec `WWE12_DEV_PROBES` : ne rien y mettre d'utile aux joueurs.
 - Le tick tourne plusieurs fois par image du jeu : les délais du compte sont en ticks, pas en images.
+
+## Cahier des charges de WWE '13 (lu dans son code et son script le 2026-11-16)
+
+Animations de WWE '13 embarquées (`port/res/iquit13.bin`, accord de l'utilisateur du 2026-11-16) : 20NN de
+WWE '13 = 13115 + (NN - 20) dans WWE '12 (2020 → 13115 … 2051 → 13146). Extraction : outil `m13` (scratchpad
+`sref13motions`, sources WWE '13 `pac\mot00.pac` / `mot01.pac`, ZMOT/CA06 groupe 109 ; `.high` = le plus grand des
+deux enregistrements passé par `yanm::ik::BakeLegIk`, `.m3` = `m3_params::FromOther` + `Write` sans retirer les
+événements inconnus, comme les fichiers du I Quit qu'il refabrique à l'identique).
+Durées (images à 60 Hz) : 2020 = 183 ; 2021 = 191 ; 2022 = 261 ; 2023 = 241 ; 2024 = 287 ; 2025 = 391 ; 2026 = 152 ;
+2027 = 201 (2 corps) ; 2028 = 138 (2 corps) ; 2029 = 306 ; 2037 blocs 0 / 1 / 2 / 10 = 36 / 461 / 36 / 261 ;
+2038 = 113 / 318 / 141 / 246 ; 2040 = 231 ; 2041 = 621 ; 2042 = 536 ; 2043 = 621 (2 corps + objets) ; 2049 = 151 ;
+2050 = 251 ; 2051 = 331. Pas encore importées : 2045-2048 (ses provocations, qui remontent la jauge), 2030-2035.
+
+- **Bouton de prise** (toujours une action d'arbitre, jamais une prise libre). Juge au repos : avertissement si
+  jauge ≥ 0,1 et un catcheur à portée, sinon « rien à faire » (2049). Avertissement : l'arbitre joue 2020 ; à
+  l'image 60, si le catcheur est libre : il lâche son arme, reçoit un « avertissement » (3 par catcheur, 60 s
+  chacun) ; au 3e il conteste (2024 / 2025, puis l'arbitre répond 2026 à l'image 60 : -0,5, compteurs remis à
+  zéro) ; sinon il obéit (2021 arbitre derrière lui, sinon 2022 / 2023) et ses adversaires au sol se relèvent ;
+  -0,1 si le catcheur était dans son droit. De près (≤ 200 cm) : d'abord une bousculade à deux (2027 de face,
+  2028 de dos), puis 2020.
+- **Vérification de soumission** (pendant une prise) : bouton de prise → 2037 (prise debout) ou 2038 (au sol),
+  bloc 0 puis 1 en boucle ; l'abandon ne compte QUE s'il vérifie (bloc 10 + fin du match) ; rupture de corde
+  seulement s'il appuie ; sans vérification après 3 s la jauge baisse. Fin de la prise : bloc 2.
+- **Screw job** : pendant une prise, jauge pleine, bouton de finisher → 2029 ; à l'image 100 celui qui porte la
+  prise gagne par soumission.
+- **Prononcer la DQ** : une faute (un catcheur frappe l'arbitre ; un homme frappe une femme ; un non-légal attaque)
+  reste « en attente » 120 images puis ouvre 180 images pendant lesquelles le bouton de finisher la prononce
+  (2040 debout, 2041 sur le dos, 2042 sur le ventre) : fin du match par DQ. Sinon elle est oubliée, sans coût.
+- **Jauge** : dessin sous les pieds (le y du monde pointe vers le bas : « le plus haut y » = les pieds) ; à 720p :
+  fond texture 48 (68 × 6), cadre 47 (88 × 16), remplissage 125 teinté (10, 80, 190) ancré à gauche (-34, -3),
+  barre de perte rouge (234, 10, 6), maillot 122 (20 × 20) à +46 ; pleine : clignote bleu / blanc ; ≤ 0,25 : rouge /
+  blanc. Textures : `game2dHD.pac` G?2D/BASE enfant 0, sous-dossier 90. Invites (images, enfant 38 : vérifier la
+  soumission, compter, décision en attente, prononcer la DQ, screw job) : pas encore extraites.
+- **Expulsion** (jauge vide ou 30 fautes) : l'arbitre spécial joue 2050 ; 180 images plus tard l'arbitre normal
+  (garé depuis le début au rôle 6) apparaît à (0, -120, 0) et joue 2043 (animation à deux corps avec un second
+  figurant et l'objet 142) pendant que l'arbitre spécial joue 2051 ; à la fin de 2043 : l'arbitre normal prend le
+  rôle 1, l'ancien le rôle 0 avec « doit quitter le ring », puis il remonte la rampe (comportement 'RRTR').
+- **Arbitre à l'ordinateur** : son IA appuie sur les mêmes boutons ; jauge et expulsion pareilles.
+
+## Arbitre normal garé dans WWE '12 (étude du 2026-11-16, pas encore écrit)
+
+1. Création : crochet de `sub_82A37378` : pour l'appel, genre de la place de l'arbitre spécial (M+684+2244×i) = 0
+   et M+45 = 1, puis remis. Le participant 40 est alors créé (rôle 1, ordinateur) : il lui FAUT le rôle 1 à la
+   création, sinon son IA (`CMIF`, acteur +3384) n'est pas construite (`sub_822143D0` : pas pour les rôles 4 / 6).
+2. Le garer avant le premier `sub_823B5D18` (remise en place du match) : acteur[6] +3428 = 6, participant 40 +8 = 6,
+   fiche de création `[0x8322DD44] + 528 + 80 × 6 + 6` = 6 ; chaque tick : `sub_822CF850(mgr, 6, 0)` (dessin),
+   `sub_822CE3F0(mgr, 6, 0, 0)` (mise à jour), mgr = `[0x8317434C]`, drapeau +0 = 0 sur acteur +1360 et +1028,
+   +998 = 1, position (0, y, 3200) (+752 / 756 / 760 et `[acteur+768]`).
+3. Échange : l'arbitre normal : rôle 1 aux trois endroits, `sub_82212140(acteur, 1)`, 'CMIF' +40 = 1, +3140 = 1,
+   +2536 = -1, 'CASH' mot +10 = 1 ; l'ancien : rôle 0 aux trois endroits, +2568 = 1, +3140 = 0, +1780 = 0,0.
+4. Sortie : `sub_82371C78(acteur)` ('RRTR') une fois hors du ring (zone +996 = 1 ou 16) ; il ne franchit pas les
+   cordes tout seul. Bord du ring ±313, tapis y = -120, rampe vers +z.
+Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +160 → +996 (zone), +1172 → +1780,
++1268 → +2536 (objet tenu), +2564 → +3140, +1408 → +2568, drapeaux +808 / +532 → +1360 / +1028.
