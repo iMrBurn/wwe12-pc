@@ -208,3 +208,8 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   y passe à 1 de temps en temps (ce n'est donc pas un blocage). L'arbitre du jeu descend maintenant de la scène par
   cette manette (`Wwe12SrefWalkWord`) : vers le pied de la rampe (0, 430), puis vers le ring (0, 120) ; aides : pas de
   progrès 5 s → pied de la rampe, 30 s → dans le ring.
+- Test du 2026-11-16 20:04 : l'arbitre descend bien la rampe à pied par la manette virtuelle (13 s jusqu'au pied
+  de la rampe), mais un arbitre ne monte pas dans le ring par le stick (arrêté au bord, z 363). Au bord du ring il
+  devient catcheur (rôle 0, +998 = 0) le temps de monter (le jeu choisit la motion, comme la sortie 717 d'Orton), puis
+  arbitre à nouveau. Micro : tenu par le manager général (objet +96 = lui). Jauge cachée pendant la scène.
+  À faire : la course (WWE '13 : l'arbitre court) - le bouton de course de la manette virtuelle n'est pas encore trouvé.

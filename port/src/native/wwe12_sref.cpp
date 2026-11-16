@@ -228,6 +228,7 @@ bool g_scene_ran = false;
 // sub_82254518) waited for the main thread, which waited for it - the game froze (user's test of 2026-11-16, 18:03).
 // The replacement - its scene, its objects, its motions - is done on the main thread only.
 std::atomic<std::thread::id> g_main_tid{};
+std::atomic<bool> g_scene_on{false};  // (the stage scene is played: nothing of ours over it)
 // The game's referee walks from the stage into the ring after the scene, as in WWE '13. WWE '12's referee never leaves the
 // ring in a match, his brain does not walk him outside it (user's tests of 2026-11-16: still on the stage, at the ramp's
 // foot); the game itself walks men through a virtual pad - the leaving walk 'RRTR' (sub_82371D10 -> sub_8225C4D8) took
@@ -918,7 +919,7 @@ class SrefOverlay final : public rex::ui::ImGuiDialog {
       Close();  // (no match of ours: the drawer stops drawing ImGui every frame)
       return;
     }
-    if (idle > 250)
+    if (idle > 250 || g_scene_on.load())
       return;  // (the pause menu, a replay: nothing of ours over them)
     const float k = std::max(0.6f, io.DisplaySize.y / 1080.0f);
     ImDrawList *dl = ImGui::GetForegroundDrawList();
@@ -1631,7 +1632,7 @@ bool SceneStart(const PPCContext &ctx, u8 *base, u32 n) {
   if (g_mic) {
     Place(g_mic, 0.f, -120.f, 0.f);
     bd::mem::store<u32>(g_mic + 740, zb);
-    bd::mem::store<u32>(g_mic + 96, n);
+    bd::mem::store<u32>(g_mic + 96, g_gm);  // (in the General Manager's hand, as in WWE '13)
     PlayBlock(ctx, base, g_mic, m, 0, 2);
   }
   // its camera
@@ -1664,6 +1665,7 @@ bool SceneStart(const PPCContext &ctx, u8 *base, u32 n) {
     g_scene_cam = true;
   }
   g_scene = true;
+  g_scene_on = true;
   g_scene_t = 0;
   BD_INFO("[sref] scene : commence (arbitre {:08X}, manager {:08X} motion {}, micro {:08X}, camera {})", n, g_gm, Anim(g_gm),
           g_mic, g_scene_cam);
@@ -1704,6 +1706,7 @@ bool SceneTick(const PPCContext &ctx, u8 *base, u32 n, u32 s3, double dt) {
     __imp__sub_82250258(c, base);
   }
   g_scene = false;
+  g_scene_on = false;
   BD_INFO("[sref] scene : finie (l'arbitre est sur la scene, z {:.0f})", [&] {
     float x, z;
     return Spot(n, x, z) ? z : 0.f;
@@ -2251,7 +2254,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
               j ? bd::mem::try_load<u32>(j + 112) : 99, g_ex ? Anim(g_ex) : 0, g_ex ? bd::mem::try_load<u8>(g_ex + 996) : 0);
     }
   }
-  if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) && bd::mem::try_load<u32>(Actor(6) + 3428) == 1) {
+  if (main_thread && g_out == kOutDone && g_watch_ms && Actor(6) &&
+      (bd::mem::try_load<u32>(Actor(6) + 3428) == 1 || g_walk.load())) {
     static int s_help = 0;
     static int64_t s_for = 0;
     if (s_for != g_watch_ms)
@@ -2261,6 +2265,18 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     Spot(n, nx, nz);
     const bool in_ring = q && std::fabs(nx) < 300.f && std::fabs(nz) < 300.f && LoadF(q + 4) < -150.f;
     const int64_t since = NowMs() - g_watch_ms;
+    const bool climbing = bd::mem::try_load<u32>(n + 3428) == 0;
+    if (in_ring && climbing) {
+      SetRole(ctx, base, 6, 40, 1);
+      bd::mem::store<u8>(n + 998, 1);
+      Free(ctx, base, n);
+      BD_INFO("[sref] l'arbitre du jeu est entre dans le ring : l'arbitre a nouveau (role 1)");
+    }
+    if (!in_ring && g_walk.load() && g_walk_phase.load() == 1 && !climbing && std::fabs(nx) < 450.f && std::fabs(nz) < 450.f) {
+      SetRole(ctx, base, 6, 40, 0);
+      bd::mem::store<u8>(n + 998, 0);
+      BD_INFO("[sref] l'arbitre du jeu est au bord du ring (a {:.0f} {:.0f}) : il y monte comme un catcheur (role 0)", nx, nz);
+    }
     if (in_ring && s_help < 3) {
       s_help = 3;
       g_walk = false;
@@ -2297,6 +2313,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
         } else {
           s_help = 2;
           g_walk = false;
+          SetRole(ctx, base, 6, 40, 1);
+          bd::mem::store<u8>(n + 998, 1);
           Place(n, 0.f, -203.f, 200.f);
           bd::mem::store<u8>(n + 996, 0);
           Free(ctx, base, n);
