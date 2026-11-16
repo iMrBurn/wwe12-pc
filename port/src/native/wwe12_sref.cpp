@@ -29,8 +29,13 @@ REXCVAR_DEFINE_BOOL(wwe12_sref, false, "WWE12",
 // "action 2" button goes to sub_823C97B0 (from his free state, sub_8234FD30), which starts the count's motion for
 // the judge's state (sub_823C9458: 190 / 200 / 191 / 202); the next counts come from motion 190's own handler
 // (sub_8233F660: the button again, block 1, then block 3 for the last). So by default nothing is played from here.
-REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, false, "WWE12",
-                    "Dev: the referee's count played by our code on A (false: the game's own, kept from the older games).");
+// Which button "action 2" is comes from the controls' table, filled when the game runs: not readable in the code.
+// So A does it here, through the game's own functions: the start by sub_823C9458 itself (it picks the motion and
+// sets the actor's "counting" flag + 2560), the next counts by the block the game's handler would replay (block 1,
+// or block 3 once the judge's count is the needed one less one - sub_822605A0: 3, or 2). The game's own button
+// still works beside it (calls of sub_823C97B0 are logged, to learn which one it is).
+REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, true, "WWE12",
+                    "Special Guest Referee: A counts (the game's own count functions, called for the A button).");
 
 #include <atomic>
 #include <cstring>
@@ -47,6 +52,9 @@ REX_EXTERN(__imp__sub_827A1BF0);  // the character select's layout of a rule
 REX_EXTERN(__imp__sub_82A39AC0);  // a match set up from a rule (setup manager, rule, its options or 0)
 REX_EXTERN(__imp__sub_828AE798);  // the character select set up for a rule (select, rule, options or 0, r6, r7)
 REX_EXTERN(__imp__sub_82A36150);  // a place's kind set in the match's setup (setup manager, place, kind)
+REX_EXTERN(__imp__sub_823C9458);  // the played referee starts his count for the judge's state (actor): 1 if started
+REX_EXTERN(__imp__sub_823C97B0);  // an actor's "action 2" button (the referee: sub_823C9458 first)
+REX_EXTERN(__imp__sub_822605A0);  // the counts a pin needs (judge): 3, or 2
 
 REXCVAR_DEFINE_INT32(wwe12_sref_from, 13, "WWE12",
                      "Dev: with wwe12_sref, a match set up with this rule (13 = TRIPLE THREAT) is a Special Guest Referee one.");
@@ -176,7 +184,7 @@ u16 Wwe12SrefPad(u32 user, u16 buttons) {
   if (!On() || !REXCVAR_GET(wwe12_sref_own_count) || !Match() || g_pad.load() != int(user))
     return 0;
   const u32 st = g_state.load();
-  if (st != 1 && st != 3 && st != 4)
+  if (st != 1 && st != 3 && st != 4 && st != 5)
     return 0;
   if (buttons & ~before & kPadA)
     g_press = true;
@@ -228,21 +236,44 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
   g_pad = pad < 4 ? int(pad) : 0;  // (not a pad's number: the first pad, until the log says what it holds)
   if (g_t < 100000)
     ++g_t;
-  if (state != 1)
-    g_step = 0;
   if (!g_press.exchange(false) || !REXCVAR_GET(wwe12_sref_own_count))
     return;
-  if (state == 1) {  // a pin: down, then a press a count
-    if (g_step == 0) {
-      Play(ctx, base, ref, 190, 0);
-      g_step = 1;
-    } else if (g_step < 4 && g_t > (g_step == 1 ? 40 : 18)) {
-      Play(ctx, base, ref, 190, g_step == 3 ? 3 : 1);
-      ++g_step;
+  if (state != 1 && state != 3 && state != 4 && state != 5)
+    return;
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  const u32 sub = bd::mem::try_load<u32>(ref + 684);
+  const u32 block = sub ? bd::mem::try_load<u8>(sub) : 255;
+  if (state == 1 && Anim(ref) == 190) {  // he is counting a pin: the next count
+    c.r3.u64 = judge;
+    __imp__sub_822605A0(c, base);
+    const u32 need = c.r3.u32;
+    if ((block == 0 && g_t > 40) || (block == 1 && g_t > 18)) {
+      BD_INFO("[sref] A : compte suivant (bloc {} depuis {} images, compte {} sur {})", block, g_t, count, need);
+      Play(ctx, base, ref, 190, count + 1 >= need ? 3 : 1);
+    } else {
+      BD_INFO("[sref] A : trop tot ou bloc {} (depuis {} images, compte {} sur {})", block, g_t, count, need);
     }
-  } else if (state == 4 && g_t > 50) {  // the ring-out count
-    Play(ctx, base, ref, 191, 0);
-  } else if (state == 3 && g_t > 50) {  // the 5 count
-    Play(ctx, base, ref, 200, 0);
+    return;
   }
+  if (g_t <= 50 && state != 1)
+    return;
+  c.r3.u64 = ref;
+  __imp__sub_823C9458(c, base);
+  BD_INFO("[sref] A : debut du compte par le jeu (etat {}) -> {} ; l'arbitre joue la motion {} bloc {}, +2560 = {}", state,
+          c.r3.u32, Anim(ref), block, bd::mem::try_load<u32>(ref + 2560));
+  g_t = 0;
 }
+
+// (study: the game's own "action 2" of the referee, to learn which button it is on)
+extern "C" REX_FUNC(sub_823C97B0) {
+  if (On() && Match() && ctx.r3.u32 && bd::mem::try_load<u32>(ctx.r3.u32 + 3428) == 1) {
+    static std::atomic<int> s_lines{0};
+    const u32 pad = bd::mem::try_load<u32>(ctx.r3.u32 + 3376);
+    if (s_lines.fetch_add(1) < 200)
+      BD_INFO("[sref] le jeu : bouton d'action de l'arbitre (mot de la manette {:08X}, etat du juge {})",
+              pad ? bd::mem::try_load<u32>(pad + 52) : 0, g_state.load());
+  }
+  __imp__sub_823C97B0(ctx, base);
+}
+
