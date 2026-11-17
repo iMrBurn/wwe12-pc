@@ -1937,7 +1937,6 @@ inline bool IsType(const EvpObj &o, uint32_t t0, uint32_t t1) { return o.t0 == t
 struct PropNode {
   std::string name;  // "bone01"...
   V3 t{};            // its place in its parent, cm
-  bool mirror = false;  // a right-hand piece (its branch starts at x > 0): its 0x7b rotations mirrored, see PropBlock
 };
 using PropNodes = std::map<uint32_t, std::vector<PropNode>>;  // by model
 inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNode> &nodes, Raw &out,
@@ -2027,12 +2026,7 @@ inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNo
   auto rot = [&](int c) {
     const int b = c - 100;
     const bool ref = b >= 1 && ch.count(200 + b);
-    bool mirror = false;  // (a right-hand piece: SvR gives it the left one's numbers mirrored - x the other way, y and z the
-    // same: MVP's flaps 83 / -87 at rest -; WWE '12's nodes aren't mirrored: all three the other way)
-    for (const auto &n : nodes)
-      if (n.mirror && n.name.size() == 6 && atoi(n.name.c_str() + 4) == b)
-        mirror = true;
-    const double mul = ref ? (mirror ? -16.0 : 16.0) : 1.0;
+    const double mul = ref ? 16.0 : 1.0;
     std::vector<RotKey> rk;
     for (auto &k : ends(ref ? ch[200 + b] : ch.count(c) ? ch[c] : std::vector<PosKey>()))
       rk.push_back({k.t, {Wrap16(k.v[0] * mul), Wrap16((ref ? -1 : 1) * k.v[1] * mul), Wrap16((ref ? -1 : 1) * k.v[2] * mul)}});  // (0x7b: y and z the other way, the model counting its height downwards - a flap of MVP's curtain stood up out of the arch as read, 2026-11-17)
