@@ -141,6 +141,7 @@ std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint
 // (wwe12_superstar_mods.cpp: CREATE AN ENTRANCE's MOVIE list additions, (video number, name): the VIDEOS mods' added
 // videos and the added superstars' own videos)
 const std::vector<std::pair<int, std::string>> &Wwe12AddedVideos();
+int Wwe12AddedVideoNumber(const std::string &mod);  // (wwe12_superstar_mods.cpp: a new video's number, 0 if none)
 const std::vector<std::pair<int, std::string>> &Wwe12StarVideos();
 // (wwe12_superstar_mods.cpp) a menu pictures mod's layout of MnLayHD.pac / MnLaySD.pac: its place in the served copy
 bool Wwe12MenuPictureEntry(const std::string &name, bool sd, uint32_t &sector, uint32_t &units);
@@ -610,7 +611,7 @@ std::string EntrancesKey(const fs::path &user_root, const fs::path &mods) {
                                     std::to_string(int(REXCVAR_GET(wwe12_belt_fit))) +
                                         std::to_string(int(REXCVAR_GET(wwe12_belt_length))) +
                                         std::to_string(int(REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2))};
-  for (const char *f : {"superstar_slots.txt", "superstar_movies.txt", "belts.txt"}) {
+  for (const char *f : {"superstar_slots.txt", "superstar_movies.txt", "belts.txt", "added_videos.txt"}) {
     std::vector<uint8_t> t;
     extra.push_back(ReadHost(user_root / f, t) ? std::string(t.begin(), t.end()) : std::string("-"));
   }
@@ -1152,7 +1153,10 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       for (fs::directory_iterator it(d / "media" / "screens", ec), end; !ec && it != end; it.increment(ec)) {
         const std::string f = rex::path_to_utf8(it->path().filename());
         const bool ribbon = f.rfind("ribbon_", 0) == 0, wall = f.rfind("wall_", 0) == 0;
-        const int n = atoi(f.c_str() + (ribbon ? 7 : 5));
+        // (a new video's, ribbon_add.bik / wall_add.bik: under the number the game gave it, Max Matus on Discord,
+        // 2026-11-17)
+        const bool added = f == "ribbon_add.bik" || f == "wall_add.bik";
+        const int n = added ? Wwe12AddedVideoNumber(rex::path_to_utf8(d.filename())) : atoi(f.c_str() + (ribbon ? 7 : 5));
         if ((!ribbon && !wall) || n <= 0 || n > 999)
           continue;
         Part part;

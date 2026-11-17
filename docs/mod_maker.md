@@ -109,6 +109,12 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   (`MountAddedVideos`) : numéro libre pris de 899 vers le bas, gardé dans `added_videos.txt`, servi depuis
   `added_videos\movies\titantron\NNN.bik`, ajouté à la liste MOVIE (remplie par `sub_829F9F90`, genre 0). Corrigé : un
   catcheur ajouté y était sous le numéro de son entrée (Jey Uso 498), maintenant sous celui de sa vidéo (104).
+  **Ruban et mur d'une nouvelle vidéo (2026-11-17, suggestion de Max Matus sur Discord, vu hors jeu seulement)** :
+  `media/screens/ribbon_add.bik` / `wall_add.bik` dans le mod ; le jeu les sert sous le numéro donné à la vidéo
+  (`Wwe12AddedVideoNumber`, même boucle que `ribbon_NNN.bik`) ; `added_videos.txt` ajouté à la clé du cache des
+  entrées. Choix « Celui d'un catcheur du jeu » (ruban / mur de `evtmov.pac` MVSB / MVSW, ex. le mur de Natalya)
+  dans les deux modes de la page (`screens_ui::ScreenChoice::SetGameStars`, lus une fois : `LoadGameScreens`).
+  Pas encore vu : qu'une entrée créée avec cette vidéo montre bien son ruban et son mur en match.
 - **Vidéos des autres jeux** : SvR (Bink 1) copiées ; WWE '13 / 2K par notre lecteur Bink 2 (`docs/plan_movesets.md`),
   RAD Video Tools (`radvideo64.exe BinkConv`, bureau Windows caché) ou ffmpeg de Librempeg en secours, jamais la DLL
   d'un jeu. 2K15-2K17 : une image 16:9 écrasée dans 320 × 320 → convertie en 512 × 288 ; 2K17 minitron `pac\mov\ss_mini`.

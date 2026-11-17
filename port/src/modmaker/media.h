@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <string>
 #include <thread>
 #include <vector>
@@ -545,6 +546,8 @@ class EntranceVideos {
     // A game superstar's video changed, or a new video added to CREATE AN ENTRANCE's MOVIE list (2026-11-11, the
     // user: "add titantrons, not only replace them"; the game gives it a free video number, wwe12_superstar_mods.cpp)
     if (ImGui::RadioButton(fr ? "Changer la vidéo d'un catcheur du jeu" : "Change a game superstar's video", !add_new_)) {
+      if (add_new_ && star_ >= 0)
+        ResetScreens();
       add_new_ = false;
       if (star_ >= 0)
         editor_.SetGame(device_, CopyGameMovie(disc_, stars_[star_].file));
@@ -555,6 +558,9 @@ class EntranceVideos {
         !add_new_) {
       add_new_ = true;
       editor_.SetGame(device_, {});
+      LoadGameScreens();
+      ribbon_.Reset();  // (a new video: none of its own, the arena's, unless one is chosen)
+      wall_.Reset();
     }
     if (add_new_) {
       ImGui::TextDisabled("%s", fr ? "(elle s'ajoute à la liste MOVIE de Créer une entrée, sous son nom, sans remplacer celles du jeu)"
@@ -564,6 +570,10 @@ class EntranceVideos {
                                new_name_, sizeof(new_name_));
       ImGui::EndDisabled();
       editor_.Draw(fr, "videos_new");
+      // (its ribbon and wall too, Max Matus on Discord, 2026-11-17: served under the number the game gives it,
+      // wwe12_arena_pages.cpp)
+      ribbon_.Draw(fr, device_, fr ? "Celui de l'arène" : "The arena's");
+      wall_.Draw(fr, device_, fr ? "Celui de l'arène" : "The arena's");
       ImGui::Dummy(ImVec2(0, 6));
       ImGui::BeginDisabled(editor_.Busy());
       ImGui::SetNextItemWidth(260);
@@ -794,15 +804,37 @@ class EntranceVideos {
 
   // Its ribbon and wall as the game has them (pac\evt\evtmov.pac MVSB / MVSW M<id>: Bink 1), for the previews.
   void ResetScreens() {
-    std::vector<uint8_t> b, ribbon, wall;
-    char want[8];
-    snprintf(want, sizeof(want), "M%03d", stars_[star_].id % 1000);
+    LoadGameScreens();
+    const int id = stars_[star_].id % 1000;
+    const auto r = game_ribbons_.find(id), w = game_walls_.find(id);
+    ribbon_.Reset(r != game_ribbons_.end() ? r->second : screens_ui::Bytes());
+    wall_.Reset(w != game_walls_.end() ? w->second : screens_ui::Bytes());
+  }
+  // The game's ribbons and walls (pac\evt\evtmov.pac MVSB / MVSW M<id>, Bink 1), read once: the previews, and the
+  // choice "a game superstar's" of both modes (Max Matus on Discord, 2026-11-17).
+  void LoadGameScreens() {
+    if (screens_loaded_)
+      return;
+    screens_loaded_ = true;
+    std::vector<uint8_t> b;
     if (disc_.Read("pac/evt/evtmov.pac", b))
       for (auto &e : entrance_screens::Entries(std::move(b)))
-        if (e.name == want && (e.group == "MVSB" || e.group == "MVSW"))
-          (e.group == "MVSB" ? ribbon : wall) = std::move(e.data);
-    ribbon_.Reset(std::move(ribbon));
-    wall_.Reset(std::move(wall));
+        if ((e.group == "MVSB" || e.group == "MVSW") && e.name.size() == 4 && e.name[0] == 'M' && !e.data.empty())
+          (e.group == "MVSB" ? game_ribbons_ : game_walls_)[atoi(e.name.c_str() + 1)] = std::move(e.data);
+    for (auto *m : {&game_ribbons_, &game_walls_}) {
+      std::vector<std::pair<std::string, const screens_ui::Bytes *>> list;
+      for (const auto &[id, movie] : *m) {
+        std::string name;
+        for (const auto &s : stars_)
+          if (s.id == id && !s.name.empty())
+            name = s.name;
+        char label[96];
+        snprintf(label, sizeof(label), "%s  (%03d)", name.empty() ? "Video" : name.c_str(), id);
+        list.push_back({label, &movie});
+      }
+      std::sort(list.begin(), list.end());
+      (m == &game_ribbons_ ? ribbon_ : wall_).SetGameStars(std::move(list));
+    }
   }
 
   void Start(bool fr, mods::Manager &mods) {
@@ -868,6 +900,11 @@ class EntranceVideos {
       std::vector<std::pair<std::string, std::vector<uint8_t>>> entries = {
           {"manifest.txt", std::vector<uint8_t>(manifest.begin(), manifest.end())},
           {"media/titantron_add.bik", std::move(bik)}};
+      // (its ribbon and wall: media\screens\ribbon_add.bik / wall_add.bik, served under its number)
+      if (std::vector<uint8_t> r = ribbon_.Movie(); !r.empty())
+        entries.push_back({"media/screens/ribbon_add.bik", std::move(r)});
+      if (std::vector<uint8_t> w = wall_.Movie(); !w.empty())
+        entries.push_back({"media/screens/wall_add.bik", std::move(w)});
       if (!mods::Manager::WriteZip(out_, entries)) {
         message_ = (fr ? "Impossible d'écrire " : "Could not write ") + Utf8(out_.wstring());
         return;
@@ -927,6 +964,8 @@ class EntranceVideos {
   char author_[64] = {}, version_[16] = {};
   MovieEditor editor_;
   screens_ui::ScreenChoice ribbon_{true}, wall_{false};  // its ribbon around the arena and stage wall
+  bool screens_loaded_ = false;
+  std::map<int, screens_ui::Bytes> game_ribbons_, game_walls_;  // the game's own (LoadGameScreens), by video number
   std::string message_;
   bool message_ok_ = false;
 };

@@ -729,10 +729,12 @@ std::map<uint32_t, uint32_t> g_attire_text_at;   // number -> its copy in guest 
 std::vector<std::pair<int, std::string>> g_added_videos;  // (number, name)
 std::vector<std::pair<int, std::string>> g_star_videos;   // the added superstars' own videos (number, name)
 std::set<int> g_added_video_numbers;
+std::map<std::string, int> g_added_video_by_mod;  // (mod folder -> its number: its ribbon_add / wall_add, wwe12_arena_pages.cpp)
 
 void MountAddedVideos(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root, const fs::path &mods) {
   g_added_videos.clear();
   g_added_video_numbers.clear();
+  g_added_video_by_mod.clear();
   if (user_root.empty())
     return;
   std::error_code ec;
@@ -804,6 +806,7 @@ void MountAddedVideos(rex::filesystem::VirtualFileSystem *vfs, const fs::path &u
       continue;
     }
     g_added_video_numbers.insert(n);
+    g_added_video_by_mod[v.key] = n;
     g_added_videos.push_back({n, v.name});
     g_mod_minitrons.insert(uint32_t(n));
     text += v.key + "=" + std::to_string(n) + "\n";
@@ -833,6 +836,11 @@ void MountAddedVideos(rex::filesystem::VirtualFileSystem *vfs, const fs::path &u
 
 // (wwe12_arena_pages.cpp: CREATE AN ENTRANCE's MOVIE list gets these)
 const std::vector<std::pair<int, std::string>> &Wwe12AddedVideos() { return g_added_videos; }
+// (a VIDEOS mod's new video: its number, 0 if it has none)
+int Wwe12AddedVideoNumber(const std::string &mod) {
+  const auto it = g_added_video_by_mod.find(mod);
+  return it != g_added_video_by_mod.end() ? it->second : 0;
+}
 const std::vector<std::pair<int, std::string>> &Wwe12StarVideos() { return g_star_videos; }
 
 void Wwe12MountSuperstarMods(rex::filesystem::VirtualFileSystem *vfs, const fs::path &user_root,
