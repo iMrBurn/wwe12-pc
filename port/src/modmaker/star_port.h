@@ -245,6 +245,13 @@ inline void SvrPropsTo12(std::vector<entrance13::Part> &objects) {
           const Bytes model = svrfmt::Unpack(k.data);
           Bytes w12;
           ok = port_svr_arena::detail::SvrToW12(model, w12) && port_svr_arena::detail::Scale(w12, 10.0);
+          // (their shaders WWE '12 draws, as the SvR arenas': yReflect -> yDefault, yBumpMap -> yBG_BumpMap and its
+          // parameters; as they were, MVP's tunnel arch - yReflect - and its two crates - yBumpMap - didn't show, only
+          // the crates' signs - yDefault - in the air, 2026-11-17)
+          if (ok) {
+            port_svr_arena::detail::NoReflect(w12);
+            port_svr_arena::detail::BumpToBg(w12);
+          }
           if (ok)
             k.data = std::move(w12);
         }
