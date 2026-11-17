@@ -250,6 +250,7 @@ std::atomic<int> g_walk_seen{0};   // (his pad words given the stick)
 std::atomic<bool> g_climb{false};
 std::atomic<u32> g_climb_frames{0};
 u32 g_climb_anim = 0;
+std::atomic<int64_t> g_in_ring_ms{0};  // (when he was put in place in the ring after his climb)
 int64_t g_climb_ms = 0;
 float WalkTargetZ(int phase) { return phase == 0 ? 430.f : 120.f; }
 bool OnMainThread() { return g_main_tid.load() == std::this_thread::get_id(); }
@@ -1821,6 +1822,7 @@ void ResetMatchState() {
   g_act = kActNone;
   g_pad = -1;
   g_judge_alone = false;
+  g_in_ring_ms = 0;
 }
 
 void HandOver(const PPCContext &ctx, u8 *base) {
@@ -2127,10 +2129,64 @@ extern "C" REX_FUNC(sub_82207918) {
       g_pr_07918_hit.fetch_add(1);
   }
 }
+// The probe of 2026-11-17 08:12-08:15: ours passes the free state's first gates as the ordinary match's referee does
+// (sub_8229E060 reached each frame), but his pad words stay 0 (the other's: the stick) and the referee's own behaviour
+// sub_823C97B0 (his walk around the fighters, his count: sub_823C9458 plays 190 / 191 when the judge waits) was never
+// called for a role 1 man in any special referee match of the log. Between them the free state leaves on
+// sub_8227C720 (if + 2984), sub_82B00368 (actor, pad) != 0, sub_8222F538 (actor, pad) != 0, or calls it only when his
+// pad's ([+3376]) virtual + 36 says so. Counted here; and, the game not calling it for 6 s once he is in the ring, it
+// is called for him from here (the free state's own place, his brain's thread), each frame the game does not.
+std::atomic<u32> g_pr_ai{0}, g_pr_forced{0}, g_pr_b0368{0}, g_pr_b0368_hit{0}, g_pr_2f538{0}, g_pr_2f538_hit{0};
+std::atomic<u32> g_pr_7c720{0}, g_pr_7c720_hit{0};
+std::atomic<int64_t> g_ai_game_ms{0};
+REX_EXTERN(__imp__sub_823C97B0);
+REX_EXTERN(__imp__sub_82B00368);
+REX_EXTERN(__imp__sub_8222F538);
+REX_EXTERN(__imp__sub_8227C720);
+extern "C" REX_FUNC(sub_82B00368) {
+  const u32 a = ctx.r3.u32;
+  __imp__sub_82B00368(ctx, base);
+  if (a && a == g_pr_actor.load(std::memory_order_relaxed)) {
+    g_pr_b0368.fetch_add(1);
+    if (ctx.r3.u32)
+      g_pr_b0368_hit.fetch_add(1);
+  }
+}
+extern "C" REX_FUNC(sub_8222F538) {
+  const u32 a = ctx.r3.u32;
+  __imp__sub_8222F538(ctx, base);
+  if (a && a == g_pr_actor.load(std::memory_order_relaxed)) {
+    g_pr_2f538.fetch_add(1);
+    if (ctx.r3.u32)
+      g_pr_2f538_hit.fetch_add(1);
+  }
+}
+extern "C" REX_FUNC(sub_8227C720) {
+  const u32 a = ctx.r3.u32;
+  __imp__sub_8227C720(ctx, base);
+  if (a && a == g_pr_actor.load(std::memory_order_relaxed)) {
+    g_pr_7c720.fetch_add(1);
+    if (ctx.r3.u32)
+      g_pr_7c720_hit.fetch_add(1);
+  }
+}
 extern "C" REX_FUNC(sub_8229E060) {
-  if (ctx.r3.u32 && ctx.r3.u32 == g_pr_actor.load(std::memory_order_relaxed))
+  const u32 a = ctx.r3.u32;
+  if (a && a == g_pr_actor.load(std::memory_order_relaxed))
     g_pr_9e060.fetch_add(1);
   __imp__sub_8229E060(ctx, base);
+  // (the referee's behaviour for the game's referee after the hand-over, if the game does not give it him)
+  const int64_t now = NowMs(), in_ring = g_in_ring_ms.load();
+  if (a && a == g_pr_actor.load(std::memory_order_relaxed) && Match() && g_out == kOutDone && a == Actor(6) &&
+      bd::mem::try_load<u32>(a + 3428) == 1 && !g_walk.load() && !g_climb.load() && bd::mem::try_load<u8>(a + 996) == 0 &&
+      in_ring && now - in_ring > 6000 && now - g_ai_game_ms.load() > 2000) {
+    PPCContext c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    c.r3.u64 = a;
+    __imp__sub_823C97B0(c, base);
+    if (g_pr_forced.fetch_add(1) == 0)
+      BD_INFO("[sref] l'arbitre du jeu : le jeu ne lui donne pas son comportement d'arbitre, donne d'ici (sub_823C97B0)");
+  }
 }
 void Wwe12SrefFreeProbe(u32 actor) {  // (from wwe12_dtprobe2.cpp's hook of sub_8234FD30)
   if (actor && actor == g_pr_actor.load(std::memory_order_relaxed))
@@ -2171,6 +2227,16 @@ void ProbeLine(u32 actor) {
   const u32 b = Brain(actor);
   float x = 0, z = 0;
   Spot(actor, x, z);
+  const u32 pad = bd::mem::try_load<u32>(actor + 3376), vt = pad ? bd::mem::try_load<u32>(pad) : 0;
+  BD_INFO("[sref] sonde {} (2) : comportement d'arbitre {} par le jeu, {} d'ici | 8227C720 {}/{} | 82B00368 {}/{} | "
+          "8222F538 {}/{} | manette {:08X} classe {:08X} +36 {:08X} +156 {:08X} +160 {:08X} | +2984 {:08X} +2968 {} +2972 {} "
+          "+993 {} +992 {} +2560 {}",
+          ours ? "notre arbitre" : "arbitre normal", g_pr_ai.exchange(0), g_pr_forced.load(), g_pr_7c720_hit.exchange(0),
+          g_pr_7c720.exchange(0), g_pr_b0368_hit.exchange(0), g_pr_b0368.exchange(0), g_pr_2f538_hit.exchange(0),
+          g_pr_2f538.exchange(0), pad, vt, vt ? bd::mem::try_load<u32>(vt + 36) : 0, vt ? bd::mem::try_load<u32>(vt + 156) : 0,
+          vt ? bd::mem::try_load<u32>(vt + 160) : 0, bd::mem::try_load<u32>(actor + 2984),
+          int32_t(bd::mem::try_load<u32>(actor + 2968)), int32_t(bd::mem::try_load<u32>(actor + 2972)),
+          bd::mem::try_load<u8>(actor + 993), bd::mem::try_load<u8>(actor + 992), bd::mem::try_load<u32>(actor + 2560));
   BD_INFO("[sref] sonde {} : motion {} a {:.0f} {:.0f} zone {} | libre {} | porte1 +24 {:.2f} couche {:08X} poids {:.2f} | "
           "+1972 {} | 82349648 {}/{} | 82207918 {}/{} | 8229E060 {} | motions demandees {} (derniere {} par {:08X}) | "
           "manette {} mots, {} non nuls, dernier {:08X} | +2746 {} cerveau +104 {} +44 {:08X} | vitesse {:.1f} {:.1f}",
@@ -2513,6 +2579,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
             bd::mem::store<u8>(n + 996, 0);
           }
           PutInPlace(ctx, base, n);
+          g_in_ring_ms = NowMs();
           BD_INFO("[sref] l'arbitre du jeu : montee {} finie (motion {}, a {:.0f} {:.0f}, {})", g_climb_anim, anim, nx, nz,
                   in_ring ? "dans le ring" : "pas entre : passe derriere les cordes");
         }
@@ -2578,6 +2645,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
           Place(n, 0.f, -203.f, 200.f);
           bd::mem::store<u8>(n + 996, 0);
           PutInPlace(ctx, base, n);
+          g_in_ring_ms = NowMs();
           BD_INFO("[sref] l'arbitre du jeu n'entre pas dans le ring (a {:.0f} {:.0f}) : mis dans le ring", nx, nz);
         }
       }
@@ -2850,6 +2918,10 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
 
 // (study: the game's own "action 2" of the referee, to learn which button it is on)
 extern "C" REX_FUNC(sub_823C97B0) {
+  if (ctx.r3.u32 && ctx.r3.u32 == g_pr_actor.load(std::memory_order_relaxed)) {
+    g_pr_ai.fetch_add(1);
+    g_ai_game_ms = NowMs();
+  }
   if (On() && Match() && ctx.r3.u32 && bd::mem::try_load<u32>(ctx.r3.u32 + 3428) == 1) {
     static std::atomic<int> s_lines{0};
     const u32 pad = bd::mem::try_load<u32>(ctx.r3.u32 + 3376);
