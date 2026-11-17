@@ -225,3 +225,13 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   la mise en place d'un match (`sub_823B5C58` : poids des deux couches de motion `[+3396]+68/+76` remis, motion
   libre sur les canaux 0 et 2 (`sub_82479730`, canaux à +216 + 48 × n), navigation `oNav` (`sub_8232E200`)) :
   `PutInPlace()`, sur le fil principal, après sa montée dans le ring.
+- Tests du 2026-11-17 (sondes) : notre arbitre passe les premières portes de l'état libre du cerveau comme un arbitre
+  normal, mais sa manette ne reçoit **aucune entrée** (mots à 0 ; l'arbitre normal : le stick). Le comportement
+  d'arbitre du jeu `sub_823C97B0` n'est appelé que si sa manette demande « l'action 2 » (`[+3376]` virtuelle +36 =
+  `sub_8225B340(pad, 2, 0)`), jamais pour lui ; appelé d'ici (800 fois) il n'a écrit aucun mot non plus. Donc son
+  travail dans le ring est fait d'ici : stick de la manette virtuelle (près des catcheurs, à 170 cm de leur milieu ;
+  vers un tombé en courant) et compte par les fonctions du jeu (`sub_823C9458` le commence, puis motion 190 bloc 1 /
+  bloc 3 toutes les 0,8 s ; 5 / extérieur / au sol : un appel par compte, 1 s). Course : bouton **0x400** (celui
+  qu'écrit la marche « aller à un point » du jeu, `sub_8228F5B8`) - à confirmer en jeu. Le juge seul : 5 s.
+- L'ancien arbitre au milieu du ring sortait parfois par le côté opposé à la rampe et se coinçait près des marches
+  (Mason Ryan, 08:21) : il marche d'abord vers le côté rampe du ring (z > 150, 4 s au plus), puis 'RRTR'.

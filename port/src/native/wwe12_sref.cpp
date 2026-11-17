@@ -251,6 +251,17 @@ std::atomic<bool> g_climb{false};
 std::atomic<u32> g_climb_frames{0};
 u32 g_climb_anim = 0;
 std::atomic<int64_t> g_in_ring_ms{0};  // (when he was put in place in the ring after his climb)
+// The game's referee in the ring (tests of 2026-11-17): the game gives him no input at all (his pad words stay 0;
+// even the referee's behaviour sub_823C97B0 called for him wrote none - an ordinary referee's input component is not
+// his). So his work is done from here with the pieces seen working: the virtual pad's stick (he walks near the
+// fighters; to a pin, running) and the game's own count functions (sub_823C9458 starts it, motion 190's blocks 1 / 3
+// the next counts - as the special referee's A).
+std::atomic<int64_t> g_auto_ms{0};  // (when this count was started from here, 0: not)
+std::atomic<bool> g_ref_moving{false};
+// The old referee's way out (test of 2026-11-17 08:21: Mason Ryan, sent out from the ring's middle, left it by the
+// far side's ropes and stuck by the steel steps): first walked to the ramp's side of the ring, then the game's leaving
+// walk 'RRTR' takes him out by the near ropes.
+std::atomic<bool> g_ex_walk{false};
 int64_t g_climb_ms = 0;
 float WalkTargetZ(int phase) { return phase == 0 ? 430.f : 120.f; }
 bool OnMainThread() { return g_main_tid.load() == std::this_thread::get_id(); }
@@ -1823,6 +1834,9 @@ void ResetMatchState() {
   g_pad = -1;
   g_judge_alone = false;
   g_in_ring_ms = 0;
+  g_auto_ms = 0;
+  g_ref_moving = false;
+  g_ex_walk = false;
 }
 
 void HandOver(const PPCContext &ctx, u8 *base) {
@@ -1947,14 +1961,10 @@ void HandOver(const PPCContext &ctx, u8 *base) {
       g_ex_ms = now;
       g_ex = s3;
       g_left = false;
-      if (bd::mem::try_load<u8>(s3 + 1015) == 0) {  // (his walk away, from the ring, as the game's free state does)
+      if (bd::mem::try_load<u8>(s3 + 1015) == 0) {  // (in the ring: to its ramp's side, then the game's walk away)
         bd::mem::store<u32>(s3 + 2568, 0);
-        c = ctx;
-        c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
-        c.r3.u64 = s3;
-        __imp__sub_82371C78(c, base);
-        g_left = true;
-        BD_INFO("[sref] remplacement : l'ancien arbitre s'en va a pied depuis le ring (RRTR)");
+        g_ex_walk = true;
+        BD_INFO("[sref] remplacement : l'ancien arbitre va d'abord vers le cote rampe du ring");
       }
     }
     g_ejected = true;
@@ -2134,8 +2144,9 @@ extern "C" REX_FUNC(sub_82207918) {
 // sub_823C97B0 (his walk around the fighters, his count: sub_823C9458 plays 190 / 191 when the judge waits) was never
 // called for a role 1 man in any special referee match of the log. Between them the free state leaves on
 // sub_8227C720 (if + 2984), sub_82B00368 (actor, pad) != 0, sub_8222F538 (actor, pad) != 0, or calls it only when his
-// pad's ([+3376]) virtual + 36 says so. Counted here; and, the game not calling it for 6 s once he is in the ring, it
-// is called for him from here (the free state's own place, his brain's thread), each frame the game does not.
+// pad's ([+3376]) virtual + 36 says so (sub_8225B340(pad, 2, 0): "action 2" asked on his pad). Counted here. Test of
+// 08:21: 8227C720 / 82B00368 0, 8222F538 never called (the pad's + 156 / + 160 0), so + 36: no "action 2" - his pad
+// gets no input; called from here anyway (800 times) it wrote no word either: dropped, see g_auto_ms.
 std::atomic<u32> g_pr_ai{0}, g_pr_forced{0}, g_pr_b0368{0}, g_pr_b0368_hit{0}, g_pr_2f538{0}, g_pr_2f538_hit{0};
 std::atomic<u32> g_pr_7c720{0}, g_pr_7c720_hit{0};
 std::atomic<int64_t> g_ai_game_ms{0};
@@ -2175,18 +2186,6 @@ extern "C" REX_FUNC(sub_8229E060) {
   if (a && a == g_pr_actor.load(std::memory_order_relaxed))
     g_pr_9e060.fetch_add(1);
   __imp__sub_8229E060(ctx, base);
-  // (the referee's behaviour for the game's referee after the hand-over, if the game does not give it him)
-  const int64_t now = NowMs(), in_ring = g_in_ring_ms.load();
-  if (a && a == g_pr_actor.load(std::memory_order_relaxed) && Match() && g_out == kOutDone && a == Actor(6) &&
-      bd::mem::try_load<u32>(a + 3428) == 1 && !g_walk.load() && !g_climb.load() && bd::mem::try_load<u8>(a + 996) == 0 &&
-      in_ring && now - in_ring > 6000 && now - g_ai_game_ms.load() > 2000) {
-    PPCContext c = ctx;
-    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
-    c.r3.u64 = a;
-    __imp__sub_823C97B0(c, base);
-    if (g_pr_forced.fetch_add(1) == 0)
-      BD_INFO("[sref] l'arbitre du jeu : le jeu ne lui donne pas son comportement d'arbitre, donne d'ici (sub_823C97B0)");
-  }
 }
 void Wwe12SrefFreeProbe(u32 actor) {  // (from wwe12_dtprobe2.cpp's hook of sub_8234FD30)
   if (actor && actor == g_pr_actor.load(std::memory_order_relaxed))
@@ -2249,10 +2248,104 @@ void ProbeLine(u32 actor) {
 }
 }  // namespace
 
+// The stick of a pad word toward a point of the floor (x, z), as the I Quit referee's walk (wwe12_iquit.cpp)
+namespace {
+bool StickWord(u32 actor, float tx, float tz, u32 *word) {
+  const u32 rp = bd::mem::try_load<u32>(actor + 768);
+  if (!rp)
+    return false;
+  u32 info = 0;
+  for (u32 a : {actor, Actor(1), Actor(0)}) {  // (the camera's angle, as wwe12_iquit.cpp reads it)
+    const u32 ai = a ? bd::mem::try_load<u32>(a + 3384) : 0, w = ai ? bd::mem::try_load<u32>(ai + 76) : 0;
+    info = w ? bd::mem::try_load<u32>(w) : 0;
+    if (info)
+      break;
+  }
+  const float dx = tx - LoadF(rp), dz = tz - LoadF(rp + 8);
+  const float a = std::atan2(-dz, dx) - LoadF(0x82000ADC) + 4.f * 6.2831853f;
+  const u32 dir8 = (((u32(a * LoadF(0x82002E4C)) & 0xFFF) + 256) >> 9) & 7;
+  const u32 cam = info ? bd::mem::try_load<u16>(info + 162) : 0;
+  const u32 rel = u32(int32_t((dir8 << 9) - cam + 256) >> 9) & 7;
+  const u32 v = bd::mem::try_load<u32>(0x8307B34C + rel * 4);
+  static constexpr u32 kCode[8] = {2, 1, 8, 3, 7, 4, 5, 6};  // sub_8298FB98, for v = 2..9
+  if (v < 2 || v > 9)
+    return false;
+  *word = (0x80u | (((kCode[v - 2] - 1) & 7) << 4)) << 16;
+  return true;
+}
+// The run: the game's own "go to a point" pad (sub_8228F5B8) writes the stick with the button 0x400.
+constexpr u32 kRun = 0x400u;
+
+// The game's referee in the ring (see g_auto_ms): near the fighters (170 cm from their middle, on his side), to a
+// pinned man running; still in his count's motions (only his walk 2015x / free 1350 are steered).
+bool RefereeWord(u32 actor, u32 *word) {
+  if (!g_in_ring_ms.load() || g_walk.load() || g_climb.load() || g_out != kOutDone || g_judge_alone ||
+      bd::mem::try_load<u32>(actor + 3428) != 1)
+    return false;
+  const u16 anim = Anim(actor);
+  if (!(anim >= 20150 && anim < 20160) && anim != 1350)
+    return false;
+  float rx = 0, rz = 0;
+  if (!Spot(actor, rx, rz))
+    return false;
+  float tx = 0, tz = 0, go = 110.f, stop = 60.f;
+  bool run = false;
+  const u32 j = bd::mem::try_load<u32>(kJudgePtr);
+  const u32 victim = j && g_state.load() == 1 ? bd::mem::try_load<u32>(j + 108) : 0;
+  float vx = 0, vz = 0;
+  if (victim && Spot(victim, vx, vz)) {
+    float ux = rx - vx, uz = rz - vz;
+    const float l = std::hypot(ux, uz);
+    ux = l > 1.f ? ux / l : 0.f, uz = l > 1.f ? uz / l : 1.f;
+    tx = vx + ux * 80.f, tz = vz + uz * 80.f;
+    go = 60.f, stop = 45.f, run = true;
+  } else {
+    float cx = 0, cz = 0;
+    int k = 0;
+    for (u32 i = 0; i < 6; ++i) {
+      const u32 f = Actor(i);
+      float fx, fz;
+      if (f && f != actor && f != g_ex && bd::mem::try_load<u32>(f + 3428) == 0 && bd::mem::try_load<u8>(f + 996) == 0 &&
+          Spot(f, fx, fz))
+        cx += fx, cz += fz, ++k;
+    }
+    if (!k)
+      return false;
+    cx /= float(k), cz /= float(k);
+    float ux = rx - cx, uz = rz - cz;
+    const float l = std::hypot(ux, uz);
+    ux = l > 1.f ? ux / l : 0.f, uz = l > 1.f ? uz / l : 1.f;
+    tx = cx + ux * 170.f, tz = cz + uz * 170.f;
+  }
+  tx = std::clamp(tx, -225.f, 225.f), tz = std::clamp(tz, -225.f, 225.f);
+  const float d = std::hypot(tx - rx, tz - rz);
+  if (g_ref_moving.load() ? d < stop : d < go) {
+    g_ref_moving = false;
+    *word = 0;
+    return true;
+  }
+  if (!StickWord(actor, tx, tz, word))
+    return false;
+  g_ref_moving = true;
+  if (run || d > 260.f)
+    *word |= kRun;
+  return true;
+}
+}  // namespace
+
 // The stick of the walking referee's pad word (see g_walk); false: the word is left as it is.
 bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
-  if (!g_walk.load() || !actor || actor != Actor(6) || !On() || !Match())
+  if (!actor || !On() || !Match())
     return false;
+  if (g_ex_walk.load() && actor == g_ex) {  // (the old referee to the ramp's side of the ring)
+    float x = 0, z = 0;
+    Spot(actor, x, z);
+    return StickWord(actor, std::clamp(x, -120.f, 120.f), 240.f, word);
+  }
+  if (actor != Actor(6))
+    return false;
+  if (!g_walk.load())
+    return RefereeWord(actor, word);
   const u32 rp = bd::mem::try_load<u32>(actor + 768);
   if (!rp)
     return false;
@@ -2275,7 +2368,7 @@ bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
   static constexpr u32 kCode[8] = {2, 1, 8, 3, 7, 4, 5, 6};  // sub_8298FB98, for v = 2..9
   if (v < 2 || v > 9)
     return false;
-  *word = (0x80u | (((kCode[v - 2] - 1) & 7) << 4)) << 16;
+  *word = ((0x80u | (((kCode[v - 2] - 1) & 7) << 4)) << 16) | kRun;  // (running, as WWE '13's)
   if (g_walk_seen.fetch_add(1) < 30)
     BD_INFO("[sref] l'arbitre du jeu marche (etape {}) : a {:.0f} {:.0f} {:.0f}, ecart {:.0f} {:.0f}, mot {:08X}",
             g_walk_phase.load(), LoadF(rp), LoadF(rp + 4), LoadF(rp + 8), dx, dz, *word);
@@ -2651,6 +2744,70 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       }
     }
   }
+  if (main_thread && g_ex_walk.load() && g_ex && g_out == kOutDone) {
+    float x = 0, z = 0;
+    Spot(g_ex, x, z);
+    if (z > 150.f || NowMs() - g_ex_ms > 4000 || bd::mem::try_load<u8>(g_ex + 996) != 0) {
+      g_ex_walk = false;
+      PPCContext e = ctx;
+      e.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+      e.r3.u64 = g_ex;
+      bd::mem::store<u32>(g_ex + 2568, 0);
+      __imp__sub_82371C78(e, base);
+      g_left = true;
+      BD_INFO("[sref] l'ancien arbitre (a {:.0f} {:.0f}) s'en va a pied (RRTR)", x, z);
+    }
+  }
+  if (main_thread && g_out == kOutDone && g_in_ring_ms.load() && !g_judge_alone && Actor(6) &&
+      bd::mem::try_load<u32>(Actor(6) + 3428) == 1 && !g_walk.load() && !g_climb.load()) {
+    static int64_t s_state_ms = 0, s_last = 0;
+    static u32 s_state = 0;
+    const u32 n = Actor(6), j = bd::mem::try_load<u32>(kJudgePtr);
+    const u32 st = j ? bd::mem::try_load<u32>(j + 92) : 0, cnt = j ? bd::mem::try_load<u32>(j + 100) : 0;
+    const int64_t now = NowMs();
+    if (st != s_state) {
+      s_state = st;
+      s_state_ms = now;
+      s_last = 0;
+      g_auto_ms = 0;
+    }
+    PPCContext c = ctx;
+    c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+    if (j && st == 1) {  // a pin: down by the man (or after 1.2 s), then a count each 0.8 s
+      const u32 v = bd::mem::try_load<u32>(j + 108);
+      float vx = 0, vz = 0, rx = 0, rz = 0;
+      const bool close_by = v && Spot(v, vx, vz) && Spot(n, rx, rz) && std::hypot(vx - rx, vz - rz) < 130.f;
+      if (!g_auto_ms.load()) {
+        if ((close_by || now - s_state_ms > 1200) && cnt == 0) {
+          c.r3.u64 = n;
+          __imp__sub_823C9458(c, base);
+          g_auto_ms = now;
+          s_last = now;
+          BD_INFO("[sref] l'arbitre du jeu commence le compte du tombe ({} ; motion {}, {})", c.r3.u32, Anim(n),
+                  close_by ? "pres du catcheur" : "pas encore pres");
+        }
+      } else if (Anim(n) == 190) {
+        const u32 sub = bd::mem::try_load<u32>(n + 684);
+        const u32 block = sub ? bd::mem::try_load<u8>(sub) : 255;
+        c.r3.u64 = j;
+        __imp__sub_822605A0(c, base);
+        const u32 need = c.r3.u32;
+        if (((block == 0 && now - s_last > 750) || (block == 1 && now - s_last > 800)) && cnt < need) {
+          Play(ctx, base, n, 190, cnt + 1 >= need ? 3 : 1);
+          s_last = now;
+          BD_INFO("[sref] l'arbitre du jeu compte {} (sur {})", cnt + 1, need);
+        }
+      }
+    } else if (j && (st == 3 || st == 4 || st == 5) && now - s_state_ms > 400 && now - s_last > 1000) {
+      c.r3.u64 = n;  // (the 5 count, the counts outside or on the floor: one call a count)
+      __imp__sub_823C9458(c, base);
+      s_last = now;
+      if (!g_auto_ms.load()) {
+        g_auto_ms = now;
+        BD_INFO("[sref] l'arbitre du jeu compte (etat du juge {}) : {}", st, c.r3.u32);
+      }
+    }
+  }
   if (main_thread && g_judge_alone && g_out == kOutDone && Actor(6)) {  // (the count over: the referee again)
     const u32 j = bd::mem::try_load<u32>(kJudgePtr);
     if (j && bd::mem::try_load<u32>(j + 92) == 0) {
@@ -2669,7 +2826,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     if ((st == 1 || st == 3) && cnt == 0) {
       if (!s_wait)
         s_wait = NowMs();
-      if (NowMs() - s_wait > 3000) {
+      if (NowMs() - s_wait > (g_in_ring_ms.load() ? 5000 : 3000)) {  // (in the ring he counts from here)
         SetRole(ctx, base, 6, 40, 6);
         s_wait = 0;
         g_judge_alone = true;
