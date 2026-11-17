@@ -180,10 +180,21 @@ inline int GetSystemMetrics(int) { return 0; }
 using HRSRC = void *;
 using HGLOBAL = void *;
 #define MAKEINTRESOURCEW(i) (reinterpret_cast<const wchar_t *>(static_cast<uintptr_t>(i)))
-inline HRSRC FindResourceW(HMODULE, const wchar_t *, const wchar_t *) { return nullptr; }
-inline HGLOBAL LoadResource(HMODULE, HRSRC) { return nullptr; }
-inline void *LockResource(HGLOBAL) { return nullptr; }
-inline DWORD SizeofResource(HMODULE, HRSRC) { return 0; }
+// 1.4 : les ressources 101 (icônes PlayStation) et 102 (I Quit / Special Referee de WWE '13) sont dans la
+// bibliothèque (src/android/wwe12_resources.cpp), comme dans l'exe PC ; les autres (icône, 1) sont absentes.
+struct Wwe12Resource {
+  const void *data;
+  DWORD size;
+};
+const Wwe12Resource *Wwe12AndroidResource(int id);
+inline HRSRC FindResourceW(HMODULE, const wchar_t *name, const wchar_t *) {
+  return const_cast<Wwe12Resource *>(Wwe12AndroidResource(static_cast<int>(reinterpret_cast<uintptr_t>(name))));
+}
+inline HGLOBAL LoadResource(HMODULE, HRSRC r) { return r; }
+inline void *LockResource(HGLOBAL g) {
+  return g ? const_cast<void *>(static_cast<const Wwe12Resource *>(g)->data) : nullptr;
+}
+inline DWORD SizeofResource(HMODULE, HRSRC r) { return r ? static_cast<const Wwe12Resource *>(r)->size : 0; }
 
 // DXC (wwe12_dxc.cpp, rendu D3D12 seulement) : jamais présent sur Android.
 #define LOAD_LIBRARY_SEARCH_APPLICATION_DIR 0x00000200

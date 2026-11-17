@@ -26,7 +26,13 @@ target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_andr
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_gamecheck.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_replay.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_benchmark_stub.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_jobwatch.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_jobwatch.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_resources.cpp")
+
+# Ressources de l'exe PC (boutons PlayStation, I Quit / Special Referee de WWE '13) mises dans la bibliothèque : même jeu que sur PC.
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_resources.cpp" PROPERTIES
+    COMPILE_DEFINITIONS "WWE12_RES_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/res\""
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/ps3_buttons.bin;${CMAKE_CURRENT_SOURCE_DIR}/res/iquit13.bin")
 
 # Pilotes Vulkan personnalisés (Turnip…, choisis dans le launcher) : libadrenotools
 # (https://github.com/bylaws/libadrenotools, BSD-2-Clause, avec son sous-module) clonée dans
