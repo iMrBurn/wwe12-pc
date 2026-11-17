@@ -66,9 +66,10 @@ REXCVAR_DEFINE_BOOL(svr_adaptive_vsync, false, "SvR",
                     "of waiting for the next screen refresh.");
 
 // 1.3: sharpening of an enlarged picture (present pass, see UpscaleSharpness below).
-REXCVAR_DEFINE_INT32(svr_upscale_sharpness, 50, "SvR",
-                     "Sharpening of the picture when it is enlarged to the screen (0 = off, 100 = most).")
-    .range(0, 100);
+REXCVAR_DEFINE_INT32(svr_upscale_sharpness, -1, "SvR",
+                     "Sharpening of the picture when it is enlarged to the screen (0 = off, 100 = most, "
+                     "-1 = automatic: 50, but off on GPUs built into the processor, where it costs frame time).")
+    .range(-1, 100);
 
 #if defined(SVR_NATIVE_RENDERER)
 namespace bd::gpu {
@@ -302,7 +303,15 @@ GuestTexture *SelectPresentSource(VideoState &s, GuestTexture *frontBuffer) {
 u32 UpscaleSharpness(const GuestTexture *rt, u32 drawn_width) {
   if (!rt || !rt->width || rt->width >= drawn_width)
     return 0;
-  return u32(std::clamp(REXCVAR_GET(svr_upscale_sharpness), 0, 100));
+  const int configured = REXCVAR_GET(svr_upscale_sharpness);
+  if (configured >= 0)
+    return u32(std::min(configured, 100));
+  // Automatic (1.4): small integrated GPUs (#70) are the ones that cannot spare the extra pass.
+  static const bool integrated = [] {
+    const auto *device = Video::HostDevice();
+    return device && device->getDescription().type == plume::RenderDeviceType::INTEGRATED;
+  }();
+  return integrated ? 0u : 50u;
 }
 
 void RecordPresentPass(VideoState &s, GuestTexture *rt,
