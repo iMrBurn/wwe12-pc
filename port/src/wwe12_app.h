@@ -25,6 +25,9 @@
 #include "gpu/device.h"
 #include "gpu/imgui_overlay_drawer.h"
 #include "native/wwe12_display.h"
+// I QUIT gauge (native/wwe12_iquit.cpp): the drawer and a way to the UI thread
+void Wwe12IQuitOverlayInit(rex::ui::ImGuiDrawer* drawer, std::function<void(std::function<void()>)> post);
+void Wwe12IQuitFonts(ImFontAtlas* atlas);  // WWE '13's own I Quit images in the overlay's atlas (wwe12_iquit.cpp)
 #include "native/wwe12_graphics_menu.h"
 #include "native/wwe12_jukebox.h"
 #include <rex/input/input_system.h>
@@ -290,6 +293,9 @@ class Wwe12App : public rex::ReXApp {
     Wwe12MountMenuPatch(fs, game_device, user_data_root_);
   }
 
+  // The overlay's font atlas, before it is built: the I Quit images of a motions mod ride in it.
+  void OnConfigureFonts(ImFontAtlas* atlas) override { Wwe12IQuitFonts(atlas); }
+
 #if defined(SVR_NATIVE_RENDERER)
   // Le device plume dessine les overlays ImGui au moment du Present.
   std::unique_ptr<rex::ui::ImmediateDrawer> OnCreateImmediateDrawer() override {
@@ -333,6 +339,7 @@ class Wwe12App : public rex::ReXApp {
     Wwe12GraphicsMenuInit(rex::filesystem::GetExecutableFolder() / "wwe12.toml");
     Wwe12JukeboxInit(rex::filesystem::GetExecutableFolder() / "wwe12.toml");  // OPTIONS > JUKEBOX
     Wwe12DisplayInit(imgui_drawer());  // FPS counter (F2), CPU priority
+    Wwe12IQuitOverlayInit(imgui_drawer(), [this](std::function<void()> f) { app_context().CallInUIThread(std::move(f)); });  // I QUIT gauge (wwe12_iquit.cpp)
     Wwe12ArenaPagesInstallLabel(imgui_drawer(), [this](std::function<void()> f) { app_context().CallInUIThread(std::move(f)); });  // arena select: page label, LB / RB
     Wwe12KbdInit(window());  // physical keyboard in the game's letter grids (Create a Story...)
     if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {

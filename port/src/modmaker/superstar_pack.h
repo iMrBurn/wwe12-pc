@@ -203,6 +203,38 @@ struct Moveset {
   std::vector<NewMove> new_moves;          // his moves WWE '12 hasn't, as Star::new_moves
 };
 
+// A motion alone (a motions mod, mods\.svrmods\Motions\<mod>\<number>.high and .m3): a motion the game hasn't, under
+// a number of its own, played by our code (tried for the WWE '13 I Quit, 2026-11-14: never played and its m3 rows
+// broke wake-up taunts; the I Quit uses WWE '12's own motions since. Both causes found the same evening, offline:
+// the full record must be a "ZLIB" one in a game's group (4b''), and the 0/7 rows came without their lists in 0/8
+// (m3_params.h). Not seen in game yet: not to be shipped without a normal match + wake-up taunt check).
+struct ExtraMotion {
+  int motion = 0;  // its number (a free one of its kind's hundred)
+  Bytes high;      // its full record (YANM), plain or BPE
+  Bytes m3;        // its m3.pac rows (m3_params row set), else empty
+  // Where it goes: a motion group of the game's own banks (the mod's manifest "into=CA07/33": m.pac ZMOT/CA07, top 33,
+  // the referee's 131xx), else (empty) the added moves' bank. The game plays a motion by number from a queue
+  // (sub_8247AD18 -> sub_82478AE8) that finds the referee's only in his group: an exact copy of the game's 13100 in the
+  // added bank (CA11, top 188) left the referee still (2026-11-14). The bank is served whole, a copy under its
+  // lowercase name ("/ZMOT/ca07"), asked first by the archive lookup hook (wwe12_superstar_mods.cpp).
+  std::string bank;
+  int group = -1;
+};
+
+// A motion record under `motion`: its number as text at +0x4C. The game keys every block of a record by that text
+// (sub_82486648 -> sub_8246FC70: {atoi(+0x4C), block name}) and looks a played motion up by it (sub_821D7150): a
+// record carrying another number is read, listed and never found - the referee stayed still with three motions that
+// kept their source's numbers, a copy of the game's own 13106 among them (user's tests of 2026-11-15; the Universe's
+// added scenes met the same on 2026-11-13). The game writes five digits ("00203", "13106").
+inline Bytes NumberedMotion(Bytes y, int motion) {
+  if (y.size() > 0x58) {
+    char text[16] = {};
+    snprintf(text, sizeof(text), "%05d", motion);
+    memcpy(&y[0x4C], text, 12);
+  }
+  return y;
+}
+
 struct Inputs {
   Bytes chetc, dlc;                                // the game's latest pac\ch\chEtc.pac and pac\DLC.pac
   Bytes audience;                                  // ... and pac\audience.pac (the crowd's signs)
@@ -222,6 +254,7 @@ struct Inputs {
   zmvm_add::Reader m_pac;
   uint64_t m_pac_size = 0;
   std::string *zmvm_log = nullptr;
+  std::vector<ExtraMotion> extra_motions;  // motions mods' motions (4b'')
 };
 
 struct File {
@@ -408,8 +441,11 @@ inline std::vector<int> FreeSlots(const Inputs &in) {
   // The disc's empty records first: the save has them ready (unlocked, set up). A DLC slot is set up by the game only
   // when a pack it hasn't seen brings it: one added to our pack later stayed locked, and set unlocked by hand it went
   // to a black screen at the match (FBX TEST at 86, 90, 91, 2026-10-26; at 104, CHRIS JERICHO played at once).
+  // (not 231 and 289: blank on the disc, but the select screen names them SECURITY GUARD C and WWE DOCTOR whatever
+  // the record says - 190 test copies, 2026-11-17; the game's other such names, DRUID, REFEREE, SECURITY GUARD A / B,
+  // were on no free number)
   for (int id = 100; id < 373; ++id)
-    if (blank(id))
+    if (id != 231 && id != 289 && blank(id))
       out.push_back(id);
   for (int id = 85; id < 100; ++id)
     if (blank(id))
@@ -572,14 +608,20 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
   }
   if (!model_vol)
     return fail("DLC.pac has no superstar list");
-  // The next free codes, "lettre + U" first (as the packs: AU, BU... VU), then V, W...
-  std::vector<std::string> free_codes;
-  for (char second = 'U'; second <= 'Z' && free_codes.size() < 2 * stars.size(); ++second)
-    for (char first = 'A'; first <= 'Z' && free_codes.size() < 2 * stars.size(); ++first) {
-      const std::string c{first, second};
-      if (!codes.count(c))
-        free_codes.push_back(c);
-    }
+  // The next free codes, "lettre + U" first (as the packs: AU, BU... VU), then V, W... Z, then A... T and the digits
+  // (U-Z alone, 156 codes, two per added superstar, left no code for 101 of them and no pack was made, 2026-11-12)
+  static const std::string kSeconds = "UVWXYZABCDEFGHIJKLMNOPQRST0123456789";
+  const auto free_for = [&](size_t want) {
+    std::vector<std::string> out;
+    for (size_t s2 = 0; s2 < kSeconds.size() && out.size() < want; ++s2)
+      for (char first = 'A'; first <= 'Z' && out.size() < want; ++first) {
+        const std::string c{first, kSeconds[s2]};
+        if (!codes.count(c))
+          out.push_back(c);
+      }
+    return out;
+  };
+  std::vector<std::string> free_codes = free_for(2 * stars.size());
   // The rows of the lists: the added superstars (kind 1), then the new attires (kind 2).
   struct Row {
     int kind, id, sub;
@@ -595,15 +637,30 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           listed.insert(at.entry).second)  // (an added superstar's: in his own file, counted from it)
         rows.push_back({2, at.superstar, at.entry[6] - '0', "ATTIRE " + at.entry});
   }
-  if (free_codes.size() < 2 * rows.size()) {
-    free_codes.clear();
-    for (char second = 'U'; second <= 'Z' && free_codes.size() < 2 * rows.size(); ++second)
-      for (char first = 'A'; first <= 'Z' && free_codes.size() < 2 * rows.size(); ++first) {
-        const std::string c{first, second};
-        if (!codes.count(c))
-          free_codes.push_back(c);
+  // (a pack's rows 32-63, 96-127... - bit 5 of the row's place set - never reached the select screen: 101 added
+  // superstars, 64 seen, the same 37 missing with other "person" numbers and other catalog license bits, 2026-11-17.
+  // The game's own packs have 8 rows at most. Those places get a filler row, an unused DLC slot's record - never shown,
+  // as an unbought DLC superstar -, and the real rows the others; 32 rows or fewer: as before)
+  if (rows.size() > 32) {
+    int filler = 0;
+    const std::vector<int> free_slots = FreeSlots(in);
+    for (auto it = free_slots.rbegin(); it != free_slots.rend() && !filler; ++it)
+      if (*it >= 50 && *it < 100 &&
+          std::none_of(stars.begin(), stars.end(), [&](const auto &st) { return st.slot == *it; }))
+        filler = *it;
+    if (filler) {
+      std::vector<Row> spread;
+      for (size_t i = 0; i < rows.size();) {
+        if (spread.size() & 32)
+          spread.push_back({1, filler, 0, ""});
+        else
+          spread.push_back(rows[i++]);
       }
+      rows.swap(spread);
+    }
   }
+  if (free_codes.size() < 2 * rows.size())
+    free_codes = free_for(2 * rows.size());
   if (free_codes.size() < 2 * rows.size())
     return fail("no codes left");
   char vol_name[8];
@@ -1158,6 +1215,175 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
         }
       }
     }
+  }
+  // 4b''. Motions alone (motions mods, Inputs::extra_motions: the WWE '13 I Quit referee, 1.4): into the same bank as
+  // the added moves (made here if none), their rows into the m3.pac copy; no move record, nothing in the move lists.
+  if (!in.extra_motions.empty()) {
+    std::vector<svrfmt::PachEntry> extra;
+    std::vector<std::pair<int, m3_params::Rows>> extra_rows;
+    // (into a game's group first: its bank copied, the motions added to the group's light and full lists)
+    std::vector<svrfmt::EpacEntry> bank_copies;
+    std::set<const ExtraMotion *> in_bank;
+    std::map<std::string, std::vector<const ExtraMotion *>> by_bank;
+    for (const ExtraMotion &x : in.extra_motions)
+      if (!x.bank.empty() && x.group >= 0 && x.motion > 0 && x.motion <= 0xFFFF && !x.high.empty())
+        by_bank[x.bank].push_back(&x);
+    Bytes mhead;
+    std::vector<svrfmt::EpacRow> mrows;
+    if (!by_bank.empty() && in.m_pac &&
+        in.m_pac(0, uint32_t(std::min<uint64_t>(in.m_pac_size, 0x8000)), mhead) &&
+        svrfmt::EpacTable(mhead, in.m_pac_size, mrows))
+      for (const auto &[bank, list] : by_bank) {
+        const auto row = std::find_if(mrows.begin(), mrows.end(), [&](const auto &r) {
+          std::string n = r.name;
+          while (!n.empty() && (n.back() == ' ' || n.back() == 0))
+            n.pop_back();
+          return r.group.rfind("ZMOT", 0) == 0 && n == bank;
+        });
+        Bytes raw;
+        std::vector<svrfmt::PachEntry> tops;
+        if (row == mrows.end() || !in.m_pac(row->offset, row->size, raw) || !svrfmt::PachRead(svrfmt::Unpack(raw), tops))
+          continue;
+        bool any = false;
+        for (auto &t : tops) {
+          std::vector<svrfmt::PachEntry> kids;
+          if (!svrfmt::PachRead(svrfmt::Unpack(t.data), kids) || kids.size() < 2)
+            continue;
+          bool here = false;
+          for (size_t k = 0; k + 1 < kids.size(); k += 2) {  // (the first pair: light, full)
+            std::vector<svrfmt::PachEntry> lo, hi;
+            if (!svrfmt::PachRead(svrfmt::Unpack(kids[k].data), lo) || !svrfmt::PachRead(svrfmt::Unpack(kids[k + 1].data), hi))
+              break;
+            for (const ExtraMotion *x : list) {
+              if (int(t.id) != x->group || in_bank.count(x) ||
+                  std::any_of(lo.begin(), lo.end(), [&](const auto &e) { return int(e.id) == x->motion; }))
+                continue;
+              const Bytes high = NumberedMotion(svrfmt::IsBpe(x->high) ? svrfmt::Unpack(x->high) : x->high, x->motion);
+              // (the group's full records are "ZLIB" ones: the motion queue's loader, sub_821D7E78 -> sub_827E1248,
+              // takes nothing else - a plain record stayed "asked" for ever, the motion never played, 2026-11-14)
+              const bool zlib = !hi.empty() && hi[0].data.size() >= 4 && !memcmp(hi[0].data.data(), "ZLIB", 4);
+              lo.push_back({uint32_t(x->motion), svrfmt::BpeEncode(high)});
+              hi.push_back({uint32_t(x->motion), zlib ? ZlibRecord(high) : high});
+              in_bank.insert(x);
+              here = true;
+            }
+            if (here) {
+              auto by_id = [](const auto &a, const auto &b) { return a.id < b.id; };
+              std::sort(lo.begin(), lo.end(), by_id);
+              std::sort(hi.begin(), hi.end(), by_id);
+              const Bytes l = svrfmt::PachWrite(lo), h = svrfmt::PachWrite(hi);
+              kids[k].data = svrfmt::IsBpe(kids[k].data) ? svrfmt::BpeEncode(l) : l;
+              kids[k + 1].data = svrfmt::IsBpe(kids[k + 1].data) ? svrfmt::BpeEncode(h) : h;
+            }
+            break;
+          }
+          if (here) {
+            const Bytes pk = svrfmt::PachWrite(kids);
+            t.data = svrfmt::IsBpe(t.data) ? svrfmt::BpeEncode(pk) : pk;
+            any = true;
+          }
+        }
+        if (!any)
+          continue;
+        svrfmt::EpacEntry e;
+        e.name = bank;
+        for (auto &c : e.name)
+          c = char(std::tolower(static_cast<unsigned char>(c)));
+        const Bytes pt = svrfmt::PachWrite(tops);
+        e.data = svrfmt::IsBpe(raw) ? svrfmt::BpeEncode(pt) : pt;
+        bank_copies.push_back(std::move(e));
+      }
+    for (const ExtraMotion &x : in.extra_motions) {
+      if (x.motion <= 0 || x.motion > 0xFFFF || x.high.empty())
+        continue;
+      if (in_bank.count(&x)) {  // (its rows all the same)
+        m3_params::Rows r;
+        if (!x.m3.empty() && m3_params::Read(x.m3, r) && !r.empty())
+          extra_rows.push_back({x.motion, std::move(r)});
+        continue;
+      }
+      const Bytes high = NumberedMotion(svrfmt::IsBpe(x.high) ? svrfmt::Unpack(x.high) : x.high, x.motion);
+      extra.push_back({0, svrfmt::PachWrite({{uint32_t(x.motion), svrfmt::BpeEncode(high)}})});  // (as the moves': 4b)
+      extra.push_back({0, svrfmt::PachWrite({{uint32_t(x.motion), high}})});
+      m3_params::Rows r;
+      if (!x.m3.empty() && m3_params::Read(x.m3, r) && !r.empty())
+        extra_rows.push_back({x.motion, std::move(r)});
+    }
+    svrfmt::Epac out;
+    bool made = false;
+    if (!extra.empty() && !moves_out.empty() && svrfmt::EpacRead(moves_out, out)) {
+      for (auto &g : out.groups)  // (the added moves' bank: its top's pairs, ours after them)
+        if (g.type == "ZMOT" && !g.entries.empty()) {
+          std::vector<svrfmt::PachEntry> tops, pairs;
+          if (!svrfmt::PachRead(svrfmt::Unpack(g.entries[0].data), tops) || tops.empty() ||
+              !svrfmt::PachRead(svrfmt::Unpack(tops[0].data), pairs))
+            break;
+          for (auto &p : extra)
+            pairs.push_back({uint32_t(pairs.size()), std::move(p.data)});
+          tops[0].data = svrfmt::PachWrite(pairs);
+          g.entries[0].data = svrfmt::PachWrite(tops);
+          made = true;
+          break;
+        }
+      if (made)
+        moves_out = svrfmt::EpacWrite(out);
+    } else if (!extra.empty() && moves_out.empty()) {
+      svrfmt::Epac like;
+      if (svrfmt::EpacRead(in.chetc, like) && !like.groups.empty()) {
+        for (size_t i = 0; i < extra.size(); ++i)
+          extra[i].id = uint32_t(i);
+        const int ca = std::min(19, std::max(pack, 5) + 6);  // (as 4b: the bank's name and top id)
+        char bank[8];
+        snprintf(bank, sizeof(bank), "CA%02d", ca);
+        out.header = like.header;
+        out.epk8 = like.epk8;
+        out.wide = like.wide;
+        out.toc_extra = like.toc_extra;
+        svrfmt::EpacGroup g;
+        g.type = "ZMOT";
+        g.number = like.groups[0].number;
+        g.extra = 0;
+        g.entries.push_back({bank, svrfmt::PachWrite({{uint32_t(177 + ca), svrfmt::PachWrite(extra)}}), 0});
+        out.groups.push_back(std::move(g));
+        moves_out = svrfmt::EpacWrite(out);
+        made = true;
+      }
+    }
+    if (!bank_copies.empty()) {
+      svrfmt::Epac with;
+      if (!moves_out.empty() && svrfmt::EpacRead(moves_out, with)) {
+        for (auto &g : with.groups)
+          if (g.type == "ZMOT") {
+            for (auto &b : bank_copies)
+              g.entries.push_back(std::move(b));
+            break;
+          }
+        moves_out = svrfmt::EpacWrite(with);
+      } else if (moves_out.empty()) {
+        svrfmt::Epac like;
+        if (svrfmt::EpacRead(in.chetc, like) && !like.groups.empty()) {
+          with.header = like.header;
+          with.epk8 = like.epk8;
+          with.wide = like.wide;
+          with.toc_extra = like.toc_extra;
+          svrfmt::EpacGroup g;
+          g.type = "ZMOT";
+          g.number = like.groups[0].number;
+          g.extra = 0;
+          g.entries = std::move(bank_copies);
+          with.groups.push_back(std::move(g));
+          moves_out = svrfmt::EpacWrite(with);
+        }
+      }
+      made = !moves_out.empty();
+    }
+    if (made && !extra_rows.empty()) {
+      const Bytes &base_m3 = m3_out.empty() ? in.m3 : m3_out;
+      if (!base_m3.empty())
+        m3_out = m3_params::Insert(base_m3, extra_rows, true);  // (a motions mod: its sets may name each other)
+    }
+    if (why && !made)
+      *why += (why->empty() ? "" : "; ") + std::string("the motions mods' motions could not be added");
   }
   // 4b'. The attires' own names: their text numbers (Attire::label_id) in their slot of the COS lines below.
   std::map<std::string, uint32_t> label_ids;  // attire entry -> its text's number (the first mod's)

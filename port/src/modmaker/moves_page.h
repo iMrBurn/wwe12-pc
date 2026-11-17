@@ -634,6 +634,7 @@ class Page {
       pick_name_.clear();
       parts_ = {};
       theme_ = {};
+      music_note_.clear();
       themes_.clear();
       filter_[0] = 0;
     }
@@ -677,6 +678,7 @@ class Page {
     pick_name_ = name.size() > 2 && name.compare(name.size() - 2, 2, " ?") == 0 ? name.substr(0, name.size() - 2) : name;
     parts_ = {};
     use_moves_ = use_entrance_ = use_victory_ = use_theme_ = false;
+    music_note_.clear();
     picking_ = true;
     Collect([this, number]() {
       picking_ = false;
@@ -834,9 +836,55 @@ class Page {
       }
       ImGui::Unindent(24);
     }
+    // (his theme alone, as a song of the music folder beside the game: Create an Entrance's USER PLAYLIST lists it.
+    // An added theme in a mod plays on the superstar it is put on only - Jay on Discord, 2026-11-17)
+    if (HasTheme()) {
+      ImGui::Indent(24);
+      if (ImGui::SmallButton(fr ? "Mettre sa musique seule dans le dossier music (Créer une entrée, USER PLAYLIST)"
+                                : "Put his theme alone in the music folder (Create an Entrance, USER PLAYLIST)"))
+        music_note_ = SaveThemeSong(fr);
+      ImGui::Unindent(24);
+    }
+    if (!music_note_.empty())
+      ImGui::TextWrapped("%s", music_note_.c_str());
     if (use_theme_ && HasTheme() && !(use_entrance_ && HasEntrance()))
       ImGui::TextDisabled("%s", fr ? "(sans son entrée, la musique joue pendant l'entrée du catcheur de WWE '12)"
                                    : "(without his entrance, the theme plays during the WWE '12 superstar's own entrance)");
+  }
+
+  // His theme decoded (vgmstream) into a 16-bit WAV, music\<name> (<game>).wav beside the Mod Maker (the game's
+  // folder): what was done, for the page.
+  std::string SaveThemeSong(bool fr) {
+    std::vector<int16_t> samples;
+    int channels = 0, rate = 0;
+    const std::wstring ext(theme_.ext.begin(), theme_.ext.end());
+    if (!theme_convert::Decode(star_port::Vgmstream(discs_), theme_.stream, ext, samples, channels, rate) ||
+        samples.empty() || channels < 1 || rate < 1)
+      return fr ? "Musique illisible (vgmstream)." : "Couldn't read the theme (vgmstream).";
+    wchar_t exe[MAX_PATH];
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    const fs::path dir = fs::path(exe).parent_path() / "music";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    std::string name = pick_name_ + " (" + star_port::GameName(game_) + ")";
+    for (char &c : name)
+      if (strchr("<>:\"/\\|?*", c) || uint8_t(c) < 32)
+        c = '_';
+    const fs::path out = dir / fs::u8path(name + ".wav");
+    const uint32_t data = uint32_t(samples.size() * 2);
+    Bytes wav(44);
+    auto le32 = [&](size_t o, uint32_t v) { for (int i = 0; i < 4; ++i) wav[o + i] = uint8_t(v >> (8 * i)); };
+    auto le16 = [&](size_t o, uint16_t v) { wav[o] = uint8_t(v), wav[o + 1] = uint8_t(v >> 8); };
+    memcpy(&wav[0], "RIFF", 4), le32(4, 36 + data), memcpy(&wav[8], "WAVEfmt ", 8), le32(16, 16), le16(20, 1);
+    le16(22, uint16_t(channels)), le32(24, uint32_t(rate)), le32(28, uint32_t(rate * channels * 2));
+    le16(32, uint16_t(channels * 2)), le16(34, 16), memcpy(&wav[36], "data", 4), le32(40, data);
+    std::ofstream f(out, std::ios::binary);
+    f.write(reinterpret_cast<const char *>(wav.data()), std::streamsize(wav.size()));
+    f.write(reinterpret_cast<const char *>(samples.data()), std::streamsize(data));
+    if (!f)
+      return fr ? "Écriture impossible dans le dossier music." : "Couldn't write to the music folder.";
+    return (fr ? "Enregistrée : music\\" : "Saved: music\\") + name + ".wav" +
+           (fr ? " (à choisir dans Créer une entrée > USER PLAYLIST)" : " (pick it in Create an Entrance > USER PLAYLIST)");
   }
 
   // A thing to take: ticked or not, or greyed out with why.
@@ -853,9 +901,6 @@ class Page {
   }
 
   std::string MovesWhy(bool fr) const {
-    if (star_port::SvrOld(game_))
-      return fr ? std::string("les prises de ") + star_port::GameName(game_) + " ne sont pas encore lues"
-                : std::string(star_port::GameName(game_)) + "'s moves aren't read yet";
     if (parts_.moves.rows.empty() && !parts_.moves_why.empty())
       return (fr ? "pas lues : " : "not read: ") + parts_.moves_why;
     return fr ? "aucune trouvée dans WWE '12" : "none found in WWE '12";
@@ -1085,6 +1130,7 @@ class Page {
   entrance_preview::Window watch_;  // his entrance's full preview
   bool watch_tested_ = false;
   theme_source::Theme theme_;  // his theme (theme_source.h), stream empty if none
+  std::string music_note_;    // what "his theme alone in the music folder" did
   std::vector<theme_source::Theme> themes_;
   int theme_pick_ = 0;
   bool tool_ = false;          // the player's vgmstream is there (the theme is made PCM with it)

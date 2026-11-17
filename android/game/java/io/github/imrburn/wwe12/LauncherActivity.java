@@ -341,6 +341,7 @@ public class LauncherActivity extends Activity {
         set.addView(toggle("Shadows", "wwe12_shadows"));
         set.addView(toggle("Crowd", "wwe12_crowd"));
         set.addView(frameRateChoice());
+        set.addView(toggle("Fast loading screens (shorter loads; untick if a load ever hangs)", "wwe12_fast_loading", true));
         // From Yexclsv's work: more settings and one-tap presets.
         set.addView(toggle("Depth of field (blur, heavier)", "wwe12_dof"));
         set.addView(toggle("V-sync (no tearing)", "bd_vsync"));

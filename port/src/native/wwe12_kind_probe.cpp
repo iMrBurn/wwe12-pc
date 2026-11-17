@@ -42,9 +42,11 @@ int g_last_kind = -1;
 int g_wrestlers = 0;  // wrestlers created since the current match kind last changed
 }
 
+void Wwe12IQuitRules();  // wwe12_iquit.cpp: an I Quit match's rules, as EXTREME RULES', before anyone reads them
 REX_EXTERN(__imp__sub_8267CF38);
 extern "C" REX_FUNC(sub_8267CF38) {
   __imp__sub_8267CF38(ctx, base);
+  Wwe12IQuitRules();
   const int from = REXCVAR_GET(wwe12_kind_from);
   const int to = REXCVAR_GET(wwe12_kind_to);
   if (from < 0 || to < 0)

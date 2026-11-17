@@ -1924,6 +1924,143 @@ inline Bytes BuildEvp(const Evp &e) {
 
 inline bool IsType(const EvpObj &o, uint32_t t0, uint32_t t1) { return o.t0 == t0 && o.t1 == t1; }
 
+// ---------------------------------------------------------------------------------------------------- props' bones
+// (ours, 2026-11-17, Jay on Discord: MVP's SvR 2008 tunnel 2116, Kennedy's SvR 2010 hanging microphone 2048) A SvR
+// prop with bones moves them itself; no WWE '12 entrance holds it (no donor), so its motion is made here. Its records
+// (read with tools of the study, docs/mod_maker.md): sub-records by their first byte -
+//   0x75 count, s16 root x3, u24 mask, then per mask bit k an s16 x3 rotation of bone k (k 0: the whole prop);
+//   0x7e count, s16 root x3;  0x7f count, f32 root x3;  0x7b ref, count, s16 x3: bone `ref`'s offset from its place;
+//   0x76 ref, count, 4 bytes (skipped);  0x00-0x18 bone k: count, s16 x3 rotation.
+// Root and offsets in 0.1 cm (as the bodies' root: x 10 x kRootUnit), rotations in 1/65536 of a turn. WWE '12 writes
+// such a prop as tracks "base" (0C5879E5: the prop) and one per bone named as its node (bone01...: rotation, scale,
+// position = its node's place + offset), as its own props 2253, 2256, 4009.
+struct PropNode {
+  std::string name;  // "bone01"...
+  V3 t{};            // its place in its parent, cm
+};
+using PropNodes = std::map<uint32_t, std::vector<PropNode>>;  // by model
+inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNode> &nodes, Raw &out,
+                      std::map<int, std::vector<Span>> &fe, Ctx &ctx) {
+  std::vector<std::pair<int, Span>> recs;
+  if (!Records(data, recs, ctx))
+    return false;
+  // channels: 0 the root (position), 100 + k bone k's rotation, 200 + k bone k's offset
+  std::map<int, std::vector<PosKey>> ch;
+  auto put = [&](int c, int f, int count, const V3 &v) {
+    auto &ks = ch[c];
+    const int t_hold = std::max(0, 2 * (f - 1)), t_tgt = 2 * (f + count);
+    if (!ks.empty() && count > 0 && t_hold > ks.back().t)
+      ks.push_back({t_hold, ks.back().v});
+    ks.push_back({t_tgt, v});
+  };
+  bool any = false;
+  for (auto &[f, r] : recs) {
+    Span ev, pose;
+    SplitRecord(r, ev, pose);
+    FrameEvents(f, ev, T, fe);
+    size_t p = 0;
+    auto s16 = [&](size_t o) { return o + 2 <= pose.n ? double(Le16s(pose, o)) : 0.0; };
+    while (p + 1 < pose.n) {
+      const int op = pose[p];
+      if (op == 0x75 && p + 11 <= pose.n) {
+        const int count = pose[p + 1];
+        put(0, f, count, {s16(p + 2), s16(p + 4), s16(p + 6)});
+        const uint32_t mask = pose[p + 8] | uint32_t(pose[p + 9]) << 8 | uint32_t(pose[p + 10]) << 16;
+        size_t q = p + 11;
+        for (int k = 0; k < 24; ++k)
+          if (mask >> k & 1) {
+            if (q + 6 > pose.n)
+              break;
+            put(100 + k, f, count, {s16(q), s16(q + 2), s16(q + 4)});
+            q += 6;
+          }
+        p = q, any = true;
+      } else if (op == 0x7e && p + 8 <= pose.n) {
+        put(0, f, pose[p + 1], {s16(p + 2), s16(p + 4), s16(p + 6)});
+        p += 8, any = true;
+      } else if (op == 0x7f && p + 14 <= pose.n) {
+        put(0, f, pose[p + 1], {LeF(pose, p + 2), LeF(pose, p + 6), LeF(pose, p + 10)});
+        p += 14, any = true;
+      } else if (op == 0x7b && p + 9 <= pose.n) {
+        put(200 + pose[p + 1], f, pose[p + 2], {s16(p + 3), s16(p + 5), s16(p + 7)});
+        p += 9;
+      } else if (op == 0x76 && p + 7 <= pose.n) {
+        p += 7;
+      } else if (op < 25 && p + 8 <= pose.n) {
+        put(100 + op, f, pose[p + 1], {s16(p + 2), s16(p + 4), s16(p + 6)});
+        p += 8;
+      } else
+        break;  // (another kind of record: what was read is kept)
+    }
+  }
+  if (!any || !ch.count(0))
+    return false;  // (not a prop with bones: the base's tracks, as before)
+  // (shown from the start when the block never says: SvR 2008's MVP tunnel has no op 180 - shown by default there -,
+  // and WWE '12 showed neither it nor another model put in its place; Kennedy's SvR 2010 microphone has 180 01 at
+  // frame 0 and 180 00 at its end, and showed, 2026-11-17)
+  {
+    bool says = false;
+    for (auto &[f, lst] : fe)
+      for (auto &e : lst)
+        says = says || (e.n >= 1 && e[0] == 180);
+    static const uint8_t kShow[2] = {180, 1};
+    if (!says && T.n > 180 && T[180] == 2)
+      fe[0].insert(fe[0].begin(), Span{kShow, 2});
+  }
+  const int last = nframes60 - 1;
+  auto ends = [&](std::vector<PosKey> ks) {
+    ks = ByTime(ks);
+    if (ks.empty())
+      ks.push_back({0, {0.0, 0.0, 0.0}});
+    if (ks[0].t > 0)
+      ks.insert(ks.begin(), {0, ks[0].v});
+    if (ks.back().t < last)
+      ks.push_back({last, ks.back().v});
+    while (ks.size() > 1 && ks.back().t > last)
+      ks.pop_back();
+    return ks;
+  };
+  // (a bone's rotation: its 0x7b keys when it has some - in 1/4096 of a turn: MVP's curtain flaps open about 49
+  // degrees as he walks through, then flutter; read as offsets in 0.1 cm they moved 2 cm, unseen, 2026-11-17 -, else
+  // its mask / single-bone keys, in 1/65536 of a turn)
+  auto rot = [&](int c) {
+    const int b = c - 100;
+    // (off, the user's choice 2026-11-17: MVP's curtain still and flat looked better than its flaps as they came out -
+    // one stood up out of the arch at the end; kept for January: kPropFlaps)
+    constexpr bool kPropFlaps = false;
+    const bool ref = kPropFlaps && b >= 1 && ch.count(200 + b);
+    const double mul = ref ? 16.0 : 1.0;
+    std::vector<RotKey> rk;
+    for (auto &k : ends(ref ? ch[200 + b] : ch.count(c) ? ch[c] : std::vector<PosKey>()))
+      rk.push_back({k.t, {Wrap16(k.v[0] * mul), Wrap16((ref ? -1 : 1) * k.v[1] * mul), Wrap16((ref ? -1 : 1) * k.v[2] * mul)}});  // (0x7b: y and z the other way, the model counting its height downwards - a flap of MVP's curtain stood up out of the arch as read, 2026-11-17)
+    return RotKeys16(rk);
+  };
+  Comp scale;
+  scale.on = true, scale.keys = {{{256, 256, 256}, 0}, {{256, 256, 256}, last}};
+  auto track = [&](uint32_t hash, int rc, std::vector<PosKey> pos) {
+    RawTrack t;
+    t.hash = hash, t.flags = 0x2300;
+    t.c[kRot16].on = true, t.c[kRot16].keys = rot(rc);
+    t.c[kScale] = scale;
+    t.c[kPos16] = Quant(ends(pos), 0.05, 1e-6, true, ctx);
+    return t;
+  };
+  out.ver = 4, out.tracks.clear();
+  std::vector<PosKey> root;
+  for (auto &k : ch[0])
+    root.push_back({k.t, {k.v[0] / 10.0, k.v[1] / 10.0, k.v[2] / 10.0}});
+  out.tracks.push_back(track(0x0c5879e5, 100, root));
+  for (const auto &n : nodes) {
+    const int b = n.name.size() == 6 && !n.name.rfind("bone", 0) ? atoi(n.name.c_str() + 4) : 0;
+    if (b <= 0 || b >= 24)
+      continue;
+    std::vector<PosKey> pos;
+    pos.push_back({0, {n.t[0], n.t[1], n.t[2]}});  // (its place; its 0x7b keys are its rotation, above)
+    out.tracks.push_back(track(yanm::NameHash(n.name), 100 + b, pos));
+  }
+  return ctx.ok;
+}
+
 }  // namespace detail
 
 // The script (evp_svr11_to_wwe12): the same objects and 212-byte slots; positions x 10 (cm) for characters (words 4-51
@@ -1976,7 +2113,8 @@ inline bool ConvertEvp(const Bytes &evp11, Bytes &evp12, std::string *why = null
 // same the other way (WWE '13 -> SvR 2011), with credit.
 using PropDonors = std::map<uint32_t, std::pair<Bytes, std::string>>;
 inline bool Convert(const Bytes &ymks, const Bytes &evp11, const Bytes &base_evz12, Bytes &evz12, Bytes &evp12,
-                    std::string *why = nullptr, const PropDonors *prop_donors = nullptr) {
+                    std::string *why = nullptr, const PropDonors *prop_donors = nullptr,
+                    const detail::PropNodes *prop_nodes = nullptr) {
   using namespace detail;
   Ctx ctx;
   auto fail = [&](const std::string &w) {
@@ -2161,6 +2299,33 @@ inline bool Convert(const Bytes &ymks, const Bytes &evp11, const Bytes &base_evz
         b.events.push_back({2 * int(m->frames), {{254, 0, {}}}});  // (the end marker every camera block has)
         blocks.push_back(std::move(b));
       }
+    } else if (bl && IsType(o, 0x100, 0) && donor_block.empty() && prop_nodes && prop_nodes->count(o.model) &&
+               [&] {
+                 // (ours) a prop with bones that no WWE '12 entrance holds: its own motion (PropBlock)
+                 std::vector<BlockOut> mine;
+                 for (auto &[xy, m] : tr) {
+                   BlockOut b;
+                   b.name = name_of(xy.first, xy.second);
+                   std::map<int, std::vector<Span>> fe;
+                   Ctx c2;
+                   if (!PropBlock(m->data, T, 2 * int(m->frames) + 1, prop_nodes->at(o.model), b.raw, fe, c2))
+                     return false;
+                   b.events = ConvertEvents(fe, kProp);
+                   if (!b.events.empty() && b.events.front().frame == 0) {  // (179 + 180, as below)
+                     auto &c0 = b.events.front().cmds;
+                     if (std::any_of(c0.begin(), c0.end(), [](const Cmd &c) { return c.id == 179; }) &&
+                         std::none_of(c0.begin(), c0.end(), [](const Cmd &c) { return c.id == 180; }))
+                       c0.push_back({180, 1, U32s({0})});
+                   }
+                   mine.push_back(std::move(b));
+                 }
+                 if (mine.empty())
+                   return false;
+                 hdr.assign(bl->begin(), bl->begin() + 0x70);
+                 blocks = std::move(mine);
+                 return true;
+               }()) {
+      // (done above)
     } else if (bl && (IsType(o, 1, 0) || IsType(o, 0, 0x01000000) || bkind == 119)) {
       // ropes, turnbuckles
       hdr.assign(bl->begin(), bl->begin() + 0x70);

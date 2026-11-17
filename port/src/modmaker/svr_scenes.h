@@ -32,6 +32,8 @@
 
 #include "entrance13.h"
 #include "svr11_entrance.h"
+#include "svrfmt/jboy.h"
+#include "svrfmt/xcompress.h"
 #include "svr_old_entrance.h"
 
 namespace svr_scenes {
@@ -196,8 +198,66 @@ inline const svr11_entrance::PropDonors &PropDonors12(const disc::GameDisc &w12,
   return cache;
 }
 
+// SvR props with bones that no WWE '12 entrance holds move themselves (svr11_entrance::detail::PropBlock, 2026-11-17,
+// Jay: MVP's SvR 2008 tunnel, Kennedy's SvR 2010 microphone); off: hidden as in 1.4.0 (star_port::kSvrProps).
+inline constexpr bool kSvrPropMotion = true;
+
+// Their bones (nodes "boneNN" and their places, cm), by model: WWE '12's own model when it has it (Kennedy's 2048),
+// else the SvR game's (pac\evt\evtobj.pac / _EvtObj.pac; SvR counts in 10 cm).
+inline svr11_entrance::detail::PropNodes PropNodesOf(const disc::GameDisc &w12, const disc::GameDisc *src,
+                                                     const std::set<uint32_t> &models,
+                                                     const svr11_entrance::PropDonors &donors) {
+  svr11_entrance::detail::PropNodes out;
+  std::set<uint32_t> want;
+  for (uint32_t m : models)
+    if (m >= 1000 && m < 10000 && !donors.count(m))
+      want.insert(m);
+  auto read = [&](const disc::GameDisc &g, const char *file, double unit) {
+    if (want.empty())
+      return;
+    Bytes b;
+    if (!g.Read(file, b))
+      return;
+    if (svrfmt::IsXcompress(b)) {
+      Bytes o;
+      if (!svrfmt::XcompressDecode(b, o))
+        return;
+      b.swap(o);
+    }
+    svrfmt::Archive a;
+    if (!svrfmt::ArchiveOpen(b, a, nullptr))
+      return;
+    for (auto &k : a.root.kids) {
+      const uint32_t m = uint32_t(atoi(k.name.c_str()));
+      if (k.group.rfind("SOBJ", 0) || !want.count(m))
+        continue;
+      std::vector<svrfmt::PachEntry> kids;
+      if (!svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(k)), kids))
+        continue;
+      for (auto &x : kids) {
+        svrfmt::Model md;
+        if (x.id != 0 || !svrfmt::JboyRead(svrfmt::Unpack(x.data), md, nullptr))
+          continue;
+        std::vector<svr11_entrance::detail::PropNode> nodes;
+        for (auto &n : md.nodes)
+          if (!n.name.rfind("bone", 0))
+            nodes.push_back({n.name, {n.t[0] * unit, n.t[1] * unit, n.t[2] * unit}});
+        if (!nodes.empty())
+          out[m] = std::move(nodes);
+        want.erase(m);
+      }
+    }
+  };
+  read(w12, "pac/evt/evtobj.pac", 1.0);
+  if (src) {
+    read(*src, "pac/evt/evtobj.pac", 10.0);
+    read(*src, "pac/evt/_EvtObj.pac", 10.0);
+  }
+  return out;
+}
+
 inline bool Convert(const disc::GameDisc &w12, int number, const Bytes &evp11, const Bytes &evt11,
-                    std::vector<Part> &out, std::string *why) {
+                    std::vector<Part> &out, std::string *why, const disc::GameDisc *src = nullptr) {
   const Bytes &base = Base12(w12);
   if (base.empty()) {
     if (why)
@@ -205,8 +265,12 @@ inline bool Convert(const disc::GameDisc &w12, int number, const Bytes &evp11, c
     return false;
   }
   Bytes evz, evp;
-  // (its props held as WWE '12's own entrances hold the same ones, PropDonors12)
-  if (!svr11_entrance::Convert(evt11, evp11, base, evz, evp, why, &PropDonors12(w12, PropsOf(evp11))))
+  // (its props held as WWE '12's own entrances hold the same ones, PropDonors12; the others with bones, their own
+  // motion: PropNodesOf)
+  const auto props = PropsOf(evp11);
+  const auto &donors = PropDonors12(w12, props);
+  const auto nodes = kSvrPropMotion ? PropNodesOf(w12, src, props, donors) : svr11_entrance::detail::PropNodes();
+  if (!svr11_entrance::Convert(evt11, evp11, base, evz, evp, why, &donors, &nodes))
     return false;
   out.push_back({number, "EVP", std::move(evp)});
   out.push_back({number, "EVZ", std::move(evz)});
@@ -270,7 +334,7 @@ inline bool Entrance(const disc::GameDisc &svr, const disc::GameDisc &w12, int n
     if (!detail::Old(svr, title, number, false, as, svr11, evp, evt, why))
       return false;
   }
-  if (!detail::Convert(w12, as, evp, evt, out, why))
+  if (!detail::Convert(w12, as, evp, evt, out, why, &svr))
     return false;
   entrance13::FillTracks(out);
   // (its game event script; an older game's made WWE '12's; none of its own: Cena's, generic, as for the 2K games)
@@ -306,7 +370,7 @@ inline bool Victory(const disc::GameDisc &svr, const disc::GameDisc &w12, int nu
     if (!scene || !detail::Old(svr, title, scene, true, want, svr11, evp, evt, nullptr))
       return false;
   }
-  if (!detail::Convert(w12, want, evp, evt, out, nullptr))
+  if (!detail::Convert(w12, want, evp, evt, out, nullptr, &svr))
     return false;
   entrance13::FillTracks(out);
   entrance13::CameraTwins12(out);

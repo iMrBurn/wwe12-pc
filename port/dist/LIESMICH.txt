@@ -4,6 +4,10 @@ WWE '12 PC - inoffizielle native Portierung
 Diese Portierung lässt WWE '12 (Xbox 360) nativ auf dem PC laufen. Sie enthält KEINE Spieldaten:
 Sie benötigen Ihre eigene Kopie des Xbox-360-Spiels.
 
+„Nativ“ heißt hier: Der Spielcode ist statisch neu kompiliert und das Bild wird von einem nativen Vulkan- /
+DirectX-12- / DirectX-11-Renderer gezeichnet, das Rendering folgt aber weiterhin dem Modell des Xbox-360-
+Grafikchips (Xenos): Die Grafikschicht des Spiels schreibt noch Xbox-360-Befehle, die der Renderer übersetzt.
+
 
 Installation
 ------------

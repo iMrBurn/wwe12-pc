@@ -43,7 +43,7 @@ void Start() {
   const int32_t tid = int32_t(gettid());
   g_target = Wwe12FrameMode30() ? kTarget30Ns : kTargetNs;
   g_session = manager && create && g_report ? create(manager, &tid, 1, g_target) : nullptr;
-  BD_INFO("Android performance hint: {}", g_session ? "on (render thread, 60 fps target)"
+  BD_INFO("Android performance hint: {}", g_session ? (Wwe12FrameMode30() ? "on (render thread, 30 fps target)" : "on (render thread, 60 fps target)")
                                                     : "not available on this phone");
 }
 

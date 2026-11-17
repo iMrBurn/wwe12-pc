@@ -11,7 +11,7 @@
   launcher ;
 - cadence : 3 modes fixes (`wwe12_frame_mode` original / 60_entrances / 30). En 60_entrances, seules les entrées et les
   scènes de victoire restent à 60 (numéro du script de scène, #63) ; le mode 30 passe aussi à 30 un match sans entrées
-  (#61, compilé, pas vérifié en jeu). Jamais de bascule automatique (décision de l'utilisateur) ;
+  (#61, vérifié en jeu le 2026-11-14). Jamais de bascule automatique (décision de l'utilisateur) ;
 - netteté à l'agrandissement 720p (`svr_upscale_sharpness`), V-sync adaptative (`svr_adaptive_vsync`, image en
   retard montrée une fois sans attendre), écran noir avant la cloche corrigé (`svr_hold_new_scene_frame`) ;
 - points 1 à 3 de `optimisation_jarrod.md` (read-back 32 images, attente GPU qui dort, pipelines préparés).
@@ -21,6 +21,27 @@ LUT de gamma, foule réglable, présentation « mailbox ».
 
 **Plus tard, sans version** (décision du 2026-11-11) : la régénération du code (registres locaux + `volatile`),
 étude dans `docs/regeneration_1_3.md` ; réécritures natives de fonctions chaudes (section Natif ci-dessous).
+
+**1.3.1** : V-sync adaptative coupée par défaut (`svr_adaptive_vsync = false`) : elle jugeait une image « en retard »
+par rapport au rafraîchissement de l'écran, pas à la cadence du jeu ; à 30 i/s (cinématiques, entrées, mode 30) et sur
+un écran 120/144 Hz, chaque image était montrée sans V-sync : déchirure (#63, #70). Pour la remettre plus tard :
+comparer au temps d'image visé par le jeu (struct 0x8324CE28), et pas de FIFO_RELAXED en Vulkan.
+
+**2026-11-17 (1.4.0 emballée, avant la pause de janvier)** :
+- #61 (mode 30, match sans entrées) **vérifié en jeu sur PC** le 2026-11-14 (journal « match loaded: dropped to 30 »).
+- Base du test de performance (Main, i7-14700HX + RTX 5070, Vulkan, 1080p, caches vides) : match 60 i/s (travail
+  11,1 ms / 16,7), entrées 31 i/s, fil de rendu 3,7 ms, jeu entier 14,1 ms par image, 0 pipeline compilé en dessinant,
+  chargement 6,2 s. À reprendre comme « avant » pour toute optimisation.
+- Plantage 0xc0000409 vu une fois : seul dump = `%LOCALAPPDATA%\CrashDumps\wwe12.exe.36000.dmp` (16/11 08:22, exe
+  release du 16/11 07:20 pendant les sondes de Gameplay) : fil du jeu (XThread F800002C), pas le fil de rendu ;
+  ucrtbase, code d'arrêt 5 (paramètre invalide : souvent mémoire déjà libérée ou abîmée). Pas de carte pour cet exe :
+  fonction pas nommée. Non reproduit. Lecture des dumps : script Python lisant les flux 3 / 4 / 6 du minidump (pas de
+  cdb installé) ; `llvm-symbolizer` / `llvm-pdbutil` existent, mais le `rexruntime.dll` release n'a pas de .pdb.
+- 16:10 / 21:9 sur les 3 exe : **pas contrôlé** (l'utilisateur a passé le test). Lanceur prêt :
+  `tools/dev/lancer_test_format.bat <exe> <largeur> <hauteur>` (ex. 1280 800 = 16:10, 1680 720 = 21:9 ; écran du PC
+  1920 × 1080). À regarder : menu principal, match, menu pause, bandes.
+- Pas d'optimisation ajoutée sans mesure avant / après (pas de lancement accordé). Pistes pour janvier : réécritures
+  natives de fonctions chaudes (section Natif), cause du gel du démarrage rapide sous 8 fils.
 
 **Ouvert** : cause du gel du démarrage rapide sous 8 fils ; V-sync adaptative pas testée en D3D12 / D3D11 ; aucun
 journal de Steam Deck reçu (plan de test ci-dessous) ; petits PC sur batterie limités par le processeur

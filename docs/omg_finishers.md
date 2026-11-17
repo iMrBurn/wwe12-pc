@@ -119,6 +119,18 @@ Essais (un match chacun) :
 **Risques à surveiller** : le minuteur +188 ; l'état FIRED UP (acteur+998) ; MOVE THIEF (jauge de l'autre
 catcheur) ; les entrants du Royal Rumble ; l'IA en INFINITE ; les scripts (Univers, RTWM, didacticiel).
 
+### Limite connue : catcheurs à une seule tenue (2026-11-15)
+
+L'option FINISHERS de l'écran de sélection (LT / RT) s'affiche dans le cadre des tenues (texte 280) et dans les
+bandeaux READY 273 / 287. En 1 contre 1 normal, tout catcheur passe par ce cadre (la question TITLE MATCH? l'y
+oblige). Dans les autres stipulations, un catcheur qui n'a qu'une tenue (Daniel Bryan, Mason Ryan...) passe
+directement à READY : pas de cadre, donc pas d'option (essais de l'utilisateur du 2026-11-14 / 15). Un catcheur à
+plusieurs tenues (Cena) l'a partout. Pistes écartées : l'étiquette 1P / COM (l'utilisateur n'aime pas), le bandeau
+« READY » de ces catcheurs (il ne passe pas par le gestionnaire de textes). [S+268] de l'objet de place n'est PAS
+l'état du cadre : c'est l'état d'un objet manette à S+44 (+224 ; 1 -> 2 par sub_824D3458, sonde matérielle
+wwe12_watch_select du 2026-11-15). Laissé tel quel avant le 2026-11-19 (décision de la Main). Pour la suite : trouver
+qui décide d'ouvrir le cadre des tenues (nombre de tenues = 1 et pas de question de titre) et l'ouvrir quand même.
+
 ## 3. Choix libre des finishers (première lecture de la demande, gardée pour plus tard)
 
 **Où WWE '12 range les finishers d'un catcheur** : fiche PRO de `pac/ch/chEtc.pac` (1 072 octets, nombres de 16 bits
@@ -156,3 +168,29 @@ d'autres prises de WAZE et corriger les compteurs de l'en-tête, dans une copie 
 **Proposition** : 1.0 = la vérification en jeu (CUSTOM MOVE-SET permet déjà de changer les finishers de tous ? à dire
 aux joueurs dans la FAQ si oui) + « toute prise peut être finisher » limité aux prises debout de face, réglage
 désactivé par défaut tant qu'il n'est pas testé. 1.1 = les autres positions et les dégâts.
+
+## 4. Second système de tombé (étude 1.4, 2026-11-14, session Gameplay) — EN COURS, rien de branché
+
+Demande de l'utilisateur : en plus du tombé d'origine, une jauge façon WWE 2K25 (un curseur passe une fois de gauche
+à droite, 3 essais, un à chaque compte de l'arbitre), en option désactivée par défaut.
+
+Trouvé avec les sondes (`wwe12_match_modes.cpp` : `wwe12_pin_probe`, `pin_dump.bin` ; `wwe12_pin_trap.cpp` ;
+`wwe12_down_probe`) :
+- un tombé est une « prise » des deux catcheurs (50361 couverture standard, 1382, 50410…) ;
+- arbitre : état 190 / 191 pendant le compte, 207 / 202 quand le compte s'arrête ; `[acteur+2760]` = le compte
+  (0 à 3), `[acteur+2464]` = le temps restant du tombé (676 → 0) ;
+- sortie : le catcheur passe à l'animation 473 (`sub_82226EB0` ← `sub_8222D768` ← … ← `sub_8222E7A0`) ;
+- jauge d'origine : on TIENT A et on relâche dans une petite zone ; pendant le tombé d'un humain, son composant
+  'COPE' a +244 = 64, +256 = 3, et +292 compte les images où A est tenu. Ce compteur est celui, générique, de
+  l'objet d'entrée (`sub_8225BF30`, son +128). **La zone (où relâcher) et le test de la sortie ne sont pas encore
+  trouvés** ; le piège PAGE_GUARD (`wwe12_pin_trap`) a fait planter le jeu (outil de dev seulement).
+- Affichage possible sans toucher au jeu : notre calque ImGui (comme le compteur d'images, `wwe12_display.cpp`).
+- Reste : trouver la zone / la décision, puis piloter la sortie (fournir au jeu un « A tenu puis relâché » au bon
+  moment quand notre jauge est réussie), et la jauge elle-même.
+- Suite du 2026-11-14 (point d'arrêt matériel sur le compte, `wwe12_pin_trap`, sans plantage) : le compte
+  `[acteur+2760]` est écrit 1, 2, 3 par `sub_82474C88` (le processeur des commandes des mouvements, appelé par
+  `sub_82477E38`) : **le compte vient des commandes de l'animation du tombé** (couvertures 1380-1385), comme les
+  commandes 80+ des lignes de m3.pac. Remise à 0 par `sub_82214B40` (changement d'animation). La sortie est donc
+  très probablement une commande ou une condition de l'animation du tombé qui lit l'entrée du catcheur tombé :
+  à chercher dans les données du mouvement (domaine de la session Mods, format m3.pac) ou en journalisant les
+  commandes de `sub_82474C88` pendant un tombé.

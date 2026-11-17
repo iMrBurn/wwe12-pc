@@ -148,6 +148,11 @@ Les entrées sont classées par sujet, pas par date ; ajouter les nouvelles déc
 - **Commentaire de l'Univers (2026-10-31)** : une table de son de type 12 dont les paires ne sont pas triées par empreinte
   rendait Lawler muet avec le DLC 04 ; le portage la trie en mémoire (`wwe12_comm_table_fix`). Étude :
   `docs/commentaire_univers.md`.
+- **Univers, cartes, news et mallette (2026-11-12)** : une entrée de carte fait 104 octets (+1 titre, +2 places, +6 en-tête :
+  10 = #1 contender, 9 = main event ; places à +16 + 12 × p, +0 catcheur u16, +3 camp, +6 = 1 « ??? »). Une news fait 16 octets (+0..+8
+  cinq catcheurs, 512 = aucun ; +12 type ; +10/+11 et +14/+15 libres, nous y mettons nos marques). Le détenteur de la
+  mallette est U+51004 (`sub_826CC718`) ; la proposition d'encaissement est `sub_82554460`, sa boîte `sub_82554670`,
+  sa réponse `sub_8288EEF8` (1 = OUI). Le jeu ne blesse jamais en simulation. Détails : `docs/univers.md` (en tête).
 - **Interrupteur « jeu d'origine » (2026-10-22, reporté à la 1.0 : PAS dans l'arbre, sauvé dans
   `work/original-game-1.0.patch`, hors dépôt ; `git apply` pour le reprendre)** : `wwe12_original.h` (`Wwe12OriginalGame()`) +
   `wwe12_original.cpp` (cvar `wwe12_original_game`, défaut false ; le launcher n'écrira que cette clé). À true,
@@ -290,3 +295,19 @@ Les entrées sont classées par sujet, pas par date ; ajouter les nouvelles déc
   (`records_applied.txt`, comme `moves_applied.txt`), sinon les attributs modifiés en jeu étaient perdus. Les caches
   du démarrage (`entrance_slots\cache.txt`, `arena_slots\cache.txt`) sont gardés tant que rien ne change sous `mods`
   (taille et date de chaque fichier, date de compilation).
+- **Commandes des pistes d'entrée (YAT2)** : un champion de WWE '12 prend son titre en main par la commande **29** et le
+  remet par la **30** (type 2, u32 1 : The Miz 218 aux images 0 / 714) ; le titre lui-même est l'objet **5009** (objet 7
+  des entrées, commande 165). Les entrées 2K montrent en plus leurs propres ceintures (accessoires 2009 en main, 3009
+  sur l'épaule, échangées par 148 / 149 valeur 4) : le titre 5009 reste alors à la taille → `belt12.h` le cache là où
+  elles se montrent (vu bon en jeu, The Miz 2K14). Chaque bloc d'accessoire de WWE '12 commence par **179 + 180**
+  (u32 0) ; SvR n'a pas d'équivalent de 180 (Sandman SvR 2008 : accessoires toujours invisibles, laissé tomber).
+- **Modèles à part d'une tenue** (enfants JBOY 0x10-0xFF : coudières de The Rock 0x1a / 0x1b, Mr. Socko 0x1c) : les
+  coudières ont leur **propre petit squelette** (root, le bras à 0, la forme dans l'espace du bras), le jeu les pose sur
+  les os du corps par nom. Les recoller au squelette du corps les envoie aux pieds. Ceux de la base que la tenue portée
+  n'a pas sont rendus invisibles (gardés : les prises les cherchent). Modèles 21000+ (WWE '13 seulement : lumières de la
+  veste de Jericho, montrées à tour de rôle) : WWE '12 ne les connaît pas ; le premier est ajouté au modèle des cils
+  (20000, même passe transparente), lumières fixes (vu en jeu).
+- **Mallette Money in the Bank** : objet `evtobj.pac` SOBJ **2557** (textures DXT5 mib_case_a / b), demandé tel quel
+  (« /SOBJ/2557 ») au chargement du match d'encaissement, et dans les scènes Season1 1360 / 1370 / 1380, Season4 2570.
+  Copie bleue (rouge et bleu échangés dans les couleurs des blocs DXT5) servie à la place par `sub_827F29F0` quand
+  `Wwe12MitbBlue()` (Univers) le dit ; vu bon en jeu (RAW rouge puis SmackDown bleue dans la même partie).

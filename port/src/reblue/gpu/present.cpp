@@ -56,14 +56,20 @@ bool Wwe12LoadTurboSkipPresent();  // native/wwe12_load_turbo.cpp
 // the next one (shown 33 ms after the one before: a visible hitch on PCs that sit just under 60). A late
 // frame is now shown at once (a tear line, on that frame only). Vulkan: the FIFO_RELAXED present mode
 // (does exactly that, when the driver offers it); DirectX 12 / 11: that one present without V-sync.
-REXCVAR_DEFINE_BOOL(svr_adaptive_vsync, true, "SvR",
+// 1.3.1: OFF by default. "Late" is judged against the screen's refresh, not the game's own pace: at 30
+// fps (cutscenes, entrances, the 30 fps mode) every frame spans 2 refreshes, and on a 120/144 Hz screen
+// every 60 fps frame is "late" too, so each one was shown without V-sync: steady tearing (#63, #70).
+// To bring it back, the test must compare with the game's target frame time (0x8324CE28), and Vulkan
+// can't use FIFO_RELAXED for that (it tears whenever its queue is empty at a vblank).
+REXCVAR_DEFINE_BOOL(svr_adaptive_vsync, false, "SvR",
                     "With V-sync on, a frame that comes too late is shown at once (may tear) instead "
                     "of waiting for the next screen refresh.");
 
 // 1.3: sharpening of an enlarged picture (present pass, see UpscaleSharpness below).
-REXCVAR_DEFINE_INT32(svr_upscale_sharpness, 50, "SvR",
-                     "Sharpening of the picture when it is enlarged to the screen (0 = off, 100 = most).")
-    .range(0, 100);
+REXCVAR_DEFINE_INT32(svr_upscale_sharpness, -1, "SvR",
+                     "Sharpening of the picture when it is enlarged to the screen (0 = off, 100 = most, "
+                     "-1 = automatic: 50, but off on GPUs built into the processor, where it costs frame time).")
+    .range(-1, 100);
 
 #if defined(SVR_NATIVE_RENDERER)
 namespace bd::gpu {
@@ -297,7 +303,15 @@ GuestTexture *SelectPresentSource(VideoState &s, GuestTexture *frontBuffer) {
 u32 UpscaleSharpness(const GuestTexture *rt, u32 drawn_width) {
   if (!rt || !rt->width || rt->width >= drawn_width)
     return 0;
-  return u32(std::clamp(REXCVAR_GET(svr_upscale_sharpness), 0, 100));
+  const int configured = REXCVAR_GET(svr_upscale_sharpness);
+  if (configured >= 0)
+    return u32(std::min(configured, 100));
+  // Automatic (1.4): small integrated GPUs (#70) are the ones that cannot spare the extra pass.
+  static const bool integrated = [] {
+    const auto *device = Video::HostDevice();
+    return device && device->getDescription().type == plume::RenderDeviceType::INTEGRATED;
+  }();
+  return integrated ? 0u : 50u;
 }
 
 void RecordPresentPass(VideoState &s, GuestTexture *rt,

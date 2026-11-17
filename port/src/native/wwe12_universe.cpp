@@ -85,6 +85,7 @@
 #include <rex/runtime.h>
 
 #include "../launcher/toml_file.h"
+#include "../modmaker/svrfmt/pac.h"
 #include "core/logging.h"
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
@@ -93,9 +94,34 @@
 
 REXCVAR_DECLARE(uint32_t, user_language);
 
+// ("ultimate" Universe, tournaments for a vacant title, at the end of the file)
+bool UltimateTournamentsOn();
+void UltimateTitleVacated(const PPCContext &in, uint8_t *base, uint32_t title);
+// before a show's single title is vacated: false when refused (no tournament possible); its seeds kept for after
+bool UltimateBeforeVacate(const PPCContext &in, uint8_t *base, uint32_t title);
+void UltimateTournamentResult(uint32_t a, uint32_t b, uint32_t winner);
+bool UltimateTourneySemi(const PPCContext &x, uint8_t *base, uint32_t a, uint32_t b, uint32_t day);
+bool UltimateVacantTitle(const PPCContext &x, uint8_t *base, uint32_t title);
+bool UltimateTourneyPossible(const PPCContext &in, uint8_t *base, uint32_t title);
+// back on the Universe menu after TITLE MANAGEMENT: a vacated show title's question (tournament or vacant)
+void UltimateAskVacant(const PPCContext &in, uint8_t *base);
+// (the interference's type chosen by the player: the box's question while it asks ours, at the end of the file)
+uint32_t InterferenceQuestionText(uint32_t id);
+bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card);
+void InterferenceKindBegin();
+void InterferenceKindEnd();
+
 REXCVAR_DEFINE_BOOL(wwe12_universe_qualifiers, false, "WWE12",
                     "Universe: qualifying matches before Money in the Bank and the Elimination Chamber, "
                     "with news.");
+REXCVAR_DEFINE_BOOL(wwe12_universe_card_probe, false, "WWE12",
+                    "Dev: log every card entry the Universe writes (104 bytes) with its booker record's head.");
+REXCVAR_DEFINE_BOOL(wwe12_universe_injuries, true, "WWE12",
+                    "Universe: Superstars can be injured, out of action for some weeks, a serious injury included "
+                    "(false: nobody is injured; WWE '12 has no other end of career).");
+REXCVAR_DEFINE_INT32(wwe12_universe_mitb_briefcases, 1, "WWE12",
+                     "Universe: Money in the Bank briefcases (1 = the game's: one match, one holder; 2 = a match "
+                     "for RAW and one for SmackDown at the PPV, two holders, each cashing in as the game's).");
 REXCVAR_DEFINE_INT32(wwe12_universe_title_defenses, 0, "WWE12",
                      "Universe: chance (percent) that a weekly match with a champion in it becomes his "
                      "title's defense (0 = the game's own cards).");
@@ -532,19 +558,72 @@ std::filesystem::path StatsFile() {
   return state->emulator()->user_data_root() / "universe_stats.txt";
 }
 
+// ---- two Money in the Bank briefcases: their holders (see "two briefcases" below) -----------------
+//
+// The holders, from universe_stats.txt: the "mitb <id> <day>" lines of the last day a briefcase was won (up to today:
+// the lines of a later day belong to a future an older save left), less those cleared since ("mitbclear <id> <day>",
+// written when the game clears the briefcase for a cash-in). Cached; read again when the day changes or after a line
+// of ours.
+bool g_mitb_dirty = true;
+u32 g_mitb_day = ~0u;
+std::vector<u32> g_mitb_holders;
+std::map<u32, u32> g_mitb_brand;  // a holder's briefcase: the brand of the match he won ("mitbbrand <id> <brand> <day>")
+u32 g_mitb_last_brand = 0;        // the last briefcase won this session
+
+const std::vector<u32> &BriefcaseHolders(u32 today) {
+  if (!g_mitb_dirty && g_mitb_day == today)
+    return g_mitb_holders;
+  g_mitb_dirty = false;
+  g_mitb_day = today;
+  g_mitb_holders.clear();
+  std::vector<std::pair<u32, u32>> won, cleared;
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 id = 0, day = 0;
+  u32 brand = 0;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "mitbbrand %u %u %u", &id, &brand, &day) == 3) {
+      if (day <= today)
+        g_mitb_brand[id] = brand;
+    } else if (std::sscanf(line.c_str(), "mitbclear %u %u", &id, &day) == 2) {
+      if (day <= today)
+        cleared.push_back({id, day});
+    } else if (std::sscanf(line.c_str(), "mitb %u %u", &id, &day) == 2) {
+      if (day <= today && id < 512)
+        won.push_back({id, day});
+    }
+  }
+  u32 last = 0;
+  bool any = false;
+  for (const auto &[i, d] : won)
+    if (!any || d > last)
+      last = d, any = true;
+  for (const auto &[i, d] : won) {
+    if (!any || d != last || std::find(g_mitb_holders.begin(), g_mitb_holders.end(), i) != g_mitb_holders.end())
+      continue;
+    const bool gone = std::any_of(cleared.begin(), cleared.end(), [&](const auto &c) {
+      return c.first == i && c.second >= last;
+    });
+    if (!gone)
+      g_mitb_holders.push_back(i);
+  }
+  return g_mitb_holders;
+}
+
 struct Reign {
   u32 title, place, holder, from_day, to_day;  // to_day = ~0u while it goes on
 };
 
 // The title history, from the file: every reign, in order.
-std::vector<Reign> LoadReigns() {
+// (up_to: lines of a later day are left out: they belong to a future that an older save, loaded again, left)
+std::vector<Reign> LoadReigns(u32 up_to = ~0u) {
   std::vector<Reign> reigns;
   std::ifstream f(StatsFile());
   std::string line;
   while (std::getline(f, line)) {
     u32 title, place, holder, old_holder, day;
     if (std::sscanf(line.c_str(), "title %u %u %u %u %u", &title, &place, &holder, &old_holder,
-                    &day) != 5)
+                    &day) != 5 || day > up_to)
       continue;
     for (Reign &r : reigns)
       if (r.title == title && r.place == place && r.to_day == ~0u)
@@ -959,6 +1038,12 @@ void PlaceManyChoices() {
   // the left (D2 white, D3 red), the rest on the right (D4 white, D5 red)
   const u32 left = (lines + 1) / 2;
   std::string white[2], red[2];
+  size_t longest[2] = {0, 0};  // (each column's longest line: long ones side by side overlap, UNIVERSE OPTIONS)
+  for (u32 k = 0; k < lines; ++k) {
+    const char *t = g_many_text[k] ? bd::mem::try_at<const char>(g_many_text[k]) : nullptr;
+    const size_t n = t ? std::strlen(t) : 0;
+    longest[k < left ? 0 : 1] = std::max(longest[k < left ? 0 : 1], n);
+  }
   for (u32 k = 0; k < lines; ++k) {
     const char *t = g_many_text[k] ? bd::mem::try_at<const char>(g_many_text[k]) : nullptr;
     const std::string line = t ? t : "";
@@ -988,7 +1073,10 @@ void PlaceManyChoices() {
     std::memcpy(bd::mem::at<char>(str), text.data(), std::min<size_t>(text.size(), 511));
     std::memcpy(bd::mem::at<u8>(at), g_many[0].bytes, 240);  // the first line as laid out
     bd::mem::store<float>(at + 4, col ? 75.0f : -75.0f);
-    const float scale = left > 3 ? 0.82f : 0.9f;
+    float scale = left > 3 ? 0.82f : 0.9f;
+    // two lines side by side fit up to about 40 characters together at 0.9: smaller beyond (not under 0.55)
+    if (longest[0] + longest[1] > 40)
+      scale = std::max(0.55f, scale * 40.0f / float(longest[0] + longest[1]));
     bd::mem::store<float>(at + 8, -2.0f);
     bd::mem::store<float>(at + 12, scale);
     bd::mem::store<float>(at + 16, scale);
@@ -1058,7 +1146,18 @@ bool g_show_edit_open = false;
 // = 0: no title's ranking open).
 constexpr u32 kBackPlusStatsText = 27056;
 
+// Gameplay's texts (wwe12_match_modes.cpp: the character select's "FINISHERS: n"): the game's text it
+// asks for, then its completed copy.
+u32 Wwe12MatchModesGameText(u32 id);  // 0 = not Gameplay's; else the game's text to complete
+u32 Wwe12MatchModesText(u32 game);    // the completed text's guest address (or game as is)
+
 extern "C" REX_FUNC(sub_821A4400) {
+  if (const u32 mm = Wwe12MatchModesGameText(ctx.r4.u32)) {
+    ctx.r4.u64 = mm;
+    __imp__sub_821A4400(ctx, base);
+    ctx.r3.u64 = Wwe12MatchModesText(ctx.r3.u32);
+    return;
+  }
   if (g_save_label && ctx.r4.u32 == g_save_label)
     ctx.r4.u64 = kGameSaveText;
   const u32 asked = ctx.r4.u32;
@@ -1129,6 +1228,10 @@ extern "C" REX_FUNC(sub_821A4400) {
   }
   const u32 id = ctx.r4.u32;
   __imp__sub_821A4400(ctx, base);
+  if (const u32 text = InterferenceQuestionText(id)) {  // (the interference box asking our question)
+    ctx.r3.u64 = text;
+    return;
+  }
   if (const u32 text = Enabled() ? QualNewsText(id) : 0) {
     ctx.r3.u64 = text;
     return;
@@ -1248,12 +1351,17 @@ void VacateTitle(const PPCContext &in, u8 *base, u32 title) {
 // [+28] + [+2520] (cursor + scroll), its title at +380 + row * 24. In the Universe, a title a
 // weekly show uses stays: the game's message box says why.
 REX_EXTERN(__imp__sub_82565390);
+REX_EXTERN(__imp__sub_82A39CE8);  // title: tag team?
 extern "C" REX_FUNC(sub_82565390) {
   const u32 screen = ctx.r3.u32;
   if (Enabled() && bd::mem::load<u32>(kInUniverseFlag) == 1) {
     const u32 row = bd::mem::load<u32>(screen + 28) + bd::mem::load<u32>(screen + 2520);
     const u32 title = row < 64 ? bd::mem::load<u32>(screen + 380 + row * 24) : kTitleCount;
-    if (title < kTitleCount && TitleUsedByAShow(ctx, base, title)) {
+    // (with tournaments on, a show's title may be vacated: a tournament crowns the next champion)
+    // (with the unpredictable Universe a single show title may be vacant, a tournament or not, asked after; a tag
+    // title: still refused)
+    if (title < kTitleCount && TitleUsedByAShow(ctx, base, title) &&
+        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title))) {
       BD_INFO("[univers] titles: VACATE refused, a show uses title {}", title);
       Call(ctx, base, __imp__sub_8254E680, kTitleUsedText);
       return;
@@ -1511,14 +1619,26 @@ void Chosen(const PPCContext &in, u8 *base, u32 answer) {
 // ---- the Universe's schedule (as WWE 2K14's EDIT CALENDAR) -----------------------------------------
 //
 // U + 0xDE00: 7 bytes, a weekday each (Monday first) = the weekly show airing then (0 RAW, 1
-// SmackDown, 2 Superstars, 0xFF none); Sunday is never read there (PPVs). Only shows 0-2 have a
-// booker (sub_826EB218), so only they can be scheduled. U + 0xDDD0: 48 bytes, month * 4 + week = the
+// SmackDown, 2 Superstars, 3 NXT, 0xFF none); Sunday is never read there (PPVs). Shows 0-2 have their own
+// booker (sub_826EB218), NXT uses the RAW one. U + 0xDDD0: 48 bytes, month * 4 + week = the
 // PPV (10-22) or 0xFF. Show records: U + 27360 + k * 984 (+832 name; +929 + b: uses brand b,
 // 0 RAW, 1 SmackDown). WWE '12's own SHOW EDIT only flips a show between Monday and Friday (and its
 // label follows the show, not the table).
 
 constexpr u32 kWeekTable = 0xDE00, kPpvTable = 0xDDD0, kShowRecords = 27360, kShowRecordSize = 984;
 constexpr u32 kNoShow = 0xFF;
+// Weekly shows offered: RAW, SmackDown, Superstars and the game's hidden show 3 "NXT" (brands 0 and 1, its own logo;
+// booked by the RAW booker, as the factory gives shows 3-9; tested 2026-11-13 with the dev cvar
+// wwe12_universe_show3_day: its cards are made and shown like the others).
+// Off (default, until NXT is finished): EXACTLY 1.3.0 - NXT is not offered anywhere and our NXT hooks do nothing.
+REXCVAR_DEFINE_BOOL(wwe12_universe_nxt, false, "WWE12",
+                    "Universe: NXT (the game's hidden show 3) as a 4th weekly show (EDIT CALENDAR, SCHEDULE, MATCHES "
+                    "PER SHOW). Unfinished: off by default.");
+bool NxtOn() { return REXCVAR_GET(wwe12_universe_nxt); }
+u32 WeeklyShows() { return NxtOn() ? 4 : 3; }
+thread_local bool t_nxt_booking = false;  // (dev log) inside NXT's card call
+bool NxtProbeLive();  // NXT is on and its booker lives (dev logs)
+u32 g_nxt_probe_lines = 0;
 
 struct CalendarWords {
   const char *calendar, *weekly, *ppvs, *days[6], *no_show, *move, *remove, *host, *raw, *smackdown,
@@ -1617,7 +1737,7 @@ void PickWeeklyShow(const PPCContext &in, u8 *base) {
   if (!u)
     return;
   std::vector<std::string> shows;
-  for (u32 k = 0; k < 3; ++k)
+  for (u32 k = 0; k < WeeklyShows(); ++k)
     shows.push_back(ShowName(u, k));
   Choose(in, base, w.pick_show, shows, [](const PPCContext &in, u8 *base, size_t show) {
     const CalendarWords &w = CWords();
@@ -1781,7 +1901,9 @@ void EditCalendar(const PPCContext &in, u8 *base) {
 // number (universe_shows.txt: "matches <0 RAW / 1 SmackDown / 2 Superstars / 10 PPVs> <n>").
 
 constexpr u32 kBookerRaw = 0x8203EB08, kBookerSmackDown = 0x8203EB1C, kBookerSuperstars = 0x8203EB30;
-std::atomic<u32> g_matches[4] = {0, 0, 0, 0};  // RAW, SmackDown, Superstars, PPVs (0: the game's)
+std::atomic<u32> g_matches[5] = {0, 0, 0, 0, 0};  // RAW, SmackDown, Superstars, PPVs, NXT (0: the game's)
+constexpr u32 kNxtSlot = 4;
+u32 MatchSlot(u32 key) { return key >= 10 ? 3 : key == 3 ? kNxtSlot : std::min<u32>(key, 2); }
 std::atomic<bool> g_matches_loaded{false};
 
 std::filesystem::path ShowsFile() {
@@ -1799,7 +1921,7 @@ void LoadMatchCounts() {
   while (std::getline(f, line)) {
     u32 key = 0, n = 0;
     if (std::sscanf(line.c_str(), "matches %u %u", &key, &n) == 2 && n <= 8)
-      g_matches[key >= 10 ? 3 : std::min<u32>(key, 2)] = n;
+      g_matches[MatchSlot(key)] = n;
   }
 }
 
@@ -1808,18 +1930,18 @@ void SaveMatchCounts() {
   if (file.empty())
     return;
   std::ofstream f(file);
-  const u32 keys[4] = {0, 1, 2, 10};
-  for (u32 i = 0; i < 4; ++i)
+  const u32 keys[5] = {0, 1, 2, 10, 3};
+  for (u32 i = 0; i < 5; ++i)
     if (g_matches[i])
       f << "matches " << keys[i] << ' ' << g_matches[i] << '\n';
 }
 
-// The number of matches of one kind of show (0 RAW, 1 SmackDown, 2 Superstars, 3 the PPVs).
+// The number of matches of one kind of show (0 RAW, 1 SmackDown, 2 Superstars, 3 the PPVs, 4 NXT).
 void ChooseMatchCount(const PPCContext &in, u8 *base, u32 which, const std::string &name,
                       std::function<void(const PPCContext &, u8 *)> after = {}) {
   const CalendarWords &w = CWords();
   LoadMatchCounts();
-  static const u32 kDefault[4] = {4, 4, 3, 6};
+  static const u32 kDefault[5] = {4, 4, 3, 6, 4};
   const auto now = [which](u32 n) {
     return n ? std::to_string(n)
              : std::string(CWords().default_count) + " " + std::to_string(kDefault[which]);
@@ -1846,6 +1968,8 @@ void EditMatches(const PPCContext &in, u8 *base) {
     return;
   LoadMatchCounts();
   std::vector<std::string> shows = {ShowName(u, 0), ShowName(u, 1), ShowName(u, 2), w.all_ppvs};
+  if (NxtOn())
+    shows.push_back(ShowName(u, 3));
   Choose(in, base, w.matches, shows, [shows](const PPCContext &in, u8 *base, size_t which) {
     ChooseMatchCount(in, base, u32(which), shows[which]);
   });
@@ -1902,9 +2026,9 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
   g_screen = screen;
   if (weekday < 6) {
     const u8 show = bd::mem::load<u8>(u + kWeekTable + weekday);
-    if (show > 2) {  // empty (or a show without a booker): put one here
+    if (show >= WeeklyShows()) {  // empty (or a show we don't schedule): put one here
       std::vector<std::string> shows;
-      for (u32 k = 0; k < 3; ++k)
+      for (u32 k = 0; k < WeeklyShows(); ++k)
         shows.push_back(ShowName(u, k) + "  (" + ShowDay(u, k) + ")");
       Choose(in, base, std::string(w.days[weekday]) + "\n" + sw.put, shows,
              [screen, weekday](const PPCContext &in, u8 *base, size_t k) {
@@ -1935,7 +2059,7 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
                         Inform(in, base, Format(CWords().done_day, name, CWords().days[to]) + bumped);
                       });
              } else if (what == 1) {
-               ChooseMatchCount(in, base, show, name);
+               ChooseMatchCount(in, base, MatchSlot(show), name);
              } else {
                PutShow(u, show, 6);
                RedrawSchedule(in, base, screen);
@@ -1981,26 +2105,49 @@ void ScheduleCell(const PPCContext &in, u8 *base, u32 screen) {
 // wwe12_universe_title_defenses (0 / 10 / 25 / 50 / 100, percent; 0 = the game's own cards) and
 // wwe12_universe_qualifiers (true / false).
 
+// The "ultimate" Universe's level (its code at the end of the file; a row of UNIVERSE OPTIONS)
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos, 0, "WWE12",
+                     "Universe: how unpredictable (0 = the game's, 1 a little, 2 a lot, 3 madness): card layouts, "
+                     "stipulations, contenders, mystery opponents, turns, betrayals, more scenes.");
 struct OptionWords {
-  const char *options, *defenses, *qualifiers, *off, *on, *done_defenses, *done_qualifiers;
+  const char *options, *defenses, *qualifiers, *off, *on, *done_defenses, *done_qualifiers, *briefcases,
+      *done_briefcases, *injuries, *done_injuries, *chaos, *done_chaos, *levels[4];
 };
 const OptionWords &OWords() {
   static const OptionWords kWords[5] = {
       {"UNIVERSE OPTIONS", "TITLE DEFENSES", "QUALIFYING MATCHES", "OFF", "ON",
        "Title defenses on weekly shows: %s.", "Qualifying matches (Money in the Bank, Elimination "
-       "Chamber): %s."},
+       "Chamber): %s.", "MONEY IN THE BANK BRIEFCASES", "Money in the Bank briefcases: %s (2 = one for RAW, one for SmackDown).", "INJURIES", "Injuries: %s.",
+       "UNPREDICTABLE UNIVERSE", "Unpredictable Universe: %s.\nRandom card layouts and stipulations, surprise "
+       "contenders, mystery opponents, turns, betrayals, more scenes.", {"OFF (THE GAME'S)", "A LITTLE", "A LOT", "MADNESS"}},
       {"OPTIONS DE L'UNIVERS", "D\xC3\x89" "FENSES DE TITRE", "MATCHS DE QUALIFICATION", "NON", "OUI",
        "D\xC3\xA9" "fenses de titre dans les shows : %s.",
-       "Matchs de qualification (Money in the Bank, Elimination Chamber) : %s."},
+       "Matchs de qualification (Money in the Bank, Elimination Chamber) : %s.", "MALLETTES MONEY IN THE BANK",
+       "Mallettes Money in the Bank : %s (2 = une pour RAW, une pour SmackDown).", "BLESSURES", "Blessures : %s.",
+       "UNIVERS IMPR\xC3\x89VISIBLE", "Univers impr\xC3\xA9visible : %s.\nCartes et stipulations au hasard, "
+       "pr\xC3\xA9tendants surprise, adversaires myst\xC3\xA8re, retournements, trahisons, plus de sc\xC3\xA8nes.",
+       {"NON (LE JEU)", "UN PEU", "BEAUCOUP", "FOLIE"}},
       {"WWE-WELT-OPTIONEN", "TITELVERTEIDIGUNGEN", "QUALIFIKATIONSMATCHES", "AUS", "AN",
        "Titelverteidigungen in den Wochenshows: %s.",
-       "Qualifikationsmatches (Money in the Bank, Elimination Chamber): %s."},
+       "Qualifikationsmatches (Money in the Bank, Elimination Chamber): %s.", "MONEY-IN-THE-BANK-KOFFER",
+       "Money-in-the-Bank-Koffer: %s (2 = einer f\xC3\xBCr RAW, einer f\xC3\xBCr SmackDown).", "VERLETZUNGEN", "Verletzungen: %s.",
+       "UNVORHERSEHBARE WWE-WELT", "Unvorhersehbare WWE-Welt: %s.\nZuf\xC3\xA4llige Matchkarten und Stipulationen, "
+       "\xC3\xBC" "berraschende Herausforderer, geheime Gegner, Turns, Verrat, mehr Szenen.",
+       {"AUS (DAS SPIEL)", "EIN WENIG", "VIEL", "WAHNSINN"}},
       {"OPCIONES DEL UNIVERSO", "DEFENSAS DE T\xC3\x8DTULO", "COMBATES CLASIFICATORIOS", "NO", "S\xC3\x8D",
        "Defensas de t\xC3\xADtulo en los shows semanales: %s.",
-       "Combates clasificatorios (Money in the Bank, Elimination Chamber): %s."},
+       "Combates clasificatorios (Money in the Bank, Elimination Chamber): %s.", "MALETINES MONEY IN THE BANK",
+       "Maletines Money in the Bank: %s (2 = uno para RAW, uno para SmackDown).", "LESIONES", "Lesiones: %s.",
+       "UNIVERSO IMPREVISIBLE", "Universo imprevisible: %s.\nCarteleras y estipulaciones al azar, aspirantes "
+       "sorpresa, rivales misteriosos, cambios de bando, traiciones, m\xC3\xA1s escenas.",
+       {"NO (EL JUEGO)", "UN POCO", "MUCHO", "LOCURA"}},
       {"OPZIONI UNIVERSE", "DIFESE DEL TITOLO", "INCONTRI DI QUALIFICAZIONE", "NO", "S\xC3\x8C",
        "Difese del titolo negli show settimanali: %s.",
-       "Incontri di qualificazione (Money in the Bank, Elimination Chamber): %s."}};
+       "Incontri di qualificazione (Money in the Bank, Elimination Chamber): %s.", "VALIGETTE MONEY IN THE BANK",
+       "Valigette Money in the Bank: %s (2 = una per RAW, una per SmackDown).", "INFORTUNI", "Infortuni: %s.",
+       "UNIVERSE IMPREVEDIBILE", "Universe imprevedibile: %s.\nCard e stipulazioni a caso, sfidanti a sorpresa, "
+       "avversari misteriosi, turn, tradimenti, pi\xC3\xB9 scene.",
+       {"NO (IL GIOCO)", "UN PO'", "MOLTO", "FOLLIA"}}};
   return kWords[CurrentLang()];
 }
 
@@ -2022,8 +2169,14 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
   const int32_t pct = REXCVAR_GET(wwe12_universe_title_defenses);
   const std::string defenses = pct > 0 ? std::to_string(pct) + " %" : o.off;
   const std::string qualifiers = REXCVAR_GET(wwe12_universe_qualifiers) ? o.on : o.off;
+  const std::string briefcases = REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2 ? "2" : "1";
   Choose(in, base, o.options,
-         {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers},
+         {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers,
+          std::string(o.briefcases) + ":  " + briefcases,
+          std::string(o.injuries) + ":  " + (REXCVAR_GET(wwe12_universe_injuries) ? o.on : o.off),
+          // (5 lines: one column; 4 or 6 make the game lay the box out in two columns whose long lines overlap,
+          // tests of 2026-11-12 and 2026-11-13; B goes back)
+          std::string(o.chaos) + ":  " + o.levels[std::clamp<int>(REXCVAR_GET(wwe12_universe_chaos), 0, 3)]},
          [](const PPCContext &in, u8 *base, size_t i) {
            const OptionWords &o = OWords();
            if (i == 0) {
@@ -2036,6 +2189,34 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
                                     k ? (std::to_string(kPct[k]) + " %").c_str() : OWords().off);
                       Inform(in, base, text);
                     });
+           } else if (i == 4) {
+             const OptionWords &w = OWords();
+             static const char *const kBack[5] = {"BACK", "RETOUR", "ZURÜ" "CK", "VOLVER", "INDIETRO"};
+             // (a 5th line, BACK: with 4 the game lays the box out in two columns)
+             Choose(in, base, w.chaos, {w.levels[0], w.levels[1], w.levels[2], w.levels[3], kBack[CurrentLang()]},
+                    [](const PPCContext &in, u8 *base, size_t k) {
+                      if (k > 3)
+                        return;
+                      SaveUniverseOption("wwe12_universe_chaos", std::to_string(k));
+                      char text[512];
+                      std::snprintf(text, sizeof(text), OWords().done_chaos, OWords().levels[k]);
+                      Inform(in, base, text);
+                    });
+           } else if (i == 3) {
+             Choose(in, base, o.injuries, {o.off, o.on}, [](const PPCContext &in, u8 *base, size_t k) {
+               SaveUniverseOption("wwe12_universe_injuries", k ? "true" : "false");
+               char text[256];
+               std::snprintf(text, sizeof(text), OWords().done_injuries, k ? OWords().on : OWords().off);
+               Inform(in, base, text);
+             });
+           } else if (i == 2) {
+             Choose(in, base, o.briefcases, {"1", "2"}, [](const PPCContext &in, u8 *base, size_t k) {
+               SaveUniverseOption("wwe12_universe_mitb_briefcases", k ? "2" : "1");
+               g_mitb_dirty = true;
+               char text[256];
+               std::snprintf(text, sizeof(text), OWords().done_briefcases, k ? "2" : "1");
+               Inform(in, base, text);
+             });
            } else {
              Choose(in, base, o.qualifiers, {o.off, o.on},
                     [](const PPCContext &in, u8 *base, size_t k) {
@@ -2788,12 +2969,30 @@ void SetPromptLabel(u32 set, u32 k, u32 from, u32 to);
 void Wwe12ForgetAddedRelations(const PPCContext &ctx, uint8_t *base);  // wwe12_superstar_mods.cpp
 
 void Wwe12DiscordUniverseMenu();  // wwe12_discord.cpp (Rich Presence: a Universe match is over)
+void FillGameHolder(u32 u);
+void Twists(const PPCContext &x, u8 *base, u32 record, u32 places, u32 winner_side);  // ("ultimate" Universe)
+void ChaosMystery(u32 rec);  // (two Money in the Bank briefcases, below)
+// ("ultimate" Universe, 2026-11-13, at the end of the file: rivalry news, surprise returns, rematch clause, RIVALRY
+// MATCH header)
+bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i);  // (true: a match changed)
+void UltimateBookingAfter(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i);
+void UltimateDaily(const PPCContext &x, u8 *base, u32 u, u32 day, bool first);
+void UltimateReturnPlayed(u32 id);
+bool UltimateRivalryHeader(const PPCContext &x, u8 *base, u32 a, u32 b);
+bool UltimateWantsVs();      // the rivalry news are on (the "vs" lines are written)
+bool UltimateHeaderOn();     // the RIVALRY MATCH header is on
+void Show3Experiment(u32 u);  // (dev, at the end of the file)
+void WeeklyNews(const PPCContext &in, u8 *base);  // (more news, below)
+
 extern "C" REX_FUNC(sub_82545A70) {
   Wwe12DiscordUniverseMenu();
   // added Superstars without allies or rivals from the start, before any select screen (once each)
   Wwe12ForgetAddedRelations(ctx, base);
   DraftCheck(ctx, base);  // (a draft after the show's last match: its news)
   FlushNews(ctx, base);
+  FillGameHolder(Call(ctx, base, __imp__sub_82683A30, 0));  // (two briefcases: one cashed in, the other's again)
+  WeeklyNews(ctx, base);  // (more news: briefcase held long, long reigns, injured; once a day)
+  Show3Experiment(Call(ctx, base, __imp__sub_82683A30, 0));  // (dev: a 4th weekly show)
   g_universe_menu = ctx.r3.u32;
   g_universe_menu_for_bar = ctx.r3.u32;
   if (Enabled())
@@ -3332,6 +3531,10 @@ void BuildGlobal(const PPCContext &ctx, u8 *base) {
     t.push_back({w.mitb, "", true});
     t.push_back({std::string(g.holder) + ":  " + (holder < 512 ? NameOf(in, base, holder) : "--"),
                  ""});
+    if (u && REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2)  // (two briefcases: the other holder)
+      for (const u32 other : BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay)))
+        if (other != holder)
+          t.push_back({std::string(g.holder) + ":  " + NameOf(in, base, other), ""});
     u32 cash_ins = 0, cash_wins = 0;
     for (const Event &e : events)
       if (e.kind == "cashin") {
@@ -4027,7 +4230,18 @@ extern "C" REX_FUNC(sub_826D0598) {
 
 extern "C" REX_FUNC(sub_826CC0B8) {
   const u32 from = u32(ctx.lr);
+  const u32 probe_rec = bd::mem::try_load<u32>(ctx.r3.u32), probe_brand = ctx.r4.u32;
   __imp__sub_826CC0B8(ctx, base);
+  if (g_nxt_probe_lines < 60 && NxtProbeLive()) {
+    static std::mutex s_lock;
+    static std::set<u64> s_seen;
+    std::lock_guard<std::mutex> lock(s_lock);
+    if (s_seen.insert((u64(from) << 32) | (u64(probe_rec) << 8) | probe_brand).second) {
+      ++g_nxt_probe_lines;
+      BD_INFO("[univers] NXT probe: show record {:08X} brand {} -> {} (from {:08X})", probe_rec, probe_brand,
+              ctx.r3.u32, from);
+    }
+  }
   if (from == kContractCountReturn && ctx.r3.u32 == 0 && g_contract_extra) {
     --g_contract_extra;  // counted as on the show: the count reaches 15 with minimum - 15 fewer
     ctx.r3.u64 = 1;
@@ -4074,6 +4288,8 @@ extern "C" REX_FUNC(sub_82583B78) {
 
 // The title history: each change of a Universe title's holder, with the week (see StatsFile).
 REX_EXTERN(__imp__sub_82A39FC8);  // a title's holder (title, place, 1)
+void TitleChangeNews(const PPCContext &in, u8 *base, u32 title, u32 holder);  // (more news, below)
+REX_EXTERN(__imp__sub_826D4DC8);  // card entry: a title match?
 extern "C" REX_FUNC(sub_82A3A060) {
   const PPCContext in = ctx;
   const u32 title = ctx.r3.u32, holder = ctx.r4.u32 & 0xFFFF, place = ctx.r5.u32;
@@ -4081,6 +4297,10 @@ extern "C" REX_FUNC(sub_82A3A060) {
                         place < 2;
   const u32 old_holder = universe ? Call(in, base, __imp__sub_82A39FC8, title, place, 1) & 0xFFFF
                                   : 0;
+  // ("ultimate" Universe) a show's title vacated: its tournament's seeds now, while its ranking is there (the game
+  // empties it with the champion: none found after, test of 2026-11-13); refused when no tournament is possible
+  if (universe && holder == kNobody && old_holder != kNobody && place == 0 && !UltimateBeforeVacate(in, base, title))
+    return;
   __imp__sub_82A3A060(ctx, base);
   if (!universe || old_holder == holder)
     return;
@@ -4093,7 +4313,19 @@ extern "C" REX_FUNC(sub_82A3A060) {
         << '\n';
   BD_INFO("[univers] stats: title {} place {}: {} -> {} (day {}, from 0x{:08X})", title, place,
           old_holder, holder, day, u32(in.lr));
+  TitleChangeNews(in, base, title, holder);
+  if (holder == kNobody && place == 0)
+    UltimateTitleVacated(in, base, title);  // ("ultimate" Universe: a tournament for a show's title)
 }
+
+// More news (1.4): a cash-in's result, streaks (see MoreNewsText).
+void DefenseNews(const PPCContext &in, u8 *base, u32 record, u32 day);
+void WeeklyNews(const PPCContext &in, u8 *base);
+void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i);
+bool PpvCardNews(const PPCContext &x, u8 *base, u32 u, u32 day, const std::vector<std::pair<u32, u32>> &who);
+void ContenderWonNews(u32 record, u32 winner_id);
+void CashInNews(u32 id, bool won);
+void StreakNews(const std::vector<std::pair<u32, bool>> &result, u32 day);
 
 // The results of the Universe's matches (played or simulated): all go through
 // sub_826CEF28(view, show, -, match, winner's place, loser's place, 1). The show: 0-9 the weekly
@@ -4141,24 +4373,264 @@ u32 UniverseDay(const PPCContext &in, u8 *base) {
   return u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
 }
 
+// ---- two briefcases (1.4, wwe12_universe_mitb_briefcases = 2) ------------------------------------
+//
+// The game has one holder (U + 51004, its flag byte U + 51006). With two briefcases, the PPV has a Money in the Bank
+// match per brand (MakeSecondMitb below) and both winners hold one: the first winner of the day is set by the game,
+// the second is only written to universe_stats.txt ("mitb <id> <day>", BriefcaseHolders). Everything the game does
+// with its holder is then done for either one:
+// - its "is he the holder?" tests (sub_826CC718 compared with a Superstar: the briefcase at his entrance
+//   sub_826C0910, in the match sub_82DEA688, the stories' role 20 sub_826DB518, sub_826E6238, sub_826D7A40) answer yes
+//   for both (the callers by their return address, the Superstar in their register);
+// - the cash-in offer after a champion's match (sub_82554460, then the prompt sub_82554670, the cash-in match
+//   sub_826EB3B0 and the clear sub_826CCAB8) is asked for the game's holder, then for the other one, who is put in
+//   U + 51004 for it: the game's own cash-in then runs for him. The clear writes "mitbclear"; the one left becomes the
+//   game's holder again at the next offer or Universe menu.
+REX_EXTERN(__imp__sub_826CC718);  // Money in the Bank: the game's holder (view)
+REX_EXTERN(__imp__sub_82554460);  // after a match: may the holder cash in? (menu)
+
+bool TwoBriefcases() { return Enabled() && REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2; }
+
+std::map<u32, u8> g_mitb_flag;  // the flag byte each holder was given (U + 51006)
+u32 g_second_offer = 512;        // both holders may cash in: the one asked after a NO for the game's holder
+u32 g_second_title = 255;        // ... his title (MATCH CARDS + 4096)
+
+void SetGameHolder(u32 u, u32 id) {
+  bd::mem::store<u16>(u + kBriefcaseHolder, u16(id));
+  const auto it = g_mitb_flag.find(id);
+  bd::mem::store<u8>(u + kBriefcaseHolder + 2, it != g_mitb_flag.end() ? it->second : 0);
+}
+
+// The game's holder made one of the holders when it has none (a cash-in cleared it).
+void FillGameHolder(u32 u) {
+  if (!u || !TwoBriefcases())
+    return;
+  const u32 now = bd::mem::load<u16>(u + kBriefcaseHolder);
+  const auto &h = BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay));
+  if (now < 512 || h.empty())
+    return;
+  SetGameHolder(u, h.front());
+  BD_INFO("[univers] Money in the Bank: {} holds the game's briefcase again", h.front());
+}
+
+// For the Mod Maker's served scenes (wwe12_arena_pages.cpp): should the Money in the Bank scene that is being read
+// show the blue (SmackDown) briefcase? Yes with two briefcases when the game's holder (the one cashing in: he is put
+// in U + 51004 for it) won SmackDown's match; with no holder (the scene of the win itself), the last briefcase won.
+bool Wwe12MitbBlue() {
+  if (!TwoBriefcases())
+    return false;
+  const u32 rec = bd::mem::try_load<u32>(0x8317FA08);
+  if (!rec)
+    return false;
+  const u32 u = rec + 0x3F394;  // (the Universe block, sub_82683A30)
+  const u32 holder = bd::mem::load<u16>(u + kBriefcaseHolder);
+  BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay));  // (reads the brands)
+  const auto it = g_mitb_brand.find(holder);
+  const u32 brand = holder < 512 && it != g_mitb_brand.end() ? it->second : g_mitb_last_brand;
+  BD_INFO("[univers] Money in the Bank scene: holder {}, briefcase of brand {} ({})", holder, brand,
+          brand == 1 ? "blue" : "red");
+  return brand == 1;
+}
+
 extern "C" REX_FUNC(sub_826CCA90) {
   const u32 id = ctx.r4.u32;
+  const u32 u = bd::mem::load<u32>(ctx.r3.u32 + 4);
   if (Enabled() && id < 512) {
-    BD_INFO("[univers] Money in the Bank: {} holds the briefcase", id);
-    AppendStats({fmt::format("mitb {} {}", id, UniverseDay(ctx, base))});
+    const u32 day = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+    const u32 now = u ? bd::mem::load<u16>(u + kBriefcaseHolder) : 512;
+    // the second briefcase: a briefcase already won today by another
+    bool second = false;
+    if (TwoBriefcases() && u && now < 512 && now != id) {
+      const auto &h = BriefcaseHolders(day);
+      second = std::find(h.begin(), h.end(), now) != h.end() && g_mitb_day == day && [&] {
+        std::ifstream f(StatsFile());
+        std::string line;
+        u32 i = 0, d = 0;
+        while (std::getline(f, line))
+          if (std::sscanf(line.c_str(), "mitb %u %u", &i, &d) == 2 && i == now && d == day)
+            return true;
+        return false;
+      }();
+    }
+    // the briefcase's colour: the brand of the match he won (its men were all of one brand), "mitbbrand" line
+    const u32 brand = Call(ctx, base, __imp__sub_826D2B50, id);
+    BD_INFO("[univers] Money in the Bank: {} holds the {} briefcase (brand {})", id, second ? "second" : "game's", brand);
+    AppendStats({fmt::format("mitb {} {}", id, day), fmt::format("mitbbrand {} {} {}", id, brand, day)});
+    g_mitb_last_brand = brand;
+    g_mitb_dirty = true;
+    g_mitb_flag[id] = ctx.r5.u8;
+    if (second)
+      return;  // the game's holder stays (the first of the day)
   }
   __imp__sub_826CCA90(ctx, base);
+}
+
+// sub_826CC718(view): the game's holder. For its "is he the holder?" callers, the Superstar asked about is answered
+// when he holds either briefcase.
+extern "C" REX_FUNC(sub_826CC718) {
+  const u32 from = u32(ctx.lr);
+  u32 asked = 512;
+  if (TwoBriefcases()) {
+    switch (from) {
+    case 0x826C0BE8: asked = ctx.r29.u32; break;                          // sub_826C0910 (entrance)
+    case 0x82DEA6B4: asked = ctx.r30.u32; break;                          // sub_82DEA688 (in the match)
+    case 0x826DB618: asked = bd::mem::load<u32>(ctx.r28.u32 + 8); break;  // sub_826DB518 (a story's role 20)
+    case 0x826E6278: asked = ctx.r31.u32; break;                          // sub_826E6238
+    case 0x826D7A94: asked = bd::mem::load<u32>(ctx.r31.u32 + 8); break;  // sub_826D7A40
+    default: break;
+    }
+  }
+  const u32 view = ctx.r3.u32;
+  __imp__sub_826CC718(ctx, base);
+  if (asked >= 512 || ctx.r3.u32 == asked)
+    return;
+  const u32 u = bd::mem::load<u32>(view + 4);
+  if (!u)
+    return;
+  const auto &h = BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay));
+  if (std::find(h.begin(), h.end(), asked) != h.end())
+    ctx.r3.u64 = asked;
+}
+
+// sub_82554460(menu): after a match, may the holder cash in (a champion of title 0, 1, 4 or 5 was in it)? Asked for
+// the game's holder, then for the other one (put in U + 51004 if he may).
+extern "C" REX_FUNC(sub_82554460) {
+  const u32 u = TwoBriefcases() ? Call(ctx, base, __imp__sub_82683A30, 0) : 0;
+  if (!u) {
+    __imp__sub_82554460(ctx, base);
+    return;
+  }
+  FillGameHolder(u);
+  const u32 card = ctx.r3.u32;
+  const u32 first = bd::mem::load<u16>(u + kBriefcaseHolder);
+  const u8 first_flag = bd::mem::load<u8>(u + kBriefcaseHolder + 2);
+  PPCContext again = ctx;
+  g_second_offer = 512;
+  __imp__sub_82554460(ctx, base);
+  const auto h = BriefcaseHolders(bd::mem::load<u32>(u + kUniverseDay));
+  if (ctx.r3.u32) {
+    // Both may cash in: the game asks for its holder; a NO asks for the other one (sub_825572C8 below). His
+    // title (card + 4096, the best one he may cash in on) is found now, then the first one's put back.
+    const u32 title = bd::mem::load<u32>(card + 4096);
+    for (const u32 other : h) {
+      if (other == first)
+        continue;
+      SetGameHolder(u, other);
+      bd::mem::store<u32>(card + 4096, 255);
+      PPCContext c = again;
+      __imp__sub_82554460(c, base);
+      if (c.r3.u32) {
+        g_second_offer = other;
+        g_second_title = bd::mem::load<u32>(card + 4096);
+        BD_INFO("[univers] Money in the Bank: both holders may cash in ({} first, then {})", first, other);
+      }
+      break;
+    }
+    bd::mem::store<u32>(card + 4096, title);
+    bd::mem::store<u16>(u + kBriefcaseHolder, u16(first));
+    bd::mem::store<u8>(u + kBriefcaseHolder + 2, first_flag);
+    return;
+  }
+  for (const u32 other : h) {
+    if (other == first)
+      continue;
+    SetGameHolder(u, other);
+    PPCContext c = again;
+    __imp__sub_82554460(c, base);
+    if (c.r3.u32) {
+      BD_INFO("[univers] Money in the Bank: the second briefcase's holder {} may cash in", other);
+      ctx = c;
+      return;
+    }
+  }
+  bd::mem::store<u16>(u + kBriefcaseHolder, u16(first));
+  bd::mem::store<u8>(u + kBriefcaseHolder + 2, first_flag);
+}
+
+// ---- injuries on / off (1.4, asked by players: "injured Superstars, two ends of career in my Universe") ---------
+//
+// A Superstar is put out of action by sub_826CEA88(view, id, 1): bit 31 of his Universe record's +92 with the week in
+// +96 (sub_826D46E8), and he loses his #1 contender places; 0 brings him back. Callers with 1: a match's result
+// (sub_826C55E0, only when his show keeps more than 15) and a story (sub_826E7A10). With wwe12_universe_injuries off,
+// the 1 is refused (bringing back still works, so the injured of an older save come back as the game decides).
+// (Coded once on 2026-10-27 and removed at the user's request; asked again for 1.4.)
+REX_EXTERN(__imp__sub_826CEA88);  // Universe: put a Superstar out of action / back (view, id, on)
+extern "C" REX_FUNC(sub_826CEA88) {
+  if (Enabled() && !REXCVAR_GET(wwe12_universe_injuries) && ctx.r5.u32 == 1) {
+    BD_INFO("[univers] injuries off: Superstar {} stays in action", ctx.r4.u32);
+    return;
+  }
+  __imp__sub_826CEA88(ctx, base);
+}
+
+// MATCH CARDS' per-frame code (card C, its state C + 4164: 2 = the cash-in box is open). The box's answer
+// (sub_8288EEF8(box): 1 = YES, then C + 540 = 1 and the cash-in; 0 = NO, sub_82554200) is read before the game: a NO
+// while the other holder may cash in too puts him in U + 51004 and opens the same box for him (sub_82554670) once the
+// message box is free (C + 528, set by the NO, cleared). So the player picks who cashes in: NO to the first, YES to
+// the second.
+REX_EXTERN(__imp__sub_825572C8);  // MATCH CARDS: per frame (card)
+REX_EXTERN(__imp__sub_82554670);  // MATCH CARDS: the cash-in box (card)
+REX_EXTERN(__imp__sub_8288EEF8);  // message box: its answer
+
+extern "C" REX_FUNC(sub_825572C8) {
+  const u32 card = ctx.r3.u32;
+  if (InterferenceChoice(ctx, base, card))
+    return;  // (our question asked again in the interference box)
+  // (the second holder's box: a NO puts the first one back as the game's holder, so the next offer asks him first again)
+  static u32 s_first = 512;
+  if ((g_second_offer >= 512 && s_first >= 512) || !TwoBriefcases()) {
+    s_first = 512;
+    __imp__sub_825572C8(ctx, base);
+    return;
+  }
+  const u32 box = bd::mem::load<u32>(0x8324DEF0);
+  const u32 state = bd::mem::load<u32>(card + 4164);
+  int32_t answer = -3;
+  if (state == 2 && box && bd::mem::load<u32>(box + 1820) == 0)
+    answer = int32_t(Call(ctx, base, __imp__sub_8288EEF8, box));
+  const u32 u = answer == 0 || answer == 1 ? Call(ctx, base, __imp__sub_82683A30, 0) : 0;
+  if (g_second_offer >= 512) {  // the second holder's box is open
+    __imp__sub_825572C8(ctx, base);
+    if (answer == 0 && u) {
+      SetGameHolder(u, s_first);
+      BD_INFO("[univers] Money in the Bank: NO for the second holder too, {} is the game's holder again", s_first);
+    }
+    if (answer == 0 || answer == 1 || answer == -2)
+      s_first = 512;
+    return;
+  }
+  if (answer == 0 && u) {
+    // NO for the first holder: the game would go on to the match at once (test of 2026-11-12), so the box is asked
+    // again for the other one instead, before the game reads the NO (the box takes the new question).
+    const u32 other = g_second_offer;
+    g_second_offer = 512;
+    s_first = bd::mem::load<u16>(u + kBriefcaseHolder);
+    SetGameHolder(u, other);
+    bd::mem::store<u32>(card + 4096, g_second_title);
+    Call(ctx, base, __imp__sub_82554670, card);
+    BD_INFO("[univers] Money in the Bank: NO for the first holder, now asking {} (title {}, box answer now {})",
+            other, g_second_title, int32_t(Call(ctx, base, __imp__sub_8288EEF8, box)));
+    return;
+  }
+  __imp__sub_825572C8(ctx, base);
+  if (answer == 1 || answer == -2) {
+    BD_INFO("[univers] Money in the Bank: cash-in box answered {} (first holder)", answer);
+    g_second_offer = 512;
+  }
 }
 
 extern "C" REX_FUNC(sub_826CCAB8) {
   const u32 u = bd::mem::load<u32>(ctx.r3.u32 + 4);
   const u32 holder = u ? bd::mem::load<u16>(u + kBriefcaseHolder) : 512;
   if (Enabled() && holder < 512) {
+    AppendStats({fmt::format("mitbclear {} {}", holder, UniverseDay(ctx, base))});
+    g_mitb_dirty = true;
     const auto it = std::find_if(g_last_result.begin(), g_last_result.end(),
                                  [&](const auto &r) { return r.first == holder; });
     if (it != g_last_result.end()) {
       AppendStats({fmt::format("cashin {} {} {}", holder, it->second ? 1 : 0,
                                UniverseDay(ctx, base))});
+      CashInNews(holder, it->second);
       BD_INFO("[univers] Money in the Bank: {} cashed in, {}", holder, it->second ? "won" : "lost");
     } else {
       g_cashed_holder = holder;
@@ -4247,13 +4719,45 @@ bool g_news_begin = false;  // the news being drawn is "qualifying matches begin
 constexpr u8 kDraftMarker = 0x52;
 constexpr u32 kDraftEvent = 100;  // (queued as event 100 + brand)
 u32 g_news_draft = 0;
+// More news of ours (1.4, "a lot more news"): type 5, +14 = 0x53, +15 the kind (kMore*): the kind + 1 while drawn.
+constexpr u8 kMoreMarker = 0x53;
+constexpr u32 kMoreEvent = 200;  // (queued as event 200 + kind)
+// The game's own news types, queued as event 1000 + type (no marker: the game draws its own texts): 2 New Rivalry,
+// 8 "Why %s Why?" (a turn to heel), 9 Fan Favorite (a turn to face) (titles 27062 / 27076 / 27074 by the type table
+// 0x82023738, in the order of string.pac's news texts).
+constexpr u32 kNativeEvent = 1000;
+enum MoreKind : u32 {
+  kCashInWon, kCashInLost, kStreak5, kStreak10, kStreak15, kLosing5,
+  kMitbHeld, kDoubleGold, kReignWeeks, kFightingChamp, kMedical,
+  kContenderWon, kContenderTriple, kContenderShowdown, kMystery, kMysteryPartner, kMomentumHigh, kMomentumLow, kTop5Out,
+  kPastGlory, kHistoricReign, kWrestleManiaRep, kTeamsFinalized,
+  kRivalFeud, kRivalDominant, kRivalPayback, kRematch, kSurpriseReturn,  // ("ultimate" Universe, 2026-11-13)
+  kTourneyStart, kTourneyFinal,
+  kMoreKinds
+};
+// (its argument in the news' +10, u16, which the game neither clears nor reads: a title, title + 256 * another title
+// or title + 256 * a number)
+u32 g_news_more = 0;
+u32 g_news_more_arg = 0;  // the news' +10 while drawn
+std::string g_more_title1, g_more_title2;  // ... its titles' names, and number (set by the drawing hooks)
+std::string g_more_name2, g_more_name3, g_more_brand;     // ... and its 2nd / 3rd Superstars' names (+2, +4)
+u32 g_more_number = 0;
+REXCVAR_DEFINE_BOOL(wwe12_universe_more_news, true, "WWE12",
+                    "Universe: more news (a Money in the Bank cash-in's result, winning streaks of 5, 10 and 15, "
+                    "5 losses in a row).");
 
 u32 NewsEvent(u32 rec) {
   g_news_begin = false;
   g_news_draft = 0;
+  g_news_more = 0;
   if (!rec)
     return 0;
   const u32 type = bd::mem::load<u8>(rec + 12);
+  if (type == kNewsQualified && bd::mem::load<u8>(rec + 14) == kMoreMarker) {
+    g_news_more = std::min<u32>(bd::mem::load<u8>(rec + 15), kMoreKinds - 1) + 1;
+    g_news_more_arg = bd::mem::load<u16>(rec + 10);
+    return 0;
+  }
   if (type == kNewsQualified && bd::mem::load<u8>(rec + 14) == kDraftMarker) {
     g_news_draft = (bd::mem::load<u8>(rec + 15) & 1) + 1;
     return 0;
@@ -4270,6 +4774,7 @@ u32 NewsEvent(u32 rec) {
 
 struct Qualifier {
   u32 event, year, a, b;
+  u32 b2 = 512, b3 = 512;  // (more news: a 2nd and 3rd Superstar, in the news' +2 / +4)
 };
 std::mutex g_qual_mutex;
 std::vector<Qualifier> g_pending_news;  // news to add on the game's thread: {event, type, id}
@@ -4333,6 +4838,413 @@ void QueueNews(u32 event, u32 type, u32 id) {
   std::lock_guard<std::mutex> lock(g_qual_mutex);
   g_pending_news.push_back({event, 0, type, id});  // a = the news' type, b = its Superstar
 }
+void QueueNews3(u32 event, u32 id, u32 id2, u32 id3, u32 arg) {
+  std::lock_guard<std::mutex> lock(g_qual_mutex);
+  Qualifier q{event, arg, kNewsQualified, id};
+  q.b2 = id2, q.b3 = id3;
+  g_pending_news.push_back(q);
+}
+void QueueNews(u32 event, u32 type, u32 id, u32 arg) {
+  std::lock_guard<std::mutex> lock(g_qual_mutex);
+  g_pending_news.push_back({event, arg, type, id});  // (year = the more news' argument)
+}
+}  // namespace
+
+void CashInNews(u32 id, bool won) {
+  if (!REXCVAR_GET(wwe12_universe_more_news) || id >= 512)
+    return;
+  QueueNews(kMoreEvent + (won ? kCashInWon : kCashInLost), kNewsQualified, id);
+  BD_INFO("[univers] news: {}'s cash-in {}", id, won ? "won" : "lost");
+}
+
+// The streak of each Superstar of this match, this result included ("res" lines of universe_stats.txt up to today).
+void StreakNews(const std::vector<std::pair<u32, bool>> &result, u32 day) {
+  if (!REXCVAR_GET(wwe12_universe_more_news))
+    return;
+  std::map<u32, std::pair<u32, u32>> streak;  // id -> {wins in a row, losses in a row}
+  for (const auto &[id, won] : result)
+    streak[id] = {0, 0};
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 id = 0, won = 0, d = 0;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "res %u %u %u", &id, &won, &d) != 3 || d > day)
+      continue;
+    const auto it = streak.find(id);
+    if (it == streak.end())
+      continue;
+    it->second = won ? std::make_pair(it->second.first + 1, 0u) : std::make_pair(0u, it->second.second + 1);
+  }
+  for (const auto &[i, w] : result) {
+    auto &[wins, losses] = streak[i];
+    if (w)
+      ++wins, losses = 0;
+    else
+      wins = 0, ++losses;
+    const int kind = w ? (wins == 5 ? kStreak5 : wins == 10 ? kStreak10 : wins == 15 ? kStreak15 : -1)
+                       : (losses == 5 ? kLosing5 : -1);
+    if (kind < 0)
+      continue;
+    QueueNews(kMoreEvent + u32(kind), kNewsQualified, i);
+    BD_INFO("[univers] news: Superstar {} {} {} in a row", i, w ? wins : losses, w ? "wins" : "losses");
+  }
+}
+
+// A "more news" line already written ("news <kind> <a> <b> <c>" in universe_stats.txt): each milestone once.
+bool NewsDone(const std::string &key) {
+  std::ifstream f(StatsFile());
+  std::string line;
+  while (std::getline(f, line))
+    if (line == key)
+      return true;
+  return false;
+}
+
+void NewsOnce(const std::string &key, u32 kind, u32 id, u32 arg) {
+  if (NewsDone(key))
+    return;
+  AppendStats({key});
+  QueueNews(kMoreEvent + kind, kNewsQualified, id, arg);
+  BD_INFO("[univers] news: {} (Superstar {})", key, id);
+}
+
+// Double Gold: the new holder of a title already holds another one (a tag title's two places count).
+void TitleChangeNews(const PPCContext &in, u8 *base, u32 title, u32 holder) {
+  if (!REXCVAR_GET(wwe12_universe_more_news) || holder >= 512 || title >= 23)
+    return;
+  // (only the titles the Universe uses: one that has changed hands in this save. The untracked old titles - ECW, WCW,
+  // Hardcore... - keep their holders forever: tag champions "held" two titles, test of 2026-11-12)
+  std::set<u32> used;
+  for (const Reign &r : LoadReigns())
+    used.insert(r.title);
+  for (u32 other = 0; other < 23; ++other) {
+    if (other == title || !used.count(other))
+      continue;
+    for (u32 place = 0; place < 2; ++place)
+      if ((Call(in, base, __imp__sub_82A39FC8, other, place, 1) & 0xFFFF) == holder) {
+        QueueNews(kMoreEvent + kDoubleGold, kNewsQualified, holder, title | (other << 8));
+        BD_INFO("[univers] news: Double Gold, {} holds titles {} and {}", holder, title, other);
+        return;
+      }
+  }
+}
+
+// Fighting Champion: a title match (the card entry's title flag, its byte 1 the title) won by the champion ("defense
+// <title> <id> <day>"); at 6 and 10 defenses in a row of his reign, a news.
+void DefenseNews(const PPCContext &in, u8 *base, u32 record, u32 day) {
+  if (!REXCVAR_GET(wwe12_universe_more_news) || !record || !Call(in, base, __imp__sub_826D4DC8, record))
+    return;
+  const u32 title = bd::mem::load<u8>(record + 1);
+  if (title >= 23)
+    return;
+  const u32 champ = Call(in, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;
+  const auto it = std::find_if(g_last_result.begin(), g_last_result.end(), [&](const auto &r) { return r.first == champ; });
+  if (champ >= 512 || it == g_last_result.end() || !it->second)
+    return;
+  AppendStats({fmt::format("defense {} {} {}", title, champ, day)});
+  u32 since = 0;  // his reign's first day
+  for (const Reign &r : LoadReigns(day))
+    if (r.title == title && r.place == 0 && r.holder == champ && r.to_day == ~0u)
+      since = r.from_day;
+  u32 n = 0;
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 t = 0, id = 0, d = 0;
+  while (std::getline(f, line))
+    if (std::sscanf(line.c_str(), "defense %u %u %u", &t, &id, &d) == 3 && t == title && id == champ && d >= since &&
+        d <= day)
+      ++n;
+  if (n == 6 || n == 10)
+    NewsOnce(fmt::format("news fighting {} {} {} {}", title, champ, since, n), kFightingChamp, champ, title | (n << 8));
+  // Historic Reign: this reign ties the title's most defenses in one reign (4 or more), once a reign
+  u32 best = 0;
+  for (const Reign &r : LoadReigns(day)) {
+    if (r.title != title || r.place != 0 || r.to_day == ~0u)
+      continue;
+    u32 c = 0;
+    std::ifstream g(StatsFile());
+    while (std::getline(g, line))
+      if (std::sscanf(line.c_str(), "defense %u %u %u", &t, &id, &d) == 3 && t == title && id == r.holder &&
+          d >= r.from_day && d < r.to_day)
+        ++c;
+    best = std::max(best, c);
+  }
+  if (best >= 4 && n == best)
+    NewsOnce(fmt::format("news historic {} {} {}", title, champ, since), kHistoricReign, champ, title);
+}
+
+// Once a day, at the Universe menu: a briefcase held for over 3 months (84 days), reigns of 10, 25 and 52 weeks, and
+// now and then a medical update for an injured Superstar (his Universe record's +92 bit 31, as sub_826CEA88 sets it).
+void WeeklyNews(const PPCContext &in, u8 *base) {
+  if (!Enabled() || !REXCVAR_GET(wwe12_universe_more_news) || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;  // (a Universe view at x.r1 + 0x800, the calls below it)
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u)
+    return;
+  const u32 day = bd::mem::load<u32>(u + kUniverseDay);
+  static u32 s_day = ~0u;
+  if (s_day == day)
+    return;
+  const bool first = s_day == ~0u;  // (the first look after a load: no random news)
+  s_day = day;
+  // the briefcase(s)
+  {
+    std::ifstream f(StatsFile());
+    std::string line;
+    u32 id = 0, d = 0;
+    std::map<u32, u32> won;
+    while (std::getline(f, line))
+      if (std::sscanf(line.c_str(), "mitb %u %u", &id, &d) == 2 && d <= day)
+        won[id] = d;
+    std::vector<u32> holders = BriefcaseHolders(day);
+    const u32 game = bd::mem::load<u16>(u + kBriefcaseHolder);
+    if (game < 512 && std::find(holders.begin(), holders.end(), game) == holders.end())
+      holders.push_back(game);
+    for (const u32 h : holders)
+      if (won.count(h) && day >= won[h] + 84)
+        NewsOnce(fmt::format("news mitbheld {} {}", h, won[h]), kMitbHeld, h, 0);
+  }
+  // long reigns
+  for (const Reign &r : LoadReigns(day)) {
+    if (r.to_day != ~0u || r.place != 0 || r.holder >= 512 || r.title >= 23 || day < r.from_day)
+      continue;
+    const u32 weeks = (day - r.from_day) / 7;
+    for (const u32 m : {10u, 25u, 52u})
+      if (weeks >= m && weeks < m + 4)
+        NewsOnce(fmt::format("news reign {} {} {} {}", r.title, r.holder, r.from_day, m), kReignWeeks, r.holder,
+                 r.title | (m << 8));
+  }
+  // Past Glory: in the week before the Royal Rumble (PPV 10), a former winner still on the roster ("rumble <id> 1")
+  {
+    const u32 now = (day / 28) % 12 * 4 + (day / 7) % 4, rumble = PpvSlot(u, 10);
+    if (rumble < 48 && (rumble == now || rumble == (now + 1) % 48)) {
+      std::ifstream f(StatsFile());
+      std::string line;
+      u32 id = 0, won = 0, d = 0;
+      std::vector<u32> winners;
+      while (std::getline(f, line))
+        if (std::sscanf(line.c_str(), "rumble %u %u %u", &id, &won, &d) == 3 && won && d < day &&
+            std::find(winners.begin(), winners.end(), id) == winners.end() && Call(x, base, __imp__sub_826D3218, id, 1))
+          winners.push_back(id);
+      if (!winners.empty()) {
+        static std::mt19937 s_pick{std::random_device{}()};
+        const u32 who = winners[std::uniform_int_distribution<size_t>(0, winners.size() - 1)(s_pick)];
+        NewsOnce(fmt::format("news pastglory {}", day / 336), kPastGlory, who, 0);
+      }
+    }
+  }
+  // the top 5 of each singles title the Universe uses (its ranking, sub_826D2508: 32-byte rows, +0 the Superstar):
+  // one who drops out of it (and is not its champion) gets a news; one a week at most (113 in a year with 2 a day,
+  // test of 2026-11-13); the first look after a load only keeps them
+  {
+    static std::map<u32, std::vector<u32>> s_top;
+    static u32 s_out = 0;
+    if (!s_out)
+      s_out = REX_KERNEL_MEMORY()->SystemHeapAlloc(180 * 32, 0x10);
+    std::set<u32> used;
+    for (const Reign &r : LoadReigns(day))
+      used.insert(r.title);
+    static u32 s_last_news = ~0u;
+    u32 told = s_last_news != ~0u && day < s_last_news + 7 ? 1 : 0;
+    for (const u32 title : used) {
+      if (!s_out || title >= 23 || Call(x, base, __imp__sub_82A39CE8, title))
+        continue;
+      const u32 view = x.r1.u32 + 0x800;
+      Call(x, base, __imp__sub_826CDC48, view);
+      const u32 n = std::min<u32>(Call(x, base, __imp__sub_826D2508, view, title, s_out, 180), 5);
+      Call(x, base, __imp__sub_826CE098, view);
+      std::vector<u32> top;
+      for (u32 k = 0; k < n; ++k)
+        top.push_back(bd::mem::load<u32>(s_out + k * 32));
+      const u32 champ = Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;
+      if (!first && s_top.count(title))
+        for (const u32 id : s_top[title])
+          if (id < 512 && id != champ && told < 1 && std::find(top.begin(), top.end(), id) == top.end()) {
+            QueueNews(kMoreEvent + kTop5Out, kNewsQualified, id, title);
+            BD_INFO("[univers] news: {} drops out of title {}'s top 5", id, title);
+            ++told;
+            s_last_news = day;
+          }
+      s_top[title] = top;
+    }
+  }
+  // ("ultimate" Universe) returns from injury noticed, and the week's rivalry news
+  UltimateDaily(x, base, u, day, first);
+  // a medical update, one week in four, for one injured Superstar
+  static std::mt19937 s_random{std::random_device{}()};
+  if (first || std::uniform_int_distribution<int>(0, 3)(s_random) != 0)
+    return;
+  std::vector<u32> injured;
+  for (u32 id = 0; id < 373; ++id) {
+    if (!Call(x, base, __imp__sub_826D3218, id, 1))
+      continue;
+    const int32_t index = int32_t(Call(x, base, __imp__sub_826D3320, id));
+    if (index >= 0 && (bd::mem::load<u32>(u + u32(index) * 112 + 92) & 0x80000000u))
+      injured.push_back(id);
+  }
+  if (injured.empty())
+    return;
+  const u32 who = injured[std::uniform_int_distribution<size_t>(0, injured.size() - 1)(s_random)];
+  QueueNews(kMoreEvent + kMedical, kNewsQualified, who, 0);
+  BD_INFO("[univers] news: medical update for {}", who);
+}
+
+// A card entry written (104 bytes: +1 its title, +2 its places, +6 its header: 1-8 MATCH #n, 9 MAIN EVENT, 10 #1
+// CONTENDER'S MATCH (texts 27098 + n - 1); places at +16 + 12 * p: +0 the Superstar, u16, +3 his side, +6 = 1: shown
+// as "???", a mystery opponent; seen with wwe12_universe_card_probe, 2026-11-12/13. (+7 is not the header: a "MATCH #1"
+// with +7 = 8 had its news as a #1 contender's match, test of 2026-11-13.)): a news for a #1 contender's match (2 or 3 Superstars) and for a mystery
+// opponent. Each card entry once (the same card can be written again).
+constexpr u32 kContenderHeader = 10;  // a card entry's +6: "#1 CONTENDER'S MATCH"
+void CardNews(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
+  if (!REXCVAR_GET(wwe12_universe_more_news))
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  const u32 day = u ? bd::mem::load<u32>(u + kUniverseDay) : 0;
+  static std::set<u64> s_done;
+  const u64 key = (u64(bd::mem::try_load<u32>(booker)) << 32) ^ (u64(day) << 4) ^ i;
+  const u32 places = std::min<u32>(bd::mem::load<u8>(entry + 2), 8), title = bd::mem::load<u8>(entry + 1);
+  std::vector<std::pair<u32, u32>> who;  // Superstar, side
+  u32 hidden_side = ~0u;
+  for (u32 p = 0; p < places; ++p) {
+    const u32 at = entry + 16 + p * 12, id = bd::mem::load<u16>(at);
+    if (id >= 512)
+      continue;
+    if (bd::mem::load<u8>(at + 6) == 1)
+      hidden_side = bd::mem::load<u8>(at + 3);
+    else
+      who.push_back({id, bd::mem::load<u8>(at + 3)});
+  }
+  if (who.empty() || s_done.count(key))
+    return;
+  if (bd::mem::try_load<u32>(booker) == 0x8203EB44 /* the PPV booker */ && u && PpvCardNews(x, base, u, day, who)) {
+    s_done.insert(key);
+    return;
+  }
+  if (hidden_side != ~0u) {
+    // (a tag match: the hidden one is the partner of a Superstar on his side, test of 2026-11-13)
+    s_done.insert(key);
+    for (const auto &[id, side] : who)
+      if (side == hidden_side) {
+        QueueNews(kMoreEvent + kMysteryPartner, kNewsQualified, id, 0);
+        BD_INFO("[univers] news: mystery partner for {}", id);
+        return;
+      }
+    for (const auto &[id, side] : who)
+      if (side != hidden_side) {
+        QueueNews(kMoreEvent + kMystery, kNewsQualified, id, 0);
+        BD_INFO("[univers] news: mystery opponent for {}", id);
+        break;
+      }
+    return;
+  }
+  if (bd::mem::load<u8>(entry + 6) != kContenderHeader || title >= 23)
+    return;
+  s_done.insert(key);
+  // (the news' picture shows its first Superstar's brand logo: one of the show's brand first - a SmackDown logo on a
+  // RAW #1 contender's match, test of 2026-11-13)
+  const u32 vtbl = bd::mem::try_load<u32>(booker);
+  const u32 show_brand = vtbl == kBookerRaw ? 0 : vtbl == kBookerSmackDown ? 1 : ~0u;
+  if (show_brand != ~0u)
+    std::stable_partition(who.begin(), who.end(), [&](const auto &w) {
+      return Call(x, base, __imp__sub_826D2B50, w.first) == show_brand;
+    });
+  if (who.size() == 2)
+    QueueNews3(kMoreEvent + kContenderShowdown, who[0].first, who[1].first, 512, title);
+  else if (who.size() >= 3)
+    QueueNews3(kMoreEvent + kContenderTriple, who[0].first, who[1].first, who[2].first, title);
+  else
+    return;
+  BD_INFO("[univers] news: #1 contender's match for title {} ({} Superstars)", title, who.size());
+}
+
+// Momentum (-50 .. 50, a Superstar's Universe record +102, set by sub_826D4710(record, value) only): a news when it
+// rises to 40 or more (Unstoppable Force) or falls to -30 or less (Locker Room Doubts), texts by Jay. The record is
+// U + index * 112 (index: sub_826D3320(id)).
+REX_EXTERN(__imp__sub_826D4710);
+extern "C" REX_FUNC(sub_826D4710) {
+  const u32 rec = ctx.r3.u32;
+  const int32_t before = rec ? int8_t(bd::mem::load<u8>(rec + 102)) : 0, after = std::clamp<int32_t>(ctx.r4.s32, -50, 50);
+  const PPCContext in = ctx;
+  __imp__sub_826D4710(ctx, base);
+  const int kind = before < 40 && after >= 40 ? int(kMomentumHigh) : before > -30 && after <= -30 ? int(kMomentumLow) : -1;
+  if (kind < 0 || !Enabled() || !REXCVAR_GET(wwe12_universe_more_news) || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u || rec < u || (rec - u) % 112)
+    return;
+  const int32_t index = int32_t((rec - u) / 112);
+  for (u32 id = 0; id < 512; ++id)
+    if (int32_t(Call(x, base, __imp__sub_826D3320, id)) == index) {
+      const u32 brand = Call(x, base, __imp__sub_826D2B50, id);
+      QueueNews(kMoreEvent + u32(kind), kNewsQualified, id, brand < 2 ? brand : 255);
+      BD_INFO("[univers] news: momentum of {} {} -> {}", id, before, after);
+      return;
+    }
+}
+
+// A PPV card's match (CardNews): at WrestleMania (PPV 12), a match between two brands (each side all of one brand) gets
+// "X will represent BRAND at WrestleMania" for its first Superstar (2 such news a card at most); at Survivor Series
+// (PPV 21), a match of 6 or more between RAW and SmackDown gets "Teams Finalized" with both captains. Which PPV: the
+// one of this week or the next in the calendar (U + 0xDDD0). True: a news was made.
+bool PpvCardNews(const PPCContext &x, u8 *base, u32 u, u32 day, const std::vector<std::pair<u32, u32>> &who) {
+  const u32 now = (day / 28) % 12 * 4 + (day / 7) % 4;
+  const auto soon = [&](u32 ppv) {
+    const u32 slot = PpvSlot(u, ppv);
+    return slot < 48 && (slot == now || slot == (now + 1) % 48);
+  };
+  const bool mania = soon(12), series = soon(21);
+  if (!mania && !series)
+    return false;
+  std::map<u32, std::set<u32>> brands;  // side -> brands
+  std::map<u32, u32> first;             // side -> its first Superstar
+  for (const auto &[id, side] : who) {
+    brands[side].insert(Call(x, base, __imp__sub_826D2B50, id));
+    first.emplace(side, id);
+  }
+  if (brands.size() != 2)
+    return false;
+  const auto a = brands.begin(), b = std::next(brands.begin());
+  if (a->second.size() != 1 || b->second.size() != 1 || *a->second.begin() == *b->second.begin() ||
+      *a->second.begin() > 1 || *b->second.begin() > 1)
+    return false;
+  if (series && who.size() >= 6) {
+    QueueNews3(kMoreEvent + kTeamsFinalized, first[a->first], first[b->first], 512, 0);
+    BD_INFO("[univers] news: Survivor Series teams finalized");
+    return true;
+  }
+  static u32 s_mania_day = ~0u, s_mania_count = 0;
+  if (!mania)
+    return false;
+  if (s_mania_day != day)
+    s_mania_day = day, s_mania_count = 0;
+  if (s_mania_count >= 2)
+    return false;
+  ++s_mania_count;
+  const u32 id = first[a->first];
+  QueueNews(kMoreEvent + kWrestleManiaRep, kNewsQualified, id, *a->second.begin());
+  BD_INFO("[univers] news: {} represents brand {} at WrestleMania", id, *a->second.begin());
+  return true;
+}
+
+// The winner of a #1 contender's match (entry +6 = 10) is the title's new #1 contender.
+void ContenderWonNews(u32 record, u32 winner_id) {
+  if (!REXCVAR_GET(wwe12_universe_more_news) || !record || bd::mem::load<u8>(record + 6) != kContenderHeader ||
+      winner_id >= 512)
+    return;
+  const u32 title = bd::mem::load<u8>(record + 1);
+  if (title >= 23)
+    return;
+  QueueNews(kMoreEvent + kContenderWon, kNewsQualified, winner_id, title);
+  BD_INFO("[univers] news: {} is the new #1 contender for title {}", winner_id, title);
+}
+
+namespace {
 
 // The queued news, added on the game's thread (from the menus' input dispatch).
 void FlushNews(const PPCContext &in, u8 *base) {
@@ -4350,8 +5262,22 @@ void FlushNews(const PPCContext &in, u8 *base) {
     // one Superstar (its picture alone: the news shows a picture for each of +0 .. +8), the event
     // in the free +14 / +15 (0x51, event)
     bd::mem::store<u16>(record, u16(n.b < 512 ? n.b : 512));
+    if (n.event >= kNativeEvent) {  // one of the game's own types
+      bd::mem::store<u16>(record + 2, u16(n.b2 < 512 ? n.b2 : 512));
+      bd::mem::store<u8>(record + 12, u8(n.event - kNativeEvent));
+      Call(x, base, __imp__sub_826D1630, view, record);
+      Call(x, base, __imp__sub_826CE098, view);
+      BD_INFO("[univers] news: the game's type {} (Superstars {}, {})", n.event - kNativeEvent, n.b, n.b2);
+      continue;
+    }
     // the game shows type 5 only (its type 6 is never drawn): both are type 5, +15 bit 7 = "begin"
-    if (n.event >= kDraftEvent) {
+    if (n.event >= kMoreEvent) {
+      bd::mem::store<u8>(record + 14, kMoreMarker);
+      bd::mem::store<u8>(record + 15, u8(n.event - kMoreEvent));
+      bd::mem::store<u16>(record + 10, u16(n.year));
+      bd::mem::store<u16>(record + 2, u16(n.b2 < 512 ? n.b2 : 512));
+      bd::mem::store<u16>(record + 4, u16(n.b3 < 512 ? n.b3 : 512));
+    } else if (n.event >= kDraftEvent) {
       bd::mem::store<u8>(record + 14, kDraftMarker);
       bd::mem::store<u8>(record + 15, u8(n.event - kDraftEvent));
     } else {
@@ -4367,19 +5293,37 @@ void FlushNews(const PPCContext &in, u8 *base) {
 }  // namespace
 
 // A news drawn: its texts (sub_82559468 the line, sub_82559A08 the title; the news in r4).
+// (a more news: its titles' names and number for its text)
+void MoreNewsNames(const PPCContext &in, u8 *base, u32 rec) {
+  if (!g_news_more)
+    return;
+  const u32 kind = g_news_more - 1, a = g_news_more_arg & 0xFF, b = g_news_more_arg >> 8;
+  const bool momentum = kind == kMomentumHigh || kind == kMomentumLow || kind == kWrestleManiaRep;  // (a brand)
+  g_more_title1 = a < 23 && !momentum ? TitleName(in, base, a) : std::string();
+  g_more_brand = !momentum ? std::string() : a == 0 ? "RAW" : a == 1 ? "SmackDown" : "WWE";
+  g_more_title2 = kind == kDoubleGold && b < 23 ? TitleName(in, base, b) : std::string();
+  g_more_number = kind == kDoubleGold ? 0 : b;
+  g_more_name2 = rec ? NameOf(in, base, bd::mem::load<u16>(rec + 2)) : std::string();
+  g_more_name3 = rec ? NameOf(in, base, bd::mem::load<u16>(rec + 4)) : std::string();
+}
+
 REX_EXTERN(__imp__sub_82559468);
 extern "C" REX_FUNC(sub_82559468) {
   g_news_event = NewsEvent(ctx.r4.u32);
+  MoreNewsNames(ctx, base, ctx.r4.u32);
   __imp__sub_82559468(ctx, base);
   g_news_event = 0;
   g_news_draft = 0;
+  g_news_more = 0;
 }
 REX_EXTERN(__imp__sub_82559A08);
 extern "C" REX_FUNC(sub_82559A08) {
   g_news_event = NewsEvent(ctx.r4.u32);
+  MoreNewsNames(ctx, base, ctx.r4.u32);
   __imp__sub_82559A08(ctx, base);
   g_news_event = 0;
   g_news_draft = 0;
+  g_news_more = 0;
 }
 
 // A news's picture: sub_82558FC8(screen S, news) names the six news pictures (elements 390-395, S+1040
@@ -4396,12 +5340,32 @@ extern "C" REX_FUNC(sub_82558FC8) {
   const PPCContext in = ctx;
   __imp__sub_82558FC8(ctx, base);
   const u32 event = NewsEvent(in.r4.u32);
-  if (!event || !REXCVAR_GET(wwe12_universe_news_ppv_picture))
+  // A more news (1.4): a win or a title's the game's own "big win" picture (types 7 New Champion, 10-12 upset, Royal
+  // Rumble, Money in the Bank: element 393, newsBG_04; table 0x820236A8 read from the image), a medical update the
+  // injuries' (type 15: newsBG_01); the others (before a match, losses) keep the globe. Asked by the user, 2026-11-13.
+  const u32 more = g_news_more;
+  const char *more_bg = nullptr;
+  if (more) {
+    switch (more - 1) {
+    case kCashInWon: case kStreak5: case kStreak10: case kStreak15: case kDoubleGold: case kReignWeeks:
+    case kFightingChamp: case kContenderWon:
+      more_bg = "newsBG_04";
+      break;
+    case kMedical:
+      more_bg = "newsBG_01";
+      break;
+    default:
+      break;
+    }
+  }
+  g_news_more = 0;
+  if ((!event || !REXCVAR_GET(wwe12_universe_news_ppv_picture)) && !more_bg)
     return;
-  static u32 s_names[kEvents + 1] = {};
-  u32 &name = s_names[event];
+  static u32 s_names[kEvents + 3] = {};
+  const u32 slot = more_bg ? (more_bg[9] == '4' ? kEvents + 1 : kEvents + 2) : event;
+  u32 &name = s_names[slot];
   if (!name) {
-    const char *text = event == 1 ? "PPVbg_MinB" : "PPVbg_EC";
+    const char *text = more_bg ? more_bg : event == 1 ? "PPVbg_MinB" : "PPVbg_EC";
     name = REX_KERNEL_MEMORY()->SystemHeapAlloc(32, 0x10);
     if (!name)
       return;
@@ -4445,15 +5409,15 @@ namespace {
 // Our news texts (27068 / 27069 type 5, 27070 / 27071 type 6), for the news being drawn.
 u32 DraftNewsText(u32 id) {
   static const char *const kTitle[2][5] = {
-      {"DRAFTED TO RAW!", "DRAFTÃ Ã RAW !", "ZU RAW GEDRAFTET!", "Â¡DRAFTEADO A RAW!",
+      {"DRAFTED TO RAW!", "DRAFT\xC3\x89 \xC3\x80 RAW !", "ZU RAW GEDRAFTET!", "\xC2\xA1" "DRAFTEADO A RAW!",
        "SCELTO DA RAW AL DRAFT!"},
-      {"DRAFTED TO SMACKDOWN!", "DRAFTÃ Ã SMACKDOWN !", "ZU SMACKDOWN GEDRAFTET!",
-       "Â¡DRAFTEADO A SMACKDOWN!", "SCELTO DA SMACKDOWN AL DRAFT!"}};
+      {"DRAFTED TO SMACKDOWN!", "DRAFT\xC3\x89 \xC3\x80 SMACKDOWN !", "ZU SMACKDOWN GEDRAFTET!",
+       "\xC2\xA1" "DRAFTEADO A SMACKDOWN!", "SCELTO DA SMACKDOWN AL DRAFT!"}};
   static const char *const kLine[2][5] = {
       {"%s has been drafted to RAW!", "%s rejoint RAW lors du Draft !", "%s wurde zu RAW gedraftet!",
-       "Â¡%s ha sido elegido para RAW en el Draft!", "%s passa a RAW con il Draft!"},
+       "\xC2\xA1%s ha sido elegido para RAW en el Draft!", "%s passa a RAW con il Draft!"},
       {"%s has been drafted to SmackDown!", "%s rejoint SmackDown lors du Draft !",
-       "%s wurde zu SmackDown gedraftet!", "Â¡%s ha sido elegido para SmackDown en el Draft!",
+       "%s wurde zu SmackDown gedraftet!", "\xC2\xA1%s ha sido elegido para SmackDown en el Draft!",
        "%s passa a SmackDown con il Draft!"}};
   const u32 brand = g_news_draft - 1;
   const bool title = id == 27068 || id == 27070;
@@ -4469,7 +5433,233 @@ u32 DraftNewsText(u32 id) {
   return at;
 }
 
+// The more news' texts (title, line; "%s" = the Superstar), in the 5 languages.
+u32 MoreNewsText(u32 id) {
+  struct Texts {
+    const char *title[5], *line[5];
+  };
+  static const Texts kTexts[kMoreKinds] = {
+      {{"CASHED IN!", "CASH-IN R\xC3\x89USSI !", "CASH-IN ERFOLGREICH!", "\xC2\xA1" "CANJE EXITOSO!",
+        "CASH-IN RIUSCITO!"},
+       {"%s cashed in the Money in the Bank briefcase and won the title!",
+        "%s a encaiss\xC3\xA9 sa mallette Money in the Bank et remporte le titre !",
+        "%s hat den Money-in-the-Bank-Koffer eingel\xC3\xB6st und den Titel gewonnen!",
+        "\xC2\xA1%s canje\xC3\xB3 el malet\xC3\xADn de Money in the Bank y gan\xC3\xB3 el t\xC3\xADtulo!",
+        "%s ha incassato la valigetta del Money in the Bank e ha vinto il titolo!"}},
+      {{"CASH-IN FAILED!", "CASH-IN RAT\xC3\x89 !", "CASH-IN GESCHEITERT!", "\xC2\xA1" "CANJE FALLIDO!",
+        "CASH-IN FALLITO!"},
+       {"%s cashed in the Money in the Bank briefcase but came up short!",
+        "%s a encaiss\xC3\xA9 sa mallette Money in the Bank, mais n'a pas remport\xC3\xA9 le titre !",
+        "%s hat den Money-in-the-Bank-Koffer eingel\xC3\xB6st, aber den Titel verpasst!",
+        "\xC2\xA1%s canje\xC3\xB3 el malet\xC3\xADn de Money in the Bank, pero no gan\xC3\xB3 el t\xC3\xADtulo!",
+        "%s ha incassato la valigetta del Money in the Bank, ma non ha vinto il titolo!"}},
+      // (ideas and English texts by Jay, a player, 2026-11-12)
+      {{"WINNING STREAK", "S\xC3\x89RIE DE VICTOIRES", "SIEGESSERIE", "RACHA GANADORA", "SERIE VINCENTE"},
+       {"%s is on a 5-match winning streak!", "%s encha\xC3\xAEne 5 victoires d'affil\xC3\xA9" "e !",
+        "%s hat 5 Siege in Folge!", "\xC2\xA1%s lleva 5 victorias seguidas!", "%s ha vinto 5 incontri di fila!"}},
+      {{"WINNING STREAK", "S\xC3\x89RIE DE VICTOIRES", "SIEGESSERIE", "RACHA GANADORA", "SERIE VINCENTE"},
+       {"%s is on a 10-match winning streak!", "%s encha\xC3\xAEne 10 victoires d'affil\xC3\xA9" "e !",
+        "%s hat 10 Siege in Folge!", "\xC2\xA1%s lleva 10 victorias seguidas!", "%s ha vinto 10 incontri di fila!"}},
+      {{"UNBEATABLE!", "INVINCIBLE !", "UNBESIEGBAR!", "\xC2\xA1" "INVENCIBLE!", "IMBATTIBILE!"},
+       {"%s is on a 15-match winning streak!", "%s encha\xC3\xAEne 15 victoires d'affil\xC3\xA9" "e !",
+        "%s hat 15 Siege in Folge!", "\xC2\xA1%s lleva 15 victorias seguidas!", "%s ha vinto 15 incontri di fila!"}},
+      {{"ICE COLD", "S\xC3\x89RIE NOIRE", "EISKALT", "MALA RACHA", "PERIODO NERO"},
+       {"%s suffers a 5th straight defeat. Can the slump end?",
+        "%s subit une 5e d\xC3\xA9" "faite d'affil\xC3\xA9" "e. La s\xC3\xA9rie noire va-t-elle s'arr\xC3\xAAter ?",
+        "%s kassiert die 5. Niederlage in Folge. Kommt die Wende?",
+        "%s sufre su 5.\xC2\xAA derrota seguida. \xC2\xBFPodr\xC3\xA1 remontar?",
+        "%s subisce la 5\xC2\xAA sconfitta di fila. Riuscir\xC3\xA0 a riprendersi?"}},
+      {{"MR. MONEY IN THE BANK", "MR. MONEY IN THE BANK", "MR. MONEY IN THE BANK", "MR. MONEY IN THE BANK",
+        "MR. MONEY IN THE BANK"},
+       {"%s has held the briefcase for over 3 months. When will the cash-in come?",
+        "%s d\xC3\xA9tient la mallette depuis plus de 3 mois. Quand viendra l'encaissement ?",
+        "%s hat den Koffer seit \xC3\xBC" "ber 3 Monaten. Wann wird er eingel\xC3\xB6st?",
+        "%s tiene el malet\xC3\xADn desde hace m\xC3\xA1s de 3 meses. \xC2\xBF" "Cu\xC3\xA1ndo lo canjear\xC3\xA1?",
+        "%s ha la valigetta da oltre 3 mesi. Quando la incasser\xC3\xA0?"}},
+      {{"DOUBLE GOLD", "DOUBLE CHAMPION", "DOPPEL-GOLD", "DOBLE ORO", "DOPPIO ORO"},
+       {"%s makes history by holding both the {T} and the {U} simultaneously!",
+        "%s entre dans l'histoire en d\xC3\xA9tenant \xC3\xA0 la fois le {T} et le {U} !",
+        "%s schreibt Geschichte: {T} und {U} gleichzeitig!",
+        "\xC2\xA1%s hace historia con el {T} y el {U} a la vez!",
+        "%s fa la storia con il {T} e il {U} insieme!"}},
+      {{"WHO CAN STOP THEM?", "QUI POURRA L'ARR\xC3\x8ATER ?", "WER KANN DAS STOPPEN?",
+        "\xC2\xBFQUI\xC3\x89N PUEDE PARARLO?", "CHI PU\xC3\x92 FERMARLO?"},
+       {"%s has successfully defended the {T} for {N} total weeks as champion!",
+        "%s d\xC3\xA9" "fend le {T} avec succ\xC3\xA8s depuis {N} semaines !",
+        "%s hat den {T} seit {N} Wochen erfolgreich verteidigt!",
+        "\xC2\xA1%s ha defendido el {T} durante {N} semanas!",
+        "%s ha difeso il {T} per {N} settimane!"}},
+      {{"FIGHTING CHAMPION", "CHAMPION COMBATTANT", "K\xC3\x84MPFENDER CHAMPION", "CAMPE\xC3\x93N LUCHADOR",
+        "CAMPIONE COMBATTENTE"},
+       {"%s has successfully retained the {T} {N} times in a row.",
+        "%s a conserv\xC3\xA9 le {T} {N} fois d'affil\xC3\xA9" "e.",
+        "%s hat den {T} {N}-mal in Folge verteidigt.",
+        "%s ha retenido el {T} {N} veces seguidas.",
+        "%s ha mantenuto il {T} {N} volte di fila."}},
+      {{"MEDICAL UPDATE", "NOUVELLES M\xC3\x89" "DICALES", "MEDIZINISCHES UPDATE", "PARTE M\xC3\x89" "DICO",
+        "AGGIORNAMENTO MEDICO"},
+       {"%s has been spotted training at a performance facility.",
+        "%s a \xC3\xA9t\xC3\xA9 aper\xC3\xA7u en train de s'entra\xC3\xAEner dans un centre de performance.",
+        "%s wurde beim Training in einem Leistungszentrum gesehen.",
+        "%s ha sido visto entrenando en un centro de alto rendimiento.",
+        "%s \xC3\xA8 stato visto allenarsi in un centro di preparazione."}},
+      {{"#1 CONTENDER", "N\xC2\xB0" "1 ASPIRANT", "HERAUSFORDERER NR. 1", "CONTENDIENTE N.\xC2\xBA" " 1",
+        "SFIDANTE N. 1"},
+       {"%s is officially the new #1 Contender for the {T}!",
+        "%s est officiellement le nouvel aspirant n\xC2\xB0" "1 au {T} !",
+        "%s ist offiziell der neue Herausforderer Nr. 1 auf den {T}!",
+        "\xC2\xA1%s es oficialmente el nuevo contendiente n.\xC2\xBA" " 1 al {T}!",
+        "%s \xC3\xA8 ufficialmente il nuovo sfidante n. 1 al {T}!"}},
+      {{"TRIPLE THREAT STAKES", "ENJEU EN TRIPLE THREAT", "TRIPLE THREAT MIT EINSATZ", "TRIPLE AMENAZA EN JUEGO",
+        "TRIPLE THREAT DECISIVO"},
+       {"%s, {B} and {C} collide tonight to crown the next #1 Contender!",
+        "%s, {B} et {C} s'affrontent ce soir pour d\xC3\xA9signer le prochain aspirant n\xC2\xB0" "1 !",
+        "%s, {B} und {C} treffen heute Abend aufeinander, um den neuen Herausforderer Nr. 1 zu ermitteln!",
+        "\xC2\xA1%s, {B} y {C} chocan esta noche para coronar al pr\xC3\xB3ximo contendiente n.\xC2\xBA" " 1!",
+        "%s, {B} e {C} si scontrano stasera per decidere il prossimo sfidante n. 1!"}},
+      {{"HIGH-STAKES SHOWDOWN", "CHOC D\xC3\x89" "CISIF", "ENTSCHEIDUNGSDUELL", "DUELO DECISIVO", "SFIDA DECISIVA"},
+       {"%s and {B} collide tonight, with the winner earning a future shot at the {T}!",
+        "%s et {B} s'affrontent ce soir : le vainqueur obtiendra un match pour le {T} !",
+        "%s und {B} treffen heute Abend aufeinander: Der Sieger bekommt eine Chance auf den {T}!",
+        "\xC2\xA1%s y {B} chocan esta noche: el ganador tendr\xC3\xA1 una oportunidad por el {T}!",
+        "%s e {B} si scontrano stasera: il vincitore avr\xC3\xA0 un'occasione per il {T}!"}},
+      {{"MYSTERY OPPONENT", "ADVERSAIRE MYST\xC3\x88RE", "MYSTERI\xC3\x96SER GEGNER", "RIVAL MISTERIOSO",
+        "AVVERSARIO MISTERIOSO"},
+       {"Rumors swirl backstage over who will step up to face %s tonight!",
+        "Les rumeurs vont bon train en coulisses : qui affrontera %s ce soir ?",
+        "Hinter den Kulissen brodeln die Ger\xC3\xBC" "chte: Wer tritt heute Abend gegen %s an?",
+        "\xC2\xA1Los rumores corren entre bastidores sobre qui\xC3\xA9n se enfrentar\xC3\xA1 a %s esta noche!",
+        "Nel backstage girano voci su chi affronter\xC3\xA0 %s stasera!"}},
+      {{"MYSTERY PARTNER", "PARTENAIRE MYST\xC3\x88RE", "MYSTERI\xC3\x96SER PARTNER", "COMPA\xC3\x91" "ERO MISTERIOSO",
+        "PARTNER MISTERIOSO"},
+       {"Rumors swirl backstage over who will team with %s tonight!",
+        "Les rumeurs vont bon train en coulisses : qui fera \xC3\xA9quipe avec %s ce soir ?",
+        "Hinter den Kulissen brodeln die Ger\xC3\xBC" "chte: Wer bildet heute Abend ein Team mit %s?",
+        "\xC2\xA1Los rumores corren entre bastidores sobre qui\xC3\xA9n har\xC3\xA1 equipo con %s esta noche!",
+        "Nel backstage girano voci su chi far\xC3\xA0 coppia con %s stasera!"}},
+      {{"UNSTOPPABLE FORCE", "FORCE IRR\xC3\x89SISTIBLE", "UNAUFHALTSAME KRAFT", "FUERZA IMPARABLE", "FORZA INARRESTABILE"},
+       {"%s's momentum is at an all-time high: critics call this the most dangerous competitor on {R} right now.",
+        "Le momentum de %s est au plus haut : les critiques y voient le concurrent le plus dangereux de {R} en ce moment.",
+        "Das Momentum von %s ist auf einem Rekordhoch: Kritiker sehen hier den gef\xC3\xA4hrlichsten Konkurrenten bei {R}.",
+        "El impulso de %s est\xC3\xA1 en su punto m\xC3\xA1s alto: la cr\xC3\xADtica lo ve como el rival m\xC3\xA1s peligroso "
+        "de {R} ahora mismo.",
+        "Il momentum di %s \xC3\xA8 al massimo: la critica lo considera il rivale pi\xC3\xB9 pericoloso di {R} in questo momento."}},
+      {{"LOCKER ROOM DOUBTS", "DOUTES EN COULISSES", "ZWEIFEL IN DER KABINE", "DUDAS EN EL VESTUARIO",
+        "DUBBI NELLO SPOGLIATOIO"},
+       {"Whispers backstage question whether %s can bounce back from the current downward spiral.",
+        "En coulisses, on se demande si %s pourra se relever de sa mauvaise pente actuelle.",
+        "Hinter den Kulissen wird gefl\xC3\xBCstert, ob %s aus der aktuellen Abw\xC3\xA4rtsspirale herausfindet.",
+        "Entre bastidores se preguntan si %s podr\xC3\xA1 salir de su mala racha actual.",
+        "Nel backstage ci si chiede se %s riuscir\xC3\xA0 a riprendersi dalla sua spirale negativa."}},
+      {{"TITLE PICTURE SHIFTS", "LA COURSE AU TITRE CHANGE", "DAS TITELRENNEN \xC3\x84NDERT SICH",
+        "CAMBIOS EN LA LUCHA POR EL T\xC3\x8DTULO", "CAMBIA LA CORSA AL TITOLO"},
+       {"%s drops out of the top 5 rankings for the {T}.",
+        "%s sort du top 5 du classement pour le {T}.",
+        "%s f\xC3\xA4llt aus den Top 5 der Rangliste f\xC3\xBCr den {T}.",
+        "%s sale del top 5 del ranking por el {T}.",
+        "%s esce dalla top 5 della classifica per il {T}."}},
+      {{"PAST GLORY", "GLOIRE PASS\xC3\x89" "E", "VERGANGENER RUHM", "GLORIA PASADA", "GLORIA PASSATA"},
+       {"Former Royal Rumble winner %s aims to repeat history as the Rumble approaches.",
+        "Ancien vainqueur du Royal Rumble, %s veut r\xC3\xA9\xC3\xA9" "crire l'histoire \xC3\xA0 l'approche du Rumble.",
+        "Der fr\xC3\xBChere Royal-Rumble-Sieger %s will vor dem Rumble Geschichte wiederholen.",
+        "El exganador del Royal Rumble %s quiere repetir la historia ahora que se acerca el Rumble.",
+        "L'ex vincitore della Royal Rumble %s punta a ripetere la storia con il Rumble alle porte."}},
+      {{"HISTORIC REIGN", "R\xC3\x88GNE HISTORIQUE", "HISTORISCHE REGENTSCHAFT", "REINADO HIST\xC3\x93RICO",
+        "REGNO STORICO"},
+       {"%s approaches the all-time defense record for the {T}.",
+        "%s approche le record de d\xC3\xA9" "fenses de l'histoire pour le {T}.",
+        "%s n\xC3\xA4hert sich dem Allzeit-Rekord an Titelverteidigungen f\xC3\xBCr den {T}.",
+        "%s se acerca al r\xC3\xA9" "cord hist\xC3\xB3rico de defensas del {T}.",
+        "%s si avvicina al record storico di difese del {T}."}},
+      {{"WRESTLEMANIA", "WRESTLEMANIA", "WRESTLEMANIA", "WRESTLEMANIA", "WRESTLEMANIA"},
+       {"%s will officially represent {R} at WrestleMania!",
+        "%s repr\xC3\xA9sentera officiellement {R} \xC3\xA0 WrestleMania !",
+        "%s wird {R} offiziell bei WrestleMania vertreten!",
+        "\xC2\xA1%s representar\xC3\xA1 oficialmente a {R} en WrestleMania!",
+        "%s rappresenter\xC3\xA0 ufficialmente {R} a WrestleMania!"}},
+      {{"TEAMS FINALIZED", "\xC3\x89QUIPES COMPL\xC3\x88TES", "TEAMS STEHEN FEST", "EQUIPOS DEFINIDOS",
+        "SQUADRE AL COMPLETO"},
+       {"RAW and SmackDown squads are locked in ahead of Sunday's elimination showdown.",
+        "Les \xC3\xA9quipes de RAW et SmackDown sont bouclé" "es avant le choc \xC3\xA0 \xC3\xA9limination de dimanche.",
+        "Die Teams von RAW und SmackDown stehen vor dem Elimination-Duell am Sonntag fest.",
+        "Los equipos de RAW y SmackDown est\xC3\xA1n definidos antes del duelo de eliminaci\xC3\xB3n del domingo.",
+        "Le squadre di RAW e SmackDown sono pronte per la sfida a eliminazione di domenica."}},
+      // ("ultimate" Universe, 2026-11-13; after WWE 2K14's rivalry news)
+      {{"BAD BLOOD", "LA GUERRE CONTINUE", "B\xC3\x96SES BLUT", "MALA SANGRE", "SANGUE CATTIVO"},
+       {"%s and {B} can't stand each other. This rivalry is far from over!",
+        "%s et {B} ne se supportent plus. Cette rivalit\xC3\xA9 est loin d'\xC3\xAAtre termin\xC3\xA9" "e !",
+        "%s und {B} k\xC3\xB6nnen sich nicht ausstehen. Diese Rivalit\xC3\xA4t ist noch lange nicht vorbei!",
+        "\xC2\xA1%s y {B} no se soportan. Esta rivalidad est\xC3\xA1 lejos de terminar!",
+        "%s e {B} non si sopportano. Questa rivalit\xC3\xA0 \xC3\xA8 tutt'altro che finita!"}},
+      {{"DOMINATION", "DOMINATION", "DOMINANZ", "DOMINACI\xC3\x93N", "DOMINIO"},
+       {"%s has beaten {B} {N} times this month. Does {B} have an answer?",
+        "%s a battu {B} {N} fois ce mois-ci. {B} a-t-il encore une r\xC3\xA9ponse ?",
+        "%s hat {B} diesen Monat {N}-mal besiegt. Hat {B} noch eine Antwort?",
+        "%s ha vencido a {B} {N} veces este mes. \xC2\xBFTiene {B} alguna respuesta?",
+        "%s ha battuto {B} {N} volte questo mese. {B} ha ancora una risposta?"}},
+      {{"PAYBACK!", "LA REVANCHE !", "DIE REVANCHE!", "\xC2\xA1" "VENGANZA!", "LA RIVINCITA!"},
+       {"%s got revenge on {B}! This rivalry just got even hotter.",
+        "%s a pris sa revanche sur {B} ! Cette rivalit\xC3\xA9 s'enflamme encore.",
+        "%s hat sich an {B} ger\xC3\xA4" "cht! Diese Rivalit\xC3\xA4t wird immer hei\xC3\x9F" "er.",
+        "\xC2\xA1%s se veng\xC3\xB3 de {B}! Esta rivalidad est\xC3\xA1 m\xC3\xA1s caliente que nunca.",
+        "%s si \xC3\xA8 vendicato di {B}! Questa rivalit\xC3\xA0 si fa sempre pi\xC3\xB9 accesa."}},
+      {{"REMATCH CLAUSE", "CLAUSE DE REVANCHE", "REVANCHE-KLAUSEL", "CL\xC3\x81USULA DE REVANCHA",
+        "CLAUSOLA DELLA RIVINCITA"},
+       {"%s invokes the rematch clause: the {T} is on the line against {B}!",
+        "%s fait valoir sa clause de revanche : le {T} est en jeu face \xC3\xA0 {B} !",
+        "%s l\xC3\xB6st die Revanche-Klausel ein: Der {T} steht gegen {B} auf dem Spiel!",
+        "\xC2\xA1%s invoca su cl\xC3\xA1usula de revancha: el {T} est\xC3\xA1 en juego contra {B}!",
+        "%s fa valere la clausola della rivincita: il {T} \xC3\xA8 in palio contro {B}!"}},
+      {{"SURPRISE RETURN!", "RETOUR SURPRISE !", "\xC3\x9C" "BERRASCHENDE R\xC3\x9C" "CKKEHR!", "\xC2\xA1" "REGRESO SORPRESA!",
+        "RITORNO A SORPRESA!"},
+       // (one "%s" only: the game fills one)
+       {"%s is back! The crowd erupts for a surprise return after injury!",
+        "%s est de retour ! La foule explose pour ce retour surprise apr\xC3\xA8s blessure !",
+        "%s ist zur\xC3\xBC" "ck! Die Halle tobt bei dieser \xC3\xBC" "berraschenden R\xC3\xBC" "ckkehr nach der Verletzung!",
+        "\xC2\xA1%s ha vuelto! \xC2\xA1" "El p\xC3\xBA" "blico estalla con este regreso sorpresa tras su lesi\xC3\xB3n!",
+        "%s \xC3\xA8 tornato! Il pubblico esplode per questo ritorno a sorpresa dopo l'infortunio!"}},
+      {{"TOURNAMENT ANNOUNCED", "TOURNOI ANNONC\xC3\x89", "TURNIER ANGEK\xC3\x9CNDIGT", "TORNEO ANUNCIADO",
+        "TORNEO ANNUNCIATO"},
+       {"The {T} is vacant! %s, {B}, {C} and one more contender enter a tournament to crown a new champion.",
+        "Le {T} est vacant ! %s, {B}, {C} et un dernier pr\xC3\xA9tendant entrent dans un tournoi pour couronner "
+        "un nouveau champion.",
+        "Der {T} ist vakant! %s, {B}, {C} und ein weiterer Herausforderer k\xC3\xA4mpfen in einem Turnier um "
+        "den Titel.",
+        "\xC2\xA1" "El {T} est\xC3\xA1 vacante! %s, {B}, {C} y otro aspirante disputan un torneo por el t\xC3\xADtulo.",
+        "Il {T} \xC3\xA8 vacante! %s, {B}, {C} e un altro sfidante si contendono il titolo in un torneo."}},
+      {{"TOURNAMENT FINAL", "FINALE DU TOURNOI", "TURNIERFINALE", "FINAL DEL TORNEO", "FINALE DEL TORNEO"},
+       {"%s and {B} have reached the final: the vacant {T} is on the line!",
+        "%s et {B} sont en finale : le {T} vacant est en jeu !",
+        "%s und {B} stehen im Finale: Der vakante {T} steht auf dem Spiel!",
+        "\xC2\xA1%s y {B} llegan a la final: el {T} vacante est\xC3\xA1 en juego!",
+        "%s e {B} sono in finale: il {T} vacante \xC3\xA8 in palio!"}}};
+  const u32 kind = g_news_more - 1;
+  const bool title = id == 27068 || id == 27070;
+  std::string text = title ? kTexts[kind].title[CurrentLang()] : kTexts[kind].line[CurrentLang()];
+  const auto put = [&](const char *key, const std::string &value) {
+    for (size_t at = text.find(key); at != std::string::npos; at = text.find(key, at + value.size()))
+      text.replace(at, std::strlen(key), value);
+  };
+  put("{T}", g_more_title1);
+  put("{U}", g_more_title2);
+  put("{N}", std::to_string(g_more_number));
+  put("{B}", g_more_name2);
+  put("{R}", g_more_brand);
+  put("{C}", g_more_name3);
+  static u32 s_at[2] = {};
+  u32 &at = s_at[title];
+  if (!at)
+    at = REX_KERNEL_MEMORY()->SystemHeapAlloc(512, 0x10);
+  if (!at)
+    return 0;
+  std::memset(bd::mem::at<char>(at), 0, 512);
+  std::memcpy(bd::mem::at<char>(at), text.data(), std::min<size_t>(text.size(), 511));
+  return at;
+}
+
 u32 QualNewsText(u32 id) {
+  if (g_news_more && id >= 27068 && id <= 27071)
+    return MoreNewsText(id);
   if (g_news_draft && id >= 27068 && id <= 27071)
     return DraftNewsText(id);
   const u32 e = g_news_event;
@@ -4527,6 +5717,7 @@ extern "C" REX_FUNC(sub_826CEF28) {
         g_last_result.push_back({id, won});
         if (id == g_cashed_holder) {  // the briefcase was cleared before this match
           lines.push_back(fmt::format("cashin {} {} {}", id, won ? 1 : 0, day));
+          CashInNews(id, won);
           BD_INFO("[univers] Money in the Bank: {} cashed in, {}", id, won ? "won" : "lost");
           g_cashed_holder = 512;
         }
@@ -4546,6 +5737,36 @@ extern "C" REX_FUNC(sub_826CEF28) {
           lines.push_back(fmt::format("mania {} {} {} {}", id, match + 1 == count ? 1 : 0,
                                       won ? 1 : 0, day));
       }
+      DefenseNews(x, base, record, day);  // (before the game's result: the champion is still the old one)
+      if (!rumble && winner < 6)
+        Twists(x, base, record, places, winner_side);
+      if (winner < 6)
+        ContenderWonNews(record, winner_id);
+      if (REXCVAR_GET(wwe12_universe_card_probe)) {
+        std::string e;
+        for (u32 k = 0; k < 104; ++k)
+          e += fmt::format("{:02X}{}", bd::mem::load<u8>(record + k), k % 4 == 3 ? " " : "");
+        BD_INFO("[univers] card probe: result show {} match {} entry {}", show, match, e);
+      }
+      // streaks ("res <id> <won> <day>" for each Superstar of a match with a winner; more news at 5, 10, 15 wins and
+      // 5 losses in a row)
+      if (!rumble && winner < 6 && !g_last_result.empty()) {
+        for (const auto &[id, won] : g_last_result)
+          lines.push_back(fmt::format("res {} {} {}", id, won ? 1 : 0, day));
+        StreakNews(g_last_result, day);
+        // ("ultimate" Universe) a singles match's two Superstars and its winner: "vs <a> <b> <winner> <day>" (the
+        // rivalry news), and a surprise return's news
+        if (g_last_result.size() == 2)  // a tournament's semi-final?
+          UltimateTournamentResult(g_last_result[0].first, g_last_result[1].first,
+                                   g_last_result[0].second ? g_last_result[0].first : g_last_result[1].first);
+        if (g_last_result.size() == 2 && UltimateWantsVs())  // (nothing written while it is off)
+          lines.push_back(fmt::format("vs {} {} {} {}", g_last_result[0].first, g_last_result[1].first,
+                                      g_last_result[0].second ? g_last_result[0].first : g_last_result[1].first, day));
+      }
+      // (any result, a draw too: the surprise return's news comes with his match)
+      if (!rumble)
+        for (const auto &[id, won] : g_last_result)
+          UltimateReturnPlayed(id);
       // a qualifying match of ours: its winner qualifies
       if (REXCVAR_GET(wwe12_universe_qualifiers) && places == 2 && winner < 2 && g_last_result.size() == 2) {
         const u32 a = g_last_result[0].first, b = g_last_result[1].first, year = day / 336;
@@ -4575,6 +5796,7 @@ extern "C" REX_FUNC(sub_826C8690) {
   const PPCContext in = ctx;
   __imp__sub_826C8690(ctx, base);
   DraftCheck(in, base);
+  WeeklyNews(in, base);  // (also here: shows simulated from MATCH CARDS never pass by the Universe menu, test of 2026-11-13)
   FlushNews(in, base);
 }
 
@@ -4799,6 +6021,7 @@ extern "C" REX_FUNC(sub_824D3458) {
       CloseTitles(ctx, base);
       bd::mem::store<u32>(g_screen + 224, 1);
       g_step = Step::kIdle;
+      UltimateAskVacant(ctx, base);  // ("ultimate" Universe: a show title vacated: tournament or vacant?)
     }
   } else if (g_step != Step::kIdle && ctx.r3.u32 == g_screen) {
     if (g_step == Step::kMenu || g_step == Step::kAttire || g_step == Step::kChoose) {
@@ -5033,9 +6256,12 @@ extern "C" REX_FUNC(sub_826DC6E8) {
 // template) past the game's number still without a template is booked again as one of the game's
 // own matches, which always have one (an empty entry crashes the card rules, sub_826EB510).
 REX_EXTERN(__imp__sub_826F15E8);
+extern thread_local bool t_chaos_story;  // ("ultimate" Universe: a story's match being booked)
 extern "C" REX_FUNC(sub_826F15E8) {
   const PPCContext in = ctx;
+  t_chaos_story = bd::mem::try_load<u32>(in.r3.u32 + 11100 + 4 * (in.r5.u32 & 0xFFFF)) != 0xFFFFFFFFu;
   __imp__sub_826F15E8(ctx, base);
+  t_chaos_story = false;
   const u32 entry = in.r4.u32, i = in.r5.u32 & 0xFFFF;
   const u32 n = t_weekly_matches, d = t_weekly_default;
   if (!n || d < 2 || i < d || !entry || bd::mem::load<u32>(entry))
@@ -5063,14 +6289,159 @@ struct Rested {
 };
 thread_local std::vector<Rested> t_rested;  // this card's rested Superstars (cleared when a card starts)
 
+// NXT (show 3) is booked by a RAW booker: the booker made for it is remembered so it gets its own number of matches.
+// sub_826EB218 makes the booker of today's show (sub_826D0840 on a Universe view, as it does).
+// The booker's vtbl[4] books the card with its show number written in the code (sub_826F1DA8: r6 = 0 RAW, 1DB0 = 1,
+// 1DB8 = 2, then sub_826F1CF0 -> sub_826F15E8(this, ?, ?, show, view)): NXT's card was RAW's (RAW's brand and titles,
+// seen 2026-11-13). sub_826F1CF0 is given show 3 for NXT's booker. NXT's record lists brands 0 and 1 in the game's
+// data (+929 + b): it gets the NXT brand instead (wwe12_universe_nxt_brand) when that brand has Superstars.
+REXCVAR_DEFINE_INT32(wwe12_universe_nxt_brand, 2, "WWE12",
+                     "Universe: the brand whose Superstars NXT books (-1 = the game's data: RAW and SmackDown).");
+u32 g_nxt_booker = 0;
+REX_EXTERN(__imp__sub_826D3218);
+REX_EXTERN(__imp__sub_82A32DB8);
+REX_EXTERN(__imp__sub_826D2B50);
+void NxtBrands(const PPCContext &x, u8 *base, u32 u) {
+  if (!u)
+    return;
+  u32 count[13] = {};
+  std::string first[13];
+  for (u32 id = 0; id < 373; ++id) {
+    if (!Call(x, base, __imp__sub_826D3218, id, 1) || Call(x, base, __imp__sub_82A32DB8, id))
+      continue;
+    const u32 brand = Call(x, base, __imp__sub_826D2B50, id);
+    if (brand >= 13)
+      continue;
+    if (count[brand]++ < 4)
+      first[brand] += fmt::format(" {}", id);
+  }
+  static bool s_logged = false;
+  if (!s_logged) {
+    s_logged = true;
+    for (u32 b = 0; b < 13; ++b)
+      if (count[b])
+        BD_INFO("[univers] NXT: brand {} has {} Superstars (ids{} ...)", b, count[b], first[b]);
+  }
+  // Its match templates: table record +900 (u16, sub_826CBFE8; tables at 0x82231590, sub_826D6800, 17), group +902
+  // (low byte, sub_826CC000); sub_826DC6E8(table, group, i) gives NULL past them, and the booker then reads a NULL
+  // template (crash seen 2026-11-13 on NXT's first card). NXT takes RAW's (the tables may not be readable here: a
+  // check of them crashed, 2026-11-13).
+  const u32 r = u + kShowRecords + 3 * kShowRecordSize, raw = u + kShowRecords;
+  BD_INFO("[univers] NXT: templates table {} group {:04X}, RAW's table {} group {:04X}", bd::mem::load<u16>(r + 900),
+          bd::mem::load<u16>(r + 902), bd::mem::load<u16>(raw + 900), bd::mem::load<u16>(raw + 902));
+  bd::mem::store<u16>(r + 900, bd::mem::load<u16>(raw + 900));
+  bd::mem::store<u8>(r + 903, bd::mem::load<u8>(raw + 903));  // the group: the u16's low byte (big-endian)
+  const int32_t nxt = REXCVAR_GET(wwe12_universe_nxt_brand);
+  if (nxt < 0 || nxt >= 13 || count[nxt] < 4)
+    return;
+  for (u32 b = 0; b < 13; ++b)
+    bd::mem::store<u8>(r + 929 + b, u8(b == u32(nxt)));
+  BD_INFO("[univers] NXT: books brand {} ({} Superstars), record {:08X}", nxt, count[nxt], r);
+}
+
+namespace {
+bool NxtProbeLive() { return g_nxt_booker && NxtOn(); }
+}  // namespace
+
+// (dev log) who asks a Superstar's brand while NXT's booker lives (each caller once)
+extern "C" REX_FUNC(sub_826D2B50) {
+  const u32 from = u32(ctx.lr), id = ctx.r3.u32;
+  __imp__sub_826D2B50(ctx, base);
+  if (g_nxt_booker && NxtOn()) {
+    static std::mutex s_lock;
+    static std::set<u32> s_seen;
+    std::lock_guard<std::mutex> lock(s_lock);
+    if (s_seen.size() < 80 && s_seen.insert(from).second)
+      BD_INFO("[univers] NXT probe: brand of {} asked from {:08X} -> {} (nxt booking {})", id, from, ctx.r3.u32,
+              t_nxt_booking);
+  }
+}
+
+// (dev log) the brand filter (vtable 0x8203E3A0, its brand at +8) seen while NXT's card is booked
+REX_EXTERN(__imp__sub_826E11E0);
+extern "C" REX_FUNC(sub_826E11E0) {
+  const u32 brand = bd::mem::try_load<u32>(ctx.r3.u32 + 8);
+  __imp__sub_826E11E0(ctx, base);
+  if (t_nxt_booking && g_nxt_probe_lines < 40) {
+    ++g_nxt_probe_lines;
+    BD_INFO("[univers] NXT probe: brand filter {} -> {} (from {:08X})", brand, ctx.r3.u32, u32(ctx.lr));
+  }
+}
+REX_EXTERN(__imp__sub_826E1230);
+extern "C" REX_FUNC(sub_826E1230) {
+  const u32 show = bd::mem::try_load<u32>(ctx.r3.u32 + 8);
+  __imp__sub_826E1230(ctx, base);
+  if (t_nxt_booking && g_nxt_probe_lines < 40) {
+    ++g_nxt_probe_lines;
+    BD_INFO("[univers] NXT probe: show filter {} -> {} (from {:08X})", show, ctx.r3.u32, u32(ctx.lr));
+  }
+}
+
+REX_EXTERN(__imp__sub_826F1CF0);
+extern "C" REX_FUNC(sub_826F1CF0) {
+  if (g_nxt_booker && ctx.r3.u32 == g_nxt_booker && ctx.r6.u32 == 0) {
+    ctx.r6.u64 = 3;
+    BD_INFO("[univers] NXT: card booked as show 3");
+  }
+  const bool nxt = g_nxt_booker && ctx.r3.u32 == g_nxt_booker;
+  t_nxt_booking = nxt;
+  if (nxt)
+    g_nxt_probe_lines = 0;
+  __imp__sub_826F1CF0(ctx, base);
+  t_nxt_booking = false;
+}
+REX_EXTERN(__imp__sub_826EB218);
+REX_EXTERN(__imp__sub_826D0840);
+thread_local bool t_making_nxt = false;  // sub_826EB218 is making NXT's booker
+extern "C" REX_FUNC(sub_826EB218) {
+  if (!NxtOn()) {
+    g_nxt_booker = 0;
+    __imp__sub_826EB218(ctx, base);
+    return;
+  }
+  PPCContext x = ctx;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x800;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 show = Call(x, base, __imp__sub_826D0840, view);
+  if (show == 3)
+    NxtBrands(x, base, Call(x, base, __imp__sub_82683A30, 0));  // before the booker reads the record
+  t_making_nxt = show == 3;
+  __imp__sub_826EB218(ctx, base);
+  t_making_nxt = false;
+  const u32 booker = ctx.r3.u32;
+  if (g_nxt_booker == booker)
+    g_nxt_booker = 0;  // (the same address is reused by the next show's booker)
+  if (!booker || bd::mem::try_load<u32>(booker) != kBookerRaw)
+    return;
+  if (show == 3) {
+    g_nxt_booker = booker;
+    BD_INFO("[univers] NXT: booker {:08X}", booker);
+  } else if (g_nxt_booker == booker) {
+    g_nxt_booker = 0;
+  }
+}
+
+// The booker's constructor reads its show's roster with the show number written in the code (RAW sub_826F1950:
+// sub_826F1308(this, 0); SmackDown 1): NXT's booker reads show 3's (NXT's card had RAW's Superstars, 2026-11-13).
+REX_EXTERN(__imp__sub_826F1308);
+extern "C" REX_FUNC(sub_826F1308) {
+  if (t_making_nxt && ctx.r4.u32 == 0) {
+    ctx.r4.u64 = 3;
+    BD_INFO("[univers] NXT: booker reads show 3's roster");
+  }
+  __imp__sub_826F1308(ctx, base);
+}
+
 REX_EXTERN(__imp__sub_826F19E0);
 extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
   // a "return 4" shared with other code (a match calls it with r3 = 0 / 1: crash seen 2026-10-27
   // when it was read unchecked): only a booker's r3 is a pointer to one of their vtables
   const u32 vtbl = bd::mem::try_load<u32>(ctx.r3.u32);
+  const bool nxt = vtbl == kBookerRaw && ctx.r3.u32 == g_nxt_booker;
   __imp__sub_826F19E0(ctx, base);
   if (Enabled() && (vtbl == kBookerRaw || vtbl == kBookerSmackDown)) {
-    const u32 slot = vtbl == kBookerRaw ? 0 : 1;
+    const u32 slot = vtbl == kBookerRaw ? (nxt ? kNxtSlot : 0) : 1;
     t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(slot, ctx.r3.u32);
     t_weekly_matches = g_matches[slot] ? ctx.r3.u32 : 0;
@@ -5218,7 +6589,124 @@ const char *RandomText() {
 }
 }  // namespace
 
+// ---- choose the title at stake (user's request, 2026-11-13) --------------------------------------
+//
+// LB on MATCH CARDS, on a match still to play: "Choose the title at stake", the show's titles (its
+// record's +904 bytes; a PPV, whose record has none: every title a weekly show uses) that fit the
+// match (a tag title: teams of two; another: one Superstar a side), then NO TITLE. The answer is the
+// card entry's title flag and byte 1 (sub_826D4DD8 / +1, as the title defenses of ours), also put in
+// the card screen's copy of it (C + 3248 + row * 104), so the header shows the title at once. The
+// winner takes the title as in any title match, the champion in it or not.
+REXCVAR_DEFINE_BOOL(wwe12_universe_choose_title, true, "WWE12",
+                    "Universe: LB on MATCH CARDS chooses the title at stake in a match (or none).");
+REX_EXTERN(__imp__sub_826D4DD8);  // card entry: title match on / off
+
+namespace {
+std::vector<u32> g_title_choices;  // the box's lines: a title each (the last: none)
+
+const char *ChooseTitleText() {
+  static const char *const kText[5] = {
+      "TITLE AT STAKE\nChoose the title for this match:", "TITRE EN JEU\nChoisissez le titre mis en jeu :",
+      "TITEL\nW\xC3\xA4hle den Titel dieses Matches:", "T\xC3\x8DTULO EN JUEGO\nElige el t\xC3\xADtulo del combate:",
+      "TITOLO IN PALIO\nScegli il titolo dell'incontro:"};
+  return kText[CurrentLang()];
+}
+const char *NoTitleText() {
+  static const char *const kText[5] = {"NO TITLE", "AUCUN TITRE", "KEIN TITEL", "SIN T\xC3\x8DTULO",
+                                       "NESSUN TITOLO"};
+  return kText[CurrentLang()];
+}
+
+bool TitleButton(const PPCContext &in, u8 *base, u32 screen) {
+  if (!REXCVAR_GET(wwe12_universe_choose_title) || !(bd::mem::load<u32>(screen + 64) & kLB))
+    return false;
+  const u32 card = screen - 28;
+  const u32 row = bd::mem::load<u32>(card + 552);
+  if (row >= 8)
+    return false;
+  const u32 match = bd::mem::load<u32>(card + 4100 + 4 * row);
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x800, out = x.r1.u32 + 0x400;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 show = Call(x, base, __imp__sub_826D0840, view);
+  const u32 entry = Call(x, base, __imp__sub_826CCC38, view, show);
+  const u32 list = entry ? bd::mem::load<u32>(entry + 4) : 0;
+  const u32 record = list && match < 8 ? list + match * 104 : 0;
+  std::vector<std::string> options;
+  g_title_choices.clear();
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (record && u && bd::mem::load<u8>(record + 3) == 1 &&
+      Call(x, base, __imp__sub_82A2FA18, bd::mem::load<u8>(record)) != 1) {  // to play, no Royal Rumble
+    const u32 places = std::min<u32>(Call(x, base, __imp__sub_826D4F90, record), 40);
+    std::map<u32, u32> team_size;
+    for (u32 p = 0; p < places; ++p)
+      if (Call(x, base, __imp__sub_826D4958, record, out, p) && bd::mem::load<u16>(out) < 512)
+        ++team_size[bd::mem::load<u8>(out + 3)];
+    u32 smallest = 99, largest = 0;
+    for (auto [team, n] : team_size)
+      smallest = std::min(smallest, n), largest = std::max(largest, n);
+    const bool singles = team_size.size() >= 2 && largest == 1;
+    const bool tags = team_size.size() >= 2 && smallest == 2 && largest == 2;
+    const bool show_has = show < 10 && [&] {
+      for (u32 t = 0; t < 23; ++t)
+        if (bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + t))
+          return true;
+      return false;
+    }();
+    for (u32 t = 0; t < 23; ++t) {
+      bool used = false;
+      if (show_has)
+        used = bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + t) != 0;
+      else
+        for (u32 s = 0; s < 10 && !used; ++s)
+          used = bd::mem::load<u8>(u + kShowRecords + s * kShowRecordSize + 904 + t) != 0;
+      if (!used)
+        continue;
+      const bool tag = Call(x, base, __imp__sub_82A39CE8, t) != 0;
+      if (tag ? !tags : !singles)
+        continue;
+      g_title_choices.push_back(t);
+      options.push_back(TitleName(in, base, t));
+    }
+  }
+  Call(x, base, __imp__sub_826CE098, view);
+  if (!record || bd::mem::load<u8>(record + 3) != 1)
+    return false;
+  bd::mem::store<u32>(screen + 64, 0);
+  options.push_back(NoTitleText());
+  g_title_choices.push_back(0xFF);
+  g_screen = screen;
+  BD_INFO("[univers] choose title: show {} match {} ({} titles)", show, match, options.size() - 1);
+  Choose(in, base, ChooseTitleText(), options, [card, row, show, match](const PPCContext &in, u8 *base, size_t i) {
+    const u32 title = i < g_title_choices.size() ? g_title_choices[i] : 0xFF;
+    PPCContext x = in;
+    x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+    const u32 view = x.r1.u32 + 0x800;
+    Call(x, base, __imp__sub_826CDC48, view);
+    const u32 entry = Call(x, base, __imp__sub_826CCC38, view, show);
+    const u32 list = entry ? bd::mem::load<u32>(entry + 4) : 0;
+    if (list && match < 8) {
+      const u32 record = list + match * 104;
+      Call(x, base, __imp__sub_826D4DD8, record, title < 23 ? 1 : 0);
+      if (title < 23)
+        bd::mem::store<u8>(record + 1, u8(title));
+      const u32 copy = card + 3248 + row * 104;  // the card screen's copy (its header)
+      Call(x, base, __imp__sub_826D4DD8, copy, title < 23 ? 1 : 0);
+      if (title < 23)
+        bd::mem::store<u8>(copy + 1, u8(title));
+    }
+    Call(x, base, __imp__sub_826CE098, view);
+    BD_INFO("[univers] choose title: show {} match {} -> title {}", show, match, int(title == 0xFF ? -1 : int(title)));
+  });
+  return true;
+}
+}  // namespace
+
 bool CardButtons(const PPCContext &in, u8 *base, u32 screen) {
+  if (Enabled() && g_step == Step::kIdle && bd::mem::try_load<u32>(screen) == kCardScreenVtbl &&
+      bd::mem::load<u32>(kInUniverseFlag) == 1 && TitleButton(in, base, screen))
+    return true;
   if (!Enabled() || g_step != Step::kIdle || bd::mem::try_load<u32>(screen) != kCardScreenVtbl ||
       bd::mem::load<u32>(kInUniverseFlag) != 1 || !(bd::mem::load<u32>(screen + 64) & kX))
     return false;
@@ -5534,8 +7022,10 @@ extern "C" REX_FUNC(sub_826CE6C0) {
 
 constexpr u32 kShowEditVtbl = 0x82027188;
 REX_EXTERN(__imp__sub_82589958);  // SHOW EDIT: made
+u32 g_show_edit_owner = 0;  // SHOW EDIT's owner O (its record copy at O + 320)
 extern "C" REX_FUNC(sub_82589958) {
   g_show_edit_open = true;
+  g_show_edit_owner = ctx.r3.u32;
   if (Enabled())
     SetPromptLabel(4, 1, kGameCancelText, kCancelPlusMatchesText);  // before its bar is made
   __imp__sub_82589958(ctx, base);
@@ -5649,6 +7139,7 @@ extern "C" REX_FUNC(sub_826CBE70) {
 
 // A Universe match's stage (sub_826BBE30: the show's record holder in r31): the show's added arena put on its base's stage,
 // or the game's arena (an added one chosen before, in an exhibition or another show, no longer plays there).
+u32 g_universe_stage = 1;  // the stage of the Universe match being set up (the scene experiment's aux)
 extern "C" REX_FUNC(sub_828AC150) {
   if (ctx.lr == 0x826BBE88 && REXCVAR_GET(wwe12_universe_added_arenas)) {
     // (r31: what sub_826CCD90 gives, a holder whose +0 is the record, as sub_826CBE50 / sub_826CBFB8 read it)
@@ -5675,8 +7166,49 @@ extern "C" REX_FUNC(sub_828AC150) {
       }
     }
     Wwe12ArenaPlay(n, stage);
+    g_universe_stage = stage;  // (the scene experiment's aux)
   }
   __imp__sub_828AC150(ctx, base);
+}
+
+// SHOW EDIT's ARENA picture (sub_82586428(out, element, stage): a table of 21 {stage, "Uni_arena_*"}, else
+// Uni_arena_CAR for stages 200-249, else none, set by sub_824CC810(out, element +44, name)): an added arena shows
+// its own photo, made by the Mod Maker from its banner (Wwe12ArenaPictureName, wwe12_superstar_mods.cpp: the guest
+// address of "Uni_arena_Mnn", 0 if none). Which one: the arena just chosen on the ARENA row, or the show's saved one
+// when the stage drawn is its base's.
+uint32_t Wwe12ArenaPictureName(const std::string &id);  // wwe12_superstar_mods.cpp
+REX_EXTERN(__imp__sub_82586428);  // SHOW EDIT: the ARENA picture (out, element, stage)
+REX_EXTERN(__imp__sub_824CC810);  // a layout element: its texture by name (out, texture list, name)
+extern "C" REX_FUNC(sub_82586428) {
+  const u32 out = ctx.r3.u32, element = ctx.r4.u32, stage = ctx.r5.u32;
+  const u32 list = element ? bd::mem::load<u32>(element + 44) : 0;
+  if (list && g_show_edit_open && g_show_edit_owner && REXCVAR_GET(wwe12_universe_added_arenas)) {
+    std::string id;
+    if (g_edit_arena >= 0) {
+      id = Wwe12ArenaId(g_edit_arena);
+    } else if (g_edit_arena == -2) {
+      const u32 show = bd::mem::load<u8>(g_show_edit_owner + 320 + 927);
+      std::lock_guard<std::mutex> lock(g_arenas_lock);
+      LoadShowArenas();
+      const auto it = g_show_arenas.find(show);
+      if (it != g_show_arenas.end())
+        id = it->second;
+    }
+    u32 on = 0;
+    const u32 name = !id.empty() && Wwe12ArenaFind(id, on) >= 0 && on == stage ? Wwe12ArenaPictureName(id) : 0;
+    if (name) {
+      static std::string s_logged;
+      if (s_logged != id) {
+        s_logged = id;
+        BD_INFO("[univers] SHOW EDIT: arena {} shows its own picture {}", id,
+                bd::mem::try_at<const char>(name) ? bd::mem::try_at<const char>(name) : "?");
+      }
+      Call(ctx, base, __imp__sub_824CC810, out, list, name);
+      ctx.r3.u64 = out;
+      return;
+    }
+  }
+  __imp__sub_82586428(ctx, base);
 }
 
 namespace {
@@ -5688,8 +7220,8 @@ bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen) {
     return false;
   const u32 record = screen - 28 + 320;
   const u32 show = bd::mem::load<u8>(record + 927);
-  const u32 which = show < 3 ? show : show >= 10 && show <= 22 ? 3 : 4;
-  if (which > 3)
+  const u32 which = show < 3 ? show : show == 3 && NxtOn() ? kNxtSlot : show >= 10 && show <= 22 ? 3 : 5;
+  if (which > kNxtSlot)
     return false;
   bd::mem::store<u32>(screen + 64, 0);
   const char *n = bd::mem::try_at<const char>(record + 832);
@@ -5890,6 +7422,106 @@ bool MarkQualifier(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 re
 }
 }  // namespace
 
+// Two briefcases: the PPV card's Money in the Bank match (the booker's records, before the first is written) gets a
+// twin: another ordinary match of the card (no title, rivalry, WrestleMania build or special match) becomes a copy of
+// it. The game's match takes RAW's men (brand 0), the copy SmackDown's (brand 1): first the qualified ones (qualifying
+// matches on), then those the game had put in it, then other men of the brand who are on no other match of the card,
+// at random. Nothing changes when a brand has too few.
+bool MakeSecondMitb(const PPCContext &in, u8 *base, u32 booker) {
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const auto record = [&](u32 k) { return booker + 20 + k * 1320; };
+  const auto used = [&](u32 k) { return bd::mem::load<u32>(record(k) + 8) == 1; };
+  const auto is_mitb = [&](u32 k) { return Call(x, base, __imp__sub_82A2F998, bd::mem::load<u32>(record(k))) != 0; };
+  u32 m = 8, c = 8, mitbs = 0;
+  for (u32 k = 0; k < 8; ++k)
+    if (used(k) && is_mitb(k)) {
+      ++mitbs;
+      if (m == 8)
+        m = k;
+    }
+  if (m == 8 || mitbs > 1)
+    return false;
+  // The match that becomes the second one: the first of the card (the opener, not the main event) of the best kind:
+  // 0 an ordinary match, 1 a rivalry's or WrestleMania build's, 2 a title match (not the WWE or World title's).
+  // (The PPV cards are often all titles and rivalries: none of kind 0 at the first test, 2026-11-12.)
+  u32 best = 3;
+  std::string card;
+  for (u32 k = 0; k < 8; ++k) {
+    const u32 r = record(k), type = bd::mem::load<u32>(r);
+    if (!used(k))
+      continue;
+    const u32 title = bd::mem::load<u32>(r + 4);
+    card += fmt::format(" [{}: type {} title {} flag {} wm {} rivalry {} places {}]", k, type, title,
+                        bd::mem::load<u32>(r + 12), bd::mem::load<u32>(r + 24), bd::mem::load<u32>(r + 28),
+                        bd::mem::load<u32>(r + 16));
+    if (k == m || bd::mem::load<u32>(r + 16) < 2 || Call(x, base, __imp__sub_82A2FA18, type) == 1 ||
+        Call(x, base, __imp__sub_82A2F998, type) || Call(x, base, __imp__sub_82A2FA98, type))
+      continue;
+    const bool titled = bd::mem::load<u32>(r + 12) != 0;
+    const u32 kind = titled ? (title == 0 || title == 1 ? 3 : 2)
+                            : (bd::mem::load<u32>(r + 24) || bd::mem::load<u32>(r + 28) ? 1 : 0);
+    if (kind < best) {
+      best = kind;
+      c = k;
+    }
+  }
+  BD_INFO("[univers] Money in the Bank: PPV card{}", card);
+  if (c == 8) {
+    BD_INFO("[univers] Money in the Bank: no match on the PPV card can become the second briefcase's match");
+    return false;
+  }
+  const u32 places = std::min<u32>(bd::mem::load<u32>(record(m) + 16), 8);
+  std::set<u32> elsewhere;  // on the card's other matches
+  for (u32 k = 0; k < 8; ++k)
+    if (k != m && k != c && used(k))
+      for (u32 q = 0; q < std::min<u32>(bd::mem::load<u32>(record(k) + 16), 8); ++q)
+        elsewhere.insert(bd::mem::load<u32>(record(k) + 40 + q * 32));
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  std::vector<u32> qualified;
+  if (u && REXCVAR_GET(wwe12_universe_qualifiers)) {
+    g_qual_today = bd::mem::load<u32>(u + kUniverseDay);
+    for (const auto &q : QualLines("qualified", 1, g_qual_today / 336))
+      qualified.push_back(q[0]);
+  }
+  std::vector<u32> in_game;
+  for (u32 q = 0; q < places; ++q)
+    in_game.push_back(bd::mem::load<u32>(record(m) + 40 + q * 32));
+  static std::mt19937 s_random{std::random_device{}()};
+  std::vector<u32> others;
+  for (u32 id = 0; id < 373; ++id)
+    if (Call(x, base, __imp__sub_826D3218, id, 1) && !Call(x, base, __imp__sub_82A32DB8, id) && !elsewhere.count(id))
+      others.push_back(id);
+  std::shuffle(others.begin(), others.end(), s_random);
+  std::vector<u32> picked[2];
+  std::set<u32> taken;
+  for (u32 brand = 0; brand < 2; ++brand)
+    for (const auto *list : {&qualified, &in_game, &others})
+      for (const u32 id : *list) {
+        if (picked[brand].size() >= places || id >= 512 || taken.count(id) || elsewhere.count(id) ||
+            Call(x, base, __imp__sub_826D2B50, id) != brand)
+          continue;
+        picked[brand].push_back(id);
+        taken.insert(id);
+      }
+  if (picked[0].size() < places || picked[1].size() < places) {
+    BD_INFO("[univers] Money in the Bank: too few men for two matches (RAW {}, SmackDown {}, {} places)",
+            picked[0].size(), picked[1].size(), places);
+    return false;
+  }
+  for (u32 o = 0; o < 1320; o += 4)
+    bd::mem::store<u32>(record(c) + o, bd::mem::load<u32>(record(m) + o));
+  std::string raw, sd;
+  for (u32 q = 0; q < places; ++q) {
+    bd::mem::store<u32>(record(m) + 40 + q * 32, picked[0][q]);
+    bd::mem::store<u32>(record(c) + 40 + q * 32, picked[1][q]);
+    raw += fmt::format(" {}", picked[0][q]);
+    sd += fmt::format(" {}", picked[1][q]);
+  }
+  BD_INFO("[univers] Money in the Bank: two matches on the PPV card, {} (RAW:{}) and {} (SmackDown:{})", m, raw, c, sd);
+  return true;
+}
+
 extern "C" REX_FUNC(sub_826EAEB0) {
   const PPCContext in = ctx;
   const u32 booker = ctx.r3.u32, entry = ctx.r4.u32, i = ctx.r5.u32 & 0xFFFF;
@@ -5897,9 +7529,44 @@ extern "C" REX_FUNC(sub_826EAEB0) {
                           bd::mem::load<u32>(kInUniverseFlag) == 1;
   if (qualifiers && i == 0)
     g_placed_events = 0;  // a new card
+  if (i == 0 && entry && TwoBriefcases() && bd::mem::load<u32>(kInUniverseFlag) == 1 &&
+      bd::mem::try_load<u32>(booker) == kBookerPpv && MakeSecondMitb(in, base, booker))
+    g_placed_events |= 1u << 1;  // (the qualified are placed already)
   if (qualifiers && bd::mem::try_load<u32>(booker) == kBookerPpv)
     PlaceQualified(in, base, booker, booker + 20 + i * 1320);
+  {
+    // ("ultimate" Universe, before the entry is written: a rematch, a surprise return, a mystery opponent)
+    const bool ours = entry && i < 8 && bd::mem::load<u32>(kInUniverseFlag) == 1;
+    if (ours && !UltimateBooking(in, base, booker, i))
+      ChaosMystery(booker + 20 + i * 1320);
+  }
   __imp__sub_826EAEB0(ctx, base);
+  if (entry && i < 8 && bd::mem::load<u32>(kInUniverseFlag) == 1)
+    UltimateBookingAfter(in, base, booker, entry, i);  // (the rematch made a title match)
+  if (entry && i < 8 && g_nxt_booker && booker == g_nxt_booker) {  // NXT's card: who, of which brand
+    PPCContext x = in;
+    x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+    std::string who;
+    for (u32 p = 0; p < std::min<u32>(bd::mem::load<u8>(entry + 2), 8); ++p) {
+      const u32 id = bd::mem::load<u16>(entry + 16 + p * 12);
+      if (id < 512)
+        who += fmt::format(" {}(brand {})", id, Call(x, base, __imp__sub_826D2B50, id));
+    }
+    BD_INFO("[univers] NXT card: match {} record show {}:{}", i, bd::mem::load<u32>(booker + 20 + i * 1320 + 4), who);
+  }
+  if (REXCVAR_GET(wwe12_universe_card_probe) && entry && i < 8) {
+    // Dev: the card entry written (104 bytes) and the booker's record head, to find the #1 contender's and the mystery
+    // opponent's marks (news, 1.4)
+    std::string e, r;
+    for (u32 k = 0; k < 104; ++k)
+      e += fmt::format("{:02X}{}", bd::mem::load<u8>(entry + k), k % 4 == 3 ? " " : "");
+    const u32 rec = booker + 20 + i * 1320;
+    for (u32 k = 0; k < 40; k += 4)
+      r += fmt::format(" {:08X}", bd::mem::load<u32>(rec + k));
+    BD_INFO("[univers] card probe: booker {:08X} match {} entry {}| record{}", bd::mem::try_load<u32>(booker), i, e, r);
+  }
+  if (entry && i < 8 && Enabled() && bd::mem::load<u32>(kInUniverseFlag) == 1)
+    CardNews(in, base, booker, entry, i);
   if (qualifiers) {
     const u32 v = bd::mem::try_load<u32>(booker);
     if ((v == kBookerRaw || v == kBookerSmackDown || v == kBookerSuperstars) &&
@@ -5996,6 +7663,46 @@ extern "C" REX_FUNC(sub_82554B68) {
     if (shown && std::find(std::begin(s_ours), std::end(s_ours), shown) != std::end(s_ours))
       if (const u32 game = GameText(x, base, 27400 + bd::mem::load<u8>(copy)))
         bd::mem::store<u32>(header0 + 200, game);
+  }
+  // ("ultimate" Universe) a singles match between rivals: "RIVALRY MATCH" (as WWE 2K14's header)
+  // (not over another header than MATCH #n / MAIN EVENT, entry +6 1-9; not when a place is a hidden "???", entry
+  // place +6 = 1: it would give the mystery away)
+  if ((UltimateHeaderOn() || UltimateTournamentsOn()) && bd::mem::load<u8>(copy + 6) >= 1 &&
+      bd::mem::load<u8>(copy + 6) <= 9 &&
+      bd::mem::load<u8>(copy + 16 + 6) != 1 && bd::mem::load<u8>(copy + 16 + 12 + 6) != 1 &&
+      !Call(x, base, __imp__sub_826D4DC8, copy) && Call(x, base, __imp__sub_826D4F90, copy) == 2) {
+    const u32 out = x.r1.u32 + 0x100;
+    Call(x, base, __imp__sub_826D4958, copy, out, 0);
+    const u32 a = bd::mem::load<u16>(out);
+    Call(x, base, __imp__sub_826D4958, copy, out, 1);
+    const u32 b = bd::mem::load<u16>(out);
+    const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+    const bool qualifier = REXCVAR_GET(wwe12_universe_qualifiers) && u &&
+                           PendingQualifier(a, b, bd::mem::load<u32>(u + kUniverseDay) / 336);
+    const u32 layout = bd::mem::load<u32>(c + 292);
+    const bool semi = !qualifier && u && a < 512 && b < 512 &&
+                      UltimateTourneySemi(x, base, a, b, bd::mem::load<u32>(u + kUniverseDay));
+    if (!qualifier && layout && a < 512 && b < 512 && (semi || UltimateRivalryHeader(x, base, a, b)))
+      if (const u32 header = Call(x, base, __imp__sub_824C5458, layout, 30)) {
+        static const char *const kSemi[5] = {"TOURNAMENT SEMI-FINAL", "TOURNOI : DEMI-FINALE", "TURNIER: HALBFINALE",
+                                             "TORNEO: SEMIFINAL", "TORNEO: SEMIFINALE"};
+        static const char *const kRivalryOnly[5] = {"RIVALRY MATCH", "MATCH DE RIVALIT\xC3\x89",
+                                                    "RIVALIT\xC3\x84TS-MATCH", "COMBATE DE RIVALIDAD",
+                                                    "INCONTRO DI RIVALIT\xC3\x80"};
+        const char *const *kRivalry = semi ? kSemi : kRivalryOnly;
+        static u32 s_text = 0;
+        if (!s_text)
+          s_text = REX_KERNEL_MEMORY()->SystemHeapAlloc(96, 0x10);
+        if (s_text) {
+          const char *t = kRivalry[CurrentLang()];
+          std::memset(bd::mem::at<char>(s_text), 0, 96);
+          std::memcpy(bd::mem::at<char>(s_text), t, std::min<size_t>(std::strlen(t), 95));
+          bd::mem::store<u32>(header + 200, s_text);
+          s_ours[1] = s_text;
+          bd::mem::store<u32>(header + 228, bd::mem::load<u32>(header + 228) & ~0x10u);
+          return;
+        }
+      }
   }
   if (REXCVAR_GET(wwe12_universe_qualifiers) && !Call(x, base, __imp__sub_826D4DC8, copy) &&
       Call(x, base, __imp__sub_826D4F90, copy) == 2) {
@@ -6172,3 +7879,1796 @@ void DraftCheck(const PPCContext &in, u8 *base) {
 }
 }  // namespace
 
+// ---- Dev: the Universe's scenes (wwe12_universe_scene_probe, docs/univers.md §44) ---------------------------------
+//
+// To tie a WCID scene record (wuniData.pac: 4 lists of 564-byte records, list base + 8 + n * 564; +2 its number, +468
+// a u16 of 32100+...) to the act played and its /EVPx/NNNN script: sub_826DC408(buf, list, n) queues a record (its
+// return), sub_826BCD40 picks the interference's kind (manager *0x83231548: +5052 on, +5056 the interferer, +5064 the
+// kind), sub_826BF660 fills its roles, sub_826DF6D8 starts a cut scene. With wwe12_game_log (acts) and wwe12_dir_log
+// (the scripts read) on as well.
+REXCVAR_DEFINE_BOOL(wwe12_universe_scene_probe, false, "WWE12",
+                    "Dev: log the Universe's scene records queued, the interference's kind and the cut scenes started.");
+REX_EXTERN(__imp__sub_826DC408);
+REX_EXTERN(__imp__sub_826BCD40);
+REX_EXTERN(__imp__sub_826BF660);
+REX_EXTERN(__imp__sub_826DF6D8);
+REX_EXTERN(__imp__sub_826D66F0);  // WCID: a list's base
+
+extern "C" REX_FUNC(sub_826DC408) {
+  const u32 buf = ctx.r3.u32, list = ctx.r4.u32, n = ctx.r5.u32;
+  const PPCContext in = ctx;
+  __imp__sub_826DC408(ctx, base);
+  if (!REXCVAR_GET(wwe12_universe_scene_probe))
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 lb = Call(x, base, __imp__sub_826D66F0, list);
+  u32 id = 0, v468 = 0;
+  if (lb && n < bd::mem::load<u16>(lb + 4)) {
+    const u32 rec = lb + 8 + n * 564;
+    id = bd::mem::load<u16>(rec + 2);
+    v468 = bd::mem::load<u16>(rec + 468);
+  }
+  BD_INFO("[univers] scene probe: WCID list {} n {} (record id {}, +468 {}) -> {} (buf {:08X}, from {:08X})", list, n,
+          id, v468, ctx.r3.u32, buf, u32(in.lr));
+}
+
+extern "C" REX_FUNC(sub_826BCD40) {
+  const u32 from = u32(ctx.lr);
+  InterferenceKindBegin();  // (the interference's type chosen by the player)
+  __imp__sub_826BCD40(ctx, base);
+  InterferenceKindEnd();
+  if (!REXCVAR_GET(wwe12_universe_scene_probe))
+    return;
+  const u32 mgr = bd::mem::try_load<u32>(0x83231548);
+  if (mgr)
+    BD_INFO("[univers] scene probe: interference on {} by {} kind {} (from {:08X})", bd::mem::load<u32>(mgr + 5052),
+            bd::mem::load<u32>(mgr + 5056), bd::mem::load<u32>(mgr + 5064), from);
+}
+
+extern "C" REX_FUNC(sub_826BF660) {
+  const PPCContext in = ctx;
+  __imp__sub_826BF660(ctx, base);
+  if (REXCVAR_GET(wwe12_universe_scene_probe))
+    BD_INFO("[univers] scene probe: roles of {:08X} filled (r4 {:08X} r5 {:08X} r6 {:08X}) -> {}", in.r3.u32, in.r4.u32,
+            in.r5.u32, in.r6.u32, ctx.r3.u32);
+}
+
+extern "C" REX_FUNC(sub_826DF6D8) {
+  static u32 s_last[3] = {};  // (called every frame while it waits: logged when it changes)
+  const u32 now[3] = {ctx.r3.u32, ctx.r4.u32, u32(ctx.lr)};
+  if (REXCVAR_GET(wwe12_universe_scene_probe) && std::memcmp(now, s_last, sizeof now) != 0 &&
+      (std::memcpy(s_last, now, sizeof now), true))
+    BD_INFO("[univers] scene probe: cut scene start r3 {:08X} r4 {:08X} r5 {:08X} r6 {:08X} (from {:08X})", ctx.r3.u32,
+            ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, u32(ctx.lr));
+  __imp__sub_826DF6D8(ctx, base);
+}
+
+// ---- Dev: the match setup's cut scene request table (docs/univers.md §44) ------------------------------------------
+//
+// T = *(0x8317C84C) + 7984 + 960: u32 count, then 16 entries of 144 bytes {+0 kind, +4 aux, +8 u32 scene[16], +72 cast
+// [6] (0xC800 none), +96 role [6], +120 [6]}. The game's helpers fill the entry at index count (sub_82694D58(T, kind),
+// sub_82694D98(T, i, scene), sub_82694DC0(T, i, id, role, x)) then count it (sub_82694E28). sub_828D2660(player, kind)
+// copies one kind's entries into the scene player. wwe12_universe_scene_table_probe logs both; with
+// wwe12_universe_scene_inject = N, an interference (sub_826BB878) also asks scene N, kind 9, with the interferer as
+// role 0 - the experiment of §44 (does a Create a Story scene play in a Universe match?).
+REXCVAR_DEFINE_BOOL(wwe12_universe_scene_table_probe, false, "WWE12",
+                    "Dev: log the match setup's cut scene requests (written and read).");
+REXCVAR_DEFINE_INT32(wwe12_universe_scene_inject, 0, "WWE12",
+                     "Dev: with an interference in a Universe match, also ask this cut scene (0 = off).");
+REX_EXTERN(__imp__sub_828D2660);
+REX_EXTERN(__imp__sub_82694E28);
+REX_EXTERN(__imp__sub_826BB878);
+REX_EXTERN(__imp__sub_82694D58);
+REX_EXTERN(__imp__sub_82694D98);
+REX_EXTERN(__imp__sub_82694DC0);
+REX_EXTERN(__imp__sub_82694D78);  // cut scene request: aux (the stage)
+REX_EXTERN(__imp__sub_82A342B0);  // a cast id for a cut scene (id, 0, 1)
+
+static u32 SceneTable() {
+  const u32 p = bd::mem::try_load<u32>(0x8317C84C);
+  return p ? p + 7984 + 960 : 0;
+}
+
+static void LogSceneTable(const char *why) {
+  const u32 t = SceneTable();
+  if (!t)
+    return;
+  const u32 n = std::min<u32>(bd::mem::load<u32>(t), 16);
+  for (u32 i = 0; i < n; ++i) {
+    const u32 e = t + 4 + i * 144;
+    std::string sc, cast;
+    for (u32 k = 0; k < 4; ++k)
+      sc += fmt::format(" {}", int32_t(bd::mem::load<u32>(e + 8 + k * 4)));
+    for (u32 k = 0; k < 6; ++k)
+      cast += fmt::format(" {:X}/{}", bd::mem::load<u32>(e + 72 + k * 4), int32_t(bd::mem::load<u32>(e + 96 + k * 4)));
+    BD_INFO("[univers] scene table ({}): entry {} kind {} aux {:08X} scenes{} cast{}", why, i, bd::mem::load<u32>(e),
+            bd::mem::load<u32>(e + 4), sc, cast);
+  }
+}
+
+static u32 g_inject_who = 512;  // an interference's interferer, waiting for the next table read (the experiment)
+static u32 g_saved_mode[2] = {~0u, ~0u};  // the setup's +12456 / +12460 while our scene plays in Create a Story's mode
+REXCVAR_DEFINE_BOOL(wwe12_universe_scene_inject_mode, false, "WWE12",
+                    "Dev: our injected cut scene plays in Create a Story's mode (setup +12456 = 2, +12460 = 4) until the "
+                    "match's next table read.");
+
+extern "C" REX_FUNC(sub_828D2660) {
+  // (the experiment, 2nd try: the table was emptied between the interference and the match, and a Universe match only
+  // reads kinds 1, 8, 10, 11 - test of 2026-11-13: the entry goes in right before the first read, with its kind)
+  const int32_t inject = REXCVAR_GET(wwe12_universe_scene_inject);
+  constexpr u32 kSetupMode = 0x8317C850;  // sub_8267CF38()
+  if (g_saved_mode[0] != ~0u && ctx.r4.u32 != 1) {  // (the next read after ours: the Universe's mode back)
+    bd::mem::store<u32>(kSetupMode + 12456, g_saved_mode[0]);
+    bd::mem::store<u32>(kSetupMode + 12460, g_saved_mode[1]);
+    BD_INFO("[univers] scene table: Universe mode back ({}, {})", g_saved_mode[0], g_saved_mode[1]);
+    g_saved_mode[0] = g_saved_mode[1] = ~0u;
+  }
+  if (inject > 0 && g_inject_who < 512) {
+    // (test of 2026-11-13: a Create a Story scene reads its table with the setup's +12456 = 2, +12460 = 4; the Universe
+    // has 3 and 0)
+    if (REXCVAR_GET(wwe12_universe_scene_inject_mode)) {
+      g_saved_mode[0] = bd::mem::load<u32>(kSetupMode + 12456);
+      g_saved_mode[1] = bd::mem::load<u32>(kSetupMode + 12460);
+      bd::mem::store<u32>(kSetupMode + 12456, 2);
+      bd::mem::store<u32>(kSetupMode + 12460, 4);
+      BD_INFO("[univers] scene table: Create a Story mode for our scene (was {}, {})", g_saved_mode[0], g_saved_mode[1]);
+    }
+    const u32 t = SceneTable();
+    if (t && bd::mem::load<u32>(t) < 16) {
+      PPCContext x = ctx;
+      x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+      // (as Create a Story's own request, sub_8275A958: aux = the stage, the 6 roles i with x = -1, each cast an
+      // encoded id from sub_82A342B0(id, 0, 1) - 512 gives 0xC800 - not a raw number; 1st try froze, 2026-11-13)
+      Call(x, base, __imp__sub_82694D58, t, ctx.r4.u32);
+      Call(x, base, __imp__sub_82694D98, t, 0, u32(inject));
+      Call(x, base, __imp__sub_82694D78, t, g_universe_stage);
+      for (u32 role = 0; role < 6; ++role) {
+        const u32 cast = Call(x, base, __imp__sub_82A342B0, role == 0 ? g_inject_who : 512, 0, 1);
+        Call(x, base, __imp__sub_82694DC0, t, role, cast, role, 0xFFFFFFFFu);
+      }
+      Call(x, base, __imp__sub_82694E28, t);
+      BD_INFO("[univers] scene table: scene {} asked for kind {} with {}", inject, ctx.r4.u32, g_inject_who);
+    }
+    g_inject_who = 512;
+  }
+  if (REXCVAR_GET(wwe12_universe_scene_table_probe)) {
+    // (the match setup G = sub_8267CF38() = 0x8317C850: +12456 / +12460 its mode - Universe 0, Create a Story tests 4 -
+    // and the bytes Create a Story's request sets, +321..+325, +331; to compare a Create a Story scene with ours)
+    constexpr u32 kSetup = 0x8317C850;
+    std::string cas;
+    for (u32 o : {321u, 322u, 323u, 324u, 325u, 331u})
+      cas += fmt::format(" +{}={}", o, bd::mem::load<u8>(kSetup + o));
+    BD_INFO("[univers] scene table: read for kind {} (from {:08X}) | setup +12456={} +12460={}{}", ctx.r4.u32,
+            u32(ctx.lr), bd::mem::load<u32>(kSetup + 12456), bd::mem::load<u32>(kSetup + 12460), cas);
+    LogSceneTable("read");
+  }
+  __imp__sub_828D2660(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_82694E28) {
+  if (REXCVAR_GET(wwe12_universe_scene_table_probe))
+    BD_INFO("[univers] scene table: entry {} added (from {:08X})", bd::mem::load<u32>(ctx.r3.u32), u32(ctx.lr));
+  __imp__sub_82694E28(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_826BB878) {
+  const PPCContext in = ctx;
+  __imp__sub_826BB878(ctx, base);
+  if (REXCVAR_GET(wwe12_universe_scene_inject) > 0) {
+    g_inject_who = in.r4.u32;
+    BD_INFO("[univers] scene table: interference by {}: a scene will be asked at the next read", g_inject_who);
+  }
+}
+
+// ---- Dev: a 4th weekly show (NXT idea, 1.4 list) ------------------------------------------------------------------
+//
+// The game has 10 weekly show records (U + 27360 + k * 984, k 0-9; +832 the name, +927 the show, +929 + b its brands)
+// but only shows 0-2 are scheduled. Its booker factory sub_826EB218 gives show 0 and shows 3-9 the RAW booker
+// (sub_826F1950), 1 SmackDown's (sub_826F1998), 2 Superstars' (sub_826F19E8), 10-22 the PPV one. With
+// wwe12_universe_show3_day = d (1 = Monday ... 6 = Saturday), an empty weekday d gets show 3 when the Universe menu
+// opens, and the 10 weekly records are logged: does the game make a card for it, and what does it show?
+REXCVAR_DEFINE_INT32(wwe12_universe_show3_day, 0, "WWE12",
+                     "Dev: put the weekly show 3 on this weekday (1 Monday .. 6 Saturday, 0 = off) to see what the game "
+                     "does with a 4th show.");
+void Show3Experiment(u32 u) {
+  const int32_t d = REXCVAR_GET(wwe12_universe_show3_day);
+  if (!u || d < 1 || d > 6)
+    return;
+  static bool s_logged = false;
+  if (!s_logged) {
+    s_logged = true;
+    for (u32 k = 0; k < 10; ++k) {
+      const u32 r = u + 27360 + k * 984;
+      std::string brands;
+      for (u32 b = 0; b < 13; ++b)
+        brands += bd::mem::load<u8>(r + 929 + b) ? fmt::format(" {}", b) : "";
+      const char *n = bd::mem::try_at<const char>(r + 832);
+      BD_INFO("[univers] show {}: name '{}' +927={} brands{} +896 logo {} +897 matchup {} +928 {:02X}", k,
+              n ? std::string(n, strnlen(n, 31)) : "?", bd::mem::load<u8>(r + 927), brands, bd::mem::load<u8>(r + 896),
+              bd::mem::load<u8>(r + 897), bd::mem::load<u8>(r + 928));
+    }
+  }
+  const u32 at = u + 0xDE00 + u32(d - 1);
+  if (bd::mem::load<u8>(at) == 0xFF) {
+    bd::mem::store<u8>(at, 3);
+    BD_INFO("[univers] show 3 put on weekday {}", d);
+  }
+}
+
+// ---- Dev: Universe acts (UN00) swapped, first step towards other games' scenes (docs/univers.md section 44) ----------
+//
+// The acts of pac/m.pac ZMOT/UN00 are read once per match; at the end of the read sub_824868F8(reader) registers each
+// one in the motion manager *(0x8317B870): bank = sub_8246E8C8(manager, act, r20, r22) (manager + 16 * index), act
+// record = sub_8246E000(bank, act) (12 bytes: +0 u16 the act, +2 u16 blocks, +4 their table, +8 the data), filled by
+// sub_82486648. The UN00 reader has genre 1 (reader +60, sub_82486470). With wwe12_universe_act_swap_from = A and _to =
+// B, act A's record takes B's (+2..+11) right after the registration: when the game plays A it should play B. A test
+// of the way a scene can be put in (an existing number reused), before converting SvR 2011's.
+REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_from, 0, "WWE12",
+                     "Dev: Universe act (32100-32468) that plays another one (wwe12_universe_act_swap_to); 1 = every act with as "
+                     "many blocks; 0 = off.");
+REXCVAR_DEFINE_INT32(wwe12_universe_act_swap_to, 0, "WWE12", "Dev: the act played instead (see _from).");
+// Dev (tests): a Universe match always plays its scenes (the roll of each scene record, sub_826D28D0(percent) called
+// from sub_826D9978 at 0x826D9AEC, made a success).
+REXCVAR_DEFINE_BOOL(wwe12_universe_always_scenes, false, "WWE12",
+                    "Dev: every Universe match plays its scenes (for tests of added scenes).");
+REX_EXTERN(__imp__sub_826D28D0);
+extern "C" REX_FUNC(sub_826D28D0) {
+  const u32 from = u32(ctx.lr);
+  __imp__sub_826D28D0(ctx, base);
+  if (from == 0x826D9AF0 && REXCVAR_GET(wwe12_universe_always_scenes) && ctx.r3.u32 != 1) {
+    ctx.r3.u64 = 1;
+    BD_INFO("[univers] always scenes: a scene's roll made a success");
+  }
+}
+// (the UN00 reader being run; dev log: what a genre-1 reader registers, the first ids once per reader)
+thread_local u32 t_act_reader = 0, t_act_logged = 0;
+// ---- More Universe scenes: other games' scenes played at random among the game's own (user's 1.4 list) -------------
+//
+// Scenes converted to WWE '12 acts (tools/dev/svr_scene_convert.cpp: SvR 2011's UNVS scenes) are files
+// <user data>/universe_scenes/<act>.bin (an unpacked act record). When the match's reader registers one of the game's
+// acts (sub_82486648(record, unpacked data), UN00 = acts 32000-32999), the data is, by chance, one of ours of the same
+// list (the act's hundreds: 321xx, 322xx, 323xx, 324xx = the moment of the show) with the same roles (blocks y < 60):
+// the game's own choice of moment and cast, another scene. Ours are copied once into the game's memory and kept.
+REXCVAR_DEFINE_BOOL(wwe12_universe_more_scenes, false, "WWE12",
+                    "Universe: other games' scenes (universe_scenes folder) played at random instead of the game's "
+                    "(same moment, same number of Superstars). Experimental.");
+REXCVAR_DEFINE_BOOL(wwe12_universe_more_scenes_any_act, false, "WWE12",
+                    "Dev: an added scene may replace any act of its moment and roles (false: only the act it redoes; "
+                    "another act places the Superstars elsewhere).");
+REXCVAR_DEFINE_STRING(wwe12_universe_more_scenes_only, "", "WWE12",
+                      "Dev: only the added scenes whose file name has this text (tests).");
+REXCVAR_DEFINE_INT32(wwe12_universe_more_scenes_chance, 50, "WWE12",
+                     "Universe: the chance (percent) that a scene of the game is replaced by an added one.");
+namespace {
+struct AddedScene {
+  u32 act = 0, list = 0;
+  u64 roles = 0;  // (RolesOf)
+  std::string name;
+  std::vector<u8> bytes;
+};
+struct PackedCopies {
+  u32 bpe = 0, zlib = 0;
+};
+// the acts replaced by the reader being run, for their packed copies (sub_824868F8's hook)
+thread_local std::vector<std::pair<u32, PackedCopies>> t_replaced;
+
+// A "ZLIB" entry as the game's (m.pac: "ZLIB", u32 LE 0x1230, u32 LE packed size, u32 LE size, a zlib stream), the
+// stream made of stored deflate blocks (no compression; the game only inflates it).
+std::vector<u8> ZlibStored(const std::vector<u8> &raw) {
+  std::vector<u8> z = {0x78, 0x01};
+  size_t at = 0;
+  do {
+    const size_t n = std::min<size_t>(65535, raw.size() - at);
+    const bool last = at + n >= raw.size();
+    z.push_back(last ? 1 : 0);
+    z.push_back(u8(n)), z.push_back(u8(n >> 8)), z.push_back(u8(~n)), z.push_back(u8(~n >> 8));
+    z.insert(z.end(), raw.begin() + long(at), raw.begin() + long(at + n));
+    at += n;
+  } while (at < raw.size());
+  u32 a = 1, b = 0;
+  for (u8 c : raw)
+    a = (a + c) % 65521, b = (b + a) % 65521;
+  const u32 adler = (b << 16) | a;
+  for (int i = 3; i >= 0; --i)
+    z.push_back(u8(adler >> (8 * i)));
+  std::vector<u8> out = {'Z', 'L', 'I', 'B'};
+  for (u32 v : {0x1230u, u32(z.size()), u32(raw.size())})
+    for (int i = 0; i < 4; ++i)
+      out.push_back(u8(v >> (8 * i)));
+  out.insert(out.end(), z.begin(), z.end());
+  return out;
+}
+std::mutex g_added_lock;
+std::vector<AddedScene> g_added;
+bool g_added_loaded = false;
+
+// an act record's roles: its blocks named %04d%04d with y < 60 (Superstars 0-5, objects above), as bits
+template <class Name>
+u64 RolesOf(u32 blocks, Name name_of) {
+  u64 roles = 0;
+  for (u32 i = 0; i < blocks && i < 64; ++i) {
+    const std::string nm = name_of(i);
+    const int y = nm.size() == 8 ? std::atoi(nm.substr(4).c_str()) : 99;
+    if (y < 60)
+      roles |= u64(1) << y;
+  }
+  return roles;
+}
+
+u32 Be32At(const u8 *p);
+void LoadAddedScenes() {
+  if (g_added_loaded)
+    return;
+  g_added_loaded = true;
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator() || state->emulator()->user_data_root().empty())
+    return;
+  const std::filesystem::path dir = state->emulator()->user_data_root() / "universe_scenes";
+  std::error_code ec;
+  for (auto &e : std::filesystem::directory_iterator(dir, ec)) {
+    if (e.path().extension() != ".bin")
+      continue;
+    std::ifstream f(e.path(), std::ios::binary);
+    AddedScene sc;
+    sc.bytes.assign(std::istreambuf_iterator<char>(f), {});
+    sc.name = e.path().stem().string();
+    sc.act = u32(std::atoi(sc.name.c_str()));
+    if (sc.bytes.size() < 0x70 || sc.act < 32000 || sc.act > 32999)
+      continue;
+    const u8 *b = sc.bytes.data();
+    const u32 n = (u32(b[0x48]) << 24) | (u32(b[0x49]) << 16) | (u32(b[0x4A]) << 8) | b[0x4B];
+    if (0x70 + 0x28 * size_t(n) > sc.bytes.size())
+      continue;
+    // every block inside the file (a bad file must not make us, or the game, read past its end)
+    bool inside = 0x70 + 0x28 * size_t(n) <= Be32At(b + 0x0C);
+    for (u32 i = 0; inside && i < n; ++i) {
+      const u8 *e = b + 0x70 + 0x28 * i;
+      inside = size_t(Be32At(b + 0x0C)) + Be32At(e + 0x24) + size_t((e[2] << 8) | e[3]) * 32 <= sc.bytes.size();
+    }
+    if (!inside) {
+      BD_WARN("[univers] added scene {}: a block out of the file, left out", sc.name);
+      continue;
+    }
+    sc.roles = RolesOf(n, [&](u32 i) { return std::string((const char *)b + 0x70 + 0x28 * i + 4, 8); });
+    sc.list = sc.act / 100 % 10;
+    BD_INFO("[univers] added scene {}: list {}, roles {:X}, {} bytes", sc.name, sc.list, sc.roles, sc.bytes.size());
+    g_added.push_back(std::move(sc));
+  }
+  BD_INFO("[univers] {} added scene(s) in {}", g_added.size(), dir.string());
+}
+
+// The data to register instead of the game's act `act` (data: its unpacked record), or 0.
+u32 Be32At(const u8 *p) { return (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | p[3]; }
+void PutBe32At(u8 *p, u32 v) { p[0] = u8(v >> 24), p[1] = u8(v >> 16), p[2] = u8(v >> 8), p[3] = u8(v); }
+
+// Our scene with the game's act's objects (blocks y 6-59: props, the referee...) added as they are: their motion is the
+// game's scene's, our Superstars and cameras are ours. A record: header 0x70 (+0 0x50 + 0x28 n, +4 the blocks' size,
+// +0x0C the first block, +0x48 n), the table (0x28 per block: +2 u16 size / 32, +4 the name, +0x24 the offset from the
+// first block), the blocks (on 32-byte boundaries). The table is kept sorted by name, as the game's.
+std::vector<u8> WithGameObjects(const std::vector<u8> &ours, u32 data) {
+  const u8 *g = bd::mem::at<u8>(data);
+  const u32 gn = Be32At(g + 0x48), gfirst = Be32At(g + 0x0C);
+  const u32 on = Be32At(ours.data() + 0x48), ofirst = Be32At(ours.data() + 0x0C), obody = Be32At(ours.data() + 4);
+  struct Ent {
+    std::array<u8, 0x28> e;
+    std::string name;
+    const u8 *block;
+    u32 size;
+  };
+  std::vector<Ent> ents;
+  for (u32 i = 0; i < on; ++i) {
+    Ent x;
+    std::memcpy(x.e.data(), ours.data() + 0x70 + 0x28 * i, 0x28);
+    x.name.assign((const char *)x.e.data() + 4, 8);
+    x.block = ours.data() + ofirst + Be32At(x.e.data() + 0x24);
+    x.size = u32((x.e[2] << 8) | x.e[3]) * 32;
+    ents.push_back(x);
+  }
+  for (u32 i = 0; i < gn && i < 64; ++i) {
+    Ent x;
+    std::memcpy(x.e.data(), g + 0x70 + 0x28 * i, 0x28);
+    x.name.assign((const char *)x.e.data() + 4, 8);
+    const int y = std::atoi(x.name.substr(4).c_str());
+    if (y < 6 || y >= 60)
+      continue;
+    x.block = g + gfirst + Be32At(x.e.data() + 0x24);
+    x.size = u32((x.e[2] << 8) | x.e[3]) * 32;
+    ents.push_back(x);
+  }
+  std::sort(ents.begin(), ents.end(), [](const Ent &a, const Ent &b) { return a.name < b.name; });
+  const u32 n = u32(ents.size()), first = (0x70 + 0x28 * n + 0x1F) & ~0x1Fu;
+  std::vector<u8> out(first, 0);
+  std::memcpy(out.data(), ours.data(), 0x70);
+  u32 body = 0;
+  for (u32 i = 0; i < n; ++i) {
+    PutBe32At(ents[i].e.data() + 0x24, body);
+    std::memcpy(out.data() + 0x70 + 0x28 * i, ents[i].e.data(), 0x28);
+    out.insert(out.end(), ents[i].block, ents[i].block + ents[i].size);
+    body += ents[i].size;
+  }
+  PutBe32At(out.data(), 0x50 + 0x28 * n);
+  PutBe32At(out.data() + 4, body);
+  PutBe32At(out.data() + 0x0C, first);
+  PutBe32At(out.data() + 0x48, n);
+  (void)obody;
+  return out;
+}
+
+u32 AddedSceneFor(const PPCContext &in, u8 *base, u32 act, u32 data) {
+  if (!REXCVAR_GET(wwe12_universe_more_scenes) || act < 32000 || act > 32999 || !data)
+    return 0;
+  std::lock_guard<std::mutex> lock(g_added_lock);
+  LoadAddedScenes();
+  if (g_added.empty())
+    return 0;
+  const u32 n = bd::mem::try_load<u32>(data + 0x48);
+  const u64 roles = RolesOf(n, [&](u32 i) {
+    const char *c = bd::mem::try_at<const char>(data + 0x70 + 0x28 * i + 4);
+    return c ? std::string(c, 8) : std::string();
+  });
+  // ours: the same Superstars (roles 0-5); the game's objects (6-59) are added to ours (WithGameObjects). And only a
+  // scene made for THIS act (its file's number: WWE '13's remake of it): the game places the Superstars where this
+  // act starts, another act's motion played from there was off (Morrison hitting the air far from The Miz, test of
+  // 2026-11-13). wwe12_universe_more_scenes_any_act = true: any act of the same moment and roles (the first way).
+  std::vector<AddedScene *> same;
+  for (auto &sc : g_added)
+    if (sc.list == act / 100 % 10 && sc.roles == (roles & 0x3F) && !(sc.roles & ~u64(0x3F)) &&
+        (sc.act == act || REXCVAR_GET(wwe12_universe_more_scenes_any_act)) &&
+        sc.name.find(REXCVAR_GET(wwe12_universe_more_scenes_only)) != std::string::npos)
+      same.push_back(&sc);
+  static std::mt19937 rng{std::random_device{}()};
+  if (same.empty() || int(rng() % 100) >= REXCVAR_GET(wwe12_universe_more_scenes_chance)) {
+    BD_INFO("[univers] scene: act {} (roles {:X}) kept ({} added of its kind)", act, roles, same.size());
+    return 0;
+  }
+  AddedScene *sc = same[rng() % same.size()];
+  // (scene, act) -> its copies in the guest's memory (unpacked, ZLIB), per scene AND act (the act's number is written
+  // in the data, below). In the system heap, kept for the session: the game never frees them (the unpacked one is
+  // only read by sub_82486648; the packed copies normally sit in the reader's pool, freed as a whole), so they can be
+  // reused match after match - copies from the game's heap would be freed / reset with it (review of 2026-11-13).
+  static std::map<std::pair<std::string, u32>, std::array<u32, 2>> s_copies;
+  const bool merged = (roles & ~u64(0x3F)) != 0;
+  u32 &guest = s_copies[{sc->name, act}][0];
+  u32 &guest_zlib = s_copies[{sc->name, act}][1];
+  if (!guest || !guest_zlib) {
+    std::vector<u8> bytes = merged ? WithGameObjects(sc->bytes, data) : sc->bytes;
+    // The act's number is the record's group name (+0x4C, text): the game keys every block of the registered record
+    // by it (sub_82486648 -> sub_8246FC70: {atoi(+0x4C), x, y}) and looks the played act up by it (sub_8246E900): ours
+    // carried their own number, every lookup missed and the scene was skipped (no "Act=" posted, 2026-11-13).
+    std::fill(bytes.begin() + 0x4C, bytes.begin() + 0x5C, u8(0));
+    const std::string num = std::to_string(act);
+    std::memcpy(bytes.data() + 0x4C, num.data(), num.size());
+    const std::vector<u8> zl = ZlibStored(bytes);
+    if (!guest)
+      guest = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(bytes.size()), 0x20);
+    if (!guest_zlib)
+      guest_zlib = REX_KERNEL_MEMORY()->SystemHeapAlloc(u32(zl.size()), 0x20);
+    if (!guest || !guest_zlib)
+      return 0;
+    std::memcpy(bd::mem::at<u8>(guest), bytes.data(), bytes.size());
+    std::memcpy(bd::mem::at<u8>(guest_zlib), zl.data(), zl.size());
+  }
+  (void)in, (void)base;
+  t_replaced.push_back({act, {0, guest_zlib}});
+  BD_INFO("[univers] scene: act {} (roles {:X}) plays the added scene {}{}", act, roles, sc->name,
+          (roles & ~u64(0x3F)) ? " (with the act's objects)" : "");
+  return guest;
+}
+}  // namespace
+
+REX_EXTERN(__imp__sub_82486648);
+extern "C" REX_FUNC(sub_82486648) {
+  const u32 rec = ctx.r3.u32, data = ctx.r4.u32;
+  if (t_act_reader)
+    if (const u32 ours = AddedSceneFor(ctx, base, bd::mem::load<u16>(rec), data))
+      ctx.r4.u64 = ours;
+  __imp__sub_82486648(ctx, base);
+  if (t_act_reader && REXCVAR_GET(wwe12_universe_act_swap_to) && t_act_logged < 12) {
+    ++t_act_logged;
+    BD_INFO("[univers] act reader {:08X}: record {:08X} id {} blocks {} data {:08X} (header {:08X} {:08X})", t_act_reader,
+            rec, bd::mem::load<u16>(rec), bd::mem::load<u16>(rec + 2), data, bd::mem::try_load<u32>(data),
+            bd::mem::try_load<u32>(data + 0x4C));
+  }
+}
+REX_EXTERN(__imp__sub_824868F8);
+REX_EXTERN(__imp__sub_8246E8C8);
+REX_EXTERN(__imp__sub_8246E000);
+REX_EXTERN(__imp__sub_8246E078);
+REX_EXTERN(__imp__sub_8246E0F0);
+extern "C" REX_FUNC(sub_824868F8) {
+  const PPCContext in = ctx;
+  const u32 reader = ctx.r3.u32;
+  const u32 genre = bd::mem::try_load<u32>(reader + 60);
+  t_act_reader = genre == 1 ? reader : 0;
+  t_act_logged = 0;
+  t_replaced.clear();
+  __imp__sub_824868F8(ctx, base);
+  t_act_reader = 0;
+  // the game keeps a second copy of each act, packed as read (sub_8246E078 / sub_8246E0F0(bank, act): its pointer,
+  // bank +4 / +8 arrays; filled after sub_82486648), and plays from it: ours there too (a stored BPE entry)
+  if (!t_replaced.empty()) {
+    PPCContext x = in;
+    x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+    const u32 manager = bd::mem::load<u32>(0x8317B870);
+    for (auto [act, ours] : t_replaced) {
+      const u32 bank = manager ? Call(x, base, __imp__sub_8246E8C8, manager, act, 0, 0xFF) : 0;
+      if (!bank)
+        continue;
+      for (auto fn : {__imp__sub_8246E078, __imp__sub_8246E0F0}) {
+        const u32 at = Call(x, base, fn, bank, act);
+        const u32 was = at && at != 0x8317B874 ? bd::mem::try_load<u32>(at) : 0;
+        if (!was)
+          continue;
+        // only the full act's copy ("ZLIB", the 2nd of a pair): the light one ("BPE ") is unpacked without a size check
+        // (sub_827E1428) into a buffer made for the game's light copies (~4 KB): ours whole could overflow it; the game's
+        // light copy is left (a record is rebuilt from the copy it unpacks: each stays consistent)
+        const u32 magic = bd::mem::try_load<u32>(was);
+        const u32 mine = magic == 0x5A4C4942 ? ours.zlib : 0;
+        BD_INFO("[univers] scene: act {} packed copy {:08X} (magic {:08X}) -> ours {:08X}", act, was, magic, mine);
+        if (mine)
+          bd::mem::store<u32>(at, mine);
+      }
+    }
+    t_replaced.clear();
+  }
+  const int32_t from = REXCVAR_GET(wwe12_universe_act_swap_from), to = REXCVAR_GET(wwe12_universe_act_swap_to);
+  if (genre != 1 || !(from == 1 || (from >= 32000 && from <= 32999)) || to < 32000 || to > 32999 || from == to)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 manager = bd::mem::load<u32>(0x8317B870);
+  if (!manager)
+    return;
+  const auto record = [&](u32 act) {
+    const u32 bank = Call(x, base, __imp__sub_8246E8C8, manager, act, 0, 0xFF);
+    const u32 r = bank ? Call(x, base, __imp__sub_8246E000, bank, act) : 0u;
+    return r && bd::mem::load<u16>(r) == act ? r : 0u;
+  };
+  const u32 b = record(u32(to));
+  if (!b) {
+    BD_INFO("[univers] act swap: act {} not found", to);
+    return;
+  }
+  const u32 blocks = bd::mem::load<u16>(b + 2);
+  u32 done = 0;
+  for (u32 act = from == 1 ? 32100 : u32(from); act <= (from == 1 ? 32499u : u32(from)); ++act) {
+    const u32 a = act == u32(to) ? 0 : record(act);
+    if (!a || (from == 1 && bd::mem::load<u16>(a + 2) != blocks))
+      continue;  // (all: only the acts with as many blocks, the same cast and camera)
+    bd::mem::store<u16>(a + 2, bd::mem::load<u16>(b + 2));
+    bd::mem::store<u32>(a + 4, bd::mem::load<u32>(b + 4));
+    bd::mem::store<u32>(a + 8, bd::mem::load<u32>(b + 8));
+    ++done;
+  }
+  BD_INFO("[univers] act swap: {} act(s) now play {} ({} blocks, data {:08X})", done, to, blocks,
+          bd::mem::load<u32>(b + 8));
+}
+
+// ---- "Ultimate" Universe: a less predictable Universe (user's wish, 2026-11-13; study: docs/univers.md section 46) ----
+//
+// One setting, wwe12_universe_chaos (0 = the game's Universe, 1 a little, 2 a lot, 3 madness), gives each twist its
+// chance; each has its own setting too (-1 = the level's). Nothing changes with 0 (the default).
+//  - cards: the weekly card layout (template group, record +902) drawn at random instead of the next one (sub_826CC020
+//    does +902 += 1 modulo the table's groups: the 32 weekly layouts always came in the same order);
+//  - stipulations: a normal match (category 1) of 1 / 4 / 8 / 9 places may become one of the game's own random
+//    stipulations for that format (sub_826DC758: lists at 0x8203DC18 + format * 8, the ones its category 18 draws
+//    from); never in a story's match;
+//  - contenders: a ranking slot (template code 0 / 16, param n = the n-th of the title's ranking, 1 = the champion)
+//    may take someone lower (n + 1..3) for this card (sub_826EF468, the template's param restored after);
+//  - mystery: a non-title, non-story singles match may hide one of its Superstars as "???" (place +28 = 1, as the
+//    game's mystery opponent, code 23) - with its news (CardNews);
+//  - turns: after a match, a Superstar may turn (character record +29, the face / heel byte that the stories' effects
+//    2 / 3 write; which value is a face is John Cena's), with the game's own news (type 9 Fan Favorite / 8 "Why %s
+//    Why?");
+//  - betrayals: after a lost tag match, a team may break up: the partners become rivals (sub_826CD7F0(view + 8, a, b,
+//    -5), both ways), with the game's New Rivalry news (type 2);
+//  - scenes: the game's own scenes play more often (their chance, sub_826CA4E8, times this %, kept under 100);
+//  - stories: a second try at starting a story the same day (sub_826C83D8, called daily by sub_826C9018: the game
+//    picks one of the possible stories at random, sub_826E9338, and starts it; 16 places).
+// (wwe12_universe_chaos: with UNIVERSE OPTIONS, above)
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_cards, -1, "WWE12",
+                     "Universe: % of weekly cards with a layout at random (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_stips, -1, "WWE12",
+                     "Universe: % of normal matches given a stipulation (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_contenders, -1, "WWE12",
+                     "Universe: % of ranking slots given someone lower (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_mystery, -1, "WWE12",
+                     "Universe: % of singles matches with a mystery opponent (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_turns, -1, "WWE12",
+                     "Universe: % of matches after which a Superstar turns (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_betrayals, -1, "WWE12",
+                     "Universe: % of lost tag matches breaking the team up (-1 = the chaos level's).");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_scenes, -1, "WWE12",
+                     "Universe: the game's scenes' chance times this % (100 = the game's; -1 = the chaos level's).");
+
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_rivals, -1, "WWE12",
+                     "Universe: % of singles matches given a rival as opponent (-1 = the chaos level's); with the "
+                     "unpredictable Universe on, a show's singles match is not the same as last week's either.");
+REXCVAR_DEFINE_INT32(wwe12_universe_chaos_stories, -1, "WWE12",
+                     "Universe: % of days with a second try at starting a story (-1 = the chaos level's).");
+REX_EXTERN(__imp__sub_826CC020);
+REX_EXTERN(__imp__sub_826C83D8);
+REX_EXTERN(__imp__sub_826D67A0);
+REX_EXTERN(__imp__sub_826DC738);
+REX_EXTERN(__imp__sub_826DC758);
+REX_EXTERN(__imp__sub_826EF468);
+REX_EXTERN(__imp__sub_826CA4E8);
+REX_EXTERN(__imp__sub_82A32DB0);
+REX_EXTERN(__imp__sub_826CD7F0);
+
+namespace {
+enum ChaosKind {
+  kChaosCards, kChaosStips, kChaosContenders, kChaosMystery, kChaosTurns, kChaosBetrayals, kChaosScenes, kChaosStories,
+  kChaosRivals
+};
+int ChaosPct(ChaosKind k) {
+  static const int kLevels[4][9] = {{0, 0, 0, 0, 0, 0, 100, 0, 0},
+                                    {35, 10, 15, 6, 3, 10, 150, 15, 30},
+                                    {70, 20, 25, 12, 6, 20, 200, 30, 50},
+                                    {100, 35, 40, 20, 12, 35, 300, 50, 70}};
+  int own = -1;
+  switch (k) {
+    case kChaosCards: own = REXCVAR_GET(wwe12_universe_chaos_cards); break;
+    case kChaosStips: own = REXCVAR_GET(wwe12_universe_chaos_stips); break;
+    case kChaosContenders: own = REXCVAR_GET(wwe12_universe_chaos_contenders); break;
+    case kChaosMystery: own = REXCVAR_GET(wwe12_universe_chaos_mystery); break;
+    case kChaosTurns: own = REXCVAR_GET(wwe12_universe_chaos_turns); break;
+    case kChaosBetrayals: own = REXCVAR_GET(wwe12_universe_chaos_betrayals); break;
+    case kChaosScenes: own = REXCVAR_GET(wwe12_universe_chaos_scenes); break;
+    case kChaosStories: own = REXCVAR_GET(wwe12_universe_chaos_stories); break;
+    case kChaosRivals: own = REXCVAR_GET(wwe12_universe_chaos_rivals); break;
+  }
+  if (own >= 0)
+    return own;
+  const int level = std::clamp<int>(REXCVAR_GET(wwe12_universe_chaos), 0, 3);
+  return kLevels[level][k];
+}
+std::mutex g_chaos_lock;
+std::mt19937 g_chaos_rng{std::random_device{}()};
+bool ChaosRoll(ChaosKind k) {
+  const int p = ChaosPct(k);
+  if (p <= 0)
+    return false;
+  std::lock_guard<std::mutex> lock(g_chaos_lock);
+  return int(g_chaos_rng() % 100) < p;
+}
+u32 ChaosRand(u32 n) {
+  std::lock_guard<std::mutex> lock(g_chaos_lock);
+  return n ? u32(g_chaos_rng() % n) : 0;
+}
+}  // namespace
+
+// cards: the next weekly layout at random (r3 -> the show's record: +902 its group, +900 its table)
+extern "C" REX_FUNC(sub_826CC020) {
+  const PPCContext in = ctx;
+  const u32 rec = bd::mem::try_load<u32>(ctx.r3.u32);
+  const u32 before = rec ? bd::mem::load<u16>(rec + 902) : 0;
+  __imp__sub_826CC020(ctx, base);
+  if (!rec || !ChaosRoll(kChaosCards))
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  const u32 tables = Call(x, base, __imp__sub_826D67A0, 0);
+  const u32 count = tables ? Call(x, base, __imp__sub_826DC738, tables, bd::mem::load<u16>(rec + 900)) : 0;
+  if (count < 3 || count > 64)
+    return;
+  u32 g = ChaosRand(count);
+  for (int tries = 0; tries < 8 && (g == (before + 1) % count || g == before % count); ++tries)
+    g = ChaosRand(count);  // (another than the game's next and the last)
+  bd::mem::store<u16>(rec + 902, u16(g));
+  BD_INFO("[univers] chaos: next card layout {} of {} (table {})", g, count, bd::mem::load<u16>(rec + 900));
+}
+
+// stipulations: sub_826DC758(category, format) -> the match type; only from the card call sub_826F15E8, not for a
+// story's match (t_chaos_story, set by sub_826F15E8's hook: booker + 11100 + 4 i != -1)
+thread_local bool t_chaos_story = false;
+extern "C" REX_FUNC(sub_826DC758) {
+  const u32 cat = ctx.r3.u32, fmt = ctx.r4.u32, from = u32(ctx.lr);
+  __imp__sub_826DC758(ctx, base);
+  if (cat != 1 || (fmt != 1 && fmt != 4 && fmt != 8 && fmt != 9) || from < 0x826F15E8 || from >= 0x826F1950 ||
+      t_chaos_story || !ChaosRoll(kChaosStips))
+    return;
+  const u32 list = bd::mem::load<u32>(0x8203DC18 + fmt * 8), n = bd::mem::load<u32>(0x8203DC18 + fmt * 8 + 4);
+  if (!list || n < 2 || n > 16)
+    return;
+  const u32 normal = ctx.r3.u32;
+  u32 type = normal;
+  for (int tries = 0; tries < 8 && type == normal; ++tries)
+    type = bd::mem::load<u32>(list + 4 * ChaosRand(n));
+  if (type == normal)
+    return;
+  ctx.r3.u64 = type;
+  BD_INFO("[univers] chaos: a match of format {} made type {} (was {})", fmt, type, normal);
+}
+
+// contenders: sub_826EF468(entry r3: +0 template, record r4, set r5, ...) reads the template's slots (+20 + 4 k:
+// u8 code, u16 param at +2; 10 slots) of code 0 (r5 0) / 16 (r5 != 0). Only code 0 here: with r5 != 0 and r6 == 1 a
+// code-16 slot is filled only when its param is 2 (a changed one would stay empty, review of 2026-11-13). The
+// template is the game's shared data: changed and restored under a lock (two booking jobs would mix the restores).
+std::mutex g_contender_lock;
+extern "C" REX_FUNC(sub_826EF468) {
+  const u32 entry = ctx.r3.u32, tpl = entry ? bd::mem::try_load<u32>(entry) : 0;
+  // a vacant title (tournament on): its "champion" slot (code 0, param 1) asks the first free rank instead
+  if (!ctx.r5.u32 && tpl && UltimateVacantTitle(ctx, base, bd::mem::try_load<u32>(entry + 12))) {
+    std::lock_guard<std::mutex> lock(g_contender_lock);
+    std::set<u16> asked;
+    for (u32 k = 0; k < 10; ++k)
+      if (bd::mem::load<u8>(tpl + 20 + 4 * k) == 0)
+        asked.insert(bd::mem::load<u16>(tpl + 20 + 4 * k + 2));
+    std::vector<std::pair<u32, u16>> changed;
+    const u32 context = bd::mem::try_load<u32>(entry + 40), vt = bd::mem::try_load<u32>(entry + 12);
+    const u32 count = context && vt < 23 ? bd::mem::try_load<u32>(context + 1492 + 964 * vt + 960) : 0;
+    for (u32 k = 0; k < 10; ++k) {
+      const u32 slot = tpl + 20 + 4 * k;
+      if (bd::mem::load<u8>(slot) != 0 || bd::mem::load<u16>(slot + 2) != 1)
+        continue;
+      u16 to = 2;
+      while (asked.count(to) && to < 30)
+        ++to;
+      if (to > count)
+        continue;  // (a rank the ranking hasn't: the place would stay empty, the match dropped)
+      asked.insert(to);
+      changed.push_back({slot + 2, 1});
+      bd::mem::store<u16>(slot + 2, to);
+      BD_INFO("[univers] tournament: vacant title {}: the champion's slot takes #{}", bd::mem::load<u32>(entry + 12), to);
+    }
+    __imp__sub_826EF468(ctx, base);
+    for (auto [at, v] : changed)
+      bd::mem::store<u16>(at, v);
+    return;
+  }
+  if (ctx.r5.u32 || !tpl || bd::mem::try_load<u32>(entry + 28) != 0 || ChaosPct(kChaosContenders) <= 0) {
+    __imp__sub_826EF468(ctx, base);  // (a story's match, set 16, or off: as the game)
+    return;
+  }
+  std::lock_guard<std::mutex> lock(g_contender_lock);
+  std::vector<std::pair<u32, u16>> changed;
+  // one slot at most, to a rank the title's ranking has (context entry +40, title +12: its count at context + 1492 +
+  // 964 * title + 960) and that no other ranking slot of the match asks: two slots on the same rank gave the same
+  // Superstar twice, the match was dropped (a 2-match SmackDown, test of 2026-11-13)
+  const u32 context = bd::mem::try_load<u32>(entry + 40), title = bd::mem::try_load<u32>(entry + 12);
+  const u32 count = context && title < 23 ? bd::mem::try_load<u32>(context + 1492 + 964 * title + 960) : 0;
+  std::set<u16> asked;
+  for (u32 k = 0; k < 10; ++k)
+    if (bd::mem::load<u8>(tpl + 20 + 4 * k) == 0)
+      asked.insert(bd::mem::load<u16>(tpl + 20 + 4 * k + 2));
+  for (u32 k = 0; k < 10 && changed.empty(); ++k) {
+    const u32 slot = tpl + 20 + 4 * k;
+    const u8 code = bd::mem::load<u8>(slot);
+    const u16 param = bd::mem::load<u16>(slot + 2);
+    if (code != 0 || param < 2 || param > 20 || !ChaosRoll(kChaosContenders))
+      continue;
+    const u16 to = u16(param + 1 + ChaosRand(3));
+    if (to > count || to > 30 || asked.count(to))
+      continue;
+    changed.push_back({slot + 2, param});
+    bd::mem::store<u16>(slot + 2, to);
+    BD_INFO("[univers] chaos: ranking slot {} takes #{} instead of #{} (of {})", k, to, param, count);
+  }
+  __imp__sub_826EF468(ctx, base);
+  for (auto [at, v] : changed)  // (the template is the game's data: back as it was)
+    bd::mem::store<u16>(at, v);
+}
+
+// scenes: a scene's chance (sub_826CA4E8(record + 456, A's +29, B's +29) -> %, only the scene code calls it)
+extern "C" REX_FUNC(sub_826CA4E8) {
+  __imp__sub_826CA4E8(ctx, base);
+  const int x = ChaosPct(kChaosScenes), p = int(ctx.r3.u32);
+  if (x != 100 && p > 0 && p < 100)
+    ctx.r3.u64 = u64(std::clamp(p * x / 100, 1, 99));
+}
+
+// mystery: before the card entry is written (sub_826EAEB0's hook), from the booker's record (1320 bytes: +12 title
+// flag, +16 places, +28 story, places at +40 + 32 k: +0 id, +28 = 1 "???")
+void ChaosMystery(u32 rec) {
+  if (!rec || bd::mem::load<u32>(rec + 12) || bd::mem::load<u32>(rec + 28) || bd::mem::load<u32>(rec + 16) != 2 ||
+      !ChaosRoll(kChaosMystery))
+    return;
+  const u32 k = ChaosRand(2), place = rec + 40 + 32 * k;
+  const u32 id = bd::mem::load<u32>(place);
+  if (id >= 512 || bd::mem::load<u32>(place + 28))
+    return;
+  bd::mem::store<u32>(place + 28, 1);
+  BD_INFO("[univers] chaos: {} is a mystery opponent", id);
+}
+
+// turns and betrayals: after a match's result (sub_826CEF28's hook), from its card entry (places by sub_826D4958)
+void Twists(const PPCContext &x0, u8 *base, u32 record, u32 places, u32 winner_side) {
+  if (ChaosPct(kChaosTurns) <= 0 && ChaosPct(kChaosBetrayals) <= 0)
+    return;
+  PPCContext x = x0;
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  const u32 out = x.r1.u32 + 0x400;
+  struct P {
+    u32 id, side;
+  };
+  std::vector<P> ps;
+  for (u32 p = 0; p < places && p < 8; ++p)
+    if (Call(x, base, __imp__sub_826D4958, record, out, p) && bd::mem::load<u16>(out) < 512)
+      ps.push_back({bd::mem::load<u16>(out), bd::mem::load<u8>(out + 3)});
+  if (ps.size() < 2)
+    return;
+  // a turn: one of them (a loser twice as often), its +29 flipped; the face value is John Cena's (139)
+  if (ChaosRoll(kChaosTurns)) {
+    std::vector<P> pool;
+    for (auto &p : ps)
+      for (int w = p.side == winner_side ? 1 : 2; w > 0; --w)
+        pool.push_back(p);
+    const P who = pool[ChaosRand(u32(pool.size()))];
+    const u32 ch = Call(x, base, __imp__sub_82A32DB0, who.id), cena = Call(x, base, __imp__sub_82A32DB0, 139);
+    static int s_face = -1;  // (Cena's value the first time: kept if he turns himself later)
+    if (s_face < 0 && cena && bd::mem::load<u8>(cena + 29) <= 1)
+      s_face = bd::mem::load<u8>(cena + 29);
+    if (ch && s_face >= 0 && who.id != 139) {
+      const u8 face = u8(s_face), was = bd::mem::load<u8>(ch + 29);
+      if (was <= 1 && face <= 1) {
+        const u8 now = u8(1 - was);
+        const u32 type = now == face ? 9 : 8;
+        bd::mem::store<u8>(ch + 29, now);
+        QueueNews(kNativeEvent + type, type, who.id);
+        BD_INFO("[univers] chaos: {} turns {} (+29 {} -> {}, a face is {})", who.id, now == face ? "face" : "heel",
+                was, now, face);
+      }
+    }
+  }
+  // a betrayal: a tag team that lost (the 2 places of the losing side of a 4-place match) breaks up
+  std::vector<u32> losers;
+  for (auto &p : ps)
+    if (p.side != winner_side)
+      losers.push_back(p.id);
+  if (losers.size() == 2 && ps.size() == 4 && ChaosRoll(kChaosBetrayals)) {
+    const u32 view = x.r1.u32 + 0x100;
+    Call(x, base, __imp__sub_826CDC48, view);
+    const u32 a = losers[0], b = losers[1];
+    Call(x, base, __imp__sub_826CD7F0, view + 8, a, b, u32(-5));
+    Call(x, base, __imp__sub_826CD7F0, view + 8, b, a, u32(-5));
+    Call(x, base, __imp__sub_826CE098, view);
+    {
+      std::lock_guard<std::mutex> lock(g_qual_mutex);
+      Qualifier q{kNativeEvent + 2, 0, 2, a};
+      q.b2 = b;
+      g_pending_news.push_back(q);
+    }
+    BD_INFO("[univers] chaos: {} and {} break up, now rivals", a, b);
+  }
+}
+
+// stories: a second try at starting one (the game picks it, its cast and its place)
+extern "C" REX_FUNC(sub_826C83D8) {
+  const PPCContext in = ctx;
+  __imp__sub_826C83D8(ctx, base);
+  if (!ChaosRoll(kChaosStories))
+    return;
+  PPCContext again = in;
+  __imp__sub_826C83D8(again, base);
+  BD_INFO("[univers] chaos: a second try at starting a story today");
+}
+
+// ---- "Ultimate" Universe, part 2: rivalry news, surprise returns, rematch clause, RIVALRY MATCH header -------------
+// (after WWE 2K14's rivalry news and WWE '13 / 2K's rematch and return ideas, docs/univers.md section 47). On with the
+// unpredictable Universe from "a little" (wwe12_universe_chaos >= 1), or each by its own setting (-1 = the level's,
+// 0 off, 1 on). Nothing changes when off. Since 1.4 (user, 2026-11-17) rivalry news, surprise returns and rematches
+// are on by default (1), in the base game too; the RIVALRY MATCH header still follows the level.
+//  - rivalry news, once a week: a pair of rivals (relations record +20..+36, the rival slot k = a level k + 1; level 2
+//    or more) who met in singles in the last 28 days ("vs" lines of universe_stats.txt, written after each singles
+//    result): one beat the other 3 times or more (DOMINATION), the last meeting's winner had lost the one before
+//    (PAYBACK), or else they met (BAD BLOOD); one news a week at most, once per pair and week;
+//  - surprise returns: a Superstar whose injury ends (Universe record +92 bit 31 cleared) comes back on his show's next
+//    weekly card as a mystery opponent ("???", place +28) of a singles match without title nor story, in place of
+//    one of its two Superstars; when his match is played, SURPRISE RETURN! (28 days to find a place, then forgotten);
+//  - rematch clause: a singles title (not a tag one) changed hands in the last 21 days ("title" lines): the former
+//    champion gets one title match against the new one on the show's next weekly card (a singles match without title,
+//    story nor WrestleMania build becomes theirs and the title's), with its news; once ("rematch" line);
+//  - RIVALRY MATCH: MATCH CARDS names a singles match between rivals (level 2 or more) so (sub_82554B68's hook).
+REXCVAR_DEFINE_INT32(wwe12_universe_rivalry_news, 1, "WWE12",
+                     "Universe: weekly rivalry news (1 = on, the default since 1.4; 0 off; -1 = with the unpredictable "
+                     "Universe; needs "
+                     "wwe12_universe_more_news, on by default).");
+REXCVAR_DEFINE_INT32(wwe12_universe_surprise_returns, 1, "WWE12",
+                     "Universe: a Superstar back from injury returns as a mystery opponent (1 = on, the "
+                     "default since 1.4; 0 off; -1 = with the unpredictable Universe; needs wwe12_universe_more_news, on by default).");
+REXCVAR_DEFINE_INT32(wwe12_universe_rematches, 1, "WWE12",
+                     "Universe: a dethroned champion gets a title rematch on the next weekly card (1 = on, the "
+                     "default since 1.4; 0 off; -1 = with the unpredictable Universe).");
+REXCVAR_DEFINE_INT32(wwe12_universe_rivalry_header, -1, "WWE12",
+                     "Universe: RIVALRY MATCH header for a singles match between rivals (-1 = with the unpredictable "
+                     "Universe, 0 off, 1 on).");
+
+REX_EXTERN(__imp__sub_826D2B50);
+
+namespace {
+bool UltimateOn(int32_t own) { return own >= 0 ? own > 0 : REXCVAR_GET(wwe12_universe_chaos) >= 1; }
+
+// The rival level of b for a (0: none; 1..5, 5 the strongest), from a's relations record (+20 + 4 k: the rival
+// slot k, level k + 1)
+u32 RivalLevel(const PPCContext &x, u8 *base, u32 table, u32 a, u32 b) {
+  const u32 rec = table && a < 373 ? Call(x, base, __imp__sub_826D4F98, table, a) : 0;
+  for (u32 k = 0; rec && k < 5; ++k)
+    if (bd::mem::load<u32>(rec + 20 + 4 * k) == b)
+      return k + 1;
+  return 0;
+}
+
+struct Returning {
+  u32 id, since;
+};
+std::mutex g_ultimate_lock;
+std::vector<Returning> g_returning;  // back from injury, not yet on a card
+std::set<u32> g_returned;            // placed on a card, news when the match is played
+std::set<u32> g_last_injured;
+bool g_injured_known = false;
+
+// the pending rematches: {title, former champion, new champion}, from the "title" and "rematch" lines
+struct Rematch {
+  u32 title, former, champion;
+};
+std::vector<Rematch> PendingRematches(const PPCContext &x, u8 *base, u32 day) {
+  std::map<u32, std::array<u32, 3>> last;  // title -> {new, old, day}
+  std::set<std::string> done;
+  std::vector<std::array<u32, 3>> asked;  // the rematch lines: {title, former, the reign's first day}
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 t = 0, place = 0, holder = 0, old = 0, d = 0;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "title %u %u %u %u %u", &t, &place, &holder, &old, &d) == 5 && place == 0 &&
+        d <= day)
+      last[t] = {holder, old, d};
+    else if (std::sscanf(line.c_str(), "rematch %u %u %u", &t, &old, &d) == 3) {
+      done.insert(fmt::format("{} {} {}", t, old, d));
+      asked.push_back({t, old, d});
+    }
+  }
+  std::vector<Rematch> out;
+  for (const auto &[title, v] : last) {
+    const u32 champ = v[0], former = v[1], since = v[2];
+    if (title >= 23 || champ >= 512 || former >= 512 || champ == former || day > since + 21 ||
+        done.count(fmt::format("{} {} {}", title, former, since)) || Call(x, base, __imp__sub_82A39CE8, title) ||
+        (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) != champ)
+      continue;
+    // (a title won back in a rematch gives the loser no rematch of his own: no endless back and forth)
+    const bool won_back = std::any_of(asked.begin(), asked.end(), [&](const std::array<u32, 3> &r) {
+      return r[0] == title && r[1] == champ && since >= r[2];
+    });
+    if (won_back)
+      continue;
+    out.push_back({title, former, champ});
+  }
+  return out;
+}
+
+thread_local u32 t_rematch_title = 0xFF;  // the title of the rematch just placed in record i (for the entry)
+thread_local int t_tourney_match = 0;     // 1: a semi-final just placed, 2: the final (the entry's header, +6)
+thread_local u32 t_rematch_since = 0;
+}  // namespace
+
+// a singles match between rivals (level 2 or more, either way)?
+bool UltimateRivalryHeader(const PPCContext &x0, u8 *base, u32 a, u32 b) {
+  if (!UltimateOn(REXCVAR_GET(wwe12_universe_rivalry_header)))
+    return false;
+  PPCContext x = x0;
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  const u32 view = x.r1.u32 + 0x400;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 table = bd::mem::load<u32>(view + 12);
+  const bool rivals = RivalLevel(x, base, table, a, b) >= 2 || RivalLevel(x, base, table, b, a) >= 2;
+  Call(x, base, __imp__sub_826CE098, view);
+  return rivals;
+}
+
+bool UltimateWantsVs() { return UltimateOn(REXCVAR_GET(wwe12_universe_rivalry_news)); }
+bool UltimateHeaderOn() { return UltimateOn(REXCVAR_GET(wwe12_universe_rivalry_header)); }
+
+void UltimateReturnPlayed(u32 id) {
+  std::lock_guard<std::mutex> lock(g_ultimate_lock);
+  if (!g_returned.erase(id))
+    return;
+  QueueNews(kMoreEvent + kSurpriseReturn, kNewsQualified, id, 0xFF);
+  BD_INFO("[univers] ultimate: {}'s surprise return played", id);
+}
+
+// Once a day (WeeklyNews, at the Universe menu or after a result): returns from injury, and the week's rivalry news
+void UltimateDaily(const PPCContext &x0, u8 *base, u32 u, u32 day, bool first) {
+  PPCContext x = x0;
+  // another save loaded (the day back, or more than a week on): what was seen belongs to the other save
+  static u32 s_last_day = ~0u;
+  static u32 s_week = ~0u;
+  if (s_last_day != ~0u && (day < s_last_day || day > s_last_day + 7)) {
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);
+    g_last_injured.clear(), g_returning.clear(), g_returned.clear();
+    g_injured_known = false;
+    s_week = ~0u;
+  }
+  s_last_day = day;
+  // a tournament given up (42 days) while its title is still vacant: another one, or the ranking's first crowned
+  if (UltimateTournamentsOn() && !first) {
+    std::map<u32, u32> latest;  // title -> its last tournament's day
+    std::ifstream f(StatsFile());
+    std::string line;
+    u32 t = 0, d = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+    std::set<u32> ended;
+    while (std::getline(f, line)) {
+      if (std::sscanf(line.c_str(), "tourney %u %u %u %u %u %u", &t, &d, &s1, &s2, &s3, &s4) == 6 && d <= day)
+        latest[t] = d, ended.erase(t);
+      else if (std::sscanf(line.c_str(), "tourneyend %u %u", &t, &d) == 2 && d <= day)
+        ended.insert(t);
+    }
+    for (const auto &[title, since] : latest)
+      if (title < 23 && !ended.count(title) && day > since + 42 &&
+          (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) == kNobody) {
+        BD_INFO("[univers] tournament: title {}'s tournament given up, a new start", title);
+        UltimateTitleVacated(x, base, title);
+      }
+  }
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  // returns: injured yesterday, not today
+  if (UltimateOn(REXCVAR_GET(wwe12_universe_surprise_returns))) {
+    std::set<u32> now;
+    for (u32 id = 0; id < 373; ++id) {
+      if (!Call(x, base, __imp__sub_826D3218, id, 1))
+        continue;
+      const int32_t index = int32_t(Call(x, base, __imp__sub_826D3320, id));
+      if (index >= 0 && (bd::mem::load<u32>(u + u32(index) * 112 + 92) & 0x80000000u))
+        now.insert(id);
+    }
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);
+    if (g_injured_known && !first)
+      for (const u32 id : g_last_injured)
+        if (!now.count(id)) {
+          g_returning.push_back({id, day});
+          BD_INFO("[univers] ultimate: {} is back from injury, waits for a surprise return", id);
+        }
+    g_returning.erase(std::remove_if(g_returning.begin(), g_returning.end(),
+                                     [&](const Returning &r) { return day > r.since + 28; }),
+                      g_returning.end());
+    g_last_injured = now;
+    g_injured_known = true;
+  }
+  // rivalry news: once a week
+  if (first || !UltimateOn(REXCVAR_GET(wwe12_universe_rivalry_news)))
+    return;
+  if (s_week == day / 7)
+    return;
+  s_week = day / 7;
+  std::vector<std::array<u32, 4>> met;  // {a, b, winner, day} of the last 28 days, oldest first
+  {
+    std::ifstream f(StatsFile());
+    std::string line;
+    u32 a = 0, b = 0, w = 0, d = 0;
+    while (std::getline(f, line))
+      if (std::sscanf(line.c_str(), "vs %u %u %u %u", &a, &b, &w, &d) == 4 && d <= day && d + 28 >= day)
+        met.push_back({a, b, w, d});
+  }
+  if (met.empty())
+    return;
+  const u32 view = x.r1.u32 + 0x400;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 table = bd::mem::load<u32>(view + 12);
+  struct Pick {
+    u32 kind, a, b, n;
+  };
+  std::vector<Pick> picks;
+  std::set<std::pair<u32, u32>> seen;
+  for (const auto &m : met) {
+    const u32 a = std::min(m[0], m[1]), b = std::max(m[0], m[1]);
+    if (!seen.insert({a, b}).second)
+      continue;
+    if (RivalLevel(x, base, table, a, b) < 2 && RivalLevel(x, base, table, b, a) < 2)
+      continue;
+    std::vector<u32> winners;
+    u32 latest = 0;
+    for (const auto &k : met)
+      if (std::min(k[0], k[1]) == a && std::max(k[0], k[1]) == b)
+        winners.push_back(k[2]), latest = std::max(latest, k[3]);
+    if (latest + 7 < day)
+      continue;  // (only a pair that met this week: one news per meeting, not one a week for a month)
+    const u32 wa = u32(std::count(winners.begin(), winners.end(), a)),
+              wb = u32(std::count(winners.begin(), winners.end(), b));
+    if (wa >= 3 && wb == 0)
+      picks.push_back({kRivalDominant, a, b, wa});
+    else if (wb >= 3 && wa == 0)
+      picks.push_back({kRivalDominant, b, a, wb});
+    else if (winners.size() >= 2 && winners.back() != winners[winners.size() - 2])
+      picks.push_back({kRivalPayback, winners.back(), winners.back() == a ? b : a, 0});
+    else
+      picks.push_back({kRivalFeud, a, b, 0});
+  }
+  Call(x, base, __imp__sub_826CE098, view);
+  if (picks.empty())
+    return;
+  // the strongest kind first (domination, payback, bad blood), at random among the same kind
+  std::stable_sort(picks.begin(), picks.end(), [](const Pick &p, const Pick &q) {
+    const auto rank = [](u32 k) { return k == kRivalDominant ? 0 : k == kRivalPayback ? 1 : 2; };
+    return rank(p.kind) < rank(q.kind);
+  });
+  size_t same = 0;
+  while (same < picks.size() && picks[same].kind == picks[0].kind)
+    ++same;
+  static std::mt19937 s_pick{std::random_device{}()};
+  const Pick p = picks[std::uniform_int_distribution<size_t>(0, same - 1)(s_pick)];
+  const std::string key = fmt::format("news rival {} {} {} {}", p.kind, p.a, p.b, day / 7);
+  if (NewsDone(key))
+    return;
+  AppendStats({key});
+  QueueNews3(kMoreEvent + p.kind, p.a, p.b, 512, 0xFF | (p.n << 8));
+  BD_INFO("[univers] ultimate: rivalry news {} for {} and {}", p.kind, p.a, p.b);
+}
+
+
+// ---- "Ultimate" Universe, part 3: a tournament for a vacant title (user's 1.4 list, 2026-11-13) -------------------
+// With tournaments on (wwe12_universe_tournaments, -1 = with the unpredictable Universe), a weekly show's title may be
+// vacated (TITLE MANAGEMENT's VACATE TITLE, refused before: the champion's places stayed empty), and the title's
+// place 0 becoming nobody (sub_82A3A060's hook) starts a 4-man tournament: the title's ranking's first four free
+// Superstars (sub_826D2508), semi-finals 1 v 4 and 2 v 3 on the show's next weekly card (singles matches without title
+// nor story taken over, header TOURNAMENT SEMI-FINAL), then the final, the title's match, between the two winners
+// (a draw or an unplayed semi-final: booked again). The final's winner takes the title as in any title match. While
+// the title is vacant, a card's "champion" slot (template code 0, param 1) asks the ranking's #1 instead. Lines of
+// universe_stats.txt: "tourney <title> <day> <a> <b> <c> <d>", "tourneysf <title> <day> <winner>"; given up after 42
+// days. News: TOURNAMENT ANNOUNCED, TOURNAMENT FINAL.
+REXCVAR_DEFINE_INT32(wwe12_universe_tournaments, -1, "WWE12",
+                     "Universe: a vacant show title is decided by a 4-man tournament (-1 = with the unpredictable "
+                     "Universe, 0 off, 1 on).");
+
+namespace {
+struct Tourney {
+  u32 title = 0xFF, day = 0;
+  std::array<u32, 4> seed{512, 512, 512, 512};
+  std::vector<u32> winners;  // semi-final winners, in order
+};
+// the open tournaments (the title still vacant, 42 days at most)
+std::vector<Tourney> OpenTourneys(const PPCContext &x, u8 *base, u32 today) {
+  std::vector<Tourney> all;
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 t = 0, d = 0, a = 0, b = 0, c = 0, e = 0;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "tourney %u %u %u %u %u %u", &t, &d, &a, &b, &c, &e) == 6 && d <= today) {
+      Tourney n;
+      n.title = t, n.day = d, n.seed = {a, b, c, e};
+      all.push_back(n);
+    } else if (std::sscanf(line.c_str(), "tourneysf %u %u %u", &t, &d, &a) == 3) {
+      for (auto &n : all)
+        if (n.title == t && n.day == d && std::find(n.winners.begin(), n.winners.end(), a) == n.winners.end())
+          n.winners.push_back(a);
+    }
+  }
+  std::vector<Tourney> open;
+  for (size_t i = 0; i < all.size(); ++i) {
+    const Tourney &n = all[i];
+    bool newer = false;  // (a later line for the same title: this one is over)
+    for (size_t j = i + 1; j < all.size(); ++j)
+      newer = newer || all[j].title == n.title;
+    if (!newer && n.title < 23 && today <= n.day + 42 &&
+        (Call(x, base, __imp__sub_82A39FC8, n.title, 0, 1) & 0xFFFF) == kNobody)
+      open.push_back(n);
+  }
+  return open;
+}
+// the semi-final pair p (0: 1 v 4, 1: 2 v 3), decided?
+bool SemiDecided(const Tourney &n, int p) {
+  const u32 a = n.seed[p ? 1 : 0], b = n.seed[p ? 2 : 3];
+  return std::find(n.winners.begin(), n.winners.end(), a) != n.winners.end() ||
+         std::find(n.winners.begin(), n.winners.end(), b) != n.winners.end();
+}
+}  // namespace
+
+bool UltimateTournamentsOn() { return UltimateOn(REXCVAR_GET(wwe12_universe_tournaments)); }
+
+namespace {
+// the title's ranking's first four free Superstars (in use, not injured)
+std::vector<u32> TourneySeeds(const PPCContext &x, u8 *base, u32 u, u32 title) {
+  static u32 s_rank = 0;
+  if (!s_rank)
+    s_rank = REX_KERNEL_MEMORY()->SystemHeapAlloc(180 * 32, 0x10);
+  if (!s_rank)
+    return {};
+  const u32 view = x.r1.u32 + 0x800;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 n = std::min<u32>(Call(x, base, __imp__sub_826D2508, view, title, s_rank, 180), 180);
+  Call(x, base, __imp__sub_826CE098, view);
+  std::vector<u32> seeds;
+  for (u32 k = 0; k < n && seeds.size() < 5; ++k) {  // (5: one may be the champion who loses it)
+    const u32 id = bd::mem::load<u32>(s_rank + k * 32);
+    if (id >= 512 || !Call(x, base, __imp__sub_826D3218, id, 1))
+      continue;
+    const int32_t index = int32_t(Call(x, base, __imp__sub_826D3320, id));
+    if (index < 0 || (bd::mem::load<u32>(u + u32(index) * 112 + 92) & 0x80000000u))
+      continue;  // (injured)
+    seeds.push_back(id);
+  }
+  return seeds;
+}
+}  // namespace
+
+// can a weekly show's single title be vacated (a tournament possible: 4 free contenders)? (VACATE TITLE's check)
+bool UltimateTourneyPossible(const PPCContext &in, u8 *base, u32 title) {
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  return u && title < 23 && TourneySeeds(x, base, u, title).size() >= 4;
+}
+
+namespace {
+thread_local u32 t_seed_title = 0xFF;
+thread_local std::vector<u32> t_seeds;  // taken before the title was vacated
+bool ShowTitle(const PPCContext &x, u8 *base, u32 u, u32 title) {
+  if (title >= 23 || Call(x, base, __imp__sub_82A39CE8, title))
+    return false;  // (a tag title: no tournament)
+  for (u32 show = 0; show < 3; ++show)
+    if (bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + title) != 0)
+      return true;
+  return false;
+}
+}  // namespace
+
+bool UltimateBeforeVacate(const PPCContext &in, u8 *base, u32 title) {
+  t_seed_title = 0xFF;
+  t_seeds.clear();
+  if (!UltimateTournamentsOn() || title >= 23)
+    return true;  // (as the game)
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u || !ShowTitle(x, base, u, title))
+    return true;  // (a title no show uses: as the game)
+  std::vector<u32> seeds = TourneySeeds(x, base, u, title);
+  // (the champion who loses it is not in its tournament)
+  const u32 champ = Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;
+  seeds.erase(std::remove(seeds.begin(), seeds.end(), champ), seeds.end());
+  if (seeds.size() > 4)
+    seeds.resize(4);
+  t_seed_title = title;  // (the player's vacate: asked after, tournament or vacant; fewer than 4: vacant)
+  t_seeds = std::move(seeds);
+  return true;
+}
+
+namespace {
+struct VacantAsk {
+  u32 title;
+  std::vector<u32> seeds;
+};
+std::mutex g_vacant_lock;
+std::vector<VacantAsk> g_vacant_ask;  // show titles the player vacated, for the question
+
+void StartTourney(u32 title, u32 day, const std::vector<u32> &seeds) {
+  AppendStats({fmt::format("tourney {} {} {} {} {} {}", title, day, seeds[0], seeds[1], seeds[2], seeds[3])});
+  QueueNews3(kMoreEvent + kTourneyStart, seeds[0], seeds[1], seeds[2], title);
+  BD_INFO("[univers] tournament: title {} vacant, seeds {} {} {} {}", title, seeds[0], seeds[1], seeds[2], seeds[3]);
+}
+}  // namespace
+
+// a title's place 0 became nobody: a tournament, for a weekly show's title (fewer than 4 free contenders, or called
+// again for a tournament given up: the ranking's first takes the title, it never stays vacant)
+void UltimateTitleVacated(const PPCContext &in, u8 *base, u32 title) {
+  if (!UltimateTournamentsOn() || title >= 23 || bd::mem::load<u32>(kInUniverseFlag) != 1)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u || Call(x, base, __imp__sub_82A39CE8, title))  // (a tag title: not here)
+    return;
+  bool used = false;
+  for (u32 show = 0; show < 3; ++show)
+    used = used || bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 904 + title) != 0;
+  if (!used)
+    return;
+  const u32 day = bd::mem::load<u32>(u + kUniverseDay);
+  if (t_seed_title == title) {  // the player's: the question when back on the Universe menu
+    std::lock_guard<std::mutex> lock(g_vacant_lock);
+    g_vacant_ask.push_back({title, t_seeds});
+    t_seed_title = 0xFF;
+    BD_INFO("[univers] tournament: title {} vacated by the player, {} contenders: to ask", title,
+            g_vacant_ask.back().seeds.size());
+    return;
+  }
+  // (a tournament given up: another one if 4 are free, else the title stays vacant - "tourneyend" ends the retries)
+  const std::vector<u32> seeds = TourneySeeds(x, base, u, title);
+  if (seeds.size() < 4) {
+    AppendStats({fmt::format("tourneyend {} {}", title, day)});
+    BD_INFO("[univers] tournament: title {} stays vacant, only {} free contenders", title, seeds.size());
+    return;
+  }
+  StartTourney(title, day, seeds);
+}
+
+void UltimateAskVacant(const PPCContext &in, u8 *base) {
+  VacantAsk v;
+  {
+    std::lock_guard<std::mutex> lock(g_vacant_lock);
+    if (g_vacant_ask.empty())
+      return;
+    v = g_vacant_ask.front();
+    g_vacant_ask.erase(g_vacant_ask.begin());
+  }
+  static const char *const kAsk[5] = {"The %s is vacant.\nHow will the next champion be decided?",
+                                      "Le %s est vacant.\nComment d\xC3\xA9signer le prochain champion ?",
+                                      "Der %s ist vakant.\nWie wird der n\xC3\xA4" "chste Champion bestimmt?",
+                                      "El %s est\xC3\xA1 vacante.\n\xC2\xBF" "C\xC3\xB3mo se decidir\xC3\xA1 el pr\xC3\xB3ximo "
+                                      "campe\xC3\xB3n?",
+                                      "Il %s \xC3\xA8 vacante.\nCome si decider\xC3\xA0 il prossimo campione?"};
+  static const char *const kTourney[5] = {"4-MAN TOURNAMENT", "TOURNOI \xC3\x80 4", "TURNIER MIT 4",
+                                          "TORNEO DE 4", "TORNEO A 4"};
+  static const char *const kVacant[5] = {"LEAVE IT VACANT", "LAISSER VACANT", "VAKANT LASSEN", "DEJARLO VACANTE",
+                                         "LASCIARLO VACANTE"};
+  static const char *const kFew[5] = {"The %s stays vacant (fewer than 4 free contenders for a tournament).",
+                                      "Le %s reste vacant (moins de 4 pr\xC3\xA9tendants libres pour un tournoi).",
+                                      "Der %s bleibt vakant (weniger als 4 freie Herausforderer f\xC3\xBCr ein Turnier).",
+                                      "El %s queda vacante (menos de 4 aspirantes libres para un torneo).",
+                                      "Il %s resta vacante (meno di 4 sfidanti liberi per un torneo)."};
+  const std::string name = TitleName(in, base, v.title);
+  const int lang = int(CurrentLang());
+  char text[512];
+  if (v.seeds.size() < 4) {
+    std::snprintf(text, sizeof(text), kFew[lang], name.c_str());
+    Inform(in, base, text);
+    return;
+  }
+  std::snprintf(text, sizeof(text), kAsk[lang], name.c_str());
+  Choose(in, base, text, {kTourney[lang], kVacant[lang]}, [v](const PPCContext &in, u8 *base, size_t k) {
+    if (k == 0) {
+      const u32 u = Call(in, base, __imp__sub_82683A30, 0);
+      if (u)
+        StartTourney(v.title, bd::mem::load<u32>(u + kUniverseDay), v.seeds);
+    } else {
+      BD_INFO("[univers] tournament: title {} left vacant by the player", v.title);
+    }
+    UltimateAskVacant(in, base);  // (another vacated title)
+  });
+}
+
+// a singles result: a semi-final's winner
+void UltimateTournamentResult(u32 a, u32 b, u32 winner) {
+  if (!UltimateTournamentsOn() || winner >= 512)
+    return;
+  std::ifstream f(StatsFile());
+  std::string line;
+  u32 t = 0, d = 0, s[4] = {}, w = 0;
+  std::vector<std::pair<u32, u32>> found;  // {title, day} of the semi-finals this pair is
+  std::set<std::string> done;
+  while (std::getline(f, line)) {
+    if (std::sscanf(line.c_str(), "tourney %u %u %u %u %u %u", &t, &d, &s[0], &s[1], &s[2], &s[3]) == 6) {
+      const bool sf1 = (a == s[0] && b == s[3]) || (a == s[3] && b == s[0]);
+      const bool sf2 = (a == s[1] && b == s[2]) || (a == s[2] && b == s[1]);
+      if (sf1 || sf2)
+        found.push_back({t, d});
+    } else if (std::sscanf(line.c_str(), "tourneysf %u %u %u", &t, &d, &w) == 3) {
+      done.insert(fmt::format("{} {} {}", t, d, w));
+    }
+  }
+  for (auto [title, day] : found) {
+    if (done.count(fmt::format("{} {} {}", title, day, a)) || done.count(fmt::format("{} {} {}", title, day, b)))
+      continue;
+    AppendStats({fmt::format("tourneysf {} {} {}", title, day, winner)});
+    BD_INFO("[univers] tournament: title {}: {} wins a semi-final", title, winner);
+  }
+}
+
+namespace {
+// Before a weekly card's record i is written (UltimateBooking): a semi-final or the final of an open tournament of
+// this booker's titles; true when placed (t_rematch_title then names the final's title, made the title's match after)
+bool TourneyBooking(const PPCContext &x, u8 *base, u32 booker, u32 rec, u32 day,
+                    const std::function<bool(u32)> &on_card, const std::function<bool(u32)> &injured) {
+  if (!UltimateTournamentsOn())
+    return false;
+  for (const Tourney &n : OpenTourneys(x, base, day)) {
+    bool ours = false;
+    for (u32 t = 0; t < 4; ++t)
+      ours = ours || bd::mem::load<u32>(booker + 4 + 4 * t) == n.title;
+    if (!ours)
+      continue;
+    u32 a = 512, b = 512;
+    if (n.winners.size() >= 2) {  // the final
+      a = n.winners[0], b = n.winners[1];
+    } else {
+      for (int p = 0; p < 2 && a >= 512; ++p) {
+        const u32 s1 = n.seed[p ? 1 : 0], s2 = n.seed[p ? 2 : 3];
+        if (!SemiDecided(n, p) && !on_card(s1) && !on_card(s2) && !injured(s1) && !injured(s2))
+          a = s1, b = s2;
+      }
+    }
+    if (a >= 512 || b >= 512 || on_card(a) || on_card(b) || injured(a) || injured(b))
+      continue;
+    bd::mem::store<u32>(rec + 40, a);
+    bd::mem::store<u32>(rec + 40 + 32, b);
+    bd::mem::store<u32>(rec + 40 + 28, 0);
+    bd::mem::store<u32>(rec + 40 + 32 + 28, 0);
+    t_tourney_match = n.winners.size() >= 2 ? 2 : 1;
+    if (n.winners.size() >= 2) {
+      t_rematch_title = n.title;  // (the final: the title's match)
+      const std::string key = fmt::format("news tourneyfinal {} {}", n.title, n.day);
+      if (!NewsDone(key)) {
+        AppendStats({key});
+        QueueNews3(kMoreEvent + kTourneyFinal, a, b, 512, n.title);
+      }
+    }
+    BD_INFO("[univers] tournament: title {} {}: {} v {}", n.title, n.winners.size() >= 2 ? "final" : "semi-final",
+            a, b);
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+// a pair of a semi-final of an open tournament (MATCH CARDS' header)?
+bool UltimateTourneySemi(const PPCContext &x, u8 *base, u32 a, u32 b, u32 day) {
+  if (!UltimateTournamentsOn())
+    return false;
+  for (const Tourney &n : OpenTourneys(x, base, day))
+    for (int p = 0; p < 2; ++p) {
+      const u32 s1 = n.seed[p ? 1 : 0], s2 = n.seed[p ? 2 : 3];
+      if (((a == s1 && b == s2) || (a == s2 && b == s1)) && !SemiDecided(n, p))
+        return true;
+    }
+  return false;
+}
+
+// a vacant title's "champion" slot (template code 0, param 1) asks the ranking's #1 (sub_826EF468's hook)
+bool UltimateVacantTitle(const PPCContext &x, u8 *base, u32 title) {
+  return UltimateTournamentsOn() && title < 23 && (Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF) == kNobody;
+}
+
+namespace {
+std::map<int, std::set<std::pair<u32, u32>>> g_last_pairs, g_this_pairs;  // a show's singles pairs: last card, this one
+
+// A singles record (places at +40 / +72): with kChaosRivals' chance, one of them gets a free rival of his show and
+// gender as opponent (relations record +20 + 4 k, the strongest first); else, a pair that met on the show's last card
+// (and are not rivals) gets another opponent for one of them, a free Superstar of the show and gender at random.
+bool BookingTweaks(const PPCContext &x0, u8 *base, u32 u, u32 show, u32 rec, u32 i,
+                   const std::function<bool(u32)> &on_card, const std::function<bool(u32)> &injured) {
+  if (REXCVAR_GET(wwe12_universe_chaos) <= 0 && ChaosPct(kChaosRivals) <= 0)
+    return false;
+  PPCContext x = x0;
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  const u32 a = bd::mem::load<u32>(rec + 40), b = bd::mem::load<u32>(rec + 72);
+  if (a >= 512 || b >= 512)
+    return false;
+  const auto of_show = [&](u32 id) {
+    const u32 brand = Call(x, base, __imp__sub_826D2B50, id);
+    return brand < 13 && bd::mem::load<u8>(u + kShowRecords + show * kShowRecordSize + 929 + brand) == 1;
+  };
+  const auto woman = [&](u32 id) { return Call(x, base, __imp__sub_82A32DB8, id) != 0; };
+  const auto free_for = [&](u32 id, u32 like) {
+    return id < 373 && id != a && id != b && Call(x, base, __imp__sub_826D3218, id, 1) && of_show(id) &&
+           !on_card(id) && !injured(id) && woman(id) == woman(like);
+  };
+  const u32 view = x.r1.u32 + 0x400;
+  Call(x, base, __imp__sub_826CDC48, view);
+  const u32 table = bd::mem::load<u32>(view + 12);
+  const bool rivals = RivalLevel(x, base, table, a, b) || RivalLevel(x, base, table, b, a);
+  bool changed = false;
+  u32 na = a, nb = b;
+  if (!rivals && ChaosRoll(kChaosRivals)) {
+    const bool first = ChaosRand(2) == 0;
+    const u32 who = first ? a : b;  // keeps his place; his opponent becomes his rival
+    const u32 r = table ? Call(x, base, __imp__sub_826D4F98, table, who) : 0;
+    for (int k = 4; r && k >= 0 && !changed; --k) {
+      const u32 rival = bd::mem::load<u32>(r + 20 + 4 * u32(k));
+      if (rival < 512 && free_for(rival, who)) {
+        (first ? nb : na) = rival;
+        changed = true;
+        BD_INFO("[univers] booking: match {}: {} faces his rival {}", i, who, rival);
+      }
+    }
+  }
+  bool again = false;
+  {
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);  // (not held while the pool is built)
+    again = g_last_pairs[int(show)].count({std::min(a, b), std::max(a, b)}) != 0;
+  }
+  if (!changed && !rivals && REXCVAR_GET(wwe12_universe_chaos) >= 1) {
+    if (again) {
+      std::vector<u32> pool;
+      for (u32 id = 0; id < 373; ++id)
+        if (free_for(id, a))
+          pool.push_back(id);
+      if (!pool.empty()) {
+        nb = pool[ChaosRand(u32(pool.size()))];
+        changed = true;
+        BD_INFO("[univers] booking: match {}: {} v {} again, {} instead", i, a, b, nb);
+      }
+    }
+  }
+  Call(x, base, __imp__sub_826CE098, view);
+  if (changed) {
+    bd::mem::store<u32>(rec + 40, na);
+    bd::mem::store<u32>(rec + 72, nb);
+    bd::mem::store<u32>(rec + 40 + 28, 0);
+    bd::mem::store<u32>(rec + 72 + 28, 0);
+  }
+  std::lock_guard<std::mutex> lock(g_ultimate_lock);
+  g_this_pairs[int(show)].insert({std::min(na, nb), std::max(na, nb)});
+  return changed;
+}
+}  // namespace
+
+// Before a weekly card's record i is written: a rematch, else a surprise return, in a singles match without title,
+// story nor WrestleMania build (record +12, +28, +24; places at +40 + 32 k, +0 the Superstar, +28 = 1 "???")
+bool UltimateBooking(const PPCContext &in, u8 *base, u32 booker, u32 i) {
+  t_rematch_title = 0xFF;
+  const u32 vtbl = bd::mem::try_load<u32>(booker);
+  const int show = vtbl == kBookerRaw ? 0 : vtbl == kBookerSmackDown ? 1 : vtbl == kBookerSuperstars ? 2 : -1;
+  if (show < 0)
+    return false;
+  const bool rematches = UltimateOn(REXCVAR_GET(wwe12_universe_rematches)),
+             returns = UltimateOn(REXCVAR_GET(wwe12_universe_surprise_returns));
+  // (a show's card starts: last card's singles pairs kept, for "not the same match two weeks running")
+  {
+    // (a new card's day: rotate; the same day booked again: kept; an earlier day: another save, forgotten)
+    static std::map<int, u32> s_card_day;
+    const u32 uu = i == 0 ? Call(in, base, __imp__sub_82683A30, 0) : 0;
+    const u32 today = uu ? bd::mem::load<u32>(uu + kUniverseDay) : 0;
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);
+    if (i == 0 && uu) {
+      auto it = s_card_day.find(show);
+      if (it == s_card_day.end() || today < it->second) {
+        g_last_pairs[show].clear(), g_this_pairs[show].clear();
+      } else if (today != it->second) {
+        g_last_pairs[show] = g_this_pairs[show];
+        g_this_pairs[show].clear();
+      } else {
+        g_this_pairs[show].clear();  // (the same card booked again)
+      }
+      s_card_day[show] = today;
+    }
+  }
+  if (!rematches && !returns && !UltimateTournamentsOn() && ChaosPct(kChaosRivals) <= 0 &&
+      REXCVAR_GET(wwe12_universe_chaos) <= 0)
+    return false;
+  const u32 rec = booker + 20 + i * 1320;
+  if (bd::mem::load<u32>(rec + 16) != 2 || bd::mem::load<u32>(rec + 12) || bd::mem::load<u32>(rec + 28) ||
+      bd::mem::load<u32>(rec + 24))
+    return false;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x800) & ~0xFu;
+  const u32 u = Call(x, base, __imp__sub_82683A30, 0);
+  if (!u)
+    return false;
+  const u32 day = bd::mem::load<u32>(u + kUniverseDay);
+  const auto on_card = [&](u32 id) {
+    for (u32 j = 0; j < 8; ++j) {
+      const u32 r = booker + 20 + j * 1320;
+      const u32 n = std::min<u32>(bd::mem::load<u32>(r + 16), 8);
+      for (u32 k = 0; k < n; ++k)
+        if (bd::mem::load<u32>(r + 40 + 32 * k) == id)
+          return true;
+    }
+    return false;
+  };
+  const auto injured = [&](u32 id) {
+    const int32_t index = int32_t(Call(x, base, __imp__sub_826D3320, id));
+    return index < 0 || (bd::mem::load<u32>(u + u32(index) * 112 + 92) & 0x80000000u) != 0;
+  };
+  // a vacant title's tournament first
+  if (TourneyBooking(x, base, booker, rec, day, on_card, injured))
+    return true;
+  // a rematch: this show's title (booker +4 .. +16), the former champion and the new one both free
+  if (rematches) {
+    for (const Rematch &r : PendingRematches(x, base, day)) {
+      bool ours = false;
+      for (u32 t = 0; t < 4; ++t)
+        ours = ours || bd::mem::load<u32>(booker + 4 + 4 * t) == r.title;
+      if (!ours || on_card(r.former) || on_card(r.champion) || injured(r.former) || injured(r.champion))
+        continue;
+      bd::mem::store<u32>(rec + 40, r.champion);
+      bd::mem::store<u32>(rec + 40 + 32, r.former);
+      bd::mem::store<u32>(rec + 40 + 28, 0);
+      bd::mem::store<u32>(rec + 40 + 32 + 28, 0);
+      t_rematch_title = r.title;
+      // (the reign's first day, for the "rematch" line)
+      std::ifstream f(StatsFile());
+      std::string line;
+      u32 t = 0, place = 0, holder = 0, old = 0, d = 0;
+      while (std::getline(f, line))
+        if (std::sscanf(line.c_str(), "title %u %u %u %u %u", &t, &place, &holder, &old, &d) == 5 && t == r.title &&
+            place == 0 && d <= day)
+          t_rematch_since = d;
+      AppendStats({fmt::format("rematch {} {} {}", r.title, r.former, t_rematch_since)});
+      QueueNews3(kMoreEvent + kRematch, r.former, r.champion, 512, r.title);
+      BD_INFO("[univers] ultimate: rematch for title {}: {} against champion {} (match {})", r.title, r.former,
+              r.champion, i);
+      return true;
+    }
+  }
+  // a surprise return: one waiting, of this show (its brand among the show's, record +929 + brand)
+  if (returns) {
+    std::lock_guard<std::mutex> lock(g_ultimate_lock);
+    for (size_t n = 0; n < g_returning.size(); ++n) {
+      const u32 id = g_returning[n].id;
+      const u32 brand = Call(x, base, __imp__sub_826D2B50, id);
+      if (brand >= 13 || bd::mem::load<u8>(u + kShowRecords + u32(show) * kShowRecordSize + 929 + brand) != 1 ||
+          on_card(id) || injured(id))
+        continue;
+      const u32 k = ChaosRand(2), place = rec + 40 + 32 * k;
+      if (bd::mem::load<u32>(place) >= 512)
+        continue;
+      BD_INFO("[univers] ultimate: {} returns as {}'s mystery opponent (match {})", id,
+              bd::mem::load<u32>(rec + 40 + 32 * (1 - k)), i);
+      bd::mem::store<u32>(place, id);
+      bd::mem::store<u32>(place + 28, 1);
+      g_returned.insert(id);
+      g_returning.erase(g_returning.begin() + long(n));
+      return true;
+    }
+  }
+  // booking (with the unpredictable Universe): a rival as the opponent, else not last week's same match
+  return BookingTweaks(x, base, u, u32(show), rec, i, on_card, injured);
+}
+
+// After the entry is written: the rematch is the title's match (as our title defenses do)
+void UltimateBookingAfter(const PPCContext &in, u8 *base, u32 booker, u32 entry, u32 i) {
+  // a title match of the game's for a title a tournament decides (vacant): not a title match (the final crowns)
+  if (t_rematch_title >= 23 && UltimateTournamentsOn()) {
+    PPCContext y = in;
+    y.r1.u32 = (y.r1.u32 - 0x400) & ~0xFu;
+    const u32 tt = bd::mem::load<u8>(entry + 1);
+    const u32 uu = Call(y, base, __imp__sub_82683A30, 0);
+    bool open = false;  // (only during its tournament: a vacant title without one is won in its title match, as 2K)
+    if (uu && Call(y, base, __imp__sub_826D4DC8, entry) && UltimateVacantTitle(y, base, tt))
+      for (const Tourney &n : OpenTourneys(y, base, bd::mem::load<u32>(uu + kUniverseDay)))
+        open = open || n.title == tt;
+    if (open) {
+      Call(y, base, __imp__sub_826D4DD8, entry, 0);
+      BD_INFO("[univers] tournament: match {} is no more title {}'s match (vacant, a tournament decides)", i,
+              bd::mem::load<u8>(entry + 1));
+    }
+  }
+  // a match we placed keeps no header of the one it took over ("#1 CONTENDER'S MATCH"...): MATCH #n, the
+  // tournament's final MAIN EVENT (entry +6: 1-8 MATCH #n, 9 MAIN EVENT)
+  if (t_tourney_match || t_rematch_title < 23)
+    bd::mem::store<u8>(entry + 6, u8(t_tourney_match == 2 ? 9 : std::min<u32>(i + 1, 8)));
+  t_tourney_match = 0;
+  if (t_rematch_title >= 23)
+    return;
+  PPCContext x = in;
+  x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
+  Call(x, base, __imp__sub_826D4DD8, entry, 1);
+  bd::mem::store<u8>(entry + 1, u8(t_rematch_title));
+  BD_INFO("[univers] ultimate: match {} of the card is title {}'s rematch", i, t_rematch_title);
+  t_rematch_title = 0xFF;
+  (void)booker;
+}
+
+// ---- The interference's type, chosen by the player (user's 1.4 list, 2026-11-13) ----------------------------------
+// MATCH CARDS' interference box (Y on an entry that allows it: sub_82555788(card) opens the game's yes / no message box
+// *0x8324DEF0 with text 27916 "Would you like to interfere in this Match?", card + 4164 = 3; its per-frame code
+// sub_825572C8 reads the answer once the box is closed, sub_8288EEF8(box): YES -> the interferer's pick). After a
+// YES, the same box asks two questions of ours (text 27916 is ours while they are asked, sub_821A4400's hook):
+// "Attack both opponents?" YES = the game's kind 0 (rival of both: an attack before the match, then on both); else
+// "Help your ally?" YES = kind 2 (ally of both: helps until an opponent is down), NO = kind 1 (neither: holds the
+// referee). The game then goes on with its YES (a NO to the second question is turned into its YES: box + 72 = 0, as
+// sub_8288EEF8 answers box + 72 ^ 1 for a yes / no box), and the kind is forced where the game computes it
+// (sub_826BCD40 from the interferer's relations with the two opponents, sub_826CBCE8 read twice, table 0x8203D5C8:
+// -1 / -1 = 0, 0 = 1, +1 / +1 = 2): those two reads give the chosen relation, so the game queues its own scenes and
+// runs its own in-match behaviour for that kind. On with the unpredictable Universe (or its own setting).
+REXCVAR_DEFINE_INT32(wwe12_universe_interference_choice, -1, "WWE12",
+                     "Universe: after YES to an interference, choose its type (attack both / help an ally / hold the "
+                     "referee) (-1 = with the unpredictable Universe, 0 off, 1 on).");
+REX_EXTERN(__imp__sub_82555788);  // MATCH CARDS: the interference box (card)
+REX_EXTERN(__imp__sub_8254E340);  // screen manager: ready (state 3's first test)
+REX_EXTERN(__imp__sub_8254E1A8);  // screen manager: ready (its second test)
+REX_EXTERN(__imp__sub_826CBCE8);  // relations: a's value of b (-5..+5)
+
+namespace {
+std::atomic<int> g_if_stage{0};   // 0: none, 1: "attack both?" asked, 2: "help your ally?" asked
+std::atomic<int> g_if_kind{-1};   // the kind chosen, for the next sub_826BCD40
+std::atomic<u32> g_if_who{512};   // its interferer (the pick, card + 4152), the kind applies to him only
+std::atomic<bool> g_if_done{false};  // the last answer used: no question again until the box state is left
+thread_local int t_if_reads = -1;  // inside sub_826BCD40 with a kind forced: the relation reads done
+}  // namespace
+
+uint32_t InterferenceQuestionText(uint32_t id) {
+  const int stage = g_if_stage.load();
+  if (id != 27916 || stage <= 0)
+    return 0;
+  static const char *const kAsk[2][5] = {
+      {"Attack both opponents?\n(NO: other choices)", "Attaquer les deux adversaires ?\n(NON : autres choix)",
+       "Beide Gegner angreifen?\n(NEIN: andere M\xC3\xB6glichkeiten)",
+       "\xC2\xBF" "Atacar a los dos rivales?\n(NO: otras opciones)", "Attaccare entrambi gli avversari?\n(NO: altre scelte)"},
+      {"Help your ally?\n(NO: distract the referee)", "Aider ton alli\xC3\xA9 ?\n(NON : distraire l'arbitre)",
+       "Deinem Verb\xC3\xBCndeten helfen?\n(NEIN: den Ringrichter ablenken)",
+       "\xC2\xBF" "Ayudar a tu aliado?\n(NO: distraer al \xC3\xA1rbitro)",
+       "Aiutare il tuo alleato?\n(NO: distrarre l'arbitro)"}};
+  static u32 s_at[2] = {};
+  u32 &at = s_at[stage - 1];
+  if (!at)
+    at = REX_KERNEL_MEMORY()->SystemHeapAlloc(256, 0x10);
+  if (!at)
+    return 0;
+  const char *t = kAsk[stage - 1][CurrentLang()];
+  std::memset(bd::mem::at<char>(at), 0, 256);
+  std::memcpy(bd::mem::at<char>(at), t, std::min<size_t>(std::strlen(t), 255));
+  return at;
+}
+
+// MATCH CARDS per frame (before the game's own): true when our next question was asked (the game must not read this
+// answer)
+bool InterferenceChoice(const PPCContext &ctx, uint8_t *base, uint32_t card) {
+  if (!UltimateOn(REXCVAR_GET(wwe12_universe_interference_choice)) || bd::mem::load<u32>(kInUniverseFlag) != 1) {
+    g_if_stage = 0, g_if_kind = -1, g_if_who = 512, g_if_done = false;
+    return false;
+  }
+  const u32 state = bd::mem::load<u32>(card + 4164);
+  // the kind waits for its interferer: picked (card + 4148 = 1, + 4152 the id), or the pick given up (state 0)
+  if (g_if_kind.load() >= 0 && g_if_who.load() >= 512 && state != 3 && state != 4) {
+    if (bd::mem::load<u32>(card + 4148) == 1 && bd::mem::load<u32>(card + 4152) < 512) {
+      g_if_who = bd::mem::load<u32>(card + 4152);
+      BD_INFO("[univers] interference: kind {} for {}", g_if_kind.load(), g_if_who.load());
+    } else {
+      g_if_kind = -1;
+    }
+  }
+  if (state != 3) {
+    g_if_stage = 0, g_if_done = false;  // (another state: our questions are over)
+    return false;
+  }
+  if (g_if_done.load())
+    return false;  // (our last answer is the game's: not asked again)
+  const u32 box = bd::mem::load<u32>(0x8324DEF0);
+  if (!box || bd::mem::load<u32>(box + 1820) != 0 || bd::mem::load<u32>(box + 1804) != 2)
+    return false;  // (still open, or not a yes / no box)
+  // the game's own conditions before it reads the answer (state 3 at 0x825574FC): the screen manager ready
+  // (sub_8254E340 / sub_8254E1A8 of *0x8317C5C4) and its countdown card + 4144 run out
+  const u32 screens = bd::mem::load<u32>(0x8317C5C4);
+  if (!screens || !Call(ctx, base, __imp__sub_8254E340, screens) || !Call(ctx, base, __imp__sub_8254E1A8, screens) ||
+      int32_t(bd::mem::load<u32>(card + 4144)) > 0)
+    return false;
+  const u32 answer = Call(ctx, base, __imp__sub_8288EEF8, box);
+  const int stage = g_if_stage.load();
+  const auto ask = [&](int next) {
+    g_if_stage = next;
+    Call(ctx, base, __imp__sub_82555788, card);
+    bd::mem::store<u32>(card + 4164, 3);
+    BD_INFO("[univers] interference: question {} asked", next);
+  };
+  if (stage == 0) {
+    if (answer == 1) {  // YES to the game's question: ours
+      g_if_kind = -1, g_if_who = 512;
+      ask(1);
+      return true;
+    }
+    return false;
+  }
+  if (stage == 1) {
+    if (answer == 1) {
+      g_if_kind = 0;
+      g_if_stage = 0, g_if_done = true;
+      BD_INFO("[univers] interference: attack both opponents (kind 0)");
+      return false;  // (the game reads this YES: the interferer's pick)
+    }
+    ask(2);
+    return true;
+  }
+  // stage 2
+  g_if_kind = answer == 1 ? 2 : 1;
+  g_if_stage = 0, g_if_done = true;
+  if (answer != 1)
+    bd::mem::store<u32>(box + 72, 0);  // (the game reads YES)
+  BD_INFO("[univers] interference: {} (kind {})", answer == 1 ? "help an ally" : "hold the referee", g_if_kind.load());
+  return false;
+}
+
+// the relation reads of sub_826BCD40 (its first two: the interferer with each opponent) give the chosen kind's value
+extern "C" REX_FUNC(sub_826CBCE8) {
+  __imp__sub_826CBCE8(ctx, base);
+  if (t_if_reads < 0 || t_if_reads >= 2)
+    return;
+  ++t_if_reads;
+  const int kind = g_if_kind.load();
+  ctx.r3.u64 = u64(int64_t(kind == 0 ? -3 : kind == 2 ? 3 : 0));
+}
+
+// around sub_826BCD40 (its hook): the chosen kind, once
+void InterferenceKindBegin() {
+  // (only for the interferer it was chosen for: mgr *0x83231548 + 5056)
+  const u32 mgr = bd::mem::try_load<u32>(0x83231548);
+  if (g_if_kind.load() >= 0 && g_if_who.load() < 512 && mgr && bd::mem::load<u32>(mgr + 5056) == g_if_who.load())
+    t_if_reads = 0;
+}
+void InterferenceKindEnd() {
+  if (t_if_reads >= 0) {
+    BD_INFO("[univers] interference: kind {} forced", g_if_kind.load());
+    g_if_kind = -1, g_if_who = 512;
+  }
+  t_if_reads = -1;
+}

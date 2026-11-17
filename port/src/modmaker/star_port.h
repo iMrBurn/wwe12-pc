@@ -42,6 +42,7 @@
 #include "theme_convert.h"
 #include "theme_source.h"
 #include "wwise.h"
+#include "port_svr_arena.h"
 
 namespace star_port {
 
@@ -221,10 +222,67 @@ inline std::vector<std::pair<int, std::string>> EntranceList(const disc::GameDis
   return {out.begin(), out.end()};
 }
 
+// A tag team's entrance in WWE '13 / 2K14-2K17 (700-769: 0705_Enzo_and_Cassidy, 0745_The_Usos; 770-799 are trios,
+// which WWE '12 hasn't): WWE '12's own are 700-756, the TAG TEAM list of CREATE AN ENTRANCE (kind 3).
+// SvR props (entrance13::Objects from a SvR game) made WWE '12's: their model (PACH child 0) in WWE '12's layout,
+// 184-byte mesh records and counted in cm - port_svr_arena's SvrToW12 and Scale x 10, as the SvR arenas'; checked on
+// Kennedy's microphone 2048, which both games have (2026-11-17). As they were, MVP's SvR 2008 tunnel 2116 crashed the
+// game when it was read. One that can't be made so: left out (then hidden, HideMissing).
+// Off for now (kSvrProps): their motion isn't converted - a prop no WWE '12 entrance holds gets the base's record
+// (a rope's, 119, for MVP's tunnel and Kennedy's microphone) and the base's tracks, while SvR moves it with its own
+// bones (MVP's tunnel: a root and bones 1-5, records 0x75 / 0x7B like a body's): brought, it is put where the base's
+// rope is (MVP's tunnel unseen, 2026-11-17). Hidden as before until a prop motion converter exists (docs/mod_maker.md).
+constexpr bool kSvrProps = svr_scenes::detail::kSvrPropMotion;  // (on with their motion, 2026-11-17)
+inline void SvrPropsTo12(std::vector<entrance13::Part> &objects) {
+  for (size_t i = 0; i < objects.size();) {
+    auto &o = objects[i];
+    std::vector<svrfmt::PachEntry> kids;
+    bool ok = o.kind == "SOBJ" && svrfmt::PachRead(o.data, kids);
+    if (ok) {
+      ok = false;
+      for (auto &k : kids)
+        if (k.id == 0) {
+          const Bytes model = svrfmt::Unpack(k.data);
+          Bytes w12;
+          ok = port_svr_arena::detail::SvrToW12(model, w12) && port_svr_arena::detail::Scale(w12, 10.0);
+          // (their shaders WWE '12 draws, as the SvR arenas': yReflect -> yDefault, yBumpMap -> yBG_BumpMap and its
+          // parameters; as they were, MVP's tunnel arch - yReflect - and its two crates - yBumpMap - didn't show, only
+          // the crates' signs - yDefault - in the air, 2026-11-17)
+          if (ok) {
+            port_svr_arena::detail::NoReflect(w12);
+            port_svr_arena::detail::BumpToBg(w12);
+            // (then WWE '12's props' own relief shader, same parameters sampDiffusePrm / sampNormalPrm - its 2253,
+            // 2256...: the background one gave MVP's crates and curtain an odd look, 2026-11-17)
+            using namespace port_svr_arena::detail;
+            for (uint32_t i = 0; i < U32(w12, 0x18); ++i) {
+              const size_t at = kPofBase + kMeshTable + i * kW12Mesh + 0x7C;
+              if (at + 16 <= w12.size() && svrfmt::Name16(&w12[at]) == "yBG_BumpMap") {
+                memset(&w12[at], 0, 16);
+                memcpy(&w12[at], "yProp_BumpMap", 13);
+              }
+            }
+          }
+          if (ok)
+            k.data = std::move(w12);
+        }
+      if (ok)
+        o.data = svrfmt::PachWrite(kids);
+    }
+    if (ok)
+      ++i;
+    else
+      objects.erase(objects.begin() + long(i));
+  }
+}
+
+inline bool TagEntrance(int number) { return number % 1000 >= 700 && number % 1000 < 770; }
+
 // His champion's entrance: entrance `from` of `game` (src) as WWE '12's, served under a free number other than his own
 // entrance's (`own`): into out.champ, champ_number, champ_from (champ_name left to the caller). False if it can't be.
+// `tag`: a tag team's entrance (Create an Entrance's tag ones), served under a free one of 757-769 instead, after
+// WWE '12's own tag team entrances (the game puts those in its TAG TEAM list, Jay on Discord 2026-11-15).
 inline bool PortChamp(const disc::GameDisc &w12, const game_discs::Discs &discs, const disc::GameDisc &src, uint32_t game,
-                      int from, int own, int base12, Music12 &music, Parts &out) {
+                      int from, int own, int base12, Music12 &music, Parts &out, bool tag = false) {
   out.champ.clear();
   out.champ_number = out.champ_from = 0;
   if (from <= 0 || !Scenes(game) || Svr(game) || !entrance13::Entrance(src, from, out.champ, nullptr))
@@ -258,8 +316,20 @@ inline bool PortChamp(const disc::GameDisc &w12, const game_discs::Discs &discs,
   // (a free number, as his own entrance's: 499 down, none the game, a mod or his own entrance has)
   const std::set<int> taken = TakenEntrances();
   int to = 0;
-  for (int n = 499; n >= 100 && !to; --n)
-    if (n != own && n != from && !taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(w12, n) &&
+  // (a team's: 769-757 first, as before, then 799-770 - Nyujyo9 too, none on the disc -: 43 places, not 13,
+  // docs/mod_maker_limites.md, 2026-11-17; the game's hook takes 700-799 as the TAG TEAM list's)
+  std::vector<int> tries;
+  if (tag) {
+    for (int n = 769; n >= 757; --n)
+      tries.push_back(n);
+    for (int n = 799; n >= 770; --n)
+      tries.push_back(n);
+  } else {
+    for (int n = 499; n >= 100; --n)
+      tries.push_back(n);
+  }
+  for (const int n : tries)
+    if (!to && n != own && n != from && !taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(w12, n) &&
         !music.Has(w12, n))
       to = n;
   if (!to) {
@@ -573,9 +643,22 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     std::vector<entrance13::Part> both = out.entrance;
     both.insert(both.end(), out.victory.begin(), out.victory.end());
     both.insert(both.end(), out.champ.begin(), out.champ.end());  // (and its champion's entrance's)
-    // (SvR 2007-2011's props are another format: none brought, the ones WWE '12 hasn't hidden)
-    if (scenes)
+    // (SvR 2008-2011's props are WWE '12's kind too - a JBOY model and its pictures, as the SvR arenas' models -:
+    // those WWE '12 hasn't brought from their pac\evt\_EvtObj.pac / evtobj.pac, MVP's SvR 2008 tunnel 2116, Jay on
+    // Discord, 2026-11-17; before, hidden. The script's numbers are the same props in every game: 2048 Kennedy's
+    // hanging microphone is WWE '12's own)
+    if (svr && kSvrProps) {
       out.objects = entrance13::Objects(src, w12, both);
+      SvrPropsTo12(out.objects);
+    }
+    if (scenes) {
+      out.objects = entrance13::Objects(src, w12, both);
+      // (and 2K16 / 2K17's hand props under 1000, a microphone..., made SOBJ 9000 + NNN: entrance13::Props2K)
+      for (auto *parts : {&out.entrance, &out.victory, &out.champ})
+        for (auto &o : entrance13::Props2K(src, *parts))
+          if (std::none_of(out.objects.begin(), out.objects.end(), [&](const auto &x) { return x.number == o.number; }))
+            out.objects.push_back(std::move(o));
+    }
     // (the props neither WWE '12 nor the mod has: an existing one, hidden)
     entrance13::HideMissing(out.entrance, w12, out.objects);
     entrance13::HideMissing(out.victory, w12, out.objects);
@@ -616,6 +699,9 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
 // the missing ones hidden, the ring announcer and waiting people made WWE '12's - as Collect does for his own.
 inline void FinishChamp(const disc::GameDisc &w12, const disc::GameDisc &src, Parts &out) {
   for (auto &o : entrance13::Objects(src, w12, out.champ))
+    if (std::none_of(out.objects.begin(), out.objects.end(), [&](const auto &x) { return x.number == o.number; }))
+      out.objects.push_back(std::move(o));
+  for (auto &o : entrance13::Props2K(src, out.champ))  // (2K16 / 2K17's hand props: a microphone...)
     if (std::none_of(out.objects.begin(), out.objects.end(), [&](const auto &x) { return x.number == o.number; }))
       out.objects.push_back(std::move(o));
   entrance13::HideMissing(out.champ, w12, out.objects);

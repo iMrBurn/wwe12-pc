@@ -112,6 +112,41 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - AJOUTER des logos et des matchup screens (les listes du jeu sont pleines).
 - Nouveau show comme NXT.
 
+**Décision du 2026-11-13 : pas de 1.3.1.** Les correctifs V-sync adaptative coupée par défaut (1787306) et 30 fps sur Android (#61, 35fb76c) partent dans la prochaine version, avec le travail Univers (news, mallettes, blessures, BACK ; NXT derrière `wwe12_universe_nxt`, coupé). Sortie visée : au plus tard le 2026-11-19 ; l'APK sera refaite pour cette version.
+
+**Suivi 1.4 (bloc-notes de l'utilisateur du 2026-11-12, un point à la fois, dans CET ordre ; cocher quand codé + testé par l'utilisateur)**
+
+Décision du 2026-11-12 : 1.4 à sortir en une semaine environ ; l'utilisateur commence par le mode Univers, un point après l'autre, en suivant son bloc-notes. Estimations : Univers et Gameplay (messages du 2026-11-12).
+
+*Matchs (Gameplay)*
+- [ ] I Quit (léger : le match SUBMISSION affiche « I QUIT », 3-4 h)
+- [ ] Special Guest Referee (risque moyen, 8-16 h : probablement reporté)
+- [ ] Matchs squash (léger : option « prochain match : squash », sonde STARTING HEALTH d'abord)
+- [ ] Stock de finishers de départ (OFF / 1 / 2 / 3 / INFINI, page d'options ; sonde d'abord)
+- [ ] Changer de joueur en plein match (non étudié, risque élevé : probablement reporté)
+- [ ] Améliorer le système de tombé (zone de sortie plus grande, non étudié)
+
+*Univers (Univers + Mods)*
+- [x] Deux mallettes Money in the Bank (RAW / SmackDown) : version complète, testée par l'utilisateur le 2026-11-12 (65d4548, e6d1471 ; réglage UNIVERSE OPTIONS, `wwe12_universe_mitb_briefcases` = 2). Embuscade en coulisses : pas faite (cinématiques de Create a Story, 20 h et plus). Mallette bleue pour SmackDown, rouge pour RAW (Mods a9958f1 + Univers a666549), choix de qui encaisse quand les deux peuvent (NON au premier = question au second, 55632bb / 7f6962a) : testés par l'utilisateur le 2026-11-12. Idée suivante : entrée avec la mallette en main (comme depuis 2K18), à faire avec Mods.
+- [ ] Débloquer Edge, Christian etc. dans l'Univers (3-6 h ; il faut la liste de ceux qui manquent)
+- [ ] Choisir le type d'intervention (bouton Y) : non en 7 jours (20 h et plus)
+- [ ] Backport des cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants : non en 7 jours
+- [x] Réglage pour couper les blessures (UNIVERSE OPTIONS > BLESSURES, `wwe12_universe_injuries`, 51a36fe) : gardé tel quel par l'utilisateur le 2026-11-12 sans preuve en jeu (le jeu ne blesse que dans les matchs JOUÉS, membre très abîmé, ou par une histoire ; jamais en simulation : 143 matchs simulés, aucune tentative). WWE '12 n'a pas d'autre fin de carrière que les blessures.
+- [ ] Classement des titres par équipe modifiable (6-10 h)
+- [ ] Rivalités menées jusqu'au PPV, rivalité inter-marques sans match (10-20 h ; léger ~8 h)
+- [ ] Titres de SmackDown dans EDIT SUPERSTAR (R1), si c'est le jeu d'origine (2-5 h)
+- [ ] Photo propre aux arènes ajoutées : codée (Univers 1e7b9e7 + Mods, Wwe12ArenaPictureName), pas testée (il faut une arène de mod installée sur la version de test).
+- [ ] Ajouter des logos et des matchup screens (léger : Mods remplace Add_01..15 et PPVbg_origin01..10 par les images du joueur)
+- [ ] Nouveau show comme NXT : mis de côté le 2026-11-13 (décision de l'utilisateur : pas de titre ni de roster propre, peu d'intérêt). Code derrière `wwe12_universe_nxt`, coupé par défaut (= 1.3.0) ; le choix des catcheurs reste celui de RAW/SmackDown ; état dans docs/univers.md § 45.
+- [x] Beaucoup plus de News : 1er lot (Jay) codé, séries et Double Gold vus dans le journal ; #1 contender (match + gagnant), adversaire mystère et fond « grande victoire » testés par l'utilisateur le 2026-11-13 ; vus sur une année simulée le 2026-11-13 : momentum, sortie du top 5 (une par semaine au plus), longs règnes, mallette gardée 3 mois, Past Glory, représentant à WrestleMania, Fighting Champion, partenaire mystère ; pas encore vus (cas rares) : Historic Reign, équipes de Survivor Series, Double Gold après correctif, nouvelles médicales (pas de blessure en simulation). Pas faits : éliminations du Rumble (non notées par le jeu), qualifications de Survivor Series (gros chantier)
+- [ ] Plus de cinématiques d'Univers — **mis de côté le 2026-11-13 (l'utilisateur : « autant laisser le jeu comme il est »)**, tout coupé par défaut ; reprise possible d'après docs/univers.md § 44 (demande d'origine : « des vrais shows, plein d'actions et de rebondissements ») : scènes de SvR 2011 (47) et WWE '13 (106) converties en actes WWE '12, jouées au hasard à la place de celles du jeu (`wwe12_universe_more_scenes`, coupé) ; pas encore vues en jeu ; 2K14-2K17 à regarder ; pour les joueurs : conversion par le Mod Maker depuis leurs disques (rien des jeux dans le zip). Détails : docs/univers.md § 44.
+- [x] **Univers imprévisible** (2026-11-13) : UNIVERSE OPTIONS > UNIVERS IMPRÉVISIBLE, NON (le jeu d'origine, défaut) /
+  UN PEU / BEAUCOUP / FOLIE : le joueur choisit entre l'Univers d'origine et un plus avancé (décision de l'utilisateur).
+  Cartes et stipulations au hasard, prétendants inattendus, « ??? », retournements, trahisons, plus d'histoires, plus de
+  scènes du jeu, news de rivalité, retours surprise, revanches, MATCH DE RIVALITÉ. Vu en partie en jeu (niveau folie) ;
+  scènes d'autres jeux laissées de côté (seules celles de WWE '12, décision de l'utilisateur). Détails : docs/univers.md § 46-47.
+- [ ] **Après ça (souhait de l'utilisateur, 2026-11-13)** : un Univers encore plus incroyable et imprévisible que celui de base (« le meilleur pour beaucoup ») : logique de booking, rebondissements, cinématiques. Rejoint « meilleure logique de booking » et « rivalités jusqu'au PPV » de cette liste.
+
 ## 1.5 et après : plateformes et finitions (à décider selon les retours)
 - Launcher : améliorations (`docs/launcher_amelioration.md`, 20 à 28 h : état du jeu, messages, confort Steam Deck à la manette, bouton « Test de performance », finitions) ; pas de refonte du design.
 - Android après la 1.1 PC : replay d'après match, performances, ajouts de Yexclsv (`docs/android_apres_1_1.md`).
@@ -122,9 +157,14 @@ Même chemin que la 1.1 pour la sortie : « go build », gel des sessions, APK �
 - Shaders qui font saccader à la première fois (en 1.1 : préparés en arrière-plan ; reste à voir ce qui saccade encore, voir l'issue #53 : surtout le processeur).
 
 ## Plus tard (sans date)
+- **Univers + Create a Story** (souhait de l'utilisateur, 2026-11-13) : jouer dans l'Univers les scènes de Create a Story (embuscade en coulisses, choix du type d'intervention), puis des scènes portées des autres jeux (WWE '13, 2K14-2K17, avec Mods) et, à terme, des histoires façon Story Collection (2K15+). Base trouvée : la table des demandes de cinématiques du match (`docs/univers.md` §44) ; une scène imposée est bien chargée dans un match d'Univers, mais le jeu se fige ensuite (cible, décor de Create a Story ou scripts manquants : à creuser). Plusieurs jours, avec Mods.
 - **Bloc-notes de l'utilisateur, 2026-11-11 : EN 1.3 (décision de l'utilisateur le 2026-11-11, voir aussi la section 1.3)** :
   - Mod Maker : ajouter des titantrons (et pas seulement remplacer) ; vidéos pour le ruban et le walltron ; faire porter des entrées spéciales WM / titre ; retravailler les arènes portées ; aperçu des entrées dans le Mod Maker comme SvR 2011.
   - Bugs : avec les thèmes du jukebox activés, on entend la musique normale du menu en dessous, et elle repart juste après START à l'écran-titre (le thème du jukebox s'arrête) ; les attributs ne se sauvegardent pas ; corriger quelques modèles et entrées.
+- **Cinématiques Create a Story de WWE '13 / 2K14 dans le Create a Story de WWE '12** (décision de l'utilisateur 2026-11-13 : plus tard, sans version). Étude de Univers (lecture seule) : même format EPK8/EPAC (groupes EVP/EVZ), numéros 4xxx ; WWE '12 = 201 scènes, WWE '13 = 254 (53 absentes du 12), 2K14 = 263 (63 absentes), ~64 nouvelles au total ; réutiliser `entrance13.h` du Mod Maker. À étudier : la table de la bibliothèque (catégorie, nom, rôles, place dans le menu), objets / textures / décors. Estimation 30 à 50 h, risque moyen à élevé ; les essais d'écran noir de Univers montrent que le lecteur de scènes dépend du mode. Données du jeu jamais dans le dépôt.
+- **Modes de match (décisions du 2026-11-14)** : FAITS et testés par l'utilisateur, désactivés par défaut sauf mention : finishers de départ (`wwe12_starting_finishers`, choix sur l'écran de sélection avec LT / RT, `wwe12_select_finishers` ACTIVÉ par défaut mais sans effet sur NORMAL) et squash (`wwe12_squash_chance`, `wwe12_squash_health`) ; code dans `wwe12_match_modes.cpp` + commit 60aa20f d'Univers, à publier ensemble. Reste à décider : où régler `wwe12_squash_chance` (launcher ou page d'options). ARRÊTÉ par l'utilisateur : 2e système de tombé à jauge façon 2K25 (étude et pistes dans `docs/omg_finishers.md` §4 : compte de l'arbitre écrit par sub_82474C88, sortie probablement par une commande de l'animation ; sondes `wwe12_pin_probe` / `wwe12_pin_trap` désactivées). PLUS TARD, sans version : arbitre spécial invité, changement de joueur en plein match, caméra du Royal Rumble au choix dans tous les matchs (idée, rien étudié), I Quit léger (4 à 8 h, risque faible : match Submission + « I QUIT » à la fin) si l'utilisateur le veut.
+- **Plan de l'utilisateur (2026-11-16)** : sortir la 1.4 (elle attend l'arbitre spécial), puis une PAUSE (abonnement terminé), retour en janvier 2027 pour corriger les bugs, puis une **2.0 en full natif, sans rien d'émulé, comme un vrai jeu PC** (voir « Rendu vraiment natif » ci-dessous).
+- **Rendu vraiment natif** (objectif à long terme de l'utilisateur, décision du 2026-11-16) : remplacer la couche graphique Xbox 360 du jeu (qui écrit encore des paquets PM4 / modèle Xenos : tuiles, resolves, EDRAM simulée) par des appels directs Vulkan / DX12 / DX11, en interceptant les appels du jeu avant les commandes Xenos. Chantier de semaines, gros risque de casse, pas de version prévue. Point de départ : la remarque de JunPorts (portage PC de SvR 2011, dit avoir fait environ 70 % de ce travail pour SvR 2011) ; un échange avec lui serait utile, mais reprendre son code exige l'accord des deux. Les textes README (5 langues) disent désormais que le rendu suit encore le modèle Xenos (2026-11-16).
 - **Régénération du code** (registres locaux + patch « volatile », 10 à 14 h + un gros test de ~2 h, risque de casse) : sans version, décision de l'utilisateur du 2026-11-11. Étude : `docs/regeneration_1_3.md`.
 - Plus de 6 superstars sur le ring ; 100 / 200 slots CAW et logos (probablement 2.0) ; le jeu en full natif ; Univers : cinématiques WWE '13 / 2K14, Create a Story, tournoi pour titres vacants ; choix de caméra de match.
 

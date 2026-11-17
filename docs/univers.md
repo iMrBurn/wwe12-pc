@@ -5,7 +5,39 @@ jukebox). Les parties périmées (premiers plans, listes d'idées, étapes rempl
 sont dans `docs/archives/univers_anciennes_parties.md` et `docs/archives/univers_anciennes_parties_2026-11-12.md` ;
 rien n'a été supprimé. Les numéros de partie (§) ne changent pas.
 
-## État au 2026-11-12
+## État au 2026-11-13
+
+**1.4 (commits locaux, non poussés ; liste « Suivi 1.4 » de `docs/feuille_de_route.md`)** :
+- **Deux mallettes Money in the Bank** (UNIVERSE OPTIONS > MALLETTES = 2, `wwe12_universe_mitb_briefcases`, défaut 1 =
+  le jeu) : testé par l'utilisateur. Au PPV, le match MITB du jeu prend les hommes de RAW et une copie de son fiche
+  remplace un match ordinaire (sinon une rivalité, sinon un titre mineur) pour SmackDown (`MakeSecondMitb`, au 1er
+  `sub_826EAEB0` de la carte du booker PPV 0x8203EB44). Le 2e détenteur n'existe que dans `universe_stats.txt`
+  (« mitb / mitbbrand / mitbclear » : `BriefcaseHolders`). Tout ce que le jeu fait avec SON détenteur (U+51004) marche
+  pour les deux : tests « est-il le détenteur ? » (`sub_826CC718` selon l'adresse de retour : 0x826C0BE8 r29,
+  0x82DEA6B4 r30, 0x826DB618 [r28+8], 0x826E6278 r31, 0x826D7A94 [r31+8]) ; proposition d'encaissement
+  (`sub_82554460`) demandée pour l'autre en le mettant dans U+51004. Choix de qui encaisse : un NON au premier remplace
+  la question par celle du second (`sub_825572C8`, état 2 de MATCH CARDS, réponse `sub_8288EEF8` : 1 = OUI, 0 = NON) ;
+  deux NON remettent le premier. Mallette bleue pour SmackDown : Mods sert la copie bleue de SOBJ 2557 (et des scènes
+  MitB) quand `Wwe12MitbBlue()` le dit ; le match d'encaissement charge « /SOBJ/2557 » directement. Pas d'entrée avec
+  la mallette (WWE '12 n'en a pas ; celles de 2K18+ ne sont pas lisibles par nos outils).
+- **Blessures** (UNIVERSE OPTIONS > BLESSURES, `wwe12_universe_injuries`) : refus de `sub_826CEA88(vue, id, 1)`. Gardé
+  sans preuve en jeu : le jeu ne blesse que dans les matchs JOUÉS (`sub_826C55E0` sort si simulé) ou par une histoire.
+  WWE '12 n'a pas d'autre « fin de carrière ».
+- **Photo des arènes ajoutées** dans SHOW EDIT (crochet `sub_82586428`, nom donné par `Wwe12ArenaPictureName` de Mods) :
+  codée, pas testée (il faut une arène de mod installée).
+- **Plus de news** (`wwe12_universe_more_news`, idées et textes de Jay) : encaissement réussi / raté, séries de 5, 10, 15
+  victoires et de 5 défaites (« res » par match), mallette gardée plus de 3 mois, Double Gold (titres qui ont déjà
+  changé de mains seulement), règnes de 10 / 25 / 52 semaines, Fighting Champion (6 et 10 défenses), nouvelles médicales,
+  match #1 contender (à 2 ou 3) et son vainqueur, adversaire ou partenaire mystère (« ??? »). Séries et Double Gold vus dans le
+  journal ; #1 contender, mystère et fonds testés le 2026-11-13 (résultats : fond « grande victoire » newsBG_04). Notre news : type 5, +14 = 0x53, +15 le genre, +10 l'argument
+  (titres, nombre), +2 / +4 d'autres catcheurs ; textes composés au dessin. Le jeu vide NEWS à chaque show.
+- **Fiche de carte** (104 octets, journal `wwe12_universe_card_probe`) : +0 type, +1 titre (FF aucun), +2 places,
+  +3 état, +6 en-tête (1-8 MATCH #n, 9 MAIN EVENT, 10 #1 CONTENDER'S MATCH ; +7 n'est pas l'en-tête) ; places à +16 + 12 × p : +0 catcheur (u16), +3 camp,
+  +6 = 1 caché (« ??? »).
+- UNIVERSE OPTIONS : 5 lignes avec RETOUR (à 4 lignes le jeu dispose la boîte en 2 colonnes qui se chevauchent).
+- Accents des news du draft corrigés (UTF-8 relu en Latin-1 par nos scripts : toujours écrire les textes en \x).
+
+**1.3 (publiée)** : les CAW comptés dans les effectifs (12eb321, avec Gameplay) ; jukebox sans musique du jeu dessous.
 
 **1.2 (publiée le 2026-11-10)** :
 - Un catcheur ajouté garde sa marque après un redémarrage, un match et une remise à zéro de l'Univers. La part de Mods
@@ -15,11 +47,11 @@ rien n'a été supprimé. Les numéros de partie (§) ne changent pas.
 - Journal des étapes (`wwe12_universe_flow_log`) : lignes « step id N made » de la fabrique `sub_823DCC38`. Ordre
   après un match joué : 19, 27, 22, 15, 17, « result: », 18, 28, 0. Testé : comportement inchangé.
 
-**1.3 (commits locaux, non poussés)** :
+**1.3 (publiée, détails)** :
 - Les CAW comptent dans l'effectif des émissions, comme la TU2 : `wwe12_tu_caw_roster`, chez Gameplay
   (`wwe12_title_update.cpp`). Chez nous, le recomptage d'EDIT BRAND n'exclut plus les CAW, et le compte du départ d'une
   émission (`sub_826D0598` appelé depuis 0x826D3C84) reçoit r5 = 1 : il compte alors depuis le numéro 0 et non plus 100.
-  Commit 12eb321 : pas encore testé en jeu.
+  Commit 12eb321.
 - Jukebox, testé par l'utilisateur le 2026-11-11 (e587ded, 51e1b5f ; nettoyage 0370c86) : plus de musique du jeu
   sous un thème. Le menu principal (et chaque retour après un écran de chargement) remet [M+32] = 1 et la mise à jour
   relance la piste 0. Tant qu'un thème joue, la garde coupe la piste 0 ou 1 dès qu'elle démarre. Avec aucun thème en
@@ -1026,3 +1058,442 @@ l'ouverture du menu Univers, seulement un jour de draft (`sub_826CD010(vue, sub_
 catcheur passé à RAW / SmackDown reçoit une news de type 5 (+14 = 0x52, +15 la marque), textes en 5 langues
 (« DRAFTED TO RAW! » / « %s has been drafted to RAW! »). Réglage `wwe12_universe_draft_news` (true). Vu : Cody Rhodes
 → RAW, Triple H → SmackDown dans NEWS (le jeu vide la liste à chaque show : chaque show du draft montre les siens).
+
+## 44. Interférence et scènes de l'Univers : étude (2026-11-13, lecture seule, pas vérifié en jeu)
+
+Demande de l'utilisateur (liste 1.4) : embuscade en coulisses, choix du type d'intervention, cinématiques des autres jeux.
+Étude par un agent, sur le code recompilé et `image.bin` ; certitude indiquée.
+- **Carte** (sûr) : bits 4-5 de l'octet +4 de l'entrée de carte (104 octets) = mode (`sub_826D4EC8` pose,
+  `sub_826D4E68` lit, `sub_826D4F28` teste 1). Mode 1 posé par `sub_826C63D8` / `sub_826C3A18` / `sub_826C1C38` :
+  « interférence possible » (en-tête de la ligne : texte 27519 au lieu du type de match, `sub_82554B68`, probable) ;
+  mode 2 vient du modèle MTDT (+24 = 1, `sub_826EAEB0`), texte 27520 (probable : « regarder en vainqueur du Rumble »).
+  La boîte Oui / Non elle-même n'est pas trouvée.
+- **Réponse** (sûr) : l'objet de préparation du match `[x+52]` +48 (veut interférer), +52 (l'interférant, choisi par le
+  joueur, qui le joue) → `sub_82546E48` les copie en this+144 / +148 → `sub_82547460` → `sub_826BB878(mgr, id)` :
+  mgr+5052 = 1, mgr+5056 = l'interférant (mgr = *0x83231548).
+- **Genre d'interférence** (sûr) : `sub_826BCD40` (depuis `sub_826C1578` ← `sub_826C3090`) lit la relation de
+  l'interférant avec les 2 adversaires (`sub_826CBCE8`, 5 alliés / 5 rivaux) ; table 0x8203D5C8 : rival des deux = 0,
+  allié des deux = 2, sinon 1 ; mode 2 = 3 ; écrit en mgr+5064, puis met en file des scènes WCID par `sub_826DC408(buf,
+  liste, n°)` (genre 0 : liste 0 n° 29-31 au hasard, liste 2 n° 44, liste 3 n° 89 ; genre 1 : 48, 43, 89 ; genre 2 :
+  47, 44, 94 / 95 ; genre 3 : 49, 45, 97). Avec 5052 posé, les scènes au hasard (`sub_826DBA10`, `sub_826DBCE0`) sont
+  sautées.
+- **L'entrée en cours de match** (sûr) : `sub_826C93A0` (depuis `sub_823B9B58`, `sub_823F3508`) teste mgr+5052 et
+  construit PlayableIFCtrl (`sub_826C98B0`, genre de mgr+5064 par `sub_826BC578`) ; départ `sub_826C99A0`, suivi des
+  PV `sub_826C9D88`, arbitre / deux finishers `sub_826C9F40`.
+- **WCID** (sûr pour la forme, probable pour le sens) : table des scènes de situation, dans `wuniData.pac` (BPE, « WCI »
+  + nombre) : 4 listes de 40, 55, 52, 114 fiches de 564 octets (pointeurs à 0x83231558 ; probablement les moments
+  où une scène se joue). Fiche : +0 liste, +2 n° (index + 1), +192..+312 six rôles de 24 octets (CastA-F), +468 un u16
+  (32100+, 32200+… selon la liste, sens inconnu). `sub_826DC408` → `sub_826BF660` → `sub_826BD970` remplit les rôles
+  (catcheurs choisis par `sub_826DB8F0` / `sub_826DAC88`) dans une case de 596 octets en mgr+16 (+296 = 6 × 20).
+- **Histoires** : STYT (136 × 1452 octets) ; liste d'actes {u16 acte, u8 sous-acte, u8 piste} jouée par `sub_826ECE78`
+  (journal « Act=… ») ; départ d'une scène `sub_826DF6D8` (« Timing[%d][%2d]:CutScene Start »). Actes : RSC0-3 =
+  4000-4399, Season0-6 = 1010-3840, Winning = 6050-9xxx.
+- **Inconnu** : comment une fiche WCID ou un acte devient le nom `/EVPx/NNNN` (les chaînes « UNVS/%1d%03d » et
+  « UNVS/%04d » n'ont pas de référence directe trouvée).
+- **Prochaine expérience** (la plus petite) : `wwe12_game_log` + trois lignes de journal (`sub_826DC408` : liste, n°,
+  retour, +2 / +468 ; `sub_826BCD40` : le genre ; `sub_826BF660` : les 6 rôles), puis un match de carte avec
+  interférence et un sans : on relie fiche WCID → acte → scène.
+- **Estimations** (de l'agent) : embuscade en coulisses 15-25 h (choix 3 h, trouver la scène 3-5 h, imposer les acteurs
+  4-6 h, faire perdre la cible 4-8 h : seul levier connu = le vainqueur forcé d'un match SIMULÉ, `sub_826C9050`
+  mode 2). Scènes portées au même moment et aux mêmes rôles : WWE '13 2-4 jours si ses formats sont ceux de WWE '12,
+  2K14-2K17 des semaines. Story Collection (2K15+) : un système entier à créer.
+
+**Test du 2026-11-13 (sonde `wwe12_universe_scene_probe` + `wwe12_game_log` + `wwe12_dir_log`)** :
+- Interférence (sûr) : l'interférant 131, genre 1 → fiches WCID mises en file : liste 1 n° 48 (id 49), liste 2 n° 43
+  (id 44), liste 3 n° 89 (id 90). Puis « Timing[1][49]:CutScene Start » et « Act=32203 », « Timing[2][44] » et
+  « Act=32307 ». Donc **+468 de la fiche WCID = le numéro d'acte** joué, et le Timing est [liste][id de la fiche].
+- Scènes au hasard (sûr) : Timing[0][33] Act=32102, Timing[2][29] Act=32323, Timing[4][46] Act=32432 (la liste 4 est
+  lue comme la 3, `sub_826D66F0`). Actes 321xx = liste 0, 322xx = 1, 323xx = 2, 324xx = 3.
+- Ces actes ne lisent **aucun** `/EVPx/NNNN` (journal des fichiers vide pendant eux), contrairement aux entrées
+  (`/EVP2/139`) et aux victoires (`/EVPA/6139`) : les actes 32xxx viennent d'ailleurs (wuniData.pac ou un paquet déjà
+  chargé ; « UNVS/%04d » reste à relier). C'est la prochaine inconnue avant tout portage de scènes.
+- Ce que l'utilisateur a vu : 1er match Triple H contre Swagger, interférence avec CM Punk (131) → les actes 32203 et
+  32307 sont les scènes de cette interférence (genre 1 : CM Punk ni allié ni rival des deux). 2e match (Cena 139
+  contre 218, entrées `/EVP2/139`, `/EVP3/218`, victoire `/EVPA/6139`) : 3 cinématiques = les actes 32102, 32323 et
+  32432 tirés au hasard (avant, pendant / après le match).
+- **Où sont les actes 32xxx (trouvé le 2026-11-13, sûr)** : dans `pac/m.pac`, groupe **`UN00`** (≈ 7,7 Mo, 30407 × 256
+  octets), que le jeu demande en une fois au chargement du match (« /ZMOT/UN00 found » dans le journal des fichiers).
+  Ses tables PACH ont pour numéros les actes : 32100-32127, 32200-32239, … (une table par liste WCID). Les scènes de
+  l'Univers sont donc des **animations jouées dans l'arène** (rôles + caméra), avec les mouvements propres à chaque
+  catcheur dans `/EMD/00NNNNSS` (NNNN = son numéro, SS = 02, 04, 05, 06 ; vu : 00013102 pour CM Punk, 00010202 pour
+  Triple H, 00026702 pour Swagger). Pas de fichier `/EVPx/` par acte.
+- **Ce que ça ouvre** : (1) l'embuscade peut reprendre un acte existant (une fiche WCID de bagarre en coulisses) imposé
+  au moment de l'interférence ; (2) des scènes d'autres jeux seraient des actes ajoutés à une copie servie de `UN00`
+  (`m.pac`, par l'overlay de Mods) + des fiches ajoutées à une copie de `WCID` (`wuniData.pac`), seulement si le
+  format de WWE '13 est le même (à vérifier : son `m.pac` / `UN00`).
+- **Les autres jeux (2026-11-13)** : WWE '13 (dossier extrait `Desktop\WWE13-Recomp-x64\WWE 13`) range ses actes dans
+  `pac/mot01.pac` (archive EPK8, entrées de 16 octets), groupe `UN00`, même en-tête que WWE '12 (« PACH 2, 0x4F… ») mais
+  bien plus petit (61 unités contre 30407) ; une seule table PACH lisible en clair (actes 32467-32468), le reste
+  probablement compressé (BPE, comme ailleurs). SvR 2011 n'a pas de groupe `UN` dans `m.pac`. 2K14-2K17 : seulement en
+  ISO (`modmaker_discs.txt`), à lire avec les outils de Mods (lecture d'ISO, BPE). `wuniData.pac` de WWE '13 n'a pas
+  la même forme (répertoire de 4000 entrées illisible tel quel : autre format ou chiffré).
+- **Actes comparés (2026-11-13, lecteur d'ISO en lecture seule, scripts dans le dossier temporaire de la conversation)** :
+  WWE '12 `m.pac` UN00 = **117 actes** (32100-32127, 32200-32239, 32300-32327, 32400-32468, avec des trous). WWE '13
+  `mot01.pac` UN00 n'en a plus que 2 (32467-32468) ; 2K14 et 2K15 `mot01.pac` UN00 (≈ 80 Ko) aucun. À la place, ces jeux
+  ont des paquets de scènes **`pac/evt/Universe00..03.pac`** (WWE '13) et **`Universe00..09.pac`** (2K15) : leurs scènes
+  d'Univers sont des scripts EVP, comme les entrées et les victoires (que le Mod Maker sait déjà porter). 2K16 / 2K17 :
+  pas de groupe UN dans les `pac/*.pac` du haut (à regarder dans `pac/evt/`).
+- **Piste pour les porter** : dans WWE '12, les actes < 32000 sont des scènes EVP (Season0-6 : 1010-3840 ; RSC0-3 :
+  4000-4399) jouées par le même système d'actes (`sub_826ECE78`). Une scène d'un autre jeu pourrait donc devenir un acte
+  EVP ajouté à une copie servie d'un `Season*.pac` / `RSC*.pac` (mécanisme de Mods, `sub_827F29F0`), lancé par une fiche
+  WCID ajoutée (+468 = son numéro) ou imposé par nous. À vérifier : comment un acte < 32000 trouve son `/EVPx/NNNN`, et
+  si les rôles (CastA-F) se remplissent pareil.
+- **Suite (2026-11-13)** : un nom de scène EVP se cherche dans **tous** les groupes montés, `/EVP0/N` à `/EVPD/N`
+  (journal des fichiers : le jeu essaie EVP0, EVP1… jusqu'au groupe qui l'a) ; un acte EVP ajouté n'a donc besoin que
+  d'un numéro libre dans un paquet servi. Les fiches WCID ne mènent qu'aux actes UN00 (32xxx) ou à rien : 71 des 262
+  fiches ont l'acte 0 (pas de scène ; autre effet, sans doute relation ou attribut). Les scènes EVP des saisons
+  (Season*, RSC*) viennent donc d'un autre chemin, sans doute les histoires (STYT, liste d'actes de `sub_826ECE78`) ;
+  aucune n'a été vue dans le test du 2026-11-13. Prochain test utile : jouer des semaines avec une rivalité, la sonde
+  et le journal des fichiers allumés, jusqu'à une scène de saison (« Act=1xxx-4xxx » + `/EVPx/` lu) ; il dira quel
+  chemin la lance et avec quels rôles.
+- **Scènes EVP : qui les lance (étude du code, 2026-11-13, pas vérifié en jeu)** : l'Univers **ne joue jamais** de
+  scène Season / RSC (probable). Season0-6 = cinématiques de Road to WrestleMania (1010, 1810 vues en RTWM), RSC0-3 = la
+  bibliothèque de scènes de Create a Story (4000 = scène par défaut de `sub_8275A958`). Elles passent par la **table
+  des demandes de cinématiques** de la préparation du match (sûr pour la forme) : `*(0x8317C84C) + 7984 + 960` =
+  u32 nombre + 16 entrées de 144 octets {+0 genre (moment), +4 aux (souvent l'arène), +8 u32 scène[16], +72 castId[6]
+  (0xC800 = personne), +96 [6] rôle, +120 [6] -1}. Aides : remise à zéro `sub_82694FC0`, +1 `sub_82694E28`, genre
+  `sub_82694D58`, aux `sub_82694D78`, scène `sub_82694D98(table, i, n)`, catcheur `sub_82694DC0(table, i, id, rôle, x)`.
+  Écrite par le Lua de RTWM (« CutScene » `sub_823D4960`, genre 9 ; « CutSceneLoad » `sub_823D62C8`), Create a Story
+  (`sub_8275A958`, genre 1) et la tâche de flux 9 (`sub_82676CC0` : genre 9, puis `sub_828CBCF8` sur le gestionnaire de
+  scènes `*0x8324DF2C`). Lue par `sub_828D2660(this, genre)` (genres 1, 8-11, 13) ; scripts chargés par `sub_828E2DC0`
+  → `sub_825B85B8`. `sub_826ECE78` et STYT n'y touchent pas : les actes UN00 sont des mouvements posés par
+  `sub_8247AD50(modèle, acte, sous-acte, piste)`, distribution = 6 u16 à slot+14 de `sub_826BE198()` (`sub_826C0570`).
+- **Ce que ça donne** : une embuscade = ajouter une entrée (genre 9, une scène d'attaque RSC, distribution
+  {interférant, cible}) dans cette table quand mgr+5052 est posé, si le gestionnaire de scènes tourne dans un match
+  d'Univers (inconnu : l'Univers met ctx+12460 = 0, Create a Story teste 4) ; 8-15 h (+5-10 h s'il faut pousser une
+  tâche de flux 9 entre la carte et le match). Une scène portée = la même chose avec un numéro libre servi dans une copie
+  d'un RSC*.pac ; 15-25 h plus la vérification du format des `Universe*.pac` de WWE '13. **Plus petite expérience** :
+  journal sur `sub_828D2660` (genre, nombre, scènes, catcheurs) et sur `sub_82694D98` / `sub_82694DC0` (appelant), puis
+  une scène de Create a Story, une de RTWM et un match d'Univers ; ensuite une entrée imposée (scène 4000, {interférant,
+  cible}) avant un match d'Univers : « scene script 4000 » + `/EVPx/4000` lu = la voie est bonne.
+- **Expérience du 2026-11-13 (cvars de dev `wwe12_universe_scene_table_probe`, `wwe12_universe_scene_inject`)** : un
+  match d'Univers ne lit que les genres 1, 8, 10, 11 de la table (jamais 9), et la table est vidée entre l'interférence
+  et le match. Une entrée ajoutée juste avant la première lecture (genre 1, scène 4000, l'interférant en rôle 0) **est
+  prise** : « scene script 4000 asked », et le jeu **trouve** `/EVPU/4000` et `/EVZU/4000` (RSC0 est monté) ; il ne
+  trouve pas `/PGEN/4000`, `/GMEV/4000`, `/PCE6/4000` ni `/EVZU/65535`, puis **écran noir** (jeu figé, arrêté).
+  **La voie marche jusqu'au chargement de la scène** ; le blocage vient de ce qui manque autour (son décor / plateau de
+  Create a Story, un 2e rôle vide — la cible n'était pas donnée —, ou les scripts PGEN / GMEV). Ensuite : donner la
+  cible en rôle 1, comparer avec l'entrée qu'écrit Create a Story pour la même scène (`sub_8275A958`, aux et rôles),
+  et choisir une scène d'attaque qui se joue dans l'arène.
+- **2e essai (2026-11-13)** : la demande remplie comme Create a Story (aux = l'arène du match, 6 rôles, catcheurs codés
+  par `sub_82A342B0(id, 0, 1)` : 512 donne 0xC800, l'interférant en rôle 0). La scène se charge plus loin
+  (`/ETEX/0200`, `/CUTR/MINI`, `/SOBJ/3574` et `/SOBJ/5002` trouvés, `/EVPU/4000`, `/EVZU/4000`), « scene script 4000 »,
+  passage à 30 i/s, le jeu dessine encore (32 images/s) mais l'**écran reste noir** (jeu arrêté). Hypothèse : une scène
+  de Create a Story a besoin de son propre lieu (coulisses : un autre plateau que l'arène du match) et de ses acteurs
+  chargés ; à voir avec Mods et un journal de la préparation de Create a Story (quel `/STG/` et quels modèles elle
+  charge). L'expérience reste coupée (cvars de dev à 0).
+- **3e essai (2026-11-13, scène 4315 de RSC3, celle de la mallette, sur le ring)** : même résultat. L'entrée est lue
+  (genre 1, aux 1, rôle 0 = 0x332E pour CM Punk 131, rôles 1-5 = 0xC800), tout se charge (`/EVPX/4315`, `/EVZX/4315`,
+  objets 2281, 2053, 5002), « scene script 4315 », puis écran noir. Ce n'est donc pas (seulement) le lieu. Pistes
+  restantes : (1) le joueur de scènes ne tourne peut-être qu'en mode Create a Story (`sub_8275A958` pose aussi l'objet
+  `sub_8267CF38()` +321..+325, +331 et vide +6200..+6600 ; Create a Story teste ctx+12460 == 4, l'Univers le met à 0) ;
+  (2) les rôles 1-5 vides alors que la scène en attend ; (3) le moment : le genre 1 est lu au tout début du match.
+  Prochaine étape conseillée : un journal de ces champs pendant une scène de Create a Story jouée normalement, à
+  comparer avec l'Univers. Expérience laissée coupée (cvars de dev).
+- **4e essai (2026-11-13)** : une scène de Create a Story jouée normalement lit sa table avec la préparation du match
+  (`sub_8267CF38()` = 0x8317C850) à +12456 = 2 et +12460 = 4 (puis 7 / 3 ensuite) ; l'Univers, lui, a 2 et 0 au même
+  moment. Notre scène imposée avec +12456 = 2 et +12460 = 4 (`wwe12_universe_scene_inject_mode`) est lue, la scène 4000
+  se charge (« scene script 4000 ») et le jeu ne fige plus, mais rien ne s'affiche (dit l'utilisateur) et **il enchaîne sur le calendrier de Create a Story**
+  (le mode reste celui de Create a Story pour la suite du flux). Il faut donc remettre le mode Univers plus tôt
+  (juste après le lancement de la scène, pas à la lecture suivante) ou repérer comment Create a Story revient à son menu.
+  Note : avec `wwe12_dir_log`, le journal tourne à 5 Mo (`*.1.log`, `*.2.log`).
+- **SvR 2011 (2026-11-13, corrigé : il a bien un Univers)** : ses scènes d'Univers sont dans `pac/evt/wunimot.pac`
+  (19 Mo), groupe **`UNVS`**, 134 entrées nommées `%04d` = chiffre de liste + numéro (0001-0020, 1007-1043, 2001-2035,
+  3001-3068, plus 9000 et 9100) : c'est exactement le format « UNVS/%1d%03d » encore présent dans l'exe de WWE '12,
+  dont le `wunimot.pac` est presque vide (groupe `UNIV` vide). WWE '12 a déplacé ses scènes dans `m.pac` UN00 (117
+  actes 32xxx = 32000 + liste × 100 + n, les listes décalées d'une unité). Contenants différents : SvR = PACH + BPE,
+  WWE '12 = « ZLIB » (zlib). Aucune scène identique octet pour octet ; à comparer une fois décompressées (même
+  contenu renuméroté ? lesquelles manquent dans WWE '12 ?). Si le contenu est le même format, des scènes de SvR 2011
+  absentes de WWE '12 pourraient devenir de nouveaux actes UN00 (copie servie de `m.pac`) + de nouvelles fiches WCID
+  (copie servie de `wuniData.pac`) : ce sont des scènes du système de WWE '12, donc sans le verrou des scènes EVP.
+- **Comparaison (2026-11-13)** : une scène SvR 2011 (`wunimot.pac` UNVS/NNNN) = PACH {0 : « YMKs » (le jeu de mouvements,
+  BPE en petit-boutiste : `yukes_bpe.expand(..., False)`, ≈ 64 Ko), 10 : « WCP » (192 octets, les réglages de la scène,
+  comme une fiche WCID)}. Un acte de WWE '12 (`m.pac` UN00) = « ZLIB » + zlib → un autre format de mouvements (os
+  nommés, « root »). Pas comparables tels quels : il faudrait convertir les mouvements YMK de SvR vers le format de
+  WWE '12 (le Mod Maker convertit déjà des prises de SvR) ; on ne sait donc pas encore lesquelles des 134 scènes de
+  SvR 2011 manquent dans les 117 de WWE '12.
+- **WWE '13 / 2K** : `pac/evt/Universe00-03.pac` (WWE '13, 19 Mo en tout), `Universe00-09.pac` (2K14 : 01-03 vus ; 2K15),
+  au format xcompressé EPK8 (signature 0F F5 12 ED, comme leurs Entrance / Winning) que le Mod Maker sait déjà ouvrir
+  (`entrance13.h`, `svrfmt/xcompress`). 2K16 / 2K17 : une scène par paquet (`pac/evt/NNNNN.pac`). Ce sont des scènes
+  EVP : pour les jouer dans l'Univers de WWE '12, il faut d'abord régler l'affichage des scènes EVP dans un match
+  d'Univers (les 4 essais ci-dessus).
+- **SvR 2011 contre WWE '12, scène par scène (2026-11-13, hors jeu)** : chaque scène UNVS de SvR porte dans sa banque
+  YMKs (id des pistes) son **numéro d'acte**, à la même règle que WWE '12 (UNVS 0001 = acte 32100). Comparaison par
+  acteurs (pistes 0-59 ; la caméra est 66 dans SvR, 60-62 dans WWE '12) et durée (2 × images à 30 Hz contre la
+  dernière clé YANM à 60 Hz, ±4) :
+  - **85 scènes identiques** (même acte, mêmes acteurs, même durée) : rien à gagner ;
+  - **13 actes changés** (même numéro, autre scène dans WWE '12) : 0001, 0008, 1043, 2007, 2009, 2011, 2029, 3001,
+    3009, 3027, 3030, 3039, 3042 ;
+  - **34 scènes absentes de WWE '12** (acte retiré) : 0010 (5 acteurs, 20 s) ; **1019-1042** (20 scènes de liste 1,
+    toutes de 10 s, 2 à 4 catcheurs) ; **2021-2035** (11 scènes courtes de liste 2, 3-7 s, 1 catcheur, parfois un objet
+    6) ; 3024 (4 catcheurs, 20 s), 3044 (4, 8 s), 3051 (2, 8 s). Aucune n'est un acte de WWE '12 renuméroté.
+  - WWE '12 a 30 actes que SvR n'a pas (32120-32127, 32200-32206, 32303-32304, 32407, 32421-32424, 32455-32468).
+  Donc jusqu'à **47 scènes de SvR 2011** à porter. Ce qu'elles montrent reste à voir (le joueur les reconnaîtra).
+  Pour en porter une : convertir sa banque YMKs en acte WWE '12 (en-tête + un bloc YANM par objet, caméra 66 → 60-62 ;
+  le Mod Maker le fait déjà pour les entrées SvR, `svr11_entrance.h` BodyBlock / CameraBlock), l'ajouter à une copie
+  servie de `m.pac` UN00 sous un numéro libre, et ajouter une fiche WCID (564 octets) faite d'après sa WCP (192 octets,
+  autre format) dans une copie servie de `wuniData.pac`. Outils : `svrscn.py`, `durs.py` (dossier temporaire de la
+  conversation, `yanm_decode.py` de Kaiko).
+- **Chargement des actes UN00 (étude du code, 2026-11-13, pas vérifié en jeu)** : `sub_826EDAF0` (et `sub_822B6A70`)
+  cherche « /ZMOT/UN00 » (chaîne 0x82005EE8, `sub_827D98D8`), crée un objet de lecture `sub_82486470(obj, gestionnaire
+  de mouvements = sub_8246DF00(*(0x8317B870)), allocateur sub_8267D450(), genre 1)` (vtable 0x820189C0) puis lance la
+  lecture (`sub_827DB078`). À la fin de la lecture, `sub_824868F8(obj)` parcourt l'arbre PACH et **inscrit chaque acte
+  dans le gestionnaire** : case `sub_8246E8C8(gest, n°, r20, r22)`, fiche `sub_8246E000(case, n°)`, puis
+  `sub_82486648(fiche, données décompressées, obj+48, obj+52)` (fiche +8 = données, +2 = nombre de blocs, +4 = table
+  tirée des blocs). Le jeu ne relit donc pas le PACH ensuite : une scène ajoutée doit être **inscrite** de la même
+  façon, juste après `sub_824868F8` (crochet), avec ses données dans la mémoire du jeu. Une demande d'acte :
+  `sub_8247AD50(modèle, acte, sous-acte, piste)` → `sub_8247A7E8` ; le mouvement est cherché par un appel virtuel
+  (+92) du gestionnaire (`sub_82475770`).
+- **Coût estimé pour une 1re scène SvR jouée** : inscrire un acte (crochet, 1-2 jours, à vérifier en échangeant
+  deux actes de WWE '12) ; convertir sa banque YMKs en acte (2-3 jours, d'après `svr11_entrance.h`) ; la fiche WCID qui
+  la fait jouer (1 jour). Pas faisable proprement avant le 2026-11-19 ; à reprendre après.
+- **Test du 2026-11-13 (`wwe12_universe_act_swap_from/_to`, journal du lecteur)** : le lecteur UN00 (genre 1) ne
+  charge **que les actes choisis pour le match** (5 vus : 32411, 32432, 32323, 32209, 32124), inscrits par
+  `sub_82486648(fiche, données décompressées)` ; les autres numéros n'existent pas dans le gestionnaire (d'où « act
+  32121 not found »). Donc pour jouer une scène à nous : remplacer, dans `sub_82486648`, les données d'un acte choisi
+  par les nôtres (en mémoire du jeu ; le jeu libère les siennes ensuite), ou faire choisir un numéro nouveau (fiche
+  WCID + lecture d'un PACH servi). Forme d'un acte : un enregistrement (en-tête 0x50 + 0x28 × blocs, genre +0x20 = 3
+  ou 149), un bloc par piste nommé `%04d%04d` (x, y) comme les entrées converties par `svr11_entrance.h` : y 0-59 = un
+  rôle (catcheur, bloc YANM « modèle » mode 2), 60 / 61 / 62 = caméra (2-3 pistes chacun). SvR 2011 a 60, 61 et 66 :
+  la correspondance caméra 62 ↔ 66 est à trouver. Les essais en jeu seront nombreux (chaque erreur de conversion se
+  voit seulement à l'écran).
+- **Scènes de SvR 2011 jouées dans WWE '12 (2026-11-13, vu en jeu par l'utilisateur)** : `wwe12_universe_more_scenes`
+  (coupé par défaut) + `wwe12_universe_more_scenes_chance` (%). Les scènes converties sont des fichiers
+  `<données>/universe_scenes/<acte>.bin` (enregistrement d'acte décompressé, fait par `tools/dev/svr_scene_convert.cpp`
+  avec `svr11_entrance.h` : corps BodyBlock sur le modèle de l'entrée 100 de Nyujyo0.pac, caméras CameraBlock
+  renommées « Camera<n> », caméra 66 de SvR → 62, caméras manquantes recopiées, en-tête de l'acte 32100). Quand le
+  lecteur UN00 inscrit un acte du jeu (`sub_82486648`), ses données sont remplacées au hasard par une scène à nous de la
+  même liste (centaine de l'acte) et **exactement les mêmes rôles** (blocs y < 60 ; les objets y ≥ 6 comptent).
+  34 scènes converties (sur 47 : 9 avec des objets pas gérés, 4 laissées car leur objet 6 serait pris pour un corps).
+  Test : l'acte 32456 a joué la scène SvR 32448, « c'était bien » ; dans un match TLC, les tables / échelles restaient
+  sur le ring et les catcheurs les traversaient un peu. Les données du jeu ne partent pas dans le zip : pour les
+  joueurs, la conversion devra se faire chez eux depuis leur SvR 2011 (Mod Maker), à faire.
+- **Plus de scènes, suite (2026-11-13, pas encore vu en jeu)** : (1) une scène ajoutée remplace aussi un acte du jeu qui a
+  des objets (y 6-59 : accessoires, arbitre…) : les blocs d'objets de l'acte du jeu sont ajoutés aux nôtres
+  (`WithGameObjects`), seuls les rôles 0-5 doivent être les mêmes ; (2) les 13 scènes SvR à objets sont converties sans
+  leurs objets (47 en tout) ; (3) **WWE '13** : `pac/evt/Universe00-03.pac` (xcompressés, `tools/dev/evt_dump.cpp`) =
+  **106 scènes** EVP + EVZ (5000-5022 attaques, 5200-5213, 5400-5415 managers / trahisons, 5600-5661 après-match,
+  chaises, ceintures, félicitations…), toutes **sur le ring ou autour**, avec des plans (blocs `%04d%04d` = plan × 5,
+  sous-caméra) : `tools/dev/w13_scene_convert.cpp` en fait des actes WWE '12 (personnages → rôles 0-5 dans l'ordre du
+  script, caméra 0-2 → 60-62, plans mis bout à bout : rotations gardées, positions refaites en absolu puis requantifiées,
+  jambes IK cuites ; objets, cordes, objet global et événements laissés, sauf la fin de caméra 254). 106 / 106
+  converties ; rangées par nom : félicitations / poignées de main / après-match → liste 3 (324xx), le reste → liste 0
+  (321xx) (à vérifier : quelle liste = quel moment). Fichiers de test : `Documents/wwe12_test/universe_scenes` (153,
+  28 Mo). 2K14-2K17 : pas encore regardés (formats proches pour 2K14 ; 2K15+ créneaux de 788 octets).
+- **Arrêt le 2026-11-13 (décision de l'utilisateur : « autant laisser le jeu comme il est »)** : tout reste coupé par
+  défaut (`wwe12_universe_more_scenes`, `wwe12_universe_always_scenes`, `wwe12_universe_more_scenes_only`) ; sans eux, le
+  jeu est celui de base. Dernier état : nos scènes sont bien inscrites (données décompressées pour `sub_82486648`, copies
+  emballées remplacées : « ZLIB » à blocs stockés pour la complète, BPE stocké pour la légère, mémoire du tas du jeu),
+  mais le jeu **saute** la cinématique (« CutScene Start » puis aucun « Act=… », match aussitôt) ; l'action a quand même
+  lieu (un catcheur au sol au début du match). La première « réussite » (acte 32456 → SvR 32448) n'en était pas une :
+  le jeu avait joué un autre acte (32464). Prochain essai prévu, pas fait : scènes témoins (`*_w12ref.bin` = actes de
+  WWE '12 eux-mêmes, `--wwe12_universe_more_scenes_only=w12ref`) dans un match de carte sans entrées (les matchs avec
+  entrées ne chargent aucune scène) : s'ils sautent aussi, c'est le chemin (copie légère / table de `sub_82486648` /
+  lecture à la demande), sinon la conversion. Une copie légère (« light », paire = BPE) est la même forme que la
+  complète avec des blocs réduits (32100 : 3904 contre 34240 octets).
+
+## 45. NXT, 4e show de la semaine (2026-11-13, `wwe12_universe_nxt`, coupé par défaut, pas fini)
+
+- Le jeu a un show 3 caché « NXT » (fiche U + 27360 + 3 × 984 : marques 0 et 1, logo 3, matchup 3, modèles de match
+  table 14 groupe 1 = vide). Mis un jour de semaine (U + 0xDE00), il a sa carte et son logo (vu en jeu).
+- Avec le réglage : NXT dans EDIT CALENDAR, SCHEDULE (Y) et MATCHES PER SHOW (clé 3 de universe_shows.txt).
+  Réglage coupé = exactement la 1.3.0 (les crochets passent la main au jeu).
+- Le booker : la fabrique `sub_826EB218` donne aux shows 3-9 le booker de RAW, qui a « show 0 » écrit en dur à deux
+  endroits : son constructeur `sub_826F1308(this, 0)` (titres du show) et sa carte `sub_826F1DA8` → `sub_826F1CF0(r6 = 0)`
+  → `sub_826F15E8(.., show, vue)`. Nos crochets donnent 3 aux deux pour le booker de NXT (repéré à sa création, le
+  même adresse est ensuite réutilisée par les autres bookers : remis à zéro à chaque création). La fiche de NXT reçoit
+  la marque `wwe12_universe_nxt_brand` (2 = NXT, 13 catcheurs dans la copie) et les modèles de match de RAW (table 14
+  vide : plantage vu, lecture d'un modèle NULL).
+- Reste faux : la carte prend toujours des paires de catcheurs RAW / SmackDown (marques 0 / 1). La fiche de NXT est
+  bien lue avec la marque 2 (sonde `sub_826CC0B8`, fiche 831C6410), mais le choix des catcheurs ne passe pas par elle :
+  à chercher dans les étapes des modèles (`sub_826DC758`, `sub_826EFF28` / `sub_826EFDA8`, filtres vtable 0x8203E3A0
+  marque +8 / 0x8203E3A8 show +8, `sub_829C9848` = poser le +8). Les journaux « NXT probe » / « NXT card » ne
+  tournent qu'avec le réglage.
+
+## 46. Étude « Univers ultime » (2026-11-13, lecture du code par 3 agents, rien d'essayé en jeu)
+
+**Booking d'un show** (sûr sauf mention) :
+- Job `sub_826EB510` : contexte de 45836 octets (`sub_826E1E30` : +0 libre / pris pour 373 catcheurs, +1492 classements
+  des titres 964 octets × titre, 30 × 32 octets, nombre à +960 ; +23664 2e jeu, sans doute équipes), une entrée de
+  travail de 48 octets par match (vtbl[4]), repos des catcheurs d'une carte des 7 derniers jours, matchs édités gardés
+  (booker +11132), puis la **table de règles 0x8203E680** (25 × {mode, règle par match, règle de carte}), validité
+  `sub_826EAAF8`. Fiches de 1320 octets à booker + 20 + i × 1320 (+0 type, +4 titre, places à +40 + k × 32).
+- Modèles MTDT : 17 tables « WMT » pointées en **0x83231590** (`sub_826D6800`), groupes de 508 octets, fiches de 84 :
+  +4 genre (titre par `sub_826EA830` ; **match de titre seulement pour les genres 9-15**, `sub_826EF8D8` : les shows de
+  la semaine n'en ont jamais), +8 catégorie, +12 format (1 simple, 4 équipes, 8 triple, 9 fatal 4, 13 six, 15 Rumble),
+  +20 dix créneaux {u8 code, u8, u16 param}. Tables 0-12 PPV, 13 semaine (32 × 4), 14 Superstars, 15 draft, 16 histoires.
+- Le groupe de la semaine **n'est pas tiré au hasard** : `sub_826CC020` fait +902 += 1 (les 32 cartes dans l'ordre).
+- Codes des créneaux : 0 champion / n-ième du classement, 1/2 vainqueur / perdant d'un match passé, 3/4 et 19/20 choix
+  par relation, 5 catcheur fixe, 7-14 rangs des titres, 15 vainqueur du Rumble (probable), 21/22 même / autre camp
+  (+29) à ±2 rangs au hasard, **23 adversaire mystère** (au hasard, pas de match depuis 28 jours, `sub_826EFDA8`),
+  24 distribution d'histoire. Filtres chaînés (`sub_826E19E0`), choix uniforme `sub_826E1D68`.
+- Stipulation : `sub_826DC758(cat, fmt)` ; cat 18-20 = au hasard dans la liste {pointeur, nombre} à 0x8203DC18 + fmt × 8 (simple : 0, 43, 49, 54,
+  55, 59, 60, 67, 68, 72) ; rand = `sub_827E0268`, jet en % = `sub_826D28D0`.
+
+**Rivalités, relations, scènes** :
+- Pas d'objet « rivalité » : une **histoire** (16 places, `sub_826CCFA8(vue, i)`) + les relations. Départ chaque jour
+  `sub_826C83D8` → `sub_826E9338` (au hasard parmi les possibles) → `sub_826E8010` ; suite après un match
+  `sub_826E8CC0` (issue 0-3, acte suivant, news, 6 effets : relation ±1, octet +29 du catcheur = 0/1 (probable :
+  gentil / méchant), former / casser une équipe) ; annulation `sub_826E8F60`.
+- Relations : 180 fiches de 40 octets (5 alliés, 5 rivaux), valeur −5..+5 (`sub_826CBCE8`), changée pas à pas par
+  `sub_826CD7F0` ; mise à jour hebdomadaire `sub_826C8690` (deltas des scènes jouées).
+- Fiche WCID (564 octets) : +2 n°, +166 priorité, +192 + 24 × r rôles (+6 points de classement, +8 + 2k relation),
+  +336 six conditions (`sub_826DA208`, codes 0-127), +408..+450 filtres de type de match (`sub_826CA5B8`), +456/+457
+  rôles du tirage, **+458..+461 chance en % selon (+29 de A, +29 de B)** (`sub_826CA4E8`), +464..+466 fiche de
+  remplacement, +468 acte. **Une scène par moment** (0 avant, 1 interférence, 2 juste après la cloche, 3/4 après ;
+  0 et 1 s'excluent) : 4 au plus par match. Choix : `sub_826C1578` (histoires d'abord, interférence, puis scènes au
+  hasard seulement si rien d'autre).
+
+**Scènes ajoutées sautées : cause trouvée** — le n° d'acte est écrit DANS les données (+0x4C, texte) et sert de clé
+à chaque bloc (`sub_82486648` → `sub_8246FC70`, recherche `sub_8246E900`) : nos données gardaient leur propre n°.
+Corrigé (d3dae20) : le n° de l'acte remplacé est écrit ; copie légère laissée au jeu (décompressée sans contrôle de
+taille, `sub_827E1428`). Pas encore revu en jeu.
+
+**Leviers repérés (du moins risqué au plus risqué)** : chance des scènes × k (`sub_826CA4E8`, < 100) ; groupe de la
+semaine au hasard (`sub_826CC020`) ; stipulations au hasard (après `sub_826DC758`, listes valides par format) ;
+surprises / retours (comme le code 23) ; prétendants inattendus (décaler le rang, `sub_826E1E60`) ; plus d'histoires
+en même temps (`sub_826C83D8`) ; retournements et trahisons après un match (+29, `sub_826CD7F0`) avec news ; 5 scènes
+par match (exclusion 0/1, `sub_826DBA10`) ; scènes dans plus de types de match (`sub_826CA5B8`, risque d'objets).
+
+**Fait (2026-11-13, pas encore vu en jeu) : « Univers imprévisible »** — ligne UNPREDICTABLE UNIVERSE / UNIVERS
+IMPRÉVISIBLE de UNIVERSE OPTIONS (`wwe12_universe_chaos` 0 = le jeu (défaut), 1 un peu, 2 beaucoup, 3 folie ; réglages
+fins `wwe12_universe_chaos_*`, -1 = celui du niveau). Chances par niveau (1 / 2 / 3) :
+- ordre des cartes au hasard 35 / 70 / 100 % (`sub_826CC020`, groupe +902 tiré, ni le suivant ni le dernier) ;
+- stipulation sur un match normal 10 / 20 / 35 % (après `sub_826DC758`, appel de `sub_826F15E8` seulement, pas pour
+  un match d'histoire ; listes du jeu par format) ;
+- prétendant inattendu 15 / 25 / 40 % par créneau de classement (`sub_826EF468` : param + 1..3, remis après) ;
+- adversaire mystère « ??? » 6 / 12 / 20 % des simples sans titre ni histoire (place +28 = 1 avant `sub_826EAEB0`) ;
+- retournement après un match 3 / 6 / 12 % (+29 inversé, valeur « gentil » = celle de John Cena ; news du jeu 9 Fan
+  Favorite / 8 « Why %s Why? », par `FlushNews`, chemin `kNativeEvent`) ;
+- trahison après un match par équipes perdu 10 / 20 / 35 % (relations −5 dans les deux sens, news 2 New Rivalry) ;
+- scènes du jeu × 1,5 / 2 / 3 (`sub_826CA4E8`, plafond 99) ;
+- 2e essai de départ d'histoire 15 / 30 / 50 % des jours (`sub_826C83D8`).
+Avec 0, rien ne change (vérifié dans le code : chaque crochet appelle l'original et ne fait rien si la chance est 0 ;
+scènes × 100 %).
+**À vérifier en jeu (niveau 3, une sauvegarde de test)** : MATCH CARDS de 2-3 semaines (stipulations, « ??? », ordre
+des cartes) ; news après une semaine simulée (retournements, nouvelles rivalités) ; un match joué (plus de scènes) ;
+journal : lignes « [univers] chaos: ». Doutes : sens exact de +29 (gentil / méchant : pris de Cena) ; types de news
+8 / 9 / 2 lus d'après l'ordre des textes ; le drapeau mystère sur un match déjà rempli (le jeu le pose d'ordinaire
+avec un catcheur tiré par le code 23).
+Relecture du code par un agent (2026-11-13), corrigée : copies des scènes ajoutées dans le tas système (le jeu ne les
+libère pas : réutilisables d'un match à l'autre ; des copies dans le tas du jeu auraient été libérées avec lui), plus
+de copie BPE ; fichiers de scène vérifiés au chargement ; prétendants seulement sur les créneaux de code 0 (un code 16
+modifié restait vide), sous verrou (modèle partagé) ; valeur « gentil » de Cena gardée de la 1re lecture ; RETOUR dans
+la liste des niveaux (4 lignes = 2 colonnes). Avec les réglages par défaut, aucun changement trouvé par la relecture.
+
+## 47. L'Univers de WWE '13 et des 2K (2026-11-13, lecture de leurs données et textes par 2 agents, rien en jeu)
+
+On ne lit pas le CODE de ces jeux (il faudrait les recompiler comme WWE '12) : seulement leurs fichiers, sur les disques
+du joueur. Sorties et scripts dans le dossier temporaire de la conversation (`w13study/`, `k2study/`).
+
+**WWE '13** (sûr pour les formats, petit-boutiste comme WWE '12) :
+- `wuniData.pac` (EPK8 xcompressé, groupe WWEU) : UWBL, MTDT, STYT, STRE ; plus de WCID.
+- **UWBL = WCID** : 171 fiches de 4628 octets dont les ~466 premiers octets ont la disposition de WCID (rôles +192,
+  conditions +336, chances +458, acte +468). 137 fiches = les mêmes (liste, n°) que WWE '12, mêmes chances, **seul
+  l'acte change : 32100 → scène EVP 5000, 32101 → 5001…** : les scènes de WWE '13 sont les **mêmes moments** que les
+  actes de WWE '12, refaits en EVP (correspondance exacte : `w13study/wcid_w12_vs_uwbl_w13.txt`). Listes : 0 = 5000-5022,
+  1 (interférence) = 5200-5213, 2 = 5400-5415, 3 (après) = 5600-5661. 34 fiches nouvelles, surtout vers des scènes WSD
+  4xxx (bibliothèque Create a Story de WWE '13, pas converties). Les 106 scènes converties sont maintenant nommées
+  d'après l'acte de WWE '12 qu'elles refont (fichiers de test `<acte>_w13_<scène>.bin`).
+- **MTDT** : même fiche de 84 octets, groupes de 10 places (844 octets) ; semaine 20 groupes × 5 matchs (80 fiches
+  nouvelles), PPV 3 × 7, 16 thèmes de PPV (tables 16-31) ; codes de place 25-42 nouveaux. +16 = en-tête de carte
+  (27139 + valeur) probable.
+- STYT : autre format (206 × 6584 octets), pas importable sans convertisseur.
+- Textes : pas de nouveau genre de news ; nouveautés : STORY OPTIONS (histoires par genre), CONTENDERSHIP par catcheur,
+  ALLIES / RIVALS (FEUD MANAGER), INJURIES, PPV personnalisés (thèmes INFERNO / ENDURANCE / OUTNUMBERED / BREAKING POINT,
+  co-organisation, jour de diffusion), choix pendant une scène (« Shake his hand / Turn on him »).
+
+**2K14-2K17** (textes, sûr ; ce que fait le moteur : deviné) :
+- 2K14 : créateur de rivalités (durée, PPV final), pages rivalités en cours / passées, STORY OPTIONS, édition des shows,
+  thèmes de PPV (King of the Ring…), en-têtes PRE-SHOW / HIGHLIGHT / RIVALRY MATCH, **~130 news de rivalité** (contre ~20).
+- 2K15 : Story Collection (~880 histoires), rivalités spéciales (Rumble, Streak, Survivor Series), relations niveau 1-5,
+  ~530 news.
+- 2K16 : effets de statut (HOT / COLD STREAK, MOMENTUM, CONQUEROR…), traits de personnalité, blessures par partie du
+  corps en 3 niveaux, news de blessure (champion / prétendant blessé, remplacé).
+- 2K17 (360) : EDIT RIVALRY, news de classement ; pas de promos sur 360.
+- Absent partout : notes / audiences des shows, budget, retraites.
+
+**Classement pour WWE '12 (intérêt / effort, deviné)** : 1) news de rivalité hebdomadaires (8-14 h) ; 2) clause de
+revanche et arc de titre (6-10 h) ; 3) retours surprise / débuts en « ??? » (6-10 h, s'appuie sur le mystère) ;
+4) en-têtes HIGHLIGHT / RIVALRY MATCH (RESERVE_03-06 libres, 3-6 h) ; 5) séries chaudes / froides (10-20 h) ;
+6) blessures graves avec semaines d'absence, champion blessé (15-25 h) ; 7) STORY OPTIONS (6-10 h) ; 8) thèmes de PPV
+(8-12 h) ; 9) cartes de la semaine de WWE '13 en données (4-6 h + Mod Maker) ; plus tard : créateur de rivalités
+(25-40 h), shows / rosters personnalisés (20 h+). Toute donnée d'un autre jeu doit être lue chez le joueur (Mod Maker).
+
+**Fait ensuite (2026-11-13, pas vu en jeu), avec l'Univers imprévisible dès « un peu » (réglages propres :
+`wwe12_universe_rivalry_news`, `_surprise_returns`, `_rematches`, `_rivalry_header`, -1 = suivre le niveau)** :
+- news de rivalité, une par semaine au plus : deux rivaux (niveau 2+, fiche de relations +20..+36) qui se sont
+  affrontés en simple depuis 28 jours (nouvelles lignes « vs a b gagnant jour » écrites après chaque simple) :
+  DOMINATION (3 victoires ou plus sans défaite), LA REVANCHE (le dernier vainqueur avait perdu la fois d'avant), sinon
+  LA GUERRE CONTINUE ;
+- retour surprise : un blessé guéri (Universe +92 bit 31 effacé d'un jour à l'autre) remplace un des deux catcheurs
+  d'un simple sans titre ni histoire de la prochaine carte de son show, caché en « ??? » ; news RETOUR SURPRISE quand
+  le match est joué (28 jours pour trouver sa place) ;
+- clause de revanche : un titre simple perdu depuis 21 jours au plus (lignes « title ») : l'ancien champion affronte
+  le nouveau pour le titre sur la prochaine carte du show (un simple sans titre ni histoire repris), news CLAUSE DE
+  REVANCHE, une fois (ligne « rematch titre ancien jour ») ;
+- MATCH DE RIVALITÉ : en-tête de MATCH CARDS pour un simple entre rivaux (niveau 2+).
+Relecture par un agent, corrigée : pas de « ??? » ajouté sur un match de revanche ou de retour ; lignes « vs »
+écrites seulement si les news de rivalité sont actives (réglages coupés = rien d'écrit) ; MATCH DE RIVALITÉ seulement
+à la place de MATCH #n / MAIN EVENT (entrée +6 1-9) et jamais sur un adversaire caché ; état oublié quand une autre
+sauvegarde est chargée (jour qui recule ou saute de plus d'une semaine) ; une news de rivalité par rencontre (paire vue
+cette semaine) ; pas de revanche sans fin (titre repris dans une revanche) ; news de retour quel que soit le résultat.
+Les news de rivalité et les retours demandent `wwe12_universe_more_news` (actif par défaut).
+
+**Test du 2026-11-13 au niveau « folie » (journal + captures de l'utilisateur)** : stipulations, ordre des cartes,
+« ??? », prétendants, 2e histoire, news de rivalité : vus dans le journal, sans plantage. **Une scène ajoutée a
+vraiment joué** (Act=32119 = WWE '13 5002 ; une 2e avec Undertaker), mais corps mal placés (Christian enfoncé dans le
+ring, Undertaker qui flotte) : **l'ordre des personnages du script de WWE '13 n'est pas celui des rôles de WWE '12**
+(5633 : nos rôles 0 / 1 = les 1 / 0 de l'acte 32432). Corrigé dans les fichiers de test en comparant la position de
+départ de « Bip » de chaque rôle avec l'acte de WWE '12 que la scène refait (`reorder_roles.py`, dossier temporaire ;
+49 scènes remises dans l'ordre, 54 déjà bonnes, 3 sans acte) ; à faire aussi dans le futur convertisseur du Mod Maker.
+SmackDown à 2 matchs : deux créneaux de classement poussés sur le même rang (même catcheur deux fois, match jeté) :
+corrigé (un créneau au plus, rang existant et libre, 052a38f).
+Revu en jeu après la remise en ordre : catcheurs debout et bien orientés, mais **décalés** (WWE '13 5012, qui refait
+l'acte 32115, jouée à la place de 32102 : Morrison frappe dans le vide loin de The Miz) : le jeu place les catcheurs au
+départ de l'acte qu'il a choisi. Désormais une scène ajoutée ne remplace **que l'acte qu'elle refait** (numéro du
+fichier) ; `wwe12_universe_more_scenes_any_act` (dev) rend l'ancienne façon. Conséquence : les scènes SvR 2011
+absentes de WWE '12 (sans acte équivalent) ne passent plus ; les scènes de WWE '13 (106, toutes des remakes) et les 13
+SvR « changées » (même numéro) restent.
+
+## 48. Tournoi pour un titre vacant, booking, type d'intervention (2026-11-13, pas encore vus en jeu)
+
+Avec l'Univers imprévisible (dès « un peu ») ou leurs réglages (`wwe12_universe_tournaments`,
+`wwe12_universe_chaos_rivals`, `wwe12_universe_interference_choice`, -1 = suivre le niveau) :
+- **Tournoi** : TITLE MANAGEMENT > X VACATE TITLE marche pour un titre simple d'un show s'il y a 4 prétendants libres
+  (classement du titre, `sub_826D2508`) ; la place 0 qui devient « personne » (`sub_82A3A060`) lance le tournoi :
+  demi-finales 1 c. 4 et 2 c. 3 sur la prochaine carte du show (en-tête TOURNOI : DEMI-FINALE), puis finale = match du
+  titre ; news TOURNOI ANNONCÉ / FINALE DU TOURNOI. Pendant ce temps : la place « champion » des modèles (code 0,
+  param 1) prend le 1er rang libre (dans le classement), les matchs de titre du jeu pour ce titre ne sont plus des
+  matchs de titre. Abandonné après 42 jours : nouveau tournoi, ou le 1er du classement couronné (jamais vacant pour
+  de bon). Lignes « tourney titre jour a b c d », « tourneysf titre jour vainqueur ».
+- **Booking** : un simple sans titre ni histoire peut devenir un match entre rivaux (un rival libre du même show et du
+  même genre, le plus fort d'abord, 30 / 50 / 70 %) ; un show ne remet pas le même simple que sur sa carte précédente
+  (sauf rivaux : un autre catcheur libre du show et du genre au hasard).
+- **Type d'intervention** : après OUI à « intervenir ? » (boîte oui / non du jeu, texte 27916), la même boîte demande
+  « Attaquer les deux adversaires ? » (OUI = genre 0) sinon « Aider ton allié ? » (OUI = genre 2, NON = genre 1,
+  distraire l'arbitre) ; le genre est imposé dans `sub_826BCD40` par ses deux lectures de relation (`sub_826CBCE8`),
+  seulement pour l'intervenant choisi (mgr +5056) ; le jeu joue ses propres scènes et son comportement. Embuscade seule
+  / attaque seulement après le match : pas faites (il faudrait couper l'intervenant pendant le match, inconnu).
+Relu par un agent ; corrections faites (vacant jamais pour de bon, place « champion » bornée, genre d'intervention
+lié à l'intervenant, pas de question répétée, rotation des paires par jour de carte).
+Test du 2026-11-13 (niveau « beaucoup ») : UNIVERSE OPTIONS à 6 lignes s'affichait sur 2 colonnes qui se
+chevauchent : remis à 5 lignes (RETOUR retiré, B revient). Le titre WWE rendu vacant : **le jeu vide le classement
+du titre avec le champion**, le tournoi n'a trouvé personne (« 0 free contenders ») et RAW est resté avec un titre
+vacant (1 seul match). Corrigé : les 4 têtes de série sont prises juste avant (`sub_82A3A060`, place 0 → personne,
+tous les chemins : X VACATE TITLE et le vidage de TITLE MANAGEMENT `sub_82564DD0`) ; sans 4 prétendants, le titre
+n'est pas rendu vacant. Reste : pendant le tournoi, le classement vide du titre laisse sans catcheur la place
+« champion » des modèles (le match peut sauter).
+2e test : **tournoi vu de bout en bout** (titre WWE vacant, demi-finales 322 c. 102 et 139 c. 53, finale 139 c. 102,
+102 champion au jour 77). Retouches : en-têtes des matchs placés (MATCH #n, finale MAIN EVENT : la finale gardait
+« #1 CONTENDER'S MATCH » du match repris), l'ancien champion n'est plus tête de série ; la boîte à choix en 2 colonnes
+(notre `PlaceManyChoices`) réduit son texte quand les lignes sont longues (UNIVERSE OPTIONS se chevauchait encore).
+**Titre vacant au choix (2026-11-13, demande de l'utilisateur : « pas obligé de faire un tournoi, comme dans les 2K »)** :
+avec l'Univers imprévisible, VACATE TITLE marche pour un titre simple d'un show (même sans 4 prétendants) ; au retour
+sur le menu de l'Univers (fin de TITLE MANAGEMENT), la boîte demande « Le titre est vacant. Comment désigner le
+prochain champion ? » : TOURNOI À 4 ou LAISSER VACANT (moins de 4 prétendants : vacant, message). Vacant : le titre
+se gagne dans un match de titre (PPV) ou se redonne dans EDIT TITLES ; les matchs de titre du jeu ne sont retirés
+que pendant un tournoi ouvert. Tournoi abandonné (42 jours) : un nouveau si 4 sont libres, sinon « tourneyend » et le
+titre reste vacant.
+
+**Défauts 1.4 (2026-11-17, décision de l'utilisateur)** : news de rivalité, retours surprise et clause de revanche actifs dans le jeu de base (`wwe12_universe_rivalry_news`, `_surprise_returns`, `_rematches` = 1), sans l'Univers imprévisible ; le reste (en-tête RIVALRY MATCH, titre vacant / tournoi, choix de l'interférence, booking) suit toujours son niveau.

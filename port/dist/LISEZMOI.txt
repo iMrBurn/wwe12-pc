@@ -4,6 +4,10 @@ WWE '12 PC - portage natif non officiel
 Ce portage fait tourner WWE '12 (Xbox 360) nativement sur PC. Il ne contient AUCUNE donnée du
 jeu : il vous faut votre propre copie du jeu Xbox 360.
 
+« Natif » ici : le code du jeu est recompilé statiquement et l'image est dessinée par un moteur Vulkan /
+DirectX 12 / DirectX 11 natif, mais le rendu suit toujours le modèle de la puce graphique de la Xbox 360
+(Xenos) : la couche graphique du jeu écrit encore des commandes Xbox 360 que le moteur traduit.
+
 Mode d'emploi dans d'autres langues : README.txt (English), LIESMICH.txt (Deutsch),
 LEEME.txt (español), LEGGIMI.txt (italiano).
 

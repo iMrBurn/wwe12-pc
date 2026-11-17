@@ -2,7 +2,16 @@
 
 Résumé de l'état actuel. Les sections « 1.3 » (2026-11-10 / 11) sont les plus récentes et priment sur les anciennes.
 Docs liés : prises ajoutées `docs/prises_svr11.md`, prises / entrées / musiques des autres jeux `docs/plan_movesets.md`,
-SvR 2007-2010 `docs/plan_svr_anciens.md`.
+SvR 2007-2010 `docs/plan_svr_anciens.md`, limites du nombre de mods `docs/mod_maker_limites.md`.
+
+**Nouveautés du 2026-11-17 (après le zip 1.4.0, commits locaux ; page AIDE à jour)** :
+- Catcheurs ajoutés : jusqu'à 190, tous à l'écran de choix (lignes de remplissage dans la liste du pack ; places 231 et
+  289 exclues) - `docs/mod_maker_limites.md`. Entrées tag team : 43 places (757-769 puis 770-799).
+- Créer une entrée : les entrées des mods ne sont plus dans la liste MUSIC (muettes, retour de Jay).
+- MOVES & ENTRANCES : bouton « Mettre sa musique seule dans le dossier music » (.wav, USER PLAYLIST).
+- VIDÉOS : ruban et mur pour une nouvelle vidéo, et « Celui d'un catcheur du jeu » dans les deux modes (Max Matus).
+- Objets des entrées SvR apportés et convertis (modèle, shaders, mouvement à os) : tunnel de MVP SvR 2008, micro de
+  Kennedy SvR 2010 ; restes listés au § des entrées (caisses noires, rideau immobile par choix, pas de flammes 2008).
 
 ## 1. Principe, crédits, programmes
 
@@ -109,6 +118,12 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   (`MountAddedVideos`) : numéro libre pris de 899 vers le bas, gardé dans `added_videos.txt`, servi depuis
   `added_videos\movies\titantron\NNN.bik`, ajouté à la liste MOVIE (remplie par `sub_829F9F90`, genre 0). Corrigé : un
   catcheur ajouté y était sous le numéro de son entrée (Jey Uso 498), maintenant sous celui de sa vidéo (104).
+  **Ruban et mur d'une nouvelle vidéo (2026-11-17, suggestion de Max Matus sur Discord, vu hors jeu seulement)** :
+  `media/screens/ribbon_add.bik` / `wall_add.bik` dans le mod ; le jeu les sert sous le numéro donné à la vidéo
+  (`Wwe12AddedVideoNumber`, même boucle que `ribbon_NNN.bik`) ; `added_videos.txt` ajouté à la clé du cache des
+  entrées. Choix « Celui d'un catcheur du jeu » (ruban / mur de `evtmov.pac` MVSB / MVSW, ex. le mur de Natalya)
+  dans les deux modes de la page (`screens_ui::ScreenChoice::SetGameStars`, lus une fois : `LoadGameScreens`).
+  Pas encore vu : qu'une entrée créée avec cette vidéo montre bien son ruban et son mur en match.
 - **Vidéos des autres jeux** : SvR (Bink 1) copiées ; WWE '13 / 2K par notre lecteur Bink 2 (`docs/plan_movesets.md`),
   RAD Video Tools (`radvideo64.exe BinkConv`, bureau Windows caché) ou ffmpeg de Librempeg en secours, jamais la DLL
   d'un jeu. 2K15-2K17 : une image 16:9 écrasée dans 320 × 320 → convertie en 512 × 288 ; 2K17 minitron `pac\mov\ss_mini`.
@@ -237,6 +252,11 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   0x12345678 (`svrfmt::ShdcHashFor`).
 
 ### Tenues
+- **Modèles à part (2026-11-12, vus bons)** : coudières (0x1a / 0x1b) gardées sur leur propre squelette, sur le modèle
+  de la base de même numéro (`port13_star.h`) ; ceux de la base que la tenue n'a pas rendus invisibles
+  (`port_svr::HideBaseExtras`, The Rock de WWE '12 sous Roman 2K17) ; l'aperçu 3D les pose sur les os du bras
+  (`arena_view::OnBody`). Lumières 21000+ de WWE '13 (veste de Jericho) ajoutées au modèle des cils, fixes. Aide de
+  test : `WWE12_MM_KIDS=<titre hex>,<pac>|*,<rapport>` (enfants de chaque tenue).
 - Mod `type=attire` : `attire/attire.pac` + `superstar=NNN`, `attire=000NNNAK` ; mis dans le pack (son annuaire passe
   avant le disque ; vu en jeu). Plusieurs mods sur un catcheur vont ensemble.
 - **Ajouter une tenue (4 au plus)** : « En nouvelle tenue (tenue N, garde l'originale) » ; nombre de tenues relevé dans
@@ -285,6 +305,74 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   sous ce numéro et l'ajoute sous son nom aux listes de Créer une entrée ; aucun catcheur modifié. Aide de test :
   `WWE12_MM_PAGE=6 WWE12_MM_MOVES=139,4 WWE12_MM_ADDENT=<titre hex>,<n°>,<rapport>` (2K14 668, SvR 2011 139, SvR 2008
   4012 : convertis en 497).
+  Listes de Créer une entrée (journal `wwe12_entrance_list_log`, 2026-11-15) : sorte 0 vidéos, 1 musiques (plus aucune entrée de mod depuis le 2026-11-17 : muettes en CAE, retour de Jay ;
+  un thème ajouté est dans la musique du pack DLC, joué pour son catcheur seulement ; en CAE : dossier `music`,
+  USER PLAYLIST), 2 entrées
+  seules (139…), 16 entrées seules + champion (600-618 puis les 139…), 17 multi-champion (600-614), **3 entrées tag
+  team (700-756)**. Le crochet n'ajoute les entrées des mods qu'aux listes qui ont 139 ou 602 : une entrée tag team
+  portée (Enzo & Cass, retour de Jay) arrivait donc en solo. **Corrigé (2026-11-15, pas encore vu en jeu)** : une
+  entrée 700-769 de WWE '13 / 2K (`star_port::TagEntrance` ; 770-799 = trios, laissés en solo) est servie sous un
+  numéro libre de 757 à 769 (Nyujyo9) et le crochet la met seulement dans la liste tag team (celle qui a des 700-769).
+  Les entrées d'équipe faites avant sont à refaire. **Vu en jeu le 2026-11-15** (Enzo & Cass 2K17, servie en 769) :
+  dans la liste tag team et les deux entrent en match ; l'aperçu de Créer une entrée ne montre que le catcheur modifié
+  (celui de Hardy Boyz montre aussi le partenaire ; objets 0 et 4 pourtant comme WWE '12 : laissé). Le micro d'Enzo est
+  un objet 2K17 que WWE '12 ne lit pas : caché par `HideMissing` (même cause que les micros / tunnel du retour de Jay).
+  **Suite (2026-11-15, vu en jeu)** : partenaire visible dans l'aperçu (ses cases = celles de l'objet 0, comme
+  Legion_of_Doom ; `People12` lui donnait la place d'un figurant d'entrée solo, case 0 éteinte). Micros 2K16 / 2K17
+  (`pac/prop/NNNN.pac`, HSPC → SHDC {0 JBOY, 10, 200, 2000}) faits SOBJ 9000 + NNN (`entrance13::Props2K`) : visibles
+  en main, mais **à l'envers et mal placés**. Constats : le modèle 159 de 2K17 a le même repère que le micro tenu de
+  WWE '12 (3038, R_Truth__Classic, parent objet 0, mêmes mots de case) ; les deux ont une piste YANM v4 mode 0 à 3
+  canaux (25012 / 25016-17). La différence est donc dans les valeurs de la piste (repère de la main 2K ≠ WWE '12 ?) :
+  à comparer canal par canal. 2755 (dans beaucoup d'entrées 2K17) : pas dans `pac/prop`, inconnu.
+  **Objets des entrées SvR (2026-11-17, retour de Jay, vu hors jeu)** : les SOBJ de SvR 2008-2011 sont du même format
+  (JBOY + images) et leurs numéros sont les mêmes objets que WWE '12 : ceux que WWE '12 n'a pas sont pris de
+  `pac/evt/_EvtObj.pac` (2008-2010) / `evtobj.pac` (`entrance13::Objects`, appelé aussi pour SvR par `star_port` et
+  `entrance_add`) au lieu d'être cachés. Tunnel de MVP SvR 2008 (4035) : 2116 apporté. Micro de Mr. Kennedy SvR 2010
+  (162) : 2048 existe dans WWE '12 (mêmes images), aucune entrée de WWE '12 ne l'a (pas de donneur), il garde sa piste
+  SvR convertie (un seul segment, 20, sans parent) ; ce qui cloche en jeu reste à voir.
+  Modèles SvR : 180 o par maillage et 10 cm par unité → `port_svr_arena::detail::SvrToW12` + `Scale` x 10
+  (`star_port::SvrPropsTo12`, f34ec91) ; brut, le tunnel de MVP faisait planter le jeu à sa lecture. **Vu en jeu le
+  2026-11-17 (aperçu de Créer une entrée)** : plus de plantage, mais le tunnel de MVP ne se voit pas, et le micro de
+  Kennedy est mal placé (son fil passe derrière lui) ; Kennedy ne « parle » pas comme dans SvR 2010 (voix / visage).
+  **Cause trouvée (même jour)** : un objet qu'aucune entrée de WWE '12 ne tient prend l'enregistrement de la base à
+  son index (une corde, type 119, pour le tunnel et le micro) et ses pistes (`RopeBlock` ne lit que des poses de 5
+  octets) : il est posé comme la corde (base 284,98 / y / z, la même pour les deux). Or SvR anime ces objets avec leurs
+  propres os, comme un corps : tunnel de MVP = racine (0x75) + os 1-5 (0x7B), 61 enregistrements (outil de l'étude :
+  `svr_old_entrance::Convert` puis `ReadBank` / `Records` / `SplitRecord` sur l'objet 16). **Désactivé en attendant**
+  (`star_port::kSvrProps = false`) : ces objets sont de nouveau cachés ; conversion des modèles prête
+  (`SvrPropsTo12`). À faire en janvier : convertir ces pistes à os (racine + os vers les nœuds du JBOY de l'objet,
+  comme `BodyBlock` pour un corps) ; Kennedy qui « parle » : voix / visage de SvR 2010, pas étudié.
+  **Convertisseur fait (même jour, vu hors jeu)** : `svr11_entrance::detail::PropBlock` (format ci-dessus : 0x75 racine
+  + masque + rotations, 0x7E / 0x7F racine, 0x7B ref = décalage de boneNN, 0x00-0x18 un os) → pistes « base » + une par
+  nœud boneNN (rot16, échelle, pos16 = place du nœud + décalage ; 0,1 cm), branché dans `Convert` pour un objet sans
+  donneur dont on a les nœuds (`svr_scenes::detail::PropNodesOf` : modèle de WWE '12 s'il l'a, sinon celui du jeu SvR
+  x 10) ; `kSvrPropMotion` (= `star_port::kSvrProps`) le coupe. Hors jeu : tunnel de MVP base (0 ; 117,8 ; 2881,8) cm,
+  ses moitiés bone02 / bone03 en miroir ; micro de Kennedy (2048, 10 os en chaîne vers -y) base de y -785,8 à -158 :
+  hauteur peut-être à inverser (le micro descend du plafond dans SvR 2010), à voir en jeu.
+  **Essais en jeu du 2026-11-17 (après-midi)** : le micro de Kennedy descend du plafond près de son visage (un peu
+  haut ; son visage ne bouge pas quand il parle : animation du visage de SvR 2010 pas reprise). Tunnel de MVP, ce qui a
+  marché : place lue telle quelle (comme les objets de scène de WWE '12, y 118-120 / z 2700-2800 ; l'inverser était
+  faux, revert) ; shaders convertis comme pour les arènes (yReflect → yDefault, yBumpMap → BumpToBg puis
+  yProp_BumpMap) : l'arche et le rideau se voient ; 0x7b = rotation en 1/4096 de tour (x 16), y et z inversés (modèle
+  compté vers le bas) : le rideau s'ouvre quand il passe. Restes : après son passage le rideau reste ouvert en V en bas
+  (les deux pans tournent en sens opposés ; les mettre en miroir était pire, revert) ; caisses noires (yProp_BumpMap
+  comme yBG_BumpMap ; yDefault fait planter les modèles à tangentes) ; pas de flammes (effets de SvR 2008, autre
+  format, pas lus). Le « montrer » (180 01) ajouté au début d'un objet qui n'en a pas reste (sans effet nuisible).
+  **Choix de l'utilisateur (même soir)** : rideau immobile et plat plutôt que des pans qui se lèvent (`kPropFlaps =
+  false` dans `PropBlock` : les 0x7b ne sont plus lus ; les remettre = reprendre l'étude des pans, peut-être pas en
+  rotation x 16, ni en miroir). Caisses : le format de sommets 2 n'a rien changé (revert).
+  Essais en jeu du 2026-11-15 (entrée Enzo & Cass, aperçu ; fichiers modifiés à la main, Mod Maker inchangé), **aucun
+  bon** : piste « root » (hachage 0E5BF7F4) retirée ; modèle retourné Ry(180) ou Rz(180) ; « root » conjuguée ;
+  « base » mise à Ry(180) comme R-Truth (avec 159 et avec 3038) ; angles des clés 0x0004 relus dans l'ordre X-Y-Z.
+  Les squelettes de 2K17 (ch575) et de WWE '12 (ch139) ont la même main (Bip R Hand, mêmes os). Pistes restantes :
+  ce que fait le jeu des clés 0x0004 (cubiques, 20 octets, tangentes non converties) et de la piste « base » quand
+  l'objet a un parent (mot 52) — à lire dans le code du jeu ; ou des captures RenderDoc de la matrice du micro.
+  **Réglé ensuite le même jour (vu en jeu, « on va dire que c'est bon »)**, `detail::TurnMic` / `detail::MicTracks`,
+  micros 142 et 159 seulement (les autres objets 2K sous 1000 restent cachés) : modèle tourné d'un demi-tour autour de
+  y (x, z négatifs) et glissé de 3 cm en x ; clés de rotation de « base » × Rx(π) ; décalage de « root » remplacé par
+  celui de WWE '12 : (10,0 ; 1,09 ; -4,8) pour la main d'Enzo (R[2][2] de la rotation de « root » < 0), (8,3 ; 1,09 ;
+  -0,4) pour l'autre (Cass) ; rotation de « root » gardée. Réglé à l'œil sur l'aperçu (début de l'entrée) : quand la
+  rotation de « root » change de main plus tard (Enzo, image 622 du segment 15), non vérifié.
 - **Visages animés (1.3, 2026-11-11, pas encore vu en jeu)** : `face12.h` (via `star_port`, entrée, entrée de champion,
   victoire, tous jeux) : les 34 pistes du visage d'une entrée de WWE '12 (base, sinon Cena 139) copiées octet pour octet
   dans chaque segment du catcheur (`xxxx0000`) qui n'en a pas, coupées à sa durée (61 → 95 pistes sur 2K14).

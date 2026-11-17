@@ -4,6 +4,11 @@ WWE '12 PC - unofficial native port
 This port runs WWE '12 (Xbox 360) natively on PC. It contains NO game data: you need your own
 copy of the Xbox 360 game.
 
+"Native" here: the game's code is statically recompiled and the picture is drawn by a native Vulkan /
+DirectX 12 / DirectX 11 renderer, but the rendering backend still follows the Xbox 360 GPU (Xenos)
+command model (the game's own graphics layer still writes Xbox 360 command packets that the renderer
+translates).
+
 Readme in other languages: LISEZMOI.txt (français), LIESMICH.txt (Deutsch), LEEME.txt (español),
 LEGGIMI.txt (italiano).
 

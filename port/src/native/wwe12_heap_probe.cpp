@@ -31,6 +31,10 @@
 
 REXCVAR_DEFINE_BOOL(wwe12_heap_probe, true, "WWE12",
                     "Log the game's own allocations that fail (its heaps full), once per caller and size.");
+// (1.4, how many added superstars fit: the highest place each heap's blocks have reached, logged each time it rises by
+// another MB - "[heaps] heap 12 reached 31 MB of 34 MB (91 %)" -, for the tests with many added superstars)
+REXCVAR_DEFINE_BOOL(wwe12_heap_watermark, false, "WWE12",
+                    "Log how high each of the game's heaps has been filled (each new MB), for tests with many mods.");
 
 REX_EXTERN(__imp__sub_827D2548);
 REX_EXTERN(__imp__sub_827D3600);
@@ -71,6 +75,38 @@ void LogFailure(PPCContext &ctx, uint8_t *base, uint32_t which, uint32_t size, u
   }
 }
 
+// Per heap: the lowest start and the highest end of the blocks given out (from the heap's start; a heap may fill from
+// either end), and the span last logged, in MB.
+uint32_t g_low[64], g_high[64] = {}, g_span_logged[64] = {};
+bool g_low_set = false;
+
+void Watermark(PPCContext &ctx, uint8_t *base, uint32_t ptr, uint32_t size) {
+  PPCContext x = ctx;
+  __imp__sub_827D1F18(x, base);
+  const uint32_t heap = x.r3.u32, table = bd::mem::load<uint32_t>(kHeapTable);
+  if (heap >= 64 || !table)
+    return;
+  const uint32_t start = bd::mem::load<uint32_t>(table + heap * 36), end = bd::mem::load<uint32_t>(table + heap * 36 + 4);
+  if (ptr < start || ptr >= end || end <= start)
+    return;
+  std::lock_guard lock(g_mutex);
+  if (!g_low_set) {
+    std::fill(std::begin(g_low), std::end(g_low), 0xFFFFFFFFu);
+    g_low_set = true;
+  }
+  const uint32_t lo = ptr - start, hi = std::min(ptr + size, end) - start;
+  if (lo >= g_low[heap] && hi <= g_high[heap])
+    return;
+  g_low[heap] = std::min(g_low[heap], lo);
+  g_high[heap] = std::max(g_high[heap], hi);
+  const uint32_t mb = (g_high[heap] - g_low[heap]) >> 20;
+  if (mb + 1 <= g_span_logged[heap])
+    return;
+  g_span_logged[heap] = mb + 1;
+  REXLOG_INFO("[heaps] heap {}: blocks from {} KB to {} KB of its {} KB ({} % used at most)", heap, g_low[heap] / 1024,
+              g_high[heap] / 1024, (end - start) / 1024, uint64_t(g_high[heap] - g_low[heap]) * 100 / (end - start));
+}
+
 }  // namespace
 
 extern "C" REX_FUNC(sub_827D2548) {
@@ -78,6 +114,8 @@ extern "C" REX_FUNC(sub_827D2548) {
   __imp__sub_827D2548(ctx, base);
   if (ctx.r3.u32 == 0 && size && REXCVAR_GET(wwe12_heap_probe))
     LogFailure(ctx, base, 1, size, arg, caller);
+  else if (ctx.r3.u32 && REXCVAR_GET(wwe12_heap_watermark))
+    Watermark(ctx, base, ctx.r3.u32, size);
 }
 
 extern "C" REX_FUNC(sub_827D3600) {
@@ -86,6 +124,8 @@ extern "C" REX_FUNC(sub_827D3600) {
   // (its own inner tries, from 827D37DC inside it, fail in every match, the game's too, and are taken care of by it)
   if (ctx.r3.u32 == 0 && size && REXCVAR_GET(wwe12_heap_probe) && !(caller >= 0x827D3600 && caller < 0x827D3900))
     LogFailure(ctx, base, 2, size, arg, caller);
+  else if (ctx.r3.u32 && REXCVAR_GET(wwe12_heap_watermark))
+    Watermark(ctx, base, ctx.r3.u32, size);
 }
 
 // The heaps' sizes: sub_8269F140 / sub_8269F680 make them from the table at 0x83073260, 45 x {heap, KB} (heap 12 =

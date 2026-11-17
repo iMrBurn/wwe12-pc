@@ -30,6 +30,7 @@ class ScreenChoice {
   // preview of choice 0.
   void Reset(Bytes game = {}) {
     pick_ = 0;
+    star_pick_ = -1;
     versions_.clear();
     version_ = 0;
     picture_.clear();
@@ -52,7 +53,10 @@ class ScreenChoice {
     if (pick)
       pick_ = 1;
   }
-  bool Changed() const { return pick_ != 0; }
+  // The game's superstars that have one (their name, their movie as the game has it: Bink 1, kept by the caller):
+  // choice 3, "a game superstar's" (Max Matus on Discord, 2026-11-17: Natalya's wall for a Hart Dynasty video).
+  void SetGameStars(std::vector<std::pair<std::string, const Bytes *>> stars) { stars_ = std::move(stars); }
+  bool Changed() const { return pick_ == 3 ? star_pick_ >= 0 : pick_ != 0; }
 
   // The radio buttons, the version / picture, and the preview. zero: the label of choice 0 ("The arena's", "The
   // game's").
@@ -79,6 +83,22 @@ class ScreenChoice {
       if (picture_.empty())
         picture_ = Pick(fr);
     }
+    if (!stars_.empty()) {
+      ImGui::SameLine();
+      if (ImGui::RadioButton(fr ? "Celui d'un catcheur du jeu" : "A game superstar's", pick_ == 3))
+        pick_ = 3;
+    }
+    if (pick_ == 3) {
+      ImGui::SetNextItemWidth(260);
+      const char *now = star_pick_ >= 0 && size_t(star_pick_) < stars_.size() ? stars_[size_t(star_pick_)].first.c_str()
+                                                                              : (fr ? "Choisir..." : "Choose...");
+      if (ImGui::BeginCombo(fr ? "Catcheur##screen_star" : "Superstar##screen_star", now, ImGuiComboFlags_HeightLarge)) {
+        for (size_t i = 0; i < stars_.size(); ++i)
+          if (ImGui::Selectable(stars_[i].first.c_str(), int(i) == star_pick_))
+            star_pick_ = int(i);
+        ImGui::EndCombo();
+      }
+    }
     if (pick_ == 1 && versions_.size() > 1) {
       ImGui::SetNextItemWidth(260);
       if (ImGui::BeginCombo("Version", versions_[size_t(version_)].label.c_str(), ImGuiComboFlags_HeightLarge)) {
@@ -99,14 +119,17 @@ class ScreenChoice {
                                                  : reinterpret_cast<const char *>(picture_.filename().u8string().c_str()));
     }
     // the preview, made again when the choice changes
-    const std::string of = std::to_string(pick_) + "|" + std::to_string(version_) + "|" + pathutil::Utf8(picture_);
+    const std::string of = std::to_string(pick_) + "|" + std::to_string(version_) + "|" + std::to_string(star_pick_) +
+                           "|" + pathutil::Utf8(picture_);
     if (of != preview_of_) {
       preview_of_ = of;
       preview_.Reset();
       std::vector<uint8_t> px;
       const Bytes none;
       const bool v = pick_ == 1 && size_t(version_) < versions_.size();
-      const Bytes &movie = pick_ == 0 ? game_ : v ? versions_[size_t(version_)].movie : none;
+      const Bytes *star = pick_ == 3 && star_pick_ >= 0 && size_t(star_pick_) < stars_.size() ? stars_[size_t(star_pick_)].second
+                                                                                              : nullptr;
+      const Bytes &movie = pick_ == 0 ? game_ : v ? versions_[size_t(version_)].movie : star ? *star : none;
       if (entrance_screens::Frame(movie, pick_ == 2 ? picture_ : fs::path(), ribbon_, 60, px,
                                   v ? versions_[size_t(version_)].y0 : 0, v ? versions_[size_t(version_)].y1 : 256))
         preview_ = Texture(device, px);
@@ -128,6 +151,8 @@ class ScreenChoice {
       if (m.size() > 4 && memcmp(m.data(), "KB2", 3) == 0)
         if (!entrance_screens::FromBink2(m, ribbon_, out, y0, y1))  // (one the game can't take: none, the arena's)
           out.clear();
+    } else if (pick_ == 3 && star_pick_ >= 0 && size_t(star_pick_) < stars_.size() && stars_[size_t(star_pick_)].second) {
+      out = *stars_[size_t(star_pick_)].second;  // (the game's own: Bink 1 at the screen's size already)
     } else if (pick_ == 2 && !picture_.empty()) {
       if (!entrance_screens::FromPicture(picture_, ribbon_, out))
         out.clear();
@@ -183,7 +208,9 @@ class ScreenChoice {
   }
 
   bool ribbon_;
-  int pick_ = 0;  // 0 the game's / the arena's, 1 its own in another game, 2 a picture
+  int pick_ = 0;  // 0 the game's / the arena's, 1 its own in another game, 2 a picture, 3 a game superstar's
+  std::vector<std::pair<std::string, const Bytes *>> stars_;  // choice 3's list (SetGameStars)
+  int star_pick_ = -1;
   std::vector<entrance_screens::Version> versions_;
   std::string game_name_;
   int version_ = 0;

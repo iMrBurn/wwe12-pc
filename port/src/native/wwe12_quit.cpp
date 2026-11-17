@@ -311,8 +311,16 @@ REX_EXTERN(__imp__sub_8253A028);
 // (0x4C bytes: +0 id, +4 parent, +8 page, +24 label). The main menu's (page 1) record labelled
 // 45061, SHOP relabelled EXIT by wwe12_menu_patch.cpp, closes the game.
 void Wwe12DiscordDecide(const PPCContext &ctx, u8 *base);  // wwe12_discord.cpp: the mode for Discord
+void Wwe12MatchDecide(uint32_t id, uint32_t parent, uint32_t label);  // wwe12_match_modes.cpp: I QUIT chosen?
 extern "C" REX_FUNC(sub_8253C3F0) {
   Wwe12DiscordDecide(ctx, base);
+  {
+    PPCContext probe = ctx;
+    __imp__sub_8253A028(probe, base);
+    const u32 entry = probe.r3.u32;
+    if (entry && entry != 0xFFFFFFFFu)
+      Wwe12MatchDecide(bd::mem::load<u32>(entry), bd::mem::load<u32>(entry + 4), bd::mem::load<u32>(entry + 24));
+  }
   // OPTIONS > GRAPHICS: the entry keeps its sub-menu (DISPLAY / GRAPHICS / ADVANCED,
   // wwe12_menu_patch.cpp); the page to open is noted here (wwe12_graphics_menu.cpp).
   if (Wwe12GraphicsNativeEnabled()) {

@@ -66,6 +66,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
@@ -140,9 +141,14 @@ std::string Wwe12OwnScreen(const std::string &asked, const PPCContext &ctx, uint
 // (wwe12_superstar_mods.cpp: CREATE AN ENTRANCE's MOVIE list additions, (video number, name): the VIDEOS mods' added
 // videos and the added superstars' own videos)
 const std::vector<std::pair<int, std::string>> &Wwe12AddedVideos();
+int Wwe12AddedVideoNumber(const std::string &mod);  // (wwe12_superstar_mods.cpp: a new video's number, 0 if none)
 const std::vector<std::pair<int, std::string>> &Wwe12StarVideos();
 // (wwe12_superstar_mods.cpp) a menu pictures mod's layout of MnLayHD.pac / MnLaySD.pac: its place in the served copy
 bool Wwe12MenuPictureEntry(const std::string &name, bool sd, uint32_t &sector, uint32_t &units);
+// (wwe12_universe.cpp, 1.4: two Money in the Bank briefcases; whether the scene being read shows SmackDown's, blue)
+REXCVAR_DECLARE(int32_t, wwe12_universe_mitb_briefcases);
+bool Wwe12MitbBlue();
+bool Wwe12ZmotOurs(const std::string &name);  // wwe12_superstar_mods.cpp: a game's motion bank the pack serves a copy of
 uint32_t Wwe12EnteringSuperstar(const PPCContext &ctx, uint8_t *base);
 
 // A ribbon / wall movie the game can play: Bink, 180 frames or more, 1.8 MB at most (the game's own: all 180 frames,
@@ -229,6 +235,9 @@ std::map<std::string, AddedEntrance> g_entrances;
 // wall, made on the Mod Maker's VIDEOS page), by name as asked ("MVSB/M139"); and every (kind 1 ribbon / 2 wall,
 // video number) a media mod has, replaced or added.
 std::map<std::string, AddedEntrance> g_replaced;
+// The Money in the Bank scenes with the blue briefcase (1.4, two briefcases: SmackDown's blue, RAW's the game's red):
+// their own name ("/EVP7/1360") -> the place of their copy whose briefcase objects are the blue copies (BlueBriefcases)
+std::map<std::string, AddedEntrance> g_mitb_blue;
 std::set<std::pair<uint32_t, uint32_t>> g_mod_screens;
 // The mods' own entrances (entrance_own=), for CREATE AN ENTRANCE's lists: number, name shown.
 std::vector<std::pair<int, std::string>> g_mod_entrances;
@@ -600,8 +609,9 @@ std::string InputsKey(const std::vector<std::string> &extra, const fs::path &mod
 std::string EntrancesKey(const fs::path &user_root, const fs::path &mods) {
   std::vector<std::string> extra = {"entrances",
                                     std::to_string(int(REXCVAR_GET(wwe12_belt_fit))) +
-                                        std::to_string(int(REXCVAR_GET(wwe12_belt_length)))};
-  for (const char *f : {"superstar_slots.txt", "superstar_movies.txt", "belts.txt"}) {
+                                        std::to_string(int(REXCVAR_GET(wwe12_belt_length))) +
+                                        std::to_string(int(REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2))};
+  for (const char *f : {"superstar_slots.txt", "superstar_movies.txt", "belts.txt", "added_videos.txt"}) {
     std::vector<uint8_t> t;
     extra.push_back(ReadHost(user_root / f, t) ? std::string(t.begin(), t.end()) : std::string("-"));
   }
@@ -645,7 +655,8 @@ bool LoadEntrancesCache(const fs::path &out, const std::string &key) {
     const auto v = cells(l);
     switch (l[0]) {
       case 'E':
-      case 'R': {
+      case 'R':
+      case 'U': {
         if (v.size() != 4) {
           ok = false;
           break;
@@ -654,7 +665,7 @@ bool LoadEntrancesCache(const fs::path &out, const std::string &key) {
         e.sector = u32(strtoul(v[1].c_str(), nullptr, 10));
         e.units = u32(strtoul(v[2].c_str(), nullptr, 10));
         e.like = v[3];
-        (l[0] == 'E' ? g_entrances : g_replaced)[v[0]] = e;
+        (l[0] == 'E' ? g_entrances : l[0] == 'R' ? g_replaced : g_mitb_blue)[v[0]] = e;
         break;
       }
       case 'S':
@@ -692,6 +703,7 @@ bool LoadEntrancesCache(const fs::path &out, const std::string &key) {
   if (!ok) {
     g_entrances.clear();
     g_replaced.clear();
+    g_mitb_blue.clear();
     g_mod_screens.clear();
     g_mod_entrances.clear();
     g_belt_length.clear();
@@ -702,9 +714,9 @@ bool LoadEntrancesCache(const fs::path &out, const std::string &key) {
 void SaveEntrancesCache(const fs::path &out, const std::string &key,
                         const std::vector<std::pair<std::string, uint64_t>> &written) {
   std::string t = "key=" + key + "\n";
-  for (const auto *table : {&g_entrances, &g_replaced})
+  for (const auto *table : {&g_entrances, &g_replaced, &g_mitb_blue})
     for (const auto &[name, e] : *table)
-      t += std::string(table == &g_entrances ? "E " : "R ") + name + "\t" + std::to_string(e.sector) + "\t" +
+      t += std::string(table == &g_entrances ? "E " : table == &g_replaced ? "R " : "U ") + name + "\t" + std::to_string(e.sector) + "\t" +
            std::to_string(e.units) + "\t" + e.like + "\n";
   for (const auto &[kind, n] : g_mod_screens)
     t += "S " + std::to_string(kind) + "\t" + std::to_string(n) + "\n";
@@ -737,6 +749,150 @@ void ServeEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
               rex::path_to_utf8(out));
 }
 
+// ---- The blue briefcase (1.4, the user: "the red briefcase for RAW, a blue one for SmackDown"; with the Universe's
+// two briefcases, wwe12_universe.cpp). The Money in the Bank briefcase is evtobj.pac's SOBJ 2557 "2557_briefcase"
+// (textures mib_case_a / mib_case_b, DXT5) with 2560 (mibhl_a / mibhl_b) beside it, in the scenes Season1.pac EVP7
+// 1360 / 1370 / 1380 ("O_Cut_MitB_2"...) and Season4.pac EVPJ 2570 ("O_Scn_MitB_1"); WWE '12 has no Money in the Bank
+// entrance. Their blue copies: the same models, their pictures' red and blue swapped (each DXT5 block's two colours,
+// RGB565: a DXT5 block's colours are always interpolated, nothing else changes), added as SOBJ numbers evtobj.pac
+// hasn't; and a copy of each scene whose briefcase objects (props, +4 the model) are those, served in its place when
+// Wwe12MitbBlue says (sub_827F29F0, g_mitb_blue).
+struct BlueEntry {
+  std::string rel, group, name;
+  std::vector<uint8_t> data;
+  bool blue = false;  // (a scene's copy; else an added object)
+  int of = 0;         // (an added object: the game's briefcase it is the blue copy of, 2557 / 2560)
+};
+// A DDS (DXT5) with red and blue swapped in its colours.
+static void SwapRedBlueDxt5(std::vector<uint8_t> &dds) {
+  if (dds.size() < 128 || memcmp(dds.data(), "DDS ", 4) || memcmp(&dds[84], "DXT5", 4))
+    return;
+  for (size_t b = 128; b + 16 <= dds.size(); b += 16)
+    for (size_t c = b + 8; c < b + 12; c += 2) {
+      const uint16_t v = uint16_t(dds[c] | dds[c + 1] << 8);
+      const uint16_t w = uint16_t((v & 0x1F) << 11 | (v & 0x07E0) | (v >> 11));
+      dds[c] = uint8_t(w), dds[c + 1] = uint8_t(w >> 8);
+    }
+}
+// A texture bundle (u32 count, 12 bytes, count x {name[16], ext[4], u32 size, u32 offset}) with each DDS made blue.
+static void BlueBundle(std::vector<uint8_t> &t) {
+  const auto le = [&](size_t o) {
+    return o + 4 <= t.size() ? uint32_t(t[o] | t[o + 1] << 8 | t[o + 2] << 16 | uint32_t(t[o + 3]) << 24) : 0u;
+  };
+  const uint32_t n = le(0);
+  for (uint32_t i = 0; i < n && 16 + 32 * size_t(i + 1) <= t.size(); ++i) {
+    const size_t size = le(16 + 32 * i + 20), off = le(16 + 32 * i + 24);
+    if (off + size > t.size())
+      continue;
+    std::vector<uint8_t> dds(t.begin() + long(off), t.begin() + long(off + size));
+    SwapRedBlueDxt5(dds);
+    std::copy(dds.begin(), dds.end(), t.begin() + long(off));
+  }
+}
+static std::vector<BlueEntry> BlueBriefcases(rex::filesystem::VirtualFileSystem *vfs, const fs::path &mods) {
+  std::vector<BlueEntry> out;
+  std::vector<uint8_t> pac;
+  svrfmt::Archive a;
+  if (!ReadForGame(vfs, mods, "pac/evt/evtobj.pac", pac) || !svrfmt::ArchiveOpen(pac, a, nullptr)) {
+    REXLOG_WARN("[mitb] evtobj.pac not read: no blue briefcase");
+    return out;
+  }
+  std::set<int> have;
+  std::map<int, const svrfmt::ArcNode *> src;
+  for (const auto &k : a.root.kids)
+    if (Trimmed(k.group) == "SOBJ") {
+      const int n = atoi(Trimmed(k.name).c_str());
+      have.insert(n);
+      if (n == 2557 || n == 2560)
+        src[n] = &k;
+    }
+  std::map<uint32_t, uint32_t> to;  // (2557 / 2560 -> their blue copies' numbers)
+  int next = 2999;
+  for (const auto &[n, k] : src) {
+    while (next >= 2000 && have.count(next))
+      --next;
+    if (next < 2000)
+      break;
+    std::vector<svrfmt::PachEntry> kids;
+    if (!svrfmt::PachRead(svrfmt::Unpack(svrfmt::ArchiveData(*k)), kids))
+      continue;
+    for (auto &e : kids)
+      if (e.id == 10) {
+        std::vector<uint8_t> t = svrfmt::Unpack(e.data);
+        BlueBundle(t);
+        e.data = svrfmt::BpeEncode(t);
+      }
+    BlueEntry b;
+    b.rel = "pac/evt/evtobj.pac";
+    b.group = "SOBJ";
+    b.name = std::to_string(next);
+    b.data = svrfmt::PachWrite(kids);
+    b.of = n;
+    out.push_back(std::move(b));
+    to[uint32_t(n)] = uint32_t(next);
+    REXLOG_INFO("[mitb] briefcase {} made blue as SOBJ {}", n, next);
+    have.insert(next);
+  }
+  a = {};
+  pac.clear();
+  if (to.empty())
+    return out;
+  // the scenes
+  static const struct {
+    const char *rel, *group, *name;
+  } kScenes[] = {{"pac/evt/Season1.pac", "EVP7", "1360"},
+                 {"pac/evt/Season1.pac", "EVP7", "1370"},
+                 {"pac/evt/Season1.pac", "EVP7", "1380"},
+                 {"pac/evt/Season4.pac", "EVPJ", "2570"}};
+  std::string read_rel;
+  bool read_ok = false;
+  for (const auto &sc : kScenes) {
+    if (read_rel != sc.rel) {
+      a = {};
+      read_rel = sc.rel;
+      read_ok = ReadForGame(vfs, mods, sc.rel, pac) && svrfmt::ArchiveOpen(pac, a, nullptr);
+      if (!read_ok)
+        REXLOG_WARN("[mitb] {} not read", sc.rel);
+    }
+    if (!read_ok)
+      continue;
+    for (const auto &k : a.root.kids) {
+      if (Trimmed(k.group) != sc.group || Trimmed(k.name) != sc.name)
+        continue;
+      std::vector<uint8_t> d = svrfmt::Unpack(svrfmt::ArchiveData(k));
+      if (d.size() < 0x50 || memcmp(d.data(), "0FOP", 4))
+        break;
+      const auto be = [&](size_t o) {
+        return uint32_t(d[o]) << 24 | uint32_t(d[o + 1]) << 16 | uint32_t(d[o + 2]) << 8 | d[o + 3];
+      };
+      const uint32_t n = be(0x40) & 0xFFFF;
+      const size_t t = size_t(be(0x48)) + 8;
+      int changed = 0;
+      for (uint32_t i = 0; i < n && t + 32 * size_t(i + 1) <= d.size(); ++i) {
+        const size_t q = t + 32 * size_t(i);
+        const auto it = to.find(be(q + 4));
+        if (be(q + 8) != 0x100 || it == to.end())
+          continue;
+        const uint32_t v = it->second;
+        d[q + 4] = uint8_t(v >> 24), d[q + 5] = uint8_t(v >> 16), d[q + 6] = uint8_t(v >> 8), d[q + 7] = uint8_t(v);
+        ++changed;
+      }
+      if (changed) {
+        BlueEntry b;
+        b.rel = sc.rel;
+        b.group = sc.group;
+        b.name = sc.name;
+        b.data = std::move(d);
+        b.blue = true;
+        out.push_back(std::move(b));
+        REXLOG_INFO("[mitb] {} /{}/{}: {} briefcase object(s) made blue", sc.rel, sc.group, sc.name, changed);
+      }
+      break;
+    }
+  }
+  return out;
+}
+
 void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &game_device, const fs::path &user_root,
                     const fs::path &mods) {
   const fs::path out = user_root / "entrance_slots";
@@ -747,6 +903,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
   std::error_code ec;
   g_entrances.clear();
   g_replaced.clear();
+  g_mitb_blue.clear();
   g_mod_screens.clear();
   g_mod_entrances.clear();
   g_belt_length.clear();
@@ -771,6 +928,7 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
     std::string group, name;
     std::vector<uint8_t> data;
     bool replace = false;  // (the game's own entry of that name, if it has one, replaced)
+    bool blue = false;     // (a Money in the Bank scene's copy with the blue briefcase: served when Wwe12MitbBlue says)
   };
   std::map<std::string, std::vector<Part>> parts;
   // The added superstars' slots (wwe12_superstar_mods.cpp, which runs before: "<mod>=<number>"): a victory scene of
@@ -995,7 +1153,10 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       for (fs::directory_iterator it(d / "media" / "screens", ec), end; !ec && it != end; it.increment(ec)) {
         const std::string f = rex::path_to_utf8(it->path().filename());
         const bool ribbon = f.rfind("ribbon_", 0) == 0, wall = f.rfind("wall_", 0) == 0;
-        const int n = atoi(f.c_str() + (ribbon ? 7 : 5));
+        // (a new video's, ribbon_add.bik / wall_add.bik: under the number the game gave it, Max Matus on Discord,
+        // 2026-11-17)
+        const bool added = f == "ribbon_add.bik" || f == "wall_add.bik";
+        const int n = added ? Wwe12AddedVideoNumber(rex::path_to_utf8(d.filename())) : atoi(f.c_str() + (ribbon ? 7 : 5));
         if ((!ribbon && !wall) || n <= 0 || n > 999)
           continue;
         Part part;
@@ -1188,6 +1349,18 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       parts["pac/wuniData.pac"].push_back(std::move(part));
     }
   }
+  std::vector<std::pair<int, std::string>> blue_objects;  // (the game's briefcase, its blue copy's number)
+  if (REXCVAR_GET(wwe12_universe_mitb_briefcases) >= 2)
+    for (auto &b : BlueBriefcases(vfs, mods)) {
+      if (b.of)
+        blue_objects.push_back({b.of, b.name});
+      Part part;
+      part.group = b.group;
+      part.name = b.name;
+      part.data = std::move(b.data);
+      part.blue = b.blue;
+      parts[b.rel].push_back(std::move(part));
+    }
   for (auto &[rel, list] : parts) {
     std::vector<uint8_t> pac;
     svrfmt::Archive a;
@@ -1223,6 +1396,16 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       const std::string &group = part.group, &name = part.name;
       const auto &have = names[group];
       if (std::find(have.begin(), have.end(), name) != have.end()) {
+        if (part.blue) {  // (beside the game's own: the directory's answer gets its place when the scene is the blue one)
+          if (packed.count(lead + group + "/" + name) && !svrfmt::IsBpe(part.data))
+            part.data = svrfmt::BpeEncode(part.data);
+          AddedEntrance e;
+          Append(pac, part.data.data(), part.data.size(), e.sector, e.units);
+          part.data = {};
+          g_mitb_blue[lead + group + "/" + name] = e;
+          REXLOG_INFO("[entrances] {}{}/{}: its copy with the blue briefcase added", lead, group, name);
+          continue;
+        }
         if (part.replace) {  // (in its place: the directory's answer gets this one's place and size)
           // (stored as the entry it replaces: a moves mod's victory scene in place of a BPE-packed Winning entry)
           if (!lead.empty() && packed.count(lead + group + "/" + name) && !svrfmt::IsBpe(part.data))
@@ -1274,6 +1457,15 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       written.push_back({rel, uint64_t(pac.size())});
     }
   }
+  // (the briefcase itself as the match asks it, "/SOBJ/2557" - the cash-in match loads it with /MOT/WEAP and the
+  // scene /EVPD/9000, none of the Season scenes, Univers' log 2026-11-12: its blue copy's place when Wwe12MitbBlue says)
+  for (const auto &[of, copy] : blue_objects)
+    if (const auto e = g_entrances.find("/SOBJ/" + copy); e != g_entrances.end()) {
+      AddedEntrance b = e->second;
+      b.like.clear();
+      g_mitb_blue["/SOBJ/" + std::to_string(of)] = b;
+      g_mitb_blue["SOBJ/" + std::to_string(of)] = b;
+    }
   REXLOG_INFO("[entrances] made again ({} file(s) written, {} ms{})", written.size(), ms(),
               key.empty() ? ", no cache: an added arena's videos" : "");
   if (!key.empty())
@@ -2074,7 +2266,38 @@ extern "C" REX_FUNC(sub_827F29F0) {
       for (size_t i = 0; i <= own.size(); ++i)
         bd::mem::store<u8>(name + u32(i), u8(own[i]));
   }
+  // A game's motion bank with a motions mod's motions ("/ZMOT/CA07", the I Quit referee's group 33): the pack's copy,
+  // "/ZMOT/ca07", asked in its place. The game asks each bank twice: once by sub_827D98D8 (answered with ours by its
+  // hook) and once straight here, which gave the game's: the referee played the numbers and nothing moved (2026-11-14).
+  bool zmot_ours = false;
+  char zmot_was[4] = {};
+  if (name && bd::mem::load<u8>(name) == '/' && bd::mem::load<u8>(name + 1) == 'Z' && bd::mem::load<u8>(name + 2) == 'M' &&
+      bd::mem::load<u8>(name + 3) == 'O' && bd::mem::load<u8>(name + 4) == 'T' && bd::mem::load<u8>(name + 5) == '/') {
+    const std::string asked = bd::mem::str(name);
+    if (asked.size() == 10 && Wwe12ZmotOurs(asked.substr(6))) {
+      zmot_ours = true;
+      for (u32 i = 0; i < 4; ++i) {
+        zmot_was[i] = char(bd::mem::load<u8>(name + 6 + i));
+        bd::mem::store<u8>(name + 6 + i, u8(std::tolower(static_cast<unsigned char>(zmot_was[i]))));
+      }
+    }
+  }
   __imp__sub_827F29F0(ctx, base);
+  if (zmot_ours) {
+    if (ctx.r3.u32 == 0) {  // (ours not there after all: the game's)
+      for (u32 i = 0; i < 4; ++i)
+        bd::mem::store<u8>(name + 6 + i, u8(zmot_was[i]));
+      ctx.r3.u32 = directory, ctx.r4.u32 = name, ctx.r5.u32 = out;
+      __imp__sub_827F29F0(ctx, base);
+    } else {
+      const u32 found = ctx.r3.u32;
+      if (REXCVAR_GET(wwe12_dir_log))
+        REXLOG_INFO("[dir] {} -> ours", bd::mem::str(name));
+      for (u32 i = 0; i < 4; ++i)
+        bd::mem::store<u8>(name + 6 + i, u8(zmot_was[i]));
+      ctx.r3.u32 = found;
+    }
+  }
   if (REXCVAR_GET(wwe12_dir_log) && name)
     REXLOG_INFO("[dir] {} {} out {:08X} {:08X} {:08X} {:08X} {:08X} {:08X}", bd::mem::str(name), ctx.r3.u32 ? "found" : "MISSING",
                 out ? bd::mem::load<u32>(out) : 0, out ? bd::mem::load<u32>(out + 4) : 0, out ? bd::mem::load<u32>(out + 8) : 0,
@@ -2086,6 +2309,16 @@ extern "C" REX_FUNC(sub_827F29F0) {
       bd::mem::store<u32>(out, r->second.sector);
       bd::mem::store<u32>(out + 8, r->second.units);
       REXLOG_INFO("[entrances] {}: a mod's own", r->first);
+    }
+  }
+  // A Money in the Bank scene with the blue briefcase (SmackDown's, 1.4): the answer gets its copy's place and size
+  // (g_mitb_blue) when the Universe says the briefcase of this scene is SmackDown's.
+  if (name && out && ctx.r3.u32 && !g_mitb_blue.empty() && (name < 0x82000000 || name >= 0x84000000)) {
+    const auto b = g_mitb_blue.find(bd::mem::str(name));
+    if (b != g_mitb_blue.end() && Wwe12MitbBlue()) {
+      bd::mem::store<u32>(out, b->second.sector);
+      bd::mem::store<u32>(out + 8, b->second.units);
+      REXLOG_INFO("[mitb] {}: the blue briefcase's copy", b->first);
     }
   }
   // An added entrance the directory hasn't: asked again as an entry of the same file and name length, then its own
@@ -2256,13 +2489,15 @@ extern "C" REX_FUNC(sub_829F9F90) {
   if (!table || kind > 64)
     return;
   const u32 count = bd::mem::load<u16>(table + (kind + 100) * 2), entries = bd::mem::load<u32>(table + (kind + 31) * 4);
-  bool superstars = false;
+  bool superstars = false, teams = false;
   std::string seen;
   for (u32 i = 0; entries && i < count; ++i) {
     const int value = int16_t(bd::mem::load<u16>(entries + i * 6)) + int(first);
     // (and the champions' lists, Cena's 602 John_Cena_Champ: the mods' entrances may be a champion's or a multi-champion's
     // entrance too, as in 2K14's Create an Entrance - the user, 2026-11-12)
     superstars = superstars || value == 139 || value == 602;
+    // (the TAG TEAM list, kind 3: WWE '12's tag team entrances, 700-756 - logged 2026-11-15)
+    teams = teams || (kind != 0 && value >= 700 && value < 770);
     if (REXCVAR_GET(wwe12_entrance_list_log) && i < 400)
       seen += " " + std::to_string(value) + "/" + std::to_string(int16_t(bd::mem::load<u16>(entries + i * 6 + 2))) + "/" +
               std::to_string(int16_t(bd::mem::load<u16>(entries + i * 6 + 4)));
@@ -2277,10 +2512,20 @@ extern "C" REX_FUNC(sub_829F9F90) {
   if (kind == 0) {
     adds = Wwe12StarVideos();
     adds.insert(adds.end(), Wwe12AddedVideos().begin(), Wwe12AddedVideos().end());
-  } else {
-    adds = g_mod_entrances;
+  } else if (kind != 1) {
+    // (not in kind 1, the MUSIC list, by music number - it holds Cena's 139 too -: a mod's entrance went there under
+    // its name and was silent there and in the match, Jay on Discord, 2026-11-17. An added theme lives in our DLC
+    // pack's music package, which the game plays for that pack's superstar only - played on the superstar it was put
+    // on, not from a created entrance -, and an entrance-only mod or a champion's entrance has no theme at all. The
+    // music folder's songs, USER PLAYLIST, are for Create an Entrance)
+    // (a mod's tag team entrance, served as 757-769 then 770-799 - the Mod Maker's star_port::PortChamp -, in the TAG TEAM list
+    // only; the others in the superstars' and champions' lists. Jay on Discord, 2026-11-15: Enzo and Cass's came in
+    // the single ones)
+    for (const auto &e : g_mod_entrances)
+      if ((e.first % 1000 >= 700 && e.first % 1000 < 800) == teams)
+        adds.push_back(e);
   }
-  if (!superstars || adds.empty() || !REXCVAR_GET(wwe12_entrance_list))
+  if ((!superstars && !teams) || adds.empty() || !REXCVAR_GET(wwe12_entrance_list))
     return;
   static std::map<std::string, u32> texts;
   for (const auto &[number, label] : adds) {

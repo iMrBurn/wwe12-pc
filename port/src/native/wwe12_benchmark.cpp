@@ -605,10 +605,9 @@ u32 CountChosen(u8 &type, std::string &ids) {
 }
 }  // namespace
 
-REX_EXTERN(__imp__sub_822B51A0);
-void Wwe12FpsMatchStarting();  // wwe12_fps.cpp: the 30 fps mode's drop when this match has loaded
-extern "C" REX_FUNC(sub_822B51A0) {
-  Wwe12FpsMatchStarting();
+// Called by the hook of sub_822B51A0 in wwe12_fps.cpp (1.3.1: the hook moved there, since this file
+// is not built on Android and the 30 fps mode needs it there too, issue #61).
+void Wwe12BenchmarkMatchStart() {
   if (REXCVAR_GET(wwe12_benchmark_record_route) && !g_route_match_started.exchange(true)) {
     u8 type = 0;
     std::string ids;
@@ -637,7 +636,6 @@ extern "C" REX_FUNC(sub_822B51A0) {
       Wwe12BenchmarkFixedMatchFailed(why);
     }
   }
-  __imp__sub_822B51A0(ctx, base);
 }
 
 // ---- Route recorder (dev): player 1's button presses (and the left stick as the d-pad) logged as
