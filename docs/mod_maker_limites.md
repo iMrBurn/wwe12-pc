@@ -27,17 +27,17 @@ Ordre décidé par l'utilisateur : 3 entrées tag team, 1 catcheurs cachés, 2 a
   disque) ; le crochet `sub_829F9F90` (`wwe12_arena_pages.cpp`) met les entrées de mods 700-799 dans la liste TAG TEAM.
   Sans mod : rien ne change. Pas vu : une entrée servie en 770-799 (il en faut 14 installées). Les entrées de trios
   de WWE '13 / 2K (source 770-799) restent servies en solo (100-499), `star_port::TagEntrance` inchangé.
-- **1. Catcheurs ajoutés cachés : cause trouvée, correction faite (aa5c196), pas encore vue en jeu.** Ce n'est pas une
-  grille de 64 cases. Journal du test du 2026-11-13 (`test_catcheurs.log`, 101 copies, sonde `[roster] ... in DLC
-  tile`) : les copies jamais testées par l'écran de choix sont exactement celles des places 148-191, et leur
-  « personne » (CHAR/DAT +0x100, donnée par `superstar_pack.h`, de 0x433 vers le bas en sautant celles déjà prises)
-  est 0x3D0..0x3B1 = **945..976** (32 sur 32) ; 977-999 et ≤ 944 sont montrées. Le jeu réserve ce bloc (pourquoi :
-  inconnu ; 1000-1049 = les 50 CAW, 0x3E8+). Correction : `superstar_pack.h` saute 945-976. Effet : seuls les packs
-  avec plus de ~50 catcheurs ajoutés changent (personnes renumérotées ; la copie de la sauvegarde est refaite par
-  `RemakeAddedRecords`, format inchangé). Les ~5 autres manquants signalés (37 au lieu de 32) : pas expliqués ; la
-  sonde des personnes (`wwe12_roster_probe.cpp`, ee8c307) n'a jamais tourné, à lancer au test.
-  Test : `tools\dev\copies_catcheurs_test.ps1 -N 100` (il faut un catcheur ajouté installé comme source), puis
-  `tools\dev\lancer_test_catcheurs.bat` ; compter les cases DLC de l'écran de choix ; `-Remove` après.
+- **1. Catcheurs ajoutés cachés : RÉGLÉ et vu en jeu le 2026-11-17 (ebd9346) : 101 sur 101 dans la case DLC** (sonde
+  `[roster] ... in DLC tile 1` pour les 101, l'utilisateur a regardé l'écran). Ce n'était pas une grille de 64 cases.
+  Cause : les lignes de la liste du pack (`DLC.pac` IGST/VOL<pack>, 52 o par ligne) dont la place a le bit 5 (32-63,
+  96-127...) ne sont jamais proposées à l'écran de choix (testé dans un masque de 32 bits ; 64-95 repasse). Les packs
+  de THQ ont 8 lignes au plus. Correction (`superstar_pack.h`, `Build`) : au-delà de 32 lignes, ces places reçoivent
+  une ligne de remplissage (catcheur = une place DLC 50-99 libre, jamais montrée, comme un DLC pas acheté ; même
+  remplissage dans `info/catalog.dlc`), les vrais catcheurs les autres places. 32 lignes ou moins : identique à avant.
+  Fausses pistes essayées et annulées : numéro de « personne » 945-976 (revert 92c8449), bit de licence du catalogue
+  +10 (revert f64c0ed). Le plafond devient les places libres du jeu (193, une prise par le remplissage).
+  Test : `tools\dev\copies_catcheurs_test.ps1 -N 100` (source = un catcheur ajouté installé ; plafond 191), puis
+  `tools\dev\lancer_test_catcheurs.bat` ; `-Remove` après.
 - **2. Arènes (35 / 12,5 Mo) et 4. tenues (4) : gardées pour janvier.** Trop risquées pour être testées à fond avant
   le 19 (fichiers de menu, tas mémoire du jeu, table COS). Pistes : 35 → ajouter des entrées `CAR_dummyNN` à la copie de
   `MatchHD.pac` MLYE/MUPA et des pages au crochet de l'écran des arènes ; 12,5 Mo → agrandir le tas 12 (voir les
@@ -46,7 +46,7 @@ Ordre décidé par l'utilisateur : 3 entrées tag team, 1 catcheurs cachés, 2 a
 
 ## Recommandation pour janvier
 
-Premier pas : **trouver pourquoi l'écran de choix n'affiche que 64 catcheurs ajoutés.** C'est la limite que les joueurs
+(Fait le 2026-11-17, voir plus haut.) Premier pas d'origine : **trouver pourquoi l'écran de choix n'affiche que 64 catcheurs ajoutés.** C'est la limite que les joueurs
 touchent (100 se chargent déjà), elle se règle sans toucher au format de la sauvegarde, et l'étude seule dira si c'est
 une table à agrandir (faisable) ou un tableau de la sauvegarde (à laisser). Méthode : 100 copies de test (outil déjà
 utilisé le 2026-11-13, `SaveBackups/pack_test_copies_2026-11-13`), journal de l'écran de choix, puis lecture du code qui
