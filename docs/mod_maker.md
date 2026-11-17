@@ -349,6 +349,9 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   (les deux pans tournent en sens opposés ; les mettre en miroir était pire, revert) ; caisses noires (yProp_BumpMap
   comme yBG_BumpMap ; yDefault fait planter les modèles à tangentes) ; pas de flammes (effets de SvR 2008, autre
   format, pas lus). Le « montrer » (180 01) ajouté au début d'un objet qui n'en a pas reste (sans effet nuisible).
+  **Choix de l'utilisateur (même soir)** : rideau immobile et plat plutôt que des pans qui se lèvent (`kPropFlaps =
+  false` dans `PropBlock` : les 0x7b ne sont plus lus ; les remettre = reprendre l'étude des pans, peut-être pas en
+  rotation x 16, ni en miroir). Caisses : le format de sommets 2 n'a rien changé (revert).
   Essais en jeu du 2026-11-15 (entrée Enzo & Cass, aperçu ; fichiers modifiés à la main, Mod Maker inchangé), **aucun
   bon** : piste « root » (hachage 0E5BF7F4) retirée ; modèle retourné Ry(180) ou Rz(180) ; « root » conjuguée ;
   « base » mise à Ry(180) comme R-Truth (avec 159 et avec 3038) ; angles des clés 0x0004 relus dans l'ordre X-Y-Z.
