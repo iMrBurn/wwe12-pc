@@ -235,3 +235,11 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   qu'écrit la marche « aller à un point » du jeu, `sub_8228F5B8`) - à confirmer en jeu. Le juge seul : 5 s.
 - L'ancien arbitre au milieu du ring sortait parfois par le côté opposé à la rampe et se coinçait près des marches
   (Mason Ryan, 08:21) : il marche d'abord vers le côté rampe du ring (z > 150, 4 s au plus), puis 'RRTR'.
+- **Pièce manquante trouvée (2026-11-17, dans le code)** : les mots de manette d'un arbitre de l'ordinateur viennent
+  de l'objet d'entrée de son cerveau (cerveau = `[+3384]`, +76 ; envoyés par la mise à jour de la manette
+  `sub_8225BD20` → `sub_829598A0`). Le **programme d'arbitre** est dans un paquet chargé au début du match ; le rappel
+  de son chargement (`sub_823F8BC0`) le donne par `sub_8295C618(gestionnaire, paquet, 1)` à chaque acteur de rôle 1
+  (2 : rôle 2), puis remet son cerveau à zéro (`sub_82959860`). Notre arbitre avait le rôle 6 à ce moment (garé) :
+  il ne l'a jamais eu, d'où des mots toujours à 0 (mêmes 17 composants et même écrivain `82960E2C` qu'un arbitre
+  normal). Correction : rôle 1 le temps de cet appel, et le paquet (gardé, en-tête 'PACH' vérifié) redonné à la
+  relève. Le comportement fait ici (stick + compte) ne sert plus que si le jeu ne lui donne aucun mot pendant 4 s.

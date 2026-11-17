@@ -103,7 +103,9 @@ REXCVAR_DEFINE_BOOL(wwe12_sref_gauge, true, "WWE12",
                     "Special Guest Referee: his gauge (as WWE '13: down when he does not do his work or hits a superstar; "
                     "empty, he is the referee no more; full, Y during a hold is the screw job).");
 REX_EXTERN(__imp__sub_822A7600);  // an attack's hit resolved (attack object: + 256 attacker, + 272 victim, + 288 guarded)
-REX_EXTERN(__imp__sub_82371C78);  // an actor leaves the match's area (the game's own behaviour for a man out of the match)
+REX_EXTERN(__imp__sub_82371C78);
+REX_EXTERN(__imp__sub_8295C618);  // the computer's program of a role (manager, package, 1 the referees / 2) to its men
+REX_EXTERN(__imp__sub_827D9038);  // a package reader on loaded data (reader, data, size, owns)  // an actor leaves the match's area (the game's own behaviour for a man out of the match)
 REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner's number)
 REX_EXTERN(__imp__sub_82520B90);  // a world point to the screen (float[4] in and out), the game's own
 rex::ui::ImGuiDrawer *Wwe12OverlayDrawer();           // wwe12_iquit.cpp
@@ -262,6 +264,10 @@ std::atomic<int64_t> g_in_ring_ms{0};  // (when he was put in place in the ring 
 // the next counts - as the special referee's A).
 std::atomic<int64_t> g_auto_ms{0};  // (when this count was started from here, 0: not)
 std::atomic<bool> g_ref_moving{false};
+std::atomic<int64_t> g_game_word_ms{0};
+// the referee's program's package, kept from its loader's callback (sub_823F8BC0: data, size); given or not
+std::atomic<u32> g_ai_pkg{0}, g_ai_pkg_size{0};
+std::atomic<bool> g_ai_given{false};  // (the last time the game itself gave him a pad word not 0)
 // The old referee's way out (test of 2026-11-17 08:21: Mason Ryan, sent out from the ring's middle, left it by the
 // far side's ropes and stuck by the steel steps): first walked to the ramp's side of the ring, then the game's leaving
 // walk 'RRTR' takes him out by the near ropes.
@@ -1841,6 +1847,7 @@ void ResetMatchState() {
   g_auto_ms = 0;
   g_ref_moving = false;
   g_ex_walk = false;
+  g_ai_given = false;
 }
 
 void HandOver(const PPCContext &ctx, u8 *base) {
@@ -1971,6 +1978,28 @@ void HandOver(const PPCContext &ctx, u8 *base) {
         BD_INFO("[sref] remplacement : l'ancien arbitre va d'abord vers le cote rampe du ring");
       }
     }
+    if (g_ai_pkg.load() && bd::mem::try_load<u32>(g_ai_pkg.load()) == 0x50414348u && bd::mem::try_load<u32>(n + 3428) == 1) {
+      // (given again now he is the referee, the old one no more: the data still loaded - its 'PACH' head checked)
+      // (his referee's program, as the package's callback gives it: a reader on the kept data, then sub_8295C618)
+      const u32 mgr_root = bd::mem::try_load<u32>(0x8324E1B4), mgr = mgr_root ? bd::mem::try_load<u32>(mgr_root + 8) : 0;
+      if (mgr) {
+        PPCContext c = ctx;
+        c.r1.u64 = (ctx.r1.u32 - 2048) & ~15u;
+        const u32 reader = c.r1.u32 + 512;
+        for (u32 i = 0; i < 4; ++i)
+          bd::mem::store<u32>(reader + 4 * i, 0);
+        c.r3.u64 = reader, c.r4.u64 = g_ai_pkg.load(), c.r5.u64 = g_ai_pkg_size.load(), c.r6.u64 = 0;
+        __imp__sub_827D9038(c, base);
+        c = ctx;
+        c.r1.u64 = (ctx.r1.u32 - 2048) & ~15u;
+        c.r3.u64 = mgr, c.r4.u64 = reader, c.r5.u64 = 1;
+        __imp__sub_8295C618(c, base);
+        const u32 br = bd::mem::try_load<u32>(n + 3384), w = br ? bd::mem::try_load<u32>(br + 76) : 0;
+        g_ai_given = w && bd::mem::try_load<u32>(w + 32) == 1;
+        BD_INFO("[sref] remplacement : programme d'arbitre de l'ordinateur donne a l'arbitre du jeu ({}, +3468 {})",
+                g_ai_given.load() ? "pret" : "pas pret", int32_t(bd::mem::try_load<u32>(n + 3468)));
+      }
+    }
     g_ejected = true;
     g_ejected_ms = now;
     g_pad = -1;
@@ -1983,6 +2012,38 @@ void HandOver(const PPCContext &ctx, u8 *base) {
   }
 }
 }  // namespace
+
+// The computer's referee program (found 2026-11-17, in the code): an ordinary match's referee gets his pad words from
+// his brain's input object (brain = [+3384], + 76; the pad's update sub_8225BD20 -> sub_829598A0 sends them), which
+// decides only once its data is set (+ 32, sub_8295DBE0). The referee's data comes in a package loaded at the
+// match's start; its loader's callback (sub_823F8BC0) gives it with sub_8295C618(manager, package, 1) to every actor
+// of the role 1 (2: the role 2), then resets his brain (sub_82959860). Ours had the role 6 then (parked): he never
+// got it - his brain made no word at all (probes of 2026-11-17: same 17 components, same writer 82960E2C as an
+// ordinary referee, but only 0). So for that call he has the role 1 (only his actor's + 3428, which it reads).
+REX_EXTERN(__imp__sub_823F8BC0);
+extern "C" REX_FUNC(sub_823F8BC0) {  // (the package's loader callback: its data kept, it stays loaded for the match)
+  g_ai_pkg = ctx.r4.u32;
+  g_ai_pkg_size = ctx.r5.u32;
+  __imp__sub_823F8BC0(ctx, base);
+}
+extern "C" REX_FUNC(sub_8295C618) {
+  const u32 n = Actor(6), mode = ctx.r5.u32;
+  const bool give = On() && Match() && REXCVAR_GET(wwe12_sref_replacement) && mode == 1 && n &&
+                    bd::mem::try_load<u32>(n + 3428) == 6;
+  if (give)
+    bd::mem::store<u32>(n + 3428, 1);
+  __imp__sub_8295C618(ctx, base);
+  if (give) {
+    bd::mem::store<u32>(n + 3428, 6);
+    const u32 br = bd::mem::try_load<u32>(n + 3384), w = br ? bd::mem::try_load<u32>(br + 76) : 0;
+    g_ai_given = true;
+    BD_INFO("[sref] programme d'arbitre de l'ordinateur donne aussi a l'arbitre du jeu (garde) : +3468 {}, pret {}",
+            int32_t(bd::mem::try_load<u32>(n + 3468)), w ? bd::mem::try_load<u32>(w + 32) : 99);
+  } else if (On() && Match()) {
+    BD_INFO("[sref] programme de l'ordinateur pour le role {} (arbitre du jeu : role {})", mode,
+            n ? bd::mem::try_load<u32>(n + 3428) : 99);
+  }
+}
 
 // The match's setup: the normal referee is dropped when a place of the kind 1 holds a superstar. In a match of ours
 // that place is a fighter's for the time of this call, and "a referee in this match" (the setup's + 45) is set.
@@ -2096,6 +2157,8 @@ void ProbeWord(u32 actor, u32 word, u32 lr);
 }
 void Wwe12SrefPadStudy(u32 actor, u32 word, u32 lr) {
   ProbeWord(actor, word, lr);
+  if (word && actor && actor == Actor(6) && Match())
+    g_game_word_ms = NowMs();
   if (!actor || actor != Actor(1) || !On() || Match())
     return;
   static u32 s_last = 0xFFFFFFFF;
@@ -2343,22 +2406,23 @@ bool StickWord(u32 actor, float tx, float tz, u32 *word) {
   *word = (0x80u | (((kCode[v - 2] - 1) & 7) << 4)) << 16;
   return true;
 }
-// The run: the game's own "go to a point" pad (sub_8228F5B8) writes the stick with the button 0x400.
-constexpr u32 kRun = 0x400u;
+// The run: not found yet - 0x400 (written with the stick by the game's "go to a point" pad, sub_8228F5B8) did not
+// make him run (test of 2026-11-17 08:39: the same 150 cm/s).
+constexpr u32 kRun = 0u;
 
 // The game's referee in the ring (see g_auto_ms): near the fighters (170 cm from their middle, on his side), to a
 // pinned man running; still in his count's motions (only his walk 2015x / free 1350 are steered).
 bool RefereeWord(u32 actor, u32 *word) {
   if (!g_in_ring_ms.load() || g_walk.load() || g_climb.load() || g_out != kOutDone || g_judge_alone ||
-      bd::mem::try_load<u32>(actor + 3428) != 1)
-    return false;
+      bd::mem::try_load<u32>(actor + 3428) != 1 || NowMs() - g_game_word_ms.load() < 4000)
+    return false;  // (the game's own program works: left to it)
   const u16 anim = Anim(actor);
   if (!(anim >= 20150 && anim < 20160) && anim != 1350)
     return false;
   float rx = 0, rz = 0;
   if (!Spot(actor, rx, rz))
     return false;
-  float tx = 0, tz = 0, go = 110.f, stop = 60.f;
+  float tx = 0, tz = 0, go = 75.f, stop = 40.f;
   bool run = false;
   const u32 j = bd::mem::try_load<u32>(kJudgePtr);
   const u32 victim = j && g_state.load() == 1 ? bd::mem::try_load<u32>(j + 108) : 0;
@@ -2829,7 +2893,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     }
   }
   if (main_thread && g_out == kOutDone && g_in_ring_ms.load() && !g_judge_alone && Actor(6) &&
-      bd::mem::try_load<u32>(Actor(6) + 3428) == 1 && !g_walk.load() && !g_climb.load()) {
+      bd::mem::try_load<u32>(Actor(6) + 3428) == 1 && !g_walk.load() && !g_climb.load() &&
+      NowMs() - g_game_word_ms.load() > 4000) {  // (only if the game's own program gives him nothing)
     static int64_t s_state_ms = 0, s_last = 0;
     static u32 s_state = 0;
     const u32 n = Actor(6), j = bd::mem::try_load<u32>(kJudgePtr);
@@ -2848,7 +2913,8 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       float vx = 0, vz = 0, rx = 0, rz = 0;
       const bool close_by = v && Spot(v, vx, vz) && Spot(n, rx, rz) && std::hypot(vx - rx, vz - rz) < 130.f;
       if (!g_auto_ms.load()) {
-        if ((close_by || now - s_state_ms > 1200) && cnt == 0) {
+        const u16 an = Anim(n);
+        if ((close_by || now - s_state_ms > 1200) && cnt == 0 && an != 190 && an != 191 && an != 200 && an != 202) {
           c.r3.u64 = n;
           __imp__sub_823C9458(c, base);
           g_auto_ms = now;
