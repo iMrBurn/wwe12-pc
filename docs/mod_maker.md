@@ -321,6 +321,12 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   `entrance_add`) au lieu d'être cachés. Tunnel de MVP SvR 2008 (4035) : 2116 apporté. Micro de Mr. Kennedy SvR 2010
   (162) : 2048 existe dans WWE '12 (mêmes images), aucune entrée de WWE '12 ne l'a (pas de donneur), il garde sa piste
   SvR convertie (un seul segment, 20, sans parent) ; ce qui cloche en jeu reste à voir.
+  Modèles SvR : 180 o par maillage et 10 cm par unité → `port_svr_arena::detail::SvrToW12` + `Scale` x 10
+  (`star_port::SvrPropsTo12`, f34ec91) ; brut, le tunnel de MVP faisait planter le jeu à sa lecture. **Vu en jeu le
+  2026-11-17 (aperçu de Créer une entrée)** : plus de plantage, mais le tunnel de MVP ne se voit pas, et le micro de
+  Kennedy est mal placé (son fil passe derrière lui) ; Kennedy ne « parle » pas comme dans SvR 2010 (voix / visage).
+  Piste pour janvier : les pistes des objets sans donneur (`svr11_entrance::Convert`, modèle d'enregistrement 130 de
+  la base) gardent sans doute les positions SvR en 10 cm (à multiplier par 10 ?), à vérifier sur l'EVZ porté.
   Essais en jeu du 2026-11-15 (entrée Enzo & Cass, aperçu ; fichiers modifiés à la main, Mod Maker inchangé), **aucun
   bon** : piste « root » (hachage 0E5BF7F4) retirée ; modèle retourné Ry(180) ou Rz(180) ; « root » conjuguée ;
   « base » mise à Ry(180) comme R-Truth (avec 159 et avec 3038) ; angles des clés 0x0004 relus dans l'ordre X-Y-Z.
