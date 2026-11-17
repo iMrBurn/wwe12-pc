@@ -325,8 +325,14 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   (`star_port::SvrPropsTo12`, f34ec91) ; brut, le tunnel de MVP faisait planter le jeu à sa lecture. **Vu en jeu le
   2026-11-17 (aperçu de Créer une entrée)** : plus de plantage, mais le tunnel de MVP ne se voit pas, et le micro de
   Kennedy est mal placé (son fil passe derrière lui) ; Kennedy ne « parle » pas comme dans SvR 2010 (voix / visage).
-  Piste pour janvier : les pistes des objets sans donneur (`svr11_entrance::Convert`, modèle d'enregistrement 130 de
-  la base) gardent sans doute les positions SvR en 10 cm (à multiplier par 10 ?), à vérifier sur l'EVZ porté.
+  **Cause trouvée (même jour)** : un objet qu'aucune entrée de WWE '12 ne tient prend l'enregistrement de la base à
+  son index (une corde, type 119, pour le tunnel et le micro) et ses pistes (`RopeBlock` ne lit que des poses de 5
+  octets) : il est posé comme la corde (base 284,98 / y / z, la même pour les deux). Or SvR anime ces objets avec leurs
+  propres os, comme un corps : tunnel de MVP = racine (0x75) + os 1-5 (0x7B), 61 enregistrements (outil de l'étude :
+  `svr_old_entrance::Convert` puis `ReadBank` / `Records` / `SplitRecord` sur l'objet 16). **Désactivé en attendant**
+  (`star_port::kSvrProps = false`) : ces objets sont de nouveau cachés ; conversion des modèles prête
+  (`SvrPropsTo12`). À faire en janvier : convertir ces pistes à os (racine + os vers les nœuds du JBOY de l'objet,
+  comme `BodyBlock` pour un corps) ; Kennedy qui « parle » : voix / visage de SvR 2010, pas étudié.
   Essais en jeu du 2026-11-15 (entrée Enzo & Cass, aperçu ; fichiers modifiés à la main, Mod Maker inchangé), **aucun
   bon** : piste « root » (hachage 0E5BF7F4) retirée ; modèle retourné Ry(180) ou Rz(180) ; « root » conjuguée ;
   « base » mise à Ry(180) comme R-Truth (avec 159 et avec 3038) ; angles des clés 0x0004 relus dans l'ordre X-Y-Z.

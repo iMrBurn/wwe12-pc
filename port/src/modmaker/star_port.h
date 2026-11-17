@@ -228,6 +228,11 @@ inline std::vector<std::pair<int, std::string>> EntranceList(const disc::GameDis
 // 184-byte mesh records and counted in cm - port_svr_arena's SvrToW12 and Scale x 10, as the SvR arenas'; checked on
 // Kennedy's microphone 2048, which both games have (2026-11-17). As they were, MVP's SvR 2008 tunnel 2116 crashed the
 // game when it was read. One that can't be made so: left out (then hidden, HideMissing).
+// Off for now (kSvrProps): their motion isn't converted - a prop no WWE '12 entrance holds gets the base's record
+// (a rope's, 119, for MVP's tunnel and Kennedy's microphone) and the base's tracks, while SvR moves it with its own
+// bones (MVP's tunnel: a root and bones 1-5, records 0x75 / 0x7B like a body's): brought, it is put where the base's
+// rope is (MVP's tunnel unseen, 2026-11-17). Hidden as before until a prop motion converter exists (docs/mod_maker.md).
+constexpr bool kSvrProps = false;
 inline void SvrPropsTo12(std::vector<entrance13::Part> &objects) {
   for (size_t i = 0; i < objects.size();) {
     auto &o = objects[i];
@@ -625,7 +630,7 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     // those WWE '12 hasn't brought from their pac\evt\_EvtObj.pac / evtobj.pac, MVP's SvR 2008 tunnel 2116, Jay on
     // Discord, 2026-11-17; before, hidden. The script's numbers are the same props in every game: 2048 Kennedy's
     // hanging microphone is WWE '12's own)
-    if (svr) {
+    if (svr && kSvrProps) {
       out.objects = entrance13::Objects(src, w12, both);
       SvrPropsTo12(out.objects);
     }

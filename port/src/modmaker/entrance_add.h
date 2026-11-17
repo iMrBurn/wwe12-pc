@@ -209,7 +209,8 @@ inline Ported Port(const disc::GameDisc &w12, const game_discs::Discs &discs, ui
     entrance13::Renumber(r.parts, at, to);
   r.number = to;
   // (its props WWE '12 hasn't, from its game: MVP's SvR 2008 tunnel 2116, Jay, 2026-11-17; star_port does the same)
-  r.objects = entrance13::Objects(src, w12, r.parts);
+  if (star_port::kSvrProps)
+    r.objects = entrance13::Objects(src, w12, r.parts);
   star_port::SvrPropsTo12(r.objects);
   entrance13::HideMissing(r.parts, w12, r.objects);
   entrance13::Announcer12(r.parts, w12);
