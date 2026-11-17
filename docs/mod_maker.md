@@ -340,6 +340,15 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   x 10) ; `kSvrPropMotion` (= `star_port::kSvrProps`) le coupe. Hors jeu : tunnel de MVP base (0 ; 117,8 ; 2881,8) cm,
   ses moitiés bone02 / bone03 en miroir ; micro de Kennedy (2048, 10 os en chaîne vers -y) base de y -785,8 à -158 :
   hauteur peut-être à inverser (le micro descend du plafond dans SvR 2010), à voir en jeu.
+  **Essais en jeu du 2026-11-17 (après-midi)** : le micro de Kennedy descend du plafond près de son visage (un peu
+  haut ; son visage ne bouge pas quand il parle : animation du visage de SvR 2010 pas reprise). Tunnel de MVP, ce qui a
+  marché : place lue telle quelle (comme les objets de scène de WWE '12, y 118-120 / z 2700-2800 ; l'inverser était
+  faux, revert) ; shaders convertis comme pour les arènes (yReflect → yDefault, yBumpMap → BumpToBg puis
+  yProp_BumpMap) : l'arche et le rideau se voient ; 0x7b = rotation en 1/4096 de tour (x 16), y et z inversés (modèle
+  compté vers le bas) : le rideau s'ouvre quand il passe. Restes : après son passage le rideau reste ouvert en V en bas
+  (les deux pans tournent en sens opposés ; les mettre en miroir était pire, revert) ; caisses noires (yProp_BumpMap
+  comme yBG_BumpMap ; yDefault fait planter les modèles à tangentes) ; pas de flammes (effets de SvR 2008, autre
+  format, pas lus). Le « montrer » (180 01) ajouté au début d'un objet qui n'en a pas reste (sans effet nuisible).
   Essais en jeu du 2026-11-15 (entrée Enzo & Cass, aperçu ; fichiers modifiés à la main, Mod Maker inchangé), **aucun
   bon** : piste « root » (hachage 0E5BF7F4) retirée ; modèle retourné Ry(180) ou Rz(180) ; « root » conjuguée ;
   « base » mise à Ry(180) comme R-Truth (avec 159 et avec 3038) ; angles des clés 0x0004 relus dans l'ordre X-Y-Z.
