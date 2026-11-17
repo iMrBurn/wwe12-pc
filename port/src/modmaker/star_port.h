@@ -42,6 +42,7 @@
 #include "theme_convert.h"
 #include "theme_source.h"
 #include "wwise.h"
+#include "port_svr_arena.h"
 
 namespace star_port {
 
@@ -223,6 +224,35 @@ inline std::vector<std::pair<int, std::string>> EntranceList(const disc::GameDis
 
 // A tag team's entrance in WWE '13 / 2K14-2K17 (700-769: 0705_Enzo_and_Cassidy, 0745_The_Usos; 770-799 are trios,
 // which WWE '12 hasn't): WWE '12's own are 700-756, the TAG TEAM list of CREATE AN ENTRANCE (kind 3).
+// SvR props (entrance13::Objects from a SvR game) made WWE '12's: their model (PACH child 0) in WWE '12's layout,
+// 184-byte mesh records and counted in cm - port_svr_arena's SvrToW12 and Scale x 10, as the SvR arenas'; checked on
+// Kennedy's microphone 2048, which both games have (2026-11-17). As they were, MVP's SvR 2008 tunnel 2116 crashed the
+// game when it was read. One that can't be made so: left out (then hidden, HideMissing).
+inline void SvrPropsTo12(std::vector<entrance13::Part> &objects) {
+  for (size_t i = 0; i < objects.size();) {
+    auto &o = objects[i];
+    std::vector<svrfmt::PachEntry> kids;
+    bool ok = o.kind == "SOBJ" && svrfmt::PachRead(o.data, kids);
+    if (ok) {
+      ok = false;
+      for (auto &k : kids)
+        if (k.id == 0) {
+          const Bytes model = svrfmt::Unpack(k.data);
+          Bytes w12;
+          ok = port_svr_arena::detail::SvrToW12(model, w12) && port_svr_arena::detail::Scale(w12, 10.0);
+          if (ok)
+            k.data = std::move(w12);
+        }
+      if (ok)
+        o.data = svrfmt::PachWrite(kids);
+    }
+    if (ok)
+      ++i;
+    else
+      objects.erase(objects.begin() + long(i));
+  }
+}
+
 inline bool TagEntrance(int number) { return number % 1000 >= 700 && number % 1000 < 770; }
 
 // His champion's entrance: entrance `from` of `game` (src) as WWE '12's, served under a free number other than his own
@@ -595,8 +625,10 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     // those WWE '12 hasn't brought from their pac\evt\_EvtObj.pac / evtobj.pac, MVP's SvR 2008 tunnel 2116, Jay on
     // Discord, 2026-11-17; before, hidden. The script's numbers are the same props in every game: 2048 Kennedy's
     // hanging microphone is WWE '12's own)
-    if (svr)
+    if (svr) {
       out.objects = entrance13::Objects(src, w12, both);
+      SvrPropsTo12(out.objects);
+    }
     if (scenes) {
       out.objects = entrance13::Objects(src, w12, both);
       // (and 2K16 / 2K17's hand props under 1000, a microphone..., made SOBJ 9000 + NNN: entrance13::Props2K)
