@@ -1495,3 +1495,5 @@ prochain champion ? » : TOURNOI À 4 ou LAISSER VACANT (moins de 4 prétendants
 se gagne dans un match de titre (PPV) ou se redonne dans EDIT TITLES ; les matchs de titre du jeu ne sont retirés
 que pendant un tournoi ouvert. Tournoi abandonné (42 jours) : un nouveau si 4 sont libres, sinon « tourneyend » et le
 titre reste vacant.
+
+**Défauts 1.4 (2026-11-17, décision de l'utilisateur)** : news de rivalité, retours surprise et clause de revanche actifs dans le jeu de base (`wwe12_universe_rivalry_news`, `_surprise_returns`, `_rematches` = 1), sans l'Univers imprévisible ; le reste (en-tête RIVALRY MATCH, titre vacant / tournoi, choix de l'interférence, booking) suit toujours son niveau.

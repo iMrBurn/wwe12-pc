@@ -8748,7 +8748,8 @@ extern "C" REX_FUNC(sub_826C83D8) {
 // ---- "Ultimate" Universe, part 2: rivalry news, surprise returns, rematch clause, RIVALRY MATCH header -------------
 // (after WWE 2K14's rivalry news and WWE '13 / 2K's rematch and return ideas, docs/univers.md section 47). On with the
 // unpredictable Universe from "a little" (wwe12_universe_chaos >= 1), or each by its own setting (-1 = the level's,
-// 0 off, 1 on). Nothing changes when off.
+// 0 off, 1 on). Nothing changes when off. Since 1.4 (user, 2026-11-17) rivalry news, surprise returns and rematches
+// are on by default (1), in the base game too; the RIVALRY MATCH header still follows the level.
 //  - rivalry news, once a week: a pair of rivals (relations record +20..+36, the rival slot k = a level k + 1; level 2
 //    or more) who met in singles in the last 28 days ("vs" lines of universe_stats.txt, written after each singles
 //    result): one beat the other 3 times or more (DOMINATION), the last meeting's winner had lost the one before
@@ -8760,15 +8761,16 @@ extern "C" REX_FUNC(sub_826C83D8) {
 //    champion gets one title match against the new one on the show's next weekly card (a singles match without title,
 //    story nor WrestleMania build becomes theirs and the title's), with its news; once ("rematch" line);
 //  - RIVALRY MATCH: MATCH CARDS names a singles match between rivals (level 2 or more) so (sub_82554B68's hook).
-REXCVAR_DEFINE_INT32(wwe12_universe_rivalry_news, -1, "WWE12",
-                     "Universe: weekly rivalry news (-1 = on with the unpredictable Universe, 0 off, 1 on; needs "
+REXCVAR_DEFINE_INT32(wwe12_universe_rivalry_news, 1, "WWE12",
+                     "Universe: weekly rivalry news (1 = on, the default since 1.4; 0 off; -1 = with the unpredictable "
+                     "Universe; needs "
                      "wwe12_universe_more_news, on by default).");
-REXCVAR_DEFINE_INT32(wwe12_universe_surprise_returns, -1, "WWE12",
-                     "Universe: a Superstar back from injury returns as a mystery opponent (-1 = with the "
-                     "unpredictable Universe, 0 off, 1 on; needs wwe12_universe_more_news, on by default).");
-REXCVAR_DEFINE_INT32(wwe12_universe_rematches, -1, "WWE12",
-                     "Universe: a dethroned champion gets a title rematch on the next weekly card (-1 = with the "
-                     "unpredictable Universe, 0 off, 1 on).");
+REXCVAR_DEFINE_INT32(wwe12_universe_surprise_returns, 1, "WWE12",
+                     "Universe: a Superstar back from injury returns as a mystery opponent (1 = on, the "
+                     "default since 1.4; 0 off; -1 = with the unpredictable Universe; needs wwe12_universe_more_news, on by default).");
+REXCVAR_DEFINE_INT32(wwe12_universe_rematches, 1, "WWE12",
+                     "Universe: a dethroned champion gets a title rematch on the next weekly card (1 = on, the "
+                     "default since 1.4; 0 off; -1 = with the unpredictable Universe).");
 REXCVAR_DEFINE_INT32(wwe12_universe_rivalry_header, -1, "WWE12",
                      "Universe: RIVALRY MATCH header for a singles match between rivals (-1 = with the unpredictable "
                      "Universe, 0 off, 1 on).");
