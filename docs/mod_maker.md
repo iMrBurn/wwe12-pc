@@ -2,7 +2,16 @@
 
 Résumé de l'état actuel. Les sections « 1.3 » (2026-11-10 / 11) sont les plus récentes et priment sur les anciennes.
 Docs liés : prises ajoutées `docs/prises_svr11.md`, prises / entrées / musiques des autres jeux `docs/plan_movesets.md`,
-SvR 2007-2010 `docs/plan_svr_anciens.md`.
+SvR 2007-2010 `docs/plan_svr_anciens.md`, limites du nombre de mods `docs/mod_maker_limites.md`.
+
+**Nouveautés du 2026-11-17 (après le zip 1.4.0, commits locaux ; page AIDE à jour)** :
+- Catcheurs ajoutés : jusqu'à 190, tous à l'écran de choix (lignes de remplissage dans la liste du pack ; places 231 et
+  289 exclues) - `docs/mod_maker_limites.md`. Entrées tag team : 43 places (757-769 puis 770-799).
+- Créer une entrée : les entrées des mods ne sont plus dans la liste MUSIC (muettes, retour de Jay).
+- MOVES & ENTRANCES : bouton « Mettre sa musique seule dans le dossier music » (.wav, USER PLAYLIST).
+- VIDÉOS : ruban et mur pour une nouvelle vidéo, et « Celui d'un catcheur du jeu » dans les deux modes (Max Matus).
+- Objets des entrées SvR apportés et convertis (modèle, shaders, mouvement à os) : tunnel de MVP SvR 2008, micro de
+  Kennedy SvR 2010 ; restes listés au § des entrées (caisses noires, rideau immobile par choix, pas de flammes 2008).
 
 ## 1. Principe, crédits, programmes
 

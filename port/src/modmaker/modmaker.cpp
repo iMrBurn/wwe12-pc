@@ -505,7 +505,8 @@ const Guide kGuides[] = {
       "MY GAME DISCS), or one of yours (any video or picture).",
       "5. Look at him in 3D, then 6. Finish: a new superstar, or An attire of <base> (in place of one of his attires); "
       "the mod is made and installed.",
-      "In the game: superstar select screen, DLC tile. Added superstars are everywhere (Universe, Create a Story)."},
+      "In the game: superstar select screen, DLC tile. Added superstars are everywhere (Universe, Create a Story).",
+      "How many: up to 190 added superstars, all on the select screen (before this update: 64 shown)."},
      {"NOUVEAU.",
       "1. Apparence : un catcheur de vos autres jeux (avec ses portraits quand le jeu en a), un fichier, un modèle 3D "
       "(.fbx : Mixamo, VRChat, Blender...), ou la base. Son portrait : celui de son jeu, une image à vous, ou celui de la "
@@ -519,7 +520,8 @@ const Guide kGuides[] = {
       "5. Regardez-le en 3D, puis 6. Terminer : un nouveau catcheur, ou Une tenue de <base> (à la place d'une de ses "
       "tenues) ; le mod est créé et installé.",
       "Dans le jeu : écran de choix des catcheurs, case DLC. Les catcheurs ajoutés sont partout (Univers, Créer un "
-      "scénario)."}},
+      "scénario).",
+      "Combien : jusqu'à 190 catcheurs ajoutés, tous sur l'écran de choix (avant cette mise à jour : 64 visibles)."}},
     {"Moves & entrances for a superstar of the game",
      "Prises et entrées pour un catcheur du jeu",
      {"MOVES & ENTRANCES: a WWE '12 superstar gets what a superstar of your other games has: his moves, entrance, victory "
@@ -532,7 +534,9 @@ const Guide kGuides[] = {
       "5. Finish: the mod is made and installed. In the game, from the next start; turn it off in the launcher (MODS "
       "page) and he has his own back.",
       "While the mod is on, his moveset changed in the game goes back to the mod's at each start. Two mods for the same "
-      "superstar: the last one in the list is used."},
+      "superstar: the last one in the list is used.",
+      "His theme alone: under His entrance theme, Put his theme alone in the music folder. It is saved as a song (.wav) "
+      "beside the game: pick it in CREATIONS > Create an Entrance (USER PLAYLIST), for anyone."},
      {"PRISES & ENTRÉES : un catcheur de WWE '12 reçoit ce qu'a un catcheur de vos autres jeux : ses prises, son entrée, "
       "sa scène de victoire et sa musique.",
       "1. Jeu : les grandes cases sont vos jeux ; un jeu sans son disque vous envoie dans MES DISQUES pour l'ajouter.",
@@ -543,7 +547,10 @@ const Guide kGuides[] = {
       "5. Terminer : le mod est créé et installé. Dans le jeu, au lancement suivant ; coupez-le dans le launcher (page "
       "MODS) et il retrouve les siennes.",
       "Tant que le mod est actif, ses prises changées dans le jeu reviennent à celles du mod à chaque lancement. Deux mods "
-      "pour le même catcheur : le dernier de la liste est utilisé."}},
+      "pour le même catcheur : le dernier de la liste est utilisé.",
+      "Sa musique seule : sous Sa musique d'entrée, Mettre sa musique seule dans le dossier music. Elle est enregistrée "
+      "comme une chanson (.wav) à côté du jeu : choisissez-la dans CRÉATIONS > Créer une entrée (PLAYLIST UTILISATEUR), "
+      "pour n'importe qui."}},
     {"An entrance alone (Create an Entrance)",
      "Une entrée seule (Créer une entrée)",
      {"MOVES & ENTRANCES, tab Add an entrance: an entrance of your other games, without porting a superstar.",
@@ -553,7 +560,10 @@ const Guide kGuides[] = {
       "his champion's. No superstar of the game is changed.",
       "A champion's entrance shows one belt for each title the superstar holds (not two of the same).",
       "A tag team's entrance (WWE '13, 2K: numbers 700 to 769, \"Enzo_and_Cassidy\") goes in the tag team list, for a "
-      "team. One made before this update: make it again."},
+      "team (up to 43 of them). One made before this update: make it again.",
+      "An entrance brings no song: it isn't in the MUSIC list. For a song, see MOVES & ENTRANCES (His theme alone) or "
+      "MEDIA: the music folder, USER PLAYLIST.",
+      "Its props from SvR (MVP's tunnel, Kennedy's microphone) come with it; some still look off (see Not yet)."},
      {"PRISES & ENTRÉES, onglet Ajouter une entrée : une entrée de vos autres jeux, sans porter de catcheur.",
       "1. Le jeu (SvR 2007 à 2011, WWE '13, 2K14 à 2K17), 2. l'entrée dans sa liste complète (cherchez un nom ; les "
       "entrées avec ceinture : cherchez « champ »), 3. son nom, puis Terminer.",
@@ -561,7 +571,11 @@ const Guide kGuides[] = {
       "son entrée de champion. Aucun catcheur du jeu n'est modifié.",
       "Une entrée de champion montre une ceinture par titre que le catcheur détient (pas deux fois la même).",
       "Une entrée d'équipe (WWE '13, 2K : numéros 700 à 769, « Enzo_and_Cassidy ») va dans la liste des équipes, pour "
-      "une équipe. Faite avant cette mise à jour : refaites-la."}},
+      "une équipe (jusqu'à 43). Faite avant cette mise à jour : refaites-la.",
+      "Une entrée n'apporte pas de chanson : elle n'est pas dans la liste MUSIC. Pour une chanson, voir PRISES & ENTRÉES "
+      "(Sa musique seule) ou MÉDIA : le dossier music, PLAYLIST UTILISATEUR.",
+      "Ses accessoires de SvR (le tunnel de MVP, le micro de Kennedy) viennent avec ; certains ne sont pas encore parfaits "
+      "(voir Pas encore)."}},
     {"Universe logos and pictures",
      "Logos et images de l'Univers",
      {"UNIVERSE LOGOS: the Universe's show and brand logos, match-up pictures and arena photos (SHOW EDIT).",
@@ -592,10 +606,15 @@ const Guide kGuides[] = {
      "Une vidéo d'entrée, des images, des textures",
      {"VIDEOS: a superstar's titantron (big screen) and minitron (stage screen) from any video or picture, or from "
       "his own in your other games (Look for his movie in my other games).",
+      "Its ribbon around the arena and its stage wall: a picture of yours, his own in your other games, or a game "
+      "superstar's (Natalya's wall for a Hart Dynasty video). A new video (Create an Entrance) can have them too.",
       "TEXTURES: change any picture of the game (menus, renders, logos) from the texture dumps.",
       "SUPERSTARS / ARENAS (Retexture): change an attire's or an arena's pictures and see them in 3D."},
      {"VIDÉOS : le titantron (grand écran) et le minitron (écran de la scène) d'un catcheur, depuis n'importe quelle "
       "vidéo ou image, ou depuis les siens dans vos autres jeux (Chercher sa vidéo dans mes autres jeux).",
+      "Son ruban autour de l'arène et son mur de scène : une image à vous, les siens dans vos autres jeux, ou ceux d'un "
+      "catcheur du jeu (le mur de Natalya pour une vidéo Hart Dynasty). Une nouvelle vidéo (Créer une entrée) peut en "
+      "avoir aussi.",
       "TEXTURES : changer n'importe quelle image du jeu (menus, renders, logos) depuis les dumps de textures.",
       "CATCHEURS / ARÈNES (Retoucher) : changer les images d'une tenue ou d'une arène et les voir en 3D."}},
     {"Portraits, songs, crowd signs, menu backgrounds",
@@ -718,14 +737,17 @@ const Guide kGuides[] = {
      {"The moves WWE '12 hasn't (a ported superstar's own finishers): those slots keep their base's move. Adding them "
       "changed other moves for everyone, so it is off (wwe12_added_moves = true in wwe12.toml to try, at your own risk).",
       "New match types (I Quit, Special Referee...): they are made in the game itself, not by mods.",
-      "The props of SvR entrances and victory scenes WWE '12 hasn't (hidden).",
+      "Some props of SvR entrances: they come now (MVP's tunnel, Kennedy's microphone), but MVP's crates are black, his "
+      "curtain doesn't move, SvR 2008's fireworks and flames don't come, and Kennedy's face doesn't move as he speaks.",
       "Adding a fifth attire to a superstar of the game: replacing one works (a WWE '13 port brings up to 4 of its own).",
       "Moving hair and cloth on imported models (they follow the head and body)."},
      {"Les prises que WWE '12 n'a pas (les finishers propres d'un catcheur porté) : ces cases gardent celle de la base. "
       "Les ajouter changeait d'autres prises pour tout le monde, c'est donc coupé (wwe12_added_moves = true dans "
       "wwe12.toml pour essayer, à vos risques).",
       "Les nouveaux types de match (I Quit, Special Referee...) : ils se font dans le jeu lui-même, pas par des mods.",
-      "Les accessoires des entrées et des scènes de victoire SvR que WWE '12 n'a pas (cachés).",
+      "Certains accessoires des entrées SvR : ils viennent maintenant (le tunnel de MVP, le micro de Kennedy), mais les "
+      "caisses de MVP sont noires, son rideau ne bouge pas, les feux d'artifice et flammes de SvR 2008 ne viennent pas, et "
+      "le visage de Kennedy ne bouge pas quand il parle.",
       "Ajouter une 5e tenue à un catcheur du jeu : en remplacer une marche (un catcheur porté de WWE '13 garde jusqu'à 4 "
       "tenues à lui).",
       "Les cheveux et vêtements qui bougent sur les modèles importés (ils suivent la tête et le corps)."}},
