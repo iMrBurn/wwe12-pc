@@ -56,3 +56,33 @@ Un portage PC de **WWE '13 (Xbox 360)** par recompilation statique existe (l'aut
 ## Premier message attendu de toi
 
 Réponds avec : (1) le résultat de la construction du dépôt tel quel (ou ce qui bloque), (2) la licence et ce qu'elle autorise, (3) ton plan d'état des lieux. Ne modifie rien avant l'accord d'iMrBurn.
+
+---
+
+## Annexe : rendu natif sur les 3 moteurs (Vulkan, DirectX 12, DirectX 11)
+
+Ajoutée par Main après la demande d'iMrBurn : « aide-le à faire rapidement et facilement le rendu natif des 3 moteurs ». **Honnêtement : « facile » ne veut pas dire « sans travail »**. Le chemin le plus court est de **reprendre l'architecture de rendu de WWE '12 PC** (même moteur Yuke's, même bibliothèque D3D du jeu, même GPU Xbox 360), au lieu de la réinventer. Mais les adresses des fonctions du jeu et les shaders sont propres à WWE '13 : il faudra les retrouver.
+
+### Étape 0 : regarder ce que fait déjà le portage WWE '13 d'origine
+Avant de copier quoi que ce soit : quel moteur de rendu utilise-t-il (Vulkan seulement ? D3D12 ? un émulateur de GPU Xenos ?), et où sont les bugs / lenteurs ? Ne remplace que ce qui est mauvais. Mesure d'abord (test de performance, voir plus haut).
+
+### Comment WWE '12 PC fait (références dans notre dépôt `iMrBurn/wwe12-pc`, GPL-3.0)
+- Code du jeu recompilé en C++ (SDK ReXGlue, `recomp/rexglue-sdk`, modifié par les patchs de `port/patches/`). Le jeu écrit encore des commandes de GPU Xbox 360 : **ce n'est pas du « vrai natif »** (voir le README), mais le dessin, lui, passe par un renderer natif.
+- **Dessin** : `port/src/reblue/gpu/` (re:Blue + bibliothèque graphique `plume` de nefariousjosiah, adaptée par nous). Crochets sur ≈ 50 fonctions D3D du jeu dans `port/src/reblue/gpu/hooks/` : le jeu appelle sa propre bibliothèque D3D, nos crochets dessinent avec plume. Fichiers clés : `device.cpp` (création du GPU, choix de carte), `present.cpp` (affichage, V-sync, netteté), `draw.cpp`, `resolve.cpp`, `surface_registry.cpp`, `physical_buffers.cpp`, `constant_buffers.cpp`, `pipeline/` et `shaders/`. Colle entre le jeu et ce dessin : `port/src/native/svr_resources.cpp` (cibles de rendu, read-backs vers la mémoire du jeu, échelle de résolution), `svr_geometry.cpp`, `gpu_svr_stubs.cpp`.
+- **Les trois exe** : CMake construit `wwe12.exe` (Vulkan), `wwe12_d3d12.exe` (cible `WWE12_D3D12_EXE`) et `wwe12_d3d11.exe` (cible `WWE12_D3D11_EXE`). Réglage `gpu_backend` : `any` (Vulkan, puis D3D12, puis D3D11 si la carte échoue), `vulkan`, `d3d12`, `d3d11`. Patchs : `port/patches/plume-d3d12.patch` (read-backs, choix de carte), `plume-d3d11.patch`. Aucune DLL Microsoft dans le zip : shaders **prélinkés** (`wwe12_prelink.exe`) ; le D3D11 embarque ses shaders ; ne jamais livrer dxcompiler / dxil / d3dcompiler / fxc.
+- Détails et pièges : `docs/dx11.md`, `docs/couches.md`, `docs/savoir_acquis.md`, `docs/perf_natif_steam_deck.md`.
+
+### Marche à suivre conseillée
+1. **Lis ces fichiers chez nous** (clone `iMrBurn/wwe12-pc` en lecture seule, dossier à part) et fais un tableau « ce qui dépend du jeu / ce qui est générique ».
+2. **Générique (réutilisable presque tel quel)** : tout `plume` et les trois backends, `device`, `present` (V-sync, mode fenêtre, résolution interne, netteté), le cache de pipelines (`pipelines.bin` livré en « graine » + préparation au démarrage), le test de performance, les réglages (`gpu_backend`, échelle de rendu, anisotropie, rapport d'aspect).
+3. **Propre à WWE '13 (à retrouver)** : (a) **les adresses des ≈ 50 fonctions D3D du jeu** à crocheter : WWE '12 et '13 utilisent la même bibliothèque Yuke's, donc cherche-les par **motifs d'octets / chaînes / structure** à partir des adresses de WWE '12 (liste dans `wwe12_d3d_names.h` et `hooks/`), pas à la main ; (b) **les shaders** : recompilés depuis ceux du jeu par XenosRecomp ; (c) les surfaces et les resolves (EDRAM) : mêmes pièges que chez nous (voir `svr_resources.cpp`) ; (d) la cadence (60 / 30) et les scripts de scène.
+4. **Ordre** : d'abord **un seul moteur** qui rend une image correcte (Vulkan), le test de performance en main ; puis D3D12 (même code plume, un patch) ; puis D3D11 (le plus délicat : moins de fonctions, mêmes résultats ; chez nous les reflets du soleil ne sont pas dessinés en D3D11).
+5. **Mesure à chaque étape** (images/s, pire image, pipelines compilés pendant le dessin) et garde une capture RenderDoc de référence par scène. Ne conclus jamais « ça marche » sans journal + capture.
+
+### Licences et permissions : à demander à iMrBurn AVANT de copier
+- Notre code est **GPL-3.0** : le dépôt WWE '13 forké doit avoir une licence compatible (sinon, soit on le relicencie en GPL si l'auteur d'origine l'autorise, soit on ne copie que ce qui est permis). Lis `THIRD_PARTY.md` et `LICENSE.reblue` pour les conditions de re:Blue / plume.
+- **Le backend D3D11 vient de Kaiko** (portage SvR 2011), repris **avec sa permission pour le projet WWE '12 PC et son crédit**. Pour un autre projet, **demande à iMrBurn de redemander l'accord de Kaiko** ; sinon, réécris le D3D11 toi-même. Crédite aussi nefariousjosiah (re:Blue, plume) et l'auteur d'origine du portage WWE '13.
+- Toujours : aucune donnée du jeu dans le dépôt ni le zip.
+
+### À répondre à iMrBurn après l'étape 0
+Un court résumé : moteur de rendu actuel du portage WWE '13, ce qui manque pour les 3 moteurs, quelles parties de WWE '12 PC tu comptes réutiliser, le risque de licence, une estimation en heures, et ce qu'il doit tester en jeu.
