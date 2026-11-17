@@ -441,8 +441,11 @@ inline std::vector<int> FreeSlots(const Inputs &in) {
   // The disc's empty records first: the save has them ready (unlocked, set up). A DLC slot is set up by the game only
   // when a pack it hasn't seen brings it: one added to our pack later stayed locked, and set unlocked by hand it went
   // to a black screen at the match (FBX TEST at 86, 90, 91, 2026-10-26; at 104, CHRIS JERICHO played at once).
+  // (not 231 and 289: blank on the disc, but the select screen names them SECURITY GUARD C and WWE DOCTOR whatever
+  // the record says - 190 test copies, 2026-11-17; the game's other such names, DRUID, REFEREE, SECURITY GUARD A / B,
+  // were on no free number)
   for (int id = 100; id < 373; ++id)
-    if (blank(id))
+    if (id != 231 && id != 289 && blank(id))
       out.push_back(id);
   for (int id = 85; id < 100; ++id)
     if (blank(id))

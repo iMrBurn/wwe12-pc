@@ -35,8 +35,8 @@ Ordre décidé par l'utilisateur : 3 entrées tag team, 1 catcheurs cachés, 2 a
   une ligne de remplissage (catcheur = une place DLC 50-99 libre, jamais montrée, comme un DLC pas acheté ; même
   remplissage dans `info/catalog.dlc`), les vrais catcheurs les autres places. 32 lignes ou moins : identique à avant.
   Fausses pistes essayées et annulées : numéro de « personne » 945-976 (revert 92c8449), bit de licence du catalogue
-  +10 (revert f64c0ed). Le plafond devient les places libres du jeu (193, une prise par le remplissage).
-  Test : `tools\dev\copies_catcheurs_test.ps1 -N 100` (source = un catcheur ajouté installé ; plafond 191), puis
+  +10 (revert f64c0ed). Le plafond devient les places libres du jeu : 193, moins 231 et 289 (le jeu les nomme SECURITY GUARD C et WWE DOCTOR quoi que dise la fiche ; exclues de `FreeSlots`), moins une pour le remplissage = **190 catcheurs ajoutés**. Vu en jeu le 2026-11-17 : 101, 151 puis 191 catcheurs ajoutés tous dans la case DLC (sonde) ; 151 regardés à l'écran ; les erreurs « PhysicalHeap::Alloc » (892) sont les mêmes à chaque lancement, même avec 101. Match avec une copie de la fin : pas vu.
+  Test : `tools\dev\copies_catcheurs_test.ps1 -N 100` (source = un catcheur ajouté installé ; plafond 189), puis
   `tools\dev\lancer_test_catcheurs.bat` ; `-Remove` après.
 - **2. Arènes (35 / 12,5 Mo) et 4. tenues (4) : gardées pour janvier.** Trop risquées pour être testées à fond avant
   le 19 (fichiers de menu, tas mémoire du jeu, table COS). Pistes : 35 → ajouter des entrées `CAR_dummyNN` à la copie de

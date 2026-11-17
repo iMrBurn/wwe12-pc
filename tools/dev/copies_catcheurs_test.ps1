@@ -23,7 +23,7 @@ if ($old) {
 }
 if ($Remove) { exit 0 }
 if ($N -le 0) { Write-Host "Give -N <count> (or -Remove)."; exit 1 }
-if ($N -gt 191) { Write-Host "At most 191 (the game has 193 free superstar numbers; one goes to the pack's filler rows, one to the source)."; exit 1 }
+if ($N -gt 189) { Write-Host "At most 189 (193 free superstar numbers: 231 and 289 left out, one for the filler rows, one for the source)."; exit 1 }
 
 $src = if ($Source) { Get-Item (Join-Path $stars $Source) } else {
   Get-ChildItem $stars -Directory | Where-Object { $_.Name -notlike "zz_test_copy_*" -and -not (Test-Path (Join-Path $_.FullName "disabled")) } | Select-Object -First 1
