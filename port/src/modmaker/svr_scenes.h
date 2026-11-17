@@ -239,9 +239,21 @@ inline svr11_entrance::detail::PropNodes PropNodesOf(const disc::GameDisc &w12, 
         if (x.id != 0 || !svrfmt::JboyRead(svrfmt::Unpack(x.data), md, nullptr))
           continue;
         std::vector<svr11_entrance::detail::PropNode> nodes;
-        for (auto &n : md.nodes)
-          if (!n.name.rfind("bone", 0))
-            nodes.push_back({n.name, {n.t[0] * unit, n.t[1] * unit, n.t[2] * unit}});
+        for (size_t ni = 0; ni < md.nodes.size(); ++ni) {
+          const auto &n = md.nodes[ni];
+          if (n.name.rfind("bone", 0))
+            continue;
+          // (its branch: the first node up whose parent isn't a bone, or is the branch's top bone01; right-hand if x > 0)
+          size_t at = ni;
+          for (int guard = 0; guard < 32; ++guard) {
+            const int p = md.nodes[at].parent;
+            if (p < 0 || size_t(p) >= md.nodes.size() || md.nodes[size_t(p)].name.rfind("bone", 0) ||
+                md.nodes[size_t(p)].name == "bone01")
+              break;
+            at = size_t(p);
+          }
+          nodes.push_back({n.name, {n.t[0] * unit, n.t[1] * unit, n.t[2] * unit}, md.nodes[at].t[0] * unit > 0.5});
+        }
         if (!nodes.empty())
           out[m] = std::move(nodes);
         want.erase(m);
