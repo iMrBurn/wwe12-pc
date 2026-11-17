@@ -92,6 +92,8 @@ REX_EXTERN(__imp__sub_82251388);  // an object's motion is over: what it does ne
 REX_EXTERN(__imp__sub_821F5B70);  // a match's list of object models to load (142 with the record's byte + 12097)
 REX_EXTERN(__imp__sub_822EE080);  // a match's objects made at its start (a parked 142 with that byte)
 
+bool Wwe12SrefOnMainThread();  // wwe12_sref.cpp: the pads' thread (the microphone made live there only)
+
 namespace {
 
 using Clock = std::chrono::steady_clock;
@@ -473,6 +475,8 @@ void MotionsTick(const PPCContext &ctx, u8 *base, double dt) {
     if (!w.anim)
       continue;
     const u32 actor = Actor(i == 2 ? kReferee : i);
+    if (i == 2 && !Wwe12SrefOnMainThread())
+      continue;  // (his microphone made live on the main thread only: next tick)
     if (actor && Ready(ctx, base, w.anim)) {
       if (i == 2)
         RefPlay(ctx, base, actor, w.anim, w.x);

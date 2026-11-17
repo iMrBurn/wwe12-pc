@@ -2150,6 +2150,13 @@ extern "C" REX_FUNC(sub_823B7DB8) {
 // Each actor's pad word, every frame (from wwe12_iquit.cpp's hook of sub_8225C4D8): the game's referee who waits is
 // kept out of sight from the first frame on - the tick only runs once the match's HUD is drawn (user's test of
 // 2026-11-16: before the bell he was seen half in the ring's middle).
+// The main thread (the pads' one), for wwe12_iquit.cpp: its referee's microphone is made live again there only - out of
+// its parking from the tick's other thread it could block the game as ours did (test of 2026-11-16, 18:03).
+bool Wwe12SrefOnMainThread() {
+  const std::thread::id t = g_main_tid.load();
+  return t == std::thread::id{} || t == std::this_thread::get_id();
+}
+
 // Each pad word (from wwe12_iquit.cpp's hook of sub_8225C4D8, the game's word): the game's referee given one not 0 by
 // the game itself - his own program working - leaves our work for him aside (see g_game_word_ms).
 void Wwe12SrefPadStudy(u32 actor, u32 word, u32 lr) {
