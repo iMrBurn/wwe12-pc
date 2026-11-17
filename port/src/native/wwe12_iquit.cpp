@@ -1218,7 +1218,7 @@ extern "C" REX_FUNC(sub_8225C4D8) {
     }
   }
   if (pad) {
-    u32 word = 0;
+    u32 word = ctx.r4.u32;  // (the game's word: its buttons may be kept)
     Wwe12SrefPadStudy(bd::mem::try_load<u32>(pad + 116), ctx.r4.u32, u32(ctx.lr));  // (the game's own word)
     if (Wwe12SrefWalkWord(bd::mem::try_load<u32>(pad + 116), &word))
       ctx.r4.u64 = word;

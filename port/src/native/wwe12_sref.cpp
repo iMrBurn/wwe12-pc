@@ -268,10 +268,13 @@ std::atomic<int64_t> g_game_word_ms{0};
 // the referee's program's package, kept from its loader's callback (sub_823F8BC0: data, size); given or not
 std::atomic<u32> g_ai_pkg{0}, g_ai_pkg_size{0};
 std::atomic<bool> g_ai_given{false};  // (the last time the game itself gave him a pad word not 0)
-// The old referee's way out (test of 2026-11-17 08:21: Mason Ryan, sent out from the ring's middle, left it by the
-// far side's ropes and stuck by the steel steps): first walked to the ramp's side of the ring, then the game's leaving
-// walk 'RRTR' takes him out by the near ropes.
+// The old referee's way out (tests of 2026-11-17 08:21 and 08:58: sent out from the ring's middle, he left it by the
+// far side's ropes and stuck by the steel steps). A stick of ours before the game's walk did not move him (his pad is
+// still a player's: 4 s still at 172 -115); the game's leaving walk 'RRTR' writes its words through sub_8225C4D8 (they
+// moved him). So 'RRTR' at once, and while he is in the ring its stick turned to the ramp's side (its buttons kept):
+// he goes through the near ropes, then 'RRTR' takes him up the ramp.
 std::atomic<bool> g_ex_walk{false};
+std::atomic<int64_t> g_ex_walk_ms{0};
 int64_t g_climb_ms = 0;
 float WalkTargetZ(int phase) { return phase == 0 ? 430.f : 120.f; }
 bool OnMainThread() { return g_main_tid.load() == std::this_thread::get_id(); }
@@ -1972,10 +1975,16 @@ void HandOver(const PPCContext &ctx, u8 *base) {
       g_ex_ms = now;
       g_ex = s3;
       g_left = false;
-      if (bd::mem::try_load<u8>(s3 + 1015) == 0) {  // (in the ring: to its ramp's side, then the game's walk away)
+      if (bd::mem::try_load<u8>(s3 + 1015) == 0) {  // (his walk away, from the ring, as the game's free state does)
         bd::mem::store<u32>(s3 + 2568, 0);
+        c = ctx;
+        c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+        c.r3.u64 = s3;
+        __imp__sub_82371C78(c, base);
+        g_left = true;
         g_ex_walk = true;
-        BD_INFO("[sref] remplacement : l'ancien arbitre va d'abord vers le cote rampe du ring");
+        g_ex_walk_ms = now;
+        BD_INFO("[sref] remplacement : l'ancien arbitre s'en va a pied (RRTR), par les cordes cote rampe");
       }
     }
     if (g_ai_pkg.load() && bd::mem::try_load<u32>(g_ai_pkg.load()) == 0x50414348u && bd::mem::try_load<u32>(n + 3428) == 1) {
@@ -2406,9 +2415,10 @@ bool StickWord(u32 actor, float tx, float tz, u32 *word) {
   *word = (0x80u | (((kCode[v - 2] - 1) & 7) << 4)) << 16;
   return true;
 }
-// The run: not found yet - 0x400 (written with the stick by the game's "go to a point" pad, sub_8228F5B8) did not
-// make him run (test of 2026-11-17 08:39: the same 150 cm/s).
-constexpr u32 kRun = 0u;
+// The run: 0x400 (written with the stick by the game's "go to a point" pad, sub_8228F5B8) did not make him run (test of
+// 2026-11-17 08:39: the same 150 cm/s). An ordinary referee holds 0x1000 with his stick for seconds (probe of 08:38:
+// 00F01000, 00B01000): tried as the run (his speed in the log tells).
+constexpr u32 kRun = 0x1000u;
 
 // The game's referee in the ring (see g_auto_ms): near the fighters (170 cm from their middle, on his side), to a
 // pinned man running; still in his count's motions (only his walk 2015x / free 1350 are steered).
@@ -2471,10 +2481,20 @@ bool RefereeWord(u32 actor, u32 *word) {
 bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
   if (!actor || !On() || !Match())
     return false;
-  if (g_ex_walk.load() && actor == g_ex) {  // (the old referee to the ramp's side of the ring)
+  if (g_ex_walk.load() && actor == g_ex) {  // (the old referee: out by the ramp's side's ropes)
     float x = 0, z = 0;
     Spot(actor, x, z);
-    return StickWord(actor, std::clamp(x, -120.f, 120.f), 240.f, word);
+    if (bd::mem::try_load<u8>(actor + 996) != 0 || NowMs() - g_ex_walk_ms.load() > 8000) {
+      g_ex_walk = false;  // (outside, or too long: the game's walk alone)
+      BD_INFO("[sref] l'ancien arbitre est hors du ring (a {:.0f} {:.0f}, zone {}) : la marche du jeu seule", x, z,
+              bd::mem::try_load<u8>(actor + 996));
+      return false;
+    }
+    const u32 buttons = *word & 0xFFFFu;  // (the game's walk's own buttons kept)
+    if (!StickWord(actor, std::clamp(x, -120.f, 120.f), 420.f, word))
+      return false;
+    *word |= buttons;
+    return true;
   }
   if (actor != Actor(6))
     return false;
@@ -2491,8 +2511,14 @@ bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
       break;
   }
   const int phase = g_walk_phase.load();
-  if (phase >= 2)
-    return false;  // (at the apron: his climb is a motion of ours, no stick)
+  if (phase >= 2) {
+    // (his climb: 712 onto the apron, 750, then 7010 where he waited 6 s every time, given no stick - test of 08:58:
+    // the stick to the ring's middle there, as a player steps through the ropes)
+    const u16 anim = Anim(actor);
+    if (g_climb.load() && anim >= 7000 && anim < 7100)
+      return StickWord(actor, 0.f, 0.f, word);
+    return false;
+  }
   const float dx = 0.f - LoadF(rp), dz = WalkTargetZ(phase) - LoadF(rp + 8);
   const float a = std::atan2(-dz, dx) - LoadF(0x82000ADC) + 4.f * 6.2831853f;
   const u32 dir8 = (((u32(a * LoadF(0x82002E4C)) & 0xFFF) + 256) >> 9) & 7;
@@ -2876,20 +2902,6 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
           BD_INFO("[sref] l'arbitre du jeu n'entre pas dans le ring (a {:.0f} {:.0f}) : mis dans le ring", nx, nz);
         }
       }
-    }
-  }
-  if (main_thread && g_ex_walk.load() && g_ex && g_out == kOutDone) {
-    float x = 0, z = 0;
-    Spot(g_ex, x, z);
-    if (z > 150.f || NowMs() - g_ex_ms > 4000 || bd::mem::try_load<u8>(g_ex + 996) != 0) {
-      g_ex_walk = false;
-      PPCContext e = ctx;
-      e.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
-      e.r3.u64 = g_ex;
-      bd::mem::store<u32>(g_ex + 2568, 0);
-      __imp__sub_82371C78(e, base);
-      g_left = true;
-      BD_INFO("[sref] l'ancien arbitre (a {:.0f} {:.0f}) s'en va a pied (RRTR)", x, z);
     }
   }
   if (main_thread && g_out == kOutDone && g_in_ring_ms.load() && !g_judge_alone && Actor(6) &&

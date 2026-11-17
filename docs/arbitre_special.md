@@ -243,3 +243,10 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   il ne l'a jamais eu, d'où des mots toujours à 0 (mêmes 17 composants et même écrivain `82960E2C` qu'un arbitre
   normal). Correction : rôle 1 le temps de cet appel, et le paquet (gardé, en-tête 'PACH' vérifié) redonné à la
   relève. Le comportement fait ici (stick + compte) ne sert plus que si le jeu ne lui donne aucun mot pendant 4 s.
+- Test du 2026-11-17 08:58 (« presque parfait ») : l'arbitre se déplace dans le ring, mais par le comportement fait
+  ici - le paquet du programme d'arbitre n'a pas été chargé dans ce match (`sub_8295C618` jamais appelé ; son chargement
+  `sub_823F8A98` dépend de drapeaux globaux `[0x8317ABC0]` / `[0x8317AC00]`, à suivre). L'ancien arbitre : un stick à
+  nous avant 'RRTR' ne le bouge pas (sa manette est encore celle d'un joueur) ; maintenant 'RRTR' tout de suite, son
+  stick tourné vers les cordes côté rampe tant qu'il est dans le ring (ses boutons gardés). Sur le tablier (7010)
+  l'arbitre attendait 6 s sans stick : stick vers le milieu du ring. Course essayée : bouton 0x1000 (tenu par
+  l'arbitre normal quand il va vite).
