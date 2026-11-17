@@ -753,7 +753,9 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           (at >= 0x104 || at + bytes.size() <= 0x2E || (at == 0xEE && bytes.size() == 1)))
         memcpy(&d[size_t(at)], bytes.data(), bytes.size());
     d[0x11F] = 1;  // a DLC superstar (the select screen's DLC tile; a disc superstar's copy had 0 and showed nowhere)
-    while (person > 0 && person_used[size_t(person)])
+    // (not 945-976, 0x3B1-0x3D0: the 32 test copies given those were the ones missing from the select screen, those
+    // above and below shown - test of 2026-11-13, 101 added superstars, 64 seen; docs/mod_maker_limites.md)
+    while (person > 0 && (person_used[size_t(person)] || (person >= 945 && person <= 976)))
       --person;
     person_used[size_t(person)] = true;
     Le16(d, 0x100, uint16_t(person));
