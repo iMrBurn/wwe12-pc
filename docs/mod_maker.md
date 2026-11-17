@@ -333,6 +333,13 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   (`star_port::kSvrProps = false`) : ces objets sont de nouveau cachés ; conversion des modèles prête
   (`SvrPropsTo12`). À faire en janvier : convertir ces pistes à os (racine + os vers les nœuds du JBOY de l'objet,
   comme `BodyBlock` pour un corps) ; Kennedy qui « parle » : voix / visage de SvR 2010, pas étudié.
+  **Convertisseur fait (même jour, vu hors jeu)** : `svr11_entrance::detail::PropBlock` (format ci-dessus : 0x75 racine
+  + masque + rotations, 0x7E / 0x7F racine, 0x7B ref = décalage de boneNN, 0x00-0x18 un os) → pistes « base » + une par
+  nœud boneNN (rot16, échelle, pos16 = place du nœud + décalage ; 0,1 cm), branché dans `Convert` pour un objet sans
+  donneur dont on a les nœuds (`svr_scenes::detail::PropNodesOf` : modèle de WWE '12 s'il l'a, sinon celui du jeu SvR
+  x 10) ; `kSvrPropMotion` (= `star_port::kSvrProps`) le coupe. Hors jeu : tunnel de MVP base (0 ; 117,8 ; 2881,8) cm,
+  ses moitiés bone02 / bone03 en miroir ; micro de Kennedy (2048, 10 os en chaîne vers -y) base de y -785,8 à -158 :
+  hauteur peut-être à inverser (le micro descend du plafond dans SvR 2010), à voir en jeu.
   Essais en jeu du 2026-11-15 (entrée Enzo & Cass, aperçu ; fichiers modifiés à la main, Mod Maker inchangé), **aucun
   bon** : piste « root » (hachage 0E5BF7F4) retirée ; modèle retourné Ry(180) ou Rz(180) ; « root » conjuguée ;
   « base » mise à Ry(180) comme R-Truth (avec 159 et avec 3038) ; angles des clés 0x0004 relus dans l'ordre X-Y-Z.

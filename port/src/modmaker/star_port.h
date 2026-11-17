@@ -232,7 +232,7 @@ inline std::vector<std::pair<int, std::string>> EntranceList(const disc::GameDis
 // (a rope's, 119, for MVP's tunnel and Kennedy's microphone) and the base's tracks, while SvR moves it with its own
 // bones (MVP's tunnel: a root and bones 1-5, records 0x75 / 0x7B like a body's): brought, it is put where the base's
 // rope is (MVP's tunnel unseen, 2026-11-17). Hidden as before until a prop motion converter exists (docs/mod_maker.md).
-constexpr bool kSvrProps = false;
+constexpr bool kSvrProps = svr_scenes::detail::kSvrPropMotion;  // (on with their motion, 2026-11-17)
 inline void SvrPropsTo12(std::vector<entrance13::Part> &objects) {
   for (size_t i = 0; i < objects.size();) {
     auto &o = objects[i];
