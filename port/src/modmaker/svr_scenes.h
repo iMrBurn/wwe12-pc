@@ -204,7 +204,7 @@ inline constexpr bool kSvrPropMotion = true;
 
 // Their bones (nodes "boneNN" and their places, cm), by model: WWE '12's own model when it has it (Kennedy's 2048),
 // else the SvR game's (pac\evt\evtobj.pac / _EvtObj.pac; SvR counts in 10 cm).
-inline svr11_entrance::detail::PropNodes PropNodesOf(const disc::GameDisc &w12, const disc::GameDisc *src, bool flip,
+inline svr11_entrance::detail::PropNodes PropNodesOf(const disc::GameDisc &w12, const disc::GameDisc *src,
                                                      const std::set<uint32_t> &models,
                                                      const svr11_entrance::PropDonors &donors) {
   svr11_entrance::detail::PropNodes out;
@@ -241,7 +241,7 @@ inline svr11_entrance::detail::PropNodes PropNodesOf(const disc::GameDisc &w12, 
         std::vector<svr11_entrance::detail::PropNode> nodes;
         for (auto &n : md.nodes)
           if (!n.name.rfind("bone", 0))
-            nodes.push_back({n.name, {n.t[0] * unit, n.t[1] * unit, n.t[2] * unit}, flip});
+            nodes.push_back({n.name, {n.t[0] * unit, n.t[1] * unit, n.t[2] * unit}});
         if (!nodes.empty())
           out[m] = std::move(nodes);
         want.erase(m);
@@ -257,7 +257,7 @@ inline svr11_entrance::detail::PropNodes PropNodesOf(const disc::GameDisc &w12, 
 }
 
 inline bool Convert(const disc::GameDisc &w12, int number, const Bytes &evp11, const Bytes &evt11,
-                    std::vector<Part> &out, std::string *why, const disc::GameDisc *src = nullptr, bool old_props = false) {
+                    std::vector<Part> &out, std::string *why, const disc::GameDisc *src = nullptr) {
   const Bytes &base = Base12(w12);
   if (base.empty()) {
     if (why)
@@ -269,7 +269,7 @@ inline bool Convert(const disc::GameDisc &w12, int number, const Bytes &evp11, c
   // motion: PropNodesOf)
   const auto props = PropsOf(evp11);
   const auto &donors = PropDonors12(w12, props);
-  const auto nodes = kSvrPropMotion ? PropNodesOf(w12, src, old_props, props, donors) : svr11_entrance::detail::PropNodes();
+  const auto nodes = kSvrPropMotion ? PropNodesOf(w12, src, props, donors) : svr11_entrance::detail::PropNodes();
   if (!svr11_entrance::Convert(evt11, evp11, base, evz, evp, why, &donors, &nodes))
     return false;
   out.push_back({number, "EVP", std::move(evp)});
@@ -334,8 +334,7 @@ inline bool Entrance(const disc::GameDisc &svr, const disc::GameDisc &w12, int n
     if (!detail::Old(svr, title, number, false, as, svr11, evp, evt, why))
       return false;
   }
-  const bool old_props = title == svr_old_entrance::kSvr07 || title == svr_old_entrance::kSvr08 || title == svr_old_entrance::kSvr09;
-  if (!detail::Convert(w12, as, evp, evt, out, why, &svr, old_props))
+  if (!detail::Convert(w12, as, evp, evt, out, why, &svr))
     return false;
   entrance13::FillTracks(out);
   // (its game event script; an older game's made WWE '12's; none of its own: Cena's, generic, as for the 2K games)
@@ -371,8 +370,7 @@ inline bool Victory(const disc::GameDisc &svr, const disc::GameDisc &w12, int nu
     if (!scene || !detail::Old(svr, title, scene, true, want, svr11, evp, evt, nullptr))
       return false;
   }
-  const bool old_props = title == svr_old_entrance::kSvr07 || title == svr_old_entrance::kSvr08 || title == svr_old_entrance::kSvr09;
-  if (!detail::Convert(w12, want, evp, evt, out, nullptr, &svr, old_props))
+  if (!detail::Convert(w12, want, evp, evt, out, nullptr, &svr))
     return false;
   entrance13::FillTracks(out);
   entrance13::CameraTwins12(out);

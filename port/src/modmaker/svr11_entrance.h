@@ -1937,7 +1937,6 @@ inline bool IsType(const EvpObj &o, uint32_t t0, uint32_t t1) { return o.t0 == t
 struct PropNode {
   std::string name;  // "bone01"...
   V3 t{};            // its place in its parent, cm
-  bool flip = false; // (SvR 2007-2009: the prop's place with y and z the other way, 2026-11-17)
 };
 using PropNodes = std::map<uint32_t, std::vector<PropNode>>;  // by model
 inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNode> &nodes, Raw &out,
@@ -2038,12 +2037,9 @@ inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNo
     return t;
   };
   out.ver = 4, out.tracks.clear();
-  // (MVP's SvR 2008 tunnel was unseen with its place as read, at z +2881 like the stage; Kennedy's SvR 2010
-  // microphone was right as read: the older games' props have y and z the other way, PropNode::flip)
-  const bool flip = !nodes.empty() && nodes[0].flip;
   std::vector<PosKey> root;
   for (auto &k : ch[0])
-    root.push_back({k.t, {k.v[0] / 10.0, (flip ? -1 : 1) * k.v[1] / 10.0, (flip ? -1 : 1) * k.v[2] / 10.0}});
+    root.push_back({k.t, {k.v[0] / 10.0, k.v[1] / 10.0, k.v[2] / 10.0}});
   out.tracks.push_back(track(0x0c5879e5, 100, root));
   for (const auto &n : nodes) {
     const int b = n.name.size() == 6 && !n.name.rfind("bone", 0) ? atoi(n.name.c_str() + 4) : 0;
