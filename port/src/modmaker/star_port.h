@@ -264,8 +264,20 @@ inline bool PortChamp(const disc::GameDisc &w12, const game_discs::Discs &discs,
   // (a free number, as his own entrance's: 499 down, none the game, a mod or his own entrance has)
   const std::set<int> taken = TakenEntrances();
   int to = 0;
-  for (int n = tag ? 769 : 499; n >= (tag ? 757 : 100) && !to; --n)
-    if (n != own && n != from && !taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(w12, n) &&
+  // (a team's: 769-757 first, as before, then 799-770 - Nyujyo9 too, none on the disc -: 43 places, not 13,
+  // docs/mod_maker_limites.md, 2026-11-17; the game's hook takes 700-799 as the TAG TEAM list's)
+  std::vector<int> tries;
+  if (tag) {
+    for (int n = 769; n >= 757; --n)
+      tries.push_back(n);
+    for (int n = 799; n >= 770; --n)
+      tries.push_back(n);
+  } else {
+    for (int n = 499; n >= 100; --n)
+      tries.push_back(n);
+  }
+  for (const int n : tries)
+    if (!to && n != own && n != from && !taken.count(n) && !entrance13::Group12(n).empty() && !entrance13::Exists12(w12, n) &&
         !music.Has(w12, n))
       to = n;
   if (!to) {

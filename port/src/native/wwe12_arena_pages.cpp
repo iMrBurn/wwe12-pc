@@ -2514,11 +2514,11 @@ extern "C" REX_FUNC(sub_829F9F90) {
     // pack's music package, which the game plays for that pack's superstar only - played on the superstar it was put
     // on, not from a created entrance -, and an entrance-only mod or a champion's entrance has no theme at all. The
     // music folder's songs, USER PLAYLIST, are for Create an Entrance)
-    // (a mod's tag team entrance, served as 757-769 - the Mod Maker's star_port::TagEntrance -, in the TAG TEAM list
+    // (a mod's tag team entrance, served as 757-769 then 770-799 - the Mod Maker's star_port::PortChamp -, in the TAG TEAM list
     // only; the others in the superstars' and champions' lists. Jay on Discord, 2026-11-15: Enzo and Cass's came in
     // the single ones)
     for (const auto &e : g_mod_entrances)
-      if ((e.first % 1000 >= 700 && e.first % 1000 < 770) == teams)
+      if ((e.first % 1000 >= 700 && e.first % 1000 < 800) == teams)
         adds.push_back(e);
   }
   if ((!superstars && !teams) || adds.empty() || !REXCVAR_GET(wwe12_entrance_list))
