@@ -2025,7 +2025,10 @@ inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNo
   // its mask / single-bone keys, in 1/65536 of a turn)
   auto rot = [&](int c) {
     const int b = c - 100;
-    const bool ref = b >= 1 && ch.count(200 + b);
+    // (off, the user's choice 2026-11-17: MVP's curtain still and flat looked better than its flaps as they came out -
+    // one stood up out of the arch at the end; kept for January: kPropFlaps)
+    constexpr bool kPropFlaps = false;
+    const bool ref = kPropFlaps && b >= 1 && ch.count(200 + b);
     const double mul = ref ? 16.0 : 1.0;
     std::vector<RotKey> rk;
     for (auto &k : ends(ref ? ch[200 + b] : ch.count(c) ? ch[c] : std::vector<PosKey>()))
