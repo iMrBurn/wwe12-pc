@@ -1205,7 +1205,9 @@ extern "C" REX_FUNC(sub_8234DD70) {
   __imp__sub_8234DD70(ctx, base);
 }
 
+void Wwe12SrefFreeProbe(uint32_t actor);  // wwe12_sref.cpp: the referee's probe
 extern "C" REX_FUNC(sub_8234FD30) {
+  Wwe12SrefFreeProbe(ctx.r3.u32);
   Guard g(107);
   __imp__sub_8234FD30(ctx, base);
 }

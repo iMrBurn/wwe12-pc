@@ -1180,6 +1180,7 @@ extern "C" REX_FUNC(sub_82251388) {
 void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor);  // wwe12_sref.cpp
 bool Wwe12SrefWalkWord(u32 actor, u32 *word);  // wwe12_sref.cpp: the Special Guest Referee's replacement walking in
 void Wwe12SrefPadStudy(u32 actor, u32 word);  // wwe12_sref.cpp: study of the computer's pad words
+void Wwe12SrefMotionAsk(u32 actor, u32 motion, u32 lr);  // wwe12_sref.cpp: the referee's probe
 extern "C" REX_FUNC(sub_8225C4D8) {
   const u32 pad = ctx.r3.u32;
   if (pad)
@@ -1227,6 +1228,7 @@ extern "C" REX_FUNC(sub_8225C4D8) {
 
 // ---- study: who gives the referee his motions (the callers of "play a motion" for him, in an I Quit match) ----
 extern "C" REX_FUNC(sub_8247AD18) {
+  Wwe12SrefMotionAsk(ctx.r3.u32, ctx.r4.u32, u32(ctx.lr));
   if (Wwe12IQuitMatch() && ctx.r3.u32 && ctx.r3.u32 == Actor(kReferee)) {
     static std::atomic<int> s_lines{0};
     if (s_lines.fetch_add(1) < 500)

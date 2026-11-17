@@ -2075,7 +2075,11 @@ void RefDiag(const char *who, u32 a) {
 }  // namespace
 
 // Study (ordinary matches): the computer's man's pad words, from wwe12_iquit.cpp's hook of sub_8225C4D8.
+namespace {
+void ProbeWord(u32 actor, u32 word);
+}
 void Wwe12SrefPadStudy(u32 actor, u32 word) {
+  ProbeWord(actor, word);
   if (!actor || actor != Actor(1) || !On() || Match())
     return;
   static u32 s_last = 0xFFFFFFFF;
@@ -2091,6 +2095,93 @@ void Wwe12SrefPadStudy(u32 actor, u32 word) {
   BD_INFO("[sref] etude manette ordi : mot {:08X} motion {} a {:.0f} {:.0f} {:.0f} zone {}", word, anim, x,
           LoadF(bd::mem::try_load<u32>(actor + 768) + 4), z, bd::mem::try_load<u8>(actor + 996));
 }
+
+// ---- probe (2026-11-17): why the game's referee stands still in the ring after the hand-over ----
+// His brain sends him (role 1) to the free state sub_8234FD30, which leaves at once (nothing done) on: the motion layer
+// [[+3396]+68] there, (int)f[+24] == 0 and its weight f[+276] <= 0; [+1972] > 0; sub_82349648 != 0; sub_82207918 != 0.
+// Past them it calls sub_8229E060, then its referee's branch. Counted for the game's referee (actor 6, role 1), an
+// ordinary match's (the reference: he walks) and ours, once a second, with the motions asked for him and his pad words.
+namespace {
+std::atomic<u32> g_pr_actor{0};
+std::atomic<u32> g_pr_free{0}, g_pr_49648{0}, g_pr_49648_hit{0}, g_pr_07918{0}, g_pr_07918_hit{0}, g_pr_9e060{0};
+std::atomic<u32> g_pr_asks{0}, g_pr_ask_last{0}, g_pr_ask_lr{0}, g_pr_words{0}, g_pr_word_last{0}, g_pr_word_nz{0};
+}  // namespace
+REX_EXTERN(__imp__sub_82349648);
+REX_EXTERN(__imp__sub_82207918);
+REX_EXTERN(__imp__sub_8229E060);
+extern "C" REX_FUNC(sub_82349648) {
+  const u32 a = ctx.r3.u32;
+  __imp__sub_82349648(ctx, base);
+  if (a && a == g_pr_actor.load(std::memory_order_relaxed)) {
+    g_pr_49648.fetch_add(1);
+    if (ctx.r3.u32)
+      g_pr_49648_hit.fetch_add(1);
+  }
+}
+extern "C" REX_FUNC(sub_82207918) {
+  const u32 a = ctx.r3.u32;
+  __imp__sub_82207918(ctx, base);
+  if (a && a == g_pr_actor.load(std::memory_order_relaxed)) {
+    g_pr_07918.fetch_add(1);
+    if (ctx.r3.u32)
+      g_pr_07918_hit.fetch_add(1);
+  }
+}
+extern "C" REX_FUNC(sub_8229E060) {
+  if (ctx.r3.u32 && ctx.r3.u32 == g_pr_actor.load(std::memory_order_relaxed))
+    g_pr_9e060.fetch_add(1);
+  __imp__sub_8229E060(ctx, base);
+}
+void Wwe12SrefFreeProbe(u32 actor) {  // (from wwe12_dtprobe2.cpp's hook of sub_8234FD30)
+  if (actor && actor == g_pr_actor.load(std::memory_order_relaxed))
+    g_pr_free.fetch_add(1);
+}
+void Wwe12SrefMotionAsk(u32 actor, u32 motion, u32 lr) {  // (from wwe12_iquit.cpp's hook of sub_8247AD18)
+  if (actor && actor == g_pr_actor.load(std::memory_order_relaxed)) {
+    g_pr_asks.fetch_add(1);
+    g_pr_ask_last = motion;
+    g_pr_ask_lr = lr;
+  }
+}
+namespace {
+void ProbeWord(u32 actor, u32 word) {
+  if (actor && actor == g_pr_actor.load(std::memory_order_relaxed)) {
+    g_pr_words.fetch_add(1);
+    g_pr_word_last = word;
+    if (word)
+      g_pr_word_nz.fetch_add(1);
+  }
+}
+// once a second, on the main thread: the line, the counters reset
+void ProbeLine(u32 actor) {
+  const bool ours = Match();
+  if (!actor || !On() || bd::mem::try_load<u32>(actor + 3428) != 1 || (ours && g_out != kOutDone)) {
+    g_pr_actor = 0;
+    return;
+  }
+  g_pr_actor = actor;
+  static int64_t s_last = 0;
+  static int s_lines[2] = {};
+  if (NowMs() - s_last < 1000)
+    return;
+  s_last = NowMs();
+  if (s_lines[ours ? 1 : 0]++ >= (ours ? 90 : 45))
+    return;
+  const u32 lay = bd::mem::try_load<u32>(actor + 3396), o68 = lay ? bd::mem::try_load<u32>(lay + 68) : 0;
+  const u32 b = Brain(actor);
+  float x = 0, z = 0;
+  Spot(actor, x, z);
+  BD_INFO("[sref] sonde {} : motion {} a {:.0f} {:.0f} zone {} | libre {} | porte1 +24 {:.2f} couche {:08X} poids {:.2f} | "
+          "+1972 {} | 82349648 {}/{} | 82207918 {}/{} | 8229E060 {} | motions demandees {} (derniere {} par {:08X}) | "
+          "manette {} mots, {} non nuls, dernier {:08X} | +2746 {} cerveau +104 {} +44 {:08X} | vitesse {:.1f} {:.1f}",
+          ours ? "notre arbitre" : "arbitre normal", Anim(actor), x, z, bd::mem::try_load<u8>(actor + 996), g_pr_free.exchange(0),
+          LoadF(actor + 24), o68, o68 ? LoadF(o68 + 276) : -1.f, int32_t(bd::mem::try_load<u32>(actor + 1972)),
+          g_pr_49648_hit.exchange(0), g_pr_49648.exchange(0), g_pr_07918_hit.exchange(0), g_pr_07918.exchange(0),
+          g_pr_9e060.exchange(0), g_pr_asks.exchange(0), g_pr_ask_last.load(), g_pr_ask_lr.load(), g_pr_words.exchange(0),
+          g_pr_word_nz.exchange(0), g_pr_word_last.load(), bd::mem::try_load<u8>(actor + 2746), b ? bd::mem::try_load<u32>(b + 104) : 0,
+          b ? bd::mem::try_load<u32>(b + 44) : 0, LoadF(actor + 752), LoadF(actor + 760));
+}
+}  // namespace
 
 // The stick of the walking referee's pad word (see g_walk); false: the word is left as it is.
 bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
@@ -2127,6 +2218,8 @@ bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
 
 void Wwe12SrefActorFrame(const PPCContext &ctx, u8 *base, u32 actor) {
   g_main_tid = std::this_thread::get_id();
+  if (actor && actor == Actor(6))
+    ProbeLine(actor);
   if (actor && (actor == Actor(6) || actor == Actor(0)) && On() && !Match()) {  // (study: motions, ordinary match)
     static u32 s_key[2] = {};
     static int s_lines = 0;
