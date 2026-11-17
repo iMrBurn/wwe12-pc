@@ -251,6 +251,16 @@ inline void SvrPropsTo12(std::vector<entrance13::Part> &objects) {
           if (ok) {
             port_svr_arena::detail::NoReflect(w12);
             port_svr_arena::detail::BumpToBg(w12);
+            // (then WWE '12's props' own relief shader, same parameters sampDiffusePrm / sampNormalPrm - its 2253,
+            // 2256...: the background one gave MVP's crates and curtain an odd look, 2026-11-17)
+            using namespace port_svr_arena::detail;
+            for (uint32_t i = 0; i < U32(w12, 0x18); ++i) {
+              const size_t at = kPofBase + kMeshTable + i * kW12Mesh + 0x7C;
+              if (at + 16 <= w12.size() && svrfmt::Name16(&w12[at]) == "yBG_BumpMap") {
+                memset(&w12[at], 0, 16);
+                memcpy(&w12[at], "yProp_BumpMap", 13);
+              }
+            }
           }
           if (ok)
             k.data = std::move(w12);

@@ -2020,10 +2020,16 @@ inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNo
       ks.pop_back();
     return ks;
   };
+  // (a bone's rotation: its 0x7b keys when it has some - in 1/4096 of a turn: MVP's curtain flaps open about 49
+  // degrees as he walks through, then flutter; read as offsets in 0.1 cm they moved 2 cm, unseen, 2026-11-17 -, else
+  // its mask / single-bone keys, in 1/65536 of a turn)
   auto rot = [&](int c) {
+    const int b = c - 100;
+    const bool ref = b >= 1 && ch.count(200 + b);
+    const double mul = ref ? 16.0 : 1.0;
     std::vector<RotKey> rk;
-    for (auto &k : ends(ch.count(c) ? ch[c] : std::vector<PosKey>()))
-      rk.push_back({k.t, {Wrap16(int(k.v[0])), Wrap16(int(k.v[1])), Wrap16(int(k.v[2]))}});
+    for (auto &k : ends(ref ? ch[200 + b] : ch.count(c) ? ch[c] : std::vector<PosKey>()))
+      rk.push_back({k.t, {Wrap16(k.v[0] * mul), Wrap16(k.v[1] * mul), Wrap16(k.v[2] * mul)}});
     return RotKeys16(rk);
   };
   Comp scale;
@@ -2046,8 +2052,7 @@ inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNo
     if (b <= 0 || b >= 24)
       continue;
     std::vector<PosKey> pos;
-    for (auto &k : ch.count(200 + b) ? ch[200 + b] : std::vector<PosKey>{{0, {0.0, 0.0, 0.0}}})
-      pos.push_back({k.t, {n.t[0] + k.v[0] / 10.0, n.t[1] + k.v[1] / 10.0, n.t[2] + k.v[2] / 10.0}});
+    pos.push_back({0, {n.t[0], n.t[1], n.t[2]}});  // (its place; its 0x7b keys are its rotation, above)
     out.tracks.push_back(track(yanm::NameHash(n.name), 100 + b, pos));
   }
   return ctx.ok;
