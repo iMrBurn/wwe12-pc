@@ -259,11 +259,6 @@ inline void SvrPropsTo12(std::vector<entrance13::Part> &objects) {
               if (at + 16 <= w12.size() && svrfmt::Name16(&w12[at]) == "yBG_BumpMap") {
                 memset(&w12[at], 0, 16);
                 memcpy(&w12[at], "yProp_BumpMap", 13);
-                // (and their vertex format WWE '12's props' (2), not SvR's 4 - vertices with tangents, which WWE '12
-                // keeps elsewhere: MVP's crates came out black, 2026-11-17)
-                const size_t vf = kPofBase + kMeshTable + i * kW12Mesh + 0x90;
-                if (vf + 4 <= w12.size() && U32(w12, vf) == 4)
-                  svrfmt::PutBe32(&w12[vf], 2);
               }
             }
           }
