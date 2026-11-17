@@ -38,6 +38,10 @@ REXCVAR_DEFINE_BOOL(wwe12_sref_own_count, true, "WWE12",
                     "Special Guest Referee: A counts (the game's own count functions, called for the A button).");
 
 #include <algorithm>
+#include <array>
+#include <map>
+#include <mutex>
+#include <set>
 #include <atomic>
 #include <cfloat>
 #include <cmath>
@@ -2088,10 +2092,10 @@ void RefDiag(const char *who, u32 a) {
 
 // Study (ordinary matches): the computer's man's pad words, from wwe12_iquit.cpp's hook of sub_8225C4D8.
 namespace {
-void ProbeWord(u32 actor, u32 word);
+void ProbeWord(u32 actor, u32 word, u32 lr);
 }
-void Wwe12SrefPadStudy(u32 actor, u32 word) {
-  ProbeWord(actor, word);
+void Wwe12SrefPadStudy(u32 actor, u32 word, u32 lr) {
+  ProbeWord(actor, word, lr);
   if (!actor || actor != Actor(1) || !On() || Match())
     return;
   static u32 s_last = 0xFFFFFFFF;
@@ -2199,13 +2203,42 @@ void Wwe12SrefMotionAsk(u32 actor, u32 motion, u32 lr) {  // (from wwe12_iquit.c
   }
 }
 namespace {
-void ProbeWord(u32 actor, u32 word) {
+// (who writes his pad words: the caller's return address, how many words, how many not 0, the last not 0)
+std::mutex g_pr_mu;
+std::map<u32, std::array<u32, 3>> g_pr_lr;
+void ProbeWord(u32 actor, u32 word, u32 lr) {
   if (actor && actor == g_pr_actor.load(std::memory_order_relaxed)) {
     g_pr_words.fetch_add(1);
     g_pr_word_last = word;
     if (word)
       g_pr_word_nz.fetch_add(1);
+    std::lock_guard<std::mutex> lock(g_pr_mu);
+    auto &e = g_pr_lr[lr];
+    ++e[0];
+    if (word)
+      ++e[1], e[2] = word;
   }
+}
+// all his components (the lists at + 3436 / + 3440 / + 3444, as sub_827D5C28 walks them: + 20 then + 16)
+std::string Components(u32 a) {
+  std::string out;
+  for (u32 off : {3436u, 3440u, 3444u}) {
+    out += fmt::format(" [+{}]", off);
+    const u32 list = bd::mem::try_load<u32>(a + off);
+    std::set<u32> seen;
+    for (u32 c = list, k = 0; c && k < 64 && seen.insert(c).second; c = bd::mem::try_load<u32>(c + 16), ++k) {
+      const u32 t = bd::mem::try_load<u32>(c + 4), o = bd::mem::try_load<u32>(c + 24);
+      out += fmt::format(" {:c}{:c}{:c}{:c}:{:08X}/{:08X}", char(t >> 24), char(t >> 16), char(t >> 8), char(t), o,
+                         o ? bd::mem::try_load<u32>(o) : 0);
+    }
+    for (u32 c = list ? bd::mem::try_load<u32>(list + 20) : 0, k = 0; c && k < 64 && seen.insert(c).second;
+         c = bd::mem::try_load<u32>(c + 20), ++k) {
+      const u32 t = bd::mem::try_load<u32>(c + 4), o = bd::mem::try_load<u32>(c + 24);
+      out += fmt::format(" {:c}{:c}{:c}{:c}:{:08X}/{:08X}", char(t >> 24), char(t >> 16), char(t >> 8), char(t), o,
+                         o ? bd::mem::try_load<u32>(o) : 0);
+    }
+  }
+  return out;
 }
 // once a second, on the main thread: the line, the counters reset
 void ProbeLine(u32 actor) {
@@ -2222,6 +2255,24 @@ void ProbeLine(u32 actor) {
   s_last = NowMs();
   if (s_lines[ours ? 1 : 0]++ >= (ours ? 90 : 45))
     return;
+  {
+    std::string w;
+    {
+      std::lock_guard<std::mutex> lock(g_pr_mu);
+      for (const auto &[lr, e] : g_pr_lr)
+        w += fmt::format(" {:08X}:{}/{}/{:08X}", lr, e[1], e[0], e[2]);
+      g_pr_lr.clear();
+    }
+    BD_INFO("[sref] sonde {} (3) : ecrivains de sa manette (adresse:non nuls/mots/dernier){} | +3424 {} +3428 {} +1760 {}",
+            ours ? "notre arbitre" : "arbitre normal", w, int32_t(bd::mem::try_load<u32>(actor + 3424)),
+            bd::mem::try_load<u32>(actor + 3428), bd::mem::try_load<u32>(actor + 1760));
+    static int s_comp[2] = {};
+    const u16 an = Anim(actor);
+    if (s_comp[ours ? 1 : 0] < 4 && (an >= 20150 && an < 20160) && s_lines[ours ? 1 : 0] % 5 == 2) {
+      ++s_comp[ours ? 1 : 0];
+      BD_INFO("[sref] sonde {} (4) : composants{}", ours ? "notre arbitre" : "arbitre normal", Components(actor));
+    }
+  }
   const u32 lay = bd::mem::try_load<u32>(actor + 3396), o68 = lay ? bd::mem::try_load<u32>(lay + 68) : 0;
   const u32 b = Brain(actor);
   float x = 0, z = 0;
