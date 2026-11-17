@@ -261,3 +261,6 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   z 460 côté rampe, puis la marche du jeu seule ; bloqué 2 s sur une étape : mis à sa fin.
 - Manager général : Vince McMahon (souhait de l'utilisateur, le GM de 2010-2011) s'il est ajouté par un mod dont le
   nom contient « mcmahon » (superstar_slots.txt), sinon John Laurinaitis.
+- Manager général par défaut : **Mr. McMahon de WWE '12 (numéro 115**, lu dans `pac/ch/chEtc.pac`, fiche de 290
+  octets, numéro à +44, nom à +46 ; outil `tools/yukes_bpe.py` `decompress_at`), en costume, sans mod. Un mod dont le
+  nom contient « mcmahon » passe avant ; le réglage `wwe12_sref_gm` avant tout. Laurinaitis n'est plus pris.

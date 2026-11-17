@@ -136,9 +136,8 @@ REX_EXTERN(__imp__sub_82254518);  // a parked object of a type made live again (
 REX_EXTERN(__imp__sub_82250258);  // an object parked
 REX_EXTERN(__imp__sub_82A37AB0);  // a place of the match's setup given a superstar (setup, place, superstar, pad, attire, ...)
 REXCVAR_DEFINE_INT32(wwe12_sref_gm, 0, "WWE12",
-                     "Special Guest Referee: the superstar number of the General Manager of the stage scene (WWE '13's John "
-                     "Laurinaitis, added by the Mod Maker); 0 = found by his name among the added superstars "
-                     "(superstar_slots.txt), else the first man at ringside plays him.");
+                     "Special Guest Referee: the superstar number of the General Manager of the stage scene; 0 = an "
+                     "added superstar named McMahon (superstar_slots.txt), else WWE '12's own Mr. McMahon (115).");
 REXCVAR_DEFINE_BOOL(wwe12_sref_actions, true, "WWE12",
                     "Special Guest Referee: his actions as WWE '13, with its motions (A: caution a superstar / check a "
                     "submission; Y: pronounce a disqualification / the screw job).");
@@ -475,7 +474,9 @@ extern "C" REX_FUNC(sub_828AE798) {
 // the normal referee was made (user's test of 2026-11-15, 22:17: roles 0 0 0, referee in slot 6).
 // In a setup of ours the place after the fighters keeps the kind 1; the game then makes no normal referee
 // (sub_82A37378). Seen working on 2026-11-16 (rule 83: role 1, no actor 6, the judge's + 112 = 2).
-// The General Manager's superstar number: the setting, else the added superstar whose mod's name holds "laurinaitis"
+// The General Manager's superstar number: the setting, else an added superstar whose mod's name holds "mcmahon", else
+// WWE '12's own MR. McMAHON (115, in his suit; the GM of 2010-2011 - user's wish of 2026-11-17, John Laurinaitis before)
+// (formerly: the added superstar whose mod's name holds "laurinaitis")
 // (the Mod Maker's superstar mods get their numbers in <user data>\superstar_slots.txt: "superstar_<name>=<number>").
 namespace {
 int GmNumber() {
@@ -497,7 +498,8 @@ int GmNumber() {
     if (eq != std::string::npos && low.substr(0, eq).find("laurinaitis") != std::string::npos)
       laurinaitis = atoi(low.c_str() + eq + 1);
   }
-  return laurinaitis;
+  (void)laurinaitis;  // (John Laurinaitis, the GM of 2012: no more by default - Vince McMahon is on the disc)
+  return 115;  // (WWE '12's MR. McMAHON, his suit: chEtc.pac's record, number 115 - read 2026-11-17)
 }
 }  // namespace
 
