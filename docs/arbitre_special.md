@@ -275,3 +275,7 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   côté (plus proches). Placé maintenant à (x ±50, 205). Le stick à nous sur lui est retiré (sa manette est encore celle
   d'un joueur : notre stick lu avec la vraie caméra l'a envoyé à l'opposé) ; dehors, la marche du jeu seule, surveillée
   (pas de progrès vers la rampe en 2 s : mis au bord de la rampe).
+- **Test final du 2026-11-17 09:52 : réussi.** Arbitre spécial placé côté rampe pendant la scène (de -207 -8), sorti
+  par les cordes de la rampe (717 à z 254 → 432), puis la marche du jeu jusqu'à la scène. Sondes d'étude retirées
+  (e341a5f). L'erreur `ConvertGuestFormat 0xC000000F` du journal existait déjà avant (rendu, pas l'arbitre).
+  Reste : le risque de fil du micro du I Quit (`RefPlay`), un test rapide dans un autre type de match.
