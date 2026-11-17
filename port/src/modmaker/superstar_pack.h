@@ -634,6 +634,28 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
           listed.insert(at.entry).second)  // (an added superstar's: in his own file, counted from it)
         rows.push_back({2, at.superstar, at.entry[6] - '0', "ATTIRE " + at.entry});
   }
+  // (a pack's rows 32-63, 96-127... - bit 5 of the row's place set - never reached the select screen: 101 added
+  // superstars, 64 seen, the same 37 missing with other "person" numbers and other catalog license bits, 2026-11-17.
+  // The game's own packs have 8 rows at most. Those places get a filler row, an unused DLC slot's record - never shown,
+  // as an unbought DLC superstar -, and the real rows the others; 32 rows or fewer: as before)
+  if (rows.size() > 32) {
+    int filler = 0;
+    const std::vector<int> free_slots = FreeSlots(in);
+    for (auto it = free_slots.rbegin(); it != free_slots.rend() && !filler; ++it)
+      if (*it >= 50 && *it < 100 &&
+          std::none_of(stars.begin(), stars.end(), [&](const auto &st) { return st.slot == *it; }))
+        filler = *it;
+    if (filler) {
+      std::vector<Row> spread;
+      for (size_t i = 0; i < rows.size();) {
+        if (spread.size() & 32)
+          spread.push_back({1, filler, 0, ""});
+        else
+          spread.push_back(rows[i++]);
+      }
+      rows.swap(spread);
+    }
+  }
   if (free_codes.size() < 2 * rows.size())
     free_codes = free_for(2 * rows.size());
   if (free_codes.size() < 2 * rows.size())
