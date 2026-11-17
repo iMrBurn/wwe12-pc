@@ -264,3 +264,9 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
 - Manager général par défaut : **Mr. McMahon de WWE '12 (numéro 115**, lu dans `pac/ch/chEtc.pac`, fiche de 290
   octets, numéro à +44, nom à +46 ; outil `tools/yukes_bpe.py` `decompress_at`), en costume, sans mod. Un mod dont le
   nom contient « mcmahon » passe avant ; le réglage `wwe12_sref_gm` avant tout. Laurinaitis n'est plus pris.
+- Test du 2026-11-17 09:32 : l'ancien arbitre, encore aux cordes du côté opposé, coincé entre les marches et la
+  barrière (vers z -440 : le sol derrière le ring est étroit). Maintenant l'arbitre spécial est **mis côté rampe du
+  ring pendant la scène** (la caméra montre la scène, le ring hors de vue) : à la relève, 'RRTR' le sort par les
+  cordes proches. Dehors, couloir à z -445 / x ±470 ; bloqué 2 s : mis au bout côté rampe.
+- Tenue du manager : Mr. McMahon dans sa **deuxième tenue** (le costume) : r7 = 1 de `sub_82A37AB0` → `sub_82A365B0`
+  → `sub_82A342B0(numéro, tenue, …)` (la première si celle-ci n'existe pas).
