@@ -18,6 +18,32 @@ Les heures sont des estimations à la louche, pas des promesses.
 | Capacités | 5 par catcheur | Fiche du jeu | Non |
 | CAW / logos | 100 / 200 places (jeu) | Sauvegarde | Plus tard, sans doute 2.0 (`docs/limit_breaking.md`) |
 
+## Travail du 2026-11-17 (après le zip 1.4.0, commits locaux, rien dans le zip)
+
+Ordre décidé par l'utilisateur : 3 entrées tag team, 1 catcheurs cachés, 2 arènes, 4 tenues.
+
+- **3. Entrées tag team : fait (bf67cd8), vu hors jeu seulement.** 43 places au lieu de 13 : le Mod Maker
+  (`star_port::PortChamp`, `tag`) prend 769→757 comme avant, puis 799→770 (groupe Nyujyo9 « I », aucun EVP du
+  disque) ; le crochet `sub_829F9F90` (`wwe12_arena_pages.cpp`) met les entrées de mods 700-799 dans la liste TAG TEAM.
+  Sans mod : rien ne change. Pas vu : une entrée servie en 770-799 (il en faut 14 installées). Les entrées de trios
+  de WWE '13 / 2K (source 770-799) restent servies en solo (100-499), `star_port::TagEntrance` inchangé.
+- **1. Catcheurs ajoutés cachés : cause trouvée, correction faite (aa5c196), pas encore vue en jeu.** Ce n'est pas une
+  grille de 64 cases. Journal du test du 2026-11-13 (`test_catcheurs.log`, 101 copies, sonde `[roster] ... in DLC
+  tile`) : les copies jamais testées par l'écran de choix sont exactement celles des places 148-191, et leur
+  « personne » (CHAR/DAT +0x100, donnée par `superstar_pack.h`, de 0x433 vers le bas en sautant celles déjà prises)
+  est 0x3D0..0x3B1 = **945..976** (32 sur 32) ; 977-999 et ≤ 944 sont montrées. Le jeu réserve ce bloc (pourquoi :
+  inconnu ; 1000-1049 = les 50 CAW, 0x3E8+). Correction : `superstar_pack.h` saute 945-976. Effet : seuls les packs
+  avec plus de ~50 catcheurs ajoutés changent (personnes renumérotées ; la copie de la sauvegarde est refaite par
+  `RemakeAddedRecords`, format inchangé). Les ~5 autres manquants signalés (37 au lieu de 32) : pas expliqués ; la
+  sonde des personnes (`wwe12_roster_probe.cpp`, ee8c307) n'a jamais tourné, à lancer au test.
+  Test : `tools\dev\copies_catcheurs_test.ps1 -N 100` (il faut un catcheur ajouté installé comme source), puis
+  `tools\dev\lancer_test_catcheurs.bat` ; compter les cases DLC de l'écran de choix ; `-Remove` après.
+- **2. Arènes (35 / 12,5 Mo) et 4. tenues (4) : gardées pour janvier.** Trop risquées pour être testées à fond avant
+  le 19 (fichiers de menu, tas mémoire du jeu, table COS). Pistes : 35 → ajouter des entrées `CAR_dummyNN` à la copie de
+  `MatchHD.pac` MLYE/MUPA et des pages au crochet de l'écran des arènes ; 12,5 Mo → agrandir le tas 12 (voir les
+  « PhysicalHeap::Alloc » de `docs/limit_breaking.md`) ; tenues → lignes COS de 4 cases (format fixe), étudier le menu
+  CHANGE ATTIRE avant tout.
+
 ## Recommandation pour janvier
 
 Premier pas : **trouver pourquoi l'écran de choix n'affiche que 64 catcheurs ajoutés.** C'est la limite que les joueurs
