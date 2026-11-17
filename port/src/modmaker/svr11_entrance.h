@@ -1996,6 +1996,18 @@ inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNo
   }
   if (!any || !ch.count(0))
     return false;  // (not a prop with bones: the base's tracks, as before)
+  // (shown from the start when the block never says: SvR 2008's MVP tunnel has no op 180 - shown by default there -,
+  // and WWE '12 showed neither it nor another model put in its place; Kennedy's SvR 2010 microphone has 180 01 at
+  // frame 0 and 180 00 at its end, and showed, 2026-11-17)
+  {
+    bool says = false;
+    for (auto &[f, lst] : fe)
+      for (auto &e : lst)
+        says = says || (e.n >= 1 && e[0] == 180);
+    static const uint8_t kShow[2] = {180, 1};
+    if (!says && T.n > 180 && T[180] == 2)
+      fe[0].insert(fe[0].begin(), Span{kShow, 2});
+  }
   const int last = nframes60 - 1;
   auto ends = [&](std::vector<PosKey> ks) {
     ks = ByTime(ks);
