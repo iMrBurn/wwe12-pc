@@ -255,3 +255,9 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   (1, puis 1-2 et dégagement). Le juge +108 est le **numéro** de l'acteur au sol (pas son adresse) : corrigé pour
   courir vers lui. Le stick sur le tablier (7010) n'a rien fait : entrée par 716 d'abord (comme l'homme de
   l'ordinateur depuis le sol), à 395 cm ; 712 en secours.
+- Test du 2026-11-17 09:17 : « tout parfait » (entrée par 716 du premier coup, course vers le tombé, compte), sauf
+  l'ancien arbitre : collé aux cordes du côté opposé à la relève, il est sorti par elles en 50 ms puis s'est coincé
+  dans les marches du coin (240, -360). Maintenant guidé aussi dehors : recul à z -530, le long de x ±530, jusqu'à
+  z 460 côté rampe, puis la marche du jeu seule ; bloqué 2 s sur une étape : mis à sa fin.
+- Manager général : Vince McMahon (souhait de l'utilisateur, le GM de 2010-2011) s'il est ajouté par un mod dont le
+  nom contient « mcmahon » (superstar_slots.txt), sinon John Laurinaitis.

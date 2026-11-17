@@ -275,6 +275,12 @@ std::atomic<bool> g_ai_given{false};  // (the last time the game itself gave him
 // he goes through the near ropes, then 'RRTR' takes him up the ramp.
 std::atomic<bool> g_ex_walk{false};
 std::atomic<int64_t> g_ex_walk_ms{0};
+// Outside (test of 09:17: at the far side's ropes at the hand-over, he was out by them in 50 ms, then the game's walk
+// took him into the far corner's steps, at 240 -360, for good): around the steps by the outside - back to z -530,
+// along x +-530, up to z 460 by the ramp - then the game's walk alone. Stuck 2 s on a leg: put at its end.
+int g_ex_leg = 0;
+float g_ex_best = 1e9f;
+int64_t g_ex_best_ms = 0;
 int64_t g_climb_ms = 0;
 float WalkTargetZ(int phase) { return phase == 0 ? 430.f : 120.f; }
 bool OnMainThread() { return g_main_tid.load() == std::this_thread::get_id(); }
@@ -480,15 +486,18 @@ int GmNumber() {
     root = rex::filesystem::GetUserFolder() / "wwe12";
   std::ifstream f(root / "superstar_slots.txt");
   std::string line;
+  int laurinaitis = 0;
   while (std::getline(f, line)) {
     std::string low = line;
     for (char &ch : low)
       ch = char(std::tolower(static_cast<unsigned char>(ch)));
     const size_t eq = low.rfind('=');
+    if (eq != std::string::npos && low.substr(0, eq).find("mcmahon") != std::string::npos)
+      return atoi(low.c_str() + eq + 1);  // (Vince McMahon first: the GM of 2010-2011, user's wish of 2026-11-17)
     if (eq != std::string::npos && low.substr(0, eq).find("laurinaitis") != std::string::npos)
-      return atoi(low.c_str() + eq + 1);
+      laurinaitis = atoi(low.c_str() + eq + 1);
   }
-  return 0;
+  return laurinaitis;
 }
 }  // namespace
 
@@ -1851,6 +1860,7 @@ void ResetMatchState() {
   g_ref_moving = false;
   g_ex_walk = false;
   g_ai_given = false;
+  g_ex_leg = 0;
 }
 
 void HandOver(const PPCContext &ctx, u8 *base) {
@@ -1984,6 +1994,7 @@ void HandOver(const PPCContext &ctx, u8 *base) {
         g_left = true;
         g_ex_walk = true;
         g_ex_walk_ms = now;
+        g_ex_leg = 0;
         BD_INFO("[sref] remplacement : l'ancien arbitre s'en va a pied (RRTR), par les cordes cote rampe");
       }
     }
@@ -2482,17 +2493,46 @@ bool RefereeWord(u32 actor, u32 *word) {
 bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
   if (!actor || !On() || !Match())
     return false;
-  if (g_ex_walk.load() && actor == g_ex) {  // (the old referee: out by the ramp's side's ropes)
+  if (g_ex_walk.load() && actor == g_ex) {  // (the old referee: out by the ramp's side's ropes, then around the ring)
     float x = 0, z = 0;
     Spot(actor, x, z);
-    if (bd::mem::try_load<u8>(actor + 996) != 0 || NowMs() - g_ex_walk_ms.load() > 8000) {
-      g_ex_walk = false;  // (outside, or too long: the game's walk alone)
-      BD_INFO("[sref] l'ancien arbitre est hors du ring (a {:.0f} {:.0f}, zone {}) : la marche du jeu seule", x, z,
-              bd::mem::try_load<u8>(actor + 996));
+    const int64_t now = NowMs();
+    const bool out = bd::mem::try_load<u8>(actor + 996) != 0;
+    if (now - g_ex_walk_ms.load() > 25000) {
+      g_ex_walk = false;
+      BD_INFO("[sref] l'ancien arbitre (a {:.0f} {:.0f}) : 25 s, la marche du jeu seule", x, z);
       return false;
     }
+    float tx = std::clamp(x, -120.f, 120.f), tz = 420.f;  // (in the ring: the ramp's side's ropes)
+    if (out) {
+      const float sx = x < 0.f ? -1.f : 1.f;
+      if (g_ex_leg == 0)
+        g_ex_leg = z > 250.f ? 4 : z < -250.f ? 1 : 3, g_ex_best = 1e9f, g_ex_best_ms = now;
+      const float legs[4][2] = {{x, -530.f}, {sx * 530.f, -530.f}, {sx * 530.f, 460.f}, {0.f, 0.f}};
+      while (g_ex_leg >= 1 && g_ex_leg <= 3) {
+        tx = legs[g_ex_leg - 1][0], tz = legs[g_ex_leg - 1][1];
+        const bool reached = g_ex_leg == 1 ? z < -490.f : g_ex_leg == 2 ? std::fabs(x) > 490.f : z > 400.f;
+        if (!reached)
+          break;
+        ++g_ex_leg, g_ex_best = 1e9f, g_ex_best_ms = now;
+      }
+      if (g_ex_leg >= 4) {
+        g_ex_walk = false;
+        BD_INFO("[sref] l'ancien arbitre est au bord de la rampe (a {:.0f} {:.0f}) : la marche du jeu seule", x, z);
+        return false;
+      }
+      const float d = std::hypot(tx - x, tz - z);
+      if (d < g_ex_best - 20.f)
+        g_ex_best = d, g_ex_best_ms = now;
+      else if (now - g_ex_best_ms > 2000) {  // (stuck: at the leg's end)
+        const u32 rp = bd::mem::try_load<u32>(actor + 768);
+        Place(actor, tx, rp ? LoadF(rp + 4) : -95.f, tz);
+        BD_INFO("[sref] l'ancien arbitre bloque (a {:.0f} {:.0f}, etape {}) : mis a {:.0f} {:.0f}", x, z, g_ex_leg, tx, tz);
+        g_ex_best = 1e9f, g_ex_best_ms = now;
+      }
+    }
     const u32 buttons = *word & 0xFFFFu;  // (the game's walk's own buttons kept)
-    if (!StickWord(actor, std::clamp(x, -120.f, 120.f), 420.f, word))
+    if (!StickWord(actor, tx, tz, word))
       return false;
     *word |= buttons;
     return true;
