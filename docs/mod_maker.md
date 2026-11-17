@@ -290,7 +290,9 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   sous ce numéro et l'ajoute sous son nom aux listes de Créer une entrée ; aucun catcheur modifié. Aide de test :
   `WWE12_MM_PAGE=6 WWE12_MM_MOVES=139,4 WWE12_MM_ADDENT=<titre hex>,<n°>,<rapport>` (2K14 668, SvR 2011 139, SvR 2008
   4012 : convertis en 497).
-  Listes de Créer une entrée (journal `wwe12_entrance_list_log`, 2026-11-15) : sorte 0 vidéos, 1 musiques, 2 entrées
+  Listes de Créer une entrée (journal `wwe12_entrance_list_log`, 2026-11-15) : sorte 0 vidéos, 1 musiques (plus aucune entrée de mod depuis le 2026-11-17 : muettes en CAE, retour de Jay ;
+  un thème ajouté est dans la musique du pack DLC, joué pour son catcheur seulement ; en CAE : dossier `music`,
+  USER PLAYLIST), 2 entrées
   seules (139…), 16 entrées seules + champion (600-618 puis les 139…), 17 multi-champion (600-614), **3 entrées tag
   team (700-756)**. Le crochet n'ajoute les entrées des mods qu'aux listes qui ont 139 ou 602 : une entrée tag team
   portée (Enzo & Cass, retour de Jay) arrivait donc en solo. **Corrigé (2026-11-15, pas encore vu en jeu)** : une

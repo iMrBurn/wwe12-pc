@@ -2508,7 +2508,12 @@ extern "C" REX_FUNC(sub_829F9F90) {
   if (kind == 0) {
     adds = Wwe12StarVideos();
     adds.insert(adds.end(), Wwe12AddedVideos().begin(), Wwe12AddedVideos().end());
-  } else {
+  } else if (kind != 1) {
+    // (not in kind 1, the MUSIC list, by music number - it holds Cena's 139 too -: a mod's entrance went there under
+    // its name and was silent there and in the match, Jay on Discord, 2026-11-17. An added theme lives in our DLC
+    // pack's music package, which the game plays for that pack's superstar only - played on the superstar it was put
+    // on, not from a created entrance -, and an entrance-only mod or a champion's entrance has no theme at all. The
+    // music folder's songs, USER PLAYLIST, are for Create an Entrance)
     // (a mod's tag team entrance, served as 757-769 - the Mod Maker's star_port::TagEntrance -, in the TAG TEAM list
     // only; the others in the superstars' and champions' lists. Jay on Discord, 2026-11-15: Enzo and Cass's came in
     // the single ones)
