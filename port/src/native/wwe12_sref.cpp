@@ -275,9 +275,8 @@ std::atomic<bool> g_ai_given{false};  // (the last time the game itself gave him
 std::atomic<bool> g_ex_walk{false};
 std::atomic<int64_t> g_ex_walk_ms{0};
 // Outside (test of 09:17: at the far side's ropes at the hand-over, he was out by them in 50 ms, then the game's walk
-// took him into the far corner's steps, at 240 -360, for good): around the ring - to z -445 (the barrier is about
-// -440, test of 09:32), along x +-470, up to z 460 by the ramp - then the game's walk alone. Stuck 2 s: put at the
-// ramp's side's end. (Seldom now: the special referee is put on the ring's ramp side during the scene.)
+// took him into the far corner's steps, at 240 -360, for good). Now he is put on the ring's ramp side during the scene;
+// outside, the game's walk is only watched: stuck 2 s short of the ramp's side, he is put there.
 int g_ex_leg = 0;
 float g_ex_best = 1e9f;
 int64_t g_ex_best_ms = 0;
@@ -1784,7 +1783,7 @@ bool SceneStart(const PPCContext &ctx, u8 *base, u32 n) {
     float x = 0, z = 0;
     const u32 rp = bd::mem::try_load<u32>(sr + 768);
     if (rp && Spot(sr, x, z) && z < 150.f) {
-      Place(sr, std::clamp(x, -150.f, 150.f), LoadF(rp + 4), 170.f);
+      Place(sr, std::clamp(x, -50.f, 50.f), LoadF(rp + 4), 205.f);  // (the ramp's ropes the nearest by far)
       BD_INFO("[sref] scene : l'arbitre special (a {:.0f} {:.0f}) est mis cote rampe du ring, hors de vue", x, z);
     }
   }
@@ -2509,49 +2508,31 @@ bool RefereeWord(u32 actor, u32 *word) {
 bool Wwe12SrefWalkWord(u32 actor, u32 *word) {
   if (!actor || !On() || !Match())
     return false;
-  if (g_ex_walk.load() && actor == g_ex) {  // (the old referee: out by the ramp's side's ropes, then around the ring)
+  if (g_ex_walk.load() && actor == g_ex) {  // (the old referee: his way the game's walk's, only watched)
+    // (no stick of ours for him: his pad is still a player's, and ours was read from the real camera - test of 09:39:
+    // sent to 470 460, he went to 646 254. Stuck 2 s outside short of the ramp's side: put there.)
     float x = 0, z = 0;
     Spot(actor, x, z);
     const int64_t now = NowMs();
-    const bool out = bd::mem::try_load<u8>(actor + 996) != 0;
-    if (now - g_ex_walk_ms.load() > 25000) {
+    if (now - g_ex_walk_ms.load() > 25000 || z > 400.f) {
       g_ex_walk = false;
-      BD_INFO("[sref] l'ancien arbitre (a {:.0f} {:.0f}) : 25 s, la marche du jeu seule", x, z);
+      BD_INFO("[sref] l'ancien arbitre (a {:.0f} {:.0f}) : vers la rampe, la marche du jeu seule", x, z);
       return false;
     }
-    float tx = std::clamp(x, -120.f, 120.f), tz = 420.f;  // (in the ring: the ramp's side's ropes)
-    if (out) {
-      const float sx = x < 0.f ? -1.f : 1.f;
+    if (bd::mem::try_load<u8>(actor + 996) != 0) {  // (outside)
+      const float d = -z;  // (his way: up z, to the ramp)
       if (g_ex_leg == 0)
-        g_ex_leg = z > 250.f ? 4 : z < -250.f ? 1 : 3, g_ex_best = 1e9f, g_ex_best_ms = now;
-      const float legs[4][2] = {{x, -445.f}, {sx * 470.f, -445.f}, {sx * 470.f, 460.f}, {0.f, 0.f}};
-      while (g_ex_leg >= 1 && g_ex_leg <= 3) {
-        tx = legs[g_ex_leg - 1][0], tz = legs[g_ex_leg - 1][1];
-        const bool reached = g_ex_leg == 1 ? z < -425.f : g_ex_leg == 2 ? std::fabs(x) > 450.f : z > 400.f;
-        if (!reached)
-          break;
-        ++g_ex_leg, g_ex_best = 1e9f, g_ex_best_ms = now;
-      }
-      if (g_ex_leg >= 4) {
-        g_ex_walk = false;
-        BD_INFO("[sref] l'ancien arbitre est au bord de la rampe (a {:.0f} {:.0f}) : la marche du jeu seule", x, z);
-        return false;
-      }
-      const float d = std::hypot(tx - x, tz - z);
+        g_ex_leg = 1, g_ex_best = d, g_ex_best_ms = now;
       if (d < g_ex_best - 20.f)
         g_ex_best = d, g_ex_best_ms = now;
-      else if (now - g_ex_best_ms > 2000) {  // (stuck: at the ramp's side's end, his way from there the game's)
+      else if (now - g_ex_best_ms > 2000) {
         const u32 rp = bd::mem::try_load<u32>(actor + 768);
-        Place(actor, sx * 470.f, rp ? LoadF(rp + 4) : -95.f, 460.f);
-        BD_INFO("[sref] l'ancien arbitre bloque (a {:.0f} {:.0f}, etape {}) : mis a {:.0f} 460", x, z, g_ex_leg, sx * 470.f);
-        g_ex_leg = 4;
+        Place(actor, x < 0.f ? -470.f : 470.f, rp ? LoadF(rp + 4) : -95.f, 460.f);
+        BD_INFO("[sref] l'ancien arbitre bloque dehors (a {:.0f} {:.0f}) : mis au bord de la rampe", x, z);
+        g_ex_walk = false;
       }
     }
-    const u32 buttons = *word & 0xFFFFu;  // (the game's walk's own buttons kept)
-    if (!StickWord(actor, tx, tz, word))
-      return false;
-    *word |= buttons;
-    return true;
+    return false;
   }
   if (actor != Actor(6))
     return false;

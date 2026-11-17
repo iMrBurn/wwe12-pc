@@ -270,3 +270,8 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   cordes proches. Dehors, couloir à z -445 / x ±470 ; bloqué 2 s : mis au bout côté rampe.
 - Tenue du manager : Mr. McMahon dans sa **deuxième tenue** (le costume) : r7 = 1 de `sub_82A37AB0` → `sub_82A365B0`
   → `sub_82A342B0(numéro, tenue, …)` (la première si celle-ci n'existe pas).
+- Test du 2026-11-17 09:39 : compte complet 1-2-3 (course vers le tombé, « pres du catcheur »), Mr. McMahon (115) en
+  manager. L'ancien arbitre, placé à (145, 170), a bougé avec sa motion jusqu'à (189, 139) : sorti par les cordes du
+  côté (plus proches). Placé maintenant à (x ±50, 205). Le stick à nous sur lui est retiré (sa manette est encore celle
+  d'un joueur : notre stick lu avec la vraie caméra l'a envoyé à l'opposé) ; dehors, la marche du jeu seule, surveillée
+  (pas de progrès vers la rampe en 2 s : mis au bord de la rampe).
