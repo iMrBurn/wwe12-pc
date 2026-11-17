@@ -2029,7 +2029,7 @@ inline bool PropBlock(Span data, Span T, int nframes60, const std::vector<PropNo
     const double mul = ref ? 16.0 : 1.0;
     std::vector<RotKey> rk;
     for (auto &k : ends(ref ? ch[200 + b] : ch.count(c) ? ch[c] : std::vector<PosKey>()))
-      rk.push_back({k.t, {Wrap16(k.v[0] * mul), Wrap16(k.v[1] * mul), Wrap16(k.v[2] * mul)}});
+      rk.push_back({k.t, {Wrap16(k.v[0] * mul), Wrap16((ref ? -1 : 1) * k.v[1] * mul), Wrap16((ref ? -1 : 1) * k.v[2] * mul)}});  // (0x7b: y and z the other way, the model counting its height downwards - a flap of MVP's curtain stood up out of the arch as read, 2026-11-17)
     return RotKeys16(rk);
   };
   Comp scale;
