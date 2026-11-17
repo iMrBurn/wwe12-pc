@@ -1655,10 +1655,7 @@ inline bool Build(const Inputs &in, const std::vector<Star> &stars, std::vector<
     Le16(cat, r + 4, uint16_t(rows[i].kind));
     Le16(cat, r + 6, uint16_t(pack));
     Le16(cat, r + 8, uint16_t(i));
-    // (+10: the row's license bit - the game's packs: 0, 1, 2... or one for all rows, 6 -, tested in a 32-bit mask:
-    // rows 32-63 and 96-127 of a pack never reached the select screen, 0-31 and 64-95 did (101 added superstars, 64
-    // seen, 2026-11-13 / 2026-11-17): the row's number modulo 32, the same as before for 32 rows or fewer)
-    Le16(cat, r + 10, uint16_t(i % 32));
+    Le16(cat, r + 10, uint16_t(i));
     Le32(cat, r + 0x10, uint32_t(rows[i].id));
     Le32(cat, r + 0x14, uint32_t(rows[i].sub));
     const std::string name = Latin1(rows[i].name).substr(0, 31);
