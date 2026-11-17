@@ -280,3 +280,4 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   (e341a5f). L'erreur `ConvertGuestFormat 0xC000000F` du journal existait déjà avant (rendu, pas l'arbitre).
   Reste : le risque de fil du micro du I Quit (`RefPlay`), un test rapide dans un autre type de match.
 - I Quit : le micro de l'arbitre (`RefPlay`, `sub_82254518`) n'est plus sorti de sa réserve que sur le fil principal (`Wwe12SrefOnMainThread`), comme pour l'arbitre spécial (le gel du 2026-11-16 18:03). Non testé en jeu.
+- **2026-11-17 : l'arbitre spécial est activé par défaut** (`wwe12_sref = true`, code et `port/config/wwe12.toml`), décision de l'utilisateur : I Quit et arbitre spécial dans la 1.4.

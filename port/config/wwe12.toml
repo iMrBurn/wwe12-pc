@@ -188,3 +188,8 @@ async_shader_compilation = false
 # your downed opponent to call the referee; the asked superstar stops the cursor in the red "NO" zone with A
 # before the time runs out, or quits. false = no I QUIT row (the game's own list).
 wwe12_iquit = true
+
+# PLAY > SPECIALTY > SPECIAL REFEREE (as WWE '13): a superstar is the referee - A counts the pins and the count-outs,
+# his gauge goes down when he does not do his job; empty, Mr. McMahon sends the normal referee to take over.
+# false = no SPECIAL REFEREE row.
+wwe12_sref = true

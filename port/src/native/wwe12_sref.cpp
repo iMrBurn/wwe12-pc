@@ -22,8 +22,8 @@
 
 #include <rex/cvar.h>
 
-REXCVAR_DEFINE_BOOL(wwe12_sref, false, "WWE12",
-                    "Special Guest Referee (rule 83): the superstar who referees counts with A (as WWE '13). Dev for now.");
+REXCVAR_DEFINE_BOOL(wwe12_sref, true, "WWE12",
+                    "Special Guest Referee (PLAY > SPECIALTY > SPECIAL REFEREE, as WWE '13): a superstar referees; in 1.4 (user, 2026-11-17).");
 
 // The game still has the played referee's count (read 2026-11-16): an actor with the role 1 whose pad presses the
 // "action 2" button goes to sub_823C97B0 (from his free state, sub_8234FD30), which starts the count's motion for
