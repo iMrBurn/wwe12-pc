@@ -18,7 +18,7 @@ REXCVAR_DEFINE_BOOL(wwe12_watch_select, false, "WWE12",
                     "Dev: DR2 on the character select's place 0 state ([S+268], 2 = attire panel): who writes it.");
 uint32_t Wwe12SelectScene(int place);  // wwe12_match_modes.cpp
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(WWE12_IOS)
 void Wwe12PinTrapStart() {}  // (dev, Windows only)
 #else
 
@@ -191,4 +191,4 @@ void Wwe12PinTrapStart() {
   BD_INFO("[compte] sonde active");
 }
 
-#endif  // !__ANDROID__
+#endif  // !__ANDROID__ && !WWE12_IOS
