@@ -2435,7 +2435,8 @@ bool RefereeWord(u32 actor, u32 *word) {
   float tx = 0, tz = 0, go = 75.f, stop = 40.f;
   bool run = false;
   const u32 j = bd::mem::try_load<u32>(kJudgePtr);
-  const u32 victim = j && g_state.load() == 1 ? bd::mem::try_load<u32>(j + 108) : 0;
+  const u32 vi = j && g_state.load() == 1 ? bd::mem::try_load<u32>(j + 108) : 0xFFFFFFFFu;
+  const u32 victim = vi < 9 ? Actor(vi) : 0;  // (the judge's + 108: the pinned man's index - test of 09:10)
   float vx = 0, vz = 0;
   if (victim && Spot(victim, vx, vz)) {
     float ux = rx - vx, uz = rz - vz;
@@ -2836,10 +2837,12 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
           BD_INFO("[sref] l'arbitre du jeu : montee {} finie (motion {}, a {:.0f} {:.0f}, {})", g_climb_anim, anim, nx, nz,
                   in_ring ? "dans le ring" : "pas entre : passe derriere les cordes");
         }
-      } else if (!in_ring && g_walk.load() && g_walk_phase.load() == 1 && std::fabs(nx) < 420.f && std::fabs(nz) < 420.f) {
+      } else if (!in_ring && g_walk.load() && g_walk_phase.load() == 1 && std::fabs(nx) < 395.f && std::fabs(nz) < 395.f) {
+        // (716 first, from 395 cm: in through the ropes at once, as the computer's man from the floor (366 cm out); 712 climbed onto the apron
+        // and waited there in 7010 - tests of 2026-11-17, 6 s each time, even with the stick)
         g_walk_phase = 2;
         u32 m = 0;
-        for (u32 c : {712u, 714u, 716u})
+        for (u32 c : {716u, 712u, 714u})
           if (!m && Wwe12MotionReady(ctx, base, c))
             m = c;
         // (facing the ring's middle: an actor faces (-sin h, -cos h))
@@ -2872,7 +2875,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
       if (phase == 0 && d < 90.f) {
         g_walk_phase = 1;
         s_best = 1e9f, s_best_ms = NowMs();
-        for (u32 m : {712u, 714u, 716u})
+        for (u32 m : {716u, 712u, 714u})
           Wwe12MotionReady(ctx, base, m);  // (asked ahead: ready at the apron)
         BD_INFO("[sref] l'arbitre du jeu est au pied de la rampe ({:.1f} s) : il monte dans le ring", since / 1000.0);
       } else if (NowMs() - s_best_ms > 5000 || since > 30000) {
@@ -2921,7 +2924,7 @@ void Wwe12SrefTick(const PPCContext &ctx, u8 *base) {
     PPCContext c = ctx;
     c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
     if (j && st == 1) {  // a pin: down by the man (or after 1.2 s), then a count each 0.8 s
-      const u32 v = bd::mem::try_load<u32>(j + 108);
+      const u32 vi = bd::mem::try_load<u32>(j + 108), v = vi < 9 ? Actor(vi) : 0;  // (an index)
       float vx = 0, vz = 0, rx = 0, rz = 0;
       const bool close_by = v && Spot(v, vx, vz) && Spot(n, rx, rz) && std::hypot(vx - rx, vz - rz) < 130.f;
       if (!g_auto_ms.load()) {

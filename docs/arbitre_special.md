@@ -250,3 +250,8 @@ Correspondance WWE '13 → WWE '12 : +3336 → +3428 (rôle), +500 → +998, +16
   stick tourné vers les cordes côté rampe tant qu'il est dans le ring (ses boutons gardés). Sur le tablier (7010)
   l'arbitre attendait 6 s sans stick : stick vers le milieu du ring. Course essayée : bouton 0x1000 (tenu par
   l'arbitre normal quand il va vite).
+- Test du 2026-11-17 09:08 : l'ancien arbitre sort côté rampe (717 en x -409 z 178) et remonte la rampe ; **course
+  = bouton 0x1000** (300-350 cm/s contre 150, pied de la rampe en 6 s au lieu de 13) ; compte du tombé fait d'ici
+  (1, puis 1-2 et dégagement). Le juge +108 est le **numéro** de l'acteur au sol (pas son adresse) : corrigé pour
+  courir vers lui. Le stick sur le tablier (7010) n'a rien fait : entrée par 716 d'abord (comme l'homme de
+  l'ordinateur depuis le sol), à 395 cm ; 712 en secours.
