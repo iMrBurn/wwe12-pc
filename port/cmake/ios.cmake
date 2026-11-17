@@ -41,3 +41,11 @@ target_link_libraries(wwe12 PRIVATE iconv)
 # bug as on Android, seen on the iPhone 2026-11-01): the replay is off by default there, so it is
 # here (android/wwe12_replay.cpp: the game's own switch set to 0 at startup).
 target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_replay.cpp")
+
+# The PC exe's resources (PlayStation button icons, WWE '13's I Quit / Special Guest Referee data) put in
+# the executable, as Android puts them in its library: same game as on PC (compat/windows.h reads them
+# through FindResourceW; without this the link fails on Wwe12AndroidResource).
+target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_resources.cpp")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_resources.cpp" PROPERTIES
+    COMPILE_DEFINITIONS "WWE12_RES_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/res\""
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/ps3_buttons.bin;${CMAKE_CURRENT_SOURCE_DIR}/res/iquit13.bin")

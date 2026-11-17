@@ -46,7 +46,7 @@ REXCVAR_DEFINE_INT32(wwe12_iquit_difficulty, 1, "WWE12", "I Quit match: the gaug
 REXCVAR_DEFINE_BOOL(wwe12_iquit_mic, true, "WWE12",
                     "I Quit match: the referee holds the game's microphone while he asks (as WWE '13).");
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(WWE12_IOS)
 #include <windows.h>  // compat/windows.h : FindResourceW & co. for the resources in the library (wwe12_resources.cpp)
 #endif
 #include <algorithm>
@@ -1323,7 +1323,7 @@ bool Wwe12SrefWanted();  // wwe12_sref.cpp: the cvar wwe12_sref
 const std::vector<std::pair<std::string, std::vector<uint8_t>>> &Wwe12IQuit13Files() {
   static const std::vector<std::pair<std::string, std::vector<uint8_t>>> files = [] {
     std::vector<std::pair<std::string, std::vector<uint8_t>>> out;
-#if defined(_WIN32) || defined(__ANDROID__)  // (Android: port/src/android/wwe12_resources.cpp)
+#if defined(_WIN32) || defined(__ANDROID__) || defined(WWE12_IOS)  // (phones: port/src/android/wwe12_resources.cpp)
     HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(102), MAKEINTRESOURCEW(10));  // 10 = RT_RCDATA
     HGLOBAL mem = res ? LoadResource(nullptr, res) : nullptr;
     const uint8_t *d = mem ? static_cast<const uint8_t *>(LockResource(mem)) : nullptr;
