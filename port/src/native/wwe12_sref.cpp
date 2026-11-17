@@ -2271,6 +2271,25 @@ void ProbeLine(u32 actor) {
     if (s_comp[ours ? 1 : 0] < 4 && (an >= 20150 && an < 20160) && s_lines[ours ? 1 : 0] % 5 == 2) {
       ++s_comp[ours ? 1 : 0];
       BD_INFO("[sref] sonde {} (4) : composants{}", ours ? "notre arbitre" : "arbitre normal", Components(actor));
+      // (5) his pad words come from his brain (CMIF = [+3384], made by sub_82959AA8): brain + 76 = its input object
+      // (sub_8295D968: + 0 the core, sub_82978DB8, 1872 bytes; + 8 the writer's object), whose word the pad's update
+      // sub_8225BD20 sends each frame (sub_829598A0 -> sub_8295D960 -> sub_8297D498: [[x + 20] + 12]). Dumped, to
+      // find what differs from an ordinary match's referee.
+      const auto dump = [](u32 o, u32 words) {
+        std::string d;
+        for (u32 i = 0; o && i < words; ++i)
+          d += fmt::format("{}{:08X}", i % 8 ? " " : (i ? " | " : ""), bd::mem::try_load<u32>(o + 4 * i));
+        return d;
+      };
+      const u32 br = bd::mem::try_load<u32>(actor + 3384), w = br ? bd::mem::try_load<u32>(br + 76) : 0;
+      const u32 core = w ? bd::mem::try_load<u32>(w) : 0, x = w ? bd::mem::try_load<u32>(w + 8) : 0;
+      const u32 x20 = x ? bd::mem::try_load<u32>(x + 20) : 0;
+      BD_INFO("[sref] sonde {} (5) : +3468 {} +3464 {:08X} +3472 {:08X} | cerveau {:08X} : {} | entree {:08X} : {} | "
+              "x {:08X} : {} | x+20 {:08X} : {}",
+              ours ? "notre arbitre" : "arbitre normal", int32_t(bd::mem::try_load<u32>(actor + 3468)),
+              bd::mem::try_load<u32>(actor + 3464), bd::mem::try_load<u32>(actor + 3472), br, dump(br, 24), w, dump(w, 12), x,
+              dump(x, 12), x20, dump(x20, 8));
+      BD_INFO("[sref] sonde {} (6) : coeur {:08X} : {}", ours ? "notre arbitre" : "arbitre normal", core, dump(core, 468));
     }
   }
   const u32 lay = bd::mem::try_load<u32>(actor + 3396), o68 = lay ? bd::mem::try_load<u32>(lay + 68) : 0;
