@@ -591,7 +591,12 @@ inline void Collect(const disc::GameDisc &w12, const game_discs::Discs &discs, u
     std::vector<entrance13::Part> both = out.entrance;
     both.insert(both.end(), out.victory.begin(), out.victory.end());
     both.insert(both.end(), out.champ.begin(), out.champ.end());  // (and its champion's entrance's)
-    // (SvR 2007-2011's props are another format: none brought, the ones WWE '12 hasn't hidden)
+    // (SvR 2008-2011's props are WWE '12's kind too - a JBOY model and its pictures, as the SvR arenas' models -:
+    // those WWE '12 hasn't brought from their pac\evt\_EvtObj.pac / evtobj.pac, MVP's SvR 2008 tunnel 2116, Jay on
+    // Discord, 2026-11-17; before, hidden. The script's numbers are the same props in every game: 2048 Kennedy's
+    // hanging microphone is WWE '12's own)
+    if (svr)
+      out.objects = entrance13::Objects(src, w12, both);
     if (scenes) {
       out.objects = entrance13::Objects(src, w12, both);
       // (and 2K16 / 2K17's hand props under 1000, a microphone..., made SOBJ 9000 + NNN: entrance13::Props2K)

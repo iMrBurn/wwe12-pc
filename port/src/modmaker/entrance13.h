@@ -921,7 +921,7 @@ inline std::vector<Part> Objects(const disc::GameDisc &src, const disc::GameDisc
   for (const auto &k : a12.root.kids)
     if (k.group.rfind("SOBJ", 0) == 0)
       want.erase(uint32_t(atoi(trimmed(k.name).c_str())));
-  std::vector<std::string> files = {"pac/evt/evtobj.pac"};
+  std::vector<std::string> files = {"pac/evt/evtobj.pac", "pac/evt/_EvtObj.pac"};  // (the second: SvR 2008-2010's)
   for (const auto &f : src.List("pac/evt"))
     if (f.rfind("evtobj_dlc", 0) == 0)
       files.push_back("pac/evt/" + f);

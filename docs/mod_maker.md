@@ -315,6 +315,12 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   WWE '12 (3038, R_Truth__Classic, parent objet 0, mêmes mots de case) ; les deux ont une piste YANM v4 mode 0 à 3
   canaux (25012 / 25016-17). La différence est donc dans les valeurs de la piste (repère de la main 2K ≠ WWE '12 ?) :
   à comparer canal par canal. 2755 (dans beaucoup d'entrées 2K17) : pas dans `pac/prop`, inconnu.
+  **Objets des entrées SvR (2026-11-17, retour de Jay, vu hors jeu)** : les SOBJ de SvR 2008-2011 sont du même format
+  (JBOY + images) et leurs numéros sont les mêmes objets que WWE '12 : ceux que WWE '12 n'a pas sont pris de
+  `pacevt_EvtObj.pac` (2008-2010) / `evtobj.pac` (`entrance13::Objects`, appelé aussi pour SvR par `star_port` et
+  `entrance_add`) au lieu d'être cachés. Tunnel de MVP SvR 2008 (4035) : 2116 apporté. Micro de Mr. Kennedy SvR 2010
+  (162) : 2048 existe dans WWE '12 (mêmes images), aucune entrée de WWE '12 ne l'a (pas de donneur), il garde sa piste
+  SvR convertie (un seul segment, 20, sans parent) ; ce qui cloche en jeu reste à voir.
   Essais en jeu du 2026-11-15 (entrée Enzo & Cass, aperçu ; fichiers modifiés à la main, Mod Maker inchangé), **aucun
   bon** : piste « root » (hachage 0E5BF7F4) retirée ; modèle retourné Ry(180) ou Rz(180) ; « root » conjuguée ;
   « base » mise à Ry(180) comme R-Truth (avec 159 et avec 3038) ; angles des clés 0x0004 relus dans l'ordre X-Y-Z.
