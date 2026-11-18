@@ -1215,6 +1215,36 @@ void MountEntrances(rex::filesystem::VirtualFileSystem *vfs, const std::string &
       ec.clear();
     }
   }
+  // Title belt mods (type=belt, mods\.svrmods\Belts\<id>\belt\SOBJ_<model>.bin: a belt of another game, the Mod Maker's
+  // BELTS & WEAPONS page, belt_port.h, 2026-11-18): in place of evtobj.pac's SOBJ/<model> (a title's shapes: 2NNN /
+  // 3NNN / 4NNN in the hand and on the shoulder, 5MMM at the waist); the first mod giving a model wins.
+  {
+    std::vector<fs::path> belts;
+    for (fs::directory_iterator it(mods / ".svrmods" / "Belts", ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_directory(ec) && !fs::exists(it->path() / "disabled", ec) && fs::is_directory(it->path() / "belt", ec))
+        belts.push_back(it->path());
+    ec.clear();
+    std::sort(belts.begin(), belts.end());
+    std::set<int> given;
+    for (const auto &d : belts) {
+      for (fs::directory_iterator it(d / "belt", ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string f = rex::path_to_utf8(it->path().filename());
+        const int model = f.rfind("SOBJ_", 0) == 0 ? atoi(f.c_str() + 5) : 0;
+        Part part;
+        if (model < 2000 || model > 5999 || given.count(model) || !ReadHost(it->path(), part.data) || part.data.size() < 16 ||
+            memcmp(part.data.data(), "PACH", 4))
+          continue;
+        given.insert(model);
+        part.group = "SOBJ";
+        part.name = std::to_string(model);
+        part.replace = true;
+        parts["pac/evt/evtobj.pac"].push_back(std::move(part));
+      }
+      ec.clear();
+    }
+    if (!given.empty())
+      REXLOG_INFO("[belts] {} title belt model(s) from belt mods", given.size());
+  }
   // Title belts (pac/wuniData.pac /WWEU/BLTS: a PACH of texts by superstar number, two lines "x,y,z,sx,sy,sz": the belt
   // on the shoulder, then at the waist). An added superstar had the text of whoever had his number before (Jeff Hardy
   // at 109: the belt went through his clothes at the waist, 2026-11-03): he gets his base's, its waist's last two

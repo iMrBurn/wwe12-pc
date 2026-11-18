@@ -4,6 +4,9 @@ Résumé de l'état actuel. Les sections « 1.3 » (2026-11-10 / 11) sont les pl
 Docs liés : prises ajoutées `docs/prises_svr11.md`, prises / entrées / musiques des autres jeux `docs/plan_movesets.md`,
 SvR 2007-2010 `docs/plan_svr_anciens.md`, limites du nombre de mods `docs/mod_maker_limites.md`.
 
+**Nouveauté du 2026-11-18 (commit local, page AIDE à jour, pas encore vu en jeu)** : CEINTURES ET ARMES > « Porter une
+ceinture d'un autre jeu » (`belt_port.h`, mod `type=belt`) - détail au § 9.
+
 **Nouveautés du 2026-11-17 (après le zip 1.4.0, commits locaux ; page AIDE à jour)** :
 - Catcheurs ajoutés : jusqu'à 190, tous à l'écran de choix (lignes de remplissage dans la liste du pack ; places 231 et
   289 exclues) - `docs/mod_maker_limites.md`. Entrées tag team : 43 places (757-769 puis 770-799).
@@ -405,6 +408,30 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   sort à chaque lancement. Vu en jeu. Piège : un EM01 dans le pack → écran noir.
 - **Ceintures et armes** : `evtobj.pac` SOBJ/NNNN (30 ceintures), `bgEtc.pac` STG/WPON… ; image remplacée = pack de
   textures. Pas encore vu en jeu sur une ceinture.
+- **Ceinture d'un autre jeu** (2026-11-18, demande d'un joueur : le titre WWE de 2013 de 2K14 ; l'utilisateur : « de
+  n'importe quel jeu WWE », étudier l'ajout). `belt_port.h`, page CEINTURES ET ARMES (2e bouton radio), mod `type=belt`
+  (`belt/SOBJ_<n>.bin`, dossier `mods\.svrmods\Belts`), servi à la place de l'`evtobj.pac` SOBJ/<n> du jeu
+  (`wwe12_arena_pages.cpp`, « Title belt mods », journal `[belts]`). **Pas encore vu en jeu.**
+  - Formes d'un titre dans WWE '12 (noms de SOBJ/LIST : u16 **LE** + nom, 64 octets) : 2NNN / 3NNN dans la main et sur
+    l'épaule (os bone01-15 + AW_01-20), 4NNN (17 os), 20N1-2030 / 3011-3024 / 4011-4020 pliées ou roulées (rigides :
+    root, bone01), 5MMM à la taille (L_bone01-12, R_bone01-12 ; 5004 = WWE, 5009 = World Heavyweight, 5021 = ECW...).
+    PACH {0 JBOY, 10 images, 30, 100, 200, 1000, 1010}.
+  - WWE '13 / 2K14 / 2K15 : groupe **BOBJ** d'`evtobj.pac` (2K14 : 154), même format ; 2K14 2004 = le titre WWE de 2013
+    (modèle « 2933_New_WWE_01 », à la taille 5004 = « 5066_New_WWE_04 ») ; un enfant 4 (second petit modèle) enlevé.
+    Pas de formes pliées / roulées : celles du jeu restent. 2K16 / 2K17 : `pac\prop\NNNN.pac` (HSPC, enfants ZLIB,
+    comme `entrance13::Props2K`). SvR 2007-2011 : SOBJ convertis par `star_port::SvrPropsTo12` (SvR 2011 a toutes les
+    formes).
+  - Familles : nom du modèle (« 2933_New_WWE_01 » -> New_WWE), sinon nom de LIST sans « - Stretched / Folded2... »
+    (3NNN / 4NNN prennent celui du 2NNN ; un 5MMM sans nom emprunte celui de WWE '12 au même numéro). Chaque forme de
+    WWE '12 reçoit la forme source aux mêmes os (noms, puis ordre, puis millier) ; aucune assez proche = celle du jeu
+    reste. Vérifié hors jeu (outil de test) : WWE Title <- 2K14 « New WWE » = 2004<-2004, 3004<-3004, 4004<-2004,
+    5004<-5004 ; SvR 2011 : les 9 formes.
+  - **Ajouter un titre** : impossible sans changer la sauvegarde (23 titres fixes, tables de champions 23 x 2 places,
+    `docs/univers.md` § 3) ni les menus. Ce qu'on propose : la ceinture à la place d'un titre non utilisé (Hardcore,
+    Cruiserweight, European...), puis le donner (MODIFIER L'UNIVERS). Le nom du titre dans les menus reste celui du
+    jeu (piste : textes de `string.pac`).
+  - À vérifier en jeu : la ceinture dans les mains / sur l'épaule / à la taille d'un champion ; 4NNN (os AW_ au repos) ;
+    les jeux autres que 2K14 (la page le dit).
 - **CAW** : liste, image des listes, export `.wwe12caw`, import ; sommes de contrôle (`.cas` +12, +0x14B254, fin ; fiche
   dans `SaveData.dat` à 0x1B9E8 + place × 0x6E4). **Supposé, à vérifier en jeu** : 0x6E4 et 50 places.
 - **Types de match** : recherche seulement (`pac/misc.pac` `RUL ` à 0x9630, 119 fiches de 108 octets ; en mémoire

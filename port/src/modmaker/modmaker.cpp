@@ -354,8 +354,8 @@ void PageHome() {
        "jeux."},
       {kCaw, "CAW", "CAW", "Your created superstars: their picture in the game's lists, export and import (share them).",
        "Vos catcheurs créés : leur image dans les listes du jeu, export et import (pour les partager)."},
-      {kObjects, "Belts & weapons", "Ceintures et armes", "The pictures of the title belts, weapons and other objects.",
-       "Les images des ceintures, des armes et des autres objets du jeu."},
+      {kObjects, "Belts & weapons", "Ceintures et armes", "The pictures of the title belts, weapons and other objects; belts of other games.",
+       "Les images des ceintures, des armes et des autres objets du jeu ; les ceintures des autres jeux."},
       {kMedia, "Media", "Média", "The game's superstars' portraits and entrance songs, in one pack.",
        "Les portraits et les musiques d'entrée des catcheurs du jeu, en un seul pack."},
       {kSigns, "Crowd signs", "Pancartes", "The signs the crowd holds up for a superstar during his match.",
@@ -639,6 +639,10 @@ const Guide kGuides[] = {
       "share it, import someone else's. Your save is copied first (SaveBackups); close the game before.",
       "BELTS & WEAPONS: the pictures of the title belts (stretched, folded and rolled: three objects), weapons and "
       "other objects. Replace some: a texture pack is made and installed (launcher's TEXTURES page).",
+      "BELTS & WEAPONS, Port a belt from another game: a belt of another WWE game (2K14's 2013 WWE title...) in "
+      "place of one of the game's, in the hands, on the shoulder and at the waist. Pick its game, its belt, then the "
+      "game's belt it replaces. The game has 23 fixed titles: to add one, put it in place of a title you don't use "
+      "(Hardcore, European...) and give that title to whoever you like.",
       "ARENAS, 3D editor: Add a 3D object (OBJ in metres, or FBX) put where the picked object is, then move it; Export "
       "as OBJ writes an object out (OBJ, MTL, PNG).",
       "SUPERSTARS, Materials: the shine and tint of the skin and of each attire part. Tick several parts to change "
@@ -648,6 +652,10 @@ const Guide kGuides[] = {
       "le jeu avant.",
       "CEINTURES : les images des ceintures (dépliée, pliée et roulée : trois objets), des armes et des autres objets. "
       "Remplacez-en : un pack de textures est créé et installé (page TEXTURES du launcher).",
+      "CEINTURES, Porter une ceinture d'un autre jeu : une ceinture d'un autre jeu WWE (le titre WWE de 2013 de 2K14...) "
+      "à la place d'une du jeu, dans les mains, sur l'épaule et à la taille. Choisissez son jeu, sa ceinture, puis la "
+      "ceinture du jeu qu'elle remplace. Le jeu a 23 titres fixes : pour en ajouter un, mettez-la à la place d'un titre "
+      "que vous n'utilisez pas (Hardcore, European...) et donnez ce titre à qui vous voulez.",
       "ARÈNES, éditeur 3D : Ajouter un objet 3D (OBJ en mètres, ou FBX), posé à la place de l'objet choisi, puis "
       "déplacez-le ; Exporter en OBJ écrit un objet (OBJ, MTL, PNG).",
       "CATCHEURS, Matières : la brillance et la teinte de la peau et de chaque partie de la tenue. Cochez plusieurs "
@@ -972,6 +980,10 @@ void DrawUi() {
   case kObjects:
     Title(g_fr ? "CEINTURES ET ARMES" : "BELTS & WEAPONS");
     g_objects.Draw(g_fr, g_device.Get(), g_disc, g_mods);
+    if (g_objects.want_discs_) {  // ("Add its disc": MY GAME DISCS)
+      g_objects.want_discs_ = false;
+      g_page = kDiscs;
+    }
     break;
   case kBackgrounds:
     Title(g_fr ? "FONDS DU MENU" : "MENU BACKGROUNDS");
@@ -1040,6 +1052,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   g_videos.discs_ = &g_discs;
   g_new_star.discs_ = &g_discs;
   g_moves_page.discs_ = &g_discs;
+  g_objects.discs_ = &g_discs;
   g_stars.discs_ = &g_discs;
   g_stars.user_root_ = UserRoot();
   g_new_star.user_root_ = UserRoot();
