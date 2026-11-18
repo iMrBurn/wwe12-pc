@@ -48,4 +48,4 @@ target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_repl
 target_sources(wwe12 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_resources.cpp")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/android/wwe12_resources.cpp" PROPERTIES
     COMPILE_DEFINITIONS "WWE12_RES_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/res\""
-    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/ps3_buttons.bin;${CMAKE_CURRENT_SOURCE_DIR}/res/iquit13.bin")
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/ps3_buttons.bin;${CMAKE_CURRENT_SOURCE_DIR}/res/iquit13.bin;${CMAKE_CURRENT_SOURCE_DIR}/res/pipelines_seed.w12p;${CMAKE_CURRENT_SOURCE_DIR}/res/declarations_seed.w12d")

@@ -34,9 +34,32 @@ __asm__(
     ".incbin \"" WWE12_RES_DIR "/iquit13.bin\"\n"
     ".global " WWE12_RES_SYM("wwe12_res102_end") "\n"
     WWE12_RES_SYM("wwe12_res102_end") ":\n"
+#if defined(WWE12_IOS)
+    // 103 / 104 (iPhone only): the pipelines and vertex declarations a developer's PC has already
+    // met (pso_recorder.cpp, svr_resources.cpp). The PC zip and the APK ship them as files beside
+    // the game, so the first session prepares them in the background instead of freezing half a
+    // second on each new scene; an app bundle is read-only and the workflow copies nothing in, so
+    // the executable carries them and wwe12_ios.cpp writes them into Documents, the game folder on
+    // iOS. 53 KB of shader fingerprints and render states, no game data.
+    ".balign 16\n"
+    ".global " WWE12_RES_SYM("wwe12_res103_begin") "\n"
+    WWE12_RES_SYM("wwe12_res103_begin") ":\n"
+    ".incbin \"" WWE12_RES_DIR "/pipelines_seed.w12p\"\n"
+    ".global " WWE12_RES_SYM("wwe12_res103_end") "\n"
+    WWE12_RES_SYM("wwe12_res103_end") ":\n"
+    ".balign 16\n"
+    ".global " WWE12_RES_SYM("wwe12_res104_begin") "\n"
+    WWE12_RES_SYM("wwe12_res104_begin") ":\n"
+    ".incbin \"" WWE12_RES_DIR "/declarations_seed.w12d\"\n"
+    ".global " WWE12_RES_SYM("wwe12_res104_end") "\n"
+    WWE12_RES_SYM("wwe12_res104_end") ":\n"
+#endif
     ".text\n");
 
 extern "C" const uint8_t wwe12_res101_begin[], wwe12_res101_end[], wwe12_res102_begin[], wwe12_res102_end[];
+#if defined(WWE12_IOS)
+extern "C" const uint8_t wwe12_res103_begin[], wwe12_res103_end[], wwe12_res104_begin[], wwe12_res104_end[];
+#endif
 
 const Wwe12Resource *Wwe12AndroidResource(int id) {
   static const Wwe12Resource r101{wwe12_res101_begin, DWORD(wwe12_res101_end - wwe12_res101_begin)};
@@ -45,5 +68,13 @@ const Wwe12Resource *Wwe12AndroidResource(int id) {
     return &r101;
   if (id == 102)
     return &r102;
+#if defined(WWE12_IOS)
+  static const Wwe12Resource r103{wwe12_res103_begin, DWORD(wwe12_res103_end - wwe12_res103_begin)};
+  static const Wwe12Resource r104{wwe12_res104_begin, DWORD(wwe12_res104_end - wwe12_res104_begin)};
+  if (id == 103)
+    return &r103;
+  if (id == 104)
+    return &r104;
+#endif
   return nullptr;  // 1 = the exe's icon: none here
 }

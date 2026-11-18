@@ -368,6 +368,29 @@ static UISwitch* Toggle(BOOL on, void (^onChange)(BOOL)) {
   return s;
 }
 
+// Frame rate, the same three modes as the PC's GRAPHICS menu (native/wwe12_fps.cpp): the game's own
+// rates, 60 fps in entrances and victory scenes, or its own 30 fps mode everywhere. On the iPhone 30
+// is the steady one: the phone lowers its clocks after a couple of minutes of play (log 019,
+// 2026-11-18: the same frame cost 1.8x more CPU time after two minutes), and half the frames leaves
+// room for that. Both keys are written, as the PC menu does, since wwe12_frame_mode wins over
+// wwe12_60fps and an older wwe12.toml may hold either.
+static UIView* FrameRateRow() {
+  const std::string mode = TomlGet("wwe12_frame_mode", "");
+  NSInteger sel = 0;
+  if (mode == "30") {
+    sel = 2;
+  } else if (mode == "60_entrances" || mode == "60") {
+    sel = 1;
+  } else if (mode != "original" && TomlGet("wwe12_60fps", "false") == "true") {
+    sel = 1;
+  }
+  return Row(@"Frame rate", Segment(@[ @"Original", @"60 in scenes", @"30 everywhere" ], sel, ^(NSInteger i) {
+               static const char* kModes[] = {"original", "60_entrances", "30"};
+               TomlSet("wwe12_frame_mode", kModes[i]);
+               TomlSet("wwe12_60fps", i == 1 ? "true" : "false");
+             }));
+}
+
 // A row with a choice stored in wwe12.toml: `values` are the toml texts, in the order of `names`.
 static UIView* TomlChoice(NSString* title, const char* key, NSArray<NSString*>* names, NSArray<NSString*>* values,
                           const char* fallback) {
@@ -835,7 +858,7 @@ static std::string MakeBackup(const std::string& label, bool automatic) {
   [gfx addArrangedSubview:TomlSwitch(@"Shadows", "wwe12_shadows", true)];
   [gfx addArrangedSubview:TomlSwitch(@"Crowd", "wwe12_crowd", true)];
   [gfx addArrangedSubview:TomlSwitch(@"Depth of field (blur, heavier)", "wwe12_dof", true)];
-  [gfx addArrangedSubview:TomlSwitch(@"60 fps in entrances (heavier)", "wwe12_60fps", false)];
+  [gfx addArrangedSubview:FrameRateRow()];
   [gfx addArrangedSubview:TomlSwitch(@"V-sync", "bd_vsync", true)];
   [gfx addArrangedSubview:TomlSwitch(@"FPS counter", "wwe12_show_fps", false)];
   [stack addArrangedSubview:Label(@"Changes apply the next time you press PLAY.", 12.0, W12_DIM, NO)];

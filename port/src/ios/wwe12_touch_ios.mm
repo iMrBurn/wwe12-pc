@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <ctime>
 #include <mutex>
 #include <vector>
 
@@ -391,6 +393,38 @@ void Tick() {
   NSNumber* opacity = [NSUserDefaults.standardUserDefaults objectForKey:@"touch_opacity"];
   g_view.alpha = opacity ? MIN(1.0, [opacity doubleValue] / 50.0) : 1.0;
   [g_view tick];
+}
+
+// How hot the phone is, and whether it is saving battery. In log 019 (2026-11-18) every CPU counter
+// of a frame rose by the same 1.8x after two minutes of play, which is the phone lowering its clocks,
+// not the game doing more work; the game has no say in that, so the only thing to do is read it.
+// Written to Documents/boot.log at every change, with the clock time of the game's own log, so the
+// two can be read side by side.
+void LogThermal() {
+  static const char* kNames[] = {"nominal", "fair", "serious", "critical"};
+  const NSInteger state = static_cast<NSInteger>(NSProcessInfo.processInfo.thermalState);
+  char when[16] = "??:??:??";
+  const time_t now = time(nullptr);
+  struct tm parts {};
+  if (localtime_r(&now, &parts)) strftime(when, sizeof(when), "%H:%M:%S", &parts);
+  fprintf(stderr, "[%s] [thermal] %s%s\n", when,
+          (state >= 0 && state < 4) ? kNames[state] : "unknown",
+          NSProcessInfo.processInfo.lowPowerModeEnabled ? ", low power mode on" : "");
+}
+
+__attribute__((constructor(104))) void IosThermalLog() {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    LogThermal();
+    NSNotificationCenter* c = NSNotificationCenter.defaultCenter;
+    [c addObserverForName:NSProcessInfoThermalStateDidChangeNotification
+                   object:nil
+                    queue:nil
+               usingBlock:^(NSNotification*) { LogThermal(); }];
+    [c addObserverForName:NSProcessInfoPowerStateDidChangeNotification
+                   object:nil
+                    queue:nil
+               usingBlock:^(NSNotification*) { LogThermal(); }];
+  });
 }
 
 // Before main(): the timer starts once the main run loop runs (UIApplicationMain, by SDL_main).

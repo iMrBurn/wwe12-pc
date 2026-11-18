@@ -83,3 +83,41 @@ Les shaders du jeu sont déjà dans `generated/native/`.
   décodage BC sur CPU forcé (aucun gain), re-liaison du set de textures (aucun gain).
 - **Signature gratuite** : l'app expire au bout de 7 jours ; après réinstallation, refaire confiance au
   certificat (Réglages > Général > VPN et gestion de l'appareil), VPN coupé.
+
+## Performances au 2026-11-18 (logs 018 et 019, 1.4, iPhone 15 Pro)
+
+Lecture des compteurs `[perf]` du log 019 (2 min 40 de jeu, un match I Quit puis la scène de victoire) :
+
+| Moment | Images | Intervalle | Travail CPU | Dessins (constantes) | Saccades > 25 ms |
+|---|---|---|---|---|---|
+| Menus | 600 / 10 s | 16,7 ms | 12,2 ms | 0,6 (0,4) ms | 0 |
+| Match, 1re minute | 592 / 10 s | 16,9 ms | 11,1 ms | 2,0 (1,3) ms | 5 |
+| Match, 2e minute | 523 / 10 s | 19,1 ms | 17,7 ms | 3,7 (2,3) ms | 63 |
+| Scène de victoire | 362 / 10 s | 27,6 ms | 24,7 ms | 7,1 (3,2) ms | 162 |
+
+- **Le téléphone baisse ses fréquences.** Entre la 1re et la 2e minute de match, la scène ne change pas
+  (0,5 Mo de géométrie hachée par image dans les deux cas) mais *tous* les compteurs CPU montent du
+  même facteur ~1,8 (dessins 2,0 → 3,7 ms, textures 0,6 → 0,9, géométrie 0,8 → 1,4). Ce n'est pas le
+  jeu qui travaille plus, c'est l'A17 Pro qui ralentit en chauffant. D'où le journal `[thermal]` de
+  `wwe12_touch_ios.mm` (dans `boot.log`, à chaque changement) : un prochain test le dira noir sur blanc.
+- **La scène de victoire à 60 fps ne passe pas.** Le jeu demande 30 (`[fps] drop to 30 asked`, script
+  6161), l'option « 60 fps dans les entrées » le garde à 60, et l'iPhone rend 36 images par seconde
+  avec 162 saccades en 10 s. En 30 fps la même scène serait fluide. Le lanceur a maintenant les trois
+  modes du menu GRAPHICS du PC (`FrameRateRow`, écrit `wwe12_frame_mode` **et** `wwe12_60fps` : l'ancien
+  interrupteur n'écrivait que le second, que `wwe12_frame_mode = "original"` du wwe12.toml livré
+  annulait).
+- **Gels d'une demi-seconde à chaque nouvelle scène** : `pipelines 3 (0 known, 562 ms)` puis
+  `pipelines 1 (0 known, 240 ms)` quand la victoire arrive, avec `pso: render-thread compile (miss,
+  not in residual)`. Le log de démarrage disait `0 from the shipped seed` : l'IPA ne livrait pas la
+  graine que le zip PC et l'APK livrent. Elle est maintenant dans l'exe (`port/res/pipelines_seed.w12p`
+  et `declarations_seed.w12d`, ressources 103 et 104 de `wwe12_resources.cpp`) et écrite au démarrage
+  dans Documents, qui est le dossier du jeu sur iOS (`IosInstallSeeds`).
+- **Moins de travail par dessin** : `compact_textures.cpp` garde la réponse du dessin précédent
+  (mêmes 96 indices, même image, même état du registre) au lieu de refaire le parcours, la recherche
+  dans la réserve et les trois liaisons de set.
+- **Pas encore regardé** : des relectures GPU → CPU de 1024x512 deux fois par seconde (13 à 31 ms
+  chacune d'après les lignes `[load] readbacks`) ; 512 textures BC décodées sur le CPU au fil de la
+  partie alors que l'avertissement « le GPU refuse BC » n'apparaît jamais dans le log.
+- **Bruit connu, sans effet** : 446 `PhysicalHeap::Alloc` + 446 `BaseHeap::Alloc` au démarrage
+  seulement (aussi sur PC), et les études `[iquit] etude arbitre` de la 1.4 (deux lignes par seconde
+  pendant un match I Quit, utiles pour lire les logs, à retirer quand le portage WWE '13 sera figé).

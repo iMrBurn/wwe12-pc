@@ -150,6 +150,42 @@ __attribute__((constructor(102))) void IosInstallDefaultSettings() {
   std::fprintf(stderr, "[boot] wwe12.toml: %s\n", ec ? ec.message().c_str() : "copied");
 }
 
+// The pipelines and vertex declarations a developer's PC has already met. The PC zip and the APK
+// ship them as files beside the game, so a first session prepares them in the background instead of
+// freezing on each new scene (log 019, 2026-11-18: 562 ms and then 240 ms compiling on the render
+// thread as the victory scene appeared, and the session's own cache held none of them). An app
+// bundle is read-only and the workflow copies nothing in, so they ride inside the executable
+// (android/wwe12_resources.cpp, 103 and 104) and are written here into Documents, which is the game
+// folder on iOS (pso_recorder.cpp's SeedCachePath, svr_resources.cpp's). Written again whenever the
+// size differs, so a new build's seed replaces the one before.
+void InstallSeed(const std::string& dir, int id, const char* name) {
+  const Wwe12Resource* r = Wwe12AndroidResource(id);
+  if (!r || !r->data || !r->size) return;
+  const std::string path = dir + "/" + name;
+  struct stat st {};
+  if (stat(path.c_str(), &st) == 0 &&
+      static_cast<unsigned long long>(st.st_size) == static_cast<unsigned long long>(r->size))
+    return;
+  FILE* f = std::fopen(path.c_str(), "wb");
+  if (!f) {
+    std::fprintf(stderr, "[boot] %s: could not be written\n", name);
+    return;
+  }
+  const size_t written = std::fwrite(r->data, 1, r->size, f);
+  std::fclose(f);
+  std::fprintf(stderr, "[boot] %s: %zu of %u bytes written\n", name, written,
+               static_cast<unsigned>(r->size));
+}
+
+__attribute__((constructor(102))) void IosInstallSeeds() {
+  const char* home = std::getenv("HOME");
+  if (!home) return;
+  const std::string dir = std::string(home) + "/Documents";
+  mkdir(dir.c_str(), 0755);
+  InstallSeed(dir, 103, "pipelines_seed.w12p");
+  InstallSeed(dir, 104, "declarations_seed.w12d");
+}
+
 }  // namespace
 
 // Set by a three-finger tap (wwe12_touch_ios.mm), read as F9 through GetAsyncKeyState (compat/windows.h).

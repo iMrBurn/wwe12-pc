@@ -56,6 +56,21 @@ FramePool g_frames[kNumFrames];
 const plume::RenderDescriptorSet *g_bound = nullptr;
 u32 g_exhausted = 0;
 
+// Draws in a row very often name exactly the same textures (one model drawn in many pieces, a row of
+// HUD elements): the walk over the 96 indices, the pool lookup and the three set binds of the
+// previous draw are then reused as they stand. Only valid inside one frame and for one state of the
+// registry, so the set it points at belongs to the pool that frame owns and cannot have been
+// refilled under it.
+constexpr u32 kIndexWords = 96;  // 6 arrays of 16
+struct LastDraw {
+  u32 in[kIndexWords] = {};
+  u32 out[kIndexWords] = {};
+  u64 frame = ~0ull;
+  u64 writes = 0;
+  const plume::RenderDescriptorSet *set = nullptr;
+};
+LastDraw g_last;
+
 std::unique_ptr<plume::RenderDescriptorSet> CreateSet(VideoState &s) {
   plume::RenderDescriptorSetBuilder b;
   b.begin();
@@ -143,6 +158,7 @@ void CompactResetFrame(u32 slot) {
   FramePool &fp = g_frames[slot % kNumFrames];
   fp.used = 0;
   fp.index.clear();
+  g_last.set = nullptr;  // the entries of this pool are about to be filled again
 }
 
 void CompactForgetBinding() { g_bound = nullptr; }
@@ -154,6 +170,24 @@ void CompactBindDraw(SharedConstants &c) {
   u32 *arrays[6] = {c.texture2DIndices,   c.texture3DIndices,   c.textureCubeIndices,
                     c.texture2DIndicesHi, c.texture3DIndicesHi, c.textureCubeIndicesHi};
   static constexpr u8 kKind[6] = {0, 1, 2, 0, 1, 2};
+
+  // The same textures as the draw before: its answer still holds (see LastDraw).
+  const u64 frame_now = static_cast<u64>(s.frame.load(std::memory_order_relaxed));
+  const u64 writes_now = s.texture_set_writes.load(std::memory_order_relaxed);
+  u32 in[kIndexWords];
+  for (u32 a = 0; a < 6; ++a)
+    std::memcpy(in + a * 16, arrays[a], 16 * sizeof(u32));
+  if (g_last.set && g_last.frame == frame_now && g_last.writes == writes_now &&
+      std::memcmp(g_last.in, in, sizeof(in)) == 0) {
+    for (u32 a = 0; a < 6; ++a)
+      std::memcpy(arrays[a], g_last.out + a * 16, 16 * sizeof(u32));
+    if (g_last.set != g_bound) {
+      BindMain(s, s.command_list, g_last.set);
+      g_bound = g_last.set;
+    }
+    return;
+  }
+
   u32 slots[96];
   u8 kinds[96];
   u32 n = 0;
@@ -195,6 +229,12 @@ void CompactBindDraw(SharedConstants &c) {
     BindMain(s, s.command_list, set);
     g_bound = set;
   }
+  std::memcpy(g_last.in, in, sizeof(in));
+  for (u32 a = 0; a < 6; ++a)
+    std::memcpy(g_last.out + a * 16, arrays[a], 16 * sizeof(u32));
+  g_last.frame = frame_now;
+  g_last.writes = writes_now;
+  g_last.set = set;
 }
 
 u32 CompactBindHost(plume::RenderCommandList *list, u32 slot, bool main_layout) {
