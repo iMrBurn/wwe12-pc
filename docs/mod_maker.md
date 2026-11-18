@@ -441,8 +441,14 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
     `docs/univers.md` § 3) ni les menus. Ce qu'on propose : la ceinture à la place d'un titre non utilisé (Hardcore,
     Cruiserweight, European...), puis le donner (MODIFIER L'UNIVERS). Le nom du titre dans les menus reste celui du
     jeu (piste : textes de `string.pac`).
-  - À vérifier en jeu : la ceinture dans les mains / sur l'épaule / à la taille d'un champion ; 4NNN (os AW_ au repos) ;
-    les jeux autres que 2K14 (la page le dit).
+  - À vérifier en jeu : 4NNN (os AW_ au repos) ; les jeux autres que 2K14 (la page le dit).
+  - 2026-11-18 soir (« certains jeux sont pas lus ») : SvR 2007 = `evt0.pac` SOBJ ; SvR 2007-2010 ont des ceintures à
+    bone01-12 seulement (pas d'AW_, pas de taille avant SvR 2011) ; 2K16 / 2K17 = `pac\prop\NNNN.pac` à entrée BOBJ
+    (enfants ZLIB, regonflés et mis en BPE ; os bone01-14) - les 29xx / 50xx de 2K17 au nom haché (autre format)
+    ne sont pas lus. Os simples acceptés pour un nom de titre ou une entrée BOBJ. Les 10 jeux lus (14 à 55 ceintures).
+  - Page refaite en étapes (« ça me plaît pas ») : 1. le jeu (liste à icônes), 2. ses ceintures en grille d'images,
+    3. la ceinture du jeu remplacée (grille), 4. avant -> après, formes en mots (dans la main, sur l'épaule, à la
+    taille, pliée / roulée), le mod. Chemin d'étapes cliquable en haut.
 - **CAW** : liste, image des listes, export `.wwe12caw`, import ; sommes de contrôle (`.cas` +12, +0x14B254, fin ; fiche
   dans `SaveData.dat` à 0x1B9E8 + place × 0x6E4). **Supposé, à vérifier en jeu** : 0x6E4 et 50 places.
 - **Types de match** : recherche seulement (`pac/misc.pac` `RUL ` à 0x9630, 119 fiches de 108 octets ; en mémoire

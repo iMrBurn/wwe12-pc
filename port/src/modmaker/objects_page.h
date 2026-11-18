@@ -167,99 +167,145 @@ class Page {
   static constexpr uint32_t kW12 = 0x54510890;
   static const char *GameName(uint32_t t) { return t == kW12 ? "WWE '12" : star_port::GameName(t); }
 
+  // In steps, each a grid of pictures (2026-11-18, the user: the first page - a game list over two lists of names -
+  // "doesn't please me, redo it"): 1. the game, 2. its belt, 3. the game's belt it replaces, 4. what is done, the mod.
   void DrawPort(bool fr, ID3D11Device *device, const disc::GameDisc &game, mods::Manager &mods) {
-    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f);
-    ImGui::TextWrapped("%s", fr ? "Une ceinture d'un autre jeu WWE (le titre WWE de 2013 de 2K14...) à la place d'une ceinture du "
-                                  "jeu : dans les mains, sur l'épaule et à la taille, partout où le jeu montre ce titre. Le "
-                                  "jeu a 23 titres fixes (sa sauvegarde) : pour en « ajouter » un, mettez la ceinture à la "
-                                  "place d'un titre que vous n'utilisez pas (Hardcore, Cruiserweight, European...), puis "
-                                  "donnez-le à qui vous voulez (MODIFIER L'UNIVERS)."
-                                : "A belt of another WWE game (2K14's 2013 WWE title...) in place of one of the game's: in "
-                                  "the hands, on the shoulder and at the waist, wherever the game shows that title. The game "
-                                  "has 23 fixed titles (its save): to \"add\" one, put the belt in place of a title you don't "
-                                  "use (Hardcore, Cruiserweight, European...), then give it to whoever you like (EDIT "
-                                  "UNIVERSE).");
+    const ImVec4 red(1.0f, 0.45f, 0.35f, 1.0f), green(0.55f, 0.85f, 0.45f, 1.0f), gold(0.94f, 0.75f, 0.24f, 1.0f);
+    if (w12_.families.empty() && game.Found() && !w12_tried_) {  // (WWE '12's belts read once, at the first look)
+      w12_tried_ = true;
+      w12_ = belt_port::Read(game, false);
+    }
     if (w12_.families.empty()) {
-      ImGui::BeginDisabled(!game.Found());
-      if (ImGui::Button(fr ? "Lire les ceintures du jeu (quelques secondes)" : "Read the game's belts (a few seconds)")) {
-        w12_ = belt_port::Read(game, false);
-        if (w12_.families.empty())
-          port_message_ = fr ? "Ceintures du jeu illisibles (evtobj.pac)." : "The game's belts unreadable (evtobj.pac).";
-      }
-      ImGui::EndDisabled();
-      if (!port_message_.empty())
-        ImGui::TextColored(red, "%s", port_message_.c_str());
+      ImGui::TextColored(red, "%s", fr ? "Ceintures du jeu illisibles (evtobj.pac) : le jeu est-il trouvé ?"
+                                       : "The game's belts unreadable (evtobj.pac): is the game found?");
       return;
     }
-    // 1. the game
-    ImGui::SeparatorText(fr ? "1. Le jeu d'où vient la ceinture" : "1. The game the belt comes from");
-    ImGui::BeginChild("belt_games", ImVec2(0, src_title_ ? 140.0f : 300.0f), ImGuiChildFlags_Borders);
-    game_icons::DrawList(
-        fr, device, discs_, icons_, src_title_, [](const game_discs::Known &k) { return k.title != kW12; },
-        [](uint32_t t) { return GameName(t); }, [fr](uint32_t) { return fr ? "ceintures" : "belts"; },
-        [&](uint32_t t) { ChooseSource(fr, t); }, [this]() { want_discs_ = true; });
-    ImGui::EndChild();
-    if (!port_message_.empty())
-      ImGui::TextColored(port_ok_ ? green : red, "%s", port_message_.c_str());
-    if (!src_title_ || src_.families.empty())
+    // the steps, as a path one can go back along
+    const char *steps_fr[] = {"1. Le jeu", "2. Sa ceinture", "3. À la place de", "4. Créer le mod"},
+               *steps_en[] = {"1. The game", "2. Its belt", "3. In place of", "4. Make the mod"};
+    const bool have_src = src_title_ && !src_.families.empty(),
+               have_pick = have_src && src_pick_ >= 0 && size_t(src_pick_) < src_.families.size(),
+               have_w12 = have_pick && w12_pick_ >= 0 && size_t(w12_pick_) < w12_.families.size();
+    const bool can[] = {true, have_src, have_pick, have_w12};
+    for (int s = 0; s < 4; ++s) {
+      if (s)
+        ImGui::SameLine(0, 4), ImGui::TextDisabled(">"), ImGui::SameLine(0, 4);
+      ImGui::BeginDisabled(!can[s]);
+      ImGui::PushStyleColor(ImGuiCol_Button, step_ == s ? ImVec4(0.55f, 0.40f, 0.10f, 1.0f) : ImVec4(0.18f, 0.18f, 0.20f, 1.0f));
+      if (ImGui::Button(fr ? steps_fr[s] : steps_en[s]))
+        step_ = s;
+      ImGui::PopStyleColor();
+      ImGui::EndDisabled();
+    }
+    ImGui::Separator();
+    if (!can[step_])
+      step_ = 0;
+    if (step_ == 0) {
+      ImGui::TextWrapped("%s", fr ? "Une ceinture d'un autre jeu WWE à la place d'une ceinture du jeu : dans les mains, sur "
+                                    "l'épaule et à la taille, partout où le jeu montre ce titre. Le jeu a 23 titres fixes : "
+                                    "pour en « ajouter » un, mettez la ceinture à la place d'un titre que vous n'utilisez "
+                                    "pas (Hardcore, Cruiserweight, European...), puis donnez-le à qui vous voulez "
+                                    "(MODIFIER L'UNIVERS). Les images des menus : « Changer les images »."
+                                  : "A belt of another WWE game in place of one of the game's: in the hands, on the "
+                                    "shoulder and at the waist, wherever the game shows that title. The game has 23 fixed "
+                                    "titles: to \"add\" one, put the belt in place of a title you don't use (Hardcore, "
+                                    "Cruiserweight, European...), then give it to whoever you like (EDIT UNIVERSE). The "
+                                    "menus' pictures: \"Change the pictures\".");
+      ImGui::Dummy(ImVec2(0, 4));
+      game_icons::DrawList(
+          fr, device, discs_, icons_, src_title_, [](const game_discs::Known &k) { return k.title != kW12; },
+          [](uint32_t t) { return GameName(t); }, [fr](uint32_t) { return fr ? "ses ceintures" : "its belts"; },
+          [&](uint32_t t) {
+            ChooseSource(fr, t);
+            if (!src_.families.empty())
+              step_ = 1;
+          },
+          [this]() { want_discs_ = true; });
+      if (!port_message_.empty())
+        ImGui::TextColored(port_ok_ ? green : red, "%s", port_message_.c_str());
       return;
-    // 2. its belt, 3. in place of
-    const float h = 300, half = (ImGui::GetContentRegionAvail().x - 8) / 2;
-    auto list = [&](const char *id, const belt_port::Belts &b, int &pick, std::vector<arena_page::Thumb> &thumbs) {
-      ImGui::BeginChild(id, ImVec2(half, h), ImGuiChildFlags_Borders);
-      if (thumbs.size() != b.families.size())
-        thumbs.assign(b.families.size(), arena_page::Thumb());
-      if (pick >= 0 && size_t(pick) < b.families.size()) {  // (its picture above the list)
-        auto &t = thumbs[size_t(pick)];
-        if (!t.srv)
-          if (const Bytes dds = belt_port::Picture(b, b.families[size_t(pick)]); !dds.empty())
-            t = arena_page::MakeThumb(device, dds);
-        arena_page::DrawPicture(t, 120);
-      }
-      ImGui::BeginChild("rows", ImVec2(0, 0));
-      for (size_t i = 0; i < b.families.size(); ++i) {
-        ImGui::PushID(int(i));
-        if (ImGui::Selectable(b.families[i].label.c_str(), pick == int(i)))
-          pick = int(i), made_ = false;
-        ImGui::PopID();
+    }
+    if (step_ == 1) {
+      ImGui::Text(fr ? "Les ceintures de %s (%d) : cliquez celle à porter." : "%s's belts (%d): click the one to port.",
+                  GameName(src_title_), int(src_.families.size()));
+      ImGui::BeginChild("belt_src_cards", ImVec2(0, 0));
+      if (const int c = Cards(device, src_, src_thumbs_, src_pick_); c >= 0) {
+        src_pick_ = c, made_ = false, step_ = 2;
       }
       ImGui::EndChild();
-      ImGui::EndChild();
-    };
-    ImGui::SeparatorText(fr ? "2. Sa ceinture, puis 3. à la place de quelle ceinture du jeu"
-                            : "2. Its belt, then 3. in place of which of the game's belts");
-    ImGui::TextDisabled("%s", GameName(src_title_));
-    ImGui::SameLine(half + 16);
-    ImGui::TextDisabled("WWE '12");
-    list("belt_src", src_, src_pick_, src_thumbs_);
-    ImGui::SameLine();
-    list("belt_w12", w12_, w12_pick_, w12_thumbs_);
-    if (src_pick_ < 0 || size_t(src_pick_) >= src_.families.size() || w12_pick_ < 0 ||
-        size_t(w12_pick_) >= w12_.families.size())
       return;
-    const auto &sf = src_.families[size_t(src_pick_)], &tf = w12_.families[size_t(w12_pick_)];
+    }
+    const auto &sf = src_.families[size_t(src_pick_)];
+    if (step_ == 2) {
+      Card(device, src_, sf, Thumb(device, src_, src_thumbs_, src_pick_), false, 220);
+      ImGui::SameLine();
+      ImGui::BeginGroup();
+      ImGui::Dummy(ImVec2(0, 30));
+      ImGui::TextColored(gold, "%s", fr ? "À la place de quelle ceinture du jeu ?" : "In place of which of the game's belts?");
+      ImGui::TextWrapped("%s", fr ? "Celle que le jeu montrera avec ce modèle (le titre WWE, ou un titre que vous n'utilisez "
+                                    "pas pour en avoir un de plus)."
+                                  : "The one the game will show with this model (the WWE title, or a title you don't use "
+                                    "to have one more).");
+      ImGui::EndGroup();
+      ImGui::Separator();
+      ImGui::BeginChild("belt_w12_cards", ImVec2(0, 0));
+      if (const int c = Cards(device, w12_, w12_thumbs_, w12_pick_); c >= 0) {
+        w12_pick_ = c, made_ = false, step_ = 3;
+      }
+      ImGui::EndChild();
+      return;
+    }
+    // 4. what goes where, the mod
+    const auto &tf = w12_.families[size_t(w12_pick_)];
     if (!made_)  // (once a choice: an SvR one is converted)
       made_ = true, files_out_ = belt_port::Make(w12_, tf, src_, sf, star_port::Svr(src_title_), swaps_);
+    Card(device, src_, sf, Thumb(device, src_, src_thumbs_, src_pick_), false, 220);
+    ImGui::SameLine();
+    {
+      const ImVec2 p = ImGui::GetCursorScreenPos();
+      ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), 40.0f, ImVec2(p.x + 10, p.y + 50), IM_COL32(240, 190, 60, 255),
+                                          "->");
+      ImGui::Dummy(ImVec2(60, 150));
+    }
+    ImGui::SameLine();
+    Card(device, w12_, tf, Thumb(device, w12_, w12_thumbs_, w12_pick_), false, 220);
+    ImGui::TextDisabled("%s  >  WWE '12", GameName(src_title_));
+    ImGui::Separator();
     if (swaps_.empty()) {
-      ImGui::TextColored(red, "%s", fr ? "Aucune forme de cette ceinture ne va à la place de celle-ci (os différents)."
-                                       : "No shape of that belt fits in place of this one (other bones).");
+      ImGui::TextColored(red, "%s", fr ? "Aucune forme de cette ceinture ne va à la place de celle-ci (os différents) : "
+                                         "choisissez-en une autre."
+                                       : "No shape of that belt fits in place of this one (other bones): pick another.");
       return;
     }
+    // the shapes, in words
+    auto shape = [fr](int n) -> const char * {
+      const int k = n / 1000;
+      if (k == 5)
+        return fr ? "à la taille" : "at the waist";
+      if (n % 1000 >= 11 && n % 1000 <= 30 && n / 1000 <= 4)
+        return fr ? "pliée / roulée" : "folded / rolled";
+      return k == 3 ? (fr ? "sur l'épaule" : "on the shoulder") : (fr ? "dans la main" : "in the hand");
+    };
     std::string done, kept;
     for (const auto &w : swaps_)
-      done += (done.empty() ? "" : ", ") + std::to_string(w.to) + " <- " + std::to_string(w.from);
+      done += (done.empty() ? "" : ", ") + std::string(shape(w.to)) + " (" + std::to_string(w.to) + ")";
     for (size_t m : tf.members)
       if (std::none_of(swaps_.begin(), swaps_.end(), [&](const belt_port::Swap &w) { return w.to == w12_.objs[m].number; }))
-        kept += (kept.empty() ? "" : ", ") + std::to_string(w12_.objs[m].number);
-    ImGui::TextWrapped(fr ? "Formes remplacées : %s." : "Shapes replaced: %s.", done.c_str());
-    if (!kept.empty())
-      ImGui::TextWrapped(fr ? "Gardées du jeu (pliées / roulées, que %s n'a pas) : %s."
-                            : "Kept from the game (folded / rolled, which %s hasn't): %s.",
-                         GameName(src_title_), kept.c_str());
+        kept += (kept.empty() ? "" : ", ") + std::string(shape(w12_.objs[m].number)) + " (" +
+                std::to_string(w12_.objs[m].number) + ")";
+    ImGui::TextColored(green, "%s", fr ? "Remplacées :" : "Replaced:");
+    ImGui::SameLine();
+    ImGui::TextWrapped("%s", done.c_str());
+    if (!kept.empty()) {
+      ImGui::TextColored(gold, "%s", fr ? "Gardées du jeu :" : "Kept from the game:");
+      ImGui::SameLine();
+      ImGui::TextWrapped(fr ? "%s (%s n'a pas ces formes)" : "%s (%s hasn't these shapes)", kept.c_str(),
+                         GameName(src_title_));
+    }
     if (src_title_ != 0x545408B2)
-      ImGui::TextColored(ImVec4(0.94f, 0.75f, 0.24f, 1.0f), "%s",
-                         fr ? "Pas encore vérifié en jeu pour ce jeu-là (la première essayée : 2K14)."
-                            : "Not yet checked in the game for this one (the first tried: 2K14).");
+      ImGui::TextColored(gold, "%s", fr ? "Pas encore vérifié en jeu pour ce jeu-là (vu bon : 2K14)."
+                                        : "Not yet checked in the game for this one (seen right: 2K14).");
+    ImGui::Dummy(ImVec2(0, 6));
     ImGui::SetNextItemWidth(260);
     ImGui::InputTextWithHint("##belt_name", fr ? "Nom du mod" : "Mod name", belt_name_, sizeof(belt_name_));
     ImGui::SameLine();
@@ -267,9 +313,67 @@ class Page {
     ImGui::InputTextWithHint("##belt_author", fr ? "Auteur (facultatif)" : "Author (optional)", author_, sizeof(author_));
     mod_version::Input("Version##belt_version", version_, sizeof(version_));
     ImGui::BeginDisabled(!belt_name_[0]);
-    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it..."))
+    if (ImGui::Button(fr ? "Créer le mod et l'installer..." : "Make the mod and install it...", ImVec2(300, 36)))
       MakeBelt(fr, mods, sf, tf);
     ImGui::EndDisabled();
+    if (!port_message_.empty())
+      ImGui::TextColored(port_ok_ ? green : red, "%s", port_message_.c_str());
+  }
+
+  // A family's picture, made when first needed.
+  static const arena_page::Thumb &Thumb(ID3D11Device *device, const belt_port::Belts &b,
+                                        std::vector<arena_page::Thumb> &thumbs, int i) {
+    if (thumbs.size() != b.families.size())
+      thumbs.assign(b.families.size(), arena_page::Thumb());
+    auto &t = thumbs[size_t(i)];
+    if (!t.srv && !t.w)  // (w -1: none)
+      if (const Bytes dds = belt_port::Picture(b, b.families[size_t(i)]); !dds.empty())
+        t = arena_page::MakeThumb(device, dds);
+    if (!t.srv)
+      t.w = -1;
+    return t;
+  }
+
+  // One belt card (its picture, its name), `w` wide; true when clicked.
+  static bool Card(ID3D11Device *, const belt_port::Belts &, const belt_port::Family &f, const arena_page::Thumb &t,
+                   bool picked, float w) {
+    const float pic_h = w / 2, h = pic_h + 34;
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    ImGui::PushID(&f);
+    const bool clicked = ImGui::Selectable("##card", picked, 0, ImVec2(w, h));
+    const bool hover = ImGui::IsItemHovered();
+    ImGui::PopID();
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(ImVec2(p.x + 4, p.y + 4), ImVec2(p.x + w - 4, p.y + 4 + pic_h), IM_COL32(28, 28, 32, 255), 4.0f);
+    if (t.srv && t.w > 0 && t.h > 0) {
+      const float bw = w - 8, bh = pic_h, s = std::min(bw / t.w, bh / t.h), iw = t.w * s, ih = t.h * s;
+      const ImVec2 a(p.x + 4 + (bw - iw) / 2, p.y + 4 + (bh - ih) / 2);
+      dl->AddImage(ImTextureRef(ImTextureID(reinterpret_cast<intptr_t>(t.srv.Get()))), a, ImVec2(a.x + iw, a.y + ih));
+    }
+    if (hover || picked)
+      dl->AddRect(ImVec2(p.x + 2, p.y + 2), ImVec2(p.x + w - 2, p.y + h - 2), IM_COL32(240, 190, 60, 255), 4.0f, 0, 2.0f);
+    dl->PushClipRect(ImVec2(p.x + 4, p.y + pic_h + 6), ImVec2(p.x + w - 4, p.y + h), true);
+    dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(p.x + 6, p.y + pic_h + 10), IM_COL32(235, 235, 235, 255),
+                f.label.c_str(), nullptr, w - 12);
+    dl->PopClipRect();
+    return clicked;
+  }
+
+  // The families of `b` as a grid of cards; the one clicked, else -1. Pictures made as the cards come into view.
+  static int Cards(ID3D11Device *device, const belt_port::Belts &b, std::vector<arena_page::Thumb> &thumbs, int picked) {
+    const float w = 220, gap = ImGui::GetStyle().ItemSpacing.x;
+    const int per_row = std::max(1, int((ImGui::GetContentRegionAvail().x + gap) / (w + gap)));
+    int clicked = -1;
+    for (size_t i = 0; i < b.families.size(); ++i) {
+      if (i % size_t(per_row))
+        ImGui::SameLine();
+      const ImVec2 p = ImGui::GetCursorScreenPos();
+      const bool seen = ImGui::IsRectVisible(p, ImVec2(p.x + w, p.y + w / 2 + 34));
+      static const arena_page::Thumb none;
+      if (Card(device, b, b.families[i], seen ? Thumb(device, b, thumbs, int(i)) : none, picked == int(i), w))
+        clicked = int(i);
+    }
+    return clicked;
   }
 
   void ChooseSource(bool fr, uint32_t t) {
@@ -318,6 +422,8 @@ class Page {
   }
 
   int mode_ = 0;
+  int step_ = 0;            // (the port's step: 0 game, 1 its belt, 2 in place of, 3 the mod)
+  bool w12_tried_ = false;
   game_icons::Icons icons_;
   uint32_t src_title_ = 0;
   belt_port::Belts w12_, src_;

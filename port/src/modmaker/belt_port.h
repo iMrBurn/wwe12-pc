@@ -46,6 +46,7 @@ struct Obj {
   std::vector<std::string> nodes;  // its model's node names
   std::string model;               // its model's own name ("2933_New_WWE_01"), if it has one
   Bytes pach;                      // its PACH, children as stored (BPE)
+  bool bobj = false;               // a BOBJ entry (WWE '13 and the 2K games' belts)
 };
 
 struct Family {
@@ -131,12 +132,32 @@ inline std::string LabelKey(std::string label) {
 }
 
 // Whether a model is a belt's strap (in the hand or at the waist): its bones say so (a hand one's AW_01-20, a waist
-// one's L_bone01-12 and R_bone01-12; 2K14's ATV has an AW_01 too).
-inline bool Strap(const std::vector<std::string> &nodes) {
-  int aw = 0, l = 0, r = 0;
+// one's L_bone01-12 and R_bone01-12; SvR 2007-2010's hand ones only bone01-12; 2K14's ATV has an AW_01 too).
+inline bool Strap(const std::vector<std::string> &nodes, const std::string &label = "", bool bobj = false) {
+  int aw = 0, l = 0, r = 0, bone = 0;
   for (const auto &n : nodes)
-    aw += n.rfind("AW_", 0) == 0, l += n.rfind("L_bone", 0) == 0, r += n.rfind("R_bone", 0) == 0;
-  return aw >= 10 || (l >= 6 && r >= 6);
+    aw += n.rfind("AW_", 0) == 0, l += n.rfind("L_bone", 0) == 0, r += n.rfind("R_bone", 0) == 0,
+        bone += n.size() == 6 && n.rfind("bone", 0) == 0 && Digits(n.substr(4));
+  // (bone01-12 alone: a title's only, by its name or its BOBJ group - 2K16 / 2K17's, bone01-14; ropes and other
+  // props have such bones too)
+  const std::string low = Lower(label);
+  const bool title = low.find("title") != std::string::npos || low.find("champion") != std::string::npos ||
+                     low.find("belt") != std::string::npos;
+  return aw >= 10 || (l >= 6 && r >= 6) || (bone >= 10 && (title || bobj));
+}
+
+// A PACH's children as WWE '12 reads them: 2K16 / 2K17's "ZLIB" ones inflated and BPE-packed (WWE '12 reads no ZLIB).
+inline Bytes Wwe12Children(const Bytes &pach) {
+  std::vector<svrfmt::PachEntry> kids;
+  if (!svrfmt::PachRead(pach, kids))
+    return pach;
+  bool zlib = false;
+  for (auto &k : kids)
+    if (k.data.size() >= 16 && !memcmp(k.data.data(), "ZLIB", 4)) {
+      k.data = svrfmt::BpeEncodeStored(svrfmt::Unpack(k.data));
+      zlib = true;
+    }
+  return zlib ? svrfmt::PachWrite(kids) : pach;
 }
 
 // How close source model `s` is to WWE '12's `t` for its place (0 = not at all): the share of t's bones s has (names
@@ -157,12 +178,12 @@ inline double Score(const Obj &t, const Obj &s) {
   size_t common = 0;
   for (const auto &n : a)
     common += bs.count(n);
-  // (most of t's bones, and s not much bigger: 4NNN's 16 bones are 2NNN's but 15 of 35, kept; a rigid folded one's 2
-  // of a strap's 35, not)
-  const double share = double(common) / double(a.size());
-  if (share < 0.85 || double(common) / double(b.size()) < 0.4)
+  // (most bones of the smaller one in the other, and not much smaller: 4NNN's 16 bones are 2K14's 2NNN's but 15 of 35,
+  // kept; SvR 2010's hand one's 14 are 13 of WWE '12's 36, kept; a rigid folded one's 2 of a strap's 35, not)
+  const double share = double(common) / double(std::min(a.size(), b.size()));
+  if (share < 0.85 || double(common) / double(std::max(a.size(), b.size())) < 0.3)
     return 0;
-  return share + (a == b ? 0.25 : 0.0) + (t.number / 1000 == s.number / 1000 ? 0.5 : 0.0);
+  return share + (a == b ? 0.25 : 0.0) + (t.number / 1000 == s.number / 1000 ? 0.5 : 0.0) + (t.number == s.number ? 0.1 : 0.0);
 }
 
 inline bool OpenPac(const disc::GameDisc &g, const std::string &f, Bytes &b, svrfmt::Archive &a) {
@@ -187,15 +208,38 @@ inline Belts Read(const disc::GameDisc &g, bool svr, const Belts *ref = nullptr)
   Belts out;
   std::map<int, std::string> labels;
   std::map<int, Bytes> found;  // number -> PACH (the first file that has it wins: the disc's, then its DLC's)
-  std::vector<std::string> files = {"pac/evt/evtobj.pac", "pac/evt/_EvtObj.pac"};
+  std::set<int> bobj;          // (those of a BOBJ group: belts)
+  // (SvR 2008-2010: _EvtObj.pac; SvR 2007: evt0.pac's SOBJ)
+  std::vector<std::string> files = {"pac/evt/evtobj.pac", "pac/evt/_EvtObj.pac", "pac/evt/evt0.pac"};
   for (const auto &f : g.List("pac/evt"))
     if (Lower(f).rfind("evtobj_dlc", 0) == 0)
       files.push_back("pac/evt/" + f);
+  // 2K16 / 2K17: one pac a prop, pac\prop\NNNN.pac (a BOBJ / SOBJ entry, its children "ZLIB"-packed; or an HSPC of
+  // one SHDC, as entrance13::Props2K reads)
+  std::vector<std::string> props;
+  for (const auto &f : g.List("pac/prop"))
+    if (const int number = atoi(f.c_str()); number >= 2000 && number <= 5999)
+      props.push_back("pac/prop/" + f);
+  files.insert(files.end(), props.begin(), props.end());
   for (const auto &f : files) {
     Bytes b;
     svrfmt::Archive a;
     if (!OpenPac(g, f, b, a))
       continue;
+    if (a.root.kind == svrfmt::ArcKind::Hspc) {
+      const int number = atoi(f.c_str() + 9);
+      if (a.root.kids.size() != 1 || found.count(number) || !svrfmt::ArchiveExpand(a.root.kids[0]))
+        continue;
+      std::vector<svrfmt::PachEntry> leaves;
+      for (const auto &k : a.root.kids[0].kids) {
+        Bytes d = svrfmt::ArchiveData(k);
+        if (!d.empty())
+          leaves.push_back({k.id, svrfmt::BpeEncodeStored(d)});
+      }
+      if (!leaves.empty())
+        found[number] = svrfmt::PachWrite(leaves);
+      continue;
+    }
     for (auto &k : a.root.kids) {
       const std::string group = Trim(k.group), name = Trim(k.name);
       if (group != "SOBJ" && group != "BOBJ")
@@ -213,31 +257,15 @@ inline Belts Read(const disc::GameDisc &g, bool svr, const Belts *ref = nullptr)
       const int number = atoi(name.c_str());
       if (number < 2000 || number > 5999 || found.count(number))
         continue;
-      found[number] = svrfmt::Unpack(svrfmt::ArchiveData(k));
+      if (group == "BOBJ")
+        bobj.insert(number);
+      found[number] = Wwe12Children(svrfmt::Unpack(svrfmt::ArchiveData(k)));
     }
-  }
-  // 2K16 / 2K17: pac\prop\NNNN.pac
-  for (const auto &f : g.List("pac/prop")) {
-    const int number = atoi(f.c_str());
-    if (number < 2000 || number > 5999 || found.count(number))
-      continue;
-    Bytes b;
-    svrfmt::Archive a;
-    if (!OpenPac(g, "pac/prop/" + f, b, a) || a.root.kind != svrfmt::ArcKind::Hspc || a.root.kids.size() != 1 ||
-        !svrfmt::ArchiveExpand(a.root.kids[0]))
-      continue;
-    std::vector<svrfmt::PachEntry> leaves;
-    for (const auto &k : a.root.kids[0].kids) {
-      Bytes d = svrfmt::ArchiveData(k);
-      if (!d.empty())
-        leaves.push_back({k.id, svrfmt::BpeEncodeStored(d)});
-    }
-    if (!leaves.empty())
-      found[number] = svrfmt::PachWrite(leaves);
   }
   for (auto &[number, pach] : found) {
     Obj o;
     o.number = number;
+    o.bobj = bobj.count(number) != 0;
     if (const auto l = labels.find(number); l != labels.end())
       o.label = l->second;
     else if (const auto l2 = labels.find(2000 + number % 1000); number / 1000 != 5 && l2 != labels.end())
@@ -250,7 +278,7 @@ inline Belts Read(const disc::GameDisc &g, bool svr, const Belts *ref = nullptr)
     for (const auto &n : o.nodes)
       if (!ModelKey(n).empty())
         o.model = n;
-    if (!Strap(o.nodes) && Lower(o.label).find("title") == std::string::npos &&
+    if (!Strap(o.nodes, o.label, o.bobj) && Lower(o.label).find("title") == std::string::npos &&
         Lower(o.label).find("champion") == std::string::npos)
       continue;
     // (its pictures there: 2K14's 2926-2930 / 5059-5063 have an empty child 10, theirs are elsewhere)
@@ -290,7 +318,7 @@ inline Belts Read(const disc::GameDisc &g, bool svr, const Belts *ref = nullptr)
     std::replace(model.begin(), model.end(), '_', ' ');
     f.show = f.members.front();
     for (size_t m : f.members)
-      if (out.objs[m].number / 1000 == 2 && Strap(out.objs[m].nodes)) {
+      if (out.objs[m].number / 1000 == 2 && Strap(out.objs[m].nodes, out.objs[m].label, out.objs[m].bobj)) {
         f.show = m;
         break;
       }
@@ -303,7 +331,7 @@ inline Belts Read(const disc::GameDisc &g, bool svr, const Belts *ref = nullptr)
   out.families.erase(std::remove_if(out.families.begin(), out.families.end(),
                                     [&](const Family &f) {
                                       return std::none_of(f.members.begin(), f.members.end(), [&](size_t m) {
-                                        return out.objs[m].number / 1000 != 5 && Strap(out.objs[m].nodes);
+                                        return out.objs[m].number / 1000 != 5 && Strap(out.objs[m].nodes, out.objs[m].label, out.objs[m].bobj);
                                       });
                                     }),
                      out.families.end());
