@@ -11,7 +11,9 @@
 #include <cctype>
 #include <filesystem>
 #include <functional>
+#include <cstring>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -413,9 +415,12 @@ class Page {
     // The belts' pictures of the menus, first of the belts (2026-11-18 - the user: "change the belts' pictures in all
     // the menus", then "find every picture there is in the menus"). Every picture of the game's 2D files was looked at
     // (menuHD, MatchHD, game2dHD, CAE, CAH, evtgdhd, LoadHD...): the belts are only in menu\MnLayHD.pac (and its SD
-    // twin MnLaySD.pac), groups MLY<language>/<layout>: BELT's 23 title pictures 256 x 128 (belt_WWE, belt_US...),
-    // BG_Champion 256 x 128 (a belt on flames: the champions' screens CHRM / USEI / TIMG), sts_Champion 128 x 64 (the
-    // champion's mark: CHRM / CHR1) and SAMP's belt_US 512 x 128. Read from both files, each picture once (by hash).
+    // twin MnLaySD.pac), groups MLY<language>/<layout>, three pictures a title, named by it (Attitude, Champion,
+    // Classic, Cruiser, Divas, ECW, ECW_old, European, Hardcore, Heavy_WCW, Interconti, Light, million, UF, US, WCW,
+    // Womens, WorldHeavy, WorldTag, WWE, WWETag, WWE_old, WWE_WCW): belt_<title> 256 x 128 (BELT), BG_<title> 256 x 128
+    // (the belt on flames: USEI, CHRM, TIMG), sts_<title> 128 x 64 (the champion's mark: CHRM, CHR1); and UNLK's
+    // icon_24-icon_37 128 x 128 (the unlockable belts' icons), SAMP's belt_US 512 x 128. Read from both files, each
+    // picture once (by hash).
     if (game.Read("pac/menu/MnLayHD.pac", files_[3]) && svrfmt::ArchiveOpen(files_[3], archives_[3], nullptr)) {
       if (game.Read("pac/menu/MnLaySD.pac", files_[4]))
         svrfmt::ArchiveOpen(files_[4], archives_[4], nullptr);
@@ -438,7 +443,18 @@ class Page {
     const bool menus = o.file == 3;
     bool sd = false;
     const auto belt_picture = [](const std::string &name, const std::string &layout) {
-      return layout == "BELT" || name == "BG_Champion" || name == "sts_Champion" || (layout == "SAMP" && name == "belt_US");
+      static const std::set<std::string> titles = {
+          "Attitude", "Champion",   "Classic",    "Cruiser",  "Divas",    "ECW",   "ECW_old",    "European",
+          "Hardcore", "Heavy_WCW",  "Interconti", "Light",    "million",  "UF",    "US",         "WCW",
+          "Womens",   "WorldHeavy", "WorldTag",   "WWE",      "WWETag",   "WWE_old", "WWE_WCW"};
+      for (const char *prefix : {"belt_", "BG_", "sts_"})
+        if (name.rfind(prefix, 0) == 0 && titles.count(name.substr(strlen(prefix))))
+          return true;
+      if (layout == "UNLK" && name.rfind("icon_", 0) == 0) {
+        const int n = atoi(name.c_str() + 5);
+        return n >= 24 && n <= 37;
+      }
+      return false;
     };
     std::string layout;
     std::function<void(svrfmt::ArcNode &)> walk = [&](svrfmt::ArcNode &n) {
@@ -478,7 +494,7 @@ class Page {
       for (auto &k : archives_[f].root.kids) {
         layout = Trim(k.name);  // (only the layouts that have them: the others aren't unpacked)
         if (Trim(k.group).rfind("MLY", 0) == 0 && (layout == "BELT" || layout == "SAMP" || layout == "CHRM" ||
-                                                   layout == "CHR1" || layout == "USEI" || layout == "TIMG"))
+                                                   layout == "CHR1" || layout == "USEI" || layout == "TIMG" || layout == "UNLK"))
           walk(k);
       }
     }

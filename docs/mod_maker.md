@@ -417,10 +417,12 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   Images des ceintures dans les menus (en tête de la liste « Ceintures » de la page, pack de textures ; pas encore vu en
   jeu). Toutes les images 2D du jeu regardées le 2026-11-18 (menuHD, MatchHD, game2dHD, CAE, CAH, evtgdhd : logos de
   PPV, UNIL = logos d'émissions, RSCP = portraits) : les ceintures ne sont que dans `menu\MnLayHD.pac` et son double
-  `MnLaySD.pac`, groupes MLY<langue>/<écran> : BELT (23 images 256 x 128, belt_WWE, belt_US...), BG_Champion 256 x 128
-  (une ceinture sur des flammes : écrans des champions CHRM / USEI / TIMG), sts_Champion 128 x 64 (la marque du
-  champion : CHRM / CHR1), SAMP belt_US 512 x 128. Lues dans les deux fichiers, chaque image une fois (par empreinte),
-  « (SD) » après celles du SD.
+  `MnLaySD.pac`, groupes MLY<langue>/<écran>, trois images par titre nommées par lui (Attitude, Champion, Classic,
+  Cruiser, Divas, ECW, ECW_old, European, Hardcore, Heavy_WCW, Interconti, Light, million, UF, US, WCW, Womens,
+  WorldHeavy, WorldTag, WWE, WWETag, WWE_old, WWE_WCW) : belt_<titre> 256 x 128 (BELT), BG_<titre> 256 x 128 (la
+  ceinture sur des flammes : USEI, CHRM, TIMG), sts_<titre> 128 x 64 (la marque du champion : CHRM, CHR1) ; plus UNLK
+  icon_24-37 128 x 128 (icônes des ceintures à débloquer) et SAMP belt_US 512 x 128 (l'utilisateur a repéré les BG_ /
+  sts_ par titre). Lues dans les deux fichiers, chaque image une fois (par empreinte), « (SD) » après celles du SD.
   - Formes d'un titre dans WWE '12 (noms de SOBJ/LIST : u16 **LE** + nom, 64 octets) : 2NNN / 3NNN dans la main et sur
     l'épaule (os bone01-15 + AW_01-20), 4NNN (17 os), 20N1-2030 / 3011-3024 / 4011-4020 pliées ou roulées (rigides :
     root, bone01), 5MMM à la taille (L_bone01-12, R_bone01-12 ; 5004 = WWE, 5009 = World Heavyweight, 5021 = ECW...).
