@@ -339,7 +339,7 @@ class Page {
   struct Object {
     std::string label;
     int kind = 2;            // 0 belts, 1 weapons, 2 others, 3 loading screens
-    int file = 0;            // 0 evtobj.pac, 1 bgEtc.pac, 2 menu\LoadHD.pac, 3 menu\MnLayHD.pac
+    int file = 0;            // 0 evtobj.pac, 1 bgEtc.pac, 2 menu\LoadHD.pac, 3 menu\MnLayHD.pac (+ 4 MnLaySD.pac)
     size_t node = 0;         // its entry (root child)
     bool opened = false;
     std::vector<Pic> pics;
@@ -410,21 +410,21 @@ class Page {
         o.label = (n.rfind("GN", 0) == 0 ? (fr ? "Général " : "General ") : n.rfind("UN", 0) == 0 ? "Universe " : "") + n;
         objects_.push_back(std::move(o));
       }
-    // The titles' pictures of the menus (menu\MnLayHD.pac MLYE/BELT: 23 bundled pictures 256 x 128, belt_WWE, belt_US,
-    // belt_Hardcore...; the only belt pictures of the menus, 2026-11-18 - the user: "change the belts' pictures in all
-    // the menus"), first of the belts. HD only, as the loading screens.
-    if (game.Read("pac/menu/MnLayHD.pac", files_[3]) && svrfmt::ArchiveOpen(files_[3], archives_[3], nullptr))
-      for (size_t i = 0; i < archives_[3].root.kids.size(); ++i) {
-        const auto &k = archives_[3].root.kids[i];
-        if (Trim(k.group) != "MLYE" || Trim(k.name) != "BELT")
-          continue;
-        Object o;
-        o.file = 3;
-        o.node = i;
-        o.kind = 0;
-        o.label = fr ? "Images des titres dans les menus" : "The titles' pictures in the menus";
-        objects_.insert(objects_.begin(), std::move(o));
-      }
+    // The belts' pictures of the menus, first of the belts (2026-11-18 - the user: "change the belts' pictures in all
+    // the menus", then "find every picture there is in the menus"). Every picture of the game's 2D files was looked at
+    // (menuHD, MatchHD, game2dHD, CAE, CAH, evtgdhd, LoadHD...): the belts are only in menu\MnLayHD.pac (and its SD
+    // twin MnLaySD.pac), groups MLY<language>/<layout>: BELT's 23 title pictures 256 x 128 (belt_WWE, belt_US...),
+    // BG_Champion 256 x 128 (a belt on flames: the champions' screens CHRM / USEI / TIMG), sts_Champion 128 x 64 (the
+    // champion's mark: CHRM / CHR1) and SAMP's belt_US 512 x 128. Read from both files, each picture once (by hash).
+    if (game.Read("pac/menu/MnLayHD.pac", files_[3]) && svrfmt::ArchiveOpen(files_[3], archives_[3], nullptr)) {
+      if (game.Read("pac/menu/MnLaySD.pac", files_[4]))
+        svrfmt::ArchiveOpen(files_[4], archives_[4], nullptr);
+      Object o;
+      o.file = 3;
+      o.kind = 0;
+      o.label = fr ? "Images des ceintures dans les menus" : "The belts' pictures in the menus";
+      objects_.insert(objects_.begin(), std::move(o));
+    }
     std::stable_sort(objects_.begin(), objects_.end(), [](const Object &a, const Object &b) { return a.kind < b.kind; });
     message_.clear();
   }
@@ -434,6 +434,13 @@ class Page {
       return;
     o.opened = true;
     std::vector<uint64_t> seen;
+    // (the menus' belt pictures: only those textures of MnLayHD / MnLaySD's layouts, see Load; "(SD)" after the SD ones)
+    const bool menus = o.file == 3;
+    bool sd = false;
+    const auto belt_picture = [](const std::string &name, const std::string &layout) {
+      return layout == "BELT" || name == "BG_Champion" || name == "sts_Champion" || (layout == "SAMP" && name == "belt_US");
+    };
+    std::string layout;
     std::function<void(svrfmt::ArcNode &)> walk = [&](svrfmt::ArcNode &n) {
       const std::string kind = svrfmt::ArchiveKindOf(n);
       if (n.kind == svrfmt::ArcKind::Leaf && kind != "PACH" && kind != "EPAC" && kind != "EPK8") {
@@ -445,10 +452,12 @@ class Page {
           return;
         for (auto &x : t) {
           Pic p;
+          if (menus && !belt_picture(x.name, layout))
+            continue;
           if (!GameHash(x.data, p.hash) || std::find(seen.begin(), seen.end(), p.hash) != seen.end())
             continue;
           seen.push_back(p.hash);
-          p.name = x.name;
+          p.name = x.name + (sd ? " (SD)" : "");
           p.dds = x.data;
           p.thumb = arena_page::MakeThumb(device, p.dds);
           o.pics.push_back(std::move(p));
@@ -460,7 +469,19 @@ class Page {
       for (auto &k : n.kids)
         walk(k);
     };
-    walk(archives_[o.file].root.kids[o.node]);
+    if (!menus) {
+      walk(archives_[o.file].root.kids[o.node]);
+      return;
+    }
+    for (int f : {3, 4}) {
+      sd = f == 4;
+      for (auto &k : archives_[f].root.kids) {
+        layout = Trim(k.name);  // (only the layouts that have them: the others aren't unpacked)
+        if (Trim(k.group).rfind("MLY", 0) == 0 && (layout == "BELT" || layout == "SAMP" || layout == "CHRM" ||
+                                                   layout == "CHR1" || layout == "USEI" || layout == "TIMG"))
+          walk(k);
+      }
+    }
   }
 
   static void Replace(bool fr, ID3D11Device *device, Pic &p) {
@@ -527,8 +548,8 @@ class Page {
     message_ = (fr ? "Pack créé et installé : " : "Pack made and installed: ") + media::Utf8(save.wstring());
   }
 
-  Bytes files_[4];
-  svrfmt::Archive archives_[4];
+  Bytes files_[5];
+  svrfmt::Archive archives_[5];
   std::vector<Object> objects_;
   int kind_ = 0, selected_ = -1;
   char name_[64] = {}, author_[64] = {}, version_[16] = {};

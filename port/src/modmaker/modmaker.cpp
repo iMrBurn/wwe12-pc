@@ -639,7 +639,7 @@ const Guide kGuides[] = {
       "share it, import someone else's. Your save is copied first (SaveBackups); close the game before.",
       "BELTS & WEAPONS: the pictures of the title belts (stretched, folded and rolled: three objects), weapons and "
       "other objects. Replace some: a texture pack is made and installed (launcher's TEXTURES page). First of the belts: "
-      "the titles' pictures in the menus (one per title).",
+      "the belts' pictures in the menus (one per title, the champions' screens and mark, HD and SD).",
       "BELTS & WEAPONS, Port a belt from another game: a belt of another WWE game (2K14's 2013 WWE title...) in "
       "place of one of the game's, in the hands, on the shoulder and at the waist. Pick its game, its belt, then the "
       "game's belt it replaces. The game has 23 fixed titles: to add one, put it in place of a title you don't use "
@@ -653,7 +653,7 @@ const Guide kGuides[] = {
       "le jeu avant.",
       "CEINTURES : les images des ceintures (dépliée, pliée et roulée : trois objets), des armes et des autres objets. "
       "Remplacez-en : un pack de textures est créé et installé (page TEXTURES du launcher). En tête des ceintures : les "
-      "images des titres dans les menus (une par titre).",
+      "images des ceintures dans les menus (une par titre, écrans et marque des champions, HD et SD).",
       "CEINTURES, Porter une ceinture d'un autre jeu : une ceinture d'un autre jeu WWE (le titre WWE de 2013 de 2K14...) "
       "à la place d'une du jeu, dans les mains, sur l'épaule et à la taille. Choisissez son jeu, sa ceinture, puis la "
       "ceinture du jeu qu'elle remplace. Le jeu a 23 titres fixes : pour en ajouter un, mettez-la à la place d'un titre "

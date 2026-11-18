@@ -414,8 +414,13 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   (`belt/SOBJ_<n>.bin`, dossier `mods\.svrmods\Belts`), servi à la place de l'`evtobj.pac` SOBJ/<n> du jeu
   (`wwe12_arena_pages.cpp`, « Title belt mods », journal `[belts]`). **Vu en jeu le 2026-11-18** : titre WWE de 2013
   (2K14) à la taille de Del Rio pendant son entrée et à la main, bien placé (`tools/dev/lancer_test_ceinture.bat`).
-  Images des titres dans les menus : `menu\MnLayHD.pac` MLYE/BELT (23 images 256 x 128, belt_WWE, belt_US...), seules
-  images de ceintures des menus ; en tête de la liste « Ceintures » de la page (pack de textures). Pas encore vu en jeu.
+  Images des ceintures dans les menus (en tête de la liste « Ceintures » de la page, pack de textures ; pas encore vu en
+  jeu). Toutes les images 2D du jeu regardées le 2026-11-18 (menuHD, MatchHD, game2dHD, CAE, CAH, evtgdhd : logos de
+  PPV, UNIL = logos d'émissions, RSCP = portraits) : les ceintures ne sont que dans `menu\MnLayHD.pac` et son double
+  `MnLaySD.pac`, groupes MLY<langue>/<écran> : BELT (23 images 256 x 128, belt_WWE, belt_US...), BG_Champion 256 x 128
+  (une ceinture sur des flammes : écrans des champions CHRM / USEI / TIMG), sts_Champion 128 x 64 (la marque du
+  champion : CHRM / CHR1), SAMP belt_US 512 x 128. Lues dans les deux fichiers, chaque image une fois (par empreinte),
+  « (SD) » après celles du SD.
   - Formes d'un titre dans WWE '12 (noms de SOBJ/LIST : u16 **LE** + nom, 64 octets) : 2NNN / 3NNN dans la main et sur
     l'épaule (os bone01-15 + AW_01-20), 4NNN (17 os), 20N1-2030 / 3011-3024 / 4011-4020 pliées ou roulées (rigides :
     root, bone01), 5MMM à la taille (L_bone01-12, R_bone01-12 ; 5004 = WWE, 5009 = World Heavyweight, 5021 = ECW...).
