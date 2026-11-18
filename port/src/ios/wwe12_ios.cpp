@@ -156,16 +156,12 @@ __attribute__((constructor(102))) void IosInstallDefaultSettings() {
 // thread as the victory scene appeared, and the session's own cache held none of them). An app
 // bundle is read-only and the workflow copies nothing in, so they ride inside the executable
 // (android/wwe12_resources.cpp, 103 and 104) and are written here into Documents, which is the game
-// folder on iOS (pso_recorder.cpp's SeedCachePath, svr_resources.cpp's). Written again whenever the
-// size differs, so a new build's seed replaces the one before.
+// folder on iOS (pso_recorder.cpp's SeedCachePath, svr_resources.cpp's). Written again at every
+// start, as WWE12Activity.prepareFolder does on Android, so an update always brings its own.
 void InstallSeed(const std::string& dir, int id, const char* name) {
   const Wwe12Resource* r = Wwe12AndroidResource(id);
   if (!r || !r->data || !r->size) return;
   const std::string path = dir + "/" + name;
-  struct stat st {};
-  if (stat(path.c_str(), &st) == 0 &&
-      static_cast<unsigned long long>(st.st_size) == static_cast<unsigned long long>(r->size))
-    return;
   FILE* f = std::fopen(path.c_str(), "wb");
   if (!f) {
     std::fprintf(stderr, "[boot] %s: could not be written\n", name);
