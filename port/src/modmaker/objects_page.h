@@ -22,6 +22,7 @@
 
 #include "arena_page.h"
 #include "belt_port.h"
+#include "star_port.h"
 #include "game_disc.h"
 #include "game_discs.h"
 #include "game_icons.h"

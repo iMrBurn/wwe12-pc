@@ -9,7 +9,7 @@
 //    "2933_New_WWE_01", 5004 its waist one "5066_New_WWE_04"); a child 4 (a small second model) WWE '12 hasn't: left out.
 //    No "Folded" / "Rolled" ones: WWE '12's own stay for those.
 //  - 2K16, 2K17: one pac a belt, pac\prop\NNNN.pac (HSPC of one SHDC, children "ZLIB"-packed, as entrance13::Props2K).
-//  - SvR 2007-2011: SOBJ in evtobj.pac / _EvtObj.pac, SvR's model format (star_port::SvrPropsTo12 makes it WWE '12's).
+//  - SvR 2007-2011: SOBJ in evtobj.pac / _EvtObj.pac, SvR's model format (detail::SvrBeltTo12 makes it WWE '12's).
 // A belt's shapes are found by its model's own name (a node "2933_New_WWE_01": the family "New_WWE") or else by its LIST
 // name without " - Stretched" / " - Folded2"...; each of the WWE '12 title's shapes gets the source shape whose bones
 // are the same (names, then order, then the same thousand), none if none is close enough (the game's own stays).
@@ -27,11 +27,13 @@
 #include <string>
 #include <vector>
 
+#include <cfloat>
+#include <cmath>
+
 #include "game_disc.h"
-#ifndef BELT_PORT_NO_SVR  // (a test build without the Mod Maker around it)
-#include "star_port.h"
-#endif
+#include "port_svr_arena.h"
 #include "svrfmt/archive.h"
+#include "svrfmt/jboy.h"
 #include "svrfmt/pac.h"
 #include "svrfmt/texture.h"
 #include "svrfmt/xcompress.h"
@@ -196,6 +198,160 @@ inline bool OpenPac(const disc::GameDisc &g, const std::string &f, Bytes &b, svr
     b.swap(o);
   }
   return svrfmt::ArchiveOpen(b, a, nullptr);
+}
+
+// An SvR belt model (JBOY, SvR's layout) made WWE '12's, as WWE '12's own belts - the SvR 2011 ones it took over, the
+// same numbers (2026-11-18, the user: "the old games' belts look odd"; the props' conversion, star_port::SvrPropsTo12,
+// only renamed the shaders and kept SvR's parameters):
+//  - the layout (SvrToW12) and the units, x 10 (SvR 2011's 2004 is 13.1 long, WWE '12's 131);
+//  - the shaders and vertex formats as WWE '12's belts have them: yBumpMap 4 -> yProp_BumpMap 1, yBumpMap 6 ->
+//    yProp_BumpMap 2, yReflect 3 -> yProp_Reflect 8;
+//  - their parameters in WWE '12's own list and order (SvR's: 22 of them, other names, g_iSpecularPow an int where
+//    WWE '12 has a float: 50 read as a float is ~0, a mirror-like shine): yProp_BumpMap {g_f4MatAmbCol, g_f4MatDifCol,
+//    g_f4SpecularCol, g_fSpecularLev, g_iSpecularPow, sampDiffusePrm <- texDiffuse, sampNormalPrm <- texNormal,
+//    g_fReflectAlpha, g_fSpeLodNear 10000, g_fSpeLodFar 20000}; yProp_Reflect {the first five, sampDiffusePrm,
+//    sampCubeRefPrm "cube_ref" (the game's own, as all its reflecting belts), sampRefMapPrm <- texRefctionReg,
+//    g_fReflectAlpha};
+//  - the bounding spheres SvR's x 10; one SvrToW12 left at radius 0 (the last mesh's z and radius) made again.
+// False if it can't be read or written.
+inline bool SvrBeltTo12(Bytes &model) {
+  Bytes w;
+  if (!port_svr_arena::detail::SvrToW12(model, w) || !port_svr_arena::detail::Scale(w, 10.0))
+    return false;
+  svrfmt::Model md;
+  if (!svrfmt::JboyRead(w, md) || !md.w12)
+    return false;
+  auto be32 = [](uint32_t v) { return Bytes{uint8_t(v >> 24), uint8_t(v >> 16), uint8_t(v >> 8), uint8_t(v)}; };
+  auto fbits = [](float f) {
+    uint32_t u;
+    memcpy(&u, &f, 4);
+    return u;
+  };
+  auto texture = [&](const std::string &name) {  // (its slot in the model's list, added when missing)
+    for (size_t i = 0; i < md.textures.size(); ++i)
+      if (Lower(md.textures[i]) == Lower(name))
+        return uint32_t(i);
+    md.textures.push_back(name);
+    return uint32_t(md.textures.size() - 1);
+  };
+  for (auto &ms : md.meshes) {
+    const bool bump = ms.shader == "yBumpMap", reflect = ms.shader == "yReflect";
+    if (!bump && !reflect)
+      continue;
+    auto find = [&](const char *name) -> const svrfmt::Param * {
+      for (const auto &p : ms.params)
+        if (p.name == name)
+          return &p;
+      return nullptr;
+    };
+    auto value = [&](const char *name, float def) {  // (a float, an int or a bool)
+      const svrfmt::Param *p = find(name);
+      if (!p || p->value.size() < 4)
+        return def;
+      const uint32_t u = svrfmt::Be32(p->value.data());
+      if (p->type == 0x0A) {
+        float f;
+        memcpy(&f, &u, 4);
+        return f;
+      }
+      return float(u);
+    };
+    auto slot = [&](const char *name) {  // (0xFFFFFFFF: none)
+      const svrfmt::Param *p = find(name);
+      return p && p->type == 0x0F && p->value.size() >= 4 ? svrfmt::Be32(p->value.data()) : 0xFFFFFFFFu;
+    };
+    std::vector<svrfmt::Param> out;
+    auto colour = [&](const char *name) {
+      const svrfmt::Param *p = find(name);
+      if (p && p->type == 0x0D && p->value.size() == 16) {
+        out.push_back(*p);
+        return;
+      }
+      Bytes v;
+      for (int i = 0; i < 4; ++i) {
+        const Bytes one = be32(fbits(1.0f));
+        v.insert(v.end(), one.begin(), one.end());
+      }
+      out.push_back({name, 0x0D, v});
+    };
+    auto number = [&](const char *name, float v) { out.push_back({name, 0x0A, be32(fbits(v))}); };
+    auto picture = [&](const char *name, uint32_t s) { out.push_back({name, 0x0F, be32(s)}); };
+    colour("g_f4MatAmbCol");
+    colour("g_f4MatDifCol");
+    colour("g_f4SpecularCol");
+    number("g_fSpecularLev", value("g_fSpecularLev", 1.0f));
+    number("g_iSpecularPow", value("g_iSpecularPow", 30.0f));
+    const uint32_t diffuse = slot("texDiffuse");
+    if (diffuse == 0xFFFFFFFFu)
+      continue;  // (nothing to show: left as it was)
+    picture("sampDiffusePrm", diffuse);
+    if (bump) {
+      const uint32_t normal = slot("texNormal");
+      picture("sampNormalPrm", normal == 0xFFFFFFFFu ? diffuse : normal);
+      number("g_fReflectAlpha", value("g_fReflectAlpha", 1.0f));
+      number("g_fSpeLodNear", 10000.0f);
+      number("g_fSpeLodFar", 20000.0f);
+      ms.shader = "yProp_BumpMap";
+      ms.vfmt = ms.vfmt == 6 ? 2 : 1;
+    } else {
+      const uint32_t map = slot("texRefctionReg");
+      picture("sampCubeRefPrm", texture("cube_ref"));
+      picture("sampRefMapPrm", map == 0xFFFFFFFFu ? diffuse : map);
+      number("g_fReflectAlpha", value("g_fReflectAlpha", 1.0f));
+      ms.shader = "yProp_Reflect";
+      ms.vfmt = 8;
+    }
+    ms.params = std::move(out);
+  }
+  // (the spheres: SvR's, x 10, kept - a bit larger than the bind pose, as WWE '12's: a strap bent in the hand stays
+  // inside; one that doesn't fit its vertices made again from them, half as large again: radius 0 after SvrToW12,
+  // SvR 2007's 2004 radius 7.8e9)
+  for (auto &ms : md.meshes) {
+    if (ms.verts.empty())
+      continue;
+    float lo[3] = {FLT_MAX, FLT_MAX, FLT_MAX}, hi[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    for (const auto &v : ms.verts)
+      for (int k = 0; k < 3; ++k)
+        lo[k] = std::min(lo[k], v.pos[k]), hi[k] = std::max(hi[k], v.pos[k]);
+    const float half = 0.5f * std::sqrt((hi[0] - lo[0]) * (hi[0] - lo[0]) + (hi[1] - lo[1]) * (hi[1] - lo[1]) +
+                                        (hi[2] - lo[2]) * (hi[2] - lo[2]));
+    const float cx = ms.sphere[0] - (lo[0] + hi[0]) / 2, cy = ms.sphere[1] - (lo[1] + hi[1]) / 2,
+                cz = ms.sphere[2] - (lo[2] + hi[2]) / 2, off = std::sqrt(cx * cx + cy * cy + cz * cz);
+    if (std::isfinite(ms.sphere[3]) && std::isfinite(off) && ms.sphere[3] >= 0.5f * half && ms.sphere[3] <= 4 * half + 1 &&
+        off <= half + 1)
+      continue;
+    float r = 0;
+    for (int k = 0; k < 3; ++k)
+      ms.sphere[size_t(k)] = (lo[k] + hi[k]) / 2;
+    for (const auto &v : ms.verts) {
+      const float dx = v.pos[0] - ms.sphere[0], dy = v.pos[1] - ms.sphere[1], dz = v.pos[2] - ms.sphere[2];
+      r = std::max(r, std::sqrt(dx * dx + dy * dy + dz * dz));
+    }
+    ms.sphere[3] = r * 1.5f;
+  }
+  Bytes again = svrfmt::JboyWrite(md);
+  svrfmt::Model check;
+  if (again.empty() || !svrfmt::JboyRead(again, check) || check.meshes.size() != md.meshes.size())
+    return false;
+  model = std::move(again);
+  return true;
+}
+
+// A PACH with its model (child 0) made WWE '12's by SvrBeltTo12; false if it can't be.
+inline bool SvrBeltPachTo12(Bytes &pach) {
+  std::vector<svrfmt::PachEntry> kids;
+  if (!svrfmt::PachRead(pach, kids))
+    return false;
+  for (auto &k : kids)
+    if (k.id == 0) {
+      Bytes m = svrfmt::IsBpe(k.data) ? svrfmt::Unpack(k.data) : k.data;
+      if (!SvrBeltTo12(m))
+        return false;
+      k.data = svrfmt::BpeEncodeStored(m);
+      pach = svrfmt::PachWrite(kids);
+      return true;
+    }
+  return false;
 }
 
 }  // namespace detail
@@ -381,15 +537,8 @@ inline std::vector<std::pair<int, Bytes>> Make(const Belts &w12, const Family &t
           k.id == 1010)
         keep.push_back(std::move(k));
     Bytes pach = svrfmt::PachWrite(keep);
-#ifndef BELT_PORT_NO_SVR
-    if (svr) {  // (SvR's model made WWE '12's, as its entrances' props)
-      std::vector<entrance13::Part> one = {{to.number, "SOBJ", pach}};
-      star_port::SvrPropsTo12(one);
-      if (one.empty())
-        continue;
-      pach = std::move(one[0].data);
-    }
-#endif
+    if (svr && !detail::SvrBeltPachTo12(pach))  // (SvR's model made WWE '12's, as WWE '12's own belts)
+      continue;
     out.push_back({to.number, std::move(pach)});
     swaps.push_back({to.number, from->number});
   }

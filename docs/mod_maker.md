@@ -446,6 +446,16 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
     bone01-12 seulement (pas d'AW_, pas de taille avant SvR 2011) ; 2K16 / 2K17 = `pac\prop\NNNN.pac` à entrée BOBJ
     (enfants ZLIB, regonflés et mis en BPE ; os bone01-14) - les 29xx / 50xx de 2K17 au nom haché (autre format)
     ne sont pas lus. Os simples acceptés pour un nom de titre ou une entrée BOBJ. Les 10 jeux lus (14 à 55 ceintures).
+  - Ceintures SvR « bizarres » (2026-11-18 soir, étudié hors jeu) : la conversion des objets SvR
+    (`star_port::SvrPropsTo12`) ne faisait que renommer les shaders ; les paramètres restaient ceux de SvR (22, autres
+    noms, autre ordre ; `g_iSpecularPow` entier 50 là où WWE '12 lit un flottant : ~0, brillance extrême), formats de
+    sommets de SvR, `yReflect` mis en `yDefault` (shader d'arène). Or WWE '12 a repris les ceintures de SvR 2011 :
+    mêmes numéros, mêmes maillages. `belt_port::detail::SvrBeltTo12` les fait comme celles de WWE '12 : yBumpMap 4 ->
+    yProp_BumpMap 1, yBumpMap 6 -> 2, yReflect 3 -> yProp_Reflect 8 ; paramètres dans la liste et l'ordre de WWE '12
+    (texDiffuse -> sampDiffusePrm, texNormal -> sampNormalPrm, texRefctionReg -> sampRefMapPrm, cube_ref du jeu,
+    g_fSpeLodNear / Far 10000 / 20000) ; sphères de SvR x 10 gardées, refaites si incohérentes (SvrToW12 met à 0 la
+    fin de la dernière ; SvR 2007 2004 : rayon 7,8e9). Vérifié hors jeu sur SvR 2007 à 2011. Pas encore vu en jeu.
+    Les caisses noires de MVP (objets SvR, même conversion) ont sans doute la même cause : à essayer ensuite.
   - Page refaite en étapes (« ça me plaît pas ») : 1. le jeu (liste à icônes), 2. ses ceintures en grille d'images,
     3. la ceinture du jeu remplacée (grille), 4. avant -> après, formes en mots (dans la main, sur l'épaule, à la
     taille, pliée / roulée), le mod. Chemin d'étapes cliquable en haut.
