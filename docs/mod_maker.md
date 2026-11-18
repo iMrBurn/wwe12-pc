@@ -4,7 +4,8 @@ Résumé de l'état actuel. Les sections « 1.3 » (2026-11-10 / 11) sont les pl
 Docs liés : prises ajoutées `docs/prises_svr11.md`, prises / entrées / musiques des autres jeux `docs/plan_movesets.md`,
 SvR 2007-2010 `docs/plan_svr_anciens.md`, limites du nombre de mods `docs/mod_maker_limites.md`.
 
-**Nouveauté du 2026-11-18 (commit local, page AIDE à jour, vu en jeu à la taille)** : CEINTURES ET ARMES > « Porter une
+**Nouveauté du 2026-11-18 (commit local, page AIDE à jour, vu en jeu à la taille et à la main ; images des titres des
+menus ajoutées à la page)** : CEINTURES ET ARMES > « Porter une
 ceinture d'un autre jeu » (`belt_port.h`, mod `type=belt`) - détail au § 9.
 
 **Nouveautés du 2026-11-17 (après le zip 1.4.0, commits locaux ; page AIDE à jour)** :
@@ -412,7 +413,9 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   n'importe quel jeu WWE », étudier l'ajout). `belt_port.h`, page CEINTURES ET ARMES (2e bouton radio), mod `type=belt`
   (`belt/SOBJ_<n>.bin`, dossier `mods\.svrmods\Belts`), servi à la place de l'`evtobj.pac` SOBJ/<n> du jeu
   (`wwe12_arena_pages.cpp`, « Title belt mods », journal `[belts]`). **Vu en jeu le 2026-11-18** : titre WWE de 2013
-  (2K14) à la taille de Del Rio pendant son entrée, bien placé (`tools/dev/lancer_test_ceinture.bat`).
+  (2K14) à la taille de Del Rio pendant son entrée et à la main, bien placé (`tools/dev/lancer_test_ceinture.bat`).
+  Images des titres dans les menus : `menu\MnLayHD.pac` MLYE/BELT (23 images 256 x 128, belt_WWE, belt_US...), seules
+  images de ceintures des menus ; en tête de la liste « Ceintures » de la page (pack de textures). Pas encore vu en jeu.
   - Formes d'un titre dans WWE '12 (noms de SOBJ/LIST : u16 **LE** + nom, 64 octets) : 2NNN / 3NNN dans la main et sur
     l'épaule (os bone01-15 + AW_01-20), 4NNN (17 os), 20N1-2030 / 3011-3024 / 4011-4020 pliées ou roulées (rigides :
     root, bone01), 5MMM à la taille (L_bone01-12, R_bone01-12 ; 5004 = WWE, 5009 = World Heavyweight, 5021 = ECW...).

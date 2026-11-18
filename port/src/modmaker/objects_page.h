@@ -339,7 +339,7 @@ class Page {
   struct Object {
     std::string label;
     int kind = 2;            // 0 belts, 1 weapons, 2 others, 3 loading screens
-    int file = 0;            // 0 evtobj.pac, 1 bgEtc.pac, 2 menu\LoadHD.pac
+    int file = 0;            // 0 evtobj.pac, 1 bgEtc.pac, 2 menu\LoadHD.pac, 3 menu\MnLayHD.pac
     size_t node = 0;         // its entry (root child)
     bool opened = false;
     std::vector<Pic> pics;
@@ -409,6 +409,21 @@ class Page {
         const std::string n = Trim(k.name);
         o.label = (n.rfind("GN", 0) == 0 ? (fr ? "Général " : "General ") : n.rfind("UN", 0) == 0 ? "Universe " : "") + n;
         objects_.push_back(std::move(o));
+      }
+    // The titles' pictures of the menus (menu\MnLayHD.pac MLYE/BELT: 23 bundled pictures 256 x 128, belt_WWE, belt_US,
+    // belt_Hardcore...; the only belt pictures of the menus, 2026-11-18 - the user: "change the belts' pictures in all
+    // the menus"), first of the belts. HD only, as the loading screens.
+    if (game.Read("pac/menu/MnLayHD.pac", files_[3]) && svrfmt::ArchiveOpen(files_[3], archives_[3], nullptr))
+      for (size_t i = 0; i < archives_[3].root.kids.size(); ++i) {
+        const auto &k = archives_[3].root.kids[i];
+        if (Trim(k.group) != "MLYE" || Trim(k.name) != "BELT")
+          continue;
+        Object o;
+        o.file = 3;
+        o.node = i;
+        o.kind = 0;
+        o.label = fr ? "Images des titres dans les menus" : "The titles' pictures in the menus";
+        objects_.insert(objects_.begin(), std::move(o));
       }
     std::stable_sort(objects_.begin(), objects_.end(), [](const Object &a, const Object &b) { return a.kind < b.kind; });
     message_.clear();
@@ -512,8 +527,8 @@ class Page {
     message_ = (fr ? "Pack créé et installé : " : "Pack made and installed: ") + media::Utf8(save.wstring());
   }
 
-  Bytes files_[3];
-  svrfmt::Archive archives_[3];
+  Bytes files_[4];
+  svrfmt::Archive archives_[4];
   std::vector<Object> objects_;
   int kind_ = 0, selected_ = -1;
   char name_[64] = {}, author_[64] = {}, version_[16] = {};
