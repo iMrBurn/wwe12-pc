@@ -1,8 +1,5 @@
 @echo off
-rem Ceinture a 60 fps (wwe12_title_fix) : entree de John Cena avec sa ceinture, a 60 images/s.
-rem Le journal garde la position de la ceinture a chaque image ([belt]) et les corrections ([title]).
-rem Ajouter --wwe12_title_fix=false pour comparer sans la correction.
-set BIN=%~dp0..\..\port\out\build\win-amd64-release
-cd /d "%BIN%"
-start "" "%BIN%\wwe12.exe" --log_file "%~dp0..\..\diagnostic_ceinture.log" --log_flush_interval 1 --log_max_file_size_mb 400 --wwe12_60fps=true --wwe12_belt_probe=true --wwe12_title_fix_log=true %*
-exit 0
+rem Ceinture d'un autre jeu (mods de type belt, Mod Maker > CEINTURES ET ARMES) sur la COPIE de la sauvegarde
+rem (Documents\wwe12_test). Journal : test_ceinture.log (lignes "[belts]" et "[entrances] /SOBJ/... replaced").
+cd /d "%~dp0..\..\port\out\build\win-amd64-release"
+start "" wwe12.exe --user_data_root "%USERPROFILE%\Documents\wwe12_test" %* --log_file "%~dp0..\..\test_ceinture.log" --log_flush_interval 1
