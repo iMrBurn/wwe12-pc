@@ -78,6 +78,7 @@ REXCVAR_DECLARE(uint32_t, user_language);
 
 bool Wwe12IQuitMatch();  // wwe12_match_modes.cpp: an I Quit match is set up
 bool IQuitMatch();       // wwe12_match_modes.cpp: I QUIT was the match chosen in the menu (true while it loads too)
+bool Wwe12SrefCommitted();  // wwe12_sref.cpp: a Special Referee match is set up (true while it loads too)
 
 REX_EXTERN(__imp__sub_8247AD18);  // play an animation on an actor
 REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner)
@@ -1293,6 +1294,11 @@ extern "C" REX_FUNC(sub_82967DA8) {
 // list 13100-13135 are not built in a match: 13120, in that list, was dropped all the same, user's test of
 // 2026-11-15.) Here the free numbers of the referee's hundred, 13115-13199, are added to slot 1's bitmap: a number
 // no file has just stays an entry without a record, as the game's own do.
+// 1.4.1: for an I Quit or a Special Referee match ONLY (the directory is rebuilt at every match's load). In 1.4.0 they
+// were added to every match: the 33 WWE '13 motions loaded for nothing (~1.4 MB in the game's motion memory, kept at
+// its original size), and a Royal Rumble crashed in sub_821D7150 - a loaded-motion list entry overwritten, its block
+// table pointer 0x1800010A (issue #79, Android, Universe; seen on PC 2026-11-19 17:45; the same Rumble with
+// wwe12_iquit_wwe13_motions = false played 7 min without a crash).
 REXCVAR_DEFINE_BOOL(wwe12_iquit_added_motions, false, "WWE12",
                     "I Quit match: let the game load motions 13115-13199 added by a motions mod (WWE '13's, test).");
 REX_EXTERN(__imp__sub_8246E3B0);
@@ -1303,7 +1309,13 @@ extern "C" REX_FUNC(sub_8246E3B0) {
     static std::atomic<int> s_calls{0};
     if (s_calls.fetch_add(1) < 60)
       BD_INFO("[iquit] repertoire des motions : case {} (appel {:08X}, deja faite {})", slot, u32(ctx.lr), made);
-    if (bitmap && slot == 1 && !made) {
+    const bool wanted = IQuitMatch() || Wwe12SrefCommitted();
+    if (bitmap && slot == 1 && !made && !wanted) {
+      static std::atomic<int> s_skipped{0};
+      if (s_skipped.fetch_add(1) < 8)
+        BD_INFO("[iquit] motions 13115-13199 pas ajoutees au repertoire (ni I Quit ni arbitre special)");
+    }
+    if (bitmap && slot == 1 && !made && wanted) {
       for (u32 n = 13115; n < 13200; ++n) {
         const u32 w = bitmap + (n >> 5) * 4;
         bd::mem::store<u32>(w, bd::mem::try_load<u32>(w) | (1u << (n & 31)));

@@ -578,6 +578,10 @@ void PutBE(u8 *p, u32 v) {
 
 bool Wwe12SrefOn() { return On(); }
 bool Wwe12SrefWanted() { return REXCVAR_GET(wwe12_sref); }  // (asked before the game's memory is there)
+// A Special Referee match is set up: true from the select's commit (the referee's place, sub_82A36150) - before the
+// match loads and the game builds its motion directory - until the next match is prepared (sub_82A39AC0).
+// (wwe12_iquit.cpp: the WWE '13 motions are put in the directory for such a match only.)
+bool Wwe12SrefCommitted() { return g_committed.load(); }
 bool Wwe12SrefWantsMic() {
   return On() && REXCVAR_GET(wwe12_sref_replacement) && REXCVAR_GET(wwe12_sref_scene) && (Match() || g_cur >= 0);
 }
