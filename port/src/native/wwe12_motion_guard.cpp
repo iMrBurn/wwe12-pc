@@ -1,0 +1,216 @@
+// A safety net for a motion the match hasn't (1.4.2, off by default: wwe12_motion_guard). Study:
+// docs/etude_motion_absente_filet.md. The idea is Kaiko's (his SvR 2011 PC port, KaikoClanworth1/wwe-svr2011-pc,
+// commit c529dfe: "a wrestler alone in a motion no bank has is started on 446 after 1 s"), rewritten for WWE '12.
+//
+// What the game does (read 2026-11-19 in the generated code): a motion played by number (sub_8247AD18 ->
+// sub_82478AE8) writes the number into the actor's track (+216, what [actor + 680] shows) and asks the load queue
+// (sub_821D7480). The queue's reader (sub_821D7C80) asks the motion directory [0x8317B870] for it
+// (sub_8246EB78(directory, {number, 255, 255}, 0, 0), called from 0x821D7D00) and DROPS a number it hasn't; the
+// loader (sub_821D7E78) gives up (state 5) on a record it can't read. Either way the actor waits for a motion that
+// never comes: he stands frozen in it (the I Quit referee, 2026-11-14; 2K16 entrances; mods' moves).
+// Here: a number the reader dropped or the loader gave up is noted; an actor whose motion has been such a number
+// for 1 s is put back in his free motion (sub_8247C670, the game's own: his brain acts from it - the Special
+// Referee's Free(), seen in game). Two men in a hold ('BPMG' at actor + 3404: + 32 = 2, + 36 the holder, + 40 the
+// held) are freed together, never one alone (Kaiko: one of a pair started alone crashed his game).
+// Not a cure for overwritten memory (the 1.4.0 Royal Rumble, fixed at its cause in 1.4.1).
+
+#include <rex/cvar.h>
+
+REXCVAR_DEFINE_BOOL(wwe12_motion_guard, false, "WWE12",
+                    "Safety net (1.4.2, test): a superstar frozen 1 s in a motion the match hasn't is put back "
+                    "standing (idea from Kaiko's SvR 2011 PC port).");
+REXCVAR_DEFINE_INT32(wwe12_motion_guard_test, 0, "WWE12",
+                     "Dev: N > 0 - in a match, player 1 is made to play motion N once (1852: a number no bank has), "
+                     "after he has stood 2 s, 10 s or more after the match's load. 0 = never.");
+
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+
+#include <fmt/format.h>
+
+#include "svr_hook.h"
+#include "core/logging.h"
+#include "core/memory_helpers.h"
+
+REX_EXTERN(__imp__sub_8246EB78);  // the motion directory: has it this number? (0 = no)
+REX_EXTERN(__imp__sub_8247C670);  // an actor back in his free motion
+REX_EXTERN(__imp__sub_8247AD18);  // play a motion on an actor (test aid)
+
+namespace {
+constexpr u32 kActors = 0x8317B770;  // the match's actors (six)
+constexpr u32 kFree = 1350;          // the free motion (standing / walking set)
+constexpr int64_t kHoldMs = 1000;
+
+int64_t NowMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+u32 Actor(u32 i) { return bd::mem::try_load<u32>(kActors + i * 4); }
+u16 Anim(u32 actor) {
+  const u32 st = actor ? bd::mem::try_load<u32>(actor + 680) : 0;
+  return st ? bd::mem::try_load<u16>(st) : 0xFFFF;
+}
+int IndexOf(u32 actor) {
+  for (u32 i = 0; i < 6; ++i)
+    if (actor && Actor(i) == actor)
+      return int(i);
+  return -1;
+}
+
+std::mutex g_mutex;
+std::unordered_map<u16, int> g_missing;  // numbers dropped (1) or given up (5) since the directory was last made
+struct Watch {
+  u16 anim = 0xFFFF;
+  int64_t since = 0;
+  bool done = false;  // (acted or logged for this stay in it)
+};
+std::unordered_map<u32, Watch> g_watch;  // per actor (main thread only)
+std::atomic<int64_t> g_match_ms{0};      // the match's load (its motion directory made)
+std::atomic<bool> g_test_done{false};
+std::atomic<int64_t> g_test_stood{0};
+std::atomic<int> g_lines{0};
+bool More() { return g_lines.fetch_add(1) < 60; }
+
+bool Missing(u16 n, int *how) {
+  std::lock_guard lock(g_mutex);
+  const auto it = g_missing.find(n);
+  if (it == g_missing.end())
+    return false;
+  *how = it->second;
+  return true;
+}
+void Note(u16 n, int how) {
+  bool fresh;
+  {
+    std::lock_guard lock(g_mutex);
+    fresh = g_missing.emplace(n, how).second;
+  }
+  if (fresh && More())
+    BD_INFO("[motion guard] motion {} absente du match ({})", n,
+            how == 1 ? "jetee par la file : pas dans le repertoire" : "abandonnee par le chargeur : illisible");
+}
+
+void Free(const PPCContext &ctx, u8 *base, u32 actor) {
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = actor;
+  __imp__sub_8247C670(c, base);
+  bd::mem::store<u32>(actor + 1096, 0);  // (as the Special Referee's Free(): his flag left at 1 keeps him still)
+  bd::mem::store<u32>(actor + 1428, 0);
+}
+
+// The other man of a hold this actor is in (0: none).
+u32 Partner(u32 actor) {
+  for (u32 i = 0; i < 6; ++i) {
+    const u32 a = Actor(i), h = a ? bd::mem::try_load<u32>(a + 3404) : 0;
+    if (!h || bd::mem::try_load<u32>(h + 32) != 2)
+      continue;
+    const u32 by = bd::mem::try_load<u32>(h + 36), held = bd::mem::try_load<u32>(h + 40);
+    if (by == actor && held)
+      return held;
+    if (held == actor && by)
+      return by;
+  }
+  return 0;
+}
+
+void TestAid(const PPCContext &ctx, u8 *base, u32 actor, int64_t now) {
+  const int n = REXCVAR_GET(wwe12_motion_guard_test);
+  const int64_t start = g_match_ms.load();
+  if (n <= 0 || n >= 65535 || g_test_done || !start || now - start < 10000 || actor != Actor(0))
+    return;
+  if (Anim(actor) != kFree) {
+    g_test_stood = 0;
+    return;
+  }
+  if (!g_test_stood.load())
+    g_test_stood = now;
+  if (now - g_test_stood.load() < 2000)
+    return;
+  g_test_done = true;
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = actor;
+  c.r4.u64 = u32(n);
+  c.r5.u64 = 0;
+  c.r6.u64 = 0;
+  c.r8.u64 = 1;
+  c.r9.u64 = 0;
+  const u32 bits = bd::mem::try_load<u32>(0x82000AD8);  // (the float the game passes, as the Special Referee's Play())
+  float f;
+  std::memcpy(&f, &bits, 4);
+  c.f1.f64 = f;
+  __imp__sub_8247AD18(c, base);
+  BD_INFO("[motion guard] essai : le joueur 1 ({:08X}) doit jouer la motion {} -> motion {} (filet {})", actor, n,
+          Anim(actor), REXCVAR_GET(wwe12_motion_guard) ? "actif" : "coupe");
+}
+}  // namespace
+
+// The motion directory was made again (wwe12_iquit.cpp, sub_8246E3B0 slot 1: each match's load): the numbers noted
+// missing belong to the last match.
+// It is also the test aid's clock: the match is loading.
+void Wwe12MotionGuardDirectoryMade() {
+  {
+    std::lock_guard lock(g_mutex);
+    g_missing.clear();
+  }
+  g_match_ms = NowMs();
+  g_test_done = false;
+  g_test_stood = 0;
+}
+
+// The loader's verdict on a queue entry (wwe12_motion_trace.cpp, sub_821D7E78): 5 = given up.
+void Wwe12MotionGuardLoaded(u32 number, u32 state) {
+  if (state == 5 && number && number < 0xFFFF)
+    Note(u16(number), 5);
+}
+
+// The directory asked by the queue's reader (0x821D7D00): 0 = the number is dropped.
+extern "C" REX_FUNC(sub_8246EB78) {
+  const u32 lr = u32(ctx.lr), key = ctx.r4.u32;
+  const u16 n = lr == 0x821D7D04 && key ? bd::mem::try_load<u16>(key) : 0xFFFF;
+  __imp__sub_8246EB78(ctx, base);
+  if (n != 0xFFFF && n && ctx.r3.u32 == 0)
+    Note(n, 1);
+}
+
+// Each actor's pad word (wwe12_iquit.cpp, sub_8225C4D8: the main thread, every frame).
+void Wwe12MotionGuardActor(const PPCContext &ctx, u8 *base, u32 actor) {
+  if (!actor || !bd::mem::ready() || IndexOf(actor) < 0)
+    return;
+  const int64_t now = NowMs();
+  TestAid(ctx, base, actor, now);
+  const u16 a = Anim(actor);
+  Watch &w = g_watch[actor];
+  if (a != w.anim) {
+    w = {a, now, false};
+    return;
+  }
+  int how = 0;
+  if (w.done || now - w.since < kHoldMs || a == 0xFFFF || !Missing(a, &how))
+    return;
+  w.done = true;
+  const u32 other = Partner(actor);
+  if (!REXCVAR_GET(wwe12_motion_guard)) {
+    if (More())
+      BD_INFO("[motion guard] acteur {} ({:08X}) fige depuis 1 s dans la motion {} absente du match (filet coupe)",
+              IndexOf(actor), actor, a);
+    return;
+  }
+  Free(ctx, base, actor);
+  if (other) {
+    Free(ctx, base, other);
+    g_watch[other].done = true;
+  }
+  if (More())
+    BD_INFO("[motion guard] acteur {} ({:08X}) fige depuis 1 s dans la motion {} absente du match -> remis libre "
+            "(motion {}){}",
+            IndexOf(actor), actor, a, Anim(actor),
+            other ? fmt::format(", avec son partenaire de prise {} ({:08X}, motion {})", IndexOf(other), other,
+                                Anim(other))
+                  : std::string());
+}

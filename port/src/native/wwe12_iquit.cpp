@@ -79,6 +79,8 @@ REXCVAR_DECLARE(uint32_t, user_language);
 bool Wwe12IQuitMatch();  // wwe12_match_modes.cpp: an I Quit match is set up
 bool IQuitMatch();       // wwe12_match_modes.cpp: I QUIT was the match chosen in the menu (true while it loads too)
 bool Wwe12SrefCommitted();  // wwe12_sref.cpp: a Special Referee match is set up (true while it loads too)
+void Wwe12MotionGuardActor(const PPCContext &ctx, uint8_t *base, uint32_t actor);  // wwe12_motion_guard.cpp
+void Wwe12MotionGuardDirectoryMade();                                              // (the same)
 
 REX_EXTERN(__imp__sub_8247AD18);  // play an animation on an actor
 REX_EXTERN(__imp__sub_82261320);  // the end of a match for a superstar (victim, reason, winner)
@@ -1190,8 +1192,10 @@ bool Wwe12SrefWalkWord(u32 actor, u32 *word);  // wwe12_sref.cpp: the Special Gu
 void Wwe12SrefPadStudy(u32 actor, u32 word, u32 lr);  // wwe12_sref.cpp: study of the computer's pad words
 extern "C" REX_FUNC(sub_8225C4D8) {
   const u32 pad = ctx.r3.u32;
-  if (pad)
+  if (pad) {
     Wwe12SrefActorFrame(ctx, base, bd::mem::try_load<u32>(pad + 116));
+    Wwe12MotionGuardActor(ctx, base, bd::mem::try_load<u32>(pad + 116));  // (1.4.2 safety net, off by default)
+  }
   if (g_ref_walk.load() && pad) {
     const u32 ref = Actor(kReferee);
     if (ref && bd::mem::try_load<u32>(pad + 116) == ref) {
@@ -1304,6 +1308,8 @@ REXCVAR_DEFINE_BOOL(wwe12_iquit_added_motions, false, "WWE12",
 REX_EXTERN(__imp__sub_8246E3B0);
 extern "C" REX_FUNC(sub_8246E3B0) {
   const u32 bitmap = ctx.r4.u32, slot = ctx.r5.u32;
+  if (slot == 1)
+    Wwe12MotionGuardDirectoryMade();  // (wwe12_motion_guard.cpp: the last match's missing numbers forgotten)
   if (REXCVAR_GET(wwe12_iquit_added_motions) || REXCVAR_GET(wwe12_iquit_wwe13_motions)) {
     const bool made = bd::mem::try_load<u32>(ctx.r3.u32 + (slot + 188) * 4) != 0;
     static std::atomic<int> s_calls{0};

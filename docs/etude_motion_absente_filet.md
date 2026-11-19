@@ -82,3 +82,17 @@ I Quit et avec l'arbitre spécial). Un filet cacherait le problème sans le rég
 `wwe12_motion_guard = false` par défaut. Une ligne de journal à chaque déclenchement : quel acteur, quel numéro
 manquant, libéré seul ou avec son partenaire. À mettre « vrai » par défaut seulement après des essais en jeu
 (entrées 2K16, Royal Rumble, une prise de mod). Crédit à Kaiko dans les notes de version et dans le code.
+
+## Écrit le 2026-11-19 (filet A, 1.4.2, coupé par défaut)
+
+`port/src/native/wwe12_motion_guard.cpp` (cvar `wwe12_motion_guard`, faux par défaut) :
+- un numéro est noté « absent » quand le lecteur de la file le jette (crochet de `sub_8246EB78`, seulement l'appel de
+  0x821D7D00 qui rend 0) ou que le chargeur l'abandonne (état 5, crochet `sub_821D7E78` de `wwe12_motion_trace.cpp`) ;
+  la liste est vidée à chaque répertoire refait (`sub_8246E3B0` case 1, chargement d'un match) ;
+- chaque image, depuis le crochet de la manette (`sub_8225C4D8`, fil principal) : un acteur dont l'animation est un
+  numéro absent depuis 1 s est remis libre (`sub_8247C670`, + 1096 / + 1428 à 0), avec son partenaire de prise s'il
+  en a un ('BPMG') ; filet coupé : une ligne dans le journal seulement ;
+- aide d'essai `wwe12_motion_guard_test=N` : 10 s après le chargement, quand le joueur 1 est debout depuis 2 s, il
+  reçoit la motion N une fois (1852 n'existe dans aucune banque : m.pac + m_dlc). Lanceur sans joueur :
+  `tools/dev/lancer_test_filet_motion.bat [on|off]` (le benchmark joue le match seul).
+Pas encore essayé en jeu.

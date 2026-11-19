@@ -45,6 +45,9 @@ Projets dont ce portage s'inspire :
   Mod Maker (1.3, licence MIT) : l'aperçu complet des entrées (`port/src/modmaker/entrance_preview.h`) suit son
   « Full preview » (`port/modmaker/full_preview.cpp` : fenêtre, parties, caméra A / B, thème et titantron, tapis du
   ring à y 0 dans les pistes) et le lecteur de son `port/src/modmaker/audio_out.h` est adapté de son `audio_out.cpp`.
+  Filet des animations absentes (1.4.2, coupé par défaut, `wwe12_motion_guard`) : son idée du commit c529dfe (un
+  catcheur figé 1 s dans une animation qu'aucune banque n'a est relancé, jamais un seul des deux d'une prise) est
+  reprise en méthode seulement, réécrite pour WWE '12, dans `port/src/native/wwe12_motion_guard.cpp`.
 - **LA Max** (outils de mods WWE '12, faits sur les modules de Kaiko) : son convertisseur d'entrées SvR 2011 →
   WWE '12 (accord du 2026-11-01) et, pour les prises (2026-11-10), la méthode de son `wwe12_port.py` : une animation
   ajoutée rangée à côté de sa prise modèle dans les « situations » ZMVM de m.pac qui l'ont. Méthode seulement, code

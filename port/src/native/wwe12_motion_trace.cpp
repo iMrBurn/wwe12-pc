@@ -97,12 +97,14 @@ void Directory(u32 n) {
 
 // The loader of one list entry (queue, list, flag, index): the entry's state after it (1 asked, 2 being read,
 // 3 read, 5 given up).
+void Wwe12MotionGuardLoaded(u32 number, u32 state);  // wwe12_motion_guard.cpp (1.4.2 safety net)
 REX_EXTERN(__imp__sub_821D7E78);
 extern "C" REX_FUNC(sub_821D7E78) {
   const u32 list = ctx.r4.u32, idx = ctx.r6.u32;
   const u32 e = bd::mem::try_load<u32>(list) + idx * 16;
   const u32 n = bd::mem::try_load<u16>(e);
   __imp__sub_821D7E78(ctx, base);
+  Wwe12MotionGuardLoaded(n, bd::mem::try_load<u32>(e + 8));
   if (Watched(n) && n != 203 && n != 20152 && More())
     BD_INFO("[motion] chargement : numero {} (liste {:08X}, place {}) -> etat {} compteur {}", n, list, idx,
             bd::mem::try_load<u32>(e + 8), bd::mem::try_load<u16>(e + 4));
