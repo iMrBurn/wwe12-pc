@@ -20,8 +20,8 @@ REXCVAR_DEFINE_BOOL(wwe12_motion_guard, false, "WWE12",
                     "Safety net (1.4.2, test): a superstar frozen 1 s in a motion the match hasn't is put back "
                     "standing (idea from Kaiko's SvR 2011 PC port).");
 REXCVAR_DEFINE_INT32(wwe12_motion_guard_test, 0, "WWE12",
-                     "Dev: N > 0 - in a match, player 1 is made to play motion N once (1852: a number no bank has), "
-                     "after he has stood 2 s, 10 s or more after the match's load. 0 = never.");
+                     "Dev: N > 0 - in a match, actor 0 is made to play motion N (1852: a number no bank has), 12 s "
+                     "after the match's load (a try a second, 5 at most). 0 = never.");
 
 #include <atomic>
 #include <chrono>
@@ -42,7 +42,6 @@ REX_EXTERN(__imp__sub_8247AD18);  // play a motion on an actor (test aid)
 
 namespace {
 constexpr u32 kActors = 0x8317B770;  // the match's actors (six)
-constexpr u32 kFree = 1350;          // the free motion (standing / walking set)
 constexpr int64_t kHoldMs = 1000;
 
 int64_t NowMs() {
@@ -71,7 +70,8 @@ struct Watch {
 std::unordered_map<u32, Watch> g_watch;  // per actor (main thread only)
 std::atomic<int64_t> g_match_ms{0};      // the match's load (its motion directory made)
 std::atomic<bool> g_test_done{false};
-std::atomic<int64_t> g_test_stood{0};
+std::atomic<int64_t> g_test_stood{0};  // (the last try)
+int g_tries = 0;                        // (main thread)
 std::atomic<int> g_lines{0};
 bool More() { return g_lines.fetch_add(1) < 60; }
 
@@ -118,20 +118,37 @@ u32 Partner(u32 actor) {
   return 0;
 }
 
-void TestAid(const PPCContext &ctx, u8 *base, u32 actor, int64_t now) {
+// (test aid, simpler after the first try of 2026-11-19 20:39 / 20:43 - it never fired: "player 1 stood 2 s in 1350"
+// never held in the benchmark's 33 s of match): from 12 s after the match's load, motion N asked on actor 0, once a
+// second, until he shows it (5 tries at most); each try and why it is skipped logged.
+void TestAid(const PPCContext &ctx, u8 *base, int64_t now) {
   const int n = REXCVAR_GET(wwe12_motion_guard_test);
   const int64_t start = g_match_ms.load();
-  if (n <= 0 || n >= 65535 || g_test_done || !start || now - start < 10000 || actor != Actor(0))
+  if (n <= 0 || n >= 65535 || g_test_done || !start)
     return;
-  if (Anim(actor) != kFree) {
-    g_test_stood = 0;
+  const u32 actor = Actor(0);
+  if (now - start < 12000) {
+    static int64_t s_last = 0;
+    if (now - s_last >= 2000) {
+      s_last = now;
+      BD_INFO("[motion guard] essai : attente ({} s depuis le chargement), acteur 0 {:08X} motion {}", (now - start) / 1000,
+              actor, Anim(actor));
+    }
     return;
   }
-  if (!g_test_stood.load())
-    g_test_stood = now;
-  if (now - g_test_stood.load() < 2000)
+  if (now - g_test_stood.load() < 1000)
     return;
-  g_test_done = true;
+  g_test_stood = now;
+  if (!actor) {
+    BD_INFO("[motion guard] essai : pas d'acteur 0 encore");
+    return;
+  }
+  if (Anim(actor) == u16(n) || ++g_tries > 5) {
+    g_test_done = true;
+    g_tries = 0;
+    BD_INFO("[motion guard] essai : fini (acteur 0 motion {})", Anim(actor));
+    return;
+  }
   PPCContext c = ctx;
   c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
   c.r3.u64 = actor;
@@ -144,46 +161,13 @@ void TestAid(const PPCContext &ctx, u8 *base, u32 actor, int64_t now) {
   float f;
   std::memcpy(&f, &bits, 4);
   c.f1.f64 = f;
+  const u16 before = Anim(actor);
   __imp__sub_8247AD18(c, base);
-  BD_INFO("[motion guard] essai : le joueur 1 ({:08X}) doit jouer la motion {} -> motion {} (filet {})", actor, n,
-          Anim(actor), REXCVAR_GET(wwe12_motion_guard) ? "actif" : "coupe");
-}
-}  // namespace
-
-// The motion directory was made again (wwe12_iquit.cpp, sub_8246E3B0 slot 1: each match's load): the numbers noted
-// missing belong to the last match.
-// It is also the test aid's clock: the match is loading.
-void Wwe12MotionGuardDirectoryMade() {
-  {
-    std::lock_guard lock(g_mutex);
-    g_missing.clear();
-  }
-  g_match_ms = NowMs();
-  g_test_done = false;
-  g_test_stood = 0;
+  BD_INFO("[motion guard] essai {} : l'acteur 0 ({:08X}) doit jouer la motion {} : motion {} -> {} (filet {})", g_tries,
+          actor, n, before, Anim(actor), REXCVAR_GET(wwe12_motion_guard) ? "actif" : "coupe");
 }
 
-// The loader's verdict on a queue entry (wwe12_motion_trace.cpp, sub_821D7E78): 5 = given up.
-void Wwe12MotionGuardLoaded(u32 number, u32 state) {
-  if (state == 5 && number && number < 0xFFFF)
-    Note(u16(number), 5);
-}
-
-// The directory asked by the queue's reader (0x821D7D00): 0 = the number is dropped.
-extern "C" REX_FUNC(sub_8246EB78) {
-  const u32 lr = u32(ctx.lr), key = ctx.r4.u32;
-  const u16 n = lr == 0x821D7D04 && key ? bd::mem::try_load<u16>(key) : 0xFFFF;
-  __imp__sub_8246EB78(ctx, base);
-  if (n != 0xFFFF && n && ctx.r3.u32 == 0)
-    Note(n, 1);
-}
-
-// Each actor's pad word (wwe12_iquit.cpp, sub_8225C4D8: the main thread, every frame).
-void Wwe12MotionGuardActor(const PPCContext &ctx, u8 *base, u32 actor) {
-  if (!actor || !bd::mem::ready() || IndexOf(actor) < 0)
-    return;
-  const int64_t now = NowMs();
-  TestAid(ctx, base, actor, now);
+void Check(const PPCContext &ctx, u8 *base, u32 actor, int64_t now) {
   const u16 a = Anim(actor);
   Watch &w = g_watch[actor];
   if (a != w.anim) {
@@ -213,4 +197,50 @@ void Wwe12MotionGuardActor(const PPCContext &ctx, u8 *base, u32 actor) {
             other ? fmt::format(", avec son partenaire de prise {} ({:08X}, motion {})", IndexOf(other), other,
                                 Anim(other))
                   : std::string());
+}
+}  // namespace
+
+// The motion directory was made again (wwe12_iquit.cpp, sub_8246E3B0 slot 1: each match's load): the numbers noted
+// missing belong to the last match.
+// It is also the test aid's clock: the match is loading.
+void Wwe12MotionGuardDirectoryMade() {
+  {
+    std::lock_guard lock(g_mutex);
+    g_missing.clear();
+  }
+  g_match_ms = NowMs();
+  g_test_done = false;
+  g_test_stood = 0;
+  g_tries = 0;
+}
+
+// The loader's verdict on a queue entry (wwe12_motion_trace.cpp, sub_821D7E78): 5 = given up.
+void Wwe12MotionGuardLoaded(u32 number, u32 state) {
+  if (state == 5 && number && number < 0xFFFF)
+    Note(u16(number), 5);
+}
+
+// The directory asked by the queue's reader (0x821D7D00): 0 = the number is dropped.
+extern "C" REX_FUNC(sub_8246EB78) {
+  const u32 lr = u32(ctx.lr), key = ctx.r4.u32;
+  const u16 n = lr == 0x821D7D04 && key ? bd::mem::try_load<u16>(key) : 0xFFFF;
+  __imp__sub_8246EB78(ctx, base);
+  if (n != 0xFFFF && n && ctx.r3.u32 == 0)
+    Note(n, 1);
+}
+
+// Each actor's pad word (wwe12_iquit.cpp, sub_8225C4D8: the main thread): one pass over the six actors a frame at
+// most, whichever pad is delivered (player 1's may not come this way: the first test saw nothing of him).
+void Wwe12MotionGuardActor(const PPCContext &ctx, u8 *base, u32 actor) {
+  if (!actor || !bd::mem::ready())
+    return;
+  static int64_t s_pass = 0;
+  const int64_t now = NowMs();
+  if (now - s_pass < 15)
+    return;
+  s_pass = now;
+  TestAid(ctx, base, now);
+  for (u32 i = 0; i < 6; ++i)
+    if (const u32 a = Actor(i))
+      Check(ctx, base, a, now);
 }
