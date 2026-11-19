@@ -96,3 +96,17 @@ manquant, libéré seul ou avec son partenaire. À mettre « vrai » par défaut
   reçoit la motion N une fois (1852 n'existe dans aucune banque : m.pac + m_dlc). Lanceur sans joueur :
   `tools/dev/lancer_test_filet_motion.bat [on|off]` (le benchmark joue le match seul).
 Pas encore essayé en jeu.
+
+**Essai du 2026-11-19 (lancé par la Main, sans joueur, `lancer_test_filet_motion.bat`, exe de 20:45) : RÉUSSI.**
+- Le premier essai (20:39 / 20:43) ne s'était pas déclenché : la condition « joueur 1 debout depuis 2 s dans 1350 »
+  n'arrive pas dans le match du benchmark. L'essai force maintenant la motion sur l'acteur 0, 12 s après le
+  chargement du match, et le filet passe sur les six acteurs à chaque image (`4805645`).
+- Filet coupé (20:49) : l'acteur 0 passe de 56159 à 1852, la file jette 1852 (« pas dans le répertoire »), et il reste
+  figé dedans (ligne « fige depuis 1 s … (filet coupe) »).
+- Filet actif (20:54) : même chose, puis « remis libre (motion 20050) » : `sub_8247C670` lui donne son animation libre
+  à lui (20050 pour ce catcheur, pas 1350 : 1350 est celle de l'arbitre). Aucun plantage, résumé du benchmark écrit
+  dans les deux passes.
+- Au chargement, le jeu demande lui-même 2000 et 2001, que son répertoire n'a pas : le filet les note. Aucun acteur n'y
+  est resté 1 s dans ces deux essais. À surveiller : si le filet libérait un jour quelqu'un dans 2000 / 2001, ce serait
+  une motion que le jeu d'origine attend aussi en vain.
+- Pas encore essayé : la prise à deux ('BPMG', les deux hommes libérés ensemble).
