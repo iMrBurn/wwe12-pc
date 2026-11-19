@@ -167,7 +167,16 @@ void PaceFrame(bool idle = false) {
   }
 }
 
-void AbandonFrame(VideoState &s, std::unique_lock<std::mutex> &lock) {
+// Frame accounting (1.4.2, #70; Jarrod's v0.3.0 found a quarter of the drawn frames thrown away on
+// weak GPUs): every Present the game asks for ends here as shown or abandoned, with the reason, so
+// a player's log proves whether frames are lost. One "[perf] frames:" line every 10 s.
+enum AbandonReason { kAbandonTurbo, kAbandonNoFramebuffer, kAbandonAcquire, kAbandonNoTarget,
+                     kAbandonSkipped, kAbandonReasons };
+std::atomic<u32> g_present_calls{0}, g_present_repeated{0}, g_frames_shown{0};
+std::atomic<u32> g_abandoned[kAbandonReasons]{};
+
+void AbandonFrame(VideoState &s, std::unique_lock<std::mutex> &lock, AbandonReason why) {
+  g_abandoned[why].fetch_add(1, std::memory_order_relaxed);
   s.frame_present_committed = true;
   if (!s.command_list_open)
     return;
@@ -472,7 +481,7 @@ struct FrameStats {
   double wait_ms = 0;  // waits since the last present
   double sum_interval = 0, max_interval = 0, sum_work = 0, max_work = 0, sum_gpu = 0,
          max_gpu = 0, sum_swap = 0;
-  u32 frames = 0, hitches = 0;
+  u32 frames = 0, hitches = 0, fence_waits = 0;
   double window_cpu_ms = -1;  // render thread CPU time at window start, -1 = unknown
   double window_process_ms = -1;
 };
@@ -536,6 +545,10 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
     fs.max_gpu = std::max(fs.max_gpu, gpu_wait_ms);
     fs.sum_swap += swap_ms;
     fs.hitches += interval > 25.0;
+    // kNumFrames = 2: the fence wait is for the frame before this one. Over ~0.5 ms means the CPU
+    // had to wait for the GPU to finish it (GPU bound, or a stall in the GPU queue).
+    if (gpu_wait_ms > 0.5)
+      ++fs.fence_waits;
 #if defined(SVR_NATIVE_RENDERER)
     Wwe12BenchmarkFrame(interval, work, gpu_wait_ms);
 #endif
@@ -557,6 +570,22 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
             fs.frames, fs.sum_interval / n, fs.max_interval, fs.sum_work / n, fs.max_work,
             fs.sum_gpu / n, fs.max_gpu, fs.sum_swap / n, fs.hitches, vram.used >> 20,
             vram.budget >> 20);
+    // Every Present the game asked for: shown, or abandoned and why (#70). "repeated" = a second
+    // Present in a frame already shown or abandoned (ignored).
+    {
+      const auto take = [](std::atomic<u32> &a) { return a.exchange(0, std::memory_order_relaxed); };
+      const u32 calls = take(g_present_calls), shown = take(g_frames_shown),
+                repeated = take(g_present_repeated), turbo = take(g_abandoned[kAbandonTurbo]),
+                no_fb = take(g_abandoned[kAbandonNoFramebuffer]),
+                acquire = take(g_abandoned[kAbandonAcquire]),
+                no_target = take(g_abandoned[kAbandonNoTarget]),
+                skipped = take(g_abandoned[kAbandonSkipped]);
+      BD_INFO("[perf] frames: game presents {} | shown {} | abandoned {} (loading turbo {}, no "
+              "window {}, swap chain {}, no picture {}, skipped {}) | repeated {} | waited for the "
+              "previous frame's GPU work {} of {} frames",
+              calls, shown, turbo + no_fb + acquire + no_target + skipped, turbo, no_fb, acquire,
+              no_target, skipped, repeated, fs.fence_waits, fs.frames);
+    }
     // Change checks of the game's memory (geometry and texture copies): MB hashed in full per
     // frame, and copies checked by sample instead.
     BD_INFO("[perf] hashed per frame: geometry {:.2f} MB ({:.2f} MB in buffers under 32 KiB, "
@@ -607,12 +636,14 @@ void Video::Present(GuestTexture *frontBuffer) {
   if (!s.ready || s.shutting_down.load(std::memory_order_acquire)) {
     return;
   }
+  g_present_calls.fetch_add(1, std::memory_order_relaxed);
   if (s.frame_present_committed) {
+    g_present_repeated.fetch_add(1, std::memory_order_relaxed);
     return;
   }
   // WWE '12 turbo loading screens (native/wwe12_load_turbo.cpp): most frames are not shown.
   if (Wwe12LoadTurboSkipPresent()) {
-    AbandonFrame(s, lock);
+    AbandonFrame(s, lock, kAbandonTurbo);
     return;
   }
 
@@ -628,7 +659,7 @@ void Video::Present(GuestTexture *frontBuffer) {
   }
 
   if (s.framebuffers.empty()) {
-    AbandonFrame(s, lock);
+    AbandonFrame(s, lock, kAbandonNoFramebuffer);
     if (lock.owns_lock())
       lock.unlock();
     PaceFrame(true);
@@ -649,7 +680,7 @@ void Video::Present(GuestTexture *frontBuffer) {
                   .get(),
               &texture_index)) {
         CheckDeviceRemoved("swapchain acquire");
-        AbandonFrame(s, lock);
+        AbandonFrame(s, lock, kAbandonAcquire);
         return;
       }
     }
@@ -670,7 +701,7 @@ void Video::Present(GuestTexture *frontBuffer) {
     if (n < 5) {
       BD_ERROR("Present #{} skipped: no drawable RT", n);
     }
-    AbandonFrame(s, lock);
+    AbandonFrame(s, lock, kAbandonNoTarget);
     return;
   }
 
@@ -717,6 +748,7 @@ void Video::Present(GuestTexture *frontBuffer) {
     AdvanceAndWaitReused(s);
     gpu_wait_ms = MsSince(fence_start);
   }
+  g_frames_shown.fetch_add(1, std::memory_order_relaxed);
   const u32 reclaimed = s.frame.load(std::memory_order_relaxed);
   s.frame_present_committed = true;
   BD_FRAME_MARK();
@@ -745,7 +777,7 @@ void Video::SkipPresent() {
       s.frame_present_committed) {
     return;
   }
-  AbandonFrame(s, lock);
+  AbandonFrame(s, lock, kAbandonSkipped);
 }
 
 void Video::PresentOverlayFrame() {
