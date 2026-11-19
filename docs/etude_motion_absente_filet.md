@@ -110,3 +110,11 @@ Pas encore essayé en jeu.
   est resté 1 s dans ces deux essais. À surveiller : si le filet libérait un jour quelqu'un dans 2000 / 2001, ce serait
   une motion que le jeu d'origine attend aussi en vain.
 - Pas encore essayé : la prise à deux ('BPMG', les deux hommes libérés ensemble).
+
+**Prise à deux : NON testée (2026-11-19, 21:04).** Aide d'essai `wwe12_motion_guard_test_pair=1852`
+(`lancer_test_filet_motion.bat off prise`, match du benchmark de 90 s). Pendant tout le match, `[acteur + 3404]` est
+resté à 0 pour les six acteurs (« aucun objet de prise ») : soit le CPU n'a fait aucune prise au joueur 1 immobile, soit
++3404 n'est pas l'objet de prise que l'on croit. La disposition 'BPMG' (+32 = 2, +36 porteur, +40 pris) a seulement été
+**lue dans le code, jamais vue en jeu**. Le filet reste coupé par défaut. Avant de l'activer : un essai joué par
+l'utilisateur, une prise pendant le match, avec `wwe12_motion_guard_test_pair=1852`. Sinon, il faut trouver le vrai
+objet de prise d'abord. Décision de la Main : on en reste là (option a).

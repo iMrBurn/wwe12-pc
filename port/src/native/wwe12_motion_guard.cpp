@@ -22,6 +22,9 @@ REXCVAR_DEFINE_BOOL(wwe12_motion_guard, false, "WWE12",
 REXCVAR_DEFINE_INT32(wwe12_motion_guard_test, 0, "WWE12",
                      "Dev: N > 0 - in a match, actor 0 is made to play motion N (1852: a number no bank has), 12 s "
                      "after the match's load (a try a second, 5 at most). 0 = never.");
+REXCVAR_DEFINE_INT32(wwe12_motion_guard_test_pair, 0, "WWE12",
+                     "Dev: N > 0 - in a match, from 12 s after its load, the held man of the first hold seen is made "
+                     "to play motion N (1852) - the safety net's hold case. 0 = never.");
 
 #include <atomic>
 #include <chrono>
@@ -72,6 +75,10 @@ std::atomic<int64_t> g_match_ms{0};      // the match's load (its motion directo
 std::atomic<bool> g_test_done{false};
 std::atomic<int64_t> g_test_stood{0};  // (the last try)
 int g_tries = 0;                        // (main thread)
+bool g_pair_done = false;               // (the hold test aid, main thread)
+int g_pair_tries = 0;
+int64_t g_pair_last = 0;  // (the last waiting line)
+int64_t g_pair_try = 0;   // (the last try: a hold may last less than a second, the first try goes at once)
 std::atomic<int> g_lines{0};
 bool More() { return g_lines.fetch_add(1) < 60; }
 
@@ -118,6 +125,23 @@ u32 Partner(u32 actor) {
   return 0;
 }
 
+// A motion asked on an actor as the game does it (the Special Referee's Play()).
+void PlayOn(const PPCContext &ctx, u8 *base, u32 actor, u32 n) {
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  c.r3.u64 = actor;
+  c.r4.u64 = n;
+  c.r5.u64 = 0;
+  c.r6.u64 = 0;
+  c.r8.u64 = 1;
+  c.r9.u64 = 0;
+  const u32 bits = bd::mem::try_load<u32>(0x82000AD8);  // (the float the game passes)
+  float f;
+  std::memcpy(&f, &bits, 4);
+  c.f1.f64 = f;
+  __imp__sub_8247AD18(c, base);
+}
+
 // (test aid, simpler after the first try of 2026-11-19 20:39 / 20:43 - it never fired: "player 1 stood 2 s in 1350"
 // never held in the benchmark's 33 s of match): from 12 s after the match's load, motion N asked on actor 0, once a
 // second, until he shows it (5 tries at most); each try and why it is skipped logged.
@@ -149,22 +173,59 @@ void TestAid(const PPCContext &ctx, u8 *base, int64_t now) {
     BD_INFO("[motion guard] essai : fini (acteur 0 motion {})", Anim(actor));
     return;
   }
-  PPCContext c = ctx;
-  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
-  c.r3.u64 = actor;
-  c.r4.u64 = u32(n);
-  c.r5.u64 = 0;
-  c.r6.u64 = 0;
-  c.r8.u64 = 1;
-  c.r9.u64 = 0;
-  const u32 bits = bd::mem::try_load<u32>(0x82000AD8);  // (the float the game passes, as the Special Referee's Play())
-  float f;
-  std::memcpy(&f, &bits, 4);
-  c.f1.f64 = f;
   const u16 before = Anim(actor);
-  __imp__sub_8247AD18(c, base);
+  PlayOn(ctx, base, actor, u32(n));
   BD_INFO("[motion guard] essai {} : l'acteur 0 ({:08X}) doit jouer la motion {} : motion {} -> {} (filet {})", g_tries,
           actor, n, before, Anim(actor), REXCVAR_GET(wwe12_motion_guard) ? "actif" : "coupe");
+}
+
+// (test aid, the hold case: Kaiko's lesson - one man of a hold freed alone crashed his game) From 12 s after the
+// match's load, the first hold seen ('BPMG' at actor + 3404: + 32 = 2, + 36 the holder, + 40 the held - read in the
+// code for the Special Referee's screw job, never seen in game) gets motion N on its held man; up to 5 holds, until
+// he shows it. While waiting, each actor's hold object is logged every 5 s (a dozen lines at most).
+void PairAid(const PPCContext &ctx, u8 *base, int64_t now) {
+  const int n = REXCVAR_GET(wwe12_motion_guard_test_pair);
+  const int64_t start = g_match_ms.load();
+  if (n <= 0 || n >= 65535 || g_pair_done || !start || now - start < 12000)
+    return;
+  u32 by = 0, held = 0, obj = 0;
+  std::string seen;
+  for (u32 i = 0; i < 6; ++i) {
+    const u32 a = Actor(i), h = a ? bd::mem::try_load<u32>(a + 3404) : 0;
+    if (!h)
+      continue;
+    const u32 state = bd::mem::try_load<u32>(h + 32);
+    seen += fmt::format(" | acteur {} objet {:08X} ({:08X}) etat {} {:08X} {:08X}", i, h, bd::mem::try_load<u32>(h), state,
+                        bd::mem::try_load<u32>(h + 36), bd::mem::try_load<u32>(h + 40));
+    const u32 b = bd::mem::try_load<u32>(h + 36), d = bd::mem::try_load<u32>(h + 40);
+    if (!obj && state == 2 && b != d && IndexOf(b) >= 0 && IndexOf(d) >= 0)
+      by = b, held = d, obj = h;
+  }
+  if (!obj) {
+    static int s_lines = 0;
+    if (now - g_pair_last >= 5000 && s_lines < 12) {
+      g_pair_last = now;
+      ++s_lines;
+      BD_INFO("[motion guard] essai prise : attente d'une prise ({} s depuis le chargement){}", (now - start) / 1000,
+              seen.empty() ? std::string(" | aucun objet de prise") : seen);
+    }
+    return;
+  }
+  if (g_pair_try && now - g_pair_try < 1000)
+    return;
+  g_pair_try = now;
+  if (Anim(held) == u16(n) || ++g_pair_tries > 5) {
+    g_pair_done = true;
+    BD_INFO("[motion guard] essai prise : fini (pris {} motion {}, porteur {} motion {})", IndexOf(held), Anim(held),
+            IndexOf(by), Anim(by));
+    return;
+  }
+  const u16 before = Anim(held), by_anim = Anim(by);
+  PlayOn(ctx, base, held, u32(n));
+  BD_INFO("[motion guard] essai prise {} : objet {:08X}, porteur {} ({:08X}, motion {}), pris {} ({:08X}) doit jouer la "
+          "motion {} : motion {} -> {} (filet {})",
+          g_pair_tries, obj, IndexOf(by), by, by_anim, IndexOf(held), held, n, before, Anim(held),
+          REXCVAR_GET(wwe12_motion_guard) ? "actif" : "coupe");
 }
 
 void Check(const PPCContext &ctx, u8 *base, u32 actor, int64_t now) {
@@ -181,8 +242,10 @@ void Check(const PPCContext &ctx, u8 *base, u32 actor, int64_t now) {
   const u32 other = Partner(actor);
   if (!REXCVAR_GET(wwe12_motion_guard)) {
     if (More())
-      BD_INFO("[motion guard] acteur {} ({:08X}) fige depuis 1 s dans la motion {} absente du match (filet coupe)",
-              IndexOf(actor), actor, a);
+      BD_INFO("[motion guard] acteur {} ({:08X}) fige depuis 1 s dans la motion {} absente du match (filet coupe){}",
+              IndexOf(actor), actor, a,
+              other ? fmt::format(" ; partenaire de prise {} ({:08X}, motion {})", IndexOf(other), other, Anim(other))
+                    : std::string(" ; pas de partenaire de prise"));
     return;
   }
   Free(ctx, base, actor);
@@ -212,6 +275,10 @@ void Wwe12MotionGuardDirectoryMade() {
   g_test_done = false;
   g_test_stood = 0;
   g_tries = 0;
+  g_pair_done = false;
+  g_pair_tries = 0;
+  g_pair_last = 0;
+  g_pair_try = 0;
 }
 
 // The loader's verdict on a queue entry (wwe12_motion_trace.cpp, sub_821D7E78): 5 = given up.
@@ -240,6 +307,7 @@ void Wwe12MotionGuardActor(const PPCContext &ctx, u8 *base, u32 actor) {
     return;
   s_pass = now;
   TestAid(ctx, base, now);
+  PairAid(ctx, base, now);
   for (u32 i = 0; i < 6; ++i)
     if (const u32 a = Actor(i))
       Check(ctx, base, a, now);
