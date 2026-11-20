@@ -1,0 +1,90 @@
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_io.cpp b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+index 25c35c5..91818b8 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_io.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+@@ -14,7 +14,10 @@
+ 
+ #include <atomic>
+ #include <chrono>
++#include <algorithm>
++#include <cstdio>
+ #include <cstring>
++#include <mutex>
+ #include <rex/cvar.h>
+ #include <rex/filesystem/device.h>
+ #include <rex/platform.h>
+@@ -42,12 +45,74 @@ REXCVAR_DEFINE_BOOL(replay_io_log, false, "Kernel",
+                     "WWE '12 port, diagnostic: log the game's opens, reads and writes of its replay "
+                     "file (cache:\\Spectacular.rps) as [replayio] lines.");
+ 
++// WWE '12 port, 2026-11-20 (port/patches/rexglue-sdk-z-io-log-all.patch): the start-up freeze on 2 threads
++// stops loading after its first reads; this tells which file was the last one.
++REXCVAR_DEFINE_BOOL(io_log_all, false, "Kernel",
++                    "Diagnostic: log every open / read / write of the game's files as [io] lines (the first 40 of "
++                    "each kind, then 1 in 200, and every failure); the last 64 are kept for hang_trace.txt.");
++
++namespace {
++// The last 64 file operations, for the hang dump (RexIoRecent, read by the port's crash_trace.cpp).
++struct IoRing {
++  std::mutex mutex;
++  char lines[64][224] = {};
++  uint32_t next = 0, total = 0;
++} g_io_ring;
++const auto g_io_start = std::chrono::steady_clock::now();
++}  // namespace
++
++// Copies the last file operations (oldest first, one per line) into out; returns the length written.
++extern "C"
++#if REX_PLATFORM_WIN32
++    __declspec(dllexport)
++#endif
++    int RexIoRecent(char* out, int capacity) {
++  if (!out || capacity <= 0)
++    return 0;
++  std::lock_guard lock(g_io_ring.mutex);
++  int len = 0;
++  const uint32_t count = std::min<uint32_t>(g_io_ring.total, 64);
++  for (uint32_t i = 0; i < count; ++i) {
++    const char* line = g_io_ring.lines[(g_io_ring.next + 64 - count + i) % 64];
++    const int n = snprintf(out + len, size_t(capacity - len), "%s\n", line);
++    if (n <= 0 || len + n >= capacity)
++      break;
++    len += n;
++  }
++  return len;
++}
++
+ namespace rex::kernel::xboxkrnl {
+ using namespace rex::system;
+ 
++static void NoteIoAll(const char* op, const std::string& path, uint64_t offset, uint32_t length,
++                      uint32_t done, X_STATUS result) {
++  if (!REXCVAR_GET(io_log_all))
++    return;
++  const double ms =
++      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - g_io_start).count();
++  auto* thread = XThread::GetCurrentThread();
++  const uint32_t tid = thread ? thread->thread_id() : 0;
++  {
++    std::lock_guard lock(g_io_ring.mutex);
++    snprintf(g_io_ring.lines[g_io_ring.next], sizeof(g_io_ring.lines[0]),
++             "%.1f ms thread %X %s '%s' offset %#llx length %#x -> %u, status %#x", ms, tid, op, path.c_str(),
++             static_cast<unsigned long long>(offset), length, done, static_cast<uint32_t>(result));
++    g_io_ring.next = (g_io_ring.next + 1) % 64;
++    ++g_io_ring.total;
++  }
++  static std::atomic<uint32_t> counts[3];
++  const int kind = op[0] == 'o' ? 0 : op[0] == 'r' ? 1 : 2;
++  const uint32_t n = counts[kind].fetch_add(1, std::memory_order_relaxed) + 1;
++  if (n <= 40 || n % 200 == 0 || XFAILED(result))
++    REXKRNL_INFO("[io] {:.1f} ms thread {:X} {} #{} '{}' offset {:#x} length {:#x} -> {} bytes, status {:#x}", ms,
++                 tid, op, n, path, offset, length, done, result);
++}
++
+ // replay_io_log: the first 40 calls of each kind, then one in 200, and every failure.
+ static void NoteReplayIo(const char* op, const std::string& path, uint64_t offset, uint32_t length,
+                          uint32_t done, X_STATUS result) {
++  NoteIoAll(op, path, offset, length, done, result);
+   if (!REXCVAR_GET(replay_io_log) ||
+       (path.find(".rps") == std::string::npos && path.find(".cac") == std::string::npos))
+     return;
