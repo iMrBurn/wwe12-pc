@@ -77,6 +77,7 @@ struct GuestTexture;
 }
 void Wwe12RemoteOnPresent(bd::gpu::GuestTexture *front_buffer);  // wwe12_remote_pad.cpp
 void Wwe12BenchmarkFrame(double interval_ms, double work_ms, double gpu_wait_ms);  // wwe12_benchmark.cpp
+void Wwe12ThreadCpuReport(double frames);  // wwe12_thread_cpu.cpp: CPU per frame of each thread
 float Wwe12GameGammaExponent();  // wwe12_gamma.cpp
 bool Wwe12ConsolePicture();      // wwe12_gamma.cpp
 #endif
@@ -602,6 +603,9 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
               "{:.1f} ms | constant blocks {:.0f} uploaded, {:.0f} reused",
               (cpu_now - fs.window_cpu_ms) / n, fs.sum_work / n,
               (process_now - fs.window_process_ms) / n, blocks_uploaded / n, blocks_reused / n);
+#if defined(SVR_NATIVE_RENDERER)
+    Wwe12ThreadCpuReport(n);
+#endif
     {
       using namespace zones;
       const auto ms = [&](Id id) { return g_ns[id].exchange(0, std::memory_order_relaxed) / n / 1e6; };
