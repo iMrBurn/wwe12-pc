@@ -203,10 +203,10 @@ void Wwe12LoaderTick() {
 // 1.4.2 (2026-11-20, Rendu): the loading-screen turbo needs as many usable logical processors as the
 // fast boot (wwe12_fast_boot_min_threads, 8). On 2 slow cores (benchmark of 2026-11-20, affinity
 // 0x30000) the first "NOW LOADING" screen ran the turbo for its full 20 s and the game never left it:
-// the main, skinning and F800007C threads asleep at the frame barrier sub_827DEA20, the render thread
-// still drawing the loading screen (60 presents a second), every loader thread idle. The same
-// lock the fast boot showed on 4 threads (see below), and very likely the players' "frozen at now
-// loading" (#69, #74). Below the limit, loading screens run at the game's own pace (only slower).
+// frames kept running (the render thread releases the frame barrier sub_827DEA20 every frame, 60
+// presents a second) but the load never progressed again, every loader thread idle: a stall in the
+// game's loading logic, cause not found yet (docs/savoir_acquis.md). Possibly the players' "frozen at
+// now loading" (#69, #74). Below the limit, loading screens run at the game's own pace (only slower).
 bool Wwe12LoadTurboAllowed();  // after the fast-boot cvar, below
 
 namespace {

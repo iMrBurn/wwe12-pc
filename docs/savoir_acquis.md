@@ -9,12 +9,16 @@ Les entrées sont classées par sujet, pas par date ; ajouter les nouvelles déc
   En ligne de commande les booléens s'écrivent `--nom=false`.
 - **Turbo (vblank invité à 1 kHz) et peu de cœurs = gel** (2026-11-10 pour le démarrage rapide sur 4 fils,
   2026-11-20 pour l'écran de chargement sur 2 cœurs). Signature dans les piles (`dump_stacks_now.txt`) :
-  - le fil principal (`sub_821AD2B8`), la déformation (`sub_82827698`) et `sub_8281A2C8` dorment à la barrière
+  - le fil principal (`sub_821AD2B8`), la déformation (`sub_82827698`) et `sub_8281A2C8` attendent à la barrière
     d'image `sub_827DEA20` ;
-  - le fil de rendu (`sub_82826A38`) dessine encore l'écran de chargement (`sub_827DE7C8` → `sub_821AC920`), à
-    60 présentations par seconde ;
+  - le fil de rendu (`sub_82826A38`) dessine l'écran de chargement, à 60 présentations par seconde ;
   - les chargeurs attendent du travail.
-  Le jeu reste sur « NOW LOADING », sans plantage. Garde depuis la 1.4.2 : sous `wwe12_fast_boot_min_threads`
+  **Ce n'est pas un interblocage de la barrière** (relu le 2026-11-20). Le fil de rendu la libère à chaque image
+  (`sub_827DE8F8` met les événements « go », `sub_827DE8A0` attend les arrivées). Les images tournent donc, mais
+  le chargement ne progresse plus : c'est un blocage dans la logique du chargement, cause encore inconnue. Le jeu
+  reste sur « NOW LOADING », sans plantage. Le gel n'a été vu que quand le jeu avait 2 fils **dès le démarrage**
+  (`wwe12_dev_affinity`) et que le turbo du 1er écran tournait ses 20 s. Avec `start /affinity`, le SDK rend tous
+  les cœurs au démarrage : ces passes-là ne comptent pas comme « 2 cœurs ». Garde depuis la 1.4.2 : sous `wwe12_fast_boot_min_threads`
   (8) fils utilisables, ni démarrage rapide ni turbo des chargements (`wwe12_load_turbo.cpp`,
   `Wwe12LoadTurboAllowed`). Probablement les « frozen at now loading » des joueurs (#69, #74).
 - Fil d'un thread du jeu : tous démarrent dans `sub_821B3F58` (r3 = leur fonction) ; la ligne
