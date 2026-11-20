@@ -1362,10 +1362,28 @@ extern "C" REX_FUNC(sub_82565390) {
     // next champion; never left vacant: the game empties a title's ranking with its champion, and the show then
     // finds nobody for its matches - SmackDown at 0-1 match, user's test 2026-11-20; a tag title: still refused)
     if (title < kTitleCount && TitleUsedByAShow(ctx, base, title) &&
-        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title) ||
-         !UltimateTourneyPossible(ctx, base, title))) {
+        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title))) {
       BD_INFO("[univers] titles: VACATE refused, a show uses title {}", title);
       Call(ctx, base, __imp__sub_8254E680, kTitleUsedText);
+      return;
+    }
+    // (a tournament not possible: fewer than 4 free contenders in the title's ranking - as just after the title was
+    // given back: its ranking comes back with the next show)
+    if (title < kTitleCount && TitleUsedByAShow(ctx, base, title) && !UltimateTourneyPossible(ctx, base, title)) {
+      static const char *const kNoTourney[5] = {
+          "This title cannot be vacant now: its 4-man tournament needs 4 free contenders in its ranking.\n"
+          "Try again after the next show.",
+          "Ce titre ne peut pas \xC3\xAAtre vacant maintenant : son tournoi \xC3\xA0 4 demande 4 pr\xC3\xA9tendants "
+          "libres dans son classement.\nR\xC3\xA9" "essayez apr\xC3\xA8s le prochain show.",
+          "Dieser Titel kann jetzt nicht vakant werden: sein Turnier mit 4 braucht 4 freie Herausforderer in seiner "
+          "Rangliste.\nVersuche es nach der n\xC3\xA4" "chsten Show erneut.",
+          "Este t\xC3\xADtulo no puede quedar vacante ahora: su torneo de 4 necesita 4 aspirantes libres en su "
+          "clasificaci\xC3\xB3n.\nInt\xC3\xA9ntalo de nuevo tras el pr\xC3\xB3ximo show.",
+          "Questo titolo non pu\xC3\xB2 essere vacante ora: il suo torneo a 4 richiede 4 sfidanti liberi nella sua "
+          "classifica.\nRiprova dopo il prossimo show."};
+      BD_INFO("[univers] titles: VACATE refused, fewer than 4 free contenders for title {}", title);
+      g_stats_text = kNoTourney[int(CurrentLang())];
+      Call(ctx, base, __imp__sub_8254E680, kStatsText);
       return;
     }
   }
