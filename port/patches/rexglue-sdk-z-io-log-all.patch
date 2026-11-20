@@ -1,5 +1,5 @@
 diff --git a/src/kernel/xboxkrnl/xboxkrnl_io.cpp b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
-index 25c35c5..91818b8 100644
+index 25c35c5..3df3082 100644
 --- a/src/kernel/xboxkrnl/xboxkrnl_io.cpp
 +++ b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
 @@ -14,7 +14,10 @@
@@ -13,7 +13,7 @@ index 25c35c5..91818b8 100644
  #include <rex/cvar.h>
  #include <rex/filesystem/device.h>
  #include <rex/platform.h>
-@@ -42,12 +45,74 @@ REXCVAR_DEFINE_BOOL(replay_io_log, false, "Kernel",
+@@ -42,12 +45,111 @@ REXCVAR_DEFINE_BOOL(replay_io_log, false, "Kernel",
                      "WWE '12 port, diagnostic: log the game's opens, reads and writes of its replay "
                      "file (cache:\\Spectacular.rps) as [replayio] lines.");
  
@@ -21,13 +21,17 @@ index 25c35c5..91818b8 100644
 +// stops loading after its first reads; this tells which file was the last one.
 +REXCVAR_DEFINE_BOOL(io_log_all, false, "Kernel",
 +                    "Diagnostic: log every open / read / write of the game's files as [io] lines (the first 40 of "
-+                    "each kind, then 1 in 200, and every failure); the last 64 are kept for hang_trace.txt.");
++                    "each kind, then 1 in 200, and every failure); the last 128 are kept for hang_trace.txt.");
++REXCVAR_DEFINE_BOOL(xam_probe, false, "Kernel",
++                    "Diagnostic: log XNotify broadcasts / reads / listeners and XAM overlapped operations as "
++                    "[xamprobe] lines (the first 200, then a count every 5 s); also kept with the file "
++                    "operations for hang_trace.txt.");
 +
 +namespace {
-+// The last 64 file operations, for the hang dump (RexIoRecent, read by the port's crash_trace.cpp).
++// The last 128 file operations and XAM events (xam_probe), for the hang dump (RexIoRecent, read by the port's crash_trace.cpp).
 +struct IoRing {
 +  std::mutex mutex;
-+  char lines[64][224] = {};
++  char lines[128][224] = {};
 +  uint32_t next = 0, total = 0;
 +} g_io_ring;
 +const auto g_io_start = std::chrono::steady_clock::now();
@@ -43,15 +47,48 @@ index 25c35c5..91818b8 100644
 +    return 0;
 +  std::lock_guard lock(g_io_ring.mutex);
 +  int len = 0;
-+  const uint32_t count = std::min<uint32_t>(g_io_ring.total, 64);
++  const uint32_t count = std::min<uint32_t>(g_io_ring.total, 128);
 +  for (uint32_t i = 0; i < count; ++i) {
-+    const char* line = g_io_ring.lines[(g_io_ring.next + 64 - count + i) % 64];
++    const char* line = g_io_ring.lines[(g_io_ring.next + 128 - count + i) % 128];
 +    const int n = snprintf(out + len, size_t(capacity - len), "%s\n", line);
 +    if (n <= 0 || len + n >= capacity)
 +      break;
 +    len += n;
 +  }
 +  return len;
++}
++
++// xam_probe (2026-11-20): one XAM / XNotify event, from kernel_state.cpp, xnotifylistener.cpp and xam_notify.cpp.
++// kind: 'B' broadcast, 'G' XNotifyGetNext dequeued, 'L' listener created, 'Q' overlapped queued, 'C' completed.
++bool RexXamProbeOn() { return REXCVAR_GET(xam_probe); }
++void RexXamNote(char kind, const std::string& text) {
++  if (!REXCVAR_GET(xam_probe))
++    return;
++  const double ms =
++      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - g_io_start).count();
++  auto* thread = rex::system::XThread::GetCurrentThread();
++  const uint32_t tid = thread ? thread->thread_id() : 0;
++  {
++    std::lock_guard lock(g_io_ring.mutex);
++    snprintf(g_io_ring.lines[g_io_ring.next], sizeof(g_io_ring.lines[0]), "%.1f ms thread %X xam %s", ms, tid,
++             text.c_str());
++    g_io_ring.next = (g_io_ring.next + 1) % 128;
++    ++g_io_ring.total;
++  }
++  static std::atomic<uint32_t> lines{0}, counts[5];
++  static std::atomic<int64_t> last_summary_ms{0};
++  const char* kinds = "BGLQC";
++  for (int i = 0; i < 5; ++i)
++    if (kinds[i] == kind)
++      counts[i].fetch_add(1, std::memory_order_relaxed);
++  if (lines.fetch_add(1, std::memory_order_relaxed) < 200)
++    REXKRNL_INFO("[xamprobe] {:.1f} ms thread {:X} {}", ms, tid, text);
++  int64_t last = last_summary_ms.load(std::memory_order_relaxed);
++  if (int64_t(ms) - last >= 5000 && last_summary_ms.compare_exchange_strong(last, int64_t(ms)))
++    REXKRNL_INFO("[xamprobe] 5 s: broadcasts {}, notifications read {}, listeners {}, overlapped queued {}, "
++                 "completed {}",
++                 counts[0].exchange(0), counts[1].exchange(0), counts[2].exchange(0), counts[3].exchange(0),
++                 counts[4].exchange(0));
 +}
 +
  namespace rex::kernel::xboxkrnl {
@@ -70,7 +107,7 @@ index 25c35c5..91818b8 100644
 +    snprintf(g_io_ring.lines[g_io_ring.next], sizeof(g_io_ring.lines[0]),
 +             "%.1f ms thread %X %s '%s' offset %#llx length %#x -> %u, status %#x", ms, tid, op, path.c_str(),
 +             static_cast<unsigned long long>(offset), length, done, static_cast<uint32_t>(result));
-+    g_io_ring.next = (g_io_ring.next + 1) % 64;
++    g_io_ring.next = (g_io_ring.next + 1) % 128;
 +    ++g_io_ring.total;
 +  }
 +  static std::atomic<uint32_t> counts[3];
@@ -88,3 +125,84 @@ index 25c35c5..91818b8 100644
    if (!REXCVAR_GET(replay_io_log) ||
        (path.find(".rps") == std::string::npos && path.find(".cac") == std::string::npos))
      return;
+diff --git a/src/system/kernel_state.cpp b/src/system/kernel_state.cpp
+index 697399c..8a9760f 100644
+--- a/src/system/kernel_state.cpp
++++ b/src/system/kernel_state.cpp
+@@ -42,6 +42,11 @@
+ #include <rex/system/xsemaphore.h>
+ #include <rex/system/xthread.h>
+ #include <rex/system/xtimer.h>
++#include <fmt/format.h>
++
++// xam_probe (kernel/xboxkrnl/xboxkrnl_io.cpp, port/patches/rexglue-sdk-z-io-log-all.patch)
++bool RexXamProbeOn();
++void RexXamNote(char kind, const std::string& text);
+ 
+ namespace rex::system {
+ 
+@@ -1126,6 +1131,9 @@ void KernelState::BroadcastNotification(XNotificationID id, uint32_t data) {
+                  static_cast<uint32_t>(id), data, notify_listeners_.size());
+     snapshot = notify_listeners_;
+   }
++  if (RexXamProbeOn())
++    RexXamNote('B', fmt::format("notify id {:#x} data {} -> {} listeners", static_cast<uint32_t>(id), data,
++                                snapshot.size()));
+   for (const auto& notify_listener : snapshot) {
+     notify_listener->EnqueueNotification(id, data);
+   }
+@@ -1137,6 +1145,9 @@ void KernelState::CompleteOverlapped(uint32_t overlapped_ptr, X_RESULT result) {
+ 
+ void KernelState::CompleteOverlappedEx(uint32_t overlapped_ptr, X_RESULT result,
+                                        uint32_t extended_error, uint32_t length) {
++  if (RexXamProbeOn())
++    RexXamNote('C', fmt::format("overlapped {:08X} completed: result {:08X}, extended {:08X}, length {}",
++                                overlapped_ptr, static_cast<uint32_t>(result), extended_error, length));
+   auto ptr = memory()->TranslateVirtual(overlapped_ptr);
+   XOverlappedSetResult(ptr, result);
+   XOverlappedSetExtendedError(ptr, extended_error);
+@@ -1217,6 +1228,8 @@ void KernelState::CompleteOverlappedDeferredEx(
+     std::function<X_RESULT(uint32_t&, uint32_t&)> completion_callback, uint32_t overlapped_ptr,
+     std::function<void()> pre_callback, std::function<void()> post_callback) {
+   REXSYS_DEBUG("CompleteOverlappedDeferredEx: queuing for overlapped {:08X}", overlapped_ptr);
++  if (RexXamProbeOn())
++    RexXamNote('Q', fmt::format("overlapped {:08X} queued (deferred)", overlapped_ptr));
+   auto ptr = memory()->TranslateVirtual(overlapped_ptr);
+   XOverlappedSetResult(ptr, X_ERROR_IO_PENDING);
+   XOverlappedSetContext(ptr, XThread::GetCurrentThreadHandle());
+diff --git a/src/kernel/xam/xam_notify.cpp b/src/kernel/xam/xam_notify.cpp
+index 9abcef6..79819a7 100644
+--- a/src/kernel/xam/xam_notify.cpp
++++ b/src/kernel/xam/xam_notify.cpp
+@@ -16,6 +16,11 @@
+ #include <rex/system/kernel_state.h>
+ #include <rex/system/xnotifylistener.h>
+ #include <rex/system/xtypes.h>
++#include <fmt/format.h>
++
++// xam_probe (kernel/xboxkrnl/xboxkrnl_io.cpp, port/patches/rexglue-sdk-z-io-log-all.patch)
++bool RexXamProbeOn();
++void RexXamNote(char kind, const std::string& text);
+ 
+ namespace rex {
+ namespace kernel {
+@@ -35,6 +40,9 @@ uint32_t xeXamNotifyCreateListener(uint64_t mask, uint32_t is_system, uint32_t m
+ 
+   // Handle ref is incremented, so return that.
+   uint32_t handle = listener->handle();
++  if (RexXamProbeOn())
++    RexXamNote('L', fmt::format("listener {:08X} created, mask {:#018x}, max version {}", handle, mask,
++                                max_version));
+ 
+   REXKRNL_DEBUG(
+       "XamNotifyCreateListener(mask={:#018x}, is_system={}, max_version={}) -> handle={:08X}", mask,
+@@ -88,6 +96,9 @@ u32 XNotifyGetNext_entry(u32 handle, u32 match_id, mapped_u32 id_ptr, mapped_u32
+     *param_ptr = dequeued ? param : 0;
+   }
+ 
++  if (dequeued && RexXamProbeOn())
++    RexXamNote('G', fmt::format("listener {:08X} read id {:#x} param {} (asked {:08X})", uint32_t(handle), id,
++                                param, uint32_t(match_id)));
+   if (dequeued) {
+     REXKRNL_NOISY_DEBUG("XNotifyGetNext({:08X}, {:08X}) -> id={:#x}, param={}", uint32_t(handle),
+                         uint32_t(match_id), id, param);

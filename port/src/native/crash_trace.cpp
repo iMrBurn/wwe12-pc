@@ -252,9 +252,9 @@ void DumpAllThreads() {
   using IoRecentFn = int (*)(char *, int);
   if (HMODULE rt = GetModuleHandleA("rexruntime.dll")) {
     if (auto io_recent = reinterpret_cast<IoRecentFn>(GetProcAddress(rt, "RexIoRecent"))) {
-      static char buf[64 * 230];
+      static char buf[128 * 230];
       const int n = io_recent(buf, int(sizeof(buf)));
-      fprintf(f, "\nlast file operations (io_log_all, oldest first):\n%.*s", n, buf);
+      fprintf(f, "\nlast file operations and XAM events (io_log_all / xam_probe, oldest first):\n%.*s", n, buf);
     }
   }
   fclose(f);
