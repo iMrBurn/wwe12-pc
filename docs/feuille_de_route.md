@@ -147,7 +147,18 @@ Décision du 2026-11-12 : 1.4 à sortir en une semaine environ ; l'utilisateur c
   scènes d'autres jeux laissées de côté (seules celles de WWE '12, décision de l'utilisateur). Détails : docs/univers.md § 46-47.
 - [ ] **Après ça (souhait de l'utilisateur, 2026-11-13)** : un Univers encore plus incroyable et imprévisible que celui de base (« le meilleur pour beaucoup ») : logique de booking, rebondissements, cinématiques. Rejoint « meilleure logique de booking » et « rivalités jusqu'au PPV » de cette liste.
 
-## 1.5 et après : plateformes et finitions (à décider selon les retours)
+## 1.5 : « Petits PC » (décidée par l'utilisateur, 2026-11-20 : « ça peut faire une 1.5 »)
+
+But : que le jeu tourne « pas trop mal » sur quasi n'importe quel PC (processeurs lents, graphique intégré, Steam Deck). Base : `docs/rendu_petit_pc.md` (étude de Rendu, branche 2.0-natif) et `docs/rendu_2_0.md`. Mesure de référence « petit PC simulé » : jeu limité à 2 cœurs lents (affinité 0x30000) + iGPU Intel 720p, `bench_weak.bat` / `chamber_p0.bat` / `chamber_p1.bat` à la racine de `Documents\WWE12-PC` ; Elimination Chamber joué : ~57 i/s, jeu entier 24,8 ms par image.
+Contenu prévu (chaque point coupé par défaut tant qu'il n'est pas mesuré et vu en jeu) :
+- déjà fait sur main (commits locaux) : filet des animations manquantes `wwe12_motion_guard` (étude `docs/etude_motion_absente_filet.md`), compteur d'images dessinées / montrées / abandonnées (`[perf] frames:` dans le journal) ;
+- à faire (Rendu, main) : ligne `[perf]` avec le CPU de chaque fil ; `sub_8282D920` native (vpkd3d128, ~1 ms) avec mode de contrôle ; puis la déformation des catcheurs native (`sub_821E6C20`, 2-4 ms) ; priorités des fils sur ≤ 4 fils ; copies de textures sans empreinte inutile (1-1,5 ms) ;
+- régénération du code (session « 2.0 Régénération », worktree `wwe12-pc-2.0`, branche `2.0-natif`) : palier 1 mesuré (−12 % sur RTX, −3 % sur 2 cœurs lents), palier 2 seul invalide (gel au démarrage : r12 des `__savegprlr`), palier 3 = `non_volatile_as_local` seul après réécriture de 3 crochets (faite, preuve en Univers à jouer), puis `volatile` ;
+- profil Steam Deck / petit PC des trois launchers (WWE '12 fait, 2K15 et 2K17 faits côté launcher), à tester sur un vrai Deck ;
+- idée plus tard : changer de catcheur en plein match (voir « Plus tard »).
+Règle : une version = ce qui est mesuré avant / après et vu en jeu ; pas de régénération dans la 1.5 sans un essai complet de tous les modes.
+
+## 1.6 et après : plateformes et finitions (à décider selon les retours)
 - Launcher : améliorations (`docs/launcher_amelioration.md`, 20 à 28 h : état du jeu, messages, confort Steam Deck à la manette, bouton « Test de performance », finitions) ; pas de refonte du design.
 - Android après la 1.1 PC : replay d'après match, performances, ajouts de Yexclsv (`docs/android_apres_1_1.md`).
 - Prises avec leurs animations d'autres jeux (SvR 2011, puis 2K) .
