@@ -6185,6 +6185,13 @@ extern "C" REX_FUNC(sub_8270EEB0) {
 // the other templates. PPVs stay at 6 at most (the game's own number).
 thread_local u32 t_weekly_matches = 0;  // our number for the card being booked on this thread
 thread_local u32 t_weekly_default = 0;  // the game's number for it (its last template: the main event)
+// The rested Superstars' repair below (a match about to be dropped gets a rested Superstar back) was only for our
+// number of matches; since 1.5 (user, 2026-11-20: SmackDown often at 0-1 match with the game's number, its small
+// roster resting) it is for every weekly card. t_weekly_card = the card's number when the repair is on, 0 if not.
+REXCVAR_DEFINE_BOOL(wwe12_universe_rested_repair, true, "WWE12",
+                    "Universe: a weekly match about to be dropped (nobody free) may take a rested Superstar, even "
+                    "with the game's number of matches (false = before 1.5: only with MATCHES PER SHOW set).");
+thread_local u32 t_weekly_card = 0;
 
 namespace {
 u32 MatchCount(u32 slot, u32 game) {
@@ -6445,6 +6452,7 @@ extern "C" REX_FUNC(sub_826F19E0) {  // RAW / SmackDown: 4
     t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(slot, ctx.r3.u32);
     t_weekly_matches = g_matches[slot] ? ctx.r3.u32 : 0;
+    t_weekly_card = t_weekly_matches || REXCVAR_GET(wwe12_universe_rested_repair) ? ctx.r3.u32 : 0;
   }
 }
 
@@ -6456,6 +6464,7 @@ extern "C" REX_FUNC(sub_82E05C90) {  // Superstars: 3 (shared with other classes
     t_weekly_default = ctx.r3.u32;
     ctx.r3.u64 = MatchCount(2, ctx.r3.u32);
     t_weekly_matches = g_matches[2] ? ctx.r3.u32 : 0;
+    t_weekly_card = t_weekly_matches || REXCVAR_GET(wwe12_universe_rested_repair) ? ctx.r3.u32 : 0;
   }
 }
 
@@ -7747,7 +7756,7 @@ extern "C" REX_FUNC(sub_82554B68) {
 
 REX_EXTERN(__imp__sub_826E2340);  // availability set: take a Superstar out (set, id)
 extern "C" REX_FUNC(sub_826E2340) {
-  if (ctx.lr == 0x826EB8B4 && t_weekly_matches && ctx.r4.u32 < 373) {
+  if (ctx.lr == 0x826EB8B4 && t_weekly_card && ctx.r4.u32 < 373) {
     const u32 flag = bd::mem::load<u32>(ctx.r3.u32 + 4 * ctx.r4.u32);
     if (flag)
       t_rested.push_back({ctx.r3.u32, ctx.r4.u32, flag});
@@ -7761,7 +7770,7 @@ extern "C" REX_FUNC(sub_826F09D0) {
   const PPCContext in = ctx;
   __imp__sub_826F09D0(ctx, base);
   const u32 entry = in.r4.u32 ? in.r3.u32 : 0, record = in.r4.u32;
-  if (!t_weekly_matches || t_rested.empty() || !entry || !record)
+  if (!t_weekly_card || t_rested.empty() || !entry || !record)
     return;
   PPCContext x = in;
   x.r1.u32 = (x.r1.u32 - 0x400) & ~0xFu;
@@ -7806,10 +7815,10 @@ extern "C" REX_FUNC(sub_826EB510) {
   {  // (a weekly booker: its number read again below by the game; a PPV's: none of ours)
     const u32 v = bd::mem::try_load<u32>(in.r3.u32);
     if (v != kBookerRaw && v != kBookerSmackDown && v != kBookerSuperstars)
-      t_weekly_matches = 0;
+      t_weekly_matches = t_weekly_card = 0;
   }
   __imp__sub_826EB510(ctx, base);
-  const u32 booker = in.r3.u32, n = t_weekly_matches;
+  const u32 booker = in.r3.u32, n = t_weekly_card;
   if (!n || !booker)
     return;
   PPCContext x = in;

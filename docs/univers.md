@@ -1501,3 +1501,11 @@ titre reste vacant.
 **Idée pour plus tard (utilisateur, 2026-11-20)** : choisir le mois de départ de l'Univers. Piste : question dans
 EDIT UNIVERSE à la remise à zéro, compteur de jours U + 0xDDC4 mis à mois × 28 (mois = jour / 28 % 12) **avant** la
 génération des cartes du premier mois (sinon celles de janvier restent) ; une partie en cours ne change pas. Pas commencé.
+
+**SmackDown à 0-1 match (1.5, 2026-11-20, demandé par l'utilisateur)** : avec le nombre de matchs du jeu (MATCHES PER
+SHOW non réglé), SmackDown avait souvent 0 à 2 matchs (journal 2.0 : RAW 4/4, Superstars 2-3, SmackDown absent ou
+« 1/2 »). Cause : la règle de repos du jeu (§42, catcheurs d'une carte des 7 derniers jours) vide la petite équipe
+SmackDown, et notre réparation (un reposé revient pour un match sur le point d'être jeté) n'était active qu'avec un
+nombre réglé. Correctif : réparation pour toutes les cartes de la semaine, `wwe12_universe_rested_repair` (true ;
+false = avant 1.5). Ligne de journal par carte « card of …: x of n valid » maintenant toujours écrite. Compilé
+plus tard, pas encore vu en jeu.
