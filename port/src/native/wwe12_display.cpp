@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cfloat>
+#include <cmath>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -75,34 +77,84 @@ class FpsOverlay final : public rex::ui::ImGuiDialog {
       last_time_ = now;
       last_frames_ = frames;
     }
+    // 1.5 look (2026-11-20): a small rounded pill centred at the top: a coloured dot (green >= 55,
+    // yellow >= 30, red below), the FPS in white, "FPS" small and grey, a thin separator, the frame time
+    // small and dimmed (and the phone's temperature on Android). Every part has a fixed width (3 digits,
+    // "000.0 ms") so the pill does not change size when the numbers change, and the shown FPS only moves
+    // when it is off by more than half a frame (no 59 / 60 flicker).
+    if (fps_ > 0.5 && (shown_fps_ < 0 || std::abs(fps_ - shown_fps_) > 0.6))
+      shown_fps_ = std::round(fps_);
+    const bool have = fps_ > 0.5 && shown_fps_ >= 0;
+    const double fps = have ? shown_fps_ : 0.0;
+
     const float k = std::max(0.6f, io.DisplaySize.y / 1080.0f);
-    char text[64];
-    if (fps_ > 0.5)
-      snprintf(text, sizeof(text), "%.0f FPS  %.1f ms", fps_, 1000.0 / fps_);
-    else
-      snprintf(text, sizeof(text), "-- FPS");
-#if REX_PLATFORM_ANDROID
-    // Phone (battery) temperature after the FPS, when the launcher setting is on (wwe12_temp.cpp).
-    if (const int t = Wwe12PhoneTempTenths(); t > -1000) {
-      const size_t len = strlen(text);
-      snprintf(text + len, sizeof(text) - len, "  %d.%d C", t / 10, std::abs(t % 10));
-    }
-#endif
-    const ImU32 color = fps_ >= 55.0 ? IM_COL32(120, 255, 120, 255)
-                        : fps_ >= 30.0 ? IM_COL32(255, 220, 90, 255)
-                                       : IM_COL32(255, 110, 100, 255);
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImFont *font = ImGui::GetFont();
-    const float size = 26.0f * k;
-    const ImVec2 pos(16.0f * k, 12.0f * k);
-    dl->AddText(font, size, ImVec2(pos.x + 2.0f * k, pos.y + 2.0f * k), IM_COL32(0, 0, 0, 220), text);
-    dl->AddText(font, size, pos, color, text);
+    const float fps_sz = 26.0f * k, text_sz = 16.0f * k;
+    const float pad_x = 13.0f * k, pad_y = 5.0f * k, gap = 8.0f * k, dot_r = 4.5f * k;
+    auto width = [&](float size, const char *s) { return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x; };
+
+    char num[16], ms[24];
+    if (have) {
+      snprintf(num, sizeof(num), "%.0f", fps);
+      snprintf(ms, sizeof(ms), "%.1f ms", 1000.0 / fps_);
+    } else {
+      snprintf(num, sizeof(num), "--");
+      snprintf(ms, sizeof(ms), "-- ms");
+    }
+    char extra[24] = "";
+#if REX_PLATFORM_ANDROID
+    // Phone (battery) temperature, when the launcher setting is on (wwe12_temp.cpp).
+    if (const int t = Wwe12PhoneTempTenths(); t > -1000)
+      snprintf(extra, sizeof(extra), "%d.%d C", t / 10, std::abs(t % 10));
+#endif
+    const float num_w = width(fps_sz, "000"), fps_w = width(text_sz, "FPS"), ms_w = width(text_sz, "000.0 ms");
+    const float extra_w = extra[0] ? width(text_sz, "00.0 C") : 0.0f;
+    const float h = fps_sz + 2.0f * pad_y;
+    float w = pad_x + 2.0f * dot_r + gap + num_w + 4.0f * k + fps_w + gap + 1.0f * k + gap + ms_w + pad_x;
+    if (extra[0])
+      w += gap + 1.0f * k + gap + extra_w;
+    const float x0 = std::floor((io.DisplaySize.x - w) * 0.5f), y0 = std::floor(10.0f * k);
+
+    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), IM_COL32(0, 0, 0, 140), h * 0.5f);
+    dl->AddRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), IM_COL32(255, 255, 255, 38), h * 0.5f, 0,
+                std::max(1.0f, 1.0f * k));
+
+    const ImU32 dot = !have ? IM_COL32(150, 150, 150, 255)
+                      : fps >= 55.0 ? IM_COL32(90, 220, 110, 255)
+                      : fps >= 30.0 ? IM_COL32(240, 200, 70, 255)
+                                    : IM_COL32(235, 90, 80, 255);
+    float x = x0 + pad_x;
+    const float mid = y0 + h * 0.5f;
+    dl->AddCircleFilled(ImVec2(x + dot_r, mid), dot_r, dot, 16);
+    x += 2.0f * dot_r + gap;
+    // the FPS right-aligned in its 3-digit box, the text_sz texts on the same baseline (bottom-aligned)
+    const float big_y = y0 + pad_y, small_y = big_y + (fps_sz - text_sz) * 0.78f;
+    dl->AddText(font, fps_sz, ImVec2(x + num_w - width(fps_sz, num), big_y), IM_COL32(255, 255, 255, 255), num);
+    x += num_w + 4.0f * k;
+    dl->AddText(font, text_sz, ImVec2(x, small_y), IM_COL32(205, 205, 205, 210), "FPS");
+    x += fps_w + gap;
+    auto separator = [&]() {
+      dl->AddLine(ImVec2(x, y0 + h * 0.25f), ImVec2(x, y0 + h * 0.75f), IM_COL32(255, 255, 255, 55),
+                  std::max(1.0f, 1.0f * k));
+      x += 1.0f * k + gap;
+    };
+    separator();
+    dl->AddText(font, text_sz, ImVec2(x + ms_w - width(text_sz, ms), small_y), IM_COL32(180, 180, 180, 170), ms);
+    x += ms_w;
+    if (extra[0]) {
+      x += gap;
+      separator();
+      dl->AddText(font, text_sz, ImVec2(x + extra_w - width(text_sz, extra), small_y), IM_COL32(180, 180, 180, 170),
+                  extra);
+    }
   }
 
  private:
   double last_time_ = 0.0;
   uint64_t last_frames_ = 0;
   double fps_ = 0.0;
+  double shown_fps_ = -1.0;  // the integer shown (changes only past half a frame of difference)
 };
 
 void ShowOverlayIfNeeded() {
