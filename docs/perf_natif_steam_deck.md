@@ -43,6 +43,15 @@ comparer au temps d'image visé par le jeu (struct 0x8324CE28), et pas de FIFO_R
 - Pas d'optimisation ajoutée sans mesure avant / après (pas de lancement accordé). Pistes pour janvier : réécritures
   natives de fonctions chaudes (section Natif), cause du gel du démarrage rapide sous 8 fils.
 
+**1.4.2 (2026-11-20) : petits PC** (étude `docs/rendu_petit_pc.md`, branche `2.0-natif`). La déformation des
+catcheurs sur le CPU (`sub_821E6C20`, 2 os) et sa conversion en demi-flottants (`sub_8282D920`) tournent en code PC
+**par défaut** (`wwe12_native_skin`, `wwe12_native_vmx` à true ; `false` rend le code du jeu). Avant d'être allumées,
+elles ont été contrôlées octet par octet (`*_check`) : 0 différence sur un match du benchmark et sur un Elimination
+Chamber. Le code PC reproduit aussi un défaut du code généré : la 1re demi-valeur perd son signe. Gain, sur le petit
+PC simulé (2 cœurs lents) : jeu entier 14,0 → 12,7 ms par image en match ; la déformation va ~4× plus vite. Nouvelle
+ligne `[perf] cpu per frame by thread (ms)` (`wwe12_thread_cpu.cpp`, `GetThreadTimes`, fils nommés par leur fonction
+racine) et `[perf] frames:` (images montrées / abandonnées, #70 : 100 % montrées en jeu).
+
 **Ouvert** : cause du gel du démarrage rapide sous 8 fils ; V-sync adaptative pas testée en D3D12 / D3D11 ; aucun
 journal de Steam Deck reçu (plan de test ci-dessous) ; petits PC sur batterie limités par le processeur
 (#53, #62 : réponse = brancher le PC ou mode 30).

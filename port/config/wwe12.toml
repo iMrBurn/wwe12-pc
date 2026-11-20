@@ -91,6 +91,12 @@ wwe12_fps_limit = 0
 # CPU priority of the game: 0 normal, 1 above normal, 2 high (may slow your other programs).
 wwe12_cpu_priority = 0
 
+# Since 1.4.2, the superstars' skinning (wwe12_native_skin) and its half-float packing (wwe12_native_vmx) run as
+# PC code instead of the recompiled Xbox code: the same bytes (checked on whole matches, Elimination Chamber
+# included), about 1.5 ms less CPU per frame on small PCs. false = the game's own code, as before.
+wwe12_native_skin = true
+wwe12_native_vmx = true
+
 # ---------------------------------------------------------------------------------------------
 # Universe mode
 # ---------------------------------------------------------------------------------------------

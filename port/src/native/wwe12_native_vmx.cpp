@@ -1,5 +1,5 @@
 // WWE '12: small hot VMX functions of the game run as plain PC code (2026-11-20, Rendu; docs/rendu_petit_pc.md
-// on branch 2.0-natif). Off by default (wwe12_native_vmx), with a check mode (wwe12_native_vmx_check) that runs
+// on branch 2.0-natif). On by default since 2026-11-20 (wwe12_native_vmx; 0 difference on 1v1 and Chamber), with a check mode (wwe12_native_vmx_check) that runs
 // the original and the native version from the same state and compares every byte and register they write.
 //
 // sub_8282D920 (48 bytes): packs two floats (f1, f2) into two half floats at r3 / r3 + 2, through the stack and
@@ -27,7 +27,7 @@
 #include "core/logging.h"
 #include "svr_hook.h"
 
-REXCVAR_DEFINE_BOOL(wwe12_native_vmx, false, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_native_vmx, true, "WWE12",
                     "Small hot vector functions of the game (half float packing of the superstars' skinning) "
                     "run as plain PC code (same bytes, less CPU).");
 REXCVAR_DEFINE_BOOL(wwe12_native_vmx_check, false, "WWE12",

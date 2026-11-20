@@ -1,5 +1,6 @@
 // WWE '12: the superstars' CPU skinning as PC code (2026-11-20, Rendu; plan in docs/rendu_petit_pc.md on branch
-// 2.0-natif, "Piste 2"). Off by default (wwe12_native_skin), with a check mode (wwe12_native_skin_check) that runs
+// 2.0-natif, "Piste 2"). On by default since 2026-11-20 (wwe12_native_skin; proved: 0 difference on a benchmark
+// match and an Elimination Chamber, ~4x faster), with a check mode (wwe12_native_skin_check) that runs
 // the game's own version and this one from the same state on every call and compares the output byte for byte.
 //
 // sub_821E6C20 (544 bytes) is the hottest of the skinning variants that sub_821E8788 picks per mesh, on its own
@@ -30,7 +31,7 @@
 #include "core/logging.h"
 #include "svr_hook.h"
 
-REXCVAR_DEFINE_BOOL(wwe12_native_skin, false, "WWE12",
+REXCVAR_DEFINE_BOOL(wwe12_native_skin, true, "WWE12",
                     "The superstars' CPU skinning (2-bone meshes, sub_821E6C20) runs as PC code (same bytes, less "
                     "CPU).");
 REXCVAR_DEFINE_BOOL(wwe12_native_skin_check, false, "WWE12",
