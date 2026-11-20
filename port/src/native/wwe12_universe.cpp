@@ -7826,8 +7826,17 @@ extern "C" REX_FUNC(sub_826EB510) {
   u32 valid = 0;
   for (u32 j = 0; j < n && j < 8; ++j)
     valid += Call(x, base, __imp__sub_826EAAF8, booker + 20 + j * 1320) == 1;
-  BD_INFO("[univers] matches: card of {:08X}: {} of {} valid ({} Superstar(s) resting)", bd::mem::load<u32>(booker),
-          valid, n, t_rested.size());
+  // (why a card stays short: the brands of the roster in use and of the rested ones, RAW / SmackDown / other)
+  u32 roster[3] = {}, rested[3] = {};
+  for (u32 id = 0; id < 373; ++id)
+    if (Call(x, base, __imp__sub_826D3218, id, 1))
+      ++roster[std::min<u32>(Call(x, base, __imp__sub_826D2B50, id), 2)];
+  for (const Rested &r : t_rested)
+    ++rested[std::min<u32>(Call(x, base, __imp__sub_826D2B50, r.id), 2)];
+  BD_INFO("[univers] matches: card of {:08X}: {} of {} valid ({} Superstar(s) resting: {}/{}/{} RAW/SD/other; "
+          "roster {}/{}/{})",
+          bd::mem::load<u32>(booker), valid, n, t_rested.size(), rested[0], rested[1], rested[2], roster[0],
+          roster[1], roster[2]);
 }
 
 // ---- Draft news (asked by the user, 2026-11-06) ------------------------------------------------------------------

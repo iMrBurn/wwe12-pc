@@ -1509,3 +1509,9 @@ SmackDown, et notre réparation (un reposé revient pour un match sur le point d
 nombre réglé. Correctif : réparation pour toutes les cartes de la semaine, `wwe12_universe_rested_repair` (true ;
 false = avant 1.5). Ligne de journal par carte « card of …: x of n valid » maintenant toujours écrite. Compilé
 plus tard, pas encore vu en jeu.
+Test du 2026-11-20 (copie wwe12_test) : la réparation ne suffit pas, SmackDown reste à 0-1 match sur 4 alors que ses
+26 catcheurs ne sont presque pas au repos (les reposés de sa carte sont des catcheurs de RAW). Cause trouvée : dans
+cette copie, le World Heavyweight (titre majeur de SmackDown) a été laissé vacant le 2026-11-17 (« title 1 left vacant
+by the player », test du titre vacant) ; le jeu vide le classement d'un titre sans champion (déjà vu pour RAW au §48),
+donc les modèles et la réparation de SmackDown ne trouvent personne. Le journal de chaque carte donne maintenant les
+marques des reposés et de l'effectif (« resting: a/b/c RAW/SD/other; roster … »).
