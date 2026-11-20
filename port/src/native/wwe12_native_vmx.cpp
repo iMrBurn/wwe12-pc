@@ -98,7 +98,12 @@ void PackHalf2Native(PPCContext &ctx, u8 *base) {
   const u32 ea = sp16 & ~0xFu;
   const u32 w0 = LoadBE32(base, ea), w1 = LoadBE32(base, ea + 4), w2 = LoadBE32(base, ea + 8),
             w3 = LoadBE32(base, ea + 12);
-  const u16 h0 = XenosHalf(w0), h1 = XenosHalf(w1), h2 = XenosHalf(w2), h3 = XenosHalf(w3);
+  // Lane 0 loses its sign in the generated code: it writes the half into v63.u16[7], the upper half of the very
+  // word u32[3] it then reads the sign from, so the sign it ORs in is bit 15 of the new half (always 0). Seen by
+  // the check mode on 2026-11-20 (f1 -0.0174: game 2474, sign kept A474). The game on PC has always run with
+  // this, so the native version does the same (h0 without its sign); the console's own vpkd3d128 likely keeps
+  // it (a recompiler bug, noted in docs/rendu_petit_pc.md).
+  const u16 h0 = u16(XenosHalf(w0) & 0x7FFFu), h1 = XenosHalf(w1), h2 = XenosHalf(w2), h3 = XenosHalf(w3);
   // v63 in the host layout of the generated code (lane order reversed: u32[3] = guest word 0).
   ctx.v63.u16[7] = h0;
   ctx.v63.u16[6] = h1;
