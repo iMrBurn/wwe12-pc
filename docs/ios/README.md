@@ -121,3 +121,17 @@ Lecture des compteurs `[perf]` du log 019 (2 min 40 de jeu, un match I Quit puis
 - **Bruit connu, sans effet** : 446 `PhysicalHeap::Alloc` + 446 `BaseHeap::Alloc` au démarrage
   seulement (aussi sur PC), et les études `[iquit] etude arbitre` de la 1.4 (deux lignes par seconde
   pendant un match I Quit, utiles pour lire les logs, à retirer quand le portage WWE '13 sera figé).
+
+## 1.4.1 sur iPhone (2026-11-20)
+
+La 1.4.1 compte pour le téléphone comme pour le PC : son correctif d'`issue #79` touche du code compilé
+sur iOS. En 1.4.0, les 33 motions de WWE '13 étaient ajoutées au répertoire de **tous** les matchs
+(1,4 Mo pour rien dans la mémoire de motions du jeu, gardée à sa taille d'origine) et un Royal Rumble
+plantait dans `sub_821D7150` ; depuis la 1.4.1 elles ne sont ajoutées que pour un match I Quit ou
+arbitre spécial. L'IPA 19 (build-11) a donc ce plantage, l'IPA 20 non.
+
+Arrivent aussi côté iPhone : les ceintures portées d'un autre jeu WWE (mods `type=belt`, lues par
+`wwe12_arena_pages.cpp` dans `mods/.svrmods/Belts`, à installer depuis le PC comme tout mod), et le
+numéro de version affiché dans le launcher. Il venait de `CFBundleShortVersionString`, que le workflow
+écrit en dur à `0.1` ; il vient maintenant de `WWE12_VERSION` (le fichier VERSION), puisqu'un fichier
+de workflow ne peut pas être modifié d'ici.

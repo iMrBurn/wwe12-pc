@@ -531,8 +531,10 @@ static std::string MakeBackup(const std::string& label, bool automatic) {
       attributes:@{NSFontAttributeName : [UIFont systemFontOfSize:34.0 weight:UIFontWeightBold],
                    NSForegroundColorAttributeName : W12_TEXT, NSKernAttributeName : @1.0}];
   title.textAlignment = NSTextAlignmentCenter;
-  NSString* version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-  UILabel* sub = Label([NSString stringWithFormat:@"iPhone port  %@", version ? version : @""], 14.0, W12_DIM, NO);
+  // The port's own number (the VERSION file, a compile definition from port/CMakeLists.txt), not the
+  // bundle's: Info.plist is written by the workflow with a fixed 0.1, and a workflow file cannot be
+  // changed from here (the gh token has no workflow scope).
+  UILabel* sub = Label(@"iPhone port  " WWE12_VERSION, 14.0, W12_DIM, NO);
   sub.textAlignment = NSTextAlignmentCenter;
   NSString* info = game.empty() ? @"Game: NOT found.\nOpen the Install tab to add your disc image."
                                 : [NSString stringWithFormat:@"Game: %@", NS(game.substr(game.rfind('/') + 1))];
@@ -949,10 +951,8 @@ static std::string NewestLog(const char* prefix) {
 
   struct utsname un;
   uname(&un);
-  NSDictionary* info = [[NSBundle mainBundle] infoDictionary];
-  NSString* version = [NSString stringWithFormat:@"%@ (%@)", info[@"CFBundleShortVersionString"] ?: @"?", info[@"CFBundleVersion"] ?: @"?"];
   UIStackView* about = Card(stack, @"About");
-  [about addArrangedSubview:Row(@"App version", Label(version, 14.0, W12_DIM, NO))];
+  [about addArrangedSubview:Row(@"Game version", Label(@"" WWE12_VERSION, 14.0, W12_DIM, NO))];
   [about addArrangedSubview:Row(@"Device", Label([NSString stringWithFormat:@"%s, iOS %@", un.machine, [[UIDevice currentDevice] systemVersion]], 14.0, W12_DIM, NO))];
   [about addArrangedSubview:Row(@"Free space", Label(Human(FreeBytes(Docs())), 14.0, W12_DIM, NO))];
   [about addArrangedSubview:Label(@"iOS build method and launcher base by Ke619 (MIT). Needs your own legal copy of the game.", 12.0, W12_DIM, NO)];
