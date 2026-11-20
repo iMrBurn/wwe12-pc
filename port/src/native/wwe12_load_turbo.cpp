@@ -200,15 +200,26 @@ void Wwe12LoaderTick() {
   g_loader_calls.fetch_add(1, std::memory_order_relaxed);
 }
 
+// 1.4.2 (2026-11-20, Rendu): the loading-screen turbo needs as many usable logical processors as the
+// fast boot (wwe12_fast_boot_min_threads, 8). On 2 slow cores (benchmark of 2026-11-20, affinity
+// 0x30000) the first "NOW LOADING" screen ran the turbo for its full 20 s and the game never left it:
+// the main, skinning and F800007C threads asleep at the frame barrier sub_827DEA20, the render thread
+// still drawing the loading screen (60 presents a second), every loader thread idle. The same
+// lock the fast boot showed on 4 threads (see below), and very likely the players' "frozen at now
+// loading" (#69, #74). Below the limit, loading screens run at the game's own pace (only slower).
+bool Wwe12LoadTurboAllowed();  // after the fast-boot cvar, below
+
 namespace {
 // One frame of the turbo: turns it on / off with the loading-screen window and says whether the
 // frame it counts is hidden. Called once per game frame, from one place (see the two callers).
 bool TurboFrame() {
   const int64_t now = NowMs();
   const bool probe = REXCVAR_GET(wwe12_load_probe);
-  const bool want = REXCVAR_GET(wwe12_fast_loading) &&
-                    g_screen_up.load(std::memory_order_relaxed) &&
-                    now - g_screen_since_ms.load(std::memory_order_relaxed) < kScreenMaxMs;
+  bool want = REXCVAR_GET(wwe12_fast_loading) &&
+              g_screen_up.load(std::memory_order_relaxed) &&
+              now - g_screen_since_ms.load(std::memory_order_relaxed) < kScreenMaxMs;
+  if (want && !g_turbo.active && !Wwe12LoadTurboAllowed())
+    want = false;  // (checked when it would turn on: the affinity can change after the start)
   std::lock_guard lock(g_turbo_mu);
   TurboState &t = g_turbo;
   if (want != t.active) {
@@ -283,8 +294,9 @@ REXCVAR_DEFINE_INT32(wwe12_fast_boot_settle_ms, 800, "WWE12",
 // opening video never came and the first load never ended. Below this many usable logical processors the
 // start-up still hides everything until the title screen, but at the game's own pace (no turbo).
 REXCVAR_DEFINE_INT32(wwe12_fast_boot_min_threads, 8, "WWE12",
-                     "Fast boot: fewest usable logical processors for it (fewer: the usual start-up; "
-                     "on 4 and 2 the hidden start-up got stuck).")
+                     "Fast boot and loading-screen turbo: fewest usable logical processors for them "
+                     "(fewer: the usual start-up and loading screens; on 4 and 2 the hidden start-up got "
+                     "stuck, on 2 a loading screen too).")
     .range(1, 256);
 
 // Game frames (the frame barrier's calls, all threads): the start-up turbo's stall guard.
@@ -306,6 +318,26 @@ u32 UsableThreads() {
 #endif
   return std::max(1u, std::thread::hardware_concurrency());
 }
+}  // namespace
+
+// The loading-screen turbo's processor guard (see TurboFrame above). Logged once per change.
+bool Wwe12LoadTurboAllowed() {
+  static std::atomic<int> s_logged{-1};  // last answer logged
+  const u32 threads = UsableThreads();
+  const int need = REXCVAR_GET(wwe12_fast_boot_min_threads);
+  const bool ok = threads >= u32(need);
+  if (s_logged.exchange(ok ? 1 : 0, std::memory_order_relaxed) != (ok ? 1 : 0)) {
+    if (ok)
+      BD_INFO("[turbo] {} usable logical processors: loading screens sped up", threads);
+    else
+      BD_INFO("[turbo] {} usable logical processors (< {}): no loading-screen turbo (it locked the game "
+              "at its frame barrier on 2 cores), loading screens at the game's own pace",
+              threads, need);
+  }
+  return ok;
+}
+
+namespace {
 const int64_t g_process_start_ms = NowMs();  // (static init: before the runtime starts)
 
 enum class Boot { kNotStarted, kTurbo, kSettle, kDone };

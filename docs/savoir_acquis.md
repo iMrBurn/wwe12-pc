@@ -7,6 +7,18 @@ Les entrées sont classées par sujet, pas par date ; ajouter les nouvelles déc
 
 - Hooks : `extern "C" REX_FUNC(sub_X)` + `REX_EXTERN(__imp__sub_X)`. Cvars : REXCVAR_DEFINE_*.
   En ligne de commande les booléens s'écrivent `--nom=false`.
+- **Turbo (vblank invité à 1 kHz) et peu de cœurs = gel** (2026-11-10 pour le démarrage rapide sur 4 fils,
+  2026-11-20 pour l'écran de chargement sur 2 cœurs). Signature dans les piles (`dump_stacks_now.txt`) :
+  - le fil principal (`sub_821AD2B8`), la déformation (`sub_82827698`) et `sub_8281A2C8` dorment à la barrière
+    d'image `sub_827DEA20` ;
+  - le fil de rendu (`sub_82826A38`) dessine encore l'écran de chargement (`sub_827DE7C8` → `sub_821AC920`), à
+    60 présentations par seconde ;
+  - les chargeurs attendent du travail.
+  Le jeu reste sur « NOW LOADING », sans plantage. Garde depuis la 1.4.2 : sous `wwe12_fast_boot_min_threads`
+  (8) fils utilisables, ni démarrage rapide ni turbo des chargements (`wwe12_load_turbo.cpp`,
+  `Wwe12LoadTurboAllowed`). Probablement les « frozen at now loading » des joueurs (#69, #74).
+- Fil d'un thread du jeu : tous démarrent dans `sub_821B3F58` (r3 = leur fonction) ; la ligne
+  `[perf] cpu per frame by thread` les nomme ainsi (`main` 821AD2B8, `render` 82826A38, `skinning` 82827698).
 - **Ne jamais soumettre/rouvrir la command list au milieu d'une image** (cause des saccades et des
   yeux/dents noirs) : les attentes GPU vont en fin d'image (read-backs différés).
 - Read-backs : cibles 1 niveau immédiates (limitées par série), multi-niveaux différées en fin
