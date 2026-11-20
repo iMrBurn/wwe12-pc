@@ -68,8 +68,11 @@ bool FileExists(const char *path) {
 
 void LoadOverlayFonts(rex::ui::ImGuiDrawer *drawer) {
   ImGuiIO &io = drawer->GetIO();
-  if (io.Fonts->TexIsBuilt) {
-    BD_WARN("[display] font atlas already built: FPS counter keeps ImGui's font");
+  // The SDK builds the atlas pixels at start-up but uploads them only at the first overlay frame
+  // (ImGuiDrawer::SetupFontTexture, detached mode): fonts can still be added until that upload, then the
+  // pixels are built again (Build, below) so the upload takes the new glyphs.
+  if (io.Fonts->TexRef._TexID != ImTextureID_Invalid) {
+    BD_WARN("[display] font atlas already uploaded: FPS counter keeps ImGui's font");
     return;
   }
   static const ImWchar ranges[] = {0x0020, 0x00FF, 0};  // Latin (the temperature's degree sign)
@@ -95,6 +98,10 @@ void LoadOverlayFonts(rex::ui::ImGuiDrawer *drawer) {
   g_font_num = load({"C:\\Windows\\Fonts\\seguisb.ttf", "C:\\Windows\\Fonts\\segoeui.ttf"}, kNumPx);
   g_font_text = load({"C:\\Windows\\Fonts\\segoeui.ttf"}, kTextPx);
 #endif
+  if ((g_font_num || g_font_text) && !io.Fonts->Build()) {
+    BD_WARN("[display] font atlas rebuild failed: FPS counter keeps ImGui's font");
+    g_font_num = g_font_text = nullptr;
+  }
 }
 
 class FpsOverlay;
