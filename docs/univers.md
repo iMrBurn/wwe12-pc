@@ -1522,3 +1522,5 @@ de l'Univers, le tournoi est lancé directement avec le message « Le %s est vac
 prochain champion. » (plus de question). `UltimateBeforeVacate` refuse aussi de vider le titre s'il y a moins de 4
 prétendants. Reste : un tournoi abandonné (42 jours) sans 4 libres laisse encore le titre vacant (rare). La copie de
 test garde son World Heavyweight vacant du 2026-11-17 : le redonner dans EDIT TITLES.
+Vu le 2026-11-20 (copie de test) : World Heavyweight redonné dans EDIT TITLES (512 → 103) → SmackDown « 4 of 4 valid »
+dès la semaine suivante (avant : 0 à 2 sur 4). Cause confirmée.
