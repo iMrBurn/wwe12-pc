@@ -4,6 +4,10 @@ Résumé de l'état actuel. Les sections « 1.3 » (2026-11-10 / 11) sont les pl
 Docs liés : prises ajoutées `docs/prises_svr11.md`, prises / entrées / musiques des autres jeux `docs/plan_movesets.md`,
 SvR 2007-2010 `docs/plan_svr_anciens.md`, limites du nombre de mods `docs/mod_maker_limites.md`.
 
+**Nouveauté du 2026-11-18 (commit local, page AIDE à jour, vu en jeu à la taille et à la main ; images des titres des
+menus ajoutées à la page)** : CEINTURES ET ARMES > « Porter une
+ceinture d'un autre jeu » (`belt_port.h`, mod `type=belt`) - détail au § 9.
+
 **Nouveautés du 2026-11-17 (après le zip 1.4.0, commits locaux ; page AIDE à jour)** :
 - Catcheurs ajoutés : jusqu'à 190, tous à l'écran de choix (lignes de remplissage dans la liste du pack ; places 231 et
   289 exclues) - `docs/mod_maker_limites.md`. Entrées tag team : 43 places (757-769 puis 770-799).
@@ -405,6 +409,56 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   sort à chaque lancement. Vu en jeu. Piège : un EM01 dans le pack → écran noir.
 - **Ceintures et armes** : `evtobj.pac` SOBJ/NNNN (30 ceintures), `bgEtc.pac` STG/WPON… ; image remplacée = pack de
   textures. Pas encore vu en jeu sur une ceinture.
+- **Ceinture d'un autre jeu** (2026-11-18, demande d'un joueur : le titre WWE de 2013 de 2K14 ; l'utilisateur : « de
+  n'importe quel jeu WWE », étudier l'ajout). `belt_port.h`, page CEINTURES ET ARMES (2e bouton radio), mod `type=belt`
+  (`belt/SOBJ_<n>.bin`, dossier `mods\.svrmods\Belts`), servi à la place de l'`evtobj.pac` SOBJ/<n> du jeu
+  (`wwe12_arena_pages.cpp`, « Title belt mods », journal `[belts]`). **Vu en jeu le 2026-11-18** : titre WWE de 2013
+  (2K14) à la taille de Del Rio pendant son entrée et à la main, bien placé (`tools/dev/lancer_test_ceinture.bat`).
+  Images des ceintures dans les menus (en tête de la liste « Ceintures » de la page, pack de textures ; pas encore vu en
+  jeu). Toutes les images 2D du jeu regardées le 2026-11-18 (menuHD, MatchHD, game2dHD, CAE, CAH, evtgdhd : logos de
+  PPV, UNIL = logos d'émissions, RSCP = portraits) : les ceintures ne sont que dans `menu\MnLayHD.pac` et son double
+  `MnLaySD.pac`, groupes MLY<langue>/<écran>, trois images par titre nommées par lui (Attitude, Champion, Classic,
+  Cruiser, Divas, ECW, ECW_old, European, Hardcore, Heavy_WCW, Interconti, Light, million, UF, US, WCW, Womens,
+  WorldHeavy, WorldTag, WWE, WWETag, WWE_old, WWE_WCW) : belt_<titre> 256 x 128 (BELT), BG_<titre> 256 x 128 (la
+  ceinture sur des flammes : USEI, CHRM, TIMG), sts_<titre> 128 x 64 (la marque du champion : CHRM, CHR1) ; plus UNLK
+  icon_24-37 128 x 128 (icônes des ceintures à débloquer) et SAMP belt_US 512 x 128 (l'utilisateur a repéré les BG_ /
+  sts_ par titre). Lues dans les deux fichiers, chaque image une fois (par empreinte), « (SD) » après celles du SD.
+  - Formes d'un titre dans WWE '12 (noms de SOBJ/LIST : u16 **LE** + nom, 64 octets) : 2NNN / 3NNN dans la main et sur
+    l'épaule (os bone01-15 + AW_01-20), 4NNN (17 os), 20N1-2030 / 3011-3024 / 4011-4020 pliées ou roulées (rigides :
+    root, bone01), 5MMM à la taille (L_bone01-12, R_bone01-12 ; 5004 = WWE, 5009 = World Heavyweight, 5021 = ECW...).
+    PACH {0 JBOY, 10 images, 30, 100, 200, 1000, 1010}.
+  - WWE '13 / 2K14 / 2K15 : groupe **BOBJ** d'`evtobj.pac` (2K14 : 154), même format ; 2K14 2004 = le titre WWE de 2013
+    (modèle « 2933_New_WWE_01 », à la taille 5004 = « 5066_New_WWE_04 ») ; un enfant 4 (second petit modèle) enlevé.
+    Pas de formes pliées / roulées : celles du jeu restent. 2K16 / 2K17 : `pac\prop\NNNN.pac` (HSPC, enfants ZLIB,
+    comme `entrance13::Props2K`). SvR 2007-2011 : SOBJ convertis par `star_port::SvrPropsTo12` (SvR 2011 a toutes les
+    formes).
+  - Familles : nom du modèle (« 2933_New_WWE_01 » -> New_WWE), sinon nom de LIST sans « - Stretched / Folded2... »
+    (3NNN / 4NNN prennent celui du 2NNN ; un 5MMM sans nom emprunte celui de WWE '12 au même numéro). Chaque forme de
+    WWE '12 reçoit la forme source aux mêmes os (noms, puis ordre, puis millier) ; aucune assez proche = celle du jeu
+    reste. Vérifié hors jeu (outil de test) : WWE Title <- 2K14 « New WWE » = 2004<-2004, 3004<-3004, 4004<-2004,
+    5004<-5004 ; SvR 2011 : les 9 formes.
+  - **Ajouter un titre** : impossible sans changer la sauvegarde (23 titres fixes, tables de champions 23 x 2 places,
+    `docs/univers.md` § 3) ni les menus. Ce qu'on propose : la ceinture à la place d'un titre non utilisé (Hardcore,
+    Cruiserweight, European...), puis le donner (MODIFIER L'UNIVERS). Le nom du titre dans les menus reste celui du
+    jeu (piste : textes de `string.pac`).
+  - À vérifier en jeu : 4NNN (os AW_ au repos) ; les jeux autres que 2K14 (la page le dit).
+  - 2026-11-18 soir (« certains jeux sont pas lus ») : SvR 2007 = `evt0.pac` SOBJ ; SvR 2007-2010 ont des ceintures à
+    bone01-12 seulement (pas d'AW_, pas de taille avant SvR 2011) ; 2K16 / 2K17 = `pac\prop\NNNN.pac` à entrée BOBJ
+    (enfants ZLIB, regonflés et mis en BPE ; os bone01-14) - les 29xx / 50xx de 2K17 au nom haché (autre format)
+    ne sont pas lus. Os simples acceptés pour un nom de titre ou une entrée BOBJ. Les 10 jeux lus (14 à 55 ceintures).
+  - Ceintures SvR « bizarres » (2026-11-18 soir, étudié hors jeu) : la conversion des objets SvR
+    (`star_port::SvrPropsTo12`) ne faisait que renommer les shaders ; les paramètres restaient ceux de SvR (22, autres
+    noms, autre ordre ; `g_iSpecularPow` entier 50 là où WWE '12 lit un flottant : ~0, brillance extrême), formats de
+    sommets de SvR, `yReflect` mis en `yDefault` (shader d'arène). Or WWE '12 a repris les ceintures de SvR 2011 :
+    mêmes numéros, mêmes maillages. `belt_port::detail::SvrBeltTo12` les fait comme celles de WWE '12 : yBumpMap 4 ->
+    yProp_BumpMap 1, yBumpMap 6 -> 2, yReflect 3 -> yProp_Reflect 8 ; paramètres dans la liste et l'ordre de WWE '12
+    (texDiffuse -> sampDiffusePrm, texNormal -> sampNormalPrm, texRefctionReg -> sampRefMapPrm, cube_ref du jeu,
+    g_fSpeLodNear / Far 10000 / 20000) ; sphères de SvR x 10 gardées, refaites si incohérentes (SvrToW12 met à 0 la
+    fin de la dernière ; SvR 2007 2004 : rayon 7,8e9). Vérifié hors jeu sur SvR 2007 à 2011. Pas encore vu en jeu.
+    Les caisses noires de MVP (objets SvR, même conversion) ont sans doute la même cause : à essayer ensuite.
+  - Page refaite en étapes (« ça me plaît pas ») : 1. le jeu (liste à icônes), 2. ses ceintures en grille d'images,
+    3. la ceinture du jeu remplacée (grille), 4. avant -> après, formes en mots (dans la main, sur l'épaule, à la
+    taille, pliée / roulée), le mod. Chemin d'étapes cliquable en haut.
 - **CAW** : liste, image des listes, export `.wwe12caw`, import ; sommes de contrôle (`.cas` +12, +0x14B254, fin ; fiche
   dans `SaveData.dat` à 0x1B9E8 + place × 0x6E4). **Supposé, à vérifier en jeu** : 0x6E4 et 50 places.
 - **Types de match** : recherche seulement (`pac/misc.pac` `RUL ` à 0x9630, 119 fiches de 108 octets ; en mémoire
@@ -460,6 +514,8 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   (`svr_scenes::PropDonors12`), commande 180 et emplacements identiques à la 506. Différence restante : le GMEV
   (506 : 14 entrées de type 9 en plus, 0xD2-0xDF ; le nôtre vient de SvR 2008). Essai non fait : le GMEV de la 506.
   Ceintures des entrées 2K (titre 5009 caché sous 2009 / 3009, `belt12.h`) : vu bon en jeu (The Miz 2K14).
+- Legends of WrestleMania (Xbox 360) : pas fait, faute de disque pour tester. Plan et notes de Kaiko dans
+  `docs/plan_svr_anciens.md` (2026-11-18).
 - Le disque du rond central de WM 31 caché par le mur vidéo (laissé de côté) ; Mojo Rawley et Tye Dillinger (DLC 2K17)
   verts dans leurs propres fichiers.
 

@@ -326,6 +326,10 @@ public class LauncherActivity extends Activity {
         set.addView(choice("Language", "user_language",
                 new String[] {"English", "Deutsch", "Français", "Español", "Italiano"},
                 new String[] {"1", "3", "4", "5", "6"}));
+        // #77: button pictures in the game's prompts (Auto = PlayStation only when a Sony pad is connected).
+        set.addView(choice("Button icons", "wwe12_button_icons",
+                new String[] {"Automatic (PlayStation with a Sony pad)", "Xbox", "PlayStation"},
+                new String[] {"auto", "xbox", "playstation"}));
         set.addView(choice("Internal resolution (lower = faster)", "svr_render_scale",
                 new String[] {"360p (very low)", "480p (low)", "540p (fastest)", "720p (recommended)", "1080p", "Automatic (screen size)"},
                 new String[] {"360", "480", "540", "720", "1080", "0"}));
@@ -1186,6 +1190,10 @@ public class LauncherActivity extends Activity {
 
         void set(String key, String value) {
             int i = find(key);
+            // Text values (frame mode, button icons...) are TOML strings: quoted, like the PC launcher writes them.
+            if (!value.matches("-?[0-9.]+") && !value.equals("true") && !value.equals("false")
+                    && !value.startsWith("\"") && !value.startsWith("["))
+                value = "\"" + value + "\"";
             String line = key + " = " + value;
             if (i >= 0) lines.set(i, line);
             else lines.add(line);

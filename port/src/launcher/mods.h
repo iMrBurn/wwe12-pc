@@ -307,7 +307,8 @@ class Manager {
         {"media", "Media"},          {"background", "Backgrounds"}, {"matchtype", "MatchTypes"},
         {"textures", "Textures"}, {"files", "Files"},  // (files: ours, the Mod Maker's GAME FILES page)
         {"menupics", "MenuPictures"},  // (ours: the Universe's logos / match-up screens / arena photos)
-        {"entrance", "Entrances"}};    // (ours: an entrance alone, for CREATE AN ENTRANCE: the Mod Maker, 2026-11-12)
+        {"entrance", "Entrances"},     // (ours: an entrance alone, for CREATE AN ENTRANCE: the Mod Maker, 2026-11-12)
+        {"belt", "Belts"}};            // (ours: a title belt of another game, the Mod Maker's BELTS & WEAPONS, 2026-11-18)
     const auto it = kinds.find(Lower(type));
     return it == kinds.end() ? std::string() : it->second;
   }
@@ -622,7 +623,7 @@ class Manager {
           return n.rfind("files/", 0) == 0 || n.rfind("textures/", 0) == 0 || n.rfind("arena/", 0) == 0 ||
                  n.rfind("superstar/", 0) == 0 || n.rfind("attire/", 0) == 0 || n.rfind("signs/", 0) == 0 ||
                  n.rfind("backgrounds/", 0) == 0 || n.rfind("media/", 0) == 0 || n.rfind("matchtype/", 0) == 0 ||
-                 n.rfind("pictures/", 0) == 0;
+                 n.rfind("pictures/", 0) == 0 || n.rfind("belt/", 0) == 0;
         })) {
       message_ = t.no_files;
       return;

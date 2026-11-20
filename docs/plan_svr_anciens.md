@@ -50,4 +50,43 @@ SvR 2010 importé et vu en jeu le 2026-11-01).
 - Marches et table des commentateurs (`bgEtc.pac`, communs) : voir `docs/mod_maker.md`.
 - ch92 de 2007 vert sur le disque même ; la plaque de SmackDown 2007 (vidéo dans un carré rouge) reste vide dans WWE '12.
 
+## Legends of WrestleMania (Xbox 360) : plan, pas fait
+
+Noté le 2026-11-18 à la demande de l'utilisateur. Rien n'est codé : personne ici n'a le disque pour tester. On ne
+télécharge pas le jeu, et on n'ajoute pas un support non testé. À faire le jour où quelqu'un a sa propre copie.
+
+**Source : le port SvR 2011 de Kaiko**, qui gère déjà ce jeu (testé en jeu chez lui en octobre 2026). Sa méthode
+peut être reprise avec crédit (son accord du 2026-10-23). Dépôt `KaikoClanworth1/wwe-svr2011-pc` :
+- `docs/OTHER_GAMES.md` : sections « Legends of WrestleMania » (arènes) et « Legends of WrestleMania (360) »
+  (catcheurs) ;
+- `port/docs/OTHER_GAMES_ENTRANCES.md` : section « WWE Legends of WrestleMania (Xbox 360) » ;
+- `port/tools/superstar_port.py`, `entrance_port.py` (`low_convert`), `arena_port.py`, `ratings_port.py` (jeu
+  `low`) ; `port/modmaker/disc_list.cpp`.
+
+**Ce qu'on sait (d'après Kaiko) :**
+- Disque 54510838, XDVDFS comme SvR 2009. Moteur et formats de **SvR 2009**, tous les pac en EPAC.
+- **Catcheurs :** `pac/ch/ch100-254.pac` et `chEtc.pac`, 89 catcheurs avec modèle, numéros propres (100 = The Rock).
+  - CHAR/DAT 262 octets : celui de 2009, mais 12 octets de stats (deux fois) au lieu de 8. Nom brut à +46, nom
+    complet à +114, nom court à +182.
+  - CHAR/PRO 504 octets, bloc d'entrée à +0xE4 comme 2009 : musique, vidéo, entrée (4000 + numéro − 100), entrée
+    de champion ; tenue 2 à +0xF0.
+  - Stats à +4..+15 sur son propre barème (cinq vrais champs : +6 +7 +8 +12 +13). Pas de capacités.
+  - Modèle : même lecture que 2008 / 2009. Rendus : `DLC_HD.pac`, groupes SSFA / SSFB / SSFC au premier niveau.
+  - Prises : PAS portées chez Kaiko (CHAR/PRO à sa propre disposition, numéros de prises propres).
+- **Musiques et vidéos :** `sound/music1.yaf` / `music2.yaf` (numéro de musique × 100), `movies/titantron/<n>.bik`.
+- **Entrées :** `pac/evt/Nyujyo0-3.pac`, 157 entrées 4001-4359 (format 2009, ~60 % des pistes identiques à 2009).
+  Règles en plus de celles de 2009 : figurants génériques 10902 / 24802 / 24902 → 13902. Entrées en chariot
+  « Gondola » (4170-4186, 4230-4233, 4350-4359) : chariot 2552 / 2565 dans `pac/evt/_EvtObj.pac`.
+- **Arènes :** `pac/bg/bg201-215` (WrestleMania I à XV), `bg216` (Royal Rumble 2008), `bg219` (copie du Rumble).
+  Chemin « 2008 » des arènes : jeux de textures déplacés, lumières renumérotées. Images de chargement / VS : MatchHD
+  `M<n° en hexadécimal>I` (`MC9I` = bg201). bg223 / 224 / 225 / 250 ne sont pas des arènes.
+- **Ceintures :** sans doute dans `pac/evt/_EvtObj.pac` comme SvR 2008-2010 (à vérifier).
+
+**Travail chez nous :** ajouter 0x54510838 partout où SvR 2009 (0x54510826) est reconnu, puis gérer les écarts
+ci-dessus. Endroits trouvés le 2026-11-18 dans `port/src/modmaker/` : `game_discs.h`, `star_port.h` (`SvrOld`, nom
+du jeu), `arena_page.h` (`kOldSvr`), `moveset_port.h`, `new_star_page.h` (plusieurs listes, échelle), `ratings_import.h`,
+`superstar_page.h`, `svr_old_entrance.h`, `svr_old_slots.h`, `theme_source.h`, `belt_port.h`. Ordre conseillé :
+reconnaître le disque, puis catcheurs, arènes, entrées (sans les chariots d'abord), ceintures. Tester chaque étape
+en jeu avant la suivante.
+
 Historique complet, essais et détails : docs/archives/plan_svr_anciens_anciennes_parties_2026-11-12.md
