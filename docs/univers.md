@@ -1497,3 +1497,7 @@ que pendant un tournoi ouvert. Tournoi abandonné (42 jours) : un nouveau si 4 s
 titre reste vacant.
 
 **Défauts 1.4 (2026-11-17, décision de l'utilisateur)** : news de rivalité, retours surprise et clause de revanche actifs dans le jeu de base (`wwe12_universe_rivalry_news`, `_surprise_returns`, `_rematches` = 1), sans l'Univers imprévisible ; le reste (en-tête RIVALRY MATCH, titre vacant / tournoi, choix de l'interférence, booking) suit toujours son niveau.
+
+**Idée pour plus tard (utilisateur, 2026-11-20)** : choisir le mois de départ de l'Univers. Piste : question dans
+EDIT UNIVERSE à la remise à zéro, compteur de jours U + 0xDDC4 mis à mois × 28 (mois = jour / 28 % 12) **avant** la
+génération des cartes du premier mois (sinon celles de janvier restent) ; une partie en cours ne change pas. Pas commencé.
