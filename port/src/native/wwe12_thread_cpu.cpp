@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "core/logging.h"
+#include "svr_hook.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -24,6 +25,34 @@
 #endif
 #include <windows.h>
 #include <tlhelp32.h>
+
+#include <mutex>
+
+// Guest threads all start in sub_821B3F58 (r3 = the thread's function, r4 = its argument; it calls r3, then
+// ExitThread). Recording the function per host thread names each thread by what it runs, which stays the same from
+// one launch to the next (the XThread numbers do not).
+namespace {
+std::mutex g_roots_mutex;
+std::unordered_map<DWORD, u32> g_roots;  // host tid -> guest thread function
+
+const char *RootLabel(u32 fn) {
+  switch (fn) {
+    case 0x821AD2B8: return "main";
+    case 0x82826A38: return "render";
+    case 0x82827698: return "skinning";
+    default: return nullptr;
+  }
+}
+}  // namespace
+
+REX_EXTERN(__imp__sub_821B3F58);
+extern "C" REX_FUNC(sub_821B3F58) {
+  {
+    std::lock_guard lock(g_roots_mutex);
+    g_roots[GetCurrentThreadId()] = ctx.r3.u32;
+  }
+  __imp__sub_821B3F58(ctx, base);
+}
 
 void Wwe12ThreadCpuReport(double frames) {
   static std::unordered_map<DWORD, unsigned long long> s_last;  // tid -> kernel + user, 100 ns
@@ -68,6 +97,19 @@ void Wwe12ThreadCpuReport(double frames) {
           LocalFree(wname);
           name = buf;
         }
+        {
+          std::lock_guard lock(g_roots_mutex);
+          const auto root = g_roots.find(te.th32ThreadID);
+          if (root != g_roots.end()) {
+            char label[48];
+            const char *known = RootLabel(root->second);
+            if (known)
+              snprintf(label, sizeof(label), "%s(%08X)", known, root->second);
+            else
+              snprintf(label, sizeof(label), "game %08X", root->second);
+            name = label;
+          }
+        }
         if (name.empty()) {
           unnamed_ms += ms;
           ++unnamed;
@@ -85,7 +127,7 @@ void Wwe12ThreadCpuReport(double frames) {
     return;  // the first call only takes the starting times
   std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) { return a.ms > b.ms; });
   std::string line;
-  for (size_t i = 0; i < rows.size() && i < 10; ++i) {
+  for (size_t i = 0; i < rows.size() && i < 15; ++i) {
     if (rows[i].ms < 0.05)
       break;
     char part[128];
