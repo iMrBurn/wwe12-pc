@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cfloat>
 #include <cmath>
+#include <initializer_list>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -51,6 +52,51 @@ std::atomic<uint64_t> g_frames{0};
 std::atomic<bool> g_show{false};
 rex::ui::ImGuiDrawer *g_drawer = nullptr;
 
+// FPS counter fonts (1.5): baked once at start-up for a 1080p screen (kNumPx / kTextPx pixels), before ImGui
+// uploads its font atlas (wwe12_app.h calls Wwe12DisplayInit before the first overlay frame). Null = ImGui's
+// own font.
+constexpr float kNumPx = 27.0f, kTextPx = 17.0f;
+ImFont *g_font_num = nullptr, *g_font_text = nullptr;
+
+bool FileExists(const char *path) {
+  if (FILE *f = fopen(path, "rb")) {
+    fclose(f);
+    return true;
+  }
+  return false;
+}
+
+void LoadOverlayFonts(rex::ui::ImGuiDrawer *drawer) {
+  ImGuiIO &io = drawer->GetIO();
+  if (io.Fonts->TexIsBuilt) {
+    BD_WARN("[display] font atlas already built: FPS counter keeps ImGui's font");
+    return;
+  }
+  static const ImWchar ranges[] = {0x0020, 0x00FF, 0};  // Latin (the temperature's degree sign)
+  auto load = [&](std::initializer_list<const char *> paths, float px) -> ImFont * {
+    for (const char *p : paths) {
+      if (!FileExists(p))
+        continue;
+      ImFontConfig cfg;
+      cfg.OversampleH = 2;
+      cfg.OversampleV = 1;
+      cfg.PixelSnapH = true;
+      if (ImFont *f = io.Fonts->AddFontFromFileTTF(p, px, &cfg, ranges)) {
+        BD_INFO("[display] FPS counter font {} ({} px)", p, px);
+        return f;
+      }
+    }
+    return nullptr;
+  };
+#if REX_PLATFORM_ANDROID
+  g_font_num = load({"/system/fonts/Roboto-Medium.ttf", "/system/fonts/Roboto-Regular.ttf"}, kNumPx);
+  g_font_text = load({"/system/fonts/Roboto-Regular.ttf"}, kTextPx);
+#else
+  g_font_num = load({"C:\\Windows\\Fonts\\seguisb.ttf", "C:\\Windows\\Fonts\\segoeui.ttf"}, kNumPx);
+  g_font_text = load({"C:\\Windows\\Fonts\\segoeui.ttf"}, kTextPx);
+#endif
+}
+
 class FpsOverlay;
 FpsOverlay *g_overlay = nullptr;  // UI thread only
 
@@ -77,22 +123,29 @@ class FpsOverlay final : public rex::ui::ImGuiDialog {
       last_time_ = now;
       last_frames_ = frames;
     }
-    // 1.5 look (2026-11-20): a small rounded pill centred at the top: a coloured dot (green >= 55,
-    // yellow >= 30, red below), the FPS in white, "FPS" small and grey, a thin separator, the frame time
-    // small and dimmed (and the phone's temperature on Android). Every part has a fixed width (3 digits,
-    // "000.0 ms") so the pill does not change size when the numbers change, and the shown FPS only moves
-    // when it is off by more than half a frame (no 59 / 60 flicker).
+    // 1.5 look (2026-11-20): a small rounded pill centred at the top: a coloured dot with a soft halo (green
+    // >= 55, yellow >= 30, red below), the FPS in white semibold, "FPS" small and grey, a thin separator, the
+    // frame time (and the phone's temperature on Android). Real fonts (Segoe UI / Roboto, loaded once at
+    // their size by Wwe12DisplayInit; ImGui's own font if missing), fixed widths so the pill never changes
+    // size, the shown FPS only moves when it is off by more than half a frame (no 59 / 60 flicker), and a
+    // 150 ms fade-in when F2 shows it.
     if (fps_ > 0.5 && (shown_fps_ < 0 || std::abs(fps_ - shown_fps_) > 0.6))
       shown_fps_ = std::round(fps_);
     const bool have = fps_ > 0.5 && shown_fps_ >= 0;
     const double fps = have ? shown_fps_ : 0.0;
+    if (shown_at_ < 0)
+      shown_at_ = now;
+    const float fade = float(std::min(1.0, (now - shown_at_) / 0.15));
+    auto col = [&](int r, int g, int b, int a) { return IM_COL32(r, g, b, int(a * fade)); };
 
     const float k = std::max(0.6f, io.DisplaySize.y / 1080.0f);
     ImDrawList *dl = ImGui::GetForegroundDrawList();
-    ImFont *font = ImGui::GetFont();
-    const float fps_sz = 26.0f * k, text_sz = 16.0f * k;
-    const float pad_x = 13.0f * k, pad_y = 5.0f * k, gap = 8.0f * k, dot_r = 4.5f * k;
-    auto width = [&](float size, const char *s) { return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x; };
+    ImFont *num_font = g_font_num ? g_font_num : ImGui::GetFont();
+    ImFont *txt_font = g_font_text ? g_font_text : ImGui::GetFont();
+    // the fonts are baked for g_font_k; at that scale they are drawn at their own pixel size (crisp)
+    const float fps_sz = kNumPx * k, text_sz = kTextPx * k;
+    const float pad_x = 14.0f * k, pad_y = 4.0f * k, gap = 9.0f * k, dot_r = 4.0f * k;
+    auto width = [&](ImFont *f, float size, const char *t) { return f->CalcTextSizeA(size, FLT_MAX, 0.0f, t).x; };
 
     char num[16], ms[24];
     if (have) {
@@ -106,47 +159,54 @@ class FpsOverlay final : public rex::ui::ImGuiDialog {
 #if REX_PLATFORM_ANDROID
     // Phone (battery) temperature, when the launcher setting is on (wwe12_temp.cpp).
     if (const int t = Wwe12PhoneTempTenths(); t > -1000)
-      snprintf(extra, sizeof(extra), "%d.%d C", t / 10, std::abs(t % 10));
+      snprintf(extra, sizeof(extra), "%d.%d \xC2\xB0" "C", t / 10, std::abs(t % 10));
 #endif
-    const float num_w = width(fps_sz, "000"), fps_w = width(text_sz, "FPS"), ms_w = width(text_sz, "000.0 ms");
-    const float extra_w = extra[0] ? width(text_sz, "00.0 C") : 0.0f;
-    const float h = fps_sz + 2.0f * pad_y;
-    float w = pad_x + 2.0f * dot_r + gap + num_w + 4.0f * k + fps_w + gap + 1.0f * k + gap + ms_w + pad_x;
+    const float num_w = width(num_font, fps_sz, "000"), fps_w = width(txt_font, text_sz, "FPS");
+    const float ms_w = width(txt_font, text_sz, "000.0 ms");
+    const float extra_w = extra[0] ? width(txt_font, text_sz, "00.0 \xC2\xB0" "C") : 0.0f;
+    const float h = std::floor(fps_sz + 2.0f * pad_y);
+    float w = pad_x + 2.0f * dot_r + gap + num_w + 5.0f * k + fps_w + gap + 1.0f + gap + ms_w + pad_x;
     if (extra[0])
-      w += gap + 1.0f * k + gap + extra_w;
-    const float x0 = std::floor((io.DisplaySize.x - w) * 0.5f), y0 = std::floor(10.0f * k);
+      w += gap + 1.0f + gap + extra_w;
+    w = std::floor(w);
+    const float x0 = std::floor((io.DisplaySize.x - w) * 0.5f), y0 = std::floor(12.0f * k);
 
-    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), IM_COL32(0, 0, 0, 140), h * 0.5f);
-    dl->AddRect(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), IM_COL32(255, 255, 255, 38), h * 0.5f, 0,
-                std::max(1.0f, 1.0f * k));
+    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), col(12, 12, 14, 158), h * 0.5f);
+    dl->AddRect(ImVec2(x0 + 0.5f, y0 + 0.5f), ImVec2(x0 + w - 0.5f, y0 + h - 0.5f), col(255, 255, 255, 34),
+                h * 0.5f, 0, 1.0f);
 
-    const ImU32 dot = !have ? IM_COL32(150, 150, 150, 255)
-                      : fps >= 55.0 ? IM_COL32(90, 220, 110, 255)
-                      : fps >= 30.0 ? IM_COL32(240, 200, 70, 255)
-                                    : IM_COL32(235, 90, 80, 255);
+    int r = 150, g = 150, b = 150;
+    if (have && fps >= 55.0) { r = 80; g = 220; b = 110; }
+    else if (have && fps >= 30.0) { r = 245; g = 200; b = 70; }
+    else if (have) { r = 240; g = 85; b = 75; }
     float x = x0 + pad_x;
     const float mid = y0 + h * 0.5f;
-    dl->AddCircleFilled(ImVec2(x + dot_r, mid), dot_r, dot, 16);
+    dl->AddCircleFilled(ImVec2(x + dot_r, mid), dot_r * 2.1f, col(r, g, b, 40), 24);  // halo
+    dl->AddCircleFilled(ImVec2(x + dot_r, mid), dot_r * 1.45f, col(r, g, b, 60), 24);
+    dl->AddCircleFilled(ImVec2(x + dot_r, mid), dot_r, col(r, g, b, 255), 24);
     x += 2.0f * dot_r + gap;
-    // the FPS right-aligned in its 3-digit box, the text_sz texts on the same baseline (bottom-aligned)
-    const float big_y = y0 + pad_y, small_y = big_y + (fps_sz - text_sz) * 0.78f;
-    dl->AddText(font, fps_sz, ImVec2(x + num_w - width(fps_sz, num), big_y), IM_COL32(255, 255, 255, 255), num);
-    x += num_w + 4.0f * k;
-    dl->AddText(font, text_sz, ImVec2(x, small_y), IM_COL32(205, 205, 205, 210), "FPS");
+    // the FPS right-aligned in its 3-digit box; the small texts bottom-aligned with it (same baseline)
+    const float num_y = std::floor(mid - fps_sz * 0.5f);
+    const float text_y = std::floor(num_y + (fps_sz - text_sz) * 0.80f);
+    dl->AddText(num_font, fps_sz, ImVec2(std::floor(x + num_w - width(num_font, fps_sz, num)), num_y),
+                col(255, 255, 255, 255), num);
+    x += num_w + 5.0f * k;
+    dl->AddText(txt_font, text_sz, ImVec2(x, text_y), col(190, 192, 198, 235), "FPS");
     x += fps_w + gap;
     auto separator = [&]() {
-      dl->AddLine(ImVec2(x, y0 + h * 0.25f), ImVec2(x, y0 + h * 0.75f), IM_COL32(255, 255, 255, 55),
-                  std::max(1.0f, 1.0f * k));
-      x += 1.0f * k + gap;
+      const float sx = std::floor(x) + 0.5f;
+      dl->AddLine(ImVec2(sx, y0 + h * 0.28f), ImVec2(sx, y0 + h * 0.72f), col(255, 255, 255, 50), 1.0f);
+      x += 1.0f + gap;
     };
     separator();
-    dl->AddText(font, text_sz, ImVec2(x + ms_w - width(text_sz, ms), small_y), IM_COL32(180, 180, 180, 170), ms);
+    dl->AddText(txt_font, text_sz, ImVec2(std::floor(x + ms_w - width(txt_font, text_sz, ms)), text_y),
+                col(215, 217, 222, 235), ms);
     x += ms_w;
     if (extra[0]) {
       x += gap;
       separator();
-      dl->AddText(font, text_sz, ImVec2(x + extra_w - width(text_sz, extra), small_y), IM_COL32(180, 180, 180, 170),
-                  extra);
+      dl->AddText(txt_font, text_sz, ImVec2(std::floor(x + extra_w - width(txt_font, text_sz, extra)), text_y),
+                  col(215, 217, 222, 235), extra);
     }
   }
 
@@ -155,6 +215,7 @@ class FpsOverlay final : public rex::ui::ImGuiDialog {
   uint64_t last_frames_ = 0;
   double fps_ = 0.0;
   double shown_fps_ = -1.0;  // the integer shown (changes only past half a frame of difference)
+  double shown_at_ = -1.0;   // ImGui time of the first draw (fade-in)
 };
 
 void ShowOverlayIfNeeded() {
@@ -187,6 +248,8 @@ void WaitUntil(std::chrono::steady_clock::time_point next) {
 
 void Wwe12DisplayInit(rex::ui::ImGuiDrawer *drawer) {
   g_drawer = drawer;
+  if (drawer)
+    LoadOverlayFonts(drawer);
   switch (REXCVAR_GET(wwe12_cpu_priority)) {
   case 1:
     SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
