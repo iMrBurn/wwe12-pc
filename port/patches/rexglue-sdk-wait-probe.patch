@@ -1,0 +1,50 @@
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+index a19755c..7c86dbd 100644
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -36,6 +36,11 @@
+ #include <rex/system/user_module.h>
+ 
+ REXCVAR_DEFINE_BOOL(vsync, true, "GPU", "Enable vertical sync");
++// WWE '12 PC (2026-11-20, port/patches/rexglue-sdk-wait-probe.patch): the "NOW LOADING" freeze on 2 threads left
++// the command processor in one WAIT_REG_MEM for good. Read only: logs a WAIT_REG_MEM that lasts over 1 s (what it
++// polls, the reference, mask, comparison, the value read, the vblank counter), then every 5 s while it lasts.
++REXCVAR_DEFINE_BOOL(gpu_wait_probe, false, "GPU",
++                    "Debug: log every WAIT_REG_MEM of the guest command stream that waits more than 1 s");
+ 
+ REXCVAR_DEFINE_BOOL(gpu_thread_above_normal_priority, true, "GPU",
+                     "Run the GPU command thread above normal priority, so other busy programs "
+@@ -998,6 +1003,12 @@ bool CommandProcessor::ExecutePacketType3_WAIT_REG_MEM(memory::RingBuffer* reade
+ 
+   bool is_memory = (wait_info & 0x10) != 0;
+ 
++  // gpu_wait_probe (read only): time of the first poll, next report time, reports made.
++  const bool wait_probe = REXCVAR_GET(gpu_wait_probe);
++  const auto wait_probe_start = std::chrono::steady_clock::now();
++  auto wait_probe_next = wait_probe_start + std::chrono::seconds(1);
++  uint32_t wait_probe_reports = 0;
++
+   bool matched = false;
+   do {
+     uint32_t value = 0;
+@@ -1038,6 +1049,20 @@ bool CommandProcessor::ExecutePacketType3_WAIT_REG_MEM(memory::RingBuffer* reade
+         matched = true;
+         break;
+     }
++    if (!matched && wait_probe) {
++      const auto now = std::chrono::steady_clock::now();
++      if (now >= wait_probe_next) {
++        ++wait_probe_reports;
++        REXGPU_WARN(
++            "[waitprobe] WAIT_REG_MEM waiting {} ms (report {}): {} {:08X} value {:08X} & mask {:08X} "
++            "vs ref {:08X} (compare {}: 0 never 1 < 2 <= 3 == 4 != 5 >= 6 > 7 always) | wait {:X} | vblank "
++            "counter {} | ring read {:08X}",
++            std::chrono::duration_cast<std::chrono::milliseconds>(now - wait_probe_start).count(),
++            wait_probe_reports, is_memory ? "memory" : "register", poll_reg_addr, value, mask, ref,
++            wait_info & 0x7, wait, counter_, read_ptr_index_);
++        wait_probe_next = now + std::chrono::seconds(5);
++      }
++    }
+     if (!matched) {
+       // Wait.
+       if (wait >= 0x100) {
