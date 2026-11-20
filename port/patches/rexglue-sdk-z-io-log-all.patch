@@ -1,5 +1,5 @@
 diff --git a/src/kernel/xboxkrnl/xboxkrnl_io.cpp b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
-index 25c35c5..3df3082 100644
+index 25c35c5..caba521 100644
 --- a/src/kernel/xboxkrnl/xboxkrnl_io.cpp
 +++ b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
 @@ -14,7 +14,10 @@
@@ -13,7 +13,14 @@ index 25c35c5..3df3082 100644
  #include <rex/cvar.h>
  #include <rex/filesystem/device.h>
  #include <rex/platform.h>
-@@ -42,12 +45,111 @@ REXCVAR_DEFINE_BOOL(replay_io_log, false, "Kernel",
+@@ -36,18 +39,120 @@
+ #include <rex/system/xsymboliclink.h>
+ #include <rex/system/xthread.h>
+ #include <rex/system/xtypes.h>
++#include <rex/thread.h>
+ #include <rex/thread/mutex.h>
+ 
+ REXCVAR_DEFINE_BOOL(replay_io_log, false, "Kernel",
                      "WWE '12 port, diagnostic: log the game's opens, reads and writes of its replay "
                      "file (cache:\\Spectacular.rps) as [replayio] lines.");
  
@@ -70,8 +77,8 @@ index 25c35c5..3df3082 100644
 +  const uint32_t tid = thread ? thread->thread_id() : 0;
 +  {
 +    std::lock_guard lock(g_io_ring.mutex);
-+    snprintf(g_io_ring.lines[g_io_ring.next], sizeof(g_io_ring.lines[0]), "%.1f ms thread %X xam %s", ms, tid,
-+             text.c_str());
++    snprintf(g_io_ring.lines[g_io_ring.next], sizeof(g_io_ring.lines[0]), "%.1f ms thread %X (XThread%04X) xam %s", ms, tid,
++             rex::thread::current_thread_system_id(), text.c_str());
 +    g_io_ring.next = (g_io_ring.next + 1) % 128;
 +    ++g_io_ring.total;
 +  }
@@ -82,7 +89,8 @@ index 25c35c5..3df3082 100644
 +    if (kinds[i] == kind)
 +      counts[i].fetch_add(1, std::memory_order_relaxed);
 +  if (lines.fetch_add(1, std::memory_order_relaxed) < 200)
-+    REXKRNL_INFO("[xamprobe] {:.1f} ms thread {:X} {}", ms, tid, text);
++    REXKRNL_INFO("[xamprobe] {:.1f} ms thread {:X} (XThread{:04X}) {}", ms, tid,
++                 rex::thread::current_thread_system_id(), text);
 +  int64_t last = last_summary_ms.load(std::memory_order_relaxed);
 +  if (int64_t(ms) - last >= 5000 && last_summary_ms.compare_exchange_strong(last, int64_t(ms)))
 +    REXKRNL_INFO("[xamprobe] 5 s: broadcasts {}, notifications read {}, listeners {}, overlapped queued {}, "
@@ -105,7 +113,8 @@ index 25c35c5..3df3082 100644
 +  {
 +    std::lock_guard lock(g_io_ring.mutex);
 +    snprintf(g_io_ring.lines[g_io_ring.next], sizeof(g_io_ring.lines[0]),
-+             "%.1f ms thread %X %s '%s' offset %#llx length %#x -> %u, status %#x", ms, tid, op, path.c_str(),
++             "%.1f ms thread %X (XThread%04X) %s '%s' offset %#llx length %#x -> %u, status %#x", ms, tid,
++             rex::thread::current_thread_system_id(), op, path.c_str(),
 +             static_cast<unsigned long long>(offset), length, done, static_cast<uint32_t>(result));
 +    g_io_ring.next = (g_io_ring.next + 1) % 128;
 +    ++g_io_ring.total;
