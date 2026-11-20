@@ -1515,3 +1515,10 @@ cette copie, le World Heavyweight (titre majeur de SmackDown) a été laissé va
 by the player », test du titre vacant) ; le jeu vide le classement d'un titre sans champion (déjà vu pour RAW au §48),
 donc les modèles et la réparation de SmackDown ne trouvent personne. Le journal de chaque carte donne maintenant les
 marques des reposés et de l'effectif (« resting: a/b/c RAW/SD/other; roster … »).
+**LAISSER VACANT retiré (2026-11-20, décision de l'utilisateur)** : un titre de show n'est plus jamais laissé vacant.
+VACATE TITLE sur un titre simple d'un show (Univers imprévisible) n'est accepté que si un tournoi à 4 est possible
+(4 prétendants libres, sans le champion ; sinon le message « une émission utilise ce titre ») ; au retour sur le menu
+de l'Univers, le tournoi est lancé directement avec le message « Le %s est vacant. Un tournoi à 4 désignera le
+prochain champion. » (plus de question). `UltimateBeforeVacate` refuse aussi de vider le titre s'il y a moins de 4
+prétendants. Reste : un tournoi abandonné (42 jours) sans 4 libres laisse encore le titre vacant (rare). La copie de
+test garde son World Heavyweight vacant du 2026-11-17 : le redonner dans EDIT TITLES.

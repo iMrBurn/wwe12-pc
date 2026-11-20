@@ -1358,10 +1358,12 @@ extern "C" REX_FUNC(sub_82565390) {
     const u32 row = bd::mem::load<u32>(screen + 28) + bd::mem::load<u32>(screen + 2520);
     const u32 title = row < 64 ? bd::mem::load<u32>(screen + 380 + row * 24) : kTitleCount;
     // (with tournaments on, a show's title may be vacated: a tournament crowns the next champion)
-    // (with the unpredictable Universe a single show title may be vacant, a tournament or not, asked after; a tag
-    // title: still refused)
+    // (with the unpredictable Universe a single show title may be vacated when a 4-man tournament can crown the
+    // next champion; never left vacant: the game empties a title's ranking with its champion, and the show then
+    // finds nobody for its matches - SmackDown at 0-1 match, user's test 2026-11-20; a tag title: still refused)
     if (title < kTitleCount && TitleUsedByAShow(ctx, base, title) &&
-        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title))) {
+        (!UltimateTournamentsOn() || Call(ctx, base, __imp__sub_82A39CE8, title) ||
+         !UltimateTourneyPossible(ctx, base, title))) {
       BD_INFO("[univers] titles: VACATE refused, a show uses title {}", title);
       Call(ctx, base, __imp__sub_8254E680, kTitleUsedText);
       return;
@@ -9103,7 +9105,12 @@ bool UltimateTourneyPossible(const PPCContext &in, u8 *base, u32 title) {
   PPCContext x = in;
   x.r1.u32 = (x.r1.u32 - 0x1000) & ~0xFu;
   const u32 u = Call(x, base, __imp__sub_82683A30, 0);
-  return u && title < 23 && TourneySeeds(x, base, u, title).size() >= 4;
+  if (!u || title >= 23)
+    return false;
+  std::vector<u32> seeds = TourneySeeds(x, base, u, title);
+  const u32 champ = Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;  // (not in his own tournament)
+  seeds.erase(std::remove(seeds.begin(), seeds.end(), champ), seeds.end());
+  return seeds.size() >= 4;
 }
 
 namespace {
@@ -9133,9 +9140,12 @@ bool UltimateBeforeVacate(const PPCContext &in, u8 *base, u32 title) {
   // (the champion who loses it is not in its tournament)
   const u32 champ = Call(x, base, __imp__sub_82A39FC8, title, 0, 1) & 0xFFFF;
   seeds.erase(std::remove(seeds.begin(), seeds.end(), champ), seeds.end());
-  if (seeds.size() > 4)
-    seeds.resize(4);
-  t_seed_title = title;  // (the player's vacate: asked after, tournament or vacant; fewer than 4: vacant)
+  if (seeds.size() < 4) {  // (never vacant: the show would find nobody for its matches, see VACATE TITLE)
+    BD_INFO("[univers] tournament: title {} not vacated, only {} free contenders", title, seeds.size());
+    return false;
+  }
+  seeds.resize(4);
+  t_seed_title = title;  // (the player's vacate: its tournament announced back on the Universe menu)
   t_seeds = std::move(seeds);
   return true;
 }
@@ -9198,16 +9208,12 @@ void UltimateAskVacant(const PPCContext &in, u8 *base) {
     v = g_vacant_ask.front();
     g_vacant_ask.erase(g_vacant_ask.begin());
   }
-  static const char *const kAsk[5] = {"The %s is vacant.\nHow will the next champion be decided?",
-                                      "Le %s est vacant.\nComment d\xC3\xA9signer le prochain champion ?",
-                                      "Der %s ist vakant.\nWie wird der n\xC3\xA4" "chste Champion bestimmt?",
-                                      "El %s est\xC3\xA1 vacante.\n\xC2\xBF" "C\xC3\xB3mo se decidir\xC3\xA1 el pr\xC3\xB3ximo "
-                                      "campe\xC3\xB3n?",
-                                      "Il %s \xC3\xA8 vacante.\nCome si decider\xC3\xA0 il prossimo campione?"};
-  static const char *const kTourney[5] = {"4-MAN TOURNAMENT", "TOURNOI \xC3\x80 4", "TURNIER MIT 4",
-                                          "TORNEO DE 4", "TORNEO A 4"};
-  static const char *const kVacant[5] = {"LEAVE IT VACANT", "LAISSER VACANT", "VAKANT LASSEN", "DEJARLO VACANTE",
-                                         "LASCIARLO VACANTE"};
+  static const char *const kTourneyNow[5] = {
+      "The %s is vacant.\nA 4-man tournament will crown the next champion.",
+      "Le %s est vacant.\nUn tournoi \xC3\xA0 4 d\xC3\xA9signera le prochain champion.",
+      "Der %s ist vakant.\nEin Turnier mit 4 bestimmt den n\xC3\xA4" "chsten Champion.",
+      "El %s est\xC3\xA1 vacante.\nUn torneo de 4 decidir\xC3\xA1 el pr\xC3\xB3ximo campe\xC3\xB3n.",
+      "Il %s \xC3\xA8 vacante.\nUn torneo a 4 decider\xC3\xA0 il prossimo campione."};
   static const char *const kFew[5] = {"The %s stays vacant (fewer than 4 free contenders for a tournament).",
                                       "Le %s reste vacant (moins de 4 pr\xC3\xA9tendants libres pour un tournoi).",
                                       "Der %s bleibt vakant (weniger als 4 freie Herausforderer f\xC3\xBCr ein Turnier).",
@@ -9221,17 +9227,11 @@ void UltimateAskVacant(const PPCContext &in, u8 *base) {
     Inform(in, base, text);
     return;
   }
-  std::snprintf(text, sizeof(text), kAsk[lang], name.c_str());
-  Choose(in, base, text, {kTourney[lang], kVacant[lang]}, [v](const PPCContext &in, u8 *base, size_t k) {
-    if (k == 0) {
-      const u32 u = Call(in, base, __imp__sub_82683A30, 0);
-      if (u)
-        StartTourney(v.title, bd::mem::load<u32>(u + kUniverseDay), v.seeds);
-    } else {
-      BD_INFO("[univers] tournament: title {} left vacant by the player", v.title);
-    }
-    UltimateAskVacant(in, base);  // (another vacated title)
-  });
+  // (LEAVE IT VACANT removed, user 2026-11-20: a vacant show title empties its ranking and the show's cards)
+  if (const u32 u = Call(in, base, __imp__sub_82683A30, 0))
+    StartTourney(v.title, bd::mem::load<u32>(u + kUniverseDay), v.seeds);
+  std::snprintf(text, sizeof(text), kTourneyNow[lang], name.c_str());
+  Inform(in, base, text);
 }
 
 // a singles result: a semi-final's winner
