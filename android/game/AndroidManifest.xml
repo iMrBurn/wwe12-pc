@@ -39,6 +39,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- "Share last log": hands the .log file itself to the share sheet (LogProvider.java). -->
+        <provider
+            android:name=".LogProvider"
+            android:authorities="io.github.imrburn.wwe12.logs"
+            android:exported="false"
+            android:grantUriPermissions="true" />
         <activity
             android:name=".SavesActivity"
             android:exported="false"

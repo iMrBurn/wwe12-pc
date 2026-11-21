@@ -1126,14 +1126,28 @@ public class LauncherActivity extends Activity {
             Toast.makeText(this, "No log yet: play once first.", Toast.LENGTH_SHORT).show();
             return;
         }
-        // Shared as text, so it must stay small: the start of the log (phone, GPU, settings) and its
+        // 1.5: the .log file itself goes to the share sheet (a huge text made the sheet fail on many phones, #85).
+        try {
+            Uri uri = Uri.parse("content://" + LogProvider.AUTHORITY + "/" + Uri.encode(last.getName()));
+            Intent f = new Intent(Intent.ACTION_SEND);
+            f.setType("text/plain");
+            f.putExtra(Intent.EXTRA_SUBJECT, "WWE12 Android log " + last.getName());
+            f.putExtra(Intent.EXTRA_STREAM, uri);
+            f.setClipData(android.content.ClipData.newRawUri(last.getName(), uri));
+            f.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(f, "Share log"));
+            return;
+        } catch (Exception e) {
+            android.util.Log.w("WWE12", "sharing the log file failed, falling back to text: " + e);
+        }
+        // Fallback, shared as text, so it must stay small: the start of the log (phone, GPU, settings) and its
         // end (what happened last), without the pipeline detail lines that fill most of it.
         String body;
         try (java.io.BufferedReader r = new java.io.BufferedReader(
                 new java.io.InputStreamReader(new java.io.FileInputStream(last), "UTF-8"))) {
             StringBuilder head = new StringBuilder();
             java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
-            long tailSize = 0, max = 180 * 1024;
+            long tailSize = 0, max = 60 * 1024;
             int n = 0, dropped = 0;
             for (String l; (l = r.readLine()) != null; ) {
                 if (l.contains("SvR pipeline: element") || l.contains("vertex declaration 0x")
@@ -1154,7 +1168,18 @@ public class LauncherActivity extends Activity {
         i.setType("text/plain");
         i.putExtra(Intent.EXTRA_SUBJECT, "WWE12 Android log " + last.getName());
         i.putExtra(Intent.EXTRA_TEXT, body);
-        startActivity(Intent.createChooser(i, "Share log"));
+        // Also on the clipboard, so it can be pasted by hand if the share sheet fails.
+        try {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("WWE12 log", body));
+        } catch (Exception ignored) {
+        }
+        try {
+            startActivity(Intent.createChooser(i, "Share log"));
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not open the share sheet. The log is copied: paste it in Discord or GitHub. "
+                    + "Or copy " + last.getAbsolutePath(), Toast.LENGTH_LONG).show();
+        }
     }
 
     // ---- wwe12.toml: "key = value" lines, edited in place like the PC launcher -----------------
