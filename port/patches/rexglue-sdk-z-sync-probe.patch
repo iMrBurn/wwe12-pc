@@ -1,0 +1,197 @@
+diff --git a/src/system/xobject.cpp b/src/system/xobject.cpp
+index d358f39..d5bb998 100644
+--- a/src/system/xobject.cpp
++++ b/src/system/xobject.cpp
+@@ -27,6 +27,116 @@
+ #include <rex/system/xsymboliclink.h>
+ #include <rex/system/xthread.h>
+ 
++#include <algorithm>
++#include <chrono>
++#include <cstdio>
++#include <mutex>
++#include <unordered_map>
++
++#include <rex/cvar.h>
++#include <rex/thread.h>
++
++// WWE '12 port, 2026-11-21 (port/patches/rexglue-sdk-z-sync-probe.patch): the start-up freeze on 2 threads leaves
++// the sound engine's threads waiting like in a healthy run; this tells, at the hang dump, whether what each waiting
++// thread waits for was ever signalled (and when, by whom) or not. Read only. Off: one boolean test per call.
++REXCVAR_DEFINE_BOOL(sync_probe, false, "Kernel",
++                    "Diagnostic: track guest event / semaphore signals and waits; hang_trace.txt then lists, for "
++                    "every waiting thread, what it waits for and when each object was last signalled.");
++
++namespace {
++struct SyncSignal {
++  uint32_t count = 0;
++  double last_ms = 0;
++  uint32_t last_tid = 0;  // host thread id (XThreadNNNN)
++};
++struct SyncWait {
++  double since_ms = 0;
++  uint32_t guest_tid = 0;
++  uint32_t count = 0;
++  const void* objects[8] = {};
++  int types[8] = {};
++};
++std::mutex g_sync_mutex;
++std::unordered_map<const void*, SyncSignal> g_sync_signals;
++std::unordered_map<uint32_t, SyncWait> g_sync_waits;  // host thread id -> its current wait
++const auto g_sync_start = std::chrono::steady_clock::now();
++double SyncMs() {
++  return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - g_sync_start).count();
++}
++
++struct SyncWaitScope {
++  bool on;
++  uint32_t tid = 0;
++  SyncWaitScope(uint32_t count, rex::system::XObject* const* objects) : on(REXCVAR_GET(sync_probe)) {
++    if (!on)
++      return;
++    tid = rex::thread::current_thread_system_id();
++    SyncWait w;
++    w.since_ms = SyncMs();
++    auto* thread = rex::system::XThread::GetCurrentThread();
++    w.guest_tid = thread ? thread->thread_id() : 0;
++    w.count = count;
++    for (uint32_t i = 0; i < count && i < 8; ++i) {
++      w.objects[i] = objects[i];
++      w.types[i] = objects[i] ? int(objects[i]->type()) : -1;
++    }
++    std::lock_guard lock(g_sync_mutex);
++    g_sync_waits[tid] = w;
++  }
++  ~SyncWaitScope() {
++    if (!on)
++      return;
++    std::lock_guard lock(g_sync_mutex);
++    g_sync_waits.erase(tid);
++  }
++};
++}  // namespace
++
++// XEvent::Set / Pulse and XSemaphore::ReleaseSemaphore (xevent.cpp, xsemaphore.cpp).
++void RexSyncNoteSignal(const void* object) {
++  if (!REXCVAR_GET(sync_probe))
++    return;
++  std::lock_guard lock(g_sync_mutex);
++  SyncSignal& s = g_sync_signals[object];
++  ++s.count;
++  s.last_ms = SyncMs();
++  s.last_tid = rex::thread::current_thread_system_id();
++}
++
++// For the hang dump (crash_trace.cpp): every guest thread now waiting, with its objects' signal history.
++extern "C"
++#if REX_PLATFORM_WIN32
++    __declspec(dllexport)
++#endif
++    int RexWaitReport(char* out, int capacity) {
++  if (!out || capacity <= 0)
++    return 0;
++  std::lock_guard lock(g_sync_mutex);
++  const double now = SyncMs();
++  int len = 0;
++  auto put = [&](const char* fmt, auto... args) {
++    if (len >= capacity - 1)
++      return;
++    const int n = snprintf(out + len, size_t(capacity - len), fmt, args...);
++    if (n > 0)
++      len = std::min(capacity - 1, len + n);
++  };
++  for (const auto& [tid, w] : g_sync_waits) {
++    put("XThread%04X (guest thread %X) waiting for %.0f ms on %u object(s):\n", tid, w.guest_tid,
++        now - w.since_ms, w.count);
++    for (uint32_t i = 0; i < w.count && i < 8; ++i) {
++      const auto it = g_sync_signals.find(w.objects[i]);
++      if (it == g_sync_signals.end())
++        put("  object %p (type %d): never signalled\n", w.objects[i], w.types[i]);
++      else
++        put("  object %p (type %d): signalled %u time(s), last at %.1f ms by XThread%04X (%s its wait began)\n",
++            w.objects[i], w.types[i], it->second.count, it->second.last_ms, it->second.last_tid,
++            it->second.last_ms >= w.since_ms ? "AFTER" : "before");
++    }
++  }
++  return len;
++}
++
+ namespace rex::system {
+ 
+ XObject::XObject(Type type) : kernel_state_(nullptr), pointer_ref_count_(1), type_(type) {
+@@ -213,6 +323,8 @@ X_STATUS XObject::Wait(uint32_t wait_reason, uint32_t processor_mode, uint32_t a
+                                 : std::chrono::milliseconds::max();
+ 
+   XThread::CheckTitleTermination();
++  XObject* self = this;
++  SyncWaitScope sync_scope(1, &self);
+   auto result = rex::thread::Wait(wait_handle, alertable ? true : false, timeout_ms);
+   XThread::CheckTitleTermination();
+   switch (result) {
+@@ -239,6 +351,8 @@ X_STATUS XObject::SignalAndWait(XObject* signal_object, XObject* wait_object, ui
+                                       TimeoutTicksToMs(*opt_timeout)))
+                                 : std::chrono::milliseconds::max();
+ 
++  RexSyncNoteSignal(signal_object);
++  SyncWaitScope sync_scope(1, &wait_object);
+   auto result =
+       rex::thread::SignalAndWait(signal_object->GetWaitHandle(), wait_object->GetWaitHandle(),
+                                  alertable ? true : false, timeout_ms);
+@@ -273,6 +387,7 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects, uint32_t wait_
+                                 : std::chrono::milliseconds::max();
+ 
+   XThread::CheckTitleTermination();
++  SyncWaitScope sync_scope(count, objects);
+   if (wait_type) {
+     auto result =
+         rex::thread::WaitAny(std::move(wait_handles), alertable ? true : false, timeout_ms);
+diff --git a/src/system/xevent.cpp b/src/system/xevent.cpp
+index c24fbd1..3b749da 100644
+--- a/src/system/xevent.cpp
++++ b/src/system/xevent.cpp
+@@ -13,6 +13,9 @@
+ #include <rex/stream.h>
+ #include <rex/system/xevent.h>
+ 
++// sync_probe (xobject.cpp)
++void RexSyncNoteSignal(const void* object);
++
+ namespace rex::system {
+ 
+ XEvent::XEvent(KernelState* kernel_state) : XObject(kernel_state, kObjectType) {}
+@@ -74,11 +77,13 @@ void XEvent::Query(uint32_t* out_type, uint32_t* out_state) {
+ }
+ 
+ int32_t XEvent::Set(uint32_t priority_increment, bool wait) {
++  RexSyncNoteSignal(this);
+   event_->Set();
+   return 1;
+ }
+ 
+ int32_t XEvent::Pulse(uint32_t priority_increment, bool wait) {
++  RexSyncNoteSignal(this);
+   event_->Pulse();
+   return 1;
+ }
+diff --git a/src/system/xsemaphore.cpp b/src/system/xsemaphore.cpp
+index db830e4..91fd2cd 100644
+--- a/src/system/xsemaphore.cpp
++++ b/src/system/xsemaphore.cpp
+@@ -13,6 +13,9 @@
+ #include <rex/stream.h>
+ #include <rex/system/xsemaphore.h>
+ 
++// sync_probe (xobject.cpp)
++void RexSyncNoteSignal(const void* object);
++
+ namespace rex::system {
+ 
+ XSemaphore::XSemaphore(KernelState* kernel_state) : XObject(kernel_state, kObjectType) {}
+@@ -40,6 +43,7 @@ bool XSemaphore::InitializeNative(void* native_ptr, X_DISPATCH_HEADER* header) {
+ 
+ bool XSemaphore::ReleaseSemaphore(int32_t release_count, int32_t* out_previous_count) {
+   int32_t previous_count = 0;
++  RexSyncNoteSignal(this);
+   bool success = semaphore_->Release(release_count, &previous_count);
+   if (out_previous_count) {
+     *out_previous_count = previous_count;

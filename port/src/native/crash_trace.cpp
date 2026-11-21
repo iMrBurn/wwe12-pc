@@ -256,6 +256,13 @@ void DumpAllThreads() {
       const int n = io_recent(buf, int(sizeof(buf)));
       fprintf(f, "\nlast file operations and XAM events (io_log_all / xam_probe, oldest first):\n%.*s", n, buf);
     }
+    // Every guest thread now waiting and whether its objects were signalled since (sync_probe,
+    // rexglue-sdk-z-sync-probe.patch).
+    if (auto wait_report = reinterpret_cast<IoRecentFn>(GetProcAddress(rt, "RexWaitReport"))) {
+      static char wbuf[256 * 1024];
+      const int n = wait_report(wbuf, int(sizeof(wbuf)));
+      fprintf(f, "\nguest waits now (sync_probe):\n%.*s", n, wbuf);
+    }
   }
   fclose(f);
 }
