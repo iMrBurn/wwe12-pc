@@ -37,6 +37,8 @@
 
 #include <fmt/format.h>
 #include <rex/cvar.h>
+#include <rex/system/kernel_state.h>
+#include <rex/system/xmemory.h>
 
 #include "core/logging.h"
 #include "core/memory_helpers.h"
@@ -388,4 +390,29 @@ extern "C" REX_FUNC(sub_8268B218) {
   static std::atomic<int> logged{0};
   if (logged++ < 10)
     BD_INFO("[eight] slots -> persons: 7 -> 6, 8 -> 7 (from {:08X})", u32(ctx.lr));
+}
+
+// ---- try 8 (2026-11-22): what memory is refused ---------------------------------------------------------------------
+// Tries 6 and 7 crashed the same way while loading slot 7's model (sub_82837EC8, a part's buffer from sub_82A9C000), with
+// two superstars not in the match the second time (102, 107): "PhysicalHeap::Alloc unable to alloc physical memory in
+// parent heap", then the empty result is used. The guest's physical memory is the console's 512 MB (shared by the game's
+// heaps, mapped at start-up, and its physical allocations). sub_821AC5E8(size, attributes) is the game's allocator for
+// such memory (XMemAlloc-like, by category); when it gives 0 with the 8 superstars on, the size, the attributes and
+// the caller are logged, with how much physical memory is left in 4 KB / 64 KB / 16 MB pages.
+REX_EXTERN(__imp__sub_821AC5E8);
+extern "C" REX_FUNC(sub_821AC5E8) {
+  const u32 size = ctx.r3.u32, attr = ctx.r4.u32, caller = u32(ctx.lr);
+  __imp__sub_821AC5E8(ctx, base);
+  if (ctx.r3.u32 || !REXCVAR_GET(wwe12_dev_eight_wrestlers) || !g_armed.load())
+    return;  // (only in the 8-superstar match: the 446 refusals of every start-up are the game's own probing)
+  static std::atomic<int> logged{0};
+  if (logged++ >= 40)
+    return;
+  std::string left;
+  if (auto *memory = REX_KERNEL_MEMORY())
+    for (uint32_t ps : {4096u, 65536u, 16u << 20})
+      if (auto *h = memory->LookupHeapByType(true, ps))
+        left += fmt::format(" {}K pages {} of {} free;", ps >> 10, h->GetUnreservedPageCount(), h->GetTotalPageCount());
+  BD_WARN("[eight] memory refused: {} bytes ({} KB), attributes {:08X}, for {:08X} |{}", size, size / 1024, attr, caller,
+          left);
 }

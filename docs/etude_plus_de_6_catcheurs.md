@@ -257,6 +257,21 @@ Avant de demander ce test : lire `sub_822CDF78` (création des personnages) et c
 - le lanceur n'agrandit plus les tas 12 / 15 (20 Mo inutiles).
 - S'il plante encore au même endroit, la cause est la mémoire physique, et il faudra la mesurer.
 
+**Essai 7 (2026-11-22) : même plantage**, alors que les catcheurs ajoutés n'étaient pas en double (102 et 107).
+Ce n'était donc pas le doublon. C'est bien une demande de **mémoire physique** refusée pendant le chargement du
+modèle de la case 7.
+- La mémoire « physique » du jeu est celle de la console : **512 Mo**, simulés par le SDK
+  (`recomp/rexglue-sdk/src/system/xmemory.cpp`). Les tas du jeu, faits au démarrage, et ses demandes de mémoire
+  physique (`sub_821AC5E8`) se la partagent.
+- Le PC a bien plus de mémoire, mais le jeu ne voit que ces 512 Mo, découpés comme sur la Xbox (adresses sur 32 bits).
+- Pistes, une fois la taille et le genre de mémoire connus :
+  - redécouper les 512 Mo (les tas du jeu en gardent beaucoup, souvent à moitié vides : voir `[heaps]`) ;
+  - sortir de ces 512 Mo des choses à nous.
+
+**Essai 8 (prêt)** : crochet de journal sur `sub_821AC5E8`, seulement pendant le match à 8. Il note la taille
+refusée, ses attributs, l'appelant et ce qu'il reste de mémoire physique (pages de 4 Ko / 64 Ko / 16 Mo). Il ne change
+rien au jeu : il sert à choisir la bonne piste.
+
 **Idée d'iMrBurn (2026-11-22) : de vrais types de match à 8** (4 contre 4, combat à 8, etc.). C'est le palier 1, à
 faire dès que l'essai 6 montre deux vrais catcheurs qui bougent :
 - 8-MAN TAG (4 contre 4) = la règle du 6-man tag (3 contre 3) + 2 personnes de plus, une par équipe (ce que fait
