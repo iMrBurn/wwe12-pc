@@ -288,6 +288,21 @@ rien au jeu : il sert à choisir la bonne piste.
 - notre code n'allume ce réglage qu'une fois les cases 7-8 reliées, jamais au démarrage. Au démarrage, le jeu
   sonde la mémoire jusqu'au refus : ce sont les 446 refus de chaque lancement.
 
+**Essai 9 (2026-11-22) : RÉUSSI, 8 catcheurs dans le ring** (capture d'iMrBurn : Triple H, Kane, Sheamus,
+Cena, Orton, Alberto Del Rio, Christian, Rey Mysterio et l'arbitre), plus de plantage, 60 images / s. Plusieurs
+demandes ont été placées hors de leur plage (« given at … (any range) »). Il reste deux défauts :
+- les cases 7-8 ne bougent pas, en 6-man tag comme dans un match à l'échelle à 6 (sans équipes) : ce n'est donc pas
+  la règle du partenaire qui attend ;
+- en tag, le match a fini en DQ : il y avait trop d'hommes de chaque équipe dans le ring.
+
+**Essai 10 (prêt)** :
+- le cerveau d'un personnage (`sub_8232E3B0`, `[cerveau+32]` = le personnage) n'agit que si +1044 ≠ 0 et
+  (+1096 = 0 ou motion libre 1350). C'est le piège de l'arbitre spécial ;
+- crochet, pour les cases 7-8 seulement : leurs champs notés toutes les 5 s ; après 2 s hors de la motion 1350 avec
+  +1096 actif, Free (`sub_8247C670`) et +1096 = 0 ;
+- la liste des 10 s compte les mises à jour du cerveau de chaque case. Zéro pour 7-8 voudrait dire que leur
+  cerveau n'est jamais lancé : il faudra alors chercher ailleurs.
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que

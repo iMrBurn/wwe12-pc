@@ -68,6 +68,7 @@ constexpr u32 kDescSize = 80;
 
 std::array<std::atomic<u32>, 9> g_desc{};  // the last record asked for each slot
 std::array<std::atomic<u32>, 9> g_made{};  // the character sub_822D0618 made for each slot
+std::array<std::atomic<u32>, 9> g_brain_calls{};  // brain updates (sub_8232E3B0) per slot since the last list
 std::atomic<bool> g_thread{false};
 // Try 4 (2026-11-22): the "first match" was the title screen's demo match (a 1 on 1: slots 0, 1, 6, 7, 8), changed
 // too; then, while the player's own match was being set up, the getter hook below changed entries 7-8 again with that
@@ -182,6 +183,9 @@ void Watch() {
     for (u32 slot : {7u, 8u})
       if (const u32 rec = g_desc[slot].load())
         list += fmt::format(" | record {} role {}", slot, bd::mem::try_load<u8>(rec + 6));
+    list += " | brain updates:";
+    for (u32 i = 0; i < 9; ++i)
+      list += fmt::format(" {}", g_brain_calls[i].exchange(0));
     const u32 table = bd::mem::try_load<u32>(kHeapTable);
     for (u32 i = 0; i < 9 && table; ++i) {
       const u32 d = g_desc[i].load();
@@ -425,4 +429,57 @@ extern "C" REX_FUNC(sub_821AC5E8) {
         left += fmt::format(" {}K pages {} of {} free;", ps >> 10, h->GetUnreservedPageCount(), h->GetTotalPageCount());
   BD_WARN("[eight] memory refused: {} bytes ({} KB), attributes {:08X}, for {:08X} |{}", size, size / 1024, attr, caller,
           left);
+}
+
+// ---- try 10 (2026-11-22): slots 7-8 stand still ------------------------------------------------------------------
+// Try 9: 8 superstars in the ring (iMrBurn's screenshot), 60 fps, but slots 7-8 stand still, in a tag match and in a
+// ladder match too (so not the tag rule's waiting partner). An actor's brain ('CMIF', update sub_8232E3B0(brain),
+// [brain + 32] = the actor) acts only if actor + 1044 != 0 and (actor + 1096 == 0 or his motion, [[actor + 680]] u16,
+// is the free motion 1350) - docs/arbitre_special.md: after another motion the referee stood still until
+// sub_8247C670 (Free) put him back in 1350. Slots 7-8 never made an entrance. Here, for them only: the fields logged
+// (every 5 s), and when one stays out of 1350 for 2 s with + 1096 set, Free + 1096 = 0, as for the Special Referee.
+// The 10 s list says how many brain updates each slot had: none means their brain is never run (next step elsewhere).
+REX_EXTERN(__imp__sub_8232E3B0);
+REX_EXTERN(__imp__sub_8247C670);
+namespace {
+std::array<long long, 9> g_out_since{};
+std::array<long long, 9> g_brain_logged{};
+}  // namespace
+
+extern "C" REX_FUNC(sub_8232E3B0) {
+  const u32 brain = ctx.r3.u32;
+  if (REXCVAR_GET(wwe12_dev_eight_wrestlers) && g_mapped.load() && brain) {
+    const u32 actor = bd::mem::try_load<u32>(brain + 32);
+    for (u32 slot = 0; slot < 9 && actor; ++slot) {
+      if (bd::mem::try_load<u32>(kList + slot * 4) != actor)
+        continue;
+      g_brain_calls[slot].fetch_add(1);
+      if (slot != 7 && slot != 8)
+        break;
+      const u32 st = bd::mem::try_load<u32>(actor + 680);
+      const u32 motion = st ? bd::mem::try_load<u16>(st) : 0xFFFF;
+      const u32 f1044 = bd::mem::try_load<u32>(actor + 1044), f1096 = bd::mem::try_load<u32>(actor + 1096);
+      const long long now = NowMs();
+      if (now - g_brain_logged[slot] > 5000) {
+        g_brain_logged[slot] = now;
+        BD_INFO("[eight] brain slot {}: actor {:08X} motion {} +1044 {:08X} +1096 {} +1880 {} +2155 {}", slot, actor,
+                motion, f1044, f1096, bd::mem::try_load<u32>(actor + 1880), bd::mem::try_load<u8>(actor + 2155));
+      }
+      if (motion == 1350 || f1096 == 0) {
+        g_out_since[slot] = 0;
+      } else if (!g_out_since[slot]) {
+        g_out_since[slot] = now;
+      } else if (now - g_out_since[slot] > 2000) {
+        g_out_since[slot] = 0;
+        PPCContext c = ctx;
+        c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+        c.r3.u64 = actor;
+        __imp__sub_8247C670(c, base);
+        bd::mem::store<u32>(actor + 1096, 0);
+        BD_INFO("[eight] slot {}: out of the free motion (motion {}) for 2 s: Free, +1096 = 0", slot, motion);
+      }
+      break;
+    }
+  }
+  __imp__sub_8232E3B0(ctx, base);
 }
