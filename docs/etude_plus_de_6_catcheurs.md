@@ -316,6 +316,19 @@ pas ».
 **Essai 11 (prêt)** : crochet sur `sub_823B8028`. Pendant l'appel seulement, les personnages des cases 7-8 sont
 retirés de la liste ; elle est remise telle quelle après. Journal : « [eight] outside-the-match list … ».
 
+**Essai 11 (2026-11-22)** : toujours immobiles. Pire, les cases 2 et 5 sont parties hors du ring : la liste de
+`sub_823B8028` contient tous les personnages placés au début du match (8 dans une échelle à 6 + 2), pas seulement
+ceux hors match. **Essai 11 annulé.**
+
+**Essai 12 (prêt)** :
+- `sub_826DDC30` lance, case par case (0 à 8), `sub_826DD3F0(obj, case)`. Elle « active » un personnage si son
+  rôle convient au mode (+12 : mode 1 = rôles 0-3) : +1736 = +1752 = 0, `[+1028]` = 0 (les drapeaux « hors match »),
+  sa case, sa personne, son équipe, sa place dans la liste, et le départ de sa motion.
+- Quand elle passait sur les cases 7-8, le jeu venait de remettre leur rôle à 4 (reconstruction de la table) :
+  elles étaient sautées, et restaient figées dans la pose 20150.
+- Crochet : juste avant `sub_826DD3F0` pour les cases 7-8, leur rôle repasse à 0. C'est le jeu lui-même qui les
+  active comme des catcheurs.
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que

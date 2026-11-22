@@ -484,46 +484,29 @@ extern "C" REX_FUNC(sub_8232E3B0) {
   __imp__sub_8232E3B0(ctx, base);
 }
 
-// ---- try 11 (2026-11-22): slots 7-8 kept as "non-match" characters ----------------------------------------------
-// Try 10: slots 7-8's brains run (545 / 490 updates in 10 s), but they stay in motion 20150 with +1096 = 1, and fall
-// back into it right after each Free; the match also "bugs" at the start, then they jump into the ring. 20150 is the
-// idle of the characters outside the match (the referee's). sub_823B8028(obj), called first by the match placement
-// sub_823B83B8 (from sub_822E9CE8 / sub_823B5B48), walks obj's list of such characters ([obj + 8 + 4 i], i < [obj +
-// 120]): places each (+752..760), plays 20150 (sub_8247AD50) and sets up his 'YaFH' component, which keeps him in
-// that idle. Slots 7-8 reuse the commentators' character objects, so they were still in that list. Here, for the
-// call only, the made characters of slots 7-8 are taken out of the list (the others kept in order, the count lowered),
-// then the list is put back as it was.
-REX_EXTERN(__imp__sub_823B8028);
-extern "C" REX_FUNC(sub_823B8028) {
-  const u32 obj = ctx.r3.u32;
-  const u32 a7 = g_made[7].load(), a8 = g_made[8].load();
-  if (!REXCVAR_GET(wwe12_dev_eight_wrestlers) || !g_mapped.load() || !obj || (!a7 && !a8)) {
-    __imp__sub_823B8028(ctx, base);
-    return;
+// ---- try 12 (2026-11-22): let the game activate slots 7-8 itself ----------------------------------------------
+// Try 11 (taking slots 7-8 out of sub_823B8028's list) is undone: that list holds all the characters placed at the
+// match's start (8 in a ladder of 6 + 2), and taking two out moved slots 2 and 5 outside the ring. What really keeps
+// slots 7-8 still: sub_826DDC30, step by step, runs sub_826DD3F0(obj, slot) for slots 0-8. For a character whose role
+// suits the mode (+12 of obj: mode 1 = roles 0-3, mode 2 = role 4) it activates him: +1736 = +1752 = 0, [+1028] = 0
+// (the "out of the match" flags set by sub_826DD2C0 / sub_826DDC30), his slot, person and team, his place in the
+// list, his motion set up (vtable +16 of +1696). When it ran for slots 7-8 the game had just set their role back to 4
+// (the setup's rebuild of the participant table): skipped, so they kept the flags and the idle 20150. Here, just before
+// it runs for slot 7 or 8 (our made characters), their role is 0 again, so the game activates them as superstars.
+REX_EXTERN(__imp__sub_826DD3F0);
+extern "C" REX_FUNC(sub_826DD3F0) {
+  const u32 slot = ctx.r4.u32;
+  if ((slot == 7 || slot == 8) && REXCVAR_GET(wwe12_dev_eight_wrestlers) && g_mapped.load()) {
+    const u32 table = bd::mem::try_load<u32>(0x8317434C);  // ([0x83170000 + 17228]: the loader's per-slot characters)
+    const u32 a = table ? bd::mem::try_load<u32>(table + (slot + 23) * 4) : 0;
+    const u32 mode = bd::mem::try_load<u32>(ctx.r3.u32 + 12);
+    const u32 role = a ? bd::mem::try_load<u32>(a + 3428) : 0xFFFFFFFFu;
+    if (a && role == 4)
+      bd::mem::store<u32>(a + 3428, 0);
+    static std::atomic<int> logged{0};
+    if (logged++ < 20)
+      BD_INFO("[eight] activating slot {}: character {:08X} (made {:08X}) mode {} role {} -> {}", slot, a,
+              g_made[slot].load(), mode, int(role), a ? int(bd::mem::try_load<u32>(a + 3428)) : -1);
   }
-  const u32 n = bd::mem::try_load<u32>(obj + 120);
-  if (n == 0 || n > 64) {
-    __imp__sub_823B8028(ctx, base);
-    return;
-  }
-  std::vector<u32> saved(n), kept;
-  for (u32 i = 0; i < n; ++i) {
-    saved[i] = bd::mem::load<u32>(obj + 8 + i * 4);
-    if (saved[i] != a7 && saved[i] != a8)
-      kept.push_back(saved[i]);
-  }
-  if (kept.size() == n) {
-    __imp__sub_823B8028(ctx, base);
-    return;
-  }
-  for (u32 i = 0; i < kept.size(); ++i)
-    bd::mem::store<u32>(obj + 8 + i * 4, kept[i]);
-  bd::mem::store<u32>(obj + 120, u32(kept.size()));
-  static std::atomic<int> logged{0};
-  if (logged++ < 10)
-    BD_INFO("[eight] outside-the-match list {:08X}: {} of {} characters kept (slots 7-8 left out)", obj, kept.size(), n);
-  __imp__sub_823B8028(ctx, base);
-  for (u32 i = 0; i < n; ++i)
-    bd::mem::store<u32>(obj + 8 + i * 4, saved[i]);
-  bd::mem::store<u32>(obj + 120, n);
+  __imp__sub_826DD3F0(ctx, base);
 }
