@@ -272,6 +272,12 @@ modèle de la case 7.
 refusée, ses attributs, l'appelant et ce qu'il reste de mémoire physique (pages de 4 Ko / 64 Ko / 16 Mo). Il ne change
 rien au jeu : il sert à choisir la bonne piste.
 
+**Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
+navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
+La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que
+8 catcheurs est faisable dans un jeu Yuke's de cette famille, et que l'affichage (barres de vie) doit être refait aussi.
+À faire : lui demander sa méthode (les cases du match, la mémoire, l'affichage). Rien de ce mod ne va dans le dépôt.
+
 **Idée d'iMrBurn (2026-11-22) : de vrais types de match à 8** (4 contre 4, combat à 8, etc.). C'est le palier 1, à
 faire dès que l'essai 6 montre deux vrais catcheurs qui bougent :
 - 8-MAN TAG (4 contre 4) = la règle du 6-man tag (3 contre 3) + 2 personnes de plus, une par équipe (ce que fait
