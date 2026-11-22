@@ -68,7 +68,8 @@ constexpr u32 kDescSize = 80;
 // +3468 (record +7) of slots 7-8 (try 14: below 7; try 15: that table has one place per value, and with slots 0-5 on
 // 0-5 only 6 is left - in try 14 both slots got 6 and only slot 8, set up after slot 7, moved. Try 15: slot 7 alone on 6,
 // slot 8 kept on 8, to check it; if so, more than 7 superstars with an AI needs that table made bigger.)
-u8 ProgramFor(u32 slot) { return slot == 7 ? 6 : 8; }
+// Try 16: the program table gets two more places (below), so slots 7-8 keep their own values 7 and 8.
+u8 ProgramFor(u32 slot) { return u8(slot); }
 
 std::array<std::atomic<u32>, 9> g_desc{};  // the last record asked for each slot
 std::array<std::atomic<u32>, 9> g_made{};  // the character sub_822D0618 made for each slot
@@ -550,4 +551,163 @@ extern "C" REX_FUNC(sub_826DD3F0) {
               g_made[slot].load(), mode, int(role), a ? int(bd::mem::try_load<u32>(a + 3428)) : -1);
   }
   __imp__sub_826DD3F0(ctx, base);
+}
+
+// ---- try 16 (2026-11-22): two more places in the behaviour program table ------------------------------------------
+// The table (study of 2026-11-22): [0x8322E1B4] -> object of sub_8295BA68, its +8 = the manager (76 bytes, sub_8295D6A0),
+// whose last 7 words (+48..+72, "place n" = [manager + (12 + n) x 4]) are 16-byte objects made by sub_8295C470 (called
+// when a match loads, by sub_8295BCF8) with sub_8295FC10(object, [[manager + 44] + 8], [manager + 40]) in the heap
+// [manager + 40]. A character's place is his +3468 (record +7, else his slot). Every reader checks n < 7:
+//   n in r4: sub_8295BE88, sub_8295BEB0, sub_8295BEE8, sub_8295C0F0, sub_8295C358, sub_8295C558, sub_8295C7F0;
+//   n = byte [r4 + 4]: sub_8295D5D8; n = word [r4 + 4]: sub_8295D1C0;
+//   n = the brain's character's +3468: sub_8295DBE0 (when a brain is made: places it, programs 50 / 51).
+// Here: two more 16-byte objects are made the same way after sub_8295C470 (places 7 and 8, kept by us), and each reader
+// called with n = 7 or 8 runs with n = 6 while place 6 holds our object for 7 or 8 (place 6 is nobody's: slots 0-5 are
+// on 0-5), then place 6 and n are put back. Slots 7-8 keep +3468 = 7 / 8.
+REX_EXTERN(__imp__sub_8295C470);
+REX_EXTERN(__imp__sub_8295FC10);
+REX_EXTERN(__imp__sub_827D1F18);
+REX_EXTERN(__imp__sub_827D28D0);
+REX_EXTERN(__imp__sub_827D2950);
+REX_EXTERN(__imp__sub_827D2548);
+REX_EXTERN(__imp__sub_827D3600);
+REX_EXTERN(__imp__sub_8295BE88);
+REX_EXTERN(__imp__sub_8295BEB0);
+REX_EXTERN(__imp__sub_8295BEE8);
+REX_EXTERN(__imp__sub_8295C0F0);
+REX_EXTERN(__imp__sub_8295C358);
+REX_EXTERN(__imp__sub_8295C558);
+REX_EXTERN(__imp__sub_8295C7F0);
+REX_EXTERN(__imp__sub_8295D5D8);
+REX_EXTERN(__imp__sub_8295D1C0);
+REX_EXTERN(__imp__sub_8295DBE0);
+
+namespace {
+std::array<std::atomic<u32>, 2> g_extra{};  // our 16-byte place objects for places 7 and 8
+constexpr u32 kWindow = 6;                  // the place lent to 7 / 8 during a call
+
+u32 Manager() {
+  const u32 a = bd::mem::try_load<u32>(0x8322E1B4);
+  return a ? bd::mem::try_load<u32>(a + 8) : 0;
+}
+
+// Before a reader runs for place n: true (and place 6's own object in *saved) if n is 7 or 8 and place 6 now holds ours.
+bool Lend(u32 manager, u32 n, u32 *saved) {
+  if ((n != 7 && n != 8) || !REXCVAR_GET(wwe12_dev_eight_wrestlers) || !manager || manager != Manager())
+    return false;
+  const u32 extra = g_extra[n - 7].load();
+  if (!extra)
+    return false;
+  *saved = bd::mem::load<u32>(manager + (12 + kWindow) * 4);
+  bd::mem::store<u32>(manager + (12 + kWindow) * 4, extra);
+  static std::atomic<int> logged{0};
+  if (logged++ < 30)
+    BD_INFO("[eight] program place {} lent place {} ({:08X} instead of {:08X})", n, kWindow, extra, *saved);
+  return true;
+}
+void GiveBack(u32 manager, u32 saved) { bd::mem::store<u32>(manager + (12 + kWindow) * 4, saved); }
+
+// A call of the game's allocator / constructors with a scratch stack below the hook's.
+PPCContext Scratch(const PPCContext &ctx) {
+  PPCContext c = ctx;
+  c.r1.u64 = (ctx.r1.u32 - 1024) & ~15u;
+  return c;
+}
+}  // namespace
+
+extern "C" REX_FUNC(sub_8295C470) {
+  const u32 manager = ctx.r3.u32;
+  __imp__sub_8295C470(ctx, base);
+  g_extra[0] = 0;
+  g_extra[1] = 0;
+  if (!REXCVAR_GET(wwe12_dev_eight_wrestlers) || !manager)
+    return;
+  const u32 heap = bd::mem::try_load<u32>(manager + 40), shared = bd::mem::try_load<u32>(manager + 44);
+  const u32 arg = shared ? bd::mem::try_load<u32>(shared + 8) : 0;
+  PPCContext c = Scratch(ctx);
+  __imp__sub_827D1F18(c, base);  // the current heap, to put back
+  const u32 before = c.r3.u32;
+  c = Scratch(ctx);
+  c.r3.u64 = heap;
+  __imp__sub_827D28D0(c, base);
+  for (u32 k = 0; k < 2; ++k) {
+    c = Scratch(ctx);
+    __imp__sub_827D2950(c, base);  // (as sub_8295C470: 16 bytes from sub_827D2548, or one unit from sub_827D3600)
+    const bool bytes = c.r3.u32 != 0;
+    c = Scratch(ctx);
+    c.r3.u64 = bytes ? 16 : 1;
+    c.r4.u64 = 1;
+    if (bytes)
+      __imp__sub_827D2548(c, base);
+    else
+      __imp__sub_827D3600(c, base);
+    const u32 obj = c.r3.u32;
+    if (obj) {
+      c = Scratch(ctx);
+      c.r3.u64 = obj;
+      c.r4.u64 = arg;
+      c.r5.u64 = heap;
+      __imp__sub_8295FC10(c, base);
+    }
+    g_extra[k] = obj;
+  }
+  c = Scratch(ctx);
+  c.r3.u64 = before;
+  __imp__sub_827D28D0(c, base);
+  BD_INFO("[eight] program table {:08X}: places 7 and 8 made at {:08X} / {:08X} (heap {:08X})", manager,
+          g_extra[0].load(), g_extra[1].load(), heap);
+}
+
+#define WWE12_EIGHT_LEND_R4(fn)                            extern "C" REX_FUNC(fn) {                                  const u32 manager = ctx.r3.u32, n = ctx.r4.u32;          u32 saved = 0;                                           if (Lend(manager, n, &saved)) {                            ctx.r4.u64 = kWindow;                                    __imp__##fn(ctx, base);                                  GiveBack(manager, saved);                                return;                                                }                                                        __imp__##fn(ctx, base);                                }
+WWE12_EIGHT_LEND_R4(sub_8295BE88)
+WWE12_EIGHT_LEND_R4(sub_8295BEB0)
+WWE12_EIGHT_LEND_R4(sub_8295BEE8)
+WWE12_EIGHT_LEND_R4(sub_8295C0F0)
+WWE12_EIGHT_LEND_R4(sub_8295C358)
+WWE12_EIGHT_LEND_R4(sub_8295C558)
+WWE12_EIGHT_LEND_R4(sub_8295C7F0)
+#undef WWE12_EIGHT_LEND_R4
+
+extern "C" REX_FUNC(sub_8295D5D8) {  // n = byte [r4 + 4]
+  const u32 manager = ctx.r3.u32, arg = ctx.r4.u32;
+  const u32 n = arg ? bd::mem::try_load<u8>(arg + 4) : 0;
+  u32 saved = 0;
+  if (arg && Lend(manager, n, &saved)) {
+    bd::mem::store<u8>(arg + 4, u8(kWindow));
+    __imp__sub_8295D5D8(ctx, base);
+    bd::mem::store<u8>(arg + 4, u8(n));
+    GiveBack(manager, saved);
+    return;
+  }
+  __imp__sub_8295D5D8(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_8295D1C0) {  // n = word [r4 + 4]
+  const u32 manager = ctx.r3.u32, arg = ctx.r4.u32;
+  const u32 n = arg ? bd::mem::try_load<u32>(arg + 4) : 0;
+  u32 saved = 0;
+  if (arg && Lend(manager, n, &saved)) {
+    bd::mem::store<u32>(arg + 4, kWindow);
+    __imp__sub_8295D1C0(ctx, base);
+    bd::mem::store<u32>(arg + 4, n);
+    GiveBack(manager, saved);
+    return;
+  }
+  __imp__sub_8295D1C0(ctx, base);
+}
+
+extern "C" REX_FUNC(sub_8295DBE0) {  // n = the brain's character's +3468 ([[r3]] = the character)
+  const u32 obj = ctx.r3.u32;
+  const u32 owner = obj ? bd::mem::try_load<u32>(obj) : 0, actor = owner ? bd::mem::try_load<u32>(owner) : 0;
+  const u32 n = actor ? bd::mem::try_load<u32>(actor + 3468) : 0;
+  const u32 manager = Manager();
+  u32 saved = 0;
+  if (actor && Lend(manager, n, &saved)) {
+    bd::mem::store<u32>(actor + 3468, kWindow);
+    __imp__sub_8295DBE0(ctx, base);
+    bd::mem::store<u32>(actor + 3468, n);
+    GiveBack(manager, saved);
+    return;
+  }
+  __imp__sub_8295DBE0(ctx, base);
 }

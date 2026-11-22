@@ -382,6 +382,25 @@ des programmes a bien une place par valeur de +3468, et la place 6 est la seule 
   Il lui manque sans doute le choix d'une cible (des boucles « < 6 ») ou une autre pièce (le pointeur +3400, vide pour
   la case 7). À regarder après la table.
 
+**Étude de la table des programmes (2026-11-22, lecture seule)**
+- `[0x8322E1B4]` → objet de `sub_8295BA68`. Son +8 est le gestionnaire (76 octets, `sub_8295D6A0`) ; ses 7 derniers
+  mots (+48 à +72) sont les places.
+- Au chargement du match, `sub_8295C470` (appelé par `sub_8295BCF8`) met dans ces places 7 objets de 16 octets,
+  faits par `sub_8295FC10(objet, [[gestionnaire+44]+8], [gestionnaire+40])` dans le tas `[gestionnaire+40]`.
+- La place d'un personnage = son +3468. Tous les lecteurs vérifient « n < 7 » :
+  - n dans r4 : `sub_8295BE88`, `sub_8295BEB0`, `sub_8295BEE8`, `sub_8295C0F0`, `sub_8295C358`, `sub_8295C558`,
+    `sub_8295C7F0` ;
+  - n = octet [r4+4] : `sub_8295D5D8` ; n = mot [r4+4] : `sub_8295D1C0` ;
+  - n = +3468 du personnage du cerveau : `sub_8295DBE0` (à la création d'un cerveau : sa place, programmes 50 / 51).
+
+**Essai 16 (prêt)** :
+- après `sub_8295C470`, 2 objets de plus, faits de la même façon, dans le même tas (places 7 et 8, gardées par nous) ;
+- chaque lecteur appelé avec n = 7 ou 8 tourne avec n = 6, pendant que la place 6 (libre : les cases 0-5 sont sur
+  0-5) contient notre objet ; place 6 et n sont remis ensuite ;
+- les cases 7-8 gardent +3468 = 7 / 8.
+- Journal : « [eight] program table … places 7 and 8 made » et « program place N lent place 6 ».
+- Reste ensuite le combat lui-même (choix de cible, pointeur +3400), si le programme ne suffit pas.
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que
