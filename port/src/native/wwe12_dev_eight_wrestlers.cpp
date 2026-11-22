@@ -74,6 +74,7 @@ std::atomic<bool> g_thread{false};
 // demo's records, and the loading froze. Now: only a match whose slots 2-5 are asked too (6 superstars), everything
 // forgotten when a match asks for slot 0, and the getter only acts in the 10 s after slots 7-8 were made.
 std::atomic<bool> g_armed{false};                      // this match's slots 7-8 were changed
+std::atomic<bool> g_mapped{false};  // slots 7-8 were mapped to persons 6-7 (set before the models load; try 8 fix)
 std::atomic<long long> g_made_ms{0};                   // when slot 7 or 8 was last made (steady clock, ms)
 long long NowMs() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
@@ -387,6 +388,7 @@ extern "C" REX_FUNC(sub_8268B218) {
     return;
   bd::mem::store<u32>(out + 28, 6);
   bd::mem::store<u32>(out + 32, 7);
+  g_mapped = true;
   static std::atomic<int> logged{0};
   if (logged++ < 10)
     BD_INFO("[eight] slots -> persons: 7 -> 6, 8 -> 7 (from {:08X})", u32(ctx.lr));
@@ -403,8 +405,9 @@ REX_EXTERN(__imp__sub_821AC5E8);
 extern "C" REX_FUNC(sub_821AC5E8) {
   const u32 size = ctx.r3.u32, attr = ctx.r4.u32, caller = u32(ctx.lr);
   __imp__sub_821AC5E8(ctx, base);
-  if (ctx.r3.u32 || !REXCVAR_GET(wwe12_dev_eight_wrestlers) || !g_armed.load())
-    return;  // (only in the 8-superstar match: the 446 refusals of every start-up are the game's own probing)
+  if (ctx.r3.u32 || !REXCVAR_GET(wwe12_dev_eight_wrestlers) || !g_mapped.load())
+    return;  // (only once slots 7-8 are mapped, before the models load - try 8 logged nothing while it waited for
+             // slot 7 to be asked, which comes after; the 446 refusals of every start-up are the game's own probing)
   static std::atomic<int> logged{0};
   if (logged++ >= 40)
     return;
