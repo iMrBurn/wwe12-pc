@@ -353,6 +353,16 @@ la case quand cet octet vaut FF (le cas de tout le monde ici). Les cases 7-8 ava
 **Essai 14 (prêt)** : octet +7 de la fiche des cases 7-8 = 6, et +3468 du personnage = 6 (remis toutes les 100 ms).
 Les deux sont alliés entre eux pour cette table.
 
+**Essai 14 (2026-11-22)** : « Triple H (case 7) ne bouge pas, Kane (case 8) bouge mais ne fait rien ». La case 8
+sort enfin de la pose 20150 (motion 219, +1096 = 2), puis y revient. Lecture : la table des programmes a **une place
+par valeur** de +3468. Les deux cases avaient 6, et la 8, réglée après la 7, a pris la place. Avec les cases 0-5 sur
+0-5, il ne reste que la place 6. Cette table limite donc à **7 catcheurs avec IA**, sauf à l'agrandir.
+(Dans la comparaison, le pointeur +3400 est rempli pour la case 4 et vide pour la 7 ; il est écrit par
+`sub_821E3238` / `sub_821E1D80` / `sub_821E2B98` : à suivre.)
+
+**Essai 15 (prêt, vérification)** : seule la case 7 reçoit la place 6, la case 8 garde 8. Attendu : la case 7 bouge
+comme Kane, et la 8 reste figée.
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que

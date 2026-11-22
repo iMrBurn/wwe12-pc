@@ -65,7 +65,10 @@ namespace {
 constexpr u32 kList = 0x8317B770;       // the match's 9 characters
 constexpr u32 kHeapTable = 0x83232A90;  // -> heap descriptors, 36 bytes each {start, end, ...}
 constexpr u32 kDescSize = 80;
-constexpr u8 kEightProgram = 6;  // +3468 (record +7) of slots 7-8: below 7 (try 14)
+// +3468 (record +7) of slots 7-8 (try 14: below 7; try 15: that table has one place per value, and with slots 0-5 on
+// 0-5 only 6 is left - in try 14 both slots got 6 and only slot 8, set up after slot 7, moved. Try 15: slot 7 alone on 6,
+// slot 8 kept on 8, to check it; if so, more than 7 superstars with an AI needs that table made bigger.)
+u8 ProgramFor(u32 slot) { return slot == 7 ? 6 : 8; }
 
 std::array<std::atomic<u32>, 9> g_desc{};  // the last record asked for each slot
 std::array<std::atomic<u32>, 9> g_made{};  // the character sub_822D0618 made for each slot
@@ -144,10 +147,10 @@ void Force() {
         BD_INFO("[eight] force: slot {} record +6 was 4 again, set to 0", slot);
     }
     const u32 a = bd::mem::try_load<u32>(kList + slot * 4);
-    if (a && a == made && bd::mem::try_load<u32>(a + 3468) != kEightProgram) {
-      bd::mem::try_store<u32>(a + 3468, kEightProgram);
+    if (a && a == made && bd::mem::try_load<u32>(a + 3468) != ProgramFor(slot)) {
+      bd::mem::try_store<u32>(a + 3468, ProgramFor(slot));
       if (logged++ < 20)
-        BD_INFO("[eight] force: slot {} character {:08X} +3468 set to {}", slot, a, kEightProgram);
+        BD_INFO("[eight] force: slot {} character {:08X} +3468 set to {}", slot, a, ProgramFor(slot));
     }
     if (a && a == made && bd::mem::try_load<u32>(a + 3428) == 4) {
       bd::mem::try_store<u32>(a + 3428, 0);
@@ -266,7 +269,7 @@ bool Rewrite(u32 slot, u32 rec, const char *where) {
   // record's +7, or its slot +5 when +7 is 0xFF (so for everyone here); sub_8295C618 gives the match's behaviour
   // programs to characters whose +3468 is below 7 only (its table of 7, [manager + (12 + n) x 4]): slots 7-8 got none.
   // Both get 6 (the last place of that table; they are allies of each other there).
-  bd::mem::store<u8>(rec + 7, kEightProgram);
+  bd::mem::store<u8>(rec + 7, ProgramFor(slot));
   // Where it starts: the role 4 characters stand outside the ring, on the floor (test 2026-11-22: (-60 0 -880),
   // (80 0 -880); superstars at y -120). With wwe12_dev_eight_place: slot 2's / 3's place (+32 position, +48 the next
   // 16 bytes, both copied into the character at +752 / +736 by sub_822D0618), 60 units to the side.
