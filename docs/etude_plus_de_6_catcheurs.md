@@ -155,6 +155,22 @@ Avant de demander ce test : lire `sub_822CDF78` (création des personnages) et c
   - réglage `wwe12_dev_eight_place` (activé) : les deux catcheurs partent de la place des cases 2 / 3, décalés de
     60, au lieu du sol hors du ring.
 
+**Test 2 (2026-11-22, même match) : toujours rien de visible, mais on avance.**
+- Les cases 7-8 sont **fabriquées au rôle 0**, avec la classe des catcheurs (82004220, comme les cases 0-5).
+- 10 s plus tard, elles sont **de nouveau au rôle 4**, à leur place hors du ring. Et c'est bien le même personnage :
+  la classe est restée celle d'un catcheur.
+- La fiche est l'entrée de la table des participants du jeu (même adresse). Le jeu remet son octet +6 à 4 après
+  la fabrication, probablement en recopiant la table d'un bloc. Puis `sub_826DDC30` / `sub_826DD2C0` recopient ce
+  rôle dans le personnage (+3428), et le code du rôle 4 le replace hors du ring. Aucune écriture d'un seul octet ne
+  le fait (cherché dans le code) : il faut donc prendre le coupable sur le fait.
+- « +1736 / +1752 = 1 » ne veut pas dire « caché » : l'arbitre, bien visible, a la même valeur.
+
+**Essai 3 (prêt à compiler)** :
+- toutes les 100 ms, la fiche 7-8 et le personnage sont remis au rôle 0 s'ils sont repassés à 4 (`[eight] force`) ;
+- le piège matériel `wwe12_pin_trap` (registre DR2, sur `wwe12_watch_addr`, réglé tout seul sur la fiche 7)
+  donne le code du jeu qui réécrit la fiche (`[compte] adresse surveillee … wwe12.exe+X`) ;
+- la liste des 10 s dit si le personnage de la case est bien celui qu'on a fabriqué.
+
 **Plan des risques (pour le palier 1)**
 
 | Partie | Risque | Ce qu'on fera |

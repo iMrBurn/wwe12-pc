@@ -47,6 +47,9 @@ REXCVAR_DEFINE_BOOL(wwe12_dev_eight_wrestlers, false, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_dev_eight_place, true, "WWE12",
                     "Dev: wwe12_dev_eight_wrestlers' two superstars start where slots 2 / 3 start (else outside the "
                     "ring, as the extra characters).");
+REXCVAR_DEFINE_BOOL(wwe12_dev_eight_force, true, "WWE12",
+                    "Dev: every 100 ms, slots 7-8 put back to role 0 (their record and their character) when the game "
+                    "has made them role 4 again.");
 REXCVAR_DEFINE_STRING(wwe12_dev_eight_ids, "12302,13902", "WWE12",
                       "Dev: the two superstars of wwe12_dev_eight_wrestlers, superstar x 100 + attire, \"slot7,slot8\".");
 
@@ -57,6 +60,7 @@ constexpr u32 kHeapTable = 0x83232A90;  // -> heap descriptors, 36 bytes each {s
 constexpr u32 kDescSize = 80;
 
 std::array<std::atomic<u32>, 9> g_desc{};  // the last record asked for each slot
+std::array<std::atomic<u32>, 9> g_made{};  // the character sub_822D0618 made for each slot
 std::atomic<bool> g_thread{false};
 
 std::string Bytes(u32 at, u32 n) {
@@ -73,11 +77,39 @@ u32 IdFor(u32 slot) {
   return u32(std::strtoul(one.c_str(), nullptr, 10));
 }
 
-// Every 10 s while on: the 9 characters and their heaps.
+// Test 2 (2026-11-22): slots 7-8 were made at role 0 as superstars (class 82004220, as slots 0-5), but 10 s later
+// they were at role 4 again, at their place outside the ring: the game puts the participant table's +6 back to 4 (the
+// record is that table's entry: same address), then sub_826DDC30 / sub_826DD2C0 copy it into the character (+3428)
+// and the role 4 code puts them back outside. Every 100 ms (wwe12_dev_eight_force): record +6 and character +3428
+// back to 0, each time logged (the first 20 times), and the writer of the record's +4..+7 caught by wwe12_pin_trap's
+// DR2 (wwe12_watch_addr set here), logged as "[compte] adresse surveillee : ... ecrite par wwe12.exe+X" (wwe12.map).
+void Force() {
+  static int logged = 0;
+  for (u32 slot : {7u, 8u}) {
+    const u32 rec = g_desc[slot].load(), made = g_made[slot].load();
+    if (rec && bd::mem::try_load<u8>(rec + 6) == 4 && bd::mem::try_load<u32>(rec) == IdFor(slot)) {
+      bd::mem::try_store<u8>(rec + 6, 0);
+      if (logged++ < 20)
+        BD_INFO("[eight] force: slot {} record +6 was 4 again, set to 0", slot);
+    }
+    const u32 a = bd::mem::try_load<u32>(kList + slot * 4);
+    if (a && a == made && bd::mem::try_load<u32>(a + 3428) == 4) {
+      bd::mem::try_store<u32>(a + 3428, 0);
+      if (logged++ < 20)
+        BD_INFO("[eight] force: slot {} character {:08X} role was 4 again, set to 0", slot, a);
+    }
+  }
+}
+
+// Every 100 ms while on: Force; every 10 s: the 9 characters and their heaps.
 void Watch() {
-  for (;;) {
-    std::this_thread::sleep_for(std::chrono::seconds(10));
+  for (u32 tick = 1;; ++tick) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     if (!REXCVAR_GET(wwe12_dev_eight_wrestlers))
+      continue;
+    if (REXCVAR_GET(wwe12_dev_eight_force))
+      Force();
+    if (tick % 100)
       continue;
     std::string list, heaps;
     int present = 0;
@@ -91,12 +123,16 @@ void Watch() {
       list += fmt::format(" {}:role {} at ({:.0f} {:.0f} {:.0f})", i, int(bd::mem::try_load<u32>(a + 3428)),
                           bd::mem::try_load<float>(a + 752), bd::mem::try_load<float>(a + 756),
                           bd::mem::try_load<float>(a + 760));
-      if (i >= 6)  // (class: vtable; hidden: +1736 / +1752, set by sub_826DD2C0 for role 4 characters)
-        list += fmt::format(" class {:08X} hidden {}{}", bd::mem::try_load<u32>(a), bd::mem::try_load<u32>(a + 1736),
-                            bd::mem::try_load<u32>(a + 1752));
+      if (i >= 6)  // (+1736 / +1752: 1 1 for the referee too, so not "hidden"; made: the character sub_822D0618 made)
+        list += fmt::format(" [{:08X} {} class {:08X} +1736 {} +1752 {}]", a,
+                            a == g_made[i].load() ? "made here" : "NOT the one made", bd::mem::try_load<u32>(a),
+                            bd::mem::try_load<u32>(a + 1736), bd::mem::try_load<u32>(a + 1752));
     }
     if (!present)
       continue;  // not in a match
+    for (u32 slot : {7u, 8u})
+      if (const u32 rec = g_desc[slot].load())
+        list += fmt::format(" | record {} role {}", slot, bd::mem::try_load<u8>(rec + 6));
     const u32 table = bd::mem::try_load<u32>(kHeapTable);
     for (u32 i = 0; i < 9 && table; ++i) {
       const u32 d = g_desc[i].load();
@@ -156,6 +192,8 @@ bool Rewrite(u32 slot, u32 rec, const char *where) {
 
 }  // namespace
 
+void Wwe12PinTrapStart();  // wwe12_pin_trap.cpp (dev)
+
 // From wwe12_discord.cpp's sub_822D23A0 hook, before the game: a match character is asked for (slot, its record).
 void Wwe12EightWrestlersDesc(u32 slot, u32 desc) {
   if (!REXCVAR_GET(wwe12_dev_eight_wrestlers) || !desc || slot >= 9)
@@ -170,7 +208,12 @@ void Wwe12EightWrestlersDesc(u32 slot, u32 desc) {
           table ? int(bd::mem::try_load<u8>(table + 6)) : -1);
   if (slot != 7 && slot != 8)
     return;
-  Rewrite(slot, desc, "asked");
+  if (Rewrite(slot, desc, "asked") && slot == 7) {
+    // who writes the record's +6 afterwards: wwe12_pin_trap's DR2 on the word +4..+7 (needs --wwe12_pin_trap=true)
+    rex::cvar::SetFlagByName("wwe12_watch_addr", std::to_string(int32_t(desc + 4)));
+    Wwe12PinTrapStart();
+    BD_INFO("[eight] DR2 on slot 7's record +4 ({:08X}) if wwe12_pin_trap is on", desc + 4);
+  }
   if (table && table != desc)
     Rewrite(slot, table, "participant table");
 }
@@ -195,6 +238,7 @@ extern "C" REX_FUNC(sub_822D0618) {
     return;
   const u32 table = bd::mem::try_load<u32>(loader);
   const u32 a = table ? bd::mem::try_load<u32>(table + slot * 4) : 0;
+  g_made[slot] = a;
   BD_INFO("[eight] made slot {}: character {:08X} class {:08X} role {} hidden {} {}", slot, a,
           a ? bd::mem::try_load<u32>(a) : 0, a ? int(bd::mem::try_load<u32>(a + 3428)) : -1,
           a ? bd::mem::try_load<u32>(a + 1736) : 0, a ? bd::mem::try_load<u32>(a + 1752) : 0);
