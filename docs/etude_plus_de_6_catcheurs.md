@@ -215,6 +215,23 @@ Avant de demander ce test : lire `sub_822CDF78` (création des personnages) et c
 - les personnes 6-7 sont remplies en copiant les personnes 2 et 5 (une de chaque côté : un 3 contre 3 devient un
   4 contre 4), avec les catcheurs de `wwe12_dev_eight_ids` et leur propre case (+8).
 
+**Essai 6 (2026-11-22) : plantage au chargement du match.**
+- Les personnes 6-7 ont bien été remplies (copies des personnes 2 et 5, catcheurs 123 / 139), et les cases 7-8
+  pointaient bien vers elles (`sub_8268B218`, appelée depuis `sub_82A38C94`, puis `sub_823DEB04`).
+- Puis, pendant le chargement : « PhysicalHeap::Alloc unable to alloc » et une lecture à l'adresse 0x18
+  (`crash_trace.txt`).
+- La fonction en cause est `sub_82837EC8`, dans la chaîne `sub_823BD9A8` → `sub_823BD730` → `sub_823BD528` →
+  `sub_823BBFA8` → `sub_82839848` → `sub_82837EC8`. C'est le chargement du modèle 3D d'un personnage. Elle demande
+  de la mémoire physique (`sub_82A9C000`) pour une taille = nombre × pas, lue dans une table de fiches de 184 octets
+  par index (r25 = 9 au moment du plantage). La demande est refusée et le résultat vide est utilisé.
+- Lecture : c'est le mur attendu, une table du chargeur de modèles prévue pour les personnes habituelles (6 catcheurs,
+  l'arbitre, les 2 commentateurs). Pour les personnes 6-7, l'entrée n'existe pas ou est vide, ou alors la mémoire est
+  trop juste. À noter aussi : le lanceur de test prend 20 Mo de plus pour les tas 12 et 15 (`--wwe12_heap_grow_from=0`),
+  ce qui ne sert à rien ici.
+- **Prochaine étape : une étude sans test** de ce chargeur (`sub_823BD528` / `sub_823BBFA8` / `sub_82839848` : qui
+  remplit la table de 184 octets, combien d'entrées, à partir de quoi). Le but est de trouver comment le Royal Rumble
+  charge ses entrants (personnes 6-39) et de faire pareil. Plus d'essai à l'aveugle avant cela.
+
 **Idée d'iMrBurn (2026-11-22) : de vrais types de match à 8** (4 contre 4, combat à 8, etc.). C'est le palier 1, à
 faire dès que l'essai 6 montre deux vrais catcheurs qui bougent :
 - 8-MAN TAG (4 contre 4) = la règle du 6-man tag (3 contre 3) + 2 personnes de plus, une par équipe (ce que fait
