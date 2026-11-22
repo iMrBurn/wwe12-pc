@@ -29,7 +29,9 @@
 // GPU Commands back to normal; the previous priorities come back if the PC has more threads again. No affinity is
 // forced (the 0xF affinity trap of the turbo). Applied when each game thread starts and again every 10 s with the
 // [perf] lines (the game or the SDK may set a priority later).
-REXCVAR_DEFINE_BOOL(wwe12_few_cores_priorities, true, "WWE12",
+// Measured 2026-11-22 by Main (2 slow cores + iGPU 720p, 2 passes each): no gain beyond the run-to-run noise
+// (game 20.7 / 20.7 ms on, 19.9 / 20.5 ms off), so off by default; kept for tests on real small PCs.
+REXCVAR_DEFINE_BOOL(wwe12_few_cores_priorities, false, "WWE12",
                     "On PCs with few CPU threads (wwe12_few_cores_max_threads), run the game's main, render and "
                     "skinning threads above normal priority and the null GPU thread at normal.");
 REXCVAR_DEFINE_INT32(wwe12_few_cores_max_threads, 4, "WWE12",
