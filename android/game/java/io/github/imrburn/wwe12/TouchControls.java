@@ -99,6 +99,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
     final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     final Handler handler = new Handler(Looper.getMainLooper());
     final SharedPreferences prefs;
+    boolean bigTriggers = true;  // LT / RT touch zones 1.5x (launcher: touch_big_triggers)
     final int alpha;          // 0-255, from the launcher's opacity setting
     final boolean editMode;   // layout editor: drag to move, nothing is sent to the game
     final float scale;        // launcher's size setting (1 = normal); the editor always shows 1
@@ -151,6 +152,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE);
         int a = Math.max(30, Math.min(255, opacityPercent * 255 / 100));
         alpha = editMode ? Math.max(a, 150) : a;
+        bigTriggers = prefs.getBoolean("touch_big_triggers", true);
         haptics = prefs.getBoolean("touch_haptics", true);
         sRumble = prefs.getBoolean("touch_rumble", true);
         sStrength = Math.max(10, Math.min(200, prefs.getInt("touch_vib_strength", 100)));
@@ -188,7 +190,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         add("DOWN", "▼", 1 << DOWN, 0, 0, 0.30f, 0.90f, 0.055f, 0);
         add("LEFT", "◀", 1 << LEFT, 0, 0, 0.25f, 0.80f, 0.055f, 0);
         add("RIGHT", "▶", 1 << RIGHT, 0, 0, 0.35f, 0.80f, 0.055f, 0);
-        add("LT", "LT", 0, TRIG_L, 0, 0.06f, 0.16f, 0.075f, 0);
+        add("LT", "LT", 0, TRIG_L, 0, 0.06f, 0.16f, 0.09f, 0);  // 1.5.1: bigger (#87)
         add("LB", "LB", 1 << LB, 0, 0, 0.17f, 0.16f, 0.075f, 0);
         // Right side: face buttons, right stick, RB/RT.
         add("A", "A", 1 << A, 0, 0, 0.86f, 0.80f, 0.08f, 1);
@@ -197,7 +199,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
         add("Y", "Y", 1 << Y, 0, 0, 0.86f, 0.44f, 0.08f, 4);
         add("STICK_R", "", 0, 0, 2, 0.66f, 0.80f, 0.12f, 0);
         add("RB", "RB", 1 << RB, 0, 0, 0.83f, 0.16f, 0.075f, 0);
-        add("RT", "RT", 0, TRIG_R, 0, 0.94f, 0.16f, 0.075f, 0);
+        add("RT", "RT", 0, TRIG_R, 0, 0.94f, 0.16f, 0.09f, 0);  // 1.5.1: bigger (#87: RT was hard to hit)
         // Middle top: BACK / START.
         add("BACK", "BACK", 1 << BACK, 0, 0, 0.42f, 0.08f, 0.06f, 0);
         add("START", "START", 1 << START, 0, 0, 0.58f, 0.08f, 0.06f, 0);
@@ -521,7 +523,7 @@ public class TouchControls extends View implements InputManager.InputDeviceListe
             if (!c.visible && !editMode) continue;
             float dx = x - c.cx, dy = y - c.cy, d = dx * dx + dy * dy;
             float reach = editMode ? Math.max(c.r, 0.05f * viewH)
-                    : c.r * (c.isStick() ? 1.4f : 1.15f);  // a little forgiving
+                    : c.r * (c.isStick() ? 1.4f : c.trig != 0 && bigTriggers ? 1.5f : 1.15f);  // a little forgiving; triggers more (#87)
             if (d <= reach * reach && d < bestDist) {
                 best = c;
                 bestDist = d;

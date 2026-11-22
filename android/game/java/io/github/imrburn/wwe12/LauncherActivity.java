@@ -375,6 +375,7 @@ public class LauncherActivity extends Activity {
         ctl.addView(prefChoice("On-screen buttons size", "touch_size",
                 new String[] {"Small (70 %)", "Medium (85 %)", "Normal (100 %)", "Large (110 %)"},
                 new int[] {70, 85, 100, 110}, 100));
+        ctl.addView(prefToggle("Bigger LT / RT touch zones (easier to hit)", "touch_big_triggers", true));
         ctl.addView(prefToggle("Vibration when pressing a button", "touch_haptics", true));
         ctl.addView(prefToggle("Game vibration (rumble) on the phone", "touch_rumble", true));
         ctl.addView(prefChoice("Vibration strength", "touch_vib_strength",
