@@ -131,6 +131,30 @@ Avant de demander ce test : lire `sub_822CDF78` (création des personnages) et c
     viennent d'ailleurs (la personne 41-42, le rôle remis à 4 : voir `[eight] list`) ;
   - ils se battent : le palier 1 peut commencer.
 
+**Test 1 du palier 0 (2026-11-22, joué par iMrBurn, 3 contre 3 en premier match, 2 min) : rien de visible.**
+- Journal : les fiches 7-8 ont bien été changées quand le jeu les a demandées. Elles se suivent bien, à 80 octets
+  l'une de l'autre : la 7 est 480 octets (6 × 80) après la case 1. Les tas 37-38 ont été agrandis à 1 152 Ko.
+- Mais les deux personnages sont restés au **rôle 4**, sur le sol hors du ring (y 0, z -880, les catcheurs sont à
+  y -120), et ne bougent pas.
+- Les 446 lignes « PhysicalHeap::Alloc unable to alloc » sont **normales** : elles viennent toutes du démarrage
+  (10:31:26, 80 s avant le match), et on trouve le même nombre (446 ou 892) dans les autres journaux de test.
+- Images : environ 600 présentées en 10 s (60 / s), comme d'habitude (seulement 6 catcheurs à l'écran).
+- Ce que dit le code :
+  - Avec le rôle 4, le jeu fabrique une variante du lutteur (`sub_823A3310` appelle le constructeur
+    `sub_82213DB0`, puis change sa table de fonctions). Avec le rôle 0, il fabrique le lutteur normal, et
+    +3428 = rôle de la fiche = 0.
+  - `sub_826DD2C0` cache les personnages au rôle 4 (+1736 / +1752 = 1) et leur redonne le rôle de la table des
+    participants du jeu (`[0x8322DD44]` + 528 + case × 80). Mais il ne s'occupe que de ceux qui sont **déjà** au
+    rôle 4.
+  - Donc nos deux personnages ont été fabriqués au rôle 4 : la fiche lue au moment de la fabrication n'était plus
+    la nôtre, ou la fabrication s'est faite à partir d'une autre copie.
+- Pas suivant (prêt à compiler) :
+  - un crochet sur `sub_822D0618` (la fabrication elle-même) remet la fiche des cases 7-8 au rôle 0 juste avant ;
+  - la même chose dans l'entrée de la table des participants, si c'est une autre fiche ;
+  - le journal dit ce qui a été fabriqué : `[eight] making / made`, avec la classe, le rôle et « caché » ;
+  - réglage `wwe12_dev_eight_place` (activé) : les deux catcheurs partent de la place des cases 2 / 3, décalés de
+    60, au lieu du sol hors du ring.
+
 **Plan des risques (pour le palier 1)**
 
 | Partie | Risque | Ce qu'on fera |

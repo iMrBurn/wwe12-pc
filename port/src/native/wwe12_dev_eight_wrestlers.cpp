@@ -17,7 +17,11 @@
 //   match must be the first one played after launching.
 //
 // What this changes (only with the cvar on, only for slots 7-8 still at role 4): +0 = the superstar of
-// wwe12_dev_eight_ids, +6 = 0, +8 / +9 copied from slot 1's record. Nothing else (the person +4 and the place +32 stay).
+// wwe12_dev_eight_ids, +6 = 0, +8 / +9 copied from slot 1's record, and (wwe12_dev_eight_place) the place +32..63 from
+// slot 2's / 3's. Done in the record sub_822D23A0 gets, in the participant table's entry if it is another record, and
+// again when sub_822D0618 makes the character (hooked here).
+// Test 1 (2026-11-22, 3v3 first match): the records were changed when asked, but slots 7-8 still came out as role 4
+// characters (+3428 = 4, outside the ring at y 0, z -880): what makes them is logged since ("[eight] making / made").
 // Log lines, to measure: "[eight] slot N: ..." for each character asked (before / after), then every 10 s
 // "[eight] list: ..." (the 9 characters: role +3428, position) and "[eight] heaps: ..." (the 9 characters' heaps).
 // The frame rate is in the game's own "[perf]" lines (every 10 s); heap failures in "[heaps]" (wwe12_heap_probe).
@@ -35,10 +39,14 @@
 
 #include "core/logging.h"
 #include "core/memory_helpers.h"
+#include "svr_hook.h"
 
 REXCVAR_DEFINE_BOOL(wwe12_dev_eight_wrestlers, false, "WWE12",
                     "Dev: the match's two extra characters (slots 7-8) become superstars (8 in the ring). First match "
                     "after start-up only.");
+REXCVAR_DEFINE_BOOL(wwe12_dev_eight_place, true, "WWE12",
+                    "Dev: wwe12_dev_eight_wrestlers' two superstars start where slots 2 / 3 start (else outside the "
+                    "ring, as the extra characters).");
 REXCVAR_DEFINE_STRING(wwe12_dev_eight_ids, "12302,13902", "WWE12",
                       "Dev: the two superstars of wwe12_dev_eight_wrestlers, superstar x 100 + attire, \"slot7,slot8\".");
 
@@ -83,6 +91,9 @@ void Watch() {
       list += fmt::format(" {}:role {} at ({:.0f} {:.0f} {:.0f})", i, int(bd::mem::try_load<u32>(a + 3428)),
                           bd::mem::try_load<float>(a + 752), bd::mem::try_load<float>(a + 756),
                           bd::mem::try_load<float>(a + 760));
+      if (i >= 6)  // (class: vtable; hidden: +1736 / +1752, set by sub_826DD2C0 for role 4 characters)
+        list += fmt::format(" class {:08X} hidden {}{}", bd::mem::try_load<u32>(a), bd::mem::try_load<u32>(a + 1736),
+                            bd::mem::try_load<u32>(a + 1752));
     }
     if (!present)
       continue;  // not in a match
@@ -102,6 +113,49 @@ void Watch() {
 
 }  // namespace
 
+namespace {
+
+// The game's participant table entry of a slot: sub_8268B380([0x8322DD44], slot) = [0x8322DD44] + 528 + slot x 80. Read
+// by sub_826DD2C0 / sub_826DDC30, which copy its +6 into the character's role (+3428) for characters at role 4.
+u32 TableEntry(u32 slot) {
+  const u32 owner = bd::mem::try_load<u32>(0x8322DD44);
+  return owner ? owner + 528 + slot * kDescSize : 0;
+}
+
+// One record of slot 7 / 8 made a superstar's (the record sub_822D23A0 gets, or the participant table's entry, or the
+// record again when sub_822D0618 makes the character). True if it was changed now.
+bool Rewrite(u32 slot, u32 rec, const char *where) {
+  if (!rec || bd::mem::try_load<u8>(rec + 6) != 4)
+    return false;
+  const u32 one = g_desc[1].load();
+  const u32 want = IdFor(slot);
+  if (!one || want < 100) {
+    BD_WARN("[eight] {} slot {} left as it is (slot 1 seen: {}, superstar from wwe12_dev_eight_ids: {})", where, slot,
+            one != 0, want);
+    return false;
+  }
+  bd::mem::store<u32>(rec, want);
+  bd::mem::store<u8>(rec + 6, 0);
+  bd::mem::store<u8>(rec + 8, bd::mem::try_load<u8>(one + 8));
+  bd::mem::store<u8>(rec + 9, bd::mem::try_load<u8>(one + 9));
+  // Where it starts: the role 4 characters stand outside the ring, on the floor (test 2026-11-22: (-60 0 -880),
+  // (80 0 -880); superstars at y -120). With wwe12_dev_eight_place: slot 2's / 3's place (+32 position, +48 the next
+  // 16 bytes, both copied into the character at +752 / +736 by sub_822D0618), 60 units to the side.
+  if (REXCVAR_GET(wwe12_dev_eight_place)) {
+    const u32 from = g_desc[slot == 7 ? 2 : 3].load();
+    if (from && from != rec) {
+      for (u32 b = 32; b < 64; b += 4)
+        bd::mem::store<u32>(rec + b, bd::mem::try_load<u32>(from + b));
+      bd::mem::store<float>(rec + 32, bd::mem::try_load<float>(from + 32) + (slot == 7 ? 60.0f : -60.0f));
+    }
+  }
+  BD_INFO("[eight] {}: slot {} is now superstar {} attire {} (role 0) at {:08X}: {}", where, slot, want / 100,
+          want % 100, rec, Bytes(rec, 64));
+  return true;
+}
+
+}  // namespace
+
 // From wwe12_discord.cpp's sub_822D23A0 hook, before the game: a match character is asked for (slot, its record).
 void Wwe12EightWrestlersDesc(u32 slot, u32 desc) {
   if (!REXCVAR_GET(wwe12_dev_eight_wrestlers) || !desc || slot >= 9)
@@ -109,24 +163,39 @@ void Wwe12EightWrestlersDesc(u32 slot, u32 desc) {
   if (!g_thread.exchange(true))
     std::thread(Watch).detach();
   g_desc[slot] = desc;
-  const u32 id = bd::mem::try_load<u32>(desc);
-  const u8 role = bd::mem::try_load<u8>(desc + 6);
-  BD_INFO("[eight] slot {}: id {} role {} person {} heap {} (record {:08X}: {})", slot, id, role,
-          bd::mem::try_load<u8>(desc + 4), bd::mem::try_load<u32>(desc + 20), desc, Bytes(desc, 24));
-  if ((slot != 7 && slot != 8) || role != 4)
+  const u32 table = TableEntry(slot);
+  BD_INFO("[eight] slot {}: id {} role {} person {} heap {} (record {:08X}: {}; participant table entry {:08X}, role {})",
+          slot, bd::mem::try_load<u32>(desc), bd::mem::try_load<u8>(desc + 6), bd::mem::try_load<u8>(desc + 4),
+          bd::mem::try_load<u32>(desc + 20), desc, Bytes(desc, 24), table,
+          table ? int(bd::mem::try_load<u8>(table + 6)) : -1);
+  if (slot != 7 && slot != 8)
     return;
-  const u32 one = g_desc[1].load();
-  const u32 want = IdFor(slot);
-  if (!one || want < 100) {
-    BD_WARN("[eight] slot {} left as it is (slot 1 seen: {}, superstar from wwe12_dev_eight_ids: {})", slot, one != 0,
-            want);
-    return;
+  Rewrite(slot, desc, "asked");
+  if (table && table != desc)
+    Rewrite(slot, table, "participant table");
+}
+
+// sub_822D0618(loader, slot, record, ..) makes a match character (directly from sub_822D23A0, or later from the loader's
+// job sub_822D2260, with the same record). Test of 2026-11-22: slots 7-8 were still made as role 4 characters (+3428 = 4,
+// hidden, outside the ring) although their records said role 0 when asked. Here the record is set again just before
+// the character is made, and what was made is logged (its class: vtable +0; role +3428; hidden +1736 / +1752).
+REX_EXTERN(__imp__sub_822D0618);
+extern "C" REX_FUNC(sub_822D0618) {
+  const u32 loader = ctx.r3.u32, slot = ctx.r4.u32, rec = ctx.r5.u32;
+  const bool on = REXCVAR_GET(wwe12_dev_eight_wrestlers) && slot < 9;
+  if (on) {
+    const u32 id = bd::mem::try_load<u32>(rec);
+    const u8 role = bd::mem::try_load<u8>(rec + 6);
+    BD_INFO("[eight] making slot {}: record {:08X} id {} role {}", slot, rec, id, role);
+    if (slot == 7 || slot == 8)
+      Rewrite(slot, rec, "making");  // (logs when the record had gone back to role 4)
   }
-  // (the records are said to be in one list of 80-byte records: logged, to check)
-  BD_INFO("[eight] slot {}: record {} bytes after slot 1's", slot, int(desc) - int(one));
-  bd::mem::store<u32>(desc, want);
-  bd::mem::store<u8>(desc + 6, 0);
-  bd::mem::store<u8>(desc + 8, bd::mem::try_load<u8>(one + 8));
-  bd::mem::store<u8>(desc + 9, bd::mem::try_load<u8>(one + 9));
-  BD_INFO("[eight] slot {} is now superstar {} attire {} (role 0): {}", slot, want / 100, want % 100, Bytes(desc, 24));
+  __imp__sub_822D0618(ctx, base);
+  if (!on)
+    return;
+  const u32 table = bd::mem::try_load<u32>(loader);
+  const u32 a = table ? bd::mem::try_load<u32>(table + slot * 4) : 0;
+  BD_INFO("[eight] made slot {}: character {:08X} class {:08X} role {} hidden {} {}", slot, a,
+          a ? bd::mem::try_load<u32>(a) : 0, a ? int(bd::mem::try_load<u32>(a + 3428)) : -1,
+          a ? bd::mem::try_load<u32>(a + 1736) : 0, a ? bd::mem::try_load<u32>(a + 1752) : 0);
 }
