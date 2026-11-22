@@ -401,6 +401,34 @@ des programmes a bien une place par valeur de +3468, et la place 6 est la seule 
 - Journal : « [eight] program table … places 7 and 8 made » et « program place N lent place 6 ».
 - Reste ensuite le combat lui-même (choix de cible, pointeur +3400), si le programme ne suffit pas.
 
+**Évaluation : garder l'arbitre ET les commentateurs, et ajouter des cases 9, 10… (exigence d'iMrBurn, 2026-11-22)**
+
+Le palier 0 (cases 7-8 prises aux commentateurs) n'est qu'un banc d'essai. Le vrai but est de garder les 9 cases
+(6 catcheurs + arbitre + 2 commentateurs) et d'en ajouter. Ce qu'il faut agrandir, et comment :
+
+| Élément | Taille | Accès | Agrandir ? |
+|---|---|---|---|
+| Liste des personnages `0x8317B770` | 9 cases, la variable suivante juste derrière | **dans le code même** : 1 098 lectures dans 969 fonctions, sans fonction commune | Pas de crochet commun possible. Il faut transformer le code généré : déplacer la liste vers un tableau plus grand (toutes les adresses) et changer les boucles « < 9 » qui la parcourent. Faisable au moment de la génération du code, avec un outil à écrire ; la 2.0 Régénération y touche déjà |
+| Table des participants (`[0x8322DD44]` + 528 + n × 80) | 9 fiches, d'autres champs derrière | par une fonction (`sub_8268B380`, 84 appels) | **Oui, par crochet** : fiches 9+ prises dans un tableau à nous |
+| Correspondance case → personne (`sub_8268B218`) | 9 mots dans des tableaux **sur la pile** de 15 appelants | 15 fonctions | Difficile : chaque appelant n'a que 36 octets. Il faut un crochet par appelant, ou passer par la transformation du code |
+| Table des personnes | 43 places, 6 à 39 libres hors Royal Rumble | par une fonction | **Déjà assez grande** |
+| Tableaux du chargeur, par case (`[0x8317434C]` : n° à (36 + case) × 2, personnages à (case + 23) × 4…) | 9 cases | dans le code | Même problème que la liste : transformation du code |
+| Tas par case (30-38) | table des tailles à 45 places, toutes prises | `[fiche+20]` | Les cases 9+ peuvent prendre un grand tas existant (12 ou 15, agrandis) au lieu d'un tas à elles. À vérifier |
+| Table des programmes (IA) | 7 places | 10 fonctions | **Fait** (essai 16, par prêt de la place 6) ; extensible à 9, 10 |
+| Mémoire physique | 512 Mo | SDK | **Fait** (patch du SDK, essai 9) |
+| Boucles « < 6 » (IA, cibles, caméra, barres de vie, tag, fin du match) | 125 fonctions | dans le code | À voir une par une, ou par la même transformation du code |
+
+**Verdict honnête**
+- **Faisable, mais c'est un gros chantier** : il passe par une **transformation du code généré** (adresses de la
+  liste et de quelques tableaux par case, bornes de boucles), pas par des crochets seuls. Estimation : **10 à 20
+  séances**, risque élevé (plantages subtils dans des modes peu joués). C'est un travail de 2.x, après la 2.0
+  Régénération, avec qui il faut s'accorder : elle refait justement le code généré.
+- **Étape intermédiaire recommandée** : 8 catcheurs **avec l'arbitre**, sans les modèles des commentateurs (les cases
+  7-8, ce qu'on fait déjà). À vérifier en jeu : leurs **voix** continuent sans doute, car le commentaire audio ne
+  dépend probablement pas de leurs modèles à la table. Cette étape rend jouables des matchs à 8 bien plus tôt, et
+  presque tout ce qu'elle demande (IA, mémoire, barres de vie, fin du match) resservira au grand chantier.
+- 10 catcheurs : même chantier que 9, une fois la liste agrandie.
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que
