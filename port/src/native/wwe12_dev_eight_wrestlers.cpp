@@ -26,6 +26,7 @@
 // "[eight] list: ..." (the 9 characters: role +3428, position) and "[eight] heaps: ..." (the 9 characters' heaps).
 // The frame rate is in the game's own "[perf]" lines (every 10 s); heap failures in "[heaps]" (wwe12_heap_probe).
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -53,8 +54,9 @@ REXCVAR_DEFINE_BOOL(wwe12_dev_eight_force, true, "WWE12",
 REXCVAR_DEFINE_STRING(wwe12_dev_eight_persons, "", "WWE12",
                       "Dev: the \"person\" (+4 of the record) given to slots 7-8, \"slot7,slot8\" (e.g. \"4,5\"); empty = "
                       "keep theirs (41, 42: the commentators').");
-REXCVAR_DEFINE_STRING(wwe12_dev_eight_ids, "12302,13902", "WWE12",
-                      "Dev: the two superstars of wwe12_dev_eight_wrestlers, superstar x 100 + attire, \"slot7,slot8\".");
+REXCVAR_DEFINE_STRING(wwe12_dev_eight_ids, "10202,10702,13102,16102,27602,27902,32202,32502,12302,13902", "WWE12",
+                      "Dev: superstars for wwe12_dev_eight_wrestlers (superstar x 100 + attire): slots 7 and 8 take the "
+                      "first two of this list that are not already in the match.");
 
 namespace {
 
@@ -92,11 +94,33 @@ int PersonFor(u32 slot) {
   return one.empty() ? -1 : std::atoi(one.c_str());
 }
 
+// Try 6 crashed loading the models (sub_82839848, a model file's parts): the two superstars given by default (12302,
+// 13902) were already in the match (slots 3 and 1), and the game never loads one superstar twice (the select screen
+// forbids it). Slots 7 and 8 now take the first two of the list that the match's persons 0-5 don't have.
+u32 PersonId(u32 n);  // below
 u32 IdFor(u32 slot) {
   const std::string ids = REXCVAR_GET(wwe12_dev_eight_ids);
-  const size_t comma = ids.find(',');
-  const std::string one = slot == 7 ? ids.substr(0, comma) : comma == std::string::npos ? "" : ids.substr(comma + 1);
-  return u32(std::strtoul(one.c_str(), nullptr, 10));
+  u32 skip = slot == 8 ? 1 : 0;
+  for (size_t at = 0; at < ids.size();) {
+    const size_t comma = std::min(ids.find(',', at), ids.size());
+    const u32 id = u32(std::strtoul(ids.substr(at, comma - at).c_str(), nullptr, 10));
+    at = comma + 1;
+    if (id < 100)
+      continue;
+    bool used = false;
+    for (u32 n = 0; n < 6 && !used; ++n)
+      used = PersonId(n) / 100 == id / 100;
+    if (used)
+      continue;
+    if (skip-- == 0)
+      return id;
+  }
+  return 0;
+}
+
+u32 PersonId(u32 n) {  // the superstar x 100 + attire of person n (table [0x8317C84C] + 132 + n x 48, +16)
+  const u32 t = bd::mem::try_load<u32>(0x8317C84C);
+  return t && n < 43 ? bd::mem::try_load<u32>(t + 132 + n * 48 + 16) : 0;
 }
 
 // Test 2 (2026-11-22): slots 7-8 were made at role 0 as superstars (class 82004220, as slots 0-5), but 10 s later

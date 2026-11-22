@@ -232,6 +232,31 @@ Avant de demander ce test : lire `sub_822CDF78` (création des personnages) et c
   remplit la table de 184 octets, combien d'entrées, à partir de quoi). Le but est de trouver comment le Royal Rumble
   charge ses entrants (personnes 6-39) et de faire pareil. Plus d'essai à l'aveugle avant cela.
 
+**Étude du chargeur de modèles (2026-11-22, lecture seule, demande de Main)**
+- `sub_82839848` ne gère pas des cases : il **lit un fichier de modèle 3D** (1 919 lignes). La table de 184 octets
+  est la liste des morceaux du modèle, et son nombre vient du fichier. r25 = 9 était le **n° du morceau**, pas une
+  case. Ce n'est donc pas un tableau à 6.
+- La mémoire des morceaux vient de `sub_82A9C000` → `sub_821AC5E8(taille, étiquette)`, l'allocateur du jeu par
+  catégories (mémoire physique, comme `XMemAlloc` sur Xbox). C'est lui qui a été refusé.
+- **Cause la plus probable du plantage** : nos deux catcheurs par défaut (12302, 13902) étaient **déjà dans le
+  match** (cases 3 et 1). L'écran de sélection interdit de prendre deux fois le même catcheur, donc le chargeur n'est
+  sans doute pas fait pour charger deux fois le même modèle.
+- Royal Rumble : il garde les mêmes 6 cases. Les personnes 6-39 sont la file des entrants, chargés à la place d'un
+  éliminé (entrée `'RREn'`, `sub_82386168`). Il ne charge donc jamais plus de 6 catcheurs à la fois. Il n'y a pas de
+  recette toute faite pour 8, mais la place pour 43 personnes existe.
+- Ce qu'il faut pour 4 contre 4 / fatal 8-way, d'après les essais :
+  - cases 7-8 = personnes 6-7 (`sub_8268B218`), remplies en vrais catcheurs, **jamais en double** ;
+  - plus de commentateurs à la table (leurs cases sont prises) ;
+  - tas 37-38 agrandis ;
+  - la mémoire physique à surveiller (`[heaps]`, « PhysicalHeap ») ;
+  - puis les tests « < 6 » (IA, caméra, barres de vie, fin du match).
+
+**Essai 7 (prêt, petit et ciblé)** :
+- les cases 7-8 prennent les deux premiers catcheurs de `wwe12_dev_eight_ids` qui ne sont **pas déjà dans le
+  match** (liste de 10 numéros vus dans les journaux) ;
+- le lanceur n'agrandit plus les tas 12 / 15 (20 Mo inutiles).
+- S'il plante encore au même endroit, la cause est la mémoire physique, et il faudra la mesurer.
+
 **Idée d'iMrBurn (2026-11-22) : de vrais types de match à 8** (4 contre 4, combat à 8, etc.). C'est le palier 1, à
 faire dès que l'essai 6 montre deux vrais catcheurs qui bougent :
 - 8-MAN TAG (4 contre 4) = la règle du 6-man tag (3 contre 3) + 2 personnes de plus, une par équipe (ce que fait
