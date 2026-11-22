@@ -201,6 +201,29 @@ Avant de demander ce test : lire `sub_822CDF78` (création des personnages) et c
 - le crochet de lecture, la refabrication et la remise à 0 n'agissent que pour ce match, et la lecture seulement
   dans les 10 s qui suivent la fabrication des cases 7-8 (le temps des reconstructions de la mise en place).
 
+**Essai 5 (2026-11-22) : pas de gel, mais toujours les deux commentateurs, immobiles.**
+- Le numéro de catcheur dans la fiche ne suffit pas. L'apparence et le comportement viennent de la **personne** du
+  match.
+- La table des personnes (`sub_8267CD30` → `sub_82686058` : `[0x8317C84C]` + 132 + n × 48) a **43 places**. Une
+  personne contient : +16 = catcheur × 100 + tenue (51200 = vide), +8 = la case, puis +21 / +22 / +23 / +45.
+- `sub_828C38E0` reconstruit les fiches à partir des personnes.
+- La correspondance case → personne vient de `sub_8268B218` (15 appelants) : cases 0-5 = personnes 0-5, case 6 =
+  40 (arbitre), 7-8 = 41-42 (les commentateurs). Les personnes 6 à 39 servent aux entrants du Royal Rumble.
+
+**Essai 6 (prêt à compiler)** :
+- crochet sur `sub_8268B218` : cases 7-8 → personnes 6-7 (réglage `wwe12_dev_eight_persons_map`, activé) ;
+- les personnes 6-7 sont remplies en copiant les personnes 2 et 5 (une de chaque côté : un 3 contre 3 devient un
+  4 contre 4), avec les catcheurs de `wwe12_dev_eight_ids` et leur propre case (+8).
+
+**Idée d'iMrBurn (2026-11-22) : de vrais types de match à 8** (4 contre 4, combat à 8, etc.). C'est le palier 1, à
+faire dès que l'essai 6 montre deux vrais catcheurs qui bougent :
+- 8-MAN TAG (4 contre 4) = la règle du 6-man tag (3 contre 3) + 2 personnes de plus, une par équipe (ce que fait
+  l'essai 6) ;
+- FATAL 8-WAY = la règle du 6-pack challenge + 2 personnes de plus, chacun dans sa propre équipe ;
+- menu : de nouvelles lignes, ajoutées comme celles d'I QUIT et de SPECIAL REFEREE (`wwe12_match_modes.cpp`) ;
+- choix des 2 catcheurs en plus : l'écran de sélection n'a que 6 places (sa mise en page). Première version : ils
+  se choisissent ailleurs (réglage, notre page, ou au hasard). Ensuite, voir si l'écran peut avoir 8 places.
+
 **Plan des risques (pour le palier 1)**
 
 | Partie | Risque | Ce qu'on fera |

@@ -301,3 +301,67 @@ extern "C" REX_FUNC(sub_8268B380) {
   if (table && table == bd::mem::try_load<u32>(0x8322DD44) && bd::mem::try_load<u8>(entry + 6) == 4 && IdFor(slot) >= 100)
     Rewrite(slot, entry, "read");
 }
+
+namespace {
+
+// ---- try 6 (2026-11-22): slots 7-8 as persons 6-7 ------------------------------------------------------------------
+// Try 5: still the two commentators, standing still (iMrBurn). The look and the behaviour come from the match's
+// "persons", not from the participant records: the person table (sub_8267CD30 / sub_82686058: [0x8317C84C] + 132 +
+// n x 48, 43 persons, 0-42) holds +16 superstar x 100 + attire (51200 = none), +8 the slot, +21 / +22 / +23 / +45
+// more, and sub_828C38E0 rebuilds the participant entries (and the load list) from them. Which person each slot is
+// comes from sub_8268B218 (15 callers): slots 0-8 = persons 0, 1, 2, 3, 4, 5, then 40 (referee), 41, 42 (the
+// commentators). Persons 6-39 are there for the Royal Rumble's entrants. So: slots 7-8 = persons 6-7, filled as
+// copies of persons 2 and 5 (one from each side: a 3 on 3 becomes 4 on 4) with the superstars of wwe12_dev_eight_ids
+// and their own slot.
+constexpr u32 kPersons = 0x8317C84C;  // -> + 132 + n x 48
+constexpr u32 kPersonSize = 48;
+
+u32 Person(u32 n) {
+  const u32 t = bd::mem::try_load<u32>(kPersons);
+  return t && n < 43 ? t + 132 + n * kPersonSize : 0;
+}
+
+bool FillPersons() {
+  for (u32 n = 0; n < 6; ++n) {  // (a match of 6 chosen: persons 0-5 all set)
+    const u32 p = Person(n);
+    if (!p || bd::mem::try_load<u32>(p + 16) == 51200 || bd::mem::try_load<u32>(p + 16) == 0)
+      return false;
+  }
+  static std::atomic<int> logged{0};
+  for (u32 slot : {7u, 8u}) {
+    const u32 to = Person(slot - 1), from = Person(slot == 7 ? 2 : 5), id = IdFor(slot);
+    if (!to || !from || id < 100)
+      return false;
+    if (bd::mem::try_load<u32>(to + 16) == id && bd::mem::try_load<u32>(to + 8) == slot)
+      continue;  // (done already)
+    for (u32 b = 0; b < kPersonSize; b += 4)
+      bd::mem::store<u32>(to + b, bd::mem::try_load<u32>(from + b));
+    bd::mem::store<u32>(to + 16, id);
+    bd::mem::store<u32>(to + 8, slot);
+    if (logged++ < 20)
+      BD_INFO("[eight] person {} (slot {}) = person {}'s copy, superstar {} attire {}: {}", slot - 1, slot,
+              slot == 7 ? 2 : 5, id / 100, id % 100, Bytes(to, kPersonSize));
+  }
+  return true;
+}
+
+}  // namespace
+
+REXCVAR_DEFINE_BOOL(wwe12_dev_eight_persons_map, true, "WWE12",
+                    "Dev (wwe12_dev_eight_wrestlers): slots 7-8 are persons 6-7 (copies of persons 2 / 5 with "
+                    "wwe12_dev_eight_ids) instead of the commentators 41-42.");
+
+REX_EXTERN(__imp__sub_8268B218);
+extern "C" REX_FUNC(sub_8268B218) {
+  const u32 out = ctx.r3.u32;
+  __imp__sub_8268B218(ctx, base);
+  if (!REXCVAR_GET(wwe12_dev_eight_wrestlers) || !REXCVAR_GET(wwe12_dev_eight_persons_map) || !out)
+    return;
+  if (!FillPersons())
+    return;
+  bd::mem::store<u32>(out + 28, 6);
+  bd::mem::store<u32>(out + 32, 7);
+  static std::atomic<int> logged{0};
+  if (logged++ < 10)
+    BD_INFO("[eight] slots -> persons: 7 -> 6, 8 -> 7 (from {:08X})", u32(ctx.lr));
+}
