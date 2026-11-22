@@ -187,6 +187,20 @@ Avant de demander ce test : lire `sub_822CDF78` (création des personnages) et c
 - réglage `wwe12_dev_eight_persons` (vide par défaut) : changer la « personne » des cases 7-8 sans recompiler, si
   l'IA dépend de la personne (les commentateurs n'ont sans doute pas d'IA de lutteur).
 
+**Essai 4 (2026-11-22) : gel au chargement du match.**
+- Le « premier match » était le **match de démonstration de l'écran-titre** (un 1 contre 1 : cases 0, 1, 6, 7, 8).
+  Il a été modifié lui aussi : les cases 7-8 y ont été refabriquées 3 fois de suite.
+- Pendant la préparation du vrai match (règle 4), le crochet de lecture a de nouveau changé les entrées 7-8 avec
+  les fiches de la démo. Juste après, le chargement s'est figé : plus d'image pendant 1 minute, puis la fenêtre a
+  été fermée (`hang_trace.txt`).
+
+**Essai 5 (prêt à compiler)** :
+- seulement dans un match où les cases 2 à 5 sont demandées aussi (6 catcheurs) : la démo et les 1 contre 1 ne
+  sont pas touchés ;
+- tout est oublié quand un match demande la case 0 (nouveau match) ;
+- le crochet de lecture, la refabrication et la remise à 0 n'agissent que pour ce match, et la lecture seulement
+  dans les 10 s qui suivent la fabrication des cases 7-8 (le temps des reconstructions de la mise en place).
+
 **Plan des risques (pour le palier 1)**
 
 | Partie | Risque | Ce qu'on fera |

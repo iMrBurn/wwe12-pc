@@ -65,6 +65,16 @@ constexpr u32 kDescSize = 80;
 std::array<std::atomic<u32>, 9> g_desc{};  // the last record asked for each slot
 std::array<std::atomic<u32>, 9> g_made{};  // the character sub_822D0618 made for each slot
 std::atomic<bool> g_thread{false};
+// Try 4 (2026-11-22): the "first match" was the title screen's demo match (a 1 on 1: slots 0, 1, 6, 7, 8), changed
+// too; then, while the player's own match was being set up, the getter hook below changed entries 7-8 again with that
+// demo's records, and the loading froze. Now: only a match whose slots 2-5 are asked too (6 superstars), everything
+// forgotten when a match asks for slot 0, and the getter only acts in the 10 s after slots 7-8 were made.
+std::atomic<bool> g_armed{false};                      // this match's slots 7-8 were changed
+std::atomic<long long> g_made_ms{0};                   // when slot 7 or 8 was last made (steady clock, ms)
+long long NowMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
 
 std::string Bytes(u32 at, u32 n) {
   std::string s;
@@ -119,7 +129,7 @@ void Watch() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     if (!REXCVAR_GET(wwe12_dev_eight_wrestlers))
       continue;
-    if (REXCVAR_GET(wwe12_dev_eight_force))
+    if (REXCVAR_GET(wwe12_dev_eight_force) && g_armed.load())
       Force();
     if (tick % 100)
       continue;
@@ -216,6 +226,13 @@ void Wwe12EightWrestlersDesc(u32 slot, u32 desc) {
     return;
   if (!g_thread.exchange(true))
     std::thread(Watch).detach();
+  if (slot == 0) {  // a new match: forget the last one
+    for (auto &d : g_desc)
+      d = 0;
+    for (auto &m : g_made)
+      m = 0;
+    g_armed = false;
+  }
   g_desc[slot] = desc;
   const u32 table = TableEntry(slot);
   BD_INFO("[eight] slot {}: id {} role {} person {} heap {} (record {:08X}: {}; participant table entry {:08X}, role {})",
@@ -224,6 +241,11 @@ void Wwe12EightWrestlersDesc(u32 slot, u32 desc) {
           table ? int(bd::mem::try_load<u8>(table + 6)) : -1);
   if (slot != 7 && slot != 8)
     return;
+  if (!g_desc[2].load() || !g_desc[3].load() || !g_desc[4].load() || !g_desc[5].load()) {
+    BD_INFO("[eight] slot {}: not a match of 6 superstars (the title screen's demo, a 1 on 1...): left as it is", slot);
+    return;
+  }
+  g_armed = true;
   if (Rewrite(slot, desc, "asked") && slot == 7) {
     // who writes the record's +6 afterwards: wwe12_pin_trap's DR2 on the word +4..+7 (needs --wwe12_pin_trap=true)
     rex::cvar::SetFlagByName("wwe12_watch_addr", std::to_string(int32_t(desc + 4)));
@@ -246,7 +268,7 @@ extern "C" REX_FUNC(sub_822D0618) {
     const u32 id = bd::mem::try_load<u32>(rec);
     const u8 role = bd::mem::try_load<u8>(rec + 6);
     BD_INFO("[eight] making slot {}: record {:08X} id {} role {}", slot, rec, id, role);
-    if (slot == 7 || slot == 8)
+    if ((slot == 7 || slot == 8) && g_armed.load())
       Rewrite(slot, rec, "making");  // (logs when the record had gone back to role 4)
   }
   __imp__sub_822D0618(ctx, base);
@@ -255,6 +277,8 @@ extern "C" REX_FUNC(sub_822D0618) {
   const u32 table = bd::mem::try_load<u32>(loader);
   const u32 a = table ? bd::mem::try_load<u32>(table + slot * 4) : 0;
   g_made[slot] = a;
+  if (slot == 7 || slot == 8)
+    g_made_ms = NowMs();
   BD_INFO("[eight] made slot {}: character {:08X} class {:08X} role {} hidden {} {}", slot, a,
           a ? bd::mem::try_load<u32>(a) : 0, a ? int(bd::mem::try_load<u32>(a + 3428)) : -1,
           a ? bd::mem::try_load<u32>(a + 1736) : 0, a ? bd::mem::try_load<u32>(a + 1752) : 0);
@@ -270,8 +294,9 @@ REX_EXTERN(__imp__sub_8268B380);
 extern "C" REX_FUNC(sub_8268B380) {
   const u32 table = ctx.r3.u32, slot = ctx.r4.u32;
   __imp__sub_8268B380(ctx, base);
-  if ((slot != 7 && slot != 8) || !REXCVAR_GET(wwe12_dev_eight_wrestlers) || !g_desc[slot].load() || !g_desc[1].load())
-    return;  // (only once the match's characters were asked: the menus' tables are left alone)
+  if ((slot != 7 && slot != 8) || !REXCVAR_GET(wwe12_dev_eight_wrestlers) || !g_armed.load() ||
+      NowMs() - g_made_ms.load() > 10000)
+    return;  // (only this match's slots 7-8, in the 10 s after they were made: the set-up's rebuilds)
   const u32 entry = ctx.r3.u32;
   if (table && table == bd::mem::try_load<u32>(0x8322DD44) && bd::mem::try_load<u8>(entry + 6) == 4 && IdFor(slot) >= 100)
     Rewrite(slot, entry, "read");
