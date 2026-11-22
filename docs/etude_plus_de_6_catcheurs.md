@@ -363,6 +363,25 @@ par valeur** de +3468. Les deux cases avaient 6, et la 8, réglée après la 7, 
 **Essai 15 (prêt, vérification)** : seule la case 7 reçoit la place 6, la case 8 garde 8. Attendu : la case 7 bouge
 comme Kane, et la 8 reste figée.
 
+**Essai 15 (2026-11-22) : hypothèse confirmée.** « Triple H (case 7) a fait comme Kane à l'essai d'avant ». La table
+des programmes a bien une place par valeur de +3468, et la place 6 est la seule libre.
+
+**Pour 8 catcheurs avec IA : agrandir la table des programmes (étude à faire, sans test).**
+- Elle est dans le gestionnaire `[0x8322E1B4]` + 8, aux places `[+ (12 + n) × 4]`, n < 7 (+48 à +72). Les champs
+  suivants (+76…) sont pris : on ne peut pas l'agrandir sur place.
+- Une dizaine d'**accesseurs** vérifient « n < 7 » puis lisent cette place (`sub_8295BE88`, `sub_8295BEB0`,
+  `sub_8295C7F0`, `sub_8295C618`, `sub_8295D1C0`, `sub_8295C358`, `sub_8295BEE8`, `sub_8295D5D8`, `sub_8295C558`,
+  `sub_82958020`, `sub_8295C0F0`, `sub_82956420`…).
+- Plan :
+  1. trouver qui crée les 7 objets de la table, et avec quelle fonction ;
+  2. en créer 2 de plus de la même façon, à nous ;
+  3. faire accepter 7 et 8 à chaque accesseur et les renvoyer vers ces 2 objets (crochets) ;
+  4. remettre +3468 = 7 et 8 pour les cases 7-8.
+  Environ 1 séance d'étude, puis 1 ou 2 essais.
+- « Bouge mais ne fait rien » : avec la place 6, le personnage sort de la pose d'attente, mais il ne se bat pas.
+  Il lui manque sans doute le choix d'une cible (des boucles « < 6 ») ou une autre pièce (le pointeur +3400, vide pour
+  la case 7). À regarder après la table.
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que
