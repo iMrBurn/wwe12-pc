@@ -171,6 +171,22 @@ Avant de demander ce test : lire `sub_822CDF78` (création des personnages) et c
   donne le code du jeu qui réécrit la fiche (`[compte] adresse surveillee … wwe12.exe+X`) ;
 - la liste des 10 s dit si le personnage de la case est bien celui qu'on a fabriqué.
 
+**Essai 3 (2026-11-22, capture d'iMrBurn) : les deux personnages sont dans le ring !**
+- Ce sont **les deux commentateurs** (la case 7-8 = la table des commentateurs). Remis au rôle 0 toutes les
+  100 ms, ils sont restés dans le ring à la place prévue, mais avec leur apparence de commentateurs et sans bouger.
+  La table des commentateurs est restée vide.
+- Le piège DR2 a trouvé le coupable : `sub_828C38E0`, une étape de mise en place du match (appelée par
+  `sub_828E5C08` / `sub_828E5DA0`). Environ 150 ms après la fabrication des personnages, elle vide l'entrée
+  (`sub_824C0F90`) puis la remplit à nouveau à partir des personnes 41-42 : numéro 15006 / 15306, rôle 4.
+- Images : 60 / s, comme d'habitude.
+
+**Essai 4 (prêt à compiler)** :
+- crochet sur `sub_8268B380`, la fonction par laquelle le jeu lit une entrée de la table (84 appels). Chaque
+  lecture des entrées 7-8 les retrouve en catcheurs (numéro, rôle 0, place). Le modèle et ce qui suit devraient
+  donc suivre ;
+- réglage `wwe12_dev_eight_persons` (vide par défaut) : changer la « personne » des cases 7-8 sans recompiler, si
+  l'IA dépend de la personne (les commentateurs n'ont sans doute pas d'IA de lutteur).
+
 **Plan des risques (pour le palier 1)**
 
 | Partie | Risque | Ce qu'on fera |

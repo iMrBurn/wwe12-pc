@@ -50,6 +50,9 @@ REXCVAR_DEFINE_BOOL(wwe12_dev_eight_place, true, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_dev_eight_force, true, "WWE12",
                     "Dev: every 100 ms, slots 7-8 put back to role 0 (their record and their character) when the game "
                     "has made them role 4 again.");
+REXCVAR_DEFINE_STRING(wwe12_dev_eight_persons, "", "WWE12",
+                      "Dev: the \"person\" (+4 of the record) given to slots 7-8, \"slot7,slot8\" (e.g. \"4,5\"); empty = "
+                      "keep theirs (41, 42: the commentators').");
 REXCVAR_DEFINE_STRING(wwe12_dev_eight_ids, "12302,13902", "WWE12",
                       "Dev: the two superstars of wwe12_dev_eight_wrestlers, superstar x 100 + attire, \"slot7,slot8\".");
 
@@ -68,6 +71,15 @@ std::string Bytes(u32 at, u32 n) {
   for (u32 i = 0; i < n && at; ++i)
     s += fmt::format("{:02X}", bd::mem::try_load<u8>(at + i));
   return s;
+}
+
+int PersonFor(u32 slot) {
+  const std::string v = REXCVAR_GET(wwe12_dev_eight_persons);
+  if (v.empty())
+    return -1;
+  const size_t comma = v.find(',');
+  const std::string one = slot == 7 ? v.substr(0, comma) : comma == std::string::npos ? "" : v.substr(comma + 1);
+  return one.empty() ? -1 : std::atoi(one.c_str());
 }
 
 u32 IdFor(u32 slot) {
@@ -174,6 +186,8 @@ bool Rewrite(u32 slot, u32 rec, const char *where) {
   bd::mem::store<u8>(rec + 6, 0);
   bd::mem::store<u8>(rec + 8, bd::mem::try_load<u8>(one + 8));
   bd::mem::store<u8>(rec + 9, bd::mem::try_load<u8>(one + 9));
+  if (const int person = PersonFor(slot); person >= 0)
+    bd::mem::store<u8>(rec + 4, u8(person));
   // Where it starts: the role 4 characters stand outside the ring, on the floor (test 2026-11-22: (-60 0 -880),
   // (80 0 -880); superstars at y -120). With wwe12_dev_eight_place: slot 2's / 3's place (+32 position, +48 the next
   // 16 bytes, both copied into the character at +752 / +736 by sub_822D0618), 60 units to the side.
@@ -185,8 +199,10 @@ bool Rewrite(u32 slot, u32 rec, const char *where) {
       bd::mem::store<float>(rec + 32, bd::mem::try_load<float>(from + 32) + (slot == 7 ? 60.0f : -60.0f));
     }
   }
-  BD_INFO("[eight] {}: slot {} is now superstar {} attire {} (role 0) at {:08X}: {}", where, slot, want / 100,
-          want % 100, rec, Bytes(rec, 64));
+  static std::atomic<int> logged{0};
+  if (logged++ < 40)
+    BD_INFO("[eight] {}: slot {} is now superstar {} attire {} (role 0) at {:08X}: {}", where, slot, want / 100,
+            want % 100, rec, Bytes(rec, 64));
   return true;
 }
 
@@ -242,4 +258,21 @@ extern "C" REX_FUNC(sub_822D0618) {
   BD_INFO("[eight] made slot {}: character {:08X} class {:08X} role {} hidden {} {}", slot, a,
           a ? bd::mem::try_load<u32>(a) : 0, a ? int(bd::mem::try_load<u32>(a + 3428)) : -1,
           a ? bd::mem::try_load<u32>(a + 1736) : 0, a ? bd::mem::try_load<u32>(a + 1752) : 0);
+}
+
+// sub_8268B380(table, slot) = table + 528 + slot x 80: how the game reads a participant table entry (84 callers).
+// Try 3 (2026-11-22, iMrBurn's screenshot): slots 7-8 kept at role 0 by Force came into the ring, but as the two
+// commentators, standing still. DR2 on the record caught sub_828C38E0 (a match setup step: wwe12.exe+291A8DD..9AE,
+// called from sub_828E5C08 / sub_828E5DA0) rebuilding the table ~150 ms after the characters were made: entry cleared
+// by sub_824C0F90, then refilled from the persons (id 15006 / 15306, person 41 / 42, role 4). So every read of entries
+// 7-8 through this getter now finds them as our superstars again (the model, the role and what follows read them so).
+REX_EXTERN(__imp__sub_8268B380);
+extern "C" REX_FUNC(sub_8268B380) {
+  const u32 table = ctx.r3.u32, slot = ctx.r4.u32;
+  __imp__sub_8268B380(ctx, base);
+  if ((slot != 7 && slot != 8) || !REXCVAR_GET(wwe12_dev_eight_wrestlers) || !g_desc[slot].load() || !g_desc[1].load())
+    return;  // (only once the match's characters were asked: the menus' tables are left alone)
+  const u32 entry = ctx.r3.u32;
+  if (table && table == bd::mem::try_load<u32>(0x8322DD44) && bd::mem::try_load<u8>(entry + 6) == 4 && IdFor(slot) >= 100)
+    Rewrite(slot, entry, "read");
 }
