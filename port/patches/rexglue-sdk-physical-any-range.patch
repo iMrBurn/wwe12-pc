@@ -1,0 +1,54 @@
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_memory.cpp b/src/kernel/xboxkrnl/xboxkrnl_memory.cpp
+index 8684eda..cdfb49e 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_memory.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_memory.cpp
+@@ -22,6 +22,10 @@
+ #include <rex/types.h>
+ #include <rex/system/kernel_state.h>
+ #include <rex/system/xtypes.h>
++#include <rex/cvar.h>
++
++REXCVAR_DEFINE_BOOL(physical_alloc_any_range, false, "Kernel",
++                    "WWE12 PC: a physical allocation refused in its address range is tried over the whole heap.");
+ 
+ namespace rex::kernel::xboxkrnl {
+ using namespace rex::system;
+@@ -399,6 +403,20 @@ u32 MmAllocatePhysicalMemoryEx_entry(u32 flags, u32 region_size, u32 protect_bit
+   uint32_t base_address;
+   if (!heap->AllocRange(heap_min_addr, heap_max_addr, adjusted_size, adjusted_alignment,
+                         allocation_type, protect, top_down, &base_address)) {
++    // WWE12 PC (8-superstar study, off by default): physical address limits only matter to the console's
++    // hardware; with physical_alloc_any_range on, a request refused in its range is tried again over the whole
++    // heap. The port turns it on only in a match (never at start-up, where the game probes memory until refused).
++    const bool ranged = heap_min_addr != heap_base || heap_max_addr != heap_base + heap_size - 1;
++    if (ranged && REXCVAR_GET(physical_alloc_any_range) &&
++        heap->AllocRange(heap_base, heap_base + heap_size - 1, adjusted_size, adjusted_alignment,
++                         allocation_type, protect, top_down, &base_address)) {
++      REXKRNL_WARN("MmAllocatePhysicalMemoryEx: {:#x} bytes refused in {:#x}-{:#x}, given at {:#x} (any range)",
++                   adjusted_size, (uint32_t)min_addr_range, (uint32_t)max_addr_range, base_address);
++      return base_address;
++    }
++    REXKRNL_WARN("MmAllocatePhysicalMemoryEx refused: {:#x} bytes, protect {:#x}, range {:#x}-{:#x}, align {:#x}",
++                 (uint32_t)region_size, (uint32_t)protect_bits, (uint32_t)min_addr_range,
++                 (uint32_t)max_addr_range, (uint32_t)alignment);
+     // Failed - assume no memory available.
+     return 0;
+   }
+diff --git a/src/system/xmemory.cpp b/src/system/xmemory.cpp
+index 76cc877..122bcc1 100644
+--- a/src/system/xmemory.cpp
++++ b/src/system/xmemory.cpp
+@@ -1983,7 +1983,12 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address, uint3
+   uint32_t parent_address;
+   if (!parent_heap_->AllocRange(parent_low_address, parent_high_address, size, alignment,
+                                 allocation_type, protect, top_down, &parent_address)) {
+-    REXSYS_ERROR("PhysicalHeap::Alloc unable to alloc physical memory in parent heap");
++    // (WWE12 PC: what was asked and how much of the 512 MB is really left, for the 8-superstar study)
++    REXSYS_ERROR(
++        "PhysicalHeap::Alloc unable to alloc physical memory in parent heap (range: {:#x} bytes, align {:#x}, "
++        "physical {:#x}-{:#x}, page {:#x}; physical pages free {} of {})",
++        size, alignment, parent_low_address, parent_high_address, page_size_,
++        parent_heap_->GetUnreservedPageCount(), parent_heap_->GetTotalPageCount());
+     return false;
+   }
+ 

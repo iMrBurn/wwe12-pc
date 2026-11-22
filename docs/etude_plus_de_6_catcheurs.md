@@ -272,6 +272,22 @@ modèle de la case 7.
 refusée, ses attributs, l'appelant et ce qu'il reste de mémoire physique (pages de 4 Ko / 64 Ko / 16 Mo). Il ne change
 rien au jeu : il sert à choisir la bonne piste.
 
+**Essai 8b (2026-11-22) : la mesure.** « [eight] memory refused: 50016 bytes (48 KB), attributes B2800000 |
+4K pages 106041 of 130304 free; 64K pages 4556 of 8192 free; 16384K pages 31 of 32 free ».
+- Ces compteurs sont ceux de trois « vues » qui se partagent les **mêmes** 512 Mo : environ 227 + 95 + 16 = 338 Mo
+  pris, donc environ 170 Mo libres. Refuser 48 Ko n'est donc pas un manque de mémoire en général.
+- Cause probable : le jeu demande sa mémoire physique avec une **plage d'adresses** (min / max) dans
+  `MmAllocatePhysicalMemoryEx` (SDK, `xboxkrnl_memory.cpp`), et cette plage est pleine. Sur Xbox, c'est une
+  contrainte du matériel ; sur PC, elle ne sert à rien.
+
+**Essai 9 (prêt, demande une compile du SDK)** :
+- patch `port/patches/rexglue-sdk-physical-any-range.patch` :
+  - le refus donne maintenant la taille, la plage et les pages vraiment libres des 512 Mo ;
+  - avec le réglage `physical_alloc_any_range` (coupé par défaut), une demande refusée dans sa plage est
+    réessayée sur toute la mémoire ;
+- notre code n'allume ce réglage qu'une fois les cases 7-8 reliées, jamais au démarrage. Au démarrage, le jeu
+  sonde la mémoire jusqu'au refus : ce sont les 446 refus de chaque lancement.
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que

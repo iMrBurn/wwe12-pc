@@ -388,7 +388,14 @@ extern "C" REX_FUNC(sub_8268B218) {
     return;
   bd::mem::store<u32>(out + 28, 6);
   bd::mem::store<u32>(out + 32, 7);
-  g_mapped = true;
+  if (!g_mapped.exchange(true)) {
+    // Try 8b (2026-11-22): a 48 KB physical allocation was refused for slot 7's model while the 512 MB were far from
+    // full (about 170 MB left in all). The SDK patch rexglue-sdk-physical-any-range lets a request refused in the
+    // address range the game asked for go anywhere (address limits only matter to the console's hardware); on only
+    // from now (the game probes memory until refused at start-up).
+    rex::cvar::SetFlagByName("physical_alloc_any_range", "true");
+    BD_INFO("[eight] physical_alloc_any_range on");
+  }
   static std::atomic<int> logged{0};
   if (logged++ < 10)
     BD_INFO("[eight] slots -> persons: 7 -> 6, 8 -> 7 (from {:08X})", u32(ctx.lr));
