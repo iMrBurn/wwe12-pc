@@ -57,6 +57,12 @@ REXCVAR_DEFINE_BOOL(svr_hold_new_scene_frame, true, "SvR",
 // ~5.8 ms a frame on textures there, ~185 texture rebuilds a second ([load] lines). This probe says which:
 // every 2 s, the textures rebuilt most (address, size, format, rebuilds, how many different contents) -
 // few contents rebuilt again and again = textures taking turns in the same memory. Measure only.
+// 2026-11-22 (Rendu, 2.0 "petits PC"): a texture of 16 KB or more whose sampled hash changed has changed for
+// sure (the sample is taken from its content and fetch constant), so its full hash is not taken before the copy:
+// it only confirmed the change. Textures rewritten every frame (entrance videos, ~270 copies/s) paid both.
+REXCVAR_DEFINE_BOOL(svr_texture_skip_confirm_hash, true, "SvR",
+                    "Rebuild a texture mirror as soon as its sampled hash changed, without also hashing it in "
+                    "full first.");
 REXCVAR_DEFINE_BOOL(svr_texture_churn_probe, false, "SvR",
                     "Dev: log the textures rebuilt most often ([texchurn] lines every 2 s).");
 REXCVAR_DEFINE_BOOL(svr_debug_magenta, false, "SvR",
@@ -1330,6 +1336,7 @@ struct MirrorCheck {
   u64 frame = 0;
   u64 sample = 0;      // SampleHash of the content the full hash was taken on
   u64 full_frame = 0;  // frame of the last full hash
+  bool hash_known = true;  // false: rebuilt on a changed sample, full hash not taken (svr_texture_skip_confirm_hash)
   GuestTexture *host = nullptr;
 };
 std::unordered_map<u32, MirrorCheck> g_mirror_checks;  // D3D texture VA -> last check
@@ -1596,12 +1603,14 @@ GuestTexture *SvrResolveTexture(u32 texture_va, bool check_every_use) {
       g_mirror_builds.fetch_add(1, std::memory_order_relaxed);
     }
     check.hash = hash;
+    check.hash_known = true;
     check.frame = frame;
     check.sample = src.base_size + src.mips_size >= kSampledHashMin ? SampleHash(src) : 0;
     check.full_frame = frame;
     return check.host;
   }
   u64 sample = 0;
+  bool sample_changed = false;
   if (src.base_size + src.mips_size >= kSampledHashMin) {
     sample = SampleHash(src);
     if (check.frame != 0 && check.sample == sample && frame - check.full_frame < kFullHashFrames) {
@@ -1609,9 +1618,14 @@ GuestTexture *SvrResolveTexture(u32 texture_va, bool check_every_use) {
       check.frame = frame;
       return check.host;
     }
+    sample_changed = check.frame != 0 && check.sample != sample;
   }
-  const u64 hash = HashSource(src);
-  if (check.frame != 0 && check.hash == hash) {
+  // Changed sample: the content changed, rebuild without the confirming full hash. The next full hash (sample
+  // stable for kFullHashFrames) then finds no known hash and rebuilds once more: at most one extra copy each
+  // time a texture stops changing.
+  const bool skip_hash = sample_changed && REXCVAR_GET(svr_texture_skip_confirm_hash);
+  const u64 hash = skip_hash ? 0 : HashSource(src);
+  if (!skip_hash && check.frame != 0 && check.hash_known && check.hash == hash) {
     check.frame = frame;
     check.sample = sample;
     check.full_frame = frame;
@@ -1620,13 +1634,14 @@ GuestTexture *SvrResolveTexture(u32 texture_va, bool check_every_use) {
   const auto build_start = std::chrono::steady_clock::now();
   check.host = GetOrCreateNativeMirror(texture_va, 0);
   if (REXCVAR_GET(svr_texture_churn_probe))
-    NoteTextureChurn(texture_va, hash, src.base_size + src.mips_size, check.host);
+    NoteTextureChurn(texture_va, skip_hash ? sample : hash, src.base_size + src.mips_size, check.host);
   g_mirror_builds.fetch_add(1, std::memory_order_relaxed);
   g_mirror_build_ns.fetch_add(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                   std::chrono::steady_clock::now() - build_start)
                                   .count(),
                               std::memory_order_relaxed);
   check.hash = hash;
+  check.hash_known = !skip_hash;
   check.frame = frame;
   check.sample = sample;
   check.full_frame = frame;

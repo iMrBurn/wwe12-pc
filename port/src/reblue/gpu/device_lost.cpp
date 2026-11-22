@@ -97,11 +97,32 @@ bool ReportDeviceLost(const char *context, const char *reason, u32 code) {
   // the breadcrumb and page fault data for the dead device.
   LogDredReport(context);
   rex::FlushLogging();
+  // 2026-11-22 (Rendu, 2.0 "petits PC"): a message players can act on. The old one ("reblue has to close")
+  // named neither the GPU nor what to try.
+  const std::string gpu_name = Video::GetDeviceName();
+  BD_CRITICAL("graphics device lost on '{}' ({}): the graphics driver stopped or reset the GPU", gpu_name,
+              Video::BackendName());
+#if defined(__ANDROID__)
   bd::platform::ShowFatalError(
       "Graphics Device Lost",
       fmt::format("The graphics device was lost, so reblue has to close.\n\n"
                   "Reason: {} ({:#010x})",
                   reason, code));
+#else
+  bd::platform::ShowFatalError(
+      "WWE '12 - Graphics driver error",
+      fmt::format("The graphics driver stopped responding, so the game has to close.\n\n"
+                  "GPU: {} ({})\n\n"
+                  "Things to try:\n"
+                  "- Update the graphics driver (NVIDIA, AMD or Intel website).\n"
+                  "- In the launcher or in OPTIONS > GRAPHICS, pick another GRAPHICS API "
+                  "(Vulkan, DirectX 12 or DirectX 11).\n"
+                  "- Lower INTERNAL RESOLUTION.\n"
+                  "- On a laptop: plug it in, and make sure the game runs on the dedicated GPU "
+                  "(Windows Settings > Display > Graphics).\n\n"
+                  "Technical reason: {} ({:#010x}). The log file in Documents\\wwe12\\logs has the details.",
+                  gpu_name, Video::BackendName(), reason, code));
+#endif
   // Parks this thread. The sequence skips the GPU drain because DeviceIsLost()
   // is already latched (fences never signal on a removed device).
   bd::RequestShutdown(bd::ShutdownReason::Fatal, 1);
