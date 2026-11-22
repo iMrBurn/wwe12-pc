@@ -1524,3 +1524,22 @@ prétendants. Reste : un tournoi abandonné (42 jours) sans 4 libres laisse enco
 test garde son World Heavyweight vacant du 2026-11-17 : le redonner dans EDIT TITLES.
 Vu le 2026-11-20 (copie de test) : World Heavyweight redonné dans EDIT TITLES (512 → 103) → SmackDown « 4 of 4 valid »
 dès la semaine suivante (avant : 0 à 2 sur 4). Cause confirmée.
+
+## Histoires d'une seule marque (1.6, issue #89, 2026-11-22, écrit, pas compilé)
+
+Demande d'un joueur : plus de rivalités entre RAW et SmackDown. Une rivalité vient d'une histoire (STYT) et des
+relations. Les rôles d'une histoire (CastA-F) sont donnés par `sub_826E86D0(this, rôle, conditions, cast)` : liste de
+candidats par rôle (this + rôle × 1496, 374 au plus, nombre à +1492), pour chacun `sub_826E7808(this, id, conditions +
+rôle × 8, cast)` (conditions de relation), `sub_826E7310` (déjà pris ?), `sub_826E7370` (placé), puis rôle suivant ;
+128 distributions gardées au plus (this + 12048, 24 octets), une tirée par `sub_826E9338`. Rien ne lit la marque.
+Réglage `wwe12_universe_same_brand_stories` (false par défaut) + 6e ligne de UNIVERSE OPTIONS (HISTOIRES D'UNE SEULE
+MARQUE) : le crochet de `sub_826E7808` refuse un candidat RAW / SmackDown si un rôle déjà placé (cast : 6 × 4 octets,
+u16, 512 = vide) est de l'autre marque ; les catcheurs sans marque restent permis. Journal : « same-brand stories: ».
+À voir en jeu : la boîte à 6 lignes (deux colonnes de 3 ; les lignes longues en anglais peuvent se chevaucher), des
+histoires qui démarrent encore. Plus tard (option séparée) : mélanger les listes de candidats (probable : les 128
+premières distributions reprennent toujours les premiers de chaque liste, d'où « toujours les mêmes »).
+
+Note #85 (sans priorité, la Main a vu que le mode d'images est juste à chaque match sur Android) : pistes gardées. (a)
+une promo d'avant-match au 30 du jeu puis l'entrée sans « retour à 60 » entre les deux : `t_scene_script` n'est remis
+qu'à `sub_82827B58`, l'entrée sauterait le passage à 30 alors que le jeu y est déjà. (b) une scène pendant le match
+(moment 2) qui reviendrait par SetFrameRate(60) seul (pas +36 laissé à l'ancienne valeur).

@@ -2131,7 +2131,7 @@ REXCVAR_DEFINE_INT32(wwe12_universe_chaos, 0, "WWE12",
                      "stipulations, contenders, mystery opponents, turns, betrayals, more scenes.");
 struct OptionWords {
   const char *options, *defenses, *qualifiers, *off, *on, *done_defenses, *done_qualifiers, *briefcases,
-      *done_briefcases, *injuries, *done_injuries, *chaos, *done_chaos, *levels[4];
+      *done_briefcases, *injuries, *done_injuries, *chaos, *done_chaos, *levels[4], *brands, *done_brands;
 };
 const OptionWords &OWords() {
   static const OptionWords kWords[5] = {
@@ -2139,35 +2139,40 @@ const OptionWords &OWords() {
        "Title defenses on weekly shows: %s.", "Qualifying matches (Money in the Bank, Elimination "
        "Chamber): %s.", "MONEY IN THE BANK BRIEFCASES", "Money in the Bank briefcases: %s (2 = one for RAW, one for SmackDown).", "INJURIES", "Injuries: %s.",
        "UNPREDICTABLE UNIVERSE", "Unpredictable Universe: %s.\nRandom card layouts and stipulations, surprise "
-       "contenders, mystery opponents, turns, betrayals, more scenes.", {"OFF (THE GAME'S)", "A LITTLE", "A LOT", "MADNESS"}},
+       "contenders, mystery opponents, turns, betrayals, more scenes.", {"OFF (THE GAME'S)", "A LITTLE", "A LOT", "MADNESS"}, "STORIES OF ONE BRAND",
+       "Stories of one brand: %s.\nA new story (and its rivalry) no longer joins RAW and SmackDown Superstars."},
       {"OPTIONS DE L'UNIVERS", "D\xC3\x89" "FENSES DE TITRE", "MATCHS DE QUALIFICATION", "NON", "OUI",
        "D\xC3\xA9" "fenses de titre dans les shows : %s.",
        "Matchs de qualification (Money in the Bank, Elimination Chamber) : %s.", "MALLETTES MONEY IN THE BANK",
        "Mallettes Money in the Bank : %s (2 = une pour RAW, une pour SmackDown).", "BLESSURES", "Blessures : %s.",
        "UNIVERS IMPR\xC3\x89VISIBLE", "Univers impr\xC3\xA9visible : %s.\nCartes et stipulations au hasard, "
        "pr\xC3\xA9tendants surprise, adversaires myst\xC3\xA8re, retournements, trahisons, plus de sc\xC3\xA8nes.",
-       {"NON (LE JEU)", "UN PEU", "BEAUCOUP", "FOLIE"}},
+       {"NON (LE JEU)", "UN PEU", "BEAUCOUP", "FOLIE"}, "HISTOIRES D'UNE SEULE MARQUE",
+       "Histoires d'une seule marque : %s.\nUne nouvelle histoire (et sa rivalit\xC3\xA9) ne m\xC3\xAAle plus RAW et SmackDown."},
       {"WWE-WELT-OPTIONEN", "TITELVERTEIDIGUNGEN", "QUALIFIKATIONSMATCHES", "AUS", "AN",
        "Titelverteidigungen in den Wochenshows: %s.",
        "Qualifikationsmatches (Money in the Bank, Elimination Chamber): %s.", "MONEY-IN-THE-BANK-KOFFER",
        "Money-in-the-Bank-Koffer: %s (2 = einer f\xC3\xBCr RAW, einer f\xC3\xBCr SmackDown).", "VERLETZUNGEN", "Verletzungen: %s.",
        "UNVORHERSEHBARE WWE-WELT", "Unvorhersehbare WWE-Welt: %s.\nZuf\xC3\xA4llige Matchkarten und Stipulationen, "
        "\xC3\xBC" "berraschende Herausforderer, geheime Gegner, Turns, Verrat, mehr Szenen.",
-       {"AUS (DAS SPIEL)", "EIN WENIG", "VIEL", "WAHNSINN"}},
+       {"AUS (DAS SPIEL)", "EIN WENIG", "VIEL", "WAHNSINN"}, "STORYS NUR EINER MARKE",
+       "Storys nur einer Marke: %s.\nEine neue Story (und ihre Rivalit\xC3\xA4t) mischt RAW und SmackDown nicht mehr."},
       {"OPCIONES DEL UNIVERSO", "DEFENSAS DE T\xC3\x8DTULO", "COMBATES CLASIFICATORIOS", "NO", "S\xC3\x8D",
        "Defensas de t\xC3\xADtulo en los shows semanales: %s.",
        "Combates clasificatorios (Money in the Bank, Elimination Chamber): %s.", "MALETINES MONEY IN THE BANK",
        "Maletines Money in the Bank: %s (2 = uno para RAW, uno para SmackDown).", "LESIONES", "Lesiones: %s.",
        "UNIVERSO IMPREVISIBLE", "Universo imprevisible: %s.\nCarteleras y estipulaciones al azar, aspirantes "
        "sorpresa, rivales misteriosos, cambios de bando, traiciones, m\xC3\xA1s escenas.",
-       {"NO (EL JUEGO)", "UN POCO", "MUCHO", "LOCURA"}},
+       {"NO (EL JUEGO)", "UN POCO", "MUCHO", "LOCURA"}, "HISTORIAS DE UNA SOLA MARCA",
+       "Historias de una sola marca: %s.\nUna nueva historia (y su rivalidad) ya no mezcla RAW y SmackDown."},
       {"OPZIONI UNIVERSE", "DIFESE DEL TITOLO", "INCONTRI DI QUALIFICAZIONE", "NO", "S\xC3\x8C",
        "Difese del titolo negli show settimanali: %s.",
        "Incontri di qualificazione (Money in the Bank, Elimination Chamber): %s.", "VALIGETTE MONEY IN THE BANK",
        "Valigette Money in the Bank: %s (2 = una per RAW, una per SmackDown).", "INFORTUNI", "Infortuni: %s.",
        "UNIVERSE IMPREVEDIBILE", "Universe imprevedibile: %s.\nCard e stipulazioni a caso, sfidanti a sorpresa, "
        "avversari misteriosi, turn, tradimenti, pi\xC3\xB9 scene.",
-       {"NO (IL GIOCO)", "UN PO'", "MOLTO", "FOLLIA"}}};
+       {"NO (IL GIOCO)", "UN PO'", "MOLTO", "FOLLIA"}, "STORIE DI UN SOLO BRAND",
+       "Storie di un solo brand: %s.\nUna nuova storia (e la sua rivalit\xC3\xA0) non mescola pi\xC3\xB9 RAW e SmackDown."}}};
   return kWords[CurrentLang()];
 }
 
@@ -2194,12 +2199,21 @@ void UniverseOptions(const PPCContext &in, u8 *base) {
          {std::string(o.defenses) + ":  " + defenses, std::string(o.qualifiers) + ":  " + qualifiers,
           std::string(o.briefcases) + ":  " + briefcases,
           std::string(o.injuries) + ":  " + (REXCVAR_GET(wwe12_universe_injuries) ? o.on : o.off),
-          // (5 lines: one column; 4 or 6 make the game lay the box out in two columns whose long lines overlap,
-          // tests of 2026-11-12 and 2026-11-13; B goes back)
-          std::string(o.chaos) + ":  " + o.levels[std::clamp<int>(REXCVAR_GET(wwe12_universe_chaos), 0, 3)]},
+          // (5 lines were kept: 4 or 6 laid the box out in two columns whose long lines overlapped, tests of
+          // 2026-11-12 and 2026-11-13, before our layout scaled long lines down; B goes back)
+          std::string(o.chaos) + ":  " + o.levels[std::clamp<int>(REXCVAR_GET(wwe12_universe_chaos), 0, 3)],
+          // (1.6, #89; a 6th line: two columns of 3, our layout scales long lines down; to be seen in game)
+          std::string(o.brands) + ":  " + (REXCVAR_GET(wwe12_universe_same_brand_stories) ? o.on : o.off)},
          [](const PPCContext &in, u8 *base, size_t i) {
            const OptionWords &o = OWords();
-           if (i == 0) {
+           if (i == 5) {
+             Choose(in, base, o.brands, {o.off, o.on}, [](const PPCContext &in, u8 *base, size_t k) {
+               SaveUniverseOption("wwe12_universe_same_brand_stories", k ? "true" : "false");
+               char text[256];
+               std::snprintf(text, sizeof(text), OWords().done_brands, k ? OWords().on : OWords().off);
+               Inform(in, base, text);
+             });
+           } else if (i == 0) {
              Choose(in, base, o.defenses, {o.off, "10 %", "25 %", "50 %", "100 %"},
                     [](const PPCContext &in, u8 *base, size_t k) {
                       static const int kPct[5] = {0, 10, 25, 50, 100};  // as the launcher's
@@ -8695,6 +8709,45 @@ extern "C" REX_FUNC(sub_826CA4E8) {
   const int x = ChaosPct(kChaosScenes), p = int(ctx.r3.u32);
   if (x != 100 && p > 0 && p < 100)
     ctx.r3.u64 = u64(std::clamp(p * x / 100, 1, 99));
+}
+
+// ---- stories of one brand (1.6, issue #89 "pointless rivalries") ----------------------------------
+//
+// A story's roles (CastA-F) are filled by sub_826E86D0(this, role, conditions, cast), a search over each role's
+// list of candidates (this + role * 1496, up to 374 ids, count at +1492): for each one, sub_826E7808(this, id,
+// conditions + role * 8, cast) (its relation conditions), sub_826E7310 (already cast?), sub_826E7370 (put him),
+// then the next role; up to 128 casts kept (this + 12048), one drawn by sub_826E9338. Nothing there reads a
+// brand, so a story may join RAW and SmackDown Superstars, hence rivals of two brands. With
+// wwe12_universe_same_brand_stories, a candidate of RAW or SmackDown is refused when a role already cast (cast: 6
+// slots of 4 bytes, u16 id, 512 = empty; the roles after the current one are emptied on the way back,
+// sub_826D52E8) is of the other one. Superstars of no brand (or another one) stay allowed. At worst fewer stories
+// start ("StoryTemplate,None").
+REXCVAR_DEFINE_BOOL(wwe12_universe_same_brand_stories, false, "WWE12",
+                    "Universe: a story (and so its rivalry) only joins Superstars of one brand: no RAW Superstar "
+                    "with a SmackDown one (false = the game's: any brand).");
+REX_EXTERN(__imp__sub_826E7808);
+extern "C" REX_FUNC(sub_826E7808) {
+  const u32 id = ctx.r4.u32, cast = ctx.r6.u32;
+  __imp__sub_826E7808(ctx, base);
+  if (!ctx.r3.u32 || !cast || !Enabled() || !REXCVAR_GET(wwe12_universe_same_brand_stories))
+    return;
+  const PPCContext x = ctx;
+  const u32 brand = Call(x, base, __imp__sub_826D2B50, id);
+  if (brand > 1)
+    return;
+  for (u32 k = 0; k < 6; ++k) {
+    const u32 other = bd::mem::load<u16>(cast + k * 4);
+    if (other >= 512 || other == id)
+      continue;
+    const u32 b = Call(x, base, __imp__sub_826D2B50, other);
+    if (b <= 1 && b != brand) {
+      static std::atomic<u32> s_logged{0};
+      if (s_logged.fetch_add(1, std::memory_order_relaxed) < 20)
+        BD_INFO("[univers] same-brand stories: {} (brand {}) not cast with {} (brand {})", id, brand, other, b);
+      ctx.r3.u64 = 0;
+      return;
+    }
+  }
 }
 
 // mystery: before the card entry is written (sub_826EAEB0's hook), from the booker's record (1320 bytes: +12 title
