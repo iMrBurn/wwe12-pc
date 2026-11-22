@@ -119,6 +119,10 @@ REXCVAR_DEFINE_BOOL(wwe12_universe_card_probe, false, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_universe_injuries, true, "WWE12",
                     "Universe: Superstars can be injured, out of action for some weeks, a serious injury included "
                     "(false: nobody is injured; WWE '12 has no other end of career).");
+// (1.6, #89: its hook, sub_826E7808, is with the "ultimate" Universe code at the end of the file)
+REXCVAR_DEFINE_BOOL(wwe12_universe_same_brand_stories, false, "WWE12",
+                    "Universe: a story (and so its rivalry) only joins Superstars of one brand: no RAW Superstar "
+                    "with a SmackDown one (false = the game's: any brand).");
 REXCVAR_DEFINE_INT32(wwe12_universe_mitb_briefcases, 1, "WWE12",
                      "Universe: Money in the Bank briefcases (1 = the game's: one match, one holder; 2 = a match "
                      "for RAW and one for SmackDown at the PPV, two holders, each cashing in as the game's).");
@@ -2172,7 +2176,7 @@ const OptionWords &OWords() {
        "UNIVERSE IMPREVEDIBILE", "Universe imprevedibile: %s.\nCard e stipulazioni a caso, sfidanti a sorpresa, "
        "avversari misteriosi, turn, tradimenti, pi\xC3\xB9 scene.",
        {"NO (IL GIOCO)", "UN PO'", "MOLTO", "FOLLIA"}, "STORIE DI UN SOLO BRAND",
-       "Storie di un solo brand: %s.\nUna nuova storia (e la sua rivalit\xC3\xA0) non mescola pi\xC3\xB9 RAW e SmackDown."}}};
+       "Storie di un solo brand: %s.\nUna nuova storia (e la sua rivalit\xC3\xA0) non mescola pi\xC3\xB9 RAW e SmackDown."}};
   return kWords[CurrentLang()];
 }
 
@@ -8722,9 +8726,6 @@ extern "C" REX_FUNC(sub_826CA4E8) {
 // slots of 4 bytes, u16 id, 512 = empty; the roles after the current one are emptied on the way back,
 // sub_826D52E8) is of the other one. Superstars of no brand (or another one) stay allowed. At worst fewer stories
 // start ("StoryTemplate,None").
-REXCVAR_DEFINE_BOOL(wwe12_universe_same_brand_stories, false, "WWE12",
-                    "Universe: a story (and so its rivalry) only joins Superstars of one brand: no RAW Superstar "
-                    "with a SmackDown one (false = the game's: any brand).");
 REX_EXTERN(__imp__sub_826E7808);
 extern "C" REX_FUNC(sub_826E7808) {
   const u32 id = ctx.r4.u32, cast = ctx.r6.u32;
