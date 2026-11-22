@@ -303,6 +303,19 @@ demandes ont été placées hors de leur plage (« given at … (any range) »).
 - la liste des 10 s compte les mises à jour du cerveau de chaque case. Zéro pour 7-8 voudrait dire que leur
   cerveau n'est jamais lancé : il faudra alors chercher ailleurs.
 
+**Essai 10 (2026-11-22, échelle à 6)** : « le match bug au début, puis ils se téléportent sur le ring et ne bougent
+pas ».
+- Le cerveau des cases 7-8 tourne bien (545 et 490 mises à jour en 10 s), mais elles restent dans la motion 20150
+  (pose d'attente des personnages hors match, celle de l'arbitre), avec +1096 = 1, et y retombent juste après
+  chaque Free.
+- La cause : `sub_823B8028(obj)`, appelée en premier par la mise en place du match `sub_823B83B8`, parcourt la
+  liste des personnages **hors match** de cet objet (+8 + 4 × i, nombre à +120). Pour chacun : place (+752..760),
+  pose 20150, et une pièce de comportement 'YaFH' qui le garde dans cette pose. Les cases 7-8 réutilisent les objets
+  des commentateurs : elles étaient encore dans cette liste.
+
+**Essai 11 (prêt)** : crochet sur `sub_823B8028`. Pendant l'appel seulement, les personnages des cases 7-8 sont
+retirés de la liste ; elle est remise telle quelle après. Journal : « [eight] outside-the-match list … ».
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que
