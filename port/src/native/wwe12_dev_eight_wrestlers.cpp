@@ -196,6 +196,33 @@ void Watch() {
       heaps += fmt::format(" {}:heap {} {} KB", i, h, e > s ? (e - s) / 1024 : 0);
     }
     BD_INFO("[eight] list ({} characters):{}", present, list);
+    // Try 13 (2026-11-22): slots 7-8 still stand still. Once per match, 20 s after slots 7-8 were made: the 4640-byte
+    // character of slot 7 against slot 4's (a superstar the computer plays), word by word, every word that differs
+    // where one of the two is small (flags, states, counters: < 0x10000 or a float of -10000..10000 is printed too) -
+    // what still marks slot 7 as a character outside the match.
+    static u32 s_compared = 0;
+    const u32 c7 = bd::mem::try_load<u32>(kList + 7 * 4), c4 = bd::mem::try_load<u32>(kList + 4 * 4);
+    if (c7 && c4 && c7 == g_made[7].load() && c7 != s_compared && NowMs() - g_made_ms.load() > 20000) {
+      s_compared = c7;
+      std::string diff;
+      int n = 0;
+      for (u32 off = 0; off < 4640; off += 4) {
+        const u32 x = bd::mem::try_load<u32>(c4 + off), y = bd::mem::try_load<u32>(c7 + off);
+        if (x == y)
+          continue;
+        const bool small = x < 0x10000 || y < 0x10000 || x > 0xFFFF0000u || y > 0xFFFF0000u;
+        if (!small)
+          continue;
+        diff += fmt::format(" +{}:{:X}/{:X}", off, x, y);
+        if (++n % 16 == 0) {
+          BD_INFO("[eight] slot 4 vs slot 7 (+offset:slot4/slot7):{}", diff);
+          diff.clear();
+        }
+      }
+      if (!diff.empty())
+        BD_INFO("[eight] slot 4 vs slot 7 (+offset:slot4/slot7):{}", diff);
+      BD_INFO("[eight] slot 4 vs slot 7: {} small words differ", n);
+    }
     BD_INFO("[eight] heaps:{} (fill: wwe12_heap_watermark)", heaps);
   }
 }

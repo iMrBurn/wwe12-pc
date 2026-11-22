@@ -329,6 +329,20 @@ ceux hors match. **Essai 11 annulé.**
 - Crochet : juste avant `sub_826DD3F0` pour les cases 7-8, leur rôle repasse à 0. C'est le jeu lui-même qui les
   active comme des catcheurs.
 
+**Essai 12 (2026-11-22)** : toujours figés, et aucune ligne « activating » : `sub_826DD3F0` ne sert pas dans ce
+type de match. L'activation des catcheurs passe ailleurs.
+
+**Idée d'iMrBurn : cloner un catcheur de l'ordinateur.** Elle ne règle pas le fond :
+- un clone doit lui aussi occuper une case de la liste des 9, et les seules libres sont 7-8, celles que le jeu traite
+  comme « hors match » ;
+- copier l'objet d'un catcheur (4 640 octets) partagerait ses pièces (cerveau, motions, modèle), qui sont des
+  pointeurs inscrits dans les gestionnaires du jeu.
+Le vrai mur reste le code qui veut dire « cases 0-5 = catcheurs ».
+
+**Essai 13 (prêt, mesure)** : 20 s après la fabrication, une fois par match, l'objet de la case 7 est comparé mot à
+mot à celui de la case 4 (un catcheur de l'ordinateur). Les mots qui diffèrent et qui ressemblent à des drapeaux ou à
+des états sont notés (« [eight] slot 4 vs slot 7 »). Ils montreront ce qui marque encore la case 7 comme hors match.
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que
