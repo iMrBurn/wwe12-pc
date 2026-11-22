@@ -317,7 +317,9 @@ void Wwe12DiscordUniverseMenu() {
 // demo match). The superstar's number at desc+0 is a reading of the code, logged to be checked.
 REX_EXTERN(__imp__sub_822D23A0);
 void Wwe12BenchProbeCharacter(u32 loader, u32 slot, u32 desc, u8 *base);  // wwe12_bench_probe.cpp (dev, off)
+void Wwe12EightWrestlersDesc(u32 slot, u32 desc);  // wwe12_dev_eight_wrestlers.cpp (dev, off)
 extern "C" REX_FUNC(sub_822D23A0) {
+  Wwe12EightWrestlersDesc(ctx.r4.u32, ctx.r5.u32);
   Wwe12BenchProbeCharacter(ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, base);
   if (On()) {
     const u32 slot = ctx.r4.u32, desc = ctx.r5.u32;

@@ -32,6 +32,9 @@ Voir aussi `docs/suggestions_joueurs.md` (liste d'un joueur triée par effort) e
   (wwe12_memscan.cpp), journal de débogage du jeu (`wwe12_game_log`).
 - Acquis : le 6-man Elimination Chamber tient 60 fps sans crash.
 - Limite des 6 catcheurs gravée dans le code : tableaux à 6 cases, budget mémoire Xbox, animations.
+  **État des lieux et plan par paliers (2026-11-21) : `docs/etude_plus_de_6_catcheurs.md`** (liste des
+  personnages à 9 cases `0x8317B770` lue par 969 fonctions, fiches de règles à 6 places, piste « 8 avec les
+  cases 7-8 », exemple HCTP PS2 à 8).
 - Kaiko a fait un « Limit Breaking » pour son portage SvR 2011 : lui demander jusqu'où il est allé
   (plus de 6 catcheurs ?) et comment. Le Gauntlet vient aussi de SvR 2011.
 
