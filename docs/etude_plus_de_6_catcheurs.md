@@ -343,6 +343,16 @@ Le vrai mur reste le code qui veut dire « cases 0-5 = catcheurs ».
 mot à celui de la case 4 (un catcheur de l'ordinateur). Les mots qui diffèrent et qui ressemblent à des drapeaux ou à
 des états sont notés (« [eight] slot 4 vs slot 7 »). Ils montreront ce qui marque encore la case 7 comme hors match.
 
+**Essai 13 (2026-11-22, mesure)** : 55 mots diffèrent entre la case 4 (catcheur de l'ordinateur) et la case 7. Le
+plus parlant : **+3468 = 4 / 7**. C'est le champ que vérifie `sub_8295C618`, qui distribue les programmes de
+comportement du match : seulement si +3468 < 7 (une table de 7 places). +3468 vient de l'octet +7 de la fiche, ou de
+la case quand cet octet vaut FF (le cas de tout le monde ici). Les cases 7-8 avaient donc 7 et 8 : aucun programme.
+(Autres différences, à revoir si besoin : pointeurs propres +2336 / +3044 / +3400 à 0, FFFFFFFF à +1924 / +2180 /
++2536 / +2988, compteurs +3028..+3040 à 7.)
+
+**Essai 14 (prêt)** : octet +7 de la fiche des cases 7-8 = 6, et +3468 du personnage = 6 (remis toutes les 100 ms).
+Les deux sont alliés entre eux pour cette table.
+
 **Le mod « SvR 08 Ultimate PS2 Edition » de a050651** (son Discord, salon changelog, lu le 2026-11-22 dans le
 navigateur d'iMrBurn) annonce « 7-Man + 8-Man Battle Royals with HUD for all 8 », six types de match à 5 et WarGames.
 La méthode n'est pas expliquée : il ne publie que des codes PCSX2 (pnach), et son mod tourne sur PS2. On en retient que
