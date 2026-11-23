@@ -116,6 +116,27 @@ Set-Content "$Res\mipmap-anydpi-v26\ic_launcher.xml" -Encoding utf8 @'
     <foreground android:drawable="@drawable/ic_launcher_fg" />
 </adaptive-icon>
 '@
+# 1.5.1 : appareils USB que l'appli accepte (manettes) : Android propose de l'ouvrir et SDL demande l'autorisation USB.
+New-Item -ItemType Directory -Force "$Res\xml" | Out-Null
+Set-Content "$Res\xml\device_filter.xml" -Encoding utf8 @'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Xbox 360 (class 255, subclass 93, protocol 1) and Xbox One (255 / 71 / 208) controllers -->
+    <usb-device class="255" subclass="93" protocol="1" />
+    <usb-device class="255" subclass="71" protocol="208" />
+    <!-- Game controller makers: Sony, Microsoft, Nintendo, 8BitDo, Logitech, Razer, PowerA, Hori, PDP, Mad Catz -->
+    <usb-device vendor-id="1356" />
+    <usb-device vendor-id="1118" />
+    <usb-device vendor-id="1406" />
+    <usb-device vendor-id="11720" />
+    <usb-device vendor-id="1133" />
+    <usb-device vendor-id="5426" />
+    <usb-device vendor-id="8406" />
+    <usb-device vendor-id="3853" />
+    <usb-device vendor-id="3695" />
+    <usb-device vendor-id="1848" />
+</resources>
+'@
 Run "$Bt\aapt2.exe" compile --dir $Res -o "$Out\res.zip"
 
 # 5. APK : manifeste + ressources + assets, puis dex et .so, alignement, signature.
