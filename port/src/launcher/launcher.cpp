@@ -540,6 +540,9 @@ struct Settings {
   bool exit_entry = true;
   bool console_picture = false;  // wwe12_console_picture (Xbox 360 TV correction; false = PC picture)
   bool discord = false;  // wwe12_discord (Discord Rich Presence, opt-in)
+  int match_camera = 0;           // wwe12_match_camera: 0 normal, 1 ramp view
+  bool live_screen = false;       // wwe12_live_screen: the match's "mirror" on the big screen (off = the show's logo)
+  bool titantron_logo = true;     // wwe12_titantron_logo: the show's logo on the big screen during matches
   bool keyboard = true;
   int keyboard_player = 1;  // 1..4: the player the keyboard plays as (2 = separate from pad 1)
   char binds[std::size(kBinds)][64] = {};
@@ -588,6 +591,9 @@ void LoadSettings() {
   g_s.exit_entry = g_toml.GetBool("wwe12_quit_entry", true);
   g_s.discord = g_toml.GetBool("wwe12_discord", false);
   g_s.console_picture = g_toml.GetBool("wwe12_console_picture", false);
+  g_s.match_camera = std::clamp(g_toml.GetInt("wwe12_match_camera", 0), 0, 1);
+  g_s.live_screen = g_toml.GetBool("wwe12_live_screen", false);
+  g_s.titantron_logo = g_toml.GetBool("wwe12_titantron_logo", true);
   g_s.keyboard = g_toml.GetBool("mnk_mode", true);
   g_s.keyboard_player = std::clamp(g_toml.GetInt("mnk_player", 1), 1, 4);
   for (size_t i = 0; i < std::size(kBinds); ++i)
@@ -624,6 +630,9 @@ void SaveSettings() {
   g_toml.SetBool("wwe12_quit_entry", g_s.exit_entry);
   g_toml.SetBool("wwe12_discord", g_s.discord);
   g_toml.SetBool("wwe12_console_picture", g_s.console_picture);
+  g_toml.SetInt("wwe12_match_camera", g_s.match_camera);
+  g_toml.SetBool("wwe12_live_screen", g_s.live_screen);
+  g_toml.SetBool("wwe12_titantron_logo", g_s.titantron_logo);
   g_toml.SetBool("mnk_mode", g_s.keyboard);
   g_toml.SetInt("mnk_player", g_s.keyboard_player);
   for (size_t i = 0; i < std::size(kBinds); ++i)
@@ -1163,6 +1172,24 @@ void PageSettings() {
                                    &g_s.console_picture);
         ImGui::TextDisabled("%s", fr_ ? "Applique la correction TV de la Xbox 360 (image plus sombre et plus contrastée). Défaut : image PC."
                                       : "Applies the Xbox 360's TV correction (darker, more contrasted picture). Default: PC picture.");
+      }
+      {
+        const bool fr_ = g_s.language == 4;
+        ImGui::Dummy(ImVec2(0, 6));
+        const char *cams[] = {fr_ ? "Normale" : "Normal", fr_ ? "Rampe (façon Royal Rumble)" : "Ramp (Royal Rumble style)"};
+        ImGui::SetNextItemWidth(320);
+        changed |= ImGui::Combo(fr_ ? "Caméra de match" : "Match camera", &g_s.match_camera, cams, 2);
+        changed |= ImGui::Checkbox(fr_ ? "Logo de l'émission sur le grand écran pendant les matchs"
+                                       : "Show's logo on the big screen during matches",
+                                   &g_s.titantron_logo);
+        changed |= ImGui::Checkbox(fr_ ? "Image en direct sur le grand écran" : "Live picture on the big screen",
+                                   &g_s.live_screen);
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("%s", fr_ ? "Image en direct : le « miroir » du match du jeu ; décoché, le grand écran montre le logo de l'émission."
+                                      : "Live picture: the game's \"mirror\" of the match; off = the show's logo.");
+        ImGui::TextDisabled("%s", fr_ ? "En match : F5 caméra de match, F6 caméra libre (F6 encore : la garder là et jouer), F7 cacher l'interface, F8 pause."
+                                      : "In a match: F5 match camera, F6 free camera (F6 again: keep it there and play), F7 hide HUD, F8 pause.");
+        ImGui::PopTextWrapPos();
       }
       ImGui::Dummy(ImVec2(0, 8));
       ImGui::TextDisabled("%s", t.more_graphics);
