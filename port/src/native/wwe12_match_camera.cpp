@@ -36,12 +36,19 @@ REXCVAR_DEFINE_INT32(wwe12_match_camera, 0, "WWE12",
 // (0, 0.3, 0.95)).
 REXCVAR_DEFINE_DOUBLE(wwe12_ramp_pitch, 17.5, "WWE12", "RAMP camera: degrees it looks down (0 = level).")
     .range(-10.0, 60.0);
-REXCVAR_DEFINE_DOUBLE(wwe12_ramp_distance, 1.0, "WWE12",
-                      "RAMP camera: distance factor (1 = 9 to 16 m back from what it looks at).")
-    .range(0.3, 4.0);
-REXCVAR_DEFINE_DOUBLE(wwe12_ramp_fov_scale, 1.0, "WWE12",
-                      "RAMP camera: field of view factor (1 = the wrestlers keep the size the game gives them).")
-    .range(0.3, 3.0);
+// v2 (iMrBurn's screenshot, 2026-11-27: "au début elle est bien, puis après elle zoome trop pendant le match"):
+// the first version took the game's TV camera's distance and zoom, and that camera zooms in more and more during a
+// match. RAMP now has its own fixed distance and field of view, aims at chest height, and follows what the game's
+// camera looks at smoothly (no jump at the TV camera's cuts).
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_distance, 13.0, "WWE12",
+                      "RAMP camera: metres back from what it looks at.")
+    .range(3.0, 60.0);
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_fov, 30.0, "WWE12", "RAMP camera: vertical field of view, degrees.")
+    .range(5.0, 90.0);
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_aim_height, 2.3, "WWE12",
+                      "RAMP camera: height it aims at above the arena floor, metres (the mat is ~1.2 m up: 2.3 = the "
+                      "wrestlers' chests in the ring).")
+    .range(0.0, 5.0);
 REXCVAR_DEFINE_INT32(wwe12_camera_test, 0, "WWE12",
                      "Dev (old, ignored since 2026-11-27: the FAR / CLOSE / HIGH / LOW tests are gone).")
     .range(0, 4);
@@ -170,8 +177,20 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   // the field of view is widened for that distance so the wrestlers keep the size the game gives them.
   const float pitch = float(REXCVAR_GET(wwe12_ramp_pitch)) * 3.14159265f / 180.0f;
   const V3 g{0.0f, std::sin(pitch), std::cos(pitch)};  // (y down: a positive pitch looks down)
-  const float back = std::clamp(dist, 900.0f, 1600.0f) * float(REXCVAR_GET(wwe12_ramp_distance));
-  const V3 n{t.x - g.x * back, t.y - g.y * back, t.z - g.z * back};
+  const float back = float(REXCVAR_GET(wwe12_ramp_distance)) * 100.0f;
+  // The point followed: what the game's camera looks at, at chest height (y down, the arena floor at 0), smoothed.
+  static V3 s_aim{0, 0, 0};
+  static long long s_aim_ms = 0;
+  const V3 want{t.x, -float(REXCVAR_GET(wwe12_ramp_aim_height)) * 100.0f, t.z};
+  const long long now_ms = NowMs();
+  if (now_ms - s_aim_ms > 500) {
+    s_aim = want;  // (first frame, or back after a scene / a pause)
+  } else {
+    const float k = std::clamp(float(now_ms - s_aim_ms) / 400.0f, 0.0f, 1.0f);  // ~0.4 s to catch up
+    s_aim = {s_aim.x + (want.x - s_aim.x) * k, want.y, s_aim.z + (want.z - s_aim.z) * k};
+  }
+  s_aim_ms = now_ms;
+  const V3 n{s_aim.x - g.x * back, s_aim.y - g.y * back, s_aim.z - g.z * back};
   // The camera's axes for that direction, built as the game's are: up = +y on screen rows (world y down), right =
   // up x forward (the game's: forward (1,0,0) gives right (0,0,-1), up (0,1,0)).
   V3 r{1.0f * g.z - 0.0f * g.y, 0.0f * g.x - 0.0f * g.z, 0.0f * g.y - 1.0f * g.x};  // (0,1,0) x g
@@ -189,12 +208,10 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   std::memcpy(slot->ours, base + cam + 240, 64);
   // The field of view for this update (the projection is built from it inside sub_82824370), put back after.
   const float fov = Ld(base, cam + 512);
-  const float fov_scale = float(REXCVAR_GET(wwe12_ramp_fov_scale));
-  if (fov > 0.01f && fov < 3.0f && (back < dist || fov_scale != 1.0f)) {
+  if (fov > 0.01f && fov < 3.0f) {
     g_fov_cam = cam;
     g_fov_saved = fov;
-    const float same_size = 2.0f * std::atan(std::tan(fov * 0.5f) * std::max(dist, back) / back);
-    St(base, cam + 512, std::clamp(same_size * fov_scale, 0.05f, 1.6f));
+    St(base, cam + 512, float(REXCVAR_GET(wwe12_ramp_fov)) * 3.14159265f / 180.0f);
   }
   static int s_lines = 0;
   const long long now = NowMs();
