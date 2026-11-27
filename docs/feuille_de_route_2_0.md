@@ -62,3 +62,38 @@ les ont dans leurs recomps), l'Univers (calendrier libre, rivalités d'une marqu
 menus**, le contenu (plus d'arènes, plus de places CAW, armes SvR 2011, mallettes) et le technique (régénération, jeu natif).
 En réflexion : un menu de réglages complet dans le jeu (touche F1, comme les portages SvR de nefariousjosiah) en plus de OPTIONS > GRAPHICS.
 Étude demandée à Rendu : caméra libre / choix de la caméra (code du jeu + ce que font Kaiko et Jarrod, sans copier de code).
+
+## État au 2026-11-27 (soir)
+
+### Liste du 3 novembre
+| Idée | État |
+|---|---|
+| Plus de 6 superstars | Partiel : 8 apparaissent en test, ils ne bougent pas (IA des cases 7-8 à faire). Garder arbitre et commentateurs au-delà de 8 : pas fait (long). |
+| 100 / 200 slots CAW et logos | Pas commencé (étude `docs/limit_breaking.md`, risque sauvegardes). |
+| Jeu full natif | Partiel : régénération avancée ; retrait de la couche D3D/PM4 mesuré inutile. |
+| Choix de caméra de match | Fait en test : normale, rampe (réglée, nette), caméra libre. Reste : choix dans le launcher. |
+| GM Mode | Pas étudié. |
+| Plus d'arènes | Pas commencé (le Mod Maker en porte déjà). |
+| Physique des armes SvR 2011 | Pas commencé. |
+| Régénération du code | Paliers 1, 3, 4 (plus de `volatile`) et 2b validés. Reste : gros test de 1 h 30 à 2 h, fusion. |
+| Mallettes comme 2K18 | Pas commencé. |
+| Cinés de 13 et 2K14 | Étude faite, reprise vers janvier 2027. |
+| Calendrier Univers libre | Pas fait (seul le mois de départ au RESET UNIVERSE est fait). |
+
+### Liste du 21 novembre
+| Idée | État |
+|---|---|
+| Manette synchrone (#81) | Pas fait, on attend le joueur. |
+| Réglages textures, ombres, plafond de résolution | Pas fait. |
+| Bon GPU sur portable + message | Pas fait. |
+| Option « manettes = joueur 1 » | Pas fait. |
+| Priorités des fils, copie de textures | Mesuré, aucun gain : abandonné. |
+| Profil « petit PC » | Pas fait. |
+| Idées Univers rapides | Partiel : #89 et mois de départ faits ; saignement, challengers, Légendes du Rumble non. |
+| Retirer `volatile` | Fait, validé (palier 4). |
+| Palier 2, 66 fonctions | Fait, validé (palier 2b). |
+
+### Hors bloc-notes
+- Fait : vue rampe (réglages de l'essai C2), caméra libre (vol, figée pour jouer, F7 interface, F8 pause), flou de profondeur coupé en rampe, tri des objets avec notre champ de vision, écran géant : image miroir retirée (`wwe12_live_screen`) et logo de l'émission à la place (`wwe12_titantron_logo`, en test).
+- À ajouter : support de la souris dans les menus, menu de réglages F1 (en réflexion), rivalités par marque / tournois / statistiques Univers, idées de Kaiko et Jarrod.
+- Autres : Android 1.6 ou 2.0 (USB et manette #87, APK 1.5.0 non testé sur téléphone), issues ouvertes (#69, #74, #82 à #87, #92), iOS en pause, page ROSTERS du launcher, chaos de l'Univers (0 à 3).
