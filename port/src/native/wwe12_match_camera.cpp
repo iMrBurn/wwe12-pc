@@ -104,6 +104,8 @@ struct Moved {
   u8 game[64];  // the game's view at the last update
   u8 ours[64];  // what we wrote
   long long next_log_ms = 0;
+  float fov = 0;        // our field of view (radians) at the last write
+  long long fov_ms = 0;  // when
 };
 Moved g_moved[8];
 
@@ -215,6 +217,8 @@ bool WriteView(u8 *base, u32 cam, Moved *slot, V3 n, V3 g, float fov_deg) {
   }
   std::memcpy(slot->ours, base + cam + 240, 64);
   g_ramp_ms.store(NowMs(), std::memory_order_relaxed);
+  slot->fov = fov_deg * 3.14159265f / 180.0f;
+  slot->fov_ms = NowMs();
   const float fov = Ld(base, cam + 512);
   if (fov > 0.01f && fov < 3.0f) {
     g_fov_cam = cam;
@@ -503,4 +507,18 @@ void Wwe12FreeCameraPause() {
   UpdateHideHud();
   Wwe12PressStart();
   Wwe12DisplayToast(paused ? "PAUSE" : "PLAY");
+}
+
+// wwe12_widescreen.cpp's sub_823BE870 (the current camera's view volume, for culling): our field of view (radians)
+// when this camera's view is ours now (RAMP, FREE CAMERA), else 0. The game's +512 is put back after each update (its
+// own camera code works from it), so without this the game culled for its own field of view - about 10 degrees on
+// the TV camera: with our wider view, the objects toward the edges were not drawn (iMrBurn's video, 2026-11-27: the
+// stage's Royal Rumble logo and the screens on its columns missing in the free camera).
+float Wwe12MatchCameraFov(u32 cam) {
+  if (!cam)
+    return 0;
+  for (const Moved &m : g_moved)
+    if (m.cam == cam)
+      return (m.fov > 0 && NowMs() - m.fov_ms < 250) ? m.fov : 0;
+  return 0;
 }

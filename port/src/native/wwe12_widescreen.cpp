@@ -103,18 +103,35 @@ extern "C" REX_FUNC(sub_82824370) {
   Wwe12CameraTestAfter(base);
 }
 
+float Wwe12MatchCameraFov(u32 cam);  // wwe12_match_camera.cpp: our field of view when the view is ours, else 0
+
 extern "C" REX_FUNC(sub_823BE870) {
   float tall = 1.0f;
   SceneShape(tall);
   u32 camera = 0;
-  if (tall > 1.0f) {
+  {
     const u64 r3 = ctx.r3.u64;
     sub_82818B90(ctx, base);
     camera = ctx.r3.u32;
     ctx.r3.u64 = r3;
   }
-  WiderFov fov(camera ? camera + 512 : 0, tall);
-  __imp__sub_823BE870(ctx, base);
+  // RAMP / FREE CAMERA: culled for our field of view, not the game's (put back after).
+  const float ours = camera ? Wwe12MatchCameraFov(camera) : 0.0f;
+  const float game = ours > 0 ? bd::mem::load<float>(camera + 512) : 0.0f;
+  if (ours > 0) {
+    bd::mem::store<float>(camera + 512, ours);
+    static bool logged = false;
+    if (!logged) {
+      logged = true;
+      BD_INFO("[camera] culling with our field of view: camera {:08X}, {:.3f} instead of {:.3f}", camera, ours, game);
+    }
+  }
+  {
+    WiderFov fov(tall > 1.0f && camera ? camera + 512 : 0, tall);
+    __imp__sub_823BE870(ctx, base);
+  }
+  if (ours > 0)
+    bd::mem::store<float>(camera + 512, game);
 }
 
 extern "C" REX_FUNC(sub_826907B0) {
