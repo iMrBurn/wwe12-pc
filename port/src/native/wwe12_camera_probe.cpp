@@ -1,7 +1,7 @@
 // Dev probe (wwe12_camera_probe, off by default): find the game's match camera (2026-11-27, Rendu; plan in
 // docs/etude_camera_libre.md, step A). Three steps, all logged as "[camprobe]":
 //
-// 1. View matrix -> eye. Every 2 s one frame is "armed": for each draw of that frame the renderer hands us the
+// 1. View matrix -> eye (v2: from the perspective matrices, see Wwe12CameraProbeDraw). Every 2 s one frame is "armed": for each draw of that frame the renderer hands us the
 //    guest device's 256 vertex shader float constants (D3DDevice + 0x700, big-endian). Every group of 4 registers
 //    whose 3x3 part is a rotation (unit rows, at right angles) and whose 4th row or column is (0, 0, 0, 1) is a
 //    view or world-view matrix; its eye is -R^T t. The eyes are grouped; the one found in the most draws is the
@@ -108,12 +108,10 @@ void AddEye(const Vec3 &e, int reg, char conv) {
       ++c.count;
       return;
     }
-  if (g_clusters.size() < 64)
+  if (g_clusters.size() < 256)
     g_clusters.push_back({e, 1, reg, conv});
 }
 
-bool Unit(float x, float y, float z) { return std::fabs(x * x + y * y + z * z - 1.0f) < 2e-3f; }
-bool Ortho(const float *a, const float *b) { return std::fabs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) < 2e-3f; }
 
 // ---- step 2/3 (probe thread) ----
 std::mutex g_mutex;
@@ -335,6 +333,11 @@ void ProbeThread() {
     for (const Survivor &s : survivors)
       moved += s.moved;
     ++samples;
+    if (survivors.empty()) {
+      BD_INFO("[camprobe] step 2: every address lost the eye: new full scan at the next sample");
+      samples = 0;
+      continue;
+    }
     BD_INFO("[camprobe] step 2: sample {}: {} addresses still hold the camera eye, {} of them have moved", samples,
             survivors.size(), moved);
     if (samples < 6)
@@ -370,9 +373,16 @@ void ProbeThread() {
       g_watch_host = 0;
       FlushHits(list[i]);
     }
-    BD_INFO("[camprobe] done: translate the wwe12.exe+X offsets with wwe12.map; the game can be closed");
-    g_wwe12_camprobe_armed = false;
-    return;
+    static int s_rounds = 0;
+    if (++s_rounds >= 3) {
+      BD_INFO("[camprobe] done: translate the wwe12.exe+X offsets with wwe12.map; the game can be closed");
+      g_wwe12_camprobe_armed = false;
+      return;
+    }
+    BD_INFO("[camprobe] round {} done; a new round in 20 s (other scenes: entrance, match)", s_rounds);
+    std::this_thread::sleep_for(std::chrono::seconds(20));
+    survivors.clear();
+    samples = 0;
   }
 }
 
@@ -392,26 +402,52 @@ void Wwe12CameraProbeDraw(u32 device_guest) {
   for (int i = 0; i < 256; ++i)
     for (int j = 0; j < 4; ++j)
       r[i][j] = LoadBeF32(c + (i * 4 + j) * 4);
+  // v2 (2026-11-27): the first run found only 2D matrices (screen sprites, z = 0); the game passes no pure view
+  // matrix. A perspective matrix M (world-view-projection, or view-projection) tells where the camera is all the
+  // same: the camera centre C is the point whose clip x, y and w are all 0. Solved for both register layouts.
   for (int i = 0; i + 4 <= 256; ++i) {
-    const float *a = r[i], *b = r[i + 1], *d = r[i + 2], *t = r[i + 3];
-    if (!Unit(a[0], a[1], a[2]) || !Unit(b[0], b[1], b[2]) || !Unit(d[0], d[1], d[2]))
-      continue;
-    if (!Ortho(a, b) || !Ortho(a, d) || !Ortho(b, d))
-      continue;
-    if (std::fabs(t[3] - 1.0f) > 1e-4f)
-      continue;
-    if (std::fabs(a[3]) < 1e-6f && std::fabs(b[3]) < 1e-6f && std::fabs(d[3]) < 1e-6f) {
-      // Row vectors: v' = v R + t, t = r[i+3].xyz -> eye = -t R^T.
-      if (std::fabs(t[0]) + std::fabs(t[1]) + std::fabs(t[2]) < 1e-6f)
-        continue;  // identity-like: not a camera
-      AddEye({-(t[0] * a[0] + t[1] * a[1] + t[2] * a[2]), -(t[0] * b[0] + t[1] * b[1] + t[2] * b[2]),
-              -(t[0] * d[0] + t[1] * d[1] + t[2] * d[2])},
-             i, 'R');
-    } else if (std::fabs(t[0]) < 1e-6f && std::fabs(t[1]) < 1e-6f && std::fabs(t[2]) < 1e-6f) {
-      // Column vectors: v' = R v + t, t = (r[i].w, r[i+1].w, r[i+2].w) -> eye = -R^T t.
-      AddEye({-(a[0] * a[3] + b[0] * b[3] + d[0] * d[3]), -(a[1] * a[3] + b[1] * b[3] + d[1] * d[3]),
-              -(a[2] * a[3] + b[2] * b[3] + d[2] * d[3])},
-             i, 'C');
+    // Layout C (column vectors, registers = rows of M): rows 0, 1 and 3 give a[k]·C + a[3] = 0.
+    // Layout R (row vectors, registers = rows of M^T): columns 0, 1 and 3 of the 4 registers.
+    for (int layout = 0; layout < 2; ++layout) {
+      double m[3][4];
+      if (layout == 0) {
+        const int rows[3] = {i, i + 1, i + 3};
+        for (int k = 0; k < 3; ++k)
+          for (int j = 0; j < 4; ++j)
+            m[k][j] = r[rows[k]][j];
+        // perspective: the w row is not (0, 0, 0, 1)
+        if (std::fabs(r[i + 3][0]) + std::fabs(r[i + 3][1]) + std::fabs(r[i + 3][2]) < 1e-5f)
+          continue;
+      } else {
+        const int cols[3] = {0, 1, 3};
+        for (int k = 0; k < 3; ++k)
+          for (int j = 0; j < 4; ++j)
+            m[k][j] = r[i + j][cols[k]];
+        if (std::fabs(r[i][3]) + std::fabs(r[i + 1][3]) + std::fabs(r[i + 2][3]) < 1e-5f)
+          continue;
+      }
+      // Cramer: A C = -b, A = m[k][0..2], b = m[k][3].
+      const auto det3 = [](double a00, double a01, double a02, double a10, double a11, double a12, double a20,
+                           double a21, double a22) {
+        return a00 * (a11 * a22 - a12 * a21) - a01 * (a10 * a22 - a12 * a20) + a02 * (a10 * a21 - a11 * a20);
+      };
+      const double det = det3(m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2]);
+      double scale = 0;
+      for (int k = 0; k < 3; ++k)
+        for (int j = 0; j < 3; ++j)
+          scale = std::max(scale, std::fabs(m[k][j]));
+      if (!(scale > 0) || std::fabs(det) < 1e-6 * scale * scale * scale)
+        continue;
+      const double b0 = -m[0][3], b1 = -m[1][3], b2 = -m[2][3];
+      const double cx = det3(b0, m[0][1], m[0][2], b1, m[1][1], m[1][2], b2, m[2][1], m[2][2]) / det;
+      const double cy = det3(m[0][0], b0, m[0][2], m[1][0], b1, m[1][2], m[2][0], b2, m[2][2]) / det;
+      const double cz = det3(m[0][0], m[0][1], b0, m[1][0], m[1][1], b1, m[2][0], m[2][1], b2) / det;
+      if (std::fabs(cx) > 1e6 || std::fabs(cy) > 1e6 || std::fabs(cz) > 1e6)
+        continue;
+      // a camera somewhere: not the origin on all three axes
+      if (std::fabs(cx) + std::fabs(cy) + std::fabs(cz) < 1.0)
+        continue;
+      AddEye({float(cx), float(cy), float(cz)}, i, layout == 0 ? 'C' : 'R');
     }
   }
 }
@@ -441,7 +477,7 @@ void Wwe12CameraProbePresent() {
                           g_clusters[k].eye.y, g_clusters[k].eye.z, g_clusters[k].count, g_clusters[k].reg,
                           g_clusters[k].reg + 3, g_clusters[k].conv == 'R' ? "row vectors" : "column vectors");
     static int s_logged = 0;
-    if (s_logged++ < 40)
+    if (s_logged++ < 200)
       BD_INFO("[camprobe] step 1: {} draws, {} eye(s){}", g_draws, g_clusters.size(), line);
     {
       std::lock_guard lock(g_mutex);
