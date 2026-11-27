@@ -26,6 +26,8 @@
 
 #include <imgui.h>
 
+#include <string>
+
 #include <rex/cvar.h>
 #include <rex/ui/imgui_dialog.h>
 #include <rex/ui/imgui_drawer.h>
@@ -253,6 +255,45 @@ void WaitUntil(std::chrono::steady_clock::time_point next) {
 
 }  // namespace
 
+// A short text at the top of the screen for 2 s (MATCH CAMERA's F5, wwe12_match_camera.cpp). UI thread.
+namespace {
+std::string g_toast_text;
+double g_toast_until = 0;
+class ToastOverlay;
+ToastOverlay *g_toast = nullptr;
+class ToastOverlay final : public rex::ui::ImGuiDialog {
+ public:
+  explicit ToastOverlay(rex::ui::ImGuiDrawer *drawer) : ImGuiDialog(drawer) {}
+
+ protected:
+  void OnClose() override { g_toast = nullptr; }
+  void OnDraw(ImGuiIO &io) override {
+    const double now = ImGui::GetTime();
+    if (g_toast_until == 0)
+      g_toast_until = now + 2.0;
+    if (now > g_toast_until) {
+      Close();
+      return;
+    }
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    const ImVec2 size = ImGui::CalcTextSize(g_toast_text.c_str());
+    const float x = (io.DisplaySize.x - size.x) * 0.5f, y = io.DisplaySize.y * 0.12f;
+    dl->AddRectFilled(ImVec2(x - 16, y - 8), ImVec2(x + size.x + 16, y + size.y + 8), IM_COL32(12, 12, 14, 170),
+                      (size.y + 16) * 0.5f);
+    dl->AddText(ImVec2(x, y), IM_COL32(255, 255, 255, 255), g_toast_text.c_str());
+  }
+};
+}  // namespace
+
+void Wwe12DisplayToast(const char *text) {
+  g_toast_text = text;
+  g_toast_until = 0;  // (set at the next draw: 2 s from then)
+  if (!g_toast && g_drawer)
+    g_toast = new ToastOverlay(g_drawer);  // deletes itself when closed
+}
+
+void Wwe12MatchCameraNext();  // wwe12_match_camera.cpp
+
 void Wwe12DisplayInit(rex::ui::ImGuiDrawer *drawer) {
   g_drawer = drawer;
   if (drawer)
@@ -275,6 +316,7 @@ void Wwe12DisplayInit(rex::ui::ImGuiDrawer *drawer) {
     ShowOverlayIfNeeded();
   });
   ShowOverlayIfNeeded();
+  rex::ui::RegisterBind("bind_match_camera", "F5", "Next match camera", [] { Wwe12MatchCameraNext(); });
 }
 
 void Wwe12DisplayOnFrame() {

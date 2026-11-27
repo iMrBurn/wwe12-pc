@@ -1,5 +1,6 @@
-// Dev test (wwe12_camera_test, 0 = off by default): move the game's camera, to check that we found where (2026-11-27,
-// Rendu; docs/etude_camera_libre.md, step A -> palier 0).
+// MATCH CAMERA (2026-11-27, Rendu; docs/etude_camera_libre.md): the player picks the match's camera, NORMAL (the
+// game's), FAR, CLOSE, HIGH or LOW: cvar wwe12_match_camera (0-4, saved in wwe12.toml), F5 in a match for the next
+// one (a short text shows which). The benchmark always keeps NORMAL. wwe12_camera_test (dev) overrides it.
 //
 // Found with the camera probe (wwe12_camera_probe, v5): a camera object, updated each frame by sub_82824370(camera)
 // (already hooked by wwe12_widescreen.cpp, which knows its field of view +512, near +500 and far +504):
@@ -7,15 +8,13 @@
 //   +176 the projection, +240 the view (world -> camera), +368 view x projection;
 //   sub_82824370 rebuilds +96 = inverse(+240) (sub_821DB980), then +368 = +240 x +176 (sub_821DB8C0).
 // So the camera's own code writes the VIEW at +240 before the update, like SvR 2011's view builder in Kaiko's port
-// (sub_82227150(view, eye, direction); his MATCH CAMERA moves the eye just before it and puts the game's back just
-// after, so the game's smoothing goes on from its own values; method only, with his permission, THIRD_PARTY.md).
+// (sub_82227150(view, eye, direction); his MATCH CAMERA moves the eye just before it; method only, with his
+// permission, THIRD_PARTY.md).
 //
-// Here, the same idea on +240: before sub_82824370, the view's eye is moved (FAR / CLOSE along the camera's
-// forward axis, around the point it looks at on the plane through the ring's centre; HIGH / LOW on the world's
-// vertical axis, -y is up), the view rebuilt with the same rotation, and the game's view put back after the update
-// (the world matrix, the view x projection and everything drawn from them keep ours for this frame).
-// Test only: v6b moves the cameras updated from 8247F64C during a match (after sub_822B51A0, outside scenes and
-// loading screens); "[camtest]" lines name each camera object moved (address, caller, eye, field of view).
+// Here, before sub_82824370, the view's eye is moved: FAR / CLOSE along the camera's forward axis, around the point
+// it looks at on the plane through the ring's centre; HIGH / LOW on the world's vertical axis (-y is up), aimed at
+// the same point again. Only the cameras updated from 8247F64C during a match (after sub_822B51A0, outside scenes
+// and loading screens). Checked in game by iMrBurn on 2026-11-27: FAR moves the match camera back.
 // Values: 1 FAR, 2 CLOSE, 3 HIGH, 4 LOW (Kaiko's presets).
 
 #include <rex/cvar.h>
@@ -25,10 +24,16 @@
 #include <cmath>
 #include <cstring>
 
+#include <rex/filesystem.h>
+
+#include "../launcher/toml_file.h"
 #include "core/logging.h"
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
 
+REXCVAR_DEFINE_INT32(wwe12_match_camera, 0, "WWE12",
+                     "Match camera: 0 NORMAL (the game's), 1 FAR, 2 CLOSE, 3 HIGH, 4 LOW (F5 in a match: the next one).")
+    .range(0, 4);
 REXCVAR_DEFINE_INT32(wwe12_camera_test, 0, "WWE12",
                      "Dev: move the game's camera to test the camera object found (1 far, 2 close, 3 high, 4 low; "
                      "0 = off).")
@@ -37,6 +42,8 @@ REXCVAR_DEFINE_INT32(wwe12_camera_test, 0, "WWE12",
 bool Wwe12MatchSeen();        // wwe12_fps.cpp: a match started since launch
 bool Wwe12SceneMode();        // wwe12_fps.cpp: an entrance / victory / story scene
 bool Wwe12LoadingScreenUp();  // wwe12_load_turbo.cpp
+bool Wwe12BenchmarkActive();  // wwe12_benchmark.cpp
+void Wwe12DisplayToast(const char *text);  // wwe12_display.cpp: a short text at the top of the screen
 
 namespace {
 
@@ -103,11 +110,12 @@ int g_callers_n = 0;
 
 // Before sub_82824370(camera): the view at camera + 240 moved (saved first).
 void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
-  const int preset = REXCVAR_GET(wwe12_camera_test);
+  const int test = REXCVAR_GET(wwe12_camera_test);
+  const int preset = test ? test : Wwe12BenchmarkActive() ? 0 : REXCVAR_GET(wwe12_match_camera);
   if (!preset || !cam || !bd::mem::try_at<u8>(cam + 520))
     return;
   const bool in_match = Wwe12MatchSeen() && !Wwe12SceneMode() && !Wwe12LoadingScreenUp();
-  if (in_match) {
+  if (in_match && test) {
     bool known = false;
     for (int i = 0; i < g_callers_n; ++i)
       known = known || (g_callers[i].lr == lr && g_callers[i].cam == cam);
@@ -196,7 +204,7 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   std::memcpy(slot->ours, base + cam + 240, 64);
   static int s_lines = 0;
   const long long now = NowMs();
-  if (now >= slot->next_log_ms && s_lines < 80) {
+  if (now >= slot->next_log_ms && s_lines < (test ? 80 : 4)) {
     slot->next_log_ms = now + 3000;
     ++s_lines;
     BD_INFO("[camtest] camera {:08X} (from {:08X}): eye ({:.1f}, {:.1f}, {:.1f}) forward ({:.3f}, {:.3f}, {:.3f}), "
@@ -207,3 +215,24 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
 
 // After sub_82824370: nothing any more (v6c, see Moved above).
 void Wwe12CameraTestAfter(u8 *) {}
+
+// F5 (wwe12_display.cpp's bind): the next match camera, saved in wwe12.toml, and shown for a moment.
+const char *Wwe12MatchCameraName(int preset) {
+  static const char *const kNames[] = {"NORMAL", "FAR", "CLOSE", "HIGH", "LOW"};
+  return kNames[std::clamp(preset, 0, 4)];
+}
+
+void Wwe12MatchCameraNext() {
+  const int next = (REXCVAR_GET(wwe12_match_camera) + 1) % 5;
+  rex::cvar::SetFlagByName("wwe12_match_camera", std::to_string(next));
+  char text[48];
+  std::snprintf(text, sizeof text, "MATCH CAMERA: %s", Wwe12MatchCameraName(next));
+  Wwe12DisplayToast(text);
+  BD_INFO("[camera] {}", text);
+  const auto path = rex::filesystem::GetExecutableFolder() / "wwe12.toml";
+  TomlFile f;
+  if (f.Load(path)) {
+    f.SetInt("wwe12_match_camera", next);
+    f.Save();
+  }
+}
