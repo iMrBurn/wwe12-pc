@@ -84,6 +84,16 @@ bool SvrSkipHiddenDraw();  // hooks/device.cpp (svr_test_half_frames, turbo load
 }
 extern std::atomic<bool> g_wwe12_hide_hud;  // native/wwe12_match_camera.cpp (free camera, F7 / F8)
 bool Wwe12InMatchNow();                     // native/wwe12_match_camera.cpp: a match is being played (no scene)
+extern std::atomic<bd::gpu::GuestTexture *> g_wwe12_titan_logo;  // native/wwe12_titantron_logo.cpp
+// The screen draw's texture slot 0 put back after the draw (the logo given to it for that draw only).
+struct SvrSlotSwap {
+  bd::gpu::GuestTexture **slot = nullptr;
+  bd::gpu::GuestTexture *old = nullptr;
+  ~SvrSlotSwap() {
+    if (slot)
+      *slot = old;
+  }
+};
 #endif
 
 namespace {
@@ -252,6 +262,7 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
       s.pipelineState.renderTargetFormat == plume::RenderFormat::R32_FLOAT &&
       s.pipelineState.depthStencilFormat != plume::RenderFormat::UNKNOWN)
     return;
+  SvrSlotSwap tex_swap;
   if (!REXCVAR_GET(wwe12_live_screen) && args.indexed && s.textures[0] &&
       s.textures[0]->format == plume::RenderFormat::R8G8B8A8_UNORM && s.textures[0]->width >= 1280 &&
       u64(s.textures[0]->width) * 9 == u64(s.textures[0]->height) * 16 &&
@@ -259,11 +270,18 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
       (bd::mem::load<u32>(device_guest + 0x2934) & 2u)) {
     const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest);
     if (dev && u32(dev->viewport.Width) >= 1152 && u32(dev->viewport.Height) >= 640 && Wwe12InMatchNow()) {
+      // The show's logo instead of the frame copy (wwe12_titantron_logo.cpp), else nothing.
+      bd::gpu::GuestTexture *logo = g_wwe12_titan_logo.load(std::memory_order_relaxed);
       static std::atomic<bool> s_logged{false};
       if (!s_logged.exchange(true))
-        BD_INFO("[draw] the arena screen showing the match (mirror) not drawn (wwe12_live_screen off): {} indices",
-                args.vertexOrIndexCount);
-      return;
+        BD_INFO("[draw] the arena screen showing the match (mirror): {} ({} indices)",
+                logo ? "the show's logo instead" : "not drawn", args.vertexOrIndexCount);
+      if (!logo || !logo->texture)
+        return;
+      bd::gpu::BindTextureSRVLocked(s, logo);
+      tex_swap.slot = &s.textures[0];
+      tex_swap.old = s.textures[0];
+      s.textures[0] = logo;
     }
   }
   if (!REXCVAR_GET(wwe12_crowd) && s.vertex_shader && s.vertex_shader->shaderCacheEntry) {

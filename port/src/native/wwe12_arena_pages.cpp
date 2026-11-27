@@ -2149,7 +2149,10 @@ extern "C" REX_FUNC(sub_825A3318) {
 // match, 2026-11-06). Kept: the object (the same one from match to match) and what it holds (-1: the game's arena).
 u32 g_stage_object = 0;
 int g_stage_holds = -1;
+void Wwe12TitantronLogoStage(u32 stage);  // wwe12_titantron_logo.cpp: the show's logo for the stage screen
+
 extern "C" REX_FUNC(sub_823BEED0) {
+  Wwe12TitantronLogoStage(bd::mem::load<u32>(ctx.r3.u32 + 88));
   g_stage_object = ctx.r3.u32;
   g_stage_holds = g_chosen;
   if (REXCVAR_GET(wwe12_dir_log))
