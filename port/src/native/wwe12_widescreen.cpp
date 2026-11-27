@@ -91,11 +91,16 @@ class WiderFov {
 
 }  // namespace
 
+void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr);  // wwe12_camera_test.cpp (dev, off by default)
+void Wwe12CameraTestAfter(u8 *base);
+
 extern "C" REX_FUNC(sub_82824370) {
   float tall = 1.0f;
   SceneShape(tall);
   WiderFov fov(ctx.r3.u32 ? ctx.r3.u32 + 512 : 0, tall);
+  Wwe12CameraTestBefore(base, ctx.r3.u32, u32(ctx.lr));
   __imp__sub_82824370(ctx, base);
+  Wwe12CameraTestAfter(base);
 }
 
 extern "C" REX_FUNC(sub_823BE870) {
