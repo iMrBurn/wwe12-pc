@@ -31,6 +31,17 @@ REXCVAR_DEFINE_INT32(wwe12_match_camera, 0, "WWE12",
                      "Match camera: 0 NORMAL (the game's), 1 RAMP (toward the stage, as in a Royal Rumble); F5 in a "
                      "match: the next one.")
     .range(0, 1);
+// RAMP's shape (2026-11-27: iMrBurn wants it lower and a little farther, "comme sur 2K26"; tried from the command
+// line, the best one becomes the default). Defaults = the first version he saw (17.5 degrees down, Kaiko's
+// (0, 0.3, 0.95)).
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_pitch, 17.5, "WWE12", "RAMP camera: degrees it looks down (0 = level).")
+    .range(-10.0, 60.0);
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_distance, 1.0, "WWE12",
+                      "RAMP camera: distance factor (1 = 9 to 16 m back from what it looks at).")
+    .range(0.3, 4.0);
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_fov_scale, 1.0, "WWE12",
+                      "RAMP camera: field of view factor (1 = the wrestlers keep the size the game gives them).")
+    .range(0.3, 3.0);
 REXCVAR_DEFINE_INT32(wwe12_camera_test, 0, "WWE12",
                      "Dev (old, ignored since 2026-11-27: the FAR / CLOSE / HIGH / LOW tests are gone).")
     .range(0, 4);
@@ -157,9 +168,9 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   // left of the game's match camera (checked by iMrBurn). A fixed direction, a little down (y is down), like
   // Kaiko's RAMP for SvR 2011 (0, 0.3, 0.95); the eye follows what the game's camera looks at, 9 to 16 m back, and
   // the field of view is widened for that distance so the wrestlers keep the size the game gives them.
-  const float gl = std::sqrt(0.3f * 0.3f + 0.95f * 0.95f);
-  const V3 g{0.0f, 0.3f / gl, 0.95f / gl};
-  const float back = std::clamp(dist, 900.0f, 1600.0f);
+  const float pitch = float(REXCVAR_GET(wwe12_ramp_pitch)) * 3.14159265f / 180.0f;
+  const V3 g{0.0f, std::sin(pitch), std::cos(pitch)};  // (y down: a positive pitch looks down)
+  const float back = std::clamp(dist, 900.0f, 1600.0f) * float(REXCVAR_GET(wwe12_ramp_distance));
   const V3 n{t.x - g.x * back, t.y - g.y * back, t.z - g.z * back};
   // The camera's axes for that direction, built as the game's are: up = +y on screen rows (world y down), right =
   // up x forward (the game's: forward (1,0,0) gives right (0,0,-1), up (0,1,0)).
@@ -178,10 +189,12 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   std::memcpy(slot->ours, base + cam + 240, 64);
   // The field of view for this update (the projection is built from it inside sub_82824370), put back after.
   const float fov = Ld(base, cam + 512);
-  if (fov > 0.01f && fov < 3.0f && back < dist) {
+  const float fov_scale = float(REXCVAR_GET(wwe12_ramp_fov_scale));
+  if (fov > 0.01f && fov < 3.0f && (back < dist || fov_scale != 1.0f)) {
     g_fov_cam = cam;
     g_fov_saved = fov;
-    St(base, cam + 512, std::min(1.4f, 2.0f * std::atan(std::tan(fov * 0.5f) * dist / back)));
+    const float same_size = 2.0f * std::atan(std::tan(fov * 0.5f) * std::max(dist, back) / back);
+    St(base, cam + 512, std::clamp(same_size * fov_scale, 0.05f, 1.6f));
   }
   static int s_lines = 0;
   const long long now = NowMs();
