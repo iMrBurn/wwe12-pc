@@ -145,6 +145,9 @@ std::atomic<bool> g_free{false};
 std::atomic<bool> g_free_init{false};   // take the game's eye at the next update
 std::atomic<bool> g_free_hud_off{false};
 std::atomic<bool> g_free_paused{false};
+// F6 again (as in Kaiko's SvR 2011 port, method only): the camera KEPT where it is, and the pads back to the game -
+// the match is played from that view (iMrBurn, 2026-11-27: "et ça marche que quand on joue pas ?"). F6: flying again.
+std::atomic<bool> g_free_kept{false};
 std::atomic<int> g_free_updates{0};      // camera updates seen while paused (does the game update it in its pause?)
 std::atomic<bool> g_wwe12_hide_hud{false};  // hooks/draw.cpp: HUD sprites not drawn
 // Player 1's pad, as the game would have read it (XInputGetState hook): sticks, triggers, buttons.
@@ -176,9 +179,18 @@ bool Wwe12FreeCamPad(u32 user, u32 state) {
     FreeOff();
     return false;
   }
-  if (!InMatchNow())
+  if (!InMatchNow() || g_free_kept.load())
     return false;
+  const u16 buttons = bd::mem::load<u16>(state + 4);
   if (user == 0) {
+    // START / BACK still reach the game (its pause menu); START while flying keeps the camera there, so that menu
+    // gets its keys (Kaiko's 2.1.8 lesson: "couldn't exit the match").
+    static u16 s_was = 0;
+    if ((buttons & ~s_was & 0x0010) && !g_free_paused.load()) {
+      g_free_kept = true;
+      BD_INFO("[camera] FREE: kept (START)");
+    }
+    s_was = buttons;
     u64 sticks = 0;
     for (u32 i = 0; i < 4; ++i)
       sticks |= u64(bd::mem::load<u16>(state + 8 + 2 * i)) << (16 * i);
@@ -188,6 +200,7 @@ bool Wwe12FreeCamPad(u32 user, u32 state) {
   }
   for (u32 i = 4; i < 16; i += 4)
     bd::mem::store<u32>(state + i, 0);
+  bd::mem::store<u16>(state + 4, u16(buttons & 0x0030));
   return true;
 }
 
@@ -275,6 +288,14 @@ void FreeView(u8 *base, u32 cam, Moved *slot, V3 e, V3 f) {
     g_free_updates.fetch_add(1);
   const float dt = std::clamp(float(now - p.ms) / 1000.0f, 0.0f, 0.1f);
   p.ms = now;
+  if (g_free_kept.load()) {  // kept there: the view only (the keys and pads are the game's)
+    const V3 g{std::cos(p.pitch) * std::sin(p.yaw), std::sin(p.pitch), std::cos(p.pitch) * std::cos(p.yaw)};
+#if defined(WWE12_FREECAM_KEYBOARD)
+    p.rmb = false;
+#endif
+    WriteView(base, cam, slot, p.eye, g, p.fov);
+    return;
+  }
   float fwd = 0, side = 0, vert = 0, turn = 0, look = 0, zoom = 0, speed = 1;
   float mouse_x = 0, mouse_y = 0;  // pixels
   // The pad (player 1): left stick moves, right stick looks, RT / LT up / down, RB / LB zoom in / out, A faster.
@@ -469,8 +490,11 @@ void Wwe12MatchCameraNext() {
 
 // F6: the free camera on / off (in a match only).
 void Wwe12FreeCameraToggle() {
-  if (g_free.load()) {
-    Wwe12MatchCameraNext();  // (off, as F5)
+  if (g_free.load()) {  // flying <-> kept there
+    const bool kept = !g_free_kept.load();
+    g_free_kept = kept;
+    Wwe12DisplayToast(kept ? "FREE CAMERA KEPT HERE - F6: FLY  F5: BACK" : "FREE CAMERA: FLYING - F6: KEEP IT HERE");
+    BD_INFO("[camera] FREE: {} (F6)", kept ? "kept" : "flying");
     return;
   }
   if (!InMatchNow()) {
@@ -478,11 +502,12 @@ void Wwe12FreeCameraToggle() {
     return;
   }
   g_free_init = true;
+  g_free_kept = false;
   g_free_hud_off = false;
   g_free_paused = false;
   g_free = true;
   UpdateHideHud();
-  Wwe12DisplayToast("FREE CAMERA - F5: BACK  F7: HUD  F8: PAUSE");
+  Wwe12DisplayToast("FREE CAMERA - F6: KEEP IT HERE  F5: BACK  F7: HUD  F8: PAUSE");
   BD_INFO("[camera] FREE: on (F6)");
 }
 
