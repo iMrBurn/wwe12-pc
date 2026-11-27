@@ -98,6 +98,7 @@ bool Near(const Vec3 &a, const Vec3 &b, float tol) {
 // ---- step 1 (render thread) ----
 struct Cluster {
   Vec3 eye;
+  Vec3 dir;  // v5: the camera's forward axis (the clip w row of the view-projection, made unit)
   int count;
   int reg;
   char conv;  // 'R': translation in the 4th register (row vectors), 'C': translation in .w (column vectors)
@@ -105,7 +106,7 @@ struct Cluster {
 std::vector<Cluster> g_clusters;  // this armed frame's eyes (render thread only)
 int g_draws = 0;
 
-void AddEye(const Vec3 &e, int reg, char conv) {
+void AddEye(const Vec3 &e, const Vec3 &d, int reg, char conv) {
   if (!std::isfinite(e.x) || !std::isfinite(e.y) || !std::isfinite(e.z))
     return;
   for (Cluster &c : g_clusters)
@@ -114,18 +115,20 @@ void AddEye(const Vec3 &e, int reg, char conv) {
       return;
     }
   if (g_clusters.size() < 256)
-    g_clusters.push_back({e, 1, reg, conv});
+    g_clusters.push_back({e, d, 1, reg, conv});
 }
 
 
 // ---- step 2/3 (probe thread) ----
 std::mutex g_mutex;
-std::vector<Vec3> g_sample;  // the last armed frame's top eyes (most frequent first)
+std::vector<Vec3> g_sample;      // the last armed frame's top eyes (most frequent first)
+std::vector<Vec3> g_sample_dir;  // and their forward axes
 bool g_sample_new = false;
 int g_sample_id = 0;
 
 struct Survivor {
   u32 va;
+  int dir_off;  // v5: where the forward axis sits from the eye (bytes; 0 if not checked)
   Vec3 last;
   bool moved;
   int misses = 0;  // samples in a row where it held none of the eyes (2 allowed: the game is a frame ahead)
@@ -143,18 +146,36 @@ bool Readable(const u8 *p, size_t n) {
 }
 
 // Scans [p, end) (one committed region) for 3 floats near `e`, 4-byte steps.
-void ScanRegion(u8 *base, u8 *p, u8 *end, const Vec3 &e, std::vector<Survivor> &out, size_t cap) {
+void ScanRegion(u8 *base, u8 *p, u8 *end, const Vec3 &e, const Vec3 &d, std::vector<Survivor> &out, size_t cap) {
   const float tol = Tol(e);
+  const u8 *const region_start = p;
   for (; p + 12 <= end && out.size() < cap; p += 4) {
     if (std::fabs(LoadBeF32(p) - e.x) > tol)
       continue;
     if (std::fabs(LoadBeF32(p + 4) - e.y) > tol || std::fabs(LoadBeF32(p + 8) - e.z) > tol)
       continue;
-    out.push_back({u32(p - base), e, false, 0});
+    // v5 (from Kaiko's SvR 2011 free camera, read only: there the follow camera keeps its eye at +304 and its
+    // direction at +288 and passes both to the view builder): the eye must have the camera's forward axis (or its
+    // opposite) within 64 bytes, as 3 floats. A copy of the eye alone in a shader constant or a draw list does not.
+    int dir_off = 0;
+    for (int off = -64; off <= 64 && !dir_off; off += 4) {
+      if (off > -12 && off < 12)
+        continue;
+      const u8 *q = p + off;
+      if (q < region_start || q + 12 > end)
+        continue;
+      const float x = LoadBeF32(q), y = LoadBeF32(q + 4), z = LoadBeF32(q + 8);
+      for (float sgn : {1.0f, -1.0f})
+        if (std::fabs(x - sgn * d.x) < 0.03f && std::fabs(y - sgn * d.y) < 0.03f && std::fabs(z - sgn * d.z) < 0.03f)
+          dir_off = off;
+    }
+    if (!dir_off)
+      continue;
+    out.push_back({u32(p - base), dir_off, e, false, 0});
   }
 }
 
-void FullScan(const Vec3 &e, std::vector<Survivor> &out) {
+void FullScan(const Vec3 &e, const Vec3 &d, std::vector<Survivor> &out) {
   u8 *const base = GuestBase();
   // v3: no 8192 cap any more (the first run stopped in the stacks, before the game's heap and data), and the
   // guest stacks (0x70000000-0x7FFFFFFF: per-frame temporaries, seen in v2) are left out.
@@ -173,7 +194,7 @@ void FullScan(const Vec3 &e, std::vector<Survivor> &out) {
       if (mbi.State == MEM_COMMIT && !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) &&
           (mbi.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
                           PAGE_EXECUTE_READWRITE)))
-        ScanRegion(base, std::max(p, rs), re, e, out, kCap);
+        ScanRegion(base, std::max(p, rs), re, e, d, out, kCap);
       p = re;
     }
   }
@@ -302,7 +323,7 @@ void ProbeThread() {
   int samples = 0, last_id = 0;
   for (;;) {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    std::vector<Vec3> eyes;
+    std::vector<Vec3> eyes, dirs;
     {
       std::lock_guard lock(g_mutex);
       if (!g_sample_new || g_sample_id == last_id)
@@ -310,15 +331,17 @@ void ProbeThread() {
       g_sample_new = false;
       last_id = g_sample_id;
       eyes = g_sample;
+      dirs = g_sample_dir;
     }
     if (eyes.empty())
       continue;
     if (samples == 0) {
       for (size_t k = 0; k < eyes.size() && k < 2; ++k) {
         const size_t before = survivors.size();
-        FullScan(eyes[k], survivors);
-        BD_INFO("[camprobe] step 2: eye {} ({:.3f}, {:.3f}, {:.3f}) found at {} guest addresses", k + 1,
-                eyes[k].x, eyes[k].y, eyes[k].z, survivors.size() - before);
+        FullScan(eyes[k], dirs[k], survivors);
+        BD_INFO("[camprobe] step 2: eye {} ({:.3f}, {:.3f}, {:.3f}), forward ({:.3f}, {:.3f}, {:.3f}): found at {} "
+                "guest addresses with the forward axis next to it",
+                k + 1, eyes[k].x, eyes[k].y, eyes[k].z, dirs[k].x, dirs[k].y, dirs[k].z, survivors.size() - before);
       }
       if (survivors.size() > 200000) {
         BD_INFO("[camprobe] step 2: {} addresses, not selective: new scan at the next sample", survivors.size());
@@ -364,8 +387,10 @@ void ProbeThread() {
     // Step 3.
     std::vector<u32> list;
     for (const Survivor &s : survivors)
-      if (s.moved && list.size() < 16)
+      if (s.moved && list.size() < 16) {
         list.push_back(s.va);
+        BD_INFO("[camprobe]   {:08X}: the forward axis at {:+d} bytes", s.va, s.dir_off);
+      }
     BD_INFO("[camprobe] step 2 done: {} moving address(es) hold the camera eye:", list.size());
     for (u32 va : list)
       LogContext(va);
@@ -465,7 +490,13 @@ void Wwe12CameraProbeDraw(u32 device_guest) {
       // a camera somewhere: not the origin on all three axes
       if (std::fabs(cx) + std::fabs(cy) + std::fabs(cz) < 1.0)
         continue;
-      AddEye({float(cx), float(cy), float(cz)}, i, layout == 0 ? 'C' : 'R');
+      // forward axis: the clip w row (layout C: r[i+3].xyz; layout R: the .w of r[i..i+2]), made unit
+      double fx = m[2][0], fy = m[2][1], fz = m[2][2];
+      const double fl = std::sqrt(fx * fx + fy * fy + fz * fz);
+      if (!(fl > 0))
+        continue;
+      AddEye({float(cx), float(cy), float(cz)}, {float(fx / fl), float(fy / fl), float(fz / fl)}, i,
+             layout == 0 ? 'C' : 'R');
     }
   }
 }
@@ -500,6 +531,7 @@ void Wwe12CameraProbePresent() {
     {
       std::lock_guard lock(g_mutex);
       g_sample.clear();
+      g_sample_dir.clear();
       // (v3: eyes within 50 units of the origin are left out: with no cap, (-1, 0, 0) matched millions of small
       // floats; the match camera is metres away, the units are centimetres)
       for (size_t k = 0; k < g_clusters.size() && g_sample.size() < 3; ++k) {
@@ -507,7 +539,7 @@ void Wwe12CameraProbePresent() {
         // (v4: and no coordinate near 0: (0, 0, -303) in the menus matched 498 344 addresses)
         if (std::max({std::fabs(e.x), std::fabs(e.y), std::fabs(e.z)}) >= 50.0f &&
             std::min({std::fabs(e.x), std::fabs(e.y), std::fabs(e.z)}) >= 1.0f)
-          g_sample.push_back(e);
+          g_sample.push_back(e), g_sample_dir.push_back(g_clusters[k].dir);
       }
       g_sample_new = true;
       ++g_sample_id;

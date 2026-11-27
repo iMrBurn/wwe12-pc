@@ -38,6 +38,10 @@ Projets dont ce portage s'inspire :
   méthode uniquement. Android (README du dépôt, 2026-11-07) : la variable `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1`
   pour les pilotes Turnip sous HyperOS (case facultative du launcher, `DriverManager.java`) et l'idée du retour au
   pilote du téléphone quand un pilote personnalisé échoue.
+  Caméra de match (2026-11-27, Rendu) : sa méthode pour SvR 2011 (crocheter la fonction « vue depuis l'œil et la
+  direction », changer l'œil juste avant l'appel puis remettre celui du jeu ; l'œil et la direction côte à côte dans
+  la caméra qui suit) guide la sonde `port/src/native/wwe12_camera_probe.cpp` et l'étude
+  `docs/etude_camera_libre.md`. Méthode seulement, code réécrit.
   Benchmark (1.3) : sa méthode du match de test (un trajet fixe dans les menus, puis une vérification du
   match obtenu, `test_match.cpp`) est reprise en méthode seulement dans `port/src/native/wwe12_benchmark.cpp`
   (scénario `hiac6`, trajet enregistré, vérification au départ du match), ainsi que l'idée de sa condition

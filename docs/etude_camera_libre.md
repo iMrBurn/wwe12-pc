@@ -81,6 +81,50 @@ Demande : (1) que le joueur choisisse sa caméra de match (vue, distance, hauteu
   monter, la retourner) **plutôt que de la remplacer**. Elle garde alors le suivi des catcheurs, la foule et les
   ombres.
 
+## 3 bis. Ce que fait Kaiko dans son code (lu le 2026-11-27, lecture seule, rien copié)
+
+Kaiko nous a permis de lire son travail sur SvR 2011 et de l'adapter, avec crédit (voir THIRD_PARTY.md). Ses
+fichiers lus : `port/src/free_cam.cpp` / `free_cam.h` et la partie caméra de `port/src/match_types.cpp`
+(dépôt `KaikoClanworth1/wwe-svr2011-pc`). Les adresses ci-dessous sont celles de **SvR 2011**, pas de WWE '12.
+
+- **Un seul point d'entrée.** Le jeu construit la vue de la scène avec `sub_82227150(vue, œil, direction, …)`, une
+  fonction « regarder depuis l'œil dans cette direction ».
+  - Elle écrit une matrice 4 × 4 à une adresse fixe (`0x82E3CC00`, la vue de la scène).
+  - La caméra qui suit les catcheurs l'appelle avec son œil à `caméra + 304` et sa direction à `caméra + 288`.
+  - Kaiko crochète cette fonction ; il ne cherche pas de floats en mémoire.
+- **Choix de la caméra (NORMAL, FAR, CLOSE, HIGH, LOW, RAMP).**
+  - **Juste avant** l'appel, il remplace l'œil et la direction :
+    - plus loin ou plus près le long de la direction ;
+    - plus haut ou plus bas en y (y vers le bas = vers le haut) ;
+    - pour LOW, jamais sous le tapis.
+  - **Juste après**, il remet les valeurs du jeu, pour que le lissage de la caméra du jeu continue de ses propres
+    valeurs.
+  - Il ne le fait que :
+    - si l'appel vient de la mise à jour de la caméra qui suit (`sub_822285F0`, appelée d'un endroit précis) ;
+    - si le mode de caméra vaut 1 (jeu libre ; 6 = entrées) ;
+    - en match, et pas en coulisses.
+  - Les plans des grosses prises passent par un autre chemin : il n'y touche pas.
+- **Caméra RAMP.** Une direction fixe (vers la rampe, un peu vers le bas), et un œil qui suit le centre de la
+  « sphère » des catcheurs (`sub_82227690`, centre +16/+20/+24, rayon +32), à une distance qui les garde tous dans
+  l'image.
+- **Caméra libre (F6).**
+  - Au départ, il reprend la vue du jeu telle qu'elle vient d'être construite. Ensuite, il réécrit la matrice de vue
+    de la scène après chaque construction.
+  - La caméra du jeu continue de tourner dessous, donc F5 la rend tout de suite.
+  - Pendant le vol, la manette ne va plus au jeu : sa lecture `XamInputGetState` est filtrée, et les catcheurs
+    restent sur place.
+  - F8 met le match en pause.
+- **Interface (F7).** Son rendu natif ne dessine plus les sprites 2D. Il a eu un défaut (« le menu pause ne
+  s'ouvre plus ») corrigé en 2.1.9.
+- **Pour WWE '12** (même éditeur, moteur proche), il faut trouver les équivalents :
+  - la fonction « vue depuis œil et direction » ;
+  - l'adresse de la vue de la scène ;
+  - la mise à jour de la caméra qui suit, et l'octet du mode de caméra.
+
+  Dans WWE '12, l'appel avec `+304` / `+288` n'existe pas : les décalages ont changé. La sonde v5 (2026-11-27)
+  cherche donc l'œil **avec sa direction à côté de lui** (à moins de 64 octets). Son piège d'écriture donnera alors
+  la mise à jour de la caméra qui suit, et l'appel de la fonction de vue juste après.
+
 ## 4. (c) Plan par paliers
 
 ### Palier A : trouver la caméra de jeu (1-2 séances, sonde en jeu, coupée par défaut)
