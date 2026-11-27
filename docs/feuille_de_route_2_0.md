@@ -54,3 +54,11 @@ par paliers mesurés et testés avant de passer au suivant.
 1. Quel thème d'abord : « plus de 6 catcheurs » ou « régénération » (ou les deux en parallèle, comme proposé) ?
 2. GM Mode : on cadre une étude, ou on le laisse pour une version ultérieure ?
 3. Un nom pour la 2.0 (par exemple « Régénération » ou « Full natif »).
+
+## Décisions de l'utilisateur du 2026-11-27
+
+Gardés pour la 2.0 : **choix de la caméra de match** et **caméra libre pendant un match** (réclamées par des joueurs ; Kaiko et Jarrod
+les ont dans leurs recomps), l'Univers (calendrier libre, rivalités d'une marque, tournois, statistiques), le **support de la souris dans les
+menus**, le contenu (plus d'arènes, plus de places CAW, armes SvR 2011, mallettes) et le technique (régénération, jeu natif).
+En réflexion : un menu de réglages complet dans le jeu (touche F1, comme les portages SvR de nefariousjosiah) en plus de OPTIONS > GRAPHICS.
+Étude demandée à Rendu : caméra libre / choix de la caméra (code du jeu + ce que font Kaiko et Jarrod, sans copier de code).
