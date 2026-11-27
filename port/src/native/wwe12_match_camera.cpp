@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 
@@ -32,24 +33,24 @@ REXCVAR_DEFINE_INT32(wwe12_match_camera, 0, "WWE12",
                      "match: the next one.")
     .range(0, 1);
 // RAMP's shape (2026-11-27: iMrBurn wants it lower and a little farther, "comme sur 2K26"; tried from the command
-// line, the best one becomes the default). Defaults = the first version he saw (17.5 degrees down, Kaiko's
-// (0, 0.3, 0.95)).
-REXCVAR_DEFINE_DOUBLE(wwe12_ramp_pitch, 17.5, "WWE12", "RAMP camera: degrees it looks down (0 = level).")
+// line, the best one becomes the default). Defaults = try C2 (pitch 4, 8 m, 48 degrees, aim 2.2 m, follow 0.4),
+// "pas trop mal" for iMrBurn (2026-11-27): near the top rope, almost level, wide, on the ring's axis like 2K26.
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_pitch, 4.0, "WWE12", "RAMP camera: degrees it looks down (0 = level).")
     .range(-10.0, 60.0);
 // v2 (iMrBurn's screenshot, 2026-11-27: "au début elle est bien, puis après elle zoome trop pendant le match"):
 // the first version took the game's TV camera's distance and zoom, and that camera zooms in more and more during a
 // match. RAMP now has its own fixed distance and field of view, aims at chest height, and follows what the game's
 // camera looks at smoothly (no jump at the TV camera's cuts).
-REXCVAR_DEFINE_DOUBLE(wwe12_ramp_distance, 13.0, "WWE12",
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_distance, 8.0, "WWE12",
                       "RAMP camera: metres back from what it looks at.")
     .range(3.0, 60.0);
-REXCVAR_DEFINE_DOUBLE(wwe12_ramp_fov, 30.0, "WWE12", "RAMP camera: vertical field of view, degrees.")
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_fov, 48.0, "WWE12", "RAMP camera: vertical field of view, degrees.")
     .range(5.0, 90.0);
-REXCVAR_DEFINE_DOUBLE(wwe12_ramp_aim_height, 2.3, "WWE12",
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_aim_height, 2.2, "WWE12",
                       "RAMP camera: height it aims at above the arena floor, metres (the mat is ~1.2 m up: 2.3 = the "
                       "wrestlers' chests in the ring).")
     .range(0.0, 5.0);
-REXCVAR_DEFINE_DOUBLE(wwe12_ramp_follow, 1.0, "WWE12",
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_follow, 0.4, "WWE12",
                       "RAMP camera: how much it follows the action sideways and toward the stage (0 = stays on the "
                       "ring's centre line, as WWE 2K26's ramp view, 1 = follows fully).")
     .range(0.0, 1.0);
@@ -125,6 +126,9 @@ Caller g_callers[48];
 int g_callers_n = 0;
 
 }  // namespace
+
+// When RAMP last replaced a view (ms): the depth of field is off while it is on (draw.cpp).
+std::atomic<long long> g_ramp_ms{0};
 
 u32 g_fov_cam = 0;   // the camera whose field of view (+512) is changed for this update (put back after it)
 float g_fov_saved = 0;
@@ -211,6 +215,7 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
     St(base, cam + 240 + 48 + u32(4 * j), -(n.x * A[j][0] + n.y * A[j][1] + n.z * A[j][2]));
   }
   std::memcpy(slot->ours, base + cam + 240, 64);
+  g_ramp_ms.store(now_ms, std::memory_order_relaxed);
   // The field of view for this update (the projection is built from it inside sub_82824370), put back after.
   const float fov = Ld(base, cam + 512);
   if (fov > 0.01f && fov < 3.0f) {
@@ -227,6 +232,14 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
             "{:.0f}), field of view {:.3f} -> eye ({:.0f}, {:.0f}, {:.0f}), {:.0f} back",
             cam, e.x, e.y, e.z, t.x, t.y, t.z, fov, n.x, n.y, n.z, back);
   }
+}
+
+// draw.cpp: the RAMP view is on (a view replaced in the last 250 ms). Its depth of field is then cut: the game
+// sets the focus for its own camera (distance, zoom), so with ours the referee, the apron or the background came out
+// blurred at times (iMrBurn's screenshots, 2026-11-27).
+bool Wwe12RampCameraActive() {
+  const long long t = g_ramp_ms.load(std::memory_order_relaxed);
+  return t && NowMs() - t < 250;
 }
 
 // After sub_82824370: the game's field of view back (the view at +240 stays ours: it is read again for the draws).

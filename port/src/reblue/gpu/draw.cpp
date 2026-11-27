@@ -68,6 +68,7 @@ bool IsDepthOfFieldShader(const bd::gpu::GuestShader *ps) {
 #if defined(SVR_NATIVE_RENDERER)
 extern std::atomic<bool> g_wwe12_camprobe_armed;  // native/wwe12_camera_probe.cpp
 void Wwe12CameraProbeDraw(uint32_t device_guest);
+bool Wwe12RampCameraActive();  // native/wwe12_match_camera.cpp: depth of field off in the RAMP view
 #endif
 
 namespace bd::gpu {
@@ -522,7 +523,7 @@ bool Video::FlushRenderStateLocked(u32 device_guest) {
 
     if (s.dirtyStates.pixelShaderConstants) {
 #if defined(SVR_NATIVE_RENDERER)
-      const bool zero_dof = !REXCVAR_GET(wwe12_dof) && IsDepthOfFieldShader(s.pixel_shader);
+      const bool zero_dof = IsDepthOfFieldShader(s.pixel_shader) && (!REXCVAR_GET(wwe12_dof) || Wwe12RampCameraActive());
 #else
       const bool zero_dof = false;
 #endif
