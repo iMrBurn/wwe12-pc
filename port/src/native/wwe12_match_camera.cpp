@@ -204,6 +204,12 @@ bool Wwe12FreeCamPad(u32 user, u32 state) {
   return true;
 }
 
+// The left stick turned for our view (RAMP, a kept free camera): the game reads it in its own camera's frame (up =
+// its camera's forward), so with our view "up" walked the wrong way (iMrBurn, 2026-11-27: "les commandes avec le
+// joystick sont pas bons, ils sont encore comme sur la cam de base"). Both forwards on the floor (x, z), per frame.
+std::atomic<float> g_game_fx{0}, g_game_fz{0}, g_our_fx{0}, g_our_fz{0};
+std::atomic<long long> g_stick_ms{0};
+
 // When RAMP last replaced a view (ms): the depth of field is off while it is on (draw.cpp).
 std::atomic<long long> g_ramp_ms{0};
 
@@ -230,6 +236,9 @@ bool WriteView(u8 *base, u32 cam, Moved *slot, V3 n, V3 g, float fov_deg) {
   }
   std::memcpy(slot->ours, base + cam + 240, 64);
   g_ramp_ms.store(NowMs(), std::memory_order_relaxed);
+  g_our_fx = g.x;
+  g_our_fz = g.z;
+  g_stick_ms = NowMs();
   slot->fov = fov_deg * 3.14159265f / 180.0f;
   slot->fov_ms = NowMs();
   const float fov = Ld(base, cam + 512);
@@ -391,6 +400,8 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
     for (int k = 0; k < 3; ++k)
       R[j][k] = v[k][j];
   const V3 f{R[2][0], R[2][1], R[2][2]};
+  g_game_fx = f.x;
+  g_game_fz = f.z;
   V3 e{};
   float *ep = &e.x;
   for (int k = 0; k < 3; ++k)
@@ -550,3 +561,32 @@ float Wwe12MatchCameraFov(u32 cam) {
 
 // hooks/draw.cpp (the arena screens' live camera, wwe12_live_screen): a match is being played.
 bool Wwe12InMatchNow() { return InMatchNow(); }
+
+// From the XInputGetState hook (wwe12_intros.cpp), each pad the game gets (not while the free camera flies): its left
+// stick turned from our view's frame into the game camera's, so "up" walks toward the top of OUR picture. The world
+// direction asked, W = y * ours_forward + x * ours_right, given back to the game as (W . its_right, W . its_forward);
+// right = (forward.z, -forward.x) on the floor, as the game builds its axes (forward (1,0,0) -> right (0,0,-1)).
+void Wwe12TurnStick(u32 state) {
+  if (!g_stick_ms.load() || NowMs() - g_stick_ms.load() > 250 || !InMatchNow())
+    return;
+  const auto unit = [](float x, float z, float &ox, float &oz) {
+    const float l = std::sqrt(x * x + z * z);
+    if (l < 0.2f)
+      return false;
+    ox = x / l, oz = z / l;
+    return true;
+  };
+  float gx, gz, ox, oz;
+  if (!unit(g_game_fx.load(), g_game_fz.load(), gx, gz) || !unit(g_our_fx.load(), g_our_fz.load(), ox, oz))
+    return;
+  const float sx = float(int16_t(bd::mem::load<u16>(state + 8)));
+  const float sy = float(int16_t(bd::mem::load<u16>(state + 10)));
+  if (sx == 0 && sy == 0)
+    return;
+  const float wx = sy * ox + sx * oz, wz = sy * oz + sx * -ox;  // W on the floor (x, z)
+  const float nx = wx * gz + wz * -gx;                           // W . game right
+  const float ny = wx * gx + wz * gz;                            // W . game forward
+  const auto clamp16 = [](float v) { return u16(int16_t(std::clamp(v, -32768.0f, 32767.0f))); };
+  bd::mem::store<u16>(state + 8, clamp16(nx));
+  bd::mem::store<u16>(state + 10, clamp16(ny));
+}

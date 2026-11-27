@@ -28,7 +28,8 @@ REX_EXTERN(__imp__sub_821A9AC0);
 REX_EXTERN(__imp__sub_82A8C070);
 
 u16 Wwe12RemotePadButtons();  // wwe12_remote_pad.cpp (dev)
-bool Wwe12FreeCamPad(u32 user, u32 state);  // wwe12_match_camera.cpp: the free camera has the pads (zeroed)
+bool Wwe12FreeCamPad(u32 user, u32 state);
+void Wwe12TurnStick(u32 state);           // wwe12_match_camera.cpp  // wwe12_match_camera.cpp: the free camera has the pads (zeroed)
 u16 Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt);  // wwe12_match_modes.cpp: buttons to hide from the game
 void Wwe12BootMovieAsked(u32 movie);  // wwe12_load_turbo.cpp (fast boot)
 void Wwe12BenchmarkRecordPad(u16 buttons, int16_t stick_x, int16_t stick_y, bool loading);  // wwe12_benchmark.cpp
@@ -69,6 +70,8 @@ extern "C" REX_FUNC(sub_82A8C070) {
   const u32 user = ctx.r3.u32, state = ctx.r4.u32;
   __imp__sub_82A8C070(ctx, base);
   const bool free_cam = state && ctx.r3.u32 == 0 && Wwe12FreeCamPad(user, state);
+  if (state && ctx.r3.u32 == 0 && !free_cam)
+    Wwe12TurnStick(state);  // RAMP / a kept free camera: the left stick in our view's frame
   if (state && ctx.r3.u32 == 0 && !free_cam) {  // match modes (1.4): triggers on the character select, I QUIT's buttons
     const u16 buttons = bd::mem::load<u16>(state + 4);
     if (const u16 hide = Wwe12MatchPad(user, buttons, bd::mem::load<u8>(state + 6), bd::mem::load<u8>(state + 7)))

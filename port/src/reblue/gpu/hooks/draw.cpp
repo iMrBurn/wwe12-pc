@@ -57,14 +57,13 @@ REXCVAR_DEFINE_BOOL(wwe12_crowd, true, "WWE12",
 REXCVAR_DEFINE_BOOL(wwe12_shadows, true, "WWE12",
                     "Draw the shadows. Off = no shadows, faster on small PCs.");
 
-// The arena's live camera on the big screens in a match (iMrBurn, 2026-11-27: "enlever cette fichue camera miroir sur
-// les titantrons pendant les matchs, je déteste ça"). The game renders the match a second time each frame into a
-// 512x512 colour target with depth (60 draws in the SmackDown capture of 2026-11-06, work/rdc live_screen*.txt),
-// filters it down to 256x256 and shows it on the screens 804 / 805. Off skips that pass in a match: the screens keep
-// the target's clear (dark) and the CPU / GPU save the pass. Entrances and other scenes are not touched.
+// The arena's "mirror" screen in a match (iMrBurn, 2026-11-27: "enlever cette fichue camera miroir sur les
+// titantrons pendant les matchs, je déteste ça"). His F9 frame log (Night of Champions, logs/wwe12_549.log): ONE
+// scene draw (#371, 16 indices, vs FE1B685FA8ADA303 ps BB1728FA87997D25 - an arena shader used by 166 draws) samples
+// in t0 the whole match frame (a 1280x720 copy, 2560x1440 on the host): the big screen. Off skips that draw in a
+// match. (First try, wrong: the 512x512 passes with depth are the wrestlers' skin / attire bakes, not the screen.)
 REXCVAR_DEFINE_BOOL(wwe12_live_screen, false, "WWE12",
-                    "Arena screens show the game's live camera during a match (the 'mirror' picture). Off = not "
-                    "drawn (dark screens, a little faster).");
+                    "Arena screens show the match itself during a match (the 'mirror' picture). Off = not drawn.");
 
 REXCVAR_DEFINE_BOOL(svr_edge_blur, false, "SvR",
                     "SvR 2010's own edge-blur filter (the console's anti-aliasing): off keeps the image "
@@ -253,17 +252,18 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
       s.pipelineState.renderTargetFormat == plume::RenderFormat::R32_FLOAT &&
       s.pipelineState.depthStencilFormat != plume::RenderFormat::UNKNOWN)
     return;
-  if (!REXCVAR_GET(wwe12_live_screen) &&
-      s.pipelineState.renderTargetFormat == plume::RenderFormat::R8G8B8A8_UNORM &&
-      s.pipelineState.depthStencilFormat != plume::RenderFormat::UNKNOWN) {
-    if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest)) {
-      if (u32(dev->viewport.Width) == 512 && u32(dev->viewport.Height) == 512 &&
-          (bd::mem::load<u32>(device_guest + 0x2934) & 2u) && Wwe12InMatchNow()) {
-        static std::atomic<bool> s_logged{false};
-        if (!s_logged.exchange(true))
-          BD_INFO("[draw] live camera of the arena screens not drawn (wwe12_live_screen off)");
-        return;
-      }
+  if (!REXCVAR_GET(wwe12_live_screen) && args.indexed && s.textures[0] &&
+      s.textures[0]->format == plume::RenderFormat::R8G8B8A8_UNORM && s.textures[0]->width >= 1280 &&
+      u64(s.textures[0]->width) * 9 == u64(s.textures[0]->height) * 16 &&
+      s.pipelineState.depthStencilFormat != plume::RenderFormat::UNKNOWN &&
+      (bd::mem::load<u32>(device_guest + 0x2934) & 2u)) {
+    const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest);
+    if (dev && u32(dev->viewport.Width) >= 1152 && u32(dev->viewport.Height) >= 640 && Wwe12InMatchNow()) {
+      static std::atomic<bool> s_logged{false};
+      if (!s_logged.exchange(true))
+        BD_INFO("[draw] the arena screen showing the match (mirror) not drawn (wwe12_live_screen off): {} indices",
+                args.vertexOrIndexCount);
+      return;
     }
   }
   if (!REXCVAR_GET(wwe12_crowd) && s.vertex_shader && s.vertex_shader->shaderCacheEntry) {
