@@ -164,7 +164,33 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
     case 3: n.y = e.y - dist * 0.45f; break;  // HIGH (-y is up)
     case 4: n.y = std::min(e.y + dist * 0.25f, -120.0f); break;  // LOW (kept above the mat)
   }
-  // Same rotation (HIGH / LOW: the camera keeps its direction; a re-aim comes with palier 0), new translation.
+  // HIGH / LOW: aimed at the same point again. The camera's axes are turned by the smallest rotation that takes
+  // the old forward axis onto the new one (Rodrigues), so its roll and handedness stay the game's.
+  if (preset == 3 || preset == 4) {
+    V3 g{t.x - n.x, t.y - n.y, t.z - n.z};
+    const float gl = std::sqrt(g.x * g.x + g.y * g.y + g.z * g.z);
+    if (gl > 1.0f) {
+      g = {g.x / gl, g.y / gl, g.z / gl};
+      const V3 a{f.y * g.z - f.z * g.y, f.z * g.x - f.x * g.z, f.x * g.y - f.y * g.x};  // f x g
+      const float sin_t = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z), cos_t = f.x * g.x + f.y * g.y + f.z * g.z;
+      if (sin_t > 1e-5f) {
+        const V3 k{a.x / sin_t, a.y / sin_t, a.z / sin_t};
+        for (int j = 0; j < 3; ++j) {
+          const V3 r{R[j][0], R[j][1], R[j][2]};
+          const V3 kxr{k.y * r.z - k.z * r.y, k.z * r.x - k.x * r.z, k.x * r.y - k.y * r.x};
+          const float kdr = k.x * r.x + k.y * r.y + k.z * r.z;
+          R[j][0] = r.x * cos_t + kxr.x * sin_t + k.x * kdr * (1 - cos_t);
+          R[j][1] = r.y * cos_t + kxr.y * sin_t + k.y * kdr * (1 - cos_t);
+          R[j][2] = r.z * cos_t + kxr.z * sin_t + k.z * kdr * (1 - cos_t);
+        }
+        // the view's rotation part: V[k][j] = R[j][k]
+        for (int j = 0; j < 3; ++j)
+          for (int k2 = 0; k2 < 3; ++k2)
+            St(base, cam + 240 + u32(16 * k2 + 4 * j), R[j][k2]);
+      }
+    }
+  }
+  // The new translation (with the rotation the view now has).
   for (int j = 0; j < 3; ++j)
     St(base, cam + 240 + 48 + u32(4 * j), -(n.x * R[j][0] + n.y * R[j][1] + n.z * R[j][2]));
   std::memcpy(slot->ours, base + cam + 240, 64);
