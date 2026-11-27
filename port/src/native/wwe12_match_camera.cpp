@@ -49,6 +49,10 @@ REXCVAR_DEFINE_DOUBLE(wwe12_ramp_aim_height, 2.3, "WWE12",
                       "RAMP camera: height it aims at above the arena floor, metres (the mat is ~1.2 m up: 2.3 = the "
                       "wrestlers' chests in the ring).")
     .range(0.0, 5.0);
+REXCVAR_DEFINE_DOUBLE(wwe12_ramp_follow, 1.0, "WWE12",
+                      "RAMP camera: how much it follows the action sideways and toward the stage (0 = stays on the "
+                      "ring's centre line, as WWE 2K26's ramp view, 1 = follows fully).")
+    .range(0.0, 1.0);
 REXCVAR_DEFINE_INT32(wwe12_camera_test, 0, "WWE12",
                      "Dev (old, ignored since 2026-11-27: the FAR / CLOSE / HIGH / LOW tests are gone).")
     .range(0, 4);
@@ -181,7 +185,8 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   // The point followed: what the game's camera looks at, at chest height (y down, the arena floor at 0), smoothed.
   static V3 s_aim{0, 0, 0};
   static long long s_aim_ms = 0;
-  const V3 want{t.x, -float(REXCVAR_GET(wwe12_ramp_aim_height)) * 100.0f, t.z};
+  const float follow = float(REXCVAR_GET(wwe12_ramp_follow));
+  const V3 want{t.x * follow, -float(REXCVAR_GET(wwe12_ramp_aim_height)) * 100.0f, t.z * follow};
   const long long now_ms = NowMs();
   if (now_ms - s_aim_ms > 500) {
     s_aim = want;  // (first frame, or back after a scene / a pause)
