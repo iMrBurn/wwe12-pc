@@ -6011,6 +6011,42 @@ void EndSave(const PPCContext &in, u8 *base) {
   g_saver = 0;
 }
 
+// ---- RESET UNIVERSE: the start month (2.0, as WWE 2K's "start in which month") ----------------------
+//
+// After the confirmation, a box asks the month the new Universe starts in (B: no reset). The reset is
+// the same; then the Universe's day counter (U + kUniverseDay, 0 after the reset = Monday of week 1 of
+// January) becomes month * 28: the first Monday of that month (sub_826D2890: month = day / 28 % 12).
+// Only a reset Universe; the year stays 0 (day / 336). The first cards of the start data stay as they
+// are (they were made for week 1; the next ones are booked for the new date).
+void AskStartMonth(const PPCContext &in, u8 *base) {
+  static const char *const kQuestion[5] = {
+      "RESET UNIVERSE\nStart in which month?", "R\xC3\x89INITIALISER L'UNIVERS\nCommencer en quel mois ?",
+      "WELT ZUR\xC3\x9C" "CKSETZEN\nIn welchem Monat beginnen?",
+      "REINICIAR UNIVERSO\n\xC2\xBF" "En qu\xC3\xA9 mes empezar?", "AZZERA UNIVERSE\nIn quale mese iniziare?"};
+  std::vector<std::string> months;
+  for (u32 m = 0; m < 12; ++m)
+    months.push_back(MonthName(in, base, m));
+  Choose(in, base, kQuestion[CurrentLang()], months, [](const PPCContext &in, u8 *base, size_t month) {
+    if (!BackupSave() || !ResetUniverse(in, base))
+      return;
+    const u32 u = UniverseBlock(in, base);
+    if (u && month > 0 && month < 12) {
+      bd::mem::store<u32>(u + kUniverseDay, u32(month) * 28);
+      g_mitb_dirty = true;
+      BD_INFO("[univers] reset: starts in month {} (day {}, month read back {})", month, month * 28,
+              Call(in, base, __imp__sub_826D2890, u32(month) * 28) % 12);
+    }
+    // Saved to disk at once when the game can save; otherwise at its next save, as before.
+    g_saver = StartSave(in, base);
+    if (g_saver) {
+      g_step = Step::kSaving;
+    } else {
+      g_step = Step::kDone;
+      Call(in, base, __imp__sub_8254E680, kDoneText);
+    }
+  });
+}
+
 }  // namespace
 
 // Every layout menu screen's per-frame update: drives the dialogue while it is open (the screen
@@ -6122,18 +6158,9 @@ extern "C" REX_FUNC(sub_824D3458) {
         }
         break;
       case Step::kConfirm:
-        if (yes && BackupSave() && ResetUniverse(ctx, base)) {
-          // Saved to disk at once when the game can save; otherwise at its next save, as before.
-          g_saver = StartSave(ctx, base);
-          if (g_saver) {
-            g_step = Step::kSaving;
-          } else {
-            g_step = Step::kDone;
-            Call(ctx, base, __imp__sub_8254E680, kDoneText);
-          }
-        } else {
-          g_step = Step::kIdle;
-        }
+        g_step = Step::kIdle;
+        if (yes)
+          AskStartMonth(ctx, base);  // then the reset itself (B there: nothing is done)
         break;
       default:
         g_step = Step::kIdle;
