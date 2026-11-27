@@ -214,8 +214,13 @@ extern "C" REX_FUNC(sub_82827B58) {
 // 1.3.1: the hook itself lives here (it was in wwe12_benchmark.cpp, which Android does not build, so the
 // fix never ran on the phones of #61); the benchmark's own check is called from it.
 void Wwe12BenchmarkMatchStart();  // wwe12_benchmark.cpp (Android: empty stand-in)
+namespace {
+std::atomic<bool> g_match_seen{false};  // a match started since launch (wwe12_camera_test.cpp, dev)
+}  // namespace
+bool Wwe12MatchSeen() { return g_match_seen.load(std::memory_order_relaxed); }
 REX_EXTERN(__imp__sub_822B51A0);
 extern "C" REX_FUNC(sub_822B51A0) {
+  g_match_seen.store(true, std::memory_order_relaxed);
   if (Mode() == FrameMode::k30) {
     g_match_pending.store(true, std::memory_order_relaxed);
     BD_INFO("[fps] match starting: drop to 30 when its loading screen closes (30 fps mode)");

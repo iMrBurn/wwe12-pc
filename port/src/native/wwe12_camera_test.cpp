@@ -14,8 +14,8 @@
 // forward axis, around the point it looks at on the plane through the ring's centre; HIGH / LOW on the world's
 // vertical axis, -y is up), the view rebuilt with the same rotation, and the game's view put back after the update
 // (the world matrix, the view x projection and everything drawn from them keep ours for this frame).
-// Test only: every camera that goes through sub_82824370 with a perspective projection is moved (menus and
-// entrances too); "[camtest]" lines name each camera object seen (address, caller, eye, field of view).
+// Test only: v6b moves the cameras updated from 8247F64C during a match (after sub_822B51A0, outside scenes and
+// loading screens); "[camtest]" lines name each camera object moved (address, caller, eye, field of view).
 // Values: 1 FAR, 2 CLOSE, 3 HIGH, 4 LOW (Kaiko's presets).
 
 #include <rex/cvar.h>
@@ -33,7 +33,15 @@ REXCVAR_DEFINE_INT32(wwe12_camera_test, 0, "WWE12",
                      "0 = off).")
     .range(0, 4);
 
+bool Wwe12MatchSeen();        // wwe12_fps.cpp: a match started since launch
+bool Wwe12SceneMode();        // wwe12_fps.cpp: an entrance / victory / story scene
+bool Wwe12LoadingScreenUp();  // wwe12_load_turbo.cpp
+
 namespace {
+
+// The match's cameras: the 1st v6 run saw the menu camera come from 8254296C and two cameras of the entrances and
+// the match from 8247F64C (the benchmark then never reached its match: moving every camera upset its route).
+constexpr u32 kMatchCameraCaller = 0x8247F64C;
 
 struct V3 {
   float x, y, z;
@@ -67,6 +75,9 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   g_saved_cam = 0;
   const int preset = REXCVAR_GET(wwe12_camera_test);
   if (!preset || !cam || !bd::mem::try_at<u8>(cam + 520))
+    return;
+  // v6b: the match only (after the game's match start, no scene, no loading screen), its cameras' caller only.
+  if (lr != kMatchCameraCaller || !Wwe12MatchSeen() || Wwe12SceneMode() || Wwe12LoadingScreenUp())
     return;
   if (bd::mem::try_load<u32>(cam + 480, 1) != 0)
     return;  // not a perspective projection
