@@ -522,3 +522,6 @@ float Wwe12MatchCameraFov(u32 cam) {
       return (m.fov > 0 && NowMs() - m.fov_ms < 250) ? m.fov : 0;
   return 0;
 }
+
+// hooks/draw.cpp (the arena screens' live camera, wwe12_live_screen): a match is being played.
+bool Wwe12InMatchNow() { return InMatchNow(); }
