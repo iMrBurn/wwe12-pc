@@ -74,6 +74,7 @@ REXCVAR_DEFINE_BOOL(svr_edge_blur, false, "SvR",
 namespace bd::gpu {
 bool SvrSkipHiddenDraw();  // hooks/device.cpp (svr_test_half_frames, turbo loading screens)
 }
+extern std::atomic<bool> g_wwe12_hide_hud;  // native/wwe12_match_camera.cpp (free camera, F7 / F8)
 #endif
 
 namespace {
@@ -251,6 +252,11 @@ void DispatchDraw(u32 device_guest, u32 primitive_type, const char *name,
   if (!REXCVAR_GET(svr_edge_blur) && s.pixel_shader && s.pixel_shader->shaderCacheEntry &&
       s.pixel_shader->shaderCacheEntry->hash == 0x73413A409D5E296Bull)
     return;
+  // The free camera's F7 / F8 (native/wwe12_match_camera.cpp): the HUD sprites (and the pause menu) not drawn.
+  if (g_wwe12_hide_hud.load(std::memory_order_relaxed))
+    if (const auto *dev = bd::mem::at<const bd::gpu::D3DDevice>(device_guest))
+      if (SvrHudSprite(device_guest, args, float(dev->viewport.Width), float(dev->viewport.Height)))
+        return;
   // Vulkan has no "no index buffer" state: an indexed draw with none bound, or reaching past the
   // end of the bound one, can hang the GPU. Such a draw is skipped (and counted in the log).
   if (args.indexed && primitive_type != 13) {

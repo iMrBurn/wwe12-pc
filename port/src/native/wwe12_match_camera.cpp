@@ -28,6 +28,11 @@
 #include "core/memory_helpers.h"
 #include "svr_hook.h"
 
+#if defined(_WIN32) && !defined(__ANDROID__)
+#include <windows.h>
+#define WWE12_FREECAM_KEYBOARD 1
+#endif
+
 REXCVAR_DEFINE_INT32(wwe12_match_camera, 0, "WWE12",
                      "Match camera: 0 NORMAL (the game's), 1 RAMP (toward the stage, as in a Royal Rumble); F5 in a "
                      "match: the next one.")
@@ -63,6 +68,7 @@ bool Wwe12SceneMode();        // wwe12_fps.cpp: an entrance / victory / story sc
 bool Wwe12LoadingScreenUp();  // wwe12_load_turbo.cpp
 bool Wwe12BenchmarkActive();  // wwe12_benchmark.cpp
 void Wwe12DisplayToast(const char *text);  // wwe12_display.cpp: a short text at the top of the screen
+void Wwe12PressStart();                    // wwe12_intros.cpp: Start pressed once for player 1 (the game's pause)
 
 namespace {
 
@@ -127,17 +133,208 @@ int g_callers_n = 0;
 
 }  // namespace
 
+// ---- FREE CAMERA (palier 1, 2026-11-27; docs/etude_camera_libre.md; keys as in Kaiko's SvR 2011 port, method only) ----
+// F6 in a match: the view is ours, flown with the keyboard / mouse / pad; F5 or F6: back to the match camera. F7: the
+// HUD hidden (the 2D sprites, hooks/draw.cpp). F8: the game's pause (its Start), and the HUD hidden while paused.
+// While it is on, the pads do not reach the game (the players' wrestlers stand; the computer's still move - F8 stops
+// them). Never in the benchmark, never outside a match: the loading screen after the match turns it off (so the
+// menus always get their pads and their HUD back).
+std::atomic<bool> g_free{false};
+std::atomic<bool> g_free_init{false};   // take the game's eye at the next update
+std::atomic<bool> g_free_hud_off{false};
+std::atomic<bool> g_free_paused{false};
+std::atomic<int> g_free_updates{0};      // camera updates seen while paused (does the game update it in its pause?)
+std::atomic<bool> g_wwe12_hide_hud{false};  // hooks/draw.cpp: HUD sprites not drawn
+// Player 1's pad, as the game would have read it (XInputGetState hook): sticks, triggers, buttons.
+std::atomic<u64> g_free_sticks{0};
+std::atomic<u32> g_free_buttons{0};
+
+namespace {
+bool InMatchNow() {
+  return Wwe12MatchSeen() && !Wwe12SceneMode() && !Wwe12LoadingScreenUp() && !Wwe12BenchmarkActive();
+}
+bool FreeActive() { return g_free.load() && InMatchNow(); }
+void UpdateHideHud() { g_wwe12_hide_hud.store(g_free.load() && (g_free_hud_off.load() || g_free_paused.load())); }
+void FreeOff() {
+  if (!g_free.exchange(false))
+    return;
+  if (g_free_paused.exchange(false))
+    Wwe12PressStart();  // (the game's pause closed again)
+  g_free_hud_off = false;
+  UpdateHideHud();
+}
+}  // namespace
+
+// From the XInputGetState hook (wwe12_intros.cpp), each pad read that succeeded: true = its buttons, triggers and
+// sticks were zeroed (the free camera has them).
+bool Wwe12FreeCamPad(u32 user, u32 state) {
+  if (!g_free.load())
+    return false;
+  if (Wwe12LoadingScreenUp()) {  // the match is over: everything back
+    FreeOff();
+    return false;
+  }
+  if (!InMatchNow())
+    return false;
+  if (user == 0) {
+    u64 sticks = 0;
+    for (u32 i = 0; i < 4; ++i)
+      sticks |= u64(bd::mem::load<u16>(state + 8 + 2 * i)) << (16 * i);
+    g_free_sticks.store(sticks);
+    g_free_buttons.store(u32(bd::mem::load<u16>(state + 4)) | (u32(bd::mem::load<u8>(state + 6)) << 16) |
+                         (u32(bd::mem::load<u8>(state + 7)) << 24));
+  }
+  for (u32 i = 4; i < 16; i += 4)
+    bd::mem::store<u32>(state + i, 0);
+  return true;
+}
+
 // When RAMP last replaced a view (ms): the depth of field is off while it is on (draw.cpp).
 std::atomic<long long> g_ramp_ms{0};
 
 u32 g_fov_cam = 0;   // the camera whose field of view (+512) is changed for this update (put back after it)
 float g_fov_saved = 0;
 
-// Before sub_82824370(camera): the match camera's view at camera + 240 replaced (RAMP).
+namespace {
+// Our view at camera + 240: the eye n looking along g (unit), level (no roll), and the field of view (degrees) for
+// this update (the projection is built from +512 inside sub_82824370; put back after it).
+bool WriteView(u8 *base, u32 cam, Moved *slot, V3 n, V3 g, float fov_deg) {
+  // The camera's axes for that direction, built as the game's are: up = +y on screen rows (world y down), right =
+  // up x forward (the game's: forward (1,0,0) gives right (0,0,-1), up (0,1,0)).
+  V3 r{1.0f * g.z - 0.0f * g.y, 0.0f * g.x - 0.0f * g.z, 0.0f * g.y - 1.0f * g.x};  // (0,1,0) x g
+  const float rl = std::sqrt(r.x * r.x + r.y * r.y + r.z * r.z);
+  if (rl < 1e-4f)
+    return false;
+  r = {r.x / rl, r.y / rl, r.z / rl};
+  const V3 u{g.y * r.z - g.z * r.y, g.z * r.x - g.x * r.z, g.x * r.y - g.y * r.x};  // g x r
+  const float A[3][3] = {{r.x, r.y, r.z}, {u.x, u.y, u.z}, {g.x, g.y, g.z}};
+  for (int j = 0; j < 3; ++j) {
+    for (int k = 0; k < 3; ++k)
+      St(base, cam + 240 + u32(16 * k + 4 * j), A[j][k]);  // V[k][j] = A[j][k]
+    St(base, cam + 240 + 48 + u32(4 * j), -(n.x * A[j][0] + n.y * A[j][1] + n.z * A[j][2]));
+  }
+  std::memcpy(slot->ours, base + cam + 240, 64);
+  g_ramp_ms.store(NowMs(), std::memory_order_relaxed);
+  const float fov = Ld(base, cam + 512);
+  if (fov > 0.01f && fov < 3.0f) {
+    g_fov_cam = cam;
+    g_fov_saved = fov;
+    St(base, cam + 512, fov_deg * 3.14159265f / 180.0f);
+  }
+  return true;
+}
+
+#if defined(WWE12_FREECAM_KEYBOARD)
+bool OurWindowInFront() {
+  DWORD pid = 0;
+  const HWND w = GetForegroundWindow();
+  return w && GetWindowThreadProcessId(w, &pid) && pid == GetCurrentProcessId();
+}
+// A key by its place on the keyboard (scan code): W A S D on QWERTY = Z Q S D on AZERTY, Q / E = A / E.
+bool KeyAt(UINT scan) { return (GetAsyncKeyState(int(MapVirtualKeyW(scan, MAPVK_VSC_TO_VK))) & 0x8000) != 0; }
+bool Key(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
+#endif
+
+float Stick(u64 sticks, int i) {
+  const float v = float(int16_t(u16(sticks >> (16 * i)))) / 32767.0f;
+  constexpr float kDead = 0.24f;
+  return std::fabs(v) < kDead ? 0.0f : (v - std::copysign(kDead, v)) / (1.0f - kDead);
+}
+
+// The free camera's pose: eye (game units, cm; y down), yaw / pitch (radians; a positive pitch looks down), field of
+// view (degrees).
+struct FreePose {
+  V3 eye{};
+  float yaw = 0, pitch = 0, fov = 45;
+  long long ms = 0;
+#if defined(WWE12_FREECAM_KEYBOARD)
+  POINT cursor{};
+  bool rmb = false;
+#endif
+};
+FreePose g_pose;
+
+void FreeView(u8 *base, u32 cam, Moved *slot, V3 e, V3 f) {
+  FreePose &p = g_pose;
+  const long long now = NowMs();
+  if (g_free_init.exchange(false)) {  // from the game's view of the moment
+    p.eye = e;
+    p.yaw = std::atan2(f.x, f.z);
+    p.pitch = std::asin(std::clamp(f.y, -1.0f, 1.0f));
+    const float fov = Ld(base, cam + 512);
+    p.fov = (fov > 0.01f && fov < 3.0f) ? fov * 180.0f / 3.14159265f : 45.0f;
+    p.ms = now;
+    BD_INFO("[camera] FREE: from the game's eye ({:.0f}, {:.0f}, {:.0f}), yaw {:.2f} pitch {:.2f}, field of view "
+            "{:.1f}", e.x, e.y, e.z, p.yaw, p.pitch, p.fov);
+  }
+  if (g_free_paused.load())
+    g_free_updates.fetch_add(1);
+  const float dt = std::clamp(float(now - p.ms) / 1000.0f, 0.0f, 0.1f);
+  p.ms = now;
+  float fwd = 0, side = 0, vert = 0, turn = 0, look = 0, zoom = 0, speed = 1;
+  float mouse_x = 0, mouse_y = 0;  // pixels
+  // The pad (player 1): left stick moves, right stick looks, RT / LT up / down, RB / LB zoom in / out, A faster.
+  const u64 sticks = g_free_sticks.load();
+  const u32 pad = g_free_buttons.load();
+  side += Stick(sticks, 0);
+  fwd += Stick(sticks, 1);
+  turn += Stick(sticks, 2);
+  look -= Stick(sticks, 3);
+  vert += float(pad >> 24) / 255.0f - float((pad >> 16) & 0xFF) / 255.0f;
+  if (pad & 0x0200)
+    zoom -= 1;  // RB: narrower
+  if (pad & 0x0100)
+    zoom += 1;  // LB
+  if (pad & 0x1000)
+    speed = 3;
+#if defined(WWE12_FREECAM_KEYBOARD)
+  // The keyboard and mouse: WASD / ZQSD moves, E / Space up, Q (A on AZERTY) down, arrows or the right mouse button
+  // held look, Page Up / Page Down (or + / -) zoom, Shift faster, Ctrl slower.
+  if (OurWindowInFront()) {
+    fwd += float(KeyAt(0x11)) - float(KeyAt(0x1F));
+    side += float(KeyAt(0x20)) - float(KeyAt(0x1E));
+    vert += float(KeyAt(0x12) || Key(VK_SPACE)) - float(KeyAt(0x10));
+    turn += float(Key(VK_RIGHT)) - float(Key(VK_LEFT));
+    look += float(Key(VK_DOWN)) - float(Key(VK_UP));
+    zoom += float(Key(VK_NEXT) || Key(VK_SUBTRACT) || Key(VK_OEM_MINUS)) -
+            float(Key(VK_PRIOR) || Key(VK_ADD) || Key(VK_OEM_PLUS));
+    if (Key(VK_SHIFT))
+      speed = 3;
+    if (Key(VK_CONTROL))
+      speed = 0.3f;
+    POINT c{};
+    const bool rmb = Key(VK_RBUTTON) && GetCursorPos(&c);
+    if (rmb && p.rmb) {
+      mouse_x = float(c.x - p.cursor.x);
+      mouse_y = float(c.y - p.cursor.y);
+    }
+    p.rmb = rmb;
+    p.cursor = c;
+  } else {
+    p.rmb = false;
+  }
+#endif
+  constexpr float kDeg = 3.14159265f / 180.0f;
+  const float zoom_k = p.fov / 45.0f;  // (looks slower when zoomed in)
+  p.yaw += (turn * 100.0f * dt + mouse_x * 0.15f) * kDeg * zoom_k;
+  p.pitch = std::clamp(p.pitch + (look * 80.0f * dt + mouse_y * 0.15f) * kDeg * zoom_k, -85.0f * kDeg, 85.0f * kDeg);
+  p.fov = std::clamp(p.fov + zoom * 40.0f * dt, 10.0f, 90.0f);
+  const V3 g{std::cos(p.pitch) * std::sin(p.yaw), std::sin(p.pitch), std::cos(p.pitch) * std::cos(p.yaw)};
+  const V3 r{std::cos(p.yaw), 0.0f, -std::sin(p.yaw)};  // (0,1,0) x g, normalized
+  const float step = 400.0f * speed * dt;  // 4 m/s
+  p.eye = {p.eye.x + (g.x * fwd + r.x * side) * step, p.eye.y + g.y * fwd * step - vert * step,
+           p.eye.z + (g.z * fwd + r.z * side) * step};
+  p.eye.y = std::min(p.eye.y, -10.0f);  // (not under the arena floor, y = 0; y is down)
+  WriteView(base, cam, slot, p.eye, g, p.fov);
+}
+}  // namespace
+
+// Before sub_82824370(camera): the match camera's view at camera + 240 replaced (RAMP, FREE CAMERA).
 void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   g_fov_cam = 0;
   const int preset = Wwe12BenchmarkActive() ? 0 : REXCVAR_GET(wwe12_match_camera);
-  if (preset != 1 || !cam || !bd::mem::try_at<u8>(cam + 520))
+  const bool fly = g_free.load() && !Wwe12BenchmarkActive();
+  if ((preset != 1 && !fly) || !cam || !bd::mem::try_at<u8>(cam + 520))
     return;
   // The match only (after the game's match start, no scene, no loading screen), its cameras' caller only.
   if (lr != kMatchCameraCaller || !Wwe12MatchSeen() || Wwe12SceneMode() || Wwe12LoadingScreenUp())
@@ -175,6 +372,10 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
     ep[k] = -(v[3][0] * R[0][k] + v[3][1] * R[1][k] + v[3][2] * R[2][k]);
   if (std::max({std::fabs(e.x), std::fabs(e.y), std::fabs(e.z)}) < 50.0f)
     return;  // a camera at the origin (2D / menu)
+  if (fly) {
+    FreeView(base, cam, slot, e, f);
+    return;
+  }
   // What the game's camera looks at (it follows the action): on the plane through the ring's centre.
   const float dist = std::max(300.0f, -(e.x * f.x + e.y * f.y + e.z * f.z));
   const V3 t{e.x + f.x * dist, e.y + f.y * dist, e.z + f.z * dist};
@@ -200,29 +401,9 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   }
   s_aim_ms = now_ms;
   const V3 n{s_aim.x - g.x * back, s_aim.y - g.y * back, s_aim.z - g.z * back};
-  // The camera's axes for that direction, built as the game's are: up = +y on screen rows (world y down), right =
-  // up x forward (the game's: forward (1,0,0) gives right (0,0,-1), up (0,1,0)).
-  V3 r{1.0f * g.z - 0.0f * g.y, 0.0f * g.x - 0.0f * g.z, 0.0f * g.y - 1.0f * g.x};  // (0,1,0) x g
-  const float rl = std::sqrt(r.x * r.x + r.y * r.y + r.z * r.z);
-  if (rl < 1e-4f)
-    return;
-  r = {r.x / rl, r.y / rl, r.z / rl};
-  const V3 u{g.y * r.z - g.z * r.y, g.z * r.x - g.x * r.z, g.x * r.y - g.y * r.x};  // g x r
-  const float A[3][3] = {{r.x, r.y, r.z}, {u.x, u.y, u.z}, {g.x, g.y, g.z}};
-  for (int j = 0; j < 3; ++j) {
-    for (int k = 0; k < 3; ++k)
-      St(base, cam + 240 + u32(16 * k + 4 * j), A[j][k]);  // V[k][j] = A[j][k]
-    St(base, cam + 240 + 48 + u32(4 * j), -(n.x * A[j][0] + n.y * A[j][1] + n.z * A[j][2]));
-  }
-  std::memcpy(slot->ours, base + cam + 240, 64);
-  g_ramp_ms.store(now_ms, std::memory_order_relaxed);
-  // The field of view for this update (the projection is built from it inside sub_82824370), put back after.
   const float fov = Ld(base, cam + 512);
-  if (fov > 0.01f && fov < 3.0f) {
-    g_fov_cam = cam;
-    g_fov_saved = fov;
-    St(base, cam + 512, float(REXCVAR_GET(wwe12_ramp_fov)) * 3.14159265f / 180.0f);
-  }
+  if (!WriteView(base, cam, slot, n, g, float(REXCVAR_GET(wwe12_ramp_fov))))
+    return;
   static int s_lines = 0;
   const long long now = NowMs();
   if (now >= slot->next_log_ms && s_lines < 6) {
@@ -260,6 +441,14 @@ const char *Wwe12MatchCameraName(int preset) {
 }
 
 void Wwe12MatchCameraNext() {
+  if (g_free.load()) {  // F5 in the free camera: back to the match camera
+    FreeOff();
+    char text[48];
+    std::snprintf(text, sizeof text, "MATCH CAMERA: %s", Wwe12MatchCameraName(REXCVAR_GET(wwe12_match_camera)));
+    Wwe12DisplayToast(text);
+    BD_INFO("[camera] FREE: off (F5)");
+    return;
+  }
   const int next = (std::clamp(int(REXCVAR_GET(wwe12_match_camera)), 0, kMatchCameras - 1) + 1) % kMatchCameras;
   rex::cvar::SetFlagByName("wwe12_match_camera", std::to_string(next));
   char text[48];
@@ -272,4 +461,46 @@ void Wwe12MatchCameraNext() {
     f.SetInt("wwe12_match_camera", next);
     f.Save();
   }
+}
+
+// F6: the free camera on / off (in a match only).
+void Wwe12FreeCameraToggle() {
+  if (g_free.load()) {
+    Wwe12MatchCameraNext();  // (off, as F5)
+    return;
+  }
+  if (!InMatchNow()) {
+    Wwe12DisplayToast("FREE CAMERA: IN A MATCH ONLY");
+    return;
+  }
+  g_free_init = true;
+  g_free_hud_off = false;
+  g_free_paused = false;
+  g_free = true;
+  UpdateHideHud();
+  Wwe12DisplayToast("FREE CAMERA - F5: BACK  F7: HUD  F8: PAUSE");
+  BD_INFO("[camera] FREE: on (F6)");
+}
+
+// F7: the HUD hidden / shown (free camera only).
+void Wwe12FreeCameraHud() {
+  if (!FreeActive())
+    return;
+  g_free_hud_off = !g_free_hud_off.load();
+  UpdateHideHud();
+  Wwe12DisplayToast(g_free_hud_off.load() ? "HUD: HIDDEN" : "HUD: SHOWN");
+}
+
+// F8: the game's pause (its own Start) on / off (free camera only); the HUD (and its pause menu) hidden meanwhile.
+void Wwe12FreeCameraPause() {
+  if (!FreeActive())
+    return;
+  const bool paused = !g_free_paused.load();
+  if (!paused)
+    BD_INFO("[camera] FREE: pause off, {} camera updates during the pause", g_free_updates.load());
+  g_free_updates = 0;
+  g_free_paused = paused;
+  UpdateHideHud();
+  Wwe12PressStart();
+  Wwe12DisplayToast(paused ? "PAUSE" : "PLAY");
 }

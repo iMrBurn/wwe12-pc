@@ -293,6 +293,9 @@ void Wwe12DisplayToast(const char *text) {
 }
 
 void Wwe12MatchCameraNext();  // wwe12_match_camera.cpp
+void Wwe12FreeCameraToggle();
+void Wwe12FreeCameraHud();
+void Wwe12FreeCameraPause();
 
 void Wwe12DisplayInit(rex::ui::ImGuiDrawer *drawer) {
   g_drawer = drawer;
@@ -317,6 +320,14 @@ void Wwe12DisplayInit(rex::ui::ImGuiDrawer *drawer) {
   });
   ShowOverlayIfNeeded();
   rex::ui::RegisterBind("bind_match_camera", "F5", "Next match camera", [] { Wwe12MatchCameraNext(); });
+  // The free camera (wwe12_match_camera.cpp): F6 on / off, F7 the HUD, F8 the pause. The SDK's achievements
+  // overlay had F7: it moves to F10 (unless the player chose another key).
+  if (rex::cvar::GetFlagByName("bind_achievements") == "F7")
+    rex::cvar::SetFlagByName("bind_achievements", "F10");
+  BD_INFO("[display] achievements overlay key: {}", rex::cvar::GetFlagByName("bind_achievements"));
+  rex::ui::RegisterBind("bind_free_camera", "F6", "Free camera on / off (in a match)", [] { Wwe12FreeCameraToggle(); });
+  rex::ui::RegisterBind("bind_free_camera_hud", "F7", "Free camera: hide / show the HUD", [] { Wwe12FreeCameraHud(); });
+  rex::ui::RegisterBind("bind_free_camera_pause", "F8", "Free camera: pause / play", [] { Wwe12FreeCameraPause(); });
 }
 
 void Wwe12DisplayOnFrame() {
