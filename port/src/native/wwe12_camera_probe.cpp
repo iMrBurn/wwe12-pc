@@ -28,6 +28,11 @@ REXCVAR_DEFINE_BOOL(wwe12_camera_probe, false, "WWE12",
                     "Dev: find the match camera (view matrix -> eye -> guest memory -> the code that writes it), "
                     "'[camprobe]' lines.");
 
+REXCVAR_DEFINE_INT32(wwe12_camera_probe_reg, 21, "WWE12",
+                     "Dev: first vertex shader register of the game's view-projection matrix for the camera probe "
+                     "(column vectors; -1 = every register, both layouts).")
+    .range(-1, 252);
+
 std::atomic<bool> g_wwe12_camprobe_armed{false};  // read by draw.cpp before each draw's constant upload
 
 #if !defined(_WIN32) || !defined(SVR_NATIVE_RENDERER)
@@ -315,6 +320,10 @@ void ProbeThread() {
         BD_INFO("[camprobe] step 2: eye {} ({:.3f}, {:.3f}, {:.3f}) found at {} guest addresses", k + 1,
                 eyes[k].x, eyes[k].y, eyes[k].z, survivors.size() - before);
       }
+      if (survivors.size() > 200000) {
+        BD_INFO("[camprobe] step 2: {} addresses, not selective: new scan at the next sample", survivors.size());
+        survivors.clear();
+      }
       if (survivors.empty())
         continue;  // try again at the next sample
       ++samples;
@@ -410,10 +419,14 @@ void Wwe12CameraProbeDraw(u32 device_guest) {
   // v2 (2026-11-27): the first run found only 2D matrices (screen sprites, z = 0); the game passes no pure view
   // matrix. A perspective matrix M (world-view-projection, or view-projection) tells where the camera is all the
   // same: the camera centre C is the point whose clip x, y and w are all 0. Solved for both register layouts.
-  for (int i = 0; i + 4 <= 256; ++i) {
+  // v4: the v3 run showed it: c21..c24 (column vectors) give the camera in every 3D frame (plausible and moving:
+  // (-173, -230, 1224), (281, -163, 445)...); c68..c71 give the shadow light (y = -55547), the others are
+  // sprites or objects. Only that matrix by default.
+  const int only = REXCVAR_GET(wwe12_camera_probe_reg);
+  for (int i = only >= 0 ? only : 0; i + 4 <= 256 && (only < 0 || i == only); ++i) {
     // Layout C (column vectors, registers = rows of M): rows 0, 1 and 3 give a[k]·C + a[3] = 0.
     // Layout R (row vectors, registers = rows of M^T): columns 0, 1 and 3 of the 4 registers.
-    for (int layout = 0; layout < 2; ++layout) {
+    for (int layout = 0; layout < (only >= 0 ? 1 : 2); ++layout) {
       double m[3][4];
       if (layout == 0) {
         const int rows[3] = {i, i + 1, i + 3};
@@ -491,7 +504,9 @@ void Wwe12CameraProbePresent() {
       // floats; the match camera is metres away, the units are centimetres)
       for (size_t k = 0; k < g_clusters.size() && g_sample.size() < 3; ++k) {
         const Vec3 &e = g_clusters[k].eye;
-        if (std::max({std::fabs(e.x), std::fabs(e.y), std::fabs(e.z)}) >= 50.0f)
+        // (v4: and no coordinate near 0: (0, 0, -303) in the menus matched 498 344 addresses)
+        if (std::max({std::fabs(e.x), std::fabs(e.y), std::fabs(e.z)}) >= 50.0f &&
+            std::min({std::fabs(e.x), std::fabs(e.y), std::fabs(e.z)}) >= 1.0f)
           g_sample.push_back(e);
       }
       g_sample_new = true;
