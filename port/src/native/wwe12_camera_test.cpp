@@ -21,6 +21,7 @@
 #include <rex/cvar.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 
@@ -62,23 +63,71 @@ void St(u8 *base, u32 va, float f) {
   std::memcpy(base + va, &v, 4);
 }
 
-u32 g_saved_cam = 0;
-u8 g_saved_view[64];
+// v6c: the game's view is NOT put back after sub_82824370 any more. In the v6b test (iMrBurn, FAR) nothing moved:
+// +240 is read again later for the draws, so putting it back undid the change. Each camera keeps the game's last
+// view and ours: when +240 still holds ours at the next update (the game did not write a new one), the move starts
+// again from the game's own view, so it never adds up.
+struct Moved {
+  u32 cam = 0;
+  u8 game[64];  // the game's view at the last update
+  u8 ours[64];  // what we wrote
+  long long next_log_ms = 0;
+};
+Moved g_moved[8];
 
-u32 g_seen[32];
-int g_seen_n = 0;
+Moved *Slot(u32 cam) {
+  for (Moved &m : g_moved)
+    if (m.cam == cam)
+      return &m;
+  for (Moved &m : g_moved)
+    if (!m.cam) {
+      m.cam = cam;
+      return &m;
+    }
+  return nullptr;
+}
+
+long long NowMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+// Every caller of sub_82824370 seen during the match, once (which cameras the match updates).
+struct Caller {
+  u32 lr, cam;
+};
+Caller g_callers[48];
+int g_callers_n = 0;
 
 }  // namespace
 
 // Before sub_82824370(camera): the view at camera + 240 moved (saved first).
 void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
-  g_saved_cam = 0;
   const int preset = REXCVAR_GET(wwe12_camera_test);
   if (!preset || !cam || !bd::mem::try_at<u8>(cam + 520))
     return;
+  const bool in_match = Wwe12MatchSeen() && !Wwe12SceneMode() && !Wwe12LoadingScreenUp();
+  if (in_match) {
+    bool known = false;
+    for (int i = 0; i < g_callers_n; ++i)
+      known = known || (g_callers[i].lr == lr && g_callers[i].cam == cam);
+    if (!known && g_callers_n < 48) {
+      g_callers[g_callers_n++] = {lr, cam};
+      BD_INFO("[camtest] in the match: sub_82824370(camera {:08X}) from {:08X} (projection type {}, field of view {:.3f})",
+              cam, lr, bd::mem::try_load<u32>(cam + 480, 9), Ld(base, cam + 512));
+    }
+  }
   // v6b: the match only (after the game's match start, no scene, no loading screen), its cameras' caller only.
-  if (lr != kMatchCameraCaller || !Wwe12MatchSeen() || Wwe12SceneMode() || Wwe12LoadingScreenUp())
+  if (lr != kMatchCameraCaller || !in_match)
     return;
+  Moved *slot = Slot(cam);
+  if (!slot)
+    return;
+  // The game's view: what is there now, unless it is still ours from the last update.
+  if (std::memcmp(base + cam + 240, slot->ours, 64) == 0)
+    std::memcpy(base + cam + 240, slot->game, 64);
+  else
+    std::memcpy(slot->game, base + cam + 240, 64);
   if (bd::mem::try_load<u32>(cam + 480, 1) != 0)
     return;  // not a perspective projection
   float v[4][4];
@@ -116,25 +165,19 @@ void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
     case 4: n.y = std::min(e.y + dist * 0.25f, -120.0f); break;  // LOW (kept above the mat)
   }
   // Same rotation (HIGH / LOW: the camera keeps its direction; a re-aim comes with palier 0), new translation.
-  g_saved_cam = cam;
-  std::memcpy(g_saved_view, base + cam + 240, 64);
   for (int j = 0; j < 3; ++j)
     St(base, cam + 240 + 48 + u32(4 * j), -(n.x * R[j][0] + n.y * R[j][1] + n.z * R[j][2]));
-  bool known = false;
-  for (int i = 0; i < g_seen_n; ++i)
-    known = known || g_seen[i] == cam;
-  if (!known && g_seen_n < 32) {
-    g_seen[g_seen_n++] = cam;
+  std::memcpy(slot->ours, base + cam + 240, 64);
+  static int s_lines = 0;
+  const long long now = NowMs();
+  if (now >= slot->next_log_ms && s_lines < 80) {
+    slot->next_log_ms = now + 3000;
+    ++s_lines;
     BD_INFO("[camtest] camera {:08X} (from {:08X}): eye ({:.1f}, {:.1f}, {:.1f}) forward ({:.3f}, {:.3f}, {:.3f}), "
             "field of view {:.3f}, {:.0f} from what it looks at -> eye ({:.1f}, {:.1f}, {:.1f})",
             cam, lr, e.x, e.y, e.z, f.x, f.y, f.z, Ld(base, cam + 512), dist, n.x, n.y, n.z);
   }
 }
 
-// After sub_82824370: the game's own view back (its next frame starts from it).
-void Wwe12CameraTestAfter(u8 *base) {
-  if (!g_saved_cam)
-    return;
-  std::memcpy(base + g_saved_cam + 240, g_saved_view, 64);
-  g_saved_cam = 0;
-}
+// After sub_82824370: nothing any more (v6c, see Moved above).
+void Wwe12CameraTestAfter(u8 *) {}
