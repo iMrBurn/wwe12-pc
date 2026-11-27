@@ -78,6 +78,7 @@ struct GuestTexture;
 void Wwe12RemoteOnPresent(bd::gpu::GuestTexture *front_buffer);  // wwe12_remote_pad.cpp
 void Wwe12BenchmarkFrame(double interval_ms, double work_ms, double gpu_wait_ms);  // wwe12_benchmark.cpp
 void Wwe12ThreadCpuReport(double frames);  // wwe12_thread_cpu.cpp: CPU per frame of each thread
+void Wwe12CameraProbePresent();  // wwe12_camera_probe.cpp (dev, off by default)
 float Wwe12GameGammaExponent();  // wwe12_gamma.cpp
 bool Wwe12ConsolePicture();      // wwe12_gamma.cpp
 #endif
@@ -552,6 +553,7 @@ void FrameStatsPresented(double gpu_wait_ms, double swap_ms) {
       ++fs.fence_waits;
 #if defined(SVR_NATIVE_RENDERER)
     Wwe12BenchmarkFrame(interval, work, gpu_wait_ms);
+    Wwe12CameraProbePresent();
 #endif
     ++fs.frames;
   } else {

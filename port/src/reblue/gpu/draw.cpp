@@ -65,6 +65,11 @@ bool IsDepthOfFieldShader(const bd::gpu::GuestShader *ps) {
 }  // namespace
 #endif
 
+#if defined(SVR_NATIVE_RENDERER)
+extern std::atomic<bool> g_wwe12_camprobe_armed;  // native/wwe12_camera_probe.cpp
+void Wwe12CameraProbeDraw(uint32_t device_guest);
+#endif
+
 namespace bd::gpu {
 extern std::atomic<u64> g_render_thread_pso_ns;  // pso_recorder.cpp
 #if defined(__ANDROID__)
@@ -494,6 +499,9 @@ bool Video::FlushRenderStateLocked(u32 device_guest) {
   // emitted by the recompiler.
   if (device_guest) {
 #if defined(SVR_NATIVE_RENDERER)
+    // Camera probe (dev, wwe12_camera_probe, off): one frame every 2 s, the draw's vertex constants.
+    if (g_wwe12_camprobe_armed.load(std::memory_order_relaxed))
+      Wwe12CameraProbeDraw(device_guest);
     // SvR 2008: its engine also writes constants straight into the device (inline XDK
     // setters), which no hook sees, so upload both stages every draw until those writers
     // are covered.
