@@ -123,6 +123,7 @@ struct Survivor {
   u32 va;
   Vec3 last;
   bool moved;
+  int misses = 0;  // samples in a row where it held none of the eyes (2 allowed: the game is a frame ahead)
 };
 
 u8 *GuestBase() { return bd::mem::at<u8>(0x40000000) - 0x40000000; }
@@ -144,14 +145,17 @@ void ScanRegion(u8 *base, u8 *p, u8 *end, const Vec3 &e, std::vector<Survivor> &
       continue;
     if (std::fabs(LoadBeF32(p + 4) - e.y) > tol || std::fabs(LoadBeF32(p + 8) - e.z) > tol)
       continue;
-    out.push_back({u32(p - base), e, false});
+    out.push_back({u32(p - base), e, false, 0});
   }
 }
 
 void FullScan(const Vec3 &e, std::vector<Survivor> &out) {
   u8 *const base = GuestBase();
-  constexpr size_t kCap = 8192;
-  for (const auto [lo, hi] : {std::pair<u32, u32>{0x00010000u, 0x9FFF0000u},
+  // v3: no 8192 cap any more (the first run stopped in the stacks, before the game's heap and data), and the
+  // guest stacks (0x70000000-0x7FFFFFFF: per-frame temporaries, seen in v2) are left out.
+  constexpr size_t kCap = size_t(1) << 21;
+  for (const auto [lo, hi] : {std::pair<u32, u32>{0x00010000u, 0x70000000u},
+                              std::pair<u32, u32>{0x80000000u, 0x9FFF0000u},
                               std::pair<u32, u32>{0xA0000000u, 0xC0000000u}}) {
     u8 *p = base + lo;
     u8 *const end = base + hi;
@@ -326,9 +330,10 @@ void ProbeThread() {
           if (!Near(v, s.last, Tol(e) * 0.5f))
             s.moved = true;
           s.last = v;
+          s.misses = 0;
           return false;
         }
-      return true;
+      return ++s.misses > 2;
     });
     for (const Survivor &s : survivors)
       moved += s.moved;
@@ -482,8 +487,13 @@ void Wwe12CameraProbePresent() {
     {
       std::lock_guard lock(g_mutex);
       g_sample.clear();
-      for (size_t k = 0; k < g_clusters.size() && k < 3; ++k)
-        g_sample.push_back(g_clusters[k].eye);
+      // (v3: eyes within 50 units of the origin are left out: with no cap, (-1, 0, 0) matched millions of small
+      // floats; the match camera is metres away, the units are centimetres)
+      for (size_t k = 0; k < g_clusters.size() && g_sample.size() < 3; ++k) {
+        const Vec3 &e = g_clusters[k].eye;
+        if (std::max({std::fabs(e.x), std::fabs(e.y), std::fabs(e.z)}) >= 50.0f)
+          g_sample.push_back(e);
+      }
       g_sample_new = true;
       ++g_sample_id;
     }
