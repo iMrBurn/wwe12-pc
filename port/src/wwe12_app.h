@@ -27,6 +27,7 @@
 #include "native/wwe12_display.h"
 // I QUIT gauge (native/wwe12_iquit.cpp): the drawer and a way to the UI thread
 void Wwe12IQuitOverlayInit(rex::ui::ImGuiDrawer* drawer, std::function<void(std::function<void()>)> post);
+void Wwe12DisplaySetPoster(std::function<void(std::function<void()>)> post);  // wwe12_display.cpp: notices
 void Wwe12IQuitFonts(ImFontAtlas* atlas);  // WWE '13's own I Quit images in the overlay's atlas (wwe12_iquit.cpp)
 #include "native/wwe12_graphics_menu.h"
 #include "native/wwe12_jukebox.h"
@@ -340,6 +341,7 @@ class Wwe12App : public rex::ReXApp {
     Wwe12GraphicsMenuInit(rex::filesystem::GetExecutableFolder() / "wwe12.toml");
     Wwe12JukeboxInit(rex::filesystem::GetExecutableFolder() / "wwe12.toml");  // OPTIONS > JUKEBOX
     Wwe12DisplayInit(imgui_drawer());  // FPS counter (F2), CPU priority
+    Wwe12DisplaySetPoster([this](std::function<void()> f) { app_context().CallInUIThread(std::move(f)); });
     Wwe12IQuitOverlayInit(imgui_drawer(), [this](std::function<void()> f) { app_context().CallInUIThread(std::move(f)); });  // I QUIT gauge (wwe12_iquit.cpp)
     Wwe12ArenaPagesInstallLabel(imgui_drawer(), [this](std::function<void()> f) { app_context().CallInUIThread(std::move(f)); });  // arena select: page label, LB / RB
     Wwe12KbdInit(window());  // physical keyboard in the game's letter grids (Create a Story...)

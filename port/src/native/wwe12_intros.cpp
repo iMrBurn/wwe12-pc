@@ -12,10 +12,13 @@
 //
 // wwe12_skip_intros = false in wwe12.toml brings the videos back.
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 
 #include <rex/cvar.h>
+#include <rex/memory.h>
+#include <rex/system/kernel_state.h>
 
 #include "core/logging.h"
 #include "core/memory_helpers.h"
@@ -67,10 +70,68 @@ extern "C" REX_FUNC(sub_821A9AC0) {
   __imp__sub_821A9AC0(ctx, base);
 }
 
+// 2.0 (chantier 3, 2026-11-28): every pad plugged in plays player 1 (a pad Windows put in another slot, a
+// PlayStation or generic pad the SDK mapped to slot 2...). Player 1's read gets all the connected pads merged (buttons
+// together, the strongest stick and trigger), the keyboard included (it is slot 1); the other slots read "not
+// connected", so no pad also plays player 2. Off by default (local multiplayer needs the slots).
+REXCVAR_DEFINE_BOOL(wwe12_all_pads_p1, false, "WWE12",
+                    "Every controller plugged in plays player 1 (no local multiplayer while on).");
+
+namespace {
+constexpr u32 kNotConnected = 0x48F;  // ERROR_DEVICE_NOT_CONNECTED
+
+// Player 1's read with every slot merged into it (the hook's original call already filled slot 1's).
+void MergeAllPads(PPCContext &ctx, const PPCContext &in, u8 *base, u32 state) {
+  static u32 s_scratch = 0;
+  if (!s_scratch)
+    s_scratch = REX_KERNEL_MEMORY()->SystemHeapAlloc(16, 0x10);
+  if (!s_scratch)
+    return;
+  bool any = ctx.r3.u32 == 0;
+  if (!any)
+    for (u32 i = 0; i < 16; i += 4)
+      bd::mem::store<u32>(state + i, 0);
+  u32 packet = bd::mem::load<u32>(state);
+  for (u32 u = 1; u < 4; ++u) {
+    PPCContext x = in;
+    x.r3.u64 = u;
+    x.r4.u64 = s_scratch;
+    __imp__sub_82A8C070(x, base);
+    if (x.r3.u32 != 0)
+      continue;
+    any = true;
+    packet += bd::mem::load<u32>(s_scratch);
+    bd::mem::store<u16>(state + 4, u16(bd::mem::load<u16>(state + 4) | bd::mem::load<u16>(s_scratch + 4)));
+    for (u32 t = 6; t < 8; ++t)
+      bd::mem::store<u8>(state + t, std::max(bd::mem::load<u8>(state + t), bd::mem::load<u8>(s_scratch + t)));
+    for (u32 stick = 8; stick < 16; stick += 4) {  // a stick (x, y) whole: the one pushed further
+      const int ax = bd::mem::load<int16_t>(state + stick), ay = bd::mem::load<int16_t>(state + stick + 2);
+      const int bx = bd::mem::load<int16_t>(s_scratch + stick), by = bd::mem::load<int16_t>(s_scratch + stick + 2);
+      if (bx * bx + by * by > ax * ax + ay * ay) {
+        bd::mem::store<int16_t>(state + stick, int16_t(bx));
+        bd::mem::store<int16_t>(state + stick + 2, int16_t(by));
+      }
+    }
+  }
+  if (any) {
+    bd::mem::store<u32>(state, packet);
+    ctx.r3.u64 = 0;
+  }
+}
+}  // namespace
+
 // XInputGetState(user, state): X_INPUT_STATE is {u32 packet, u16 buttons, ...}, big-endian.
 extern "C" REX_FUNC(sub_82A8C070) {
   const u32 user = ctx.r3.u32, state = ctx.r4.u32;
+  const PPCContext in = ctx;
   __imp__sub_82A8C070(ctx, base);
+  if (REXCVAR_GET(wwe12_all_pads_p1) && state && user < 4) {
+    if (user != 0) {
+      ctx.r3.u64 = kNotConnected;  // (its pad plays player 1)
+      return;
+    }
+    MergeAllPads(ctx, in, base, state);
+  }
   const bool free_cam = state && ctx.r3.u32 == 0 && Wwe12FreeCamPad(user, state);
   if (state && ctx.r3.u32 == 0 && !free_cam)
     Wwe12TurnStick(state);  // RAMP / a kept free camera: the left stick in our view's frame

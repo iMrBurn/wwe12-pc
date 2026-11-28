@@ -34,6 +34,11 @@
 #include <rex/ui/keybinds.h>
 
 #include "core/logging.h"
+#include "gpu/device.h"
+
+#include <fmt/format.h>
+#include <functional>
+#include <plume_render_interface.h>
 
 #if REX_PLATFORM_ANDROID
 int Wwe12PhoneTempTenths();  // android/wwe12_temp.cpp
@@ -259,6 +264,8 @@ void WaitUntil(std::chrono::steady_clock::time_point next) {
 namespace {
 std::string g_toast_text;
 double g_toast_until = 0;
+double g_toast_seconds = 2.0;
+std::function<void(std::function<void()>)> g_post;  // to the UI thread (wwe12_app.h)
 class ToastOverlay;
 ToastOverlay *g_toast = nullptr;
 class ToastOverlay final : public rex::ui::ImGuiDialog {
@@ -270,7 +277,7 @@ class ToastOverlay final : public rex::ui::ImGuiDialog {
   void OnDraw(ImGuiIO &io) override {
     const double now = ImGui::GetTime();
     if (g_toast_until == 0)
-      g_toast_until = now + 2.0;
+      g_toast_until = now + g_toast_seconds;
     if (now > g_toast_until) {
       Close();
       return;
@@ -287,10 +294,59 @@ class ToastOverlay final : public rex::ui::ImGuiDialog {
 
 void Wwe12DisplayToast(const char *text) {
   g_toast_text = text;
+  g_toast_seconds = 2.0;
   g_toast_until = 0;  // (set at the next draw: 2 s from then)
   if (!g_toast && g_drawer)
     g_toast = new ToastOverlay(g_drawer);  // deletes itself when closed
 }
+
+// From any thread: a longer text (seconds), shown from the UI thread.
+void Wwe12DisplayNotice(std::string text, double seconds) {
+  if (!g_post)
+    return;
+  g_post([text = std::move(text), seconds] {
+    Wwe12DisplayToast(text.c_str());
+    g_toast_seconds = seconds;
+  });
+}
+
+void Wwe12DisplaySetPoster(std::function<void(std::function<void()>)> post) { g_post = std::move(post); }
+
+namespace {
+// 2.0 (chantier 2, 2026-11-28): a laptop drawing on its integrated GPU while a dedicated one is there (the setting
+// left on automatic: the dedicated one could not be used, or Windows hid it) is told so, once, 5 s after the start,
+// with what to do. Nothing when the player chose the GPU himself (svr_gpu_device set).
+void CheckGpuOnce() {
+  static bool s_done = false;
+  if (s_done || g_frames.load(std::memory_order_relaxed) < 300)
+    return;
+  s_done = true;
+  const auto *device = bd::gpu::Video::HostDevice();
+  if (device)
+    BD_INFO("[display] GPU: '{}' ({})", device->getDescription().name,
+            device->getDescription().type == plume::RenderDeviceType::INTEGRATED ? "integrated" : "dedicated");
+  if (!device || device->getDescription().type != plume::RenderDeviceType::INTEGRATED ||
+      !rex::cvar::GetFlagByName("svr_gpu_device").empty())
+    return;
+  std::string dedicated;
+  if (const auto *iface = bd::gpu::state().render_iface.get())
+    for (const auto &n : iface->getDeviceNames()) {
+      const bool big = n.find("NVIDIA") != std::string::npos || n.find("GeForce") != std::string::npos ||
+                       n.find("Radeon RX") != std::string::npos || n.find("Arc(TM) A") != std::string::npos ||
+                       n.find("Radeon Pro") != std::string::npos;
+      if (big && n != device->getDescription().name)
+        dedicated = n;
+    }
+  BD_INFO("[display] GPU: integrated '{}'{}", device->getDescription().name,
+          dedicated.empty() ? std::string(", no dedicated GPU found") : ", dedicated one there: '" + dedicated + "'");
+  if (dedicated.empty())
+    return;
+  Wwe12DisplayNotice(fmt::format("THE GAME RUNS ON THE INTEGRATED GPU ({}).\n{} IS FASTER: PICK IT IN THE LAUNCHER "
+                                 "(GRAPHICS CARD), PLUGGED IN.",
+                                 device->getDescription().name, dedicated),
+                     10.0);
+}
+}  // namespace
 
 void Wwe12MatchCameraNext();  // wwe12_match_camera.cpp
 void Wwe12FreeCameraToggle();
@@ -333,6 +389,7 @@ void Wwe12DisplayInit(rex::ui::ImGuiDrawer *drawer) {
 void Wwe12DisplayOnFrame() {
   using clock = std::chrono::steady_clock;
   g_frames.fetch_add(1, std::memory_order_relaxed);
+  CheckGpuOnce();
 
   const int limit = REXCVAR_GET(wwe12_fps_limit);
   static clock::time_point next{};
