@@ -795,9 +795,12 @@ extern "C" REX_FUNC(sub_8271BFD0) {
   const bool picked = bd::mem::try_field<u32>(m, 40) != before;
   if (const u32 listen = g_listen_ask.exchange(0)) {
     // MY PLAYLIST's X: that theme now (then the playlist's random order again).
+    // While the slots are still going quiet (a theme fades out over ~2 s), the wait goes on with the new theme: starting
+    // it again on every X hid the asked theme (user's test of 2026-11-28: X twice on KING, nothing played).
     g_listen_now = listen;
     g_menus = true;
-    Go(Step::Stop);
+    if (g_step != Step::Stop && g_step != Step::WaitStop)
+      Go(Step::Stop);
   } else if (g_restart.exchange(false)) {
     // The page: the chosen theme now (the menus' music and ours stopped first).
     g_play_chosen = true;
