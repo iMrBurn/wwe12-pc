@@ -156,6 +156,49 @@ fs::path DocumentsDir() {
   return out;
 }
 
+// The game's newest log (Documents\wwe12\logs or the logs folder next to the exe): when it says "graphics device lost on
+// '<card>'", the graphics driver stopped last time. Returns the card ("?" if unnamed), or "" when there is no such line.
+// Read once when the launcher starts: a later run without the crash writes a newer log, so the banner goes away.
+std::string LastGraphicsCrash() {
+  static bool done = false;
+  static std::string card;
+  if (done)
+    return card;
+  done = true;
+  try {
+    std::error_code ec;
+    fs::path newest;
+    fs::file_time_type when{};
+    for (const fs::path &dir : {DocumentsDir() / "wwe12" / "logs", ExeDir() / "logs"})
+      for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->path().extension() != L".log")
+          continue;
+        const auto t = it->last_write_time(ec);
+        if (!ec && (newest.empty() || t > when)) {
+          newest = it->path();
+          when = t;
+        }
+      }
+    if (newest.empty())
+      return card;
+    std::ifstream f(newest, std::ios::binary | std::ios::ate);
+    if (!f)
+      return card;
+    const std::streamoff size = f.tellg(), want = std::min<std::streamoff>(size, 16 << 20);  // the last 16 MB
+    f.seekg(size - want);
+    std::string text(size_t(want), '\0');
+    f.read(text.data(), want);
+    const std::string key = "graphics device lost on '";
+    const size_t at = text.rfind(key);
+    if (at != std::string::npos) {
+      const size_t from = at + key.size(), to = text.find('\'', from);
+      card = to == std::string::npos || to == from ? "?" : text.substr(from, std::min<size_t>(to - from, 80));
+    }
+  } catch (...) {
+  }
+  return card;
+}
+
 void OpenFolder(const fs::path &p) {
   std::error_code ec;
   fs::create_directories(p, ec);
@@ -543,6 +586,7 @@ struct Settings {
   int match_camera = 0;           // wwe12_match_camera: 0 normal, 1 ramp view
   bool live_screen = false;       // wwe12_live_screen: the match's "mirror" on the big screen (off = the show's logo)
   bool titantron_logo = true;     // wwe12_titantron_logo: the show's logo on the big screen during matches
+  bool skip_replay = false;       // wwe12_skip_replay: skip the instant replay after matches
   bool keyboard = true;
   int keyboard_player = 1;  // 1..4: the player the keyboard plays as (2 = separate from pad 1)
   char binds[std::size(kBinds)][64] = {};
@@ -594,6 +638,7 @@ void LoadSettings() {
   g_s.match_camera = std::clamp(g_toml.GetInt("wwe12_match_camera", 0), 0, 1);
   g_s.live_screen = g_toml.GetBool("wwe12_live_screen", false);
   g_s.titantron_logo = g_toml.GetBool("wwe12_titantron_logo", true);
+  g_s.skip_replay = g_toml.GetBool("wwe12_skip_replay", false);
   g_s.keyboard = g_toml.GetBool("mnk_mode", true);
   g_s.keyboard_player = std::clamp(g_toml.GetInt("mnk_player", 1), 1, 4);
   for (size_t i = 0; i < std::size(kBinds); ++i)
@@ -633,6 +678,7 @@ void SaveSettings() {
   g_toml.SetInt("wwe12_match_camera", g_s.match_camera);
   g_toml.SetBool("wwe12_live_screen", g_s.live_screen);
   g_toml.SetBool("wwe12_titantron_logo", g_s.titantron_logo);
+  g_toml.SetBool("wwe12_skip_replay", g_s.skip_replay);
   g_toml.SetBool("mnk_mode", g_s.keyboard);
   g_toml.SetInt("mnk_player", g_s.keyboard_player);
   for (size_t i = 0; i < std::size(kBinds); ++i)
@@ -717,6 +763,19 @@ void PagePlay() {
                             : "The chosen API (DirectX) is not installed: the game will start with Vulkan. Change it in SETTINGS.");
     else
       ImGui::TextDisabled(fr ? "API graphique : %s" : "Graphics API: %s", api);
+  }
+  if (const std::string crashed = LastGraphicsCrash(); !crashed.empty()) {
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
+                       fr ? "La dernière fois, le pilote graphique s'est arrêté (%s). Essayez : mettre à jour le pilote, une autre API "
+                            "graphique, une résolution interne plus basse ; sur un portable, le brancher et choisir la carte dédiée. "
+                            "Le bouton « Copier les infos de diagnostic » (À PROPOS) aide pour un rapport."
+                          : "Last time, the graphics driver stopped (%s). Try: update the driver, another GRAPHICS API, a lower "
+                            "INTERNAL RESOLUTION; on a laptop, plug it in and pick the dedicated card. \"Copy diagnostic "
+                            "info\" (ABOUT) helps for a report.",
+                       crashed.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::Dummy(ImVec2(0, 4));
   }
   switch (g_vulkan.GetState()) {
   case VulkanCheck::State::Ok:
@@ -1258,6 +1317,14 @@ void PageSettings() {
         changed |= ImGui::Checkbox(t.mc_unlock, &g_s.mc_unlock);
         ImGui::PushTextWrapPos(0);
         ImGui::TextDisabled("%s", t.mc_unlock_hint);
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy(ImVec2(0, 4));
+        const bool fr_ = g_s.language == 4;
+        changed |= ImGui::Checkbox(fr_ ? "Sauter le replay après les matchs" : "Skip the instant replay after matches",
+                                   &g_s.skip_replay);
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("%s", fr_ ? "Le replay qui suit un match n'est pas montré : on passe directement à la suite."
+                                      : "The replay shown after a match is skipped: the game goes straight on.");
         ImGui::PopTextWrapPos();
       }
       ImGui::EndTabItem();
