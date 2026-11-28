@@ -75,3 +75,17 @@ fort » l'évite déjà sans dégât connu. Seul point à surveiller : un **matc
    coupée : rien ne change.
 
 Estimation : 1 session courte pour le code et le journal ; le test joué en plus.
+
+## 6. Premier essai (2026-11-28) et nouvelle voie
+
+- **Essai 1, raté** (exe de 16:25, `test_replay.log`) : le replay est passé quand même, aucune ligne `[replay] skip`.
+  Le journal montre le replay **avant** la scène de victoire (script 6139 à 16:29:46). `sub_823F4910` tourne après
+  cette scène : ce n'est pas lui qui décide du replay d'après-match. Le crochet a été retiré. (§2-3 restent justes pour
+  cet automate, mais il ne s'agit pas de ce replay-là.)
+- **Voie 2 (piste d'iMrBurn : MATCH CREATOR > ENVIRONMENT > POST MATCH REPLAY)** : le Match Creator garde une fiche
+  de 28 octets par type de match (119) dans le bloc de réglages `sub_82684BE8()` (0x831CEEA8) + 0x57786 + type × 28 :
+  octet 0 type de ring, 1 ENTRANCE, 2 POST MATCH REPLAY, 3 MOMENTUM (lu ainsi par le panneau, `sub_82593F88`). Les
+  mises en place de match en recopient 25 octets dans leurs règles avec `sub_82A3DEF0(dst, src)` (`sub_825493B0`,
+  `sub_828A99D0`, `sub_826EAAF8`…). Le crochet met l'octet 2 à 0 dans la copie (jamais dans le bloc lui-même, donc la
+  sauvegarde n'est pas changée), avec une ligne `[replay] skip … POST MATCH REPLAY x -> 0`.
+- Non prouvé : que 0 = OFF (ordre des textes OFF/ON du panneau) et que l'exhibition lise bien cet octet. L'essai 2 le dira.

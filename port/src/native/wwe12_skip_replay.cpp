@@ -1,16 +1,18 @@
 // WWE '12: option to skip the instant replay after matches (2.0, docs/etude_replay_option_2_0.md).
 //
-// At the end of a match sub_823F4910 (object in r3, state at +8) runs once per frame. In state 1 it
-// decides at +28 whether the replay plays: in exhibition / Universe (mode G+12460 = 0, G = 0x8317C850)
-// when the match changed a title (+24) or kept at least one moment (sub_821EDEE0); in Road to
-// WrestleMania (2) on a title change only; in Create a Story (3 / 4) never, because sub_821D49A0
-// ("mode 3 or 4?") returns 1 there. +28 = 0 goes straight to state 7 (done, 0x823F5144) and the
-// victory scene, the menus and the Universe save follow as usual.
+// The game has its own switch: MATCH CREATOR > ENVIRONMENT > POST MATCH REPLAY. The Match Creator keeps
+// one 28-byte record per match type (119 types) in the settings block, sub_82684BE8() (= 0x831CEEA8)
+// + 0x57786 + type * 28: byte 0 ring type, 1 ENTRANCE, 2 POST MATCH REPLAY, 3 MOMENTUM BAR CHARGE
+// SPEED (read so by the ENVIRONMENT panel, sub_82593F88). The match set-ups copy the first 25 bytes
+// of the type's record into the match's own rules with sub_82A3DEF0(dst, src) (sub_825493B0,
+// sub_828A99D0, sub_826EAAF8, ...).
 //
-// With wwe12_skip_replay = true, sub_821D49A0 answers 1 while sub_823F4910 runs its state 1 (one
-// call there, at 0x823F4AA4), so every mode takes Create a Story's own "no replay" path. Its other
-// callers and the later states are untouched. The moments are still recorded: MATCH HIGHLIGHTS
-// keeps working (unlike Android's wwe12_instant_replay, which turns the recording off).
+// With wwe12_skip_replay = true, each such copy out of the per-type table gets byte 2 = 0 (OFF) in the
+// copy. The settings block itself (the player's save) is never changed, so the Match Creator still
+// shows the player's own choice and turning the option off brings the replay back.
+//
+// (First try, 2026-11-28: a hook on the end-of-match automaton sub_823F4910 never ran before the
+// replay: that automaton comes after the victory scene. Removed.)
 
 #include <atomic>
 
@@ -21,39 +23,33 @@
 #include "svr_hook.h"
 
 REXCVAR_DEFINE_BOOL(wwe12_skip_replay, false, "WWE12",
-                    "Skip the instant replay after matches (MATCH HIGHLIGHTS still works).");
+                    "Skip the instant replay after matches (as MATCH CREATOR's POST MATCH REPLAY = OFF, "
+                    "for every match type; the save is not changed).");
 
 namespace {
-thread_local bool t_deciding = false;
-constexpr u32 kMatchInfo = 0x8317C850;  // sub_8267CF38
+constexpr u32 kSettings = 0x831CEEA8u;             // sub_82684BE8()
+constexpr u32 kTypeTable = kSettings + 0x57786u;    // 119 records of 28 bytes
+constexpr u32 kTypeRecord = 28, kTypeCount = 119;
+constexpr u32 kSettingsEnd = kSettings + 0x70000u;  // the block, to never write into the save
+constexpr u32 kReplayByte = 2;
 }  // namespace
 
-REX_EXTERN(__imp__sub_823F4910);
-extern "C" REX_FUNC(sub_823F4910) {
-  const u32 self = ctx.r3.u32;
-  const u32 before = bd::mem::load<u32>(self + 8);
-  if (before != 1 || !REXCVAR_GET(wwe12_skip_replay)) {
-    __imp__sub_823F4910(ctx, base);
+REX_EXTERN(__imp__sub_82A3DEF0);
+extern "C" REX_FUNC(sub_82A3DEF0) {
+  const u32 dst = ctx.r3.u32, src = ctx.r4.u32;
+  __imp__sub_82A3DEF0(ctx, base);
+  if (!REXCVAR_GET(wwe12_skip_replay))
     return;
-  }
-  t_deciding = true;
-  __imp__sub_823F4910(ctx, base);
-  t_deciding = false;
-  const u32 after = bd::mem::load<u32>(self + 8);
-  if (after != before) {
-    static std::atomic<int> s_logged{0};
-    if (s_logged.fetch_add(1) < 32)
-      BD_INFO("[replay] skip (wwe12_skip_replay): mode {} title change {} state 1 -> {}",
-              bd::mem::load<u32>(kMatchInfo + 12460), bd::mem::load<u32>(self + 24), after);
-  }
-}
-
-REX_EXTERN(__imp__sub_821D49A0);
-extern "C" REX_FUNC(sub_821D49A0) {
-  if (t_deciding) {
-    t_deciding = false;  // the first call only: the one at 0x823F4AA4, not one deeper in a callee
-    ctx.r3.u64 = 1;
-    return;
-  }
-  __imp__sub_821D49A0(ctx, base);
+  if (src < kTypeTable || src >= kTypeTable + kTypeCount * kTypeRecord ||
+      (src - kTypeTable) % kTypeRecord != 0)
+    return;  // not a copy of a match type's record
+  if (dst >= kSettings && dst < kSettingsEnd)
+    return;  // into the settings block itself: leave the player's save alone
+  const u8 before = bd::mem::load<u8>(dst + kReplayByte);
+  bd::mem::store<u8>(dst + kReplayByte, 0);
+  static std::atomic<int> s_logged{0};
+  if (s_logged.fetch_add(1) < 32)
+    BD_INFO("[replay] skip (wwe12_skip_replay): match type {} rules copied to 0x{:08X}, "
+            "POST MATCH REPLAY {} -> 0",
+            (src - kTypeTable) / kTypeRecord, dst, before);
 }
