@@ -307,8 +307,11 @@ u16 Wwe12RemotePadButtons() {
 void Wwe12FlashRecorderFrame(bd::gpu::GuestTexture *front_buffer);  // wwe12_flash_recorder.cpp (dev)
 void Wwe12RemoteOnPresent(bd::gpu::GuestTexture *front_buffer) {
   Wwe12FlashRecorderFrame(front_buffer);
-  if (!REXCVAR_GET(wwe12_remote_pad) && !Wwe12BenchmarkActive())
-    return;
+  if (!REXCVAR_GET(wwe12_remote_pad) && !Wwe12BenchmarkActive()) {
+    std::lock_guard lock(g_shot_mu);
+    if (g_shot_name.empty())  // (a shot asked by the mouse probe still goes through)
+      return;
+  } else {
   const long long now = NowMs();
   ++g_frames;
   const bool loading = Wwe12LoadingScreenUp(), scene = Wwe12SceneMode();
@@ -340,6 +343,7 @@ void Wwe12RemoteOnPresent(bd::gpu::GuestTexture *front_buffer) {
     g_state_since = now;
     BD_INFO("[remote] state {} (loads {}, scenes {})", state, g_loads, g_scenes);
     WriteStateFile();
+  }
   }
 
   std::string name;

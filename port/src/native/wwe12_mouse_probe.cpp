@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <mutex>
 #include <string>
 
@@ -120,6 +121,50 @@ void DumpWords(std::ofstream &f, const char *what, u32 at, u32 size) {
   f << "\n";
 }
 
+
+// v3: a layout {+8 elements of 240 bytes, +24 count} (sub_824C5458's), its first element named.
+bool LooksLayout(u32 p, u32 &els, u32 &cnt) {
+  if (p < 0x40000000u || p >= 0xC0000000u || !bd::mem::try_at<u8>(p + 28))
+    return false;
+  els = bd::mem::load<u32>(p + 8), cnt = bd::mem::load<u32>(p + 24);
+  if (els < 0x40000000u || els >= 0xC0000000u || cnt == 0 || cnt > 4096 || !bd::mem::try_at<u8>(els + cnt * 240))
+    return false;
+  for (u32 e = 0; e < cnt && e < 64; ++e) {
+    const u8 c = bd::mem::load<u8>(els + e * 240 + 96);
+    if (c >= 'A' && c <= 'z')
+      return true;
+  }
+  return false;
+}
+
+// The layouts a layout screen points to: its words (and the words of the objects they point to, one level down).
+u32 DumpScreenLayouts(std::ofstream &f, u32 screen) {
+  u32 named = 0;
+  std::set<u32> done;
+  const auto try_one = [&](u32 p, const std::string &path) {
+    u32 els = 0, cnt = 0;
+    if (done.count(p) || !LooksLayout(p, els, cnt))
+      return;
+    done.insert(p);
+    f << fmt::format("screen {:08X} {} -> layout {:08X}: {} elements at {:08X}\n", screen, path, p, cnt, els);
+    for (u32 e = 0; e < cnt; ++e) {
+      const u32 at = els + e * 240;
+      if (!bd::mem::try_load<u8>(at + 96))
+        continue;
+      DumpElements(f, at, e, 0);
+      ++named;
+    }
+  };
+  for (u32 o = 0; o < 0x400; o += 4) {
+    const u32 p = bd::mem::try_load<u32>(screen + o);
+    try_one(p, fmt::format("+{:X}", o));
+    if (p >= 0x40000000u && p < 0xC0000000u && bd::mem::try_at<u8>(p + 0x100))
+      for (u32 o2 = 0; o2 < 0x100; o2 += 4)
+        try_one(bd::mem::load<u32>(p + o2), fmt::format("+{:X}+{:X}", o, o2));
+  }
+  return named;
+}
+
 void DumpLayout(const PPCContext &in, u8 *base) {
   (void)in, (void)base;
   auto *state = REX_KERNEL_STATE();
@@ -159,6 +204,11 @@ void DumpLayout(const PPCContext &in, u8 *base) {
       }
     }
   }
+  for (auto &[obj, when] : g_last_screens)
+    if (NowMs() - when < 200)
+      named += DumpScreenLayouts(f, obj);
+  if (g_menu)
+    named += DumpScreenLayouts(f, g_menu);
   Wwe12RemoteShot(fmt::format("mouse_{:02}", n));
   BD_INFO("[mouse probe] dump {:02}: {} named elements + menu / screens / holder words + frame", n, named);
 }
