@@ -18,6 +18,10 @@ wwe12_graphics_menu = true
 # Skip the start-up videos (logos and opening) to reach the title screen faster.
 wwe12_skip_intros = true
 
+# Skip the instant replay after matches (the victory scene comes right after the bell).
+# MATCH HIGHLIGHTS still works. false = the original replay.
+wwe12_skip_replay = false
+
 # Discord Rich Presence: your Discord status shows that you play WWE '12 PC (in the menus, in a match,
 # Universe mode). Windows only; needs the Discord app open on this PC. Off by default.
 wwe12_discord = false
