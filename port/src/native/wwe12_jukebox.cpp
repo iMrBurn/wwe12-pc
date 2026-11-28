@@ -42,9 +42,20 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
+#include <functional>
+#include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <mutex>
 #include <random>
+#include <set>
 #include <vector>
+
+#include <imgui.h>
+#include <rex/runtime.h>
+#include <rex/ui/imgui_dialog.h>
+#include <rex/ui/imgui_drawer.h>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
@@ -89,6 +100,9 @@ REX_EXTERN(__imp__sub_821D6368);
 #include "wwe12_jukebox_page.inc"
 
 std::vector<std::pair<uint32_t, std::string>> Wwe12AddedThemes();  // wwe12_superstar_mods.cpp
+ImFont *Wwe12OverlayFont(bool bold);                   // wwe12_display.cpp (Latin, accents; may be null)
+rex::ui::ImGuiDrawer *Wwe12OverlayDrawer();            // wwe12_iquit.cpp
+void Wwe12OverlayPost(std::function<void()> f);        // wwe12_iquit.cpp: runs f on the UI thread
 
 namespace {
 
@@ -113,17 +127,17 @@ struct Texts {
 };
 constexpr Texts kTexts[] = {
     {"JUKEBOX", "ORDER", "THEME", "OFF", "ON", "RANDOM", "CHOSEN THEME ONLY", "THEME ", "GAME MENU MUSIC",
-     "GAME MENU MUSIC TOO", "NO", "YES", "MENU MUSIC"},
+     "GAME MENU MUSIC TOO", "NO", "YES", "MENU MUSIC   -   Y  MY PLAYLIST"},
     {"JUKEBOX", "ORDRE", "TH\xC3\x88ME", "D\xC3\x89SACTIV\xC3\x89", "ACTIV\xC3\x89", "AL\xC3\x89" "ATOIRE",
      "TH\xC3\x88ME CHOISI SEULEMENT", "TH\xC3\x88ME ", "MUSIQUE DES MENUS (JEU)", "MUSIQUE DES MENUS DU JEU AUSSI",
-     "NON", "OUI", "MUSIQUE DES MENUS"},
+     "NON", "OUI", "MUSIQUE DES MENUS   -   Y  MA PLAYLIST"},
     {"JUKEBOX", "REIHENFOLGE", "THEMA", "AUS", "AN", "ZUF\xC3\x84LLIG", "NUR GEW\xC3\x84HLTES THEMA", "THEMA ",
-     "MEN\xC3\x9CMUSIK DES SPIELS", "AUCH MEN\xC3\x9CMUSIK DES SPIELS", "NEIN", "JA", "MEN\xC3\x9CMUSIK"},
+     "MEN\xC3\x9CMUSIK DES SPIELS", "AUCH MEN\xC3\x9CMUSIK DES SPIELS", "NEIN", "JA", "MEN\xC3\x9CMUSIK   -   Y  MEINE PLAYLIST"},
     {"JUKEBOX", "ORDEN", "TEMA", "NO", "S\xC3\x8D", "ALEATORIO", "SOLO EL TEMA ELEGIDO", "TEMA ",
      "M\xC3\x9ASICA DE LOS MEN\xC3\x9AS (JUEGO)", "TAMBI\xC3\x89N M\xC3\x9ASICA DEL JUEGO", "NO", "S\xC3\x8D",
-     "M\xC3\x9ASICA DE LOS MEN\xC3\x9AS"},
+     "M\xC3\x9ASICA DE LOS MEN\xC3\x9AS   -   Y  MI LISTA"},
     {"JUKEBOX", "ORDINE", "TEMA", "NO", "S\xC3\x8C", "CASUALE", "SOLO IL TEMA SCELTO", "TEMA ",
-     "MUSICA DEI MEN\xC3\x99 (GIOCO)", "ANCHE LA MUSICA DEL GIOCO", "NO", "S\xC3\x8C", "MUSICA DEI MEN\xC3\x99"},
+     "MUSICA DEI MEN\xC3\x99 (GIOCO)", "ANCHE LA MUSICA DEL GIOCO", "NO", "S\xC3\x8C", "MUSICA DEI MEN\xC3\x99   -   Y  LA MIA PLAYLIST"},
 };
 
 const Texts &T() {
@@ -141,6 +155,7 @@ const Texts &T() {
 struct Theme {
   u32 number;
   std::string name;
+  bool mod = false;  // an added superstar's theme (Mod Maker)
 };
 std::vector<Theme> g_themes;  // game thread
 
@@ -203,7 +218,7 @@ void LoadThemes() {
     std::string up;
     for (char c : name)
       up += char(std::toupper(static_cast<unsigned char>(c)));
-    g_themes.push_back({n, up});
+    g_themes.push_back({n, up, true});
   }
   BD_INFO("[jukebox] {} themes (first {} {}, last {} {})", g_themes.size(),
           g_themes.empty() ? 0 : g_themes.front().number, g_themes.empty() ? "" : g_themes.front().name,
@@ -230,6 +245,61 @@ bool g_play_chosen = false;           // the next theme is the chosen one
 std::atomic<bool> g_give_back{false}; // the page turned the jukebox off: menu music back
 std::mt19937 g_rng{std::random_device{}()};
 std::vector<u32> g_failed;  // themes that could not be loaded (left out of the random order)
+
+// ---- MY PLAYLIST (2.0): the themes the random order plays ------------------------------------
+//
+// Every theme is in the playlist unless the player left it out: Documents\wwe12\jukebox_playlist.txt (the user data
+// root, next to universe_stats.txt) has one line "off <number>  # NAME" per theme left out, so a new theme (DLC,
+// mod) comes in by itself. The random order draws from the playlist only (nothing left in it: every theme, as before);
+// CHOSEN THEME ONLY ignores it. No key in wwe12.toml (user's decision, 2026-11-28).
+std::mutex g_list_mutex;  // g_off and the screen's copy of the themes (game thread, UI thread)
+std::set<u32> g_off;      // themes left out of the playlist
+bool g_off_loaded = false;
+u32 g_listen_now = 0;     // (game thread) the theme the screen's X asked for
+std::atomic<u32> g_listen_ask{0};  // (pad -> music manager's update) X pressed on that theme
+
+std::filesystem::path PlaylistFile() {
+  auto *state = REX_KERNEL_STATE();
+  if (!state || !state->emulator() || state->emulator()->user_data_root().empty())
+    return {};
+  return state->emulator()->user_data_root() / "jukebox_playlist.txt";
+}
+
+void LoadPlaylist() {
+  std::lock_guard<std::mutex> lock(g_list_mutex);
+  if (g_off_loaded)
+    return;
+  const std::filesystem::path path = PlaylistFile();
+  if (path.empty())
+    return;  // (too early: tried again next time)
+  g_off_loaded = true;
+  std::ifstream in(path);
+  std::string line;
+  while (std::getline(in, line)) {
+    unsigned n = 0;
+    if (std::sscanf(line.c_str(), " off %u", &n) == 1)
+      g_off.insert(n);
+  }
+  BD_INFO("[jukebox] playlist: {} theme(s) left out ({})", g_off.size(), rex::path_to_utf8(path));
+}
+
+// (called with g_list_mutex held) names: for the reader of the file only
+void SavePlaylist(const std::vector<Theme> &themes) {
+  const std::filesystem::path path = PlaylistFile();
+  if (path.empty())
+    return;
+  std::ofstream out(path, std::ios::trunc);
+  out << "# WWE '12 PC jukebox: the themes left out of MY PLAYLIST (OPTIONS > JUKEBOX, Y).\n"
+         "# One line per theme: off <number>. Delete this file to put every theme back.\n";
+  for (const u32 n : g_off) {
+    std::string name;
+    for (const Theme &t : themes)
+      if (t.number == n)
+        name = t.name;
+    out << "off " << n << (name.empty() ? "" : "  # " + name) << "\n";
+  }
+  BD_INFO("[jukebox] playlist saved: {} theme(s) left out", g_off.size());
+}
 
 using GuestFn = void (*)(PPCContext &, u8 *);
 
@@ -314,16 +384,30 @@ u32 NextTheme() {
     LoadThemes();
   if (g_themes.empty())
     return 0;
+  if (const u32 listen = g_listen_now) {  // (MY PLAYLIST's X: that theme now)
+    g_listen_now = 0;
+    return listen;
+  }
   const u32 chosen = u32(REXCVAR_GET(wwe12_jukebox_theme));
   const bool play_chosen = g_play_chosen;
   g_play_chosen = false;
   if (REXCVAR_GET(wwe12_jukebox_order) == 1 || play_chosen)
     return g_themes[ThemeIndex(chosen)].number;
+  LoadPlaylist();
   std::vector<u32> pool;
-  for (const Theme &t : g_themes)
-    if (t.number != g_playing && (t.number != kGameMusic || REXCVAR_GET(wwe12_jukebox_game_music)) &&
-        std::find(g_failed.begin(), g_failed.end(), t.number) == g_failed.end())
-      pool.push_back(t.number);
+  for (int pass = 0; pass < 2 && pool.empty(); ++pass) {  // (pass 1: nothing left in the playlist, every theme)
+    std::lock_guard<std::mutex> lock(g_list_mutex);
+    for (const Theme &t : g_themes)
+      if (t.number != g_playing && (t.number != kGameMusic || REXCVAR_GET(wwe12_jukebox_game_music)) &&
+          std::find(g_failed.begin(), g_failed.end(), t.number) == g_failed.end() &&
+          (pass == 1 || !g_off.count(t.number)))
+        pool.push_back(t.number);
+    if (pass == 0 && pool.empty() && !g_off.empty()) {
+      static int s_logged = 0;
+      if (s_logged++ < 5)
+        BD_INFO("[jukebox] playlist: nothing to play in it ({} theme(s) left out), every theme instead", g_off.size());
+    }
+  }
   if (pool.empty())
     return g_playing ? g_playing : kGameMusic;
   return pool[std::uniform_int_distribution<size_t>(0, pool.size() - 1)(g_rng)];
@@ -425,6 +509,159 @@ void Save() {
   if (f.Save())
     BD_INFO("[jukebox] settings saved to {}", rex::path_to_utf8(g_toml_path));
 }
+
+// ---- the MY PLAYLIST screen (2.0) ------------------------------------------------------------
+//
+// Our own screen, drawn over the menu with ImGui (as the I Quit's gauge: wwe12_iquit.cpp's drawer), opened from the
+// JUKEBOX page (its script's FromSub handlers call yOption.InitInGameOptions(104-106): wwe12_graphics_menu.cpp). While
+// it is open the pad is ours (wwe12_intros.cpp's XInputGetState hook hides it all from the game): A puts the theme
+// under the cursor in or out of the playlist, X plays it (jukebox on), Y all / none, LB / RB a page, B or START back.
+// The buttons still held when it closes stay hidden until released (B would leave the page behind it).
+
+struct PlaylistWords {
+  const char *title, *count, *help, *page, *nothing, *listen_off, *mod;
+};
+constexpr PlaylistWords kPlaylistWords[] = {
+    {"MY PLAYLIST", "%d / %d IN THE PLAYLIST",
+     "A  ADD / REMOVE      X  LISTEN      Y  ALL / NONE      LB / RB  PAGE      B  BACK", "PAGE %d / %d",
+     "Nothing checked: every theme plays.", "Turn the JUKEBOX on (and confirm the page) to listen.", "MOD"},
+    {"MA PLAYLIST", "%d / %d DANS LA PLAYLIST",
+     "A  AJOUTER / RETIRER      X  \xC3\x89" "COUTER      Y  TOUT / RIEN      LB / RB  PAGE      B  RETOUR",
+     "PAGE %d / %d", "Rien de coch\xC3\xA9 : tous les th\xC3\xA8mes passent.",
+     "Activez le JUKEBOX (et validez la page) pour \xC3\xA9" "couter.", "MOD"},
+    {"MEINE PLAYLIST", "%d / %d IN DER PLAYLIST",
+     "A  HINZUF\xC3\x9CGEN / ENTFERNEN      X  ANH\xC3\x96REN      Y  ALLE / KEINE      LB / RB  SEITE      B  ZUR\xC3\x9C" "CK",
+     "SEITE %d / %d", "Nichts ausgew\xC3\xA4hlt: alle Themes laufen.",
+     "Schalte die JUKEBOX ein (und best\xC3\xA4tige die Seite), um zuzuh\xC3\xB6ren.", "MOD"},
+    {"MI LISTA", "%d / %d EN LA LISTA",
+     "A  A\xC3\x91" "ADIR / QUITAR      X  ESCUCHAR      Y  TODO / NADA      LB / RB  P\xC3\x81GINA      B  VOLVER",
+     "P\xC3\x81GINA %d / %d", "Nada marcado: suenan todos los temas.",
+     "Activa el JUKEBOX (y confirma la p\xC3\xA1gina) para escuchar.", "MOD"},
+    {"LA MIA PLAYLIST", "%d / %d NELLA PLAYLIST",
+     "A  AGGIUNGI / TOGLI      X  ASCOLTA      Y  TUTTI / NESSUNO      LB / RB  PAGINA      B  INDIETRO",
+     "PAGINA %d / %d", "Niente selezionato: suonano tutti i temi.",
+     "Attiva il JUKEBOX (e conferma la pagina) per ascoltare.", "MOD"},
+};
+const PlaylistWords &PW() {
+  switch (REXCVAR_GET(user_language)) {
+  case 3: return kPlaylistWords[2];
+  case 4: return kPlaylistWords[1];
+  case 5: return kPlaylistWords[3];
+  case 6: return kPlaylistWords[4];
+  default: return kPlaylistWords[0];
+  }
+}
+
+constexpr int kRows = 12, kCols = 3, kPerPage = kRows * kCols;  // a page: 3 columns of 12, top to bottom
+std::atomic<bool> g_list_open{false}, g_overlay_up{false};
+std::vector<Theme> g_list;  // (g_list_mutex) the screen's copy of the themes
+int g_cursor = 0;           // (g_list_mutex)
+std::string g_note;         // (g_list_mutex) a line under the list, for a few seconds
+int64_t g_note_ms = 0;
+u16 g_pad_before[4] = {};
+u16 g_hold[4] = {};         // buttons held when the screen closed: hidden until released
+
+int64_t NowMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+void Note(const char *text) {  // (g_list_mutex held)
+  g_note = text;
+  g_note_ms = NowMs();
+}
+
+class PlaylistOverlay final : public rex::ui::ImGuiDialog {
+ public:
+  explicit PlaylistOverlay(rex::ui::ImGuiDrawer *drawer) : ImGuiDialog(drawer) {}
+
+ protected:
+  void OnClose() override { g_overlay_up = false; }
+  void OnDraw(ImGuiIO &io) override {
+    if (!g_list_open.load()) {
+      Close();  // (the drawer stops drawing ImGui every frame)
+      return;
+    }
+    std::lock_guard<std::mutex> lock(g_list_mutex);
+    const PlaylistWords &w = PW();
+    const float W = io.DisplaySize.x, H = io.DisplaySize.y, k = std::max(0.5f, H / 1080.0f);
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    ImFont *bold = Wwe12OverlayFont(true), *text = Wwe12OverlayFont(false);
+    if (!bold)
+      bold = ImGui::GetFont();
+    if (!text)
+      text = bold;
+    auto put = [&](ImFont *f, float px, float x, float y, ImU32 col, const char *s) {
+      dl->AddText(f, px, ImVec2(x + 2 * k, y + 2 * k), IM_COL32(0, 0, 0, 200), s);
+      dl->AddText(f, px, ImVec2(x, y), col, s);
+    };
+    dl->AddRectFilled(ImVec2(0, 0), ImVec2(W, H), IM_COL32(0, 0, 0, 215));
+    const float x0 = W * 0.06f, x1 = W * 0.94f, y0 = H * 0.07f, y1 = H * 0.93f;
+    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(18, 18, 24, 235), 6 * k);
+    dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(185, 0, 0, 255), 6 * k, 0, 2 * k);
+    // the title, the count
+    const float title_px = 46 * k, pad = 26 * k;
+    put(bold, title_px, x0 + pad, y0 + pad * 0.7f, IM_COL32(255, 255, 255, 255), w.title);
+    int on = 0;
+    for (const Theme &t : g_list)
+      on += g_off.count(t.number) ? 0 : 1;
+    char line[160];
+    std::snprintf(line, sizeof line, w.count, on, int(g_list.size()));
+    const float count_px = 26 * k;
+    ImVec2 sz = text->CalcTextSizeA(count_px, FLT_MAX, 0.f, line);
+    put(text, count_px, x1 - pad - sz.x, y0 + pad * 0.7f + (title_px - count_px) * 0.5f, IM_COL32(230, 190, 60, 255), line);
+    // the list: this page's themes, 3 columns of 12
+    const int pages = std::max(1, (int(g_list.size()) + kPerPage - 1) / kPerPage);
+    const int page = std::clamp(g_cursor / kPerPage, 0, pages - 1);
+    const float ly0 = y0 + pad * 0.7f + title_px + 18 * k, ly1 = y1 - 90 * k;
+    const float cw = (x1 - x0 - 2 * pad) / kCols, ch = (ly1 - ly0) / kRows;
+    const float name_px = std::min(26 * k, ch * 0.62f);
+    for (int i = 0; i < kPerPage; ++i) {
+      const int n = page * kPerPage + i;
+      if (n >= int(g_list.size()))
+        break;
+      const Theme &t = g_list[n];
+      const bool in = !g_off.count(t.number);
+      const float cx = x0 + pad + cw * float(i / kRows), cy = ly0 + ch * float(i % kRows);
+      if (n == g_cursor)
+        dl->AddRectFilled(ImVec2(cx - 6 * k, cy + 2 * k), ImVec2(cx + cw - 10 * k, cy + ch - 2 * k), IM_COL32(185, 0, 0, 230),
+                          3 * k);
+      const float box = ch * 0.5f, bx = cx + 4 * k, by = cy + (ch - box) * 0.5f;
+      if (in) {
+        dl->AddRectFilled(ImVec2(bx, by), ImVec2(bx + box, by + box), IM_COL32(230, 190, 60, 255), 2 * k);
+        dl->AddLine(ImVec2(bx + box * 0.2f, by + box * 0.52f), ImVec2(bx + box * 0.42f, by + box * 0.75f),
+                    IM_COL32(20, 20, 20, 255), 2.5f * k);
+        dl->AddLine(ImVec2(bx + box * 0.42f, by + box * 0.75f), ImVec2(bx + box * 0.82f, by + box * 0.25f),
+                    IM_COL32(20, 20, 20, 255), 2.5f * k);
+      } else {
+        dl->AddRect(ImVec2(bx, by), ImVec2(bx + box, by + box), IM_COL32(150, 150, 150, 255), 2 * k, 0, 1.5f * k);
+      }
+      const float nx = bx + box + 12 * k, right = cx + cw - 16 * k;
+      float name_right = right;
+      if (t.mod) {
+        const ImVec2 ms = text->CalcTextSizeA(name_px * 0.7f, FLT_MAX, 0.f, w.mod);
+        name_right = right - ms.x - 10 * k;
+        dl->AddText(text, name_px * 0.7f, ImVec2(right - ms.x, cy + (ch - ms.y) * 0.5f), IM_COL32(120, 190, 255, 255), w.mod);
+      }
+      dl->PushClipRect(ImVec2(nx, cy), ImVec2(name_right, cy + ch), true);
+      const ImVec2 ns = text->CalcTextSizeA(name_px, FLT_MAX, 0.f, t.name.c_str());
+      put(text, name_px, nx, cy + (ch - ns.y) * 0.5f, in || n == g_cursor ? IM_COL32(255, 255, 255, 255)
+                                                                            : IM_COL32(140, 140, 140, 255), t.name.c_str());
+      dl->PopClipRect();
+    }
+    // the page, a note, the buttons
+    const float foot_px = 22 * k;
+    std::snprintf(line, sizeof line, w.page, page + 1, pages);
+    sz = text->CalcTextSizeA(foot_px, FLT_MAX, 0.f, line);
+    put(text, foot_px, x1 - pad - sz.x, ly1 + 10 * k, IM_COL32(200, 200, 200, 255), line);
+    if (!g_note.empty() && NowMs() - g_note_ms < 4000)
+      put(text, foot_px, x0 + pad, ly1 + 10 * k, IM_COL32(230, 190, 60, 255), g_note.c_str());
+    else if (on == 0)
+      put(text, foot_px, x0 + pad, ly1 + 10 * k, IM_COL32(230, 190, 60, 255), w.nothing);
+    sz = text->CalcTextSizeA(foot_px, FLT_MAX, 0.f, w.help);
+    put(text, foot_px, (x0 + x1) * 0.5f - sz.x * 0.5f, y1 - pad - foot_px, IM_COL32(255, 255, 255, 255), w.help);
+  }
+};
 
 }  // namespace
 
@@ -555,7 +792,12 @@ extern "C" REX_FUNC(sub_8271BFD0) {
     return;
   }
   const bool picked = bd::mem::try_field<u32>(m, 40) != before;
-  if (g_restart.exchange(false)) {
+  if (const u32 listen = g_listen_ask.exchange(0)) {
+    // MY PLAYLIST's X: that theme now (then the playlist's random order again).
+    g_listen_now = listen;
+    g_menus = true;
+    Go(Step::Stop);
+  } else if (g_restart.exchange(false)) {
     // The page: the chosen theme now (the menus' music and ours stopped first).
     g_play_chosen = true;
     g_menus = true;
@@ -626,4 +868,127 @@ extern "C" REX_FUNC(sub_821D6368) {
     return;
   }
   __imp__sub_821D6368(ctx, base);
+}
+
+// ---- MY PLAYLIST: opening, the pad ------------------------------------------------------------
+
+// From the JUKEBOX page (wwe12_graphics_menu.cpp, yOption.InitInGameOptions(104 + handler - 1)): the screen opens. Game
+// thread.
+void Wwe12JukeboxOpenPlaylist(int handler) {
+  if (g_list_open.load())
+    return;
+  LoadThemes();
+  LoadPlaylist();
+  {
+    std::lock_guard<std::mutex> lock(g_list_mutex);
+    g_list = g_themes;
+    g_cursor = 0;
+    for (int i = 0; i < int(g_list.size()); ++i)
+      if (g_list[i].number == g_playing)
+        g_cursor = i;
+    g_note.clear();
+  }
+  int out = 0;
+  {
+    std::lock_guard<std::mutex> lock(g_list_mutex);
+    for (const Theme &t : g_list)
+      out += g_off.count(t.number) ? 1 : 0;
+  }
+  BD_INFO("[jukebox] MY PLAYLIST opened (page handler FromSub{}): {} themes, {} left out", handler, g_list.size(), out);
+  g_list_open = true;
+  if (!g_overlay_up.exchange(true)) {
+    if (Wwe12OverlayDrawer())
+      Wwe12OverlayPost([] {
+        if (rex::ui::ImGuiDrawer *d = Wwe12OverlayDrawer())
+          new PlaylistOverlay(d);  // deletes itself once the screen is closed
+        else
+          g_overlay_up = false;
+      });
+    else {
+      g_overlay_up = false;
+      g_list_open = false;
+      BD_WARN("[jukebox] MY PLAYLIST: no overlay drawer, screen not opened");
+    }
+  }
+}
+
+// From the XInputGetState hook (wwe12_intros.cpp), every pad: -1 = the screen is open, hide the whole pad (buttons,
+// triggers, sticks) from the game; else the buttons to hide (still held from the screen).
+int Wwe12JukeboxPad(uint32_t user, uint16_t buttons, int16_t lx, int16_t ly) {
+  if (user >= 4)
+    return 0;
+  const u16 before = g_pad_before[user];
+  g_pad_before[user] = buttons;
+  if (!g_list_open.load()) {
+    g_hold[user] &= buttons;
+    return g_hold[user];
+  }
+  constexpr u16 kUp = 0x0001, kDown = 0x0002, kLeft = 0x0004, kRight = 0x0008, kStart = 0x0010, kLb = 0x0100,
+                kRb = 0x0200, kA = 0x1000, kB = 0x2000, kX = 0x4000, kY = 0x8000;
+  // directions: the D-pad or the left stick, again and again while held (after 0.4 s, every 0.09 s)
+  u16 dir = u16(buttons & (kUp | kDown | kLeft | kRight));
+  if (ly > 16000) dir |= kUp;
+  if (ly < -16000) dir |= kDown;
+  if (lx < -16000) dir |= kLeft;
+  if (lx > 16000) dir |= kRight;
+  static u16 s_dir[4] = {};
+  static int64_t s_next[4] = {};
+  const int64_t now = NowMs();
+  u16 step = 0;
+  if (dir != s_dir[user]) {
+    step = u16(dir & ~s_dir[user]);
+    s_next[user] = now + 400;
+  } else if (dir && now >= s_next[user]) {
+    step = dir;
+    s_next[user] = now + 90;
+  }
+  s_dir[user] = dir;
+  const u16 newly = u16(buttons & ~before);
+  std::lock_guard<std::mutex> lock(g_list_mutex);
+  const int count = int(g_list.size());
+  if (count == 0 || (newly & (kB | kStart))) {
+    SavePlaylist(g_list);
+    g_list_open = false;
+    g_hold[user] = buttons;
+    BD_INFO("[jukebox] MY PLAYLIST closed");
+    return -1;
+  }
+  int c = g_cursor;
+  if (step & kUp) c -= 1;
+  if (step & kDown) c += 1;
+  if (step & kLeft) c -= kRows;
+  if (step & kRight) c += kRows;
+  if (newly & kLb) c -= kPerPage;
+  if (newly & kRb) c += kPerPage;
+  if (c != g_cursor) {
+    if (newly & (kLb | kRb))  // (a page: wraps around)
+      c = ((c % count) + count) % count;
+    g_cursor = std::clamp(c, 0, count - 1);
+  }
+  const Theme &t = g_list[g_cursor];
+  if (newly & kA) {
+    if (!g_off.erase(t.number))
+      g_off.insert(t.number);
+    BD_INFO("[jukebox] MY PLAYLIST: {} ({}) {}", t.number, t.name, g_off.count(t.number) ? "left out" : "in");
+  }
+  if (newly & kY) {
+    bool all = true;
+    for (const Theme &e : g_list)
+      all = all && !g_off.count(e.number);
+    for (const Theme &e : g_list)
+      if (all)
+        g_off.insert(e.number);
+      else
+        g_off.erase(e.number);
+    BD_INFO("[jukebox] MY PLAYLIST: {}", all ? "none" : "all");
+  }
+  if (newly & kX) {
+    if (REXCVAR_GET(wwe12_jukebox)) {
+      g_listen_ask = t.number;
+      BD_INFO("[jukebox] MY PLAYLIST: listen to {} ({})", t.number, t.name);
+    } else {
+      Note(PW().listen_off);
+    }
+  }
+  return -1;
 }

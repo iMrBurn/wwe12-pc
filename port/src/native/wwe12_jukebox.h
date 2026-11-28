@@ -30,6 +30,11 @@ void Wwe12JukeboxPageUpdate(uint32_t array);
 // The text of one of the page's text ids in the player's language, or empty.
 std::string Wwe12JukeboxText(uint32_t id);
 
+// MY PLAYLIST (2.0): the page's script calls yOption.InitInGameOptions(100 + kWwe12JukeboxPlaylistPage + handler - 1)
+// from its FromSub1-3 handlers (a page number 104-106): the screen opens (handler: which one, for the log).
+constexpr int kWwe12JukeboxPlaylistPage = 4;
+void Wwe12JukeboxOpenPlaylist(int handler);
+
 // The page's subtitle, in place of the reused page's "IN-GAME OPTIONS" (text 41142) while it is open.
 constexpr uint32_t kWwe12JukeboxSubtitleText = 41142;
 std::string Wwe12JukeboxSubtitle();

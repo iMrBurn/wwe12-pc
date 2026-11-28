@@ -36,6 +36,7 @@ bool Wwe12FreeCamPad(u32 user, u32 state);  // wwe12_match_camera.cpp: the free 
 void Wwe12TurnStick(u32 state);             // wwe12_match_camera.cpp: the left stick turned for our view
 void Wwe12MouseProbePad(u16 buttons, int16_t lx, int16_t ly);  // wwe12_mouse_probe.cpp (dev)
 u16 Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt);  // wwe12_match_modes.cpp: buttons to hide from the game
+int Wwe12JukeboxPad(uint32_t user, uint16_t buttons, int16_t lx, int16_t ly);  // wwe12_jukebox.cpp: -1 = all hidden
 void Wwe12BootMovieAsked(u32 movie);  // wwe12_load_turbo.cpp (fast boot)
 void Wwe12BenchmarkRecordPad(u16 buttons, int16_t stick_x, int16_t stick_y, bool loading);  // wwe12_benchmark.cpp
 bool Wwe12LoadingScreenUp();  // wwe12_load_turbo.cpp
@@ -135,6 +136,19 @@ extern "C" REX_FUNC(sub_82A8C070) {
   const bool free_cam = state && ctx.r3.u32 == 0 && Wwe12FreeCamPad(user, state);
   if (state && ctx.r3.u32 == 0 && !free_cam)
     Wwe12TurnStick(state);  // RAMP / a kept free camera: the left stick in our view's frame
+  if (state && ctx.r3.u32 == 0 && !free_cam) {  // (Univers, 2.0) the jukebox's MY PLAYLIST screen takes the pad
+    const int hide = Wwe12JukeboxPad(user, bd::mem::load<u16>(state + 4), bd::mem::load<int16_t>(state + 8),
+                                     bd::mem::load<int16_t>(state + 10));
+    if (hide < 0) {  // (open: buttons, triggers, sticks all hidden; nothing else of ours on top)
+      bd::mem::store<u16>(state + 4, 0);
+      bd::mem::store<u16>(state + 6, 0);
+      for (u32 i = 8; i < 16; i += 4)
+        bd::mem::store<u32>(state + i, 0);
+      return;
+    }
+    if (hide)
+      bd::mem::store<u16>(state + 4, u16(bd::mem::load<u16>(state + 4) & ~u32(hide)));
+  }
   if (state && ctx.r3.u32 == 0 && !free_cam) {  // match modes (1.4): triggers on the character select, I QUIT's buttons
     const u16 buttons = bd::mem::load<u16>(state + 4);
     if (const u16 hide = Wwe12MatchPad(user, buttons, bd::mem::load<u8>(state + 6), bd::mem::load<u8>(state + 7)))

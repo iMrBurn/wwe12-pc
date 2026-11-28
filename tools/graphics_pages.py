@@ -281,6 +281,12 @@ def jukebox_source():
             ('if MAXV[c] < val[c] then val[c] = 0 end', 'if mx[c] < val[c] then val[c] = 0 end')):
         assert old in src, old
         src = src.replace(old, new)
+    # (2.0) MY PLAYLIST: the page's extra buttons open the exe's own screen (wwe12_jukebox.cpp) through
+    # InitInGameOptions(104-106), one number per handler so the log says which button it is (FromSub2's
+    # "undo the changes" of the other pages is not kept here)
+    cut = src.index('function FromSub2()')
+    src = src[:cut] + ''.join(
+        'function FromSub%d()\n  yOption.InitInGameOptions(%d)\nend\n\n' % (k, 103 + k) for k in (1, 2, 3))
     return src
 
 

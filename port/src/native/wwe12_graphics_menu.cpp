@@ -620,6 +620,9 @@ int NativePageArg(const PPCContext &ctx, u8 *base) {
   const int arg = int(x.r3.u32);
   if (arg == kNativePage + kWwe12JukeboxPage)
     return kWwe12JukeboxPage;  // OPTIONS > JUKEBOX (wwe12_jukebox.cpp)
+  if (g_native_tab == kWwe12JukeboxPage && arg >= kNativePage + kWwe12JukeboxPlaylistPage &&
+      arg < kNativePage + kWwe12JukeboxPlaylistPage + 3)
+    return arg - kNativePage;  // (Univers, 2.0) its FromSub handlers: MY PLAYLIST
   return arg >= kNativePage && arg < kNativePage + 3 ? arg - kNativePage : -1;
 }
 
@@ -737,6 +740,11 @@ extern "C" REX_FUNC(sub_82DEDD70) {
   if (Wwe12DamagePageNative(false, ctx, base))  // (Gameplay: InitInGameOptions(130) of the DAMAGE page)
     return;
   const int tab = NativePageArg(ctx, base);
+  if (tab >= kWwe12JukeboxPlaylistPage && tab < kWwe12JukeboxPlaylistPage + 3) {
+    Wwe12JukeboxOpenPlaylist(tab - kWwe12JukeboxPlaylistPage + 1);  // (Univers, 2.0: the JUKEBOX page's MY PLAYLIST)
+    ctx.r3.u64 = 0;
+    return;
+  }
   if (tab < 0 || tab != g_native_tab) {
     __imp__sub_82DEDD70(ctx, base);
     return;

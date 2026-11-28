@@ -403,3 +403,7 @@ void Wwe12DisplayOnFrame() {
   next += std::chrono::nanoseconds(1'000'000'000LL / limit);
   WaitUntil(next);
 }
+
+// (Univers, 2.0: the jukebox's MY PLAYLIST screen writes with the overlay's Latin fonts - accents included -
+// or ImGui's own font when they could not be loaded; bold = the FPS counter's semibold one)
+ImFont *Wwe12OverlayFont(bool bold) { return bold ? g_font_num : g_font_text; }

@@ -176,12 +176,15 @@ function FromCross()
   Cross()
 end
 
-function FromSub2()
-  local changed = false
-  for i = 1, N do
-    if val[i] ~= bak[i] then changed = true end
-    val[i] = bak[i]
-    yFrame.SetLayoutStr(NAME, VAL[i], VBASE[i] + val[i])
-  end
-  if changed == true then yFrame.PlaySe_NoCheck(7) end
+function FromSub1()
+  yOption.InitInGameOptions(104)
 end
+
+function FromSub2()
+  yOption.InitInGameOptions(105)
+end
+
+function FromSub3()
+  yOption.InitInGameOptions(106)
+end
+
