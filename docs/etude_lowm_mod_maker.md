@@ -4,6 +4,10 @@ Demande de l'utilisateur (2026-11-18, puis relancée par la Main le 2026-11-28 p
 dans MES DISQUES comme Kaiko, en commençant par Legends of WrestleMania (LOWM, 2009). **Étude seulement, rien n'est
 codé.** Pas de téléchargement du jeu ; aucune donnée du jeu dans le dépôt.
 
+**Décision de l'utilisateur (2026-11-28, via la Main) :** pour la 2.0, LOWM = **catcheurs, entrées (chariots
+compris) et arènes**. Pas de prises, pas de SmackDown PS2, pas de vidéos All Stars. Rien n'est codé avant son feu
+vert et ses disques (ISO Europe et USA).
+
 ## 1. Où on en est
 
 - **Chez nous** (`port/src/modmaker/game_discs.h`) : SvR 2007, 2008, 2009, 2010, 2011, WWE '13, 2K14, 2K15, 2K16,
@@ -28,6 +32,26 @@ Sources (dépôt `KaikoClanworth1/wwe-svr2011-pc`, lu en lecture seule) :
 - Moteur et formats de **SvR 2009** : tous les pac en EPAC, une PACH par fichier. Nos lecteurs (EPAC, PACH, BPE,
   JBOY, YMKs) les ouvrent tels quels.
 
+### Europe et USA
+
+- **Reconnaissance :** le Mod Maker reconnaît un jeu au numéro de titre de son `default.xex` (infos d'exécution,
+  `game_discs.h` `TitleOf`). Chez THQ, ce numéro est le même pour toutes les régions : seuls la zone et l'identifiant
+  de média du xex changent. Preuve chez nous : notre ISO **Europe** de SvR 2008 est reconnue avec 5451080B, le même
+  numéro que Kaiko donne sans parler de région. Donc 54510838 devrait reconnaître les deux ISO de LOWM. **À
+  confirmer** sur les deux disques en lisant leur xex (titre, zone, identifiant de média) avant de coder.
+- **Une seule ISO à la fois :** MES DISQUES garde un disque par numéro de titre. Ajouter l'ISO USA remplace l'ISO
+  Europe dans la liste, et inversement. Ça suffit : les deux doivent donner les mêmes catcheurs, entrées et arènes.
+- **Pas de texte d'une langue dans le code :** on lit les catcheurs par leur numéro (fiches CHAR/DAT de `chEtc`, noms
+  à +46 / +114 / +182), les arènes par leur numéro de fichier (`bg201`…) et les entrées par leur numéro (4001-4359).
+  Les noms d'arènes viennent de `string.pac` par **numéro d'entrée** (SDB 0100, entrée 674 + n − 200), jamais en
+  cherchant un texte. Si une version a plusieurs langues dans `string.pac`, on prend la table anglaise par sa place,
+  pas par son contenu.
+- **Ce qui peut différer entre les deux** (à vérifier) : `string.pac` (langues), les sons de commentaires et de menus
+  (`sound/`), les vidéos avec texte (`movies/`), et `default.xex`. Les modèles (`pac/ch`), les entrées
+  (`pac/evt/Nyujyo*`) et les arènes (`pac/bg`) devraient être identiques. Quand l'utilisateur donne ses deux ISO, une
+  comparaison fichier par fichier (taille et empreinte, hors jeu, rien de copié) dit exactement lesquels diffèrent ;
+  on lui donne la liste avant de coder.
+
 ## 3. Ce qui se lit déjà, ce qui manque
 
 | Partie | Où | Écart avec SvR 2009 | Effort chez nous |
@@ -48,18 +72,20 @@ jeu), `arena_page.h` (`kOldSvr`), `moveset_port.h`, `new_star_page.h` (plusieurs
 
 ## 4. Effort et ordre conseillé
 
-Sans les prises : **environ 3 jours** de travail avec le disque, tests en jeu compris. Les prises : à étudier ensuite.
+Périmètre décidé (sans les prises) : **environ 3 jours** de travail avec les disques, tests en jeu compris.
 
-1. Reconnaître le disque dans MES DISQUES.
+0. Comparer les ISO Europe et USA (liste des fichiers qui diffèrent, xex des deux) ; donner la liste à l'utilisateur.
+1. Reconnaître le disque dans MES DISQUES (les deux régions).
 2. Catcheurs (modèle, noms, stats, musique, titantron, rendus) ; test en jeu.
 3. Arènes ; test en jeu.
 4. Entrées sans chariot ; test en jeu. Puis les chariots.
-5. Ceintures.
-6. Prises : étude séparée.
+5. Ceintures (petit bonus si c'est le format de SvR 2008-2010).
+
+Hors périmètre (décision du 2026-11-28) : prises, SmackDown PS2, vidéos All Stars.
 
 ## 5. Ce qu'il faut de l'utilisateur
 
-- **Sa propre copie du jeu** (ISO ou dossier extrait), ajoutée dans MES DISQUES, seulement au moment de l'étape 1.
+- **Ses propres ISO** (Europe et USA), et son feu vert, seulement au moment de l'étape 0.
   On ne la télécharge pas pour lui.
 - Rien d'autre tant qu'on n'en est pas aux tests en jeu (qu'il fait ou autorise, comme d'habitude).
 
