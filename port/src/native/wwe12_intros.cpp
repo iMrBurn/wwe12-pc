@@ -29,9 +29,9 @@ REX_EXTERN(__imp__sub_82A8C070);
 
 u16 Wwe12RemotePadButtons();  // wwe12_remote_pad.cpp (dev)
 u16 Wwe12MouseMenuButtons();  // wwe12_mouse_menus.cpp: the mouse in the menus (A, B, up / down)
-bool Wwe12FreeCamPad(u32 user, u32 state);
-void Wwe12TurnStick(u32 state);
-void Wwe12MouseProbePad(u16 buttons);    // wwe12_mouse_probe.cpp (dev)           // wwe12_match_camera.cpp  // wwe12_match_camera.cpp: the free camera has the pads (zeroed)
+bool Wwe12FreeCamPad(u32 user, u32 state);  // wwe12_match_camera.cpp: the free camera has the pads (zeroed)
+void Wwe12TurnStick(u32 state);             // wwe12_match_camera.cpp: the left stick turned for our view
+void Wwe12MouseProbePad(u16 buttons, int16_t lx, int16_t ly);  // wwe12_mouse_probe.cpp (dev)
 u16 Wwe12MatchPad(u32 user, u16 buttons, u8 lt, u8 rt);  // wwe12_match_modes.cpp: buttons to hide from the game
 void Wwe12BootMovieAsked(u32 movie);  // wwe12_load_turbo.cpp (fast boot)
 void Wwe12BenchmarkRecordPad(u16 buttons, int16_t stick_x, int16_t stick_y, bool loading);  // wwe12_benchmark.cpp
@@ -82,7 +82,7 @@ extern "C" REX_FUNC(sub_82A8C070) {
   if (user != 0 || !state)
     return;
   if (ctx.r3.u32 == 0)  // (dev: the mouse probe's presses)
-    Wwe12MouseProbePad(bd::mem::load<u16>(state + 4));
+    Wwe12MouseProbePad(bd::mem::load<u16>(state + 4), bd::mem::load<int16_t>(state + 8), bd::mem::load<int16_t>(state + 10));
   if (ctx.r3.u32 == 0)  // a pad is there: its own buttons, for the benchmark's route recorder (dev)
     Wwe12BenchmarkRecordPad(bd::mem::load<u16>(state + 4), bd::mem::load<int16_t>(state + 8),
                             bd::mem::load<int16_t>(state + 10), Wwe12LoadingScreenUp());

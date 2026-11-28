@@ -35,7 +35,6 @@ REXCVAR_DEFINE_BOOL(wwe12_mouse_probe, false, "WWE12",
                     "logs\\mouse_layout_NN.txt).");
 
 REX_EXTERN(__imp__sub_8253F9A0);
-REX_EXTERN(__imp__sub_8254E920);
 
 bool Wwe12LoadingScreenUp();               // wwe12_load_turbo.cpp
 bool Wwe12SceneMode();                     // wwe12_fps.cpp
@@ -59,6 +58,7 @@ long long g_next_report = 0;
 long long g_dump_at = 0;  // when to dump after a press (0: none)
 u16 g_last_buttons = 0;
 int g_dumps = 0;
+std::map<u32, long long> g_last_screens;  // layout screens (sub_824D3458) and when they ticked last
 
 std::string Str(u32 at, u32 max) {
   std::string out;
@@ -97,44 +97,70 @@ void Report(const char *why) {
   BD_INFO("[mouse probe] {}{} | {}", why, line.empty() ? std::string(" | no menu hook") : line, MenuWords(g_menu));
 }
 
+// v2 (2026-11-28: sub_8254E920 = *(*0x8324DEF4 + 84) gave nothing in the main menu): every layout the layout holder
+// *0x8324DEF4 keeps (+64..+124, as the manager at +96: +12 groups {u32 count, u32 elements}, +28 group count, elements
+// of 240 bytes), named elements only; and the words of the menu object and of the layout screens ticking now.
+void DumpElements(std::ofstream &f, u32 at, u32 e, u32 g) {
+  const u32 text = bd::mem::load<u32>(at + 200);
+  f << fmt::format("  g{} e{} @{:08X} kind={:X} x={} y={} sx={} sy={} name={} parent={:08X} hidden={:08X} "
+                   "colour={:08X} {:08X} {:08X} flags={:08X} text={}\n",
+                   g, e, at, bd::mem::load<u32>(at), bd::mem::load<float>(at + 4), bd::mem::load<float>(at + 8),
+                   bd::mem::load<float>(at + 12), bd::mem::load<float>(at + 16), Str(at + 96, 32),
+                   bd::mem::load<u32>(at + 176), bd::mem::load<u32>(at + 180), bd::mem::load<u32>(at + 184),
+                   bd::mem::load<u32>(at + 188), bd::mem::load<u32>(at + 192), bd::mem::load<u32>(at + 228),
+                   text && bd::mem::try_at<u8>(text) ? Str(text, 40) : std::string("-"));
+}
+
+void DumpWords(std::ofstream &f, const char *what, u32 at, u32 size) {
+  if (!at || !bd::mem::try_at<u8>(at + size))
+    return;
+  f << fmt::format("{} {:08X} (vtbl {:08X}):", what, at, bd::mem::load<u32>(at));
+  for (u32 o = 0; o < size; o += 4)
+    f << fmt::format("{}{:08X}", o % 64 ? " " : fmt::format("\n  +{:03X}: ", o), bd::mem::load<u32>(at + o));
+  f << "\n";
+}
+
 void DumpLayout(const PPCContext &in, u8 *base) {
-  PPCContext x = in;
-  x.r3.u64 = 0;
-  __imp__sub_8254E920(x, base);
-  const u32 layout = x.r3.u32;
+  (void)in, (void)base;
   auto *state = REX_KERNEL_STATE();
-  if (!layout || !bd::mem::try_at<u8>(layout + 28) || !state || !state->emulator())
+  const u32 holder = bd::mem::try_load<u32>(0x8324DEF4);
+  if (!holder || !state || !state->emulator())
     return;
   const int n = ++g_dumps;
   const auto dir = state->emulator()->user_data_root() / "logs";
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
   std::ofstream f(dir / fmt::format("mouse_layout_{:02}.txt", n));
-  const u32 groups = bd::mem::load<u32>(layout + 4), group_count = bd::mem::load<u32>(layout + 20);
-  const u32 elements = bd::mem::load<u32>(layout + 8), element_count = bd::mem::load<u32>(layout + 24);
-  f << fmt::format("layout 0x{:08X}: {} groups at 0x{:08X}, {} elements at 0x{:08X} | {}\n", layout, group_count,
-                   groups, element_count, elements, MenuWords(g_menu));
-  for (u32 g = 0; g < group_count && g < 4096; ++g) {
-    const u32 at = groups + g * 144;
-    std::string words;
-    for (u32 o = 0; o < 144; o += 4)
-      words += fmt::format(" {:08X}", bd::mem::load<u32>(at + o));
-    f << fmt::format("G{} @{:08X} n={} first={:08X}:{}\n", g, at, bd::mem::load<u32>(at + 76),
-                     bd::mem::load<u32>(at + 112), words);
-  }
-  for (u32 e = 0; e < element_count && e < 8192; ++e) {
-    const u32 at = elements + e * 240;
-    const u32 text = bd::mem::load<u32>(at + 200);
-    f << fmt::format("E{} @{:08X} kind={:X} x={} y={} sx={} sy={} font={} name={} parent={:08X} hidden={:08X} "
-                     "colour={:08X} text={}\n",
-                     e, at, bd::mem::load<u32>(at), bd::mem::load<float>(at + 4), bd::mem::load<float>(at + 8),
-                     bd::mem::load<float>(at + 12), bd::mem::load<float>(at + 16), Str(at + 80, 16),
-                     Str(at + 96, 16), bd::mem::load<u32>(at + 176), bd::mem::load<u32>(at + 180),
-                     bd::mem::load<u32>(at + 184), text ? Str(text, 40) : std::string("-"));
+  f << MenuWords(g_menu) << "\n";
+  DumpWords(f, "menu", g_menu, 0x200);
+  for (auto &[obj, when] : g_last_screens)
+    if (NowMs() - when < 200)
+      DumpWords(f, "screen", obj, 0x400);
+  DumpWords(f, "holder", holder, 0x100);
+  u32 named = 0;
+  for (u32 o = 64; o <= 124; o += 4) {
+    const u32 m = bd::mem::try_load<u32>(holder + o);
+    if (!m || !bd::mem::try_at<u8>(m + 32))
+      continue;
+    const u32 groups = bd::mem::load<u32>(m + 12), count = bd::mem::load<u32>(m + 28);
+    if (!groups || count == 0 || count > 4096 || !bd::mem::try_at<u8>(groups + count * 16))
+      continue;
+    f << fmt::format("holder+{} manager {:08X}: {} groups at {:08X}\n", o, m, count, groups);
+    for (u32 g = 0; g < count; ++g) {
+      const u32 ec2 = bd::mem::load<u32>(groups + g * 16), els = bd::mem::load<u32>(groups + g * 16 + 4);
+      if (!els || ec2 > 4096 || !bd::mem::try_at<u8>(els + ec2 * 240))
+        continue;
+      for (u32 e = 0; e < ec2; ++e) {
+        const u32 at = els + e * 240;
+        if (!bd::mem::try_load<u8>(at + 96))
+          continue;
+        DumpElements(f, at, e, g);
+        ++named;
+      }
+    }
   }
   Wwe12RemoteShot(fmt::format("mouse_{:02}", n));
-  BD_INFO("[mouse probe] dump {:02}: layout {:08X} ({} groups, {} elements) + frame", n, layout, group_count,
-          element_count);
+  BD_INFO("[mouse probe] dump {:02}: {} named elements + menu / screens / holder words + frame", n, named);
 }
 
 }  // namespace
@@ -145,6 +171,8 @@ void Wwe12MouseProbeTick(int kind, const PPCContext &ctx, u8 *base) {
     return;
   std::lock_guard lock(g_mu);
   ++g_seen[kind][ctx.r3.u32];
+  if (kind == 1)
+    g_last_screens[ctx.r3.u32] = NowMs();
   if (kind == 3 || kind == 4 || kind == 5)
     g_menu = ctx.r3.u32;
   const long long now = NowMs();
@@ -160,13 +188,19 @@ void Wwe12MouseProbeTick(int kind, const PPCContext &ctx, u8 *base) {
   }
 }
 
-// From wwe12_intros.cpp's XInputGetState hook (player 1, a pad there): D-pad / A / B presses start a dump.
-void Wwe12MouseProbePad(u16 buttons) {
+// From wwe12_intros.cpp's XInputGetState hook (player 1, a pad there): D-pad (or stick) / A / B presses start a dump.
+void Wwe12MouseProbePad(u16 buttons, int16_t lx, int16_t ly) {
   if (!REXCVAR_GET(wwe12_mouse_probe))
     return;
   std::lock_guard lock(g_mu);
-  const u16 newly = u16(buttons & ~g_last_buttons & 0x300F);  // D-pad, A, B
-  g_last_buttons = buttons;
+  // the left stick pushed (keyboard arrows too, as the SDK maps them) counts as the D-pad
+  u16 now_b = buttons;
+  if (ly > 16000) now_b |= 0x0001;
+  if (ly < -16000) now_b |= 0x0002;
+  if (lx < -16000) now_b |= 0x0004;
+  if (lx > 16000) now_b |= 0x0008;
+  const u16 newly = u16(now_b & ~g_last_buttons & 0x300F);  // D-pad, A, B
+  g_last_buttons = now_b;
   if (newly) {
     g_dump_at = NowMs() + 400;
     BD_INFO("[mouse probe] press {:04X} | {}", newly, MenuWords(g_menu));
