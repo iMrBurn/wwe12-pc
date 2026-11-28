@@ -89,3 +89,13 @@ Estimation si tout est validé : 3 à 4 h (tableaux, ligne dans RÉGLAGES, ≤ 2
 - **Flou de profondeur coupé** : aucun dessin retiré (constantes à zéro) : gain GPU seulement, ≈ 0 sur ce banc.
 - **Anisotropie 16 contre 0** : coût GPU seulement, ≈ 0 sur ce banc ; ne compte que sur un GPU vraiment faible.
 - Conséquence pour le §3 : dans le cas « le processeur freine », **la foule est le seul réglage utile** (cohérent avec la proposition).
+
+## 9. Décisions d'iMrBurn (2026-11-28) et état du code
+
+- **UN SEUL profil** : résolution 720p au plus, foule / ombres / flou coupés, 16:10 gardé, Vulkan sous Wine / Proton ; le « 30 en match » reste un
+  bouton séparé, jamais dans le profil ; aucune nouvelle clé. Les paliers 540 / 480 de la détection sont supprimés (PC MODESTE reste le 480p).
+- **Fait (commit local)** : `machine_profile.h` (profil unique ; ≤ 2 cœurs = +2 points) ; ligne « Votre PC semble limité : appliquer le profil
+  « petit PC » ? » + bouton dans RÉGLAGES, tant que le profil n'est pas appliqué (même logique et même « Annuler le préréglage » que la
+  fenêtre du démarrage) ; vu à l'écran avec `SteamDeck=1` (variante Deck du texte).
+- **Pas testé** : un vrai petit PC (2 cœurs) / un vrai Deck ; le clic sur « Appliquer » dans RÉGLAGES (même code que la fenêtre du démarrage).
+- Le verdict du test de performance ne choisit plus de profil (un seul profil).

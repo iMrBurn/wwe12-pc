@@ -953,6 +953,33 @@ void UndoLowEndPreset() {
   SaveSettings();
 }
 
+// The small-PC / Steam Deck profile for this machine (machine_profile.h), looked at once the graphics check has
+// answered. kind None = a normal PC (nothing to suggest). Used by the start-up offer and by the SETTINGS line.
+const machine::Profile *SuggestedProfile() {
+  static int state = 0;  // 0 not looked at yet, 1 done
+  static machine::Profile prof;
+  if (state == 0) {
+    if (g_vulkan.GetState() == VulkanCheck::State::Checking)
+      return nullptr;
+    state = 1;
+    const auto used = g_vulkan.UsedDevice(g_s.gpu);
+    prof = machine::Choose(machine::Detect(), used.name, used.kind);
+  }
+  return &prof;
+}
+
+Preset PresetOf(const machine::Profile &prof) {
+  Preset p;
+  p.scale = prof.scale;
+  p.crowd = prof.crowd;
+  p.shadows = prof.shadows;
+  p.dof = prof.dof;
+  p.set_widescreen = true;
+  p.widescreen = prof.widescreen;
+  p.api = prof.api;
+  return p;
+}
+
 // "Apply the advised settings" after the performance test (benchmark_run.h): only on the player's click. The values from
 // before go to benchmark_advice_backup.txt (next to the launcher), the button "Undo" puts them back. cpu = 30 fps in
 // matches (experimental) + no crowd; gpu = a lower resolution. On the Steam Deck / small-PC profile the 30 fps is never
@@ -1063,6 +1090,24 @@ void PageSettings() {
   ImGui::TextDisabled("%s", t.lowend_hint);
   if (LowEndBackupExists())
     ImGui::TextDisabled("%s", t.lowend_undo_hint);
+  // "Your PC looks limited": the same profile as the start-up offer, shown here for good (the offer can be dismissed).
+  if (const machine::Profile *sp = SuggestedProfile(); sp && sp->kind != machine::Kind::None && !LowEndBackupExists()) {
+    const bool fr_ = g_s.language == 4;
+    ImGui::Dummy(ImVec2(0, 4));
+    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
+                       fr_ ? (sp->kind == machine::Kind::Deck ? "Votre appareil ressemble à un Steam Deck : appliquer le profil recommandé ?"
+                                                              : "Votre PC semble limité : appliquer le profil « petit PC » ?")
+                           : (sp->kind == machine::Kind::Deck ? "Your device looks like a Steam Deck: apply the recommended profile?"
+                                                              : "Your PC looks limited: apply the small-PC profile?"));
+    if (ImGui::Button(fr_ ? "Appliquer le profil recommandé" : "Apply the recommended profile")) {
+      ApplyPreset(PresetOf(*sp));
+      changed = true;
+    }
+    ImGui::TextDisabled("%s", fr_ ? "720p au plus, sans foule, ombres ni flou. « Annuler le préréglage » remet tout comme avant. "
+                                    "Le 30 images/s en match reste un choix à part (ADVANCED)."
+                                  : "720p at most, no crowd, shadows or depth of field. \"Undo the preset\" puts everything back. "
+                                    "30 fps in matches stays a separate choice (ADVANCED).");
+  }
   ImGui::PopTextWrapPos();
   ImGui::Dummy(ImVec2(0, 4));
 
@@ -1913,15 +1958,7 @@ void DrawProfileOffer() {
   ImGui::PopTextWrapPos();
   ImGui::Dummy(ImVec2(0, 6));
   if (ImGui::Button(t.prof_apply)) {
-    Preset p;
-    p.scale = prof.scale;
-    p.crowd = prof.crowd;
-    p.shadows = prof.shadows;
-    p.dof = prof.dof;
-    p.set_widescreen = true;
-    p.widescreen = prof.widescreen;
-    p.api = prof.api;
-    ApplyPreset(p);
+    ApplyPreset(PresetOf(prof));
     WriteProfileOfferMarker();
     state = 1;
     ImGui::CloseCurrentPopup();

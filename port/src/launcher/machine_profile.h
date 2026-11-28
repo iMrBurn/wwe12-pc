@@ -131,7 +131,9 @@ inline Profile Choose(const Facts &f, const std::string &gpu_name, int gpu_kind)
     score += 2;  // graphics built into the processor
   if (gpu_kind == 1 && vram_mb && vram_mb < 3584)
     score += 2;  // a small dedicated card (Rendu's own limit)
-  if (f.cores && f.cores <= 4)
+  if (f.cores && f.cores <= 2)
+    score += 2;  // 2 cores or fewer: the processor is the limit (the bench PC: 2 E-cores)
+  else if (f.cores && f.cores <= 4)
     ++score;
   if (f.ram_gb && f.ram_gb <= 8)
     ++score;
@@ -139,8 +141,12 @@ inline Profile Choose(const Facts &f, const std::string &gpu_name, int gpu_kind)
     return p;  // a normal PC: nothing to offer
   p.kind = Kind::Small;
   p.score = score;
-  p.scale = (score >= 5 || (f.ram_gb && f.ram_gb <= 4)) ? 480 : score >= 3 ? 540 : 720;  // one weak point: 720p (the game's own pick for integrated graphics)
-  p.crowd = score < 3;  // the crowd is kept only on machines that are weak on one side
+  // ONE profile (decision of 2026-11-28), what helps both a weak processor and a weak card without hurting: resolution
+  // capped at 720p (the game's own pick for integrated graphics), crowd off (about 435 of 670 draws in a match: the
+  // only setting that helps a processor-bound PC), shadows and depth of field off. Not in it: thread priorities and
+  // texture copy (measured: no gain), the 30 fps mode (a separate button, never automatic).
+  p.scale = 720;
+  p.crowd = false;
   p.shadows = false;
   p.dof = false;
   p.widescreen = true;
