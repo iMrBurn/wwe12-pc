@@ -89,3 +89,12 @@ Estimation : 1 session courte pour le code et le journal ; le test joué en plus
   `sub_828A99D0`, `sub_826EAAF8`…). Le crochet met l'octet 2 à 0 dans la copie (jamais dans le bloc lui-même, donc la
   sauvegarde n'est pas changée), avec une ligne `[replay] skip … POST MATCH REPLAY x -> 0`.
 - Non prouvé : que 0 = OFF (ordre des textes OFF/ON du panneau) et que l'exhibition lise bien cet octet. L'essai 2 le dira.
+
+## 7. Résultat (2026-11-28)
+
+- **Essai 2 validé en jeu par iMrBurn** (« nickel ») : exhibition, la scène de victoire arrive directement, MATCH
+  HIGHLIGHTS reste accessible. 0 = OFF confirmé.
+- **À tester** : match pour un titre, match Univers + sauvegarde, REMATCH, RTWM, Create a Story.
+- Reste : case « Skip the instant replay after matches » dans le launcher (page GAMEPLAY, session Launcher), notes
+  de version (2.0). Phrase proposée : « New option `wwe12_skip_replay`: skip the instant replay after matches (the
+  victory scene comes right after the bell; MATCH HIGHLIGHTS still works). Off by default. »
