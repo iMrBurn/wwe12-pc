@@ -234,3 +234,13 @@ void Wwe12MouseMenusScreen(u32 screen) {
 void Wwe12MouseMenusPicture(int x, int y, int w, int h) {
   g_pic_x = x, g_pic_y = y, g_pic_w = w, g_pic_h = h;
 }
+
+// Univers' MY PLAYLIST screen (2.0), when it closes: the clicks and wheel steps queued while it had the pad are dropped
+// (they would reach the game's menu under it). Any thread.
+void Wwe12MouseMenusDrop() {
+  std::lock_guard lock(g_mu);
+  g_queue.clear();
+  g_wheel = 0;
+  g_target = -1;
+  g_click_on_target = false;
+}
