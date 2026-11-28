@@ -97,3 +97,26 @@ En réflexion : un menu de réglages complet dans le jeu (touche F1, comme les p
 - Fait : vue rampe (réglages de l'essai C2), caméra libre (vol, figée pour jouer, F7 interface, F8 pause), flou de profondeur coupé en rampe, tri des objets avec notre champ de vision, écran géant : image miroir retirée (`wwe12_live_screen`) et logo de l'émission à la place (`wwe12_titantron_logo`, en test).
 - À ajouter : support de la souris dans les menus, menu de réglages F1 (en réflexion), rivalités par marque / tournois / statistiques Univers, idées de Kaiko et Jarrod.
 - Autres : Android 1.6 ou 2.0 (USB et manette #87, APK 1.5.0 non testé sur téléphone), issues ouvertes (#69, #74, #82 à #87, #92), iOS en pause, page ROSTERS du launcher, chaos de l'Univers (0 à 3).
+
+## Ajouts de l'utilisateur du 2026-11-28 (efforts : estimations de la Main)
+
+### Nouvelles idées 2.0
+| Idée | Effort | Session probable |
+|---|---|---|
+| Option pour désactiver le replay d'après match | petit | Gameplay |
+| Changer de catcheur en plein match (touche dédiée, sans pause) | gros | Gameplay |
+| Jukebox : activer / couper des chansons, playlist perso en musique du menu principal (comme le portage SvR 2011) | petit à moyen | Univers (jukebox) |
+| Importer des images dans le Mod Maker | moyen | Mod Maker |
+| Outils d'arènes personnalisées (plus de scènes, tailles, calques, extérieur) | gros | Mod Maker / Rendu |
+| Ceintures personnalisées (éditeur de titres / Create a Championship) | gros | Mod Maker / Univers |
+| Grandes émissions / PPV personnalisés dans l'Univers | moyen | Univers |
+| Créations de la communauté (partage en ligne : CAW, arènes, logos, histoires, entrées, finishers, Match Creator) | très gros (serveur, modération, sécurité) | à cadrer |
+
+### Idées de matchs et de gameplay (liste « Match Types » collée par l'utilisateur)
+- Types de matchs : 2 vs 2 vs 2 (de SvR 2008), 6-Man Tornado Tag (+ Elimination, + Hardcore Triple Threat), King of the Ring, Beat the Clock Sprint,
+  2 vs 2 Elimination Table / Extreme Rules Tornado Tag, 2 vs 3 Tornado Tag, Slobber Knocker, 3 Stages of Hell, Gauntlet Turmoil (sous-menu du nombre d'adversaires).
+- Règles libres pour n'importe quel match (ex. 2 sur 3 Last Man Standing, HIAC / Inferno) + option du launcher « configurations sans restriction » (avec avertissement : le match peut planter).
+- Gameplay : déclencher une interférence avec un bouton, spectateurs qui donnent des armes, monter sur les tables des commentateurs, afficher les commandes de chaque catcheur à l'écran, chronomètre visible dans tous les types de matchs.
+
+### Liste courte du 1.x (rappel)
+Lecture manette synchrone (#81), profil « petit PC », saignement des catcheuses, idées Univers (challengers, Légendes du Rumble, mois de départ : fait).
