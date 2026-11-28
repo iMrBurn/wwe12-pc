@@ -2088,7 +2088,9 @@ extern "C" REX_FUNC(sub_825A5C88) {
 }
 
 // Every frame the screen draws: LB / RB read from the pad (one tab only: the widget drops them).
+void Wwe12MouseProbeTick(int kind, const PPCContext &ctx, u8 *base);  // wwe12_mouse_probe.cpp (dev)
 extern "C" REX_FUNC(sub_825A6A98) {
+  Wwe12MouseProbeTick(6, ctx, base);
   const u32 screen = g_screen;
   const bool ours = screen && (ctx.r3.u32 == screen || ctx.r3.u32 == screen + 28);
   if (ours && g_pages.size() > 1) {

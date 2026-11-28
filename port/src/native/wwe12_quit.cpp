@@ -301,7 +301,9 @@ REX_EXTERN(__imp__sub_8253A028);
 // 45061, SHOP relabelled EXIT by wwe12_menu_patch.cpp, closes the game.
 void Wwe12DiscordDecide(const PPCContext &ctx, u8 *base);  // wwe12_discord.cpp: the mode for Discord
 void Wwe12MatchDecide(uint32_t id, uint32_t parent, uint32_t label);  // wwe12_match_modes.cpp: I QUIT chosen?
+void Wwe12MouseProbeTick(int kind, const PPCContext &ctx, u8 *base);  // wwe12_mouse_probe.cpp (dev)
 extern "C" REX_FUNC(sub_8253C3F0) {
+  Wwe12MouseProbeTick(5, ctx, base);
   Wwe12DiscordDecide(ctx, base);
   {
     PPCContext probe = ctx;

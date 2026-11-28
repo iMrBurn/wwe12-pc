@@ -398,3 +398,9 @@ void Wwe12RemoteExpectMatch() {
   g_saw_scene = true;
   g_loaded_after_scene = false;
 }
+
+// wwe12_mouse_probe.cpp (dev): the next presented frame saved as logs\shots\<name>.bmp, as the remote pad's "shot".
+void Wwe12RemoteShot(const std::string &name) {
+  std::lock_guard lock(g_shot_mu);
+  g_shot_name = name;
+}

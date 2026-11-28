@@ -4024,7 +4024,9 @@ bool ScheduleButtons(const PPCContext &in, u8 *base, u32 screen);  // Y on SCHED
 bool ShowEditButtons(const PPCContext &in, u8 *base, u32 screen);  // Y on SHOW EDIT: its matches
 }
 
+void Wwe12MouseProbeTick(int kind, const PPCContext &ctx, u8 *base);  // wwe12_mouse_probe.cpp (dev)
 extern "C" REX_FUNC(sub_824D20A0) {
+  Wwe12MouseProbeTick(2, ctx, base);
   const u32 screen = ctx.r3.u32;
   ChoiceColumns(screen);
   FlushNews(ctx, base);
@@ -6054,6 +6056,7 @@ void AskStartMonth(const PPCContext &in, u8 *base) {
 REX_EXTERN(__imp__sub_824D3458);
 REX_EXTERN(__imp__sub_8254E7D0);  // message box: idle (none open)?
 extern "C" REX_FUNC(sub_824D3458) {
+  Wwe12MouseProbeTick(1, ctx, base);
   if (REXCVAR_GET(wwe12_universe_probe) && bd::mem::try_load<u32>(ctx.r3.u32) == kSuperstarPageVtbl)
     DumpPageLayout(ctx, base);
   if (g_pages.page && ctx.r3.u32 == g_pages.screen) {
