@@ -216,7 +216,11 @@ void DumpLayout(const PPCContext &in, u8 *base) {
 }  // namespace
 
 // From the menus' hooks (here and in wwe12_universe.cpp, wwe12_quit.cpp, wwe12_arena_pages.cpp).
+void Wwe12MouseMenusScreen(u32 screen);  // wwe12_mouse_menus.cpp: a layout screen ticked (sub_824D3458)
+
 void Wwe12MouseProbeTick(int kind, const PPCContext &ctx, u8 *base) {
+  if (kind == 1)
+    Wwe12MouseMenusScreen(ctx.r3.u32);
   if (!REXCVAR_GET(wwe12_mouse_probe) || kind <= 0 || kind >= kKindCount)
     return;
   std::lock_guard lock(g_mu);

@@ -81,6 +81,7 @@ void Wwe12ThreadCpuReport(double frames);  // wwe12_thread_cpu.cpp: CPU per fram
 void Wwe12CameraProbePresent();  // wwe12_camera_probe.cpp (dev, off by default)
 float Wwe12GameGammaExponent();  // wwe12_gamma.cpp
 bool Wwe12ConsolePicture();      // wwe12_gamma.cpp
+void Wwe12MouseMenusPicture(int x, int y, int w, int h);  // wwe12_mouse_menus.cpp: the picture in the window
 #endif
 
 namespace bd::gpu {
@@ -371,6 +372,9 @@ void RecordPresentPass(VideoState &s, GuestTexture *rt,
   i32 off_x = 0, off_y = 0;
   Output::ComputeFit(swap_w, swap_h, present_aspect, fit_w, fit_h, off_x,
                           off_y);
+#if defined(SVR_NATIVE_RENDERER)
+  Wwe12MouseMenusPicture(off_x, off_y, int(fit_w), int(fit_h));
+#endif
   {
     static u64 logged = 0;
     const u64 key = (u64(swap_w) << 48) ^ (u64(swap_h) << 32) ^ (u64(fit_w) << 16) ^ fit_h;
