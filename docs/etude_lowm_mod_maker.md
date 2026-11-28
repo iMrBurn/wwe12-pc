@@ -8,7 +8,29 @@ codé.** Pas de téléchargement du jeu ; aucune donnée du jeu dans le dépôt.
 compris) et arènes**. Pas de prises, pas de SmackDown PS2, pas de vidéos All Stars. Rien n'est codé avant son feu
 vert et ses disques (ISO Europe et USA).
 
-## 1. Où on en est
+## 0. État au 2026-11-28 : fait, vérifié hors du jeu
+
+L'utilisateur a donné son ISO **Europe** (`Desktop\WWE ISOS\WWE Legends of WrestleMania (Europe).iso`) et son feu
+vert. Pas encore d'ISO USA : la comparaison des régions attend.
+
+- **Disque :** xex titre 54510838, média 59180D5B, zone 00FF0000 (Europe). 398 fichiers, la disposition de Kaiko.
+- **Code** (`port/src/modmaker/`) : `game_discs.h` (MES DISQUES), `star_port.h` (`kLowm`, `SvrOld`, nom du jeu),
+  `strings2k.h` et `ratings_import.h` (fiche 262 octets, numéro à +44), `new_star_page.h` / `superstar_page.h`
+  (choix du jeu, échelle des rendus 1.15 comme 2009), `theme_source.h` (musique PRO +0xE4), `svr_old_entrance.h`
+  (règles de Kaiko : figurants → 13902, objet 6 toujours du modèle 2011 ; chariots refusés avec leur raison),
+  `svr_scenes.h`, `arena_page.h` (carte « Legends of WrestleMania », `svr_lowm_`, année 2009), `port_svr_arena.h`
+  (table `kArenasLowm`, images VS `M<hexa>I`), `moveset_port.h` (prises : refus clair, hors périmètre).
+- **Vérifié hors du jeu avec le code du Mod Maker** (outil de test dans le dossier temporaire, rien de copié) :
+  - noms : 101 fiches nommées de 100 à 254 (100 The Rock, 254 Ultimate Warrior) ;
+  - catcheurs : les 99 modèles `ch100-254` portés sur une base WWE '12 sans erreur ;
+  - entrées : 157, dont 124 converties ; 29 chariots refusés (pas encore portés) ; 4 échecs propres (4030, 4200,
+    4311, 4312 : « a key value out of its field » / une table d'événements) ;
+  - arènes : les 16 (WrestleMania I à XV, Royal Rumble) converties ;
+  - ceintures : 12 familles lues (dont Million Dollar, WCW classique, Attitude).
+- **Pas fait :** test en jeu (à l'utilisateur), stats (pas de table d'équivalence : celles de la base), chariots,
+  les 4 entrées en échec, comparaison Europe / USA.
+
+## 1. Où on en est (étude du 2026-11-28, avant le code)
 
 - **Chez nous** (`port/src/modmaker/game_discs.h`) : SvR 2007, 2008, 2009, 2010, 2011, WWE '13, 2K14, 2K15, 2K16,
   2K17. LOWM manque. Pas de disque LOWM sur ce PC (ni dans `Desktop\WWE ISOS`, ni dans `modmaker_discs.txt`).

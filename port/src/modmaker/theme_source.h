@@ -306,6 +306,7 @@ inline bool Find(const disc::GameDisc &g, uint32_t title, int number, Theme &out
     }
     case 0x5451080B:    // SvR 2008
     case 0x54510826:    // SvR 2009
+    case 0x54510838:    // Legends of WrestleMania (SvR 2009's)
     case 0x54510844: {  // SvR 2010
       // (a theme's records: music x 100 and its variants + 10, + 20; SvR 2008 Johnny Nitro, 75, has only 7520)
       std::vector<int> ids;
@@ -316,7 +317,7 @@ inline bool Find(const disc::GameDisc &g, uint32_t title, int number, Theme &out
       if (title != 0x5451080B) {
         const auto pro = Records(g, "PRO");
         const auto it = pro.find(uint32_t(number));
-        const int music = it != pro.end() ? Le16(it->second, title == 0x54510826 ? 0xE4 : 0x178) : 0;
+        const int music = it != pro.end() ? Le16(it->second, title == 0x54510826 || title == 0x54510838 ? 0xE4 : 0x178) : 0;
         if (music)
           with_variants(music);
       }

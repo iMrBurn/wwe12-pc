@@ -191,7 +191,9 @@ inline std::map<int, std::string> SuperstarNames(const disc::GameDisc &g) {
       continue;
     const auto walk = [&](auto &self, svrfmt::ArcNode &n, int depth) -> void {
       const Bytes d = depth ? svrfmt::ArchiveData(n) : Bytes();
-      const size_t id_at = d.size() == 264 || d.size() == 252 ? 36 : d.size() == 290 ? 44 : d.size() == 324 ? 56
+      // (Legends of WrestleMania: 262 bytes, SvR 2009's with 8 more rating bytes: id at +44, name at +46)
+      const size_t id_at = d.size() == 264 || d.size() == 252 ? 36 : d.size() == 290 || d.size() == 262 ? 44
+                           : d.size() == 324                   ? 56
                            : d.size() == 232                   ? 30
                            : d.size() == 176                   ? 26
                                                                : 0;

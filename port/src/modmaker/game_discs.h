@@ -40,6 +40,9 @@ inline constexpr Known kKnown[] = {
     {0x545107E0, "WWE SmackDown vs. Raw 2007", Can::kYes, Can::kYes},
     {0x5451080B, "WWE SmackDown vs. Raw 2008", Can::kYes, Can::kYes},
     {0x54510826, "WWE SmackDown vs. Raw 2009", Can::kYes, Can::kYes},
+    // (SvR 2009's engine and files; docs/etude_lowm_mod_maker.md, after Kaiko's notes. One title id for Europe and USA:
+    // the Europe ISO's xex, 2026-11-28, media 59180D5B region 00FF0000)
+    {0x54510838, "WWE Legends of WrestleMania", Can::kYes, Can::kYes},
     {0x54510844, "WWE SmackDown vs. Raw 2010", Can::kYes, Can::kYes},
     {0x5451085D, "WWE SmackDown vs. Raw 2011", Can::kYes, Can::kYes},
     {0x54510890, "WWE '12", Can::kNo, Can::kNo},  // (this game)

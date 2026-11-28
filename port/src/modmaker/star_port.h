@@ -57,12 +57,16 @@ inline const char *GameName(uint32_t title) {
          : title == 0x5451085D ? "SvR 2011"
          : title == 0x54510844 ? "SvR 2010"
          : title == 0x54510826 ? "SvR 2009"
+         : title == 0x54510838 ? "Legends of WrestleMania"
          : title == 0x5451080B ? "SvR 2008"
          : title == 0x545107E0 ? "SvR 2007"
                                : "WWE '13";
 }
-// SvR 2007-2010 (their moves aren't read yet; entrance and victory through SvR 2011's format)
-inline bool SvrOld(uint32_t t) { return t == 0x54510844 || t == 0x54510826 || t == 0x5451080B || t == 0x545107E0; }
+// SvR 2007-2010 and Legends of WrestleMania (SvR 2009's engine; entrance and victory through SvR 2011's format)
+constexpr uint32_t kLowm = 0x54510838;
+inline bool SvrOld(uint32_t t) {
+  return t == 0x54510844 || t == 0x54510826 || t == kLowm || t == 0x5451080B || t == 0x545107E0;
+}
 inline bool Svr(uint32_t t) { return t == 0x5451085D || SvrOld(t); }
 // WWE '13 and the 2K games (entrance13.h: WWE '12's format)
 inline bool Scenes(uint32_t t) {

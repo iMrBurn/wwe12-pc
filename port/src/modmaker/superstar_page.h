@@ -1093,8 +1093,8 @@ class Page {
   }
 
   static constexpr std::pair<uint32_t, const char *> kGames[] = {
-      {0x5451085D, "SvR 2011"}, {0x54510844, "SvR 2010"}, {0x54510826, "SvR 2009"}, {0x5451080B, "SvR 2008"},
-      {0x545107E0, "SvR 2007"}, {0x545108B4, "WWE '13"},  {0x545408B2, "WWE 2K14"}, {0x545408B6, "WWE 2K15"},
+      {0x5451085D, "SvR 2011"}, {0x54510844, "SvR 2010"}, {0x54510826, "SvR 2009"}, {0x54510838, "Legends of WM"},
+      {0x5451080B, "SvR 2008"}, {0x545107E0, "SvR 2007"}, {0x545108B4, "WWE '13"},  {0x545408B2, "WWE 2K14"}, {0x545408B6, "WWE 2K15"},
       {0x315A07D2, "WWE 2K16"}, {0x545408BA, "WWE 2K17"}};
   static const char *GameName(uint32_t title) {
     for (const auto &[t, name] : kGames)

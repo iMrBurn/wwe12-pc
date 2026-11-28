@@ -514,8 +514,9 @@ projets `.wwe12proj`), PRISES & ENTRÉES / MOVES & ENTRANCES (`moves_page.h`), V
   (`svr_scenes::PropDonors12`), commande 180 et emplacements identiques à la 506. Différence restante : le GMEV
   (506 : 14 entrées de type 9 en plus, 0xD2-0xDF ; le nôtre vient de SvR 2008). Essai non fait : le GMEV de la 506.
   Ceintures des entrées 2K (titre 5009 caché sous 2009 / 3009, `belt12.h`) : vu bon en jeu (The Miz 2K14).
-- Legends of WrestleMania (Xbox 360) : pas fait, faute de disque pour tester. Étude et notes de Kaiko dans
-  `docs/etude_lowm_mod_maker.md` (2026-11-28).
+- Legends of WrestleMania (Xbox 360) : catcheurs, entrées (sans les chariots), arènes et ceintures faits le
+  2026-11-28, vérifiés hors du jeu seulement ; pas les prises (choix de l'utilisateur). Détail :
+  `docs/etude_lowm_mod_maker.md`.
 - Le disque du rond central de WM 31 caché par le mur vidéo (laissé de côté) ; Mojo Rawley et Tye Dillinger (DLC 2K17)
   verts dans leurs propres fichiers.
 

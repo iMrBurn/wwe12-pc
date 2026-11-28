@@ -91,13 +91,14 @@ class Page {
         // (its look from another game when My game discs has one: WWE '13 and 2K first, else SvR 2011)
         look_ = discs_ && !discs_->PathOf(0x545108B4).empty()   ? 3
                 : discs_ && (!discs_->PathOf(0x5451085D).empty() || !discs_->PathOf(0x54510844).empty() ||
-                             !discs_->PathOf(0x54510826).empty() || !discs_->PathOf(0x5451080B).empty() ||
+                             !discs_->PathOf(0x54510826).empty() || !discs_->PathOf(0x54510838).empty() ||
+                             !discs_->PathOf(0x5451080B).empty() ||
                              !discs_->PathOf(0x545107E0).empty())
                     ? 2
                     : 1;
         // (the newest SvR game there)
         if (discs_ && discs_->PathOf(0x5451085D).empty())
-          for (uint32_t t : {0x54510844u, 0x54510826u, 0x5451080Bu, 0x545107E0u})
+          for (uint32_t t : {0x54510844u, 0x54510826u, 0x54510838u, 0x5451080Bu, 0x545107E0u})
             if (!discs_->PathOf(t).empty()) {
               svr_game_ = t;
               break;
@@ -290,9 +291,9 @@ class Page {
       // port_svr::Svr07Sheets; portraits MENU/SF2A-SF2B): which one.
       if (!w13) {
         static constexpr std::pair<uint32_t, const char *> kSvr[] = {
-            {0x5451085D, "SvR 2011"}, {0x54510844, "SvR 2010"}, {0x54510826, "SvR 2009"}, {0x5451080B, "SvR 2008"},
-            {0x545107E0, "SvR 2007"}};
-        for (int i = 0; i < 5; ++i) {
+            {0x5451085D, "SvR 2011"}, {0x54510844, "SvR 2010"}, {0x54510826, "SvR 2009"},
+            {0x54510838, "Legends of WM"}, {0x5451080B, "SvR 2008"}, {0x545107E0, "SvR 2007"}};
+        for (int i = 0; i < int(std::size(kSvr)); ++i) {
           const bool have = discs_ && !discs_->PathOf(kSvr[i].first).empty();
           if (i)
             ImGui::SameLine();
@@ -477,8 +478,8 @@ class Page {
     // ... or another game's render of a superstar (2K17's are renders of its 3D models: a photo from 2K15 / 2K16...)
     if (discs_) {
       static constexpr std::pair<uint32_t, const char *> kGames[] = {
-          {0x5451085D, "SvR 2011"}, {0x54510844, "SvR 2010"}, {0x54510826, "SvR 2009"}, {0x5451080B, "SvR 2008"},
-          {0x545107E0, "SvR 2007"}, {0x545108B4, "WWE '13"},  {0x545408B2, "WWE 2K14"}, {0x545408B6, "WWE 2K15"},
+          {0x5451085D, "SvR 2011"}, {0x54510844, "SvR 2010"}, {0x54510826, "SvR 2009"}, {0x54510838, "Legends of WM"},
+          {0x5451080B, "SvR 2008"}, {0x545107E0, "SvR 2007"}, {0x545108B4, "WWE '13"},  {0x545408B2, "WWE 2K14"}, {0x545408B6, "WWE 2K15"},
           {0x315A07D2, "WWE 2K16"}, {0x545408BA, "WWE 2K17"}};
       ImGui::TextDisabled("%s", fr ? "Ou celui d'un jeu :" : "Or a game's:");
       ImGui::SameLine();
@@ -1561,7 +1562,7 @@ class Page {
     if (game_path_.empty())
       return false;
     from_disc_ = true;
-    look_ = title == 0x5451085D || title == 0x54510844 || title == 0x54510826 || title == 0x5451080B || title == 0x545107E0 ? 2 : 3;
+    look_ = star_port::Svr(title) ? 2 : 3;
     svr_path_ = game_path_ / "pac" / "ch" / "x";  // (Portraits2K's key: the game folder)
     for (auto &hd : portraits_)
       for (auto &b : hd)
@@ -1806,6 +1807,7 @@ class Page {
     switch (game) {
       case 0x54510844: return 1.40;  // SvR 2010
       case 0x54510826: return 1.15;  // SvR 2009
+      case 0x54510838: return 1.15;  // Legends of WrestleMania (SvR 2009's renders; not measured)
       case 0x5451080B: return 1.45;  // SvR 2008
       default: return 1.30;          // SvR 2011, 2007
     }

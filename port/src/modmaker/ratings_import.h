@@ -89,7 +89,8 @@ inline Bytes RecordOf(const disc::GameDisc &src, int number) {
     if (!svrfmt::ArchiveOpen(etc, a, nullptr))
       continue;
     const auto take = [&](const Bytes &d) {
-      const size_t id_at = d.size() == 264 || d.size() == 252 ? 36 : d.size() == 324 ? 56 : d.size() == 232 ? 30
+      const size_t id_at = d.size() == 264 || d.size() == 252 ? 36 : d.size() == 262 ? 44 : d.size() == 324 ? 56
+                           : d.size() == 232 ? 30
                            : d.size() == 176 ? 26 : d.size() >= 200 && d.size() <= 240 ? 4 : 0;
       if (id_at && d.size() > id_at + 1 && (d[id_at] | d[id_at + 1] << 8) == number)
         found = d;

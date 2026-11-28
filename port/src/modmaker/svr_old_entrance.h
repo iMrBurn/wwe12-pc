@@ -57,6 +57,7 @@ enum : uint32_t {
   kSvr07 = 0x545107E0,
   kSvr08 = 0x5451080B,
   kSvr09 = 0x54510826,
+  kLowm = 0x54510838,  // (Legends of WrestleMania: SvR 2009's format, its own rules on top - Kaiko's low_convert)
   kSvr10 = 0x54510844,
   kSvr11 = 0x5451085D,
 };
@@ -396,8 +397,9 @@ struct Stock11 {
 
 inline float LastIndex(const Bytes &s) { return svrfmt::BeF(&s[kLast]); }
 
-// svr10_entrance.convert_evp (SvR 2009 / 2010; 2009's script read with 2008's objects).
-inline bool ConvertEvp10(Evp &e, int number, const Stock11 &st, std::vector<std::string> *notes) {
+// svr10_entrance.convert_evp (SvR 2009 / 2010; 2009's script read with 2008's objects). always6: object 6's positions
+// from 2011's template even when it has its own (Legends of WrestleMania, Kaiko's low_convert).
+inline bool ConvertEvp10(Evp &e, int number, const Stock11 &st, std::vector<std::string> *notes, bool always6 = false) {
   e.num = uint16_t(number);
   e.f44 = 0;
   for (size_t i = 0; i < e.objs.size(); ++i) {
@@ -422,7 +424,7 @@ inline bool ConvertEvp10(Evp &e, int number, const Stock11 &st, std::vector<std:
         for (size_t p = kPos0; p < kPos1; ++p)
           empty = empty && !s[p];
         const auto t = st.templates.find(LastIndex(s));
-        if (empty && t != st.templates.end())
+        if ((empty || always6) && t != st.templates.end())
           memcpy(&s[kPos0], t->second[size_t(k) / 5].data(), kPos1 - kPos0);
       }
     }
@@ -966,8 +968,12 @@ inline bool Convert(const disc::GameDisc &src, uint32_t title, int scene, bool v
   };
   if (why)
     why->clear();
-  if (title != kSvr07 && title != kSvr08 && title != kSvr09 && title != kSvr10)
-    return fail("not SvR 2007-2010");
+  if (title != kSvr07 && title != kSvr08 && title != kSvr09 && title != kSvr10 && title != kLowm)
+    return fail("not SvR 2007-2010 or Legends of WrestleMania");
+  // (Legends' ring cart "Gondola" entrances ride its own cart on their own world track: not ported yet)
+  if (title == kLowm && !victory &&
+      ((scene >= 4170 && scene <= 4186) || (scene >= 4230 && scene <= 4233) || (scene >= 4350 && scene <= 4359)))
+    return fail("a ring cart entrance (not ported yet)");
   Bytes evp, evt;
   if (!Scene(src, title, victory, scene, evp, evt))
     return fail("no such scene in its game");
@@ -977,7 +983,7 @@ inline bool Convert(const disc::GameDisc &src, uint32_t title, int scene, bool v
     return fail("its script can't be read");
   static const Stock11 none;
   const Stock11 &st = stock11 ? *stock11 : none;
-  if ((title == kSvr09 || title == kSvr10) && !st.found && notes)
+  if ((title == kSvr09 || title == kSvr10 || title == kLowm) && !st.found && notes)
     notes->push_back("no SvR 2011 disc: object 6 position templates and object 0 model rule skipped");
   if (title == kSvr07) {
     for (size_t i = 1; i < e.objs.size(); ++i)  // (Yuke's own 2007 -> 2011 pair 4252 -> 772: extras are generic)
@@ -1012,9 +1018,19 @@ inline bool Convert(const disc::GameDisc &src, uint32_t title, int scene, bool v
     if (!ConvertEvp08(e, number, notes))
       return fail("its script can't be converted");
   } else {
-    if (!ConvertEvp10(e, number, st, notes))
+    // Legends of WrestleMania (Kaiko's entrance_port.low_convert): its generic extras 10902 / 24802 / 24902, and
+    // 11902 / 15902 except a tag partner at object 4, are 13902 before 2009's rules.
+    if (title == kLowm)
+      for (size_t i = 1; i < e.objs.size(); ++i) {
+        Obj &o = e.objs[i];
+        const bool tag = scene >= 4300 && scene <= 4359 && i == 4;
+        if (o.Char() && (o.model == 10902 || o.model == 24802 || o.model == 24902 ||
+                         ((o.model == 11902 || o.model == 15902) && !tag)))
+          o.model = kGeneric11;
+      }
+    if (!ConvertEvp10(e, number, st, notes, title == kLowm))
       return fail("its script can't be converted");
-    if (title == kSvr09 && !e.objs.empty() && e.objs[0].model == kPreview11)
+    if ((title == kSvr09 || title == kLowm) && !e.objs.empty() && e.objs[0].model == kPreview11)
       for (size_t i = 1; i < 7 && i < e.objs.size(); ++i)  // (Yuke's: extras follow the preview body)
         if (e.objs[i].Char() && e.objs[i].model == kGeneric11)
           e.objs[i].model = kPreview11;
@@ -1105,13 +1121,14 @@ inline int EntranceOf(const disc::GameDisc &g, uint32_t title, int id) {
     case kSvr08:
       return 4000 + id;
     case kSvr09:
+    case kLowm:
     case kSvr10: {
-      const size_t at = title == kSvr09 ? 0xE4 : 0x178;
+      const size_t at = title == kSvr10 ? 0x178 : 0xE4;
       const Bytes p = Profile(g, id);
       if (p.size() >= at + 6)
         if (const int e = svrfmt::Le16(&p[at + 4]); e > 0 && e != 4000)  // (4000: the edit slots' "none")
           return e;
-      return title == kSvr09 ? 4000 + id - 100 : id;
+      return title == kSvr10 ? id : 4000 + id - 100;
     }
     case kSvr11:
       return id;

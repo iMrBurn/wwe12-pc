@@ -300,7 +300,8 @@ inline int Free12(const disc::GameDisc &w12) {
 inline bool Old(const disc::GameDisc &svr, uint32_t title, int scene, bool victory, int as, const disc::GameDisc *svr11,
                 Bytes &evp, Bytes &evt, std::string *why) {
   svr_old_entrance::Stock11 stock;
-  if (svr11 && (title == svr_old_entrance::kSvr09 || title == svr_old_entrance::kSvr10))
+  if (svr11 && (title == svr_old_entrance::kSvr09 || title == svr_old_entrance::kSvr10 ||
+                title == svr_old_entrance::kLowm))
     stock = svr_old_entrance::ReadStock11(*svr11);
   return svr_old_entrance::Convert(svr, title, scene, victory, as, stock.found ? &stock : nullptr, evp, evt, why);
 }

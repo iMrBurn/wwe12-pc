@@ -1579,6 +1579,7 @@ class Page {
       svr_path_.clear();
       if (svr_year_ != 2011 || svr_game_ != svr || svr_list_.empty()) {
         svr_year_ = 2011;
+        svr_lowm_ = false;
         OpenSvr(fr, svr);
       }
       svr_file_.clear();
@@ -1635,24 +1636,27 @@ class Page {
     }
     // SvR 2010: its arena files are SvR 2011's kind (port_svr_arena::kArenasSvr10, after Kaiko's arena_port.py);
     // SvR 2009, 2008 and 2007: made SvR 2011's first (port_svr_arena::OldSvrArena; 2007's taken out of its many-arena
-    // files first, Svr07Stage).
+    // files first, Svr07Stage). Legends of WrestleMania: SvR 2009's files (its arenas bg201-216, the 2009 path; Kaiko's
+    // arena_port.py game "low"), told apart by svr_lowm_.
     static constexpr struct {
       uint32_t title;
       int year;
       const char *name;
     } kOldSvr[] = {{0x54510844, 2010, "SvR 2010"}, {0x54510826, 2009, "SvR 2009"}, {0x5451080B, 2008, "SvR 2008"},
-                   {0x545107E0, 2007, "SvR 2007"}};
-    for (int i = 0; i < 4; ++i) {
+                   {0x545107E0, 2007, "SvR 2007"}, {0x54510838, 2009, "Legends of WrestleMania"}};
+    for (int i = 0; i < int(std::size(kOldSvr)); ++i) {
       const fs::path p10 = discs_ ? discs_->PathOf(kOldSvr[i].title) : fs::path();
       const int year = kOldSvr[i].year;
-      if (i != 2)  // (three cards a row: 2K17, 2010, 2009; then 2008, 2007)
+      const bool lowm = kOldSvr[i].title == 0x54510838;
+      if (i != 2)  // (three cards a row: 2K17, 2010, 2009; then 2008, 2007, Legends)
         ImGui::SameLine();
-      if (ChoiceCard(7 + i, wiz_src_ == 0 && svr_year_ == year, !p10.empty(), kOldSvr[i].name,
+      if (ChoiceCard(7 + i, wiz_src_ == 0 && svr_year_ == year && svr_lowm_ == lowm, !p10.empty(), kOldSvr[i].name,
                      p10.empty() ? not_added : yours)) {
         wiz_src_ = 0;
         svr_path_.clear();
-        if (svr_year_ != year || svr_game_ != p10 || svr_list_.empty()) {
+        if (svr_year_ != year || svr_lowm_ != lowm || svr_game_ != p10 || svr_list_.empty()) {
           svr_year_ = year;
+          svr_lowm_ = lowm;
           OpenSvr(fr, p10);
         }
         svr_file_.clear();
@@ -2227,7 +2231,10 @@ class Page {
         port13::TransitionVideo(evtmov, kSlots[slot_].number, movie_))
       port_note_ += fr ? " Avec la transition de son arène de base." : " With its base arena's transition.";
     const std::string stem = svr_pick_ >= 0 ? SvrName(svr_pick_) : media::Utf8(svr_path_.stem().wstring());
-    snprintf(name_, sizeof(name_), "%s (SvR %d)", stem.c_str(), svr_pick_ >= 0 ? svr_year_ : 2011);
+    if (svr_pick_ >= 0 && svr_lowm_)
+      snprintf(name_, sizeof(name_), "%s (Legends)", stem.c_str());
+    else
+      snprintf(name_, sizeof(name_), "%s (SvR %d)", stem.c_str(), svr_pick_ >= 0 ? svr_year_ : 2011);
     as_new_ = true;
   }
 
@@ -3005,6 +3012,7 @@ class Page {
   disc::GameDisc svr_disc_;   // ... or the game's ISO / folder, and its arena chosen
   fs::path svr_game_;
   int svr_year_ = 2011;  // (SvR 2011, 2010, 2009, 2008 or 2007: its arena list)
+  bool svr_lowm_ = false;  // (Legends of WrestleMania: svr_year_ 2009, its own arena list)
   std::vector<int> svr_list_;
   std::map<int, std::string> svr_files_, svr_dlc_names_;  // its arena files by number; its DLC arenas' names
   int svr_pick_ = -1;

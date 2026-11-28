@@ -715,6 +715,10 @@ inline bool FromOld(const disc::GameDisc &w12, const disc::GameDisc &src, uint32
     case 0x5451080B: put(svr_old_slots::kSvr2008); break;
     case 0x54510826: put(svr_old_slots::kSvr2009); break;
     case 0x54510844: put(svr_old_slots::kSvr2010); break;
+    case 0x54510838:  // (Legends of WrestleMania: its own move numbers, not ported - the user's choice, 2026-11-28)
+      if (why)
+        *why = "Legends of WrestleMania's moves aren't ported";
+      return false;
     default:
       if (why)
         *why = "not SvR 2007-2010";

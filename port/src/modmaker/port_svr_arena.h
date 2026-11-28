@@ -871,7 +871,20 @@ inline constexpr ArenaSvr kArenasSvr07[] = {
     {19, "Saturday Night's Main Event", ""},
 };
 
-// `year`: 2011, 2010, 2009, 2008 or 2007.
+// Legends of WrestleMania's (SvR 2009's files; after Kaiko's arena_port.py game "low"): bg201-215 WrestleMania I - XV,
+// bg216 Royal Rumble. Not listed: bg219, the Royal Rumble match's copy of bg216 (the same textures), and bg223 / 224 /
+// 225 / 250 (its Create Moves, prop check and approval stages). Their numbers aren't SvR 2009's (0-18): looked up with
+// year 2009 too.
+inline constexpr ArenaSvr kArenasLowm[] = {
+    {201, "WrestleMania I", ""},    {202, "WrestleMania II", ""},   {203, "WrestleMania III", ""},
+    {204, "WrestleMania IV", ""},   {205, "WrestleMania V", ""},    {206, "WrestleMania VI", ""},
+    {207, "WrestleMania VII", ""},  {208, "WrestleMania VIII", ""}, {209, "WrestleMania IX", ""},
+    {210, "WrestleMania X", ""},    {211, "WrestleMania XI", ""},   {212, "WrestleMania XII", ""},
+    {213, "WrestleMania 13", ""},   {214, "WrestleMania XIV", ""},  {215, "WrestleMania XV", ""},
+    {216, "Royal Rumble", ""},
+};
+
+// `year`: 2011, 2010, 2009 (and Legends of WrestleMania), 2008 or 2007.
 inline const ArenaSvr *FindSvr(int file, int year = 2011) {
   auto in = [&](const auto &table) -> const ArenaSvr * {
     for (const auto &a : table)
@@ -882,7 +895,7 @@ inline const ArenaSvr *FindSvr(int file, int year = 2011) {
   if (year == 2010)
     return in(kArenasSvr10);
   if (year == 2009)
-    return in(kArenasSvr09);
+    return file >= 200 ? in(kArenasLowm) : in(kArenasSvr09);
   if (year == 2008)
     return in(kArenasSvr08);
   if (year == 2007)
@@ -988,7 +1001,7 @@ inline bool Banner(const Bytes &matchhd, int file, svrfmt::Image &out, int year 
   // SvR 2008 / 2009: the biggest picture at least 256 wide of its VS screen (MENU/MnnI), as Kaiko's svr2008_convert.
   if (year < 2010) {
     char ni[8];
-    snprintf(ni, sizeof(ni), "M%02dI", file);
+    snprintf(ni, sizeof(ni), file > 99 ? "M%02XI" : "M%02dI", file);  // (Legends of WrestleMania: bg201 MC9I)
     int best = 0;
     for (auto &k : a.root.kids)
       if (k.group == "MENU" && k.name == ni)
@@ -3113,7 +3126,7 @@ inline bool Card(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, con
     return false;
   // The arena's pictures.
   char ni[8];
-  snprintf(ni, sizeof(ni), "M%02dI", file);
+  snprintf(ni, sizeof(ni), file > 99 ? "M%02XI" : "M%02dI", file);  // (Legends of WrestleMania: bg201 MC9I)
   std::vector<svrfmt::BundleTexture> theirs;
   for (auto &k : s.root.kids)
     if (k.group == "MENU" && k.name == ni)
@@ -3366,7 +3379,7 @@ inline bool SvrCard(const Bytes &svr_matchhd, const Bytes &matchhd12, int file, 
     return fail("unreadable MatchHD.pac");
   char nl[8], ni[8], nf[8];
   snprintf(nl, sizeof(nl), "M%02dL", file);
-  snprintf(ni, sizeof(ni), "M%02dI", file);
+  snprintf(ni, sizeof(ni), file > 99 ? "M%02XI" : "M%02dI", file);  // (Legends of WrestleMania: bg201 MC9I)
   snprintf(nf, sizeof(nf), "M%02dF", file);
   svrfmt::ArcNode *sl = nullptr, *si = nullptr, *card = nullptr;
   mf.clear();
