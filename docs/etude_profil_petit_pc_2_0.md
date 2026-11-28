@@ -80,3 +80,12 @@ Déjà là : « Annuler le préréglage » rend les 6 valeurs sauvegardées (`lo
 4. Valeurs mesurées à confirmer par Rendu : gain de la foule et du flou sur le banc, coût de l'anisotropie.
 
 Estimation si tout est validé : 3 à 4 h (tableaux, ligne dans RÉGLAGES, ≤ 2 cœurs, verdict du test, essai hors jeu avec `SteamDeck=1` et des cartes simulées).
+
+## 8. Réponse de Rendu (2026-11-28) : aucun des trois n'est mesuré sur le banc
+
+- **Foule coupée** : le seul qui peut aider un banc limité par le processeur. Retire ≈ 435 des ≈ 670 dessins d'une scène de match (capture
+  2026-10-17 : 339 cartes de foule + 96 personnes en 3D), donc du travail pour le fil de rendu (4,5 à 5 ms par image en match). **Gain
+  probable, pas chiffré** (à confirmer ; Rendu peut ajouter un paramètre « foule » à `bench_gfx.bat`, 2 passes oui / non en 720p).
+- **Flou de profondeur coupé** : aucun dessin retiré (constantes à zéro) : gain GPU seulement, ≈ 0 sur ce banc.
+- **Anisotropie 16 contre 0** : coût GPU seulement, ≈ 0 sur ce banc ; ne compte que sur un GPU vraiment faible.
+- Conséquence pour le §3 : dans le cas « le processeur freine », **la foule est le seul réglage utile** (cohérent avec la proposition).
