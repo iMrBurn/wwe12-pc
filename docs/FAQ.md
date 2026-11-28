@@ -69,6 +69,13 @@ resolution (720p or 540p); empty stands with `wwe12_crowd = false` in `wwe12.tom
 performance" mode, and make sure the launcher's PLAY page uses your dedicated graphics card. Close
 OBS, recording tools and overlays. Laptops with 2-core processors are at the limit.
 
+**My laptop's graphics card isn't used (or isn't listed).** On battery, or in an "Eco" / power-saving mode, many
+laptops switch their dedicated graphics card off: Windows and the game then only see the integrated one (the
+launcher's PLAY page lists the cards found). Plug in the charger, set Windows' "Best performance" mode (and your
+laptop maker's "Performance" / "dGPU" mode if it has one), then start the launcher again: the dedicated card comes
+back and the game picks it by itself. When the game runs on the integrated chip while a dedicated card is there, it
+says so at the top of the screen for a few seconds.
+
 **Coloured blocks during entrances or matches (Intel / AMD / Steam Deck).** Version 0.9 has a
 probable fix. If you still see them, add `svr_rt_no_compression = true` at the end of `wwe12.toml`, and tell us in
 issue #7 whether it helps.
@@ -205,6 +212,12 @@ date. Les bugs se signalent dans les [issues GitHub](https://github.com/iMrBurn/
 - **Ralentis** : le jeu ralentit si le PC ne tient pas 60 images/s. Baissez la résolution interne (720p,
   540p), tribunes vides avec `wwe12_crowd = false` dans `wwe12.toml`, branchez le chargeur, mode « Meilleures performances », bonne carte graphique
   sur la page JOUER, fermez OBS et les overlays.
+- **La carte graphique du portable n'est pas utilisée (ou pas listée)** : sur batterie ou en mode « Éco » / économie
+  d'énergie, beaucoup de portables éteignent leur carte dédiée ; Windows et le jeu ne voient alors que la puce intégrée
+  (la page JOUER du launcher liste les cartes trouvées). Branchez le chargeur, mettez le mode « Meilleures
+  performances » de Windows (et le mode « Performances » / « dGPU » du fabricant s'il y en a un), puis relancez le
+  launcher : la carte dédiée revient et le jeu la prend tout seul. Quand le jeu tourne sur la puce intégrée alors
+  qu'une carte dédiée est là, il le dit quelques secondes en haut de l'écran.
 - **Pavés colorés à droite pendant les entrées** : essayez `svr_rt_no_compression = true` à la fin de
   `wwe12.toml` et dites-nous dans l'issue #7 si ça aide.
 - **Image figée, son qui continue** : attendez 15 s, fermez, et ouvrez une issue avec `hang_trace.txt`,
