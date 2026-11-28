@@ -98,6 +98,41 @@ Idées en plus (palier 3, si le joueur les veut) :
 Note : je n'ai pas le portage SvR 2011 sous la main pour comparer son interface. Si iMrBurn a une capture de sa page
 jukebox, on peut s'en rapprocher.
 
+## Option B (recommandée depuis le 2026-11-28) : notre propre écran MA PLAYLIST
+
+iMrBurn : « on n'est plus obligé de respecter les menus comme dans le vrai jeu ». On a déjà ce qu'il faut :
+
+- un dessin ImGui par-dessus le jeu (`ImGui::GetForegroundDrawList`) : I Quit (`wwe12_iquit.cpp`), Special Guest
+  Referee (`wwe12_sref.cpp`), pages d'arènes ;
+- la chaîne de crochets XInputGetState (`wwe12_match_modes.cpp` → `wwe12_iquit.cpp` → `wwe12_sref.cpp`) qui **cache les
+  boutons au jeu** pendant qu'un de nos écrans est ouvert.
+
+L'écran :
+
+- La page JUKEBOX garde ses 4 lignes. Un bouton (Y, affiché dans la barre d'aide) ouvre MA PLAYLIST.
+- Un écran plein, fond assombri, avec la liste de tous les thèmes en 2 ou 3 colonnes et une case par thème. Il défile au
+  pad et à la souris, et affiche le nombre gardé (« 87 / 152 »).
+- Les boutons :
+  - A coche ou décoche ;
+  - X écoute le thème (le jukebox le joue tout de suite) ;
+  - Y tout cocher / tout décocher ;
+  - LB / RB page précédente / suivante ;
+  - B ferme et enregistre.
+- La ligne « musique des menus du jeu » est en tête de liste. Les catcheurs ajoutés par mod sont signalés par une
+  petite étiquette MOD.
+- On peut avoir des sections (jeu / DLC / mods) et trier par nom.
+
+Avantages : plus de limite à 5 lignes, plus de canal 104 dans `wwe12_graphics_menu.cpp` (fichier partagé avec Rendu et
+Gameplay), et c'est bien plus confortable que de parcourir 150 thèmes au pad avec gauche / droite.
+Inconvénient : un peu plus de code (dessin + pad), environ une demi-journée de plus que la page à 5 lignes.
+
+À vérifier :
+
+- que le bouton Y arrive bien à nos crochets sur la page JUKEBOX (sinon, une 5e ligne MA PLAYLIST > avec A, ou une
+  touche du clavier) ;
+- que le menu derrière ne bouge pas pendant que l'écran est ouvert (boutons cachés, comme pour le I Quit) ;
+- la police et la taille en 720p, sur le Steam Deck (16:10) et sur Android.
+
 ## Plan en paliers
 
 1. **Playlist dans le moteur** (petit, environ 1 h) :
@@ -105,7 +140,8 @@ jukebox, on peut s'en rapprocher.
    - `NextTheme` tire seulement parmi les thèmes gardés (si la playlist est vide, tous, avec une ligne de log) ;
    - journal « [jukebox] playlist: N of M themes ».
    - On peut le tester en éditant le fichier à la main.
-2. **Page JUKEBOX à 5 lignes** (moyen, environ 3 h) :
+2. **Écran MA PLAYLIST** (option B, recommandée ; environ une demi-journée), puis un test par iMrBurn. Ou, à défaut,
+   **page JUKEBOX à 5 lignes** (moyen, environ 3 h) :
    - `graphics_pages.py` : 5e ligne, cadre à 5 lignes, canal 104 ;
    - textes de la ligne et du « (OFF) » en 5 langues ;
    - crochets 104 dans `wwe12_graphics_menu.cpp`. Ce fichier est partagé avec Rendu (page GRAPHICS) et Gameplay
