@@ -153,6 +153,13 @@ Inconvénient : un peu plus de code (dessin + pad), environ une demi-journée de
 - en ordre aléatoire, seuls les thèmes cochés passent ;
 - l'affichage en 720p et en 16:10.
 
+**Validé en jeu par iMrBurn le 2026-11-28** (« oui, RAS ») : menu derrière immobile, aléatoire qui suit la playlist,
+lisibilité. L'écran s'ouvre par FromSub1. Correction après le test (6e1a40e) : X pressé à nouveau pendant que le thème
+s'éteint ne relance plus l'attente (KING ne jouait jamais).
+
+Palier 3 : le « tout cocher / tout décocher » est déjà là (Y). La page du launcher reste pour plus tard ; elle revient à
+la session Launcher, qui peut lire `jukebox_playlist.txt` (lignes `off <n>  # NOM`).
+
 ## Plan en paliers
 
 1. **Playlist dans le moteur** (petit, environ 1 h) :
