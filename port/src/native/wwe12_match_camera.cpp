@@ -212,6 +212,7 @@ std::atomic<long long> g_stick_ms{0};
 
 // When RAMP last replaced a view (ms): the depth of field is off while it is on (draw.cpp).
 std::atomic<long long> g_ramp_ms{0};
+std::atomic<long long> g_match_cam_ms{0};  // the match camera updated last (Wwe12MatchPlaying)
 
 u32 g_fov_cam = 0;   // the camera whose field of view (+512) is changed for this update (put back after it)
 float g_fov_saved = 0;
@@ -366,6 +367,8 @@ void FreeView(u8 *base, u32 cam, Moved *slot, V3 e, V3 f) {
 // Before sub_82824370(camera): the match camera's view at camera + 240 replaced (RAMP, FREE CAMERA).
 void Wwe12CameraTestBefore(u8 *base, u32 cam, u32 lr) {
   g_fov_cam = 0;
+  if (lr == kMatchCameraCaller && Wwe12MatchSeen() && !Wwe12SceneMode() && !Wwe12LoadingScreenUp())
+    g_match_cam_ms.store(NowMs(), std::memory_order_relaxed);
   const int preset = Wwe12BenchmarkActive() ? 0 : REXCVAR_GET(wwe12_match_camera);
   const bool fly = g_free.load() && !Wwe12BenchmarkActive();
   if ((preset != 1 && !fly) || !cam || !bd::mem::try_at<u8>(cam + 520))
@@ -589,4 +592,10 @@ void Wwe12TurnStick(u32 state) {
   const auto clamp16 = [](float v) { return u16(int16_t(std::clamp(v, -32768.0f, 32767.0f))); };
   bd::mem::store<u16>(state + 8, clamp16(nx));
   bd::mem::store<u16>(state + 10, clamp16(ny));
+}
+
+// wwe12_mouse_menus.cpp: a match is being played (its camera updated in the last 300 ms), so the mouse is quiet.
+bool Wwe12MatchPlaying() {
+  const long long t = g_match_cam_ms.load(std::memory_order_relaxed);
+  return t && NowMs() - t < 300;
 }

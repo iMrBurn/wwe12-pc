@@ -87,6 +87,7 @@ bool Wwe12TryNextBackend();
 namespace rex::input { class InputSystem; }
 void Wwe12ButtonsSetInput(rex::input::InputSystem* input);  // wwe12_buttons.cpp
 void Wwe12KbdInit(rex::ui::Window* window);  // wwe12_kbd.cpp: keyboard typing in letter grids
+void Wwe12MouseMenusInit(rex::ui::Window* window);  // wwe12_mouse_menus.cpp: the mouse in the menus
 
 // Installe les DLC posés dans le dossier « dlc » à côté de l'exe (wwe12_dlc.cpp).
 void Wwe12InstallDlc(const std::filesystem::path& user_data_root);
@@ -342,6 +343,7 @@ class Wwe12App : public rex::ReXApp {
     Wwe12IQuitOverlayInit(imgui_drawer(), [this](std::function<void()> f) { app_context().CallInUIThread(std::move(f)); });  // I QUIT gauge (wwe12_iquit.cpp)
     Wwe12ArenaPagesInstallLabel(imgui_drawer(), [this](std::function<void()> f) { app_context().CallInUIThread(std::move(f)); });  // arena select: page label, LB / RB
     Wwe12KbdInit(window());  // physical keyboard in the game's letter grids (Create a Story...)
+    Wwe12MouseMenusInit(window());  // the mouse in the menus (click A / B, wheel up / down)
     if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
       Wwe12ButtonsSetInput(input);
     }

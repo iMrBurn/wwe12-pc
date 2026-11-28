@@ -28,6 +28,7 @@ REX_EXTERN(__imp__sub_821A9AC0);
 REX_EXTERN(__imp__sub_82A8C070);
 
 u16 Wwe12RemotePadButtons();  // wwe12_remote_pad.cpp (dev)
+u16 Wwe12MouseMenuButtons();  // wwe12_mouse_menus.cpp: the mouse in the menus (A, B, up / down)
 bool Wwe12FreeCamPad(u32 user, u32 state);
 void Wwe12TurnStick(u32 state);
 void Wwe12MouseProbePad(u16 buttons);    // wwe12_mouse_probe.cpp (dev)           // wwe12_match_camera.cpp  // wwe12_match_camera.cpp: the free camera has the pads (zeroed)
@@ -86,7 +87,7 @@ extern "C" REX_FUNC(sub_82A8C070) {
     Wwe12BenchmarkRecordPad(bd::mem::load<u16>(state + 4), bd::mem::load<int16_t>(state + 8),
                             bd::mem::load<int16_t>(state + 10), Wwe12LoadingScreenUp());
   const long long now = NowMs();
-  u16 press = Wwe12RemotePadButtons();
+  u16 press = u16(Wwe12RemotePadButtons() | Wwe12MouseMenuButtons());
   constexpr u16 kStart = 0x0010;
   if (now >= g_press_from.load() && now < g_press_until.load())
     press |= kStart;
