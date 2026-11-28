@@ -133,6 +133,26 @@ Inconvénient : un peu plus de code (dessin + pad), environ une demi-journée de
 - que le menu derrière ne bouge pas pendant que l'écran est ouvert (boutons cachés, comme pour le I Quit) ;
 - la police et la taille en 720p, sur le Steam Deck (16:10) et sur Android.
 
+## Fait (2026-11-28, commit 6c41bff ; compilé objet par objet, pas encore testé en jeu)
+
+- Paliers 1 et 2, option B : fichier `jukebox_playlist.txt` (lignes `off <n>`), tirage aléatoire limité à la
+  playlist (vide : tous), écran MA PLAYLIST (3 colonnes de 12, A / X / Y / LB / RB / B, étiquette MOD, total).
+- Ouverture : les gestionnaires `FromSub1-3` du script de la page appellent `InitInGameOptions(104-106)`. Le journal
+  dit lequel a servi (« MY PLAYLIST opened (page handler FromSubN) ») ; le sous-titre de la page annonce Y, à corriger
+  si c'est un autre bouton. Le « annuler les changements » de FromSub2 n'existe plus sur cette page.
+- Manette : `wwe12_intros.cpp` (crochet XInputGetState) cache tout au jeu pendant que l'écran est ouvert. Les boutons
+  encore tenus à la fermeture restent cachés jusqu'au relâchement.
+- Police : `Wwe12OverlayFont` (`wwe12_display.cpp`, Segoe UI, latin avec accents).
+
+À tester :
+
+- le bouton qui ouvre l'écran ;
+- que le menu derrière ne bouge pas ;
+- cocher / décocher, puis fermer et relancer (le fichier est relu) ;
+- X avec le jukebox activé ;
+- en ordre aléatoire, seuls les thèmes cochés passent ;
+- l'affichage en 720p et en 16:10.
+
 ## Plan en paliers
 
 1. **Playlist dans le moteur** (petit, environ 1 h) :
