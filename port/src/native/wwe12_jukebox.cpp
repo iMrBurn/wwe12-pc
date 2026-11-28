@@ -103,6 +103,7 @@ std::vector<std::pair<uint32_t, std::string>> Wwe12AddedThemes();  // wwe12_supe
 ImFont *Wwe12OverlayFont(bool bold);                   // wwe12_display.cpp (Latin, accents; may be null)
 rex::ui::ImGuiDrawer *Wwe12OverlayDrawer();            // wwe12_iquit.cpp
 void Wwe12OverlayPost(std::function<void()> f);        // wwe12_iquit.cpp: runs f on the UI thread
+void Wwe12MouseMenusDrop();                            // wwe12_mouse_menus.cpp: queued menu clicks dropped
 
 namespace {
 
@@ -949,6 +950,7 @@ int Wwe12JukeboxPad(uint32_t user, uint16_t buttons, int16_t lx, int16_t ly) {
   if (count == 0 || (newly & (kB | kStart))) {
     SavePlaylist(g_list);
     g_list_open = false;
+    Wwe12MouseMenusDrop();  // (the menus' mouse clicks queued meanwhile would reach the page under it)
     g_hold[user] = buttons;
     BD_INFO("[jukebox] MY PLAYLIST closed");
     return -1;
